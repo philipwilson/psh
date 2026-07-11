@@ -37,13 +37,13 @@ class JobsBuiltin(Builtin):
 
         manager = shell.job_manager
 
-        # Refresh job state before listing so a job resumed by an external
-        # `kill -CONT` shows Running (macOS raises no SIGCHLD on continue, so
-        # the interactive handler never saw it). Interactive only — a
-        # non-interactive shell has no SIGCHLD reaper and must not steal
-        # background children out from under a later `wait`.
-        if shell.state.options.get('interactive'):
-            manager.poll_job_states()
+        # Refresh job state before listing so an external `kill -STOP`/`-CONT`
+        # and a background completion are reflected (macOS raises no SIGCHLD on
+        # continue, and a non-interactive shell has no SIGCHLD reaper at all).
+        # Safe in every mode: refresh_job_states waits per job process group, so
+        # it can never steal a command/process-substitution child out from under
+        # a later `wait` (see its docstring).
+        manager.refresh_job_states()
 
         # With operands, list ONLY the named jobs and diagnose any that do not
         # resolve (bash: "no such job" / "ambiguous job spec", rc=1). Without
@@ -74,6 +74,18 @@ class JobsBuiltin(Builtin):
 
         for job in jobs_to_list:
             self._render_job(job, opts, manager, shell)
+
+        # bash reaps a completed job when `jobs` runs: its Done/Exit-N line is
+        # shown once (above, for an unfiltered listing) and the job is then
+        # removed, its per-pid status retained for a later `wait <pid>`
+        # (`(exit 7)& p=$!; sleep .3; jobs; wait $p` -> 7). This happens for
+        # every finished job on any `jobs` invocation, even one hidden by an
+        # -r/-s filter (`jobs -r` still reaps the Done job it did not print).
+        for job in list(manager.jobs.values()):
+            if job.state == JobState.DONE:
+                job.notified = True
+                manager.remember_job_statuses(job)
+                manager.remove_job(job.job_id)
         return exit_status
 
     @staticmethod
@@ -136,9 +148,15 @@ class FgBuiltin(Builtin):
             self.error("no job control", shell)
             return 1
 
+        # Strip a leading `--` (end of options): `fg -- %1` targets %1, `fg --`
+        # alone falls back to the current job.
+        operands = args[1:]
+        if operands and operands[0] == '--':
+            operands = operands[1:]
+
         # Determine which job to foreground. A bare integer operand is a JOB
         # NUMBER (bash: `fg 1` == `fg %1`), unlike wait/kill where it is a PID.
-        if len(args) <= 1:
+        if not operands:
             # No argument - use current job. bash names the missing jobspec
             # "current" in its diagnostic.
             job = jm.current_job
@@ -146,12 +164,20 @@ class FgBuiltin(Builtin):
                 self.error("current: no such job", shell)
                 return 1
         else:
-            result = jm.resolve_job_spec(args[1], bare='jobnum')
+            result = jm.resolve_job_spec(operands[0], bare='jobnum')
             if result.outcome is not JobSpecOutcome.FOUND or result.job is None:
-                for msg in jobspec_error_messages(result, args[1]):
+                for msg in jobspec_error_messages(result, operands[0]):
                     self.error(msg, shell)
                 return 1
             job = result.job
+
+        # Refresh the target job's state first. A job stopped by an external
+        # `kill -STOP` is never reaped by a non-interactive shell (no SIGCHLD
+        # reaper), so fg would still think it RUNNING, skip the SIGCONT below,
+        # waitpid it, reap the pending stop, and return 128+SIGSTOP with the job
+        # left stopped. Refreshing lets fg see STOPPED, send SIGCONT, and resume
+        # it to completion (bash: rc 0). Safe per-group (see refresh_job_states).
+        jm.refresh_one_job(job)
 
         # Print the command being resumed
         self.write_line(job.command, shell)
@@ -209,7 +235,11 @@ class BgBuiltin(Builtin):
             self.error("no job control", shell)
             return 1
 
+        # Strip a leading `--` (end of options): `bg -- %1` targets %1, `bg --`
+        # alone falls back to the current job.
         specs = args[1:]
+        if specs and specs[0] == '--':
+            specs = specs[1:]
         if not specs:
             job = jm.current_job
             if job is None:

@@ -249,9 +249,32 @@ class TestCompletionNoticeStates:
 
 
 class TestNotifyOptionChannel:
-    """set -b (notify) immediate Done notices use stderr end to end."""
+    """set -b (notify) immediate Done notices — interactive only, on stderr.
 
-    def test_set_b_done_notice_on_stderr(self, captured_shell):
+    bash announces a background job reaped by an in-progress `wait` under
+    `set -b` at the moment of reaping, but ONLY in an interactive shell; a
+    non-interactive `-c`/script shell stays silent
+    (`bash -c 'set -b; sleep 0.05 & wait'` prints nothing — verified vs bash
+    5.2.26). Both branches are pinned here; the interactive end-to-end path is
+    additionally pinned by the PTY test
+    test_pty_smoke::test_set_o_notify_emits_bg_done_once_and_reaps.
+    """
+
+    def test_set_b_wait_reaped_notice_silent_non_interactive(self, captured_shell):
+        """Non-interactive: `set -b` + `wait` reaping a bg job prints NO notice.
+
+        Was pinned the other way (asserting a Done notice) — that pinned
+        non-bash behavior. bash is silent here, so psh must be too.
+        """
+        rc = captured_shell.run_command("set -b; sleep 0.05 & wait")
+        assert rc == 0
+        assert "Done" not in captured_shell.get_stderr()
+        assert "Done" not in captured_shell.get_stdout()
+
+    def test_set_b_wait_reaped_notice_present_interactive(self, captured_shell):
+        """Interactive: the same `set -b` + `wait` DOES announce the reaped job
+        immediately, on stderr (never stdout)."""
+        captured_shell.state.options['interactive'] = True
         rc = captured_shell.run_command("set -b; sleep 0.05 & wait")
         assert rc == 0
         assert "Done" in captured_shell.get_stderr()
