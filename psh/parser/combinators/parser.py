@@ -241,6 +241,10 @@ class ParserCombinatorShellParser:
     def parse_partial(self, tokens: List[Token]) -> Tuple[Optional[ASTNode], int]:
         """Parse as much as possible from the token stream.
 
+        Test-facing: no production caller uses this (the shell entry points call
+        only ``parse`` / ``parse_with_heredocs``). Kept as an educational probe
+        for how the combinator makes partial progress.
+
         Args:
             tokens: List of tokens from the lexer
 
@@ -267,6 +271,10 @@ class ParserCombinatorShellParser:
 
     def can_parse(self, tokens: List[Token]) -> bool:
         """Check if the tokens can be parsed without actually parsing.
+
+        Test-facing: no production caller uses this (the shell entry points call
+        only ``parse`` / ``parse_with_heredocs``). Kept as an educational
+        can-this-parse probe.
 
         Args:
             tokens: List of tokens to check
@@ -295,21 +303,6 @@ class ParserCombinatorShellParser:
             return pos == len(tokens)
         except (AttributeError, IndexError, TypeError, ParseError):
             return False
-
-    def configure(self, **options):
-        """Configure the parser with implementation-specific options.
-
-        Args:
-            **options: Implementation-specific configuration options
-        """
-        # Update configuration
-        for key, value in options.items():
-            if hasattr(self.config, key):
-                setattr(self.config, key, value)
-
-        # Reinitialize modules with new config
-        self._initialize_modules()
-        self._build_complete_parser()
 
     def explain_parse(self, tokens: List[Token]) -> str:
         """Provide an educational explanation of how parsing works.

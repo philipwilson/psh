@@ -10,28 +10,13 @@ The CommandParsers class inherits from four mixin classes:
 - StatementMixin: statements and the recursion-based statement-list engine
 """
 
-from typing import List, Optional, Union
+from typing import Optional
 
-from ....ast_nodes import (
-    AndOrList,
-    ArithmeticEvaluation,
-    ASTNode,
-    CaseConditional,
-    CStyleForLoop,
-    EnhancedTestStatement,
-    ForLoop,
-    # Control structures for type checking
-    IfConditional,
-    Pipeline,
-    SelectLoop,
-    SimpleCommand,
-    WhileLoop,
-)
+from ....ast_nodes import SimpleCommand
 from ....lexer.token_types import Token
 from ...config import ParserConfig
 from ..arrays import ArrayParsers
-from ..core import Parser, ParseResult, fail_with, optional, token
-from ..diagnostics import raise_committed_error
+from ..core import Parser, fail_with, token
 from ..expansions import ExpansionParsers
 from ..tokens import TokenParsers
 from .pipelines import PipelineMixin
