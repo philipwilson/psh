@@ -118,10 +118,21 @@ def test_wait_n_after_jobs_reap_is_127():
 # ---------------------------------------------------------------------------
 # (d) non-steal: the per-pgid refresh must never reap a substitution child
 # ---------------------------------------------------------------------------
+# The refresh's non-stealing property (per-pgid waits never touch a
+# command/process-substitution child, which lives in the shell's pgid) is
+# pinned structurally by the code + directly by the verifier's waitpid(-1)
+# mutation (which these output-integrity guards would NOT catch on their own:
+# a `-c` substitution self-reaps before the next `jobs`, so there is no
+# unreaped non-job child for a mis-scoped wait to steal here). What these two
+# guard is the weaker, still-useful property that refreshing repeatedly
+# ALONGSIDE substitutions does not corrupt their output. The status-retention
+# side (a bg job reaped by `jobs` still answered by a later `wait`) is pinned
+# by test_jobs_reap_remembers_status_for_later_wait.
+# ---------------------------------------------------------------------------
 
-def test_refresh_does_not_steal_command_substitution_children():
-    """A live bg job + repeated `jobs` refreshes must not corrupt command
-    substitution output (the refresh waits per job pgid, not `waitpid(-1)`)."""
+def test_refresh_alongside_command_substitution_preserves_output():
+    """Repeated `jobs` refreshes with a live bg job do not corrupt command
+    substitution output."""
     r = _psh('set -m; sleep 3 & '
              'for i in 1 2 3 4 5 6 7 8; do '
              '  v=$(echo "val$i"); jobs >/dev/null 2>&1; '
@@ -131,9 +142,8 @@ def test_refresh_does_not_steal_command_substitution_children():
     assert 'CORRUPT' not in r.stdout
 
 
-def test_refresh_does_not_steal_process_substitution_children():
-    """Same guarantee for process substitution: its child forks into the
-    shell's pgid, so a per-pgid job refresh can't reap it."""
+def test_refresh_alongside_process_substitution_preserves_output():
+    """Same for process substitution output."""
     r = _psh('set -m; sleep 3 & '
              'for i in 1 2 3 4 5 6; do '
              '  out=$(cat <(printf "psub%s" "$i")); jobs >/dev/null 2>&1; '
