@@ -630,11 +630,13 @@ class TestPtyJobControl:
         # blank line and pinned the marker.
         assert re.search(r'\[1\]\+  Done {20}sleep 0\.2', text), text
         assert text.count('Done') == 1, text
-        # The job was reaped: the `jobs` listing shows no leftover entry, so
-        # the bg command text does not survive past the `jobs` command as a
-        # stale DONE (which is how the pre-fix leak surfaced).
-        after_jobs = text.split('jobs', 1)[-1]
-        assert 'sleep 0.2' not in after_jobs, text
+        # The job was reaped: the bg command text appears exactly twice — once
+        # in the `sleep 0.2 &` command echo and once in the Done notice — never
+        # a third time as a stale `jobs` listing (which is how the pre-fix leak
+        # surfaced). Counting is robust to a terminal title that happens to
+        # contain the word "jobs" (e.g. a worktree named psh-jobsnx), unlike a
+        # split on the bare substring.
+        assert text.count('sleep 0.2') == 2, text
 
     def test_background_job_notice_and_jobs(self, psh):
         psh.send('sleep 0.5 &\r')

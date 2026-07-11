@@ -418,8 +418,11 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
 
         # The child keeps running shell code (eval/source can start pipelines
         # or set traps), so mark it a shell process.
+        # Join cleanly so an argument-less command (`false &`) has no trailing
+        # space in the job table — bash lists `false`, not `false ` (visible
+        # once `jobs` lists a completed job in script/stdin mode).
         return launcher.launch_background_job(
-            execute_fn, f"{cmd_name} {' '.join(args)}", cmd_name,
+            execute_fn, " ".join([cmd_name, *args]), cmd_name,
             is_shell_process=True)
 
 
@@ -494,8 +497,11 @@ class FunctionExecutionStrategy(ExecutionStrategy):
 
         # The child keeps running shell code (the function body may start
         # pipelines or manage terminal control), so mark it a shell process.
+        # Join cleanly so an argument-less command (`false &`) has no trailing
+        # space in the job table — bash lists `false`, not `false ` (visible
+        # once `jobs` lists a completed job in script/stdin mode).
         return launcher.launch_background_job(
-            execute_fn, f"{cmd_name} {' '.join(args)}", cmd_name,
+            execute_fn, " ".join([cmd_name, *args]), cmd_name,
             is_shell_process=True)
 
 

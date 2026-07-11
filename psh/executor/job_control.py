@@ -295,13 +295,25 @@ class Job:
         STOPPED; else RUNNING (F10). The DONE check comes first so the STOPPED
         predicate is only consulted when at least one process is still live.
         An empty process list counts as DONE (COMPLETED == 0 == len).
+
+        A real state transition CLEARS ``notified`` — the single source of truth
+        for bash's per-job J_NOTIFIED flag (F4). ``notified`` means "the user has
+        seen the job's CURRENT status": it is SET when a job is displayed by
+        ``jobs`` or reported by an async notice, and re-armed here the moment the
+        status changes, so a stop/continue/completion is announced (or shown by
+        ``jobs -n``) exactly once. Every state-updating path (the SIGCHLD reaper,
+        refresh_one_job, wait_for_job) routes through here, so none needs to
+        clear ``notified`` itself.
         """
         if self.all_processes_completed():
-            self.state = JobState.DONE
+            new_state = JobState.DONE
         elif self.all_processes_stopped():
-            self.state = JobState.STOPPED
+            new_state = JobState.STOPPED
         else:
-            self.state = JobState.RUNNING
+            new_state = JobState.RUNNING
+        if new_state != self.state:
+            self.state = new_state
+            self.notified = False
 
     def format_status(self, is_current: bool, is_previous: bool,
                       pid: Optional[int] = None) -> str:
@@ -311,11 +323,14 @@ class Job:
         bash's ``jobs -l`` format: ``[N]+ 12345 Running    command &``.
         """
         marker = '+' if is_current else '-' if is_previous else ' '
-        state_str = {
-            JobState.RUNNING: "Running",
-            JobState.STOPPED: "Stopped",
-            JobState.DONE: "Done"
-        }[self.state]
+        if self.state == JobState.DONE:
+            # A completed job listed by `jobs` (script/stdin modes) shows bash's
+            # Done/Exit-N/signal label, matching the async notice — `[1]+ Exit 1`
+            # for a nonzero exit, `[1]+ Done` for 0.
+            status = self.processes[-1].status if self.processes else None
+            state_str = background_completion_label(status)
+        else:
+            state_str = "Running" if self.state == JobState.RUNNING else "Stopped"
 
         # Match bash format: [N]+  State                 command &
         suffix = " &" if self.state == JobState.RUNNING and not self.foreground else ""
@@ -734,40 +749,65 @@ class JobManager:
                       file=self._notification_stream())
                 job.notified = True
 
-    def poll_job_states(self) -> None:
-        """Non-blocking refresh of tracked job states (WUNTRACED|WCONTINUED).
+    def refresh_job_states(self, *, track_stops: bool) -> None:
+        """Non-blocking refresh of tracked job states, SAFE IN ANY SHELL MODE.
 
         macOS does NOT raise SIGCHLD when a child is *continued* (verified on
         10.x/14.x — SIGCHLD fires on stop and exit only), so the interactive
-        SIGCHLD handler never learns of an external ``kill -CONT``; a following
-        ``jobs`` would keep showing the job Stopped. bash refreshes job state
-        before listing, so ``jobs`` calls this to reap pending stop/continue/
-        exit transitions. It only updates job *state* (and clears ``notified``
-        on a stop/continue transition) — completion notices and job removal
-        stay with the REPL's :meth:`notify_completed_jobs`, so this does not
-        double-report. A blocking foreground wait sees continues directly
-        because its ``waitpid`` also passes ``WCONTINUED``.
+        SIGCHLD handler never learns of an external ``kill -CONT``; and a
+        NON-interactive shell has no SIGCHLD reaper at all. bash refreshes job
+        state before ``jobs``/``fg``, so this reaps pending transitions on
+        demand.
+
+        The key safety property (why this is callable non-interactively, unlike
+        the old ``waitpid(-1)`` poll) is that it waits on each tracked job's OWN
+        process group. A background job has a distinct pgid (ProcessLauncher),
+        while command/process-substitution children fork WITHOUT ``setpgid`` and
+        stay in the shell's process group — so ``waitpid(-job.pgid)`` can only
+        ever reap that job's own members and can NEVER steal a substitution
+        child out from under its own ``waitpid``. The shell is single-threaded,
+        so ``jobs``/``fg`` never runs concurrently with a blocking ``wait``.
+
+        ``track_stops`` mirrors bash's monitor gate: only under job control
+        (``set -m`` / an interactive shell) does bash notice a stop/continue
+        (``WUNTRACED``/``WCONTINUED``) — a plain ``-c``/script without monitor
+        shows an externally-stopped job as still Running. Completed children are
+        always reaped (so ``wait`` keeps working), regardless of ``track_stops``.
+
+        Only job *state* is updated (and ``notified`` re-armed on a
+        transition); completion notices and job removal stay with the caller.
         """
+        for job in list(self.jobs.values()):
+            self.refresh_one_job(job, track_stops=track_stops)
+
+    def refresh_one_job(self, job: 'Job', *, track_stops: bool = True) -> None:
+        """Per-group non-blocking state refresh for a single job (see
+        :meth:`refresh_job_states`). Waits only on ``-job.pgid``. A real
+        transition re-arms ``notified`` via :meth:`Job.update_state` (F4), so
+        this need not touch it. With ``track_stops`` false, stop/continue
+        reports are not requested (bash's non-monitor behavior)."""
         flags = os.WNOHANG
-        if hasattr(os, "WUNTRACED"):
+        if track_stops and hasattr(os, "WUNTRACED"):
             flags |= os.WUNTRACED
-        if hasattr(os, "WCONTINUED"):
+        if track_stops and hasattr(os, "WCONTINUED"):
             flags |= os.WCONTINUED
+        reaped = False
         while True:
             try:
-                pid, status = os.waitpid(-1, flags)
+                pid, status = os.waitpid(-job.pgid, flags)
             except OSError:
-                break  # ECHILD: no tracked children left
+                break  # ECHILD: this group has no waitable members left
             if pid == 0:
-                break  # nothing changed state
-            job = self.get_job_by_pid(pid)
-            if job is None:
-                continue
+                break  # nothing in this group changed state
             job.update_process_status(pid, status)
+            reaped = True
+        # Only recompute the job state when a status was actually reaped. An
+        # unconditional update_state() would flip a job with no live members to
+        # DONE (an empty/all-completed process list reads as DONE) — wrongly
+        # reaping a job whose group has no waitable child right now, e.g. a job
+        # planted in the table without a real process.
+        if reaped:
             job.update_state()
-            continued = hasattr(os, "WIFCONTINUED") and os.WIFCONTINUED(status)
-            if continued or job.state == JobState.STOPPED:
-                job.notified = False
 
     def list_jobs(self) -> List[str]:
         """Get formatted list of all jobs."""
@@ -1098,7 +1138,15 @@ class JobManager:
         job.update_state()
 
         # If notify option is enabled and job just completed, notify immediately
+        # — but only in an INTERACTIVE shell. bash announces a wait-reaped bg
+        # job under `set -b` at the moment of reaping ONLY interactively; a
+        # non-interactive `-c`/script shell prints nothing here (verified vs
+        # bash 5.2: `bash -c 'set -b; sleep 0.05 & wait'` is silent). The one
+        # non-interactive notice bash DOES emit — the `-c`+`set -m` boundary
+        # notice — is a separate read-loop path (deferred; see the jobsnx
+        # ledger), so staying silent here keeps psh consistent for `-c`+set-m.
         if (self.shell_state and self.shell_state.options.get('notify', False) and
+            self.shell_state.options.get('interactive', False) and
             old_state != JobState.DONE and job.state == JobState.DONE and
             not job.foreground and not job.notified):
             self._print_completion_notice(job)
