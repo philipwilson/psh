@@ -5,13 +5,48 @@ script/`-c`/stdin path and the interactive multiline path both use. Cases marked
 "regression" caught a bug in one of the two former divergent copies.
 """
 
+import pytest
+
 from psh.utils.heredoc_detection import (
     contains_heredoc,
     has_unclosed_heredoc,
     is_inside_expansion,
     open_heredoc_delimiters,
     scan_line_heredoc_markers,
+    unquote_heredoc_delimiter,
 )
+
+
+class TestUnquoteHeredocDelimiter:
+    """Direct pins on THE delimiter-word rule (r19-T4 M2 convergence).
+
+    Expectations are the bash 5.2 probe battery: for each raw delimiter
+    spelling, which terminator line closes the heredoc and whether the body
+    is literal. The end-to-end halves live in the heredoc_delimiter_* goldens
+    (tests/behavioral/golden_cases.yaml)."""
+
+    @pytest.mark.parametrize("raw,literal,quoted", [
+        ("EOF", "EOF", False),
+        ("'EOF'", "EOF", True),
+        ('"EOF"', "EOF", True),
+        ('E"O"F', "EOF", True),
+        ("E\\OF", "EOF", True),
+        ("$EOF", "$EOF", False),          # unquoted $ is ordinary text
+        ('"EO F"', "EO F", True),
+        ("EO\\ F", "EO F", True),
+        ("\\EOF", "EOF", True),
+        ("E\"O\"'F'", "EOF", True),
+        # double quotes: backslash escapes ONLY $ ` " \ — literal otherwise
+        ('"A\\B"', "A\\B", True),          # the drifted case (two copies said AB)
+        ('"A\\\\B"', "A\\B", True),
+        ('"A\\"B"', 'A"B', True),
+        ('"A\\$B"', "A$B", True),
+        # single quotes: contents verbatim
+        ("'A\\B'", "A\\B", True),
+        ("'A\\\\B'", "A\\\\B", True),
+    ])
+    def test_rule(self, raw, literal, quoted):
+        assert unquote_heredoc_delimiter(raw) == (literal, quoted)
 
 
 class TestHasUnclosedHeredoc:

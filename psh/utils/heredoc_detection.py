@@ -55,7 +55,9 @@ def unquote_heredoc_delimiter(raw: str) -> tuple[str, bool]:
     finding): the copies disagreed on backslash-inside-double-quotes, and bash
     sided against two of them. Do not fork it.
 
-    Bash 5.2 rules (probed in tmp/r19-ledgers/T4-probes/battery1_*):
+    Bash 5.2 rules (pinned by ``TestUnquoteHeredocDelimiter`` in
+    tests/unit/utils/test_heredoc_detection.py and the
+    ``heredoc_delimiter_*`` goldens in tests/behavioral/golden_cases.yaml):
       * unquoted ``\\X`` -> ``X`` for ANY X (``\\EOF``->``EOF``,
         ``EO\\ F``->``EO F``);
       * single quotes: contents VERBATIM (``'A\\B'``->``A\\B``);
@@ -129,7 +131,7 @@ def _scan_arith_or_cmdsub(line: str, position: int, opener: str, open_len: int,
                           flags: list) -> bool:
     """True if *position* falls within a ``opener … )`` region on *line*.
 
-    ``opener`` is ``'$(('`` / ``'((''``; ``open_len`` is how many parens it
+    ``opener`` is ``'$(('`` / ``'(('``; ``open_len`` is how many parens it
     contributes to the nesting depth (2 for the arithmetic forms). *flags* are
     the per-char in-quote flags from ``_quote_flags`` — a QUOTED ``opener`` (or
     a quoted paren) is text, so it can neither open a region nor change its
