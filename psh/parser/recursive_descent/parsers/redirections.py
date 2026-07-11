@@ -103,8 +103,10 @@ class RedirectionParser(ParserSubcomponent):
         # A composite delimiter spans several ADJACENT word-like tokens
         # (`<<E"O"F`, `<<E$X`). Consume them all so the trailing parts are not
         # parsed as command arguments, and quote the body if any part was
-        # quoted/escaped (matches HeredocLexer._delimiter_from_source, which
-        # recovers the body terminator from the same source span).
+        # quoted/escaped. This token-level "was it quoted" test must agree with
+        # the source-level rule (utils.heredoc_detection.unquote_heredoc_delimiter,
+        # via HeredocLexer._delimiter_from_source) that recovers the terminator
+        # text and collects the body.
         while (self.parser.peek().type in TokenGroups.WORD_LIKE
                and getattr(self.parser.peek(), 'adjacent_to_previous', False)):
             part = self.parser.advance()

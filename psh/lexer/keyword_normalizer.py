@@ -1,6 +1,6 @@
 """Keyword normalization pass for lexer output."""
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import List, Optional
 
 from .command_position import (
@@ -14,6 +14,73 @@ from .command_position import (
 from .constants import KEYWORDS
 from .keyword_defs import KEYWORD_TYPE_MAP
 from .token_types import Token, TokenType
+
+
+@dataclass
+class _HeredocSkip:
+    """The heredoc-skip mini-FSM used by :meth:`KeywordNormalizer.normalize`.
+
+    When a ``<<``/``<<-`` operator's body lines are STILL in the token stream —
+    ``heredoc_key is None``, i.e. plain ``tokenize()`` rather than
+    ``tokenize_with_heredocs`` (which lifts bodies out) — the delimiter word and
+    every body line must pass through UN-normalized (a body line ``done`` is not
+    a keyword). This tracks that skip window; a collected body
+    (``heredoc_key`` set) is never entered, so real tokens after it are still
+    normalized.
+    """
+    pending_delim: bool = False
+    already_collected: bool = False
+    delimiter: Optional[str] = None
+    in_body: bool = False
+
+    def handle(self, token: Token) -> bool:
+        """Advance the FSM for *token*; return True when the token is part of a
+        heredoc (operator, delimiter word, or body line) and must be emitted
+        verbatim — the caller then drops out of command position and continues.
+        Returns False for ordinary command text the keyword FSM should classify.
+        """
+        if token.type in {TokenType.HEREDOC, TokenType.HEREDOC_STRIP}:
+            # Absent heredoc_key => body lines are still in the stream and we
+            # must scan for the delimiter; present => body was collected.
+            self.already_collected = token.heredoc_key is not None
+            self.pending_delim = True
+            return True
+        if self.pending_delim:
+            # The token right after HEREDOC is the delimiter word.
+            if token.type == TokenType.WORD and not self.already_collected:
+                self.delimiter = token.value
+                self.in_body = True
+            self.pending_delim = False
+            return True
+        if self.in_body:
+            if (token.type == TokenType.WORD and self.delimiter is not None
+                    and token.value == self.delimiter):
+                self.in_body = False
+                self.delimiter = None
+            return True
+        return False
+
+
+@dataclass
+class _KeywordState:
+    """The keyword FSM's command-position axis and one-shot look-ahead flags,
+    grouped so :meth:`KeywordNormalizer.normalize` reads as one machine.
+
+    * ``command_position`` — a reserved word is only promoted here.
+    * ``pending_in`` — the opener (``'for'``/``'select'``/``'case'``) awaiting
+      its ``in`` (or, for the loops, a no-``in`` ``do``).
+    * ``function_name_pending`` — set by ``function``; the token after the name
+      starts the body at command position.
+    * ``subject_pending`` — the loop variable / case subject right after
+      ``for``/``select``/``case`` stays a WORD even when spelled ``in``.
+    * ``case_pattern_start`` — the token right after a case's ``in`` where a
+      bare ``esac`` closes an empty case.
+    """
+    command_position: bool = True
+    pending_in: Optional[str] = None
+    function_name_pending: bool = False
+    subject_pending: bool = False
+    case_pattern_start: bool = False
 
 
 class KeywordNormalizer:
@@ -37,84 +104,34 @@ class KeywordNormalizer:
             return tokens
 
         result: List[Token] = []
-
-        command_position = True
-        pending_in: Optional[str] = None
-        # One-shot: set when a `function` keyword is seen, consumed by the very
-        # next token (the function name). bash allows ANY compound command as a
-        # `function NAME` body (`function f for ...; do ...; done`), so the
-        # token after the name is at command position — this flag forces that so
-        # the body's leading reserved word (`for`/`if`/`while`/`case`/...) is
-        # recognized. (The `NAME()` form already reaches command position via
-        # the closing `)`.)
-        function_name_pending = False
-        # One-shot: the token right after `for`/`select`/`case` is the loop
-        # variable / case subject — bash never reads it as the `in` keyword
-        # (`for in in 1 2` and `case in in in) ...` are valid bash).
-        subject_pending = False
-        # One-shot: the token right after a case's `in` keyword. bash
-        # recognizes `esac` there (`case a in esac` is a valid empty case);
-        # any other word is an ordinary pattern word.
-        case_pattern_start = False
-        pending_heredoc_delim = False
-        heredoc_already_collected = False
-        heredoc_delimiter: Optional[str] = None
-        in_heredoc = False
+        st = _KeywordState()
+        heredoc = _HeredocSkip()
 
         for token in tokens:
+            # Heredoc delimiter/body tokens (when bodies are still in the stream)
+            # pass through un-normalized and drop us out of command position.
+            if heredoc.handle(token):
+                st.command_position = False
+                result.append(token)
+                continue
+
             # Keyword recognition is case-sensitive, matching bash: `IF` is an
             # ordinary word, only the exact lowercase spelling is a keyword.
             token_value = token.value
             converted_type: Optional[TokenType] = None
-
-            # Track heredoc delimiters to avoid normalizing content lines.
-            # When heredoc content has already been collected (heredoc_key present),
-            # the content lines are NOT in the token stream, so we must NOT enter
-            # in_heredoc mode — otherwise we'd skip real tokens looking for a
-            # delimiter that has already been consumed.
-            if token.type in {TokenType.HEREDOC, TokenType.HEREDOC_STRIP}:
-                # A collected body is signalled by a non-None heredoc_key (the
-                # declared field); its absence means body lines are still in the
-                # token stream and we must scan for the delimiter.
-                heredoc_already_collected = token.heredoc_key is not None
-                pending_heredoc_delim = True
-                command_position = False
-                result.append(token)
-                continue
-
-            if pending_heredoc_delim:
-                # The token after HEREDOC should be the delimiter
-                if token.type == TokenType.WORD:
-                    if not heredoc_already_collected:
-                        heredoc_delimiter = token.value
-                        in_heredoc = True
-                pending_heredoc_delim = False
-                command_position = False
-                result.append(token)
-                continue
-
-            if in_heredoc:
-                if token.type == TokenType.WORD and heredoc_delimiter is not None and token.value == heredoc_delimiter:
-                    # Delimiter terminates the heredoc
-                    in_heredoc = False
-                    heredoc_delimiter = None
-                command_position = False
-                result.append(token)
-                continue
-
             next_pattern_start = False
 
             if token.type == TokenType.WORD and token_value:
-                if subject_pending:
+                if st.subject_pending:
                     # Loop variable / case subject: stays a WORD even when
                     # spelled `in` (or any other keyword).
                     converted_type = None
-                elif pending_in and token_value == 'in':
+                elif st.pending_in and token_value == 'in':
                     converted_type = TokenType.IN
-                    if pending_in == 'case':
+                    if st.pending_in == 'case':
                         next_pattern_start = True
-                    pending_in = None
-                elif pending_in in ('for', 'select') and token_value == 'do':
+                    st.pending_in = None
+                elif st.pending_in in ('for', 'select') and token_value == 'do':
                     # POSIX no-`in` loop form: `for name do ...` /
                     # `for name; do ...` iterates the positional parameters.
                     # `do` here ends the implicit word list and opens the body,
@@ -123,12 +140,12 @@ class KeywordNormalizer:
                     # also stops a later `in` in the body (`for x; do echo in`)
                     # being mis-read as the loop's `in`.
                     converted_type = TokenType.DO
-                    pending_in = None
-                elif case_pattern_start and token_value == 'esac':
+                    st.pending_in = None
+                elif st.case_pattern_start and token_value == 'esac':
                     # `case a in esac` — esac right after `in` closes the case.
                     converted_type = TokenType.ESAC
-                elif command_position and token_value in KEYWORDS:
-                    if token_value == 'in' and not pending_in:
+                elif st.command_position and token_value in KEYWORDS:
+                    if token_value == 'in' and not st.pending_in:
                         converted_type = None
                     else:
                         converted_type = KEYWORD_TYPE_MAP.get(token_value)
@@ -137,37 +154,35 @@ class KeywordNormalizer:
                 token = replace(token, type=converted_type, is_keyword=True)
             elif token.type == TokenType.IN:
                 # Already tagged as IN by lexer, clear pending state
-                if pending_in == 'case':
+                if st.pending_in == 'case':
                     next_pattern_start = True
-                pending_in = None
-            elif token.type == TokenType.DO and pending_in in ('for', 'select'):
+                st.pending_in = None
+            elif token.type == TokenType.DO and st.pending_in in ('for', 'select'):
                 # A pre-typed `do` (this normalizer runs again over already-
                 # normalized tokens via create_context) closes a no-`in` loop
                 # header. Clear pending_in so this pass stays idempotent and a
                 # later `in` in the body is not mis-read as the loop keyword.
-                pending_in = None
+                st.pending_in = None
 
             # Update command position based on (possibly converted) token
-            command_position = self._next_command_position(
-                token, pending_in
-            )
+            st.command_position = self._next_command_position(token, st.pending_in)
 
             # The token just processed was the `function NAME` name — its body
             # (a compound command) starts at command position.
-            if function_name_pending:
-                command_position = True
-                function_name_pending = False
+            if st.function_name_pending:
+                st.command_position = True
+                st.function_name_pending = False
 
             # Both flags are one-shot: consumed by this token.
-            subject_pending = False
-            case_pattern_start = next_pattern_start
+            st.subject_pending = False
+            st.case_pattern_start = next_pattern_start
 
             # Adjust pending_in when encountering explicit tokens
             if token.type in {TokenType.FOR, TokenType.SELECT, TokenType.CASE}:
-                pending_in = token.type.name.lower()
-                subject_pending = True
+                st.pending_in = token.type.name.lower()
+                st.subject_pending = True
             elif token.type == TokenType.FUNCTION:
-                function_name_pending = True
+                st.function_name_pending = True
 
             result.append(token)
 
