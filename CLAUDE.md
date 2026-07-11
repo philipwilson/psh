@@ -407,7 +407,7 @@ def test_exec_redirection(temp_dir):
 - Clear output between tests: `captured_shell.clear_output()`
 - Check both stdout and stderr
 - Always verify exit codes
-- Use appropriate test markers (@pytest.mark.serial, @pytest.mark.isolated)
+- Use appropriate test markers (@pytest.mark.serial)
 
 See `docs/test_pattern_guide.md` for examples and patterns.
 

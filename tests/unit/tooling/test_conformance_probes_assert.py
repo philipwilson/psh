@@ -29,7 +29,7 @@ CONF_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'conformance')
 # calls one of these is asserting even without a bare ``assert``.
 _CONFORMANCE_ASSERT_HELPERS = frozenset({
     'assert_identical_behavior', 'assert_documented_difference',
-    'assert_psh_extension', 'assert_bash_specific',
+    'assert_psh_extension',
 })
 
 

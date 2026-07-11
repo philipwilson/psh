@@ -57,7 +57,6 @@ class TestFileDescriptorDuplication:
             os.unlink(temp_path)
 
     @pytest.mark.serial
-    @pytest.mark.isolated
     def test_stderr_to_stdout_duplication(self, isolated_shell_with_temp_dir):
         """Test redirecting stderr to stdout (2>&1)."""
         shell = isolated_shell_with_temp_dir
@@ -147,7 +146,6 @@ class TestFileDescriptorDuplication:
         # This tests basic redirection functionality without complex fd management
 
     @pytest.mark.serial
-    @pytest.mark.isolated
     def test_stderr_to_stdout_redirection(self, shell):
         """Test the common 2>&1 redirection pattern."""
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:

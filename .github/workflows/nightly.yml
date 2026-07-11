@@ -29,7 +29,7 @@ jobs:
       - name: Show bash version
         run: bash --version
 
-      # --compare-bash adds the golden bash-comparison phase (Phase 3) to
+      # --compare-bash adds the golden bash-comparison phase (Phase 2) to
       # the same run, so the full suite and the golden phase share one
       # invocation; --census logs the skip/xfail breakdown nightly.
       # --coverage accumulates one coverage db across all phases and writes

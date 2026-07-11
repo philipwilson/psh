@@ -59,8 +59,9 @@ parser-combinator implementation.
 Pinned regressions for specific past bugs.
 
 ### `framework/`
-Shared test-support code (the conformance framework and helpers), not test
-cases itself.
+The PTY test harness (`pty_test_framework.py`) for terminal-driven interactive
+tests, not test cases itself. (The conformance framework lives in
+`tests/conformance/`.)
 
 ### Top level
 `conftest.py` (shared fixtures, suite-wide `strict-errors`, automatic
