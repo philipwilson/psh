@@ -257,11 +257,6 @@ def test_needs_serial_execution():
     """Test that can't run in parallel."""
     pass
 
-@pytest.mark.isolated
-def test_needs_isolation():
-    """Test that needs extra process isolation."""
-    pass
-
 @pytest.mark.slow
 def test_performance():
     """Test that takes more than 1 second."""

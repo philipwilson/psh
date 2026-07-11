@@ -22,7 +22,7 @@ CONF_POSIX = os.path.join(os.path.dirname(__file__),
 # Methods whose string arguments are shell command text.
 _COMMAND_METHODS = frozenset({
     'assert_identical_behavior', 'assert_documented_difference',
-    'assert_psh_extension', 'assert_bash_specific', 'check_behavior',
+    'assert_psh_extension', 'check_behavior',
     'run_in_psh', 'run_in_bash', 'compare_behavior',
 })
 

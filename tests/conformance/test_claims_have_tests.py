@@ -198,7 +198,7 @@ def _partial_support_features():
 # Assertion helpers provided by the ConformanceTest base class.
 _CONFORMANCE_ASSERT_HELPERS = frozenset({
     'assert_identical_behavior', 'assert_documented_difference',
-    'assert_psh_extension', 'assert_bash_specific',
+    'assert_psh_extension',
 })
 
 
