@@ -324,11 +324,19 @@ class ScopeManager:
             var = self.get_variable_object(target)
         return var
 
-    @staticmethod
-    def warn_nameref_cycle(name: str) -> None:
-        """Print bash's circular-nameref warning."""
+    def warn_nameref_cycle(self, name: str) -> None:
+        """Print bash's circular-nameref warning.
+
+        bash location-prefixes this like every other runtime diagnostic:
+        ``<$0>: line N: warning: NAME: circular name reference``. Falls back to
+        the bare ``psh:`` prefix if the shell back-reference isn't wired yet
+        (pre-``set_shell`` startup — no command has a line number then).
+        """
         import sys
-        print(f"psh: warning: {name}: circular name reference", file=sys.stderr)
+        prefix = (self._shell.state.error_location_prefix()
+                  if self._shell is not None else "psh: ")
+        print(f"{prefix}warning: {name}: circular name reference",
+              file=sys.stderr)
 
     def resolve_nameref_name(self, name: str) -> str:
         """Follow a nameref chain and return the final target *name*.

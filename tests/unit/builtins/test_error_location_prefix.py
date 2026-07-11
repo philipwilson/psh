@@ -136,6 +136,46 @@ class TestTrapInvalidSignalParity:
             'psh: line 1: trap: NOPE: invalid signal specification'
 
 
+class TestBareRowResweepFinds:
+    """Prefix-class sites found by the F2 bounce's all-bare-rows re-probe.
+
+    Each bash-prefixes a runtime diagnostic that psh emitted bare; each is the
+    same class as F2 (a `warning:`/expansion diagnostic bash location-prefixes).
+    """
+
+    def test_nameref_cycle_warning_is_prefixed(self, captured_shell):
+        captured_shell.run_command('declare -n a=b; declare -n b=a; echo $a')
+        assert captured_shell.get_stderr().splitlines()[0] == \
+            'psh: line 1: warning: a: circular name reference'
+
+    def test_nameref_cycle_warning_tracks_line(self, captured_shell):
+        captured_shell.run_command('echo x\ndeclare -n a=b\ndeclare -n b=a\necho $a')
+        assert 'psh: line 4: warning: a: circular name reference' in \
+            captured_shell.get_stderr()
+
+    def test_cmdsub_null_byte_warning_is_prefixed(self):
+        r = _psh_c('x=$(printf "a\\0b"); echo done')
+        assert r.stderr.splitlines()[0] == \
+            'psh: line 1: warning: command substitution: ignored null byte in input'
+
+    def test_shellopts_env_import_bad_option_is_prefixed(self):
+        # bash uses its startup sentinel `line 0` (argv0, no command run yet).
+        import os
+        env = dict(os.environ, SHELLOPTS='nosuchopt_zz')
+        r = subprocess.run([sys.executable, '-m', 'psh', '-c', 'true'],
+                           capture_output=True, text=True, env=env)
+        assert r.stderr.splitlines()[0] == \
+            'psh: line 0: nosuchopt_zz: invalid option name'
+
+    def test_set_u_in_script_mode_prefixed_with_script_name(self, tmp_path):
+        script = tmp_path / 'su.sh'
+        script.write_text('set -u\necho $undef_zz\n')
+        r = subprocess.run([sys.executable, '-m', 'psh', str(script)],
+                           capture_output=True, text=True)
+        assert r.stderr.splitlines()[0] == \
+            f'{script}: line 2: undef_zz: unbound variable'
+
+
 class TestInteractiveDropsLineNumber:
     """Interactive shells prefix with `<$0>: ` but omit `line N:` (bash -i)."""
 

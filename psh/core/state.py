@@ -1042,7 +1042,12 @@ class ShellState:
                     else:
                         self.options[name] = True
                 elif env_name == 'SHELLOPTS' and opt not in self._BASH_ONLY_SET_O:
-                    print(f"psh: {opt}: invalid option name", file=self.stderr)
+                    # bash prefixes this env-import diagnostic `<$0>: line 0:`
+                    # — a startup sentinel (LINENO 0, no command has run) using
+                    # argv0 even in script mode, so NOT error_location_prefix()
+                    # (which is script_name + the running line). Match its shape.
+                    print(f"psh: line 0: {opt}: invalid option name",
+                          file=self.stderr)
             # Exported because it arrived via the environment; recorded on the
             # special's persistent attribute overlay (the value itself stays
             # computed). The env entry still holds the RAW inherited string at

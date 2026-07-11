@@ -51,6 +51,8 @@ PREFIX_CELLS = [
     "echo ${!x*bad}",                        # bad substitution
     'trap "echo hi" NOPE',                   # trap SET-path invalid signal (F1)
     "trap -p NOPE",                          # trap -p-path invalid signal (sibling)
+    'declare -n a=b; declare -n b=a; echo $a',   # nameref-cycle warning (F2)
+    'x=$(printf "a\\0b"); echo done',        # cmd-sub null-byte warning (re-sweep)
 ]
 
 

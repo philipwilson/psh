@@ -187,8 +187,10 @@ class CommandSubstitution:
             # (__main__.py, scripting/input_sources.py).
             if b'\x00' in output_bytes:
                 output_bytes = output_bytes.replace(b'\x00', b'')
-                print("psh: warning: command substitution: "
-                      "ignored null byte in input",
+                # bash location-prefixes this runtime warning like every other
+                # diagnostic: `<$0>: line N: warning: command substitution: ...`.
+                print(f"{self.shell.state.error_location_prefix()}warning: "
+                      "command substitution: ignored null byte in input",
                       file=self.shell.state.stderr)
             output = output_bytes.decode('utf-8', errors='surrogateescape')
 
