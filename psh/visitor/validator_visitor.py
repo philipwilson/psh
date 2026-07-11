@@ -64,7 +64,7 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     Visitor that validates AST correctness and collects issues.
 
     This visitor checks for:
-    - Semantic errors (break/continue outside loops, etc.)
+    - Semantic errors (empty conditions, invalid names, malformed lists)
     - Common mistakes and anti-patterns
     - Potential bugs or suspicious constructs
     - Style issues and best practices
@@ -74,10 +74,7 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         """Initialize the validator."""
         super().__init__()
         self.issues: List[ValidationIssue] = []
-        self.in_function: bool = False
-        self.in_loop: int = 0  # Nesting level of loops
         self.function_names: Set[str] = set()
-        self.variable_names: Set[str] = set()
         self.current_context: List[str] = []  # Stack of contexts
         # Commands of the pipeline currently being validated (None outside one)
         self._in_pipeline: Optional[List[Command]] = None
@@ -166,12 +163,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                     node
                 )
 
-            # Track variable usage in assignments
-            for arg in node.args[1:]:
-                if '=' in arg and not arg.startswith('='):
-                    var_name = arg.split('=', 1)[0]
-                    self.variable_names.add(var_name)
-
         # Validate array assignments
         for assignment in node.array_assignments:
             self.visit(assignment)
@@ -229,7 +220,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     def visit_WhileLoop(self, node: WhileLoop) -> None:
         """Validate a while loop."""
         self._push_context("while loop")
-        self.in_loop += 1
 
         # Check condition
         if not node.condition.statements:
@@ -238,14 +228,12 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self.visit(node.condition)
         self.visit(node.body)
 
-        self.in_loop -= 1
         self._pop_context()
         self._visit_redirects(node)
 
     def visit_UntilLoop(self, node: UntilLoop) -> None:
-        """Validate an until loop (mirrors while: condition + body + loop nesting)."""
+        """Validate an until loop (mirrors while: condition + body)."""
         self._push_context("until loop")
-        self.in_loop += 1
 
         # Check condition
         if not node.condition.statements:
@@ -254,14 +242,12 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self.visit(node.condition)
         self.visit(node.body)
 
-        self.in_loop -= 1
         self._pop_context()
         self._visit_redirects(node)
 
     def visit_ForLoop(self, node: ForLoop) -> None:
         """Validate a for loop."""
         self._push_context(f"for loop (var: {node.variable})")
-        self.in_loop += 1
 
         # Check for empty items
         if not node.items:
@@ -271,19 +257,14 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         if node.variable.isdigit():
             self._add_error(f"Invalid variable name '{node.variable}' (cannot be numeric)", node)
 
-        # Track loop variable
-        self.variable_names.add(node.variable)
-
         self.visit(node.body)
 
-        self.in_loop -= 1
         self._pop_context()
         self._visit_redirects(node)
 
     def visit_CStyleForLoop(self, node: CStyleForLoop) -> None:
         """Validate a C-style for loop."""
         self._push_context("C-style for loop")
-        self.in_loop += 1
 
         # Check for infinite loop patterns
         if not node.condition_expr:
@@ -295,7 +276,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
         self.visit(node.body)
 
-        self.in_loop -= 1
         self._pop_context()
         self._visit_redirects(node)
 
@@ -382,17 +362,12 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     def visit_SelectLoop(self, node: SelectLoop) -> None:
         """Validate a select loop."""
         self._push_context(f"select loop (var: {node.variable})")
-        self.in_loop += 1
 
         if not node.items:
             self._add_warning("Select loop with no items", node)
 
-        # Track loop variable
-        self.variable_names.add(node.variable)
-
         self.visit(node.body)
 
-        self.in_loop -= 1
         self._pop_context()
         self._visit_redirects(node)
 
@@ -433,22 +408,17 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             self._add_error(f"Invalid function name '{node.name}' (cannot start with digit)", node)
 
         # Visit function body
-        old_in_function = self.in_function
-        self.in_function = True
         self._push_context(f"function {node.name}")
 
         self.visit(node.body)
 
         self._pop_context()
-        self.in_function = old_in_function
         self._visit_redirects(node)
 
     # Array validation
 
     def visit_ArrayInitialization(self, node: ArrayInitialization) -> None:
         """Validate array initialization."""
-        self.variable_names.add(node.name)
-
         # Check for type consistency in elements
         if node.element_types:
             first_type = node.element_types[0]
@@ -460,8 +430,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
     def visit_ArrayElementAssignment(self, node: ArrayElementAssignment) -> None:
         """Validate array element assignment."""
-        self.variable_names.add(node.name)
-
         # For now, basic validation only
         # More sophisticated checks could validate index expressions
 
