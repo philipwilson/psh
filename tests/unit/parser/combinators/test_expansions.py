@@ -30,101 +30,21 @@ def make_token(token_type: TokenType, value: str, position: int = 0) -> Token:
 
 
 class TestExpansionParsers:
-    """Test the ExpansionParsers class."""
+    """Test the ExpansionParsers class.
+
+    The live content is :meth:`build_word_from_token` (exercised by
+    ``TestWordBuilding`` below). The former token-parser attributes
+    (``variable``/``command_sub``/``expansion`` …) and the
+    format_token_value / is_expansion_token helpers were dead duplicates and
+    were removed, so this only checks construction.
+    """
 
     def test_initialization(self):
-        """Test that ExpansionParsers initializes correctly."""
+        """ExpansionParsers constructs and exposes the word builder."""
         parsers = ExpansionParsers()
 
         assert parsers.config is not None
-        assert parsers.variable is not None
-        assert parsers.command_sub is not None
-        assert parsers.arith_expansion is not None
-
-    def test_variable_expansion(self):
-        """Test variable expansion parsing."""
-        parsers = ExpansionParsers()
-
-        tokens = [make_token(TokenType.VARIABLE, "USER")]
-        result = parsers.variable.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.value == "USER"
-
-    def test_command_substitution(self):
-        """Test command substitution parsing."""
-        parsers = ExpansionParsers()
-
-        # Test $(...) style
-        tokens = [make_token(TokenType.COMMAND_SUB, "$(echo hello)")]
-        result = parsers.command_sub.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.value == "$(echo hello)"
-
-        # Test backtick style
-        tokens = [make_token(TokenType.COMMAND_SUB_BACKTICK, "`echo hello`")]
-        result = parsers.command_sub_backtick.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.value == "`echo hello`"
-
-    def test_arithmetic_expansion(self):
-        """Test arithmetic expansion parsing."""
-        parsers = ExpansionParsers()
-
-        tokens = [make_token(TokenType.ARITH_EXPANSION, "$((1 + 2))")]
-        result = parsers.arith_expansion.parse(tokens, 0)
-        assert result.success is True
-        assert result.value.value == "$((1 + 2))"
-
-    def test_combined_expansion_parser(self):
-        """Test the combined expansion parser."""
-        parsers = ExpansionParsers()
-
-        # Should accept any expansion type
-        test_cases = [
-            (TokenType.VARIABLE, "USER"),
-            (TokenType.COMMAND_SUB, "$(pwd)"),
-            (TokenType.ARITH_EXPANSION, "$((10 * 2))"),
-            (TokenType.PROCESS_SUB_IN, "<(cat file)"),
-        ]
-
-        for token_type, value in test_cases:
-            tokens = [make_token(token_type, value)]
-            result = parsers.expansion.parse(tokens, 0)
-            assert result.success is True
-
-    def test_format_token_value(self):
-        """Test token value formatting."""
-        parsers = ExpansionParsers()
-
-        # Variable tokens get $ prefix
-        var_token = make_token(TokenType.VARIABLE, "USER")
-        assert parsers.format_token_value(var_token) == "$USER"
-
-        # Command substitution keeps its format
-        cmd_token = make_token(TokenType.COMMAND_SUB, "$(echo test)")
-        assert parsers.format_token_value(cmd_token) == "$(echo test)"
-
-        # Regular words stay as-is
-        word_token = make_token(TokenType.WORD, "hello")
-        assert parsers.format_token_value(word_token) == "hello"
-
-    def test_is_expansion_token(self):
-        """Test expansion token detection."""
-        parsers = ExpansionParsers()
-
-        # Expansion tokens
-        exp_token = make_token(TokenType.VARIABLE, "VAR")
-        assert parsers.is_expansion_token(exp_token) is True
-
-        cmd_token = make_token(TokenType.COMMAND_SUB, "$(cmd)")
-        assert parsers.is_expansion_token(cmd_token) is True
-
-        # Non-expansion tokens
-        word_token = make_token(TokenType.WORD, "hello")
-        assert parsers.is_expansion_token(word_token) is False
-
-        semi_token = make_token(TokenType.SEMICOLON, ";")
-        assert parsers.is_expansion_token(semi_token) is False
+        assert callable(parsers.build_word_from_token)
 
 
 class TestWordBuilding:
