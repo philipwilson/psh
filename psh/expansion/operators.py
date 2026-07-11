@@ -90,7 +90,7 @@ class OperatorOpsMixin(_Base):
         """Report a negative element-slice length and abort (bash exit 1)."""
         from ..core import ExpansionError
         msg = f"{length}: substring expression < 0"
-        print(f"psh: {msg}", file=sys.stderr)
+        print(f"{self.state.error_location_prefix()}{msg}", file=sys.stderr)
         self.state.last_exit_code = 1
         raise ExpansionError(msg, exit_code=1)
 
@@ -136,7 +136,7 @@ class OperatorOpsMixin(_Base):
         try:
             return [self.param_expansion.extract_substring(value, offset, length)]
         except ValueError as e:
-            print(f"psh: {e}", file=sys.stderr)
+            print(f"{self.state.error_location_prefix()}{e}", file=sys.stderr)
             self.state.last_exit_code = 1
             raise ExpansionError(str(e), exit_code=1) from e
 
@@ -206,7 +206,7 @@ class OperatorOpsMixin(_Base):
         if subject is not None:
             from ..core import ExpansionError
             msg = f"{subject}: cannot assign in this way"
-            print(f"psh: {msg}", file=sys.stderr)
+            print(f"{self.state.error_location_prefix()}{msg}", file=sys.stderr)
             self.state.last_exit_code = 1
             raise ExpansionError(msg, exit_code=1)
 
@@ -250,7 +250,7 @@ class OperatorOpsMixin(_Base):
                     else [self._expand_operand(operand or '', quote_ctx)])
         if base == '=':
             if triggered:
-                print(f"psh: {assign_error}", file=sys.stderr)
+                print(f"{self.state.error_location_prefix()}{assign_error}", file=sys.stderr)
                 self.state.last_exit_code = 1
                 raise ExpansionError(assign_error, exit_code=1)
             return list(elements)
@@ -260,7 +260,7 @@ class OperatorOpsMixin(_Base):
             # when the expansion sits inside double quotes (probed:
             # "${x:?'m'}" reports m, not 'm').
             msg = str(self._expand_operand(operand)) if operand else empty_msg
-            print(f"psh: {qmark_subject}: {msg}", file=sys.stderr)
+            print(f"{self.state.error_location_prefix()}{qmark_subject}: {msg}", file=sys.stderr)
             self.state.last_exit_code = 127
             from ..core import FatalExpansionError
             raise FatalExpansionError(f"{qmark_subject}: {msg}", exit_code=127)
@@ -347,7 +347,7 @@ class OperatorOpsMixin(_Base):
             except ValueError as e:
                 # Out-of-range negative length: bash reports an error and a
                 # non-zero exit status.
-                print(f"psh: {e}", file=sys.stderr)
+                print(f"{self.state.error_location_prefix()}{e}", file=sys.stderr)
                 self.state.last_exit_code = 1
                 raise ExpansionError(str(e), exit_code=1) from e
         elif operator == '!*':
@@ -398,7 +398,7 @@ class OperatorOpsMixin(_Base):
         """
         from ..core import FatalExpansionError
         msg = str(self._expand_operand(operand)) if operand else default_msg
-        print(f"psh: {var_name}: {msg}", file=sys.stderr)
+        print(f"{self.state.error_location_prefix()}{var_name}: {msg}", file=sys.stderr)
         self.state.last_exit_code = 127
         raise FatalExpansionError(f"{var_name}: {msg}", exit_code=127)
 
@@ -462,7 +462,7 @@ class OperatorOpsMixin(_Base):
         a non-interactive shell — 127 under ``-c`` (bash, probe-verified)."""
         from ..core.exceptions import FatalExpansionError
         content = f"{var_name}@{operand}" if var_name else f"@{operand}"
-        print(f"psh: ${{{content}}}: bad substitution", file=sys.stderr)
+        print(f"{self.state.error_location_prefix()}${{{content}}}: bad substitution", file=sys.stderr)
         self.state.last_exit_code = 1
         raise FatalExpansionError(f"${{{content}}}: bad substitution",
                                   exit_code=127)

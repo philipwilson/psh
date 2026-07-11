@@ -94,7 +94,7 @@ class GetoptsBuiltin(Builtin):
         """Parse positional parameters as options."""
         # Validate arguments
         if len(args) < 3:
-            self.error("usage: getopts optstring name [arg ...]", shell)
+            self.usage("usage: getopts optstring name [arg ...]", shell)
             return 2
 
         optstring = args[1]
@@ -185,7 +185,10 @@ class GetoptsBuiltin(Builtin):
                 shell.state.set_variable('OPTARG', opt_char)
             else:
                 if opterr:
-                    self.write_error_line(f"getopts: illegal option -- {opt_char}", shell)
+                    # bash's getopts error uses just `<$0>: msg` — no `line N:`
+                    # and no `getopts:` builtin name (its own reporting form).
+                    self.write_error_line(
+                        f"{shell.state.script_name}: illegal option -- {opt_char}", shell)
                 shell.state.scope_manager.unset_variable('OPTARG')
             return 0
 
@@ -209,7 +212,8 @@ class GetoptsBuiltin(Builtin):
                     shell.state.set_variable('OPTARG', opt_char)
                 else:
                     if opterr:
-                        self.write_error_line(f"getopts: option requires an argument -- {opt_char}", shell)
+                        self.write_error_line(
+                            f"{shell.state.script_name}: option requires an argument -- {opt_char}", shell)
                     shell.state.set_variable(varname, '?')
                     shell.state.scope_manager.unset_variable('OPTARG')
                 return 0

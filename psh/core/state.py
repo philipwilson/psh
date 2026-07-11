@@ -374,6 +374,25 @@ class ShellState:
         return self.env.get('PSH_STRICT_ERRORS', '').lower() in ('1', 'true',
                                                                   'yes')
 
+    def error_location_prefix(self) -> str:
+        """bash's ``<$0>: [line N: ]`` location prefix for a runtime error.
+
+        The single source of truth for the diagnostic prefix bash prepends to
+        every runtime error — builtin errors, command-not-found, exec failures,
+        ``set -u``/``${x:?}`` expansion errors, readonly-assignment failures.
+        ``<$0>`` is the shell's invocation name (:attr:`script_name`: ``"psh"``
+        for ``-c``/stdin, the script path in script mode, the ``-c`` trailing
+        operand when given). ``line N:`` is added ONLY when the shell is
+        NON-interactive — at an interactive prompt bash omits it (``bash: cd:
+        ...``). Mirrors bash's ``get_name_for_error``/``builtin_error`` in
+        ``error.c``. Parse errors deliberately keep psh's own richer
+        ``psh: <src>:<line>:`` format and do NOT use this.
+        """
+        prog = self.script_name
+        if self.options.get('interactive'):
+            return f"{prog}: "
+        return f"{prog}: line {self.scope_manager.get_current_line_number()}: "
+
     @classmethod
     def clone_for_child(cls, parent: 'ShellState',
                         context: ChildContext = ChildContext.SUBSHELL,
@@ -1023,7 +1042,12 @@ class ShellState:
                     else:
                         self.options[name] = True
                 elif env_name == 'SHELLOPTS' and opt not in self._BASH_ONLY_SET_O:
-                    print(f"psh: {opt}: invalid option name", file=self.stderr)
+                    # bash prefixes this env-import diagnostic `<$0>: line 0:`
+                    # — a startup sentinel (LINENO 0, no command has run) using
+                    # argv0 even in script mode, so NOT error_location_prefix()
+                    # (which is script_name + the running line). Match its shape.
+                    print(f"psh: line 0: {opt}: invalid option name",
+                          file=self.stderr)
             # Exported because it arrived via the environment; recorded on the
             # special's persistent attribute overlay (the value itself stays
             # computed). The env entry still holds the RAW inherited string at

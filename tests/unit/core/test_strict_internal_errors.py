@@ -63,8 +63,9 @@ def test_unexpected_exception_swallowed_when_strict_off(captured_shell,
     assert captured_shell.state.options.get('strict-errors') is False
     rc = captured_shell.run_command(boom_builtin)
     assert rc == 1
-    # The generic last-resort message is printed (byte-identical to before).
-    assert f"psh: {boom_builtin}: boom from psh_test_boom" in \
+    # The generic last-resort message is printed, now with bash's
+    # `<$0>: line N:` location prefix (task #21 [#35]).
+    assert f"psh: line 1: {boom_builtin}: boom from psh_test_boom" in \
         captured_shell.get_stderr()
 
 

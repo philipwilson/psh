@@ -524,7 +524,7 @@ def execute_arithmetic_expansion(expr: str, shell) -> int:
         # under errexit a non-interactive shell exits. Mirror the plain
         # assignment path (executor/command_assignments.py) exactly: print,
         # then raise the errexit-eligible, eval/source-contained TopLevelAbort.
-        print(f"psh: {e.name}: readonly variable", file=sys.stderr)
+        print(f"{shell.state.error_location_prefix()}{e.name}: readonly variable", file=sys.stderr)
         raise TopLevelAbort(1) from None
     except ShellArithmeticError as e:
         print(f"psh: arithmetic error: {e}", file=sys.stderr)

@@ -108,7 +108,7 @@ class UnaliasBuiltin(Builtin):
             return 0
 
         if not operands:
-            self.error(f"usage: {self.synopsis}", shell)
+            self.usage(f"usage: {self.synopsis}", shell)
             return 2
 
         exit_code = 0

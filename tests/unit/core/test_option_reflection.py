@@ -275,7 +275,10 @@ class TestShelloptsEnvImportEmptySegments:
         r = run_psh('case ":$SHELLOPTS:" in *:nounset:*) echo on;; esac; echo ok',
                     {'SHELLOPTS': 'errexit::nounset'})
         assert r.stderr.count(self.WARN) == 1
-        assert 'psh: : invalid option name' in r.stderr
+        # The empty middle segment is an empty option NAME; bash location-prefixes
+        # this env-import diagnostic with its `line 0` startup sentinel, empty
+        # name included: `<$0>: line 0: : invalid option name` (task #21 [#35]).
+        assert 'psh: line 0: : invalid option name' in r.stderr
         assert r.stdout == 'on\nok\n'
 
     def test_trailing_colon_warns_once(self):

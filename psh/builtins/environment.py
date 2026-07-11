@@ -164,8 +164,7 @@ class ExportBuiltin(Builtin):
                         rc = declare_builtin.execute_in_context(
                             ['declare', '-x', arg], shell, context)
                     except ReadonlyVariableError as e:
-                        self.write_error_line(
-                            f"psh: {e.name}: readonly variable", shell)
+                        self.report_error(f"{e.name}: readonly variable", shell)
                         status = 1
                         assignment_error = True
                         continue
@@ -203,8 +202,7 @@ class ExportBuiltin(Builtin):
                 # bash reports `export x=2` on a readonly var WITHOUT the
                 # builtin name (like a plain assignment error), non-fatally
                 # in default mode.
-                self.write_error_line(
-                    f"psh: {e.name}: readonly variable", shell)
+                self.report_error(f"{e.name}: readonly variable", shell)
                 status = 1
                 assignment_error = True
         if assignment_error:

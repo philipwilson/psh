@@ -166,8 +166,7 @@ class CdBuiltin(Builtin):
             if readonly_name is not None:
                 # bash reports `NAME: readonly variable` (no `cd:` prefix),
                 # rc 1, but the directory change stands.
-                self.write_error_line(
-                    f"psh: {readonly_name}: readonly variable", shell)
+                self.report_error(f"{readonly_name}: readonly variable", shell)
                 return 1
 
             # Print new directory for cd - command

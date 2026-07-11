@@ -31,7 +31,7 @@ class TestExecFailureWording:
     def test_slash_path_says_no_such_file(self):
         psh = run_psh('/no/such/path/cmd')
         assert psh.returncode == 127
-        assert psh.stderr.strip() == 'psh: /no/such/path/cmd: No such file or directory'
+        assert psh.stderr.strip() == 'psh: line 1: /no/such/path/cmd: No such file or directory'
         bash = run_bash('/no/such/path/cmd')
         assert bash.returncode == 127
         assert 'No such file or directory' in bash.stderr
@@ -40,7 +40,7 @@ class TestExecFailureWording:
     def test_relative_path_says_no_such_file(self):
         psh = run_psh('./no_such_rel_cmd')
         assert psh.returncode == 127
-        assert psh.stderr.strip() == 'psh: ./no_such_rel_cmd: No such file or directory'
+        assert psh.stderr.strip() == 'psh: line 1: ./no_such_rel_cmd: No such file or directory'
         bash = run_bash('./no_such_rel_cmd')
         assert bash.returncode == 127
         assert 'No such file or directory' in bash.stderr
@@ -48,12 +48,12 @@ class TestExecFailureWording:
     def test_missing_under_existing_dir_says_no_such_file(self):
         psh = run_psh('/etc/definitely_not_here_xyz')
         assert psh.returncode == 127
-        assert psh.stderr.strip() == 'psh: /etc/definitely_not_here_xyz: No such file or directory'
+        assert psh.stderr.strip() == 'psh: line 1: /etc/definitely_not_here_xyz: No such file or directory'
 
     def test_bare_name_still_says_command_not_found(self):
         psh = run_psh('nosuchcmd_xyz_12345')
         assert psh.returncode == 127
-        assert psh.stderr.strip() == 'psh: nosuchcmd_xyz_12345: command not found'
+        assert psh.stderr.strip() == 'psh: line 1: nosuchcmd_xyz_12345: command not found'
         bash = run_bash('nosuchcmd_xyz_12345')
         assert bash.returncode == 127
         assert 'command not found' in bash.stderr
@@ -62,7 +62,7 @@ class TestExecFailureWording:
         """`command /no/such/x` routes through the same external-exec path."""
         psh = run_psh('command /no/such/x')
         assert psh.returncode == 127
-        assert psh.stderr.strip() == 'psh: /no/such/x: No such file or directory'
+        assert psh.stderr.strip() == 'psh: line 1: /no/such/x: No such file or directory'
 
     def test_slash_path_in_pipeline_says_no_such_file(self):
         """The in-pipeline inline-exec path shares report_exec_failure."""
@@ -75,7 +75,7 @@ class TestExecFailureWording:
         unchanged by the ENOENT wording fix."""
         psh = run_psh('/etc')
         assert psh.returncode == 126
-        assert psh.stderr.strip() == 'psh: /etc: Is a directory'
+        assert psh.stderr.strip() == 'psh: line 1: /etc: Is a directory'
         bash = run_bash('/etc')
         assert bash.returncode == 126
         assert 'Is a directory' in bash.stderr

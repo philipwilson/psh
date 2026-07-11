@@ -204,7 +204,8 @@ class TestExecFailureExitsShell:
 class TestExecFailureDiagnostics:
     """Exec-failure wording, pinned to bash 5.2 (reappraisal #17 builtins M2).
 
-    bash's diagnostics (modulo its "bash: line N: " prefix):
+    Every line carries bash's ``<$0>: line N:`` location prefix (task #21 [#35]);
+    ``psh``'s $0 analogue is "psh". Wording after the prefix:
       exec /no/such/x   -> "/no/such/x: No such file or directory"   rc 127
       exec nosuchcmd    -> "exec: nosuchcmd: not found"              rc 127
       exec ""           -> "exec: : not found"                       rc 127
@@ -223,27 +224,30 @@ class TestExecFailureDiagnostics:
     def test_pathname_not_found_says_no_such_file(self):
         result = self._run_psh('exec /no/such/path/x')
         assert result.returncode == 127
+        # bash location-prefixes it (`<$0>: line N:`), no `exec:` builtin name.
         assert result.stderr.strip() == \
-            'psh: /no/such/path/x: No such file or directory'
+            'psh: line 1: /no/such/path/x: No such file or directory'
 
     def test_bare_name_says_not_found(self):
         result = self._run_psh('exec nosuchcmd_zz_9')
         assert result.returncode == 127
-        assert result.stderr.strip() == 'exec: nosuchcmd_zz_9: not found'
+        assert result.stderr.strip() == 'psh: line 1: exec: nosuchcmd_zz_9: not found'
         assert 'command not found' not in result.stderr
 
     def test_empty_command_says_not_found(self):
         result = self._run_psh('exec ""')
         assert result.returncode == 127
-        assert result.stderr.strip() == 'exec: : not found'
+        assert result.stderr.strip() == 'psh: line 1: exec: : not found'
 
     def test_directory_two_line_diagnostic(self):
         result = self._run_psh('exec /etc')
         assert result.returncode == 126
         lines = result.stderr.strip().splitlines()
+        # Both lines are location-prefixed in bash; the first names the file
+        # (no builtin name), the second is the exec builtin's own diagnostic.
         assert lines == [
-            'psh: /etc: Is a directory',
-            'exec: /etc: cannot execute: Is a directory',
+            'psh: line 1: /etc: Is a directory',
+            'psh: line 1: exec: /etc: cannot execute: Is a directory',
         ]
 
     def test_not_executable_file_two_line_diagnostic(self, tmp_path):
@@ -253,8 +257,8 @@ class TestExecFailureDiagnostics:
         result = self._run_psh(f'exec {target}')
         assert result.returncode == 126
         lines = result.stderr.strip().splitlines()
-        assert lines[0] == f'psh: {target}: Permission denied'
-        assert lines[1] == f'exec: {target}: cannot execute: Permission denied'
+        assert lines[0] == f'psh: line 1: {target}: Permission denied'
+        assert lines[1] == f'psh: line 1: exec: {target}: cannot execute: Permission denied'
 
     def test_no_raw_oserror_repr(self):
         for cmd in ('exec /etc', 'exec /no/such/x', 'exec ""'):

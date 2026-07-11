@@ -174,7 +174,7 @@ class PrintfBuiltin(Builtin):
             argv = [argv[0]] + argv[2:]
 
         if len(argv) < 2:
-            self.error("usage: printf [-v var] format [arguments]", shell)
+            self.usage("usage: printf [-v var] format [arguments]", shell)
             return 2
 
         result = format_printf(argv[1], argv[2:])

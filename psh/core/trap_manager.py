@@ -75,7 +75,11 @@ class TrapManager:
             # dispatch — agrees on the key.
             canonical = self._canonical_signal_key(signal_spec)
             if canonical is None:
-                print(f"trap: {signal_spec}: invalid signal specification",
+                # bash location-prefixes this like every other trap runtime
+                # error (its `-p BADSIG` sibling already is): `<$0>: line N:
+                # trap: SPEC: invalid signal specification`.
+                print(f"{self.state.error_location_prefix()}trap: "
+                      f"{signal_spec}: invalid signal specification",
                       file=self.state.stderr)
                 # bash reports the bad spec but keeps processing the rest.
                 exit_code = 1

@@ -42,7 +42,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         """
         if not validate_parameter_expansion(node):
             from ..core.exceptions import BadSubstitutionError
-            print(f"psh: ${{{content}}}: bad substitution", file=sys.stderr)
+            print(f"{self.state.error_location_prefix()}${{{content}}}: bad substitution", file=sys.stderr)
             self.state.last_exit_code = 1
             raise BadSubstitutionError(content)
 
@@ -465,12 +465,12 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             target = None if var is None else var.as_string()
 
         if target is None:
-            print(f"psh: {source}: invalid indirect expansion", file=sys.stderr)
+            print(f"{self.state.error_location_prefix()}{source}: invalid indirect expansion", file=sys.stderr)
             self.state.last_exit_code = 1
             raise ExpansionError(f"{source}: invalid indirect expansion",
                                  exit_code=1)
         if not self._valid_indirect_target(target):
-            print(f"psh: {target}: invalid variable name", file=sys.stderr)
+            print(f"{self.state.error_location_prefix()}{target}: invalid variable name", file=sys.stderr)
             self.state.last_exit_code = 1
             raise ExpansionError(f"{target}: invalid variable name",
                                  exit_code=1)

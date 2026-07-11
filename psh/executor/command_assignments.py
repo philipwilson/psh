@@ -235,7 +235,7 @@ class CommandAssignments:
                 # one inconsistent member. The BUILTIN forms (readonly/export
                 # ``r=2``, prefix ``r=2 cmd``) stay rc 1 via
                 # SpecialBuiltinUsageError — a distinct, bash-correct code.
-                print(f"psh: {e.name}: readonly variable", file=self.state.stderr)
+                print(f"{self.state.error_location_prefix()}{e.name}: readonly variable", file=self.state.stderr)
                 if self.state.options.get('posix'):
                     if self.state.options.get('command_mode'):
                         raise SystemExit(127) from None
@@ -355,7 +355,7 @@ class CommandAssignments:
                 try:
                     scope_manager.set_temp_env_var(var, resolved)
                 except ReadonlyVariableError as e:
-                    print(f"psh: {e.name}: readonly variable",
+                    print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
                           file=self.state.stderr)
                     assignment_error = True
                     continue
@@ -380,7 +380,7 @@ class CommandAssignments:
                 except ReadonlyVariableError as e:
                     # bash: report and skip; the real (readonly) variable keeps
                     # its value, the other assignments apply, the command runs.
-                    print(f"psh: {e.name}: readonly variable",
+                    print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
                           file=self.state.stderr)
                     assignment_error = True
                     continue
@@ -411,7 +411,7 @@ class CommandAssignments:
             except ReadonlyVariableError as e:
                 # Use e.name so a readonly array-element write reports the array
                 # name (``a[0]=X cmd`` -> ``a: readonly variable``).
-                print(f"psh: {e.name}: readonly variable",
+                print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
                       file=self.state.stderr)
                 assignment_error = True
                 continue

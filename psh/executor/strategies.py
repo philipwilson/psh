@@ -66,12 +66,15 @@ def format_exec_failure(cmd_name: str, exc: OSError,
                         ) -> Tuple[str, int]:
     """Format a failed exec as bash's diagnostic; return ``(message, status)``.
 
-    The single source of truth for exec-failure wording, shared by the
+    The single source of truth for exec-failure WORDING, shared by the
     forked execution paths (via :func:`report_exec_failure`) and the
     ``exec`` builtin, so every exec failure produces the same bash-style
     diagnostics: "command not found" with status 127 for a missing
     command, the OS error's strerror with status 126 otherwise (e.g.
-    permission denied) — never the raw Python OSError repr.
+    permission denied) — never the raw Python OSError repr. The returned
+    message is BARE (no ``psh:``/location prefix): each caller prepends
+    bash's ``<$0>: [line N: ]`` prefix via ``state.error_location_prefix()``
+    (report_exec_failure does; the exec builtin uses ``report_error``).
 
     When the exec used a pre-resolved path (hash table) and the file is
     gone, bash names the stale PATH: "bash: /path/cmd: No such file or
@@ -84,10 +87,10 @@ def format_exec_failure(cmd_name: str, exc: OSError,
     """
     if isinstance(exc, FileNotFoundError):
         if resolved_path is not None:
-            return f"psh: {resolved_path}: No such file or directory", 127
+            return f"{resolved_path}: No such file or directory", 127
         if '/' in cmd_name:
-            return f"psh: {cmd_name}: No such file or directory", 127
-        return f"psh: {cmd_name}: command not found", 127
+            return f"{cmd_name}: No such file or directory", 127
+        return f"{cmd_name}: command not found", 127
     # Report bash's strerror ("Permission denied", "Is a directory"), not
     # Python's OSError repr ("[Errno 13] Permission denied: './x'"). exec of a
     # directory returns EACCES on macOS, but bash reports "Is a directory" — so
@@ -97,24 +100,29 @@ def format_exec_failure(cmd_name: str, exc: OSError,
         detail = os.strerror(errno.EISDIR)
     else:
         detail = exc.strerror or str(exc)
-    return f"psh: {cmd_name}: {detail}", 126
+    return f"{cmd_name}: {detail}", 126
 
 
 def report_exec_failure(cmd_name: str, exc: OSError,
-                        resolved_path: Optional[str] = None) -> int:
+                        resolved_path: Optional[str] = None,
+                        *, state: 'ShellState') -> int:
     """Report a failed exec on fd 2 and return the exit status.
 
     Shared by the in-pipeline (inline exec) and fork execution paths so
     both produce the same bash-style diagnostics (see
     :func:`format_exec_failure`, which owns the wording). Writes at the
-    fd level — both callers run in a forked child.
+    fd level — both callers run in a forked child. ``state`` supplies the
+    ``<$0>: [line N: ]`` location prefix bash prepends (matching a builtin
+    runtime error); the child inherits the parent's script_name/line/options
+    at fork, so the prefix is correct.
     """
     message, status = format_exec_failure(cmd_name, exc, resolved_path)
     # surrogateescape on the diagnostics: a command name carrying non-UTF-8
     # bytes (from a non-UTF-8 script, read with surrogateescape) must not make
     # the error message itself raise UnicodeEncodeError — the byte round-trips
     # back out unchanged, and the command is still reported as not found.
-    os.write(2, (message + "\n").encode('utf-8', errors='surrogateescape'))
+    text = f"{state.error_location_prefix()}{message}\n"
+    os.write(2, text.encode('utf-8', errors='surrogateescape'))
     return status
 
 
@@ -133,7 +141,7 @@ def report_unbound_variable(state: 'ShellState', exc: Exception) -> int:
     report_unbound_variable(...)`` callers).
     """
     from ..core import fatal_expansion_status
-    print(f"psh: {exc}", file=state.stderr)
+    print(f"{state.error_location_prefix()}{exc}", file=state.stderr)
     return fatal_expansion_status(state, exc)
 
 
@@ -154,7 +162,7 @@ def report_assignment_error(state: 'ShellState', exc: Exception) -> int:
     if isinstance(exc, NamerefCycleError):
         state.scope_manager.warn_nameref_cycle(exc.name)
     else:
-        print(f"psh: {exc}", file=state.stderr)
+        print(f"{state.error_location_prefix()}{exc}", file=state.stderr)
     return 1
 
 
@@ -575,7 +583,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                                             os.strerror(errno.ENOENT), cmd_name)
                 exec_external(full_args, shell.env, resolved_path)
             except OSError as e:
-                os._exit(report_exec_failure(full_args[0], e, resolved_path))
+                os._exit(report_exec_failure(full_args[0], e, resolved_path, state=shell.state))
 
         # Set terminal title to show running command
         if not background and not context.in_pipeline and shell.state.options.get('interactive'):
@@ -613,7 +621,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                                             os.strerror(errno.ENOENT), cmd_name)
                 exec_external(full_args, shell.env, resolved_path)
             except OSError as e:
-                return report_exec_failure(full_args[0], e, resolved_path)
+                return report_exec_failure(full_args[0], e, resolved_path, state=shell.state)
 
             # Not reached if exec succeeds
             return 127

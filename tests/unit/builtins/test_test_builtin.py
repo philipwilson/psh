@@ -460,11 +460,11 @@ class TestErrorPrefix:
 
     def test_bracket_errors_use_bracket_prefix(self, captured_shell):
         captured_shell.run_command('[ 1 -eq ]')
-        assert captured_shell.get_stderr().startswith('[: ')
+        assert captured_shell.get_stderr().startswith('psh: line 1: [: ')
 
     def test_test_errors_use_test_prefix(self, captured_shell):
         captured_shell.run_command('test 1 -eq')
-        assert captured_shell.get_stderr().startswith('test: ')
+        assert captured_shell.get_stderr().startswith('psh: line 1: test: ')
 
 
 class TestTooManyArguments:
@@ -477,17 +477,17 @@ class TestTooManyArguments:
         # bash: `[: too many arguments`, rc 2
         rc = captured_shell.run_command('[ x = ab ac ]')
         assert rc == 2
-        assert captured_shell.get_stderr() == '[: too many arguments\n'
+        assert captured_shell.get_stderr() == 'psh: line 1: [: too many arguments\n'
 
     def test_test_spelling_uses_test_prefix(self, captured_shell):
         rc = captured_shell.run_command('test x = y z')
         assert rc == 2
-        assert captured_shell.get_stderr() == 'test: too many arguments\n'
+        assert captured_shell.get_stderr() == 'psh: line 1: test: too many arguments\n'
 
     def test_five_bare_words(self, captured_shell):
         rc = captured_shell.run_command('[ a b c d e ]')
         assert rc == 2
-        assert captured_shell.get_stderr() == '[: too many arguments\n'
+        assert captured_shell.get_stderr() == 'psh: line 1: [: too many arguments\n'
 
     def test_valid_four_arg_forms_stay_silent(self, captured_shell):
         # -a/-o combinations and POSIX leading-`!` negation are still
@@ -508,7 +508,7 @@ class TestTooManyArguments:
             rc = captured_shell.run_command(cmd)
             assert rc == 2, cmd
             assert captured_shell.get_stderr() == \
-                'test: too many arguments\n', cmd
+                'psh: line 1: test: too many arguments\n', cmd
 
 
 class TestPermsAnyFileType:
@@ -697,7 +697,7 @@ class TestPosixDispatchErrors:
     def test_bracket_form_uses_bracket_prefix(self, captured_shell):
         rc = captured_shell.run_command('[ ! -eq x ]')
         assert rc == 2
-        assert captured_shell.get_stderr().startswith('[: ')
+        assert captured_shell.get_stderr().startswith('psh: line 1: [: ')
 
     def test_negation_propagates_usage_error(self, captured_shell):
         # `test ! a b c` -> negate(3-arg `a b c` which is an error) -> rc 2,

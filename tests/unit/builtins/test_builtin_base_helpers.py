@@ -23,15 +23,23 @@ class _Fake(Builtin):
 
 
 class _Shell:
-    """Minimal stand-in with state + stderr for parse_flags errors."""
+    """Minimal stand-in with state + stderr for parse_flags errors.
+
+    ``error()``/``report_error()`` build bash's ``<$0>: line N:`` location
+    prefix via ``state.error_location_prefix()``, so the stand-in state mimics
+    that contract (non-interactive, script_name "psh", $LINENO 1).
+    """
     class _State:
         in_forked_child = False
-    state = _State()
+
+        def error_location_prefix(self):
+            return "psh: line 1: "
 
     def __init__(self):
         import io
         self.stderr = io.StringIO()
         self.stdout = io.StringIO()
+        self.state = _Shell._State()
 
 
 class TestParseFlags:
@@ -95,9 +103,16 @@ class TestWriteHelpers:
         assert sh.stdout.getvalue() == 'hello\n'
 
     def test_error_uses_shell_stderr_with_prefix(self):
+        # bash location-prefixes builtin runtime errors: `<$0>: line N: name: msg`.
         b, sh = _Fake(), _Shell()
         b.error('boom', sh)
-        assert sh.stderr.getvalue() == 'fake: boom\n'
+        assert sh.stderr.getvalue() == 'psh: line 1: fake: boom\n'
+
+    def test_report_error_prefixes_without_builtin_name(self):
+        # report_error() = bash report_error: location prefix, NO builtin name.
+        b, sh = _Fake(), _Shell()
+        b.report_error('r: readonly variable', sh)
+        assert sh.stderr.getvalue() == 'psh: line 1: r: readonly variable\n'
 
     def test_write_error_line_is_unprefixed_stderr(self):
         """Follow-up diagnostic lines (usage text) carry no name prefix."""
@@ -118,9 +133,10 @@ class TestWriteHelpers:
         err = captured_shell.get_stderr()
         assert 'set: nosuchopt: invalid option name' in err
         assert 'Valid options:' not in err
-        # Exactly one non-empty diagnostic line (no follow-on dump).
+        # Exactly one non-empty diagnostic line (no follow-on dump). The line
+        # now carries bash's `<$0>: line N:` location prefix.
         assert [ln for ln in err.splitlines() if ln.strip()] == \
-            ['set: nosuchopt: invalid option name']
+            ['psh: line 1: set: nosuchopt: invalid option name']
         assert captured_shell.get_stdout() == ''
 
     def test_help_usage_error_on_stderr(self, captured_shell):

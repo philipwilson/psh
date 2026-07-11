@@ -595,7 +595,11 @@ class SourceProcessor(ScriptComponent):
         )
         if isinstance(e, (ExpansionError, UnboundVariableError)):
             if isinstance(e, UnboundVariableError):
-                print(f"psh: {e}", file=sys.stderr)
+                # Fallback set -u boundary report (the primary path is
+                # report_unbound_variable, which is already location-prefixed);
+                # match it so an UnboundVariableError reaching here directly is
+                # prefixed too: `<$0>: line N: NAME: unbound variable`.
+                print(f"{self.state.error_location_prefix()}{e}", file=sys.stderr)
             rc = fatal_expansion_status(self.state, e, at_boundary=True)
             self.state.last_exit_code = rc
             return rc

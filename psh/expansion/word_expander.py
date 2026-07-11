@@ -967,7 +967,7 @@ class WordExpander:
                     # from errexit-suppressed contexts like an if
                     # condition, unlike the arithmetic discard family).
                     from ..core import TopLevelAbort
-                    print(f"psh: no match: {w}", file=self.state.stderr)
+                    print(f"{self.state.error_location_prefix()}no match: {w}", file=self.state.stderr)
                     if (self.state.options.get('errexit')
                             and self.state.is_script_mode):
                         raise SystemExit(1)
