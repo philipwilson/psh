@@ -1,13 +1,10 @@
 """Registry for token recognizers."""
 
-import logging
-from typing import Iterator, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ..state_context import LexerContext
 from ..token_types import Token
 from .base import TokenRecognizer
-
-logger = logging.getLogger(__name__)
 
 
 class RecognizerRegistry:
@@ -88,15 +85,3 @@ class RecognizerRegistry:
                 ) from e
 
         return None
-
-    def clear(self) -> None:
-        """Remove all registered recognizers."""
-        self._recognizers.clear()
-
-    def __len__(self) -> int:
-        """Get the number of registered recognizers."""
-        return len(self._recognizers)
-
-    def __iter__(self) -> Iterator[TokenRecognizer]:
-        """Iterate over recognizers in dispatch (registration) order."""
-        return iter(self.get_recognizers())
