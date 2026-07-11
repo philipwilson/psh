@@ -20,7 +20,7 @@ A parse produces a :class:`ParseResult`, which is one of two shapes:
 
     RESERVED / currently dormant: nothing in the grammar constructs a committed
     ``ParseFailure`` yet (a repo-wide ``committed=True`` search is empty), so
-    this defaults to ``False`` and ``or_else``/``many``/``separated_by`` behave
+    this defaults to ``False`` and ``or_else``/``many`` behave
     as a plain ordered choice. Commitment is presently expressed the imperative
     way — by RAISING a ``ParseError`` via
     :func:`diagnostics.raise_committed_error` once a construct is past its point
@@ -182,7 +182,7 @@ class Parser(Generic[T]):
             second_result = next_parser.parse(tokens, first_result.position)
             if not second_result.success:
                 # Atomic: a failed sequence resets to the start position, the
-                # same backtracking discipline as sequence(). A committed
+                # same backtracking discipline as the deleted sequence() helper had. A committed
                 # failure keeps its cut so or_else upstream won't backtrack.
                 return ParseFailure(pos, second_result.error,
                                     expected=second_result.expected,
