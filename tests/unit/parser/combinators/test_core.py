@@ -283,6 +283,23 @@ class TestBasicCombinators:
         assert result.success is False
         assert "reached end of input" in result.error
 
+    def test_token_rejects_ghost_name(self):
+        """A token() name that is not a TokenType member raises at construction.
+
+        This converts a future ghost token parser (a typo, or a POSIX name the
+        lexer never emits like AND_IF) into an import-time failure instead of a
+        parser that silently never matches.
+        """
+        with pytest.raises(ValueError, match="not a TokenType member"):
+            token("AND_IF")
+        with pytest.raises(ValueError, match="not a TokenType member"):
+            token("NOT_A_REAL_TOKEN")
+
+    def test_token_accepts_every_real_tokentype(self):
+        """token() accepts every real TokenType member (no false rejections)."""
+        for name in TokenType.__members__:
+            token(name)  # must not raise
+
     def test_many_empty(self):
         """Test many with no matches."""
         tokens = [make_token(TokenType.SEMICOLON, ";")]

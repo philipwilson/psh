@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from typing import Callable, Generic, List, Optional, Tuple, TypeVar, cast
 
 from ...lexer.keyword_defs import matches_keyword
-from ...lexer.token_types import Token
+from ...lexer.token_types import Token, TokenType
 
 # Type variables for parser combinators
 T = TypeVar('T')
@@ -232,11 +232,24 @@ def token(token_type: str) -> Parser[Token]:
     """Parse a specific token type.
 
     Args:
-        token_type: Name of the token type to match
+        token_type: Name of the token type to match. Must be a real
+            :class:`TokenType` member — an unknown name raises immediately at
+            construction, so a ghost token parser (a typo or a stale POSIX name
+            the lexer never emits) fails at import time instead of silently
+            never matching.
 
     Returns:
         Parser that matches the specified token type
+
+    Raises:
+        ValueError: If ``token_type`` is not a ``TokenType`` member.
     """
+    if token_type not in TokenType.__members__:
+        raise ValueError(
+            f"token(): {token_type!r} is not a TokenType member "
+            "(ghost token name — the lexer can never emit it)"
+        )
+
     def parse_token(tokens: List[Token], pos: int) -> ParseResult[Token]:
         if pos < len(tokens) and tokens[pos].type.name == token_type:
             return ParseSuccess(tokens[pos], pos + 1)
