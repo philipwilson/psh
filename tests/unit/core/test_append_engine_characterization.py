@@ -187,3 +187,23 @@ class TestAppendComputationIsPure:
         base = sm.get_variable_object("n")
         assert sm.store.compute_append_value(
             base, "3", extra_attrs=VarAttributes.INTEGER) == "5"
+
+    def test_compute_append_array_base_effective_integer_from_extra_attrs(
+            self, captured_shell):
+        """The ARRAY branch honors extra_attrs too: a fresh -i on a scalar
+        append onto a plain (non-integer) array base arithmetic-adds to
+        element 0 (`a=(1 2); declare -i a+=10` -> a[0] 11, bash-verified).
+        Before the effective-attrs fix this branch appended textually
+        ('110'). The rest of the array and the live container stay intact."""
+        sm = captured_shell.state.scope_manager
+        arr = IndexedArray()
+        arr.set(0, "1")
+        arr.set(1, "2")
+        sm.set_variable("a", arr, attributes=VarAttributes.ARRAY)  # no -i
+        base = sm.get_variable_object("a")
+        result = sm.store.compute_append_value(
+            base, "10", extra_attrs=VarAttributes.INTEGER)
+        assert isinstance(result, IndexedArray)
+        assert result.get(0) == "11"     # arithmetic, not "110"
+        assert result.get(1) == "2"      # rest of the array intact
+        assert base.value.get(0) == "1"  # live container unmutated

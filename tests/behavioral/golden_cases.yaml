@@ -6413,6 +6413,23 @@
   stdout: "z=7 n=1\n"
   stderr: ""
   exit_code: 0
+
+# The effective-attrs rule covers the ARRAY branch too: a fresh -i / -u added in
+# the SAME declare makes a scalar append onto a plain array base arithmetic /
+# case-folded on element 0 (bash: a[0] '11' not '110'; 'ABX' not 'abx'), with
+# the rest of the array intact. (The `declare -ai`/`-au` spellings — with an
+# explicit -a — hit a separate pre-existing array-init path bug, carried to T2.)
+- name: h8_declare_adds_integer_appends_onto_array
+  command: 'a=(1 2); declare -i a+=10; echo "${a[0]}|${a[1]}"'
+  stdout: "11|2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: h8_declare_adds_uppercase_appends_onto_array
+  command: 'a=(ab cd); declare -u a+=x; echo "${a[0]}|${a[1]}"'
+  stdout: "ABX|cd\n"
+  stderr: ""
+  exit_code: 0
 # BUILTINS FEATURE GAPS (reappraisal #18 Tier-2 T2-G)
 # =============================================================================
 
