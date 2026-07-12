@@ -172,7 +172,23 @@ class CommandAccumulator:
     # === The oracle ===
 
     def feed(self, line: str) -> Union[Complete, NeedMore]:
-        """Add one physical line; decide completeness with the real parser."""
+        """Add one physical line; decide completeness with the real parser.
+
+        Cost note — the completeness decision re-preprocesses and RE-PARSES
+        the whole buffer on every fed line (correctness first: the real
+        lexer+parser over the full text is the single source of completeness
+        truth, and a partial-parse cache would have to reproduce every quote /
+        heredoc / continuation edge case the parser already handles). So
+        gathering a logical command of N physical lines is O(N^2) in the
+        parser — bounded by ONE logical command's line count, which resets on
+        every ``Complete``. In practice the parse dominates (a plain 500-line
+        function body: ~0.2 ms total preprocessing vs seconds of re-parsing —
+        measured, r19-P7); heredoc BODY lines are the exception and never hit
+        this path — they are matched incrementally against the pending
+        delimiters (O(1) per body line, no re-lex/re-parse). Pushing the bound
+        below O(N^2) means incremental parsing, deliberately out of scope
+        here.
+        """
         self._lines.append(line)
 
         # Inside heredoc bodies, the line is body text: check it against

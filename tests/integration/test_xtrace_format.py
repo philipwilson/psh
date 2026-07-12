@@ -57,3 +57,39 @@ def _bash(cmd):
 ])
 def test_xtrace_matches_bash(cmd):
     assert _trace(cmd, _psh) == _trace(cmd, _bash), cmd
+
+
+# The `for VAR in WORDS` header body is rendered ONCE per loop (P7 item 5),
+# not once per iteration, but its output must be UNCHANGED. Two invariants
+# would break under a naive hoist and are pinned here against bash (full
+# stderr, since a dynamic PS4 emits lines that don't start with `+`):
+#   - PS4 is re-expanded EVERY iteration (dynamic PS4 must still vary), so
+#     the render-once optimization must not hoist the PS4 expansion.
+#   - the `xtrace` option is re-checked EVERY iteration, so a body toggling
+#     `set +x`/`set -x` mid-loop still suppresses/emits per iteration.
+@pytest.mark.parametrize("cmd", [
+    # dynamic PS4: re-expanded per iteration -> <0>,<1>,<2>
+    "n=0; PS4='<$n>'; set -x; for i in 1 2 3; do n=$((n+1)); done",
+    # PS4 with a command substitution: re-run each trace
+    "PS4='$(echo P) '; set -x; for i in 1 2; do :; done",
+    # body turns xtrace OFF mid-loop: only the first header appears
+    'set -x; for i in 1 2 3; do set +x; done',
+    # body turns xtrace ON mid-loop: headers appear from the 2nd iteration
+    'for i in 1 2 3; do set -x; done',
+    # nested loops (inner header body also rendered once per inner loop)
+    'set -x; for i in 1 2; do for j in 3 4; do :; done; done',
+])
+def test_for_header_render_once_preserves_output(cmd):
+    assert _psh(cmd).stderr == _bash(cmd).stderr, cmd
+
+
+def test_for_header_quoted_words_rendered_once():
+    # A quoted header word is single-quoted by psh where bash echoes the
+    # source double-quote style (a pre-existing, documented divergence — see
+    # the module docstring), so pin psh's OWN output. The point here is that
+    # the rendered-once header body still shows the quoted word each
+    # iteration, byte-identical.
+    trace = [ln for ln in _psh('set -x; for i in "a b" c; do :; done')
+             .stderr.splitlines() if ln.startswith('+')]
+    assert trace == ["+ for i in 'a b' c", "+ :",
+                     "+ for i in 'a b' c", "+ :"]

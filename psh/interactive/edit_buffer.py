@@ -13,10 +13,22 @@ O(n) cost of mid-line edits, and trivially correct.
 Undo policy: each mutating operation snapshots the PRE-edit state via
 save_undo_state() (deduplicated, so repeated snapshots of the same
 state collapse). undo() treats the live buffer as the implicit top of
-the stack; any new edit clears the redo stack.
+the stack; any new edit clears the redo stack. The undo history is
+capped at UNDO_HISTORY_MAX snapshots (a bounded deque): a very long
+editing session would otherwise grow it without limit. The cap is far
+above any interactive session's reach, so undo depth beyond it is
+deliberately — and in practice never — unavailable.
 """
 
-from typing import List, Tuple
+from collections import deque
+from typing import Deque, List, Tuple
+
+#: Maximum number of undo snapshots retained. When exceeded, the oldest
+#: snapshot is evicted (deque maxlen), bounding memory for an arbitrarily
+#: long editing session. Chosen generously — no interactive session gets
+#: near 1000 distinct edit states — so the cap never bites in practice; it
+#: exists purely to keep the history from growing unbounded.
+UNDO_HISTORY_MAX = 1000
 
 
 class EditBuffer:
@@ -34,7 +46,10 @@ class EditBuffer:
         # flag before every dispatched command; direct EditBuffer users
         # set it explicitly (default: no coalescing).
         self.coalesce_next_kill: bool = False
-        self.undo_stack: List[Tuple[str, int]] = []
+        # Bounded: a deque with maxlen evicts the oldest snapshot when the
+        # cap is reached (see UNDO_HISTORY_MAX). The redo stack is naturally
+        # bounded by undo depth, so it stays a plain list.
+        self.undo_stack: Deque[Tuple[str, int]] = deque(maxlen=UNDO_HISTORY_MAX)
         self.redo_stack: List[Tuple[str, int]] = []
         self.save_undo_state()
 
@@ -335,7 +350,12 @@ class EditBuffer:
 
     def save_undo_state(self) -> None:
         """Snapshot the current state (deduplicated). Any edit that
-        pushes a genuinely new state invalidates the redo branch."""
+        pushes a genuinely new state invalidates the redo branch.
+
+        undo_stack is a maxlen deque, so appending past UNDO_HISTORY_MAX
+        transparently evicts the oldest snapshot — the history stays
+        bounded without any explicit trim here.
+        """
         state = (self.text, self.cursor)
         if not self.undo_stack or self.undo_stack[-1] != state:
             self.undo_stack.append(state)

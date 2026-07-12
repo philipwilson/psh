@@ -321,7 +321,7 @@ class ControlStructureParser(ParserSubcomponent):
 
         items = []
         while not self.parser.match(TokenType.ESAC) and not self.parser.at_end():
-            if self.parser.match_any(TokenGroups.WORD_LIKE | TokenGroups.CASE_PATTERN_KEYWORDS) or \
+            if self.parser.match_any(TokenGroups.WORD_LIKE_OR_CASE_PATTERNS) or \
                self.parser.match(TokenType.LPAREN):
                 item = self.parse_case_item()
                 items.append(item)
@@ -413,7 +413,7 @@ class ControlStructureParser(ParserSubcomponent):
                not self.parser.at_end()):
 
             token = self.parser.peek()
-            if self.parser.match_any(TokenGroups.WORD_LIKE | TokenGroups.CASE_PATTERN_KEYWORDS):
+            if self.parser.match_any(TokenGroups.WORD_LIKE_OR_CASE_PATTERNS):
                 if token.type in TokenGroups.CASE_PATTERN_KEYWORDS:
                     # Keywords can be valid patterns
                     text_parts.append(token.value)

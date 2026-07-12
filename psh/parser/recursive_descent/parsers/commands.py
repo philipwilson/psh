@@ -33,6 +33,16 @@ _UNCLOSED_EXPANSION_MSGS = {
     'backtick_unclosed': ("unclosed backtick substitution", '`', 1),
 }
 
+# Token types whose parts may carry an unclosed expansion. Hoisted to a
+# module-level frozenset so the per-token membership check in
+# _check_for_unclosed_expansions is a set lookup, not a fresh list-literal
+# built and linearly scanned on every token.
+_EXPANSION_BEARING_TOKENS = frozenset({
+    TokenType.WORD, TokenType.COMMAND_SUB, TokenType.COMMAND_SUB_BACKTICK,
+    TokenType.ARITH_EXPANSION, TokenType.VARIABLE,
+    TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT,
+})
+
 # Maximum compound-command nesting depth (brace groups, subshells,
 # if/while/for/case/select, ((...)), [[...]] inside one another). The
 # recursive-descent parser burns ~9 Python frames per nesting level, so
@@ -84,9 +94,7 @@ class CommandParser(ParserSubcomponent):
     def _check_for_unclosed_expansions(self, token: Token) -> None:
         """Check if a token contains unclosed expansions and raise appropriate errors."""
         # Check tokens that might contain expansions
-        if token.type not in [TokenType.WORD, TokenType.COMMAND_SUB,
-                              TokenType.COMMAND_SUB_BACKTICK, TokenType.ARITH_EXPANSION, TokenType.VARIABLE,
-                              TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT]:
+        if token.type not in _EXPANSION_BEARING_TOKENS:
             return
 
         # Check token parts for unclosed expansions
@@ -164,7 +172,7 @@ class CommandParser(ParserSubcomponent):
                 "syntax error near unexpected token '}'", self.parser.peek())
 
         # Ensure we have a word-like token, redirect, or fd-duplication word
-        if not self.parser.match_any(TokenGroups.WORD_LIKE | TokenGroups.REDIRECTS):
+        if not self.parser.match_any(TokenGroups.WORD_LIKE_OR_REDIRECTS):
             if not (self.parser.match(TokenType.WORD) and
                     self._is_fd_duplication(self.parser.peek().value)):
                 raise self.parser.error("Expected command")
@@ -173,7 +181,7 @@ class CommandParser(ParserSubcomponent):
         """Parse arguments, redirections, and array assignments for a command."""
         has_parsed_regular_args = False
 
-        while (self.parser.match_any(TokenGroups.WORD_LIKE | TokenGroups.REDIRECTS) or
+        while (self.parser.match_any(TokenGroups.WORD_LIKE_OR_REDIRECTS) or
                (self.parser.match(TokenType.EXCLAMATION) and
                 command.args and command.args[0] in ('test', '['))):
 

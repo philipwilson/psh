@@ -24,8 +24,9 @@ introducer. See ``ESC_FOLLOWER_TIMEOUT``.
 
 import os
 import select
+from collections import deque
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Deque, List, Optional
 
 #: Seconds to wait after ESC for a possible sequence follower before
 #: reporting a bare ``Escape``. Used in vi mode only; emacs mode passes
@@ -141,7 +142,10 @@ class KeyDecoder:
         # bytes from the fd but return only one character, making the
         # rest invisible to select(). Reading the raw fd and buffering
         # decoded characters here keeps select() and reads in sync.
-        self._char_buf: List[str] = []
+        # A deque: the buffer is a FIFO consumed from the front
+        # (popleft) with occasional front pushes (pushback/seed) and
+        # back extends — all O(1), unlike a list's O(n) pop(0)/insert(0).
+        self._char_buf: Deque[str] = deque()
 
     def pushback(self, char: str) -> None:
         """Make *char* the next character read.
@@ -150,21 +154,22 @@ class KeyDecoder:
         pair back for full disambiguation (it may introduce a sequence
         of its own).
         """
-        self._char_buf.insert(0, char)
+        self._char_buf.appendleft(char)
 
     def take_buffered(self) -> List[str]:
         """Hand off (and clear) characters read from the fd but not yet
         consumed — the tail of a multi-line paste. The next decoder is
         seeded with these (see ``seed``) so a paste's later commands run
         in turn instead of being dropped."""
-        buffered = self._char_buf
-        self._char_buf = []
+        buffered = list(self._char_buf)
+        self._char_buf.clear()
         return buffered
 
     def seed(self, chars: List[str]) -> None:
         """Prepend already-decoded characters ahead of any fresh fd
         input — the paste tail carried over from the previous decoder."""
-        self._char_buf[:0] = chars
+        # extendleft reverses, so feed it reversed to preserve order.
+        self._char_buf.extendleft(reversed(chars))
 
     def read_key(self) -> KeyEvent:
         """Read one key event (blocking).
@@ -275,7 +280,7 @@ class KeyDecoder:
         """Read one character: from the buffer, else the raw fd (see
         the ``_char_buf`` comment in ``__init__`` for why os.read)."""
         if self._char_buf:
-            return self._char_buf.pop(0)
+            return self._char_buf.popleft()
 
         data = os.read(self.fd, 4096)
         if not data:

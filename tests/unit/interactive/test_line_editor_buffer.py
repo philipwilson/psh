@@ -328,7 +328,8 @@ class TestEscapeEventDispatch:
         ed.decoder = KeyDecoder(-1, esc_timeout=0.01)
         assert ed._dispatch_escape_event(Meta('\x1b')) is None
         assert ed.mode == EditMode.VI_NORMAL
-        assert ed.decoder._char_buf == ['\x1b']
+        # _char_buf is a deque; compare its contents, not the container type.
+        assert list(ed.decoder._char_buf) == ['\x1b']
 
     def test_vi_arrow_in_insert_mode_stays_in_insert_mode(self):
         # The v0.283 fix, restated as events: an arrow in vi insert mode
