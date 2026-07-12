@@ -49,6 +49,7 @@ class ReadBuiltin(Builtin):
       -N nchars     Read EXACTLY NCHARS characters (ignore delimiter and IFS)
       -p prompt     Display PROMPT on stderr before reading
       -t timeout    Time out after TIMEOUT seconds (exit code 142)
+      -u fd         Read from file descriptor FD instead of standard input
 
     Exit Status:
     Returns 0 unless EOF is reached, a timeout expires, or an error occurs."""

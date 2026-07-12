@@ -1,6 +1,7 @@
 """`$!` (last background PID) is inherited by subshell-style children.
 
-Regression for reappraisal #10 R12.A: `ShellState.adopt()` didn't copy
+Regression for reappraisal #10 R12.A: `ShellState.adopt()` (since renamed
+`clone_for_child()`, r19-P2) didn't copy
 `last_bg_pid`, so `$!` read empty inside `( … )`, `$( … )`, and the env
 builtin's child. bash inherits it (`sleep 1 & ( echo $! )` prints the pid).
 """

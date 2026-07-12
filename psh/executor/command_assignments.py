@@ -14,12 +14,14 @@ POSIX ordering contract (probe-verified against bash 5.2):
    value sees the assignments to its left: ``A=1 B=$A cmd`` gives B the
    value ``1`` (likewise pure ``x=1 y=$x``).
 3. **Prefix assignments are temporary.** Shell state and ``shell.env``
-   are restored after the command — unless it resolved to a POSIX
-   special builtin, where psh deliberately implements the POSIX
-   persistence rule (``VAR=v :`` leaves VAR set; bash only does this in
-   ``--posix`` mode). Whether persistence applies is the *dispatcher's*
-   knowledge: CommandExecutor decides whether to call :meth:`restore`,
-   and the saved-state value passes through it opaquely.
+   are restored after the command — unless, **in POSIX mode**
+   (``set -o posix``), it resolved to a POSIX special builtin, where the
+   prefix assignments persist (``VAR=v :`` leaves VAR set). psh matches
+   bash here: both persist only under ``--posix``; in default mode a
+   prefix before a special builtin is temporary like any other. Whether
+   persistence applies is the *dispatcher's* knowledge: CommandExecutor
+   decides whether to call :meth:`restore` (or :meth:`commit`), and the
+   saved-state value passes through it opaquely.
 4. **A pure assignment's status is 0 unless a command substitution ran**
    while expanding words — then it is that substitution's status
    (``x=$(false)`` → 1, but ``x=$(false) true`` → 0). The clear of

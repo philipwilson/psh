@@ -56,7 +56,10 @@ Options:
   -s               Read commands from stdin; operands become positional params
   -i               Force interactive mode (load rc, set $- 'i' flag)
   -e -u -x -v      Set shell options (errexit, nounset, xtrace, verbose)
-  -n -f -C         Set shell options (noexec, noglob, noclobber; -eux clusters)
+  -n -f -C -B      Set shell options (noexec, noglob, noclobber, braceexpand)
+  +e +x +B ...     A leading '+' turns the option OFF (bash set +x); clusters
+  -o NAME          Enable shell option NAME by name (like set -o NAME)
+  +o NAME          Disable shell option NAME by name (like set +o NAME)
   --               End of options; remaining arguments are operands
   -h, --help       Show this help message and exit
   -V, --version    Show version information and exit

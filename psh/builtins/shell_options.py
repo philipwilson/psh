@@ -15,6 +15,27 @@ _SHOPT_NAMES = frozenset(SHOPT_OPTION_NAMES)
 
 _USAGE = "shopt: usage: shopt [-pqsu] [-o] [optname ...]"
 
+# One-line help blurbs for the shopt-managed options. The `help` property
+# renders the "Available options" list by walking SHOPT_OPTION_NAMES (the
+# registry is the single source of truth for WHICH options exist), so a new
+# `_spec(..., OptionCategory.SHOPT)` shows up in help automatically; only its
+# blurb is looked up here (missing = the name alone, never a stale/omitted
+# option). `tests/unit/builtins/test_shopt.py` pins that every registry name
+# has a blurb, so the two cannot silently drift.
+_SHOPT_DESCRIPTIONS = {
+    "dotglob": "Glob patterns match files beginning with '.'",
+    "nullglob": "Patterns with no matches expand to nothing",
+    "failglob": "Patterns with no matches fail the command",
+    "extglob": "Extended pattern matching: ?()|*()|+()|@()|!()",
+    "nocaseglob": "Case-insensitive pathname expansion",
+    "nocasematch": "Case-insensitive matching in [[ ]] (==/!=/=~) and case",
+    "globstar": "'**' matches all files and directories recursively",
+    "globasciiranges": "Bracket ranges like [a-z] use ASCII/codepoint bounds",
+    "inherit_errexit": "Command substitutions inherit 'set -e'",
+    "checkhash": "Re-verify hashed command paths before executing them",
+    "expand_aliases": "Expand aliases (on by default in every mode)",
+}
+
 
 @builtin
 class ShoptBuiltin(Builtin):
@@ -174,7 +195,13 @@ class ShoptBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """shopt: shopt [-pqsu] [-o] [optname ...]
+        # The "Available options" list is DERIVED from SHOPT_OPTION_NAMES so it
+        # can never drift from the registry (the old hand-kept list documented
+        # 8 of 11). Blurbs come from _SHOPT_DESCRIPTIONS.
+        available = "\n".join(
+            f"      {name:<16}{_SHOPT_DESCRIPTIONS.get(name, '')}".rstrip()
+            for name in SHOPT_OPTION_NAMES)
+        return f"""shopt: shopt [-pqsu] [-o] [optname ...]
 
     Toggle shell optional behavior.
 
@@ -191,11 +218,4 @@ class ShoptBuiltin(Builtin):
     With optname but no flags, show the status of those options.
 
     Available options:
-      checkhash    Re-verify hashed command paths before executing them
-      dotglob      Glob patterns match files beginning with '.'
-      extglob      Extended pattern matching: ?()|*()|+()|@()|!()
-      globstar     '**' matches all files and directories recursively
-      nocaseglob   Case-insensitive pathname expansion
-      nocasematch  Case-insensitive matching in [[ ]] (==/!=/=~) and case
-      nullglob     Patterns with no matches expand to nothing
-      failglob     Patterns with no matches fail the command"""
+{available}"""

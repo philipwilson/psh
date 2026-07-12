@@ -300,12 +300,17 @@ class ExecBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """exec: exec [command [argument ...]]
+        return """exec: exec [-cl] [-a name] [command [argument ...]]
 
     Execute commands and manipulate file descriptors.
 
     If command is specified, it replaces the shell without creating a new process.
     If no command is specified, any redirections take effect in the current shell.
+
+    Options:
+      -a name   Pass NAME as argv[0] to the replacement command
+      -c        Execute the command with an empty environment
+      -l        Prepend a '-' to argv[0] (as for a login shell)
 
     Examples:
         exec echo hello world    # Replace shell with echo command

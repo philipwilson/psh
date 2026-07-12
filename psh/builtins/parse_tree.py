@@ -51,7 +51,7 @@ class ParseTreeBuiltin(Builtin):
             arg = args[i]
 
             if arg == "-h" or arg == "--help":
-                self.write_line(self.execute.__doc__ or "", shell)
+                self.write_line(self.help, shell)
                 return 0
             elif arg == "-f" or arg == "--format":
                 if i + 1 >= len(args):

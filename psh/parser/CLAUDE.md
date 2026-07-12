@@ -30,6 +30,7 @@ Statements Commands  Control   Functions  Tests
 
 | File | Parses |
 |------|--------|
+| `base.py` | `ParserSubcomponent` - shared base contract for every sub-parser (token access via `self.parser`, `error()` raising) |
 | `statements.py` | Statement lists, command lists, and-or lists (`&&`/`||`) |
 | `commands.py` | Simple commands, pipelines, arguments, subshell/brace groups |
 | `control_structures.py` | `if`, `while`, `for`, `case`, `select` |
@@ -45,6 +46,7 @@ Statements Commands  Control   Functions  Tests
 |------|---------|
 | `context_factory.py` | Factory functions for creating configured contexts |
 | `word_builder.py` | Build Word AST nodes from tokens |
+| `nested_parse.py` | `parse_nested_command` - syntax-validation parse of `$(...)`/`<(...)`/`>(...)` bodies at outer-parse time (no alias expansion) |
 | `utils.py` | Parser utilities |
 
 ### Parser Combinators (`combinators/`) -- Educational Only
@@ -140,8 +142,9 @@ All 8 sub-parsers extend `ParserSubcomponent`
 ### 3. ParserContext State Management
 
 `ParserContext` holds the parser's shared state — the token stream and
-position, configuration, error collection, and source text for error
-messages. (It deliberately does NOT track grammar context for parse
+position, configuration, and source text for error messages (there is no
+error-collection mode: `consume()` raises on the first unexpected token —
+see below). (It deliberately does NOT track grammar context for parse
 decisions: the recursive call structure *is* the context in a
 recursive-descent parser. The one apparent exception,
 `open_constructs`, is a write-only trail of which constructs are open
@@ -152,7 +155,12 @@ prompts. No parse method ever reads it. `nesting_depth` is likewise not
 grammar context but a resource limit: a counter of compound-command
 nesting maintained by `CommandParser._parse_compound_component`, checked
 only against `MAX_NESTING_DEPTH` (1000) so runaway nesting raises a
-clean ParseError instead of a Python RecursionError.)
+clean ParseError instead of a Python RecursionError. That method is the
+single compound-command chokepoint — reached from
+`parse_pipeline_component` AND from
+`FunctionParser.parse_compound_command` (function bodies) — so a chain of
+nested function definitions is guarded exactly like a chain of bare brace
+groups.)
 
 ```python
 class ParserContext:
@@ -180,15 +188,17 @@ analysis (`--validate` etc.) both print `render()`.
 
 ### 4. TokenGroups for Matching
 
-Predefined token sets for common checks:
+`TokenGroups` (`recursive_descent/helpers.py#TokenGroups`) holds the
+predefined `frozenset`s the parser matches against, so membership checks
+name a set instead of listing token types inline:
 
-```python
-class TokenGroups:
-    WORD_LIKE = frozenset({WORD, STRING, VARIABLE, ...})
-    REDIRECTS = frozenset({REDIRECT_IN, REDIRECT_OUT, ...})
-    STATEMENT_SEPARATORS = frozenset({SEMICOLON, NEWLINE, ...})
-    CASE_PATTERN_KEYWORDS = frozenset({IF, THEN, ELSE, ...})
-```
+- `WORD_LIKE` — tokens that can appear as command arguments
+- `REDIRECTS` — the redirect operators
+- `STATEMENT_SEPARATORS` — `SEMICOLON`, `NEWLINE`
+- `CASE_TERMINATORS` — `;;`, `;&`, `;;&`
+- `CASE_PATTERN_KEYWORDS` — reserved words still valid as a case pattern
+
+See the class for the exact members (it is the single source of truth).
 
 ## Parsing Flow
 
@@ -202,15 +212,11 @@ flow through the same `and_or_list`/`pipeline` machinery as a simple command,
 and the top level builds no `Pipeline`/`AndOrList` by hand. (This is enforced
 by `tests/unit/parser/test_top_level_control_structure_grammar.py`.)
 
-```python
-def parse(self) -> Program:
-    program = Program()
-    while not self.at_end():
-        command_list = self.statements.parse_command_list()
-        program.statements.extend(command_list.statements)
-        self.skip_separators()
-    return program
-```
+`parse()` (`recursive_descent/parser.py#Parser.parse`) builds an empty
+`Program`, then loops while not at end: each pass runs
+`statements.parse_command_list()` and appends the produced statements,
+stamping any statement `parse_command_list` left without a source line
+(`$LINENO` belt-and-suspenders). It does not reshape the result.
 
 Every parse — including empty input — returns a single canonical `Program`
 whose `statements` are the ordinary statements the grammar produced
@@ -293,17 +299,36 @@ not on a keyword-set membership test.
 
 ### Compound Command Handling
 
-Compound commands can appear in pipelines:
+Compound commands can appear in pipelines, at statement level, and as
+function bodies. All three reach the SAME dispatch chokepoint,
+`CommandParser._parse_compound_component`, which increments `nesting_depth`
+(the MAX_NESTING_DEPTH guard) and dispatches to the individual
+`parse_*_statement` / `parse_brace_group` / `parse_subshell_group` parsers:
+
 ```python
 def parse_pipeline_component(self) -> Command:
-    if self.parser.match(TokenType.WHILE):
-        return self.parse_while_command()
-    elif self.parser.match(TokenType.IF):
-        return self.parse_if_command()
-    # ... other compound commands
-    else:
-        return self.parse_command()  # Simple command
+    # (after peeling a leading `time`) try a compound, else a simple command
+    compound = self._parse_compound_component()   # depth guard lives here
+    return compound if compound is not None else self.parse_command()
+
+def _parse_compound_component(self) -> Optional[Command]:
+    if not self.parser.match(TokenType.WHILE, TokenType.IF, ...,
+                             TokenType.LPAREN, TokenType.LBRACE):
+        return None                               # simple command
+    ctx.nesting_depth += 1
+    try:
+        if ctx.nesting_depth > MAX_NESTING_DEPTH:
+            raise self.parser.error("commands nested too deeply ...")
+        # dispatch: parse_while_statement / parse_if_statement / ...
+        # parse_subshell_group / parse_brace_group
+    finally:
+        ctx.nesting_depth -= 1
 ```
+
+`FunctionParser.parse_compound_command` (function bodies) calls the same
+`_parse_compound_component`, so a chain of nested function definitions is
+depth-guarded exactly like nested brace groups (no separate dispatch and no
+`parse_control_structure` ladder — both were removed).
 
 ### Heredoc Collection
 

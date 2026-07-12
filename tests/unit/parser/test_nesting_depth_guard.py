@@ -180,3 +180,84 @@ def test_standalone_normal_input_unaffected():
     r = _standalone_parse('echo hi; echo bye')
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == 'NO_ERROR'
+
+
+# ---------------------------------------------------------------------------
+# Function bodies count toward the guard (reappraisal #19 H12)
+#
+# A function body is a compound command, so it must accumulate nesting depth
+# exactly like a bare brace group. Before the H12 fix `FunctionParser.
+# parse_compound_command` hand-rolled its own brace/control dispatch and never
+# touched `nesting_depth`, so a chain of nested function DEFINITIONS bypassed
+# the guard entirely: 1,200 nested function bodies parsed unboundedly where
+# 1,200 nested brace groups already tripped MAX_NESTING_DEPTH. Function bodies
+# now route through the same `CommandParser._parse_compound_component`
+# chokepoint, so the guard fires for them too.
+#
+# `_nested_funcs(n)` is `f1() { f2() { ... echo OK ; } ... ; }` — n nested
+# brace bodies, so parse depth n (mirrors `_braces(n)`).
+# ---------------------------------------------------------------------------
+
+def _nested_funcs(n):
+    return "".join(f"f{k}() {{ " for k in range(1, n + 1)) + "echo OK" + " ; }" * n
+
+
+def _calling_nested_funcs(n):
+    """n nested definitions where each level calls the one it defines, so the
+    innermost `echo OK` actually runs when the outermost function is invoked."""
+    opens = "".join(f"f{k}() {{ " for k in range(1, n + 1))
+    closes = " ; }" + "".join(f" ; f{k + 1} ; }}" for k in range(n - 1, 0, -1))
+    return opens + "echo OK" + closes + " ; f1"
+
+
+def test_guard_counts_function_bodies(monkeypatch):
+    """A chain of N nested function definitions is at depth N (H12). On the
+    pre-fix tree these bypassed the guard entirely, so this raises RED there."""
+    monkeypatch.setattr(commands_mod, 'MAX_NESTING_DEPTH', 5)
+    _parse(_nested_funcs(5))                  # exactly at the limit: fine
+    _parse("f() { echo a; }; " * 10)          # 10 sequential defs: depth stays 1
+    with pytest.raises(ParseError, match="commands nested too deeply"):
+        _parse(_nested_funcs(6))
+
+
+def test_guard_counts_keyword_form_function_bodies(monkeypatch):
+    """The `function name { ... }` form routes through the same chokepoint."""
+    monkeypatch.setattr(commands_mod, 'MAX_NESTING_DEPTH', 4)
+    body = "function f4 { echo OK ; }"
+    for name in ("f3", "f2", "f1"):
+        body = f"function {name} {{ {body} ; }}"
+    _parse(body)                              # depth 4: fine
+    with pytest.raises(ParseError, match="commands nested too deeply"):
+        _parse(f"function f0 {{ {body} ; }}")  # depth 5: trips
+
+
+def test_64_deep_func_bodies_parse_and_execute():
+    """Deep-but-legal nesting (64 function bodies) must still parse AND run."""
+    r = _psh_c('-c', _calling_nested_funcs(64))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == 'OK\n'
+    assert 'Traceback' not in r.stderr
+
+
+def test_1200_deep_func_bodies_clean_parse_error():
+    """~1,200 nested function bodies now raise the standard MAX_NESTING_DEPTH
+    ParseError — NOT a RecursionError, NOT an unbounded parse (H12)."""
+    r = _psh_c('-c', _nested_funcs(1200))
+    assert r.returncode == 2  # syntax-error status, like any ParseError
+    assert 'commands nested too deeply (maximum depth 1000)' in r.stderr
+    assert 'Traceback' not in r.stderr
+    assert 'RecursionError' not in r.stderr
+
+
+def test_1000_deep_func_bodies_parse():
+    """The boundary: exactly MAX_NESTING_DEPTH nested function bodies parse."""
+    r = _psh_c('-c', _nested_funcs(1000))
+    assert r.returncode == 0, r.stderr
+    assert 'commands nested too deeply' not in r.stderr
+
+
+def test_1001_deep_func_bodies_clean_parse_error():
+    r = _psh_c('-c', _nested_funcs(1001))
+    assert r.returncode == 2
+    assert 'commands nested too deeply' in r.stderr
+    assert 'Traceback' not in r.stderr

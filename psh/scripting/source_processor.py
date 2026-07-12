@@ -545,7 +545,7 @@ class SourceProcessor(ScriptComponent):
         except FunctionReturn as e:
             # `return` reaching a NON-nested top level only happens in a
             # subshell-style child that inherited a function/sourced-file
-            # context (ShellState.adopt copies function_stack and
+            # context (ShellState.clone_for_child copies function_stack and
             # source_depth): the child's input stops with that status,
             # like end-of-sourced-file (bash: x=$(return 3; echo x)
             # leaves x empty, $? = 3). Nested (eval, trap action) it

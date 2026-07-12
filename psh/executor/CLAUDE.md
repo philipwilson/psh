@@ -21,7 +21,7 @@ Executor  Executor   Executor   Executor  Executor
 |------|---------|
 | `core.py` | `ExecutorVisitor` - main visitor coordinating all execution |
 | `command.py` | `CommandExecutor` - simple command dispatch (expansion, strategy selection, redirections) |
-| `command_assignments.py` | `CommandAssignments` - the `NAME=value` sub-domain (extract/apply_pure/apply_prefix/restore); its module docstring states the POSIX assignment-ordering contract |
+| `command_assignments.py` | `CommandAssignments` - the `NAME=value` sub-domain (extract/apply_pure/apply_prefix/restore/commit); its module docstring states the POSIX assignment-ordering-and-persistence contract (persistence only in POSIX mode) |
 | `pipeline.py` | `PipelineExecutor` - pipeline and process group management |
 | `control_flow.py` | `ControlFlowExecutor` - loops, conditionals, case |
 | `function.py` | `FunctionOperationExecutor` - function calls and scope |
@@ -56,18 +56,24 @@ class ExecutorVisitor:
 
 ### 2. Strategy Pattern for Commands
 
-Commands are dispatched through execution strategies in priority order:
+Commands are dispatched through execution strategies whose order is
+**mode-aware**, decided once in `command.py#CommandExecutor._resolve_command`
+from `set -o posix`:
 
-```python
-# In command.py — POSIX lookup order:
-# special builtins > functions > builtins > external
-strategies = [
-    SpecialBuiltinExecutionStrategy(),  # : break continue eval exec exit export ...
-    FunctionExecutionStrategy(),         # User-defined functions
-    BuiltinExecutionStrategy(),          # cd echo pwd test [ ...
-    ExternalExecutionStrategy()          # External programs
-]
-```
+- **Default (bash) mode:** functions > (special | regular) builtins >
+  external. Functions shadow even POSIX special builtins. A `NAME=value`
+  prefix before a special builtin is TEMPORARY, like any builtin.
+- **POSIX mode:** special builtins > functions > regular builtins >
+  external. Special builtins take precedence over functions, and a prefix
+  before one PERSISTS.
+
+The strategy instances live on `CommandExecutor.strategies` in
+default-mode order (`FunctionExecutionStrategy`,
+`SpecialBuiltinExecutionStrategy`, `BuiltinExecutionStrategy`,
+`ExternalExecutionStrategy`); `_resolve_command` moves special builtins to
+the front when `posix` is set and records the persistence policy in the
+returned `CommandResolution.prefix_assignments_persist` (True only for a
+special builtin resolved under `posix`).
 
 Aliases are NOT a runtime strategy. They are expanded as a token-stream
 transform at the lex→parse boundary (`AliasManager.expand_aliases`, wired
@@ -119,8 +125,9 @@ CommandExecutor.execute()
    assignments apply, per POSIX; see command_assignments.py docstring)
 3. Apply prefix assignments (CommandAssignments.apply_prefix)
 4. Try each execution strategy in order
-5. Restore assignments (CommandAssignments.restore) — unless the command
-   was a POSIX special builtin, where they persist
+5. Restore assignments (CommandAssignments.restore) — unless, in POSIX
+   mode, the command was a POSIX special builtin, where they persist
+   instead (CommandAssignments.commit)
     ↓
 BuiltinExecutionStrategy.execute()  -- or --  ExternalExecutionStrategy.execute()
     ↓                                              ↓
@@ -353,7 +360,7 @@ python -m psh --debug-expansion # Variable and command substitution
 ### With Shell State (`psh/core/state.py`)
 
 - Variables: `shell.state.variables`
-- Exit code: `shell.state.last_exit_status`
+- Exit code: `shell.state.last_exit_code`
 - Options: `shell.state.options` (errexit, pipefail, etc.)
 
 ### With Job Control (`psh/executor/job_control.py`)

@@ -1,12 +1,34 @@
 """Debug control commands for convenient AST debugging."""
-from typing import TYPE_CHECKING, List
 
+from typing import TYPE_CHECKING, Dict, List
+
+from ..core.option_registry import DEBUG_OPTION_NAMES
 from ..utils import get_signal_registry
 from .base import Builtin
 from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
+
+
+def _derive_debug_option_map() -> Dict[str, str]:
+    """``{short_name: registry_name}`` for the ``debug-*`` toggles the ``debug``
+    builtin exposes (``ast``/``tokens``/``scopes``/``expansion``/``exec``).
+
+    Membership is DERIVED from the option registry's DEBUG category rather than
+    pasted three times — so a new ``_spec(..., OptionCategory.DEBUG)`` appears
+    here (and in ``help``) automatically, and a name the registry does not have
+    (the former phantom ``parser`` row) cannot be advertised. The two internal
+    sub-variants ``debug-expansion-detail`` / ``debug-exec-fork`` are filtered
+    out by the "no further hyphen in the short name" rule, keeping the exposed
+    set behaviorally identical to before.
+    """
+    result: Dict[str, str] = {}
+    for name in DEBUG_OPTION_NAMES:
+        short = name[len('debug-'):] if name.startswith('debug-') else name
+        if '-' not in short:
+            result[short] = name
+    return result
 
 
 @builtin
@@ -108,13 +130,28 @@ class DebugBuiltin(Builtin):
 
     name = "debug"
 
+    # The one option map (short name -> registry option key), derived from the
+    # option registry's DEBUG category. Used by every execute() branch AND by
+    # help, so parsing and documentation cannot drift.
+    _OPTION_MAP = _derive_debug_option_map()
+    _OPTION_DESCRIPTIONS = {
+        'ast': 'AST debugging',
+        'tokens': 'Token debugging',
+        'scopes': 'Scope debugging',
+        'expansion': 'Expansion debugging',
+        'exec': 'Execution debugging',
+    }
+
     @property
     def synopsis(self) -> str:
         return "debug [OPTION] [on|off]"
 
     @property
     def help(self) -> str:
-        return """debug: debug [OPTION] [on|off]
+        options = "\n".join(
+            f"      {short:<12} {self._OPTION_DESCRIPTIONS.get(short, '')}".rstrip()
+            for short in self._OPTION_MAP)
+        return f"""debug: debug [OPTION] [on|off]
     Control various debug options.
 
     With no arguments, shows the current state of all debug options.
@@ -122,12 +159,7 @@ class DebugBuiltin(Builtin):
     With an OPTION and on/off, sets that option explicitly.
 
     Options:
-      ast          AST debugging
-      tokens       Token debugging
-      scopes       Scope debugging
-      expansion    Expansion debugging
-      exec         Execution debugging
-      parser       Parser tracing
+{options}
 
     Exit Status:
     Returns success unless an invalid option is given."""
@@ -137,15 +169,7 @@ class DebugBuiltin(Builtin):
         if len(args) == 1:
             # Show all debug options
             self.write_line("Debug Options:", shell)
-            debug_options = {
-                'ast': 'debug-ast',
-                'tokens': 'debug-tokens',
-                'scopes': 'debug-scopes',
-                'expansion': 'debug-expansion',
-                'exec': 'debug-exec'
-            }
-
-            for name, option_key in debug_options.items():
+            for name, option_key in self._OPTION_MAP.items():
                 status = "on" if shell.state.options.get(option_key, False) else "off"
                 self.write_line(f"  {name:<12} {status}", shell)
 
@@ -159,20 +183,14 @@ class DebugBuiltin(Builtin):
         elif len(args) == 2:
             # Toggle option
             option = args[1].lower()
-            option_map = {
-                'ast': 'debug-ast',
-                'tokens': 'debug-tokens',
-                'scopes': 'debug-scopes',
-                'expansion': 'debug-expansion',
-                'exec': 'debug-exec'
-            }
 
-            if option not in option_map:
+            if option not in self._OPTION_MAP:
                 self.error(f"unknown debug option: {option}", shell)
-                self.error("Valid options: ast, tokens, scopes, expansion, exec", shell)
+                self.error("Valid options: "
+                           + ", ".join(self._OPTION_MAP), shell)
                 return 1
 
-            option_key = option_map[option]
+            option_key = self._OPTION_MAP[option]
             current = shell.state.options.get(option_key, False)
             shell.state.options[option_key] = not current
             status = "enabled" if not current else "disabled"
@@ -189,20 +207,12 @@ class DebugBuiltin(Builtin):
             option = args[1].lower()
             action = args[2].lower()
 
-            option_map = {
-                'ast': 'debug-ast',
-                'tokens': 'debug-tokens',
-                'scopes': 'debug-scopes',
-                'expansion': 'debug-expansion',
-                'exec': 'debug-exec'
-            }
-
-            if option not in option_map:
+            if option not in self._OPTION_MAP:
                 self.error(f"unknown debug option: {option}", shell)
                 return 1
 
             if action in ('on', 'enable', 'true', '1'):
-                shell.state.options[option_map[option]] = True
+                shell.state.options[self._OPTION_MAP[option]] = True
                 self.write_line(f"Debug {option} enabled", shell)
 
                 # Special handling for debug-scopes
@@ -210,7 +220,7 @@ class DebugBuiltin(Builtin):
                     shell.state.scope_manager.enable_debug(True)
 
             elif action in ('off', 'disable', 'false', '0'):
-                shell.state.options[option_map[option]] = False
+                shell.state.options[self._OPTION_MAP[option]] = False
                 self.write_line(f"Debug {option} disabled", shell)
 
                 # Special handling for debug-scopes
@@ -263,7 +273,7 @@ class SignalsBuiltin(Builtin):
             if arg in ('-v', '--verbose'):
                 verbose = True
             elif arg in ('-h', '--help'):
-                self.write_line(self.__doc__ or "", shell)
+                self.write_line(self.help, shell)
                 return 0
             else:
                 self.error(f"unknown option: {arg}", shell)

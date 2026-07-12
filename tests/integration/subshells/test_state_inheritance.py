@@ -1,7 +1,7 @@
 """Integration tests for subshell-style state inheritance (reappraisal #15 E1).
 
 End-to-end (subprocess) probes for what a forked child — `( )`, $( ),
-<( ) — inherits through ShellState.adopt(): $0, FUNCNAME, traps
+<( ) — inherits through ShellState.clone_for_child(): $0, FUNCNAME, traps
 (listable-but-inert, with the OS-disposition consequences only a real
 fork exhibits), source context, the getopts cursor, SECONDS and the
 directory stack. Every expectation here is bash-5.2-verified

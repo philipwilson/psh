@@ -487,8 +487,24 @@ class CommandParser(ParserSubcomponent):
         # Fall back to simple command
         return self.parse_command()
 
-    def _parse_compound_component(self) -> Optional[Command]:
+    def _parse_compound_component(self,
+                                  in_function_body: bool = False) -> Optional[Command]:
         """Dispatch to the compound-command parsers under the depth guard.
+
+        The single chokepoint for compound-command dispatch: reached from
+        `parse_pipeline_component` (compounds in pipelines / at statement
+        level) AND from `FunctionParser.parse_compound_command` (function
+        bodies), so `nesting_depth` accumulates for both — a chain of nested
+        function bodies raises the MAX_NESTING_DEPTH ParseError just like a
+        chain of bare brace groups (H12).
+
+        ``in_function_body`` suppresses `_reject_escaped_dollar_paren`: that
+        check reads the PREVIOUS token looking for the `echo \\$(...)`
+        argument shape, but a function definition puts the function NAME
+        there — `function f\\$ (echo hi)` is a name ending in an escaped
+        dollar followed by a legal subshell body (bash parses it; the
+        definition is only rejected at RUN time as an invalid identifier),
+        not an escaped command substitution.
 
         Returns None when the current token starts a simple command instead.
         """
@@ -525,7 +541,8 @@ class CommandParser(ParserSubcomponent):
             elif self.parser.match(TokenType.DOUBLE_LBRACKET):
                 return self.parser.tests.parse_enhanced_test_statement()
             elif self.parser.match(TokenType.LPAREN):
-                self._reject_escaped_dollar_paren()
+                if not in_function_body:
+                    self._reject_escaped_dollar_paren()
                 return self.parse_subshell_group()
             else:  # TokenType.LBRACE (guaranteed by the match above)
                 return self.parse_brace_group()
