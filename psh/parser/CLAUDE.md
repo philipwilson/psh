@@ -140,8 +140,9 @@ All 8 sub-parsers extend `ParserSubcomponent`
 ### 3. ParserContext State Management
 
 `ParserContext` holds the parser's shared state — the token stream and
-position, configuration, error collection, and source text for error
-messages. (It deliberately does NOT track grammar context for parse
+position, configuration, and source text for error messages (there is no
+error-collection mode: `consume()` raises on the first unexpected token —
+see below). (It deliberately does NOT track grammar context for parse
 decisions: the recursive call structure *is* the context in a
 recursive-descent parser. The one apparent exception,
 `open_constructs`, is a write-only trail of which constructs are open
@@ -152,7 +153,12 @@ prompts. No parse method ever reads it. `nesting_depth` is likewise not
 grammar context but a resource limit: a counter of compound-command
 nesting maintained by `CommandParser._parse_compound_component`, checked
 only against `MAX_NESTING_DEPTH` (1000) so runaway nesting raises a
-clean ParseError instead of a Python RecursionError.)
+clean ParseError instead of a Python RecursionError. That method is the
+single compound-command chokepoint — reached from
+`parse_pipeline_component` AND from
+`FunctionParser.parse_compound_command` (function bodies) — so a chain of
+nested function definitions is guarded exactly like a chain of bare brace
+groups.)
 
 ```python
 class ParserContext:
@@ -293,17 +299,36 @@ not on a keyword-set membership test.
 
 ### Compound Command Handling
 
-Compound commands can appear in pipelines:
+Compound commands can appear in pipelines, at statement level, and as
+function bodies. All three reach the SAME dispatch chokepoint,
+`CommandParser._parse_compound_component`, which increments `nesting_depth`
+(the MAX_NESTING_DEPTH guard) and dispatches to the individual
+`parse_*_statement` / `parse_brace_group` / `parse_subshell_group` parsers:
+
 ```python
 def parse_pipeline_component(self) -> Command:
-    if self.parser.match(TokenType.WHILE):
-        return self.parse_while_command()
-    elif self.parser.match(TokenType.IF):
-        return self.parse_if_command()
-    # ... other compound commands
-    else:
-        return self.parse_command()  # Simple command
+    # (after peeling a leading `time`) try a compound, else a simple command
+    compound = self._parse_compound_component()   # depth guard lives here
+    return compound if compound is not None else self.parse_command()
+
+def _parse_compound_component(self) -> Optional[Command]:
+    if not self.parser.match(TokenType.WHILE, TokenType.IF, ...,
+                             TokenType.LPAREN, TokenType.LBRACE):
+        return None                               # simple command
+    ctx.nesting_depth += 1
+    try:
+        if ctx.nesting_depth > MAX_NESTING_DEPTH:
+            raise self.parser.error("commands nested too deeply ...")
+        # dispatch: parse_while_statement / parse_if_statement / ...
+        # parse_subshell_group / parse_brace_group
+    finally:
+        ctx.nesting_depth -= 1
 ```
+
+`FunctionParser.parse_compound_command` (function bodies) calls the same
+`_parse_compound_component`, so a chain of nested function definitions is
+depth-guarded exactly like nested brace groups (no separate dispatch and no
+`parse_control_structure` ladder — both were removed).
 
 ### Heredoc Collection
 

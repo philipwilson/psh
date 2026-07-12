@@ -4,9 +4,9 @@ Function parsing for PSH shell.
 This module handles parsing of function definitions.
 """
 
-from typing import Optional, cast
+from typing import List, Optional, Tuple, cast
 
-from ....ast_nodes import FunctionDef, Statement, StatementList
+from ....ast_nodes import BraceGroup, FunctionDef, Redirect, Statement, StatementList
 from ....core.assignment_utils import ASSIGNMENT_WORD_RE
 from ....lexer.token_types import TokenType
 from .base import ParserSubcomponent
@@ -109,49 +109,60 @@ class FunctionParser(ParserSubcomponent):
             self.parser.expect(TokenType.RPAREN)
 
         self.parser.skip_newlines()
-        body = self.parse_compound_command()
+        body, body_redirects = self.parse_compound_command()
         if keyword_form:
             self.parser.ctx.pop_construct()
 
         # Redirections on the definition (f() { ...; } > file) belong to
-        # the function and are applied at each call (bash).
-        redirects = self.parser.redirections.parse_redirects()
+        # the function and are applied at each call (bash). A brace body's
+        # trailing redirects were consumed by the shared compound-command
+        # parser and handed back as body_redirects, so they land on the
+        # FunctionDef exactly as before; a subshell/control-structure body
+        # keeps its own on its node, leaving nothing here.
+        redirects = body_redirects + self.parser.redirections.parse_redirects()
 
         return FunctionDef(name, body, redirects=redirects)
 
-    def parse_compound_command(self) -> StatementList:
-        """Parse a compound command { ... }"""
-        if self.parser.match(TokenType.LBRACE):
-            # Brace group
-            self.parser.advance()
-            self.parser.ctx.push_construct('brace')
-            self.parser.skip_newlines()
+    def parse_compound_command(self) -> Tuple[StatementList, List[Redirect]]:
+        """Parse a function body through the shared compound-command chokepoint.
 
-            # bash rejects an empty function body `f() { }` (syntax error),
-            # exactly as for a standalone brace group `{ }`.
-            statements = self.parser.statements.parse_required_command_list_until(TokenType.RBRACE)
+        Function bodies dispatch through the SAME
+        ``CommandParser._parse_compound_component`` as pipeline components, so
+        the ``MAX_NESTING_DEPTH`` guard accumulates inside function bodies too:
+        a chain of 1,000 nested function definitions now raises a clean
+        ParseError instead of a Python RecursionError (H12).
 
-            self.parser.expect(TokenType.RBRACE)
-            self.parser.ctx.pop_construct()
-            return statements
-        elif self.parser.match(TokenType.LPAREN):
-            # Subshell body: keep the SubshellGroup node so each call forks
-            # (f() (cd /; ...) must not change the caller's state — bash).
-            subshell = self.parser.commands.parse_subshell_group()
-            cmd_list = StatementList()
-            # A subshell group is a CompoundCommand AND a Statement at runtime;
-            # mypy can't see the intersection from the parse method's type.
-            cmd_list.statements.append(cast(Statement, subshell))
-            return cmd_list
-        elif self.parser.match(TokenType.IF, TokenType.WHILE, TokenType.UNTIL, TokenType.FOR, TokenType.CASE,
-                              TokenType.SELECT, TokenType.DOUBLE_LPAREN, TokenType.DOUBLE_LBRACKET):
-            # Control structure
-            stmt = self.parser.control_structures.parse_control_structure()
-            # Wrap in command list (a control structure is both a
-            # CompoundCommand and a Statement; mypy can't see the intersection).
-            cmd_list = StatementList()
-            cmd_list.statements.append(cast(Statement, stmt))
-            return cmd_list
-        else:
-            # Missing function body
+        Returns ``(body, redirects)`` in the shapes callers already expect:
+
+        - ``{ ...; }`` — unwrapped to its bare ``StatementList`` (the historical
+          function-body shape, NOT a wrapping ``BraceGroup``), and its trailing
+          redirects (``f() { ...; } > log``) are handed back so they attach to
+          the ``FunctionDef`` and apply at each call (bash).
+        - ``( ...; )`` — kept as a ``SubshellGroup`` statement so each call forks
+          (``f() (cd /; ...)`` must not change the caller's state — bash).
+        - a control structure — kept as its own ``CompoundCommand`` statement.
+
+          A subshell/control body owns its own trailing redirects on its node
+          (matching the pre-existing AST), so nothing is handed back here.
+        """
+        # in_function_body=True suppresses the `\$(` argument-shape check:
+        # here the token before a `(` body is the function NAME, and a name
+        # ending in an escaped dollar (`function f\$ (echo hi)`) is legal at
+        # parse time (bash) — see _parse_compound_component's docstring.
+        component = self.parser.commands._parse_compound_component(
+            in_function_body=True)
+        if component is None:
+            # Missing function body ({, (, or a compound keyword required).
             raise self.parser.error("Expected '{' for function body")
+
+        if isinstance(component, BraceGroup):
+            # bash rejects an empty function body `f() { }` — parse_brace_group
+            # raised that already. Unwrap to the bare statement list; the
+            # definition owns the brace's trailing redirects.
+            return component.statements, component.redirects
+
+        # A subshell group / control structure is both a CompoundCommand and a
+        # Statement at runtime; mypy can't see the intersection here.
+        cmd_list = StatementList()
+        cmd_list.statements.append(cast(Statement, component))
+        return cmd_list, []
