@@ -8,10 +8,16 @@ harness wants the defect surfaced loudly so it can be told apart from an
 ordinary nonzero exit.
 
 ``report_internal_defect`` is the one place that decides between those two
-behaviors based on the ``strict-errors`` shell option. The four structurally
-identical guards (command dispatch, builtin execution, function body,
-buffered-statement source guard) all delegate here so the policy lives in a
-single source of truth.
+behaviors based on the ``strict-errors`` shell option. Every structurally
+identical last-resort guard delegates here so the policy lives in a single
+source of truth — the current delegates are command dispatch
+(``executor/command.py``), builtin execution (``executor/strategies.py``),
+control-flow / compound execution (``executor/control_flow.py``), the function
+body (``executor/function.py``), the buffered-statement source guard
+(``scripting/source_processor.py``), the analysis-visitor modes
+(``scripting/visitor_modes.py``), and trap-action bodies
+(``core/trap_manager.py``). (Grep for ``report_internal_defect(`` rather than
+trusting a hard count here — new guards are expected to route through it.)
 
 The expected-error taxonomy
 ---------------------------
