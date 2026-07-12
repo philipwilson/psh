@@ -32,12 +32,20 @@ def _parse_for_analysis(shell: 'Shell', content: str,
     analysis reported false syntax errors on valid scripts that execute fine.
     ``drop_dangling_at_eof`` mirrors the execution path's stream-vs-string rule
     for a trailing backslash at true EOF.
+
+    One deliberate exception: ``--format`` parses with ``expand_aliases=False``.
+    The advisory modes analyze what would EXECUTE, so they see through aliases;
+    but ``--format`` is a SOURCE-TO-SOURCE tool — reprinting ``zz`` as its alias
+    body would rewrite the user's script, not format it (integrator ruling,
+    reappraisal #19 T6).
     """
     from .input_preprocessing import process_line_continuations
     from .lex_parse import lex_and_parse
     content = process_line_continuations(
         content, drop_dangling_at_eof=drop_dangling_at_eof)
-    return lex_and_parse(content, shell, lexer_options=shell.state.options)
+    return lex_and_parse(content, shell,
+                         expand_aliases=not shell.format_only,
+                         lexer_options=shell.state.options)
 
 
 def _report_syntax_error(location: str, exc: Exception) -> int:

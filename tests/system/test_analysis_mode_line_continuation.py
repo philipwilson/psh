@@ -29,10 +29,11 @@ CONTINUATION_SCRIPTS = {
 
 # Since reappraisal #19 T6, the analysis path honours --parser (it used to
 # silently analyse with the recursive-descent parser). These scripts hit a
-# DOCUMENTED educational-scope gap of the combinator parser that is unrelated to
-# continuation joining, so they are exercised under `rd` only. `[[ ... && ... ]]`
-# with a `&&` inside the conditional is on the combinator's known-gap list (see
-# psh/parser/CLAUDE.md).
+# PINNED educational-scope gap of the combinator parser that is unrelated to
+# continuation joining, so they are exercised under `rd` only. `&&` inside
+# `[[ ... ]]` is a pinned combinator rejection — see
+# tests/integration/parser/test_combinator_parity_regressions.py
+# (TestEnhancedTestCompoundRejected::test_and_compound_rejected).
 COMBINATOR_GAPS = {'inside_dbracket'}
 
 
@@ -47,8 +48,11 @@ def _run(argv, script, tmp_path, name):
 @pytest.mark.parametrize("parser", ['rd', 'pc'])
 def test_validate_accepts_continuations(key, parser, tmp_path):
     if parser == 'pc' and key in COMBINATOR_GAPS:
-        pytest.skip(f"{key}: documented combinator-parser gap, not a "
-                    "continuation-joining failure")
+        pytest.skip(
+            f"{key}: pinned combinator-parser gap "
+            "(test_combinator_parity_regressions.py::"
+            "TestEnhancedTestCompoundRejected::test_and_compound_rejected), "
+            "not a continuation-joining failure")
     r = _run(['--parser', parser, '--validate'],
              CONTINUATION_SCRIPTS[key], tmp_path, f'{key}.sh')
     assert r.returncode == 0, (key, parser, r.stderr)

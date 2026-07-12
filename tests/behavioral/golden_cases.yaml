@@ -9548,12 +9548,16 @@
 - name: unclosed_double_quote_reports_syntax_error
   # An unterminated quote surviving line-gathering routes through the ONE
   # canonical renderer (not the internal-defect guard): `syntax error:
-  # Unclosed ...`, exit 2. Wording is psh-specific (bash: "unexpected EOF").
+  # Unclosed ...`, exit 2. The stderr substring is psh's wording (bash says
+  # "unexpected EOF while looking for matching"), but stdout and rc match
+  # bash exactly — and the compare-bash harness compares stdout+rc only, so
+  # this earns a real bash comparison rather than a psh_only skip.
   command: 'echo "abc'
   stdout: ""
   stderr: "syntax error: Unclosed"
   exit_code: 2
-  psh_only: true
+
+# =============================================================================
 # T5 (io_redirect audit): process-substitution node-carry (H1), fd-behavior
 # trio, child-redirect error shape. See docs/reviews reappraisal #19.
 # =============================================================================

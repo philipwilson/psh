@@ -78,36 +78,55 @@ def test_delta_b_lexer_options_reach_nested_substitution():
         _parse_for_analysis(off, src)
 
 
-# --- Delta C: analysis consults the alias table at the seam (like execution) ---
+# --- Delta C: the ADVISORY modes consult the alias table at the seam (like
+# --- execution) — but --format, a source-to-source tool, does NOT (integrator
+# --- ruling #2, reappraisal #19 T6).
 
-def test_delta_c_analysis_expands_aliases():
+def _first_simple_command(node):
     import dataclasses
 
     from psh.ast_nodes import SimpleCommand
+    if isinstance(node, SimpleCommand):
+        return node
+    if dataclasses.is_dataclass(node):
+        for f in dataclasses.fields(node):
+            r = _first_simple_command(getattr(node, f.name, None))
+            if r:
+                return r
+    if isinstance(node, (list, tuple)):
+        for item in node:
+            r = _first_simple_command(item)
+            if r:
+                return r
+    return None
 
+
+def test_delta_c_analysis_expands_aliases():
+    # Advisory analysis (--validate/--lint/...; any mode but --format) sees
+    # what would EXECUTE: the alias expands at the lex→parse seam.
     shell = Shell(norc=True)
+    shell.lint_only = True
     shell.alias_manager.define_alias('ll', 'ls -l')
-    ast = _parse_for_analysis(shell, 'll')
-
-    def first_simple_command(node):
-        if isinstance(node, SimpleCommand):
-            return node
-        if dataclasses.is_dataclass(node):
-            for f in dataclasses.fields(node):
-                r = first_simple_command(getattr(node, f.name, None))
-                if r:
-                    return r
-        if isinstance(node, (list, tuple)):
-            for item in node:
-                r = first_simple_command(item)
-                if r:
-                    return r
-        return None
-
-    cmd = first_simple_command(ast)
+    cmd = _first_simple_command(_parse_for_analysis(shell, 'll'))
     assert cmd is not None
     # 'll' expanded to 'ls -l' — before the fix this stayed ['ll'].
     assert cmd.args == ['ls', '-l'], cmd.args
+
+
+def test_delta_c_format_preserves_alias_word(capsys):
+    # --format reprints the USER'S source word, not the alias body: formatting
+    # must not rewrite the script. Red on the pre-ruling tip (which inlined
+    # `printf UNIQUE_XYZ` for `zz`).
+    shell = Shell(norc=True)
+    shell.format_only = True
+    rc = handle_visitor_mode_for_content(
+        shell, 'alias zz="printf UNIQUE_XYZ"\nzz', '-c')
+    assert rc == 0
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert 'zz' in lines, lines                      # the call formats as `zz`
+    # The alias BODY appears only inside the definition, never as the call.
+    assert out.count('UNIQUE_XYZ') == 1, out
 
 
 # --- Delta D: analysis syntax errors now carry the rich source-line caret ---
@@ -123,6 +142,33 @@ def test_delta_d_analysis_error_has_source_caret():
     # source line `if` with a `^` caret.
     assert '^' in r.stderr
     assert 'if' in r.stderr
+
+
+# --- EXEC syntax-error shapes: script-file and stdin variants (the -c variant
+# --- is golden-pinned in tests/behavioral/golden_cases.yaml). Pure-refactor
+# --- characterization: these shapes are probe-proven byte-identical to base.
+
+def test_exec_script_file_syntax_error_shape(tmp_path):
+    path = tmp_path / 'inc.sh'
+    path.write_text('if\n')
+    r = subprocess.run(
+        [sys.executable, '-m', 'psh', str(path)],
+        capture_output=True, text=True, timeout=10, env=ENV, cwd=str(REPO_ROOT))
+    assert r.returncode == 2
+    # Canonical renderer: `psh: <script-path>:<line>: ...` + rich caret form.
+    assert r.stderr.startswith(f'psh: {path}:1:'), r.stderr
+    assert 'syntax error: unexpected end of file' in r.stderr
+    assert '^' in r.stderr
+
+
+def test_exec_stdin_syntax_error_shape():
+    r = subprocess.run(
+        [sys.executable, '-m', 'psh'],
+        input='if\n', capture_output=True, text=True, timeout=10, env=ENV,
+        cwd=str(REPO_ROOT))
+    assert r.returncode == 2
+    assert r.stderr.startswith('psh: <stdin>:1:'), r.stderr
+    assert 'syntax error: unexpected end of file' in r.stderr
 
 
 # --- Item 3: strict-errors boundary in analysis modes ---
