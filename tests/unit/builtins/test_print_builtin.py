@@ -154,6 +154,6 @@ class TestPrintHistory:
 class TestPrintPromptExpansion:
     def test_P_expands(self, captured_shell):
         from psh.interactive.prompt import PromptExpander
-        expected = PromptExpander(captured_shell).expand_prompt(r"\h")
+        expected = PromptExpander(captured_shell).decode_escapes(r"\h")
         captured_shell.run_command(r"print -P '\h'")
         assert captured_shell.get_stdout() == expected + "\n"
