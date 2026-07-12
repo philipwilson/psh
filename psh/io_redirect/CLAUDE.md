@@ -126,24 +126,22 @@ body exception is not misreported as a redirect error.
 
 ### 3. File Descriptor Backup/Restore
 
-```python
-def apply_redirections(self, redirects) -> List[Tuple[int, int]]:
-    """Apply redirections, returning (original_fd, saved_fd) pairs."""
-    saved = []
-    for redirect in redirects:
-        # Backup original fd
-        saved_fd = os.dup(redirect.fd)
-        saved.append((redirect.fd, saved_fd))
-        # Apply new redirection
-        ...
-    return saved
+`apply_redirections` (`file_redirect.py#FileRedirector.apply_redirections`)
+backs up each affected original fd before applying the new one, returning
+`(original_fd, saved_fd | None)` pairs that `restore_redirections` unwinds in
+reverse.
 
-def restore_redirections(self, saved_fds):
-    """Restore original file descriptors."""
-    for original_fd, saved_fd in reversed(saved_fds):
-        os.dup2(saved_fd, original_fd)
-        os.close(saved_fd)
-```
+The backup does NOT use `os.dup` — every backup goes to a HIGH fd (>= 10)
+via `_save_fd_high` (`fcntl.fcntl(fd, F_DUPFD, 10)`). A plain `os.dup` takes
+the LOWEST free slot, which after `exec 1>&-`/`2>&-` is fd 1/2 — a slot a
+stale `sys.stdout`/`sys.stderr` wrapper still names, so a builtin's write
+would land in the backup instead of failing EBADF like bash, and the freed
+low slot could not be reclaimed by the redirect's own `open()`. `bash` keeps
+its saved descriptors above fd 10 for the same reason. `_save_fd_high`
+returns None when the fd is not currently open; `restore_redirections` then
+just closes the fd rather than dup2-restoring it (see
+`file_redirect.py#FileRedirector._save_fd_high` and its docstring for the
+full rationale).
 
 ## Redirection Types
 
@@ -361,21 +359,21 @@ if not heredoc_quoted:
 
 ### Heredoc / Here String Delivery
 
-Both deliver content via `_content_to_fd(content, target_fd)`, which uses an
-**anonymous (unlinked) temp file, deliberately NOT a pipe**. `target_fd` is
-the redirect's fd (default 0/stdin), so an explicit fd prefix — `5<<EOF`,
-`5<<<word` — materializes the body on fd 5 instead, matching bash:
+Both deliver content via `_content_to_fd(content, target_fd)`
+(`file_redirect.py#FileRedirector._content_to_fd`), which materializes the
+body in an **anonymous (unlinked) temp file, deliberately NOT a pipe** — a
+pipe would deadlock for a body larger than the kernel pipe buffer (~64KB)
+because the whole body is written before any reader exists (bash uses a temp
+file for the same reason). `target_fd` is the redirect's fd (default 0/stdin),
+so an explicit fd prefix — `5<<EOF`, `5<<<word` — materializes the body on fd 5.
 
-```python
-# A pipe would deadlock for content larger than the kernel pipe buffer
-# (~64KB) because the whole body is written before any reader exists.
-# Bash uses a temp file for heredocs for the same reason.
-tmp = tempfile.TemporaryFile()
-tmp.write(content.encode())
-tmp.seek(0)
-os.dup2(tmp.fileno(), target_fd)  # target_fd = redirect.fd or 0
-tmp.close()  # target_fd keeps the underlying file open
-```
+Two things the naive `os.dup2(tmp.fileno(), target_fd); tmp.close()` recipe
+gets wrong, and which the real method handles: the body is written with
+`errors='surrogateescape'` so non-UTF-8 bytes reach the reader unchanged
+(bash byte transparency); and the temp fd is `os.dup`'d to a DISTINCT fd
+BEFORE the temp object is closed and moved onto `target_fd` (via
+`_dup2_preserve_target`), so a case where the temp file happens to land ON
+`target_fd` (`cat 3<<EOF <&3`) can never close the very fd holding the body.
 
 ### Process Substitution
 
@@ -420,6 +418,24 @@ opened (`psh: <word>: ambiguous redirect`, errno None). A WHOLE-WORD process
 substitution never reaches here — the planner detects it structurally
 (`redirect_procsub_node`) and resolves it from its AST node, so the body is
 expanded exactly once, by the substitution's own child.
+
+### Named file descriptors (`{var}>file`)
+
+`{varname}>file` (and `{varname}<file`, `{varname}>&N`, `{varname}>&-`)
+allocates a FRESH fd >= 10, performs the redirect onto it, and stores the
+number in the shell variable `varname` — bash's named-fd form.
+`apply_var_fd_redirect`
+(`file_redirect.py#FileRedirector.apply_var_fd_redirect`, called once per
+command from `IOManager.apply_var_fd_redirects`) owns all four shapes:
+
+- **open** (`{v}>f`/`{v}<f`/`{v}>>f`) — open the file, then `fcntl(F_DUPFD, 10)`;
+- **duplicate** (`{v}>&N`, incl. dynamic `{v}>&$x`) — dup the source high;
+- **close** (`{v}>&-`/`{v}<&-`) — close the fd named by the variable (the
+  variable keeps its value).
+
+Unlike a normal per-command redirect, a named-fd allocation is PERMANENT
+(parent-side, outside any save/restore window): the user closes it explicitly
+with `{v}>&-`.
 
 ## Testing
 
