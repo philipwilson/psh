@@ -10139,7 +10139,10 @@
 # are `\Z` (true end of string) not `$` (which also matches before a trailing
 # newline). Fixes case / [[ == ]] / ${x#} ${x%} ${x//} ${x/#} ${x/%} on
 # subjects containing newlines, plus a literal-`$` suffix over-match.
-# Red-on-base demonstrations: tmp/r19-ledgers/B1-probes/battery-base.txt.
+# Every case below was demonstrated red on the pre-fix tree (v0.708.0) except
+# the four controls, which pin no-over-match behavior that already held:
+# glob_newline_dbracket_literal_nl_no_match, glob_newline_suffix_removes_newline,
+# glob_literal_dollar_suffix_removed, glob_newline_extglob_subst_unaffected.
 # =============================================================================
 
 - name: glob_newline_case_question

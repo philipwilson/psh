@@ -172,12 +172,13 @@ class ParameterExpansion:
             return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob)
         # Convert to end-anchored regex (``\Z``: a real end-of-string, so a
-        # trailing newline in *value* is not treated as a suffix boundary).
-        regex = _end_anchored(regex)
+        # trailing newline in *value* is not treated as a suffix boundary),
+        # compiled ONCE — the scan below matches at every position.
+        compiled = re.compile(_end_anchored(regex))
 
         # Find shortest match from end
         for i in range(len(value), -1, -1):
-            if re.match(regex, value[i:]):
+            if compiled.match(value[i:]):
                 return value[:i]
         return value
 
@@ -193,12 +194,13 @@ class ParameterExpansion:
             return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob)
         # Convert to end-anchored regex (``\Z``: a real end-of-string, so a
-        # trailing newline in *value* is not treated as a suffix boundary).
-        regex = _end_anchored(regex)
+        # trailing newline in *value* is not treated as a suffix boundary),
+        # compiled ONCE — the scan below matches at every position.
+        compiled = re.compile(_end_anchored(regex))
 
         # Find longest match from end
         for i in range(len(value) + 1):
-            if re.match(regex, value[i:]):
+            if compiled.match(value[i:]):
                 return value[:i]
         return value
 
