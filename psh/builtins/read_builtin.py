@@ -54,15 +54,16 @@ class ReadBuiltin(Builtin):
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the read builtin."""
         try:
-            options, var_names = self._parse_options(args, shell)
+            parsed = self._parse_options(args, shell)
         except ValueError as e:
             # A bad option VALUE (timeout/count/fd): bash status 1.
             self.error(str(e), shell)
             return getattr(e, 'rc', 1)
-        if options is None:
+        if parsed is None:
             # Invalid option / missing option-argument: parse_flags already
             # printed the error + usage line (bash status 2).
             return 2
+        options, var_names = parsed
 
         # Validate the target NAME(s) before reading anything (bash rejects a
         # non-identifier target with "not a valid identifier", status 1). Uses
@@ -435,7 +436,7 @@ class ReadBuiltin(Builtin):
     _ARG_OPTS = frozenset('apdnNtu')
 
     def _parse_options(self, args: List[str], shell: 'Shell'
-                       ) -> Tuple[Optional[Dict[str, Any]], Optional[List[str]]]:
+                       ) -> Optional[Tuple[Dict[str, Any], List[str]]]:
         """Parse read command options via the shared getopt-style walker.
 
         Options may be clustered (``-rs``). A value option consumes the rest
@@ -449,14 +450,14 @@ class ReadBuiltin(Builtin):
         is the one reported (hence the ordered walk).
 
         Returns:
-            (options dict, variable names) — or (None, None) on a usage error
+            (options dict, variable names) — or None on a usage error
             already reported to stderr.
         """
         events, operands = self.parse_flags_ordered(
             args, shell, flags=''.join(self._FLAG_OPTS),
             value_flags=''.join(self._ARG_OPTS))
         if events is None:
-            return None, None
+            return None
 
         options: Dict[str, Any] = {
             'raw_mode': False,

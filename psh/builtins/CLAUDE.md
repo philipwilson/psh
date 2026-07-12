@@ -179,21 +179,19 @@ def error(self, message: str, shell: 'Shell') -> None:
 A fourth helper, `write_error_line()`, writes an UNPREFIXED line to
 stderr — for usage/diagnostic lines that accompany an `error()` call.
 
-For option parsing, use the shared getopt-style helper instead of
-hand-rolling loops:
+For option parsing, use the shared getopt-style helpers instead of
+hand-rolling loops — `Builtin.parse_flags` (order-insensitive `{flag: value}`
+dict) or `Builtin.parse_flags_ordered` (argv-ordered `(flag, value)` events,
+for builtins where option ORDER matters: `cd`'s last-of-`-L`/`-P`-wins,
+`ulimit`'s argv-ordered resource list, `read`/`mapfile`'s first-bad-value
+reporting). On an invalid option OR a missing option-argument both print the
+bash-shaped error plus the UNPREFIXED usage line and return `(None, args)` —
+callers `return 2`, or raise `SpecialBuiltinUsageError` for a POSIX-special
+builtin (see `trap`, `unset`). See the docstrings in `base.py`.
 
-```python
-def parse_flags(self, args: List[str], shell: 'Shell',
-                flags: str = '', value_flags: str = ''
-                ) -> Tuple[Optional[dict], List[str]]:
-    """Parse leading single-dash options from args.
-
-    flags: chars allowed as boolean flags (clusterable: -ab).
-    value_flags: chars that consume an argument (-d X or -dX).
-    Returns (opts, operands); on an invalid option an error is printed
-    and (None, args) is returned — callers should `return 2`.
-    """
-```
+The only intentionally hand-rolled walks are `print`/`kill`/`dirs`
+(zsh grammar, `-SIGNAL` operands, `+N`/`-N` index collision — each carries a
+justification comment).
 
 ### 2. Registration with Decorator
 
@@ -242,8 +240,10 @@ command name mean?" — consumed by the executor's external path, `command`,
 in a builtin.
 
 - `resolver.search_path(name, path)` — the single `$PATH` scan (empty
-  component = cwd, slash name kept as given, `X_OK` gated). Every PATH scan
-  uses it (`hash`, `exec -c`, and internally `type`/`command`).
+  component = cwd, slash name kept as given, `X_OK` gated by default). Every
+  PATH scan uses it (`hash`, `exec -c`, internally `type`/`command`, and
+  `source`/`.` — which passes `mode=os.R_OK` because a sourced file is read,
+  not exec'd; see the parameter's docstring in `command_resolver.py`).
 - `resolver.resolve(name, query)` — the ordered typed candidates
   (`ALIAS`/`KEYWORD`/`FUNCTION`/`BUILTIN`/`HASHED`/`EXTERNAL`).
   A `ResolveQuery` selects participation (function bypass), which PATH

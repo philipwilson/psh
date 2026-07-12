@@ -16,8 +16,6 @@ import os
 import subprocess
 import sys
 
-import pytest
-
 
 def _run(script, stdin="", cwd=None):
     return subprocess.run(

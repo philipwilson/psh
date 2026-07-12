@@ -75,7 +75,9 @@ class CommandBuiltin(Builtin):
         """Display information about commands (bash `command -v` / `-V`).
 
         Renders the shared resolver's result so the lookup order, hash
-        consultation, and PATH walk match `type` and the executor exactly.
+        consultation, and PATH walk match `type` and the executor exactly —
+        and `-V`'s banner text comes from `type_builtin.
+        render_candidate_banner`, so the WORDING cannot drift either.
         `command` reports functions here (it only bypasses them for
         execution). Returns 0 if at least one name resolved, else 1.
         """
@@ -103,21 +105,11 @@ class CommandBuiltin(Builtin):
         from ..executor.command_resolver import CandidateKind
 
         if verbose:
-            if cand.kind is CandidateKind.ALIAS:
-                self.write_line(f"{name} is aliased to `{cand.alias_value}'", shell)
-            elif cand.kind is CandidateKind.KEYWORD:
-                self.write_line(f"{name} is a shell keyword", shell)
-            elif cand.kind is CandidateKind.FUNCTION:
-                from ..visitor import format_function_definition
-                self.write_line(f"{name} is a function", shell)
-                self.write_line(
-                    format_function_definition(name, cand.function), shell)
-            elif cand.kind is CandidateKind.BUILTIN:
-                self.write_line(f"{name} is a shell builtin", shell)
-            elif cand.kind is CandidateKind.HASHED:
-                self.write_line(f"{name} is hashed ({cand.path})", shell)
-            else:  # EXTERNAL
-                self.write_line(f"{name} is {cand.path}", shell)
+            # -V: the descriptive banner — the SAME renderer `type` uses
+            # (bash's wording is identical between the two builtins;
+            # probe-pinned), so the two surfaces cannot drift.
+            from .type_builtin import render_candidate_banner
+            self.write_line(render_candidate_banner(name, cand), shell)
             return
 
         # -v: a reusable form.

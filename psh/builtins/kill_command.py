@@ -94,6 +94,9 @@ class KillBuiltin(Builtin):
     def _parse_args(self, args: List[str]) -> Tuple[int, List[str], bool]:
         """Parse kill command arguments.
 
+        Deliberately NOT parse_flags(): kill's grammar is not getopt —
+        `-SIGNAME`/`-9` are signal OPERANDS, not flag clusters.
+
         Returns:
             Tuple of (signal_number, target_list, list_signals_flag)
         """
