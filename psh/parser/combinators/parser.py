@@ -304,68 +304,37 @@ class ParserCombinatorShellParser:
         except (AttributeError, IndexError, TypeError, ParseError):
             return False
 
+    # The composition modules wired in _initialize_modules: (instance attribute,
+    # display label, one-line summary of what it parses). explain_parse() renders
+    # only the stages actually present on the instance, so the description cannot
+    # drift from the real composition.
+    _MODULE_STAGES = (
+        ("tokens", "TOKEN PARSERS", "keywords, operators, separators"),
+        ("expansions", "EXPANSION PARSERS", "$var, ${...}, $(...), `...`, $((...))"),
+        ("commands", "COMMAND PARSERS",
+         "simple commands, pipelines, and-or lists, statement lists"),
+        ("control", "CONTROL STRUCTURE PARSERS",
+         "if/case conditionals, while/until/for/select loops, functions"),
+        ("special", "SPECIAL COMMAND PARSERS",
+         "(( )) arithmetic, [[ ]] tests, process substitution"),
+        ("heredoc_processor", "HEREDOC PROCESSOR",
+         "post-parse heredoc body attachment"),
+    )
+
     def explain_parse(self, tokens: List[Token]) -> str:
-        """Provide an educational explanation of how parsing works.
+        """A short summary of the combinator parsing pipeline.
 
-        Args:
-            tokens: List of tokens to parse
-
-        Returns:
-            Multi-line string explaining the parsing process
+        The stage list is DERIVED from the modules actually wired on this
+        instance (``_MODULE_STAGES`` checked against the live attributes), so
+        it stays truthful to the real composition rather than a hand-kept
+        narrative. ``tokens`` is accepted for interface symmetry with
+        ``parse``/``can_parse`` but is not inspected.
         """
-        return """
-=== Modular Parser Combinator Parsing ===
-
-This parser uses a modular architecture with specialized modules:
-
-1. TOKEN PARSERS - Recognize basic tokens:
-   - Keywords (if, then, while, etc.)
-   - Operators (|, &, ;, etc.)
-   - Delimiters and separators
-
-2. EXPANSION PARSERS - Handle shell expansions:
-   - Variable expansion ($var, ${var})
-   - Command substitution $(cmd) and `cmd`
-   - Arithmetic expansion $((expr))
-   - Parameter expansion ${var:-default}
-
-3. COMMAND PARSERS - Parse command structures:
-   - Simple commands (cmd arg1 arg2)
-   - Pipelines (cmd1 | cmd2)
-   - And-or lists (cmd1 && cmd2 || cmd3)
-   - Redirections (< file, > file, 2>&1)
-
-4. CONTROL STRUCTURE PARSERS - Handle control flow:
-   - If/elif/else conditionals
-   - While/for loops
-   - Case statements
-   - Function definitions
-
-5. SPECIAL COMMAND PARSERS - Parse special syntax:
-   - Arithmetic commands ((expr))
-   - Enhanced tests [[ condition ]]
-   - Array operations
-   - Process substitution <(cmd)
-
-6. HEREDOC PROCESSOR - Post-processing phase:
-   - Populates heredoc content in redirect nodes
-   - Traverses AST after main parsing
-
-The parser works by:
-1. Starting with the top-level statement list parser
-2. Trying control structures first (most specific)
-3. Then special commands
-4. Finally regular commands
-5. Each parser can recursively call others
-6. Results are composed into a complete AST
-
-Key advantages:
-- Modular and maintainable
-- Clear separation of concerns
-- Reusable parser components
-- Easy to extend with new features
-- Functional programming style
-"""
+        lines = ["=== Parser Combinator Pipeline ===", ""]
+        for i, (attr, label, detail) in enumerate(self._MODULE_STAGES, 1):
+            suffix = "" if getattr(self, attr, None) is not None else "  (not wired)"
+            lines.append(f"{i}. {label}: {detail}{suffix}")
+        return "\n".join(lines) + "\n"
 
 
 # Convenience functions
