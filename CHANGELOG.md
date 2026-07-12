@@ -4,6 +4,11 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.721.0 (2026-07-12) - Reappraisal-19 P3: ARCHITECTURE.md stops teaching retired designs
+- **The front door is true again** (appraisal H20, integrator-owned slot): section 2.6 now tells the frozen-token/word-fusion story (COMPOSITE was retired in v0.682 - adjacent pieces fuse into ONE immutable WORD carrying per-part quote metadata); 3.12 shows `SimpleCommand.words` as the argument representation with `args` as the derived, never-stored view; 4.4 replaces a raw-`os.fork()` pipeline sketch (a design psh has not used since ProcessLauncher) with the real division of labor - PipelineExecutor owns semantics, ProcessLauncher owns every job-controlled fork; 1.3 and both pipeline diagrams stop claiming brace expansion is a pre-lex text pass (it moved to the Word stage in v0.678, reading the live braceexpand option).
+- **The capabilities tail is regenerated**: no more phantom ParserConfig POSIX/bash-compat options (it is deliberately empty), no more mythical multi-error collection (first-error semantics + ParseError.render() is the real diagnostic story), LexerContext renamed to the real LexicalState, and the test count un-fossilized (was "5,500+"; now tied to README's stats block).
+- Every rewritten sentence probe-verified against the code at HEAD - including one fresh-falsehood caught in draft (a `lastpipe` claim; psh has no lastpipe), the exact failure class P12's bounce banked earlier today.
+
 ## 0.720.0 (2026-07-12) - Reappraisal-19 P4: the import layering stops being folklore
 - **Both package-level runtime cycles closed**: the shared job vocabulary (JobState, jobspec result types, wait-status helpers) moves to `psh/core/job_state.py` (builtins now import from core - the builtins<->executor cycle is gone; executor keeps a documented re-export for its consumers), and `TokenFormatter` moves into `psh/lexer/` so `psh/utils` is a runtime LEAF (imports nothing from psh).
 - **Data-vs-behavior name collisions resolved**: the expansion ENGINES are now `CommandSubstitutionExecutor` and `ParameterExpansionOps`; the AST nodes keep the plain terms. No aliases left behind; every reference (including this file's section 5.3) repointed.
