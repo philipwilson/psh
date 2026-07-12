@@ -1,7 +1,7 @@
 """Renderer-output characterization corpus — the visualization drift-lock.
 
 The four AST renderers (``ASTPrettyPrinter``, ``AsciiTreeRenderer`` +
-its Compact/Detailed variants, ``SExpressionRenderer``, ``ASTDotGenerator``)
+its Compact variant, ``SExpressionRenderer``, ``ASTDotGenerator``)
 are structure-driven: they walk each node's dataclass fields. That makes them
 correct-by-construction, but it also means an AST change (a renamed/added
 field, a new node) silently reshapes their output with nothing to notice.
@@ -34,7 +34,6 @@ from psh.parser.visualization import (
     ASTDotGenerator,
     ASTPrettyPrinter,
     CompactAsciiTreeRenderer,
-    DetailedAsciiTreeRenderer,
     SExpressionRenderer,
 )
 
@@ -77,7 +76,6 @@ RENDERERS = {
     "tree": lambda ast: AsciiTreeRenderer.render(
         ast, show_positions=True, compact_mode=False),
     "compact": lambda ast: CompactAsciiTreeRenderer.render(ast),
-    "detailed": lambda ast: DetailedAsciiTreeRenderer.render(ast),
     "sexp": lambda ast: SExpressionRenderer.render(
         ast, compact_mode=False, max_width=80, show_positions=True),
     "dot": lambda ast: ASTDotGenerator(
@@ -115,7 +113,7 @@ def test_visualization_golden(corpus_name, renderer_name):
 
 def test_corpus_covers_every_renderer_and_construct():
     # Guard against silently dropping a renderer or the nontrivial script.
-    assert set(RENDERERS) == {"pretty", "tree", "compact", "detailed", "sexp", "dot"}
+    assert set(RENDERERS) == {"pretty", "tree", "compact", "sexp", "dot"}
     assert "script" in CORPUS
     # The script must exercise the full grammar surface the drift-lock claims.
     for construct in ("process_files()", "for f in", "if [ -f",

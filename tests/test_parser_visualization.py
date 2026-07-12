@@ -5,7 +5,7 @@ import pytest
 from psh.lexer import tokenize
 from psh.parser.recursive_descent.parser import Parser
 from psh.parser.visualization import AsciiTreeRenderer, ASTDotGenerator, ASTPrettyPrinter
-from psh.parser.visualization.ascii_tree import CompactAsciiTreeRenderer, DetailedAsciiTreeRenderer
+from psh.parser.visualization.ascii_tree import CompactAsciiTreeRenderer
 
 
 def _pretty(src, **kwargs):
@@ -224,18 +224,6 @@ class TestAsciiTreeRenderer:
 
         assert len(lines) <= len(normal_lines)
 
-    def test_detailed_renderer(self):
-        """Test detailed ASCII tree renderer."""
-        tokens = tokenize("echo hello")
-        parser = Parser(tokens)
-        ast = parser.parse()
-
-        output = DetailedAsciiTreeRenderer.render(ast)
-
-        # Should be more detailed than normal output
-        normal_output = AsciiTreeRenderer.render(ast)
-        assert len(output) >= len(normal_output)
-
     def test_tree_structure_integrity(self):
         """Test that tree structure is properly formed."""
         tokens = tokenize("if true; then echo hello | grep world; fi")
@@ -283,7 +271,7 @@ class TestVisualizationIntegration:
 
     def test_ascii_tree_convenience_functions(self):
         """Test convenience functions for ASCII trees."""
-        from psh.parser.visualization.ascii_tree import render_ast_tree, render_compact_tree, render_detailed_tree
+        from psh.parser.visualization.ascii_tree import render_ast_tree, render_compact_tree
 
         tokens = tokenize("echo hello")
         parser = Parser(tokens)
@@ -296,12 +284,6 @@ class TestVisualizationIntegration:
         # Test compact function
         output2 = render_compact_tree(ast)
         assert "SimpleCommand" in output2
-
-        # Test detailed function
-        output3 = render_detailed_tree(ast)
-        assert "SimpleCommand" in output3
-        # Detailed renderer should be more verbose than normal output
-        assert len(output3) >= len(output1)
 
     def test_error_handling_in_formatters(self):
         """Test that formatters handle edge cases gracefully."""
@@ -385,12 +367,6 @@ class TestB4VisualizationRepairs:
         base = AsciiTreeRenderer.render(ast)
         compact = CompactAsciiTreeRenderer.render(ast)
         assert base != compact, "compact renderer must not equal the base renderer"
-
-    def test_h16_detailed_render_uses_subclass_settings(self):
-        # DetailedAsciiTreeRenderer sets show_empty_fields/positions; the
-        # classmethod fix means its render() honours them (was base settings).
-        ast = self._ast("echo hi")
-        assert DetailedAsciiTreeRenderer.render(ast) != AsciiTreeRenderer.render(ast)
 
     def test_show_positions_is_real_in_every_renderer(self):
         # show_positions was a no-op in tree/dot (read a nonexistent

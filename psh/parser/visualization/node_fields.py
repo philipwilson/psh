@@ -40,8 +40,8 @@ def node_fields(node: ASTNode, *, include_empty: bool = False
         node: The AST node to introspect.
         include_empty: When False (the default), also drop ``None``, ``False``
             flags, and empty collections (noise). When True, keep every
-            declared field — the "show everything" mode the detailed
-            renderers offer.
+            declared field — the ``show_empty_fields`` mode the renderers
+            offer.
     """
     result: List[Tuple[str, Any]] = []
     # __dataclass_fields__ is an ordered dict (definition order); using it

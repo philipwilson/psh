@@ -415,19 +415,6 @@ class CompactAsciiTreeRenderer(AsciiTreeRenderer):
         )
 
 
-class DetailedAsciiTreeRenderer(AsciiTreeRenderer):
-    """Detailed ASCII tree renderer showing all information."""
-
-    def __init__(self, **kwargs):
-        super().__init__(
-            compact_mode=False,
-            show_empty_fields=True,
-            show_positions=True,
-            max_width=100,
-            **kwargs
-        )
-
-
 # Convenience functions
 def render_ast_tree(ast: ASTNode, **kwargs) -> str:
     """Render AST as ASCII tree.
@@ -452,15 +439,3 @@ def render_compact_tree(ast: ASTNode) -> str:
         Compact ASCII tree string
     """
     return CompactAsciiTreeRenderer.render(ast)
-
-
-def render_detailed_tree(ast: ASTNode) -> str:
-    """Render AST as detailed ASCII tree.
-
-    Args:
-        ast: The AST node to render
-
-    Returns:
-        Detailed ASCII tree string
-    """
-    return DetailedAsciiTreeRenderer.render(ast)
