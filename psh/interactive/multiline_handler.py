@@ -84,21 +84,22 @@ class MultiLineInputHandler:
     def _get_prompt(self) -> str:
         """Get the appropriate prompt based on current state.
 
-        Rendering goes through the shared ``PromptManager`` (the one the
-        interactive manager wires up), so PS1/PS2 get bash's full ``promptvars``
-        expansion — backslash escapes THEN parameter / command / arithmetic
-        expansion — not the escape-only pass.
+        Rendering goes through the shared ``PromptManager`` getters (the one
+        the interactive manager wires up), so PS1/PS2 get bash's full
+        ``promptvars`` expansion — backslash escapes THEN parameter / command /
+        arithmetic expansion — not the escape-only pass. The getters are the
+        SINGLE PS1/PS2 read path: each fetches via ``state.get_variable`` (scope
+        then environment fallback, one variable) rather than materializing the
+        whole ``state.variables`` dict per prompt.
         """
         prompt_manager = self.shell.interactive_manager.prompt_manager
         if self.accumulator.is_empty:
-            # Primary prompt
-            ps1 = self.shell.state.variables.get('PS1', '\\u@\\h:\\w\\$ ')
-            return prompt_manager.expand_prompt(ps1)
+            # Primary prompt (PS1)
+            return prompt_manager.get_primary_prompt()
 
         # Continuation prompt. When the parser told us which constructs are
         # still open, show them ("if> ", "for then> "); otherwise (heredoc
         # bodies, unclosed quotes/expansions, line continuations) use PS2.
         if self._hint is not None and self._hint.constructs:
             return ' '.join(self._hint.constructs) + '> '
-        ps2 = self.shell.state.variables.get('PS2', '> ')
-        return prompt_manager.expand_prompt(ps2)
+        return prompt_manager.get_continuation_prompt()
