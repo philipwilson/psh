@@ -189,9 +189,10 @@ class ConformanceReportPlugin:
 def build_pytest_args(paths: List[str], extra: List[str]) -> List[str]:
     """Assemble pytest arguments.
 
-    ``-o addopts=`` neutralises the ``-v`` in ``pytest.ini`` so a 1,500-test
-    run does not print 1,500 progress lines; the runner prints its own summary
-    instead. ``--tb=short`` keeps captured tracebacks compact in the report.
+    ``-o addopts=`` clears ``pytest.ini``'s ``addopts`` entirely (currently
+    ``--tb=short --ignore=tests/performance``) so this runner controls output on
+    its own terms and prints its own summary rather than pytest's progress.
+    ``--tb=short`` keeps captured tracebacks compact in the report.
     """
     args = list(paths)
     args += ["-o", "addopts=", "--tb=short", "-p", "no:cacheprovider"]
