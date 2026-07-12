@@ -57,7 +57,7 @@ def print_ast_debug(ast, ast_format, shell) -> None:
             print("# xdg-open ast.png", file=sys.stderr)
 
         elif format_type == 'sexp':
-            from ..parser.visualization.sexp_renderer import SExpressionRenderer
+            from ..parser.visualization import SExpressionRenderer
             output = SExpressionRenderer.render(
                 ast,
                 compact_mode=False,

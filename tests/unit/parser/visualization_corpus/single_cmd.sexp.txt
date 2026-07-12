@@ -1,0 +1,5 @@
+(Program
+  :statements (AndOrList @line1
+      :pipelines (Pipeline @line1
+          :commands (SimpleCommand
+              :arguments (echo hello)))))

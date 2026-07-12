@@ -1,0 +1,16 @@
+(Program
+  :statements (AndOrList @line1
+      :pipelines (Pipeline @line1
+          :commands (EnhancedTestStatement
+              :expression (BinaryTestExpression
+                  :left_word (Word
+                      :parts (LiteralPart
+                          :text ab))
+                  :operator ==
+                  :right_word (Word
+                      :parts ((LiteralPart
+                          :text c)
+                        (LiteralPart
+                          :text d
+                          :quoted true
+                          :quote_char """))))))))

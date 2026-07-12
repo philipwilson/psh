@@ -1,0 +1,26 @@
+digraph AST {
+    rankdir=TB;
+    node [fontname="Helvetica", fontsize=10];
+    edge [fontname="Helvetica", fontsize=8];
+
+    // Nodes
+    node1 [label="Program", shape=box, style=filled, fillcolor="#F5F5F5"];
+    node2 [label="AndOrList\n@line1", shape=box, style=filled, fillcolor="#E1F5FE"];
+    node3 [label="Pipeline\n@line1", shape=box, style=filled, fillcolor="#E8F5E8"];
+    node4 [label="SimpleCommand\ncmd: echo\nargs: (1 args)", shape=box, style=filled, fillcolor="#E3F2FD"];
+    node5 [label="words\n[2 items]", shape=ellipse, style=filled, fillcolor="#F5F5F5"];
+    node6 [label="Word", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node7 [label="LiteralPart", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node8 [label="Word", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node9 [label="LiteralPart", shape=box, style=filled, fillcolor="#F0F0F0"];
+
+    // Edges
+    node4 -> node5 [label="words"];
+    node6 -> node7 [label="parts"];
+    node5 -> node6 [label="0"];
+    node8 -> node9 [label="parts"];
+    node5 -> node8 [label="1"];
+    node3 -> node4 [label="commands"];
+    node2 -> node3 [label="pipelines"];
+    node1 -> node2 [label="statements"];
+}

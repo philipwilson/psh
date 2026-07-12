@@ -368,5 +368,86 @@ class TestVisualizationPerformance:
         assert "IfConditional" in tree_output
 
 
+class TestB4VisualizationRepairs:
+    """Pins for the reappraisal #19 B4 renderer repairs (H15 + H16 + dedup)."""
+
+    @staticmethod
+    def _ast(src):
+        return Parser(tokenize(src)).parse()
+
+    def test_h16_compact_render_differs_from_base_render(self):
+        # H16: render() was a @staticmethod hard-coding AsciiTreeRenderer, so
+        # CompactAsciiTreeRenderer.render(ast) rendered with BASE settings.
+        # As a @classmethod it now builds the subclass, so a nested AST with
+        # collapsible scalar fields (the C-style for loop's *_expr strings)
+        # renders DIFFERENTLY through the compact renderer than the base one.
+        ast = self._ast("for ((i=0; i<3; i++)); do echo hi; done")
+        base = AsciiTreeRenderer.render(ast)
+        compact = CompactAsciiTreeRenderer.render(ast)
+        assert base != compact, "compact renderer must not equal the base renderer"
+
+    def test_h16_detailed_render_uses_subclass_settings(self):
+        # DetailedAsciiTreeRenderer sets show_empty_fields/positions; the
+        # classmethod fix means its render() honours them (was base settings).
+        ast = self._ast("echo hi")
+        assert DetailedAsciiTreeRenderer.render(ast) != AsciiTreeRenderer.render(ast)
+
+    def test_show_positions_is_real_in_every_renderer(self):
+        # show_positions was a no-op in tree/dot (read a nonexistent
+        # `position`) and unrendered in sexp; now all read node.line.
+        from psh.parser.visualization import SExpressionRenderer
+        ast = self._ast("echo hi")
+        tree = AsciiTreeRenderer.render(ast, show_positions=True)
+        assert "@line" in tree
+        pretty = ASTPrettyPrinter(show_positions=True).visit(ast)
+        assert "@line" in pretty
+        sexp = SExpressionRenderer.render(ast, show_positions=True)
+        assert "@line" in sexp
+        dot = ASTDotGenerator(show_positions=True).to_dot(ast)
+        assert "@line" in dot
+        # ...and OFF by default (no positions leak in).
+        assert "@line" not in AsciiTreeRenderer.render(ast)
+
+    def test_no_phantom_property_fields_rendered(self):
+        # H15: the old dir() walk rendered derived @property values as if they
+        # were fields. A test expression's `left`/`right` (derived from
+        # left_word/right_word) and a Word's is_unquoted_literal must NOT show
+        # up as fields; the real fields must.
+        out = AsciiTreeRenderer.render(self._ast('[[ ab == cd ]]'))
+        assert "left_word" in out and "right_word" in out
+        assert "left:" not in out and "right:" not in out
+        assert "is_unquoted_literal" not in out
+
+    def test_sexp_preserves_actual_and_or_operators(self):
+        from psh.parser.visualization import SExpressionRenderer
+        out = SExpressionRenderer.render(self._ast("a && b || c"))
+        # Both operators must appear as themselves (the old collapse rewrote
+        # any non-&& to ||; a pure && chain is the discriminating case).
+        assert "&&" in out and "||" in out
+        both_and = SExpressionRenderer.render(self._ast("a && b && c"))
+        assert "&&" in both_and and "||" not in both_and
+
+    def test_dot_single_pipeline_andorlist_has_no_pipe_label(self):
+        # The `(|)` fallback mislabelled a single-pipeline and-or list with the
+        # pipe operator; a bare AndOrList label is emitted instead.
+        out = ASTDotGenerator().to_dot(self._ast("echo hi"))
+        assert "AndOrList" in out
+        assert "(|)" not in out and r"AndOrList\n(|)" not in out
+
+    def test_dot_for_loop_renders_its_items(self):
+        # DOT field drift: visit_ForLoop read a nonexistent `iterable`, so the
+        # loop's iteration items never appeared in the graph. They must now.
+        out = ASTDotGenerator().to_dot(self._ast("for i in 1 2 3; do echo $i; done"))
+        assert "items" in out and "item_words" in out
+
+    def test_export_surface(self):
+        # D2-R1: SExpressionRenderer is production-imported (ast_debug.py) and
+        # must be on the package export surface; node_fields is the shared walk.
+        import psh.parser.visualization as viz
+        assert "SExpressionRenderer" in viz.__all__
+        assert "node_fields" in viz.__all__
+        assert hasattr(viz, "SExpressionRenderer")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
