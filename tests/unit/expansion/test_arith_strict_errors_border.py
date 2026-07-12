@@ -29,23 +29,38 @@ _HUGE_INT = "9" * 5000
 
 
 # --- Direction A: user-reachable ValueError stays a clean shell error --------
+#
+# These pins must discriminate the PRIMARY catch from the FALLBACK: the kept
+# ``except (ValueError, ...)`` in _evaluate_arithmetic_inner converts the
+# huge-int ValueError to a ShellArithmeticError, which renders as
+# ``psh: arithmetic error: ...``. If that catch were removed, the ValueError
+# would instead escape to arithmetic_expansion_value's last-resort
+# ``except (ValueError, TypeError)`` and render as
+# ``psh: unexpected arithmetic error: ...`` — same rc 1, different shape. So
+# the assertions anchor the EXACT primary prefix AND reject the fallback's
+# "unexpected" marker; deleting ValueError from the kept catch turns these
+# pins red (mutation M2, transcript archived in the P6 ledger).
 
 def test_huge_int_via_variable_is_clean_error_under_strict(captured_shell):
     """A huge stored integer read into arithmetic is a clean arithmetic error
-    (rc 1), NOT a re-raised internal defect — even with strict-errors ON."""
+    (rc 1) through the PRIMARY ValueError catch — even with strict-errors ON."""
     captured_shell.state.options['strict-errors'] = True
     rc = captured_shell.run_command(f"x={_HUGE_INT}; echo $(( x ))")
     assert rc == 1
-    assert "arithmetic error" in captured_shell.get_stderr()
+    stderr = captured_shell.get_stderr()
+    assert "psh: arithmetic error:" in stderr
+    assert "unexpected" not in stderr
 
 
 def test_huge_int_array_subscript_is_clean_error_under_strict(captured_shell):
     """The same user-reachable ValueError via _string_to_int (array element /
-    scalar-as-[0]) is a clean error, not a defect."""
+    scalar-as-[0]) goes through the PRIMARY catch, not the fallback."""
     captured_shell.state.options['strict-errors'] = True
     rc = captured_shell.run_command(f"a=({_HUGE_INT}); echo $(( a[0] ))")
     assert rc == 1
-    assert "arithmetic error" in captured_shell.get_stderr()
+    stderr = captured_shell.get_stderr()
+    assert "psh: arithmetic error:" in stderr
+    assert "unexpected" not in stderr
 
 
 # --- Direction B: injected internal RuntimeError obeys the strict policy ------
