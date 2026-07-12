@@ -2,6 +2,29 @@
 
 import re
 
+from ..core.assignment_utils import SHELL_NAME
+
+# A ``NAME=value`` assignment word: a valid shell identifier immediately
+# followed by ``=``. Single-sourced from the canonical ``SHELL_NAME`` so the
+# three analysis visitors agree — previously the linter, metrics and enhanced
+# validator each carried their own drifting predicate (one accepted hyphens,
+# treating ``a-b=c`` as a definition of variable ``a-b``).
+_ASSIGNMENT_WORD_RE = re.compile(rf'^{SHELL_NAME}=')
+
+
+def is_assignment(arg: str) -> bool:
+    """True if *arg* is a ``NAME=value`` variable-assignment word.
+
+    NAME must be a valid shell identifier (letter/underscore then
+    letters/digits/underscores). Rejects ``=x`` (no name) and ``a-b=c``
+    (a hyphen is not valid in a variable name). Array-element assignments
+    (``a[0]=x``) never arrive here as bare arg strings — the parser lifts them
+    into ``ArrayElementAssignment`` nodes. Append assignments (``FOO+=x``) are
+    intentionally NOT matched (so ``split('=', 1)[0]`` yields a clean name),
+    matching the historical linter/enhanced-validator behaviour.
+    """
+    return bool(_ASSIGNMENT_WORD_RE.match(arg))
+
 
 def is_world_writable_permission(perm: str) -> bool:
     """True if a chmod permission argument makes a file world-writable.
@@ -27,12 +50,28 @@ TEST_OPERATORS = (
     FILE_TEST_OPERATORS | STRING_COMPARISON_OPERATORS | NUMERIC_COMPARISON_OPERATORS
 )
 
-# Commands considered dangerous — union of all three visitors' lists
+# Dynamic-code-execution commands, mapped to the danger they pose. Used by
+# SecurityVisitor (emits HIGH) and EnhancedValidatorVisitor (emits a warning);
+# both apply their own severity to this ONE membership+reason table. This is NOT
+# the linter's caution table — the linter keeps its own remediation-suggestion
+# table (LINTER_CAUTION_COMMANDS below), which deliberately includes ``rm`` and
+# omits ``source``/``.`` because its role is "commands to use carefully + how",
+# not "commands that execute arbitrary code". Kept side by side here so the
+# relationship is explicit and the two no longer live in separate files.
 DANGEROUS_COMMANDS = {
     'eval': 'Dynamic code execution - high risk of injection',
     'source': 'Loading external scripts - verify source is trusted',
     '.': 'Loading external scripts - verify source is trusted',
     'exec': 'Process replacement - ensure arguments are validated',
+}
+
+# The linter's "use with caution" table: command -> remediation suggestion.
+# Distinct in both membership and message from DANGEROUS_COMMANDS above (see the
+# note there); the linter emits a WARNING carrying the suggestion.
+LINTER_CAUTION_COMMANDS = {
+    'rm': "Consider using 'rm -i' for interactive confirmation",
+    'eval': "Eval can execute arbitrary code, ensure input is trusted",
+    'exec': "Exec replaces the current shell, use with caution",
 }
 
 # Commands that modify system state in sensitive ways
@@ -44,6 +83,30 @@ SENSITIVE_COMMANDS = {
     'mkfs': 'Filesystem creation',
     'fdisk': 'Disk partitioning',
 }
+
+# Variables the shell (or bash) always has defined: an analysis visitor must not
+# flag a reference to one of these as "undefined". Single-sourced so the linter's
+# undefined-variable suppression and the enhanced validator's
+# VariableTracker.special_vars agree (previously the linter suppressed only 11
+# names while the tracker knew ~50, so ``echo "$HOSTNAME"`` warned under --lint
+# but was clean under --validate). Includes the single-character special
+# parameters (``?``, ``$``, ``!``, ``#``, ``@``, ``*``, ``-``, ``_``, ``0``); the
+# linter only consults the identifier-shaped subset (it never tracks ``$?`` etc.),
+# while the tracker needs the full set for lookups.
+PREDEFINED_VARIABLES = frozenset({
+    # Special parameters
+    '?', '$', '!', '#', '@', '*', '-', '_', '0',
+    # Environment / shell-maintained variables
+    'HOME', 'PATH', 'PWD', 'OLDPWD', 'SHELL', 'USER',
+    'HOSTNAME', 'HOSTTYPE', 'OSTYPE', 'MACHTYPE',
+    'RANDOM', 'LINENO', 'SECONDS', 'HISTCMD',
+    'BASH_VERSION', 'BASH', 'IFS', 'PS1', 'PS2', 'PS3', 'PS4',
+    'PPID', 'UID', 'EUID', 'GROUPS', 'SHELLOPTS',
+    'PIPESTATUS', 'FUNCNAME', 'BASH_SOURCE', 'BASH_LINENO',
+    'REPLY', 'HISTFILE', 'HISTSIZE', 'HISTFILESIZE',
+    'LANG', 'LC_ALL', 'LC_COLLATE', 'LC_CTYPE', 'LC_MESSAGES',
+    'TERM', 'COLUMNS', 'LINES',
+})
 
 # Shell builtins — commands a script under analysis may legitimately assume
 # are builtins. This set is deliberately BASH-scoped, not psh-scoped: the
