@@ -82,9 +82,10 @@ class HelpBuiltin(Builtin):
 
     def _show_default_listing(self, builtins: List[Builtin], shell: 'Shell') -> None:
         """Show default help listing similar to bash."""
-        # Get version from shell state or fallback to hardcoded version
-        version = getattr(shell.state, 'version', None) or shell.state.get_variable('PSH_VERSION', '0.54.0')
-        self.write_line("PSH Shell, version " + str(version), shell)
+        # The canonical version is psh.version.__version__ (the same string the
+        # `version` builtin and $PSH_VERSION report) — no hardcoded fallback.
+        from ..version import __version__
+        self.write_line("PSH Shell, version " + __version__, shell)
         self.write_line("These shell commands are defined internally. Type 'help name' to find out more", shell)
         self.write_line("about the function 'name'.", shell)
         self.write_line("", shell)
