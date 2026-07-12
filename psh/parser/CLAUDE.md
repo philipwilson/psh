@@ -30,6 +30,7 @@ Statements Commands  Control   Functions  Tests
 
 | File | Parses |
 |------|--------|
+| `base.py` | `ParserSubcomponent` - shared base contract for every sub-parser (token access via `self.parser`, `error()` raising) |
 | `statements.py` | Statement lists, command lists, and-or lists (`&&`/`||`) |
 | `commands.py` | Simple commands, pipelines, arguments, subshell/brace groups |
 | `control_structures.py` | `if`, `while`, `for`, `case`, `select` |
@@ -45,6 +46,7 @@ Statements Commands  Control   Functions  Tests
 |------|---------|
 | `context_factory.py` | Factory functions for creating configured contexts |
 | `word_builder.py` | Build Word AST nodes from tokens |
+| `nested_parse.py` | `parse_nested_command` - syntax-validation parse of `$(...)`/`<(...)`/`>(...)` bodies at outer-parse time (no alias expansion) |
 | `utils.py` | Parser utilities |
 
 ### Parser Combinators (`combinators/`) -- Educational Only
@@ -186,15 +188,17 @@ analysis (`--validate` etc.) both print `render()`.
 
 ### 4. TokenGroups for Matching
 
-Predefined token sets for common checks:
+`TokenGroups` (`recursive_descent/helpers.py#TokenGroups`) holds the
+predefined `frozenset`s the parser matches against, so membership checks
+name a set instead of listing token types inline:
 
-```python
-class TokenGroups:
-    WORD_LIKE = frozenset({WORD, STRING, VARIABLE, ...})
-    REDIRECTS = frozenset({REDIRECT_IN, REDIRECT_OUT, ...})
-    STATEMENT_SEPARATORS = frozenset({SEMICOLON, NEWLINE, ...})
-    CASE_PATTERN_KEYWORDS = frozenset({IF, THEN, ELSE, ...})
-```
+- `WORD_LIKE` — tokens that can appear as command arguments
+- `REDIRECTS` — the redirect operators
+- `STATEMENT_SEPARATORS` — `SEMICOLON`, `NEWLINE`
+- `CASE_TERMINATORS` — `;;`, `;&`, `;;&`
+- `CASE_PATTERN_KEYWORDS` — reserved words still valid as a case pattern
+
+See the class for the exact members (it is the single source of truth).
 
 ## Parsing Flow
 
@@ -208,15 +212,11 @@ flow through the same `and_or_list`/`pipeline` machinery as a simple command,
 and the top level builds no `Pipeline`/`AndOrList` by hand. (This is enforced
 by `tests/unit/parser/test_top_level_control_structure_grammar.py`.)
 
-```python
-def parse(self) -> Program:
-    program = Program()
-    while not self.at_end():
-        command_list = self.statements.parse_command_list()
-        program.statements.extend(command_list.statements)
-        self.skip_separators()
-    return program
-```
+`parse()` (`recursive_descent/parser.py#Parser.parse`) builds an empty
+`Program`, then loops while not at end: each pass runs
+`statements.parse_command_list()` and appends the produced statements,
+stamping any statement `parse_command_list` left without a source line
+(`$LINENO` belt-and-suspenders). It does not reshape the result.
 
 Every parse — including empty input — returns a single canonical `Program`
 whose `statements` are the ordinary statements the grammar produced
