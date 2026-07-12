@@ -145,7 +145,12 @@ class FunctionParser(ParserSubcomponent):
           A subshell/control body owns its own trailing redirects on its node
           (matching the pre-existing AST), so nothing is handed back here.
         """
-        component = self.parser.commands._parse_compound_component()
+        # in_function_body=True suppresses the `\$(` argument-shape check:
+        # here the token before a `(` body is the function NAME, and a name
+        # ending in an escaped dollar (`function f\$ (echo hi)`) is legal at
+        # parse time (bash) — see _parse_compound_component's docstring.
+        component = self.parser.commands._parse_compound_component(
+            in_function_body=True)
         if component is None:
             # Missing function body ({, (, or a compound keyword required).
             raise self.parser.error("Expected '{' for function body")

@@ -186,7 +186,7 @@ def test_standalone_normal_input_unaffected():
 # Function bodies count toward the guard (reappraisal #19 H12)
 #
 # A function body is a compound command, so it must accumulate nesting depth
-# exactly like a bare brace group. Before v0.714 `FunctionParser.
+# exactly like a bare brace group. Before the H12 fix `FunctionParser.
 # parse_compound_command` hand-rolled its own brace/control dispatch and never
 # touched `nesting_depth`, so a chain of nested function DEFINITIONS bypassed
 # the guard entirely: 1,200 nested function bodies parsed unboundedly where
