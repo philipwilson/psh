@@ -224,9 +224,9 @@ class Builtin(ABC):
                 position*. It must RAISE (the builtin's own exception type)
                 to reject the value; the walk propagates, so the builtin's
                 existing handler reports the message with its own exit code
-                (``read``: ValueError rc 1; ``mapfile``: _OptionError). This
-                is what keeps combined-error precedence bash-shaped: the
-                FIRST error in argv wins regardless of class
+                (``read``/``mapfile``: the shared ``ReadError`` carrying its
+                ``rc``). This is what keeps combined-error precedence
+                bash-shaped: the FIRST error in argv wins regardless of class
                 (``mapfile -n xx -Z`` reports the bad count, rc 1 — not the
                 later invalid option, rc 2; probe-pinned). Validation bash
                 performs only after a complete option scan (``wait -p``'s

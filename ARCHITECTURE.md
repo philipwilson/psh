@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.720.0
+**Current Version**: 0.723.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -104,11 +104,11 @@ psh/
 Input → Preprocessing → Tokenization → Keyword Normalization → Parsing → [Validation] → Expansion → Visitor Execution → Exit Status
 ```
 
-1. **Input**: `scripting/input_preprocessing.py` (line continuations), `interactive/history_expansion.py`, `expansion/brace_expansion.py` (pre-lex)
+1. **Input**: `scripting/input_preprocessing.py` (line continuations), `interactive/history_expansion.py` (interactive only)
 2. **Tokenization**: `ModularLexer` + recognizer registry; `KeywordNormalizer` (case-sensitive reserved words); `word_fusion.fuse_words` composites adjacent word pieces into one WORD token; `tokenize_with_heredocs` collects bodies
 3. **Parsing**: recursive descent `Parser` from modular sub-parsers; `WordBuilder` builds Word AST from each WORD token's parts
 4. **Validation** (optional, `--validate`): visitor validators in `psh/visitor/`
-5. **Expansion**: `ExpansionManager` enforces POSIX order; `WordExpander.expand()` walks Word parts with per-part quote context under named `WordExpansionPolicy` instances (see `docs/architecture/ast_data_flow.md` for per-context policies)
+5. **Expansion**: `ExpansionManager` enforces POSIX order — brace expansion FIRST, per Word (`brace_expand_word`: Word → List[Word], reading the live `braceexpand`/`set +B` option; v0.678 moved it here from the pre-lex text pass), then `WordExpander.expand()` walks Word parts with per-part quote context under named `WordExpansionPolicy` instances (see `docs/architecture/ast_data_flow.md` for per-context policies)
 6. **Execution**: `ExecutorVisitor` delegates to specialists; job-controlled forks via `ProcessLauncher`, every fork via the `child_policy.py` helpers
 
 ### Architecture Invariants
@@ -149,7 +149,7 @@ Input → Preprocessing → Tokenization → Keyword Normalization → Parsing �
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Input Processing                             │
 │                                                                 │
-│  Line Continuation → History Expansion → Brace Expansion       │
+│        Line Continuation → History Expansion                    │
 └─────────────────────────────┬───────────────────────────────────┘
                              │
                              ▼
@@ -207,15 +207,18 @@ Processes history expansions before tokenization:
 
 Context-aware to avoid expansion in quotes and certain contexts.
 
-### 1.3 Brace Expansion
-**File**: `expansion/brace_expansion.py`
+### 1.3 Brace Expansion is NOT an input-processing step
+**Files**: `expansion/brace_expansion_words.py` (`WordBraceExpander`), `expansion/brace_expansion.py` (the string-level engine it drives)
 
-Expands brace patterns before tokenization:
-- List expansion: `{a,b,c}` → `a b c`
-- Sequence expansion: `{1..10}` → `1 2 3 4 5 6 7 8 9 10`
-- Nested expansion: `{a,b{1,2}}` → `a b1 b2`
-
-This happens early because it can create multiple tokens from a single pattern.
+Until v0.678 brace patterns were expanded here, as a text pass before
+tokenization. That approximated bash in six documented ways (quote-blindness
+being the worst), so brace expansion moved to the **Word stage**: the
+`ExpansionManager` runs `brace_expand_word` (Word → List[Word]) as the FIRST
+expansion step, per word, with per-part quote context intact and the live
+`braceexpand` option consulted at execution time (`set +B` mid-script is
+honored; a pre-lex pass could never do that). List (`{a,b,c}`), sequence
+(`{1..10}`), and nested (`{a,b{1,2}}`) forms are unchanged semantically —
+see Phase 5.
 
 ## Phase 2: Lexical Analysis (Tokenization)
 
@@ -306,9 +309,9 @@ vocabulary frozensets, not transitions.
 The lexer produces unified `Token` objects carrying position, quote and
 part metadata:
 ```python
-@dataclass
+@dataclass(frozen=True)
 class Token:
-    """Unified token class for the shell lexer and parser."""
+    """Unified, immutable token for the shell lexer and parser."""
     type: TokenType
     value: str
     position: int
@@ -342,14 +345,20 @@ The lexer handles context-sensitive tokenization:
 - Operators are recognized using length-based lookup for efficiency
 - Quote information is preserved for proper expansion later
 
-### 2.6 Composite Token Handling
+### 2.6 Word Fusion (adjacent word pieces)
 
-Adjacent string-like tokens become COMPOSITE tokens:
-```bash
-echo "hello"world'!' → COMPOSITE["hello", world, '!']
-```
+Adjacent word pieces (`echo "hello"world'!'`) are fused by
+`psh/lexer/word_fusion.py#fuse_words` into ONE frozen `WORD` token whose
+`parts` list carries each piece with its own quote metadata — the quote
+context survives per part, which is what makes downstream expansion correct
+(`"$x"y` expands the first part quoted and the second not). The parser's
+`WordBuilder` consumes `parts` directly to build the Word AST.
 
-This preserves quote information for each part, enabling correct expansion behavior.
+(The former COMPOSITE token type was retired with this design, v0.682:
+fusion produces a plain `WORD` carrying parts, not a special token type.
+Tokens are immutable — stages that need a changed token build a new one
+with `dataclasses.replace`; see the `Token` docstring in
+`psh/lexer/token_types.py`.)
 
 ## Phase 3: Syntactic Analysis (Parsing)
 
@@ -629,10 +638,18 @@ class Statement(ASTNode): pass
 class Command(ASTNode): pass
 
 # Commands (can appear in pipelines)
-class SimpleCommand(Command): 
-    args: List[str]
+class SimpleCommand(Command):
+    words: List[Word]            # THE argument representation (per-part quote
+                                 # and expansion context; see §3.13)
     redirects: List[Redirect]
     background: bool
+
+    @property
+    def args(self) -> List[str]: ...
+    # Derived, never stored: a pre-expansion string view of `words`
+    # (quotes stripped, expansions rendered in their $-source form).
+    # Used by name-dispatch checks and read-only tooling; execution
+    # semantics always come from `words` via the expansion engine.
 
 class CompoundCommand(Command):
     # Control structures can be used as commands
@@ -875,38 +892,25 @@ class ExternalExecutionStrategy(ExecutionStrategy):
 
 ### 4.4 Pipeline Execution
 
-Pipeline execution is handled by the PipelineExecutor:
+**Files**: `psh/executor/pipeline.py` (`PipelineExecutor`), `psh/executor/process_launcher.py` (`ProcessLauncher`), `psh/executor/child_policy.py`
 
-```python
-def _execute_pipeline(self, node: Pipeline, context: ExecutionContext,
-                     visitor: ASTVisitor[int]) -> int:
-    if len(node.commands) == 1:
-        # Single command optimization
-        return visitor.visit(node.commands[0])
-    
-    # Multi-command pipeline
-    pipeline_ctx = PipelineContext(self.job_manager)
-    
-    # Create pipes
-    for i in range(len(node.commands) - 1):
-        pipeline_ctx.add_pipe()
-    
-    # Fork processes for each command
-    for i, command in enumerate(node.commands):
-        pid = os.fork()
-        if pid == 0:
-            # Child: set up pipes and execute
-            self._setup_pipeline_redirections(i, pipeline_ctx)
-            exit_status = visitor.visit(command)
-            os._exit(exit_status)
-        else:
-            # Parent: track process
-            pipeline_ctx.add_process(pid)
-    
-    # Create job and wait for completion
-    job = self.job_manager.create_job(pgid, command_string)
-    return self._wait_for_foreground_pipeline(job, node)
-```
+`PipelineExecutor` owns pipeline SEMANTICS — building the pipe chain (O(1)
+rolling fd pairs), the single-command fast path, `pipefail`/`!` status
+aggregation — but it does NOT fork processes itself. Every job-controlled
+process is created through the shared `ProcessLauncher` (one instance on
+`shell.process_launcher`): the launcher assigns `ProcessRole`
+(`PIPELINE_LEADER` places the process group; `PIPELINE_MEMBER` joins it),
+synchronizes the group with sync pipes so no member races ahead of job
+registration, hands terminal control to the foreground group, and applies
+the child signal policy via the one fork helper
+(`fork_with_signal_window()` + `apply_child_signal_policy()`). The parent
+side registers the group with `JobManager` and waits through the job-control
+machinery.
+
+There is no raw `os.fork()` in the executor package — the fork helper and
+the launcher are the two chokepoints (Architecture Invariant 6). Command and
+process substitution fork via the helper directly by design (they are not
+jobs).
 
 ### 4.5 Benefits of Modular Architecture
 
@@ -1150,9 +1154,9 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 - **Parser Selection**: Runtime switchable with `parser-select combinator` builtin
 
 ### Comprehensive Parser Features
-- **Configuration System**: ParserConfig options for POSIX and bash-compat modes
-- **Error Recovery**: Multi-error collection with fatal-error short-circuiting
-- **Visualization**: Pretty-print, DOT graphs, and ASCII tree rendering
+- **One Configuration Object**: `ParserConfig` is deliberately EMPTY — the production grammar is not feature-configurable (see §3.6); it survives as the single extension point threaded through the factory and every sub-parser
+- **Diagnostics**: first-error semantics (`consume()` raises on the first unexpected token — there is no error-collection mode); `ParseError.render()` carries position, source line, caret, and suggestions
+- **Visualization**: pretty-print, DOT graphs, s-expressions, and ASCII tree rendering, drift-locked by a golden corpus (`tests/unit/parser/visualization_corpus/`)
 - **Centralized State**: ParserContext manages all parser state consistently
 
 ### Modular Execution Engine
@@ -1162,16 +1166,16 @@ PSH's architecture provides comprehensive shell functionality through clean, mod
 - **Visitor Pattern**: Extensible AST traversal for execution and analysis
 
 ### Unified Lexer System
-- **Recognizer Dispatch**: Robust tokenization via explicitly ordered recognizers
-- **Unified Tokens**: Built-in position tracking, quote metadata, and part decomposition
-- **Dedicated Sub-Parsers**: Quotes and expansions consumed whole, preserving structure
-- **Context Awareness**: `LexerContext` tracks command position, `[[ ]]`/case/arithmetic nesting
+- **Recognizer Dispatch**: robust tokenization via explicitly ordered recognizers
+- **Immutable Tokens**: frozen `Token` objects with position tracking, quote metadata, and per-part decomposition (word fusion, §2.6)
+- **Dedicated Sub-Parsers**: quotes and expansions consumed whole, preserving structure
+- **Context Awareness**: `LexicalState` (`psh/lexer/state_context.py`) tracks command position and `[[ ]]`/case/arithmetic nesting
 
 ### Component Organization
 - **Clear Boundaries**: Each subsystem (lexer, parser, executor, expansion) is independent
 - **Manager Pattern**: Coordinated functionality through manager classes
-- **POSIX Compliance**: ~98% compliance with proper expansion ordering
-- **Testability**: Comprehensive test suite with 5,500+ tests
+- **POSIX/bash Fidelity**: behavior pinned against live bash by the conformance and golden-case suites (`tests/conformance/`, `tests/behavioral/`), with proper expansion ordering
+- **Testability**: comprehensive test suite — 18,000+ tests (see README.md's stats block for exact counts)
 
 ## Known Limitations
 

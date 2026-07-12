@@ -255,7 +255,8 @@ SPECIAL_REGISTRY: Dict[str, SpecialVarSpec] = {spec.name: spec for spec in _SPEC
 
 # The computed specials that no-arg ``set`` and ``declare -p`` ENUMERATE (bash
 # lists SHELLOPTS/BASHOPTS in both, with their values). They have no stored
-# variable cell, so ``ScopeManager.all_variables_with_attributes`` injects them.
+# variable cell, so ``ScopeManager.all_variables_with_attributes`` injects them
+# (and, when exported, ``all_exported_variables`` injects them for ``export -p`` — r19-P8).
 #
 # Every OTHER computed special is a DELIBERATE, DOCUMENTED DIVERGENCE from bash's
 # no-arg enumeration — psh lists them only by explicit name (``declare -p RANDOM``
