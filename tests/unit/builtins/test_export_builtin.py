@@ -95,3 +95,41 @@ class TestExportBasics:
         result = captured_shell.run_command('export')
         assert result == 0
         assert 'declare -x PRINTME="1"' in captured_shell.get_stdout()
+
+
+class TestExportOptionReflectionSpecials:
+    """`export -p` lists SHELLOPTS/BASHOPTS ONLY when they are exported —
+    bash 5.2 (r19-P8 probe battery; archived in the campaign ledger).
+
+    These option-reflection specials have no stored variable cell; the
+    no-arg enumeration (all_exported_variables) must inject them subject to
+    the SAME exported filter it uses for stored vars, so the default case
+    still omits them (like bash) while an explicit `export SHELLOPTS`
+    surfaces the `declare -rx` row.
+    """
+
+    def test_default_export_p_omits_specials(self, captured_shell):
+        """Not exported by default -> export -p must not list them (bash)."""
+        result = captured_shell.run_command('export -p')
+        assert result == 0
+        out = captured_shell.get_stdout()
+        assert 'SHELLOPTS' not in out
+        assert 'BASHOPTS' not in out
+
+    def test_export_shellopts_then_listed(self, captured_shell):
+        """`export SHELLOPTS; export -p` lists `declare -rx SHELLOPTS=...`."""
+        captured_shell.run_command('export SHELLOPTS')
+        captured_shell.clear_output()
+        result = captured_shell.run_command('export -p')
+        assert result == 0
+        out = captured_shell.get_stdout()
+        assert 'declare -rx SHELLOPTS=' in out
+
+    def test_export_bashopts_then_listed(self, captured_shell):
+        """Symmetric: exported BASHOPTS shows a `declare -rx BASHOPTS=` row."""
+        captured_shell.run_command('export BASHOPTS')
+        captured_shell.clear_output()
+        result = captured_shell.run_command('export -p')
+        assert result == 0
+        out = captured_shell.get_stdout()
+        assert 'declare -rx BASHOPTS=' in out

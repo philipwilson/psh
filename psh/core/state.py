@@ -829,7 +829,26 @@ class ShellState:
 
     @property
     def variables(self) -> Dict[str, str]:
-        """Return all visible variables as a dict."""
+        """A SNAPSHOT dict of all visible variables (name -> string value).
+
+        This MATERIALIZES a fresh dict on every access via
+        ``scope_manager.get_all_variables`` — it is NOT a live view. Two
+        consequences that have bitten before:
+
+        - **Writes are silently discarded.** ``state.variables['X'] = 'v'``
+          mutates a throwaway dict, not the scope stack (the historical
+          rc-loader ``$0`` no-op; see ``interactive/rc_loader.py``). Set
+          variables through ``set_variable`` / ``scope_manager``.
+        - **Single-value reads should use ``get_variable``.** ``get_variable``
+          consults the scope stack (locals, temp-env overlays, env fallback)
+          directly; going through this property materializes EVERY variable
+          just to read one, and a temp-env or local instance visible to
+          ``get_variable`` will not necessarily match a stale snapshot.
+
+        Retained because tests and name-ENUMERATION callers (``${!prefix*}``
+        via ``match_variable_names``) legitimately want the whole visible set.
+        Prefer ``get_variable(name)`` for any single lookup.
+        """
         return self.scope_manager.get_all_variables()
 
     def get_variable(self, name: str, default: str = '') -> str:
