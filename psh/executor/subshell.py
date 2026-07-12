@@ -123,61 +123,46 @@ class SubshellExecutor:
             # are only installed by run_interactive_loop(), which a forked
             # child never enters — no env-var marker needed.)
             from ..shell import Shell
+            from .child_policy import run_child_body
 
             # Create new shell instance with copied environment
             subshell = Shell.for_subshell(self.shell)
 
-            # Mark as forked child so builtins use os.write() which respects dup2()
-            # This is critical for output redirection to work correctly in subshells
-            subshell.state.in_forked_child = True
-
-            # This process is a fresh fork: align OS signal dispositions with
-            # the adopted trap state (parent's non-ignored traps take the
-            # default action, ignored ones stay ignored). Explicit at the
-            # fork site — see TrapManager.sync_forked_child_dispositions.
-            subshell.trap_manager.sync_forked_child_dispositions()
-
-            # Inherit the parent's set -e suppression: a subshell that is
-            # e.g. an if-condition or a non-final && / || member must not
-            # errexit internally (bash).
-            subshell._errexit_suppress_seed = errexit_suppress
-
-            # Inherit I/O streams from parent shell for test compatibility
+            # Inherit the parent's I/O streams for test compatibility; the
+            # body and EXIT trap write through them, so set them BEFORE the
+            # shared runner.
             subshell.stdout = self.shell.stdout
             subshell.stderr = self.shell.stderr
             subshell.stdin = self.shell.stdin
 
-            # Apply redirections if any. On a bad target, print bash's
-            # diagnostic to fd 2 and exit the subshell 1 (the shared
-            # redirect-error format) instead of letting the raw OSError reach
-            # the generic child-error handler.
-            if redirects:
-                try:
-                    subshell.io_manager.apply_redirections(redirects)
-                except OSError as e:
-                    os.write(2, (format_redirect_error(e) + "\n")
-                             .encode('utf-8', errors='replace'))
-                    return 1
+            # The body applies this subshell's own redirects then runs its
+            # statements. On a bad target, print bash's diagnostic to fd 2
+            # and end the subshell 1 (the shared redirect-error format)
+            # instead of letting the raw OSError reach the child-error path.
+            def body(sub) -> int:
+                if redirects:
+                    try:
+                        sub.io_manager.apply_redirections(redirects)
+                    except OSError as e:
+                        os.write(2, (format_redirect_error(e) + "\n")
+                                 .encode('utf-8', errors='replace'))
+                        return 1
+                return sub.execute_command_list(statements)
 
-            # Execute statements in isolated environment. A fatal assignment
-            # error (readonly/nameref-cycle) aborts the whole subshell body with
-            # status 1 (bash) — it must not unwind past the fork. `return` in a
-            # subshell that inherited a function/sourced-file context ends the
-            # subshell with its status (bash: f() { (return 5); } → $? = 5).
-            from ..core import FunctionReturn, TopLevelAbort
-            try:
-                exit_code = subshell.execute_command_list(statements)
-            except TopLevelAbort as e:
-                exit_code = e.status
-            except FunctionReturn as e:
-                exit_code = e.exit_code
-
-            # A subshell runs its own EXIT trap when it finishes (bash):
-            # (trap 'echo bye' EXIT; ...) prints bye on subshell exit.
-            try:
-                subshell.trap_manager.execute_exit_trap()
-            except Exception:
-                pass
+            # run_child_body owns the shared middle every child-Shell fork
+            # performs: mark the forked child, sync OS signal dispositions to
+            # the adopted trap state (parent's non-ignored traps take the
+            # default action), seed the parent's set -e SUPPRESSION (a subshell
+            # that is an if-condition or non-final &&/|| member must not
+            # errexit internally — bash), run the body through the shared
+            # exception→status taxonomy (a readonly/nameref abort or an
+            # inherited-context `return` ends the subshell with its status —
+            # f() { (return 5); } → $? = 5), and run the subshell's own EXIT
+            # trap. A ( ) subshell is NOT a substitution: no in_substitution
+            # diagnostic suppression, no loop-scope seed, no trap drop, no
+            # errexit-option reset.
+            exit_code = run_child_body(
+                subshell, body, errexit_suppress=errexit_suppress)
 
             # Flush output streams before returning
             # This is critical because os._exit() doesn't flush buffers

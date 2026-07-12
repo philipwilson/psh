@@ -401,14 +401,12 @@ class ControlFlowExecutor:
                 if node.init_expr:
                     try:
                         evaluate_arithmetic(node.init_expr, self.shell)
-                    except (ReadonlyVariableError, NamerefCycleError) as e:
-                        # `readonly z; for ((z=0; ...))`: bash reports, the loop
-                        # never runs (status 1), and execution continues.
-                        from .strategies import report_assignment_error
-                        return report_assignment_error(self.state, e)
-                    except (ValueError, ArithmeticError) as e:
-                        print(f"psh: ((: {e}", file=self.state.stderr)
-                        return 1
+                    except (ReadonlyVariableError, NamerefCycleError,
+                            ValueError, ArithmeticError) as e:
+                        # A bad init expr (`readonly z; for ((z=0; ...))`, or an
+                        # evaluation failure): the loop never runs; bash reports
+                        # and continues with status 1.
+                        return self._arith_step_error_status(e)
 
                 while True:
                     # Evaluate condition
@@ -419,15 +417,11 @@ class ControlFlowExecutor:
                             result = evaluate_arithmetic(node.condition_expr, self.shell)
                             if result == 0:  # Zero means false
                                 break
-                        except (ReadonlyVariableError, NamerefCycleError) as e:
-                            # Assignment failure in the condition: bash
-                            # reports and stops the loop with status 1.
-                            from .strategies import report_assignment_error
-                            exit_status = report_assignment_error(self.state, e)
-                            break
-                        except (ValueError, ArithmeticError) as e:
-                            print(f"psh: ((: {e}", file=self.state.stderr)
-                            exit_status = 1
+                        except (ReadonlyVariableError, NamerefCycleError,
+                                ValueError, ArithmeticError) as e:
+                            # A bad condition expr stops the loop with status 1
+                            # (bash reports; execution continues after).
+                            exit_status = self._arith_step_error_status(e)
                             break
 
                     # Execute body. A continue falls through to the update
@@ -448,16 +442,11 @@ class ControlFlowExecutor:
                     if node.update_expr:
                         try:
                             evaluate_arithmetic(node.update_expr, self.shell)
-                        except (ReadonlyVariableError, NamerefCycleError) as e:
-                            # Assignment failure in the update: bash reports
-                            # and stops the loop with status 1 (the body has
-                            # already run this iteration).
-                            from .strategies import report_assignment_error
-                            exit_status = report_assignment_error(self.state, e)
-                            break
-                        except (ValueError, ArithmeticError) as e:
-                            print(f"psh: ((: {e}", file=self.state.stderr)
-                            exit_status = 1
+                        except (ReadonlyVariableError, NamerefCycleError,
+                                ValueError, ArithmeticError) as e:
+                            # A bad update expr stops the loop with status 1;
+                            # the body has already run this iteration (bash).
+                            exit_status = self._arith_step_error_status(e)
                             break
 
         return exit_status
@@ -609,8 +598,8 @@ class ControlFlowExecutor:
 
                         # Show prompt and read input
                         try:
-                            sys.stderr.write(ps3)
-                            sys.stderr.flush()
+                            self.state.stderr.write(ps3)
+                            self.state.stderr.flush()
 
                             # Read input line
                             if hasattr(self.shell, 'stdin') and self.shell.stdin:
@@ -666,12 +655,29 @@ class ControlFlowExecutor:
                             self._reraise_loop_control(lb, context)
                             break
                 except KeyboardInterrupt:
-                    sys.stderr.write("\n")
+                    self.state.stderr.write("\n")
                     exit_status = 130
 
         return exit_status
 
     # Helper methods
+
+    def _arith_step_error_status(self, exc: Exception) -> int:
+        """Map a C-style-``for`` arithmetic-step failure to the loop's status.
+
+        The init, condition and update expressions of ``for ((...))`` all
+        fail the same way (bash): a readonly / nameref-cycle assignment is
+        reported via ``report_assignment_error`` (bash's message + flow), and
+        any other evaluation failure (``ValueError``/``ArithmeticError`` —
+        e.g. a bad base literal or a residual ``$``) prints ``psh: ((: <msg>``.
+        Both yield status 1 and let the shell continue; the CALLER decides
+        whether that ends the loop (``return`` before the loop runs, or
+        ``break`` out of it)."""
+        if isinstance(exc, (ReadonlyVariableError, NamerefCycleError)):
+            from .strategies import report_assignment_error
+            return report_assignment_error(self.state, exc)
+        print(f"psh: ((: {exc}", file=self.state.stderr)
+        return 1
 
     def _set_arith_step_bash_command(self, expr: Optional[str]) -> None:
         """$BASH_COMMAND for one C-style-for arithmetic step (bash reports
@@ -750,7 +756,7 @@ class ControlFlowExecutor:
         if num_items <= 9:
             # Single column for small lists
             for i, item in enumerate(items, 1):
-                sys.stderr.write(f"{i}) {item}\n")
+                self.state.stderr.write(f"{i}) {item}\n")
         else:
             # Multi-column for larger lists
             columns = 2 if num_items <= 20 else 3
@@ -764,5 +770,5 @@ class ControlFlowExecutor:
                     idx = row + col * rows
                     if idx < num_items:
                         entry = f"{idx + 1}) {items[idx]}"
-                        sys.stderr.write(entry.ljust(col_width))
-                sys.stderr.write("\n")
+                        self.state.stderr.write(entry.ljust(col_width))
+                self.state.stderr.write("\n")

@@ -7,12 +7,21 @@ in common, separated from what any particular child *does*:
   across the window; the parent-side half of the signal policy).
 - apply_child_signal_policy() — the child-side half: reset handlers to
   SIG_DFL, then unblock.
+- map_child_exception() — the ONE taxonomy: how a control-flow/exit
+  exception at a forked child's top becomes the child's exit code
+  (TopLevelAbort/FunctionReturn/LoopBreak/LoopContinue/SystemExit). Every
+  fork site catches CHILD_EXIT_EXCEPTIONS and delegates here, so the
+  mapping (including SystemExit(None) → 0) lives in one place.
+- run_child_body() — the shared MIDDLE of every child that builds a child
+  Shell: fork-child flags, trap-disposition sync/drop, errexit seeding,
+  body execution via map_child_exception, and the child's EXIT trap.
+  Shared by run_child_shell (substitutions) and SubshellExecutor's
+  foreground-subshell body.
 - run_child_shell() — the shared child-body runner for substitution
   children (command substitution, process substitution): signal policy,
-  fd plumbing hook, child Shell construction, body execution, exception
-  → exit-code mapping, stream flushing, os._exit(). The caller supplies
-  only the two site-specific pieces: the fd plumbing (io_setup) and the
-  body (what this child runs).
+  fd plumbing hook, child Shell construction, run_child_body, stream
+  flushing, os._exit(). The caller supplies only the two site-specific
+  pieces: the fd plumbing (io_setup) and the body (what this child runs).
 - flush_child_streams() — the shared pre-os._exit() flush discipline
   (os._exit() does not flush Python-level buffers).
 
@@ -31,8 +40,59 @@ import signal
 import sys
 from typing import TYPE_CHECKING, Callable, NoReturn, Optional
 
+from ..core.exceptions import (
+    FunctionReturn,
+    LoopBreak,
+    LoopContinue,
+    TopLevelAbort,
+)
+
 if TYPE_CHECKING:
     from ..shell import Shell
+
+# The control-flow / exit exceptions a forked child's body may raise at its
+# top. Caught as a group at every fork site; the code mapping lives once in
+# map_child_exception (below). KeyboardInterrupt (→130) and unexpected
+# Exceptions are deliberately NOT here — only the launcher's leaf-child path
+# arms them (it may exec an external binary).
+CHILD_EXIT_EXCEPTIONS = (
+    TopLevelAbort, FunctionReturn, LoopBreak, LoopContinue, SystemExit,
+)
+
+
+def map_child_exception(exc: BaseException) -> int:
+    """Map a control-flow / exit exception at a forked child's top to the
+    child's exit code — the ONE taxonomy every fork site shares.
+
+    A forked psh child is a process boundary: ``break``/``continue``/``return``
+    cannot reach the loop/function they name (those live in the parent's
+    stack, in the un-forked copy), and ``exit`` must terminate only this
+    child. So each of these exceptions ends the child with a status:
+
+    - TopLevelAbort (a fatal assignment/expansion discard) → its ``.status``.
+    - FunctionReturn (``return`` in an inherited function/sourced context) →
+      its ``.exit_code`` (bash: ``f(){ x=$(return 3); }`` leaves ``$?``=3).
+    - LoopBreak/LoopContinue (a break/continue escaping the child's own
+      loops) → its ``.exit_status``, or 0 (bash: ``x=$(break 0)`` in a loop
+      leaves ``$?``=1).
+    - SystemExit (the ``exit`` builtin) → its integer code; ``exit`` with no
+      argument, i.e. ``SystemExit(None)``, → 0 (Python's own convention for a
+      bare ``sys.exit()``); a non-int, non-None code → 1.
+
+    Only the five CHILD_EXIT_EXCEPTIONS are handled; anything else re-raises
+    (callers catch exactly that group before calling this). KeyboardInterrupt
+    (→130) and unexpected Exceptions stay caller-local — see the module note.
+    """
+    if isinstance(exc, TopLevelAbort):
+        return exc.status
+    if isinstance(exc, FunctionReturn):
+        return exc.exit_code
+    if isinstance(exc, (LoopBreak, LoopContinue)):
+        return exc.exit_status or 0
+    if isinstance(exc, SystemExit):
+        code = exc.code
+        return code if isinstance(code, int) else (0 if code is None else 1)
+    raise exc
 
 
 def fork_with_signal_window() -> int:
@@ -166,13 +226,6 @@ def run_background_shell_child(shell: 'Shell',
     Returns the exit code (this runs inside execute_fn, which returns to
     ProcessLauncher._child_setup_and_exec — NOT a NoReturn context).
     """
-    from ..core.exceptions import (
-        FunctionReturn,
-        LoopBreak,
-        LoopContinue,
-        TopLevelAbort,
-    )
-
     shell.trap_manager.enter_subshell_trap_environment()
     shell.interactive_manager.signal_manager.install_child_trap_handlers(
         background=True)
@@ -182,15 +235,10 @@ def run_background_shell_child(shell: 'Shell',
         exit_code = body()
         if not isinstance(exit_code, int):
             exit_code = 0 if exit_code else 1
-    except TopLevelAbort as e:
-        exit_code = e.status
-    except FunctionReturn as e:
-        exit_code = e.exit_code
-    except (LoopBreak, LoopContinue) as e:
-        exit_code = e.exit_status or 0
-    except SystemExit as e:
-        code = e.code
-        exit_code = code if isinstance(code, int) else (0 if code is None else 1)
+    except CHILD_EXIT_EXCEPTIONS as e:
+        # A control-flow/exit exception at the body's top: subshell boundary,
+        # so break/return cannot cross the fork; map via the shared taxonomy.
+        exit_code = map_child_exception(e)
     finally:
         # A managed-signal trap queued while the body ran (e.g. after the
         # last statement) still fires; then the EXIT trap runs on the way
@@ -214,6 +262,84 @@ def run_background_shell_child(shell: 'Shell',
     return exit_code
 
 
+def run_child_body(child_shell: 'Shell',
+                   body: Callable[['Shell'], int],
+                   *,
+                   errexit_suppress: int = 0,
+                   in_substitution: bool = False,
+                   drop_traps: bool = False,
+                   reset_errexit: bool = False,
+                   loop_seed: Optional[int] = None) -> int:
+    """Run a forked shell-process child's body and map its outcome to an
+    exit code — the shared MIDDLE of every child that builds a child Shell.
+
+    The caller has already built *child_shell* (``Shell.for_subshell``) and
+    plumbed its streams; this runner performs the steps a foreground
+    subshell (``SubshellExecutor``) and a substitution child
+    (``run_child_shell``) do identically, in the order both require:
+
+    1. mark the forked child (``state.in_forked_child``); for a substitution
+       child (``in_substitution``) also suppress the abnormal-termination
+       diagnostic (Terminated / Segmentation fault …, which bash omits
+       inside substitutions) and, with ``loop_seed``, keep the enclosing
+       loop scope visible — so ``x=$(break)`` in a loop is SILENT, though
+       the break still cannot cross the fork.
+    2. ``sync_forked_child_dispositions()`` — this process IS a fresh fork,
+       so the parent's non-ignored traps take the default OS action and
+       ignored ('') ones stay ignored; done BEFORE any drop. With
+       ``drop_traps`` the parent's inherited-for-listing trap entries are
+       then dropped (a process-substitution child never lists them:
+       ``trap A USR1; cat <(trap)`` prints nothing).
+    3. seed the errexit SUPPRESSION count of the forking context (an
+       if/while condition, non-final ``&&``/``||`` member, ``!``) so
+       ``set -e`` inside the body cannot re-arm aborting — in bash the
+       child is a memory copy. With ``reset_errexit`` the errexit OPTION
+       itself is additionally cleared (bash resets ``set -e`` in
+       command-substitution children, unlike ``( )`` subshells and process
+       substitutions which inherit it).
+    4. ``exit_code = body(child_shell)``; a control-flow/exit exception at
+       its top maps via ``map_child_exception`` — this is a subshell
+       boundary, so ``break``/``return`` cannot cross and ``exit``
+       terminates only this child.
+    5. the child's own EXIT trap if the body set one (bash:
+       ``x=$(trap 'echo bye' EXIT)`` captures "bye"). Idempotent — the exit
+       builtin's SystemExit path already fired it; inherited EXIT traps
+       never fire (see ``TrapManager.get_handler``). ``exit`` inside the
+       EXIT trap sets the child's status.
+
+    Returns the exit code. The CALLER owns the surrounding fork lifecycle
+    (signal policy, ``Shell`` construction, stream flush, ``os._exit`` vs
+    return to the launcher) — those differ between ``run_child_shell``
+    (NoReturn) and the foreground-subshell body (returns to ProcessLauncher,
+    which flushes and exits).
+    """
+    child_shell.state.in_forked_child = True
+    if in_substitution:
+        child_shell.state.in_substitution = True
+    if loop_seed is not None:
+        child_shell._loop_depth_seed = loop_seed
+    child_shell.trap_manager.sync_forked_child_dispositions()
+    if drop_traps:
+        child_shell.trap_manager.drop_inherited_traps()
+    child_shell._errexit_suppress_seed = errexit_suppress
+    if reset_errexit:
+        child_shell.state.options['errexit'] = False
+
+    try:
+        exit_code = body(child_shell)
+    except CHILD_EXIT_EXCEPTIONS as e:
+        exit_code = map_child_exception(e)
+
+    try:
+        child_shell.trap_manager.execute_exit_trap()
+    except SystemExit as e:
+        exit_code = map_child_exception(e)
+    except Exception:
+        pass
+
+    return exit_code
+
+
 def run_child_shell(parent_shell: 'Shell',
                     body: Callable[['Shell'], int],
                     *,
@@ -226,8 +352,8 @@ def run_child_shell(parent_shell: 'Shell',
 
     This is the shared "what every substitution child does" runner,
     called immediately after fork_with_signal_window() returns 0 in
-    the child branch. It owns everything generic about being a healthy
-    psh child; the caller supplies only the site-specific pieces:
+    the child branch. It owns the fork-lifecycle pieces unique to a
+    substitution child and delegates the shared middle to run_child_body:
 
     1. apply_child_signal_policy() — reset handlers, unblock the fork
        window (always with is_shell_process=True: substitution children
@@ -236,40 +362,21 @@ def run_child_shell(parent_shell: 'Shell',
        child Shell is built because Shell construction inspects the
        process's fds (interactive detection via isatty(0)); the child
        shell must see the post-plumbing world.
-    3. Shell.for_subshell(parent_shell, norc=norc) — the child Shell,
-       with state.in_forked_child set so builtins use fd-level I/O.
-       Then trap_manager.sync_forked_child_dispositions() — this process
-       IS a fresh fork, so the parent's non-ignored traps take the
-       default OS action and ignored ('') ones stay ignored. The call is
-       explicit at the fork site (never inferred, e.g. from pids): an
-       in-process child Shell such as the env builtin's must not reset
-       the hosting shell's live handlers. With inherit_traps=False the
-       parent's inherited-for-listing trap entries are then dropped:
-       process-substitution children never list them (bash:
-       `trap A USR1; cat <(trap)` prints nothing), unlike
-       command-substitution children (the POSIX saved=$(trap) idiom).
-       Then the errexit policy: the errexit-IGNORED state of the forking
-       context (if/while condition, non-final && / || member, `!`)
-       crosses into the child — in bash the child is a memory copy, so
-       even `set -e` inside the body cannot re-arm aborting there —
-       seeded exactly as SubshellExecutor does for ( ) subshells. With
-       reset_errexit the errexit OPTION itself is additionally cleared:
-       bash resets set -e in command-substitution children (unless POSIX
-       mode or `shopt -s inherit_errexit`), while ( ) subshells and
-       process substitutions inherit it.
-    4. exit_code = body(child_shell) — what THIS child does. A
-       SystemExit (the exit builtin) maps to its code: substitutions
-       run in a subshell, so exit must not unwind the parent's stack.
-       A FunctionReturn (return in an inherited function/sourced-file
-       context) likewise maps to its status.
-    5. the child's own EXIT trap, if the body set one (bash:
-       x=$(trap 'echo bye' EXIT) captures "bye"). Idempotent — the exit
-       builtin already fired it on the SystemExit path.
-    6. flush_child_streams() over the child shell's streams and the
+    3. Shell.for_subshell(parent_shell, norc=norc) — the child Shell.
+    4. run_child_body(...) with in_substitution=True — the shared middle:
+       trap-disposition sync (drop_traps=not inherit_traps: process-
+       substitution children never list inherited traps, unlike the
+       command-substitution POSIX saved=$(trap) idiom), errexit-suppression
+       seeding from the forking context (+ reset_errexit clearing the
+       option for command substitution), body execution with the shared
+       exception→status taxonomy, and the child's own EXIT trap. The
+       loop-scope and errexit-suppression seeds come from the parent's
+       current executor.
+    5. flush_child_streams() over the child shell's streams and the
        process-wide sys streams (see its docstring).
-    7. os._exit(exit_code).
+    6. os._exit(exit_code).
 
-    Any other exception escaping steps 1-6 is reported on fd 2 as
+    Any other exception escaping steps 1-5 is reported on fd 2 as
     ``psh: {error_label} error: ...`` followed by os._exit(1) — a
     forked child must NEVER return into the parent's call stack, and
     must never fail silently.
@@ -285,78 +392,26 @@ def run_child_shell(parent_shell: 'Shell',
             io_setup()
 
         # Import here to avoid a circular import (shell -> executor).
-        from ..core.exceptions import (
-            FunctionReturn,
-            LoopBreak,
-            LoopContinue,
-            TopLevelAbort,
-        )
         from ..shell import Shell
         child_shell = Shell.for_subshell(parent_shell, norc=norc)
-        child_shell.state.in_forked_child = True
-        # This child runs a command/process substitution. bash suppresses the
-        # abnormal-termination diagnostic (Terminated / Segmentation fault ...)
-        # inside substitutions, unlike a ( ) subshell which still reports it.
-        child_shell.state.in_substitution = True
-        # A substitution child forked inside a loop keeps the loop scope
-        # visible (bash: `x=$(break)` in a loop is SILENT — no "only
-        # meaningful in a loop" warning — though the break cannot cross
-        # the process boundary; the except below just ends the child).
+
+        # The loop-scope and errexit-suppression seeds come from the parent's
+        # current executor (None only for an in-process child Shell built
+        # without an active executor, e.g. the env builtin's).
         parent_executor = parent_shell._current_executor
-        if parent_executor is not None:
-            child_shell._loop_depth_seed = parent_executor.context.loop_depth
-        # This process is a fresh fork: align OS dispositions with the
-        # adopted trap state BEFORE any drop (a procsub child must still
-        # reset the parent's queueing handlers copied by the fork).
-        child_shell.trap_manager.sync_forked_child_dispositions()
-        if not inherit_traps:
-            child_shell.trap_manager.drop_inherited_traps()
+        loop_seed = (parent_executor.context.loop_depth
+                     if parent_executor is not None else None)
+        errexit_suppress = (parent_executor.context.errexit_suppress
+                            if parent_executor is not None else 0)
 
-        # errexit across the fork (see docstring): the forking context's
-        # suppression count seeds the child's first executor, and command
-        # substitution additionally clears the option itself.
-        executor = parent_shell._current_executor
-        if executor is not None:
-            child_shell._errexit_suppress_seed = executor.context.errexit_suppress
-        if reset_errexit:
-            child_shell.state.options['errexit'] = False
-
-        try:
-            exit_code = body(child_shell)
-        except TopLevelAbort as e:
-            # A fatal assignment error (readonly/nameref-cycle) aborts the
-            # substitution child with its status — it must not unwind past the
-            # fork into the parent.
-            exit_code = e.status
-        except FunctionReturn as e:
-            # `return` in a child that inherited a function/sourced-file
-            # context ends the child with its status (bash:
-            # f() { x=$(return 3); } leaves $? = 3).
-            exit_code = e.exit_code
-        except (LoopBreak, LoopContinue) as e:
-            # A break/continue that escapes the child's own loops (the
-            # inherited loop scope above) just ends the child with the
-            # signal's own status — 0 normally, 1 for out-of-range
-            # `break 0` (bash: `x=$(break 0)` in a loop leaves $? = 1).
-            exit_code = e.exit_status or 0
-        except SystemExit as e:
-            # exit in a substitution terminates the child, not the parent.
-            code = e.code
-            exit_code = code if isinstance(code, int) else (0 if code is None else 1)
-
-        # A substitution child runs its own EXIT trap when it finishes,
-        # exactly like a subshell (bash: x=$(trap 'echo bye' EXIT)
-        # captures "bye"). Idempotent: the exit builtin's SystemExit path
-        # already fired it; inherited EXIT traps never fire — see
-        # TrapManager.get_handler.
-        try:
-            child_shell.trap_manager.execute_exit_trap()
-        except SystemExit as e:
-            # exit inside the EXIT trap sets the child's status (bash).
-            code = e.code
-            exit_code = code if isinstance(code, int) else (0 if code is None else 1)
-        except Exception:
-            pass
+        exit_code = run_child_body(
+            child_shell, body,
+            errexit_suppress=errexit_suppress,
+            in_substitution=True,
+            drop_traps=not inherit_traps,
+            reset_errexit=reset_errexit,
+            loop_seed=loop_seed,
+        )
 
         flush_child_streams(child_shell.stdout, child_shell.stderr,
                             sys.stdout, sys.stderr)

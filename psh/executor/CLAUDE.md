@@ -28,7 +28,7 @@ Executor  Executor   Executor   Executor  Executor
 | `subshell.py` | `SubshellExecutor` - subshells and brace groups |
 | `array.py` | `ArrayOperationExecutor` - array initialization |
 | `process_launcher.py` | `ProcessLauncher` - unified process creation |
-| `child_policy.py` | The "becoming a healthy child process" chapter: `fork_with_signal_window()`, `apply_child_signal_policy()`, `run_child_shell()` (shared substitution-child runner), `flush_child_streams()` |
+| `child_policy.py` | The "becoming a healthy child process" chapter: `fork_with_signal_window()`, `apply_child_signal_policy()`, `map_child_exception()` (the ONE child-exit taxonomy), `run_child_body()` (shared child-Shell body runner), `run_child_shell()` (substitution-child runner, built on `run_child_body`), `flush_child_streams()` |
 | `job_control.py` | `JobManager`, `Job`, `JobState`, `Process` - job table and waiting (moved into the package in v0.285) |
 | `strategies.py` | Execution strategies for different command types, plus shared helpers `report_exec_failure()` and `execute_builtin_guarded()` |
 | `command_resolver.py` | `CommandResolver` - the ONE command-name resolution service (PATH walk, ordered typed candidates, executor exec resolution). Consumed by the external strategy and by `command`/`type`/`hash`; see `psh/builtins/CLAUDE.md` "Command resolution" |
@@ -252,18 +252,30 @@ child — the semantic boundary is "becoming a healthy child" (runner) vs
    the child Shell is built, because Shell construction inspects fds
    via isatty)
 3. `Shell.for_subshell(parent, norc=norc)` + `state.in_forked_child = True`
-4. `exit_code = body(child_shell)`; `SystemExit(n)` maps to `n`
-   (substitutions run in a subshell — exit must not unwind the parent)
+4. `run_child_body(child_shell, body, ...)` — the shared MIDDLE every
+   child-Shell fork performs (also used by `SubshellExecutor`'s foreground
+   `( )` body): fork-child flags, the fresh-fork trap-disposition sync (and
+   inherited-trap drop for process substitution), errexit-suppression
+   seeding (+ errexit-option reset for command substitution), body
+   execution, and the child's EXIT trap. A body-level control-flow / exit
+   exception maps through `map_child_exception` — the ONE taxonomy
+   (`TopLevelAbort`→`.status`, `FunctionReturn`→`.exit_code`,
+   `LoopBreak`/`LoopContinue`→`.exit_status or 0`, `SystemExit`→its code,
+   `SystemExit(None)`→0): substitutions/subshells run in a subshell, so
+   `exit`/`break`/`return` must not unwind the parent.
 5. `flush_child_streams(child.stdout, child.stderr, sys.stdout, sys.stderr)`
 6. `os._exit(exit_code)`; any other exception → `psh: {error_label}
    error: ...` on fd 2, then `os._exit(1)`
 
-ProcessLauncher's `_child_setup_and_exec` deliberately does NOT use the
-runner (see its docstring): launcher children need process-group and
-sync-pipe setup, may exec an external binary, and reuse the parent Shell
+ProcessLauncher's `_child_setup_and_exec` deliberately does NOT use
+`run_child_body`/`run_child_shell` (see its docstring): launcher children
+need process-group and sync-pipe setup, may exec an external binary (so
+`KeyboardInterrupt`→130 is a launcher-local arm), and reuse the parent Shell
 object in the forked copy instead of building a child Shell. The shared
-pieces are shared as code, not copies: `fork_with_signal_window()`,
-`apply_child_signal_policy()`, and `flush_child_streams()`.
+pieces ARE shared as code, not copies: `fork_with_signal_window()`,
+`apply_child_signal_policy()`, `flush_child_streams()`, and — for the
+exit-code mapping every fork site needs — `map_child_exception()`
+(guarded single-source by `tests/unit/tooling/test_child_exit_taxonomy_centralized.py`).
 
 Note: `expansion/command_sub.py` keeps a documented parent-side SIGCHLD
 reset (SIG_DFL around the fork/waitpid) so the interactive SIGCHLD

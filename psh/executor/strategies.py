@@ -166,6 +166,22 @@ def report_assignment_error(state: 'ShellState', exc: Exception) -> int:
     return 1
 
 
+def setup_child_redirections_for(shell: 'Shell', redirects) -> None:
+    """Apply a redirect list in a forked child via setup_child_redirections.
+
+    The four fork-child strategy sites (backgrounded builtin, backgrounded
+    function, pipeline exec, external command) each wrapped a bare redirect
+    list in a throwaway ``SimpleCommand`` solely to reach
+    ``io_manager.setup_child_redirections``; this is that one wrapper. A
+    falsy/empty list is a no-op.
+    """
+    if not redirects:
+        return
+    from ..ast_nodes import SimpleCommand
+    shell.io_manager.setup_child_redirections(
+        SimpleCommand(redirects=redirects))
+
+
 def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
                             shell: 'Shell',
                             invocation: Optional['BuiltinContext'] = None,
@@ -403,10 +419,7 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
 
             def body() -> int:
                 # Apply redirections once in the child.
-                if redirects:
-                    from ..ast_nodes import SimpleCommand
-                    temp_command = SimpleCommand(redirects=redirects)
-                    shell.io_manager.setup_child_redirections(temp_command)
+                setup_child_redirections_for(shell, redirects)
 
                 builtin = shell.builtin_registry.get(cmd_name)
                 if builtin is None:
@@ -478,10 +491,7 @@ class FunctionExecutionStrategy(ExecutionStrategy):
             # reset, a body-set managed-signal trap fires, and the EXIT trap
             # runs on completion / fatal signal.
             def body() -> int:
-                if redirects:
-                    from ..ast_nodes import SimpleCommand
-                    temp_command = SimpleCommand(redirects=redirects)
-                    shell.io_manager.setup_child_redirections(temp_command)
+                setup_child_redirections_for(shell, redirects)
 
                 from .function import FunctionOperationExecutor
                 function_executor = FunctionOperationExecutor(shell)
@@ -565,11 +575,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             # In pipeline, use exec to replace current process
             try:
                 # Set up redirections if any
-                if redirects:
-                    # Create a dummy command object for the io_manager
-                    from ..ast_nodes import SimpleCommand
-                    temp_command = SimpleCommand(redirects=redirects)
-                    shell.io_manager.setup_child_redirections(temp_command)
+                setup_child_redirections_for(shell, redirects)
 
                 # Ensure we're in the correct process group before exec
                 # This is important for commands that might fork after exec
@@ -609,11 +615,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
         # Create execution function
         def execute_fn():
             # Set up redirections if any
-            if redirects:
-                # Create a dummy command object for the io_manager
-                from ..ast_nodes import SimpleCommand
-                temp_command = SimpleCommand(redirects=redirects)
-                shell.io_manager.setup_child_redirections(temp_command)
+            setup_child_redirections_for(shell, redirects)
 
             # Execute the command with proper environment
             if shell.state.options.get('debug-exec'):
