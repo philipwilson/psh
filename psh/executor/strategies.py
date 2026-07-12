@@ -255,7 +255,6 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
             return 1
         raise
     except Exception as e:
-        # Imports here to avoid circular imports
         # A declaration value that fails to evaluate arithmetically
         # (`declare -i v='1/0'`, `local -i w='1//'`): bash prints
         # "declare: 1/0: division by 0" and DISCARDS the rest of the
@@ -461,7 +460,6 @@ class FunctionExecutionStrategy(ExecutionStrategy):
             return self._execute_function_in_background(
                 cmd_name, args, shell, context, redirects, visitor)
 
-        # Import here to avoid circular imports
 
         # Create a function executor to handle the call
         function_executor = FunctionOperationExecutor(shell)

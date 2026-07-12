@@ -648,7 +648,6 @@ class CommandExecutor:
         - Anything else is likely an internal defect: keep the shell
           alive, print a generic message (traceback under --debug-exec).
         """
-        # Import these here to avoid circular imports
 
         # Re-raise control flow exceptions
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):
