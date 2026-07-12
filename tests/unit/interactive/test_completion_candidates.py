@@ -32,42 +32,63 @@ def workdir(tmp_path, monkeypatch):
 
 
 class TestPathCompletions:
+    # get_completions returns (word_start, completions); tests unpack and
+    # ignore word_start (its own contract is covered by TestGetCompletionsContract).
     def test_partial_filename_multiple_matches(self, engine, workdir):
-        results = engine.get_completions("cat foo", "cat foo", 7)
+        _, results = engine.get_completions("cat foo", 7)
         assert sorted(results) == ["foo.txt", "foobar.txt"]
 
     def test_unique_completion(self, engine, workdir):
-        results = engine.get_completions("cat foob", "cat foob", 8)
+        _, results = engine.get_completions("cat foob", 8)
         assert results == ["foobar.txt"]
 
     def test_directory_gets_trailing_slash(self, engine, workdir):
-        results = engine.get_completions("ls ba", "ls ba", 5)
+        _, results = engine.get_completions("ls ba", 5)
         assert results == ["baz/"]
 
     def test_hidden_files_excluded_with_empty_prefix(self, engine, workdir):
-        results = engine.get_completions("ls ", "ls ", 3)
+        _, results = engine.get_completions("ls ", 3)
         assert ".hidden" not in results
         assert "foo.txt" in results
 
     def test_hidden_files_included_with_dot_prefix(self, engine, workdir):
-        results = engine.get_completions("ls .h", "ls .h", 5)
+        _, results = engine.get_completions("ls .h", 5)
         assert results == [".hidden"]
 
     def test_completion_inside_subdirectory_keeps_dir_part(self, engine, workdir):
-        results = engine.get_completions("cat baz/in", "cat baz/in", 10)
+        _, results = engine.get_completions("cat baz/in", 10)
         assert results == ["baz/inner.txt"]
 
     def test_nonexistent_directory_yields_nothing(self, engine, workdir):
-        assert engine.get_completions("cat nosuch/x", "cat nosuch/x", 12) == []
+        assert engine.get_completions("cat nosuch/x", 12)[1] == []
 
     def test_no_matches_yields_nothing(self, engine, workdir):
-        assert engine.get_completions("cat zzz", "cat zzz", 7) == []
+        assert engine.get_completions("cat zzz", 7)[1] == []
 
     def test_command_position_completes_paths_only(self, engine, workdir):
         # Documents current behavior: the engine is purely path-based;
         # there is no builtin/PATH command completion at word 0.
-        results = engine.get_completions("fo", "fo", 2)
+        _, results = engine.get_completions("fo", 2)
         assert sorted(results) == ["foo.txt", "foobar.txt"]
+
+
+class TestGetCompletionsContract:
+    """get_completions returns the word boundary alongside the candidates so
+    the caller reuses it (one find_word_start scan per Tab press)."""
+
+    def test_returns_word_start_and_completions(self, engine, workdir):
+        result = engine.get_completions("cat foob", 8)
+        assert isinstance(result, tuple) and len(result) == 2
+        word_start, completions = result
+        # "cat foob": the word being completed starts at index 4.
+        assert word_start == 4
+        assert completions == ["foobar.txt"]
+
+    def test_word_start_matches_find_word_start(self, engine):
+        # The returned boundary is exactly find_word_start's answer.
+        line, cursor = "echo a; cat fo", 14
+        word_start, _ = engine.get_completions(line, cursor)
+        assert word_start == engine.find_word_start(line, cursor)
 
 
 class TestFindWordStart:
