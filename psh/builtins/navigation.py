@@ -25,24 +25,20 @@ class CdBuiltin(Builtin):
         pwd = shell.state.get_variable('PWD')
         current_dir = pwd if isinstance(pwd, str) and pwd else os.getcwd()
 
-        # Parse the -L (logical, default) / -P (physical) options. A bare '-'
-        # is NOT an option — it is the "previous directory" operand — and '--'
-        # ends option parsing (both handled by the len>1 guard / explicit check).
+        # Parse the -L (logical, default) / -P (physical) options via the shared
+        # ordered walker: a bare '-' is NOT an option — it is the "previous
+        # directory" operand (parse_flags_ordered's len==1 guard) — and '--'
+        # ends option parsing. Order matters: -L/-P is last-wins (`cd -LP` is
+        # physical, `cd -PL` logical), so we replay the events in order. On a
+        # bad flag char bash reports the offending CHAR (`cd -Lx` -> "-x") plus
+        # the usage line (rc 2); parse_flags_ordered handles both — the old
+        # loop reported the whole cluster.
+        events, operands = self.parse_flags_ordered(args, shell, flags='LP')
+        if events is None:
+            return 2
         physical = False
-        i = 1
-        while (i < len(args) and args[i].startswith('-')
-               and len(args[i]) > 1 and args[i] != '--'):
-            flag = args[i]
-            if all(c in 'LP' for c in flag[1:]):
-                physical = flag[-1] == 'P'  # clustered/repeated: last wins
-            else:
-                self.error(f"{flag}: invalid option", shell)
-                self.write_error_line("cd: usage: cd [-L|-P] [dir]", shell)
-                return 2
-            i += 1
-        if i < len(args) and args[i] == '--':
-            i += 1
-        operands = args[i:]
+        for ch, _ in events:
+            physical = (ch == 'P')  # last of -L/-P wins
         if len(operands) > 1:
             # bash: `cd a b` is an error and does not change directory.
             self.error("too many arguments", shell)
@@ -201,7 +197,9 @@ class CdBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "cd [dir]"
+        # Includes the option group so parse_flags_ordered's usage line reads
+        # `cd: usage: cd [-L|-P] [dir]` on a bad option (bash-shaped).
+        return "cd [-L|-P] [dir]"
 
     @property
     def description(self) -> str:

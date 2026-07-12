@@ -383,7 +383,8 @@ class WaitBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "wait [pid|job_id ...]"
+        # bash's exact usage synopsis (also printed on option errors).
+        return "wait [-fn] [-p var] [id ...]"
 
     @property
     def description(self) -> str:
@@ -391,11 +392,17 @@ class WaitBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """wait: wait [pid|job_id ...]
+        return """wait: wait [-fn] [-p var] [id ...]
     Wait for process completion and return exit status.
 
     With no arguments, waits for all currently active child processes.
     With arguments, waits for specified processes or jobs.
+
+    Options:
+      -n          Wait for the NEXT single job/process to finish.
+      -p VAR      Store the finished job's PID in the variable VAR.
+      -f          Wait for the job to terminate (accepted for bash
+                  compatibility; psh already waits for termination).
 
     Arguments can be:
       pid         Process ID to wait for
@@ -412,28 +419,18 @@ class WaitBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the wait builtin."""
-        # Parse leading options: -n (return when the NEXT job finishes) and
-        # -p VAR (store the finished job's PID in VAR). Options precede operands.
-        wait_n = False
-        pid_var = None
-        i = 1
-        while i < len(args):
-            a = args[i]
-            if a == '-n':
-                wait_n = True
-                i += 1
-            elif a == '-p':
-                if i + 1 >= len(args):
-                    self.error("-p: option requires an argument", shell)
-                    return 2
-                pid_var = args[i + 1]
-                i += 2
-            elif a == '--':
-                i += 1
-                break
-            else:
-                break
-        operands = args[i:]
+        # Parse leading options via the shared getopt-style walker: -n (return
+        # when the NEXT job finishes) and -f (wait for termination) are boolean;
+        # -p VAR stores the finished job's PID in VAR. The old hand-rolled loop
+        # matched only the exact words -n/-p, so it rejected clusters (`-np V`)
+        # and mis-classified `-x`/`-f` as bad pids (rc 127) where bash reports
+        # an invalid option (rc 2) — parse_flags matches bash. -f is a no-op:
+        # a non-interactive psh already waits for termination.
+        opts, operands = self.parse_flags(args, shell, flags='nf', value_flags='p')
+        if opts is None:
+            return 2  # bash: invalid option / missing value is a usage error
+        wait_n = opts['n']
+        pid_var = opts['p']
 
         # bash unsets the -p VAR up front (before waiting) and sets it only when
         # a job is actually reported. So a wait that reports nothing — a

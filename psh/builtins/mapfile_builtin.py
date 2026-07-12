@@ -36,11 +36,11 @@ class MapfileBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "mapfile [-d delim] [-n count] [-O origin] [-s count] [-t] [-u fd] [array]"
+        return "mapfile [-d delim] [-n count] [-O origin] [-s count] [-t] [-u fd] [-C callback] [-c quantum] [array]"
 
     @property
     def help(self) -> str:
-        return """mapfile: mapfile [-d delim] [-n count] [-O origin] [-s count] [-t] [-u fd] [array]
+        return """mapfile: mapfile [-d delim] [-n count] [-O origin] [-s count] [-t] [-u fd] [-C callback] [-c quantum] [array]
     Read lines from standard input into an indexed array variable.
 
     Read lines from the standard input (or file descriptor FD given by -u)
@@ -71,56 +71,42 @@ class MapfileBuiltin(Builtin):
         have_origin = False
         array_name = 'MAPFILE'
 
-        # Parse options, supporting clustered short flags ("-tn2" == "-t -n 2").
-        arg_flags = set('dnOsu')   # flags that take an argument
-        i = 1
-        n = len(args)
+        # Parse options via the shared getopt-style walker: -t is boolean; the
+        # value flags carry a value ("-tn2" == "-t -n 2"). -C (callback) and -c
+        # (quantum) take a value too (so they cluster/consume correctly) but psh
+        # does not implement callbacks — rejected with a specific message below.
+        # Invalid option / missing option-value is a usage error (bash status 2)
+        # reported by parse_flags_ordered; bad option VALUES are status 1
+        # (the _OptionError rc), and the ordered walk reports the FIRST one.
+        events, operands = self.parse_flags_ordered(
+            args, shell, flags='t', value_flags='dnOsuCc')
+        if events is None:
+            return 2
         try:
-            while i < n and args[i].startswith('-') and args[i] != '-':
-                cluster = args[i]
-                if cluster == '--':
-                    i += 1
-                    break
-                j = 1
-                while j < len(cluster):
-                    ch = cluster[j]
-                    if ch in ('C', 'c'):
-                        self.error(f"-{ch}: callback option not supported", shell)
-                        return 2
-                    if ch == 't':
-                        strip = True
-                        j += 1
-                        continue
-                    if ch not in arg_flags:
-                        # Invalid option is a usage error (bash: status 2).
-                        raise _OptionError(f"-{ch}: invalid option", 2)
-                    # Argument is the rest of the cluster, else the next word.
-                    if j + 1 < len(cluster):
-                        val = cluster[j + 1:]
-                    else:
-                        i += 1
-                        if i >= n:
-                            raise _OptionError(
-                                f"-{ch}: option requires an argument", 2)
-                        val = args[i]
-                    if ch == 'd':
-                        delim = val[0] if val else '\0'
-                    elif ch == 'n':
-                        count = self._count(val)
-                    elif ch == 'O':
-                        origin = self._origin(val)
-                        have_origin = True
-                    elif ch == 's':
-                        skip = self._count(val)
-                    elif ch == 'u':
-                        fd = self._fd(val)
-                    break  # argument consumed the remainder of the cluster
-                i += 1
+            for ch, val in events:
+                if ch in ('C', 'c'):
+                    self.error(f"-{ch}: callback option not supported", shell)
+                    return 2
+                if ch == 't':
+                    strip = True
+                    continue
+                assert val is not None  # value flag: parse_flags_ordered ensured it
+                if ch == 'd':
+                    delim = val[0] if val else '\0'
+                elif ch == 'n':
+                    count = self._count(val)
+                elif ch == 'O':
+                    origin = self._origin(val)
+                    have_origin = True
+                elif ch == 's':
+                    skip = self._count(val)
+                elif ch == 'u':
+                    fd = self._fd(val)
         except _OptionError as e:
             self.error(str(e), shell)
             return e.rc
 
-        rest = args[i:]
+        rest = operands
         # bash uses the first non-option argument as the array and ignores any
         # extras (returning success), so we do the same.
         if rest:

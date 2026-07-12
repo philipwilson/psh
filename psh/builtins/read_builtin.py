@@ -26,11 +26,11 @@ class ReadBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "read [-rs] [-a array] [-d delim] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [var ...]"
+        return "read [-rs] [-a array] [-d delim] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [-u fd] [var ...]"
 
     @property
     def help(self) -> str:
-        return """read: read [-rs] [-a array] [-d delim] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [var ...]
+        return """read: read [-rs] [-a array] [-d delim] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [-u fd] [var ...]
     Read a line from standard input and assign to variables.
 
     Reads a single line from stdin (or the specified fd) and splits it
@@ -54,10 +54,15 @@ class ReadBuiltin(Builtin):
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the read builtin."""
         try:
-            options, var_names = self._parse_options(args)
+            options, var_names = self._parse_options(args, shell)
         except ValueError as e:
+            # A bad option VALUE (timeout/count/fd): bash status 1.
             self.error(str(e), shell)
-            return getattr(e, 'rc', 2)
+            return getattr(e, 'rc', 1)
+        if options is None:
+            # Invalid option / missing option-argument: parse_flags already
+            # printed the error + usage line (bash status 2).
+            return 2
 
         # Validate the target NAME(s) before reading anything (bash rejects a
         # non-identifier target with "not a valid identifier", status 1). Uses
@@ -429,20 +434,31 @@ class ReadBuiltin(Builtin):
     _FLAG_OPTS = {'r': 'raw_mode', 's': 'silent'}
     _ARG_OPTS = frozenset('apdnNtu')
 
-    def _parse_options(self, args: List[str]) -> Tuple[Dict[str, Any], List[str]]:
-        """Parse read command options getopt-style, matching bash.
+    def _parse_options(self, args: List[str], shell: 'Shell'
+                       ) -> Tuple[Optional[Dict[str, Any]], Optional[List[str]]]:
+        """Parse read command options via the shared getopt-style walker.
 
-        Options may be clustered (``-rs``). An option that takes an
-        argument consumes the rest of its word if non-empty (``-n3``,
-        ``-rp prompt``) or the next word otherwise. ``--`` ends option
-        processing. Invalid options raise ValueError with ``rc=2``;
-        invalid option *values* (bad timeout/count) carry ``rc=1``,
-        as bash distinguishes usage errors from value errors.
+        Options may be clustered (``-rs``). A value option consumes the rest
+        of its word if non-empty (``-n3``, ``-rp prompt``) or the next word.
+        ``--`` ends option processing. An invalid option OR a missing
+        option-argument is a usage error (bash status 2):
+        ``parse_flags_ordered`` prints the message + usage line and we return
+        ``(None, None)`` so ``execute`` returns 2. Invalid option *values* (bad
+        timeout/count/fd) raise ValueError with ``rc=1`` — bash distinguishes
+        usage errors from value errors, and the FIRST bad value in argv order
+        is the one reported (hence the ordered walk).
 
         Returns:
-            Tuple of (options dict, variable names list)
+            (options dict, variable names) — or (None, None) on a usage error
+            already reported to stderr.
         """
-        options = {
+        events, operands = self.parse_flags_ordered(
+            args, shell, flags=''.join(self._FLAG_OPTS),
+            value_flags=''.join(self._ARG_OPTS))
+        if events is None:
+            return None, None
+
+        options: Dict[str, Any] = {
             'raw_mode': False,
             'silent': False,
             'prompt': None,
@@ -455,42 +471,21 @@ class ReadBuiltin(Builtin):
             'array_name': None
         }
 
-        i = 1
-        while i < len(args):
-            arg = args[i]
-            if arg == '--':
-                i += 1
-                break
-            if not arg.startswith('-') or arg == '-':
-                break
-            j = 1
-            while j < len(arg):
-                char = arg[j]
-                if char in self._FLAG_OPTS:
-                    options[self._FLAG_OPTS[char]] = True
-                    j += 1
-                    continue
-                if char in self._ARG_OPTS:
-                    # Value is the remainder of this word, else the next word.
-                    if j + 1 < len(arg):
-                        value = arg[j + 1:]
-                    else:
-                        i += 1
-                        if i >= len(args):
-                            raise ValueError(
-                                f"-{char}: option requires an argument")
-                        value = args[i]
-                    self._apply_arg_option(char, value, options)
-                    break  # word fully consumed by the value
-                raise ValueError(f"-{char}: invalid option")
-            i += 1
+        for char, value in events:
+            if char in self._FLAG_OPTS:
+                options[self._FLAG_OPTS[char]] = True
+            else:
+                # A value flag always carries a value (else parse_flags_ordered
+                # would have reported the missing argument above).
+                assert value is not None
+                self._apply_arg_option(char, value, options)
 
         # Variable names are ignored when using -a option
         if options['array_name']:
             var_names = []  # Array name takes precedence
             options['default_reply'] = False
-        elif i < len(args):
-            var_names = args[i:]
+        elif operands:
+            var_names = operands
             options['default_reply'] = False
         else:
             # No variable names given: the whole line goes to REPLY *without*

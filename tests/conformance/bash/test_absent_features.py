@@ -60,12 +60,15 @@ class TestAbsentBashFeatures:
     # `wait -n` was implemented in v0.557.0 (appraisal #14 Tier 2); its
     # conformance coverage moved to tests/integration/functions/test_wait_n.py.
 
-    @pytest.mark.xfail(strict=True, reason="wait -f is not implemented")
     def test_wait_dash_f(self):
-        """bash: `wait -f PID` waits until the job actually terminates
-        (probe: rc=0, no stderr). psh: rejects -f as 'not a valid process
-        id' on stderr (its stdout happens to match, so this entry leans on
-        the stderr-emptiness check)."""
+        """`wait -f PID` — now matches bash (rc=0, no stderr).
+
+        Was xfail (`-f` rejected as "not a valid process id"): the T3
+        parse_flags migration made `wait` accept `-f`. bash's `-f` waits for
+        the job to fully TERMINATE rather than merely change state; a
+        non-interactive psh already waits for termination, so `-f` is an
+        accepted no-op — the observable behavior (rc 0, no stderr) matches
+        bash. See `WaitBuiltin.execute` in psh/builtins/job_control.py."""
         assert_bash_parity('sleep 0.05 & wait -f $!; echo rc=$?')
 
     def test_read_dash_u(self):
