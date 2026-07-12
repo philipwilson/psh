@@ -20,13 +20,23 @@ nobody "deduplicates" behavior that bash itself keeps distinct:
 - ``[[ ]]`` operand escapes and word-level unquoted escapes: lexer/
   expansion concerns, not output formatting.
 
-Likewise there are TWO reuse-as-input quoters because bash formats them
-differently (verified against bash 5.2):
+Those five DECODER dialects above are kept APART on purpose. The ``$'...'``
+ENCODER is the OPPOSITE case — a single shared authority — so do not
+misapply the "don't deduplicate" rule to it: ``ansi_c_encode`` (below) is
+the one function that renders a value into the ``$'...'`` reuse body bash
+emits (named escapes where bash has them — ``\t``/``\n``/``\E``/... — octal
+``\NNN`` for any other control/DEL byte; probe-verified against bash 5.2).
+It is distinct again from the FORMATTER's ``escape_ansi_c``
+(``visitor/formatter_quoting``), which re-emits a decoded ``$'...'`` *token*
+in hex for ``declare -f`` source — a different job from reusing a *value*.
+
+The two reuse-as-input quoters SHARE that encoder for control characters
+and differ only in how they wrap NON-control text (verified, bash 5.2):
 
 - ``quote_printf_q`` — ``printf %q``: backslash-escapes specials
-  (``a\ b``); ANSI-C ``$'...'`` with \xHH only for control chars.
-- ``quote_at_q`` — ``${var@Q}``: single-quoted form (``'a b'``);
-  ANSI-C ``$'...'`` with \OOO octal for control chars.
+  (``a\ b``); any control char sends the whole string to ``$'...'``.
+- ``quote_at_q`` — ``${var@Q}``: single-quoted form (``'a b'``); any
+  control char sends the whole string to ``$'...'``.
 """
 
 from typing import Tuple
@@ -139,6 +149,43 @@ def _scan_escapes(text: str, *, bare_octal: bool) -> Tuple[str, bool]:
     return ''.join(out), False
 
 
+# --- THE ``$'...'`` reuse-form encoder (single authority) -------------------
+# Named ANSI-C escapes bash emits inside ``$'...'`` for reusable output
+# (``${var@Q}`` / ``printf %q`` / ``declare -p`` / ``set`` / ``hash -l``).
+_ANSI_C_NAMED = {
+    '\\': '\\\\', "'": "\\'", '\t': '\\t', '\n': '\\n', '\r': '\\r',
+    '\a': '\\a', '\b': '\\b', '\f': '\\f', '\v': '\\v', '\x1b': '\\E',
+}
+
+
+def has_control_char(text: str) -> bool:
+    """True if *text* holds a C0 control character or DEL (needs ``$'...'``)."""
+    return any(ord(c) < 32 or ord(c) == 127 for c in text)
+
+
+def ansi_c_encode(text: str) -> str:
+    r"""Encode *text* for bash's ``$'...'`` reuse form (the single authority).
+
+    Named escapes where bash has them (``\t``, ``\n``, ``\E``, ...); OCTAL
+    ``\NNN`` for any other control/DEL byte (bash 5.2 renders reuse-output
+    control bytes as ``\001``/``\177`` — probe-verified). Backslash and the
+    closing ``'`` are escaped so the value re-parses to itself. Every reuse
+    surface renders one shape through this function: ``${var@Q}`` and
+    ``printf %q`` (via :func:`quote_at_q`/:func:`quote_printf_q`), and
+    ``declare -p`` / ``set`` / ``hash -l`` (via ``formatter_quoting``, which
+    imports this).
+    """
+    out = []
+    for ch in text:
+        if ch in _ANSI_C_NAMED:
+            out.append(_ANSI_C_NAMED[ch])
+        elif ord(ch) < 32 or ord(ch) == 127:
+            out.append(f'\\{ord(ch) & 0xff:03o}')
+        else:
+            out.append(ch)
+    return ''.join(out)
+
+
 # Characters that never need quoting in %q output.
 _Q_SAFE = set(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -147,28 +194,18 @@ _Q_SAFE = set(
 
 
 def quote_printf_q(value: str) -> str:
-    """Quote a string so it can be reused as shell input (printf %q).
+    r"""Quote a string so it can be reused as shell input (printf %q).
 
     Mirrors bash: an empty string becomes ``''``; a string containing any
-    control character is wrapped whole in the ANSI-C ``$'...'`` form;
-    otherwise special characters are individually backslash-escaped
-    (``a b`` -> ``a\\ b``).
+    control character is wrapped whole in the ANSI-C ``$'...'`` form (through
+    the shared :func:`ansi_c_encode` — octal/named + ``\E``, matching bash on
+    every reuse surface); otherwise special characters are individually
+    backslash-escaped (``a b`` -> ``a\ b``).
     """
     if value == '':
         return "''"
-    if any(ord(c) < 32 or ord(c) == 127 for c in value):
-        named = {'\t': '\\t', '\n': '\\n', '\r': '\\r',
-                 '\\': '\\\\', "'": "\\'"}
-        body = []
-        for ch in value:
-            code = ord(ch)
-            if ch in named:
-                body.append(named[ch])
-            elif code < 32 or code == 127:
-                body.append(f"\\x{code:02x}")
-            else:
-                body.append(ch)
-        return "$'" + ''.join(body) + "'"
+    if has_control_char(value):
+        return "$'" + ansi_c_encode(value) + "'"
     return ''.join(ch if ch in _Q_SAFE else '\\' + ch for ch in value)
 
 
@@ -186,25 +223,15 @@ def single_quote(s: str) -> str:
 
 
 def quote_at_q(s: str) -> str:
-    """Quote a string so it can be reused as shell input (bash ${var@Q}).
+    r"""Quote a string so it can be reused as shell input (bash ${var@Q}).
 
-    Empty -> ''. Strings with control characters use the $'...' ANSI-C
-    form with octal escapes; otherwise a single-quoted form (``'a b'``)
-    with embedded quotes escaped as ``'\\''`` (see :func:`single_quote`).
+    Empty -> ''. Strings with control characters use the ``$'...'`` ANSI-C
+    form through the shared :func:`ansi_c_encode` (octal escapes + named
+    ``\E`` for ESC, matching bash); otherwise a single-quoted form (``'a b'``)
+    with embedded quotes escaped as ``'\''`` (see :func:`single_quote`).
     """
     if s == '':
         return "''"
-    if any(ord(c) < 32 or ord(c) == 127 for c in s):
-        out = []
-        simple = {'\n': '\\n', '\t': '\\t', '\r': '\\r', '\\': '\\\\',
-                  "'": "\\'", '\a': '\\a', '\b': '\\b', '\f': '\\f',
-                  '\v': '\\v'}
-        for c in s:
-            if c in simple:
-                out.append(simple[c])
-            elif ord(c) < 32 or ord(c) == 127:
-                out.append('\\%03o' % ord(c))
-            else:
-                out.append(c)
-        return "$'" + ''.join(out) + "'"
+    if has_control_char(s):
+        return "$'" + ansi_c_encode(s) + "'"
     return single_quote(s)

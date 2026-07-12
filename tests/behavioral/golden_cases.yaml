@@ -9894,6 +9894,51 @@
   exit_code: 0
 
 # =============================================================================
+# ANSI-C $'...' reuse-form ENCODER unification (reappraisal #19 T11)
+# One shared ansi_c_encode authority: ${v@Q}, printf %q, declare -p and `set`
+# all render the SAME $'...' shape (octal \NNN, named where bash has them, \E
+# for ESC). Pre-fix psh emitted three divergent shapes (hex via %q, octal-no-E
+# via @Q). Probed byte-exact against bash 5.2 (2026-07-12).
+# =============================================================================
+- name: ansic_reuse_atq_octal_and_E
+  command: "v=$'\\x01\\x1b'; printf '%s' \"${v@Q}\""
+  stdout: "$'\\001\\E'"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_printf_q_octal_and_E
+  command: "v=$'\\x01\\x1b'; printf '%q' \"$v\""
+  stdout: "$'\\001\\E'"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_declare_p_octal_and_E
+  command: "v=$'\\x01\\x1b'; declare -p v"
+  stdout: "declare -- v=$'\\001\\E'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_set_listing_octal_and_E
+  command: "v=$'\\x01\\x1b'; set | grep '^v='"
+  stdout: "v=$'\\001\\E'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_printf_q_named_escapes
+  command: "v=$'a\\x07b\\x0cc'; printf '%q' \"$v\""
+  stdout: "$'a\\ab\\fc'"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_printf_q_del_octal
+  command: "v=$'\\x7f'; printf '%q' \"$v\""
+  stdout: "$'\\177'"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_atq_esc_uses_E
+  command: "v=$'\\x1b'; printf '%s' \"${v@Q}\""
+  stdout: "$'\\E'"
 # T8 item 5 — arithmetic: a STORED value is never re-$-expanded (bash).
 # A value literally containing a $ is a syntax error, not the referenced
 # value. compare-bash checks stdout+exit (bash errors too); the psh stderr
