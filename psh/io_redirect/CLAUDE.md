@@ -483,8 +483,9 @@ DEBUG IOManager: redirected stdout to 'output.txt' (mode 'w'); sys.stdout is now
 
 ### With Expansion (`psh/expansion/`)
 
-- Redirect targets expanded via `expansion_manager.expand_string_variables()`
-- Tilde expanded via `expansion_manager.expand_tilde()`
+- Filename targets expanded via `expand_word_to_fields` in COMMAND_ARGUMENT
+  context (full field expansion + the ambiguous-redirect rule); process-sub
+  targets never reach expansion — the planner carries the AST node directly
 - Heredoc content expanded based on delimiter quoting
 
 ### With Shell State (`psh/core/state.py`)

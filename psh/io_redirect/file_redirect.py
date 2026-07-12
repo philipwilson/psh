@@ -45,10 +45,6 @@ REDIRECT_OPEN_FLAGS: dict[str, int] = {
     '>>':  os.O_WRONLY | os.O_CREAT | os.O_APPEND,
 }
 
-# The named-fd allocator (`{v}>file`) accepts only these simple filename forms
-# (a combined `{v}&>file` is not a thing); kept explicit so it rejects the
-# combined keys the shared flags table also carries.
-_NAMED_FD_OPEN_TYPES = ('>', '>|', '>>', '<', '<>')
 
 
 class FileRedirector:
@@ -366,7 +362,7 @@ class FileRedirector:
             return
 
         # Open-a-file forms: allocate the lowest free fd >= 10 (F_DUPFD).
-        if rtype not in _NAMED_FD_OPEN_TYPES:
+        if rtype not in REDIRECT_OPEN_FLAGS:
             raise OSError(f"{rtype}: unsupported named-fd redirect")
         target = self.expand_redirect_target(redirect)
         if rtype == '>':
@@ -635,7 +631,7 @@ class FileRedirector:
     def _rebind_input_stream(self, target_fd: int):
         """Point the shell's Python-level stdin at redirected fd 0."""
         if target_fd == 0:
-            sys.stdin = os.fdopen(os.dup(0), 'r')
+            sys.stdin = self.dup_sharing_stream(0, 'r')
             self.shell.stdin = sys.stdin
             self.state.stdin = sys.stdin
 
