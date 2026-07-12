@@ -34,17 +34,47 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         self.state = shell.state
         self.param_expansion = ParameterExpansion(shell)
 
-    def _reject_bad_substitution(self, node, content: str) -> None:
+    def _reject_bad_substitution(self, node, content: Optional[str] = None) -> None:
         """Raise bash's "bad substitution" for an invalid ``${...}`` name.
 
-        Checked at expansion time (bash reports it at runtime). The braces
-        are reattached in the message to match bash exactly.
+        Checked at expansion time (bash reports it at runtime). The braces are
+        reattached in the message to match bash exactly. ``content`` is the text
+        shown between them; when omitted it is reconstructed from the node
+        (``str(node)[2:-1]``) — the Word-AST ``ExpansionEvaluator`` holds no raw
+        source, so it relies on that, while the string entry point passes its
+        exact source slice. Reconstruction is lazy: it only runs when the name
+        is actually invalid.
         """
         if not validate_parameter_expansion(node):
             from ..core.exceptions import BadSubstitutionError
+            if content is None:
+                content = str(node)[2:-1]  # strip the ${ } str() re-adds
             print(f"{self.state.error_location_prefix()}${{{content}}}: bad substitution", file=sys.stderr)
             self.state.last_exit_code = 1
             raise BadSubstitutionError(content)
+
+    def _resolve_plain_parameter(self, var_name: str) -> str:
+        """Resolve an operator-LESS ``${var}`` / ``${arr[idx]}`` by name.
+
+        THE shared tail of ``expand_variable``'s braced path and the Word-AST
+        ``ExpansionEvaluator``: a plain parameter needs only name resolution —
+        the bare ``${arr[idx]}`` subscript form (honoring nounset on an absent
+        element), then the special/positional/regular dispatch. A caller that
+        already holds the parsed name resolves directly here, WITHOUT re-running
+        the ``${...}`` grammar (param_parser) a second time — the round-trip M2
+        flagged (the CLAUDE.md "nothing is re-parsed at runtime" claim).
+        """
+        # Plain ${arr[index]} / ${arr[@]} / ${arr[*]} — the bare (no-operator)
+        # form, so an absent element honors nounset; a non-empty base required.
+        subscript = self.split_subscript(var_name)
+        if subscript is not None and subscript[0]:
+            return self._expand_array_subscript(var_name, check_nounset=True)
+        # Plain ${var}. Honor nounset — the error already carries bash's message
+        # format (the printing handler adds the "psh: " prefix exactly once).
+        if self.state.options.get('nounset', False):
+            from ..core import OptionHandler
+            OptionHandler.check_unset_variable(self.state, var_name)
+        return self._expand_special_variable(var_name)
 
     def expand_variable(self, var_expr: str,
                         quote_ctx: Optional[str] = None) -> str:
@@ -78,23 +108,10 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                     node.operator, node.parameter, node.word,
                     quote_ctx=quote_ctx)
 
-            var_name = node.parameter
+            # Plain ${var} / ${arr[idx]} — name resolution only.
+            return self._resolve_plain_parameter(node.parameter)
 
-            # Plain ${arr[index]} / ${arr[@]} / ${arr[*]} subscript. This is the
-            # bare form (no operator), so an absent element honors nounset.
-            if '[' in var_name and var_name.endswith(']') and var_name.find('[') > 0:
-                return self._expand_array_subscript(var_name, check_nounset=True)
-
-            # Plain ${var}. Honor nounset. The error already carries bash's
-            # message format; do not re-wrap (a "psh: " prefix here doubled
-            # up with the printing handler's prefix).
-            if self.state.options.get('nounset', False):
-                from ..core import OptionHandler
-                OptionHandler.check_unset_variable(self.state, var_name)
-        else:
-            var_name = var_expr
-
-        return self._expand_special_variable(var_name)
+        return self._expand_special_variable(var_expr)
 
     def _expand_special_variable(self, var_name: str) -> str:
         """Expand special variables ($?, $$, $!, etc.) and regular variables."""
@@ -146,11 +163,10 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         elif var_name in ['#', '?', '$', '!', '@', '*', '0', '-']:
             # Special variables
             return self.state.get_special_variable(var_name)
-        elif '[' in var_name and var_name.endswith(']'):
+        elif (parts := self.split_subscript(var_name)) is not None:
             # Array element: arr[index]
-            bracket_pos = var_name.find('[')
-            array_name = self._resolve_array_name(var_name[:bracket_pos])
-            index_expr = var_name[bracket_pos + 1:-1]
+            array_name = self._resolve_array_name(parts[0])
+            index_expr = parts[1]
 
             from ..core import AssociativeArray, IndexedArray
             var = self.state.scope_manager.get_variable_object(array_name)
@@ -226,7 +242,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             else:
                 index = int(var_name) - 1
                 value = self.state.positional_params[index] if 0 <= index < len(self.state.positional_params) else ''
-        elif '[' in var_name and var_name.endswith(']'):
+        elif self.split_subscript(var_name) is not None:
             # Array element with parameter expansion. Whole-array @/* forms
             # return directly; a regular element access yields a scalar value
             # that falls through to the shared operator application below.
@@ -317,9 +333,10 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         directly; when False the *value* is a scalar to be fed through the
         shared operator application in ``expand_parameter_direct``.
         """
-        bracket_pos = var_name.find('[')
-        array_name = self._resolve_array_name(var_name[:bracket_pos])
-        index_expr = var_name[bracket_pos+1:-1]
+        parts = self.split_subscript(var_name)
+        assert parts is not None  # caller (expand_parameter_direct) checked NAME[...]
+        array_name = self._resolve_array_name(parts[0])
+        index_expr = parts[1]
 
         from ..core import AssociativeArray, IndexedArray
         var = self.state.scope_manager.get_variable_object(array_name)
@@ -350,17 +367,21 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             if operator == ':':
                 assert operand is not None  # ':' always carries a slice operand
                 what = f"{array_name}[{index_expr}]"
-                if var and isinstance(var.value, IndexedArray):
+                if not elements:
+                    # LAZY slice arithmetic (bash, probed 5.2): a subject with
+                    # ZERO elements — unset array OR set-but-empty `a=()` —
+                    # short-circuits before offset/length is ever evaluated
+                    # (an unevaluable operand yields '' rc 0, not an error).
+                    sliced = []
+                elif var and isinstance(var.value, IndexedArray):
                     sliced = self._slice_sequence(
                         elements, operand, what=what,
                         indices=var.value.indices())
                 elif var and isinstance(var.value, AssociativeArray):
                     sliced = self._slice_sequence(elements, operand, what=what)
-                elif elements:
+                else:
                     offset, length = self._parse_slice_operand(operand, what)
                     sliced = self._slice_scalar_subscript(elements[0], offset, length)
-                else:
-                    sliced = []
                 if index_expr == '@':
                     return True, ' '.join(sliced)
                 return True, self._ifs_star_separator().join(sliced)
@@ -458,7 +479,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             target = params[idx]
         elif len(source) == 1 and source in '#?$!-0':
             target = self.state.get_special_variable(source) or None
-        elif '[' in source and source.endswith(']'):
+        elif self.split_subscript(source) is not None:
             target = self.expand_variable('${' + source + '}') or None
         else:
             var = self.state.scope_manager.get_variable_object(source)
@@ -490,11 +511,14 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             return True
         if len(target) == 1 and target in '@*#?$!-':
             return True
-        name = target
-        if '[' in target:
-            if not target.endswith(']'):
-                return False
-            name = target[:target.find('[')]
+        subscript = self.split_subscript(target)
+        if subscript is not None:
+            name = subscript[0]
+        elif '[' in target:
+            # '[' present but no closing ']' — not a valid subscripted name.
+            return False
+        else:
+            name = target
         return is_valid_name(name, self.state.options.get('posix', False))
 
     def expand_string_variables(self, text: str,

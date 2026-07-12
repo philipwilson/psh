@@ -365,3 +365,15 @@ class ExpansionManager:
         """
         from .arithmetic import execute_arithmetic_expansion
         return execute_arithmetic_expansion(expr, self.shell)
+
+    def arithmetic_expansion_value(self, expr: str) -> int:
+        """Evaluate a BARE arithmetic expression (no ``$(( ))`` wrapper).
+
+        For the Word-AST evaluator, which holds the raw expression text and
+        would otherwise wrap it in ``$(( ))`` just to have it stripped again.
+
+        Raises:
+            ExpansionError: If arithmetic evaluation fails
+        """
+        from .arithmetic import arithmetic_expansion_value
+        return arithmetic_expansion_value(expr, self.shell)

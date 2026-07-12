@@ -13,6 +13,8 @@ orchestration and each rule is testable in isolation. Behavior is identical to
 the former methods — no quoting decision or escape sequence changed.
 """
 
+from ..utils.escapes import ansi_c_encode, has_control_char
+
 
 def escape_double_quoted(text: str) -> str:
     r"""Re-escape a stored literal that will be re-wrapped in double quotes.
@@ -96,47 +98,16 @@ def quote_scalar(text: str, quote_type) -> str:
 
 
 # --- Reusable variable/word serialization (bash `set`, plain `declare`,
-# `declare -p`, `hash -l`). One quoting authority so every reusable-output
-# promise re-parses to the same bytes. --------------------------------------
-
-# Named ANSI-C escapes bash emits inside ``$'...'``; shared with the octal
-# fallback below. (Distinct from ``escape_ansi_c`` above, which the FORMATTER
-# uses to re-emit a decoded ``$'...'`` TOKEN and renders arbitrary controls in
-# hex — bash's variable-reuse output uses OCTAL, so it needs its own encoder.)
-_ANSI_C_NAMED = {
-    '\\': '\\\\', "'": "\\'", '\t': '\\t', '\n': '\\n', '\r': '\\r',
-    '\a': '\\a', '\b': '\\b', '\f': '\\f', '\v': '\\v', '\x1b': '\\E',
-}
+# `declare -p`, `hash -l`). The ``$'...'`` encoder is the single authority
+# ``ansi_c_encode`` in ``utils/escapes.py`` (imported at module top, shared
+# with ``${var@Q}`` / ``printf %q``); this layer only adds the word-level
+# single-quote wrapping around it. ------------------------------------------
 
 # Characters that force single-quoting of a reusable word ANYWHERE in it
 # (bash 5.2 ``sh_contains_shell_metas`` plus history ``!``; probe-verified).
 # ``#`` and ``~`` force quoting only when they LEAD the word; control
 # characters are handled by the ANSI-C path first.
 _REUSE_META = frozenset(" !\"$&'()*;<>?[\\]^`{|}")
-
-
-def has_control_char(text: str) -> bool:
-    """True if *text* contains a C0 control character or DEL (needs ``$'...'``)."""
-    return any(ord(c) < 32 or ord(c) == 127 for c in text)
-
-
-def ansi_c_encode(text: str) -> str:
-    r"""Encode *text* for bash's ``$'...'`` reuse form.
-
-    Named escapes where bash has them (``\t``, ``\n``, ``\E``, ...); OCTAL
-    ``\NNN`` for any other control/DEL byte (bash 5.2 renders ``declare -p``
-    control bytes as ``\001``/``\177`` — probe-verified). Backslash and the
-    closing ``'`` are escaped so the value re-parses to itself.
-    """
-    out = []
-    for ch in text:
-        if ch in _ANSI_C_NAMED:
-            out.append(_ANSI_C_NAMED[ch])
-        elif ord(ch) < 32 or ord(ch) == 127:
-            out.append(f'\\{ord(ch) & 0xff:03o}')
-        else:
-            out.append(ch)
-    return ''.join(out)
 
 
 def quote_word_reuse(text: str) -> str:

@@ -4,7 +4,7 @@ Subscript/index/slice/length access on indexed and associative arrays,
 plus array-aware assignment. Mixed into VariableExpander (variable.py);
 methods use ``self.shell`` / ``self.state`` from the host class.
 """
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Tuple
 
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
@@ -15,6 +15,28 @@ else:
 
 class ArrayOpsMixin(_Base):
     """Array subscript, slice, length, and assignment operations."""
+
+    @staticmethod
+    def split_subscript(name: str) -> Optional[Tuple[str, str]]:
+        """Split ``base[subscript]`` into ``(base, subscript)``, or None.
+
+        THE one home for the ``NAME[...]`` shape rule ("``[`` present AND the
+        string ends with ``]``"): every array-read/write site that needs to
+        separate an array name from its subscript funnels through here instead
+        of re-deriving ``find('[')`` + slicing. Returns the RAW base name
+        (nameref resolution is a separate step via ``_resolve_array_name``) and
+        the raw subscript text (``@``/``*`` or an arithmetic/key expression).
+        A non-subscripted name (or one not ending in ``]``) returns None; an
+        empty base (``[i]``) returns ``('', 'i')`` — callers that reject an
+        empty base test ``base`` truthiness.
+
+        The parser's own subscript scanning (param_parser.py) stays separate:
+        it is the grammar producer, not a read-time consumer.
+        """
+        if '[' in name and name.endswith(']'):
+            bracket = name.find('[')
+            return name[:bracket], name[bracket + 1:-1]
+        return None
 
     def _resolve_array_name(self, array_name: str) -> str:
         """Resolve the array-name part of a subscript through namerefs.
@@ -67,8 +89,9 @@ class ArrayOpsMixin(_Base):
         """
         from ..core import AssociativeArray, IndexedArray
 
-        bracket_pos = subscripted.find('[')
-        array_name = self._resolve_array_name(subscripted[:bracket_pos])
+        parts = self.split_subscript(subscripted)
+        assert parts is not None  # caller passes a NAME[...] form
+        array_name = self._resolve_array_name(parts[0])
 
         var = self.state.scope_manager.get_variable_object(array_name)
 
@@ -95,9 +118,10 @@ class ArrayOpsMixin(_Base):
         """
         from ..core import AssociativeArray, IndexedArray
 
-        bracket_pos = var_content.find('[')
-        array_name = self._resolve_array_name(var_content[:bracket_pos])
-        index_expr = var_content[bracket_pos + 1:-1]
+        parts = self.split_subscript(var_content)
+        assert parts is not None  # caller passes a NAME[...] form
+        array_name = self._resolve_array_name(parts[0])
+        index_expr = parts[1]
 
         var = self.state.scope_manager.get_variable_object(array_name)
 
@@ -177,10 +201,10 @@ class ArrayOpsMixin(_Base):
         array element) can route subscripted writes here without reaching into
         a private method.
         """
-        if '[' in var_name and var_name.endswith(']'):
-            bracket_pos = var_name.find('[')
-            array_name = self._resolve_array_name(var_name[:bracket_pos])
-            index_expr = var_name[bracket_pos + 1:-1]
+        parts = self.split_subscript(var_name)
+        if parts is not None:
+            array_name = self._resolve_array_name(parts[0])
+            index_expr = parts[1]
 
             from ..core import AssociativeArray
             var = self.state.scope_manager.get_variable_object(array_name)
@@ -302,71 +326,27 @@ class ArrayOpsMixin(_Base):
 
         return expanded
 
-    def expand_array_to_list(self, var_expr: str) -> list:
-        """Expand an array variable to a list of words for ${arr[@]} syntax."""
-        if not var_expr.startswith('$'):
-            return [var_expr]
+    def array_fields(self, array_name: str, keys: bool = False) -> list:
+        """Fields of an ``@``-subscripted array, from its NAME component.
 
-        var_expr = var_expr[1:]  # Remove $
-
-        # Handle $@ (positional parameters)
-        if var_expr == '@':
-            return list(self.state.positional_params)
-
-        # Handle ${var} syntax
-        if var_expr.startswith('{') and var_expr.endswith('}'):
-            var_content = var_expr[1:-1]
-
-            # Check for array indices expansion: ${!arr[@]}
-            # Handle escaped ! if present
-            check_content = var_content
-            if check_content.startswith('\\!'):
-                check_content = check_content[1:]  # Remove the backslash
-
-            if check_content.startswith('!') and '[' in check_content and check_content.endswith(']'):
-                array_part = check_content[1:]  # Remove the !
-                bracket_pos = array_part.find('[')
-                array_name = self._resolve_array_name(array_part[:bracket_pos])
-                index_expr = array_part[bracket_pos+1:-1]  # Remove [ and ]
-
-                if index_expr == '@' or index_expr == '*':
-                    # Get the array variable
-                    from ..core import AssociativeArray, IndexedArray
-                    var = self.state.scope_manager.get_variable_object(array_name)
-
-                    if var and isinstance(var.value, IndexedArray):
-                        # Return the indices as list of strings
-                        indices = var.value.indices()
-                        return [str(i) for i in indices]
-                    elif var and isinstance(var.value, AssociativeArray):
-                        # Return the keys as list
-                        return var.value.keys()
-                    elif var and var.value:
-                        # Regular variable - has index 0
-                        return ['0']
-                    else:
-                        # Not an array or no value, return empty
-                        return []
-
-            # Check for array subscript syntax: ${arr[index]}
-            if '[' in var_content and var_content.endswith(']'):
-                bracket_pos = var_content.find('[')
-                array_name = self._resolve_array_name(var_content[:bracket_pos])
-                index_expr = var_content[bracket_pos+1:-1]  # Remove [ and ]
-
-                if index_expr == '@':
-                    # Get the array variable
-                    from ..core import AssociativeArray, IndexedArray
-                    var = self.state.scope_manager.get_variable_object(array_name)
-
-                    if var and isinstance(var.value, (IndexedArray, AssociativeArray)):
-                        # Return elements as list
-                        return var.value.all_elements()
-                    elif var and var.value:
-                        # Regular variable - return as single element list
-                        return [str(var.value)]
-                    else:
-                        return []
-
-        # Not an array expansion, return single element
-        return [self.expand_variable('$' + var_expr)]
+        The component form of the retired ``expand_array_to_list``: the callers
+        in fields.py already hold the array NAME (they used to build a
+        ``'${...}'`` string only to have it re-parsed back into name+subscript
+        here — the string round-trip M3 flagged). ``keys`` selects the
+        ``${!arr[@]}`` view (indexed: indices as strings; associative: keys) vs
+        the default ``${arr[@]}`` view (all element values). ``array_name`` is
+        resolved through namerefs. A scalar yields ``['0']`` (keys) /
+        ``[value]`` (elements); an unset/absent name yields ``[]``.
+        """
+        from ..core import AssociativeArray, IndexedArray
+        name = self._resolve_array_name(array_name)
+        var = self.state.scope_manager.get_variable_object(name)
+        if var and isinstance(var.value, (IndexedArray, AssociativeArray)):
+            if not keys:
+                return var.value.all_elements()
+            if isinstance(var.value, IndexedArray):
+                return [str(i) for i in var.value.indices()]
+            return var.value.keys()
+        if var and var.value:
+            return ['0'] if keys else [str(var.value)]
+        return []
