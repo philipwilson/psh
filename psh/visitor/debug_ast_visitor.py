@@ -374,13 +374,7 @@ class DebugASTVisitor(ASTVisitor[str]):
     def visit_ArrayElementAssignment(self, node: ArrayElementAssignment) -> str:
         """Format array element assignment."""
         op = '+=' if node.is_append else '='
-        if isinstance(node.index, str):
-            index_str = node.index
-        else:
-            # Token list
-            index_str = ''.join(token.value for token in node.index)
-
-        return self._format_header("ArrayElement", f"{node.name}[{index_str}]{op}{repr(node.value)}")
+        return self._format_header("ArrayElement", f"{node.name}[{node.index}]{op}{repr(node.value)}")
 
     # Redirections
 

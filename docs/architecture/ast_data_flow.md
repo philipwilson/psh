@@ -136,7 +136,7 @@ Executed by `ArrayOperationExecutor` (`psh/executor/array.py`):
 | explicit `a=([i]=v)` / `a=([i]+=v)` | `_split_explicit_element(word)` recognizes UNQUOTED `[`...`]=`; index text → `expand_string_variables` + `evaluate_arithmetic`; value → `expand_assignment_value_word` |
 | quoted `a=("[0]"=x)` | literal element (split helper rejects quoted brackets — bash parity, conformance-pinned) |
 | assoc `h=([k]=v ...)` (declare -A) | keys and values via `expand_assignment_value_word`; bare elements alternate key/value via `expand_word_to_fields(word, ASSOC_INIT_ELEMENT)` (no split/glob; value-tilde pinned ON — see the policy's docstring) |
-| element assignment `a[i]=v` | index: string/token list → `expand_string_variables` + arithmetic-or-string-key logic; value: `node.value_word` → `expand_assignment_value_word` (None raises) |
+| element assignment `a[i]=v` | index: verbatim subscript string → `expand_string_variables` + arithmetic-or-string-key logic; value: `node.value_word` → `expand_assignment_value_word` (None raises) |
 
 Declaration builtins use the SAME engine: `declare`/`typeset`/`local`/
 `export`/`readonly` with a literal `name=(...)` argument no longer
