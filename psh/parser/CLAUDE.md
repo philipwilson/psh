@@ -152,7 +152,12 @@ prompts. No parse method ever reads it. `nesting_depth` is likewise not
 grammar context but a resource limit: a counter of compound-command
 nesting maintained by `CommandParser._parse_compound_component`, checked
 only against `MAX_NESTING_DEPTH` (1000) so runaway nesting raises a
-clean ParseError instead of a Python RecursionError.)
+clean ParseError instead of a Python RecursionError. That method is the
+single compound-command chokepoint — reached from
+`parse_pipeline_component` AND from
+`FunctionParser.parse_compound_command` (function bodies) — so a chain of
+nested function definitions is guarded exactly like a chain of bare brace
+groups.)
 
 ```python
 class ParserContext:

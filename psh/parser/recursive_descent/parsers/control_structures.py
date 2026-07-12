@@ -10,7 +10,6 @@ from ....ast_nodes import (
     CaseConditional,
     CaseItem,
     CasePattern,
-    CompoundCommand,
     CStyleForLoop,
     ExpansionPart,
     ForLoop,
@@ -36,37 +35,16 @@ def _positional_params_word() -> Word:
 
 
 class ControlStructureParser(ParserSubcomponent):
-    """Parser for control structure constructs."""
+    """Parser for control structure constructs.
 
-
-    def parse_control_structure(self) -> CompoundCommand:
-        """Parse any control structure based on current token.
-
-        Every control structure is a ``CompoundCommand`` (the unified
-        control structures, ``[[ ]]`` and ``(( ))`` all inherit it), so the
-        result can appear both at statement level and as a pipeline
-        component.
-        """
-        token_type = self.parser.peek().type
-
-        if token_type == TokenType.IF:
-            return self.parse_if_statement()
-        elif token_type == TokenType.WHILE:
-            return self.parse_while_statement()
-        elif token_type == TokenType.UNTIL:
-            return self.parse_until_statement()
-        elif token_type == TokenType.FOR:
-            return self.parse_for_statement()
-        elif token_type == TokenType.CASE:
-            return self.parse_case_statement()
-        elif token_type == TokenType.SELECT:
-            return self.parse_select_statement()
-        elif token_type == TokenType.DOUBLE_LBRACKET:
-            return self.parser.tests.parse_enhanced_test_statement()
-        elif token_type == TokenType.DOUBLE_LPAREN:
-            return self.parser.arithmetic.parse_arithmetic_command()
-        else:
-            raise self.parser.error(f"Unexpected control structure token: {token_type.name}")
+    Every control structure parsed here is a ``CompoundCommand`` (the unified
+    control structures, ``[[ ]]`` and ``(( ))`` all inherit it), so each result
+    can appear both at statement level and as a pipeline component. There is no
+    per-keyword dispatch method: the single compound-command chokepoint
+    ``CommandParser._parse_compound_component`` (called by both pipeline
+    components and function bodies) dispatches directly to the individual
+    ``parse_*_statement`` methods below under the ``MAX_NESTING_DEPTH`` guard.
+    """
 
     # === If Statement Parsing ===
 

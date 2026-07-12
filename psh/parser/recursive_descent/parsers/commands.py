@@ -489,6 +489,13 @@ class CommandParser(ParserSubcomponent):
     def _parse_compound_component(self) -> Optional[Command]:
         """Dispatch to the compound-command parsers under the depth guard.
 
+        The single chokepoint for compound-command dispatch: reached from
+        `parse_pipeline_component` (compounds in pipelines / at statement
+        level) AND from `FunctionParser.parse_compound_command` (function
+        bodies), so `nesting_depth` accumulates for both — a chain of nested
+        function bodies raises the MAX_NESTING_DEPTH ParseError just like a
+        chain of bare brace groups (H12).
+
         Returns None when the current token starts a simple command instead.
         """
         if not self.parser.match(TokenType.WHILE, TokenType.UNTIL,
