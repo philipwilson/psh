@@ -1074,6 +1074,22 @@
   stderr: ""
   exit_code: 0
 
+# A double-quoted literal RHS is expanded by ONE shared recipe (R19 T7:
+# enhanced_test_evaluator._expand_dquote_literal + _rhs_walk): its variable
+# expands, then the result is matched LITERALLY — as a glob (==) and as a
+# regex (=~) alike, so the `*`/`.` are not metacharacters.
+- name: double_bracket_dquote_var_literal_pattern
+  command: 'p="a*"; [[ "a*" == "$p" ]] && [[ ax != "$p" ]] && echo Y'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_bracket_dquote_var_literal_regex
+  command: 'p="a.c"; [[ "a.c" =~ "$p" ]] && ! [[ axc =~ "$p" ]] && echo Y'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
 - name: here_string_composite_quote_boundary
   command: 'v="a b"; cat <<< foo$v"dq"'
   stdout: "fooa bdq\n"
@@ -1133,6 +1149,39 @@
 - name: brace_group
   command: '{ echo a; echo b; }'
   stdout: "a\nb\n"
+  stderr: ""
+  exit_code: 0
+
+# The subshell child body (R19 T7: SubshellExecutor + child_policy.run_child_body):
+# exit code, its own EXIT trap, an EXIT trap that overrides the status, an
+# inherited-context return, and errexit-suppression seeding of an if-condition.
+- name: subshell_exit_code
+  command: '( exit 5 ); echo $?'
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subshell_exit_trap_fires
+  command: '( trap ''echo bye'' EXIT; echo hi )'
+  stdout: "hi\nbye\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subshell_exit_trap_sets_status
+  command: '( trap ''exit 7'' EXIT; echo hi )'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 7
+
+- name: subshell_return_inherited_context
+  command: 'f() { ( return 5; echo no ); }; f; echo $?'
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subshell_errexit_suppressed_in_if_condition
+  command: 'set -e; if ( false ); then echo T; else echo F; fi'
+  stdout: "F\n"
   stderr: ""
   exit_code: 0
 
