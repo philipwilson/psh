@@ -23,30 +23,42 @@ from pathlib import Path
 
 import pytest
 
+from psh.lexer.keyword_defs import KEYWORD_TYPE_MAP
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PSH_ROOT = PROJECT_ROOT / "psh"
 
-# Deliberate/correct raw-value comparisons that must NOT trip the guard live
+# Deliberate/correct raw keyword comparisons that must NOT trip the guard live
 # here, each with a written justification. (Empty today: production compares
-# keywords by TYPE, not value.) A path prefix relative to PROJECT_ROOT.
+# reserved words by TYPE or via matches_keyword.) A path prefix relative to
+# PROJECT_ROOT.
 ALLOWLIST: set[Path] = set()
 
-# Single-escaped (NOT ``\\.``): each pattern matches a real source line such as
-# ``token.value == 'if'`` or ``token.value.lower() == 'while'``. The captured
-# group is the compared word; ``_scan_text`` keeps only alphabetic words.
+# The reserved-word spellings, sourced from production so the guard cannot
+# drift when a keyword is added (longest-first so the alternation is greedy).
+_KEYWORDS = "|".join(
+    sorted((re.escape(k) for k in KEYWORD_TYPE_MAP), key=len, reverse=True)
+)
+
+# Match ``<any receiver>.value == '<keyword>'`` (and the ``.lower()`` variant).
+# Single-escaped ``\.`` (NOT ``\\.``, the born-vacuous bug): each pattern
+# matches real source such as ``tok.value == 'time'`` or
+# ``tokens[0].value == 'in'``. The receiver is intentionally unanchored so the
+# guard catches every token variable name (``token``/``tok``/``tokens[0]``/
+# ``peek()``), and the RHS is restricted to the ACTUAL reserved words so a
+# legitimate non-keyword value check (``t.value == 'alias'``) is not a false
+# positive.
 REGEXES = [
-    re.compile(r"token\.value\s*==\s*['\"]([A-Za-z_]+)['\"]"),
-    re.compile(r"token\.value\.lower\(\)\s*==\s*['\"]([A-Za-z_]+)['\"]"),
+    re.compile(r"\.value\s*==\s*['\"](" + _KEYWORDS + r")['\"]"),
+    re.compile(r"\.value\.lower\(\)\s*==\s*['\"](" + _KEYWORDS + r")['\"]"),
 ]
 
 
 def _scan_text(text: str):
-    """Yield each raw ``token.value == '<word>'`` snippet found in *text*."""
+    """Yield each raw ``<recv>.value == '<keyword>'`` snippet found in *text*."""
     for regex in REGEXES:
         for match in regex.finditer(text):
-            word = match.group(1)
-            if word.isalpha():
-                yield match.group(0)
+            yield match.group(0)
 
 
 def _scan_file(path: Path):
@@ -76,13 +88,19 @@ def test_guard_flags_synthetic_offender():
     typed comparison MUST NOT be — proving the (single-escaped) regexes match
     real source. This test would itself fail against the born-vacuous
     doubled-backslash regexes that shipped before B5."""
-    # Offenders are flagged.
-    assert list(_scan_text("if token.value == 'if':")) == ["token.value == 'if'"]
-    assert list(_scan_text("token.value.lower() == 'while'")) == [
-        "token.value.lower() == 'while'"
+    # Offenders are flagged, under any token-variable receiver.
+    assert list(_scan_text("if token.value == 'if':")) == [".value == 'if'"]
+    assert list(_scan_text("in_run and tok.value == 'time'")) == [".value == 'time'"]
+    assert list(_scan_text("tokens[0].value == 'in'")) == [".value == 'in'"]
+    assert list(_scan_text("self.peek().value.lower() == 'while'")) == [
+        ".value.lower() == 'while'"
     ]
     # The proper typed forms are NOT flagged.
     assert list(_scan_text("token.type == TokenType.IF")) == []
     assert list(_scan_text("matches_keyword(token, 'if')")) == []
-    # A non-alphabetic operand (e.g. an operator spelling) is ignored.
+    # A legitimate NON-keyword value check is not a false positive (the RHS is
+    # restricted to real reserved words).
+    assert list(_scan_text("t.value == 'alias'")) == []
+    assert list(_scan_text("severity.value == 'error'")) == []
+    # A non-keyword operand (e.g. an operator spelling) is ignored.
     assert list(_scan_text("token.value == '-p'")) == []
