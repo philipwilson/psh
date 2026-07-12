@@ -412,13 +412,12 @@ def main():
         shell.active_parser = target
 
     if command_mode:
-        # Execute command with -c flag (script mode)
+        # Execute command with -c flag (script mode). Both mode options were
+        # already settled at construction: Shell.__init__ set command_mode
+        # ('c' in $-) BEFORE _init_interactive, which computed stdin_mode=False
+        # from it (shell.py) — so no re-setting is needed here. is_script_mode
+        # is the one genuinely post-construction flag (-c runs as a script).
         shell.state.is_script_mode = True
-        shell.state.options['command_mode'] = True  # 'c' in $-
-        # bash's `-c` is command mode, NOT stdin-reading mode: $- has 'c'
-        # but not 's'. _init_interactive ran at construction (before this
-        # flag was known), so clear stdin_mode now.
-        shell.state.options['stdin_mode'] = False
         command = operands[0]
         # `-c '...' name a b` → $0=name, $1=a, $#=2 (bash).
         if len(operands) > 1:

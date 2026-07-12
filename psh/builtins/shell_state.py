@@ -259,31 +259,14 @@ class LocalBuiltin(Builtin):
         if not positional:
             return 0
 
-        # Build attributes from options
-        from ..core import VarAttributes
-        attributes = VarAttributes.NONE
-        if options['readonly']:
-            attributes |= VarAttributes.READONLY
-        if options['export']:
-            attributes |= VarAttributes.EXPORT
-        if options['integer']:
-            attributes |= VarAttributes.INTEGER
-        if options['lowercase']:
-            attributes |= VarAttributes.LOWERCASE
-        if options['uppercase']:
-            attributes |= VarAttributes.UPPERCASE
-        if options['array']:
-            attributes |= VarAttributes.ARRAY
-        if options['assoc_array']:
-            attributes |= VarAttributes.ASSOC_ARRAY
-        if options['nameref']:
-            attributes |= VarAttributes.NAMEREF
-        if options['lowercase'] and options['uppercase']:
-            # -l and -u together cancel: bash applies NEITHER transform and
-            # records neither attribute (``local -ul x=Hello`` -> value
-            # "Hello", ``declare -p`` shows ``declare --``). Matches the declare
-            # builtin's _attributes_from_options.
-            attributes &= ~(VarAttributes.LOWERCASE | VarAttributes.UPPERCASE)
+        # Build the add/remove attribute sets through the SHARED declaration
+        # engine (same table + -l/-u cancellation rule declare uses; H5).
+        from .declaration_engine import (
+            attributes_from_options,
+            removed_attributes_from_options,
+        )
+        attributes = attributes_from_options(options)
+        remove_attrs = removed_attributes_from_options(options)
 
         # Process each argument. bash's `local` arg loop is CONTINUE-ON-ERROR:
         # every argument is processed even after one fails. A per-arg failure —
@@ -298,7 +281,7 @@ class LocalBuiltin(Builtin):
         for arg in positional:
             try:
                 if not self._declare_one_local(arg, shell, context,
-                                               attributes, options):
+                                               attributes, remove_attrs, options):
                     failed = True
             except ReadonlyVariableError as e:
                 # A value redeclare onto a readonly local: create_local raises,
@@ -312,15 +295,17 @@ class LocalBuiltin(Builtin):
 
     def _declare_one_local(self, arg: str, shell: 'Shell',
                            context: BuiltinContext, attributes: 'VarAttributes',
-                           options: dict) -> bool:
+                           remove_attrs: 'VarAttributes', options: dict) -> bool:
         """Create ONE ``local`` binding for *arg*.
 
         Returns True on success, False if a per-arg error was already reported
-        (invalid identifier / nameref self-reference — the caller then makes
-        the builtin return 1). Raises :class:`ReadonlyVariableError` for a value
-        redeclare onto a readonly local, which the CALLER catches so it can
-        report and continue with the remaining arguments (bash's
-        continue-on-error arg loop).
+        (invalid identifier / nameref self-reference / invalid nameref target —
+        the caller then makes the builtin return 1). Raises
+        :class:`ReadonlyVariableError` for a value redeclare onto a readonly
+        local OR a ``+r`` that would clear readonly, which the CALLER catches so
+        it can report and continue with the remaining arguments (bash's
+        continue-on-error arg loop). ``remove_attrs`` are the ``+flag``
+        attributes to clear (H5 carry).
         """
         from ..core import VarAttributes
         from ..lexer.unicode_support import is_valid_name
@@ -348,10 +333,21 @@ class LocalBuiltin(Builtin):
                 var_name = var_name[:-1]
 
             # Name reference: store the target name verbatim (no expansion,
-            # no array parsing) with the NAMEREF attribute.
+            # no array parsing) with the NAMEREF attribute. bash validates the
+            # target's SHAPE at `local -n` time exactly like `declare -n`
+            # (H5): shared engine check (an empty target gets bash's
+            # plain-identifier message; any other invalid shape the
+            # nameref-specific one).
             if options['nameref']:
+                from .declaration_engine import is_valid_nameref_target
                 if var_name == var_value:
                     self.error(f"{var_name}: nameref variable self references not allowed", shell)
+                    return False
+                if not var_value:
+                    self.error("`': not a valid identifier", shell)
+                    return False
+                if not is_valid_nameref_target(var_value, posix_mode):
+                    self.error(f"`{var_value}': invalid variable name for name reference", shell)
                     return False
                 shell.state.scope_manager.create_local(var_name, var_value, attributes)
                 return True
@@ -360,36 +356,22 @@ class LocalBuiltin(Builtin):
             # seen literal ``var=(...)`` syntax: it attaches a structured
             # ArrayInitialization to the arg Word, delivered via the
             # shell's explicit pending-array-init handoff. We expand it
-            # through the SAME structured path the bare ``a=(...)`` form uses (no
-            # shlex reparse). A merely paren-shaped VALUE that did NOT
-            # come from array syntax (``local "a=(1 2)"``) is a scalar in
-            # bash, so it is NOT array-ified.
+            # through the SAME shared engine home as declare (build_array_init;
+            # no shlex reparse; the copy-then-build += snapshot lives there). A
+            # merely paren-shaped VALUE that did NOT come from array syntax
+            # (``local "a=(1 2)"``) is a scalar in bash, so it is NOT array-ified.
             array_init = context.array_init(arg)
             if array_init is not None:
-                # Parse array initialization; += appends to/merges with
-                # an existing array of the same kind (bash).
-                from ..core import AssociativeArray, IndexedArray
+                from .declaration_engine import DeclarationEngine
+                assoc = bool(attributes & VarAttributes.ASSOC_ARRAY)
                 existing = (shell.state.scope_manager.get_variable_object(var_name)
                             if append else None)
-                into: object
-                # Build += into a COPY, not the live array: if the target
-                # is readonly, create_local rejects the assignment and the
-                # live array must stay untouched (C2/P1.2 — a failed
-                # operation does not mutate a readonly value).
-                if attributes & VarAttributes.ASSOC_ARRAY:
-                    into = (existing.value.copy()
-                            if existing is not None
-                            and isinstance(existing.value, AssociativeArray)
-                            else None)
-                    array = self._build_assoc_array(array_init, into, shell)
-                    shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ASSOC_ARRAY)
-                else:
-                    into = (existing.value.copy()
-                            if existing is not None
-                            and isinstance(existing.value, IndexedArray)
-                            else None)
-                    array = self._build_indexed_array(array_init, into, shell)
-                    shell.state.scope_manager.create_local(var_name, array, attributes | VarAttributes.ARRAY)
+                array = DeclarationEngine(shell).build_array_init(
+                    array_init, assoc=assoc, append=append, existing=existing)
+                kind_attr = (VarAttributes.ASSOC_ARRAY if assoc
+                             else VarAttributes.ARRAY)
+                shell.state.scope_manager.create_local(
+                    var_name, array, attributes | kind_attr)
             else:
                 # Regular variable assignment. The executor has already
                 # expanded this argument; expanding again here would run
@@ -420,7 +402,8 @@ class LocalBuiltin(Builtin):
                 # chokepoint in create_local -> ScopeManager._apply_attributes,
                 # NOT here: a second, divergent copy used to run first and
                 # mishandled -ul (it uppercased instead of applying neither).
-                shell.state.scope_manager.create_local(var_name, value_to_set, attributes)
+                self._create_local_with_removal(
+                    shell, var_name, value_to_set, attributes, remove_attrs)
         else:
             # Variable without assignment: local var
             if attributes & VarAttributes.ARRAY:
@@ -435,9 +418,56 @@ class LocalBuiltin(Builtin):
                 # Declared-but-unset local: shadows any outer variable
                 # but reads as unset (bash: ``local v; echo ${v-u}``
                 # prints ``u``). create_local(value=None) plants the
-                # UNSET-attributed variable.
-                shell.state.scope_manager.create_local(arg, None, attributes)
+                # UNSET-attributed variable. ``local +x v`` clears the +attrs.
+                self._create_local_with_removal(
+                    shell, arg, None, attributes, remove_attrs)
         return True
+
+    def _create_local_with_removal(self, shell: 'Shell', name: str,
+                                   value: object, add_attrs: 'VarAttributes',
+                                   remove_attrs: 'VarAttributes') -> None:
+        """``create_local(name, value, add_attrs)`` then clear ``remove_attrs``
+        from the resulting LOCAL (bash's ``local +x``/``+i``/``+n``/... removal).
+
+        The removal targets the local: if ``name`` is ALREADY local in this
+        scope — INCLUDING a declared-but-unset tombstone (``local -r v``), which
+        IS a local and keeps its attributes — we strip FIRST, so ``+r`` on a
+        readonly local raises :class:`ReadonlyVariableError` BEFORE anything can
+        mutate (bash: rc 1, readonly and value intact). The r19-T2 bounce
+        blocker: tombstones used to route down the fresh-local path, where
+        create_local clobbered the attributes before the removal ran, silently
+        STRIPPING readonly (``local -r v; local +r v`` must instead report
+        ``local: v: readonly variable``). Strip-first also means a value is
+        transformed with the POST-removal attributes (bash removes the
+        attribute before assigning — ``local +i n=2+3`` stores ``2+3``
+        literally, not the evaluated ``5``).
+
+        A tombstone ATTRS-ONLY redeclare (no value) is mutated IN PLACE
+        (remove + apply): create_local's fresh path (a tombstone is not a
+        ``redeclare``) would REPLACE the cell and drop its remaining attributes
+        (``local -rx e; local +x e`` must keep readonly — bash ``declare -r e``).
+
+        A FRESH name is established first (inheriting only EXPORT from the
+        variable it shadows), then the inherited attribute is stripped
+        (``export G=g; f(){ local +x G=z; }`` gives a non-exported local
+        shadow).
+        """
+        sm = shell.state.scope_manager
+        if not remove_attrs:
+            sm.create_local(name, value, add_attrs)
+            return
+        cur = sm.current_scope.variables.get(name)
+        if cur is not None:
+            sm.remove_attribute(name, remove_attrs)  # may raise (+r on readonly)
+            if value is None and cur.is_unset:
+                # Tombstone attrs-only: mutate in place, keep remaining attrs.
+                if add_attrs:
+                    sm.apply_attribute(name, add_attrs)
+                return
+            sm.create_local(name, value, add_attrs)
+            return
+        sm.create_local(name, value, add_attrs)
+        sm.remove_attribute(name, remove_attrs)
 
     def _save_dash_options(self, shell: 'Shell') -> None:
         """Record the current `set` options for `local -` restore-on-return.
@@ -458,33 +488,24 @@ class LocalBuiltin(Builtin):
                     if spec.category is OptionCategory.SET}
         scope.dash_snapshot = (snapshot, shell.state.edit_mode)
 
-    def _build_indexed_array(self, array_init, into, shell: 'Shell'):
-        """Build an IndexedArray from the structured init via the shared
-        ArrayOperationExecutor engine (the SAME path the bare ``a=(...)``
-        form uses; no string reparse)."""
-        from ..executor.array import ArrayOperationExecutor
-        return ArrayOperationExecutor(shell).build_indexed_array(
-            array_init.words, into=into)
-
-    def _build_assoc_array(self, array_init, into, shell: 'Shell'):
-        """Build an AssociativeArray from the structured init via the shared
-        engine (see _build_indexed_array)."""
-        from ..executor.array import ArrayOperationExecutor
-        return ArrayOperationExecutor(shell).build_associative_array(
-            array_init.words, into=into)
+    # Flag char → option key. ``-c`` sets the key; ``+c`` sets ``remove_``+key
+    # (attribute removal, bash's `local +x`/`+i`/... — H5 carry). Shared shape
+    # with declare's option parser.
+    _FLAG_OPTIONS = {
+        'a': 'array', 'A': 'assoc_array', 'i': 'integer', 'l': 'lowercase',
+        'n': 'nameref', 'r': 'readonly', 'u': 'uppercase', 'x': 'export',
+    }
 
     def _parse_options(self, args: List[str], shell: 'Shell') -> tuple:
-        """Parse local options and return (options_dict, positional_args)."""
-        options = {
-            'array': False,          # -a
-            'assoc_array': False,    # -A
-            'integer': False,        # -i
-            'lowercase': False,      # -l
-            'nameref': False,        # -n
-            'readonly': False,       # -r
-            'uppercase': False,      # -u
-            'export': False,         # -x
-        }
+        """Parse local options and return (options_dict, positional_args).
+
+        Accepts both ``-flag`` (set an attribute) and ``+flag`` (remove an
+        attribute) clusters, like ``declare`` — ``local +x v`` clears export
+        (H5 carry: this closes the ``local +r``/``+attr`` parse gap).
+        """
+        options: dict = {key: False for key in self._FLAG_OPTIONS.values()}
+        options.update({f'remove_{key}': False
+                        for key in self._FLAG_OPTIONS.values()})
         positional = []
 
         i = 0
@@ -494,27 +515,21 @@ class LocalBuiltin(Builtin):
                 positional.extend(args[i+1:])
                 break
             elif arg.startswith('-') and len(arg) > 1 and not arg[1].isdigit():
-                # Process flags
+                # Attribute-setting flags (clusterable: -aix)
                 for flag in arg[1:]:
-                    if flag == 'a':
-                        options['array'] = True
-                    elif flag == 'A':
-                        options['assoc_array'] = True
-                    elif flag == 'i':
-                        options['integer'] = True
-                    elif flag == 'l':
-                        options['lowercase'] = True
-                    elif flag == 'n':
-                        options['nameref'] = True
-                    elif flag == 'r':
-                        options['readonly'] = True
-                    elif flag == 'u':
-                        options['uppercase'] = True
-                    elif flag == 'x':
-                        options['export'] = True
-                    else:
+                    key = self._FLAG_OPTIONS.get(flag)
+                    if key is None:
                         self.error(f"invalid option: -{flag}", shell)
                         return None, []
+                    options[key] = True
+            elif arg.startswith('+') and len(arg) > 1:
+                # Attribute-removal flags (clusterable: +ix)
+                for flag in arg[1:]:
+                    key = self._FLAG_OPTIONS.get(flag)
+                    if key is None:
+                        self.error(f"invalid option: +{flag}", shell)
+                        return None, []
+                    options[f'remove_{key}'] = True
             else:
                 positional.append(arg)
             i += 1

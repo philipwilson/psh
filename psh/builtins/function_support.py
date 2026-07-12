@@ -1,5 +1,5 @@
 """Function-related builtin commands."""
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, cast
 
 from ..core import (
     AssociativeArray,
@@ -41,6 +41,25 @@ class DeclareBuiltin(Builtin):
         ``context`` carries the structured array initializers the executor
         collected for any ``name=(...)`` argument (see BuiltinContext).
         """
+        return self.run_as(args, shell, context, invoked_as=self.name,
+                           special=False)
+
+    def run_as(self, args: List[str], shell: 'Shell', context: BuiltinContext,
+               *, invoked_as: str, special: bool,
+               catch_readonly: bool = True) -> int:
+        """``execute_in_context`` with an explicit diagnostic label + POSIX
+        special-builtin policy, so ``typeset``/``readonly`` can delegate here and
+        get correctly-labeled, correctly-fatal diagnostics (H5).
+
+        - ``invoked_as`` — the builtin name used to label the variable-path
+          diagnostics (``declare``/``typeset``/``readonly``).
+        - ``special`` — True for ``readonly``: a readonly-assignment error emits
+          BARE and (after processing every operand) raises
+          :class:`SpecialBuiltinUsageError` so a posix non-interactive shell
+          exits.
+        - ``catch_readonly`` — False lets a readonly error propagate to the
+          caller (``export``'s array-init delegation renders its own message).
+        """
         # Parse options
         options, positional = self._parse_options(args[1:], shell)
         if options is None:
@@ -72,7 +91,9 @@ class DeclareBuiltin(Builtin):
             # This handles cases like "declare -r" (list readonly vars)
             return self._print_variables(options, positional, shell)
         else:
-            return self._declare_variables(options, positional, shell, context)
+            return self._declare_variables(options, positional, shell, context,
+                                           invoked_as=invoked_as, special=special,
+                                           catch_readonly=catch_readonly)
 
     # Flag char → option key (set with `-c`; `+c` sets 'remove_' + key for
     # the chars in _REMOVABLE_FLAGS). declare cannot use Builtin.parse_flags
@@ -211,82 +232,47 @@ class DeclareBuiltin(Builtin):
         from ..lexer.unicode_support import is_valid_name
         return is_valid_name(name, posix_mode)
 
+    # Nameref target-SHAPE validation + the -flag→VarAttributes mapping now
+    # live in the shared declaration engine (H5: local -n reuses the same
+    # check; the -l/-u cancel rule is defined once). Thin delegators keep the
+    # call sites readable.
     def _is_valid_nameref_target(self, value: str, posix_mode: bool = False) -> bool:
-        """Check a nameref target: an identifier, optionally followed by ONE
-        balanced ``[subscript]`` spanning to the end of the string.
-
-        Mirrors bash's valid_nameref_value/valid_array_reference (pinned
-        against bash 5.2): ``a``, ``a[0]``, ``a[$i]``, ``a[b[c]]`` are valid;
-        ``1``, ``a b``, ``a-b``, ``a[``, ``a[]``, ``a[0]x``, ``a[0][1]`` are
-        not. The subscript is NOT evaluated here — only its shape is checked.
-        """
-        bracket = value.find('[')
-        name = value if bracket == -1 else value[:bracket]
-        if not self._is_valid_identifier(name, posix_mode):
-            return False
-        if bracket == -1:
-            return True
-        subscript = value[bracket:]
-        if len(subscript) < 3 or not subscript.endswith(']'):
-            return False  # needs a non-empty, closed [subscript]
-        depth = 0
-        for i, ch in enumerate(subscript):
-            if ch == '[':
-                depth += 1
-            elif ch == ']':
-                depth -= 1
-                if depth == 0:
-                    # The first [ must close exactly at the end (a[0][1] is
-                    # invalid, a[b[c]] valid).
-                    return i == len(subscript) - 1
-        return False
-
-    # Option key → variable attribute, for both the -set and +remove
-    # directions of _declare_variables.
-    _OPTION_ATTRIBUTES = {
-        'readonly': VarAttributes.READONLY,
-        'export': VarAttributes.EXPORT,
-        'integer': VarAttributes.INTEGER,
-        'lowercase': VarAttributes.LOWERCASE,
-        'uppercase': VarAttributes.UPPERCASE,
-        'array': VarAttributes.ARRAY,
-        'assoc_array': VarAttributes.ASSOC_ARRAY,
-        'trace': VarAttributes.TRACE,
-        'nameref': VarAttributes.NAMEREF,
-    }
+        from .declaration_engine import is_valid_nameref_target
+        return is_valid_nameref_target(value, posix_mode)
 
     def _attributes_from_options(self, options: dict) -> VarAttributes:
-        """Attributes the -flags select.
-
-        -l and -u are mutually exclusive; when BOTH appear in a single
-        declaration bash applies NEITHER (``declare -ul y; y=HeLLo`` leaves
-        $y unfolded). Set no case bit here — _removed_attributes_from_options
-        also clears any pre-existing case attribute so the cancellation
-        applies even when the name was already -u/-l.
-        """
-        attributes = VarAttributes.NONE
-        for key, attr in self._OPTION_ATTRIBUTES.items():
-            if options[key]:
-                attributes |= attr
-        if options['lowercase'] and options['uppercase']:
-            attributes &= ~(VarAttributes.LOWERCASE | VarAttributes.UPPERCASE)
-        return attributes
+        from .declaration_engine import attributes_from_options
+        return attributes_from_options(options)
 
     def _removed_attributes_from_options(self, options: dict) -> VarAttributes:
-        """Attributes the +flags remove (plus the -u/-l mutual cancellation)."""
-        removed = VarAttributes.NONE
-        for key, attr in self._OPTION_ATTRIBUTES.items():
-            if options.get(f'remove_{key}', False):
-                removed |= attr
-        if options['lowercase'] and options['uppercase']:
-            # Both case flags in one declaration cancel — and clear any
-            # case attribute the name already carried (bash).
-            removed |= VarAttributes.LOWERCASE | VarAttributes.UPPERCASE
-        return removed
+        from .declaration_engine import removed_attributes_from_options
+        return removed_attributes_from_options(options)
+
+    def _diag(self, invoked_as: str, message: str, shell: 'Shell') -> None:
+        """Emit ``<$0>: line N: <invoked_as>: <message>`` — like ``error()`` but
+        with an EXPLICIT builtin-name label, so ``readonly`` (which delegates
+        through ``declare``) labels its diagnostics ``readonly:`` rather than
+        ``declare:`` (H5 carry). ``report_error`` adds only the location prefix.
+        """
+        self.report_error(f"{invoked_as}: {message}", shell)
 
     def _declare_variables(self, options: dict, args: List[str], shell: 'Shell',
-                           context: BuiltinContext) -> int:
-        """Handle variable declarations (list, assignment, or bare-name forms)."""
+                           context: BuiltinContext, *, invoked_as: str,
+                           special: bool, catch_readonly: bool = True) -> int:
+        """Handle variable declarations (list, assignment, or bare-name forms).
+
+        bash's declaration arg loop is CONTINUE-ON-ERROR: every operand is
+        processed even after one fails (a readonly-value redeclare OR an invalid
+        identifier is reported and skipped, good operands are still created, and
+        the builtin returns 1). ``invoked_as`` labels the per-arg diagnostics
+        (``declare``/``typeset``/``readonly``); ``special`` (``readonly``) emits
+        the readonly-assignment error BARE (no builtin name) and, after the whole
+        loop, raises :class:`SpecialBuiltinUsageError` so a POSIX-mode
+        non-interactive shell exits (the special-builtin contract). When
+        ``catch_readonly`` is False (``export``'s array-init delegation) a
+        readonly error PROPAGATES so the delegating builtin can render its own
+        (bare) message.
+        """
         attributes = self._attributes_from_options(options)
         remove_attrs = self._removed_attributes_from_options(options)
 
@@ -294,16 +280,37 @@ class DeclareBuiltin(Builtin):
         if not args:
             return self._declare_list_all(options, shell)
 
-        # Process each argument; an invalid name (or nameref self-ref)
-        # stops immediately with exit 1, matching bash.
+        failed = False
+        saw_readonly = False
         for arg in args:
-            if '=' in arg:
-                rc = self._declare_assignment(arg, options, attributes, shell, context)
-            else:
-                rc = self._declare_bare_name(arg, options, attributes, remove_attrs, shell)
-            if rc != 0:
-                return rc
-        return 0
+            try:
+                if '=' in arg:
+                    rc = self._declare_assignment(arg, options, attributes,
+                                                  remove_attrs, shell, context,
+                                                  invoked_as)
+                else:
+                    rc = self._declare_bare_name(arg, options, attributes,
+                                                 remove_attrs, shell, invoked_as)
+                if rc != 0:
+                    failed = True
+            except ReadonlyVariableError as e:
+                if not catch_readonly:
+                    raise
+                if special:
+                    # readonly: bash labels the assignment error BARE.
+                    self.report_error(f"{e.name}: readonly variable", shell)
+                    saw_readonly = True
+                else:
+                    # declare/typeset: byte-identical to the builtin guard's
+                    # former `<$0>: line N: declare: NAME: readonly variable`.
+                    self._diag(invoked_as, str(e), shell)
+                failed = True
+        if special and saw_readonly:
+            # readonly is a POSIX special builtin: a readonly-assignment error
+            # makes a posix-mode non-interactive shell EXIT rc1 (default and
+            # interactive shells simply fail with rc1, list continues).
+            raise SpecialBuiltinUsageError(1)
+        return 1 if failed else 0
 
     def _declare_list_all(self, options: dict, shell: 'Shell') -> int:
         """List all shell variables (the no-argument `declare` form)."""
@@ -342,8 +349,13 @@ class DeclareBuiltin(Builtin):
         return 0
 
     def _declare_assignment(self, arg: str, options: dict, attributes: VarAttributes,
-                            shell: 'Shell', context: BuiltinContext) -> int:
-        """Apply one `NAME=value` / `NAME+=value` declaration argument."""
+                            remove_attrs: VarAttributes, shell: 'Shell',
+                            context: BuiltinContext, invoked_as: str) -> int:
+        """Apply one `NAME=value` / `NAME+=value` declaration argument.
+
+        ``invoked_as`` labels the per-arg diagnostics (``declare``/``typeset``/
+        ``readonly``); ``remove_attrs`` are the ``+flags`` to clear.
+        """
         # Variable assignment (NAME=value or NAME+=value append).
         # Namerefs take the text verbatim, so '+' stays part of
         # the (invalid) name there, as in bash.
@@ -355,23 +367,27 @@ class DeclareBuiltin(Builtin):
         # Validate variable name
         posix_mode = shell.state.options.get('posix', False)
         if not self._is_valid_identifier(name, posix_mode):
-            self.error(f"`{arg}': not a valid identifier", shell)
+            self._diag(invoked_as, f"`{arg}': not a valid identifier", shell)
             return 1
 
         # Name reference: store the target name as the value with the
         # NAMEREF attribute (set_variable writes it raw to `name`).
         if options['nameref']:
             if name == value:
-                self.error(f"{name}: nameref variable self references not allowed", shell)
+                self._diag(invoked_as,
+                           f"{name}: nameref variable self references not allowed",
+                           shell)
                 return 1
             # bash validates the target's SHAPE at declare time (the target
             # need not exist). An empty target gets bash's plain-identifier
             # message; any other invalid shape gets the nameref-specific one.
             if not value:
-                self.error("`': not a valid identifier", shell)
+                self._diag(invoked_as, "`': not a valid identifier", shell)
                 return 1
             if not self._is_valid_nameref_target(value, posix_mode):
-                self.error(f"`{value}': invalid variable name for name reference", shell)
+                self._diag(invoked_as,
+                           f"`{value}': invalid variable name for name reference",
+                           shell)
                 return 1
             self._set_variable_with_attributes(shell, name, value, attributes, options['global'])
             return 0
@@ -387,19 +403,24 @@ class DeclareBuiltin(Builtin):
         # ArrayInitialization (element Words with full quote context)
         # to the argument Word, delivered via the shell's explicit
         # pending-array-init handoff. We expand it through the
-        # SAME structured path the bare ``a=(...)`` form uses
-        # (build_indexed_array / build_associative_array) — no shlex
-        # reparse. A merely paren-shaped VALUE that did NOT come from
-        # array syntax (``declare "a=(1 2)"``, ``declare a=$x`` with
-        # x="(1 2)") is a scalar in bash, so it is NOT array-ified.
+        # SAME structured path the bare ``a=(...)`` form uses (the shared
+        # engine's build_array_init) — no shlex reparse. A merely
+        # paren-shaped VALUE that did NOT come from array syntax
+        # (``declare "a=(1 2)"``, ``declare a=$x`` with x="(1 2)") is a
+        # scalar in bash, so it is NOT array-ified.
+        from .declaration_engine import (
+            DeclarationAssignment,
+            DeclarationEngine,
+            DeclarationRequest,
+        )
+        engine = DeclarationEngine(shell)
         array_init = context.array_init(arg)
         is_array_init = array_init is not None
 
         # bash: a SCALAR value combined with -a/-A still creates an
         # array, storing the value at index 0 (or key "0" for -A).
         # ``declare -a v=5`` -> ``([0]="5")``; ``declare -A m=foo`` ->
-        # ``([0]="foo")``. The integer/case attrs then apply to the
-        # element (handled by _transform_array_elements below).
+        # ``([0]="foo")``.
         scalar_into_array = (
             not is_array_init
             and (options['array'] or options['assoc_array']))
@@ -410,40 +431,34 @@ class DeclareBuiltin(Builtin):
             as_assoc = options['assoc_array'] or (
                 existing is not None and existing.is_assoc_array)
 
-        if is_array_init and as_assoc:
-            # Associative array initialization; += merges into the
-            # existing array (bash).
+        if is_array_init:
+            assert array_init is not None  # narrowed by is_array_init
+            # Array initialization; += merges into a COPY of the same-kind
+            # existing array (the ONE engine home for the copy-then-build
+            # snapshot — a readonly commit leaves the live array intact, C2/P1.2).
             existing = (self._get_variable_with_attributes(shell, name)
                         if append else None)
-            # Build the += append into a COPY, not the live array: if the
-            # variable is readonly, _set_variable_with_attributes rejects the
-            # assignment and the live array must stay untouched (bash: a failed
-            # operation does not mutate a readonly value). C2/P1.2.
-            into: Any = (existing.value.copy()
-                         if existing is not None
-                         and isinstance(existing.value, AssociativeArray)
-                         else None)
-            array: Any = self._build_assoc_array(array_init, into, shell)
+            array: Any = engine.build_array_init(
+                array_init, assoc=as_assoc, append=append, existing=existing)
             self._transform_array_elements(array, attributes, shell)
+            kind_attr = (VarAttributes.ASSOC_ARRAY if as_assoc
+                         else VarAttributes.ARRAY)
             self._set_variable_with_attributes(
-                shell, name, array,
-                attributes | VarAttributes.ASSOC_ARRAY, options['global'])
+                shell, name, array, attributes | kind_attr, options['global'])
 
-        elif is_array_init:
-            # Indexed array initialization; += appends after the
-            # existing array's highest index (bash).
-            existing = (self._get_variable_with_attributes(shell, name)
-                        if append else None)
-            # Copy (not the live array) — see the associative branch above.
-            into = (existing.value.copy()
-                    if existing is not None
-                    and isinstance(existing.value, IndexedArray)
-                    else None)
-            array = self._build_indexed_array(array_init, into, shell)
-            self._transform_array_elements(array, attributes, shell)
-            self._set_variable_with_attributes(
-                shell, name, array,
-                attributes | VarAttributes.ARRAY, options['global'])
+        elif scalar_into_array and append:
+            # ``declare -a a+=10`` / ``declare -Ai h+=10``: append the scalar
+            # onto element 0 through the ONE append engine, preserving the rest
+            # of the array — NOT the old clobber-to-scalar (appraisal H5 carry).
+            existing = self._existing_in_target_scope(shell, name, options['global'])
+            kind_attr = (VarAttributes.ASSOC_ARRAY if as_assoc
+                         else VarAttributes.ARRAY)
+            in_function = (bool(shell.state.function_stack)
+                           and not options['global'])
+            engine.scalar_append_into_array(
+                name, value, assoc=as_assoc,
+                add_attributes=attributes | kind_attr, existing=existing,
+                local=in_function, global_scope=options['global'])
 
         elif scalar_into_array and as_assoc:
             array = AssociativeArray()
@@ -467,26 +482,36 @@ class DeclareBuiltin(Builtin):
             # attribute (builtins appraisal finding 3). Attribute transforms are
             # applied by the store; a readonly target raises ReadonlyVariableError.
             from ..core import TargetScope
-            from .declaration_engine import (
-                DeclarationAssignment,
-                DeclarationEngine,
-                DeclarationRequest,
-            )
+            if remove_attrs:
+                # ``declare +x v=bye`` / ``declare +i n=2+3``: clear the +attrs
+                # on the existing target BEFORE the assignment, so the value is
+                # transformed with the POST-removal attributes (bash removes the
+                # attribute first — the value is NOT integer-evaluated). A ``+r``
+                # on a readonly target raises (the loop reports it).
+                existing_scalar = self._declared_in_target_scope(
+                    shell, name, options['global'])
+                if existing_scalar is not None:
+                    shell.state.scope_manager.remove_attribute(
+                        name, remove_attrs, global_scope=options['global'])
             request = DeclarationRequest(
                 target_scope=(TargetScope.GLOBAL if options['global']
                               else TargetScope.DEFAULT),
                 add_attributes=attributes)
-            DeclarationEngine(shell).commit_request_scalar(
+            engine.commit_request_scalar(
                 request, DeclarationAssignment(name, value, append=append))
         return 0
 
     def _declare_bare_name(self, arg: str, options: dict, attributes: VarAttributes,
-                           remove_attrs: VarAttributes, shell: 'Shell') -> int:
-        """Declare/modify a variable by NAME only (no assignment)."""
+                           remove_attrs: VarAttributes, shell: 'Shell',
+                           invoked_as: str) -> int:
+        """Declare/modify a variable by NAME only (no assignment).
+
+        ``invoked_as`` labels the per-arg diagnostics (declare/typeset/readonly).
+        """
         # Just declaring with attributes, no assignment
         # Validate variable name
         if not self._is_valid_identifier(arg, shell.state.options.get('posix', False)):
-            self.error(f"`{arg}': not a valid identifier", shell)
+            self._diag(invoked_as, f"`{arg}': not a valid identifier", shell)
             return 1
 
         from .declaration_engine import ArrayKind, DeclarationEngine
@@ -499,7 +524,7 @@ class DeclareBuiltin(Builtin):
             # status 1 and PRESERVES the existing array (shared engine check).
             conv_err = DeclarationEngine.array_conversion_error(existing, ArrayKind.INDEXED)
             if conv_err:
-                self.error(f"{arg}: {conv_err}", shell)
+                self._diag(invoked_as, f"{arg}: {conv_err}", shell)
                 return 1
             if existing and existing.is_indexed_array:
                 # Re-declaring an existing indexed array keeps its elements (bash).
@@ -524,7 +549,7 @@ class DeclareBuiltin(Builtin):
             # was wrong, and applied even to an empty indexed array).
             conv_err = DeclarationEngine.array_conversion_error(existing, ArrayKind.ASSOC)
             if conv_err:
-                self.error(f"{arg}: {conv_err}", shell)
+                self._diag(invoked_as, f"{arg}: {conv_err}", shell)
                 return 1
             if existing and existing.is_assoc_array:
                 # Re-declaring an existing associative array keeps its keys (bash).
@@ -607,22 +632,6 @@ class DeclareBuiltin(Builtin):
         """Print variable declaration in reusable format
         (shared formatter: declare_format.format_declaration)."""
         self.write_line(format_declaration(var), shell)
-
-    def _build_indexed_array(self, array_init, into, shell: 'Shell') -> IndexedArray:
-        """Build an IndexedArray from the structured init via the shared
-        ArrayOperationExecutor engine — the SAME path the bare ``a=(...)``
-        form uses (no string reparse). ``into`` is the existing array for
-        ``+=`` append, else None."""
-        from ..executor.array import ArrayOperationExecutor
-        return ArrayOperationExecutor(shell).build_indexed_array(
-            array_init.words, into=into)
-
-    def _build_assoc_array(self, array_init, into, shell: 'Shell') -> AssociativeArray:
-        """Build an AssociativeArray from the structured init via the shared
-        engine (see _build_indexed_array)."""
-        from ..executor.array import ArrayOperationExecutor
-        return ArrayOperationExecutor(shell).build_associative_array(
-            array_init.words, into=into)
 
     def _transform_element(self, value: str, attributes: VarAttributes,
                            shell: 'Shell') -> str:
@@ -836,24 +845,19 @@ class ReadonlyBuiltin(Builtin):
             # delegate to the registered declare singleton, forwarding the
             # same context so an array-init argument resolves. Attribute flags
             # (-a/-A) are passed through to declare so `readonly -a arr=(...)`
-            # creates a readonly array.
+            # creates a readonly array. ``invoked_as='readonly'`` labels the
+            # per-arg diagnostics `readonly:` (not `declare:`), and
+            # ``special=True`` makes declare's shared loop emit a readonly
+            # ASSIGNMENT error BARE (`x: readonly variable`, no builtin name —
+            # bash) and, after processing every operand (bash's
+            # continue-on-error arg loop), raise SpecialBuiltinUsageError(1):
+            # default mode fails non-fatally rc1, a POSIX-mode non-interactive
+            # shell exits rc1 (readonly is a special builtin; probe tmp/posixexit).
             declare_builtin = registry.get('declare')
             assert declare_builtin is not None
-            try:
-                return declare_builtin.execute_in_context(
-                    ['declare', '-r'] + options['declare_flags'] + names,
-                    shell, context)
-            except ReadonlyVariableError as e:
-                # bash prints the assignment error for `readonly x=2` WITHOUT
-                # the builtin name (unlike `declare`): just `x: readonly
-                # variable`. Emit that (via the psh assignment convention).
-                # Typed outcome: default mode fails non-fatally with rc 1
-                # (the rest of the command list continues); a POSIX-mode
-                # non-interactive shell exits rc 1 (assignment error in a
-                # special builtin — probe tmp/posixexit). `declare r=2` is
-                # NOT special and keeps its plain rc-1 path.
-                self.report_error(f"{e.name}: readonly variable", shell)
-                raise SpecialBuiltinUsageError(1) from None
+            return cast(DeclareBuiltin, declare_builtin).run_as(
+                ['declare', '-r'] + options['declare_flags'] + names,
+                shell, context, invoked_as='readonly', special=True)
 
     # readonly attribute flags forwarded to `declare -r` (bash accepts -aA).
     _READONLY_FORWARD_FLAGS = {'a': '-a', 'A': '-A'}

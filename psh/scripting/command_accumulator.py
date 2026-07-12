@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 if TYPE_CHECKING:
     from ..ast_nodes import ASTNode
 
-from ..lexer import UnclosedQuoteError, tokenize
+from ..lexer import UnclosedQuoteError
 from ..parser import ParseError, Parser
 from ..utils import (
     contains_heredoc,
@@ -256,43 +256,35 @@ class CommandAccumulator:
     def _trial_parse(self, preview: str):
         """Tokenize and parse ``preview`` with the recursive-descent parser.
 
-        Mirrors the execution path's lexing exactly: commands containing
-        heredocs go through ``tokenize_with_heredocs`` so body lines stay
-        out of the token stream (a body line like ``)`` must not be a
-        parse error), and the collected bodies are populated into the AST.
+        Shares the heredoc-aware lex→alias seam
+        (:func:`scripting.lex_parse.lex_and_expand`) with the execution and
+        analysis paths, but builds the recursive-descent ``Parser`` itself:
+        the completeness oracle reads its ``open_constructs`` trail and relies
+        on its ``at_eof`` / ``unclosed_expansion`` signals, which the combinator
+        parser does not provide — so the trial is recursive-descent regardless
+        of the active parser (its AST is reused for execution only when
+        recursive descent is active too). A completed heredoc buffer lexes with
+        ``tokenize_with_heredocs`` so body lines stay out of the token stream (a
+        body line like ``)`` must not be a parse error), and the collected map
+        is threaded so each ``<<``/``<<-`` Redirect gets its body at
+        construction. ``warn_unterminated=False``: a trial must never print the
+        unterminated-heredoc warning — the execution pass, which re-lexes or
+        reuses this AST, warns. ``lexer_options`` mirrors the execution lexing so
+        a nested substitution body re-lexes with the same options (extglob).
         """
+        from .lex_parse import lex_and_expand
         self._open_constructs = []
-        line_offset = max(0, self.start_line - 1)
-        if contains_heredoc(preview):
-            from ..lexer import tokenize_with_heredocs
-            tokens, heredoc_map = tokenize_with_heredocs(
-                preview,
-                shell_options=self.state.options,
-                # A trial must never print the unterminated-heredoc warning:
-                # the execution pass re-lexes (or reuses this AST) and warns.
-                warn_unterminated=False)
-            # Expand aliases on the token stream (lex→parse boundary) so the
-            # trial AST — which the execution path reuses — matches what the
-            # execution seam produces.
-            tokens = self.shell.expand_aliases(tokens)
-            # Thread the heredoc map into the parser so each `<<`/`<<-` Redirect
-            # gets its body attached at construction (no post-parse AST walk).
-            # lexer_options mirrors the execution lexing so a nested substitution
-            # body re-lexes with the same options (extglob) — this trial AST is
-            # reused by the execution path.
-            parser = Parser(tokens, source_text=preview,
-                            line_offset=line_offset, heredoc_map=heredoc_map,
-                            lexer_options=self.state.options)
-            self._open_constructs = parser.ctx.open_constructs
-            ast = parser.parse()
-        else:
-            tokens = tokenize(preview, shell_options=self.state.options)
-            tokens = self.shell.expand_aliases(tokens)
-            parser = Parser(tokens, source_text=preview,
-                            line_offset=line_offset,
-                            lexer_options=self.state.options)
-            self._open_constructs = parser.ctx.open_constructs
-            ast = parser.parse()
+        tokens, heredoc_map = lex_and_expand(
+            preview, self.shell,
+            base_line=self.start_line,
+            lexer_options=self.state.options,
+            warn_unterminated=False)
+        parser = Parser(tokens, source_text=preview,
+                        line_offset=max(0, self.start_line - 1),
+                        heredoc_map=heredoc_map,
+                        lexer_options=self.state.options)
+        self._open_constructs = parser.ctx.open_constructs
+        ast = parser.parse()
         return ast, tokens
 
     def _complete(self, raw: str, preview: str, ast=None, tokens=None,

@@ -45,6 +45,11 @@ from ..ast_nodes import (
     VariableExpansion,
     Word,
 )
+from .constants import (
+    FILE_TEST_OPERATORS,
+    NUMERIC_COMPARISON_OPERATORS,
+    STRING_COMPARISON_OPERATORS,
+)
 
 # Operators whose presence means a parameter expansion supplies a value when the
 # variable is unset/empty, so a reference to it should NOT warn "undefined".
@@ -253,6 +258,45 @@ def has_unquoted_expansion_of_any_kind(word: Word) -> bool:
     visitors can use one import surface for word analysis.
     """
     return word.has_unquoted_expansion
+
+
+# --- test/[ operand quoting -------------------------------------------------
+
+# A test/``[`` operator that places an operand to its RIGHT: the unary file
+# tests plus the unary string tests (``-z``/``-n``), and — since a comparison
+# also has a right operand — the binary comparison operators.
+_TEST_BINARY_OPERATORS = frozenset(
+    STRING_COMPARISON_OPERATORS | NUMERIC_COMPARISON_OPERATORS | {'==', '<', '>'}
+)
+_TEST_UNARY_OPERATORS = frozenset(FILE_TEST_OPERATORS | {'-L', '-h', '-z', '-n'})
+# An operand directly to the RIGHT of any of these is a value being tested.
+_TEST_RIGHT_OPERAND_OPERATORS = _TEST_UNARY_OPERATORS | _TEST_BINARY_OPERATORS
+
+
+def unquoted_test_operands(words: List[Word]) -> List[int]:
+    """Indices of *words* that are unquoted variable expansions in a test operand
+    position (a word-splitting hazard inside ``test``/``[``).
+
+    A word is flagged when it directly FOLLOWS a test operator (a unary file/
+    string test like ``-f``/``-z`` or a comparison like ``=``) or directly
+    PRECEDES a binary comparison operator (i.e. it is the left-hand side of a
+    comparison). This single routine replaces the linter's ``_check_test_command``
+    walk and the enhanced validator's ``_check_test_command_quoting`` walk, which
+    had drifted to different operator sets and different side-coverage; callers
+    apply their own severity and message.
+
+    *words* are the operand words AFTER the command word (``test``/``[``).
+    """
+    rendered = [w.display_text() for w in words]
+    flagged: List[int] = []
+    for i, word in enumerate(words):
+        if not has_unquoted_variable_expansion(word):
+            continue
+        left = rendered[i - 1] if i > 0 else None
+        right = rendered[i + 1] if i + 1 < len(rendered) else None
+        if left in _TEST_RIGHT_OPERAND_OPERATORS or right in _TEST_BINARY_OPERATORS:
+            flagged.append(i)
+    return flagged
 
 
 def contains_metacharacters_in_unquoted_expansion(word: Word) -> bool:

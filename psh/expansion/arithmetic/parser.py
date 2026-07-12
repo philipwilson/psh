@@ -1,18 +1,15 @@
 """Recursive-descent parser for shell arithmetic expressions."""
 
-from typing import List, Tuple, cast
+from typing import List, Optional, Tuple, cast
 
 from .nodes import (
     ArithNode,
-    ArrayAssignmentNode,
     ArrayElementNode,
-    ArrayPostIncrementNode,
-    ArrayPreIncrementNode,
     AssignmentNode,
     BinaryOpNode,
+    IncDecNode,
+    LValue,
     NumberNode,
-    PostIncrementNode,
-    PreIncrementNode,
     TernaryNode,
     UnaryOpNode,
     VariableNode,
@@ -23,15 +20,33 @@ from .tokens import ArithToken, ArithTokenType
 class ArithParser:
     """Recursive descent parser for arithmetic expressions"""
 
-    # Maximum expression-nesting depth (parentheses, ternaries, unary
-    # chains). An EXPLICIT guard so a genuinely too-deep expression fails
-    # deterministically with "expression too deeply nested" — while a
-    # RecursionError from arithmetic is now always what it looks like
-    # (the surrounding shell exhausted the stack, e.g. runaway function
-    # recursion) and propagates to the function-call boundary instead of
-    # being mislabeled as an arithmetic error. 1024 levels * ~15 frames
-    # per level stays comfortably inside the interpreter limit raised by
-    # psh.shell.RECURSION_LIMIT (40,000).
+    # Maximum expression-NESTING depth. An EXPLICIT guard so a too-deep
+    # expression fails deterministically with "expression too deeply nested".
+    # It is carried by exactly the grammar rules that recurse DIRECTLY (not via
+    # the iterative while-loop precedence levels): parse_ternary (parentheses
+    # re-enter through parse_comma, and ternary arms), parse_unary (unary-
+    # operator chains), and parse_power (right-associative `**` chains). Those
+    # are the parse-side stack-growth paths; a flat operator chain like
+    # `0+1+1+...` is instead built ITERATIVELY here (no parser recursion) and
+    # its EVALUATION-side depth is bounded separately by
+    # ArithmeticEvaluator.MAX_EVAL_DEPTH.
+    #
+    # Each SINGLE arithmetic recursion path — parse nesting, `**` chains,
+    # evaluation width, and the get_variable -> evaluate_arithmetic re-entry
+    # count (evaluator._MAX_ARITH_RECURSION) — is bounded by one of these
+    # guards, so a RecursionError from arithmetic ordinarily means the
+    # SURROUNDING shell exhausted the interpreter stack (e.g. runaway function
+    # recursion whose deepest frame merely happened to be in arithmetic); it
+    # is NOT relabeled as an arithmetic error and propagates to the
+    # function-call boundary, which reports "maximum function nesting level
+    # exceeded" (executor/function.py). Caveat: the guards bound each path
+    # SEPARATELY, not their PRODUCT — a pathological composite value chain
+    # (each variable in a long chain holding a wide expression that references
+    # the next, stacking a per-level evaluation depth under every re-entry
+    # level) can still exhaust the interpreter stack from pure arithmetic
+    # (probe: 60-level chain x ~600-term values; r19-T9 deferred ledger).
+    # 1024 levels * ~15 frames per level stays comfortably inside the
+    # interpreter limit raised by psh.shell.RECURSION_LIMIT (40,000).
     MAX_DEPTH = 1024
 
     # Simple and compound assignment operators (used for scalars and array
@@ -247,10 +262,19 @@ class ArithParser:
         """Parse exponentiation (**)"""
         left = self.parse_unary()
 
-        # Right associative
+        # Right associative. A `**` chain recurses here directly (like the
+        # unary chain in parse_unary), bypassing parse_ternary, so it carries
+        # its own copy of the depth guard — otherwise a long `1**1**...` chain
+        # would overflow the Python stack with a raw RecursionError.
         if self.match(ArithTokenType.POWER):
             op = self.advance().type
-            right = self.parse_power()  # Right associative recursion
+            self._depth += 1
+            try:
+                if self._depth > self.MAX_DEPTH:
+                    raise SyntaxError("expression too deeply nested")
+                right = self.parse_power()  # Right-associative recursion
+            finally:
+                self._depth -= 1
             return BinaryOpNode(op, left, right)
 
         return left
@@ -272,18 +296,13 @@ class ArithParser:
                 self._depth -= 1
             return UnaryOpNode(op, operand)
 
-        # Pre-increment/decrement
+        # Pre-increment/decrement of an lvalue (++x, --x, ++a[i], --a[i]).
         if self.match(ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
             inc_op = self.advance()
             if not self.match(ArithTokenType.IDENTIFIER):
                 raise SyntaxError(f"Expected identifier after {inc_op.value}")
-            var_name = cast(str, self.advance().value)
-            is_inc = inc_op.type == ArithTokenType.INCREMENT
-            # Array-element lvalue: ++arr[i] / --arr[i]
-            if self.match(ArithTokenType.LBRACKET):
-                index, index_text = self._parse_subscript()
-                return ArrayPreIncrementNode(var_name, index, is_inc, index_text)
-            return PreIncrementNode(var_name, is_inc)
+            lvalue = self._parse_lvalue(cast(str, self.advance().value))
+            return IncDecNode(lvalue, inc_op.type, prefix=True)
 
         return self.parse_postfix()
 
@@ -291,18 +310,32 @@ class ArithParser:
         """Parse postfix operators"""
         expr = self.parse_primary()
 
-        # Post-increment/decrement
+        # Post-increment/decrement of an lvalue (x++, x--, a[i]++, a[i]--).
         if self.match(ArithTokenType.INCREMENT, ArithTokenType.DECREMENT):
-            if isinstance(expr, VariableNode):
+            lvalue = self._read_as_lvalue(expr)
+            if lvalue is not None:
                 op = self.advance()
-                return PostIncrementNode(expr.name, op.type == ArithTokenType.INCREMENT)
-            if isinstance(expr, ArrayElementNode):
-                op = self.advance()
-                return ArrayPostIncrementNode(
-                    expr.name, expr.index,
-                    op.type == ArithTokenType.INCREMENT, expr.index_text)
+                return IncDecNode(lvalue, op.type, prefix=False)
 
         return expr
+
+    @staticmethod
+    def _read_as_lvalue(node: ArithNode) -> Optional[LValue]:
+        """The lvalue a read node denotes (for a following postfix ++/--), or
+        ``None`` if the node is not an assignable scalar/array-element."""
+        if isinstance(node, VariableNode):
+            return LValue(node.name)
+        if isinstance(node, ArrayElementNode):
+            return LValue(node.name, node.index, node.index_text)
+        return None
+
+    def _parse_lvalue(self, name: str) -> LValue:
+        """Build the lvalue for ``name`` after its IDENTIFIER is consumed,
+        reading an optional ``[subscript]`` (scalar vs array element)."""
+        if self.match(ArithTokenType.LBRACKET):
+            index, index_text = self._parse_subscript()
+            return LValue(name, index, index_text)
+        return LValue(name)
 
     def _parse_subscript(self) -> Tuple[ArithNode, str]:
         """Parse ``[index]`` after an array name.
@@ -325,27 +358,21 @@ class ArithParser:
         if self.match(ArithTokenType.NUMBER):
             return NumberNode(cast(int, self.advance().value))
 
-        # Variables (possibly with assignment)
+        # Variables: a read (scalar or array element) or an assignment target.
+        # One lvalue captures the scalar-vs-array distinction; the assignment
+        # check and the read fall out of it without a per-shape fork.
         if self.match(ArithTokenType.IDENTIFIER):
-            var_token = self.advance()
-            var_name = cast(str, var_token.value)
+            lvalue = self._parse_lvalue(cast(str, self.advance().value))
 
-            # Array subscript: arr[index] (read or assignment target)
-            if self.match(ArithTokenType.LBRACKET):
-                index, index_text = self._parse_subscript()
-                if self.match(*self._ASSIGNMENT_OPS):
-                    op = self.advance().type
-                    value = self.parse_ternary()
-                    return ArrayAssignmentNode(var_name, index, op, value, index_text)
-                return ArrayElementNode(var_name, index, index_text)
-
-            # Check for assignment operators
             if self.match(*self._ASSIGNMENT_OPS):
                 op = self.advance().type
                 value = self.parse_ternary()  # Assignment is right-associative
-                return AssignmentNode(var_name, op, value)
+                return AssignmentNode(lvalue, op, value)
 
-            return VariableNode(var_name)
+            # Plain read.
+            if lvalue.subscript is None:
+                return VariableNode(lvalue.name)
+            return ArrayElementNode(lvalue.name, lvalue.subscript, lvalue.subscript_text)
 
         # Parenthesized expressions
         if self.match(ArithTokenType.LPAREN):

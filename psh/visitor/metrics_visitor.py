@@ -33,7 +33,7 @@ from ..ast_nodes import (
 )
 from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
-from .constants import SHELL_BUILTINS
+from .constants import SHELL_BUILTINS, is_assignment
 from .traversal import iter_child_nodes, visit_children
 from .word_analysis import iter_variable_references
 
@@ -224,7 +224,7 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
         # Check for variable assignments
         for arg in node.args:
-            if '=' in arg and self._is_assignment(arg):
+            if is_assignment(arg):
                 var_name = arg.split('=', 1)[0]
                 self.metrics.variable_names.add(var_name)
 
@@ -435,12 +435,6 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self._analyze_arithmetic_expr(node.expression)
         self._visit_redirects(node)
 
-    def visit_ProcessSubstitution(self, node: ProcessSubstitution) -> None:
-        """Visit process substitution."""
-        self.metrics.process_substitutions += 1
-        # Process substitution contains a command
-        # but we'll count it separately
-
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> None:
         """Visit enhanced test [[...]]."""
         self.metrics.total_conditionals += 1
@@ -449,13 +443,6 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
     # Helper methods
 
-    def _is_assignment(self, arg: str) -> bool:
-        """Check if argument is a variable assignment."""
-        if '=' not in arg:
-            return False
-        var_name = arg.split('=', 1)[0]
-        return self._is_valid_varname(var_name)
-
     def _is_valid_varname(self, var_name: str) -> bool:
         """Check if string is a valid variable name."""
         if not var_name:
@@ -463,18 +450,24 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         return var_name[0].isalpha() or var_name[0] == '_'
 
     def _analyze_word_features(self, word: Word) -> None:
-        """Count command substitutions and collect variable names from a Word.
+        """Count command/process substitutions and collect variable names from a Word.
 
         Reads the Word's parts directly (the authoritative model) instead of
         regexing the rendered text: each ``CommandSubstitution`` part counts
         once (``$(...)`` and backticks alike — no double-counting, and
-        ``$((...))`` arithmetic is correctly NOT counted as a command sub), and
-        every structurally-discovered variable reference with a valid name is
-        recorded.
+        ``$((...))`` arithmetic is correctly NOT counted as a command sub), each
+        ``ProcessSubstitution`` part (``<(...)`` / ``>(...)``) counts as a
+        process substitution (these live inside a Word's parts, so the removed
+        ``visit_ProcessSubstitution`` was never dispatched and always reported
+        0), and every structurally-discovered variable reference with a valid
+        name is recorded.
         """
         for part in word.parts:
-            if isinstance(part, ExpansionPart) and isinstance(part.expansion, CommandSubstitution):
-                self.metrics.command_substitutions += 1
+            if isinstance(part, ExpansionPart):
+                if isinstance(part.expansion, CommandSubstitution):
+                    self.metrics.command_substitutions += 1
+                elif isinstance(part.expansion, ProcessSubstitution):
+                    self.metrics.process_substitutions += 1
         for ref in iter_variable_references(word):
             if self._is_valid_varname(ref.name):
                 self.metrics.variable_names.add(ref.name)

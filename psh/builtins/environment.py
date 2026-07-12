@@ -5,7 +5,7 @@ runs a command in a nested in-process child Shell and carries its own
 process-fd binding helpers.
 """
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, cast
 
 from ..core import ReadonlyVariableError, SpecialBuiltinUsageError, VarAttributes
 from ..core.option_registry import (
@@ -20,6 +20,7 @@ from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
+    from .function_support import DeclareBuiltin
 
 
 def apply_set_o_option(shell: 'Shell', option: str, enable: bool) -> None:
@@ -160,9 +161,14 @@ class ExportBuiltin(Builtin):
                     assert declare_builtin is not None
                     # Forward the SAME context so declare sees the structured
                     # init for this argument (it reads context.array_init(arg)).
+                    # catch_readonly=False lets a readonly-array error propagate
+                    # so export renders its own BARE message below (bash:
+                    # `arr: readonly variable`, no `declare:` label).
                     try:
-                        rc = declare_builtin.execute_in_context(
-                            ['declare', '-x', arg], shell, context)
+                        rc = cast('DeclareBuiltin', declare_builtin).run_as(
+                            ['declare', '-x', arg], shell, context,
+                            invoked_as='declare', special=False,
+                            catch_readonly=False)
                     except ReadonlyVariableError as e:
                         self.report_error(f"{e.name}: readonly variable", shell)
                         status = 1

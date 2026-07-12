@@ -1,7 +1,7 @@
 """Evaluator for shell arithmetic AST nodes, plus the public entry points."""
 
 import re
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 from ...core import (
     ArraySubscriptError,
@@ -17,15 +17,12 @@ from ..operands import DQ_STRING
 from .errors import ShellArithmeticError, _to_signed64
 from .nodes import (
     ArithNode,
-    ArrayAssignmentNode,
     ArrayElementNode,
-    ArrayPostIncrementNode,
-    ArrayPreIncrementNode,
     AssignmentNode,
     BinaryOpNode,
+    IncDecNode,
+    LValue,
     NumberNode,
-    PostIncrementNode,
-    PreIncrementNode,
     TernaryNode,
     UnaryOpNode,
     VariableNode,
@@ -66,8 +63,15 @@ def _trunc_div(left: int, right: int) -> int:
 class ArithmeticEvaluator:
     """Evaluate arithmetic AST nodes"""
 
+    # Maximum evaluation (AST-recursion) depth; see :meth:`evaluate`. Bounds
+    # the WIDTH of a flat operator chain the parser builds iteratively, the
+    # evaluation-side companion to ArithParser.MAX_DEPTH's parse-side NESTING
+    # bound.
+    MAX_EVAL_DEPTH = 1024
+
     def __init__(self, shell):
         self.shell = shell
+        self._eval_depth = 0
 
     def get_variable(self, name: str) -> int:
         """Get variable value, converting to integer.
@@ -235,40 +239,36 @@ class ArithmeticEvaluator:
             # `(( na[0]=5 ))` warns, status from the value).
             self.shell.state.scope_manager.warn_nameref_cycle(e.name)
 
-    def _eval_array_assignment(self, node: 'ArrayAssignmentNode') -> int:
-        key = self._array_key(node.name, node.index, node.index_text)
+    # -- LValue read/write (scalar and array element, one path each) ---------
 
-        if node.op == ArithTokenType.ASSIGN:
-            value = self.evaluate(node.value)
-            self.set_array_element(node.name, key, value)
-            return value
+    def _resolve_lvalue(self, lvalue: LValue) -> Tuple[str, Optional[Union[int, str]]]:
+        """Resolve an lvalue to a concrete ``(name, key)`` target, evaluating
+        any array subscript EXACTLY ONCE. ``key`` is ``None`` for a scalar, an
+        int for an indexed-array element / scalar-as-``[0]``, or the literal
+        subscript text for an associative array (see :meth:`_array_key`).
+        Evaluating the subscript a single time here — not once per read and
+        once per write — is what makes ``a[b++] += 1`` increment ``b`` only
+        once, matching bash."""
+        if lvalue.subscript is None:
+            return lvalue.name, None
+        return lvalue.name, self._array_key(
+            lvalue.name, lvalue.subscript, lvalue.subscript_text)
 
-        base_op = self._COMPOUND_TO_BASE.get(node.op)
-        if base_op is None:
-            raise ValueError(f"Unknown assignment operator: {node.op}")
-        # Read the element's CURRENT value BEFORE evaluating the RHS, so an
-        # embedded ++/-- on the same element in the RHS does not feed back into
-        # the read (bash: a=(1 2); $((a[1]+=a[1]++)) is 4, not 5). See the
-        # scalar _eval_assignment for the same ordering rationale.
-        current = self.get_array_element(node.name, key)
-        value = self.evaluate(node.value)
-        result = self._apply_binary_op(base_op, current, value)
-        self.set_array_element(node.name, key, result)
-        return result
+    def _read_lvalue(self, name: str, key: Optional[Union[int, str]]) -> int:
+        """Read the current integer value of a resolved lvalue target."""
+        if key is None:
+            return self.get_variable(name)
+        return self.get_array_element(name, key)
 
-    def _eval_array_pre_increment(self, node: 'ArrayPreIncrementNode') -> int:
-        key = self._array_key(node.name, node.index, node.index_text)
-        current = self.get_array_element(node.name, key)
-        new_value = _to_signed64(current + 1 if node.is_increment else current - 1)
-        self.set_array_element(node.name, key, new_value)
-        return new_value
-
-    def _eval_array_post_increment(self, node: 'ArrayPostIncrementNode') -> int:
-        key = self._array_key(node.name, node.index, node.index_text)
-        current = self.get_array_element(node.name, key)
-        new_value = _to_signed64(current + 1 if node.is_increment else current - 1)
-        self.set_array_element(node.name, key, new_value)
-        return current
+    def _write_lvalue(self, name: str, key: Optional[Union[int, str]],
+                      value: int) -> None:
+        """Write ``value`` to a resolved lvalue target — the ONE place scalar
+        and array-element writes converge, so the store's readonly/nameref
+        enforcement applies uniformly to both."""
+        if key is None:
+            self.set_variable(name, value)
+        else:
+            self.set_array_element(name, key, value)
 
     # Maps compound assignment tokens to the base binary operator so that
     # compound assignments reuse _apply_binary_op() without duplication.
@@ -286,7 +286,34 @@ class ArithmeticEvaluator:
     }
 
     def evaluate(self, node: ArithNode) -> int:
-        """Evaluate an arithmetic AST node."""
+        """Evaluate an arithmetic AST node, bounding evaluation-recursion depth.
+
+        A WIDE flat operator chain (`0+1+1+...`) is parsed iteratively into a
+        deep left-leaning tree, which _dispatch recurses over ~a few Python
+        frames per node. MAX_EVAL_DEPTH bounds that recursion so a
+        pathologically long chain trips a clean "expression too deeply nested"
+        arithmetic error instead of a raw RecursionError. This is the
+        evaluation-side companion to ArithParser.MAX_DEPTH (which bounds
+        parse-side NESTING and `**` chains); each single recursion path is
+        bounded, so a RecursionError from arithmetic ordinarily means the
+        SURROUNDING shell exhausted the stack. The guards do NOT bound their
+        PRODUCT: a pathological composite value chain (get_variable ->
+        evaluate_arithmetic re-entry stacking a fresh per-level evaluation
+        depth under each level) can still exhaust the interpreter stack —
+        see ArithParser.MAX_DEPTH's caveat and the r19-T9 deferred ledger.
+        (bash computes such chains; psh's cap is a documented divergence.)
+        """
+        self._eval_depth += 1
+        try:
+            if self._eval_depth > self.MAX_EVAL_DEPTH:
+                raise ShellArithmeticError("expression too deeply nested")
+            return self._dispatch(node)
+        finally:
+            self._eval_depth -= 1
+
+    def _dispatch(self, node: ArithNode) -> int:
+        """Dispatch a node to its evaluator (the depth-guarded body of
+        :meth:`evaluate`)."""
         if isinstance(node, NumberNode):
             # A literal wraps to signed 64-bit like any operation result, so
             # a bare/compared/subscript literal >= 2**63 matches bash (e.g.
@@ -302,19 +329,11 @@ class ArithmeticEvaluator:
             return self._eval_ternary(node)
         if isinstance(node, AssignmentNode):
             return self._eval_assignment(node)
-        if isinstance(node, PreIncrementNode):
-            return self._eval_pre_increment(node)
-        if isinstance(node, PostIncrementNode):
-            return self._eval_post_increment(node)
+        if isinstance(node, IncDecNode):
+            return self._eval_incdec(node)
         if isinstance(node, ArrayElementNode):
             key = self._array_key(node.name, node.index, node.index_text)
             return self.get_array_element(node.name, key)
-        if isinstance(node, ArrayAssignmentNode):
-            return self._eval_array_assignment(node)
-        if isinstance(node, ArrayPreIncrementNode):
-            return self._eval_array_pre_increment(node)
-        if isinstance(node, ArrayPostIncrementNode):
-            return self._eval_array_post_increment(node)
         raise ValueError(f"Unknown node type: {type(node)}")
 
     # -- Node-type evaluators ------------------------------------------------
@@ -354,37 +373,40 @@ class ArithmeticEvaluator:
         return self.evaluate(node.false_expr)
 
     def _eval_assignment(self, node: AssignmentNode) -> int:
+        """Evaluate a scalar or array-element assignment (``=`` or compound)."""
+        name, key = self._resolve_lvalue(node.lvalue)
+
         if node.op == ArithTokenType.ASSIGN:
             value = self.evaluate(node.value)
-            self.set_variable(node.var_name, value)
+            self._write_lvalue(name, key, value)
             return value
 
         # Compound assignment — reuse the base binary operator. Read the LHS's
         # CURRENT value BEFORE evaluating the RHS: bash binds the left operand
         # of `+=`/`-=`/... once at the start, so an embedded post/pre-increment
-        # of the same variable in the RHS does not feed back into that read
+        # of the same location in the RHS does not feed back into that read
         # (`c=1; $((c+=c++))` is 2, not 3 — c is read as 1, then c++ yields 1,
-        # then 1+1=2).
+        # then 1+1=2; `a=(1 2); $((a[1]+=a[1]++))` is 4, not 5). Any array
+        # subscript was evaluated once in _resolve_lvalue.
         base_op = self._COMPOUND_TO_BASE.get(node.op)
         if base_op is None:
             raise ValueError(f"Unknown assignment operator: {node.op}")
-        current = self.get_variable(node.var_name)
+        current = self._read_lvalue(name, key)
         value = self.evaluate(node.value)
         result = self._apply_binary_op(base_op, current, value)
-        self.set_variable(node.var_name, result)
+        self._write_lvalue(name, key, result)
         return result
 
-    def _eval_pre_increment(self, node: PreIncrementNode) -> int:
-        current = self.get_variable(node.var_name)
-        new_value = _to_signed64(current + 1 if node.is_increment else current - 1)
-        self.set_variable(node.var_name, new_value)
-        return new_value
-
-    def _eval_post_increment(self, node: PostIncrementNode) -> int:
-        current = self.get_variable(node.var_name)
-        new_value = _to_signed64(current + 1 if node.is_increment else current - 1)
-        self.set_variable(node.var_name, new_value)
-        return current
+    def _eval_incdec(self, node: IncDecNode) -> int:
+        """Evaluate ``++``/``--`` on a scalar or array element. Returns the NEW
+        value for the prefix form (``++x``) and the OLD value for the postfix
+        form (``x++``)."""
+        name, key = self._resolve_lvalue(node.lvalue)
+        current = self._read_lvalue(name, key)
+        is_increment = node.op == ArithTokenType.INCREMENT
+        new_value = _to_signed64(current + 1 if is_increment else current - 1)
+        self._write_lvalue(name, key, new_value)
+        return new_value if node.prefix else current
 
     # -- Shared arithmetic ---------------------------------------------------
 
@@ -500,14 +522,20 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
         return evaluator.evaluate(ast)
 
     except (SyntaxError, ShellArithmeticError) as e:
-        # A genuinely too-deep expression arrives here as ArithParser's
-        # explicit depth-guard SyntaxError ("expression too deeply nested").
-        # A RecursionError, by contrast, means the SURROUNDING shell
-        # exhausted the interpreter stack (runaway function recursion whose
-        # deepest frame merely happened to be in arithmetic) — it must NOT
-        # be relabeled as an arithmetic error; it propagates to the
+        # A too-deep expression arrives here as an EXPLICIT depth-guard error
+        # ("expression too deeply nested"): from ArithParser.MAX_DEPTH (nesting
+        # + right-associative `**` chains) or from the evaluator's own
+        # MAX_EVAL_DEPTH guard (wide flat chains). A RecursionError, by
+        # contrast, is NOT converted here: each single arithmetic recursion
+        # path is bounded by those guards, so a RecursionError reaching this
+        # point ordinarily means the SURROUNDING shell exhausted the
+        # interpreter stack (runaway function recursion whose deepest frame
+        # merely happened to be in arithmetic) — it propagates to the
         # function-call boundary, which reports "maximum function nesting
-        # level exceeded".
+        # level exceeded" (executor/function.py). Known residue: a pathological
+        # composite value chain can stack the per-path guards' PRODUCT past the
+        # interpreter limit and leak a raw RecursionError from pure arithmetic
+        # (see ArithParser.MAX_DEPTH's caveat; r19-T9 deferred ledger).
         raise ShellArithmeticError(str(e)) from e
     except (ValueError, OverflowError, MemoryError) as e:
         raise ShellArithmeticError(str(e)) from e
