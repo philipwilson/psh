@@ -4,7 +4,11 @@ Two distinct families live here — do not mix them up:
 
 - **Errors** derive from ``PshError`` so callers can catch "any psh
   error" with one except clause. Every shell-specific error class in
-  the tree (lexer, parser, arithmetic, expansion, builtins) roots here.
+  the tree (lexer, parser, arithmetic, expansion, builtins) roots here —
+  including the lexer's ``UnclosedQuoteError``, which dual-inherits
+  ``(PshError, SyntaxError)`` so it ALSO stays catchable by the
+  ``except SyntaxError`` line-continuation sites that key off it (see its
+  class docstring in ``lexer/position.py``).
 - **Control-flow signals** (``LoopBreak``, ``LoopContinue``,
   ``FunctionReturn``) implement ``break``/``continue``/``return`` and
   deliberately do NOT derive from ``PshError`` — a blanket
@@ -232,4 +236,22 @@ class ArraySubscriptError(PshError):
 
     def __init__(self, subscript: int, message: str = "bad array subscript"):
         self.subscript = subscript
+        super().__init__(message)
+
+
+class ReadError(PshError):
+    """A ``read`` / ``mapfile`` option-VALUE error carrying bash's exit code.
+
+    bash distinguishes an invalid *option* (a usage error — status 2, reported
+    by ``parse_flags`` with the synopsis line) from an invalid option *value* —
+    a bad file descriptor / count / timeout / origin (status 1, this class).
+    ``rc`` carries that status so ``read`` and ``mapfile`` share ONE typed
+    dialect instead of abusing a bare ``ValueError`` with a ``setattr``'d
+    ``rc`` attribute. As a ``PshError`` it classifies as an EXPECTED shell
+    error (the strict-errors guard never re-raises it) and roots at the one
+    error base like every other shell error. The message is the bash text
+    (``"<value>: invalid file descriptor specification"``, ...); the caller
+    prints it via ``self.error(...)`` and returns ``rc``."""
+    def __init__(self, message: str, rc: int = 1):
+        self.rc = rc
         super().__init__(message)

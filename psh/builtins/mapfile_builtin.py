@@ -2,7 +2,7 @@
 import os
 from typing import TYPE_CHECKING, List
 
-from ..core import IndexedArray, VarAttributes
+from ..core import IndexedArray, ReadError, VarAttributes
 from ..lexer.unicode_support import is_valid_name
 from .base import Builtin
 from .input_reader import Outcome, make_reader
@@ -10,18 +10,6 @@ from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
-
-
-class _OptionError(ValueError):
-    """A mapfile option/value error carrying bash's exit code for it.
-
-    bash distinguishes an invalid *option* (usage error, status 2) from an
-    invalid option *value* — a bad count/origin/fd (status 1).
-    """
-
-    def __init__(self, message: str, rc: int) -> None:
-        super().__init__(message)
-        self.rc = rc
 
 
 @builtin
@@ -79,7 +67,7 @@ class MapfileBuiltin(Builtin):
         # does not implement callbacks — rejected in the hook with a specific
         # message. Invalid option / missing option-value is a usage error
         # (bash status 2) reported by parse_flags_ordered; bad option VALUES
-        # are status 1 (the _OptionError rc). The check hook validates and
+        # are status 1 (the ReadError rc). The check hook validates and
         # stores each value AT ITS argv event, so combined errors keep bash's
         # first-in-argv precedence regardless of class (`mapfile -n xx -Z`
         # reports the bad count rc 1, not the later invalid option rc 2;
@@ -87,7 +75,7 @@ class MapfileBuiltin(Builtin):
         def _apply(ch: str, val: str) -> None:
             nonlocal delim, count, origin, skip, fd, have_origin
             if ch in ('C', 'c'):
-                raise _OptionError(
+                raise ReadError(
                     f"-{ch}: callback option not supported", 2)
             if ch == 'd':
                 delim = val[0] if val else '\0'
@@ -104,7 +92,7 @@ class MapfileBuiltin(Builtin):
         try:
             events, operands = self.parse_flags_ordered(
                 args, shell, flags='t', value_flags='dnOsuCc', check=_apply)
-        except _OptionError as e:
+        except ReadError as e:
             self.error(str(e), shell)
             return e.rc
         if events is None:
@@ -206,7 +194,7 @@ class MapfileBuiltin(Builtin):
             if parsed < 0:
                 raise ValueError
         except ValueError:
-            raise _OptionError(f"{value}: invalid line count", 1) from None
+            raise ReadError(f"{value}: invalid line count") from None
         return parsed
 
     @staticmethod
@@ -217,7 +205,7 @@ class MapfileBuiltin(Builtin):
             if parsed < 0:
                 raise ValueError
         except ValueError:
-            raise _OptionError(f"{value}: invalid array origin", 1) from None
+            raise ReadError(f"{value}: invalid array origin") from None
         return parsed
 
     @staticmethod
@@ -228,8 +216,8 @@ class MapfileBuiltin(Builtin):
             if parsed < 0:
                 raise ValueError
         except ValueError:
-            raise _OptionError(
-                f"{value}: invalid file descriptor specification", 1) from None
+            raise ReadError(
+                f"{value}: invalid file descriptor specification") from None
         return parsed
 
     def _assign(self, shell: 'Shell', name: str, lines: List[str],
