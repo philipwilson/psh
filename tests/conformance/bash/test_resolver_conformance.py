@@ -20,10 +20,7 @@ Error-message PREFIXES differ (``psh:`` vs ``bash: line N:``), so any case
 that provokes a diagnostic redirects stderr and compares ``$?``.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 # A cwd executable, created inside the (per-shell) temp cwd so both shells

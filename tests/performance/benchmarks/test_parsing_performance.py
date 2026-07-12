@@ -12,14 +12,7 @@ cache-cold or GC-interrupted runs. Algorithmic regressions (e.g. O(N^2)
 blowup) show identically in CPU time.
 """
 
-import sys
 import time
-from pathlib import Path
-
-# Add framework to path
-TEST_ROOT = Path(__file__).parent.parent.parent
-PSH_ROOT = TEST_ROOT.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 import pytest
 

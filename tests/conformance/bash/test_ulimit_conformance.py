@@ -15,10 +15,7 @@ size line differ between macOS and Linux. Each case runs in its own subprocess,
 so lowering a soft limit cannot affect the test runner.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

@@ -12,10 +12,7 @@ Each case is a self-contained command (its own mktemp + cleanup) run
 identically under psh and bash via assert_identical_behavior.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 _READ_FD5 = (

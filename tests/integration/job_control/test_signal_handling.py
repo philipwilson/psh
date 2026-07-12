@@ -11,12 +11,6 @@ Tests for signal handling, trap command, and signal propagation including:
 
 import os
 import sys
-from pathlib import Path
-
-# Add framework to path
-TEST_ROOT = Path(__file__).parent.parent.parent
-PSH_ROOT = TEST_ROOT.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 # Shell fixture imported automatically from conftest.py
 

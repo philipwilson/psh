@@ -4,10 +4,7 @@ The user guide claims "Full support" for all three — these tests prove
 the claims (added when the claims meta-test flagged them as unproven).
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

@@ -22,10 +22,7 @@ errors (whose message carries a shell-specific program-name prefix) are pinned
 by the unit tests in tests/unit/builtins/test_test_builtin.py instead.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

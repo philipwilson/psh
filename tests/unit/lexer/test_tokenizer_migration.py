@@ -5,14 +5,8 @@ These tests focus on comprehensive tokenization scenarios beyond
 the basic tests in test_basic_tokenization.py.
 """
 
-import sys
-from pathlib import Path
 
 import pytest
-
-# Add PSH to path
-PSH_ROOT = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 # Recognizer/normalizer-level token-type characterization; assert on the
 # pre-fusion stream (the public tokenize() composites adjacent word-like tokens).

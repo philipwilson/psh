@@ -10,11 +10,7 @@ psh kept the backslash when ``\$`` was not immediately followed by a
 variable-name character (e.g. ``"a\$ b"`` -> psh ``a\$ b`` vs bash ``a$ b``).
 """
 
-import os
-import sys
 
-# Add parent directory to path for framework import
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

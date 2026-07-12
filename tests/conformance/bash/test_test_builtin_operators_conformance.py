@@ -12,10 +12,7 @@ Exit code is surfaced via ``echo $?`` so assert_identical_behavior (which
 compares stdout/stderr/exit) checks the boolean result, not just emptiness.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

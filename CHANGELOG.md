@@ -4,6 +4,13 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.710.0 (2026-07-12) - Reappraisal-19 T12: the test infrastructure stops maintaining its own twins
+- **One AST "asserting test" analyzer** (tests/conformance/_assert_analysis.py) feeds both meta-guards - the verbatim copy and its "mirrors the other file so the two guards agree" apology are gone.
+- **One bash-oracle policy**: the golden harness now resolves bash via the conformance framework's find_bash() (BASH_PATH -> Homebrew -> PATH) and RECORDS which oracle ran in the pytest report header - the 26 bash-4+ golden cases no longer break on stock-/bin/bash machines.
+- **Fixture twins converge, ratchet-locked**: shell_with_temp_dir is a thin alias of the isolated fixture (inertness proven over the ENTIRE 312-use population, not a sample) with ratchet meta-tests capping non-isolated and capsys usage at current counts, direction down, self-tested.
+- **Infra dead weight out**: one 3-line conformance conftest replaces 80 copy-pasted sys.path headers (collection counts proven identical); 20 more redundant root headers stripped tree-wide (node-identical collection); the frozen compare-bash banner is computed from golden_cases.yaml at runtime with a mutation-proven drift-lock pin; pytest.ini's blanket -v removed (classify-input byte-identity proven both ways; --verbose still works); the dead requires_stdin marker deleted.
+- Process: dev-implemented incl. a sanctioned full-gate proof; 4-agent adversarial verification PASS with zero blockers; integrator touches add the ruled keeper-comments for the two __main__-capable conformance files.
+
 ## 0.709.0 (2026-07-12) - Reappraisal-19 T13: one prompt path; prompts stop doing 25x the work
 - **One PS1/PS2 getter path**: the multiline handler's duplicated prompt reads route through PromptManager's getters (which read via `state.get_variable` - no more per-prompt materialization of every visible variable); the dead `set_prompt` deleted; title-bar PWD reads converge the same way. The theoretical env-fallback divergence was probe-proven unreachable (PS1/PS2 are seeded as shell variables at startup) with the artificial edge landing CLOSER to bash.
 - **Prompt escapes dispatch to one thunk each**: `_expand_escape` no longer rebuilds a ~25-entry dict - invoking every strftime/getcwd/ttyname/geteuid getter - per escape character; a built-once escape->thunk map evaluates only the selected expansion. Prompt-matrix characterization proven byte-identical across every supported escape, composites, and both readline-marker modes (independently reproduced by the adversarial pass).

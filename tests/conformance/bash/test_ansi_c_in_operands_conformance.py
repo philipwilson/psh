@@ -11,10 +11,7 @@ routes every site through the one canonical decoder
 (``lexer/pure_helpers.handle_ansi_c_escape``).
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

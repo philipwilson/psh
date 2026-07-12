@@ -8,11 +8,9 @@ These tests prove that behaviour against bash (trace to stderr with a
 ``+ `` prefix for xtrace; input lines echoed to stderr for verbose).
 """
 
-import os
 import subprocess
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest, find_bash
 
 
