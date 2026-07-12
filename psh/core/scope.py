@@ -963,7 +963,7 @@ class ScopeManager:
         Shares the ``iter_effective_variables`` innermost-per-name walk: a
         non-exported inner instance shadows an exported outer one here (the
         name is dropped from ``export -p``), which is bash-correct and DIFFERS
-        from ``sync_exports_to_environment`` — see P8-probes/07.
+        from ``sync_exports_to_environment`` — proven by live-bash probe (r19-P8): an exported outer under a non-exported ``local +x`` shadow still feeds the child env while ``export -p`` omits the name.
         """
         exported = [var for _name, var in self.iter_effective_variables()
                     if var.is_exported and not var.is_array]
@@ -1028,7 +1028,7 @@ class ScopeManager:
         instance`` semantics). The two-phase accumulation below ADDS each
         exported instance without letting a non-exported inner one remove it,
         which the innermost-only walk (used by ``export -p``) would drop —
-        proven distinct by P8-probes/07.
+        proven distinct by live-bash probe (r19-P8; see the shadow-scenario note in ``all_exported_variables``).
         """
         # First, get all shell variables
         all_shell_vars: set[str] = set()

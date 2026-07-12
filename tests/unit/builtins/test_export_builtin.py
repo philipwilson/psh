@@ -99,7 +99,7 @@ class TestExportBasics:
 
 class TestExportOptionReflectionSpecials:
     """`export -p` lists SHELLOPTS/BASHOPTS ONLY when they are exported —
-    bash 5.2 (r19-P8, P8-probes/02 + /03).
+    bash 5.2 (r19-P8 probe battery; archived in the campaign ledger).
 
     These option-reflection specials have no stored variable cell; the
     no-arg enumeration (all_exported_variables) must inject them subject to
