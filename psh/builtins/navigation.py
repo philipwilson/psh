@@ -211,10 +211,14 @@ class CdBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """cd: cd [dir]
+        return """cd: cd [-L|-P] [dir]
     Change the current directory to DIR.
 
     The default DIR is the value of the HOME shell variable.
+
+    Options:
+      -L    follow symbolic links: PWD keeps the logical path (default)
+      -P    use the physical directory structure: PWD has symlinks resolved
 
     The variable CDPATH defines the search path for directories.
     When DIR is a relative path not starting with './' or '../',
