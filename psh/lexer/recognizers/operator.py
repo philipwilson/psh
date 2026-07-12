@@ -63,6 +63,12 @@ class OperatorRecognizer(ContextualRecognizer):
         }
     }
 
+    # Candidate operator lengths, longest first (greedy matching). Computed
+    # ONCE from OPERATORS at class-definition time so the recognize() loop
+    # doesn't re-sort the dict keys on every token; derived from OPERATORS so
+    # it can't drift if a length bucket is added (currently (3, 2, 1)).
+    _OPERATOR_LENGTHS: Tuple[int, ...] = tuple(sorted(OPERATORS, reverse=True))
+
     # Characters that can start operators
     OPERATOR_START_CHARS: Set[str] = {
         '<', '>', '&', '|', ';', '(', ')', '{', '}', '[', ']', '!', '=', '2', '\n',
@@ -348,7 +354,7 @@ class OperatorRecognizer(ContextualRecognizer):
                 return result
 
         # Try longest operators first for greedy matching
-        for length in sorted(self.OPERATORS.keys(), reverse=True):
+        for length in self._OPERATOR_LENGTHS:
             if pos + length <= len(input_text):
                 candidate = input_text[pos:pos + length]
 
