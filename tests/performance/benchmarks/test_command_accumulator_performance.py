@@ -50,10 +50,11 @@ class TestCommandAccumulatorFeedPerformance:
                  + [f'  echo line {i}' for i in range(500)]
                  + ['}'])
         elapsed = _min_feed_time(shell, lines)
-        # Generous: the documented O(N^2) parse completes far inside this;
-        # a genuine algorithmic regression (per-line re-lex blow-up) blows
-        # past it. Threshold is a coarse backstop, not a tight benchmark.
-        assert elapsed < 30.0, f"500-line feed took {elapsed:.2f}s CPU"
+        # Generous: ~9s CPU on a 2026 dev machine; 60s leaves headroom for a
+        # much slower nightly host, while a genuine algorithmic regression
+        # (per-line re-lex blow-up) still blows past it. Coarse backstop,
+        # not a tight benchmark.
+        assert elapsed < 60.0, f"500-line feed took {elapsed:.2f}s CPU"
 
     def test_continuation_heavy_500_lines_within_budget(self):
         """The all-continuation-line shape (every physical line ends in a
@@ -64,4 +65,5 @@ class TestCommandAccumulatorFeedPerformance:
                  + [f'  echo line {i} \\' for i in range(250)]
                  + ['  done', '}'])
         elapsed = _min_feed_time(shell, lines)
-        assert elapsed < 30.0, f"continuation-heavy feed took {elapsed:.2f}s CPU"
+        # Same 60s slow-host headroom rationale as above (~4s measured).
+        assert elapsed < 60.0, f"continuation-heavy feed took {elapsed:.2f}s CPU"
