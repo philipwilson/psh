@@ -10130,3 +10130,128 @@
   stdout: "[]\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# NEWLINE-SAFE GLOB/REGEX MATCHING (B1 / appraisal H3)
+#
+# The shared glob->regex converter now wraps its body in (?s:...) (DOTALL) so
+# `.`/`.*` (from ?/*) match a newline like a real shell glob, and end anchors
+# are `\Z` (true end of string) not `$` (which also matches before a trailing
+# newline). Fixes case / [[ == ]] / ${x#} ${x%} ${x//} ${x/#} ${x/%} on
+# subjects containing newlines, plus a literal-`$` suffix over-match.
+# Red-on-base demonstrations: tmp/r19-ledgers/B1-probes/battery-base.txt.
+# =============================================================================
+
+- name: glob_newline_case_question
+  command: 'x=$''a\nb''; case $x in a?b) echo Q;; *) echo N;; esac'
+  stdout: "Q\n"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_case_star_across
+  command: 'x=$''a\nb''; case $x in a*b) echo Y;; *) echo N;; esac'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_case_star_all
+  command: 'x=$''a\nb''; case $x in *) echo ALL;; esac'
+  stdout: "ALL\n"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_case_class
+  command: 'x=$''a\nb''; case $x in [a-z]?[a-z]) echo CL;; *) echo N;; esac'
+  stdout: "CL\n"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_dbracket_question
+  command: '[[ $''a\nb'' == a?b ]] && echo Y || echo N'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_dbracket_literal_nl_no_match
+  command: '[[ ab == a$''\n''b ]] && echo Y || echo N'
+  stdout: "N\n"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_dbracket_nocasematch
+  command: 'shopt -s nocasematch; [[ $''A\nB'' == a?b ]] && echo Y || echo N'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_suffix_no_overmatch
+  command: 'x=$''ab\n''; printf ''[%s]'' "${x%b}"'
+  stdout: "[ab\n]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_suffix_removes_newline
+  command: 'x=$''ab\n''; printf ''[%s]'' "${x%$''\n''}"'
+  stdout: "[ab]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_prefix_question
+  command: 'x=$''a\nb''; printf ''[%s]'' "${x#a?}"'
+  stdout: "[b]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_prefix_longest_star
+  command: 'x=$''a\nb''; printf ''[%s]'' "${x##a*}"'
+  stdout: "[]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_subst_all_question
+  command: 'x=$''a\nb''; printf ''[%s]'' "${x//?/-}"'
+  stdout: "[---]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_subst_prefix
+  command: 'x=$''a\nb''; printf ''[%s]'' "${x/#a?/X}"'
+  stdout: "[Xb]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_subst_suffix
+  command: 'x=$''a\nb''; printf ''[%s]'' "${x/%?b/Y}"'
+  stdout: "[aY]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_literal_dollar_suffix_no_overmatch
+  command: 'x=''a$b''; printf ''[%s]'' "${x%$}"'
+  stdout: "[a$b]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_literal_dollar_suffix_removed
+  command: 'x=''ab$''; printf ''[%s]'' "${x%$}"'
+  stdout: "[ab]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_extglob_subst_unaffected
+  command: 'shopt -s extglob; x=$''a\nb''; printf ''[%s]'' "${x//@(a|b)/-}"'
+  stdout: "[-\n-]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_multiline_prefix_star
+  command: 'x=$''a\nX\nb''; printf ''[%s]'' "${x#*X}"'
+  stdout: "[\nb]"
+  stderr: ""
+  exit_code: 0
+
+- name: glob_newline_multiline_suffix_shortest
+  command: 'x=$''a\nX\nb''; printf ''[%s]'' "${x%X*}"'
+  stdout: "[a\n]"
+  stderr: ""
+  exit_code: 0

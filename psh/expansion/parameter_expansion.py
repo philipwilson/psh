@@ -21,6 +21,21 @@ if TYPE_CHECKING:
 PATSUB_MATCH = object()
 
 
+def _end_anchored(regex: str) -> str:
+    """Append the true-end-of-string anchor ``\\Z`` to *regex* (idempotent).
+
+    NOT ``$``: ``$`` also matches just before a *trailing newline*, so an
+    end-anchored prefix/suffix regex built with ``$`` over-matches a subject
+    that ends in ``\\n`` — ``${x%b}`` on ``$'ab\\n'`` must NOT strip the ``b``
+    (there is no ``b`` at the real end of the string). The shared glob→regex
+    converter (``extglob.extglob_to_regex``) already ends an anchored body with
+    ``\\Z``; a plain-glob body (``glob_to_regex_body``) is unanchored, so this
+    adds exactly one ``\\Z``. Unlike the former ``rstrip('$') + '$'`` shaping it
+    never disturbs a literal ``\\$`` (an escaped ``$``) inside the body.
+    """
+    return regex if regex.endswith(r'\Z') else regex + r'\Z'
+
+
 class ParameterExpansion:
     """Advanced parameter expansion operations."""
 
@@ -103,24 +118,21 @@ class ParameterExpansion:
     def _prefix_match_regex(self, pattern: str):
         """Compiled regex that FULL-matches a candidate prefix.
 
-        Mirrors the suffix path's ``rstrip('$') + '$'`` shaping but anchors
-        at the START: the result must match an entire candidate prefix so the
-        position scan below can pick the shortest / longest matching prefix.
-        Using a per-prefix full match (rather than one greedy/non-greedy pass
-        over the whole value) makes extglob quantifiers behave correctly —
-        the old ``.*`` → ``.*?`` rewrite never touched ``+(o)``/``*(o)`` and
-        the extglob converter additionally ``$``-anchored the pattern, so
-        ``#`` behaved like ``##``.
+        Mirrors the suffix path's ``\\Z`` shaping but anchors at the START: the
+        result must match an entire candidate prefix so the position scan below
+        can pick the shortest / longest matching prefix. Using a per-prefix full
+        match (rather than one greedy/non-greedy pass over the whole value)
+        makes extglob quantifiers behave correctly — the old ``.*`` → ``.*?``
+        rewrite never touched ``+(o)``/``*(o)`` and the extglob converter
+        additionally anchored the pattern, so ``#`` behaved like ``##``.
         """
         regex = self.pattern_matcher.shell_pattern_to_regex(
             pattern, anchored=True, from_start=True,
             extglob_enabled=self._extglob)
-        # Anchor the END too so the regex matches a WHOLE candidate prefix
-        # (the extglob converter already appends '$'; the plain-glob path
-        # does not — normalise both).
-        if not regex.endswith('$'):
-            regex = regex + '$'
-        return re.compile(regex)
+        # Anchor the END too (``\Z``, not ``$``) so the regex matches a WHOLE
+        # candidate prefix: the extglob converter already appends ``\Z``; the
+        # plain-glob path does not — _end_anchored normalises both.
+        return re.compile(_end_anchored(regex))
 
     def remove_shortest_prefix(self, value: str, pattern: str) -> str:
         """Remove shortest matching prefix."""
@@ -159,8 +171,9 @@ class ParameterExpansion:
                     return value[:i]
             return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob)
-        # Convert to end-anchored regex
-        regex = regex.rstrip('$') + '$'
+        # Convert to end-anchored regex (``\Z``: a real end-of-string, so a
+        # trailing newline in *value* is not treated as a suffix boundary).
+        regex = _end_anchored(regex)
 
         # Find shortest match from end
         for i in range(len(value), -1, -1):
@@ -179,8 +192,9 @@ class ParameterExpansion:
                     return value[:i]
             return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob)
-        # Convert to end-anchored regex
-        regex = regex.rstrip('$') + '$'
+        # Convert to end-anchored regex (``\Z``: a real end-of-string, so a
+        # trailing newline in *value* is not treated as a suffix boundary).
+        regex = _end_anchored(regex)
 
         # Find longest match from end
         for i in range(len(value) + 1):
@@ -370,8 +384,9 @@ class ParameterExpansion:
                             + self.render_replacement(replacement, value[i:]))
             return value
         regex = self.pattern_matcher.shell_pattern_to_regex(pattern, anchored=True, from_start=False, extglob_enabled=self._extglob, ignorecase=ic)
-        # Convert to end-anchored regex
-        regex = regex.rstrip('$') + '$'
+        # Convert to end-anchored regex (``\Z``: a real end-of-string, so a
+        # trailing newline in *value* is not treated as a suffix boundary).
+        regex = _end_anchored(regex)
 
         # Find match at end
         match = re.search(regex, value, re.IGNORECASE if ic else 0)
