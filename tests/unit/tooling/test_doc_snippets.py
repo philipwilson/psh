@@ -60,6 +60,35 @@ REGISTRY = [
             "NAMEREF = auto()",
         ],
     },
+    {
+        # Retained SignalManager.__init__ sketch (r19-P2 bounce ruling): the
+        # LAZY notifier slots and the None-guarded handler are the exact
+        # claims that drifted once already (eager-vs-lazy). Pin them.
+        "name": "SignalManager lazy self-pipe sketch",
+        "doc": "psh/interactive/CLAUDE.md",
+        "source": "psh/interactive/signal_manager.py",
+        "fragments": [
+            "self._sigchld_notifier: Optional[SignalNotifier] = None",
+            "self._sigwinch_notifier: Optional[SignalNotifier] = None",
+            "self._in_sigchld_processing = False",
+            "if self._sigchld_notifier is not None:",
+            "self._setup_interactive_mode_handlers()",
+        ],
+    },
+    {
+        # Retained ShellState.__init__ sketch (r19-P2 bounce ruling): pins the
+        # registry-backed options container, the ExecutionState delegate, and
+        # the read-once environment import the sketch teaches.
+        "name": "ShellState init sketch",
+        "doc": "psh/core/CLAUDE.md",
+        "source": "psh/core/state.py",
+        "fragments": [
+            "self.scope_manager = ScopeManager()",
+            "self.options = ShellOptions(overrides={",
+            "self.execution = ExecutionState()",
+            "self.env = os.environ.copy()",
+        ],
+    },
 ]
 
 

@@ -59,12 +59,13 @@ class ShellState:
         # Shell Option" below.
         self.options = ShellOptions(overrides={...})
 
-        # Execution state
-        self.last_exit_code = 0
-        self.last_bg_pid = None
-        self.positional_params = []
+        # Execution state — one cohesive delegate object; ShellState
+        # exposes last_exit_code / last_bg_pid / pipestatus /
+        # in_forked_child ... as delegating properties over it.
+        self.execution = ExecutionState()
 
-        # Environment
+        # Environment (read from os.environ ONCE, at startup — see the
+        # Environment Policy section)
         self.env = os.environ.copy()
 ```
 

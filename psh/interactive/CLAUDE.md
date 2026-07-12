@@ -346,13 +346,18 @@ class SignalManager(InteractiveComponent):
             self._setup_interactive_mode_handlers()
 
     def _handle_sigchld(self, signum, frame):
-        # Async-signal-safe: just writes a byte to the pipe
-        self._sigchld_notifier.notify(signal.SIGCHLD)
+        # Async-signal-safe: just writes a byte to the pipe. None-guarded:
+        # never create the notifier in a signal handler (os.pipe/fcntl are
+        # not async-signal-safe) — installed only after allocation.
+        if self._sigchld_notifier is not None:
+            self._sigchld_notifier.notify(signal.SIGCHLD)
 
     def process_sigchld_notifications(self):
         # Called from REPL loop — drains pipe, then reaps children
-        # (waitpid WNOHANG|WUNTRACED loop, updating job states) outside
-        # signal-handler context, guarded against reentrancy.
+        # (waitpid WNOHANG|WUNTRACED|WCONTINUED loop where defined,
+        # updating job states) outside signal-handler context, guarded
+        # against reentrancy; a None notifier means interactive handlers
+        # were never installed (lazy allocation) — nothing to drain.
         ...
 ```
 
@@ -456,7 +461,13 @@ owns the terminal blocks).
 in a `waitpid(-1, flags)` loop OUTSIDE signal-handler context. The flags are
 `WNOHANG` plus, where the platform defines them, `WUNTRACED` **and
 `WCONTINUED`** — so the loop observes stopped AND continued transitions, not
-just exits (macOS lacks `WCONTINUED`, hence the `hasattr` guards). Each reaped
+just exits (the `hasattr` checks are generic portability guards for platforms
+lacking those flags; macOS defines both). The real macOS quirk is DELIVERY,
+not the flag: the kernel raises no SIGCHLD when a child is *continued*
+(SIGCHLD fires on stop and exit only), so this handler never learns of an
+external `kill -CONT` — which is why
+`executor/job_control.py#JobManager.refresh_job_states` (v0.661) polls job
+state on demand before `jobs`/`fg`. Each reaped
 pid updates its `Job`'s process/state; a stopped FOREGROUND job clears its
 `notified` marker and hands the terminal back to the shell
 (`transfer_terminal_control`).
