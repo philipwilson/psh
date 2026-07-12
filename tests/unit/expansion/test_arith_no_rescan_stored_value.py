@@ -1,10 +1,18 @@
 """A STORED value reached via variable resolution is NOT re-$-expanded.
 
 T8 item 5. bash never rescans a substituted value: a variable/array element
-whose value literally contains a ``$`` is a syntax error inside ``$(( ))``, not
-the value of the referenced variable. Before this fix psh re-expanded such a
-value (``y=5; x='$y'; echo $((x))`` printed ``5``); now it errors like bash,
-restoring the package's own never-rescan invariant.
+whose value literally contains a ``$`` is a syntax error WHEN THE ARITHMETIC
+IS ACTUALLY EVALUATED, not the value of the referenced variable. Before this
+fix psh re-expanded such a value (``y=5; x='$y'; echo $((x))`` printed ``5``);
+now it errors like bash, restoring the package's own never-rescan invariant.
+
+The corrected rule (T8 bounce): the change reaches EVERY surface that
+arithmetic-evaluates a variable whose stored value carries a ``$`` —
+``$(( ))``, ``(( ))``, ``[[ x -eq n ]]``, ``let``, array WRITE subscripts
+(``arr[x]=v``), and substring offsets/lengths on a SET parameter — all pinned
+below (TestOtherEvaluationSurfaces). The one surface that does NOT evaluate is
+the substring operator on an UNSET parameter, which bash short-circuits lazily
+(see test_substring_lazy_arithmetic.py).
 
 The name-chain / expression-value resolutions (``a=b b=c c=3; echo $((a))``,
 ``a="2*3"; echo $((a))``) are a SEPARATE mechanism (ARITH-VALUE recursion, not
@@ -53,6 +61,47 @@ class TestStoredValueNotReExpanded:
         r = _psh("y=5; x='$y'; (( x )); echo rc=$?; echo alive")
         assert r.stdout == "rc=1\nalive\n"
         assert r.returncode == 0
+
+
+class TestOtherEvaluationSurfaces:
+    """The blocker-2 surfaces: everywhere the stored value is arithmetic-
+    evaluated, a $-bearing value errors like bash (RED-ON-BASE: the base
+    rescan made all of these silently succeed with $y's value)."""
+
+    def test_dbltest_numeric_comparison(self):
+        # [[ x -eq 5 ]] evaluates x's value: base -> true rc 0; bash/now rc 1.
+        r = _psh("y=5; x='$y'; [[ x -eq 5 ]]; echo rc=$?")
+        assert r.stdout == "rc=1\n", r
+        assert r.returncode == 0
+        assert r.stderr != ""
+
+    def test_dbltest_line_continues(self):
+        r = _psh("y=5; x='$y'; [[ x -eq 5 ]] && echo T; echo alive")
+        assert r.stdout == "alive\n", r
+        assert r.returncode == 0
+
+    def test_let_builtin(self):
+        # let z=x evaluates x's value: base -> z=5 rc 0; bash/now rc 1, z unset.
+        r = _psh("y=5; x='$y'; let z=x; echo rc=$?; echo z=[$z]")
+        assert r.stdout == "rc=1\nz=[]\n", r
+        assert r.returncode == 0
+
+    def test_array_write_subscript(self):
+        # arr[x]=Z evaluates x as the subscript: base -> arr[5]=Z rc 0;
+        # bash/now: fatal expansion error, line discarded, rc 1.
+        r = _psh("y=5; x='$y'; arr[x]=Z; echo after")
+        assert r.returncode == 1, r
+        assert r.stdout == "", r
+        assert r.stderr != ""
+
+    def test_substring_offset_on_set_parameter(self):
+        # ${v:x:1} with v SET evaluates x: base -> offset 5 -> '' rc 0;
+        # bash/now: error rc 1. (With v UNSET bash short-circuits — see
+        # test_substring_lazy_arithmetic.py.)
+        r = _psh("y=5; x='$y'; v=abc; echo [${v:x:1}]")
+        assert r.returncode == 1, r
+        assert r.stdout == "", r
+        assert r.stderr != ""
 
 
 class TestArithValueRecursionStillWorks:

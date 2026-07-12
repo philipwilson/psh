@@ -120,24 +120,38 @@ class FieldExpansionMixin(_Base):
         (_parse_slice_operand / _slice_elements / _slice_scalar_subscript),
         which document the shared bash semantics.
         """
-        offset, length = self._parse_slice_operand(slice_operand, param)
-
         if param == '@':
-            # bash: index 0 is $0; the parameters start at offset 1, and a
-            # negative offset counts back from one past the last parameter.
+            # $@ ALWAYS evaluates its offset/length: the sliceable element
+            # list includes $0 (index 0), so it is never empty — bash errors
+            # on an unevaluable operand even with zero positional parameters
+            # (probed 5.2). Parameters start at offset 1; a negative offset
+            # counts back from one past the last parameter.
+            offset, length = self._parse_slice_operand(slice_operand, param)
             return self._slice_elements(
                 self._positional_slice_elements(), offset, length)
 
         from ..core import AssociativeArray, IndexedArray
         name = self._resolve_array_name(param[:-3])
         var = self.state.scope_manager.get_variable_object(name)
-        if var is not None and isinstance(var.value, IndexedArray):
+
+        # LAZY slice arithmetic (bash, probed 5.2): a ZERO-element subject —
+        # unset name, valueless declaration, or empty array — short-circuits
+        # BEFORE the offset/length is evaluated: an unevaluable operand
+        # (`x='$y'; "${a[@]:x:1}"` with a unset or `a=()`) yields no fields,
+        # rc 0, not an arithmetic error. A set scalar (even empty) is one
+        # element and IS evaluated, like every non-empty subject.
+        if var is None or var.value is None or (
+                isinstance(var.value, (IndexedArray, AssociativeArray))
+                and var.value.length() == 0):
+            return []
+
+        offset, length = self._parse_slice_operand(slice_operand, param)
+        if isinstance(var.value, IndexedArray):
             # bash slices indexed arrays by INDEX, not by element position
             # (matters for sparse arrays).
             return self._slice_elements(var.value.all_elements(), offset,
                                         length, indices=var.value.indices())
-        if (var is not None and var.value is not None
-                and not isinstance(var.value, AssociativeArray)):
+        if not isinstance(var.value, AssociativeArray):
             # Scalar with an [@] subscript: bash substring semantics
             # (a set-but-empty scalar still yields one field for ":0").
             return self._slice_scalar_subscript(str(var.value), offset, length)

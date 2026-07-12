@@ -337,9 +337,21 @@ class OperatorOpsMixin(_Base):
         elif operator == ':':
             # Substring extraction. Offset and length are arithmetic
             # expressions (bash), so support ${x:1+1:2}, ${x:(-3):2}, etc.
+            #
+            # LAZY evaluation (bash, probed 5.2): the offset/length arithmetic
+            # is short-circuited when the subject parameter is UNSET — an
+            # unevaluable operand (`x='$y'; ${v:x:1}` with v unset) yields ''
+            # rc 0, never an arithmetic error. A SET parameter — even
+            # set-but-EMPTY (`v=`) — IS evaluated and errors. `$@`/`$*`
+            # subjects never reach this arm (their slice, which always
+            # evaluates — the element list includes $0 — lives in
+            # _expand_positional_view / _slice_fields). Under nounset the
+            # unbound error fired earlier in expand_parameter_direct.
             from ..core import ExpansionError
 
             assert operand is not None
+            if var_name and not self._param_is_set(var_name):
+                return ''
             offset, length = self._parse_slice_operand(operand, var_name or 'var')
             try:
                 return self.param_expansion.extract_substring(value, offset, length)

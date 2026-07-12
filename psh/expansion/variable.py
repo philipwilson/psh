@@ -367,17 +367,21 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             if operator == ':':
                 assert operand is not None  # ':' always carries a slice operand
                 what = f"{array_name}[{index_expr}]"
-                if var and isinstance(var.value, IndexedArray):
+                if not elements:
+                    # LAZY slice arithmetic (bash, probed 5.2): a subject with
+                    # ZERO elements — unset array OR set-but-empty `a=()` —
+                    # short-circuits before offset/length is ever evaluated
+                    # (an unevaluable operand yields '' rc 0, not an error).
+                    sliced = []
+                elif var and isinstance(var.value, IndexedArray):
                     sliced = self._slice_sequence(
                         elements, operand, what=what,
                         indices=var.value.indices())
                 elif var and isinstance(var.value, AssociativeArray):
                     sliced = self._slice_sequence(elements, operand, what=what)
-                elif elements:
+                else:
                     offset, length = self._parse_slice_operand(operand, what)
                     sliced = self._slice_scalar_subscript(elements[0], offset, length)
-                else:
-                    sliced = []
                 if index_expr == '@':
                     return True, ' '.join(sliced)
                 return True, self._ifs_star_separator().join(sliced)
@@ -475,7 +479,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             target = params[idx]
         elif len(source) == 1 and source in '#?$!-0':
             target = self.state.get_special_variable(source) or None
-        elif '[' in source and source.endswith(']'):
+        elif self.split_subscript(source) is not None:
             target = self.expand_variable('${' + source + '}') or None
         else:
             var = self.state.scope_manager.get_variable_object(source)
