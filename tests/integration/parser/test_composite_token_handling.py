@@ -5,12 +5,7 @@ These tests verify that the parser correctly handles adjacent tokens
 (composite arguments) via Word AST and token adjacency tracking.
 """
 
-import sys
-from pathlib import Path
 
-# Add PSH to path
-PSH_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 from psh.ast_nodes import AndOrList, SimpleCommand
 from psh.lexer import tokenize

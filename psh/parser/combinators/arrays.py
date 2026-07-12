@@ -10,7 +10,7 @@ from ...ast_nodes import (
     Word,
     WordPart,
 )
-from ...lexer.token_types import Token, TokenType
+from ...lexer.token_types import Token
 from ..recursive_descent.parsers.arrays import (
     _NAME_START_RE,
     _unquoted_leading_literal,
@@ -238,7 +238,7 @@ class ArrayParsers:
             success=True,
             value=ArrayElementAssignment(
                 name=name,
-                index=[Token(type=TokenType.WORD, value=subscript, position=0)],
+                index=subscript,
                 value=value_text,
                 is_append=is_append,
                 value_word=value_word,

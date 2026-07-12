@@ -14,10 +14,7 @@ A bare `cat 5<<<word` is deliberately NOT pinned here: it reads the inherited
 stdin (fd 0), which under pytest is not deterministic.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

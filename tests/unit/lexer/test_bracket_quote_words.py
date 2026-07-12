@@ -8,13 +8,8 @@ suppressed ONLY inside confirmed array-assignment subscripts
 literal in one word. All behaviors below were probed against bash 5.2.
 """
 
-import sys
-from pathlib import Path
 
 import pytest
-
-PSH_ROOT = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 # Recognizer-level characterization (how a bracket word SPLITS at quotes /
 # expansions); assert on the pre-fusion stream. Word fusion re-joins those

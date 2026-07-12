@@ -10,10 +10,7 @@ and psh lacked the POSIX ENOEXEC fallback (running a no-shebang
 executable text file as a shell script).
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

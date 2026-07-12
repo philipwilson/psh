@@ -1,4 +1,16 @@
-"""Directory navigation builtins (cd)."""
+"""Directory navigation builtins (cd) and the shared PWD/OLDPWD machinery.
+
+This module owns the TWO primitives every directory-changing builtin shares:
+
+* :func:`current_logical_dir` — the one READ of "where are we?" (the logical
+  ``PWD`` variable, preserving symlink-named paths, with env/physical
+  fallbacks). ``cd``, ``pushd``, ``popd`` and ``dirs`` all consult it; they
+  used to read different sources (shell variable vs ``shell.env``).
+* :func:`update_pwd_vars` — the one WRITER of ``PWD``/``OLDPWD`` after a
+  successful chdir, with bash's readonly semantics. The readonly fix used to
+  live only in ``cd`` while ``pushd``/``popd`` carried divergent copies
+  (appraisal r19 H2 — the "three updaters" defect factory in miniature).
+"""
 
 import os
 from typing import TYPE_CHECKING, List
@@ -8,6 +20,55 @@ from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
+
+
+def current_logical_dir(shell: 'Shell') -> str:
+    """The shell's logical current directory.
+
+    The ``PWD`` shell variable is authoritative — cd/pushd/popd maintain it,
+    and it preserves the symlink-named (logical) path where ``os.getcwd()``
+    would return the resolved physical one. Falls back to the environment,
+    then the physical cwd. This is the single cwd READ used by ``cd`` and
+    the directory-stack builtins.
+    """
+    pwd = shell.state.get_variable('PWD')
+    if isinstance(pwd, str) and pwd:
+        return pwd
+    return shell.env.get('PWD') or os.getcwd()
+
+
+def update_pwd_vars(builtin: Builtin, shell: 'Shell',
+                    new_logical: str, old_logical: str) -> bool:
+    """Update OLDPWD and PWD after a successful directory change.
+
+    The ONE updater shared by ``cd``, ``pushd`` and ``popd``. Both variables
+    carry the EXPORT attribute in bash (``declare -p PWD`` → declare -x ...),
+    and export_variable's observer keeps shell.env in sync — the single env
+    interface, no direct poke (appraisal H3). Routing solely through
+    export_variable also avoids a stale-env leak: a raw ``shell.env[...]``
+    write would update the environment even when a readonly variable
+    rejected the shell-variable update, so an external child would see the
+    new value where bash keeps the old.
+
+    The cwd has ALREADY changed when this runs (os.chdir succeeded); bash
+    updates PWD and OLDPWD INDEPENDENTLY — a readonly OLDPWD still lets PWD
+    update (and vice versa) — reports ``NAME: readonly variable`` BARE
+    (``report_error``: no builtin-name prefix; probe-pinned for cd AND
+    pushd/popd), and the directory change STANDS. Returns True when both
+    updated, False after reporting a readonly failure — the caller then
+    fails with rc 1 but must NOT undo the chdir.
+    """
+    from ..core import ReadonlyVariableError
+    readonly_name = None
+    for vname, vval in (('OLDPWD', old_logical), ('PWD', new_logical)):
+        try:
+            shell.state.export_variable(vname, vval)
+        except ReadonlyVariableError as e:
+            readonly_name = e.name
+    if readonly_name is not None:
+        builtin.report_error(f"{readonly_name}: readonly variable", shell)
+        return False
+    return True
 
 
 @builtin
@@ -20,29 +81,24 @@ class CdBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Change the current working directory."""
-        # Store current directory as the old directory (use the logical PWD
-        # when set, else the physical cwd).
-        pwd = shell.state.get_variable('PWD')
-        current_dir = pwd if isinstance(pwd, str) and pwd else os.getcwd()
+        # Store current directory as the old directory (the shared logical
+        # cwd read — the PWD variable when set, else env/physical fallback).
+        current_dir = current_logical_dir(shell)
 
-        # Parse the -L (logical, default) / -P (physical) options. A bare '-'
-        # is NOT an option — it is the "previous directory" operand — and '--'
-        # ends option parsing (both handled by the len>1 guard / explicit check).
+        # Parse the -L (logical, default) / -P (physical) options via the shared
+        # ordered walker: a bare '-' is NOT an option — it is the "previous
+        # directory" operand (parse_flags_ordered's len==1 guard) — and '--'
+        # ends option parsing. Order matters: -L/-P is last-wins (`cd -LP` is
+        # physical, `cd -PL` logical), so we replay the events in order. On a
+        # bad flag char bash reports the offending CHAR (`cd -Lx` -> "-x") plus
+        # the usage line (rc 2); parse_flags_ordered handles both — the old
+        # loop reported the whole cluster.
+        events, operands = self.parse_flags_ordered(args, shell, flags='LP')
+        if events is None:
+            return 2
         physical = False
-        i = 1
-        while (i < len(args) and args[i].startswith('-')
-               and len(args[i]) > 1 and args[i] != '--'):
-            flag = args[i]
-            if all(c in 'LP' for c in flag[1:]):
-                physical = flag[-1] == 'P'  # clustered/repeated: last wins
-            else:
-                self.error(f"{flag}: invalid option", shell)
-                self.write_error_line("cd: usage: cd [-L|-P] [dir]", shell)
-                return 2
-            i += 1
-        if i < len(args) and args[i] == '--':
-            i += 1
-        operands = args[i:]
+        for ch, _ in events:
+            physical = (ch == 'P')  # last of -L/-P wins
         if len(operands) > 1:
             # bash: `cd a b` is an error and does not change directory.
             self.error("too many arguments", shell)
@@ -110,10 +166,9 @@ class CdBuiltin(Builtin):
                 # Absolute path - use as-is
                 logical_new_dir = actual_path
             else:
-                # Relative path - resolve logically from current PWD
-                pwd = shell.state.get_variable('PWD')
-                logical_current = pwd if isinstance(pwd, str) and pwd else os.getcwd()
-                logical_new_dir = os.path.normpath(os.path.join(logical_current, actual_path))
+                # Relative path - resolve logically from the current PWD
+                logical_new_dir = os.path.normpath(
+                    os.path.join(current_dir, actual_path))
 
             # Change to the actual directory
             os.chdir(actual_path)
@@ -127,37 +182,18 @@ class CdBuiltin(Builtin):
             if found_in_cdpath:
                 self.write_line(logical_new_dir, shell)
 
-            # Update PWD and OLDPWD: both carry the EXPORT attribute in bash
-            # (`declare -p PWD` → declare -x ...), and export_variable's observer
-            # keeps shell.env in sync — the single env interface, no direct poke
-            # (appraisal H3). Routing solely through export_variable also fixes a
-            # stale-env leak: the old raw `shell.env['OLDPWD'] = ...` wrote even
-            # when a readonly OLDPWD rejected the variable update, so an external
-            # child saw the new value where bash keeps the old.
-            #
-            # The cwd has ALREADY changed (os.chdir succeeded); bash updates
-            # PWD and OLDPWD INDEPENDENTLY — a readonly OLDPWD still lets PWD
-            # update (and vice versa) — reports the readonly variable, and does
-            # NOT undo the directory change. The old order set OLDPWD first and
-            # let its ReadonlyVariableError skip the PWD update, so
-            # `readonly OLDPWD; cd /` left PWD stale (bash updates it).
-            from ..core import ReadonlyVariableError
-            readonly_name = None
-            for vname, vval in (('OLDPWD', current_dir),
-                                ('PWD', logical_new_dir)):
-                try:
-                    shell.state.export_variable(vname, vval)
-                except ReadonlyVariableError as e:
-                    readonly_name = e.name
-            if readonly_name is not None:
-                # bash reports `NAME: readonly variable` (no `cd:` prefix),
-                # rc 1, but the directory change stands.
-                self.report_error(f"{readonly_name}: readonly variable", shell)
-                return 1
-
-            # Print new directory for cd - command
+            # Print the new directory for `cd -` BEFORE attempting the
+            # variable updates: bash prints the directory first and THEN the
+            # readonly diagnostic when PWD/OLDPWD is readonly (probe: `cd /tmp;
+            # cd /var; readonly PWD; cd -` -> "/tmp" then the error, rc 1).
             if print_new_dir:
                 self.write_line(logical_new_dir, shell)
+
+            # The shared updater (see module docstring): independent PWD and
+            # OLDPWD updates, bare readonly report, chdir stands. rc 1 on a
+            # readonly failure — bash's cd fails while keeping the new cwd.
+            if not update_pwd_vars(self, shell, logical_new_dir, current_dir):
+                return 1
 
             return 0
         except FileNotFoundError:
@@ -175,10 +211,14 @@ class CdBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """cd: cd [dir]
+        return """cd: cd [-L|-P] [dir]
     Change the current directory to DIR.
 
     The default DIR is the value of the HOME shell variable.
+
+    Options:
+      -L    follow symbolic links: PWD keeps the logical path (default)
+      -P    use the physical directory structure: PWD has symlinks resolved
 
     The variable CDPATH defines the search path for directories.
     When DIR is a relative path not starting with './' or '../',
@@ -201,7 +241,9 @@ class CdBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "cd [dir]"
+        # Includes the option group so parse_flags_ordered's usage line reads
+        # `cd: usage: cd [-L|-P] [dir]` on a bad option (bash-shaped).
+        return "cd [-L|-P] [dir]"
 
     @property
     def description(self) -> str:

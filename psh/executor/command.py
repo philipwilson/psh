@@ -357,13 +357,7 @@ class CommandExecutor:
         """
         from ..ast_nodes import ArrayElementAssignment
         if isinstance(assignment, ArrayElementAssignment):
-            index = assignment.index
-            if isinstance(index, list):
-                index_text = ''.join(
-                    getattr(tok, 'value', str(tok)) for tok in index)
-            else:
-                index_text = str(index)
-            return f"{assignment.name}[{index_text}]"
+            return f"{assignment.name}[{assignment.index}]"
         return getattr(assignment, 'name', '?')
 
     def _run_command(self, node: 'SimpleCommand', context: 'ExecutionContext',

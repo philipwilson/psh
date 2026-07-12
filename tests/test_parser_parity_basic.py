@@ -4,11 +4,7 @@ This module tests that both parsers handle the same features correctly,
 focusing on what's actually implemented in both.
 """
 
-import os
-import sys
 
-# Add parent directory to path to import psh
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from psh.lexer import tokenize
 from psh.parser import Parser  # Recursive descent

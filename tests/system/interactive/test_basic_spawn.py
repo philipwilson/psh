@@ -2,15 +2,9 @@
 Basic test to verify pexpect can spawn PSH properly.
 """
 
-import sys
-from pathlib import Path
-
-# Add framework to path
-TEST_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(TEST_ROOT))
-
 import os
 import signal
+import sys
 
 import pexpect
 

@@ -17,10 +17,7 @@ mapping in tests/unit/lexer/test_case_mapping.py); the length-safety cases (ß,
 ﬀ, ΐ stay put in EVERY locale) are pinned here.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

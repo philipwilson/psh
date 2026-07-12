@@ -11,10 +11,7 @@ name", and its ``shopt OPTION`` query form always exited 0. Both are fixed
 (reappraisal #6 bug L6).
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

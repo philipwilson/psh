@@ -5,10 +5,7 @@ EXIT/DEBUG/ERR traps — per the project's development principles, those
 claims are proven here against bash.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

@@ -124,24 +124,28 @@ class SourceBuiltin(Builtin):
 
     def _find_source_file(self, filename: str, shell: 'Shell') -> Optional[str]:
         """Find a source file, searching PATH if needed."""
-        # If filename contains a slash, don't search PATH
+        # If filename contains a slash, don't search PATH — use it as given
+        # (existence, not isfile, so a directory still reaches the later
+        # validate_script_file step, matching bash's `. /somedir`).
         if '/' in filename:
             if os.path.exists(filename):
                 return filename
             return None
 
-        # Search PATH first, then fall back to the current directory. bash
-        # (non-posix, `sourcepath` on) searches $PATH for a slash-less name
-        # and only treats it as a cwd-relative path when PATH has no match —
-        # so a `both.sh` earlier on PATH wins over one in the cwd.
-        path_dirs = shell.env.get('PATH', '').split(':')
-        for path_dir in path_dirs:
-            if path_dir:  # Skip empty path components
-                full_path = os.path.join(path_dir, filename)
-                if os.path.exists(full_path):
-                    return full_path
+        # Slash-less: bash (`sourcepath` on) searches $PATH for a READABLE
+        # file, then falls back to the cwd. Reuse the ONE resolver PATH walk
+        # rather than a third hand-rolled copy — with mode=R_OK because source
+        # READS the script (it is not exec'd, so the default X_OK gate is
+        # wrong). Delegating also fixes an empty-PATH-component divergence: the
+        # old hand walk SKIPPED empty components, but bash (and search_path)
+        # maps an empty component to the cwd and searches it IN ORDER — so
+        # `PATH=":/dir" source f` picks the cwd copy, not /dir.
+        matches = shell.command_resolver.search_path(
+            filename, shell.env.get('PATH', ''), mode=os.R_OK)
+        if matches:
+            return matches[0]
 
-        # cwd fallback
+        # cwd fallback when PATH held no readable match at all.
         if os.path.exists(filename):
             return filename
 

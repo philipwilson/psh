@@ -8,10 +8,7 @@ nameref to its target array name — they accessed a variable literally named
 before every array lookup. These tests pin identical bash behavior.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

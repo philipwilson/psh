@@ -282,10 +282,13 @@ class LineEditor:
         editor sees it (see _dispatch_escape_event), so escape
         sequences behave identically in every mode and partial
         sequences never leak into the edit buffer.
+
+        ``key_handler`` always matches ``edit_mode`` (set together in
+        set_edit_mode), so its polymorphic ``get_action`` already does the
+        right thing: ViKeyBindings dispatches on vi-normal/insert, and the base
+        (emacs) ``get_action`` IS ``bindings.get``.
         """
-        if self.edit_mode == 'vi':
-            return self.key_handler.get_action(char)
-        return self.key_handler.bindings.get(char)
+        return self.key_handler.get_action(char)
 
     def _dispatch_escape_event(self, event: KeyEvent) -> Optional[str]:
         """Give an ESC-introduced KeyEvent its mode-dependent MEANING.
@@ -733,10 +736,10 @@ class LineEditor:
         line = self.edit_buffer.text
         cursor = self.edit_buffer.cursor
 
-        # Get completions
-        completions = self.completion_engine.get_completions(
-            line[:cursor], line, cursor
-        )
+        # Get completions AND the word boundary in one prefix scan; reuse
+        # word_start below and in _apply_completion so the whole Tab press
+        # computes find_word_start exactly once.
+        word_start, completions = self.completion_engine.get_completions(line, cursor)
 
         if not completions:
             # No completions, just beep
@@ -750,35 +753,32 @@ class LineEditor:
             # keep descending. Directory completions already carry the
             # separator; add the space only for non-directory matches.
             only = completions[0]
-            self._apply_completion(only, add_trailing_space=not only.endswith(os.sep))
+            self._apply_completion(only, word_start,
+                                   add_trailing_space=not only.endswith(os.sep))
         else:
             # Multiple completions
             common_prefix = self.completion_engine.find_common_prefix(completions)
-
-            # Find the word being completed
-            word_start = self.completion_engine.find_word_start(line, cursor)
             current_word = line[word_start:cursor]
 
             if len(common_prefix) > len(current_word):
                 # Can expand to common prefix
-                self._apply_completion(common_prefix)
+                self._apply_completion(common_prefix, word_start)
             else:
                 # Show all completions
                 self._show_completions(completions)
 
-    def _apply_completion(self, completion: str, add_trailing_space: bool = False):
+    def _apply_completion(self, completion: str, word_start: int,
+                          add_trailing_space: bool = False):
         """Apply a completion to the current line.
 
-        ``add_trailing_space`` finishes a unique non-directory match with a
-        space, matching bash. It applies only outside quotes (the quoted path
-        does not escape or close the quote here, so leaving it untouched
-        keeps that partial behavior unchanged).
+        ``word_start`` is the boundary already computed by the caller (the one
+        prefix scan per Tab press). ``add_trailing_space`` finishes a unique
+        non-directory match with a space, matching bash. It applies only
+        outside quotes (the quoted path does not escape or close the quote
+        here, so leaving it untouched keeps that partial behavior unchanged).
         """
         line = self.edit_buffer.text
         cursor = self.edit_buffer.cursor
-
-        # Find the word being completed
-        word_start = self.completion_engine.find_word_start(line, cursor)
 
         # Check if we need to escape the completion
         if word_start == 0 or line[word_start-1] not in '"\'':

@@ -659,16 +659,9 @@ class FormatterVisitor(ASTVisitor[str]):
         re-escapes so ``a[3]=$'x\\ty'`` round-trips as ``a[3]=$'x\\ty'``
         instead of injecting a raw tab that re-parses into a second word (J3).
         """
-        # Handle both string and token list indices
-        if isinstance(node.index, str):
-            index_str = node.index
-        else:
-            # Token list - reconstruct the expression
-            index_str = ''.join(token.value for token in node.index)
-
         op = '+=' if node.is_append else '='
         value_str = self._format_word(node.value_word)
-        return f"{node.name}[{index_str}]{op}{value_str}"
+        return f"{node.name}[{node.index}]{op}{value_str}"
 
     # Redirections
 
