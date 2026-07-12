@@ -67,9 +67,11 @@ class ASTDotGenerator(ASTVisitor[str]):
         """Format a node label with optional fields."""
         label_parts = [base_label]
 
-        # Add position info if requested
-        if self.show_positions and hasattr(node, 'position'):
-            label_parts.append(f"@{node.position}")
+        # Add position info if requested. Reads the parser-stamped ``line``
+        # (matching the other renderers); AST nodes carry no ``position``, so
+        # the old hasattr check made show_positions a silent no-op.
+        if self.show_positions and getattr(node, 'line', None) is not None:
+            label_parts.append(f"@line{node.line}")
 
         # Add compact field info if requested
         if self.compact_nodes and fields:
@@ -149,151 +151,67 @@ class ASTDotGenerator(ASTVisitor[str]):
                                     f'shape=ellipse, style=filled, fillcolor="#EEEEEE"];')
                     self._add_edge(parent_id, item_id, field_name)
 
-    def visit_SimpleCommand(self, node) -> str:
-        """Generate DOT for simple command."""
-        fields = {}
-        if hasattr(node, 'args') and node.args:
-            cmd = node.args[0] if node.args else "?"
-            args = node.args[1:] if len(node.args) > 1 else []
-            fields['cmd'] = cmd
-            if args and self.compact_nodes:
-                fields['args'] = f"({len(args)} args)"
+    def _emit(self, node: ASTNode, label: str) -> str:
+        """Add ``node`` with ``label``, then wire every structural child edge.
 
-        label = self._format_node_label(node, 'SimpleCommand', fields)
+        Field edges are driven by the shared ``node_fields`` walk (labelled
+        with the field name), so a for-loop's ``items``/``item_words`` or a
+        C-style loop's ``*_expr`` fields can never silently drop out again —
+        the per-node methods below customise only the label, never the wiring.
+        """
         node_id = self._add_node(node, label)
-
-        # Add connections for complex fields
-        if hasattr(node, 'args') and len(node.args) > 1:
-            self._process_field(node_id, 'args', node.args[1:])
-        if hasattr(node, 'redirects') and node.redirects:
-            self._process_field(node_id, 'redirects', node.redirects)
-        if hasattr(node, 'variable_assignments') and node.variable_assignments:
-            self._process_field(node_id, 'assignments', node.variable_assignments)
-
-        return node_id
-
-    def visit_Pipeline(self, node) -> str:
-        """Generate DOT for pipeline."""
-        negated = ""
-        if hasattr(node, 'negated') and node.negated:
-            negated = " (negated)"
-
-        label = self._format_node_label(node, f'Pipeline{negated}')
-        node_id = self._add_node(node, label)
-
-        if hasattr(node, 'commands'):
-            self._process_field(node_id, 'commands', node.commands)
-
-        return node_id
-
-    def visit_AndOrList(self, node) -> str:
-        """Generate DOT for and/or list."""
-        ops = getattr(node, 'operators', [])
-        op_str = ','.join(ops) if ops else '|'
-        label = self._format_node_label(node, f'AndOrList\\n({op_str})')
-        node_id = self._add_node(node, label)
-
-        if hasattr(node, 'pipelines') and node.pipelines:
-            self._process_field(node_id, 'pipelines', node.pipelines)
-
-        return node_id
-
-    def visit_IfConditional(self, node) -> str:
-        """Generate DOT for if conditional."""
-        label = self._format_node_label(node, 'IfConditional')
-        node_id = self._add_node(node, label)
-
-        if hasattr(node, 'condition'):
-            self._process_field(node_id, 'condition', node.condition)
-        if hasattr(node, 'then_part'):
-            self._process_field(node_id, 'then', node.then_part)
-        if hasattr(node, 'elif_parts') and node.elif_parts:
-            self._process_field(node_id, 'elif', node.elif_parts)
-        if hasattr(node, 'else_part') and node.else_part:
-            self._process_field(node_id, 'else', node.else_part)
-
-        return node_id
-
-    def visit_WhileLoop(self, node) -> str:
-        """Generate DOT for while loop."""
-        label = self._format_node_label(node, 'WhileLoop')
-        node_id = self._add_node(node, label)
-
-        if hasattr(node, 'condition'):
-            self._process_field(node_id, 'condition', node.condition)
-        if hasattr(node, 'body'):
-            self._process_field(node_id, 'body', node.body)
-
-        return node_id
-
-    def visit_ForLoop(self, node) -> str:
-        """Generate DOT for for loop."""
-        fields = {}
-        if hasattr(node, 'variable'):
-            fields['var'] = node.variable
-
-        label = self._format_node_label(node, 'ForLoop', fields)
-        node_id = self._add_node(node, label)
-
-        if hasattr(node, 'iterable'):
-            self._process_field(node_id, 'iterable', node.iterable)
-        if hasattr(node, 'body'):
-            self._process_field(node_id, 'body', node.body)
-
-        return node_id
-
-    def visit_CStyleForLoop(self, node) -> str:
-        """Generate DOT for C-style for loop."""
-        label = self._format_node_label(node, 'CStyleForLoop')
-        node_id = self._add_node(node, label)
-
-        if hasattr(node, 'init') and node.init:
-            self._process_field(node_id, 'init', node.init)
-        if hasattr(node, 'condition') and node.condition:
-            self._process_field(node_id, 'condition', node.condition)
-        if hasattr(node, 'update') and node.update:
-            self._process_field(node_id, 'update', node.update)
-        if hasattr(node, 'body'):
-            self._process_field(node_id, 'body', node.body)
-
-        return node_id
-
-    def visit_FunctionDef(self, node) -> str:
-        """Generate DOT for function definition."""
-        fields = {}
-        if hasattr(node, 'name'):
-            fields['name'] = node.name
-
-        label = self._format_node_label(node, 'FunctionDef', fields)
-        node_id = self._add_node(node, label)
-
-        if hasattr(node, 'body'):
-            self._process_field(node_id, 'body', node.body)
-
-        return node_id
-
-    def visit_StatementList(self, node) -> str:
-        """Generate DOT for a statement list."""
-        count = len(node.statements) if hasattr(node, 'statements') else 0
-        label = self._format_node_label(node, f'StatementList\\n({count} stmts)')
-        node_id = self._add_node(node, label)
-
-        if hasattr(node, 'statements') and node.statements:
-            self._process_field(node_id, 'statements', node.statements)
-
-        return node_id
-
-    def generic_visit(self, node: ASTNode) -> str:
-        """Generic visitor for unknown node types."""
-        node_name = node.__class__.__name__
-        label = self._format_node_label(node, node_name)
-        node_id = self._add_node(node, label)
-
-        # Add edges for every structural (dataclass) field.
         for name, value in node_fields(node):
             self._process_field(node_id, name, value)
-
         return node_id
+
+    def visit_SimpleCommand(self, node) -> str:
+        """Generate DOT for simple command (label carries cmd + arg count)."""
+        fields = {}
+        if node.args:
+            fields['cmd'] = node.args[0]
+            if len(node.args) > 1 and self.compact_nodes:
+                fields['args'] = f"({len(node.args) - 1} args)"
+        return self._emit(node, self._format_node_label(node, 'SimpleCommand', fields))
+
+    def visit_Pipeline(self, node) -> str:
+        """Generate DOT for pipeline (label notes negation)."""
+        negated = " (negated)" if getattr(node, 'negated', False) else ""
+        return self._emit(node, self._format_node_label(node, f'Pipeline{negated}'))
+
+    def visit_AndOrList(self, node) -> str:
+        """Generate DOT for and/or list.
+
+        The label shows the &&/|| operators between the pipelines. A list with
+        a single pipeline has NO operator, so it gets a bare ``AndOrList``
+        label — the old ``(|)`` fallback mislabelled it with the pipe operator.
+        """
+        ops = getattr(node, 'operators', [])
+        base = f'AndOrList\\n({",".join(ops)})' if ops else 'AndOrList'
+        return self._emit(node, self._format_node_label(node, base))
+
+    def visit_ForLoop(self, node) -> str:
+        """Generate DOT for for loop (label carries the loop variable)."""
+        fields = {'var': node.variable} if getattr(node, 'variable', None) else {}
+        return self._emit(node, self._format_node_label(node, 'ForLoop', fields))
+
+    def visit_FunctionDef(self, node) -> str:
+        """Generate DOT for function definition (label carries the name)."""
+        fields = {'name': node.name} if getattr(node, 'name', None) else {}
+        return self._emit(node, self._format_node_label(node, 'FunctionDef', fields))
+
+    def visit_StatementList(self, node) -> str:
+        """Generate DOT for a statement list (label carries the count)."""
+        count = len(node.statements) if hasattr(node, 'statements') else 0
+        return self._emit(node, self._format_node_label(node, f'StatementList\\n({count} stmts)'))
+
+    def generic_visit(self, node: ASTNode) -> str:
+        """Generic visitor: class-name label + structural field edges.
+
+        Nodes with no label customisation (IfConditional, WhileLoop,
+        CStyleForLoop, test expressions, ...) land here and now render every
+        real field via ``_emit`` — no per-node method to drift.
+        """
+        return self._emit(node, self._format_node_label(node, node.__class__.__name__))
 
     def to_dot(self, ast: ASTNode) -> str:
         """Convert AST to DOT format.

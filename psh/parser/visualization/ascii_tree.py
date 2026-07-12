@@ -34,18 +34,24 @@ class AsciiTreeRenderer:
             'list_item': '• ',
         }
 
-    @staticmethod
-    def render(node: ASTNode, **kwargs) -> str:
+    @classmethod
+    def render(cls, node: ASTNode, **kwargs) -> str:
         """Render AST node as ASCII tree.
+
+        A ``@classmethod`` (not ``@staticmethod``) so subclasses render
+        through themselves: ``CompactAsciiTreeRenderer.render(ast)`` builds a
+        ``CompactAsciiTreeRenderer`` (compact_mode=True), not the base class.
+        The old static form hard-coded ``AsciiTreeRenderer(**kwargs)``, so
+        every subclass silently rendered with base settings (H16).
 
         Args:
             node: Root AST node to render
-            **kwargs: Arguments passed to AsciiTreeRenderer
+            **kwargs: Arguments passed to the renderer
 
         Returns:
             ASCII tree representation
         """
-        renderer = AsciiTreeRenderer(**kwargs)
+        renderer = cls(**kwargs)
         return renderer._render_node(node, "", True)
 
     def _truncate_text(self, text: str) -> str:
@@ -58,8 +64,11 @@ class AsciiTreeRenderer:
         """Format the main label for a node."""
         label = node.__class__.__name__
 
-        if self.show_positions and hasattr(node, 'position'):
-            label += f" @{node.position}"
+        # Positions read the parser-stamped ``line`` (matching ASTPrettyPrinter);
+        # AST nodes carry no ``position``/``column``, so the old hasattr check
+        # made show_positions a silent no-op here.
+        if self.show_positions and getattr(node, 'line', None) is not None:
+            label += f" @line{node.line}"
 
         return self._truncate_text(label)
 

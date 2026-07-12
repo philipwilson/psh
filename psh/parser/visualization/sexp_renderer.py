@@ -24,33 +24,47 @@ class SExpressionRenderer:
         self.show_empty_fields = show_empty_fields
         self.show_positions = show_positions
 
-    @staticmethod
-    def render(node: ASTNode, **kwargs) -> str:
+    @classmethod
+    def render(cls, node: ASTNode, **kwargs) -> str:
         """Render AST node as S-expression.
+
+        A ``@classmethod`` so any subclass renders through itself (see the
+        AsciiTreeRenderer.render H16 note).
 
         Args:
             node: Root AST node to render
-            **kwargs: Arguments passed to SExpressionRenderer
+            **kwargs: Arguments passed to the renderer
 
         Returns:
             S-expression representation
         """
-        renderer = SExpressionRenderer(**kwargs)
+        renderer = cls(**kwargs)
         return renderer._render_node(node)
+
+    def _node_header(self, node: ASTNode) -> str:
+        """Node name, plus ``@line{N}`` when show_positions and a stamped line.
+
+        Reads the parser-stamped ``line`` (matching ASTPrettyPrinter); before
+        this, show_positions was accepted but never rendered here.
+        """
+        header = node.__class__.__name__
+        if self.show_positions and getattr(node, 'line', None) is not None:
+            header += f" @line{node.line}"
+        return header
 
     def _render_node(self, node: ASTNode, indent: int = 0) -> str:
         """Render a single node as S-expression."""
         if node is None:
             return "nil"
 
-        node_name = node.__class__.__name__
+        header = self._node_header(node)
         fields = self._get_node_fields(node)
 
         if not fields:
-            return f"({node_name})"
+            return f"({header})"
 
         # Try compact format first
-        compact_repr = self._try_compact_format(node_name, fields)
+        compact_repr = self._try_compact_format(node, header, fields)
         if self.compact_mode and compact_repr and len(compact_repr) <= self.max_width:
             return compact_repr
 
@@ -58,7 +72,7 @@ class SExpressionRenderer:
         indent_str = "  " * indent
         next_indent = indent + 1
 
-        parts = [f"({node_name}"]
+        parts = [f"({header}"]
 
         for field_name, field_value in fields:
             field_repr = self._render_field(field_name, field_value, next_indent)
@@ -66,17 +80,18 @@ class SExpressionRenderer:
 
         return "".join(parts) + ")"
 
-    def _try_compact_format(self, node_name: str, fields: List[tuple]) -> Optional[str]:
+    def _try_compact_format(self, node: ASTNode, header: str,
+                            fields: List[tuple]) -> Optional[str]:
         """Try to render as compact single-line format."""
         if not fields:
-            return f"({node_name})"
+            return f"({header})"
 
         # Special compact formats for common nodes
-        if node_name == "SimpleCommand" and len(fields) == 1 and fields[0][0] == "arguments":
+        if node.__class__.__name__ == "SimpleCommand" and len(fields) == 1 and fields[0][0] == "arguments":
             args = fields[0][1]
             if isinstance(args, list) and all(isinstance(arg, str) for arg in args):
                 args_str = " ".join(f'"{arg}"' if " " in arg else arg for arg in args)
-                return f"(SimpleCommand {args_str})"
+                return f"({header} {args_str})"
 
         # General compact format - only for small simple values
         if len(fields) <= 2 and all(self._is_simple_value(f[1]) for f in fields):
@@ -84,7 +99,7 @@ class SExpressionRenderer:
             for name, value in fields:
                 field_strs.append(f":{name} {self._format_simple_value(value)}")
 
-            result = f"({node_name} {' '.join(field_strs)})"
+            result = f"({header} {' '.join(field_strs)})"
             if len(result) <= self.max_width:
                 return result
 
@@ -160,9 +175,10 @@ class SExpressionRenderer:
         for i, operator in enumerate(operators):
             right_pipeline = pipelines[i + 1] if i + 1 < len(pipelines) else None
             if right_pipeline is not None:
-                # Create operator list: (operator left right)
-                op_symbol = "&&" if operator == "&&" else "||"
-                result = [op_symbol, result, right_pipeline]
+                # Create operator list: (operator left right). Use the actual
+                # operator string — the old "&& else ||" collapse silently
+                # rewrote any non-&& operator to ||.
+                result = [operator, result, right_pipeline]
 
         return result
 
