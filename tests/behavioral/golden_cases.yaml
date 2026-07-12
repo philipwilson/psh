@@ -4103,14 +4103,14 @@
 
 # The attrs-only merge can never CLEAR readonly (create_local ORs attributes),
 # so `local +r x` leaves x readonly (R1-extra safety). stdout + exit match bash
-# (--compare-bash checks those). The stderr message diverges — psh does not yet
-# parse `+r` as attribute-removal and reports it as an invalid identifier where
-# bash reports "x: readonly variable"; that +attr-parse gap is a documented
-# carry to T2 (declaration family), so the stderr check is skipped here.
+# (--compare-bash checks those). T2 (H5) taught `local` to parse `+attr`, so psh
+# now reports the SAME `local: x: readonly variable` bash does (modulo the $0
+# prefix) instead of the old "`+r': not a valid identifier"; the stderr check is
+# re-enabled here.
 - name: local_plus_r_cannot_strip_readonly
   command: "f(){ local -r x=1; local +r x; declare -p x; }; f"
   stdout: "declare -r x=\"1\"\n"
-  stderr: null
+  stderr: "local: x: readonly variable"
   exit_code: 0
 
 # `local`'s arg loop is CONTINUE-ON-ERROR (appraisal-H7 rider): a readonly-value
@@ -9578,6 +9578,213 @@
     declare -a s=([2]="x" [5]="y" [6]="z")
   stderr: ''
   exit_code: 0
+
+# =============================================================================
+# T2 — DECLARATION FAMILY (reappraisal #19 H5): local converges on declare
+# =============================================================================
+
+# Carry 4a: declare/typeset/readonly arg loops are CONTINUE-ON-ERROR — a
+# readonly-value redeclare (or invalid identifier) on an earlier arg is
+# reported and skipped, later valid args are still set, and the builtin returns
+# 1 (bash). Mirrors T1's local fix through the shared declaration engine.
+- name: t2_declare_multiarg_continues_after_readonly
+  command: 'readonly x=1; declare x=2 y=3; echo "y=$y"'
+  stdout: "y=3\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: t2_declare_multiarg_returns_1
+  command: 'readonly x=1; declare x=2 y=3; echo "rc=$?"'
+  stdout: "rc=1\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: t2_typeset_multiarg_continues_after_readonly
+  command: 'readonly x=1; typeset x=2 y=3; echo "y=$y"'
+  stdout: "y=3\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: t2_readonly_multiarg_continues_default
+  command: 'readonly r=1; readonly r=2 s=3; echo "s=$s"'
+  stdout: "s=3\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: t2_declare_multiarg_continues_after_invalid_id
+  command: 'declare 1bad=x y=3; echo "y=$y"'
+  stdout: "y=3\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+# Carry 4d: an explicit -a/-A + scalar NAME+=value appends onto element 0
+# through the ONE append engine, preserving the rest of the array (the old
+# explicit-a path routed the scalar into array-init and CLOBBERED the array to
+# a one-element scalar).
+- name: t2_declare_a_integer_appends_onto_array
+  command: 'a=(1 2); declare -ai a+=10; echo "${a[0]}|${a[1]}"'
+  stdout: "11|2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: t2_declare_a_upper_appends_onto_array
+  command: 'a=(ab cd); declare -au a+=x; echo "${a[0]}|${a[1]}"'
+  stdout: "ABX|cd\n"
+  stderr: ""
+  exit_code: 0
+
+- name: t2_declare_a_textual_appends_onto_array
+  command: 'a=(1 2); declare -a a+=10; echo "${a[0]}|${a[1]}"'
+  stdout: "110|2\n"
+  stderr: ""
+  exit_code: 0
+
+- name: t2_declare_A_scalar_appends_onto_assoc
+  command: 'declare -A h=([k]=5); declare -Ai h+=10; echo "${h[k]}|${h[0]}"'
+  stdout: "5|10\n"
+  stderr: ""
+  exit_code: 0
+
+- name: t2_declare_a_scalar_base_converts_and_appends
+  command: 'a=5; declare -a a+=10; echo "${a[0]}"'
+  stdout: "510\n"
+  stderr: ""
+  exit_code: 0
+
+# Carry 4c: +attr removal. declare +attr-WITH-value clears the attribute AND
+# assigns — the value is transformed with the POST-removal attributes (bash
+# removes the attribute first, so `+i n=2+3` stays the literal "2+3"). local
+# now parses +attr too (`local +x` clears export; `local +n` drops nameref;
+# `local +i n=2+3` stays literal). Closes T1's h7 +attr-parse residual.
+- name: t2_declare_plus_x_with_value_removes_export
+  command: 'declare -x v=hi; declare +x v=bye; declare -p v'
+  stdout: |
+    declare -- v="bye"
+  stderr: ""
+  exit_code: 0
+
+- name: t2_declare_plus_i_with_value_stays_literal
+  command: 'declare -ix n=5; declare +i n=2+3; declare -p n'
+  stdout: |
+    declare -x n="2+3"
+  stderr: ""
+  exit_code: 0
+
+- name: t2_local_plus_x_removes_export
+  command: 'f(){ local -x v=hi; local +x v; declare -p v; }; f'
+  stdout: |
+    declare -- v="hi"
+  stderr: ""
+  exit_code: 0
+
+- name: t2_local_plus_i_with_value_stays_literal
+  command: 'f(){ local +i n=2+3; declare -p n; }; f'
+  stdout: |
+    declare -- n="2+3"
+  stderr: ""
+  exit_code: 0
+
+- name: t2_local_plus_n_removes_nameref
+  command: 'f(){ x=t; local -n r=x; local +n r; declare -p r; }; f'
+  stdout: |
+    declare -- r="x"
+  stderr: ""
+  exit_code: 0
+
+# Item 3: local -n adopts declare -n's target-SHAPE validation (H5) — an
+# invalid nameref target is rejected at `local -n` time with rc 1 (the function
+# continues). A valid `arr[i]` shape is accepted (control).
+- name: t2_local_n_invalid_id_target_rejected
+  command: 'f(){ local -n r=1bad; echo "rc=$?"; }; f'
+  stdout: "rc=1\n"
+  stderr: "invalid variable name for name reference"
+  exit_code: 0
+
+- name: t2_local_n_space_target_rejected
+  command: 'f(){ local -n r="a b"; echo "rc=$?"; }; f'
+  stdout: "rc=1\n"
+  stderr: "invalid variable name for name reference"
+  exit_code: 0
+
+- name: t2_local_n_empty_target_rejected
+  command: 'f(){ local -n r=; echo "rc=$?"; }; f'
+  stdout: "rc=1\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+
+- name: t2_local_n_array_element_target_ok
+  command: 'f(){ local arr=(a b c); local -n r=arr[1]; echo "$r"; }; f'
+  stdout: "b\n"
+  stderr: ""
+  exit_code: 0
+
+# BOUNCE blocker 1: a DECLARED-BUT-UNSET readonly local (`local -r v` — a
+# tombstone that keeps its attributes) gets the same readonly integrity as a
+# set one. The pre-fix +attr path routed tombstones down the fresh-local
+# branch, where create_local clobbered attributes before the removal ran —
+# `local +r v` silently STRIPPED readonly (bash: rc 1, readonly kept).
+- name: t2_local_plus_r_unset_readonly_rejected
+  command: 'f(){ local -r v; local +r v; echo "rc=$?"; declare -p v; }; f'
+  stdout: "rc=1\ndeclare -r v\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+- name: t2_local_plus_r_unset_readonly_value_not_set
+  command: 'f(){ local -r v; local +r v=9; echo "rc=$?"; declare -p v; }; f'
+  stdout: "rc=1\ndeclare -r v\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# +x strips export only; READONLY survives on the tombstone (readonly guards
+# the value, not the metadata — bash `declare -r e`, rc 0).
+- name: t2_local_plus_x_unset_rx_keeps_readonly
+  command: 'f(){ local -rx e; local +x e; echo "rc=$?"; declare -p e; }; f'
+  stdout: "rc=0\ndeclare -r e\n"
+  stderr: ""
+  exit_code: 0
+
+# Value redeclare on a declared-unset readonly local is rejected too (the
+# create_local guard covers attribute-carrying tombstones; an unset-CREATED
+# tombstone had its attributes stripped, so `local x; unset x; local x=2`
+# still starts fresh — T1 semantics, pinned by the unit suite).
+- name: t2_local_value_redeclare_unset_readonly_rejected
+  command: 'f(){ local -r v; local v=2; echo "rc=$?"; declare -p v; }; f'
+  stdout: "rc=1\ndeclare -r v\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# An invalid +flag is an OPTION error, rc 2 (bash; the T2 +attr parse moved
+# this from the old rc-1 identifier fallthrough — message dialect is T3a's).
+- name: t2_local_invalid_plus_flag_rc2
+  command: 'f(){ local +z v; }; f; echo "rc=$?"'
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+# SCRIPTING-LAYER SYNTAX-ERROR RENDERING (reappraisal #19 T6)
+# The trial→execute→_report_syntax_error path renders an incomplete construct
+# and an unterminated quote as exit-2 syntax errors. Characterization pins so
+# the shared lex_parse pipeline / unified renderer cannot regress the shapes.
+# =============================================================================
+
+- name: incomplete_if_reports_syntax_error_eof
+  # `if` alone hits end of input: both shells report an unexpected-EOF syntax
+  # error and exit 2 (psh renders a richer caret form; the phrase matches).
+  command: "if"
+  stdout: ""
+  stderr: "syntax error: unexpected end of file"
+  exit_code: 2
+
+- name: unclosed_double_quote_reports_syntax_error
+  # An unterminated quote surviving line-gathering routes through the ONE
+  # canonical renderer (not the internal-defect guard): `syntax error:
+  # Unclosed ...`, exit 2. The stderr substring is psh's wording (bash says
+  # "unexpected EOF while looking for matching"), but stdout and rc match
+  # bash exactly — and the compare-bash harness compares stdout+rc only, so
+  # this earns a real bash comparison rather than a psh_only skip.
+  command: 'echo "abc'
+  stdout: ""
+  stderr: "syntax error: Unclosed"
+  exit_code: 2
 
 # =============================================================================
 # T5 (io_redirect audit): process-substitution node-carry (H1), fd-behavior

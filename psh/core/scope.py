@@ -639,6 +639,16 @@ class ScopeManager:
         # later ``local x=v`` starts fresh.
         existing_local = self.current_scope.variables.get(name)
         redeclare = existing_local is not None and not existing_local.is_unset
+        # A DECLARED-but-unset readonly local (``local -r v`` — a tombstone
+        # that KEEPS its attributes) also rejects a VALUE redeclare: bash
+        # ``local -r v; local v=2`` prints ``local: v: readonly variable``,
+        # keeps v declared-unset readonly, rc 1 (r19-T2 bounce matrix M6).
+        # An unset-CREATED tombstone (``local x; unset x``) had its attributes
+        # STRIPPED by unset_variable, so it never carries READONLY and a later
+        # ``local x=v`` still starts fresh (the T1 semantics, pinned).
+        if (existing_local is not None and existing_local.is_unset
+                and existing_local.is_readonly and value is not None):
+            raise ReadonlyVariableError(name)
         if redeclare:
             assert existing_local is not None  # narrow for type-checker
             # A same-scope redeclare that ASSIGNS A VALUE to an already-readonly
