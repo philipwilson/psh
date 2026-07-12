@@ -205,6 +205,10 @@ class TestAnsiCEncode:
         assert not has_control_char('abc')
         assert not has_control_char('')
         # High byte U+00FF is NOT a control char (byte-model: stays printable).
+        # DELIBERATE DIVERGENCE: bash renders a raw 0xff byte as $'\377' on all
+        # four reuse surfaces; psh's str-based byte model keeps it printable
+        # text. Pre-existing (byte-model M8 family), unchanged by T11, recorded
+        # in the campaign deferred-divergence ledger.
         assert not has_control_char('\xff')
 
 
