@@ -965,8 +965,20 @@ class ScopeManager:
         name is dropped from ``export -p``), which is bash-correct and DIFFERS
         from ``sync_exports_to_environment`` — see P8-probes/07.
         """
-        return [var for _name, var in self.iter_effective_variables()
-                if var.is_exported and not var.is_array]
+        exported = [var for _name, var in self.iter_effective_variables()
+                    if var.is_exported and not var.is_array]
+        # Option-reflection specials (SHELLOPTS/BASHOPTS) have no stored cell
+        # but ARE listed by ``export -p`` WHEN exported — bash: ``export
+        # SHELLOPTS; export -p`` shows ``declare -rx SHELLOPTS="..."`` (P8-
+        # probes/02). Injected subject to the SAME exported filter, so the
+        # default (unexported) case still omits them, exactly like bash. They
+        # are readonly with no shadowing stored cell, so no de-dup is needed.
+        for name in OPTION_REFLECTION_SPECIALS:
+            special = self._get_special_variable(name)
+            if (special is not None and special.is_exported
+                    and not special.is_array):
+                exported.append(special)
+        return exported
 
     def find_exported_instance(self, name: str) -> Optional[Variable]:
         """Innermost EXPORTED, non-array, non-unset instance of *name*, else None.
