@@ -125,10 +125,6 @@ class DirectoryStack:
     def __init__(self):
         self.stack = []  # Stack of directories, index 0 is current
 
-    def initialize(self, current_dir: str):
-        """Initialize stack with current directory."""
-        self.stack = [current_dir]
-
     def copy(self) -> 'DirectoryStack':
         """Independent copy for a subshell-style child (ShellState.adopt):
         (dirs) shows the parent's stack; a child's pushd must not leak back.

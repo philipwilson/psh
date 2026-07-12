@@ -74,37 +74,40 @@ class MapfileBuiltin(Builtin):
         # Parse options via the shared getopt-style walker: -t is boolean; the
         # value flags carry a value ("-tn2" == "-t -n 2"). -C (callback) and -c
         # (quantum) take a value too (so they cluster/consume correctly) but psh
-        # does not implement callbacks — rejected with a specific message below.
-        # Invalid option / missing option-value is a usage error (bash status 2)
-        # reported by parse_flags_ordered; bad option VALUES are status 1
-        # (the _OptionError rc), and the ordered walk reports the FIRST one.
-        events, operands = self.parse_flags_ordered(
-            args, shell, flags='t', value_flags='dnOsuCc')
-        if events is None:
-            return 2
+        # does not implement callbacks — rejected in the hook with a specific
+        # message. Invalid option / missing option-value is a usage error
+        # (bash status 2) reported by parse_flags_ordered; bad option VALUES
+        # are status 1 (the _OptionError rc). The check hook validates and
+        # stores each value AT ITS argv event, so combined errors keep bash's
+        # first-in-argv precedence regardless of class (`mapfile -n xx -Z`
+        # reports the bad count rc 1, not the later invalid option rc 2;
+        # probe-pinned).
+        def _apply(ch: str, val: str) -> None:
+            nonlocal delim, count, origin, skip, fd, have_origin
+            if ch in ('C', 'c'):
+                raise _OptionError(
+                    f"-{ch}: callback option not supported", 2)
+            if ch == 'd':
+                delim = val[0] if val else '\0'
+            elif ch == 'n':
+                count = self._count(val)
+            elif ch == 'O':
+                origin = self._origin(val)
+                have_origin = True
+            elif ch == 's':
+                skip = self._count(val)
+            elif ch == 'u':
+                fd = self._fd(val)
+
         try:
-            for ch, val in events:
-                if ch in ('C', 'c'):
-                    self.error(f"-{ch}: callback option not supported", shell)
-                    return 2
-                if ch == 't':
-                    strip = True
-                    continue
-                assert val is not None  # value flag: parse_flags_ordered ensured it
-                if ch == 'd':
-                    delim = val[0] if val else '\0'
-                elif ch == 'n':
-                    count = self._count(val)
-                elif ch == 'O':
-                    origin = self._origin(val)
-                    have_origin = True
-                elif ch == 's':
-                    skip = self._count(val)
-                elif ch == 'u':
-                    fd = self._fd(val)
+            events, operands = self.parse_flags_ordered(
+                args, shell, flags='t', value_flags='dnOsuCc', check=_apply)
         except _OptionError as e:
             self.error(str(e), shell)
             return e.rc
+        if events is None:
+            return 2
+        strip = any(ch == 't' for ch, _ in events)
 
         rest = operands
         # bash uses the first non-option argument as the array and ignores any

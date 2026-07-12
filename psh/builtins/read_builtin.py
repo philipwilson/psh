@@ -444,21 +444,18 @@ class ReadBuiltin(Builtin):
         ``--`` ends option processing. An invalid option OR a missing
         option-argument is a usage error (bash status 2):
         ``parse_flags_ordered`` prints the message + usage line and we return
-        ``(None, None)`` so ``execute`` returns 2. Invalid option *values* (bad
+        ``None`` so ``execute`` returns 2. Invalid option *values* (bad
         timeout/count/fd) raise ValueError with ``rc=1`` — bash distinguishes
-        usage errors from value errors, and the FIRST bad value in argv order
-        is the one reported (hence the ordered walk).
+        usage errors from value errors. Values are validated by the walk's
+        ``check`` hook AT their argv event, so combined errors keep bash's
+        first-in-argv precedence regardless of class (``read -t abc -Z``
+        reports the bad timeout rc 1, not the later invalid option rc 2;
+        probe-pinned).
 
         Returns:
             (options dict, variable names) — or None on a usage error
             already reported to stderr.
         """
-        events, operands = self.parse_flags_ordered(
-            args, shell, flags=''.join(self._FLAG_OPTS),
-            value_flags=''.join(self._ARG_OPTS))
-        if events is None:
-            return None
-
         options: Dict[str, Any] = {
             'raw_mode': False,
             'silent': False,
@@ -472,14 +469,21 @@ class ReadBuiltin(Builtin):
             'array_name': None
         }
 
-        for char, value in events:
+        def _apply(char: str, value: str) -> None:
+            # Validates AND stores at the option's argv event (may raise
+            # ValueError with rc=1; the walk propagates to execute's handler).
+            self._apply_arg_option(char, value, options)
+
+        events, operands = self.parse_flags_ordered(
+            args, shell, flags=''.join(self._FLAG_OPTS),
+            value_flags=''.join(self._ARG_OPTS), check=_apply)
+        if events is None:
+            return None
+
+        for char, _value in events:
             if char in self._FLAG_OPTS:
                 options[self._FLAG_OPTS[char]] = True
-            else:
-                # A value flag always carries a value (else parse_flags_ordered
-                # would have reported the missing argument above).
-                assert value is not None
-                self._apply_arg_option(char, value, options)
+            # Value flags were already validated and stored by the hook.
 
         # Variable names are ignored when using -a option
         if options['array_name']:

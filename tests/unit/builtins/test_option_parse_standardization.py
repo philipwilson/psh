@@ -164,6 +164,86 @@ class TestExecHashMissingValueUsage:
         assert 'hash: usage:' in r.stderr
 
 
+# ----- combined-error precedence: first-in-argv error wins ----------------
+# bash reports whichever error comes FIRST in argv, regardless of class
+# (value error rc 1 vs usage error rc 2). The walk's check hook validates
+# each option-value AT ITS EVENT, restoring the pre-migration precedence
+# (probe tmp/r19-ledgers/T3-probes/t3a-precedence-*.txt).
+
+class TestCombinedErrorPrecedence:
+    def test_mapfile_value_error_before_invalid_option(self):
+        # Red-on-tip-11e40745: reported '-Z: invalid option' rc 2; bash and
+        # the pre-migration walk report the earlier bad VALUE, rc 1.
+        r = _run('mapfile -n xx -Z arr', stdin='a\n')
+        assert r.returncode == 1
+        assert 'mapfile: xx: invalid line count' in r.stderr
+        assert '-Z' not in r.stderr
+
+    def test_mapfile_invalid_option_before_value_error(self):
+        # Symmetric branch: -Z first in argv wins (rc 2 + usage).
+        r = _run('mapfile -Z -n xx arr', stdin='a\n')
+        assert r.returncode == 2
+        assert 'mapfile: -Z: invalid option' in r.stderr
+        assert 'invalid line count' not in r.stderr
+
+    def test_mapfile_value_error_before_callback_rejection(self):
+        r = _run('mapfile -n xx -C cb arr', stdin='a\n')
+        assert r.returncode == 1
+        assert 'mapfile: xx: invalid line count' in r.stderr
+        assert 'callback' not in r.stderr
+
+    def test_read_value_error_before_invalid_option(self):
+        # Red-on-tip-11e40745: reported '-Z: invalid option' rc 2.
+        r = _run('read -t abc -Z v', stdin='x\n')
+        assert r.returncode == 1
+        assert 'read: abc: invalid timeout specification' in r.stderr
+        assert '-Z' not in r.stderr
+
+    def test_read_invalid_option_before_value_error(self):
+        r = _run('read -Z -t abc v', stdin='x\n')
+        assert r.returncode == 2
+        assert 'read: -Z: invalid option' in r.stderr
+        assert 'invalid timeout' not in r.stderr
+
+    def test_read_value_error_before_missing_argument(self):
+        # Red-on-tip-11e40745: reported '-n: option requires an argument'
+        # rc 2; bash reports the earlier bad timeout value, rc 1.
+        r = _run('read -t abc -n', stdin='x\n')
+        assert r.returncode == 1
+        assert 'read: abc: invalid timeout specification' in r.stderr
+        assert 'requires an argument' not in r.stderr
+
+    def test_ulimit_platform_absent_letter_first_wins(self):
+        # bash reports the FIRST invalid letter; a platform-absent resource
+        # (-x/RLIMIT_LOCKS on macOS) is invalid AT ITS EVENT, so it beats a
+        # later -Z. Red-on-tip-11e40745 (tip reported -Z).
+        import resource
+        if getattr(resource, 'RLIMIT_LOCKS', None) is not None:
+            import pytest
+            pytest.skip('RLIMIT_LOCKS present on this platform')
+        r = _run('ulimit -x -Z')
+        assert r.returncode == 2
+        assert 'ulimit: -x: invalid option' in r.stderr
+        assert '-Z' not in r.stderr
+
+    def test_ulimit_p_is_post_scan_so_later_invalid_wins(self):
+        # bash scans the whole option word set before acting on -p, so the
+        # LATER -Z wins here (probe) — a guard against "fixing" this to
+        # naive first-in-argv for -p.
+        r = _run('ulimit -p -Z')
+        assert r.returncode == 2
+        assert 'ulimit: -Z: invalid option' in r.stderr
+        assert 'pipe size' not in r.stderr
+
+    def test_wait_p_invalid_identifier(self):
+        # Sweep finding: bash validates the -p VAR name at its event
+        # ("`1bad': not a valid identifier", rc 1, does not wait); psh
+        # (base and tip) silently accepted it. Red-on-tip-11e40745.
+        r = _run('sleep 0.01 & wait -p 1bad')
+        assert r.returncode == 1
+        assert "wait: `1bad': not a valid identifier" in r.stderr
+
+
 # ----- source: third PATH walk -> resolver.search_path(mode=R_OK) ---------
 
 class TestSourcePathWalk:

@@ -432,6 +432,16 @@ class WaitBuiltin(Builtin):
         wait_n = opts['n']
         pid_var = opts['p']
 
+        # bash validates the -p VAR name only AFTER a complete option scan
+        # (an invalid option elsewhere wins: `wait -p 1bad -x` reports -x —
+        # probe-pinned), then fails rc 1 WITHOUT waiting. Same identifier
+        # policy as read/mapfile targets (posix => ASCII-only).
+        if pid_var is not None:
+            from ..lexer.unicode_support import is_valid_name
+            if not is_valid_name(pid_var, shell.state.options.get('posix', False)):
+                self.error(f"`{pid_var}': not a valid identifier", shell)
+                return 1
+
         # bash unsets the -p VAR up front (before waiting) and sets it only when
         # a job is actually reported. So a wait that reports nothing — a
         # non-child pid, an invalid pid, %nonexistent, or a bare wait-for-all —

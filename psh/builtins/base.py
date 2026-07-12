@@ -4,7 +4,7 @@ import os
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, List, Mapping, Optional, Tuple
 
 if TYPE_CHECKING:
     from ..ast_nodes import ArrayInitialization
@@ -201,7 +201,8 @@ class Builtin(ABC):
         stderr.flush()
 
     def parse_flags_ordered(self, args: List[str], shell: 'Shell',
-                            flags: str = '', value_flags: str = ''
+                            flags: str = '', value_flags: str = '',
+                            check: Optional[Callable[[str, str], None]] = None
                             ) -> Tuple[Optional[List[Tuple[str, Optional[str]]]],
                                        List[str]]:
         """Parse leading options, preserving their argv ORDER (getopt-style).
@@ -218,6 +219,19 @@ class Builtin(ABC):
             args: Full argv including the command name at args[0].
             flags: Characters allowed as boolean flags (clusterable: -ab).
             value_flags: Characters that consume an argument (-d X or -dX).
+            check: Optional per-builtin value validator, called as
+                ``check(flag_char, value)`` for each VALUE event *at its argv
+                position*. It must RAISE (the builtin's own exception type)
+                to reject the value; the walk propagates, so the builtin's
+                existing handler reports the message with its own exit code
+                (``read``: ValueError rc 1; ``mapfile``: _OptionError). This
+                is what keeps combined-error precedence bash-shaped: the
+                FIRST error in argv wins regardless of class
+                (``mapfile -n xx -Z`` reports the bad count, rc 1 — not the
+                later invalid option, rc 2; probe-pinned). Validation bash
+                performs only after a complete option scan (``wait -p``'s
+                identifier check, ``ulimit``'s ``-p`` rejection) belongs
+                AFTER the walk, not in the hook.
 
         Returns:
             (events, operands). ``events`` is a list of ``(flag_char, value)``
@@ -243,14 +257,17 @@ class Builtin(ABC):
                 if ch in value_flags:
                     rest = arg[pos + 2:]
                     if rest:
-                        events.append((ch, rest))
+                        value = rest
                     elif i + 1 < len(args):
                         i += 1
-                        events.append((ch, args[i]))
+                        value = args[i]
                     else:
                         self.error(f"-{ch}: option requires an argument", shell)
                         self.usage(f"usage: {self.synopsis}", shell)
                         return None, args
+                    if check is not None:
+                        check(ch, value)  # raises to reject, AT this event
+                    events.append((ch, value))
                     break
                 elif ch in flags:
                     events.append((ch, None))
@@ -262,7 +279,8 @@ class Builtin(ABC):
         return events, args[i:]
 
     def parse_flags(self, args: List[str], shell: 'Shell',
-                    flags: str = '', value_flags: str = ''
+                    flags: str = '', value_flags: str = '',
+                    check: Optional[Callable[[str, str], None]] = None
                     ) -> Tuple[Optional[dict], List[str]]:
         """Parse leading single-dash options from args (getopt-style).
 
@@ -273,6 +291,8 @@ class Builtin(ABC):
             args: Full argv including the command name at args[0].
             flags: Characters allowed as boolean flags (clusterable: -ab).
             value_flags: Characters that consume an argument (-d X or -dX).
+            check: Optional per-value validator, forwarded to
+                :meth:`parse_flags_ordered` (see there for the contract).
 
         Returns:
             (opts, operands). opts maps each declared flag char to
@@ -283,7 +303,7 @@ class Builtin(ABC):
             ``return 2``. A later duplicate of a flag wins.
         """
         events, operands = self.parse_flags_ordered(
-            args, shell, flags, value_flags)
+            args, shell, flags, value_flags, check=check)
         if events is None:
             return None, args
         opts: dict = {c: False for c in flags}
