@@ -3,7 +3,7 @@ import os
 import signal
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from ..executor.job_control import (
+from ..core.job_state import (
     JobSpecOutcome,
     JobState,
     jobspec_error_messages,
@@ -469,7 +469,7 @@ class WaitBuiltin(Builtin):
         """
         import os
 
-        from ..executor.job_control import JobState
+        from ..core.job_state import JobState
         jm = shell.job_manager
 
         # Restrict to the requested jobs (operands), or all jobs when none.
@@ -697,5 +697,5 @@ class WaitBuiltin(Builtin):
 
     def _extract_exit_status(self, status: int) -> int:
         """Extract exit status from waitpid status."""
-        from ..executor.job_control import exit_status_from_wait_status
+        from ..core.job_state import exit_status_from_wait_status
         return exit_status_from_wait_status(status)

@@ -6,6 +6,7 @@ Modules:
     options          - Shell option behaviour handlers
     scope   - Hierarchical variable scope management
     internal_errors  - Last-resort guard for unexpected internal exceptions
+    job_state        - Shared job-control vocabulary (state enum, jobspec types)
     state            - Central shell state container
     trap_manager     - Signal trap management
     variables        - Variable types, attributes, and array implementations
@@ -36,6 +37,13 @@ from .internal_errors import (
     report_internal_defect,
     special_builtin_usage_discard,
     special_builtin_usage_exit,
+)
+from .job_state import (
+    JobSpecOutcome,
+    JobSpecResult,
+    JobState,
+    exit_status_from_wait_status,
+    jobspec_error_messages,
 )
 from .options import OptionHandler
 from .scope import ScopeManager, VariableScope
@@ -83,4 +91,10 @@ __all__ = [
     # Assignment utilities
     'is_valid_assignment',
     'resolve_append_assignment',
+    # Job-control vocabulary (shared with the job builtins)
+    'JobState',
+    'JobSpecOutcome',
+    'JobSpecResult',
+    'jobspec_error_messages',
+    'exit_status_from_wait_status',
 ]
