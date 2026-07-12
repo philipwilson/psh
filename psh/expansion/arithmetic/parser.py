@@ -20,14 +20,26 @@ from .tokens import ArithToken, ArithTokenType
 class ArithParser:
     """Recursive descent parser for arithmetic expressions"""
 
-    # Maximum expression-nesting depth (parentheses, ternaries, unary
-    # chains). An EXPLICIT guard so a genuinely too-deep expression fails
-    # deterministically with "expression too deeply nested" — while a
-    # RecursionError from arithmetic is now always what it looks like
-    # (the surrounding shell exhausted the stack, e.g. runaway function
-    # recursion) and propagates to the function-call boundary instead of
-    # being mislabeled as an arithmetic error. 1024 levels * ~15 frames
-    # per level stays comfortably inside the interpreter limit raised by
+    # Maximum expression-NESTING depth. An EXPLICIT guard so a too-deep
+    # expression fails deterministically with "expression too deeply nested".
+    # It is carried by exactly the grammar rules that recurse DIRECTLY (not via
+    # the iterative while-loop precedence levels): parse_ternary (parentheses
+    # re-enter through parse_comma, and ternary arms), parse_unary (unary-
+    # operator chains), and parse_power (right-associative `**` chains). Those
+    # are the parse-side stack-growth paths; a flat operator chain like
+    # `0+1+1+...` is instead built ITERATIVELY here (no parser recursion) and
+    # its EVALUATION-side depth is bounded separately by
+    # ArithmeticEvaluator.MAX_EVAL_DEPTH.
+    #
+    # Because every arithmetic recursion path — parse nesting, `**` chains,
+    # and evaluation width — is bounded by one of these two guards, a
+    # RecursionError from arithmetic is always what it looks like: the
+    # SURROUNDING shell exhausted the interpreter stack (e.g. runaway function
+    # recursion whose deepest frame merely happened to be in arithmetic). It is
+    # NOT relabeled as an arithmetic error; it propagates to the function-call
+    # boundary, which reports "maximum function nesting level exceeded"
+    # (executor/function.py). 1024 levels * ~15 frames per level stays
+    # comfortably inside the interpreter limit raised by
     # psh.shell.RECURSION_LIMIT (40,000).
     MAX_DEPTH = 1024
 
@@ -244,10 +256,19 @@ class ArithParser:
         """Parse exponentiation (**)"""
         left = self.parse_unary()
 
-        # Right associative
+        # Right associative. A `**` chain recurses here directly (like the
+        # unary chain in parse_unary), bypassing parse_ternary, so it carries
+        # its own copy of the depth guard — otherwise a long `1**1**...` chain
+        # would overflow the Python stack with a raw RecursionError.
         if self.match(ArithTokenType.POWER):
             op = self.advance().type
-            right = self.parse_power()  # Right associative recursion
+            self._depth += 1
+            try:
+                if self._depth > self.MAX_DEPTH:
+                    raise SyntaxError("expression too deeply nested")
+                right = self.parse_power()  # Right-associative recursion
+            finally:
+                self._depth -= 1
             return BinaryOpNode(op, left, right)
 
         return left

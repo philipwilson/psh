@@ -63,8 +63,15 @@ def _trunc_div(left: int, right: int) -> int:
 class ArithmeticEvaluator:
     """Evaluate arithmetic AST nodes"""
 
+    # Maximum evaluation (AST-recursion) depth; see :meth:`evaluate`. Bounds
+    # the WIDTH of a flat operator chain the parser builds iteratively, the
+    # evaluation-side companion to ArithParser.MAX_DEPTH's parse-side NESTING
+    # bound.
+    MAX_EVAL_DEPTH = 1024
+
     def __init__(self, shell):
         self.shell = shell
+        self._eval_depth = 0
 
     def get_variable(self, name: str) -> int:
         """Get variable value, converting to integer.
@@ -267,7 +274,30 @@ class ArithmeticEvaluator:
     }
 
     def evaluate(self, node: ArithNode) -> int:
-        """Evaluate an arithmetic AST node."""
+        """Evaluate an arithmetic AST node, bounding evaluation-recursion depth.
+
+        A WIDE flat operator chain (`0+1+1+...`) is parsed iteratively into a
+        deep left-leaning tree, which _dispatch recurses over ~a few Python
+        frames per node. MAX_EVAL_DEPTH bounds that recursion so a
+        pathologically long chain trips a clean "expression too deeply nested"
+        arithmetic error instead of a raw RecursionError. This is the
+        evaluation-side companion to ArithParser.MAX_DEPTH (which bounds
+        parse-side NESTING and `**` chains); together they guarantee no
+        arithmetic recursion path reaches Python's limit, so a RecursionError
+        from arithmetic always means the SURROUNDING shell exhausted the stack.
+        (bash computes such chains; psh's cap is a documented divergence.)
+        """
+        self._eval_depth += 1
+        try:
+            if self._eval_depth > self.MAX_EVAL_DEPTH:
+                raise ShellArithmeticError("expression too deeply nested")
+            return self._dispatch(node)
+        finally:
+            self._eval_depth -= 1
+
+    def _dispatch(self, node: ArithNode) -> int:
+        """Dispatch a node to its evaluator (the depth-guarded body of
+        :meth:`evaluate`)."""
         if isinstance(node, NumberNode):
             # A literal wraps to signed 64-bit like any operation result, so
             # a bare/compared/subscript literal >= 2**63 matches bash (e.g.
@@ -476,14 +506,16 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
         return evaluator.evaluate(ast)
 
     except (SyntaxError, ShellArithmeticError) as e:
-        # A genuinely too-deep expression arrives here as ArithParser's
-        # explicit depth-guard SyntaxError ("expression too deeply nested").
-        # A RecursionError, by contrast, means the SURROUNDING shell
-        # exhausted the interpreter stack (runaway function recursion whose
-        # deepest frame merely happened to be in arithmetic) — it must NOT
-        # be relabeled as an arithmetic error; it propagates to the
-        # function-call boundary, which reports "maximum function nesting
-        # level exceeded".
+        # A too-deep expression arrives here as an EXPLICIT depth-guard error
+        # ("expression too deeply nested"): from ArithParser.MAX_DEPTH (nesting
+        # + right-associative `**` chains) or from the evaluator's own
+        # MAX_EVAL_DEPTH guard (wide flat chains). A RecursionError, by
+        # contrast, is NOT converted here: with every arithmetic recursion
+        # path bounded by those guards, a RecursionError reaching this point
+        # means the SURROUNDING shell exhausted the interpreter stack (runaway
+        # function recursion whose deepest frame merely happened to be in
+        # arithmetic) — it propagates to the function-call boundary, which
+        # reports "maximum function nesting level exceeded" (executor/function.py).
         raise ShellArithmeticError(str(e)) from e
     except (ValueError, OverflowError, MemoryError) as e:
         raise ShellArithmeticError(str(e)) from e
