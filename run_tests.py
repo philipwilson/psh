@@ -300,6 +300,29 @@ def parse_summary_counts(output):
     return counts
 
 
+def golden_case_counts():
+    """(total, psh_only, comparisons) read from golden_cases.yaml at runtime.
+
+    The compare-bash phase runs one psh-vs-bash comparison per non-``psh_only``
+    golden case. Reporting a hardcoded total drifted every time a case was added
+    (the banner froze at 1,119 and was 188 cases stale before this was
+    computed). ``comparisons`` is ``total - psh_only``. Returns ``(0, 0, 0)`` if
+    pyyaml or the file is unavailable so the banner degrades gracefully rather
+    than crashing the run.
+    """
+    try:
+        import yaml
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            'tests', 'behavioral', 'golden_cases.yaml')
+        with open(path) as f:
+            cases = yaml.safe_load(f)
+        total = len(cases)
+        psh_only = sum(1 for c in cases if c.get('psh_only', False))
+        return total, psh_only, total - psh_only
+    except Exception:
+        return 0, 0, 0
+
+
 def print_census(phase_outputs):
     """Print a skip/xfail breakdown with reasons, aggregated across phases.
 
@@ -604,14 +627,17 @@ def _run(args, results_path):
         #       Safety proof: the identical psh commands already run concurrently
         #       across all workers as `test_golden` in the green Phase 1.
         if args.compare_bash:
+            total, psh_only, comparisons = golden_case_counts()
             emit("\n" + "-" * 80)
-            emit("COMPARE-BASH COUNTING CHANGED (campaign #21, item b):")
-            emit("  This phase now runs ONLY the bash-comparison variant")
+            emit("COMPARE-BASH phase (comparison-only; campaign #21, item b):")
+            emit("  Runs ONLY the psh-vs-bash comparison variant")
             emit("  (test_golden_bash_comparison), NOT the psh-only test_golden")
-            emit("  that already ran in Phase 1. New canonical total:")
-            emit("      1,119 passed / 0 failed / 23 skipped (psh_only cases)")
-            emit("  (was 2,261/0/23 = 1142 test_golden + 1119 comparison).")
-            emit("  Reconciliation anchor for future campaigns: 1,119 pairs.")
+            emit("  that already ran in Phase 1. Counts are computed from")
+            emit("  tests/behavioral/golden_cases.yaml at runtime (a frozen number")
+            emit("  here went 188 cases stale before this became live):")
+            emit(f"      {comparisons:,} comparison pairs / {psh_only} skipped "
+                 "(psh_only cases)")
+            emit(f"      out of {total:,} golden cases total.")
             emit("-" * 80)
             cmd = base_cmd + [
                 'tests/behavioral/test_golden_behavior.py',
