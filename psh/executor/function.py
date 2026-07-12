@@ -3,7 +3,8 @@ Function operations support for the PSH executor.
 
 This module handles function definition and execution operations.
 """
-from typing import TYPE_CHECKING, List, Optional
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Iterator, List, Optional
 
 from ..core import LoopBreak, LoopContinue, TopLevelAbort, UnboundVariableError, report_internal_defect
 from ..core.exceptions import FunctionDefinitionError, FunctionReturn
@@ -111,6 +112,107 @@ class FunctionOperationExecutor:
         # Extract the actual body from the Function object
         func_body = func.body
 
+        # DEBUG/RETURN traps are not inherited into the function body unless
+        # functrace (set -T) or the function's trace attribute (declare -ft)
+        # is set. DEBUG uses a fire-time check (_inherited_into_function);
+        # RETURN uses bash's observable HIDING model — the hide/restore pair
+        # lives in _function_frame with the rest of the frame bookkeeping.
+        trap_manager = self.shell.trap_manager
+        inherits_trace_traps = bool(
+            self.shell.state.options.get('functrace')) or func.trace
+
+        with self._function_frame(name, args, context, inherits_trace_traps):
+            try:
+                # Execute function body, applying any definition-attached
+                # redirections (f() { ...; } > file) at each call (bash). A bad
+                # redirect target prints bash's diagnostic and yields False, so
+                # the body does not run — the call returns 1 (matching the
+                # simple- and compound-command redirect-error format).
+                try:
+                    # bash additionally fires the DEBUG trap on function ENTRY
+                    # when the trap is inherited (set -T): `f` fires once as the
+                    # calling simple command and once here, before the body's
+                    # own commands. execute_debug_trap's inheritance check makes
+                    # this a no-op without functrace ($BASH_COMMAND is still the
+                    # call's text). Inside the inner try so a `return` in the
+                    # action returns from THIS function (bash).
+                    trap_manager.execute_debug_trap()
+
+                    if func.redirects:
+                        with self.shell.io_manager.guarded_redirections(
+                                func.redirects) as applied:
+                            if not applied:
+                                return 1
+                            exit_code = visitor.visit(func_body)
+                    else:
+                        exit_code = visitor.visit(func_body)
+                except FunctionReturn as fr:
+                    # Handle return statement
+                    exit_code = fr.exit_code
+                # The RETURN trap fires while the function context is still in
+                # place (FUNCNAME/locals visible; $? = the last command's status
+                # from BEFORE the return) — bash. Not on `exit` (SystemExit
+                # skips this). A `return` in the action overrides the status.
+                override = trap_manager.execute_return_trap()
+                if override is not None:
+                    exit_code = override
+                return exit_code
+            except (LoopBreak, LoopContinue):
+                # break/continue must NOT cross the function boundary (bash).
+                # With loop_depth reset to 0 on entry, an in-function loop
+                # always catches its own and `break`/`continue` with no
+                # enclosing loop returns 0 without raising — so this is
+                # unreachable in practice; swallow defensively rather than leak
+                # into the caller's loop.
+                return self.shell.state.last_exit_code
+            except UnboundVariableError:
+                # Let unbound variable errors propagate
+                raise
+            except RecursionError:
+                # The interpreter recursion limit is psh's implicit FUNCNEST: a
+                # runaway recursive function exhausts Python frames long before
+                # anything else. Convert it at the function-call boundary into
+                # bash's FUNCNEST diagnostic and abort the current top-level
+                # command (bash with FUNCNEST=N prints "NAME: maximum function
+                # nesting level exceeded (N)", status 1, and resumes at the next
+                # input line — exactly what _check_funcnest does). The innermost
+                # call frame catches it first, so the message names the function
+                # actually recursing and prints exactly once; TopLevelAbort is a
+                # BaseException, so it unwinds past every enclosing guard while
+                # each frame's ``_function_frame`` teardown still restores
+                # scope/params.
+                print(f"psh: {name}: maximum function nesting level exceeded",
+                      file=self.shell.state.stderr)
+                self.shell.state.last_exit_code = 1
+                raise TopLevelAbort(1) from None
+            except Exception as e:
+                # Last-resort guard: a defect inside the function body. Keep the
+                # shell alive (or re-raise under strict-errors) — see
+                # report_internal_defect for the policy.
+                return report_internal_defect(
+                    self.shell.state, e, prefix=f"{name}: ",
+                    stream=self.shell.state.stderr)
+
+    @contextmanager
+    def _function_frame(self, name: str, args: List[str],
+                        context: 'ExecutionContext',
+                        inherits_trace_traps: bool) -> Iterator[None]:
+        """Set up one function-call frame and ALWAYS tear it down.
+
+        Structural home of the frame-symmetry invariant: every piece of
+        caller context saved here is restored in the ``finally`` below, on
+        EVERY exit path — a plain return, ``FunctionReturn``, and
+        BaseExceptions (``TopLevelAbort``, ``SystemExit``) alike, since a
+        generator context manager's ``finally`` runs on ``gen.throw`` too.
+        Adding a new per-frame field means adding its save+restore HERE,
+        next to the five existing pairs — not in a distant ``finally``.
+        The body and its exception policy stay in ``execute_function_call``;
+        this manager never swallows an exception.
+
+        The frame is: ``context.current_function``, ``context.loop_depth``,
+        the positional parameters, one pushed variable scope, one
+        ``function_stack`` entry, and the hidden RETURN trap.
+        """
         # Save current context
         old_function = context.current_function
         old_positional_params = self.shell.state.positional_params[:]
@@ -143,87 +245,16 @@ class FunctionOperationExecutor:
         # Push function onto stack for return builtin
         self.shell.state.function_stack.append(name)
 
-        # DEBUG/RETURN traps are not inherited into the function body unless
-        # functrace (set -T) or the function's trace attribute (declare -ft)
-        # is set. DEBUG uses a fire-time check (_inherited_into_function);
-        # RETURN uses bash's observable HIDING model: the trap is removed for
-        # the function's extent (trap -p inside lists nothing; a trap the
+        # RETURN-trap hiding (bash's observable model): the trap is removed
+        # for the function's extent (trap -p inside lists nothing; a trap the
         # body sets fires at THIS function's return and persists) and
         # restored on exit only if the body didn't install its own.
         trap_manager = self.shell.trap_manager
-        inherits_trace_traps = bool(
-            self.shell.state.options.get('functrace')) or func.trace
         hidden_return_trap = (None if inherits_trace_traps
                               else trap_manager.hide_return_trap_on_function_entry())
 
         try:
-            # Execute function body, applying any definition-attached
-            # redirections (f() { ...; } > file) at each call (bash). A bad
-            # redirect target prints bash's diagnostic and yields False, so the
-            # body does not run — the call returns 1 (matching the simple- and
-            # compound-command redirect-error format).
-            try:
-                # bash additionally fires the DEBUG trap on function ENTRY
-                # when the trap is inherited (set -T): `f` fires once as the
-                # calling simple command and once here, before the body's own
-                # commands. execute_debug_trap's inheritance check makes this
-                # a no-op without functrace ($BASH_COMMAND is still the
-                # call's text). Inside the inner try so a `return` in the
-                # action returns from THIS function (bash).
-                trap_manager.execute_debug_trap()
-
-                if func.redirects:
-                    with self.shell.io_manager.guarded_redirections(
-                            func.redirects) as applied:
-                        if not applied:
-                            return 1
-                        exit_code = visitor.visit(func_body)
-                else:
-                    exit_code = visitor.visit(func_body)
-            except FunctionReturn as fr:
-                # Handle return statement
-                exit_code = fr.exit_code
-            # The RETURN trap fires while the function context is still in
-            # place (FUNCNAME/locals visible; $? = the last command's status
-            # from BEFORE the return) — bash. Not on `exit` (SystemExit
-            # skips this). A `return` in the action overrides the status.
-            override = trap_manager.execute_return_trap()
-            if override is not None:
-                exit_code = override
-            return exit_code
-        except (LoopBreak, LoopContinue):
-            # break/continue must NOT cross the function boundary (bash). With
-            # loop_depth reset to 0 on entry, an in-function loop always catches
-            # its own and `break`/`continue` with no enclosing loop returns 0
-            # without raising — so this is unreachable in practice; swallow
-            # defensively rather than leak into the caller's loop.
-            return self.shell.state.last_exit_code
-        except UnboundVariableError:
-            # Let unbound variable errors propagate
-            raise
-        except RecursionError:
-            # The interpreter recursion limit is psh's implicit FUNCNEST: a
-            # runaway recursive function exhausts Python frames long before
-            # anything else. Convert it at the function-call boundary into
-            # bash's FUNCNEST diagnostic and abort the current top-level
-            # command (bash with FUNCNEST=N prints "NAME: maximum function
-            # nesting level exceeded (N)", status 1, and resumes at the next
-            # input line — exactly what _check_funcnest does). The innermost
-            # call frame catches it first, so the message names the function
-            # actually recursing and prints exactly once; TopLevelAbort is a
-            # BaseException, so it unwinds past every enclosing guard while
-            # each frame's ``finally`` still restores scope/params.
-            print(f"psh: {name}: maximum function nesting level exceeded",
-                  file=self.shell.state.stderr)
-            self.shell.state.last_exit_code = 1
-            raise TopLevelAbort(1) from None
-        except Exception as e:
-            # Last-resort guard: a defect inside the function body. Keep the
-            # shell alive (or re-raise under strict-errors) — see
-            # report_internal_defect for the policy.
-            return report_internal_defect(
-                self.shell.state, e, prefix=f"{name}: ",
-                stream=self.shell.state.stderr)
+            yield
         finally:
             # Restore a RETURN trap hidden on entry (no-op if the body
             # installed its own — that one persists, bash).
