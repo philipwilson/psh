@@ -42,7 +42,7 @@ class FieldExpansionMixin(_Base):
 
         # ${!a[@]}: indices/keys, one field per key (no further operators).
         if operator == '!' and param.endswith('[@]'):
-            return self.expand_array_to_list('${!' + param + '}')
+            return self.array_fields(param[:-3], keys=True)
 
         # ${!ref}: plain indirection. If ref is a plain variable whose VALUE
         # names an [@]-subscripted array (ref="a[@]"), the indirection produces
@@ -57,7 +57,7 @@ class FieldExpansionMixin(_Base):
                 target = self.state.get_variable(param)
                 if (target.endswith('[@]')
                         and not target.startswith(('!', '#'))):
-                    return self.expand_array_to_list('${' + target + '}')
+                    return self.array_fields(target[:-3])
             return None
 
         slice_operand = operand if operator == ':' else None
@@ -66,7 +66,7 @@ class FieldExpansionMixin(_Base):
         if param == '@':
             base = list(self.state.positional_params)
         elif param.endswith('[@]') and not param.startswith(('!', '#')):
-            base = self.expand_array_to_list('${' + param + '}')
+            base = self.array_fields(param[:-3])
         else:
             return None
 
