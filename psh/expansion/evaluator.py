@@ -97,11 +97,11 @@ class ExpansionEvaluator:
         """
         ve = self.expansion_manager.variable_expander
         # Reject syntactically-invalid parameter names (bash "bad
-        # substitution") at expansion time, for both operator and plain
-        # forms. The plain-form path below re-checks via expand_variable,
-        # but the operator path (expand_parameter_direct) bypasses it.
-        content = str(expansion)[2:-1]  # strip the ${ } the str() re-adds
-        ve._reject_bad_substitution(expansion, content)
+        # substitution") at expansion time, for both operator and plain forms
+        # (the operator path, expand_parameter_direct, otherwise bypasses it).
+        # Validate ONCE here from the pre-parsed node — the plain path below no
+        # longer re-parses ${...} and re-validates a second time.
+        ve._reject_bad_substitution(expansion)
         if expansion.operator:
             return ve.expand_parameter_direct(
                 # Preserve None vs '': ${#v} (length) has word=None,
@@ -110,14 +110,15 @@ class ExpansionEvaluator:
                 expansion.word, quote_ctx=quote_ctx
             )
         else:
-            # Plain ${var} / ${arr[idx]} — name resolution only (nounset,
-            # specials, subscripts) via the string entry point.
-            return ve.expand_variable(f"${{{expansion.parameter}}}")
+            # Plain ${var} / ${arr[idx]} — name resolution straight from the
+            # parsed name (nounset, specials, subscripts), no re-parse.
+            return ve._resolve_plain_parameter(expansion.parameter)
 
     def _evaluate_arithmetic(self, expansion: ArithmeticExpansion) -> str:
-        """Evaluate arithmetic expansion."""
-        result = self.expansion_manager.execute_arithmetic_expansion(
-            f"$(({expansion.expression}))"
+        """Evaluate arithmetic expansion straight from the parsed expression
+        text (no ``$(( ))`` wrap/unwrap round-trip)."""
+        result = self.expansion_manager.arithmetic_expansion_value(
+            expansion.expression
         )
         return str(result)
 

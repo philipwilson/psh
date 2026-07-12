@@ -34,17 +34,47 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         self.state = shell.state
         self.param_expansion = ParameterExpansion(shell)
 
-    def _reject_bad_substitution(self, node, content: str) -> None:
+    def _reject_bad_substitution(self, node, content: Optional[str] = None) -> None:
         """Raise bash's "bad substitution" for an invalid ``${...}`` name.
 
-        Checked at expansion time (bash reports it at runtime). The braces
-        are reattached in the message to match bash exactly.
+        Checked at expansion time (bash reports it at runtime). The braces are
+        reattached in the message to match bash exactly. ``content`` is the text
+        shown between them; when omitted it is reconstructed from the node
+        (``str(node)[2:-1]``) — the Word-AST ``ExpansionEvaluator`` holds no raw
+        source, so it relies on that, while the string entry point passes its
+        exact source slice. Reconstruction is lazy: it only runs when the name
+        is actually invalid.
         """
         if not validate_parameter_expansion(node):
             from ..core.exceptions import BadSubstitutionError
+            if content is None:
+                content = str(node)[2:-1]  # strip the ${ } str() re-adds
             print(f"{self.state.error_location_prefix()}${{{content}}}: bad substitution", file=sys.stderr)
             self.state.last_exit_code = 1
             raise BadSubstitutionError(content)
+
+    def _resolve_plain_parameter(self, var_name: str) -> str:
+        """Resolve an operator-LESS ``${var}`` / ``${arr[idx]}`` by name.
+
+        THE shared tail of ``expand_variable``'s braced path and the Word-AST
+        ``ExpansionEvaluator``: a plain parameter needs only name resolution —
+        the bare ``${arr[idx]}`` subscript form (honoring nounset on an absent
+        element), then the special/positional/regular dispatch. A caller that
+        already holds the parsed name resolves directly here, WITHOUT re-running
+        the ``${...}`` grammar (param_parser) a second time — the round-trip M2
+        flagged (the CLAUDE.md "nothing is re-parsed at runtime" claim).
+        """
+        # Plain ${arr[index]} / ${arr[@]} / ${arr[*]} — the bare (no-operator)
+        # form, so an absent element honors nounset; a non-empty base required.
+        subscript = self.split_subscript(var_name)
+        if subscript is not None and subscript[0]:
+            return self._expand_array_subscript(var_name, check_nounset=True)
+        # Plain ${var}. Honor nounset — the error already carries bash's message
+        # format (the printing handler adds the "psh: " prefix exactly once).
+        if self.state.options.get('nounset', False):
+            from ..core import OptionHandler
+            OptionHandler.check_unset_variable(self.state, var_name)
+        return self._expand_special_variable(var_name)
 
     def expand_variable(self, var_expr: str,
                         quote_ctx: Optional[str] = None) -> str:
@@ -78,25 +108,10 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                     node.operator, node.parameter, node.word,
                     quote_ctx=quote_ctx)
 
-            var_name = node.parameter
+            # Plain ${var} / ${arr[idx]} — name resolution only.
+            return self._resolve_plain_parameter(node.parameter)
 
-            # Plain ${arr[index]} / ${arr[@]} / ${arr[*]} subscript. This is the
-            # bare form (no operator), so an absent element honors nounset.
-            # A non-empty base is required (``${[i]}`` is not a subscript).
-            subscript = self.split_subscript(var_name)
-            if subscript is not None and subscript[0]:
-                return self._expand_array_subscript(var_name, check_nounset=True)
-
-            # Plain ${var}. Honor nounset. The error already carries bash's
-            # message format; do not re-wrap (a "psh: " prefix here doubled
-            # up with the printing handler's prefix).
-            if self.state.options.get('nounset', False):
-                from ..core import OptionHandler
-                OptionHandler.check_unset_variable(self.state, var_name)
-        else:
-            var_name = var_expr
-
-        return self._expand_special_variable(var_name)
+        return self._expand_special_variable(var_expr)
 
     def _expand_special_variable(self, var_name: str) -> str:
         """Expand special variables ($?, $$, $!, etc.) and regular variables."""

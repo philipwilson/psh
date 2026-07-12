@@ -18,6 +18,7 @@ Module layout:
 from .errors import ArithmeticError, ShellArithmeticError
 from .evaluator import (
     ArithmeticEvaluator,
+    arithmetic_expansion_value,
     evaluate_arithmetic,
     execute_arithmetic_expansion,
 )
@@ -44,6 +45,7 @@ __all__ = [
     # Entry points
     "evaluate_arithmetic",
     "execute_arithmetic_expansion",
+    "arithmetic_expansion_value",
     # Errors
     "ArithmeticError",
     "ShellArithmeticError",

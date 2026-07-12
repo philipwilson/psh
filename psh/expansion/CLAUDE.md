@@ -112,18 +112,24 @@ Key behaviors controlled by Word AST structure:
 ### 3. ExpansionEvaluator
 
 `ExpansionEvaluator` evaluates expansion AST nodes by delegating to
-`VariableExpander`.  For `ParameterExpansion` nodes it calls
-`expand_parameter_direct()` with the pre-parsed (operator, var_name,
-operand) components straight from the AST (`param_parser.py` fully
-classifies every form at parse time — nothing is re-parsed at runtime):
+`VariableExpander`. For `ParameterExpansion` nodes it resolves straight from
+the pre-parsed AST components — `param_parser.py` fully classifies every form
+at parse time, so **a ParameterExpansion is never re-parsed at runtime**: an
+operator form goes to `expand_parameter_direct(op, name, operand)`, and a plain
+(operator-less) form to `_resolve_plain_parameter(name)` (the same name-only
+resolution `expand_variable`'s braced path uses — no second `${...}` parse, no
+double bad-substitution check). `ArithmeticExpansion` likewise resolves from
+the raw expression text via `arithmetic_expansion_value(expr)` (no `$(( ))`
+wrap/unwrap round-trip):
 
 ```python
 class ExpansionEvaluator:
     def evaluate(self, expansion: Expansion) -> str:
-        # VariableExpansion → expand_variable("$name")
-        # ParameterExpansion → expand_parameter_direct(op, name, operand)
+        # VariableExpansion → expand_variable("$name")  (string entry point)
+        # ParameterExpansion → expand_parameter_direct(op, name, operand)  [operator]
+        #                    | _resolve_plain_parameter(name)              [plain]
         # CommandSubstitution → command_sub.execute("$(cmd)")
-        # ArithmeticExpansion → execute_arithmetic_expansion("$((expr))")
+        # ArithmeticExpansion → arithmetic_expansion_value(expr)
 ```
 
 ## Expansion Order (POSIX)
