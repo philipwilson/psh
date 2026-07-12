@@ -9,6 +9,17 @@ slicing (:off:len), and @-transforms. Mixed into VariableExpander
 import sys
 from typing import TYPE_CHECKING, NoReturn, Optional, cast
 
+from ..core import (
+    AssociativeArray,
+    ExpansionError,
+    FatalExpansionError,
+    IndexedArray,
+    VarAttributes,
+)
+from ..lexer.pure_helpers import handle_ansi_c_escape
+from ..utils.escapes import quote_at_q
+from .arithmetic import ArithmeticError, evaluate_arithmetic
+
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
     _Base = VariableExpanderProtocol
@@ -63,8 +74,6 @@ class OperatorOpsMixin(_Base):
         Raises ExpansionError (status 1) when evaluation fails, as bash
         aborts the whole command for a bad slice expression.
         """
-        from ..core import ExpansionError
-        from .arithmetic import ArithmeticError, evaluate_arithmetic
 
         if ':' in operand:
             offset_str, length_str = operand.split(':', 1)
@@ -88,7 +97,6 @@ class OperatorOpsMixin(_Base):
 
     def _slice_negative_length_error(self, length: int):
         """Report a negative element-slice length and abort (bash exit 1)."""
-        from ..core import ExpansionError
         msg = f"{length}: substring expression < 0"
         print(f"{self.state.error_location_prefix()}{msg}", file=sys.stderr)
         self.state.last_exit_code = 1
@@ -128,7 +136,6 @@ class OperatorOpsMixin(_Base):
         Returns one field (possibly empty) when the start lies within the
         string, no field when it is out of range.
         """
-        from ..core import ExpansionError
         n = len(value)
         start = offset if offset >= 0 else n + offset
         if start < 0 or start > n:
@@ -167,7 +174,6 @@ class OperatorOpsMixin(_Base):
         if var_name.isdigit():
             return 0 <= int(var_name) - 1 < len(self.state.positional_params)
         if (parts := self.split_subscript(var_name)) is not None:
-            from ..core import AssociativeArray, IndexedArray
             name = self._resolve_array_name(parts[0])
             index_expr = parts[1]
             var = self.state.scope_manager.get_variable_object(name)
@@ -203,7 +209,6 @@ class OperatorOpsMixin(_Base):
         """Abort a :=/= assignment to a positional/special parameter (bash)."""
         subject = self._nonassignable_subject(var_name)
         if subject is not None:
-            from ..core import ExpansionError
             msg = f"{subject}: cannot assign in this way"
             print(f"{self.state.error_location_prefix()}{msg}", file=sys.stderr)
             self.state.last_exit_code = 1
@@ -233,7 +238,6 @@ class OperatorOpsMixin(_Base):
         subject; ``assign_error`` is the full ``:=``/``=`` error text (bash's
         wording differs for array vs positional views).
         """
-        from ..core import ExpansionError
         if operator.startswith(':'):
             triggered = joiner.join(elements) == ''
             base, empty_msg = operator[1], "parameter null or not set"
@@ -261,7 +265,6 @@ class OperatorOpsMixin(_Base):
             msg = str(self._expand_operand(operand)) if operand else empty_msg
             print(f"{self.state.error_location_prefix()}{qmark_subject}: {msg}", file=sys.stderr)
             self.state.last_exit_code = 127
-            from ..core import FatalExpansionError
             raise FatalExpansionError(f"{qmark_subject}: {msg}", exit_code=127)
         return list(elements)
 
@@ -347,7 +350,6 @@ class OperatorOpsMixin(_Base):
             # evaluates — the element list includes $0 — lives in
             # _expand_positional_view / _slice_fields). Under nounset the
             # unbound error fired earlier in expand_parameter_direct.
-            from ..core import ExpansionError
 
             assert operand is not None
             if var_name and not self._param_is_set(var_name):
@@ -407,7 +409,6 @@ class OperatorOpsMixin(_Base):
         rules regardless of the enclosing quotes (probed: both
         ``${x:?'m'}`` and ``"${x:?'m'}"`` report ``m``).
         """
-        from ..core import FatalExpansionError
         msg = str(self._expand_operand(operand)) if operand else default_msg
         print(f"{self.state.error_location_prefix()}{var_name}: {msg}", file=sys.stderr)
         self.state.last_exit_code = 127
@@ -444,6 +445,7 @@ class OperatorOpsMixin(_Base):
             # Full prompt expansion (escapes + $-expansion), same as PS1/PS2 —
             # but @P yields a plain string, so \[ \] drop their readline
             # non-printing markers rather than emitting \001/\002 (bash).
+            # cycle-break: interactive.prompt -> interactive (pkg) -> ... -> parser -> expansion.operators
             from ..interactive.prompt import PromptExpander
             return PromptExpander(self.shell).expand_full(value, readline_markers=False)
         if op == 'a':
@@ -471,7 +473,6 @@ class OperatorOpsMixin(_Base):
         is unknown/empty/multi-char and the parameter IS set. Unlike the
         bad-NAME form (discard-line, BadSubstitutionError), this kind EXITS
         a non-interactive shell — 127 under ``-c`` (bash, probe-verified)."""
-        from ..core.exceptions import FatalExpansionError
         content = f"{var_name}@{operand}" if var_name else f"@{operand}"
         print(f"{self.state.error_location_prefix()}${{{content}}}: bad substitution", file=sys.stderr)
         self.state.last_exit_code = 1
@@ -483,7 +484,6 @@ class OperatorOpsMixin(_Base):
         """${var@Q} quoting — delegates to the shared implementation
         (psh/utils/escapes.py, which documents why ${var@Q} and
         printf %q formats differ)."""
-        from ..utils.escapes import quote_at_q
         return quote_at_q(s)
 
     @staticmethod
@@ -497,7 +497,6 @@ class OperatorOpsMixin(_Base):
         of the previous partial reimplementation (which handled only the simple
         escapes and ``\\xHH``).
         """
-        from ..lexer.pure_helpers import handle_ansi_c_escape
         out = []
         i = 0
         while i < len(s):
@@ -524,7 +523,6 @@ class OperatorOpsMixin(_Base):
 
     def _var_attr_flags(self, var_name: str) -> str:
         """Return the attribute-flag letters for ${var@a} (e.g. 'rx', '')."""
-        from ..core.variables import VarAttributes
         var = self.state.scope_manager.get_variable_object(var_name)
         if var is None:
             return ''

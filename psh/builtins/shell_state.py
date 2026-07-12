@@ -1,8 +1,10 @@
 """Shell state related builtins (history, version, local)."""
-
 import re
 from typing import TYPE_CHECKING, List, Optional
 
+from ..core import AssociativeArray, IndexedArray, ReadonlyVariableError, VarAttributes, resolve_append_assignment
+from ..core.option_registry import OPTION_REGISTRY, OptionCategory
+from ..lexer.unicode_support import is_valid_name
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .registry import builtin
 
@@ -208,6 +210,7 @@ class VersionBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Display version information."""
+        # Lazy so tests can patch psh.version.__version__ (late binding).
         from ..version import __version__, get_version_info
 
         if len(args) > 1 and args[1] == '--short':
@@ -276,7 +279,6 @@ class LocalBuiltin(Builtin):
         # y=3` -> error on x, y=3 still set, rc 1; `local 1bad x=2` -> error on
         # 1bad, x=2 still set, rc 1). Only an OPTION-parse error (handled above)
         # aborts the whole builtin.
-        from ..core import ReadonlyVariableError
         failed = False
         for arg in positional:
             try:
@@ -307,8 +309,6 @@ class LocalBuiltin(Builtin):
         continue-on-error arg loop). ``remove_attrs`` are the ``+flag``
         attributes to clear (H5 carry).
         """
-        from ..core import VarAttributes
-        from ..lexer.unicode_support import is_valid_name
         posix_mode = shell.state.options.get('posix', False)
         if arg == '-':
             # `local -`: save the shell's `set` options so they revert on
@@ -388,7 +388,6 @@ class LocalBuiltin(Builtin):
                     # the value handed to create_local is wider than str.
                     cur = shell.state.scope_manager.current_scope.variables.get(var_name)
                     if cur is not None and not cur.is_unset:
-                        from ..core import resolve_append_assignment
                         # Pass the local's being-added flags (``local -i n+=3``)
                         # so a fresh -i makes the append arithmetic (bash), even
                         # when the existing local is not yet integer.
@@ -408,11 +407,9 @@ class LocalBuiltin(Builtin):
             # Variable without assignment: local var
             if attributes & VarAttributes.ARRAY:
                 # Create empty indexed array
-                from ..core import IndexedArray
                 shell.state.scope_manager.create_local(arg, IndexedArray(), attributes)
             elif attributes & VarAttributes.ASSOC_ARRAY:
                 # Create empty associative array
-                from ..core import AssociativeArray
                 shell.state.scope_manager.create_local(arg, AssociativeArray(), attributes)
             else:
                 # Declared-but-unset local: shadows any outer variable
@@ -479,7 +476,6 @@ class LocalBuiltin(Builtin):
         function wins — a second is a no-op, so options revert to their
         pre-`local -` values (bash).
         """
-        from ..core.option_registry import OPTION_REGISTRY, OptionCategory
         scope = shell.state.scope_manager.current_scope
         if scope.dash_snapshot is not None:
             return

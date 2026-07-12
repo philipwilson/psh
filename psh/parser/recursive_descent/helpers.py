@@ -1,5 +1,4 @@
 """Helper classes for the parser module."""
-
 from dataclasses import dataclass, field
 from typing import Dict, FrozenSet, List, Optional
 
@@ -204,7 +203,6 @@ class ParseError(PshError):
         # of the token stream, so more input could make the parse succeed.
         # Interactive/script line-continuation logic keys off this instead
         # of string-matching error messages.
-        from ...lexer.token_types import TokenType
         token = error_context.token
         self.at_eof = bool(token is not None and token.type == TokenType.EOF)
         # Which expansion kind is unclosed ('command', 'parameter',

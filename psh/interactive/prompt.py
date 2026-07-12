@@ -3,7 +3,6 @@
 This module handles the expansion of special escape sequences in shell prompts,
 similar to bash's prompt expansion feature.
 """
-
 import datetime
 import os
 import pwd
@@ -287,6 +286,7 @@ class PromptExpander:
 
     def _get_version_short(self) -> str:
         """Get short version string."""
+        # Lazy so tests can patch psh.version.__version__ (late binding).
         from ..version import __version__
         # Extract major.minor from version like "0.25.0"
         parts = __version__.split('.')

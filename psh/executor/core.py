@@ -4,7 +4,6 @@ Executor visitor that executes AST nodes using the visitor pattern.
 This visitor provides a clean architecture for command execution while
 maintaining compatibility with the existing execution engine.
 """
-
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterable, Optional
@@ -35,12 +34,11 @@ from ..ast_nodes import (
     SelectLoop,
     SimpleCommand,
     StatementList,
-    # Other
     SubshellGroup,
     UntilLoop,
     WhileLoop,
 )
-from ..core import LoopBreak, LoopContinue
+from ..core import LoopBreak, LoopContinue, NamerefCycleError, ReadonlyVariableError, UnboundVariableError
 from .array import ArrayOperationExecutor
 from .command import CommandExecutor
 from .context import ExecutionContext
@@ -292,7 +290,6 @@ class ExecutorVisitor(ASTVisitor[int]):
         Brace groups run in the current shell and are transparent to errexit;
         subshells `( )` and functions are not (handled normally).
         """
-        from ..ast_nodes import BraceGroup
         cmds = getattr(pipeline, 'commands', None)
         return (cmds is not None and len(cmds) == 1
                 and isinstance(cmds[0], BraceGroup))
@@ -300,7 +297,6 @@ class ExecutorVisitor(ASTVisitor[int]):
     def _execute_background_list(self, node: AndOrList) -> int:
         """Run a whole and-or list (or a backgrounded compound command) in
         a background subshell: `a && b &`, `while ...; done &` (POSIX)."""
-        from ..ast_nodes import StatementList
         foreground_copy = AndOrList()
         foreground_copy.pipelines = node.pipelines
         foreground_copy.operators = node.operators
@@ -478,7 +474,6 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> int:
         """Execute arithmetic command: ((expression))"""
-        from ..core import NamerefCycleError, ReadonlyVariableError, UnboundVariableError
         from ..expansion.arithmetic import evaluate_arithmetic
 
         # bash runs the DEBUG trap before a (( )) command, with
@@ -518,7 +513,6 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_CStyleForLoop(self, node: CStyleForLoop) -> int:
         """Execute C-style for loop: for ((init; cond; update))"""
-        from ..core import UnboundVariableError
         try:
             # Delegate to ControlFlowExecutor
             return self.control_flow_executor.execute_c_style_for(node, self.context, self)
@@ -536,7 +530,6 @@ class ExecutorVisitor(ASTVisitor[int]):
 
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> int:
         """Execute enhanced test: [[ expression ]]"""
-        from ..core import NamerefCycleError, ReadonlyVariableError, UnboundVariableError
         from ..expansion.arithmetic import ShellArithmeticError
         from .enhanced_test_evaluator import TestExpressionEvaluator
 

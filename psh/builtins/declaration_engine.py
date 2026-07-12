@@ -41,7 +41,6 @@ generic store contract) — but it now shares every piece of shared MECHANICS
 above with ``declare``, so the two are no longer 150-line twins. Folding
 ``create_local`` itself into the store is the remaining Phase 4 work.
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -50,6 +49,8 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 
 from ..core import TargetScope, VarAttributes
 from ..core.variable_store import VariableStore
+from ..core.variables import AssociativeArray, IndexedArray
+from ..lexer.unicode_support import is_valid_name
 
 if TYPE_CHECKING:
     from ..ast_nodes import ArrayInitialization
@@ -120,7 +121,6 @@ def is_valid_nameref_target(value: str, posix_mode: bool = False) -> bool:
     subscript is NOT evaluated here — only its shape is checked. Shared by
     ``declare -n`` and ``local -n`` so the two cannot drift (H5).
     """
-    from ..lexer.unicode_support import is_valid_name
     bracket = value.find('[')
     name = value if bracket == -1 else value[:bracket]
     if not is_valid_name(name, posix_mode):
@@ -257,7 +257,6 @@ class DeclarationEngine:
         failed operation does not mutate a readonly value). A mismatched-kind or
         scalar/absent base starts a fresh array (bash builds a new one).
         """
-        from ..core.variables import AssociativeArray, IndexedArray
         from ..executor.array import ArrayOperationExecutor
         into: Any = None
         if append and existing is not None:

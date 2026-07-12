@@ -5,8 +5,8 @@ One formatter for every builtin that prints variables in reusable
 and (value escaping) ``export -p``. Pure functions over ``Variable`` —
 no shell dependency.
 """
-
 from ..core.variables import AssociativeArray, IndexedArray, VarAttributes, Variable
+from ..utils.escapes import ansi_c_encode, has_control_char
 
 # Attribute → flag char, in the order bash prints them.
 # Empirically verified against bash 5: the order is `a A i n r t x l u`
@@ -40,7 +40,6 @@ def quote_scalar_double(value: str) -> str:
     (``declare -- x=$'a\\nb'``). The shared ``$'...'`` encoder lives in
     ``utils/escapes.py`` (``ansi_c_encode``); this is the double-quote
     (``declare -p``) variant of the wrapping."""
-    from ..utils.escapes import ansi_c_encode, has_control_char
     if has_control_char(value):
         return "$'" + ansi_c_encode(value) + "'"
     return '"' + escape_value(value) + '"'

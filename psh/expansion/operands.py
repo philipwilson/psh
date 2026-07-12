@@ -31,6 +31,9 @@ tmp/probes-r17t1-quoting/):
 """
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from ..lexer.cmdsub_scanner import find_command_substitution_end
+from ..lexer.recognizers.word_scanners import scan_inline_ansi_c
+
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
     _Base = VariableExpanderProtocol
@@ -76,7 +79,6 @@ class OperandOpsMixin(_Base):
         (which also serves double-quoted content, where ``$'...'`` is literal),
         so each operand walker decodes it explicitly.
         """
-        from ..lexer.recognizers.word_scanners import scan_inline_ansi_c
         res = scan_inline_ansi_c(operand, i)
         if res is None:
             return operand[i], i + 1
@@ -301,7 +303,6 @@ class OperandOpsMixin(_Base):
     @staticmethod
     def _skip_dollar_construct(text: str, i: int) -> int:
         """Index just past the ${...}, $(...) or $((...)) at text[i]."""
-        from ..lexer.cmdsub_scanner import find_command_substitution_end
         from ..lexer.pure_helpers import (
             find_balanced_double_parentheses,
             find_closing_delimiter,
@@ -337,7 +338,6 @@ class OperandOpsMixin(_Base):
         quote context, inherited by nested ``${...}`` operators (bash:
         the single quotes in ``"${x:-${z:-'q'}}"`` stay literal).
         """
-        from ..lexer.cmdsub_scanner import find_command_substitution_end
         from ..lexer.pure_helpers import (
             find_balanced_double_parentheses,
             find_closing_delimiter,

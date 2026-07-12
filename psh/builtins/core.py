@@ -1,8 +1,8 @@
 """Core shell builtins (exit, :, true, false, exec)."""
-
 import sys
 from typing import TYPE_CHECKING, List
 
+from ..core import SpecialBuiltinUsageError, special_builtin_usage_discard
 from .base import Builtin
 from .registry import builtin
 
@@ -50,7 +50,6 @@ class ExitBuiltin(Builtin):
                     # shell (bash: `exit 7 8` reports "too many arguments",
                     # rc 1, and the rest of the line / `-c` string is dropped).
                     self.error("too many arguments", shell)
-                    from ..core import special_builtin_usage_discard
                     special_builtin_usage_discard(shell.state, 1)
 
         # bash: the FIRST interactive exit attempt with stopped jobs is
@@ -207,7 +206,6 @@ class ExecBuiltin(Builtin):
             # Invalid option: special-builtin usage error (rc 2; a
             # POSIX-mode non-interactive shell exits — probe `exec -q`).
             # Resolved by the caller (_handle_exec_builtin or the guard).
-            from ..core import SpecialBuiltinUsageError
             raise SpecialBuiltinUsageError(2, suppressible=True)
 
         if not command:

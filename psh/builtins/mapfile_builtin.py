@@ -2,6 +2,8 @@
 import os
 from typing import TYPE_CHECKING, List
 
+from ..core import IndexedArray, VarAttributes
+from ..lexer.unicode_support import is_valid_name
 from .base import Builtin
 from .input_reader import Outcome, make_reader
 from .registry import builtin
@@ -118,7 +120,6 @@ class MapfileBuiltin(Builtin):
         # ``set -o posix`` the name is ASCII-only as bash requires; otherwise
         # psh's lenient Unicode-letter rule applies, consistent with every
         # other name site (assignment, declare, read, ...).
-        from ..lexer.unicode_support import is_valid_name
         if not is_valid_name(array_name, shell.state.options.get('posix', False)):
             self.error(f"`{array_name}': not a valid identifier", shell)
             return 1
@@ -233,7 +234,6 @@ class MapfileBuiltin(Builtin):
 
     def _assign(self, shell: 'Shell', name: str, lines: List[str],
                 origin: int, have_origin: bool) -> None:
-        from ..core import IndexedArray, VarAttributes
 
         if have_origin:
             # Overlay onto a COPY of the existing array, not the live one: if

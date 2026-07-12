@@ -39,12 +39,11 @@ the words ``[``, ``0``, ``]``, ``=``, ``v``) and reports
 parse error; that machinery was removed so the words fall through to
 normal simple-command execution, matching bash.
 """
-
 import re
 from dataclasses import dataclass
 from typing import List, Optional
 
-from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, Word
+from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, LiteralPart, Word
 from ....lexer.token_types import Token, TokenType
 from .base import ParserSubcomponent
 
@@ -286,7 +285,6 @@ class ArrayParser(ParserSubcomponent):
         space before the value (``a[i]= v``) is a separate command, never fused,
         so the value is correctly empty here.
         """
-        from ....ast_nodes import LiteralPart
         from ..support.word_builder import WordBuilder
         full = WordBuilder.build_word_from_token(head_token, ctx=self.parser.ctx)
         parts = list(full.parts)

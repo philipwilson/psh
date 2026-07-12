@@ -11,10 +11,10 @@ This module owns the TWO primitives every directory-changing builtin shares:
   live only in ``cd`` while ``pushd``/``popd`` carried divergent copies
   (appraisal r19 H2 — the "three updaters" defect factory in miniature).
 """
-
 import os
 from typing import TYPE_CHECKING, List
 
+from ..core import ReadonlyVariableError
 from .base import Builtin
 from .registry import builtin
 
@@ -58,7 +58,6 @@ def update_pwd_vars(builtin: Builtin, shell: 'Shell',
     updated, False after reporting a readonly failure — the caller then
     fails with rc 1 but must NOT undo the chdir.
     """
-    from ..core import ReadonlyVariableError
     readonly_name = None
     for vname, vval in (('OLDPWD', old_logical), ('PWD', new_logical)):
         try:

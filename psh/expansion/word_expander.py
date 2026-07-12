@@ -36,10 +36,13 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 from ..ast_nodes import (
     ExpansionPart,
     LiteralPart,
+    ParameterExpansion,
     ProcessSubstitution,
+    VariableExpansion,
     Word,
     WordPart,
 )
+from ..core import TopLevelAbort
 from .glob import GLOB_METACHARS, has_glob_metacharacters
 from .operands import DQ_WORD
 from .word_expansion_types import (
@@ -706,7 +709,6 @@ class WordExpander:
         ``${a[@]:1:2}``, ``${a[@]@Q}`` etc., or None when the expansion has
         scalar semantics (everything else, including ``$*``/``${a[*]}``).
         """
-        from ..ast_nodes import ParameterExpansion, VariableExpansion
         exp = part.expansion
         quote_ctx = DQ_WORD if part.quoted else None
         if isinstance(exp, VariableExpansion):
@@ -966,7 +968,6 @@ class WordExpander:
                     # non-interactive shell EXITS instead (bash exits even
                     # from errexit-suppressed contexts like an if
                     # condition, unlike the arithmetic discard family).
-                    from ..core import TopLevelAbort
                     print(f"{self.state.error_location_prefix()}no match: {w}", file=self.state.stderr)
                     if (self.state.options.get('errexit')
                             and self.state.is_script_mode):

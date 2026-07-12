@@ -1,7 +1,7 @@
 """Debug control commands for convenient AST debugging."""
-
 from typing import TYPE_CHECKING, List
 
+from ..utils import get_signal_registry
 from .base import Builtin
 from .registry import builtin
 
@@ -271,7 +271,6 @@ class SignalsBuiltin(Builtin):
                 return 1
 
         # Get the signal registry
-        from ..utils import get_signal_registry
 
         registry = get_signal_registry(create=False)
 

@@ -33,19 +33,22 @@ POSIX ordering contract (probe-verified against bash 5.2):
    the rest, and the command still runs — except under ``set -e``, where
    the caller makes the assignment error fatal instead.
 """
-
 import copy
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple, cast
 
+from ..ast_nodes import ExpansionPart, LiteralPart, Word
 from ..core import (
     AssociativeArray,
     IndexedArray,
     NamerefCycleError,
     ReadonlyVariableError,
     TopLevelAbort,
+    VarAttributes,
+    arith_assignment_discard,
     is_valid_assignment,
     resolve_append_assignment,
 )
+from ..core.options import xtrace_quote
 from ..expansion.arithmetic import ShellArithmeticError
 
 if TYPE_CHECKING:
@@ -139,7 +142,6 @@ class CommandAssignments:
         STARTS with a process substitution has an ExpansionPart before any
         ``=`` and is rejected below.
         """
-        from ..ast_nodes import ExpansionPart, LiteralPart
         if node.words and index < len(node.words):
             word = node.words[index]
             # First pass: reject non-word part types
@@ -202,7 +204,6 @@ class CommandAssignments:
         for var, value, value_word in raw_assignments:
             value = self._expand_value(value, value_word)
             if xtrace:
-                from ..core.options import xtrace_quote
                 ps4 = self.expansion_manager.expand_ps4()
                 # bash quotes the assignment VALUE (`x='a;b'`), not `x=`.
                 self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
@@ -255,7 +256,6 @@ class CommandAssignments:
                 # arithmetic-error family. Value expansion has already run
                 # against the ORIGINAL fds (assignments precede redirects).
                 print(f"psh: {e}", file=self.state.stderr)
-                from ..core import arith_assignment_discard
                 arith_assignment_discard(self.state)
 
         if node.redirects:
@@ -316,7 +316,6 @@ class CommandAssignments:
         is skipped, the others still apply, and the command runs. The caller
         handles ``set -e``, where bash makes the assignment error fatal.
         """
-        from ..core import VarAttributes
 
         scope_manager = self.state.scope_manager
         saved_vars: Dict[str, dict] = {}
@@ -338,7 +337,6 @@ class CommandAssignments:
             if xtrace:
                 # set -x: a command-prefix assignment (`x=5 cmd`) is traced
                 # before the command itself (bash), value-quoted like a pure one.
-                from ..core.options import xtrace_quote
                 ps4 = self.expansion_manager.expand_ps4()
                 self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
             var, resolved = resolve_append_assignment(scope_manager, var, value)
@@ -442,7 +440,6 @@ class CommandAssignments:
         even for exported variables. (The POSIX special-builtin persistence
         exception is the dispatcher's: it calls :meth:`commit` instead.)
         """
-        from ..core import VarAttributes
 
         if prefix.pushed_temp_env:
             self.state.scope_manager.pop_command_temp_env()
@@ -473,7 +470,6 @@ class CommandAssignments:
         Seed-path variables stay exactly as apply_prefix left them; their env
         overlay is dropped so later materializations read the persisted vars.
         """
-        from ..core import VarAttributes
 
         if prefix.pushed_temp_env:
             scope_manager = self.state.scope_manager
@@ -509,7 +505,6 @@ class CommandAssignments:
                 f"internal error: assignment value {value!r} has no Word "
                 "AST (SimpleCommand.words must parallel args)")
 
-        from ..ast_nodes import LiteralPart, Word
 
         for index, part in enumerate(word.parts):
             if isinstance(part, LiteralPart) and '=' in part.text:

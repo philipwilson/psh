@@ -3,6 +3,7 @@ import os
 import stat
 from typing import TYPE_CHECKING, List
 
+from ..core import AssociativeArray, IndexedArray
 from ..utils.file_tests import file_newer_than, file_older_than, files_same
 from .base import Builtin
 from .registry import builtin
@@ -25,7 +26,6 @@ def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
         var_obj = shell.state.scope_manager.get_variable_object(var_name)
         if not var_obj:
             return False
-        from ..core import AssociativeArray, IndexedArray
         if isinstance(var_obj.value, AssociativeArray):
             return key in var_obj.value
         if isinstance(var_obj.value, IndexedArray):
@@ -40,7 +40,6 @@ def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
     var_obj = shell.state.scope_manager.get_variable_object(var_ref)
     if var_obj is None:
         return False
-    from ..core import AssociativeArray, IndexedArray
     if isinstance(var_obj.value, IndexedArray):
         return 0 in var_obj.value
     if isinstance(var_obj.value, AssociativeArray):

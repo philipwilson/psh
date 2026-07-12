@@ -6,6 +6,8 @@ slicing. Mixed into VariableExpander (variable.py).
 """
 from typing import TYPE_CHECKING, Optional
 
+from ..core import AssociativeArray, IndexedArray
+
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
     _Base = VariableExpanderProtocol
@@ -130,7 +132,6 @@ class FieldExpansionMixin(_Base):
             return self._slice_elements(
                 self._positional_slice_elements(), offset, length)
 
-        from ..core import AssociativeArray, IndexedArray
         name = self._resolve_array_name(param[:-3])
         var = self.state.scope_manager.get_variable_object(name)
 

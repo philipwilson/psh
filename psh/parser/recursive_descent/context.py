@@ -4,7 +4,6 @@ This module provides the ParserContext class that consolidates all parser
 state into a single object: the token stream and position, the parser
 configuration, and source text for error messages.
 """
-
 from dataclasses import dataclass, field
 from typing import List, Mapping, Optional
 
@@ -256,7 +255,6 @@ class ParserContext:
         valueless tokens get a friendly placeholder rather than leaking a
         raw ``TokenType.EOF`` repr.
         """
-        from ...lexer.token_types import TokenType
         if tok.type == TokenType.EOF:
             return '<EOF>'
         if tok.type == TokenType.NEWLINE:

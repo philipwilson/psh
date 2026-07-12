@@ -4,14 +4,16 @@ Array operations support for the PSH executor.
 This module handles array initialization and element assignment operations,
 including indexed and associative arrays.
 """
-
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
+from ..ast_nodes import LiteralPart, Word
 from ..core import (
     ArraySubscriptError,
     AssociativeArray,
     IndexedArray,
+    NamerefCycleError,
     VarAttributes,
+    arith_assignment_discard,
 )
 from ..expansion.arithmetic import ArithmeticError, evaluate_arithmetic
 from ..expansion.word_expansion_types import ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEMENT
@@ -53,7 +55,6 @@ class ArrayOperationExecutor:
         # contents lookup used the nameref's value (the target NAME string), so
         # ``+=`` started from a fresh array and REPLACED instead of appending.
         # resolve_nameref_name returns the name unchanged for a non-nameref.
-        from ..core import NamerefCycleError
         try:
             name = self.state.scope_manager.resolve_nameref_name(node.name)
         except NamerefCycleError as e:
@@ -143,7 +144,6 @@ class ArrayOperationExecutor:
         address index 0. Mirrors ``VariableExpander._eval_array_index``
         (the read-path chokepoint).
         """
-        from ..core import arith_assignment_discard
         try:
             return evaluate_arithmetic(index_text, self.shell)
         except ArithmeticError as e:
@@ -206,7 +206,6 @@ class ArrayOperationExecutor:
         splitting or pathname expansion (``h=($x)`` with x="k v" creates the
         single key "k v"); an odd trailing key gets an empty value.
         """
-        from ..ast_nodes import Word
 
         array = into if into is not None else AssociativeArray()
 
@@ -257,7 +256,6 @@ class ArrayOperationExecutor:
         # Resolve a nameref array target so ``declare -n r=arr; r[3]=x`` writes
         # arr[3] (bash). resolve_nameref_name returns the name unchanged for a
         # plain (non-nameref) variable, so non-nameref arrays are unaffected.
-        from ..core import NamerefCycleError
         try:
             name = self.state.scope_manager.resolve_nameref_name(node.name)
         except NamerefCycleError as e:
@@ -438,7 +436,6 @@ class ArrayOperationExecutor:
         Returns (index_parts, value_word, is_append), or None when the
         element is not an explicit-index assignment.
         """
-        from ..ast_nodes import LiteralPart, Word
 
         parts = word.parts
         if not parts:

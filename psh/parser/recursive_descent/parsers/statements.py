@@ -4,8 +4,7 @@ Statement parsing for PSH shell.
 This module handles parsing of statement-level constructs including command lists,
 and/or lists, and statement sequencing.
 """
-
-from ....ast_nodes import AndOrList, Statement, StatementList
+from ....ast_nodes import AndOrList, BraceGroup, SimpleCommand, Statement, StatementList, SubshellGroup
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups, unexpected_token_message
 from .base import ParserSubcomponent
@@ -187,7 +186,6 @@ class StatementParser(ParserSubcomponent):
         per-command flag (the executor's direct job-control paths);
         everything else backgrounds the whole list via a subshell.
         """
-        from ....ast_nodes import BraceGroup, SimpleCommand, SubshellGroup
         if len(and_or_list.pipelines) == 1:
             commands = and_or_list.pipelines[0].commands
             if commands and isinstance(commands[-1], SimpleCommand):

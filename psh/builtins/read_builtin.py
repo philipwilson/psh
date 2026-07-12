@@ -8,6 +8,8 @@ import tty
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
+from ..core import IndexedArray, VarAttributes
+from ..lexer.unicode_support import is_valid_name
 from .base import Builtin
 from .input_reader import InputReader, Outcome, make_reader
 from .registry import builtin
@@ -71,7 +73,6 @@ class ReadBuiltin(Builtin):
         # under ``set -o posix`` names are ASCII-only as in bash; otherwise
         # psh's lenient Unicode-letter rule applies (documented divergence).
         # A subscripted target ``NAME[i]`` validates only its base NAME.
-        from ..lexer.unicode_support import is_valid_name
         posix_mode = shell.state.options.get('posix', False)
         targets = list(var_names)
         if options['array_name']:
@@ -414,7 +415,6 @@ class ReadBuiltin(Builtin):
         Creates or replaces an indexed array with the given fields.
         Each field becomes an array element with sequential indices starting from 0.
         """
-        from ..core import IndexedArray, VarAttributes
 
         # Create new indexed array
         array = IndexedArray()
