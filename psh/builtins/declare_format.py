@@ -37,9 +37,10 @@ def escape_value(value: str) -> str:
 def quote_scalar_double(value: str) -> str:
     """A scalar value for ``declare -p`` output: double-quoted, but ``$'...'``
     (ANSI-C) when it contains control characters — matching bash 5.2
-    (``declare -- x=$'a\\nb'``). The reusable-word quoting authority lives in
-    ``formatter_quoting``; this is the double-quote (``declare -p``) variant."""
-    from ..visitor.formatter_quoting import ansi_c_encode, has_control_char
+    (``declare -- x=$'a\\nb'``). The shared ``$'...'`` encoder lives in
+    ``utils/escapes.py`` (``ansi_c_encode``); this is the double-quote
+    (``declare -p``) variant of the wrapping."""
+    from ..utils.escapes import ansi_c_encode, has_control_char
     if has_control_char(value):
         return "$'" + ansi_c_encode(value) + "'"
     return '"' + escape_value(value) + '"'
