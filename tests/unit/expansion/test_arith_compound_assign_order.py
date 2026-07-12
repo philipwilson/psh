@@ -5,8 +5,9 @@ assignment (`+=`, `-=`, `*=`, ...) ONCE at the start, so an embedded post/pre
 increment of the same variable in the RHS does not feed back into that read
 (c is read as 1, then c++ yields 1, then 1+1=2). psh used to evaluate the RHS
 first (reading c as the already-incremented 2 -> 3). Probe-verified against
-bash 5.2 (tmp/probes-r18t2-arith/). See ArithmeticEvaluator._eval_assignment
-and _eval_array_assignment.
+bash 5.2 (tmp/probes-r18t2-arith/). See ArithmeticEvaluator._eval_assignment,
+the ONE compound-assignment path for scalar and array-element lvalues alike
+(r19-T9 LValue convergence).
 """
 
 import pytest
