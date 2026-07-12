@@ -6,7 +6,6 @@ Utility modules supporting shell infrastructure:
 - heredoc_detection: Distinguish heredocs from bit-shift operators
 - ast_debug: AST visualization for debugging
 - file_tests: File comparison utilities for test expressions
-- token_formatter: Token list formatting for debug output
 """
 
 from .ast_debug import print_ast_debug
@@ -20,7 +19,6 @@ from .heredoc_detection import (
     open_heredoc_delimiters,
 )
 from .signal_utils import SignalNotifier, get_signal_registry
-from .token_formatter import TokenFormatter
 
 __all__ = [
     'SignalNotifier',
@@ -32,7 +30,6 @@ __all__ = [
     'is_inside_expansion',
     'HEREDOC_MARKER_RE',
     'print_ast_debug',
-    'TokenFormatter',
     'file_newer_than',
     'file_older_than',
     'files_same',

@@ -632,6 +632,6 @@ class SourceProcessor(ScriptComponent):
         """Print the token stream when --debug-tokens is enabled."""
         if self.state.debug_tokens:
             print("=== Token Debug Output ===", file=sys.stderr)
-            from ..utils.token_formatter import TokenFormatter
+            from ..lexer.token_formatter import TokenFormatter
             print(TokenFormatter.format(tokens), file=sys.stderr)
             print("========================", file=sys.stderr)
