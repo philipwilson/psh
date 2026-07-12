@@ -2921,7 +2921,7 @@
   exit_code: 0
 
 # =============================================================================
-# SUBSHELL STATE INHERITANCE (reappraisal #15 E1: ShellState.adopt())
+# SUBSHELL STATE INHERITANCE (reappraisal #15 E1: ShellState.clone_for_child())
 # =============================================================================
 # $0, FUNCNAME, traps, source context, getopts cursor, SECONDS and the
 # directory stack must survive into ( ) / $( ) / <( ) children.

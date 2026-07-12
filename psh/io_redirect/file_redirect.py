@@ -335,7 +335,13 @@ class FileRedirector:
         allocation is PERMANENT (parent-side, not part of any command's
         save/restore window) — the user closes it with ``{varname}>&-``, which
         closes the fd named by the variable (the variable keeps its value).
-        Called once per command from IOManager.apply_var_fd_redirects.
+        Reached from all FOUR redirect-application paths: the in-process
+        builtin path (manager.py:501, IOManager.setup_builtin_redirections),
+        the forked-child path (manager.py:895,
+        IOManager.setup_child_redirections), the fd-level save/restore window
+        (_apply_redirections here, via IOManager.apply_redirections /
+        with_redirections), and the exec path (apply_permanent_redirections
+        here).
         """
         name = redirect.var_fd
         rtype = redirect.type

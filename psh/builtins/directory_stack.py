@@ -126,7 +126,7 @@ class DirectoryStack:
         self.stack = []  # Stack of directories, index 0 is current
 
     def copy(self) -> 'DirectoryStack':
-        """Independent copy for a subshell-style child (ShellState.adopt):
+        """Independent copy for a subshell-style child (ShellState.clone_for_child):
         (dirs) shows the parent's stack; a child's pushd must not leak back.
         """
         new = DirectoryStack()

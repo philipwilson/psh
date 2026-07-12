@@ -114,31 +114,19 @@ class JobManager:
 | `%+` or `%%` | Current job |
 | `%-` | Previous job |
 | `%string` | Job whose command starts with string |
+| `%?string` | Job whose command CONTAINS string (substring) |
 | `pid` | Bare number: job containing that PID |
 
-```python
-def parse_job_spec(self, spec: str) -> Optional[Job]:
-    """Parse job specification like %1, %+, %-, %string."""
-    if not spec:
-        return self.current_job
-    if not spec.startswith('%'):
-        try:
-            return self.get_job_by_pid(int(spec))  # bare PID
-        except ValueError:
-            return None
-    spec = spec[1:]
-    if spec in ('+', '', '%'):
-        return self.current_job
-    elif spec == '-':
-        return self.previous_job
-    elif spec.isdigit():
-        return self.get_job(int(spec))
-    else:  # match by command prefix
-        for job in self.jobs.values():
-            if job.command.startswith(spec):
-                return job
-        return None
-```
+The resolver is `JobManager.resolve_job_spec(spec, *, bare='pid')`
+(`executor/job_control.py#JobManager.resolve_job_spec`), which returns a
+**typed** `JobSpecResult` — a bare `Optional[Job]` cannot distinguish
+`FOUND` from `NO_SUCH_JOB` (including a missing current/previous job) or
+`AMBIGUOUS` (a prefix/substring matching >1 job), and bash prints a different
+diagnostic for each (rendered by `jobspec_error_messages`). The `bare`
+selector reads a no-`%` operand as either a `'pid'`
+(`kill`/`wait`/`disown`) or a `'jobnum'` (`jobs 1` == `jobs %1`).
+`JobManager.parse_job_spec(spec)` remains as a back-compat shim returning
+`result.job` (ambiguous → None); prefer `resolve_job_spec` in new code.
 
 ## Interactive Components
 
@@ -318,10 +306,15 @@ up at the two entry points only — `psh/__main__.py` (script/`-c` modes)
 and `InteractiveManager.run_interactive_loop()` (`base.py`) — NOT at
 manager construction. Every `Shell` builds an `InteractiveManager`, but an
 in-process test shell or library embedder must not take over the process's
-signal dispositions, so `SignalManager.__init__` only creates the
-self-pipes; `setup_signal_handlers()` is called explicitly at the entry
-points (it picks script-mode vs interactive-mode handler sets via
-`state.is_script_mode`).
+signal dispositions, so `SignalManager.__init__` installs NO handlers and
+opens NO self-pipes (both notifier slots start `None`);
+`setup_signal_handlers()` is called explicitly at the entry points (it picks
+script-mode vs interactive-mode handler sets via `state.is_script_mode`).
+The SIGCHLD/SIGWINCH self-pipes are allocated **lazily** —
+`_ensure_sigchld_notifier()`/`_ensure_sigwinch_notifier()` open the
+`os.pipe()` on first use (from the interactive handler setup) — so the many
+transient non-interactive Shells (`-c`, scripts, the `env` child, subshell
+helpers, tests) keep a zero per-Shell fd footprint.
 
 **Lifecycle symmetry (v0.300)**: `run_interactive_loop()` wraps the REPL
 in try/finally and calls `restore_default_handlers()` on EVERY exit path
@@ -338,9 +331,11 @@ lifecycle tests added in v0.300.
 class SignalManager(InteractiveComponent):
     def __init__(self, shell):
         super().__init__(shell)
-        # SignalNotifier wraps a self-pipe (os.pipe()) for async-signal-safe notification
-        self._sigchld_notifier = SignalNotifier()
-        self._sigwinch_notifier = SignalNotifier()
+        # SignalNotifier wraps a self-pipe (os.pipe()) for async-signal-safe
+        # notification. Allocated LAZILY (see _ensure_*_notifier) so a
+        # non-interactive/transient Shell opens no pipe fds.
+        self._sigchld_notifier: Optional[SignalNotifier] = None
+        self._sigwinch_notifier: Optional[SignalNotifier] = None
         self._in_sigchld_processing = False  # reentrancy guard
 
     def setup_signal_handlers(self):
@@ -351,13 +346,18 @@ class SignalManager(InteractiveComponent):
             self._setup_interactive_mode_handlers()
 
     def _handle_sigchld(self, signum, frame):
-        # Async-signal-safe: just writes a byte to the pipe
-        self._sigchld_notifier.notify(signal.SIGCHLD)
+        # Async-signal-safe: just writes a byte to the pipe. None-guarded:
+        # never create the notifier in a signal handler (os.pipe/fcntl are
+        # not async-signal-safe) — installed only after allocation.
+        if self._sigchld_notifier is not None:
+            self._sigchld_notifier.notify(signal.SIGCHLD)
 
     def process_sigchld_notifications(self):
         # Called from REPL loop — drains pipe, then reaps children
-        # (waitpid WNOHANG|WUNTRACED loop, updating job states) outside
-        # signal-handler context, guarded against reentrancy.
+        # (waitpid WNOHANG|WUNTRACED|WCONTINUED loop where defined,
+        # updating job states) outside signal-handler context, guarded
+        # against reentrancy; a None notifier means interactive handlers
+        # were never installed (lazy allocation) — nothing to drain.
         ...
 ```
 
@@ -456,42 +456,32 @@ owns the terminal blocks).
 
 ### Reaping Children
 
-Reaping happens in `SignalManager.process_sigchld_notifications()`
-(called from the REPL loop, outside signal-handler context):
-
-```python
-while True:
-    try:
-        pid, status = os.waitpid(-1, os.WNOHANG | os.WUNTRACED)
-        if pid == 0:
-            break
-        job = self.job_manager.get_job_by_pid(pid)
-        if job:
-            job.update_process_status(pid, status)
-            job.update_state()
-            if job.state == JobState.STOPPED and job.foreground:
-                job.notified = False
-                # Foreground job stopped — take the terminal back
-                self.job_manager.transfer_terminal_control(
-                    os.getpgrp(), "SignalManager:SIGCHLD")
-    except OSError:
-        break  # No more children
-```
+`SignalManager.process_sigchld_notifications()`
+(`interactive/signal_manager.py`) drains the SIGCHLD self-pipe and then reaps
+in a `waitpid(-1, flags)` loop OUTSIDE signal-handler context. The flags are
+`WNOHANG` plus, where the platform defines them, `WUNTRACED` **and
+`WCONTINUED`** — so the loop observes stopped AND continued transitions, not
+just exits (the `hasattr` checks are generic portability guards for platforms
+lacking those flags; macOS defines both). The real macOS quirk is DELIVERY,
+not the flag: the kernel raises no SIGCHLD when a child is *continued*
+(SIGCHLD fires on stop and exit only), so this handler never learns of an
+external `kill -CONT` — which is why
+`executor/job_control.py#JobManager.refresh_job_states` (v0.661) polls job
+state on demand before `jobs`/`fg`. Each reaped
+pid updates its `Job`'s process/state; a stopped FOREGROUND job clears its
+`notified` marker and hands the terminal back to the shell
+(`transfer_terminal_control`).
 
 ### Job Notification
 
-```python
-def notify_completed_jobs(self):
-    """Print notifications for completed background jobs."""
-    completed = []
-    for job_id, job in list(self.jobs.items()):
-        if job.state == JobState.DONE and not job.notified and not job.foreground:
-            self._print_completion_notice(job)   # bash format: no leading
-            job.notified = True                   # blank line; marker is a
-            completed.append(job_id)              # hardcoded '+' (correct for
-    # Remove completed jobs after notification    # the common single-bg-job
-    ...                                           # case; multi-job marker gap
-```                                               # deferred — see guide 17.3
+`notify_completed_jobs()` (`executor/job_control.py#JobManager`) prints a
+bash-format completion notice for each DONE, non-foreground, not-yet-notified
+background job, marks it `notified`, then removes it.
+`_print_completion_notice` picks the job marker the way bash does — `+` for
+the CURRENT background job, a space otherwise (`marker = '+' if job is
+self.current_job else ' '`), NOT a hardcoded `+` — and `notify_stopped_jobs()`
+reports STOPPED jobs with the full `+`/`-`/space marker. Both fire at the next
+reaping opportunity from the REPL loop (psh can't emit mid-idle).
 
 ## Testing
 

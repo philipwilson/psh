@@ -7,11 +7,22 @@ This document provides guidance for working with the PSH lexer subsystem.
 The lexer transforms shell command strings into token streams using a **modular recognizer pattern**. The main entry point is `tokenize()` in `__init__.py`, which orchestrates:
 
 1. Tokenization via `ModularLexer`
-2. Keyword normalization
+2. Keyword normalization (`KeywordNormalizer`)
+3. Word fusion (`word_fusion.fuse_words`)
 
 ```
-Input String → ModularLexer → KeywordNormalizer → Tokens
+Input String → ModularLexer → KeywordNormalizer → fuse_words → Tokens
 ```
+
+Steps 2–3 are the shared `_post_lex` pipeline (`__init__.py#_post_lex`).
+**Word fusion** runs AFTER normalization: it collapses each maximal run of
+adjacent word-like tokens (the literal run plus every quote/expansion token)
+into ONE `WORD` token carrying the run's parts, so the parser sees one token
+per shell word and never re-assembles a composite. It replaced the retired
+parser-side composite-sequence assembly (`peek_composite_sequence`); running
+after normalization means reserved words are already retyped and excluded
+from the word-like set (see `__init__.py#_post_lex` and
+`word_fusion.py#fuse_words`).
 
 There is no post-lexing validation pass: context rules like "`;;` only
 inside `case`" are enforced by the parser (a `TokenTransformer` layer that
@@ -60,6 +71,10 @@ retired.
 | `heredoc_collector.py` | `HeredocCollector` - gathers pending heredoc bodies line-by-line |
 | `token_parts.py` | `TokenPart` (per-part word metadata; RichToken retired) |
 | `unicode_support.py` | Unicode identifier handling |
+| `token_types.py` | `Token` and `TokenType` definitions (shared with the parser) |
+| `token_stream.py` | `TokenStream` - positioned token cursor + shared arithmetic-expression collector |
+| `keyword_normalizer.py` | `KeywordNormalizer` - retypes reserved words in command position (post-lex step 2) |
+| `word_fusion.py` | `fuse_words` - post-normalization word fusion, adjacent word-like tokens → one WORD-with-parts (post-lex step 3) |
 
 ## Core Patterns
 

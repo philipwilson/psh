@@ -120,7 +120,7 @@ today.
 - Line numbers under `eval`/`trap` are already anchored to the invoking
   command's line (the v0.485 `LINENO` fix, `scope.py:625` comment) — reuse that
   anchoring for `call_line`, don't reset to 1.
-- Subshells inherit a **copy** of the stack (`ShellState.adopt`) — make sure
+- Subshells inherit a **copy** of the stack (`ShellState.clone_for_child`) — make sure
   the frame stack is deep-copied there.
 - `${BASH_SOURCE}` (no index) = `${BASH_SOURCE[0]}` (bash scalar-of-array rule
   psh already implements for arrays).
@@ -312,7 +312,7 @@ subshell, with a two-way pipe established between it and the calling shell:
   body is compound).
 - fd bookkeeping across nested redirections — the coproc fds must survive
   per-command redirect save/restore but stay invisible to subshells and
-  exec'd children (close-on-exec, plus explicit removal in `ShellState.adopt`
+  exec'd children (close-on-exec, plus explicit removal in `ShellState.clone_for_child`
   for forked subshell copies).
 - Deadlock is user-visible behavior: the pipe buffers are finite, and bash
   makes no attempt to prevent write-write deadlock — match that (do not add

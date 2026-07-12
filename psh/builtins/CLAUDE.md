@@ -67,6 +67,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 | File | Commands |
 |------|----------|
 | `core.py` | `exit`, `:`, `true`, `false`, `exec` |
+| `loop_control.py` | `break`, `continue` |
 
 **Test & Type**
 | File | Commands |
@@ -74,7 +75,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 | `test_command.py` | `test`, `[` |
 | `type_builtin.py` | `type` (thin adapter: maps options to a `ResolveQuery`, renders `CommandResolver.resolve`) |
 | `hash_builtin.py` | `hash` (remembered command locations; the table itself is `shell.state.command_hash`; PATH search via `CommandResolver.search_path`) |
-| `command_builtin.py` | `command` (`-v`/`-V` render `CommandResolver.resolve`; `-p` keeps builtin selection and only overrides the external search PATH) |
+| `command_builtin.py` | `command` (`-v`/`-V` render `CommandResolver.resolve`; `-p` keeps builtin selection and only overrides the external search PATH), `builtin` (run a shell builtin, bypassing functions/aliases) |
 
 **Aliases**
 | File | Commands |
@@ -90,6 +91,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 | File | Commands |
 |------|----------|
 | `system_builtins.py` | `umask`, `times` |
+| `limits.py` | `ulimit` |
 
 **Help & Debug**
 | File | Commands |
@@ -147,37 +149,25 @@ is spelled out in the `Builtin` docstring in `base.py` and enforced by
 `tests/unit/builtins/test_builtin_statelessness.py` (which iterates
 `registry.instances()`).
 
-The base class also provides forked-child-aware I/O helpers — use these,
-never raw `print(..., file=sys.stderr)` (the error-channel convention,
-established in v0.284, is: stdout via `self.write()`/`self.write_line()`,
-errors via `self.error()`):
+The base class provides forked-child-aware I/O helpers — use these, never
+raw `print(..., file=sys.stderr)`. Each writes at the fd level in a forked
+child (pipeline member, background job) so `dup2` redirections apply, and to
+`shell.stdout`/`shell.stderr` otherwise. All live in `base.py#Builtin`; the
+stdout path (`write`) uses `write_all_fd` + `errors='surrogateescape'` so a
+partial `os.write` never truncates and non-UTF-8 bytes round-trip like bash.
+The channels (v0.690 gave the stderr channels bash's location prefix):
 
-```python
-def write(self, text: str, shell: 'Shell') -> None:
-    """Write to the builtin's stdout (fd-level in forked children)."""
-    if shell.state.in_forked_child:
-        os.write(1, text.encode('utf-8', errors='replace'))
-    else:
-        stdout = shell.stdout if hasattr(shell, 'stdout') else sys.stdout
-        stdout.write(text)
-        stdout.flush()
-
-def write_line(self, text: str, shell: 'Shell') -> None:
-    """Write one line to the builtin's stdout (see write())."""
-    self.write(text + '\n', shell)
-
-def error(self, message: str, shell: 'Shell') -> None:
-    """Print an error message to stderr."""
-    if shell.state.in_forked_child:
-        os.write(2, f"{self.name}: {message}\n".encode('utf-8', errors='replace'))
-        return
-    stderr = shell.stderr if hasattr(shell, 'stderr') else sys.stderr
-    print(f"{self.name}: {message}", file=stderr)
-    stderr.flush()
-```
-
-A fourth helper, `write_error_line()`, writes an UNPREFIXED line to
-stderr — for usage/diagnostic lines that accompany an `error()` call.
+- `write(text)` / `write_line(text)` — the builtin's **stdout**.
+- `error(message)` — a location-prefixed stderr line
+  `<$0>: [line N: ]<name>: <message>` (bash `builtin_error`).
+- `report_error(message)` — location-prefixed but WITHOUT the builtin name
+  (bash `report_error`: assignment/readonly failures, e.g.
+  `<$0>: line N: NAME: readonly variable`).
+- `usage(message)` — an UNPREFIXED `<name>: <message>` line (bash
+  `builtin_usage`: the usage line following an option/argument error carries
+  the name but not the location prefix).
+- `write_error_line(text)` — an UNPREFIXED raw stderr line (follow-up
+  diagnostic/option-listing lines that accompany an `error()` call).
 
 For option parsing, use the shared getopt-style helpers instead of
 hand-rolling loops — `Builtin.parse_flags` (order-insensitive `{flag: value}`
@@ -189,9 +179,9 @@ bash-shaped error plus the UNPREFIXED usage line and return `(None, args)` —
 callers `return 2`, or raise `SpecialBuiltinUsageError` for a POSIX-special
 builtin (see `trap`, `unset`). See the docstrings in `base.py`.
 
-The only intentionally hand-rolled walks are `print`/`kill`/`dirs`
-(zsh grammar, `-SIGNAL` operands, `+N`/`-N` index collision — each carries a
-justification comment).
+The only intentionally hand-rolled walks are `print`/`kill`/`dirs`/`history`
+(zsh grammar, `-SIGNAL` operands, `+N`/`-N` index collision, and history's
+numeric-operand-vs-option conflation — each carries a justification comment).
 
 ### 2. Registration with Decorator
 

@@ -14,7 +14,7 @@ clone of its parent. Two failure classes:
 Fixed by ``ShellState.clone_for_child`` (an exact clone: no fresh
 ``os.environ`` import, no seeded defaults, deep-copied arrays and per-instance
 Function metadata). The graph-independence walker below is the durable
-replacement for the textual adopt drift-lock (``test_state_adopt_completeness``).
+replacement for the textual adopt drift-lock (``test_state_clone_completeness``).
 """
 
 from psh.core.variables import AssociativeArray, IndexedArray
