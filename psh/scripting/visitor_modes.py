@@ -15,52 +15,58 @@ if TYPE_CHECKING:
 
 def _parse_for_analysis(shell: 'Shell', content: str,
                         drop_dangling_at_eof: bool = False) -> Any:
-    """Parse *content* into an AST for analysis, heredoc-aware.
+    """Parse *content* into an AST for analysis via the shared pipeline.
 
-    Mirrors the execution path's parsing: when the input contains a heredoc,
-    tokenize/parse WITH heredoc collection so a heredoc BODY is attached to its
-    redirect instead of being parsed as separate commands. (Bare tokenize/parse
-    skips heredoc collection, which made --security/--validate/--metrics/--lint/
-    --format mis-analyze every heredoc body — e.g. `rm -rf /` in heredoc data
-    reported as a real command.)
+    Routes through ``scripting.lex_parse.lex_and_parse`` — the SAME
+    heredoc-aware lex→alias→parse pipeline the execution path uses — so analysis
+    honours the active parser (``--parser combinator``), threads the shell's
+    lexer options (extglob) into nested-substitution re-lexing, and consults the
+    alias table at the seam, exactly as execution does. (This copy had drifted:
+    it ignored ``--parser`` and dropped ``lexer_options`` / alias expansion —
+    reappraisal #19 H11.) A heredoc BODY is still attached to its redirect
+    rather than parsed as separate commands.
+
+    Line continuations are joined first (as
+    ``SourceProcessor._preprocess_command`` does): the lexer does NOT collapse a
+    continuation in every context (``then\\``, inside ``[[ ]]``), so without this
+    analysis reported false syntax errors on valid scripts that execute fine.
+    ``drop_dangling_at_eof`` mirrors the execution path's stream-vs-string rule
+    for a trailing backslash at true EOF.
+
+    One deliberate exception: ``--format`` parses with ``expand_aliases=False``.
+    The advisory modes analyze what would EXECUTE, so they see through aliases;
+    but ``--format`` is a SOURCE-TO-SOURCE tool — reprinting ``zz`` as its alias
+    body would rewrite the user's script, not format it (integrator ruling,
+    reappraisal #19 T6).
     """
-    from ..utils import contains_heredoc
-
-    # Join backslash-newline continuations before tokenizing, exactly as the
-    # execution path does (SourceProcessor._preprocess_command). The lexer
-    # does NOT collapse a continuation in every context (`then\`, inside
-    # `[[ ]]`), so without this the analysis modes reported false syntax
-    # errors on valid scripts that execute fine.
     from .input_preprocessing import process_line_continuations
+    from .lex_parse import lex_and_parse
     content = process_line_continuations(
         content, drop_dangling_at_eof=drop_dangling_at_eof)
-
-    if contains_heredoc(content):
-        from ..lexer import tokenize_with_heredocs
-        from ..parser import parse_with_heredocs
-        tokens, heredoc_map = tokenize_with_heredocs(
-            content, shell_options=shell.state.options)
-        return parse_with_heredocs(tokens, heredoc_map)
-    from ..lexer import tokenize
-    from ..parser import parse
-    # Pass shell_options so analysis/validation tokenizes in the SAME mode the
-    # execution path would (posix/extglob) — mirroring the heredoc branch above.
-    return parse(tokenize(content, shell_options=shell.state.options))
+    return lex_and_parse(content, shell,
+                         expand_aliases=not shell.format_only,
+                         lexer_options=shell.state.options)
 
 
 def _report_syntax_error(location: str, exc: Exception) -> int:
-    """Print a syntax-error diagnostic and return 2 (bash's exit status for a
-    syntax error under ``-n``).
+    """Print an analysis syntax-error diagnostic and return 2 (bash's ``-n``
+    status for a syntax error).
 
     A lex/parse failure must NOT escape as an uncaught Python traceback — that
-    defeats the entire purpose of ``--validate`` and friends. For a ParseError
-    this now renders the FULL diagnostic (position, source line, caret,
-    suggestions) — the same rich form the execution path prints — instead of
-    the bare one-line reason it used to show.
+    defeats the entire purpose of ``--validate`` and friends. The detail form
+    (rich ParseError caret vs ``syntax error: <reason>``) is shared with the
+    execution renderer through ``lex_parse.render_syntax_error_detail``, so the
+    two cannot drift.
+
+    This renderer stays distinct from ``SourceProcessor._report_syntax_error``:
+    analysis has only a bare *location* LABEL (``-c``, the script path,
+    ``<stdin>``) — the whole content was parsed at once, so there is no
+    per-command start line to fall back to and no ``input_source``. The
+    ParseError's own ``(line N, column C)`` and source-line caret still appear
+    (analysis threads ``source_text`` into the parser via ``lex_and_parse``).
     """
-    from ..parser import ParseError
-    message = exc.render() if isinstance(exc, ParseError) else f"syntax error: {exc}"
-    print(f"psh: {location}: {message}", file=sys.stderr)
+    from .lex_parse import render_syntax_error_detail
+    print(f"psh: {location}: {render_syntax_error_detail(exc)}", file=sys.stderr)
     return 2
 
 
@@ -85,11 +91,21 @@ def handle_visitor_mode_for_content(shell: 'Shell', content: str,
         return apply_visitor_mode(shell, ast)
     except (PshError, SyntaxError) as e:
         # ParseError (PshError) and UnclosedQuoteError (SyntaxError) are all
-        # expected syntax errors.
+        # expected syntax errors — render and return 2.
         return _report_syntax_error(location, e)
-    except (ValueError, TypeError) as e:
-        print(f"Error parsing command: {e}", file=sys.stderr)
-        return 1
+    except Exception as e:
+        # Anything else escaping the parse OR a visitor is an INTERNAL DEFECT.
+        # Mirror the execution boundary (SourceProcessor._classify_buffered_
+        # error): re-raise it under strict-errors so the suite surfaces it, and
+        # otherwise report it as an internal defect (rc 1). This replaces the
+        # old `except (ValueError, TypeError)` swallow that masked visitor bugs
+        # as a bland "Error parsing command" exit-1. An OSError (e.g. a failed
+        # read inside a visitor) is an expected shell error, so
+        # report_internal_defect renders it without re-raising.
+        from ..core import report_internal_defect
+        return report_internal_defect(
+            shell.state, e, prefix=f"{location}: unexpected error: ",
+            stream=sys.stderr)
 
 
 def handle_visitor_mode_for_command(shell: 'Shell', command: str) -> int:
