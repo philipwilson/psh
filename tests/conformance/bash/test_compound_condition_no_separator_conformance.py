@@ -9,10 +9,7 @@ WORD. Regression pin for reappraisal #10 R12.A (fixed by adding the two
 compound-closer token types to that set).
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

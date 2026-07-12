@@ -21,12 +21,19 @@ from ..ast_nodes import (
 )
 from .analysis_helpers import RedirectTraversalMixin
 from .base import ASTVisitor
-from .constants import COMMON_COMMANDS, SHELL_BUILTINS, TEST_OPERATORS
+from .constants import (
+    COMMON_COMMANDS,
+    LINTER_CAUTION_COMMANDS,
+    PREDEFINED_VARIABLES,
+    SHELL_BUILTINS,
+    is_assignment,
+)
 from .traversal import visit_children, visit_word_substitution_bodies
 from .word_analysis import (
     has_unquoted_variable_expansion,
     iter_variable_references,
     iter_variable_references_in_text,
+    unquoted_test_operands,
 )
 
 
@@ -108,12 +115,10 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         # Common external commands (not exhaustive)
         self.common_commands = COMMON_COMMANDS
 
-        # Commands that should be used with caution
-        self.dangerous_commands = {
-            'rm': "Consider using 'rm -i' for interactive confirmation",
-            'eval': "Eval can execute arbitrary code, ensure input is trusted",
-            'exec': "Exec replaces the current shell, use with caution",
-        }
+        # Commands that should be used with caution (command -> remediation).
+        # Single-sourced in constants.py alongside DANGEROUS_COMMANDS, which
+        # documents why this table is deliberately different from it.
+        self.dangerous_commands = LINTER_CAUTION_COMMANDS
 
         # Track context
         self._has_error_handling = False
@@ -205,8 +210,12 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
         cmd = node.args[0]
 
-        # Track function calls
-        self.used_functions.add(cmd)
+        # Track function calls — but a bare assignment (`FOO=bar`) parses as a
+        # SimpleCommand whose "command" word IS the assignment, and it is not a
+        # function call. Without this guard `--lint` reported `FOO=bar` as an
+        # undefined function (the existence check below already guards on `=`).
+        if not is_assignment(cmd):
+            self.used_functions.add(cmd)
 
         # Check for dangerous commands
         if self.config.check_security and cmd in self.dangerous_commands:
@@ -218,7 +227,7 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
         # Check for variable assignments
         for arg in node.args:
-            if '=' in arg and self._is_assignment(arg):
+            if is_assignment(arg):
                 var_name = arg.split('=', 1)[0]
                 self.defined_vars.add(var_name)
 
@@ -344,17 +353,6 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
     # Helper methods
 
-    def _is_assignment(self, arg: str) -> bool:
-        """Check if argument is a variable assignment."""
-        if '=' not in arg:
-            return False
-        var_part = arg.split('=', 1)[0]
-        # Valid variable name starts with letter or underscore
-        if not var_part or not (var_part[0].isalpha() or var_part[0] == '_'):
-            return False
-        # Rest must be alphanumeric or underscore
-        return all(c.isalnum() or c == '_' for c in var_part[1:])
-
     def _check_word_variable_usage(self, word: Word) -> None:
         """Register/validate the variable references in a command-argument Word.
 
@@ -389,8 +387,7 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self.used_vars.add(var_name)
         if (self.config.check_undefined_vars and
                 var_name not in self.defined_vars and
-                var_name not in ['PATH', 'HOME', 'USER', 'SHELL', 'PWD',
-                                 'OLDPWD', 'IFS', 'PS1', 'PS2', 'PS3', 'PS4']):
+                var_name not in PREDEFINED_VARIABLES):
             self.add_issue(
                 LintLevel.WARNING,
                 f"Variable '{var_name}' may be undefined",
@@ -398,13 +395,19 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             )
 
     def _check_set_command(self, args: List[str]) -> None:
-        """Check set command for error handling."""
+        """Note whether `set` enables errexit (counts as explicit error handling).
+
+        Detects the clustered short-flag form (`set -eu`, `set -euo pipefail`) —
+        the idiomatic strict-mode spelling, where `e` rides inside a flag
+        cluster — as well as `set -e` and the long form `set -o errexit`.
+        Previously only the exact token `-e` matched, so `set -eu` was reported
+        as "no explicit error handling".
+        """
         for arg in args:
-            if arg == '-e' or arg == '-o' and 'errexit' in args:
+            if arg.startswith('-') and not arg.startswith('--') and 'e' in arg[1:]:
                 self._has_error_handling = True
-            elif arg == '-u' or arg == '-o' and 'nounset' in args:
-                # Good practice
-                pass
+            elif arg == '-o' and 'errexit' in args:
+                self._has_error_handling = True
 
     def _check_export_command(self, args: List[str]) -> None:
         """Check export command."""
@@ -422,18 +425,16 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             return
         rendered = [w.display_text() for w in words]
 
-        # Check for missing quotes on variables — detected structurally from
-        # the Word parts rather than by scanning for a leading '$'.
+        # Check for missing quotes on operand variables — detected via the shared
+        # `unquoted_test_operands` routine (word_analysis) so this and the
+        # enhanced validator's test-quoting check use ONE operator set/walk.
         if self.config.check_quote_usage:
-            for i, word in enumerate(words):
-                if has_unquoted_variable_expansion(word):
-                    # Check if it's in a context where it should be quoted
-                    if i > 0 and rendered[i-1] in TEST_OPERATORS:
-                        self.add_issue(
-                            LintLevel.WARNING,
-                            f"Unquoted variable '{rendered[i]}' in test command",
-                            suggestion=f'Use "{rendered[i]}" to prevent word splitting'
-                        )
+            for i in unquoted_test_operands(words):
+                self.add_issue(
+                    LintLevel.WARNING,
+                    f"Unquoted variable '{rendered[i]}' in test command",
+                    suggestion=f'Use "{rendered[i]}" to prevent word splitting'
+                )
 
         # Suggest [[ over [
         if self.config.prefer_double_brackets and rendered and rendered[-1] == ']':

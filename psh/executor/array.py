@@ -249,24 +249,10 @@ class ArrayOperationExecutor:
         Returns:
             Exit status code (0 for success)
         """
-        # Handle index - can be string or list of tokens
-        if isinstance(node.index, list):
-            # Expand each token if it's a variable
-            expanded_parts = []
-            for token in node.index:
-                if hasattr(token, 'type') and str(token.type) == 'TokenType.VARIABLE':
-                    # This is a variable token, expand it
-                    var_name = token.value
-                    expanded_parts.append(self.state.get_variable(var_name, ''))
-                else:
-                    # Regular token, use its value
-                    expanded_parts.append(token.value if hasattr(token, 'value') else str(token))
-            index_str = ''.join(expanded_parts)
-        else:
-            index_str = node.index
-
-        # Expand any remaining variables in the index (e.g., ${var})
-        expanded_index = self.expansion_manager.expand_string_variables(index_str)
+        # The subscript is the verbatim text between the brackets; both parsers
+        # store it directly on ``node.index``. Expand any variables in it
+        # (``a[$i]=``, ``a[${var}]=``) before evaluating/keying below.
+        expanded_index = self.expansion_manager.expand_string_variables(node.index)
 
         # Resolve a nameref array target so ``declare -n r=arr; r[3]=x`` writes
         # arr[3] (bash). resolve_nameref_name returns the name unchanged for a

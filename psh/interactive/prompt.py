@@ -14,13 +14,53 @@ from typing import Optional
 class PromptExpander:
     """Handles expansion of prompt escape sequences."""
 
+    # Escapes whose value is a fixed string — no computation, no syscalls.
+    _STATIC_ESCAPES = {
+        'a': '\a',     # ASCII bell
+        'e': '\033',   # ASCII escape
+        'n': '\n',
+        'r': '\r',
+        's': 'psh',    # shell name
+        '\\': '\\',
+    }
+
     def __init__(self, shell):
         self.shell = shell
         self._hostname = None
         self._username = None
+        # Escape char -> zero-arg thunk. Built ONCE per expander; a single
+        # escape decodes by calling ONLY its thunk, so a `\w` never triggers
+        # the strftime/ttyname/geteuid/... work the other escapes would do
+        # (the old code eagerly evaluated every getter to pick one).
+        self._escape_thunks = {
+            'd': self._get_date,
+            'h': lambda: self._get_hostname(short=True),
+            'H': lambda: self._get_hostname(short=False),
+            'j': self._get_job_count,
+            'l': self._get_tty_basename,
+            't': self._get_time_24,
+            'T': self._get_time_12,
+            '@': self._get_time_ampm,
+            'A': self._get_time_24_short,
+            'u': self._get_username,
+            'v': self._get_version_short,
+            'V': self._get_version_long,
+            'w': self._get_cwd,
+            'W': self._get_cwd_basename,
+            '!': self._get_history_number,
+            '#': self._get_command_number,
+            '$': lambda: '#' if os.geteuid() == 0 else '$',
+        }
 
-    def expand_prompt(self, prompt: str) -> str:
-        """Expand prompt escape sequences in the given string.
+    def decode_escapes(self, prompt: str) -> str:
+        """Decode the backslash escape sequences in a prompt string ONLY.
+
+        This is the escapes-only pass (no parameter/command/arithmetic
+        expansion): ``print -P`` and callers that want just the ``\\u``/``\\h``/
+        ``\\w`` decoding use it. The FULL ``promptvars`` pass (escapes THEN
+        ``$``-expansion) is ``PromptManager.expand_prompt`` /
+        ``PromptExpander.expand_full`` — deliberately a different name so the
+        two contracts don't collide.
 
         Supported sequences:
         \\a - ASCII bell character (07)
@@ -162,40 +202,22 @@ class PromptExpander:
         return segments
 
     def _expand_escape(self, char: str, readline_markers: bool = True) -> Optional[str]:
-        """Expand a single escape character.
+        """Expand a single escape character, evaluating ONLY that escape.
+
+        Returns ``None`` for an unrecognized escape char (the caller then tries
+        the octal-``\\nnn`` rule and otherwise keeps the backslash literal).
 
         With ``readline_markers`` off (``${var@P}``), ``\\[``/``\\]`` decode to
         nothing rather than the ``\\001``/``\\002`` non-printing delimiters.
         """
-        expansions = {
-            'a': '\a',  # ASCII bell
-            'd': self._get_date(),
-            'e': '\033',  # ASCII escape
-            'h': self._get_hostname(short=True),
-            'H': self._get_hostname(short=False),
-            'j': self._get_job_count(),
-            'l': self._get_tty_basename(),
-            'n': '\n',
-            'r': '\r',
-            's': 'psh',  # Shell name
-            't': self._get_time_24(),
-            'T': self._get_time_12(),
-            '@': self._get_time_ampm(),
-            'A': self._get_time_24_short(),
-            'u': self._get_username(),
-            'v': self._get_version_short(),
-            'V': self._get_version_long(),
-            'w': self._get_cwd(),
-            'W': self._get_cwd_basename(),
-            '!': self._get_history_number(),
-            '#': self._get_command_number(),
-            '$': '#' if os.geteuid() == 0 else '$',
-            '\\': '\\',
-            '[': '\001' if readline_markers else '',  # Start non-printing (readline)
-            ']': '\002' if readline_markers else '',  # End non-printing (readline)
-        }
-
-        return expansions.get(char)
+        thunk = self._escape_thunks.get(char)
+        if thunk is not None:
+            return thunk()
+        if char == '[':
+            return '\001' if readline_markers else ''  # start non-printing (readline)
+        if char == ']':
+            return '\002' if readline_markers else ''  # end non-printing (readline)
+        return self._STATIC_ESCAPES.get(char)
 
     def _get_date(self) -> str:
         """Get date in 'Weekday Month Date' format."""

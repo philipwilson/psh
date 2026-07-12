@@ -8,13 +8,7 @@ Tests the POSIX parameter expansion operators for:
 - Alternative value when set (:+)
 """
 
-import sys
-from pathlib import Path
 
-# Add framework to path
-TEST_ROOT = Path(__file__).parent.parent.parent
-PSH_ROOT = TEST_ROOT.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 
 def test_default_value_operator(shell, capsys):

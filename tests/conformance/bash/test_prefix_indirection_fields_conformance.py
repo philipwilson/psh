@@ -6,10 +6,7 @@ single IFS-joined field. psh previously produced a single space-joined
 field for the quoted @-form.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

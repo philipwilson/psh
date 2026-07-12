@@ -8,7 +8,9 @@ Documents areas where PSH intentionally differs or doesn't support bash extensio
 import os
 import sys
 
-# Add parent directory to path for framework import
+# KEPT deliberately (r19-T12 ruling): this file has an `if __name__ == '__main__'`
+# standalone entry point, and the conformance conftest's sys.path setup only runs
+# under pytest — direct `python <file>` execution needs this insert at module load.
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 

@@ -10,12 +10,6 @@ Tests for background job creation, management, and control including:
 """
 
 import sys
-from pathlib import Path
-
-# Add framework to path
-TEST_ROOT = Path(__file__).parent.parent.parent
-PSH_ROOT = TEST_ROOT.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 # Shell fixture imported automatically from conftest.py
 
@@ -306,7 +300,6 @@ class TestSpecialBuiltinBackground:
 
     def test_colon_builtin_background(self):
         import subprocess
-        import sys
 
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c', ': &\necho done\nwait'],

@@ -8,6 +8,57 @@ from .tokens import ArithToken, ArithTokenType
 class ArithTokenizer:
     """Tokenizer for arithmetic expressions"""
 
+    # Operator table, consulted by maximal munch (longest match wins): the
+    # main loop tries the 3-, then 2-, then 1-character slice at the current
+    # position against this one dict. ``++``/``--`` are deliberately absent —
+    # they are context-sensitive (see _pair_is_incdec) and handled bespoke;
+    # a ``++`` pair that is NOT an inc/dec therefore finds no entry here and
+    # correctly splits into two single ``+`` tokens.
+    _OPERATORS = {
+        # 3-character
+        '<<=': ArithTokenType.LSHIFT_ASSIGN,
+        '>>=': ArithTokenType.RSHIFT_ASSIGN,
+        # 2-character
+        '**': ArithTokenType.POWER,
+        '==': ArithTokenType.EQ,
+        '!=': ArithTokenType.NE,
+        '<=': ArithTokenType.LE,
+        '>=': ArithTokenType.GE,
+        '&&': ArithTokenType.AND,
+        '||': ArithTokenType.OR,
+        '<<': ArithTokenType.LSHIFT,
+        '>>': ArithTokenType.RSHIFT,
+        '+=': ArithTokenType.PLUS_ASSIGN,
+        '-=': ArithTokenType.MINUS_ASSIGN,
+        '*=': ArithTokenType.MULTIPLY_ASSIGN,
+        '/=': ArithTokenType.DIVIDE_ASSIGN,
+        '%=': ArithTokenType.MODULO_ASSIGN,
+        '&=': ArithTokenType.BIT_AND_ASSIGN,
+        '|=': ArithTokenType.BIT_OR_ASSIGN,
+        '^=': ArithTokenType.BIT_XOR_ASSIGN,
+        # 1-character
+        '+': ArithTokenType.PLUS,
+        '-': ArithTokenType.MINUS,
+        '*': ArithTokenType.MULTIPLY,
+        '/': ArithTokenType.DIVIDE,
+        '%': ArithTokenType.MODULO,
+        '<': ArithTokenType.LT,
+        '>': ArithTokenType.GT,
+        '=': ArithTokenType.ASSIGN,
+        '!': ArithTokenType.NOT,
+        '~': ArithTokenType.BIT_NOT,
+        '&': ArithTokenType.BIT_AND,
+        '|': ArithTokenType.BIT_OR,
+        '^': ArithTokenType.BIT_XOR,
+        '?': ArithTokenType.QUESTION,
+        ':': ArithTokenType.COLON,
+        ',': ArithTokenType.COMMA,
+        '(': ArithTokenType.LPAREN,
+        ')': ArithTokenType.RPAREN,
+        '[': ArithTokenType.LBRACKET,
+        ']': ArithTokenType.RBRACKET,
+    }
+
     def __init__(self, expr: str):
         self.expr = expr
         self.position = 0
@@ -192,10 +243,31 @@ class ArithTokenizer:
         return i < len(self.expr) and (self.expr[i].isalpha()
                                        or self.expr[i] == '_')
 
+    def _match_operator(self, start_pos: int) -> Optional[ArithToken]:
+        """Return the longest ``_OPERATORS`` token starting at the current
+        position (maximal munch: 3-char, then 2-char, then 1-char), consuming
+        its characters — or ``None`` if nothing matches. ``++``/``--`` are NOT
+        table entries; the caller handles them before calling this."""
+        for length in (3, 2, 1):
+            op = self.expr[self.position:self.position + length]
+            if len(op) == length:
+                ttype = self._OPERATORS.get(op)
+                if ttype is not None:
+                    for _ in range(length):
+                        self.advance()
+                    return ArithToken(ttype, op, start_pos)
+        return None
+
     # -- Main loop -----------------------------------------------------------
 
     def tokenize(self) -> List[ArithToken]:
-        """Tokenize the arithmetic expression"""
+        """Tokenize the arithmetic expression.
+
+        Numbers and identifiers have their own readers; every operator and
+        delimiter is dispatched through the maximal-munch ``_OPERATORS`` table
+        (longest match wins). Only two shapes stay bespoke: ``++``/``--``
+        (context-sensitive, see _pair_is_incdec) and the double-quote skip.
+        """
         while self.position < len(self.expr):
             self.skip_whitespace()
 
@@ -206,208 +278,41 @@ class ArithTokenizer:
             char = self.current_char()
 
             # Numbers
-            if char and char.isdigit():
+            if char is not None and char.isdigit():
                 value = self.read_number()
                 self.tokens.append(ArithToken(ArithTokenType.NUMBER, value, start_pos))
+                continue
 
             # Identifiers
-            elif char and (char.isalpha() or char == '_'):
+            if char is not None and (char.isalpha() or char == '_'):
                 ident = self.read_identifier()
                 self.tokens.append(ArithToken(ArithTokenType.IDENTIFIER, ident, start_pos))
+                continue
 
-            # Operators and delimiters
-            elif char == '+':
-                if self.peek_char() == '+' and self._pair_is_incdec():
-                    self.tokens.append(ArithToken(ArithTokenType.INCREMENT, '++', start_pos))
-                    self.advance()
-                    self.advance()
-                elif self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.PLUS_ASSIGN, '+=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    # Includes a '++' pair that is NOT an increment (see
-                    # _pair_is_incdec): emit ONE sign and rescan the second.
-                    self.tokens.append(ArithToken(ArithTokenType.PLUS, '+', start_pos))
-                    self.advance()
-
-            elif char == '-':
-                if self.peek_char() == '-' and self._pair_is_incdec():
-                    self.tokens.append(ArithToken(ArithTokenType.DECREMENT, '--', start_pos))
-                    self.advance()
-                    self.advance()
-                elif self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.MINUS_ASSIGN, '-=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    # A '--' pair that is not a decrement splits here, and
-                    # the second '-' is rescanned — so `3---x` tokenizes as
-                    # `3 - --x` (bash: -1 with x decremented).
-                    self.tokens.append(ArithToken(ArithTokenType.MINUS, '-', start_pos))
-                    self.advance()
-
-            elif char == '*':
-                if self.peek_char() == '*':
-                    self.tokens.append(ArithToken(ArithTokenType.POWER, '**', start_pos))
-                    self.advance()
-                    self.advance()
-                elif self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.MULTIPLY_ASSIGN, '*=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.MULTIPLY, '*', start_pos))
-                    self.advance()
-
-            elif char == '/':
-                if self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.DIVIDE_ASSIGN, '/=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.DIVIDE, '/', start_pos))
-                    self.advance()
-
-            elif char == '%':
-                if self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.MODULO_ASSIGN, '%=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.MODULO, '%', start_pos))
-                    self.advance()
-
-            elif char == '<':
-                if self.peek_char() == '<':
-                    if self.peek_char(2) == '=':
-                        self.tokens.append(ArithToken(ArithTokenType.LSHIFT_ASSIGN, '<<=', start_pos))
-                        self.advance()
-                        self.advance()
-                        self.advance()
-                    else:
-                        self.tokens.append(ArithToken(ArithTokenType.LSHIFT, '<<', start_pos))
-                        self.advance()
-                        self.advance()
-                elif self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.LE, '<=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.LT, '<', start_pos))
-                    self.advance()
-
-            elif char == '>':
-                if self.peek_char() == '>':
-                    if self.peek_char(2) == '=':
-                        self.tokens.append(ArithToken(ArithTokenType.RSHIFT_ASSIGN, '>>=', start_pos))
-                        self.advance()
-                        self.advance()
-                        self.advance()
-                    else:
-                        self.tokens.append(ArithToken(ArithTokenType.RSHIFT, '>>', start_pos))
-                        self.advance()
-                        self.advance()
-                elif self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.GE, '>=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.GT, '>', start_pos))
-                    self.advance()
-
-            elif char == '=':
-                if self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.EQ, '==', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.ASSIGN, '=', start_pos))
-                    self.advance()
-
-            elif char == '!':
-                if self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.NE, '!=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.NOT, '!', start_pos))
-                    self.advance()
-
-            elif char == '&':
-                if self.peek_char() == '&':
-                    self.tokens.append(ArithToken(ArithTokenType.AND, '&&', start_pos))
-                    self.advance()
-                    self.advance()
-                elif self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.BIT_AND_ASSIGN, '&=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.BIT_AND, '&', start_pos))
-                    self.advance()
-
-            elif char == '|':
-                if self.peek_char() == '|':
-                    self.tokens.append(ArithToken(ArithTokenType.OR, '||', start_pos))
-                    self.advance()
-                    self.advance()
-                elif self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.BIT_OR_ASSIGN, '|=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.BIT_OR, '|', start_pos))
-                    self.advance()
-
-            elif char == '^':
-                if self.peek_char() == '=':
-                    self.tokens.append(ArithToken(ArithTokenType.BIT_XOR_ASSIGN, '^=', start_pos))
-                    self.advance()
-                    self.advance()
-                else:
-                    self.tokens.append(ArithToken(ArithTokenType.BIT_XOR, '^', start_pos))
-                    self.advance()
-
-            elif char == '~':
-                self.tokens.append(ArithToken(ArithTokenType.BIT_NOT, '~', start_pos))
+            # bash tolerates double-quoted operands inside $(( )): the quotes
+            # are stripped and the inner content tokenized normally.
+            if char == '"':
                 self.advance()
+                continue
 
-            elif char == '?':
-                self.tokens.append(ArithToken(ArithTokenType.QUESTION, '?', start_pos))
+            # ++ / -- : the one context-sensitive pair. When _pair_is_incdec
+            # says yes, emit the inc/dec token; otherwise fall through to the
+            # table, where the pair splits into two single-sign tokens (so
+            # `3---x` tokenizes as `3 - --x`, bash: -1 with x decremented).
+            if (char in ('+', '-') and self.peek_char() == char
+                    and self._pair_is_incdec()):
+                ttype = (ArithTokenType.INCREMENT if char == '+'
+                         else ArithTokenType.DECREMENT)
+                self.tokens.append(ArithToken(ttype, char * 2, start_pos))
                 self.advance()
-
-            elif char == ':':
-                self.tokens.append(ArithToken(ArithTokenType.COLON, ':', start_pos))
                 self.advance()
+                continue
 
-            elif char == ',':
-                self.tokens.append(ArithToken(ArithTokenType.COMMA, ',', start_pos))
-                self.advance()
-
-            elif char == '(':
-                self.tokens.append(ArithToken(ArithTokenType.LPAREN, '(', start_pos))
-                self.advance()
-
-            elif char == ')':
-                self.tokens.append(ArithToken(ArithTokenType.RPAREN, ')', start_pos))
-                self.advance()
-
-            elif char == '[':
-                self.tokens.append(ArithToken(ArithTokenType.LBRACKET, '[', start_pos))
-                self.advance()
-
-            elif char == ']':
-                self.tokens.append(ArithToken(ArithTokenType.RBRACKET, ']', start_pos))
-                self.advance()
-
-            elif char == '"':
-                # bash tolerates double-quoted operands inside $(( )): the quotes
-                # are stripped and the inner content tokenized normally.
-                self.advance()
-
-            else:
+            # Operators and delimiters: maximal munch over _OPERATORS.
+            token = self._match_operator(start_pos)
+            if token is None:
                 raise SyntaxError(f"Unexpected character '{char}' at position {start_pos}")
+            self.tokens.append(token)
 
         # Add EOF token
         self.tokens.append(ArithToken(ArithTokenType.EOF, '', self.position))

@@ -16,6 +16,15 @@ from pathlib import Path
 import pytest
 import yaml
 
+# The bash oracle is resolved the SAME way the conformance framework resolves it
+# (BASH_PATH -> Homebrew -> PATH), not via a bare ``bash`` off PATH. 26 of the
+# comparison golden cases use bash-4+ syntax (declare -A, |&, case-mod); on a
+# machine whose PATH bash is macOS's stock /bin/bash 3.2 a bare ``bash`` made the
+# --compare-bash phase fail on environment rather than behavior (tests-infra
+# addendum #2). find_bash() picks the newest available bash consistently.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "conformance"))
+from conformance_framework import find_bash  # noqa: E402
+
 CASES_FILE = Path(__file__).parent / "golden_cases.yaml"
 
 
@@ -62,7 +71,7 @@ def _run_psh(command: str, *, env=None, timeout=10):
 def _run_bash(command: str, *, env=None, timeout=10):
     """Run a command in bash and return (stdout, stderr, returncode)."""
     result = subprocess.run(
-        ["bash", "-c", command],
+        [find_bash(), "-c", command],
         capture_output=True,
         text=True,
         timeout=timeout,

@@ -14,11 +14,9 @@ prefix differs from psh's by design); non-error behavior is compared exactly.
 Verified against bash 5.2.
 """
 
-import os
 import subprocess
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest, find_bash
 
 

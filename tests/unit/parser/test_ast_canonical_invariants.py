@@ -49,6 +49,7 @@ from psh.ast_nodes import (
 )
 from psh.lexer import tokenize
 from psh.parser import Parser
+from psh.parser.combinators.parser import ParserCombinatorShellParser
 
 # -- Corpus: representative snippets exercising every covered node type. ----
 #
@@ -225,6 +226,49 @@ def test_case_pattern_word_present():
         assert isinstance(node.word, Word), source
 
 
+# --- Invariant 6: ArrayElementAssignment.index is a plain str (both parsers).
+# Reappraisal #19 B2 (H4) retyped ``index`` from ``Union[str, List[Token]]`` to
+# ``str``: both parsers had been emitting a one-token ``[Token(WORD, subscript)]``
+# list that the executor unwrapped. The subscript text is now stored verbatim on
+# ``index`` and every consumer reads it directly.
+
+# The live subscript spellings the lexer produces as element-assignment heads.
+_INDEX_SPELLINGS = [
+    'a[0]=v',          # numeric literal
+    'a[$i]=v',         # bare variable
+    'a[i+1]=v',        # arithmetic expression
+    "h['k x']=v",      # associative quoted key (quotes kept verbatim)
+    'a[$((x))]=v',     # arithmetic expansion
+    'a[${j}]=v',       # braced variable
+    'a[0]+=v',         # append form
+]
+
+
+def _combinator_parse(source):
+    return ParserCombinatorShellParser().parse(tokenize(source))
+
+
+def _element_indices(ast):
+    acc = []
+    _walk(ast, acc)
+    return [n.index for n in acc if isinstance(n, ArrayElementAssignment)]
+
+
+@pytest.mark.parametrize('source', _INDEX_SPELLINGS)
+def test_array_element_index_is_str_both_parsers(source):
+    """``index`` is a plain ``str`` (never a Token list) for both parsers, and
+    the two parsers agree on the verbatim subscript text."""
+    rd_indices = _element_indices(_rd_parse(source))
+    co_indices = _element_indices(_combinator_parse(source))
+    assert len(rd_indices) == 1, source
+    assert len(co_indices) == 1, source
+    # Exactly ``str`` — not a bool/int subclass surprise, not a Token list.
+    assert type(rd_indices[0]) is str, (source, type(rd_indices[0]))
+    assert type(co_indices[0]) is str, (source, type(co_indices[0]))
+    # Both parsers store the identical verbatim subscript text.
+    assert rd_indices[0] == co_indices[0], source
+
+
 @pytest.mark.parametrize('source', CORPUS)
 def test_no_canonical_field_is_none_anywhere(source):
     """End-to-end: walk each snippet, assert no canonical field is missing.
@@ -242,6 +286,7 @@ def test_no_canonical_field_is_none_anywhere(source):
             assert len(node.words) == len(node.elements)
         elif isinstance(node, ArrayElementAssignment):
             assert node.value_word is not None
+            assert isinstance(node.index, str)
         elif isinstance(node, (ForLoop, SelectLoop)):
             assert node.item_words is not None
             assert len(node.item_words) == len(node.items)

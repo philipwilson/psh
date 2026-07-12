@@ -7,9 +7,15 @@ uses: ``Parser(tokenize(src), source_text=src).parse()``.
 
 It is the primary oracle for the zero-behavior-change refactor of
 ``psh/parser/recursive_descent/parsers/arrays.py``. The frozen values live
-in the sidecar ``array_assignment_characterization_frozen.json`` and were
-captured on the ORIGINAL (pre-refactor) code; the refactor must keep every
-entry byte-identical.
+in the sidecar ``array_assignment_characterization_frozen.json``; a refactor
+must keep every entry byte-identical.
+
+The ``ArrayElementAssignment.index`` entries were re-frozen in reappraisal
+#19 (B2, H4): ``index`` was retyped from ``Union[str, List[Token]]`` to plain
+``str`` — both parsers already stored a one-token ``[Token(WORD, subscript)]``
+list that the executor unwrapped, so the change is a pure AST-shape cleanup
+(``index=[Token(...WORD..., value='0'...)]`` → ``index='0'``) with no change to
+the parsed subscript text or any observable shell behaviour.
 
 Notes on the corpus (ground truth from the CURRENT ModularLexer):
 

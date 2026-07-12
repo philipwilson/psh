@@ -12,10 +12,7 @@ error cases compare stdout/exit-code via check_behavior and only assert
 that both shells diagnosed on stderr.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

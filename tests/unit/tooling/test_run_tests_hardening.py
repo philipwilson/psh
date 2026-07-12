@@ -10,6 +10,7 @@ with no internal error, or the narrowly-guarded, provably-all-green xdist
 teardown race.
 """
 
+import pathlib
 import shutil
 import subprocess
 import sys
@@ -263,3 +264,26 @@ def test_run_command_kills_group_on_interrupt(monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         run_tests.run_command([sys.executable, '-c', 'pass'], 'interrupt probe')
     assert killed == [424242], "interrupted phase did not group-kill its child"
+
+
+# --- Compare-bash banner counts are LIVE (never re-frozen) --------------------
+
+def test_golden_case_counts_match_yaml():
+    """golden_case_counts() must equal an independent parse of the YAML.
+
+    The compare-bash banner once printed a hardcoded "1,119 pairs" that went
+    188 cases stale on the gate's own transcript. This pins the counts to the
+    live corpus so a frozen number can never creep back: the function and a
+    fresh yaml.safe_load must agree, and the corpus is non-trivial (some
+    psh_only cases exist, so `comparisons < total`)."""
+    import yaml
+
+    path = (pathlib.Path(run_tests.__file__).resolve().parent
+            / "tests" / "behavioral" / "golden_cases.yaml")
+    cases = yaml.safe_load(path.read_text())
+    total = len(cases)
+    psh_only = sum(1 for c in cases if c.get("psh_only", False))
+
+    assert run_tests.golden_case_counts() == (total, psh_only, total - psh_only)
+    assert total > 100 and psh_only > 0, "golden corpus looks wrong-sized"
+    assert total - psh_only < total, "comparisons must exclude psh_only cases"

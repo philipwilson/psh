@@ -24,10 +24,10 @@ from ..core.assignment_utils import SHELL_NAME
 from .constants import (
     COMMON_TYPOS,
     DANGEROUS_COMMANDS,
-    FILE_TEST_OPERATORS,
     NUMERIC_COMPARISON_OPERATORS,
+    PREDEFINED_VARIABLES,
     SHELL_BUILTINS,
-    STRING_COMPARISON_OPERATORS,
+    is_assignment,
 )
 from .validator_visitor import ValidatorVisitor
 from .word_analysis import (
@@ -35,6 +35,7 @@ from .word_analysis import (
     is_arithmetic_only,
     iter_variable_references,
     iter_variable_references_in_text,
+    unquoted_test_operands,
 )
 
 
@@ -58,19 +59,11 @@ class VariableTracker:
         # Stack of scopes (global scope is always at index 0)
         self.scopes: List[Dict[str, VariableInfo]] = [{}]
 
-        # Special variables that are always defined
-        self.special_vars = {
-            '?', '$', '!', '#', '@', '*', '-', '_', '0',
-            'HOME', 'PATH', 'PWD', 'OLDPWD', 'SHELL', 'USER',
-            'HOSTNAME', 'HOSTTYPE', 'OSTYPE', 'MACHTYPE',
-            'RANDOM', 'LINENO', 'SECONDS', 'HISTCMD',
-            'BASH_VERSION', 'BASH', 'IFS', 'PS1', 'PS2', 'PS3', 'PS4',
-            'PPID', 'UID', 'EUID', 'GROUPS', 'SHELLOPTS',
-            'PIPESTATUS', 'FUNCNAME', 'BASH_SOURCE', 'BASH_LINENO',
-            'REPLY', 'HISTFILE', 'HISTSIZE', 'HISTFILESIZE',
-            'LANG', 'LC_ALL', 'LC_COLLATE', 'LC_CTYPE', 'LC_MESSAGES',
-            'TERM', 'COLUMNS', 'LINES'
-        }
+        # Special/predefined variables that are always defined. Single-sourced in
+        # constants.PREDEFINED_VARIABLES so this and the linter's undefined-var
+        # suppression list stay in agreement (they had drifted — the linter knew
+        # only 11 names).
+        self.special_vars = PREDEFINED_VARIABLES
 
     def enter_scope(self):
         """Enter a new variable scope (e.g., function)."""
@@ -334,29 +327,30 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
     def _process_variable_assignments(self, node: SimpleCommand):
         """Process variable assignments in a command."""
         for i, arg in enumerate(node.args):
-            # Check for VAR=value pattern
-            if '=' in arg and not arg.startswith('='):
+            # Check for VAR=value pattern using the canonical assignment
+            # predicate. The old inline check accepted hyphens, treating
+            # `a-b=c` as a definition of the (illegal) variable `a-b`.
+            if is_assignment(arg):
                 parts = arg.split('=', 1)
-                if parts[0] and parts[0].replace('_', '').replace('-', '').isalnum():
-                    var_name = parts[0]
-                    value = parts[1] if len(parts) > 1 else ''
+                var_name = parts[0]
+                value = parts[1] if len(parts) > 1 else ''
 
-                    # This is a variable assignment
-                    context = self._get_context()
-                    is_local = self._current_function is not None and i > 0 and node.args[0] == 'local'
+                # This is a variable assignment
+                context = self._get_context()
+                is_local = self._current_function is not None and i > 0 and node.args[0] == 'local'
 
-                    self.var_tracker.define_variable(
-                        var_name,
-                        VariableInfo(
-                            name=var_name,
-                            defined_at=context,
-                            is_local=is_local
-                        )
+                self.var_tracker.define_variable(
+                    var_name,
+                    VariableInfo(
+                        name=var_name,
+                        defined_at=context,
+                        is_local=is_local
                     )
+                )
 
-                    # Check the value for undefined variables
-                    if self.config.check_undefined_vars:
-                        self._check_string_for_undefined_vars(value, node)
+                # Check the value for undefined variables
+                if self.config.check_undefined_vars:
+                    self._check_string_for_undefined_vars(value, node)
 
         # Handle special builtins that affect variables
         if node.args:
@@ -491,18 +485,12 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                     node
                 )
 
-        self._check_unquoted_at(text, node)
-
-    def _check_unquoted_at(self, text: str, node: ASTNode):
-        """Advise quoting ``$@`` when it appears unquoted (``"$@"`` preserves args)."""
-        # Also check for unquoted $@ in non-array context
-        if '$@' in text and text.count('"') % 2 == 0:  # Even quotes means not inside quotes
-            # Check if we're not in a for loop items list
-            if not (isinstance(node, ForLoop) and '$@' in str(node.items)):
-                self._add_info(
-                    "Unquoted $@ should be \"$@\" to preserve arguments correctly",
-                    node
-                )
+        # NOTE: the unquoted-`$@` advisory is NOT applied on this string-fallback
+        # path. It used to fire on the correctly-quoted `FOO="$@"` (assignment
+        # values arrive post-quote-removal, so the even-quote-count test was
+        # always true). The advisory has one structural implementation,
+        # `_check_undefined_variables_in_command` via `_has_unquoted_at`, which
+        # reads the Word parts and cannot be fooled by quote removal.
 
     def _check_quoting_issues(self, node: SimpleCommand):
         """Check for potential quoting issues."""
@@ -713,47 +701,17 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         return False
 
     def _check_test_command_quoting(self, node: SimpleCommand):
-        """Check for common quoting issues in test commands."""
-        args = node.args[1:]  # Skip the command itself
+        """Check for common quoting issues in test/[ commands.
+
+        Uses the shared `unquoted_test_operands` routine (word_analysis) so this
+        and the linter's `_check_test_command` walk the same operator set and
+        side-coverage instead of two drifting heuristics.
+        """
         words = node.words[1:] if node.words else []
-
-        # Look for file test operators followed by unquoted variables.
-        # Derive from the shared constants (no re-listing of the same
-        # operators) plus the extra forms this quoting heuristic covers.
-        file_ops = FILE_TEST_OPERATORS | {'-L', '-h'}
-        string_ops = STRING_COMPARISON_OPERATORS | {'==', '<', '>'}
-
-        for i, (arg, _word) in enumerate(zip(args, words, strict=False)):
-            # Check if this is a file test operator
-            if arg in file_ops and i + 1 < len(args):
-                next_arg = args[i + 1]
-                next_word = words[i + 1] if i + 1 < len(words) else None
-
-                # If next arg is an unquoted expansion (word-split risk)
-                if next_word is not None and next_word.has_unquoted_expansion:
-                    self._add_warning(
-                        f"Unquoted variable '{next_arg}' in test - may fail if value contains spaces",
-                        node
-                    )
-
-            # Check string comparisons
-            elif arg in string_ops:
-                # Check both sides of operator
-                if i > 0:
-                    prev_arg = args[i - 1]
-                    prev_word = words[i - 1] if i - 1 < len(words) else None
-                    if prev_word is not None and prev_word.has_unquoted_expansion:
-                        self._add_warning(
-                            f"Unquoted variable '{prev_arg}' in test comparison - use quotes",
-                            node
-                        )
-
-                if i + 1 < len(args):
-                    next_arg = args[i + 1]
-                    next_word = words[i + 1] if i + 1 < len(words) else None
-                    if next_word is not None and next_word.has_unquoted_expansion:
-                        self._add_warning(
-                            f"Unquoted variable '{next_arg}' in test comparison - use quotes",
-                            node
-                        )
+        rendered = [w.display_text() for w in words]
+        for i in unquoted_test_operands(words):
+            self._add_warning(
+                f"Unquoted variable '{rendered[i]}' in test - may fail if value contains spaces",
+                node
+            )
 

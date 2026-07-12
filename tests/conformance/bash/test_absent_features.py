@@ -21,12 +21,8 @@ tests in tests/integration/interactive/test_history.py) — it appears below
 as a skip so the census shows the decision rather than a pending feature.
 """
 
-import os
-import sys
 
 import pytest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTestFramework
 
 _framework = ConformanceTestFramework()

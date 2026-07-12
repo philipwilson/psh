@@ -19,10 +19,7 @@ quote segments spliced into an unquoted word — remains unsupported; it is very
 rare and needs the parser to consume multiple delimiter tokens.)
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

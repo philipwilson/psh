@@ -2,14 +2,8 @@
 Basic parser tests - simplified version focusing on core functionality.
 """
 
-import sys
-from pathlib import Path
 
 import pytest
-
-# Add PSH to path
-PSH_ROOT = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 from psh.ast_nodes import Program, SimpleCommand, SubshellGroup
 from psh.lexer import tokenize

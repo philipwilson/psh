@@ -15,10 +15,8 @@ These run in a subprocess (assert_identical_behavior), so the real process
 exit code is what's compared.
 """
 
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

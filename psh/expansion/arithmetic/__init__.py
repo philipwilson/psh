@@ -18,20 +18,18 @@ Module layout:
 from .errors import ArithmeticError, ShellArithmeticError
 from .evaluator import (
     ArithmeticEvaluator,
+    arithmetic_expansion_value,
     evaluate_arithmetic,
     execute_arithmetic_expansion,
 )
 from .nodes import (
     ArithNode,
-    ArrayAssignmentNode,
     ArrayElementNode,
-    ArrayPostIncrementNode,
-    ArrayPreIncrementNode,
     AssignmentNode,
     BinaryOpNode,
+    IncDecNode,
+    LValue,
     NumberNode,
-    PostIncrementNode,
-    PreIncrementNode,
     TernaryNode,
     UnaryOpNode,
     VariableNode,
@@ -44,6 +42,7 @@ __all__ = [
     # Entry points
     "evaluate_arithmetic",
     "execute_arithmetic_expansion",
+    "arithmetic_expansion_value",
     # Errors
     "ArithmeticError",
     "ShellArithmeticError",
@@ -61,11 +60,8 @@ __all__ = [
     "UnaryOpNode",
     "BinaryOpNode",
     "TernaryNode",
-    "AssignmentNode",
-    "PreIncrementNode",
-    "PostIncrementNode",
     "ArrayElementNode",
-    "ArrayAssignmentNode",
-    "ArrayPreIncrementNode",
-    "ArrayPostIncrementNode",
+    "LValue",
+    "AssignmentNode",
+    "IncDecNode",
 ]

@@ -16,10 +16,7 @@ stray ``LPAREN``). The lexer now recognizes extglob groups whenever
 bash behavior.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

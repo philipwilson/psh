@@ -1,6 +1,7 @@
 """AST node classes for shell arithmetic expressions."""
 
 from dataclasses import dataclass
+from typing import Optional
 
 from .tokens import ArithTokenType
 
@@ -47,30 +48,8 @@ class TernaryNode(ArithNode):
 
 
 @dataclass
-class AssignmentNode(ArithNode):
-    """Assignment operation"""
-    var_name: str
-    op: ArithTokenType
-    value: ArithNode
-
-
-@dataclass
-class PreIncrementNode(ArithNode):
-    """Pre-increment/decrement (++var, --var)"""
-    var_name: str
-    is_increment: bool
-
-
-@dataclass
-class PostIncrementNode(ArithNode):
-    """Post-increment/decrement (var++, var--)"""
-    var_name: str
-    is_increment: bool
-
-
-@dataclass
 class ArrayElementNode(ArithNode):
-    """Array element reference (arr[index]).
+    """Array element READ (arr[index]).
 
     ``index`` is the parsed subscript expression (used for indexed arrays,
     which arithmetic-evaluate the subscript). ``index_text`` is the raw
@@ -83,32 +62,41 @@ class ArrayElementNode(ArithNode):
 
 
 @dataclass
-class ArrayAssignmentNode(ArithNode):
-    """Assignment to an array element (arr[index] = value, arr[index] += value).
+class LValue:
+    """An assignable location: a scalar variable or an array element.
 
-    See :class:`ArrayElementNode` for the meaning of ``index`` vs
-    ``index_text``.
+    Reifying the lvalue lets assignment and increment/decrement have ONE
+    implementation each (scalar and array alike) instead of scalar/array
+    twin nodes. ``subscript`` is ``None`` for a plain scalar (``x``); for an
+    array element (``a[i]``) it is the parsed subscript expression
+    (arithmetic-evaluated for indexed arrays) and ``subscript_text`` is the
+    raw subscript source text (used verbatim as the key for associative
+    arrays, whose subscripts are literal strings — see
+    :class:`ArrayElementNode`).
     """
     name: str
-    index: ArithNode
+    subscript: Optional[ArithNode] = None
+    subscript_text: str = ""
+
+
+@dataclass
+class AssignmentNode(ArithNode):
+    """Assignment to an lvalue (``x = v``, ``a[i] += v``).
+
+    ``op`` is the assignment token (``ASSIGN`` or a compound ``*_ASSIGN``);
+    the target scalar-vs-array distinction lives entirely in ``lvalue``.
+    """
+    lvalue: LValue
     op: ArithTokenType
     value: ArithNode
-    index_text: str = ""
 
 
 @dataclass
-class ArrayPreIncrementNode(ArithNode):
-    """Pre-increment/decrement of an array element (++arr[i], --arr[i])."""
-    name: str
-    index: ArithNode
-    is_increment: bool
-    index_text: str = ""
-
-
-@dataclass
-class ArrayPostIncrementNode(ArithNode):
-    """Post-increment/decrement of an array element (arr[i]++, arr[i]--)."""
-    name: str
-    index: ArithNode
-    is_increment: bool
-    index_text: str = ""
+class IncDecNode(ArithNode):
+    """Increment/decrement of an lvalue (``++x``, ``x--``, ``++a[i]``,
+    ``a[i]--``). ``op`` is ``INCREMENT`` or ``DECREMENT``; ``prefix`` is
+    ``True`` for the pre form (returns the new value) and ``False`` for the
+    post form (returns the old value)."""
+    lvalue: LValue
+    op: ArithTokenType
+    prefix: bool

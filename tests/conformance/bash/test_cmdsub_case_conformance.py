@@ -8,10 +8,7 @@ in psh/lexer/pure_helpers.py); these tests pin identical bash behavior for
 the forms the user guide claims (Ch. 6 / Ch. 17 command substitution).
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

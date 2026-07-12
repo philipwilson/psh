@@ -265,7 +265,7 @@ class ArrayParser(ParserSubcomponent):
         subscript = candidate.subscript if candidate.subscript is not None else ''
         return ArrayElementAssignment(
             name=candidate.name,
-            index=[Token(TokenType.WORD, subscript, 0)],
+            index=subscript,
             value=value,
             is_append=is_append,
             value_word=value_word,

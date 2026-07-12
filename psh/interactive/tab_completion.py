@@ -8,7 +8,7 @@ for compatibility.
 """
 
 import os
-from typing import List
+from typing import List, Tuple
 
 from .terminal import TerminalManager
 
@@ -18,14 +18,17 @@ __all__ = ['CompletionEngine', 'TerminalManager']
 class CompletionEngine:
     """Handles tab completion logic."""
 
-    def get_completions(self, text: str, line: str, cursor_pos: int) -> List[str]:
-        """Get possible completions for the current context."""
-        # Extract the word being completed
+    def get_completions(self, line: str, cursor_pos: int) -> Tuple[int, List[str]]:
+        """Get completions for the word at ``cursor_pos``.
+
+        Returns ``(word_start, completions)`` — the caller reuses the one
+        computed word boundary instead of re-deriving it (find_word_start is a
+        full quote-tracking scan of the line prefix), so a single Tab press
+        walks the prefix ONCE.
+        """
         word_start = self.find_word_start(line, cursor_pos)
         current_word = line[word_start:cursor_pos]
-
-        # Get file/directory completions
-        return self._get_path_completions(current_word)
+        return word_start, self._get_path_completions(current_word)
 
     def find_word_start(self, line: str, cursor_pos: int) -> int:
         """Find the start of the current word (public: LineEditor uses it)."""

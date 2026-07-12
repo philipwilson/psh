@@ -243,26 +243,37 @@ class ParameterExpansion:
             lambda m: self.render_replacement(replacement, m.group(0)),
             value)
 
-    def _substitute_all_empty_aware(self, compiled, value: str,
-                                    replacement: Union[str, list]) -> str:
-        """Global substitution with bash empty-match semantics.
+    def _substitute_scan(self, value: str, replacement: Union[str, list],
+                         match_at, *, negation: bool = False) -> str:
+        """One left-to-right global-substitution scan (all three ``//`` paths).
 
-        Scans left to right matching at each position (longest match), and
-        suppresses a zero-width match at the very end of a non-empty string —
-        the one place Python's re.sub diverges from bash for patterns that
-        can match empty.
+        ``match_at(pos)`` returns the leftmost-LONGEST match length at ``pos``
+        (0 for a zero-width match, ``None`` for no match); the backend — regex
+        for plain globs, the compiled engine for extglob (with or without
+        negation) — is entirely behind that callable.
+
+        ``negation`` selects the sole behavioural difference between the paths:
+        the end-of-subject zero-width policy (bash). The non-negation forms
+        suppress a zero-width match at the very end of a NON-empty subject but
+        still emit one on an EMPTY subject (``${x//*(q)/-}`` on '' -> '-');
+        negation suppresses the end-of-subject empty match ALWAYS, even on an
+        empty subject (``${x//!(x)/-}`` on '' -> '') — the old
+        ``_substitute_all_negation`` encoded this with a ``pos < n`` bound
+        instead of ``pos <= n``.
         """
         out: List[str] = []
         pos = 0
         n = len(value)
         while pos <= n:
-            m = compiled.match(value, pos)
-            if m and m.end() > pos:
-                out.append(self.render_replacement(replacement, m.group(0)))
-                pos = m.end()
-            elif m and not (pos == n and n > 0):
-                # zero-width match, allowed (not the suppressed end-of-string
-                # match of a non-empty subject)
+            length = match_at(pos)
+            if length is not None and length > 0:
+                out.append(self.render_replacement(
+                    replacement, value[pos:pos + length]))
+                pos += length
+            elif length is not None and not (pos == n and (negation or n > 0)):
+                # Zero-width match, allowed: NOT the suppressed end-of-subject
+                # match (suppressed for a non-empty subject, and — for negation
+                # — even for an empty subject).
                 out.append(self.render_replacement(replacement, ''))
                 if pos < n:
                     out.append(value[pos])
@@ -272,6 +283,20 @@ class ParameterExpansion:
                     out.append(value[pos])
                 pos += 1
         return ''.join(out)
+
+    def _substitute_all_empty_aware(self, compiled, value: str,
+                                    replacement: Union[str, list]) -> str:
+        """Global substitution with bash empty-match semantics (regex backend).
+
+        The plain-glob path: patterns that can match empty (``*(q)`` after
+        conversion, ``x*``) need bash's zero-width policy, which Python's
+        re.sub gets wrong at end-of-subject. Delegates to ``_substitute_scan``
+        with a regex ``match_at``.
+        """
+        def match_at(pos: int):
+            m = compiled.match(value, pos)
+            return (m.end() - pos) if m else None
+        return self._substitute_scan(value, replacement, match_at)
 
     def _substitute_all_matcher(self, value: str, pattern: str,
                                 replacement: Union[str, list],
@@ -281,59 +306,31 @@ class ParameterExpansion:
         Uses the extglob backtracking matcher (``extglob_match_at`` →
         leftmost-longest extent) rather than a regex, because Python ``re``
         alternation is leftmost-*match* (``${v//@(a|aa)/Z}`` on ``aaX`` must
-        give ``ZX`` not ``ZaX``). The scan is otherwise identical to
-        ``_substitute_all_empty_aware`` (the regex path used for plain globs):
-        left to right, and the zero-width match at the very end of a non-empty
-        subject is suppressed, matching bash.
+        give ``ZX`` not ``ZaX``). The scan and empty-match policy are shared
+        with the plain-glob regex path via ``_substitute_scan``.
         """
         from .extglob import extglob_match_at
-        out: List[str] = []
-        pos = 0
-        n = len(value)
-        while pos <= n:
-            length = extglob_match_at(pattern, value, pos, ignorecase=ignorecase)
-            if length is not None and length > 0:
-                out.append(self.render_replacement(replacement, value[pos:pos + length]))
-                pos += length
-            elif length is not None and not (pos == n and n > 0):
-                # zero-width match, allowed (not the suppressed end-of-string
-                # match of a non-empty subject)
-                out.append(self.render_replacement(replacement, ''))
-                if pos < n:
-                    out.append(value[pos])
-                pos += 1
-            else:
-                if pos < n:
-                    out.append(value[pos])
-                pos += 1
-        return ''.join(out)
+        return self._substitute_scan(
+            value, replacement,
+            lambda pos: extglob_match_at(pattern, value, pos,
+                                         ignorecase=ignorecase))
 
     def _substitute_all_negation(self, value: str, pattern: str,
                                  replacement: Union[str, list],
                                  ignorecase: bool = False) -> str:
         """Global substitution for negation patterns (matcher, not regex).
 
-        Same left-to-right, leftmost-longest, empty-match-suppressed-at-end
-        semantics as ``_substitute_all_empty_aware``, but using the extglob
-        backtracking matcher because negation can't be a regex.
+        Same left-to-right, leftmost-longest scan as the other two forms via
+        ``_substitute_scan``, with ``negation=True`` selecting bash's rule that
+        negation never emits an end-of-subject empty match (even on an empty
+        subject). Negation can't be a regex, so it uses the extglob matcher.
         """
         from .extglob import extglob_match_at
-        out: List[str] = []
-        pos = 0
-        n = len(value)
-        while pos < n:
-            length = extglob_match_at(pattern, value, pos, ignorecase=ignorecase)
-            if length is None:
-                out.append(value[pos])
-                pos += 1
-            elif length == 0:
-                out.append(self.render_replacement(replacement, ''))
-                out.append(value[pos])
-                pos += 1
-            else:
-                out.append(self.render_replacement(replacement, value[pos:pos + length]))
-                pos += length
-        return ''.join(out)
+        return self._substitute_scan(
+            value, replacement,
+            lambda pos: extglob_match_at(pattern, value, pos,
+                                         ignorecase=ignorecase),
+            negation=True)
 
     def substitute_prefix(self, value: str, pattern: str,
                           replacement: Union[str, list]) -> str:
@@ -426,13 +423,27 @@ class ParameterExpansion:
 
     # Case modification. bash matches the pattern against individual
     # characters: ${v^^pat} examines each char, ${v^pat} only the first.
-    def _char_matches(self, char: str, pattern: str) -> bool:
+    def _char_predicate(self, pattern: str):
+        """Compile a single-char match predicate for a case-mod pattern ONCE.
+
+        The ``^ ^^ , ,, ~ ~~`` operators test the pattern against EVERY
+        character; building the glob→regex conversion per character (the old
+        per-call ``_char_matches``) was O(len(value)) conversions for a
+        ``${v^^pat}`` on a long value. This converts/compiles the matcher a
+        single time and returns a closure applied to each char (the ``_first``
+        variants call it for one char — same result, negligible cost).
+        """
         if self._neg(pattern):
-            from .extglob import extglob_fullmatch
-            return extglob_fullmatch(pattern, char)
+            from .pattern_engine import compile_cached, fullmatch
+            compiled = compile_cached(pattern)
+            return lambda ch: fullmatch(compiled, ch)
         regex = self.pattern_matcher.shell_pattern_to_regex(
             pattern, anchored=False, extglob_enabled=self._extglob)
-        return re.fullmatch(regex, char) is not None
+        compiled_re = re.compile(regex)
+        return lambda ch: compiled_re.fullmatch(ch) is not None
+
+    def _char_matches(self, char: str, pattern: str) -> bool:
+        return self._char_predicate(pattern)(char)
 
     # ^ ^^ , ,, ~ ~~ route their per-char case mapping through the locale
     # service: length-safe (ß stays ß) AND locale-gated (ASCII-only under the C
@@ -446,8 +457,8 @@ class ParameterExpansion:
     def uppercase_all(self, value: str, pattern: str = '?') -> str:
         """Uppercase every char matching the pattern."""
         loc = self.state.locale
-        return ''.join(loc.upper(c) if self._char_matches(c, pattern) else c
-                       for c in value)
+        matches = self._char_predicate(pattern)
+        return ''.join(loc.upper(c) if matches(c) else c for c in value)
 
     def lowercase_first(self, value: str, pattern: str = '?') -> str:
         """Lowercase the first char if it matches the pattern."""
@@ -458,8 +469,8 @@ class ParameterExpansion:
     def lowercase_all(self, value: str, pattern: str = '?') -> str:
         """Lowercase every char matching the pattern."""
         loc = self.state.locale
-        return ''.join(loc.lower(c) if self._char_matches(c, pattern) else c
-                       for c in value)
+        matches = self._char_predicate(pattern)
+        return ''.join(loc.lower(c) if matches(c) else c for c in value)
 
     def toggle_first(self, value: str, pattern: str = '?') -> str:
         """Toggle the case of the first char if it matches the pattern (${x~})."""
@@ -470,5 +481,5 @@ class ParameterExpansion:
     def toggle_all(self, value: str, pattern: str = '?') -> str:
         """Toggle the case of every char matching the pattern (${x~~})."""
         loc = self.state.locale
-        return ''.join(loc.toggle(c) if self._char_matches(c, pattern) else c
-                       for c in value)
+        matches = self._char_predicate(pattern)
+        return ''.join(loc.toggle(c) if matches(c) else c for c in value)

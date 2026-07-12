@@ -40,10 +40,14 @@ def test_clean_shell_actually_removes_ambient_variables(clean_shell, shell):
 def test_shell_with_temp_dir_updates_pwd(shell_with_temp_dir, temp_dir):
     """shell_with_temp_dir must move the shell's $PWD to the temp dir.
 
-    Against the old no-op write, $PWD stayed at the shell's construction-time
-    directory (not the temp dir), so this equality would have failed. Compared
-    against the ``temp_dir`` fixture value (the logical path the fixture set),
-    not ``os.getcwd()``, which resolves the macOS /var -> /private/var symlink.
+    This fixture is now a thin alias of ``isolated_shell_with_temp_dir``
+    (reappraisal-#19 T12 twin convergence), so this also guards that the aliased
+    fixture still lands ``$PWD`` in the temp dir. Against the pre-alias no-op
+    write, $PWD stayed at the shell's
+    construction-time directory (not the temp dir), so this equality would have
+    failed. Compared against the ``temp_dir`` fixture value (the logical path
+    the fixture set), not ``os.getcwd()``, which resolves the macOS
+    /var -> /private/var symlink.
     """
     shell = shell_with_temp_dir
     assert shell.state.get_variable('PWD') == temp_dir

@@ -10,10 +10,7 @@ Paths are chosen to avoid the macOS /tmp -> /private/tmp symlink (logical
 vs physical) confusing the comparison: /usr, /bin and / are stable.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 
