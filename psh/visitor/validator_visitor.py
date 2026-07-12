@@ -142,8 +142,11 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             # Check for common mistakes. Count only NON-OPTION operands: bash
             # accepts `cd -P /tmp` / `cd -- "$dir"` (one operand, the rest are
             # option flags), so counting raw args flagged those legal forms.
+            # A bare `-` is an OPERAND (cd to $OLDPWD), not an option, so
+            # `cd - extra` is two operands and warns.
             if cmd == 'cd':
-                operands = [a for a in node.args[1:] if not a.startswith('-')]
+                operands = [a for a in node.args[1:]
+                            if a == '-' or not a.startswith('-')]
                 if len(operands) > 1:
                     self._add_warning(
                         f"cd: too many arguments (got {len(operands)}, expected 0 or 1)",

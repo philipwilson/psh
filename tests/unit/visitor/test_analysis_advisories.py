@@ -127,6 +127,7 @@ CLEAN_CORPUS = [
     # was-a-false-positive, now clean (locks A1 useless-cat, A6 cd-arity, noclobber rider)
     'cat file.txt',
     'cd -P /tmp',
+    'cd -',
     'echo hi > out.txt',
 ]
 
@@ -223,6 +224,21 @@ class TestAdvisoryPositiveAndNegative:
             "cd: too many arguments" in m for m in _validate_messages("cd a b")
         )
 
+    def test_a6_bare_dash_is_an_operand(self):
+        """`-` means "cd to $OLDPWD" — an OPERAND, not an option flag.
+
+        `cd - extra` is therefore two operands and must warn (integrator
+        ruling, T10 bounce fold-in; red on the pre-fold-in tip c8fdbca3 where
+        the startswith('-') filter swallowed the bare `-`), while a lone
+        `cd -` stays clean.
+        """
+        assert any(
+            "cd: too many arguments" in m for m in _validate_messages("cd - extra")
+        )
+        assert not any(
+            "too many arguments" in m for m in _validate_messages("cd -")
+        )
+
     # A7 — process substitutions are counted (were always 0).
     def test_a7_process_substitution_counted(self):
         m = _metrics("diff <(echo a) <(echo b)")
@@ -260,11 +276,44 @@ class TestTwinConsolidation:
         assert not is_assignment("echo")
         assert not is_assignment("FOO+=x")  # append form deliberately excluded
 
-    def test_hyphenated_assignment_not_defined_by_validator(self):
-        # `a-b=c` must not be recorded as a variable definition; a later `$a`
-        # reference is still undefined.
-        msgs = _validate_messages("a-b=c\necho \"$a\"")
-        assert any("undefined variable '$a'" in m for m in msgs)
+    # --- discriminating pins for the hyphen-rejecting convergence -----------
+    # The three tests below each go RED under the verifier's mutation (a
+    # hyphen-accepting is_assignment, i.e. the old enhanced-validator
+    # `.replace('-','')...isalnum()` predicate restored): under that mutation
+    # `a-b=c` is (wrongly) treated as defining variable `a-b`. The generic
+    # "$a stays undefined after a-b=c" shape does NOT discriminate (it passes
+    # on base too, which defined `a-b`, not `a`) — these pin the observable
+    # differences directly.
+
+    def test_hyphen_word_records_no_metrics_variable(self):
+        """--metrics on `a-b=c` records ZERO variables.
+
+        Kill-mutation: a hyphen-accepting is_assignment makes MetricsVisitor
+        add 'a-b' to variable_names (Variables Used 0 -> 1)."""
+        m = _metrics("a-b=c")
+        assert m.variable_names == set()
+
+    def test_hyphen_word_not_defined_in_variable_tracker(self):
+        """The enhanced validator's VariableTracker does not define 'a-b'.
+
+        Kill-mutation: a hyphen-accepting is_assignment makes
+        _process_variable_assignments record VariableInfo(name='a-b')."""
+        v = EnhancedValidatorVisitor()
+        v.visit(_ast("a-b=c"))
+        assert not v.var_tracker.is_defined("a-b")
+
+    def test_hyphen_word_value_text_not_scanned(self):
+        """--validate is SILENT about `$q` inside the word `a-b=$q`.
+
+        Integrator ruling (T10 bounce): `a-b=c` is not an assignment — it is a
+        command WORD — so analysis stays silent about its text (the =-suffix is
+        not an assignment value to be scanned for undefined variables).
+
+        Kill-mutation: a hyphen-accepting is_assignment routes the `$q` suffix
+        through _check_string_for_undefined_vars, emitting
+        "Possible use of undefined variable '$q'" (the base behavior)."""
+        msgs = _validate_messages("a-b=$q")
+        assert not any("undefined variable '$q'" in m for m in msgs), msgs
 
     def test_dangerous_command_tables_single_sourced(self):
         # Security uses DANGEROUS_COMMANDS; the linter uses its own caution table.
@@ -285,6 +334,50 @@ class TestTwinConsolidation:
         src = "x=1; [ $x = y ]"
         assert any("in test" in m for m in _lint_messages(src))
         assert any("in test" in m for m in _validate_messages(src))
+
+    # --- the union operator set's NEW firings (positive, red-on-base) -------
+    # unquoted_test_operands unions the two old walks' coverage: the linter
+    # gains left-of-binary operands and the -z/-n/-L/-h unary forms; the
+    # enhanced validator gains the numeric comparisons. These pin the union in
+    # BOTH modes; each goes red under a mutation reverting the routine to
+    # either old walk (left-neighbor-only union set, or the old
+    # file+string-only validator sets).
+
+    def test_numeric_comparison_left_operand_fires_both_modes(self):
+        """`[ $x -eq 5 ]`: $x is the LEFT operand of a numeric comparison.
+
+        Red-on-base in BOTH modes: the old linter walk checked only the
+        left NEIGHBOR (nothing precedes $x), and the old validator walk had
+        no numeric operators at all."""
+        src = "x=1; [ $x -eq 5 ]"
+        assert any(
+            "Unquoted variable '$x' in test command" in m
+            for m in _lint_messages(src)
+        )
+        assert any(
+            "Unquoted variable '$x' in test" in m
+            for m in _validate_messages(src)
+        )
+
+    def test_z_unary_operand_fires_both_modes(self):
+        """`[ -z $x ]`: unquoted operand of the -z unary string test.
+
+        Red-on-base in BOTH modes: -z was in neither old operator set."""
+        src = "x=1; [ -z $x ]"
+        assert any(
+            "Unquoted variable '$x' in test command" in m
+            for m in _lint_messages(src)
+        )
+        assert any(
+            "Unquoted variable '$x' in test" in m
+            for m in _validate_messages(src)
+        )
+
+    def test_quoted_test_operands_clean_both_modes(self):
+        # The quoted forms of both new firings stay clean (negative control).
+        for src in ('x=1; [ "$x" -eq 5 ]', 'x=1; [ -z "$x" ]'):
+            assert not any("in test" in m for m in _lint_messages(src)), src
+            assert not any("in test" in m for m in _validate_messages(src)), src
 
 
 # ---------------------------------------------------------------------------

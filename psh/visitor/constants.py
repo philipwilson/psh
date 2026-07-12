@@ -41,14 +41,14 @@ def is_world_writable_permission(perm: str) -> bool:
 
 # test/[ ] operator operand classification, shared by the analysis visitors so
 # the "an operand after this operator need not be quoted / is compared a certain
-# way" knowledge lives in one place.
+# way" knowledge lives in one place. The operand-position logic that combines
+# these lives in word_analysis.unquoted_test_operands (which also adds the extra
+# unary/binary forms that routine covers); there is deliberately no pre-built
+# union constant here — the old TEST_OPERATORS union's only consumer was the
+# linter walk that unquoted_test_operands replaced (reappraisal #19 T10).
 NUMERIC_COMPARISON_OPERATORS = frozenset({'-eq', '-ne', '-lt', '-le', '-gt', '-ge'})
 STRING_COMPARISON_OPERATORS = frozenset({'=', '!='})
 FILE_TEST_OPERATORS = frozenset({'-f', '-d', '-e', '-s', '-r', '-w', '-x'})
-# Operators after which an operand is the value being tested.
-TEST_OPERATORS = (
-    FILE_TEST_OPERATORS | STRING_COMPARISON_OPERATORS | NUMERIC_COMPARISON_OPERATORS
-)
 
 # Dynamic-code-execution commands, mapped to the danger they pose. Used by
 # SecurityVisitor (emits HIGH) and EnhancedValidatorVisitor (emits a warning);
