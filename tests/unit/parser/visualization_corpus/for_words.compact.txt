@@ -1,0 +1,34 @@
+└── Program
+    └── statements: [1 items]
+        └── AndOrList
+            └── pipelines: [1 items]
+                └── Pipeline
+                    └── commands: [1 items]
+                        └── ForLoop
+                            ◦ variable: "i"
+                            ├── items: [3 items]
+                            │   ├── • "1"
+                            │   ├── • "2"
+                            │   └── • "3"
+                            ├── body:
+                            │   └── StatementList
+                            │       └── statements: [1 items]
+                            │           └── AndOrList
+                            │               └── pipelines: [1 items]
+                            │                   └── Pipeline
+                            │                       └── commands: [1 items]
+                            │                           └── SimpleCommand
+                            │                               └── arguments: echo (literal), $i (expansion)
+                            └── item_words: [3 items]
+                                ├── Word
+                                │   └── parts: [1 items]
+                                │       └── LiteralPart
+                                │           ◦ text: "1"
+                                ├── Word
+                                │   └── parts: [1 items]
+                                │       └── LiteralPart
+                                │           ◦ text: "2"
+                                └── Word
+                                    └── parts: [1 items]
+                                        └── LiteralPart
+                                            ◦ text: "3"

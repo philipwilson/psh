@@ -1,0 +1,58 @@
+Program:
+  statements: [
+    AndOrList @line1:
+      pipelines: [
+        Pipeline @line1:
+          commands: [
+            ForLoop:
+              variable: 'i'
+              items: [
+                '1'
+                '2'
+                '3'
+              ]
+              body:
+                StatementList:
+                  statements: [
+                    AndOrList @line1:
+                      pipelines: [
+                        Pipeline @line1:
+                          commands: [
+                            SimpleCommand:
+                              words: [
+                                Word:
+                                  parts: [
+                                    LiteralPart:
+                                      text: 'echo'
+                                  ]
+                                Word:
+                                  parts: [
+                                    ExpansionPart:
+                                      expansion:
+                                        VariableExpansion:
+                                          name: 'i'
+                                  ]
+                              ]
+                          ]
+                      ]
+                  ]
+              item_words: [
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: '1'
+                  ]
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: '2'
+                  ]
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: '3'
+                  ]
+              ]
+          ]
+      ]
+  ]

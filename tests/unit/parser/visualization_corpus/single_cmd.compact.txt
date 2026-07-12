@@ -1,0 +1,8 @@
+└── Program
+    └── statements: [1 items]
+        └── AndOrList
+            └── pipelines: [1 items]
+                └── Pipeline
+                    └── commands: [1 items]
+                        └── SimpleCommand
+                            └── arguments: echo (literal), hello (literal)

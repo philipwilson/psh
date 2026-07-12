@@ -7,7 +7,7 @@
 > `ruff check psh tests` and `mypy`. (GitHub per-PR CI is disabled.)
 
 This directory contains the active PSH test suite — about 18,100 tests
-across 584 `test_*.py` files. The layout below is generated from the real
+across 649 `test_*.py` files. The layout below is generated from the real
 tree; if you add or rename a top-level area, update this list.
 
 ## Directory structure

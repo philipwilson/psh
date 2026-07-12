@@ -1,0 +1,58 @@
+digraph AST {
+    rankdir=TB;
+    node [fontname="Helvetica", fontsize=10];
+    edge [fontname="Helvetica", fontsize=8];
+
+    // Nodes
+    node1 [label="Program", shape=box, style=filled, fillcolor="#F5F5F5"];
+    node2 [label="AndOrList\n@line1", shape=box, style=filled, fillcolor="#E1F5FE"];
+    node3 [label="Pipeline\n@line1", shape=box, style=filled, fillcolor="#E8F5E8"];
+    node4 [label="ForLoop\nvar: i", shape=box, style=filled, fillcolor="#F3E5F5"];
+    node5 [label="items\n[3 items]", shape=ellipse, style=filled, fillcolor="#F5F5F5"];
+    node6 [label="1", shape=ellipse, style=filled, fillcolor="#EEEEEE"];
+    node7 [label="2", shape=ellipse, style=filled, fillcolor="#EEEEEE"];
+    node8 [label="3", shape=ellipse, style=filled, fillcolor="#EEEEEE"];
+    node9 [label="StatementList\n(1 stmts)", shape=box, style=filled, fillcolor="#F5F5F5"];
+    node10 [label="AndOrList\n@line1", shape=box, style=filled, fillcolor="#E1F5FE"];
+    node11 [label="Pipeline\n@line1", shape=box, style=filled, fillcolor="#E8F5E8"];
+    node12 [label="SimpleCommand\ncmd: echo\nargs: (1 args)", shape=box, style=filled, fillcolor="#E3F2FD"];
+    node13 [label="words\n[2 items]", shape=ellipse, style=filled, fillcolor="#F5F5F5"];
+    node14 [label="Word", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node15 [label="LiteralPart", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node16 [label="Word", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node17 [label="ExpansionPart", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node18 [label="VariableExpansion", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node19 [label="item_words\n[3 items]", shape=ellipse, style=filled, fillcolor="#F5F5F5"];
+    node20 [label="Word", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node21 [label="LiteralPart", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node22 [label="Word", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node23 [label="LiteralPart", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node24 [label="Word", shape=box, style=filled, fillcolor="#F0F0F0"];
+    node25 [label="LiteralPart", shape=box, style=filled, fillcolor="#F0F0F0"];
+
+    // Edges
+    node4 -> node5 [label="items"];
+    node5 -> node6 [label="0"];
+    node5 -> node7 [label="1"];
+    node5 -> node8 [label="2"];
+    node12 -> node13 [label="words"];
+    node14 -> node15 [label="parts"];
+    node13 -> node14 [label="0"];
+    node17 -> node18 [label="expansion"];
+    node16 -> node17 [label="parts"];
+    node13 -> node16 [label="1"];
+    node11 -> node12 [label="commands"];
+    node10 -> node11 [label="pipelines"];
+    node9 -> node10 [label="statements"];
+    node4 -> node9 [label="body"];
+    node4 -> node19 [label="item_words"];
+    node20 -> node21 [label="parts"];
+    node19 -> node20 [label="0"];
+    node22 -> node23 [label="parts"];
+    node19 -> node22 [label="1"];
+    node24 -> node25 [label="parts"];
+    node19 -> node24 [label="2"];
+    node3 -> node4 [label="commands"];
+    node2 -> node3 [label="pipelines"];
+    node1 -> node2 [label="statements"];
+}
