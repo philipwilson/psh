@@ -36,7 +36,8 @@ except ImportError:
 
 import pytest
 
-# Add PSH to path
+# PSH_ROOT feeds the spawned process's PYTHONPATH below (the in-process
+# sys.path.insert this comment once described was removed by r19-T12).
 PSH_ROOT = Path(__file__).parent.parent.parent
 
 # Matches OSC sequences (terminal title etc., terminated by BEL or ST),
