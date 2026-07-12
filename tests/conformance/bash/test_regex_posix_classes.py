@@ -14,10 +14,7 @@ ERE path (classes only — ``=~`` is a regex, not a glob) and fixes the parser's
 regex-operand collection so a ``]]`` inside ``(...)`` is regex content.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

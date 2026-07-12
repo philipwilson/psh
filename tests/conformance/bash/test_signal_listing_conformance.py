@@ -17,10 +17,8 @@ so they self-adjust to the platform (signal numbers like SIGINFO=29, SIGEMT=7
 are BSD-specific on macOS; Linux differs).
 """
 
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

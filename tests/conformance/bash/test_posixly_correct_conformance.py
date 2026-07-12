@@ -20,10 +20,7 @@ special-builtin-exit interaction (v0.673) live in the system suite, which can
 vary invocation argv and inspect a real process environment.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

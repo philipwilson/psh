@@ -19,10 +19,7 @@ C = {'LC_ALL': 'C', 'LANG': 'C'}
 # case-insensitive) created before globbing, so each subprocess is hermetic.
 MKFILES = "> a; > B; > e; > z; > é; > 3; > ٣; > _x;"
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

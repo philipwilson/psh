@@ -5,10 +5,7 @@ project's development principles, that claim is proven here. Every case
 asserts byte-identical psh/bash behavior.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

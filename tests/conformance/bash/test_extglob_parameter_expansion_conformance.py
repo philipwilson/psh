@@ -17,10 +17,7 @@ a full-match regex, mirroring the already-correct suffix path. These tests
 pin identical bash behavior for both plain globs and extglob operators.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

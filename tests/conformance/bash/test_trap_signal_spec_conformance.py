@@ -15,11 +15,9 @@ All three spellings now normalize to one canonical key, so they set, fire,
 and query interchangeably. Verified against bash 5.2.
 """
 
-import os
 import subprocess
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest, find_bash
 
 

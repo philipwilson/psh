@@ -9,13 +9,10 @@ psh previously enforced nounset only on the plain ${x} form, so every operator
 form silently treated unset as empty — this pins the fix.
 """
 
-import os
 import subprocess
 import sys
 
 import pytest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

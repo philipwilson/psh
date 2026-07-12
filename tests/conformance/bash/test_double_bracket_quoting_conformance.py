@@ -9,10 +9,7 @@ multi-part Words carrying per-part quote context and the evaluator reads it
 directly (T3.1, 2026-06-14). These tests pin identical bash behavior.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

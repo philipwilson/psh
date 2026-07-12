@@ -33,8 +33,6 @@ import subprocess
 import sys
 
 import pytest
-
-sys.path.insert(0, os.path.dirname(__file__))
 from _assert_analysis import (
     asserting_helper_names,
     called_names,
