@@ -1,0 +1,12882 @@
+[
+ {
+  "result": "echo alpha beta gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ls /usr/bin",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "cat a.c b.c",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "cat a.c b.c",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ls /usr/bin",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ls /usr/bin",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "grep foo bar.txt baz.txt",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "grep foo bar.txt baz.txt",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "three",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "one",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "two",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aaa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "two",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "bbb",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "sudo make build",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "alpha",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "beta",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "alpha",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "alpha beta gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "alpha beta",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "beta",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "beta gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "alpha beta gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "alpha",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "alpha beta gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "alpha",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo alpha",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo alpha beta",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo alpha beta gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo alpha beta gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "bar.txt",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "baz.txt",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "/some/long/path",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo gamma",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo XtrueY",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo pre  post",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo true",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: ^: bad word specifier\n",
+  "pstdout": ""
+ },
+ {
+  "result": "echo 'quoted arg'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo last",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo last",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: :5: bad word specifier\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: :1-9: bad word specifier\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: :2-1: bad word specifier\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: :5: bad word specifier\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: :9: bad word specifier\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: :5: bad word specifier\n",
+  "pstdout": ""
+ },
+ {
+  "result": "cat /a/b",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "c.txt",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "cat /a/b/c",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ".txt",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "/a/b",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "c.txt",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "/p/q/r.tar",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ".gz",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "c",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo a.b",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ".c",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ech0 foo boo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ech0 f00 b00",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ech0 foo boo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo X boo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "f0o",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echZ foo boo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo goodbye world",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo bb bb bb",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "one 2 3",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ech0 foo boo then ech0 foo boo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "",
+  "stderr": "",
+  "pstdout": "echo alpha beta gamma\n"
+ },
+ {
+  "result": null,
+  "stderr": "psh: :: bad word specifier\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: :s/NOPE/X/: substitution failed\n",
+  "pstdout": ""
+ },
+ {
+  "result": "ech0 foo boo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ech0 foo boo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo bar boo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo goodbye world",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo x",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "^^",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: ^nomatch^x: substitution failed\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: :s: substitution failed\n",
+  "pstdout": ""
+ },
+ {
+  "result": "ech0 foo booextra",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \"see echo prev cmd\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \"x echo prev cmd y\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \"it's echo prev cmd\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo '!!'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \\!!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \\!foo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \"a\\!b\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a!=b",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \"${x} echo prev cmd\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo 'literal !!'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo a!=b",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[ ! -f x ]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[ ! -f x ]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo '!$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a!=b",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[ ! x ]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo hi!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${!x}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ${!x}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ${!x} echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${!x} echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${x!!y}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ${x} echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${arr[!i]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ${arr[!i]} echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ${x[!i]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$((!x))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo $((!x))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(( !x ))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo $(( !x )) echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$((5 != 3))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo $((a!=b))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(( a != b )) echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo $((1+1)) echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(($(($x)) !! ))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo [!abc]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo x[!a]z",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ls [!a] echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo [abc] echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a-z]echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo x[!a]z echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !b: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !b: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !b: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \\!x",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\!b echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!! echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "foo!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! foo",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ! x",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a!(b",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "foo !( bar",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!=",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo hi! there",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo prev cmd!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo prev cmd echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo 'unclosed",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \"unclosed echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo 'unclosed !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \"a'b echo prev cmd\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo [ !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ] echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ][ !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ${ !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo } echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo }{ echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo $(( !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo )) echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo )( echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${!!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$((!!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo [a]echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo [a] echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo ${x}echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo $((x))echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[' !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[' !a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[\" !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'${' !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}' ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$((' !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'))' ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[ !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\${ !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']' '[' !!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[]' ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[' ']' ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo '[x]' ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo \"[x]\" ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "cat <<EOF",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "cat <<EOF\necho prev cmd\nEOF",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "cat <<'EOF'\necho prev cmd\nEOF",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo gamma and alpha",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ls /usr/bin grep foo bar.txt baz.txt cat a.c b.c",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo prev cmd echo prev cmd echo prev cmd",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "xgammayalphaz",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !!: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !1: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !nonexistent: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "echo [x] {y} (z)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo [x] {y} (z) echo [x] {y} (z)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "echo (z)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd efa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !'': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !'\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !'\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !'$: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !'a: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\"': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\"\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\"\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\"$: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\"a: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\$: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\a: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "![!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "![ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!)a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "efa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ef ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !a': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !a\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !a\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !a$: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !aa: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "ab cd ef ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "! a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "!  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'!a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "''a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "']a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "')a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "') ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "' a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "'  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "\"![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\")a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\") ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\" a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\"  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\!a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\)a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\ a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "\\  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[!a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "['a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[)a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[ a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "[  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "]![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "][ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "](!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "](\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "](\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "](]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "](}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "](a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "])a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "] a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "]  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "{![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{)a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{ a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "{  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "}![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "})a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "} a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "}  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "(![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "('a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "([ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "({ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "((!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "((\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "((\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "((]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "((}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "((a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "())",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "()a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "() ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "($ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "( a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "(  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": ")![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "){ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "))a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ") a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": ")  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "$![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "${ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$)a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$ a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "$  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": "a![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a!]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a!{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a!}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a!(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a!)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a\\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a[ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a{ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a})",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a}a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a} ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a(!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a(\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a(\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a(]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a(}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a(a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a)a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a$ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aaa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "aa ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "a  ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !': event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\": event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": null,
+  "stderr": "psh: !\\: event not found\n",
+  "pstdout": ""
+ },
+ {
+  "result": " ![",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " !]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " !{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " !}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " !(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " !)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ab cd ef",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ! ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " '!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ''",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " '\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " '\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " '[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ']",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " '{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " '}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " '(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ')",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " '$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " 'a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ' ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \")",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \"a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \" ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " \\ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ['",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " []",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " [ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ][",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ](",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ])",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ]a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ] ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " {a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " { ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " })",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " }a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " } ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " (!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ('",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " (\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " (\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ([",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " (]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ({",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " (}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ((",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ()",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ($",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " (a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ( ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ){",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ))",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " )a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ) ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " ${",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " $ ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a!",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a'",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a\"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a\\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a[",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a{",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a}",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a(",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a)",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a$",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " aa",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": " a ",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  !",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  '",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  \"",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  \\",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  [",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  ]",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  {",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  }",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  (",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  )",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  $",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "  a",
+  "stderr": "",
+  "pstdout": ""
+ },
+ {
+  "result": "   ",
+  "stderr": "",
+  "pstdout": ""
+ }
+]

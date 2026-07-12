@@ -34,6 +34,79 @@ _SUBSTITUTION_FAILED = object()
 _NOT_QUICK_SUB = object()  # leading text is not a ^old^new quick substitution
 
 
+class _SuppressionContext:
+    """Forward tracker for the three contexts that suppress a history ``!``.
+
+    The original scanner answered "is this ``!`` inside ``[...]`` / ``${...}`` /
+    ``$((...))``?" with three per-``!`` *backward* rescans over the raw prefix
+    (an O(n) rewind at every ``!``). This tracks the same three depths
+    incrementally in a single forward pass. ``feed`` is called for every
+    consumed character, in order — including characters inside quotes and after
+    a backslash, because the backward scans read the raw prefix regardless of
+    quoting and the refactor must reproduce that (quote-blind) behavior byte for
+    byte. ``suppressed`` reports whether the character position just reached
+    lies inside any of the three constructs.
+
+    Openers/closers match the original scans exactly: ``[`` / ``]`` for
+    brackets; ``${`` (a ``{`` immediately preceded by ``$``) opens a brace and
+    a bare ``{`` does not, while any ``}`` closes one; ``$((`` opens arithmetic
+    and ``))`` closes it, both consumed as non-overlapping pairs. Closers floor
+    at zero (a stray ``]`` / ``}`` / ``))`` with no open construct is inert),
+    which is the forward equivalent of the backward scans' "nearest unmatched
+    opener to the left" search.
+    """
+
+    __slots__ = ("bracket", "brace", "arith", "_skip_pair")
+
+    def __init__(self):
+        self.bracket = 0
+        self.brace = 0
+        self.arith = 0
+        # True when the previous fed character opened/closed a two-char
+        # arithmetic token ($(( or )) ); its partner char is consumed here so
+        # the pair is counted once (matching the backward scan's paired skip).
+        self._skip_pair = False
+
+    def suppressed(self) -> bool:
+        """True if the last-fed position is inside [...], ${...} or $((...))."""
+        return self.bracket > 0 or self.brace > 0 or self.arith > 0
+
+    def feed(self, command: str, p: int) -> None:
+        """Advance the depths past ``command[p]``."""
+        if self._skip_pair:
+            self._skip_pair = False
+            return
+        c = command[p]
+        if c == '[':
+            self.bracket += 1
+        elif c == ']':
+            if self.bracket > 0:
+                self.bracket -= 1
+        elif c == '{':
+            if p > 0 and command[p - 1] == '$':
+                self.brace += 1
+        elif c == '}':
+            if self.brace > 0:
+                self.brace -= 1
+        elif c == '(':
+            # '$((' arithmetic opener: this '(' follows '$' and precedes '('.
+            if (p > 0 and command[p - 1] == '$'
+                    and p + 1 < len(command) and command[p + 1] == '('):
+                self.arith += 1
+                self._skip_pair = True   # consume the paired second '('
+        elif c == ')':
+            # '))' arithmetic closer (paired, non-overlapping).
+            if p + 1 < len(command) and command[p + 1] == ')':
+                if self.arith > 0:
+                    self.arith -= 1
+                self._skip_pair = True   # consume the paired second ')'
+
+    def feed_range(self, command: str, start: int, stop: int) -> None:
+        """Advance the depths past ``command[start:stop]`` in order."""
+        for p in range(start, stop):
+            self.feed(command, p)
+
+
 class HistoryExpander:
     """Handles history expansion for the shell."""
 
@@ -86,32 +159,49 @@ class HistoryExpander:
         # Track if we made any expansions
         expanded = False
         result = []
+        n = len(command)
         i = 0
-        # History IS expanded inside double quotes (bash); only single quotes
-        # and a preceding backslash suppress it. Track double-quote state so a
-        # single quote inside "..." is treated as literal text, not a span.
+        # Emit/quote state. History IS expanded inside double quotes (bash);
+        # only single quotes and a preceding backslash suppress it. `in_squote`
+        # consumes a single-quoted span verbatim; a ' inside "..." is literal
+        # text (so it does not open a span).
+        in_squote = False
         in_dquote = False
+        # Suppression context: a single forward pass replacing the three
+        # per-`!` backward rescans. `ctx` is fed EVERY consumed character in
+        # order (see _SuppressionContext), so at each candidate `!` it reflects
+        # exactly the raw prefix the old scans examined.
+        ctx = _SuppressionContext()
 
-        # Process the command character by character to handle quotes properly
-        while i < len(command):
+        # Process the command character by character to handle quotes properly.
+        while i < n:
             char = command[i]
+
+            # Inside a single-quoted span: everything is literal until the
+            # closing ' (or end of line for an unterminated quote).
+            if in_squote:
+                result.append(char)
+                ctx.feed(command, i)
+                i += 1
+                if char == "'":
+                    in_squote = False
+                continue
 
             # Single quotes suppress history expansion — but NOT when already
             # inside double quotes (a ' inside "..." is literal text, bash).
             if char == "'" and not in_dquote:
-                # Consume the single-quoted span verbatim.
-                j = i + 1
-                while j < len(command) and command[j] != "'":
-                    j += 1
-                result.append(command[i:j+1] if j < len(command) else command[i:])
-                i = j + 1
+                in_squote = True
+                result.append(char)
+                ctx.feed(command, i)
+                i += 1
                 continue
 
             # Double quotes do NOT suppress history expansion (bash) — just
             # toggle the state and keep scanning for ! references inside.
-            elif char == '"':
+            if char == '"':
                 in_dquote = not in_dquote
                 result.append(char)
+                ctx.feed(command, i)
                 i += 1
                 continue
 
@@ -119,126 +209,72 @@ class HistoryExpander:
             # is a literal ! (no expansion). The backslash is KEPT verbatim
             # (bash's history -p keeps it; the lexer removes it later); keeping
             # \" intact also stops that " from toggling the double-quote state.
-            elif char == '\\' and i + 1 < len(command):
+            # The escaped char still advances the context (the old scans, being
+            # quote-blind, counted a \[ etc. too).
+            if char == '\\' and i + 1 < n:
                 result.append(char)
-                result.append(command[i + 1])
-                i += 2
+                ctx.feed(command, i)
+                i += 1
+                result.append(command[i])
+                ctx.feed(command, i)
+                i += 1
                 continue
 
-            # Handle history expansion
-            elif char == '!' and i + 1 < len(command) and command[i+1] != '=':
-                # Skip if we're inside [...] bracket expression (for glob patterns like [!abc])
-                # Look backwards for [ without closing ]
-                j = i - 1
-                bracket_depth = 0
-                in_bracket = False
-                while j >= 0:
-                    if command[j] == ']':
-                        bracket_depth += 1
-                    elif command[j] == '[':
-                        if bracket_depth == 0:
-                            in_bracket = True
-                            break
-                        else:
-                            bracket_depth -= 1
-                    j -= 1
+            # Candidate history reference: a `!` not immediately before `=` and
+            # not inside [...] / ${...} / $((...)). The three constructs are the
+            # forward-tracked ctx depths (was three backward rescans).
+            if (char == '!' and i + 1 < n and command[i + 1] != '='
+                    and not ctx.suppressed()):
+                # A history reference is an EVENT designator (!!, !n, !-n,
+                # !string, !?string?) optionally followed by a WORD designator
+                # (:n, :^, :$, :*, :n-m, ...). The shorthands !^, !$ and !* are
+                # an implicit !! event plus a word designator. Resolve the event
+                # first, then apply any word designator to the event's line.
+                resolved = self._resolve_event(command, i, history)
+                if resolved is not None:
+                    event_text, event_label, j = resolved
+                    if event_text is _EVENT_NOT_FOUND:
+                        if report_errors:
+                            print(f"psh: {event_label}: event not found",
+                                  file=sys.stderr)
+                        return None
 
-                if in_bracket:
-                    # We're inside [...], don't do history expansion
-                    result.append(char)
-                    i += 1
-                    continue
-
-                # Skip if we're inside ${...} parameter expansion
-                # Look backwards for ${ without closing }
-                j = i - 1
-                brace_depth = 0
-                while j >= 0:
-                    if command[j] == '}':
-                        brace_depth += 1
-                    elif command[j] == '{' and j > 0 and command[j-1] == '$':
-                        if brace_depth == 0:
-                            # We're inside ${...}, skip history expansion
-                            result.append(char)
-                            i += 1
-                            break
-                        else:
-                            brace_depth -= 1
-                    j -= 1
-                else:
-                    # Check if we're inside $((...)) arithmetic expansion
-                    # Look backwards for $(( without closing ))
-                    j = i - 1
-                    paren_depth = 0
-                    while j >= 1:
-                        if j < len(command) - 1 and command[j] == ')' and command[j+1] == ')':
-                            paren_depth += 1
-                            j -= 1  # Skip the extra )
-                        elif j > 0 and command[j-1] == '$' and command[j] == '(' and j < len(command) - 1 and command[j+1] == '(':
-                            if paren_depth == 0:
-                                # We're inside $((...)), skip history expansion
-                                result.append(char)
-                                i += 1
-                                break
-                            else:
-                                paren_depth -= 1
-                            j -= 1  # Skip the extra (
-                        j -= 1
-                    else:
-                        # Not inside ${...} or $((...)), continue with history expansion.
-                        #
-                        # A history reference is an EVENT designator (!!, !n, !-n,
-                        # !string, !?string?) optionally followed by a WORD
-                        # designator (:n, :^, :$, :*, :n-m, ...). The shorthands
-                        # !^, !$ and !* are an implicit !! event plus a word
-                        # designator. Resolve the event first, then apply any
-                        # word designator to the event's command line.
-                        resolved = self._resolve_event(command, i, history)
-                        if resolved is None:
-                            # ! not followed by a recognized event pattern: treat
-                            # it as a literal character (e.g. [[ ! ... ]], a!=b).
-                            result.append(char)
-                            i += 1
-                            continue
-
-                        event_text, event_label, j = resolved
-                        if event_text is _EVENT_NOT_FOUND:
-                            if report_errors:
-                                print(f"psh: {event_label}: event not found",
-                                      file=sys.stderr)
-                            return None
-
-                        # Apply an optional word designator, then any :modifiers
-                        # (:h/:t/:r/:e, :s/:gs/:&, :p) to the event text.
-                        selected = self._apply_word_designator(command, j, event_text)
-                        if selected is not _BAD_WORD_SPECIFIER:
-                            text, j = selected
-                            selected = self.apply_modifiers(text, command, j)
-                        if selected is _BAD_WORD_SPECIFIER:
-                            if report_errors:
-                                spec = command[j:self._word_designator_end(command, j)]
-                                print(f"psh: {spec}: bad word specifier",
-                                      file=sys.stderr)
-                            return None
-                        if selected[0] is _SUBSTITUTION_FAILED:
-                            # A :s/old/new/ whose `old` was not found: bash's
-                            # distinct "substitution failed" error class.
-                            if report_errors:
-                                print(f"psh: {selected[1]}: substitution failed",
-                                      file=sys.stderr)
-                            return None
-
+                    # Apply an optional word designator, then any :modifiers
+                    # (:h/:t/:r/:e, :s/:gs/:&, :p) to the event text.
+                    selected = self._apply_word_designator(command, j, event_text)
+                    if selected is not _BAD_WORD_SPECIFIER:
                         text, j = selected
-                        expanded = True
-                        result.append(text)
-                        i = j
-                        continue
+                        selected = self.apply_modifiers(text, command, j)
+                    if selected is _BAD_WORD_SPECIFIER:
+                        if report_errors:
+                            spec = command[j:self._word_designator_end(command, j)]
+                            print(f"psh: {spec}: bad word specifier",
+                                  file=sys.stderr)
+                        return None
+                    if selected[0] is _SUBSTITUTION_FAILED:
+                        # A :s/old/new/ whose `old` was not found: bash's
+                        # distinct "substitution failed" error class.
+                        if report_errors:
+                            print(f"psh: {selected[1]}: substitution failed",
+                                  file=sys.stderr)
+                        return None
 
-                # If we broke from the while loop (we're inside ${...}), skip regular char processing
-                continue
+                    text, j = selected
+                    expanded = True
+                    result.append(text)
+                    # The consumed reference (command[i:j], the raw !... text —
+                    # NOT the expansion) still advances the context for a later
+                    # `!`, matching the old backward scans.
+                    ctx.feed_range(command, i, j)
+                    i = j
+                    continue
+                # resolved is None: `!` is not a recognized event pattern
+                # (e.g. [[ ! ... ]], a trailing !). Fall through to emit it
+                # as a literal character.
 
-            # Regular character
+            # Regular character (also a suppressed or unrecognized `!`).
             result.append(char)
+            ctx.feed(command, i)
             i += 1
 
         final_result = ''.join(result)
