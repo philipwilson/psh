@@ -110,7 +110,7 @@ Hello, pwilson
 ```
 
 (The command still runs after the dump — debug flags observe, they
-don't intercept. The formatter is `psh/utils/token_formatter.py`.)
+don't intercept. The formatter is `psh/lexer/token_formatter.py`.)
 
 Three things are worth noticing.
 

@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Main entry point for psh when run as a module."""
-
 import sys
 from typing import Dict, List, Tuple, cast
 
+from .core.option_registry import OPTION_REGISTRY, SHORT_TO_LONG, OptionCategory
 from .scripting.visitor_modes import (
     handle_visitor_mode_for_command,
     handle_visitor_mode_for_content,
     handle_visitor_mode_for_script,
 )
 from .shell import Shell
+from .version import get_version_info
 
 # Flags that take no value: flag → settings applied when present.
 _FLAG_TABLE: Dict[str, List[Tuple[str, object]]] = {
@@ -105,7 +106,6 @@ def _resolve_long_option(name: str) -> "str | None":
     non-INTERNAL option name is accepted (psh's ``set -o`` is a deliberate
     superset of bash's set/shopt split), normalizing ``_`` vs ``-``.
     """
-    from .core.option_registry import OPTION_REGISTRY, OptionCategory
     for candidate in (name, name.replace('-', '_'), name.replace('_', '-')):
         spec = OPTION_REGISTRY.get(candidate)
         if spec is not None and spec.category is not OptionCategory.INTERNAL:
@@ -169,7 +169,6 @@ def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
         "version": False,
     }
 
-    from .core.option_registry import SHORT_TO_LONG
 
     i = 0
     while i < len(argv):
@@ -339,7 +338,6 @@ def main():
     # --version wins over --help regardless of order (bash does the same);
     # both exit before a Shell is constructed (no rc sourcing, no history).
     if opts["version"]:
-        from .version import get_version_info
         print(get_version_info())
         sys.exit(0)
     if opts["help"]:

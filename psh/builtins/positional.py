@@ -1,7 +1,7 @@
 """Positional parameter builtins (shift, getopts)."""
-
 from typing import TYPE_CHECKING, List
 
+from ..core import special_builtin_usage_discard
 from .base import Builtin
 from .registry import builtin
 
@@ -36,7 +36,6 @@ class ShiftBuiltin(Builtin):
                 return 1
             if len(args) > 2:
                 self.error("too many arguments", shell)
-                from ..core import special_builtin_usage_discard
                 special_builtin_usage_discard(shell.state, 1)
 
         # Validate shift count (bash: "N: shift count out of range")

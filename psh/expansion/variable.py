@@ -14,12 +14,22 @@ special variables, ${!name} indirection) and dispatch.
 import sys
 from typing import TYPE_CHECKING, Optional, Tuple
 
+from ..core import (
+    AssociativeArray,
+    ExpansionError,
+    IndexedArray,
+    NamerefCycleError,
+    OptionHandler,
+    UnboundVariableError,
+)
+from ..core.exceptions import BadSubstitutionError
+from ..lexer.unicode_support import is_valid_name
 from .arrays import ArrayOpsMixin
 from .fields import FieldExpansionMixin
 from .operands import OperandOpsMixin
 from .operators import OperatorOpsMixin
 from .param_parser import parse_parameter_expansion, validate_parameter_expansion
-from .parameter_expansion import ParameterExpansion
+from .parameter_expansion import ParameterExpansionOps
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -32,7 +42,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
     def __init__(self, shell: 'Shell'):
         self.shell = shell
         self.state = shell.state
-        self.param_expansion = ParameterExpansion(shell)
+        self.param_expansion = ParameterExpansionOps(shell)
 
     def _reject_bad_substitution(self, node, content: Optional[str] = None) -> None:
         """Raise bash's "bad substitution" for an invalid ``${...}`` name.
@@ -46,7 +56,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         is actually invalid.
         """
         if not validate_parameter_expansion(node):
-            from ..core.exceptions import BadSubstitutionError
             if content is None:
                 content = str(node)[2:-1]  # strip the ${ } str() re-adds
             print(f"{self.state.error_location_prefix()}${{{content}}}: bad substitution", file=sys.stderr)
@@ -72,7 +81,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         # Plain ${var}. Honor nounset — the error already carries bash's message
         # format (the printing handler adds the "psh: " prefix exactly once).
         if self.state.options.get('nounset', False):
-            from ..core import OptionHandler
             OptionHandler.check_unset_variable(self.state, var_name)
         return self._expand_special_variable(var_name)
 
@@ -128,7 +136,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             if 0 <= index < len(self.state.positional_params):
                 return self.state.positional_params[index]
             if self.state.options.get('nounset', False):
-                from ..core import OptionHandler
                 OptionHandler.check_unset_variable(self.state, var_name)
             return ''
 
@@ -139,7 +146,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         if self.state.options.get('nounset', False):
             # The error carries bash's message format; no "psh: " re-wrap here
             # (the printing handler adds the prefix exactly once).
-            from ..core import OptionHandler
             OptionHandler.check_unset_variable(self.state, var_name)
 
         return result
@@ -149,7 +155,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         # Follow a nameref to its target name; an array-element target (arr[1])
         # then flows into the array branch below. A cyclic chain warns and
         # reads as unset (bash).
-        from ..core import NamerefCycleError
         try:
             var_name = self.state.scope_manager.resolve_nameref_name(var_name)
         except NamerefCycleError as e:
@@ -168,7 +173,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             array_name = self._resolve_array_name(parts[0])
             index_expr = parts[1]
 
-            from ..core import AssociativeArray, IndexedArray
             var = self.state.scope_manager.get_variable_object(array_name)
 
             if var and isinstance(var.value, IndexedArray):
@@ -218,7 +222,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         # Follow a nameref to its target name so ${ref...} operators apply to
         # the target (including an array-element target like arr[1]). A
         # cyclic chain warns and reads as unset (bash).
-        from ..core import NamerefCycleError
         try:
             var_name = self.state.scope_manager.resolve_nameref_name(var_name)
         except NamerefCycleError as e:
@@ -261,7 +264,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             if (self.state.options.get('nounset', False)
                     and operator not in ('-', ':-', '=', ':=', '+', ':+', '?', ':?')
                     and not self._param_is_set(var_name)):
-                from ..core import UnboundVariableError
                 raise UnboundVariableError(f"{var_name}: unbound variable")
 
         needs_is_set = (operator in ('-', '=', '+', '?')
@@ -338,7 +340,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         array_name = self._resolve_array_name(parts[0])
         index_expr = parts[1]
 
-        from ..core import AssociativeArray, IndexedArray
         var = self.state.scope_manager.get_variable_object(array_name)
 
         # Handle special indices @ and * for whole-array operations
@@ -467,7 +468,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         an "invalid indirect expansion" and a target that isn't a valid
         parameter name is an "invalid variable name" (both exit status 1).
         """
-        from ..core import ExpansionError
 
         if source.isdigit():
             idx = int(source) - 1
@@ -504,7 +504,6 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         (``unicode_support.is_valid_name``); under ``set -o posix`` the name is
         ASCII-only, otherwise psh's lenient Unicode-letter rule applies.
         """
-        from ..lexer.unicode_support import is_valid_name
         if not target:
             return False
         if target.isdigit():

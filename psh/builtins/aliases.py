@@ -1,7 +1,7 @@
 """Alias management builtins (alias, unalias)."""
-
 from typing import TYPE_CHECKING, List
 
+from ..utils.escapes import single_quote
 from .base import Builtin
 from .registry import builtin
 
@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 def _quote_alias_value(value: str) -> str:
     """Quote an alias value for reusable output, the way bash does
     (bash's sh_single_quote — the shared ``utils.escapes.single_quote``)."""
-    from ..utils.escapes import single_quote
     return single_quote(value)
 
 

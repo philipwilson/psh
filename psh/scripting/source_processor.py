@@ -13,8 +13,18 @@ import sys
 from typing import Any, Optional, cast
 
 from ..ast_nodes import ASTNode, Program
+from ..core import (
+    FunctionReturn,
+    LoopBreak,
+    LoopContinue,
+    SpecialBuiltinUsageError,
+    TopLevelAbort,
+    report_internal_defect,
+)
 from ..lexer import UnclosedQuoteError
+from ..lexer.token_formatter import TokenFormatter
 from ..parser import ParseError
+from ..utils.ast_debug import print_ast_debug
 from .base import ScriptComponent
 from .command_accumulator import CommandAccumulator, Complete, NeedMore
 
@@ -260,7 +270,6 @@ class SourceProcessor(ScriptComponent):
                 and getattr(input_source, 'posix_syntax_exit', True)):
             return
         if getattr(self.shell, '_current_executor', None) is not None:
-            from ..core import SpecialBuiltinUsageError
             raise SpecialBuiltinUsageError(2)
         raise SystemExit(2)
 
@@ -489,7 +498,6 @@ class SourceProcessor(ScriptComponent):
 
         # Debug: Print AST if requested
         if self.state.debug_ast:
-            from ..utils.ast_debug import print_ast_debug
             print_ast_debug(ast, self.shell.ast_format, self.shell)
 
         return ast
@@ -508,7 +516,6 @@ class SourceProcessor(ScriptComponent):
         ``ExpansionError``, ``RecursionError`` or internal defect) propagates to
         ``_execute_buffered_command``'s clauses.
         """
-        from ..core import FunctionReturn, TopLevelAbort
         try:
             # Heredoc content is pre-populated during parsing.
             return self.shell.execute_program(cast(Program, ast))
@@ -567,7 +574,6 @@ class SourceProcessor(ScriptComponent):
         # in a seeded substitution child propagate to run_child_shell
         # (see the LoopBreak/LoopContinue handler in _dispatch_execution).
         from ..builtins import FunctionReturn
-        from ..core import LoopBreak, LoopContinue
         if isinstance(e, (LoopBreak, LoopContinue, FunctionReturn)):
             if nested:
                 raise e
@@ -620,7 +626,6 @@ class SourceProcessor(ScriptComponent):
         # Last-resort guard so an internal defect doesn't kill an
         # interactive session (or re-raise under strict-errors so a test
         # harness surfaces it) — see report_internal_defect for the policy.
-        from ..core import report_internal_defect
         location = self._location(input_source, start_line)
         rc = report_internal_defect(
             self.state, e, prefix=f"{location}: unexpected error: ",
@@ -632,6 +637,5 @@ class SourceProcessor(ScriptComponent):
         """Print the token stream when --debug-tokens is enabled."""
         if self.state.debug_tokens:
             print("=== Token Debug Output ===", file=sys.stderr)
-            from ..utils.token_formatter import TokenFormatter
             print(TokenFormatter.format(tokens), file=sys.stderr)
             print("========================", file=sys.stderr)

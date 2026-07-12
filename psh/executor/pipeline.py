@@ -4,13 +4,13 @@ Pipeline execution support for the PSH executor.
 This module provides the PipelineContext class and PipelineExecutor for
 handling pipeline execution with proper process management and job control.
 """
-
 import errno
 import os
 import signal
 import sys
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from ..ast_nodes import SimpleCommand
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
@@ -515,7 +515,6 @@ class PipelineExecutor:
 
     def _command_to_string(self, cmd: 'ASTNode') -> str:
         """Convert command to string representation."""
-        from ..ast_nodes import SimpleCommand
         if isinstance(cmd, SimpleCommand):
             # Convert args to strings
             str_args = [str(arg) for arg in cmd.args]

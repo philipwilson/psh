@@ -4,7 +4,7 @@ import os
 import signal
 from typing import TYPE_CHECKING, List, Tuple
 
-from ..executor.job_control import JobSpecOutcome, jobspec_error_messages
+from ..core.job_state import JobSpecOutcome, jobspec_error_messages
 from ..utils.signal_utils import (
     list_all_signals,
     signal_name_to_number,

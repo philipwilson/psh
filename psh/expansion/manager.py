@@ -11,10 +11,10 @@ public entry points (`expand_arguments`, `expand_word_to_fields`,
 """
 from typing import TYPE_CHECKING, List, Optional
 
-from ..ast_nodes import SimpleCommand, Word
+from ..ast_nodes import ExpansionPart, LiteralPart, ProcessSubstitution, SimpleCommand, Word
 from ..core.assignment_utils import ASSIGNMENT_PREFIX_RE
 from .brace_expansion_words import WordBraceExpander
-from .command_sub import CommandSubstitution
+from .command_sub import CommandSubstitutionExecutor
 from .glob import GlobExpander
 from .tilde import TildeExpander
 from .variable import VariableExpander
@@ -49,7 +49,7 @@ class ExpansionManager:
 
         # Initialize individual expanders
         self.variable_expander = VariableExpander(shell)
-        self.command_sub = CommandSubstitution(shell)
+        self.command_sub = CommandSubstitutionExecutor(shell)
         self.tilde_expander = TildeExpander(shell)
         self.glob_expander = GlobExpander(shell)
         self.word_splitter = WordSplitter()
@@ -172,7 +172,6 @@ class ExpansionManager:
         the name must be a valid identifier (``declare foo-bar=$x`` splits).
         Returns None when the word is not assignment-shaped.
         """
-        from ..ast_nodes import LiteralPart
         text = ''
         for part in word.parts:
             if isinstance(part, LiteralPart) and not part.quoted:
@@ -270,7 +269,6 @@ class ExpansionManager:
         Process substitution parts stay as their literal ``<(cmd)`` text:
         psh does not perform process substitution in case patterns.
         """
-        from ..ast_nodes import ExpansionPart, LiteralPart, ProcessSubstitution
         ve = self.variable_expander
         out = []
         for part in word.parts:

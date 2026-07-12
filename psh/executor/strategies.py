@@ -11,7 +11,25 @@ import sys
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from ..core import SpecialBuiltinUsageError, special_builtin_usage_exit
+from ..ast_nodes import SimpleCommand
+from ..builtins.base import EMPTY_BUILTIN_CONTEXT
+from ..core import (
+    ExpansionError,
+    FunctionReturn,
+    LoopBreak,
+    LoopContinue,
+    NamerefCycleError,
+    SpecialBuiltinUsageError,
+    UnboundVariableError,
+    arith_assignment_discard,
+    fatal_expansion_status,
+    report_internal_defect,
+    special_builtin_usage_exit,
+)
+from ..core.job_state import JobState
+from ..expansion.arithmetic import ShellArithmeticError
+from .child_policy import run_background_shell_child
+from .function import FunctionOperationExecutor
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
@@ -140,7 +158,6 @@ def report_unbound_variable(state: 'ShellState', exc: Exception) -> int:
     or ``TopLevelAbort`` (typed ``-> int`` for its ``return
     report_unbound_variable(...)`` callers).
     """
-    from ..core import fatal_expansion_status
     print(f"{state.error_location_prefix()}{exc}", file=state.stderr)
     return fatal_expansion_status(state, exc)
 
@@ -158,7 +175,6 @@ def report_assignment_error(state: 'ShellState', exc: Exception) -> int:
     error" that aborts a ``-c`` list. A cyclic nameref prints bash's
     warning form instead of the error form.
     """
-    from ..core import NamerefCycleError
     if isinstance(exc, NamerefCycleError):
         state.scope_manager.warn_nameref_cycle(exc.name)
     else:
@@ -177,7 +193,6 @@ def setup_child_redirections_for(shell: 'Shell', redirects) -> None:
     """
     if not redirects:
         return
-    from ..ast_nodes import SimpleCommand
     shell.io_manager.setup_child_redirections(
         SimpleCommand(redirects=redirects))
 
@@ -206,7 +221,6 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
       isn't hidden behind the generic message.
     """
     if invocation is None:
-        from ..builtins.base import EMPTY_BUILTIN_CONTEXT
         invocation = EMPTY_BUILTIN_CONTEXT
     try:
         # Builtins expect the command name as the first argument. Invoke
@@ -241,22 +255,12 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
             return 1
         raise
     except Exception as e:
-        # Imports here to avoid circular imports
-        from ..core import (
-            ExpansionError,
-            LoopBreak,
-            LoopContinue,
-            UnboundVariableError,
-        )
-        from ..core.exceptions import FunctionReturn
-        from ..expansion.arithmetic import ShellArithmeticError
         # A declaration value that fails to evaluate arithmetically
         # (`declare -i v='1/0'`, `local -i w='1//'`): bash prints
         # "declare: 1/0: division by 0" and DISCARDS the rest of the
         # line (rest of the whole -c string under -c) — the
         # assignment/subscript arithmetic-error family.
         if isinstance(e, ShellArithmeticError):
-            from ..core import arith_assignment_discard
             print(f"psh: {cmd_name}: {e}", file=shell.stderr)
             arith_assignment_discard(shell.state)
         # ExpansionError propagates to _handle_execution_error, which knows
@@ -269,7 +273,6 @@ def execute_builtin_guarded(builtin, cmd_name: str, args: List[str],
                           UnboundVariableError, ExpansionError,
                           RecursionError)):
             raise
-        from ..core import report_internal_defect
         return report_internal_defect(shell.state, e, prefix=f"{cmd_name}: ",
                                       stream=shell.stderr)
 
@@ -415,7 +418,6 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
         launcher = shell.process_launcher
 
         def execute_fn():
-            from .child_policy import run_background_shell_child
 
             def body() -> int:
                 # Apply redirections once in the child.
@@ -458,8 +460,6 @@ class FunctionExecutionStrategy(ExecutionStrategy):
             return self._execute_function_in_background(
                 cmd_name, args, shell, context, redirects, visitor)
 
-        # Import here to avoid circular imports
-        from .function import FunctionOperationExecutor
 
         # Create a function executor to handle the call
         function_executor = FunctionOperationExecutor(shell)
@@ -467,6 +467,7 @@ class FunctionExecutionStrategy(ExecutionStrategy):
         # Reuse the caller's visitor to preserve accumulated state;
         # fall back to creating a new one if not provided.
         if visitor is None:
+            # cycle-break: executor.core -> executor.command -> executor.strategies
             from .core import ExecutorVisitor
             visitor = ExecutorVisitor(shell)
             visitor.context = context
@@ -483,7 +484,6 @@ class FunctionExecutionStrategy(ExecutionStrategy):
         launcher = shell.process_launcher
 
         def execute_fn():
-            from .child_policy import run_background_shell_child
 
             # A backgrounded function call runs in a forked subshell
             # environment (bash). The shared bg-child runner gives it the same
@@ -493,10 +493,10 @@ class FunctionExecutionStrategy(ExecutionStrategy):
             def body() -> int:
                 setup_child_redirections_for(shell, redirects)
 
-                from .function import FunctionOperationExecutor
                 function_executor = FunctionOperationExecutor(shell)
                 v = visitor
                 if v is None:
+                    # cycle-break: executor.core -> executor.command -> executor.strategies
                     from .core import ExecutorVisitor
                     v = ExecutorVisitor(shell)
                     v.context = context
@@ -599,6 +599,7 @@ class ExternalExecutionStrategy(ExecutionStrategy):
 
         # Set terminal title to show running command
         if not background and not context.in_pipeline and shell.state.options.get('interactive'):
+            # cycle-break: interactive.title -> interactive.signal_manager -> executor.job_control
             from ..interactive.title import command_title, set_terminal_title
             set_terminal_title(command_title(cmd_name, shell))
 
@@ -674,7 +675,6 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             shell.job_manager.finish_foreground_job(original_pgid is not None, job)
 
             # Clean up
-            from .job_control import JobState
             if job.state == JobState.DONE:
                 shell.job_manager.remove_job(job.job_id)
 

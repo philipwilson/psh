@@ -18,12 +18,33 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
+from ..ast_nodes import (
+    ArrayElementAssignment,
+    ArrayInitialization,
+    LiteralPart,
+    SimpleCommand,
+    Word,
+)
 from ..builtins.base import EMPTY_BUILTIN_CONTEXT, BuiltinContext
 from ..core import (
+    ExpansionError,
+    FunctionReturn,
+    LoopBreak,
+    LoopContinue,
+    NamerefCycleError,
+    OptionHandler,
     ReadonlyVariableError,
     SpecialBuiltinUsageError,
+    TopLevelAbort,
+    UnboundVariableError,
+    arith_assignment_discard,
+    fatal_expansion_status,
+    report_internal_defect,
     special_builtin_usage_exit,
 )
+from ..io_redirect.manager import format_redirect_error
+from ..parser.array_flat_text import array_init_argv_key
+from .array import ArrayOperationExecutor
 from .command_assignments import CommandAssignments
 from .strategies import (
     POSIX_SPECIAL_BUILTINS,
@@ -32,10 +53,10 @@ from .strategies import (
     ExternalExecutionStrategy,
     FunctionExecutionStrategy,
     SpecialBuiltinExecutionStrategy,
+    report_unbound_variable,
 )
 
 if TYPE_CHECKING:
-    from ..ast_nodes import SimpleCommand
     from ..shell import Shell
     from .command_assignments import RawAssignment
     from .context import ExecutionContext
@@ -339,7 +360,6 @@ class CommandExecutor:
         - Redirections apply after the assignments (bash order); a setup
           failure prints the one diagnostic and fails with 1.
         """
-        from ..core import arith_assignment_discard
         for assignment in node.array_assignments:
             if self._handle_array_assignment(assignment) != 0:
                 # Operation failure (diagnostic already printed by the array
@@ -361,7 +381,6 @@ class CommandExecutor:
         only for the "not a valid identifier" prefix-position message (F7), so
         the exact index rendering is not compared against bash's.
         """
-        from ..ast_nodes import ArrayElementAssignment
         if isinstance(assignment, ArrayElementAssignment):
             return f"{assignment.name}[{assignment.index}]"
         return getattr(assignment, 'name', '?')
@@ -407,7 +426,6 @@ class CommandExecutor:
             # Create a sub-node for the command's own words only
             # (assignment prefixes sliced off). The string view
             # (.args) derives from words automatically.
-            from ..ast_nodes import SimpleCommand
             command_node = SimpleCommand(
                 redirects=node.redirects,
                 background=node.background,
@@ -504,7 +522,6 @@ class CommandExecutor:
                 if (cmd_name in POSIX_SPECIAL_BUILTINS
                         and self.state.is_script_mode):
                     sys.exit(1)
-                from ..core import TopLevelAbort
                 raise TopLevelAbort(1)
 
 
@@ -585,7 +602,6 @@ class CommandExecutor:
         if not (command_node.args and command_node.args[0].startswith('\\')):
             return command_node, False
 
-        from ..ast_nodes import LiteralPart, SimpleCommand, Word
 
         # Strip the backslash from the first Word's LiteralPart. The
         # leading '\\' of args[0] can only come from a LiteralPart (an
@@ -632,15 +648,6 @@ class CommandExecutor:
         - Anything else is likely an internal defect: keep the shell
           alive, print a generic message (traceback under --debug-exec).
         """
-        # Import these here to avoid circular imports
-        from ..core import (
-            ExpansionError,
-            LoopBreak,
-            LoopContinue,
-            UnboundVariableError,
-            fatal_expansion_status,
-        )
-        from ..core.exceptions import FunctionReturn
 
         # Re-raise control flow exceptions
         if isinstance(e, (FunctionReturn, LoopBreak, LoopContinue, SystemExit)):
@@ -662,7 +669,6 @@ class CommandExecutor:
             print(f"{self.state.error_location_prefix()}{e.name}: readonly variable", file=self.state.stderr)
             return 1
 
-        from ..core import NamerefCycleError
         if isinstance(e, NamerefCycleError):
             # Circular nameref in a command-prefix assignment: warn and
             # fail the command without aborting the script.
@@ -672,7 +678,6 @@ class CommandExecutor:
         if isinstance(e, UnboundVariableError):
             # set -u violation: print once and, like bash, abort a
             # non-interactive shell (shared with the arithmetic-command paths).
-            from .strategies import report_unbound_variable
             return report_unbound_variable(self.state, e)
 
         if isinstance(e, ExpansionError):
@@ -683,7 +688,6 @@ class CommandExecutor:
         # Last-resort guard: anything else is likely an internal defect.
         # Keep the shell alive (or re-raise under strict-errors) — see
         # report_internal_defect for the policy.
-        from ..core import report_internal_defect
         return report_internal_defect(self.state, e, stream=self.state.stderr)
 
     def _expand_arguments(self, node: 'SimpleCommand', *,
@@ -704,7 +708,6 @@ class CommandExecutor:
         Delegates to OptionHandler.print_xtrace so the PS4/format/flush policy
         lives in one place in core rather than being reimplemented here.
         """
-        from ..core import OptionHandler
         OptionHandler.print_xtrace(self.shell, [cmd_name] + args)
 
     def _execute_with_strategy(self, cmd_name: str, args: List[str],
@@ -919,7 +922,6 @@ class CommandExecutor:
             # their existing `psh: <message>` formatting is preserved.
             if e.errno is None:
                 raise
-            from ..io_redirect.manager import format_redirect_error
             print(format_redirect_error(e), file=self.state.stderr)
             return 1
         try:
@@ -952,7 +954,6 @@ class CommandExecutor:
         """
         if not self.expansion_manager.is_declaration_builtin_command(command_node):
             return None
-        from ..parser.array_flat_text import array_init_argv_key
         inits = {}
         for word in command_node.words:
             if word.array_init is not None:
@@ -965,8 +966,6 @@ class CommandExecutor:
 
     def _handle_array_assignment(self, assignment):
         """Handle array initialization or element assignment."""
-        from ..ast_nodes import ArrayElementAssignment, ArrayInitialization
-        from .array import ArrayOperationExecutor
 
         # Create array executor for this operation
         array_executor = ArrayOperationExecutor(self.shell)

@@ -3,15 +3,17 @@
 This module provides the mixin building pipelines (``|``/``|&`` chains, with
 optional ``!`` negation) and and-or lists (``&&``/``||`` chains).
 """
-
 from dataclasses import replace
 from typing import TYPE_CHECKING, List, Union, cast
 
 from ....ast_nodes import (
     AndOrList,
     ASTNode,
+    BraceGroup,
     Command,
     Pipeline,
+    SimpleCommand,
+    SubshellGroup,
 )
 from ....lexer.token_types import Token, TokenType
 from ..core import Parser, ParseResult, many, optional
@@ -231,7 +233,6 @@ class PipelineMixin(_Base):
         everything else backgrounds the whole list via a subshell. Mirrors
         the recursive descent parser's StatementParser._apply_background.
         """
-        from ....ast_nodes import BraceGroup, SimpleCommand, SubshellGroup
         if len(and_or_list.pipelines) == 1 and isinstance(and_or_list.pipelines[0], Pipeline):
             commands = and_or_list.pipelines[0].commands
             if commands and isinstance(commands[-1], SimpleCommand):

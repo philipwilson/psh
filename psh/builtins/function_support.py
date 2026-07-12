@@ -6,14 +6,17 @@ from ..core import (
     IndexedArray,
     ReadonlyVariableError,
     SpecialBuiltinUsageError,
+    TargetScope,
     VarAttributes,
     Variable,
+    special_builtin_usage_discard,
 )
 
 # FunctionReturn now lives with its control-flow siblings in
 # core/exceptions.py; re-exported here because many call sites
 # historically import it from this module.
 from ..core.exceptions import FunctionReturn  # noqa: F401
+from ..lexer.unicode_support import is_valid_name
 from ..visitor import format_function_definition
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import format_declaration, matches_filter
@@ -229,7 +232,6 @@ class DeclareBuiltin(Builtin):
         restricts names to ASCII ``[A-Za-z_][A-Za-z0-9_]*`` as bash does;
         otherwise psh's lenient Unicode-letter rule applies.
         """
-        from ..lexer.unicode_support import is_valid_name
         return is_valid_name(name, posix_mode)
 
     # Nameref target-SHAPE validation + the -flag→VarAttributes mapping now
@@ -481,7 +483,6 @@ class DeclareBuiltin(Builtin):
             # target (not the local shadow) and honor the target's integer
             # attribute (builtins appraisal finding 3). Attribute transforms are
             # applied by the store; a readonly target raises ReadonlyVariableError.
-            from ..core import TargetScope
             if remove_attrs:
                 # ``declare +x v=bye`` / ``declare +i n=2+3``: clear the +attrs
                 # on the existing target BEFORE the assignment, so the value is
@@ -964,7 +965,6 @@ class ReturnBuiltin(Builtin):
             # sys.exit(1) here made a non-interactive psh exit — bash
             # survives.)
             self.error("too many arguments", shell)
-            from ..core import special_builtin_usage_discard
             special_builtin_usage_discard(shell.state, 1)
 
         # Validate the numeric argument FIRST — bash reports a bad numeric

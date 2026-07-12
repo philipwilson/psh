@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Optional, Protocol
 if TYPE_CHECKING:
     from ..core.state import ShellState
     from ..shell import Shell
-    from .parameter_expansion import ParameterExpansion
+    from .parameter_expansion import ParameterExpansionOps
 
 
 class VariableExpanderProtocol(Protocol):
@@ -29,7 +29,7 @@ class VariableExpanderProtocol(Protocol):
     # Attributes set in VariableExpander.__init__
     shell: "Shell"
     state: "ShellState"
-    param_expansion: "ParameterExpansion"
+    param_expansion: "ParameterExpansionOps"
 
     # --- variable.py entry points ---
     def expand_variable(self, var_expr: str,

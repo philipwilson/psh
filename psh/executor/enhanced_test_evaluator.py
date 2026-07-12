@@ -5,10 +5,20 @@ from typing import TYPE_CHECKING
 from ..ast_nodes import (
     BinaryTestExpression,
     CompoundTestExpression,
+    ExpansionPart,
+    LiteralPart,
     NegatedTestExpression,
     TestExpression,
     UnaryTestExpression,
 )
+from ..builtins.test_command import TestBuiltin, variable_is_set
+from ..core import IndexedArray, VarAttributes
+from ..expansion.arithmetic import evaluate_arithmetic
+from ..expansion.glob import translate_posix_classes
+from ..expansion.operands import DQ_STRING, DQ_WORD
+from ..expansion.pattern import match_shell_pattern
+from ..expansion.word_expander import WordExpander
+from ..utils.file_tests import file_newer_than, file_older_than, files_same
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -24,7 +34,6 @@ class TestExpressionEvaluator:
 
     def _set_bash_rematch(self, match) -> None:
         """Set BASH_REMATCH from an `re` match (full match + capture groups)."""
-        from ..core import IndexedArray, VarAttributes
 
         arr = IndexedArray()
         if match is not None:
@@ -62,7 +71,6 @@ class TestExpressionEvaluator:
         lexer made it a literal part). This replaces the former
         flatten-then-strip-all-backslashes path, which corrupted both quoted
         backslashes and pattern escapes."""
-        from ..ast_nodes import ExpansionPart, LiteralPart
 
         out = []
         for i, part in enumerate(word.parts):
@@ -107,8 +115,6 @@ class TestExpressionEvaluator:
         and the ``==``/``!=``/``=~`` RHS builders (``_rhs_walk``) so the
         ``[[ ]]`` double-quote recipe lives in one place and cannot drift.
         """
-        from ..expansion.operands import DQ_STRING
-        from ..expansion.word_expander import WordExpander
         expanded = self.expansion_manager.expand_string_variables(
             text, quote_ctx=DQ_STRING, lexed=True)
         return WordExpander.process_dquote_escapes(expanded)
@@ -163,7 +169,6 @@ class TestExpressionEvaluator:
             # regex, not a glob, so no glob metacharacter handling is applied.
             # Under nocasematch bash uses REG_ICASE, which folds [[:upper:]]/
             # [[:lower:]] too (unlike ==/case), so no case protection here.
-            from ..expansion.glob import translate_posix_classes
             regex_src = translate_posix_classes(self._rhs_regex(expr.right_word))
             flags = (re.IGNORECASE
                      if self.state.options.get('nocasematch', False) else 0)
@@ -187,13 +192,10 @@ class TestExpressionEvaluator:
         elif expr.operator == '-ge':
             return self._arith_operand(left) >= self._arith_operand(right)
         elif expr.operator == '-nt':
-            from ..utils.file_tests import file_newer_than
             return file_newer_than(left, right)
         elif expr.operator == '-ot':
-            from ..utils.file_tests import file_older_than
             return file_older_than(left, right)
         elif expr.operator == '-ef':
-            from ..utils.file_tests import files_same
             return files_same(left, right)
         else:
             raise ValueError(f"unknown binary operator: {expr.operator}")
@@ -210,7 +212,6 @@ class TestExpressionEvaluator:
         (``ShellArithmeticError``) surface as status 1 with a message —
         see ``visit_EnhancedTestStatement``.
         """
-        from ..expansion.arithmetic import evaluate_arithmetic
         return evaluate_arithmetic(value, self.shell, expand=False)
 
     def _rhs_walk(self, word, *, escape, tilde: bool) -> str:
@@ -228,8 +229,6 @@ class TestExpressionEvaluator:
         result feeds the canonical engine so ``[[ ]]`` cannot drift from
         case patterns / ``${var#pat}``.
         """
-        from ..ast_nodes import ExpansionPart, LiteralPart
-        from ..expansion.operands import DQ_WORD
 
         out = []
         for i, part in enumerate(word.parts):
@@ -301,7 +300,6 @@ class TestExpressionEvaluator:
         likewise parses these groups unconditionally inside ``[[ ]]``
         (see ``recognizers/literal.extglob_active``).
         """
-        from ..expansion.pattern import match_shell_pattern
         return match_shell_pattern(
             string, pattern, extglob_enabled=True,
             ignorecase=self.state.options.get('nocasematch', False))
@@ -320,7 +318,6 @@ class TestExpressionEvaluator:
         operand = self._operand_string(expr.operand_word)
 
         # Import test command's unary operators
-        from ..builtins.test_command import TestBuiltin
         test_cmd = TestBuiltin()
 
         # Reuse the existing unary operator implementation
@@ -346,5 +343,4 @@ class TestExpressionEvaluator:
     def _is_variable_set(self, var_ref: str) -> bool:
         """Check if a variable (or array element) is set — shared with the
         ``test``/``[`` builtin's ``-v`` operator."""
-        from ..builtins.test_command import variable_is_set
         return variable_is_set(self.shell, var_ref)

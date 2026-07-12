@@ -29,7 +29,7 @@ Executor  Executor   Executor   Executor  Executor
 | `array.py` | `ArrayOperationExecutor` - array initialization |
 | `process_launcher.py` | `ProcessLauncher` - unified process creation |
 | `child_policy.py` | The "becoming a healthy child process" chapter: `fork_with_signal_window()`, `apply_child_signal_policy()`, `map_child_exception()` (the ONE child-exit taxonomy), `run_child_body()` (shared child-Shell body runner), `run_child_shell()` (substitution-child runner, built on `run_child_body`), `flush_child_streams()` |
-| `job_control.py` | `JobManager`, `Job`, `JobState`, `Process` - job table and waiting (moved into the package in v0.285) |
+| `job_control.py` | `JobManager`, `Job`, `Process` - job table and waiting (moved into the package in v0.285). The shared value vocabulary `JobState`/`JobSpecOutcome`/`JobSpecResult`/`jobspec_error_messages`/`exit_status_from_wait_status` lives in `psh/core/job_state.py` (so the job builtins need not import the executor — P4) and is re-exported here for existing callers |
 | `strategies.py` | Execution strategies for different command types, plus shared helpers `report_exec_failure()` and `execute_builtin_guarded()` |
 | `command_resolver.py` | `CommandResolver` - the ONE command-name resolution service (PATH walk, ordered typed candidates, executor exec resolution). Consumed by the external strategy and by `command`/`type`/`hash`; see `psh/builtins/CLAUDE.md` "Command resolution" |
 | `enhanced_test_evaluator.py` | `[[ ]]` test expression evaluation |

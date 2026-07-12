@@ -3,7 +3,6 @@ Control structure parsing for PSH shell.
 
 This module handles parsing of control structures like if, while, for, case, and select.
 """
-
 from typing import List, Tuple, Union
 
 from ....ast_nodes import (
@@ -14,6 +13,7 @@ from ....ast_nodes import (
     ExpansionPart,
     ForLoop,
     IfConditional,
+    LiteralPart,
     Redirect,
     SelectLoop,
     StatementList,
@@ -21,6 +21,7 @@ from ....ast_nodes import (
     VariableExpansion,
     WhileLoop,
     Word,
+    WordPart,
 )
 from ....lexer.token_types import TokenType
 from ..helpers import TokenGroups, unexpected_token_message
@@ -404,7 +405,6 @@ class ControlStructureParser(ParserSubcomponent):
         unquoted (glob-active) pattern text; the flattened string is kept
         for display.
         """
-        from ....ast_nodes import LiteralPart, Word, WordPart
 
         text_parts = []
         word_parts: List[WordPart] = []

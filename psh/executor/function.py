@@ -3,11 +3,11 @@ Function operations support for the PSH executor.
 
 This module handles function definition and execution operations.
 """
-
 from typing import TYPE_CHECKING, List, Optional
 
-from ..core import LoopBreak, LoopContinue, UnboundVariableError
+from ..core import LoopBreak, LoopContinue, TopLevelAbort, UnboundVariableError, report_internal_defect
 from ..core.exceptions import FunctionDefinitionError, FunctionReturn
+from ..lexer.unicode_support import is_valid_name
 
 if TYPE_CHECKING:
     from psh.visitor import ASTVisitor
@@ -47,7 +47,6 @@ class FunctionOperationExecutor:
         # identifier, exactly as bash restricts it. With posix mode OFF, psh
         # (like bash) allows the lenient set — a Unicode-letter name such as
         # ``é`` is accepted. Single authoritative policy: unicode_support.
-        from ..lexer.unicode_support import is_valid_name
         if self.shell.state.options.get('posix', False):
             if not is_valid_name(node.name, posix_mode=True):
                 print(f"psh: `{node.name}': not a valid identifier",
@@ -81,7 +80,6 @@ class FunctionOperationExecutor:
         except ValueError:
             return
         if limit > 0 and len(self.shell.state.function_stack) >= limit:
-            from ..core import TopLevelAbort
             print(f"psh: {name}: maximum function nesting level exceeded ({limit})",
                   file=self.shell.state.stderr)
             self.shell.state.last_exit_code = 1
@@ -218,13 +216,11 @@ class FunctionOperationExecutor:
             print(f"psh: {name}: maximum function nesting level exceeded",
                   file=self.shell.state.stderr)
             self.shell.state.last_exit_code = 1
-            from ..core import TopLevelAbort
             raise TopLevelAbort(1) from None
         except Exception as e:
             # Last-resort guard: a defect inside the function body. Keep the
             # shell alive (or re-raise under strict-errors) — see
             # report_internal_defect for the policy.
-            from ..core import report_internal_defect
             return report_internal_defect(
                 self.shell.state, e, prefix=f"{name}: ",
                 stream=self.shell.state.stderr)

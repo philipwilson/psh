@@ -12,13 +12,14 @@ This module handles execution of control structures including:
 (break/continue themselves are ordinary builtins — psh/builtins/loop_control.py
 — that raise LoopBreak/LoopContinue; the loops here catch them.)
 """
-
 import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Iterator, List, Optional, Union
 
-from ..core import LoopBreak, LoopContinue, NamerefCycleError, ReadonlyVariableError
+from ..core import LoopBreak, LoopContinue, NamerefCycleError, ReadonlyVariableError, report_internal_defect
+from ..core.options import xtrace_quote
 from ..expansion.arithmetic import evaluate_arithmetic
+from ..lexer.unicode_support import is_valid_name
 
 if TYPE_CHECKING:
     from psh.visitor import ASTVisitor
@@ -300,7 +301,6 @@ class ControlFlowExecutor:
         # unicode_support: under ``set -o posix`` names are ASCII-only as bash
         # requires; otherwise psh's lenient Unicode-letter rule applies (a
         # documented divergence — bash rejects Unicode names in both modes).
-        from ..lexer.unicode_support import is_valid_name
         if not is_valid_name(node.variable,
                              self.state.options.get('posix', False)):
             print(f"psh: `{node.variable}': not a valid identifier",
@@ -328,7 +328,6 @@ class ControlFlowExecutor:
                 # set -x: bash re-traces the `for VAR in WORDS` header on EACH
                 # iteration (the expanded word list, quoted).
                 if self.state.options.get('xtrace'):
-                    from ..core.options import xtrace_quote
                     ps4 = self.expansion_manager.expand_ps4()
                     words = ' '.join(xtrace_quote(w) for w in expanded_items)
                     header = f"{ps4}for {node.variable} in {words}".rstrip()
@@ -494,7 +493,6 @@ class ControlFlowExecutor:
 
             # set -x: bash traces the `case WORD in` header (expanded, quoted).
             if self.state.options.get('xtrace'):
-                from ..core.options import xtrace_quote
                 ps4 = self.expansion_manager.expand_ps4()
                 self.state.stderr.write(f"{ps4}case {xtrace_quote(expr)} in\n")
 
@@ -700,7 +698,6 @@ class ControlFlowExecutor:
         recognizes it as an expected shell error): ``psh: brace expansion: N
         items exceeds the limit`` on stderr, status 1, the shell continues.
         """
-        from ..core import report_internal_defect
         return report_internal_defect(self.state, e, stream=self.shell.stderr)
 
     def _expand_loop_items(self, node) -> List[str]:

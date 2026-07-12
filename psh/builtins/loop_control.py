@@ -6,12 +6,11 @@ and they compose in pipelines and && / || lists. psh matches that by parsing
 them as plain simple commands and implementing the control transfer here,
 via the LoopBreak/LoopContinue exceptions the loop executors catch.
 """
-
 import sys
 from abc import abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
-from ..core import LoopBreak, LoopContinue
+from ..core import LoopBreak, LoopContinue, special_builtin_usage_discard
 from .base import Builtin
 from .registry import builtin
 
@@ -81,7 +80,6 @@ class LoopControlBuiltin(Builtin):
             # $? = 1, in default AND POSIX mode. (The old sys.exit(1) path
             # made a non-interactive psh exit — bash survives.)
             self.error("too many arguments", shell)
-            from ..core import special_builtin_usage_discard
             special_builtin_usage_discard(shell.state, 1)
 
         arg = args[1]

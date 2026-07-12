@@ -23,8 +23,10 @@ This is a SYNTAX-VALIDATION parse, with three deliberate properties:
   (``initial_depth``), so deep ``$( $( ... ) )`` nesting degrades to a clean
   ``ParseError`` rather than a Python ``RecursionError`` traceback.
 """
-
 from typing import TYPE_CHECKING, Mapping, Optional
+
+from ....lexer import tokenize_with_heredocs
+from ....lexer.token_types import Token, TokenType
 
 if TYPE_CHECKING:
     from ....ast_nodes import Program
@@ -57,8 +59,6 @@ def parse_nested_command(source: str, *, line_offset: int = 0,
     pattern. Imports are local to avoid an import cycle with the parser package,
     which reaches this module through ``WordBuilder``.
     """
-    from ....lexer import tokenize_with_heredocs
-    from ....lexer.token_types import Token, TokenType
     from ..helpers import ErrorContext, ParseError
     from ..parser import Parser
 

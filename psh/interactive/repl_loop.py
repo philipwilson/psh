@@ -2,6 +2,7 @@
 import sys
 from typing import TYPE_CHECKING, Optional
 
+from ..core.variables import AssociativeArray, IndexedArray
 from .base import InteractiveComponent
 from .eof_policy import EOF_IGNORED_MESSAGE, ignoreeof_limit
 from .line_editor import LineEditor
@@ -162,7 +163,6 @@ class REPLLoop(InteractiveComponent):
         final backstop). Behavior pinned to bash 5.2 —
         tmp/probes-r18t2-interactive/probe_mi2_*.
         """
-        from ..core.variables import AssociativeArray, IndexedArray
 
         var = self.state.scope_manager.get_variable_object('PROMPT_COMMAND')
         if var is None:

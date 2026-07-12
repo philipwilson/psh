@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.719.0
+**Current Version**: 0.720.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -972,14 +972,14 @@ Handles all forms of variable expansion:
 ### 5.3 Command Substitution
 **File**: `expansion/command_sub.py`
 
-Executes commands and captures output. `CommandSubstitution.execute()`
+Executes commands and captures output. `CommandSubstitutionExecutor.execute()`
 forks a real child process (via `fork_with_signal_window()`, like every
 other fork site; the child branch runs through `run_child_shell()`,
 which applies the child signal policy) and reads its output through a
 pipe:
 
 ```python
-class CommandSubstitution:
+class CommandSubstitutionExecutor:
     def execute(self, cmd_sub: str) -> str:
         """Execute $(...) or `...` and return its output."""
         # Parent: create pipe, fork, read all output, waitpid,

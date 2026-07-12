@@ -11,7 +11,6 @@ This file deliberately contains no execution logic and no CLI-mode
 logic: executors live in ``psh/executor/``, the ``--validate/--format/
 --metrics/...`` analysis modes in ``psh/scripting/visitor_modes.py``.
 """
-
 import os
 import sys
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO
@@ -21,7 +20,7 @@ from .ast_nodes import (
     StatementList,
 )
 from .builtins import registry as builtin_registry
-from .core import ShellState
+from .core import ShellState, TrapManager
 from .core.functions import FunctionManager
 from .executor.job_control import JobManager
 from .expansion import ExpansionManager
@@ -255,7 +254,6 @@ class Shell:
         Before: state exists (the manager stores handlers in
         ``state.trap_handlers``). After: ``self.trap_manager`` is ready.
         """
-        from .core import TrapManager
         self.trap_manager = TrapManager(self)
 
     def _init_interactive(self, force_interactive: bool) -> None:

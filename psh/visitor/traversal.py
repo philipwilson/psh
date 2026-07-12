@@ -12,10 +12,9 @@ Visitors whose ``generic_visit`` is intentionally non-traversing (the
 validators' ``pass``) or that build output strings (formatter, debug) are not
 affected — they keep their own ``generic_visit``.
 """
-
 import dataclasses
 
-from ..ast_nodes import ASTNode
+from ..ast_nodes import ASTNode, ExpansionPart, Word
 
 
 def iter_child_nodes(node: ASTNode):
@@ -56,7 +55,6 @@ def visit_word_substitution_bodies(visitor, node: ASTNode) -> None:
     visitor attaches to ``visit_Program``. Backtick substitutions carry
     ``program=None`` and are skipped.
     """
-    from ..ast_nodes import ExpansionPart, Word
     for child in iter_child_nodes(node):
         if not isinstance(child, Word):
             continue

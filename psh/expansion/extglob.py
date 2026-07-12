@@ -9,11 +9,12 @@ Implements bash-compatible extglob patterns:
 
 Patterns support nesting and pipe-separated alternatives.
 """
-
 import os
 import re
 from functools import lru_cache
 from typing import List, Optional
+
+from ..core.locale_service import active_locale, posix_class_ranges
 
 # Characters that introduce an extglob operator
 _EXTGLOB_PREFIXES = frozenset('?*+@!')
@@ -323,7 +324,6 @@ def _bracket_to_regex(content: str, ic: bool = False) -> str:
     # stale conversion. Within one pattern match (content, ic) is constant
     # across subject positions, so this collapses the per-position rebuild the
     # memoized engine would otherwise pay in _bracket_match to one compile.
-    from ..core.locale_service import active_locale
     loc = active_locale()
     ctype = loc.profile.ctype_name if loc is not None else None
     return _bracket_to_regex_cached(content, ic, ctype)
@@ -366,7 +366,6 @@ def _bracket_to_regex_cached(content: str, ic: bool, _ctype: Optional[str]) -> s
     # codepoint ranges) in a UTF-8 locale, so `[[:alpha:]]` matches é there just
     # as bash does. Changing this ONE chokepoint fixes case / [[ == ]] /
     # ${x#pat} / pathname matching together (the v0.638 unified converter).
-    from ..core.locale_service import posix_class_ranges
     from .glob import _POSIX_CLASS_RE
 
     def _sub(m: 're.Match[str]') -> str:
@@ -510,6 +509,5 @@ def expand_extglob(pattern: str, directory: str = '.',
     # sort re-orders across directories; this keeps single-component extglob
     # results collation-ordered too). Module-level function, so reach the
     # process-active locale rather than a shell handle; codepoint order if none.
-    from ..core.locale_service import active_locale
     loc = active_locale()
     return sorted(matches, key=loc.collate_key) if loc else sorted(matches)

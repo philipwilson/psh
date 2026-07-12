@@ -3,11 +3,13 @@ import os
 import signal
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from ..executor.job_control import (
+from ..core.job_state import (
     JobSpecOutcome,
     JobState,
+    exit_status_from_wait_status,
     jobspec_error_messages,
 )
+from ..lexer.unicode_support import is_valid_name
 from .base import Builtin
 from .registry import builtin
 
@@ -437,7 +439,6 @@ class WaitBuiltin(Builtin):
         # probe-pinned), then fails rc 1 WITHOUT waiting. Same identifier
         # policy as read/mapfile targets (posix => ASCII-only).
         if pid_var is not None:
-            from ..lexer.unicode_support import is_valid_name
             if not is_valid_name(pid_var, shell.state.options.get('posix', False)):
                 self.error(f"`{pid_var}': not a valid identifier", shell)
                 return 1
@@ -469,7 +470,6 @@ class WaitBuiltin(Builtin):
         """
         import os
 
-        from ..executor.job_control import JobState
         jm = shell.job_manager
 
         # Restrict to the requested jobs (operands), or all jobs when none.
@@ -697,5 +697,4 @@ class WaitBuiltin(Builtin):
 
     def _extract_exit_status(self, status: int) -> int:
         """Extract exit status from waitpid status."""
-        from ..executor.job_control import exit_status_from_wait_status
         return exit_status_from_wait_status(status)

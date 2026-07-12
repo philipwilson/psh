@@ -5,9 +5,11 @@ instead of executing it. They live with the rest of the script-entry
 plumbing: their only caller is ``__main__.main()``, and Shell itself
 keeps no CLI-mode logic beyond storing the flags it was constructed with.
 """
-
 import sys
 from typing import TYPE_CHECKING, Any
+
+from ..core import report_internal_defect
+from ..core.exceptions import PshError
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -84,7 +86,6 @@ def handle_visitor_mode_for_content(shell: 'Shell', content: str,
     drop it; ``-c`` keeps it literal), so analysis sees the same text
     execution would.
     """
-    from ..core.exceptions import PshError
     try:
         ast = _parse_for_analysis(shell, content,
                                   drop_dangling_at_eof=drop_dangling_at_eof)
@@ -102,7 +103,6 @@ def handle_visitor_mode_for_content(shell: 'Shell', content: str,
         # as a bland "Error parsing command" exit-1. An OSError (e.g. a failed
         # read inside a visitor) is an expected shell error, so
         # report_internal_defect renders it without re-raising.
-        from ..core import report_internal_defect
         return report_internal_defect(
             shell.state, e, prefix=f"{location}: unexpected error: ",
             stream=sys.stderr)

@@ -6,7 +6,7 @@ import stat
 import sys
 from typing import TYPE_CHECKING, List, TextIO, Tuple, cast
 
-from ..ast_nodes import Redirect
+from ..ast_nodes import ExpansionPart, ProcessSubstitution, Redirect
 from .planner import RedirectPlan, RedirectPlanner
 
 if TYPE_CHECKING:
@@ -126,7 +126,6 @@ class FileRedirector:
         ProcessSubstitutionHandler (via the planner), not by field expansion,
         and is always a single fd path — never ambiguous.
         """
-        from ..ast_nodes import ExpansionPart, ProcessSubstitution
         return (len(word.parts) == 1
                 and isinstance(word.parts[0], ExpansionPart)
                 and isinstance(word.parts[0].expansion, ProcessSubstitution))

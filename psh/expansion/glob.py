@@ -5,7 +5,7 @@ import re
 import warnings
 from typing import TYPE_CHECKING, Iterator, List, Tuple
 
-from ..core.locale_service import LocaleMode
+from ..core.locale_service import LocaleMode, posix_class_ranges
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -81,7 +81,6 @@ def translate_posix_classes(pattern: str) -> str:
     table in the C locale (unchanged) and the host libc's iswctype membership in
     a UTF-8 locale.
     """
-    from ..core.locale_service import posix_class_ranges
 
     def _sub(m: 're.Match[str]') -> str:
         r = posix_class_ranges(m.group(1))

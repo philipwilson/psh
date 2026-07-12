@@ -32,8 +32,8 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `pattern.py` | `match_shell_pattern()` - the consumer-facing dispatch facade: extglob → compiled engine, plain glob → regex; `PatternMatcher` still builds the plain-glob→regex |
 | `pattern_engine.py` | THE compiled shell-pattern engine: `compile_pattern()` (parse-once AST) + memoized `reachable_ends`/`fullmatch`/`match_at` (see "Pattern matching engine" below) |
 | `extglob.py` | Extglob scanning primitives (`_find_matching_paren`, `_split_pattern_list`, `_bracket_end`, `_bracket_match`), the glob→regex converter (`glob_to_regex_body`), and thin `extglob_fullmatch`/`extglob_match_at`/`_extglob_consume` that delegate to `pattern_engine` |
-| `parameter_expansion.py` | `ParameterExpansion` - string ops behind the operators (incl. `PATSUB_MATCH`) |
-| `command_sub.py` | `CommandSubstitution` - handles `$(cmd)` and `` `cmd` `` |
+| `parameter_expansion.py` | `ParameterExpansionOps` - string ops behind the operators (incl. `PATSUB_MATCH`); the engine, not the `ParameterExpansion` AST node |
+| `command_sub.py` | `CommandSubstitutionExecutor` - runs `$(cmd)` and `` `cmd` ``; the engine, not the `CommandSubstitution` AST node |
 | `tilde.py` | `TildeExpander` - handles `~` and `~user` |
 | `glob.py` | `GlobExpander` - pathname expansion (wildcards) |
 | `word_splitter.py` | `WordSplitter` - splits on IFS (`split()`, `split_with_edges()`) |
@@ -58,7 +58,7 @@ All expansions go through `ExpansionManager`:
 class ExpansionManager:
     def __init__(self, shell):
         self.variable_expander = VariableExpander(shell)
-        self.command_sub = CommandSubstitution(shell)
+        self.command_sub = CommandSubstitutionExecutor(shell)
         self.tilde_expander = TildeExpander(shell)
         self.glob_expander = GlobExpander(shell)
         self.word_splitter = WordSplitter()
@@ -142,7 +142,7 @@ The `expand_arguments()` method processes expansions in this order:
                                           Word → List[Word] before variable expansion)
 2. Tilde Expansion      ~, ~user        → TildeExpander
 3. Variable Expansion   $VAR, ${VAR}    → VariableExpander
-4. Command Substitution $(cmd), `cmd`   → CommandSubstitution
+4. Command Substitution $(cmd), `cmd`   → CommandSubstitutionExecutor
 5. Arithmetic Expansion $((expr))       → execute_arithmetic_expansion()
 6. Word Splitting       on IFS          → WordSplitter
 7. Pathname Expansion   *, ?, [...]     → GlobExpander
@@ -328,7 +328,7 @@ passes over the segment list: field-split → glob (`_glob_pass`) → join.
 ### Command Substitution
 
 ```python
-class CommandSubstitution:
+class CommandSubstitutionExecutor:
     def execute(self, cmd_sub: str) -> str:
         # Extract command from $(...) or `...`
         # Create subprocess to execute

@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple, cast
 
 from ....ast_nodes import BraceGroup, FunctionDef, Redirect, Statement, StatementList
 from ....core.assignment_utils import ASSIGNMENT_WORD_RE
+from ....lexer.constants import KEYWORDS
 from ....lexer.token_types import TokenType
 from .base import ParserSubcomponent
 
@@ -65,7 +66,6 @@ class FunctionParser(ParserSubcomponent):
         # syntax error). `in` is the one keyword that lexes as a plain
         # WORD at command position; the rest already carry keyword
         # token types and fail the NAME_TOKENS match above.
-        from ....lexer.constants import KEYWORDS
         if name in KEYWORDS:
             return False
 

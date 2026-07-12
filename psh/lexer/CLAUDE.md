@@ -48,6 +48,7 @@ retired.
 | `cmdsub_scanner.py` | Grammar-aware `$(...)` extent scanner (`find_command_substitution_end` + maintenance contract) |
 | `constants.py` | Keywords and special variables (operators live in `OperatorRecognizer.OPERATORS`) |
 | `position.py` | Position tracking, `LexerConfig`, error classes |
+| `token_formatter.py` | `TokenFormatter` — token-stream debug rendering (relocated from `psh/utils` in r19-P4 so utils stays psh-import-free) |
 
 ### Recognizers (`recognizers/`)
 

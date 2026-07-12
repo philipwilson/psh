@@ -3,6 +3,7 @@
 import fnmatch
 from typing import TYPE_CHECKING, List
 
+from ..version import __version__
 from .base import Builtin
 from .registry import builtin
 
@@ -84,7 +85,6 @@ class HelpBuiltin(Builtin):
         """Show default help listing similar to bash."""
         # The canonical version is psh.version.__version__ (the same string the
         # `version` builtin and $PSH_VERSION report) — no hardcoded fallback.
-        from ..version import __version__
         self.write_line("PSH Shell, version " + __version__, shell)
         self.write_line("These shell commands are defined internally. Type 'help name' to find out more", shell)
         self.write_line("about the function 'name'.", shell)

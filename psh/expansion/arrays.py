@@ -6,6 +6,8 @@ methods use ``self.shell`` / ``self.state`` from the host class.
 """
 from typing import TYPE_CHECKING, Optional, Tuple
 
+from ..core import AssociativeArray, IndexedArray, NamerefCycleError, UnboundVariableError, arith_assignment_discard
+
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
     _Base = VariableExpanderProtocol
@@ -54,7 +56,6 @@ class ArrayOpsMixin(_Base):
         matching bash, where ``${r[@]}`` of an element nameref is empty. A
         cyclic chain resolves to the original name (read as unset).
         """
-        from ..core import NamerefCycleError
         try:
             return self.state.scope_manager.resolve_nameref_name(array_name)
         except NamerefCycleError as e:
@@ -72,7 +73,6 @@ class ArrayOpsMixin(_Base):
         fatal expansion error aborting the whole command (bash), not a
         silent index 0.
         """
-        from ..core import arith_assignment_discard
         from .arithmetic import ArithmeticError, evaluate_arithmetic
         expanded = self.expand_array_index(index_expr)
         try:
@@ -87,7 +87,6 @@ class ArrayOpsMixin(_Base):
 
         Joined with spaces for both @ and * (historical behavior).
         """
-        from ..core import AssociativeArray, IndexedArray
 
         parts = self.split_subscript(subscripted)
         assert parts is not None  # caller passes a NAME[...] form
@@ -116,7 +115,6 @@ class ArrayOpsMixin(_Base):
         (``${arr[i]:-d}``, ``${#arr[i]}``) reuses this to fetch the base value
         and must stay exempt, so it leaves it False.
         """
-        from ..core import AssociativeArray, IndexedArray
 
         parts = self.split_subscript(var_content)
         assert parts is not None  # caller passes a NAME[...] form
@@ -188,7 +186,6 @@ class ArrayOpsMixin(_Base):
         bash's message names the full subscript, e.g. ``a[5]: unbound variable``.
         """
         if check_nounset and self.state.options.get('nounset', False):
-            from ..core import UnboundVariableError
             raise UnboundVariableError(
                 f"{array_name}[{index_expr}]: unbound variable")
 
@@ -206,7 +203,6 @@ class ArrayOpsMixin(_Base):
             array_name = self._resolve_array_name(parts[0])
             index_expr = parts[1]
 
-            from ..core import AssociativeArray
             var = self.state.scope_manager.get_variable_object(array_name)
 
             # An associative array keys on the expanded literal subscript; an
@@ -234,7 +230,6 @@ class ArrayOpsMixin(_Base):
 
     def _array_assignment_form(self, array_name: str, var) -> str:
         """Build the ${arr[@]@A} declare statement (values double-quoted)."""
-        from ..core import AssociativeArray, IndexedArray
         flags = self._var_attr_flags(array_name)
         dq = self._at_a_quote
 
@@ -258,7 +253,6 @@ class ArrayOpsMixin(_Base):
         arrays use their keys; a scalar yields a single ('0', value) pair
         (bash treats ${scalar@K} like a one-element array indexed at 0).
         """
-        from ..core import AssociativeArray, IndexedArray
         if var and isinstance(var.value, AssociativeArray):
             return list(var.value.items())
         if var and isinstance(var.value, IndexedArray):
@@ -273,7 +267,6 @@ class ArrayOpsMixin(_Base):
         Values are double-quoted with bash's @A/@K declare-form escaping.
         Associative arrays get a trailing space (matching bash formatting).
         """
-        from ..core import AssociativeArray
         pairs = self._array_keyvalue_pairs(var)
         body = ' '.join(f'{k} {self._at_a_quote(v)}' for k, v in pairs)
         if var and isinstance(var.value, AssociativeArray) and body:
@@ -338,7 +331,6 @@ class ArrayOpsMixin(_Base):
         resolved through namerefs. A scalar yields ``['0']`` (keys) /
         ``[value]`` (elements); an unset/absent name yields ``[]``.
         """
-        from ..core import AssociativeArray, IndexedArray
         name = self._resolve_array_name(array_name)
         var = self.state.scope_manager.get_variable_object(name)
         if var and isinstance(var.value, (IndexedArray, AssociativeArray)):

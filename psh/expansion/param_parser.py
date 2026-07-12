@@ -82,8 +82,8 @@ Known representational choices (pinned by the differential corpus):
       appended (('v', '/', 'p') for ``${v/p}``); the evaluator's
       pattern/replacement splitter treats both spellings identically.
 """
-
 from ..ast_nodes import ParameterExpansion
+from ..lexer.unicode_support import is_valid_name
 
 # One transform letter may follow '@' in final position: ${v@Q} etc.
 # ANY letter parses as a transform operator (bash): an UNKNOWN letter is
@@ -114,7 +114,6 @@ def _is_identifier(name: str) -> bool:
     (non-posix) rule is used; the posix ASCII restriction is enforced at the
     runtime name-declaration sites (assignment, declare, read, ...).
     """
-    from ..lexer.unicode_support import is_valid_name
     return is_valid_name(name, posix_mode=False)
 
 

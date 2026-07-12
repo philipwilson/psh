@@ -4,16 +4,24 @@ The ``env`` builtin lives in its own module (``env_command.py``) because it
 runs a command in a nested in-process child Shell and carries its own
 process-fd binding helpers.
 """
-
 from typing import TYPE_CHECKING, List, cast
 
-from ..core import ReadonlyVariableError, SpecialBuiltinUsageError, VarAttributes
+from ..core import (
+    ArraySubscriptError,
+    AssociativeArray,
+    IndexedArray,
+    NamerefCycleError,
+    ReadonlyVariableError,
+    SpecialBuiltinUsageError,
+    VarAttributes,
+)
 from ..core.option_registry import (
     OPTION_REGISTRY,
     SET_O_OPTION_NAMES,
     SHORT_TO_LONG,
     OptionCategory,
 )
+from ..lexer.unicode_support import is_valid_name
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import escape_value
 from .registry import builtin
@@ -271,7 +279,6 @@ class ExportBuiltin(Builtin):
         (``unicode_support.is_valid_name``); ``posix_mode`` (``set -o posix``)
         restricts to the ASCII set as bash does.
         """
-        from ..lexer.unicode_support import is_valid_name
         return is_valid_name(name, posix_mode)
 
     def _print_exports(self, shell: 'Shell') -> None:
@@ -590,7 +597,6 @@ class UnsetBuiltin(Builtin):
             exit_code = 0
             for var in names:
                 if not nameref_mode and '[' not in var:
-                    from ..core import NamerefCycleError
                     try:
                         var = shell.state.scope_manager.resolve_nameref_name(var)
                     except NamerefCycleError as e:
@@ -636,7 +642,6 @@ class UnsetBuiltin(Builtin):
         expand_array_index) rather than re-implementing them here.
         Returns True on success, False on error (caller sets status 1).
         """
-        from ..core import AssociativeArray, IndexedArray, NamerefCycleError
 
         bracket_pos = var.find('[')
         array_name = var[:bracket_pos]
@@ -692,7 +697,6 @@ class UnsetBuiltin(Builtin):
             # associative array keys on the expanded literal subscript; an
             # indexed array keys on the arithmetic value. An out-of-range
             # negative subscript is "bad array subscript" (rc=1), like bash.
-            from ..core import ArraySubscriptError
             key: "int | str"
             if isinstance(var_obj.value, AssociativeArray):
                 key = expander.expand_array_index(index_expr)

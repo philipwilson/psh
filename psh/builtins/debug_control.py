@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, Dict, List
 
 from ..core.option_registry import DEBUG_OPTION_NAMES
+from ..utils import get_signal_registry
 from .base import Builtin
 from .registry import builtin
 
@@ -280,7 +281,6 @@ class SignalsBuiltin(Builtin):
                 return 1
 
         # Get the signal registry
-        from ..utils import get_signal_registry
 
         registry = get_signal_registry(create=False)
 
