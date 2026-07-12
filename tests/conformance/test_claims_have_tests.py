@@ -35,6 +35,11 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.dirname(__file__))
+from _assert_analysis import (
+    asserting_helper_names,
+    called_names,
+    has_bare_assert,
+)
 from conformance_framework import find_bash
 
 GUIDE = os.path.join(os.path.dirname(__file__), '..', '..',
@@ -195,50 +200,10 @@ def _partial_support_features():
 
 
 # --- Evidence matcher ------------------------------------------------------
-# Assertion helpers provided by the ConformanceTest base class.
-_CONFORMANCE_ASSERT_HELPERS = frozenset({
-    'assert_identical_behavior', 'assert_documented_difference',
-    'assert_psh_extension',
-})
-
-
-def _called_names(node):
-    """Yield the simple name of every function/method called within node."""
-    for n in ast.walk(node):
-        if isinstance(n, ast.Call):
-            f = n.func
-            if isinstance(f, ast.Attribute):
-                yield f.attr
-            elif isinstance(f, ast.Name):
-                yield f.id
-
-
-def _has_bare_assert(node):
-    return any(isinstance(n, ast.Assert) for n in ast.walk(node))
-
-
-def _asserting_helper_names(tree):
-    """Names of helpers in this module that themselves assert.
-
-    A conformance file may wrap its comparison in a local helper (e.g.
-    ``_both_identical`` in the reappraisal pins) that runs both shells and
-    asserts. Any def whose body contains a bare ``assert`` counts, and — to a
-    fixpoint — so does any def that calls an already-known asserting helper.
-    A test that merely *calls* such a helper is genuinely exercising a claim.
-    """
-    names = set(_CONFORMANCE_ASSERT_HELPERS)
-    funcs = [n for n in ast.walk(tree)
-             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-    changed = True
-    while changed:
-        changed = False
-        for fn in funcs:
-            if fn.name in names:
-                continue
-            if _has_bare_assert(fn) or any(c in names for c in _called_names(fn)):
-                names.add(fn.name)
-                changed = True
-    return names
+# The "does this test genuinely assert" primitives (CONFORMANCE_ASSERT_HELPERS,
+# called_names, has_bare_assert, asserting_helper_names) live in the shared
+# _assert_analysis module, imported above, so this guard and
+# test_conformance_probes_assert.py cannot drift apart on the definition.
 
 
 def _function_source(src_lines, node):
@@ -255,12 +220,12 @@ def _exercising_test_sources_from_text(src):
     assertion. Class definitions and assert-free probes are excluded."""
     src_lines = src.splitlines()
     tree = ast.parse(src)
-    helpers = _asserting_helper_names(tree)
+    helpers = asserting_helper_names(tree)
     sources = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
                 and node.name.startswith('test'):
-            if _has_bare_assert(node) or any(c in helpers for c in _called_names(node)):
+            if has_bare_assert(node) or any(c in helpers for c in called_names(node)):
                 sources.append(_function_source(src_lines, node))
     return sources
 
