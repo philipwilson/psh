@@ -57,12 +57,14 @@ class TestReadonlyPwdBattery:
         r = _run('cd /tmp; pushd /var >/dev/null; readonly PWD; '
                  'pushd; echo rc=$?; dirs')
         assert 'PWD: readonly variable' in r.stderr
+        assert 'pushd:' not in r.stderr  # bare report_error, like bash
         assert r.stdout.splitlines() == ['rc=1', '/tmp /var']
 
     def test_pushd_rotate_readonly_pwd_rotation_stands(self):
         r = _run('cd /; pushd /tmp >/dev/null; pushd /var >/dev/null; '
                  'readonly PWD; pushd +1; echo rc=$?; dirs')
         assert 'PWD: readonly variable' in r.stderr
+        assert 'pushd:' not in r.stderr  # bare report_error, like bash
         assert r.stdout.splitlines() == ['rc=1', '/tmp / /var']
 
     def test_cd_dash_prints_dir_before_readonly_error(self):
