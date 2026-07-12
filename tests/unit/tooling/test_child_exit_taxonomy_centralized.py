@@ -20,6 +20,10 @@ Not fingerprinted here: ``0 if code is None else 1`` also appears in
 ``scripting/source_processor.py`` for the MAIN shell's ``exit``/``set -e``
 SystemExit handling — a legitimately separate concern (the main shell's exit
 DOES unwind; a forked child's does not), so it is not part of this taxonomy.
+
+The scan deliberately walks ``*.py`` files only: the fingerprint legitimately
+appears in prose (``psh/executor/CLAUDE.md`` documents the taxonomy), and
+documentation QUOTING the rule is not a second implementation of it.
 """
 
 import os
