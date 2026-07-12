@@ -6,13 +6,10 @@ These appear as the ``array_assignments`` prefix of a SimpleCommand (and
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Union
+from typing import List
 
 from .base import ASTNode
 from .words import Word
-
-if TYPE_CHECKING:
-    from ..lexer.token_types import Token
 
 
 @dataclass
@@ -67,7 +64,7 @@ class ArrayInitialization(ArrayAssignment):
 class ArrayElementAssignment(ArrayAssignment):
     """Array element assignment: arr[0]=value or arr[0]+=value"""
     name: str
-    index: Union[str, List['Token']]  # The index expression (str for compatibility, List[Token] for late binding)
+    index: str  # The subscript text (verbatim); expanded/evaluated by the executor
     value: str  # The value to assign
     # Word AST node for the value (REQUIRED — no default). Both parsers
     # always build it; the executor expands it with bash assignment-value
