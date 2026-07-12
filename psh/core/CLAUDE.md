@@ -25,7 +25,9 @@ Manager            (arrays)    State    Manager
 | `terminal_state.py` | `TerminalState` - terminal capabilities (`is_terminal`/`supports_job_control`; ShellState delegates) |
 | `stream_bindings.py` | `StreamBindings` - stdin/stdout/stderr overrides (ShellState delegates) |
 | `command_hash.py` | `CommandHashTable` - remembered command locations (`hash` builtin; cleared via `ScopeManager.path_changed` on any PATH write) |
-| `scope.py` | `ScopeManager`, `VariableScope` - hierarchical scope management |
+| `scope.py` | `ScopeManager`, `VariableScope` - the scope stack (flat list, `scope_stack[0]` global) |
+| `variable_store.py` | `VariableStore` (`scope_manager.store`) - the single variable-WRITE transaction boundary (readonly/nameref/observer guards); see "Variable-mutation model" below |
+| `getopts_state.py` | `GetoptsState` - typed `getopts` scan state (OPTIND tracking, restart detection) |
 | `special_registry.py` | `SPECIAL_REGISTRY` + `SpecialParameterState` - the single declarative table + typed lifecycle state for computed specials (RANDOM/SECONDS/LINENO/...); see "Computed Special Parameters" below |
 | `environment.py` | `is_environ_shell_name` - the one rule deciding which inherited env entries become shell variables vs stay opaque (appraisal H3) |
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
@@ -50,14 +52,12 @@ class ShellState:
         # Scope manager for variables
         self.scope_manager = ScopeManager()
 
-        # Shell options dictionary
-        self.options = {
-            'errexit': False,    # -e
-            'nounset': False,    # -u
-            'xtrace': False,     # -x
-            'pipefail': False,   # -o pipefail
-            ...
-        }
+        # Shell options: a registry-backed ShellOptions mapping (NOT a plain
+        # dict). Defaults come from option_registry.py; CLI/debug flags are
+        # passed as `overrides`. Reads/writes use the ['key']/.get() API but
+        # an unregistered name or wrong value_type raises. See "Adding a New
+        # Shell Option" below.
+        self.options = ShellOptions(overrides={...})
 
         # Execution state
         self.last_exit_code = 0
@@ -87,38 +87,21 @@ class VarAttributes(Flag):
     UNSET = auto()       # explicitly unset in scope (tombstone)
 ```
 
-### 3. Hierarchical Scope Management
+### 3. Scope Stack
 
-Function calls create nested scopes:
+Function calls push a new scope. `ScopeManager`
+(`scope.py#ScopeManager`) holds a **flat** `self.scope_stack` list, with
+`scope_stack[0]` always the global scope — a `VariableScope` carries NO
+parent pointer; lookups walk the stack from the top down. Each scope holds
+`Variable` objects (not plain strings).
 
-Scopes hold `Variable` objects (not plain strings); the stack lives in
-`self.scope_stack`, with `scope_stack[0]` always the global scope:
-
-```python
-class ScopeManager:
-    def __init__(self):
-        self.global_scope = VariableScope(name="global")
-        self.scope_stack: List[VariableScope] = [self.global_scope]
-
-    def push_scope(self, name: Optional[str] = None) -> VariableScope:
-        """Create new scope for function entry."""
-        new_scope = VariableScope(parent=self.current_scope, name=name)
-        self.scope_stack.append(new_scope)
-        return new_scope
-
-    def pop_scope(self) -> Optional[VariableScope]:
-        """Remove scope on function exit (cannot pop global scope)."""
-        ...
-
-    def get_variable(self, name: str, default: Optional[str] = None) -> Optional[str]:
-        """Get variable value as string, following namerefs, or default."""
-        var = self._lookup_resolved(name)   # walks scope chain + nameref chain
-        return var.as_string() if var else default
-
-    def get_variable_object(self, name: str) -> Optional[Variable]:
-        """Full Variable through scope chain (no nameref deref).
-        UNSET tombstones make lookup return None."""
-```
+- `push_scope(name)` appends `VariableScope(name=name)` and returns it
+  (`VariableScope.__init__` takes only `name` — there is no `parent`).
+- `pop_scope()` removes the top scope on function exit (never the global).
+- `get_variable(name, default)` returns the value as a string following the
+  nameref chain; `get_variable_object(name)` returns the full `Variable`
+  through the scope stack WITHOUT nameref deref (`UNSET` tombstones make the
+  lookup return None).
 
 ### 4. Variable-mutation model — the `VariableStore`
 
@@ -501,30 +484,23 @@ through it. No production code poke `state.env[...]` directly.
   `variable_changed` observer + `find_exported_instance`. Teardown
   re-materializes each name from the (restored) variable / base.
 
-Exported variables are synced to `state.env`:
-
-```python
-def export_variable(self, name: str, value: str):
-    self.scope_manager.set_variable(name, value,
-                                    attributes=VarAttributes.EXPORT, local=False)
-    self.env[name] = value
-    self.scope_manager.sync_exports_to_environment(self.env)
-```
+Exported variables reach `state.env` through an OBSERVER, never a direct
+write (this is the invariant the Environment Policy section declares).
+`ShellState.export_variable` (`state.py#ShellState.export_variable`) only
+sets the EXPORT attribute — `scope_manager.set_variable(..., attributes=
+VarAttributes.EXPORT, local=False, skip_temp_env=True)`. The scope manager
+then fires `variable_changed` → `_sync_exported_variable` →
+`_materialize_env_name`, the ONE place `state.env[name]` is written. No
+production code pokes `state.env[...]` directly.
 
 ### Allexport Mode
 
-When `set -a` is enabled, all new variables are automatically exported:
-
-```python
-def set_variable(self, name: str, value: str):
-    if self.options.get('allexport', False):
-        self.scope_manager.set_variable(name, value,
-                                        attributes=VarAttributes.EXPORT, local=False)
-        self.env[name] = value
-        self.scope_manager.sync_exports_to_environment(self.env)
-    else:
-        self.scope_manager.set_variable(name, value, local=False)
-```
+When `set -a` is enabled, `ShellState.set_variable`
+(`state.py#ShellState.set_variable`) adds the EXPORT attribute to each new
+variable before delegating to the scope manager (a computed dynamic special
+like `RANDOM` is exempt — bash leaves it unexported). The env entry then
+materializes through the same `variable_changed` observer, so allexport
+needs no separate `state.env` write.
 
 ### Terminal Detection
 
@@ -556,9 +532,11 @@ python -m psh --debug-scopes -c 'f() { local x=1; echo $x; }; f'
 
 1. **Scope Confusion**: Variables set in functions without `local` go to global scope (bash behavior).
 
-2. **Export Sync**: When modifying exported variables, sync to `state.env`
-   (NEVER `os.environ` — it is read once at startup and never written;
-   children receive `state.env` explicitly).
+2. **Export Sync**: Exported-variable writes materialize into `state.env`
+   AUTOMATICALLY via the `variable_changed` observer
+   (`_materialize_env_name`, the one writer). Never poke `state.env[...]`
+   directly, and never write `os.environ` (read once at startup; children
+   receive `state.env` explicitly).
 
 3. **Readonly Check**: Always check `is_readonly` before modifying a variable.
 

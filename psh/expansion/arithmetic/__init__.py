@@ -1,8 +1,8 @@
 """Arithmetic expression evaluator for shell arithmetic expansion $((...)).
 
 This package was decomposed from a single ``arithmetic.py`` module. The public
-surface re-exported here is a superset of everything that was importable from
-the old module, so existing imports such as
+surface re-exported here (see ``__all__`` below) preserves the names that were
+importable from the old module, so existing imports such as
 ``from psh.expansion.arithmetic import evaluate_arithmetic`` keep working.
 
 Module layout:

@@ -1,8 +1,9 @@
-"""Per-field tests for ShellState.adopt() — the subshell inheritance chokepoint.
+"""Per-field tests for ShellState.clone_for_child() — the subshell inheritance chokepoint.
 
-Reappraisal #15 (E1) found seven __init__ fields silently missing from
-adopt(); these tests pin each adopted field's semantics (copied, and
-independent where mutation must not leak back). The companion drift-lock is
+Reappraisal #15 (E1) found seven __init__ fields silently missing from the
+old ``adopt()`` (replaced by ``clone_for_child()`` in v0.656); these tests
+pin each copied field's semantics (copied, and independent where mutation
+must not leak back). The companion drift-lock is
 test_state_adopt_completeness.py. Bash-verified in tmp/e1_truth_table.sh
 and tests/behavioral/golden_cases.yaml.
 
@@ -17,7 +18,7 @@ from psh.shell import Shell
 
 
 class TestAdoptedFields:
-    """Fields adopt() copies into a subshell-style child."""
+    """Fields clone_for_child() copies into a subshell-style child."""
 
     def test_script_name_is_inherited(self, captured_shell):
         captured_shell.state.script_name = "/path/to/script.sh"
