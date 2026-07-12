@@ -21,7 +21,6 @@ from ..ast_nodes import (
     CaseConditional,
     # Case components
     CaseItem,
-    Command,
     CStyleForLoop,
     EnhancedTestStatement,
     ForLoop,
@@ -76,8 +75,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self.issues: List[ValidationIssue] = []
         self.function_names: Set[str] = set()
         self.current_context: List[str] = []  # Stack of contexts
-        # Commands of the pipeline currently being validated (None outside one)
-        self._in_pipeline: Optional[List[Command]] = None
 
     def _push_context(self, context: str):
         """Push a new context onto the stack."""
@@ -142,12 +139,19 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         if node.args:
             cmd = node.args[0]
 
-            # Check for common mistakes
-            if cmd == 'cd' and len(node.args) > 2:
-                self._add_warning(
-                    f"cd: too many arguments (got {len(node.args) - 1}, expected 0 or 1)",
-                    node
-                )
+            # Check for common mistakes. Count only NON-OPTION operands: bash
+            # accepts `cd -P /tmp` / `cd -- "$dir"` (one operand, the rest are
+            # option flags), so counting raw args flagged those legal forms.
+            # A bare `-` is an OPERAND (cd to $OLDPWD), not an option, so
+            # `cd - extra` is two operands and warns.
+            if cmd == 'cd':
+                operands = [a for a in node.args[1:]
+                            if a == '-' or not a.startswith('-')]
+                if len(operands) > 1:
+                    self._add_warning(
+                        f"cd: too many arguments (got {len(operands)}, expected 0 or 1)",
+                        node
+                    )
 
             # Check for deprecated commands
             if cmd == 'which':
@@ -156,12 +160,11 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                     node
                 )
 
-            # Check for useless cat
-            if cmd == 'cat' and len(node.args) == 2 and node in getattr(self, '_in_pipeline', []):
-                self._add_warning(
-                    "Useless use of cat - consider using input redirection instead",
-                    node
-                )
+            # NOTE: "useless use of cat" is owned by LinterVisitor
+            # (linter_visitor.py visit_Pipeline), which correctly requires a
+            # real multi-command pipeline. The validator's copy misfired on every
+            # bare `cat file` (psh wraps each command in a one-element Pipeline)
+            # and was removed in reappraisal #19 T10.
 
         # Validate array assignments
         for assignment in node.array_assignments:
@@ -175,10 +178,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         if not node.commands:
             self._add_error("Empty pipeline with no commands", node)
             return
-
-        # Track that we're in a pipeline for context
-        old_pipeline = getattr(self, '_in_pipeline', None)
-        self._in_pipeline = node.commands
 
         # Check for redundant pipelines - disabled by default as it's too noisy
         # if len(node.commands) == 1 and not node.negated:
@@ -194,8 +193,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             self.visit(cmd)
             if i > 0:
                 self._pop_context()
-
-        self._in_pipeline = old_pipeline
 
     def visit_AndOrList(self, node: AndOrList) -> None:
         """Validate an and/or list."""
@@ -444,12 +441,10 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                 node
             )
 
-        # Warn about noclobber
-        if node.type == '>' and node.target != '/dev/null':
-            self._add_info(
-                "Consider using '>|' to force overwrite or '>>' to append",
-                node
-            )
+        # NOTE: a "consider '>|' or '>>'" advisory used to fire on EVERY `>`
+        # whose target was not /dev/null. Truncating with `>` is normal,
+        # expected shell behaviour; nagging on every redirect (and recommending
+        # `>|` as a default) was noise, so it was dropped in reappraisal #19 T10.
 
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> None:
         """Validate enhanced test statement."""

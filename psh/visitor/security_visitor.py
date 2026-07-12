@@ -5,6 +5,7 @@ This visitor analyzes AST for potential security vulnerabilities and
 dangerous patterns in shell scripts.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
@@ -29,6 +30,25 @@ from .constants import (
 )
 from .traversal import visit_children, visit_word_substitution_bodies
 from .word_analysis import has_command_substitution
+
+# Arithmetic-injection shapes: a command substitution (``$(...)`` / backticks) or
+# a braced parameter expansion carrying a subscript (``${arr[$i]}``) embedded in
+# an arithmetic expression can inject code, because bash re-expands the
+# expression text before evaluating it. A plain variable reference in arithmetic
+# (``i = i + 1``) is SAFE — bash coerces a non-numeric value to 0 and never
+# re-executes it — so it must not be flagged (the old char-strip heuristic
+# flagged every variable-using arithmetic as MEDIUM ARITHMETIC_INJECTION).
+_ARITH_CMD_SUB_RE = re.compile(r'\$\((?!\()')  # $( ... ), but not $(( )) arithmetic
+_ARITH_BRACED_SUBSCRIPT_RE = re.compile(r'\$\{[^}]*\[[^}]*\]')
+
+
+def _arithmetic_injection_shape(expr: str) -> bool:
+    """True if *expr* contains a genuinely injectable arithmetic shape."""
+    return bool(
+        '`' in expr
+        or _ARITH_CMD_SUB_RE.search(expr)
+        or _ARITH_BRACED_SUBSCRIPT_RE.search(expr)
+    )
 
 
 @dataclass
@@ -205,22 +225,16 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self._visit_redirects(node)
 
     def visit_ArithmeticEvaluation(self, node: ArithmeticEvaluation) -> None:
-        """Analyze arithmetic expressions."""
-        # Check for variable expansion that could lead to code execution
-        # Note: In the AST, variables have already been parsed so $ is removed
-        expr = node.expression.strip()
-
-        # Remove spaces, digits, operators, and parentheses to see what's left
-        test_expr = expr
-        for char in '0123456789+-*/%()= \t<>!&|^~':
-            test_expr = test_expr.replace(char, '')
-
-        # If we have any alphabetic characters left, it's likely a variable
-        if test_expr and any(c.isalpha() or c == '_' for c in test_expr):
+        """Analyze arithmetic expressions for injectable expansion shapes."""
+        # Flag only genuinely injectable shapes — an embedded command
+        # substitution or an expansion-bearing array subscript — not every
+        # variable-using arithmetic (a plain `i = i + 1` is safe).
+        if _arithmetic_injection_shape(node.expression):
             self.issues.append(SecurityIssue(
                 'MEDIUM',
                 'ARITHMETIC_INJECTION',
-                'Variable expansion in arithmetic - ensure variables contain only numbers',
+                'Injectable expansion in arithmetic - a command substitution or '
+                'expansion-bearing subscript can execute code; validate inputs',
                 node
             ))
 
