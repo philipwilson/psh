@@ -4,7 +4,7 @@ Reappraisal #15 (E1) found seven __init__ fields silently missing from the
 old ``adopt()`` (replaced by ``clone_for_child()`` in v0.656); these tests
 pin each copied field's semantics (copied, and independent where mutation
 must not leak back). The companion drift-lock is
-test_state_adopt_completeness.py. Bash-verified in tmp/e1_truth_table.sh
+test_state_clone_completeness.py. Bash-verified in tmp/e1_truth_table.sh
 and tests/behavioral/golden_cases.yaml.
 
 In-process trap tests use MANAGED signals (TERM/HUP) and pseudo-signals

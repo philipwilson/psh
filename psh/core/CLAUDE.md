@@ -342,7 +342,7 @@ afterwards by `Shell._init_interactive`. Jobs are never copied. The Shell-level
 half (copying function/alias managers — per-instance `Function` metadata so a
 child's `readonly -f`/redefinition can't leak) lives in
 `Shell._inherit_from_parent`. Completeness is guarded by
-`tests/unit/core/test_state_adopt_completeness.py` (a name drift-lock plus a
+`tests/unit/core/test_state_clone_completeness.py` (a name drift-lock plus a
 graph-independence identity walk). The `env` builtin is no longer an in-process
 child — standard `env` runs the command externally (v0.656).
 

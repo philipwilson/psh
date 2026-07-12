@@ -143,7 +143,8 @@ parent function.
 
 #### The adoption drift-lock is insufficient
 
-`test_state_adopt_completeness.py` verifies that each field name appears in the
+`test_state_adopt_completeness.py` (since renamed
+`test_state_clone_completeness.py`, r19-P2) verifies that each field name appears in the
 source text of `adopt()`. This catches omission by name, but not:
 
 - overlay instead of replacement;
