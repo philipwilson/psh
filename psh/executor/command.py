@@ -9,7 +9,8 @@ This module handles the dispatch of simple commands:
 The ``NAME=value`` assignment sub-domain (extraction, value expansion,
 application, restoration, and the POSIX ordering contract) lives in
 `command_assignments.py`; this module decides WHEN each of those steps
-runs and whether prefix assignments persist (POSIX special builtins).
+runs and whether prefix assignments persist (a POSIX special builtin in
+POSIX mode).
 """
 
 import sys
@@ -88,10 +89,13 @@ class CommandResolution:
     invoke phase and its caller need:
 
     prefix_assignments_persist
-        True when the command resolved to a POSIX special builtin
-        (``:`` ``.`` ``eval`` ``export`` ``readonly`` ``set`` ``unset`` …),
-        whose ``NAME=value`` prefix assignments persist in the current
-        shell rather than being restored after the command. This replaces
+        True only when, **in POSIX mode**, the command resolved to a POSIX
+        special builtin (``:`` ``.`` ``eval`` ``export`` ``readonly``
+        ``set`` ``unset`` …), whose ``NAME=value`` prefix assignments then
+        persist in the current shell rather than being restored after the
+        command. In default (non-POSIX) mode this is always False — a
+        prefix before a special builtin is temporary, like any builtin
+        (the mode gate lives in :meth:`_resolve_command`). This replaces
         the previous ``isinstance(strategy, SpecialBuiltinExecutionStrategy)``
         check threaded through a positional boolean.
     """
@@ -112,9 +116,11 @@ class ExecutionResult:
     status
         The command's exit status.
     prefix_assignments_persist
-        True when the invoked command was a POSIX special builtin, so the
-        caller (:meth:`CommandExecutor._run_command`) must NOT restore the
-        prefix assignments — they persist in the current shell.
+        True when, in POSIX mode, the invoked command was a POSIX special
+        builtin, so the caller (:meth:`CommandExecutor._run_command`) must
+        NOT restore the prefix assignments — they persist in the current
+        shell. False in default mode (carried through unchanged from the
+        :class:`CommandResolution`).
     """
 
     status: int
@@ -369,7 +375,8 @@ class CommandExecutor:
         words-vanish edge cases, prefix-assignment application with
         ``set -e`` abort, xtrace, the ``exec`` special case, array-init
         delivery to declaration builtins, strategy dispatch, and prefix
-        restoration (skipped for POSIX special builtins so they persist).
+        restoration (skipped in POSIX mode for a POSIX special builtin, so
+        those assignments persist).
 
         ``raw_assignments`` are the leading ``NAME=value`` prefix words
         already extracted by the coordinator.
@@ -536,7 +543,9 @@ class CommandExecutor:
             return result.status
 
         finally:
-            # POSIX: assignments before special builtins persist
+            # In POSIX mode, prefix assignments before a special builtin
+            # persist (only then is prefix_assignments_persist True);
+            # otherwise they are restored.
             if pushed_temp_scope:
                 # Function temp-env layer: pop it (its variables are discarded,
                 # revealing any global write the body made). Special builtins
@@ -716,9 +725,9 @@ class CommandExecutor:
 
         Returns:
             An :class:`ExecutionResult` carrying the exit status and the
-            ``prefix_assignments_persist`` policy (True for POSIX special
-            builtins), which the caller uses to decide whether to restore
-            the prefix assignments.
+            ``prefix_assignments_persist`` policy (True only for a POSIX
+            special builtin resolved in POSIX mode), which the caller uses
+            to decide whether to restore the prefix assignments.
         """
         resolution = self._resolve_command(cmd_name)
         if resolution is None:
