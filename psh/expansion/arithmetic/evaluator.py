@@ -123,7 +123,16 @@ class ArithmeticEvaluator:
             # Otherwise evaluate the value as an arithmetic sub-expression.
             # Handles 0x.., 0.. (octal), base#n, and full expressions such as
             # "2*3" or "a+1". Recursion is bounded by evaluate_arithmetic.
-            return evaluate_arithmetic(value, self.shell)
+            #
+            # expand=False: a STORED value reached via variable resolution is
+            # NOT re-$-expanded. bash never rescans a substituted value, so a
+            # value literally containing a $ (`x='$y'; $((x))`) is a syntax
+            # error, not the value of y — the package's own never-rescan
+            # invariant (see execute_arithmetic_expansion's docstring). Bare
+            # names / expression text ("a+1", "0x10") contain no $ and are
+            # unaffected; the name-chain fast path above (isidentifier) is a
+            # separate ARITH-VALUE recursion, also unaffected.
+            return evaluate_arithmetic(value, self.shell, expand=False)
 
     def set_variable(self, name: str, value: int) -> None:
         """Set variable value"""
@@ -147,7 +156,10 @@ class ArithmeticEvaluator:
             return 0
         if _PLAIN_DECIMAL_RE.match(value):
             return _to_signed64(int(value))
-        return evaluate_arithmetic(value, self.shell)
+        # expand=False for the same reason as get_variable: an array element /
+        # scalar value reached here is a STORED value, never re-$-expanded
+        # (bash: `arr=('$y'); $((arr[0]))` is a syntax error, not $y's value).
+        return evaluate_arithmetic(value, self.shell, expand=False)
 
     def _nameref_target(self, name: str) -> str:
         """Resolve a nameref to its target name for array element ops.
