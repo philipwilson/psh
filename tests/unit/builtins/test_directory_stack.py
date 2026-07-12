@@ -654,7 +654,13 @@ class TestDirectoryStackIntegration:
                     os.rmdir(d)
 
     def test_cd_preserves_stack(self, shell, capsys):
-        """Test that cd command preserves directory stack."""
+        """cd keeps the DEEP stack entries but the top tracks the cwd.
+
+        bash's dirs always shows the current directory as entry 0 (probe
+        r19-T3: `pushd /var; cd /; dirs` -> `/ /tmp`): a plain cd replaces
+        the top of the stack, while the entries below it are preserved. psh
+        used to show the stale pushd target at the top instead.
+        """
         original = os.getcwd()
 
         # Create test directories
@@ -668,17 +674,18 @@ class TestDirectoryStackIntegration:
             abs_path1 = os.path.join(original, test_dir1)
             shell.run_command(f'pushd {abs_path1}')
 
-            # Use cd to change directory (shouldn't affect stack)
+            # cd elsewhere: the stack's top must now track the new cwd
             abs_path2 = os.path.join(original, test_dir2)
             shell.run_command(f'cd {abs_path2}')
 
             # Clear capture buffer after pushd and cd commands
             capsys.readouterr()
 
-            # Stack should still be intact
+            # Top tracks the cwd (bash); deeper entries preserved
             shell.run_command('dirs')
             captured = capsys.readouterr()
-            assert test_dir1 in captured.out
+            assert test_dir2 in captured.out
+            assert test_dir1 not in captured.out
             # Original directory is shown with $HOME abbreviated to ~
             assert tilde_abbrev(original) in captured.out
 

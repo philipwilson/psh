@@ -3,8 +3,11 @@
 A thin adapter over the shared :class:`~psh.executor.command_resolver.CommandResolver`:
 it maps ``type``'s options to a :class:`ResolveQuery`, asks the resolver
 for the ordered candidates, and renders them. All lookup order, the PATH
-walk (empty component = cwd), and hash consultation live in the resolver,
-so ``type``, ``command -v``/``-V``, ``hash``, and the executor cannot drift.
+walk (empty component = cwd), and hash consultation live in the resolver —
+and the descriptive banner itself is rendered by ONE function here
+(:func:`render_candidate_banner`, also used by ``command -V``) — so
+``type``, ``command -v``/``-V``, ``hash``, and the executor cannot drift
+in either the resolution or its wording.
 """
 
 from typing import TYPE_CHECKING, List
@@ -15,6 +18,33 @@ from .registry import builtin
 if TYPE_CHECKING:
     from ..executor.command_resolver import Candidate
     from ..shell import Shell
+
+
+def render_candidate_banner(name: str, cand: 'Candidate') -> str:
+    """The descriptive banner for one resolver candidate (possibly multi-line).
+
+    ONE renderer for the six candidate kinds, shared by ``type`` and
+    ``command -V`` — bash 5.2 prints IDENTICAL wording for the two builtins
+    across all six kinds (probe-verified: alias/keyword/function/builtin/
+    hashed/external; tmp/r19-ledgers/T3-probes/t3c-banner-base.txt), so no
+    per-builtin style knob is needed. The near-verbatim six-way chains this
+    replaces had been pasted into both modules and could drift.
+    """
+    from ..executor.command_resolver import CandidateKind
+
+    if cand.kind is CandidateKind.ALIAS:
+        return f"{name} is aliased to `{cand.alias_value}'"
+    if cand.kind is CandidateKind.KEYWORD:
+        return f"{name} is a shell keyword"
+    if cand.kind is CandidateKind.FUNCTION:
+        from ..visitor import format_function_definition
+        return (f"{name} is a function\n"
+                f"{format_function_definition(name, cand.function)}")
+    if cand.kind is CandidateKind.BUILTIN:
+        return f"{name} is a shell builtin"
+    if cand.kind is CandidateKind.HASHED:
+        return f"{name} is hashed ({cand.path})"
+    return f"{name} is {cand.path}"  # EXTERNAL
 
 
 @builtin
@@ -83,8 +113,6 @@ class TypeBuiltin(Builtin):
     def _render(self, name: str, cand: 'Candidate', shell: 'Shell',
                 type_only: bool, path_only: bool, force_path: bool) -> None:
         """Print one candidate in the surface the options select."""
-        from ..executor.command_resolver import CandidateKind
-
         if type_only:
             self.write_line(_TYPE_WORD[cand.kind.value], shell)
             return
@@ -96,21 +124,8 @@ class TypeBuiltin(Builtin):
                 self.write_line(cand.path, shell)
             return
 
-        # Bare form: the descriptive banner.
-        if cand.kind is CandidateKind.ALIAS:
-            self.write_line(f"{name} is aliased to `{cand.alias_value}'", shell)
-        elif cand.kind is CandidateKind.KEYWORD:
-            self.write_line(f"{name} is a shell keyword", shell)
-        elif cand.kind is CandidateKind.FUNCTION:
-            from ..visitor import format_function_definition
-            self.write_line(f"{name} is a function", shell)
-            self.write_line(format_function_definition(name, cand.function), shell)
-        elif cand.kind is CandidateKind.BUILTIN:
-            self.write_line(f"{name} is a shell builtin", shell)
-        elif cand.kind is CandidateKind.HASHED:
-            self.write_line(f"{name} is hashed ({cand.path})", shell)
-        else:  # EXTERNAL
-            self.write_line(f"{name} is {cand.path}", shell)
+        # Bare form: the shared descriptive banner (also `command -V`'s).
+        self.write_line(render_candidate_banner(name, cand), shell)
 
     @property
     def help(self) -> str:

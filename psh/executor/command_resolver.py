@@ -141,19 +141,26 @@ class CommandResolver:
     # -- the one PATH walk -------------------------------------------------
 
     def search_path(self, name: str, path_str: str, *,
-                    all_matches: bool = False) -> List[str]:
+                    all_matches: bool = False, mode: int = os.X_OK) -> List[str]:
         """Locate *name* on *path_str*, bash's rules.
 
         A name containing a slash is taken as given (returned verbatim if
-        it is an executable file — bash does NOT canonicalise it, so
+        it is an accessible file — bash does NOT canonicalise it, so
         ``type -P ./x`` prints ``./x``). Otherwise each PATH component is
         searched; an EMPTY component denotes the current directory (bash),
-        rendered as ``./name``. Returns the first executable match, or all
-        of them with ``all_matches=True`` (``type -a``). ``X_OK`` and
-        regular-file are both required.
+        rendered as ``./name``. Returns the first match, or all of them with
+        ``all_matches=True`` (``type -a``). A regular file is always required.
+
+        *mode* is the ``os.access`` mode a candidate must satisfy. The default
+        ``os.X_OK`` is the executable search (the executor, ``type``, ``hash``,
+        ``exec -c``). ``source``/``.`` pass ``os.R_OK`` instead: a sourced file
+        is READ, not exec'd, so it needs read — not execute — permission, but
+        otherwise wants the identical bash PATH walk (slash-less name, empty
+        component = cwd). That +x-vs-+r difference is the ONLY reason ``source``
+        cannot use the default and historically hand-rolled its own walk.
         """
         if '/' in name:
-            if os.path.isfile(name) and os.access(name, os.X_OK):
+            if os.path.isfile(name) and os.access(name, mode):
                 return [name]
             return []
 
@@ -161,7 +168,7 @@ class CommandResolver:
         for component in path_str.split(':'):
             directory = component if component else '.'
             full_path = os.path.join(directory, name)
-            if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+            if os.path.isfile(full_path) and os.access(full_path, mode):
                 if not all_matches:
                     return [full_path]
                 results.append(full_path)

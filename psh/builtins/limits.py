@@ -43,8 +43,6 @@ _RESOURCES: dict = {
     'x': ('RLIMIT_LOCKS',     1,    'file locks',           ''),
 }
 
-_USAGE = "usage: ulimit [-SHacdefilmnpqrstuvx] [limit]"
-
 
 @builtin
 class UlimitBuiltin(Builtin):
@@ -68,35 +66,37 @@ class UlimitBuiltin(Builtin):
         use_soft = False
         opts: List[str] = []
 
-        i = 1
-        n = len(args)
-        while i < n:
-            arg = args[i]
-            if arg == '--':
-                i += 1
-                break
-            if not arg.startswith('-') or arg == '-':
-                break
-            for ch in arg[1:]:
-                if ch == 'H':
-                    use_hard = True
-                elif ch == 'S':
-                    use_soft = True
-                elif ch == 'a':
-                    show_all = True
-                elif ch == 'p':
-                    # Pipe size is not a getrlimit resource; bash hardcodes it
-                    # and there is no portable Python API, so be honest rather
-                    # than silently wrong.
-                    self.error("-p: pipe size limit not supported by psh", shell)
-                    return 2
-                elif ch in _RESOURCES and self._rid(ch) is not None:
-                    opts.append(ch)
-                else:
-                    return self._invalid_option(ch, shell)
-            i += 1
-
-        operands = args[i:]
+        # Recognised option letters: -H/-S/-a/-p plus every resource letter
+        # ACTIVE on this platform. Building the set from active resources
+        # means a platform-absent letter (-x/RLIMIT_LOCKS on macOS) is an
+        # invalid option AT ITS argv EVENT, exactly like bash rejects
+        # resources its build lacks — so `ulimit -x -Z` reports -x, the
+        # FIRST invalid letter (probe-pinned). The walker preserves argv
+        # ORDER, so a multi-resource query (`ulimit -n -s`) prints in the
+        # order requested. -p stays in the set and is rejected AFTER the
+        # walk: bash scans the whole option word set first, so a later
+        # invalid letter beats -p (`ulimit -p -Z` reports -Z; probe-pinned).
+        active = ''.join(ch for ch in _RESOURCES if self._rid(ch) is not None)
+        events, operands = self.parse_flags_ordered(
+            args, shell, flags='HSap' + active)
+        if events is None:
+            return 2
+        for ch, _ in events:
+            if ch == 'H':
+                use_hard = True
+            elif ch == 'S':
+                use_soft = True
+            elif ch == 'a':
+                show_all = True
+            elif ch == 'p':
+                # Pipe size is not a getrlimit resource; bash hardcodes it
+                # and there is no portable Python API, so be honest rather
+                # than silently wrong.
+                self.error("-p: pipe size limit not supported by psh", shell)
+                return 2
+            else:
+                # An active resource letter (walker-validated).
+                opts.append(ch)
 
         if show_all:
             self._print_all(shell, use_hard, use_soft)
@@ -152,11 +152,6 @@ class UlimitBuiltin(Builtin):
         # right-justified in a 20-col field, then the value — matching bash's
         # ``ulimit -a`` layout.
         return f"{desc:<20}{paren:>20} {value}"
-
-    def _invalid_option(self, ch: str, shell: 'Shell') -> int:
-        self.error(f"-{ch}: invalid option", shell)
-        self.error(_USAGE, shell)
-        return 2
 
     def _print_all(self, shell: 'Shell', use_hard: bool, use_soft: bool) -> None:
         for ch, (rname, factor, desc, unit) in _RESOURCES.items():

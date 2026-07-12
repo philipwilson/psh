@@ -78,40 +78,20 @@ EXIT STATUS
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the trap builtin."""
-        # Options come first (bash grammar `trap [-lp] ...`), parsed getopt-
-        # style over the flag set "lp": they CLUSTER (`-lp`, `-pl`) and may be
-        # split across words (`-p -l`), stopping at `--`, at a bare `-` (which
-        # is the reset ACTION, not an option), or at the first non-option
-        # operand. (The old code matched only the exact words `-l`/`-p`, so
-        # every cluster was mis-rejected and `trap -p -l` mis-parsed `-l` as a
-        # signal spec — probe-pinned vs bash 5.2.)
-        list_flag = print_flag = False
-        i = 1
-        while i < len(args):
-            arg = args[i]
-            if arg == '--':
-                # End of options; the next word is the action/first operand.
-                i += 1
-                break
-            if not arg.startswith('-') or arg == '-':
-                break
-            for ch in arg[1:]:
-                if ch == 'l':
-                    list_flag = True
-                elif ch == 'p':
-                    print_flag = True
-                else:
-                    # bash reports the first invalid flag CHAR, not the whole
-                    # cluster (`trap -lx` -> "-x: invalid option"), prints the
-                    # usage line, and fails with the usage status 2 (a
-                    # POSIX-mode non-interactive shell exits). An action
-                    # beginning with '-' needs `--` first (`trap -- '-x' INT`).
-                    self.error(f"-{ch}: invalid option", shell)
-                    self.usage(f"usage: {self.synopsis}", shell)
-                    raise SpecialBuiltinUsageError(2, suppressible=True)
-            i += 1
-
-        operands = args[i:]
+        # Options come first (bash grammar `trap [-lp] ...`), parsed by the
+        # shared getopt-style walker over the flag set "lp": they CLUSTER
+        # (`-lp`, `-pl`), split across words (`-p -l`), stop at `--`, at a bare
+        # `-` (the reset ACTION, not an option — parse_flags_ordered's len==1
+        # guard), or at the first non-option operand. On a bad flag char bash
+        # reports the offending CHAR + usage line and a POSIX-mode
+        # non-interactive shell exits (special-builtin usage error, like
+        # `unset`); parse_flags prints error+usage, we raise. An action
+        # beginning with '-' needs `--` first (`trap -- '-x' INT`).
+        opts, operands = self.parse_flags(args, shell, flags='lp')
+        if opts is None:
+            raise SpecialBuiltinUsageError(2, suppressible=True)
+        list_flag = opts['l']
+        print_flag = opts['p']
 
         # -l dominates when present: bash's `trap -lp` / `-pl` / `-l INT`
         # prints the signal listing and ignores both -p and any operands.

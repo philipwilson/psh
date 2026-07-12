@@ -58,7 +58,8 @@ class TestAdoptedFields:
     def test_directory_stack_is_inherited_and_independent(self, captured_shell):
         from psh.builtins.directory_stack import DirectoryStack
         stack = DirectoryStack()
-        stack.initialize("/start")
+        stack.update_current("/start")  # seeds an empty stack (r19-T3:
+        # initialize() was deleted once _ensure_stack became the only creator)
         stack.push("/pushed")
         captured_shell.state.directory_stack = stack
         child = Shell.for_subshell(captured_shell)

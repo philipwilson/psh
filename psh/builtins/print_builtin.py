@@ -140,6 +140,8 @@ class PrintBuiltin(Builtin):
             'prompt': False,
         }
 
+        # Deliberately NOT parse_flags(): print follows zsh's grammar — a
+        # bare '-' ends options, and -R rewrites the option set mid-walk.
         i = 1
         bsd_mode = False  # set by -R: only -e/-n recognised afterwards
         while i < len(args):
