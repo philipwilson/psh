@@ -9529,3 +9529,28 @@
     declare -a s=([2]="x" [5]="y" [6]="z")
   stderr: ''
   exit_code: 0
+
+# =============================================================================
+# SCRIPTING-LAYER SYNTAX-ERROR RENDERING (reappraisal #19 T6)
+# The trial→execute→_report_syntax_error path renders an incomplete construct
+# and an unterminated quote as exit-2 syntax errors. Characterization pins so
+# the shared lex_parse pipeline / unified renderer cannot regress the shapes.
+# =============================================================================
+
+- name: incomplete_if_reports_syntax_error_eof
+  # `if` alone hits end of input: both shells report an unexpected-EOF syntax
+  # error and exit 2 (psh renders a richer caret form; the phrase matches).
+  command: "if"
+  stdout: ""
+  stderr: "syntax error: unexpected end of file"
+  exit_code: 2
+
+- name: unclosed_double_quote_reports_syntax_error
+  # An unterminated quote surviving line-gathering routes through the ONE
+  # canonical renderer (not the internal-defect guard): `syntax error:
+  # Unclosed ...`, exit 2. Wording is psh-specific (bash: "unexpected EOF").
+  command: 'echo "abc'
+  stdout: ""
+  stderr: "syntax error: Unclosed"
+  exit_code: 2
+  psh_only: true

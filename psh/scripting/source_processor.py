@@ -13,9 +13,8 @@ import sys
 from typing import Any, Optional, cast
 
 from ..ast_nodes import ASTNode, Program
-from ..lexer import UnclosedQuoteError, tokenize
+from ..lexer import UnclosedQuoteError
 from ..parser import ParseError
-from ..utils import contains_heredoc
 from .base import ScriptComponent
 from .command_accumulator import CommandAccumulator, Complete, NeedMore
 
@@ -185,43 +184,51 @@ class SourceProcessor(ScriptComponent):
 
         return exit_code
 
+    @staticmethod
+    def _location(input_source, line: int) -> str:
+        """The ``<name>:<line>`` diagnostic prefix for a source error.
+
+        ``<name>`` is the input source's name (``-c``, the script path,
+        ``<stdin>`` — ``get_name`` is abstract on ``InputSource``, so every
+        concrete source has one). ``line`` is the absolute source line, or
+        ``<= 0`` for an input with no meaningful line (a whole ``run_command``
+        buffer), where diagnostics fall back to the bare label ``command``.
+        """
+        return f"{input_source.get_name()}:{line}" if line > 0 else "command"
+
     def _report_syntax_error(self, error, input_source, start_line: int,
                              source_text: Optional[str] = None) -> None:
         """Print a syntax error in the ONE canonical format.
 
-        Every parse/lex error — whether reported from the accumulator's
-        trial parse or from the execution path's own parse — renders as::
+        Every parse/lex error — the accumulator's trial parse, the execution
+        path's own parse, or an unterminated quote surviving line-gathering —
+        renders as::
 
             psh: <source>:<line>: <detailed message>
 
         For a ParseError the detailed message is the rich caret form
         (source line, ``^`` marker, suggestions, token context) and the
         prefix uses the ERROR's absolute line when known (bash reports the
-        line the error is on, not the line the command started on);
-        lexer SyntaxErrors fall back to the command's start line.
+        line the error is on, not the line the command started on). A lexer
+        error (an unterminated quote) has no rich context, so its message is
+        ``syntax error: <reason>`` and the prefix falls back to the command's
+        start line.
 
         ``source_text`` back-fills the caret's source line for errors whose
         parser was not given the source (the combinator parser) — the
         token's line is fragment-relative, so it indexes ``source_text``
-        directly.
+        directly. The detail form is shared with the analysis renderer via
+        ``lex_parse.render_syntax_error_detail``.
         """
-        filename = (input_source.get_name()
-                    if hasattr(input_source, 'get_name') else 'stdin')
+        from .lex_parse import render_syntax_error_detail
         line = start_line
-        detail = str(error)
-        if isinstance(error, ParseError) and error.error_context:
-            ctx = error.error_context
-            if ctx.source_line is None and source_text is not None:
-                token = ctx.token
-                token_line = getattr(token, 'line', None)
-                lines = source_text.splitlines()
-                if token_line and 0 < token_line <= len(lines):
-                    ctx.source_line = lines[token_line - 1]
-            if ctx.line:
-                line = ctx.line
-            detail = ctx.format_error()
-        location = f"{filename}:{line}" if line > 0 else "command"
-        print(f"psh: {location}: {detail}", file=sys.stderr)
+        if (isinstance(error, ParseError) and error.error_context
+                and error.error_context.line):
+            # bash reports the line the error is ON, not where the command began.
+            line = error.error_context.line
+        detail = render_syntax_error_detail(error, source_text=source_text)
+        print(f"psh: {self._location(input_source, line)}: {detail}",
+              file=sys.stderr)
 
     def _posix_syntax_abort(self, input_source) -> None:
         """POSIX-mode fatal SYNTAX error (bash 5.2, probe tmp/posixexit).
@@ -357,12 +364,15 @@ class SourceProcessor(ScriptComponent):
             return 2
         except UnclosedQuoteError as e:
             # An unterminated quote that survived line-gathering (e.g. an
-            # EOF-flushed buffer like `-c "echo 'abc"`). This is a syntax
-            # error, exactly like the unterminated $((/$( /${ constructs the
-            # parser reports as ParseError above — route it to the same
-            # exit-2 path instead of the "unexpected error" defect handler.
-            location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
-            print(f"psh: {location}: syntax error: {e}", file=sys.stderr)
+            # EOF-flushed buffer like `-c "echo 'abc"`). Route it to the SAME
+            # canonical renderer and exit-2 path as the parser's ParseError
+            # above (instead of the "unexpected error" defect handler); the
+            # renderer's lexer-error branch reproduces the `syntax error:
+            # <reason>` shape. NOTE: unlike ParseError this does NOT call
+            # _posix_syntax_abort — bash returns 2 on an unclosed quote WITHOUT
+            # exiting, even in POSIX mode (see _posix_syntax_abort).
+            self._report_syntax_error(e, input_source, start_line,
+                                      source_text=command_string)
             self.state.last_exit_code = 2
             return 2
         except Exception as e:
@@ -440,50 +450,35 @@ class SourceProcessor(ScriptComponent):
         # Reuse the accumulator's trial parse when it matches what we
         # are about to execute (recursive-descent parser active and the
         # reporting preprocessing reproduced the trial's source text);
-        # otherwise tokenize and parse here — exactly once either way.
+        # otherwise lex and parse here — exactly once either way — through
+        # the one shared pipeline (scripting/lex_parse.py). The token stream
+        # is fetched separately from the parse so it can be printed under
+        # ``--debug-tokens`` between the two stages.
         if complete.ast is not None and command_string == complete.source:
             self._debug_print_tokens(complete.tokens)
             ast = complete.ast
-        elif contains_heredoc(command_string):
-            # Use the lexer with heredoc support. The source name and
-            # start line locate the buffer for the unterminated-heredoc
-            # warning ("delimited by end-of-file"): a script/sourced-file
-            # path prefixes it like bash's script name; the -c/stdin/eval
-            # pseudo-names map to the "psh" prefix (bash prints "bash:").
-            from ..lexer import tokenize_with_heredocs
-            name = input_source.get_name()
-            tokens, heredoc_map = tokenize_with_heredocs(
-                command_string,
-                shell_options=self.state.options,
-                source_name=None if name.startswith(('<', '-')) else name,
-                base_line=start_line if start_line > 0 else 1)
-            # Alias expansion is a token-stream transform at the
-            # lex→parse boundary (see AliasManager.expand_aliases).
-            tokens = self.shell.expand_aliases(tokens)
-            self._debug_print_tokens(tokens)
-            # Parse with heredoc map, honoring the active parser. lexer_options
-            # threads the shell options so a nested substitution body is re-lexed
-            # with the same option-sensitive lexing (extglob) as this command.
-            from ..parser import parse_with_heredocs
-            ast = parse_with_heredocs(tokens, heredoc_map,
-                                      active_parser=self.shell.active_parser,
-                                      lexer_options=self.state.options)
         else:
-            tokens = tokenize(command_string, shell_options=self.state.options)
-            tokens = self.shell.expand_aliases(tokens)
+            from .lex_parse import lex_and_expand, parse_tokens
+            # source_name locates the buffer for the unterminated-heredoc
+            # warning ("delimited by end-of-file"): a script/sourced-file path
+            # prefixes it like bash's script name; the -c/stdin/eval
+            # pseudo-names map to the "psh" prefix (bash prints "bash:").
+            name = input_source.get_name()
+            tokens, heredoc_map = lex_and_expand(
+                command_string, self.shell,
+                source_name=None if name.startswith(('<', '-')) else name,
+                base_line=start_line if start_line > 0 else 1,
+                lexer_options=self.state.options)
             self._debug_print_tokens(tokens)
-            # Parse with source text for better error messages and shell configuration
-            from ..parser import create_parser
-            parser = create_parser(
-                tokens,
-                active_parser=self.shell.active_parser,
+            # Honour the active parser; lexer_options threads the shell options
+            # so a nested substitution body re-lexes with the same
+            # option-sensitive lexing (extglob) as this command; source_text and
+            # line_offset improve the plain path's error reporting.
+            ast = parse_tokens(
+                tokens, heredoc_map, self.shell,
                 source_text=command_string,
                 line_offset=max(0, start_line - 1),
-                # Thread shell options so a nested substitution body re-lexes
-                # with the same option-sensitive lexing (extglob) as this command.
-                lexer_options=self.state.options,
-            )
-            ast = parser.parse()
+                lexer_options=self.state.options)
 
         # Convert the parser's buffer-relative $LINENO stamps to absolute
         # source lines (offset by where this buffer began). Done once here
@@ -617,8 +612,7 @@ class SourceProcessor(ScriptComponent):
             # EXPECTED shell error (psh's implicit FUNCNEST ceiling), so
             # report it as a limit rather than through the internal-defect
             # guard's "unexpected error:" prefix, which reads like a psh bug.
-            location = (f"{input_source.get_name()}:{start_line}"
-                        if start_line > 0 else "command")
+            location = self._location(input_source, start_line)
             print(f"psh: {location}: maximum recursion depth exceeded",
                   file=sys.stderr)
             self.state.last_exit_code = 1
@@ -627,7 +621,7 @@ class SourceProcessor(ScriptComponent):
         # interactive session (or re-raise under strict-errors so a test
         # harness surfaces it) — see report_internal_defect for the policy.
         from ..core import report_internal_defect
-        location = f"{input_source.get_name()}:{start_line}" if start_line > 0 else "command"
+        location = self._location(input_source, start_line)
         rc = report_internal_defect(
             self.state, e, prefix=f"{location}: unexpected error: ",
             stream=sys.stderr)
