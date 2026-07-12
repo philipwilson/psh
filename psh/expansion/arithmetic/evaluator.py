@@ -282,9 +282,13 @@ class ArithmeticEvaluator:
         pathologically long chain trips a clean "expression too deeply nested"
         arithmetic error instead of a raw RecursionError. This is the
         evaluation-side companion to ArithParser.MAX_DEPTH (which bounds
-        parse-side NESTING and `**` chains); together they guarantee no
-        arithmetic recursion path reaches Python's limit, so a RecursionError
-        from arithmetic always means the SURROUNDING shell exhausted the stack.
+        parse-side NESTING and `**` chains); each single recursion path is
+        bounded, so a RecursionError from arithmetic ordinarily means the
+        SURROUNDING shell exhausted the stack. The guards do NOT bound their
+        PRODUCT: a pathological composite value chain (get_variable ->
+        evaluate_arithmetic re-entry stacking a fresh per-level evaluation
+        depth under each level) can still exhaust the interpreter stack —
+        see ArithParser.MAX_DEPTH's caveat and the r19-T9 deferred ledger.
         (bash computes such chains; psh's cap is a documented divergence.)
         """
         self._eval_depth += 1
@@ -510,12 +514,16 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
         # ("expression too deeply nested"): from ArithParser.MAX_DEPTH (nesting
         # + right-associative `**` chains) or from the evaluator's own
         # MAX_EVAL_DEPTH guard (wide flat chains). A RecursionError, by
-        # contrast, is NOT converted here: with every arithmetic recursion
-        # path bounded by those guards, a RecursionError reaching this point
-        # means the SURROUNDING shell exhausted the interpreter stack (runaway
-        # function recursion whose deepest frame merely happened to be in
-        # arithmetic) — it propagates to the function-call boundary, which
-        # reports "maximum function nesting level exceeded" (executor/function.py).
+        # contrast, is NOT converted here: each single arithmetic recursion
+        # path is bounded by those guards, so a RecursionError reaching this
+        # point ordinarily means the SURROUNDING shell exhausted the
+        # interpreter stack (runaway function recursion whose deepest frame
+        # merely happened to be in arithmetic) — it propagates to the
+        # function-call boundary, which reports "maximum function nesting
+        # level exceeded" (executor/function.py). Known residue: a pathological
+        # composite value chain can stack the per-path guards' PRODUCT past the
+        # interpreter limit and leak a raw RecursionError from pure arithmetic
+        # (see ArithParser.MAX_DEPTH's caveat; r19-T9 deferred ledger).
         raise ShellArithmeticError(str(e)) from e
     except (ValueError, OverflowError, MemoryError) as e:
         raise ShellArithmeticError(str(e)) from e

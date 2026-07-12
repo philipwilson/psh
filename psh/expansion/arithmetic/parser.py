@@ -31,16 +31,22 @@ class ArithParser:
     # its EVALUATION-side depth is bounded separately by
     # ArithmeticEvaluator.MAX_EVAL_DEPTH.
     #
-    # Because every arithmetic recursion path — parse nesting, `**` chains,
-    # and evaluation width — is bounded by one of these two guards, a
-    # RecursionError from arithmetic is always what it looks like: the
+    # Each SINGLE arithmetic recursion path — parse nesting, `**` chains,
+    # evaluation width, and the get_variable -> evaluate_arithmetic re-entry
+    # count (evaluator._MAX_ARITH_RECURSION) — is bounded by one of these
+    # guards, so a RecursionError from arithmetic ordinarily means the
     # SURROUNDING shell exhausted the interpreter stack (e.g. runaway function
-    # recursion whose deepest frame merely happened to be in arithmetic). It is
-    # NOT relabeled as an arithmetic error; it propagates to the function-call
-    # boundary, which reports "maximum function nesting level exceeded"
-    # (executor/function.py). 1024 levels * ~15 frames per level stays
-    # comfortably inside the interpreter limit raised by
-    # psh.shell.RECURSION_LIMIT (40,000).
+    # recursion whose deepest frame merely happened to be in arithmetic); it
+    # is NOT relabeled as an arithmetic error and propagates to the
+    # function-call boundary, which reports "maximum function nesting level
+    # exceeded" (executor/function.py). Caveat: the guards bound each path
+    # SEPARATELY, not their PRODUCT — a pathological composite value chain
+    # (each variable in a long chain holding a wide expression that references
+    # the next, stacking a per-level evaluation depth under every re-entry
+    # level) can still exhaust the interpreter stack from pure arithmetic
+    # (probe: 60-level chain x ~600-term values; r19-T9 deferred ledger).
+    # 1024 levels * ~15 frames per level stays comfortably inside the
+    # interpreter limit raised by psh.shell.RECURSION_LIMIT (40,000).
     MAX_DEPTH = 1024
 
     # Simple and compound assignment operators (used for scalars and array
