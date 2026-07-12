@@ -9685,3 +9685,101 @@
   stdout: "done\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# T8 item 5 — arithmetic: a STORED value is never re-$-expanded (bash).
+# A value literally containing a $ is a syntax error, not the referenced
+# value. compare-bash checks stdout+exit (bash errors too); the psh stderr
+# wording is psh-specific (substring pin only).
+# =============================================================================
+- name: arith_stored_dollar_value_is_error
+  command: "y=5; x='$y'; echo $((x))"
+  stdout: ""
+  stderr: "arithmetic error"
+  exit_code: 1
+
+- name: arith_stored_dollar_in_expr_is_error
+  command: "y=5; x='1+$y'; echo $((x))"
+  stdout: ""
+  stderr: "arithmetic error"
+  exit_code: 1
+
+- name: arith_array_elt_dollar_value_is_error
+  command: "y=5; arr=('$y'); echo $((arr[0]))"
+  stdout: ""
+  stderr: "arithmetic error"
+  exit_code: 1
+
+- name: arith_assoc_elt_dollar_value_is_error
+  command: "declare -A h; y=5; h[k]='$y'; echo $((h[k]))"
+  stdout: ""
+  stderr: "arithmetic error"
+  exit_code: 1
+
+# Escalation guard: value-as-expression resolution (ARITH-VALUE recursion,
+# not $-expansion) is unaffected and still matches bash.
+- name: arith_name_chain_still_resolves
+  command: "a=b; b=c; c=3; echo $((a))"
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_expression_value_still_resolves
+  command: 'a="2*3"; echo $((a))'
+  stdout: "6\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# T8 item 1 — substitution empty-match semantics (unified scan loop).
+# Locks the zero-width stepping policy against bash: anchored empties, the
+# empty-capable extglob non-negation matcher, and the negation knob (an
+# empty subject yields NO end-of-subject empty match).
+# =============================================================================
+- name: subst_anchor_front_empty
+  command: 'x=abc; echo "${x/#/pre}"'
+  stdout: "preabc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_anchor_back_empty
+  command: 'x=abc; echo "${x/%/post}"'
+  stdout: "abcpost\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_anchor_front_empty_on_empty_subject
+  command: 'x=; echo "[${x/#/pre}]"'
+  stdout: "[pre]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_star_empty_capable
+  command: 'shopt -s extglob; x=abc; echo "${x//*(q)/-}"'
+  stdout: "-a-b-c\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_star_empty_subject
+  command: 'shopt -s extglob; x=; echo "[${x//*(q)/-}]"'
+  stdout: "[-]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_star_mixed_empty_nonempty
+  command: 'shopt -s extglob; x=aqqb; echo "${x//*(q)/-}"'
+  stdout: "-a--b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_negation_greedy
+  command: 'shopt -s extglob; x=abc; echo "${x//!(x)/-}"'
+  stdout: "-\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_negation_empty_subject_no_end_match
+  command: 'shopt -s extglob; x=; echo "[${x//!(x)/-}]"'
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
