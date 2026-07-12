@@ -734,7 +734,7 @@ class DeclareBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """declare: declare [-aAfFgilprtux] [name[=value] ...]
+        return """declare: declare [-aAfFgilnprtux] [name[=value] ...]
 
     Declare variables and give them attributes.
 
@@ -746,6 +746,7 @@ class DeclareBuiltin(Builtin):
       -g    Create global variables when used in a function
       -i    Make variables have the 'integer' attribute
       -l    Convert values to lowercase on assignment
+      -n    Make NAME a name reference to the variable named by its value
       -p    Display the attributes and value of each variable
       -r    Make variables readonly
       -t    Give variables the 'trace' attribute (functions only)
@@ -772,7 +773,7 @@ class TypesetBuiltin(DeclareBuiltin):
 
     @property
     def help(self) -> str:
-        return """typeset: typeset [-aAfFgilprtux] [name[=value] ...]
+        return """typeset: typeset [-aAfFgilnprtux] [name[=value] ...]
 
     Declare variables and give them attributes (alias for declare).
 
@@ -784,6 +785,7 @@ class TypesetBuiltin(DeclareBuiltin):
       -g    Create global variables when used in a function
       -i    Make variables have the 'integer' attribute
       -l    Convert values to lowercase on assignment
+      -n    Make NAME a name reference to the variable named by its value
       -p    Display the attributes and value of each variable
       -r    Make variables readonly
       -t    Give variables the 'trace' attribute (functions only)
