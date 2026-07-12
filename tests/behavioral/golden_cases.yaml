@@ -9892,3 +9892,93 @@
   stdout: "done\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# r19-T3: builtin option-parse standardization + PWD/stack + source PATH walk
+# =============================================================================
+
+# T3a: wait accepts -f (bash: wait for termination; psh already does).
+- name: wait_dash_f_accepted
+  command: 'sleep 0.05 & wait -f $!; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+# T3a: wait clusters -np and stores the reaped pid in VAR.
+- name: wait_np_cluster_sets_var
+  command: 'sleep 0.05 & wait -np V; echo "${V:+set}"'
+  stdout: "set\n"
+  stderr: ""
+  exit_code: 0
+
+# T3a: wait rejects an unknown option as a usage error (was rc-127
+# "not a valid process id").
+- name: wait_invalid_option_rc2
+  command: 'wait -x'
+  stdout: ""
+  stderr: "invalid option"
+  exit_code: 2
+
+# T3a: cd reports the offending CHAR from a cluster, rc 2.
+- name: cd_invalid_option_in_cluster_rc2
+  command: 'cd -Lx /tmp'
+  stdout: ""
+  stderr: "-x: invalid option"
+  exit_code: 2
+
+# T3a: read invalid option is a usage error rc 2 (with the usage line).
+- name: read_invalid_option_rc2
+  command: 'echo x | read -Z; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+# T3a: mapfile invalid option rc 2; bad option VALUE stays rc 1.
+- name: mapfile_invalid_option_rc2
+  command: "printf 'a\\n' | mapfile -Z arr; echo rc=$?"
+  stdout: "rc=2\n"
+  stderr: "invalid option"
+  exit_code: 0
+
+- name: mapfile_bad_count_value_rc1
+  command: "printf 'a\\n' | mapfile -n xx arr; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: "invalid line count"
+  exit_code: 0
+
+# T3b: dirs' top tracks the cwd after a plain cd (stack does not go stale).
+- name: dirs_top_tracks_cwd_after_cd
+  command: 'cd /tmp; pushd /var >/dev/null; cd /; dirs'
+  stdout: "/ /tmp\n"
+  stderr: ""
+  exit_code: 0
+
+# T3b: cd - prints the directory BEFORE the readonly diagnostic, rc 1,
+# and the directory change stands.
+- name: cd_dash_readonly_pwd_print_order
+  command: 'cd /tmp; cd /var; readonly PWD; cd -; echo rc=$?'
+  stdout: "/tmp\nrc=1\n"
+  stderr: "PWD: readonly variable"
+  exit_code: 0
+
+# T3b: a readonly PWD rolls back the push — dirs shows the new cwd alone.
+- name: pushd_readonly_pwd_rollback
+  command: 'cd /tmp; readonly PWD; pushd /var >/dev/null 2>&1; dirs'
+  stdout: "/var\n"
+  stderr: ""
+  exit_code: 0
+
+# T3b: a quoted '~' is NOT expanded by pushd (bash: No such file).
+- name: pushd_quoted_tilde_not_expanded
+  command: "cd /tmp; pushd '~' >/dev/null 2>&1; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+# T3d: an empty PATH component means cwd and is searched IN ORDER, so the
+# cwd copy wins over a later component for `source`.
+- name: source_empty_path_component_is_cwd
+  command: 'cd "$(mktemp -d)" && mkdir d && echo "echo FROM_DIR" > d/f.sh && echo "echo FROM_CWD" > f.sh && PATH=":$PWD/d" source f.sh'
+  stdout: "FROM_CWD\n"
+  stderr: ""
+  exit_code: 0
