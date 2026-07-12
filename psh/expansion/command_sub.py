@@ -16,8 +16,13 @@ def _close_quiet(fd: int) -> None:
         pass
 
 
-class CommandSubstitution:
-    """Handles command substitution $(...) and `...`."""
+class CommandSubstitutionExecutor:
+    """Handles command substitution $(...) and `...`.
+
+    The *engine* that runs a command substitution (fork/collect/reap), named
+    to disambiguate it from the ``CommandSubstitution`` **AST node**
+    (``ast_nodes/words.py``) it acts upon.
+    """
 
     def __init__(self, shell: 'Shell'):
         self.shell = shell

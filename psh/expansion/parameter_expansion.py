@@ -36,8 +36,13 @@ def _end_anchored(regex: str) -> str:
     return regex if regex.endswith(r'\Z') else regex + r'\Z'
 
 
-class ParameterExpansion:
-    """Advanced parameter expansion operations."""
+class ParameterExpansionOps:
+    """Advanced parameter expansion operations.
+
+    The string-operation *engine* behind the ``${...}`` operators, named to
+    disambiguate it from the ``ParameterExpansion`` **AST node**
+    (``ast_nodes/words.py``) whose operator/word it evaluates.
+    """
 
     def __init__(self, shell: 'Shell'):
         self.shell = shell

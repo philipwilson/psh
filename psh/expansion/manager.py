@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, List, Optional
 from ..ast_nodes import SimpleCommand, Word
 from ..core.assignment_utils import ASSIGNMENT_PREFIX_RE
 from .brace_expansion_words import WordBraceExpander
-from .command_sub import CommandSubstitution
+from .command_sub import CommandSubstitutionExecutor
 from .glob import GlobExpander
 from .tilde import TildeExpander
 from .variable import VariableExpander
@@ -49,7 +49,7 @@ class ExpansionManager:
 
         # Initialize individual expanders
         self.variable_expander = VariableExpander(shell)
-        self.command_sub = CommandSubstitution(shell)
+        self.command_sub = CommandSubstitutionExecutor(shell)
         self.tilde_expander = TildeExpander(shell)
         self.glob_expander = GlobExpander(shell)
         self.word_splitter = WordSplitter()

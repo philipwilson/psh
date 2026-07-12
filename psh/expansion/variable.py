@@ -19,7 +19,7 @@ from .fields import FieldExpansionMixin
 from .operands import OperandOpsMixin
 from .operators import OperatorOpsMixin
 from .param_parser import parse_parameter_expansion, validate_parameter_expansion
-from .parameter_expansion import ParameterExpansion
+from .parameter_expansion import ParameterExpansionOps
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -32,7 +32,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
     def __init__(self, shell: 'Shell'):
         self.shell = shell
         self.state = shell.state
-        self.param_expansion = ParameterExpansion(shell)
+        self.param_expansion = ParameterExpansionOps(shell)
 
     def _reject_bad_substitution(self, node, content: Optional[str] = None) -> None:
         """Raise bash's "bad substitution" for an invalid ``${...}`` name.

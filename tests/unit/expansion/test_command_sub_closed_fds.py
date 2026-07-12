@@ -1,6 +1,6 @@
 """Command substitution with standard descriptors initially closed (D3).
 
-`CommandSubstitution._child_io_setup` used to do
+`CommandSubstitutionExecutor._child_io_setup` used to do
 
     close(read_fd); dup2(write_fd, 1); close(write_fd)
 
