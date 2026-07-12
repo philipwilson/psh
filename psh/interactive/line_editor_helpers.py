@@ -24,6 +24,7 @@ tests/unit/test_line_editor_helpers.py.
 from typing import List, Optional, Tuple
 
 from ..lexer import UnclosedQuoteError, tokenize
+from ..lexer.keyword_defs import matches_keyword
 from ..lexer.token_types import TokenType
 from ..parser import ParseError, Parser
 from ..utils import contains_heredoc, open_heredoc_delimiters
@@ -162,14 +163,14 @@ def _first_token_is_in(line: str) -> bool:
     """True when *line* starts with the reserved word ``in`` (which must
     never be preceded by a semicolon: ``for i <NL> in ...``). At the
     start of a lone line the lexer classifies ``in`` as a WORD — the
-    for/case context lives in the accumulated text — so match by value.
+    for/case context lives in the accumulated text — so ``matches_keyword``
+    (which accepts both the ``in`` token type and a WORD spelling it) decides.
     """
     try:
         tokens = tokenize(line)
     except SyntaxError:
         return False
-    return bool(tokens) and tokens[0].value == 'in' and \
-        tokens[0].type in (TokenType.IN, TokenType.WORD)
+    return bool(tokens) and matches_keyword(tokens[0], 'in')
 
 
 def _in_array_initializer(tokens: list) -> bool:
