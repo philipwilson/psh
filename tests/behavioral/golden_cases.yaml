@@ -9892,3 +9892,241 @@
   stdout: "done\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# ANSI-C $'...' reuse-form ENCODER unification (reappraisal #19 T11)
+# One shared ansi_c_encode authority: ${v@Q}, printf %q, declare -p and `set`
+# all render the SAME $'...' shape (octal \NNN, named where bash has them, \E
+# for ESC). Pre-fix psh emitted three divergent shapes (hex via %q, octal-no-E
+# via @Q). Probed byte-exact against bash 5.2 (2026-07-12).
+# =============================================================================
+- name: ansic_reuse_atq_octal_and_E
+  command: "v=$'\\x01\\x1b'; printf '%s' \"${v@Q}\""
+  stdout: "$'\\001\\E'"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_printf_q_octal_and_E
+  command: "v=$'\\x01\\x1b'; printf '%q' \"$v\""
+  stdout: "$'\\001\\E'"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_declare_p_octal_and_E
+  command: "v=$'\\x01\\x1b'; declare -p v"
+  stdout: "declare -- v=$'\\001\\E'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_set_listing_octal_and_E
+  command: "v=$'\\x01\\x1b'; set | grep '^v='"
+  stdout: "v=$'\\001\\E'\n"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_printf_q_named_escapes
+  command: "v=$'a\\x07b\\x0cc'; printf '%q' \"$v\""
+  stdout: "$'a\\ab\\fc'"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_printf_q_del_octal
+  command: "v=$'\\x7f'; printf '%q' \"$v\""
+  stdout: "$'\\177'"
+  stderr: ""
+  exit_code: 0
+
+- name: ansic_reuse_atq_esc_uses_E
+  command: "v=$'\\x1b'; printf '%s' \"${v@Q}\""
+  stdout: "$'\\E'"
+# T8 item 5 — arithmetic: a STORED value is never re-$-expanded (bash).
+# A value literally containing a $ is a syntax error, not the referenced
+# value. compare-bash checks stdout+exit (bash errors too); the psh stderr
+# wording is psh-specific (substring pin only).
+# =============================================================================
+- name: arith_stored_dollar_value_is_error
+  command: "y=5; x='$y'; echo $((x))"
+  stdout: ""
+  stderr: "arithmetic error"
+  exit_code: 1
+
+- name: arith_stored_dollar_in_expr_is_error
+  command: "y=5; x='1+$y'; echo $((x))"
+  stdout: ""
+  stderr: "arithmetic error"
+  exit_code: 1
+
+- name: arith_array_elt_dollar_value_is_error
+  command: "y=5; arr=('$y'); echo $((arr[0]))"
+  stdout: ""
+  stderr: "arithmetic error"
+  exit_code: 1
+
+- name: arith_assoc_elt_dollar_value_is_error
+  command: "declare -A h; y=5; h[k]='$y'; echo $((h[k]))"
+  stdout: ""
+  stderr: "arithmetic error"
+  exit_code: 1
+
+# Escalation guard: value-as-expression resolution (ARITH-VALUE recursion,
+# not $-expansion) is unaffected and still matches bash.
+- name: arith_name_chain_still_resolves
+  command: "a=b; b=c; c=3; echo $((a))"
+  stdout: "3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_expression_value_still_resolves
+  command: 'a="2*3"; echo $((a))'
+  stdout: "6\n"
+  stderr: ""
+  exit_code: 0
+
+# =============================================================================
+# T8 bounce — substring offset/length arithmetic is LAZY (bash): a subject
+# with ZERO elements (unset scalar, out-of-range positional, absent element,
+# unset/empty array) short-circuits BEFORE the operand is evaluated — an
+# unevaluable operand yields empty rc 0. A subject with >= 1 element (set
+# scalar even if empty, $@/$* always, non-empty array) IS evaluated and a
+# $-bearing stored value errors.
+# =============================================================================
+- name: substring_lazy_unset_scalar
+  command: "y=5; x='$y'; unset v; echo [${v:x:1}]"
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: substring_lazy_unset_scalar_offset_only
+  command: "y=5; x='$y'; unset v; echo [${v:x}]"
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: substring_lazy_unset_scalar_bad_length
+  command: "y=5; x='$y'; unset v; echo [${v:0:x}]"
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: substring_lazy_out_of_range_positional
+  command: "y=5; x='$y'; set --; echo [${1:x:1}]"
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: substring_lazy_absent_element_of_set_array
+  command: "y=5; x='$y'; a=(p); echo [${a[5]:x:1}]"
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: substring_lazy_empty_array_fields
+  command: 'y=5; x=''$y''; a=(); echo "[${a[@]:x:1}]"'
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: substring_lazy_unset_array_fields
+  command: 'y=5; x=''$y''; unset a; echo "[${a[@]:x:1}]"'
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: substring_eager_set_scalar_errors
+  command: "y=5; x='$y'; v=abc; echo [${v:x:1}]"
+  stdout: ""
+  stderr: null
+  exit_code: 1
+
+- name: substring_eager_empty_scalar_errors
+  command: "y=5; x='$y'; v=; echo [${v:x:1}]"
+  stdout: ""
+  stderr: null
+  exit_code: 1
+
+- name: substring_eager_at_zero_params_errors
+  command: "y=5; x='$y'; set --; echo [${@:x}]"
+  stdout: ""
+  stderr: null
+  exit_code: 1
+
+- name: substring_eager_set_array_errors
+  command: "y=5; x='$y'; a=(p q); echo [${a[@]:x:1}]"
+  stdout: ""
+  stderr: null
+  exit_code: 1
+
+# T8 bounce blocker 2 — the other surfaces that arithmetic-evaluate a stored
+# value: [[ -eq ]], let, array write subscripts. A $-bearing value errors on
+# each (the pre-T8 rescan silently substituted $y's value).
+- name: dbltest_numeric_stored_dollar_errors
+  command: "y=5; x='$y'; [[ x -eq 5 ]]; echo rc=$?"
+  stdout: "rc=1\n"
+  stderr: null
+  exit_code: 0
+
+- name: let_stored_dollar_errors
+  command: "y=5; x='$y'; let z=x; echo rc=$?; echo z=[$z]"
+  stdout: "rc=1\nz=[]\n"
+  stderr: null
+  exit_code: 0
+
+- name: array_write_subscript_stored_dollar_errors
+  command: "y=5; x='$y'; arr[x]=Z; echo after"
+  stdout: ""
+  stderr: null
+  exit_code: 1
+
+# =============================================================================
+# T8 item 1 — substitution empty-match semantics (unified scan loop).
+# Locks the zero-width stepping policy against bash: anchored empties, the
+# empty-capable extglob non-negation matcher, and the negation knob (an
+# empty subject yields NO end-of-subject empty match).
+# =============================================================================
+- name: subst_anchor_front_empty
+  command: 'x=abc; echo "${x/#/pre}"'
+  stdout: "preabc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_anchor_back_empty
+  command: 'x=abc; echo "${x/%/post}"'
+  stdout: "abcpost\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_anchor_front_empty_on_empty_subject
+  command: 'x=; echo "[${x/#/pre}]"'
+  stdout: "[pre]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_star_empty_capable
+  command: 'shopt -s extglob; x=abc; echo "${x//*(q)/-}"'
+  stdout: "-a-b-c\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_star_empty_subject
+  command: 'shopt -s extglob; x=; echo "[${x//*(q)/-}]"'
+  stdout: "[-]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_star_mixed_empty_nonempty
+  command: 'shopt -s extglob; x=aqqb; echo "${x//*(q)/-}"'
+  stdout: "-a--b\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_negation_greedy
+  command: 'shopt -s extglob; x=abc; echo "${x//!(x)/-}"'
+  stdout: "-\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subst_extglob_negation_empty_subject_no_end_match
+  command: 'shopt -s extglob; x=; echo "[${x//!(x)/-}]"'
+  stdout: "[]\n"
+  stderr: ""
+  exit_code: 0

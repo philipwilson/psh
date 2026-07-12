@@ -19,46 +19,46 @@ class TestBasicPromptExpansion:
         """Test that literal text is preserved."""
         expander = PromptExpander(shell)
 
-        assert expander.expand_prompt("hello world") == "hello world"
-        assert expander.expand_prompt("$") == "$"
-        assert expander.expand_prompt("test>") == "test>"
-        assert expander.expand_prompt("simple prompt") == "simple prompt"
+        assert expander.decode_escapes("hello world") == "hello world"
+        assert expander.decode_escapes("$") == "$"
+        assert expander.decode_escapes("test>") == "test>"
+        assert expander.decode_escapes("simple prompt") == "simple prompt"
 
     def test_backslash_escape(self, shell):
         """Test expansion of backslash escape."""
         expander = PromptExpander(shell)
 
-        assert expander.expand_prompt("\\\\") == "\\"
-        assert expander.expand_prompt("foo\\\\bar") == "foo\\bar"
-        assert expander.expand_prompt("path\\\\to\\\\file") == "path\\to\\file"
+        assert expander.decode_escapes("\\\\") == "\\"
+        assert expander.decode_escapes("foo\\\\bar") == "foo\\bar"
+        assert expander.decode_escapes("path\\\\to\\\\file") == "path\\to\\file"
 
     def test_newline_and_carriage_return(self, shell):
         """Test expansion of newline and carriage return."""
         expander = PromptExpander(shell)
 
-        assert expander.expand_prompt("\\n") == "\n"
-        assert expander.expand_prompt("\\r") == "\r"
-        assert expander.expand_prompt("line1\\nline2") == "line1\nline2"
-        assert expander.expand_prompt("start\\nend\\r") == "start\nend\r"
+        assert expander.decode_escapes("\\n") == "\n"
+        assert expander.decode_escapes("\\r") == "\r"
+        assert expander.decode_escapes("line1\\nline2") == "line1\nline2"
+        assert expander.decode_escapes("start\\nend\\r") == "start\nend\r"
 
     def test_bell_and_escape_sequences(self, shell):
         """Test expansion of bell and escape characters."""
         expander = PromptExpander(shell)
 
-        assert expander.expand_prompt("\\a") == "\a"
-        assert expander.expand_prompt("\\e") == "\033"
-        assert expander.expand_prompt("bell\\aalert") == "bell\aalert"
-        assert expander.expand_prompt("escape\\esequence") == "escape\033sequence"
+        assert expander.decode_escapes("\\a") == "\a"
+        assert expander.decode_escapes("\\e") == "\033"
+        assert expander.decode_escapes("bell\\aalert") == "bell\aalert"
+        assert expander.decode_escapes("escape\\esequence") == "escape\033sequence"
 
     def test_invalid_escape_preservation(self, shell):
         """Test that invalid escape sequences are preserved."""
         expander = PromptExpander(shell)
 
-        assert expander.expand_prompt("\\x") == "\\x"
-        assert expander.expand_prompt("\\9") == "\\9"
-        assert expander.expand_prompt("\\invalid") == "\\invalid"
+        assert expander.decode_escapes("\\x") == "\\x"
+        assert expander.decode_escapes("\\9") == "\\9"
+        assert expander.decode_escapes("\\invalid") == "\\invalid"
         # Note: PSH's prompt expander may handle some sequences differently
-        result = expander.expand_prompt("\\z\\y\\q")
+        result = expander.decode_escapes("\\z\\y\\q")
         # Just verify it handles unknown sequences without crashing
         assert isinstance(result, str) and len(result) > 0
 
@@ -70,9 +70,9 @@ class TestSystemInformationExpansion:
         """Test expansion of shell name."""
         expander = PromptExpander(shell)
 
-        assert expander.expand_prompt("\\s") == "psh"
-        assert expander.expand_prompt("Shell: \\s") == "Shell: psh"
-        assert expander.expand_prompt("Running \\s shell") == "Running psh shell"
+        assert expander.decode_escapes("\\s") == "psh"
+        assert expander.decode_escapes("Shell: \\s") == "Shell: psh"
+        assert expander.decode_escapes("Running \\s shell") == "Running psh shell"
 
     def test_hostname_expansion(self, shell):
         """Test expansion of hostname."""
@@ -80,12 +80,12 @@ class TestSystemInformationExpansion:
             expander = PromptExpander(shell)
 
             # Short hostname (\\h)
-            assert expander.expand_prompt("\\h") == "myhost"
-            assert expander.expand_prompt("user@\\h") == "user@myhost"
+            assert expander.decode_escapes("\\h") == "myhost"
+            assert expander.decode_escapes("user@\\h") == "user@myhost"
 
             # Full hostname (\\H)
-            assert expander.expand_prompt("\\H") == "myhost.example.com"
-            assert expander.expand_prompt("\\H:") == "myhost.example.com:"
+            assert expander.decode_escapes("\\H") == "myhost.example.com"
+            assert expander.decode_escapes("\\H:") == "myhost.example.com:"
 
     def test_username_expansion(self, shell):
         """Test expansion of username."""
@@ -93,9 +93,9 @@ class TestSystemInformationExpansion:
             mock_pwd.return_value.pw_name = 'testuser'
             expander = PromptExpander(shell)
 
-            assert expander.expand_prompt("\\u") == "testuser"
-            assert expander.expand_prompt("\\u@host") == "testuser@host"
-            assert expander.expand_prompt("User: \\u") == "User: testuser"
+            assert expander.decode_escapes("\\u") == "testuser"
+            assert expander.decode_escapes("\\u@host") == "testuser@host"
+            assert expander.decode_escapes("User: \\u") == "User: testuser"
 
     def test_working_directory_expansion(self, shell):
         """Test expansion of working directory."""
@@ -105,32 +105,32 @@ class TestSystemInformationExpansion:
                 expander = PromptExpander(shell)
 
                 # Full path with ~ (\\w)
-                assert expander.expand_prompt("\\w") == "~/projects"
-                assert expander.expand_prompt("Dir: \\w") == "Dir: ~/projects"
+                assert expander.decode_escapes("\\w") == "~/projects"
+                assert expander.decode_escapes("Dir: \\w") == "Dir: ~/projects"
 
                 # Basename only (\\W)
-                assert expander.expand_prompt("\\W") == "projects"
-                assert expander.expand_prompt("[\\W]") == "[projects]"
+                assert expander.decode_escapes("\\W") == "projects"
+                assert expander.decode_escapes("[\\W]") == "[projects]"
 
         # Test root directory
         with patch('os.getcwd', return_value='/'):
             expander = PromptExpander(shell)
-            assert expander.expand_prompt("\\W") == "/"
-            assert expander.expand_prompt("\\w") == "/"
+            assert expander.decode_escapes("\\W") == "/"
+            assert expander.decode_escapes("\\w") == "/"
 
     def test_privilege_indicator(self, shell):
         """Test expansion of $ or # based on user privilege."""
         # Test as root (uid 0)
         with patch('os.geteuid', return_value=0):
             expander = PromptExpander(shell)
-            assert expander.expand_prompt("\\$") == "#"
-            assert expander.expand_prompt("prompt\\$ ") == "prompt# "
+            assert expander.decode_escapes("\\$") == "#"
+            assert expander.decode_escapes("prompt\\$ ") == "prompt# "
 
         # Test as regular user
         with patch('os.geteuid', return_value=1000):
             expander = PromptExpander(shell)
-            assert expander.expand_prompt("\\$") == "$"
-            assert expander.expand_prompt("prompt\\$ ") == "prompt$ "
+            assert expander.decode_escapes("\\$") == "$"
+            assert expander.decode_escapes("prompt\\$ ") == "prompt$ "
 
 
 class TestTimeAndDateExpansion:
@@ -145,17 +145,17 @@ class TestTimeAndDateExpansion:
             expander = PromptExpander(shell)
 
             # 24-hour time (\\t)
-            assert expander.expand_prompt("\\t") == "14:30:45"
-            assert expander.expand_prompt("Time: \\t") == "Time: 14:30:45"
+            assert expander.decode_escapes("\\t") == "14:30:45"
+            assert expander.decode_escapes("Time: \\t") == "Time: 14:30:45"
 
             # 12-hour time (\\T)
-            assert expander.expand_prompt("\\T") == "02:30:45"
+            assert expander.decode_escapes("\\T") == "02:30:45"
 
             # 12-hour time with AM/PM (\\@)
-            assert expander.expand_prompt("\\@") == "02:30 PM"
+            assert expander.decode_escapes("\\@") == "02:30 PM"
 
             # 24-hour time HH:MM (\\A)
-            assert expander.expand_prompt("\\A") == "14:30"
+            assert expander.decode_escapes("\\A") == "14:30"
 
     def test_date_expansion(self, shell):
         """Test expansion of date."""
@@ -165,8 +165,8 @@ class TestTimeAndDateExpansion:
             mock_datetime.now.return_value = test_date
             expander = PromptExpander(shell)
 
-            assert expander.expand_prompt("\\d") == "Mon Jan 15"
-            assert expander.expand_prompt("Date: \\d") == "Date: Mon Jan 15"
+            assert expander.decode_escapes("\\d") == "Mon Jan 15"
+            assert expander.decode_escapes("Date: \\d") == "Date: Mon Jan 15"
 
     def test_version_expansion(self, shell):
         """Test expansion of version information."""
@@ -174,12 +174,12 @@ class TestTimeAndDateExpansion:
             expander = PromptExpander(shell)
 
             # Major.minor version (\\v)
-            assert expander.expand_prompt("\\v") == "1.2"
-            assert expander.expand_prompt("PSH \\v") == "PSH 1.2"
+            assert expander.decode_escapes("\\v") == "1.2"
+            assert expander.decode_escapes("PSH \\v") == "PSH 1.2"
 
             # Full version (\\V)
-            assert expander.expand_prompt("\\V") == "1.2.3"
-            assert expander.expand_prompt("Version \\V") == "Version 1.2.3"
+            assert expander.decode_escapes("\\V") == "1.2.3"
+            assert expander.decode_escapes("Version \\V") == "Version 1.2.3"
 
 
 class TestOctalAndSpecialSequences:
@@ -189,23 +189,23 @@ class TestOctalAndSpecialSequences:
         """Test expansion of octal sequences."""
         expander = PromptExpander(shell)
 
-        assert expander.expand_prompt("\\033") == "\033"  # ESC
-        assert expander.expand_prompt("\\007") == "\007"  # Bell
-        assert expander.expand_prompt("\\101") == "A"     # 101 octal = 65 decimal = 'A'
-        assert expander.expand_prompt("Color\\033[32m") == "Color\033[32m"
+        assert expander.decode_escapes("\\033") == "\033"  # ESC
+        assert expander.decode_escapes("\\007") == "\007"  # Bell
+        assert expander.decode_escapes("\\101") == "A"     # 101 octal = 65 decimal = 'A'
+        assert expander.decode_escapes("Color\\033[32m") == "Color\033[32m"
 
     def test_non_printing_markers(self, shell):
         """Test expansion of non-printing sequence markers."""
         expander = PromptExpander(shell)
 
         # Start of non-printing sequence
-        assert expander.expand_prompt("\\[") == "\001"
+        assert expander.decode_escapes("\\[") == "\001"
 
         # End of non-printing sequence
-        assert expander.expand_prompt("\\]") == "\002"
+        assert expander.decode_escapes("\\]") == "\002"
 
         # Combined usage
-        assert expander.expand_prompt("\\[\\033[32m\\]text\\[\\033[0m\\]") == "\001\033[32m\002text\001\033[0m\002"
+        assert expander.decode_escapes("\\[\\033[32m\\]text\\[\\033[0m\\]") == "\001\033[32m\002text\001\033[0m\002"
 
 
 class TestHistoryAndCommandCounters:
@@ -217,16 +217,16 @@ class TestHistoryAndCommandCounters:
 
         # Set up shell with some history
         shell.state.history = ['echo 1', 'echo 2', 'echo 3']
-        result = expander.expand_prompt("\\!")
+        result = expander.decode_escapes("\\!")
         assert result == "4"  # Next history number
 
         # Test in context
-        result = expander.expand_prompt("[\\!]")
+        result = expander.decode_escapes("[\\!]")
         assert result == "[4]"
 
         # Empty history
         shell.state.history = []
-        result = expander.expand_prompt("\\!")
+        result = expander.decode_escapes("\\!")
         assert result == "1"
 
     def test_command_number_expansion(self, shell):
@@ -235,16 +235,16 @@ class TestHistoryAndCommandCounters:
 
         # Set up shell with command count
         shell.state.command_number = 5
-        result = expander.expand_prompt("\\#")
+        result = expander.decode_escapes("\\#")
         assert result == "6"  # Next command number
 
         # Test in context
-        result = expander.expand_prompt("Cmd \\#:")
+        result = expander.decode_escapes("Cmd \\#:")
         assert result == "Cmd 6:"
 
         # Fresh shell
         shell.state.command_number = 0
-        result = expander.expand_prompt("\\#")
+        result = expander.decode_escapes("\\#")
         assert result == "1"
 
 
@@ -262,7 +262,7 @@ class TestComplexPromptExpansion:
                             expander = PromptExpander(shell)
 
                             # Standard prompt: user@host:directory$
-                            result = expander.expand_prompt("\\u@\\h:\\w\\$ ")
+                            result = expander.decode_escapes("\\u@\\h:\\w\\$ ")
                             assert result == "user@myhost:~$ "
 
     def test_colored_prompt_expansion(self, shell):
@@ -276,7 +276,7 @@ class TestComplexPromptExpansion:
                             expander = PromptExpander(shell)
 
                             # Colored prompt with non-printing markers
-                            result = expander.expand_prompt("\\[\\e[32m\\]\\u@\\h\\[\\e[0m\\]:\\w\\$ ")
+                            result = expander.decode_escapes("\\[\\e[32m\\]\\u@\\h\\[\\e[0m\\]:\\w\\$ ")
                             expected = "\001\033[32m\002user@myhost\001\033[0m\002:~$ "
                             assert result == expected
 
@@ -287,7 +287,7 @@ class TestComplexPromptExpansion:
         shell.state.history = ['cmd1', 'cmd2']
         shell.state.command_number = 10
 
-        result = expander.expand_prompt("[\\!:\\#] \\$ ")
+        result = expander.decode_escapes("[\\!:\\#] \\$ ")
         assert result == "[3:11] $ "
 
     def test_multiline_prompt_expansion(self, shell):
@@ -300,7 +300,7 @@ class TestComplexPromptExpansion:
                         expander = PromptExpander(shell)
 
                         # Multi-line prompt
-                        result = expander.expand_prompt("\\u@\\h\\n\\w\\$ ")
+                        result = expander.decode_escapes("\\u@\\h\\n\\w\\$ ")
                         assert result == "user@host\n~/project$ "
 
     def test_mixed_escape_sequences(self, shell):
@@ -314,7 +314,7 @@ class TestComplexPromptExpansion:
                     expander = PromptExpander(shell)
 
                     # Mix of time, system info, and formatting
-                    result = expander.expand_prompt("[\\t] \\h\\$ ")
+                    result = expander.decode_escapes("[\\t] \\h\\$ ")
                     assert result == "[14:30:45] testhost$ "
 
     def test_prompt_with_octal_and_markers(self, shell):
@@ -322,6 +322,6 @@ class TestComplexPromptExpansion:
         expander = PromptExpander(shell)
 
         # Bold green text using octal and markers
-        result = expander.expand_prompt("\\[\\033[1;32m\\]bold\\[\\033[0m\\]")
+        result = expander.decode_escapes("\\[\\033[1;32m\\]bold\\[\\033[0m\\]")
         expected = "\001\033[1;32m\002bold\001\033[0m\002"
         assert result == expected

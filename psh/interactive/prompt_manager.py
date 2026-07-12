@@ -28,8 +28,3 @@ class PromptManager(InteractiveComponent):
         ``${var@P}`` operator share one implementation.
         """
         return self.prompt_expander.expand_full(prompt_string)
-
-    def set_prompt(self, prompt_type: str, value: str) -> None:
-        """Set a prompt value."""
-        if prompt_type in ("PS1", "PS2"):
-            self.state.set_variable(prompt_type, value)

@@ -127,7 +127,16 @@ class ArithmeticEvaluator:
             # Otherwise evaluate the value as an arithmetic sub-expression.
             # Handles 0x.., 0.. (octal), base#n, and full expressions such as
             # "2*3" or "a+1". Recursion is bounded by evaluate_arithmetic.
-            return evaluate_arithmetic(value, self.shell)
+            #
+            # expand=False: a STORED value reached via variable resolution is
+            # NOT re-$-expanded. bash never rescans a substituted value, so a
+            # value literally containing a $ (`x='$y'; $((x))`) is a syntax
+            # error, not the value of y — the package's own never-rescan
+            # invariant (see execute_arithmetic_expansion's docstring). Bare
+            # names / expression text ("a+1", "0x10") contain no $ and are
+            # unaffected; the name-chain fast path above (isidentifier) is a
+            # separate ARITH-VALUE recursion, also unaffected.
+            return evaluate_arithmetic(value, self.shell, expand=False)
 
     def set_variable(self, name: str, value: int) -> None:
         """Set variable value"""
@@ -151,7 +160,10 @@ class ArithmeticEvaluator:
             return 0
         if _PLAIN_DECIMAL_RE.match(value):
             return _to_signed64(int(value))
-        return evaluate_arithmetic(value, self.shell)
+        # expand=False for the same reason as get_variable: an array element /
+        # scalar value reached here is a STORED value, never re-$-expanded
+        # (bash: `arr=('$y'); $((arr[0]))` is a syntax error, not $y's value).
+        return evaluate_arithmetic(value, self.shell, expand=False)
 
     def _nameref_target(self, name: str) -> str:
         """Resolve a nameref to its target name for array element ops.
@@ -529,15 +541,14 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
         raise ShellArithmeticError(str(e)) from e
 
 
-def execute_arithmetic_expansion(expr: str, shell) -> int:
-    """Evaluate a ``$((expr))`` arithmetic-expansion string to its value.
+def arithmetic_expansion_value(arith_expr: str, shell) -> int:
+    """Evaluate a BARE arithmetic expression (no ``$(( ))`` wrapper) for the
+    expansion pipeline, converting evaluation failures into the user-facing
+    errors that stop command execution (like bash).
 
-    The adapter between expansion-pipeline callers (which hold the full
-    ``$((...))`` source text) and :func:`evaluate_arithmetic`: it strips
-    the ``$((``/``))`` delimiters and converts evaluation failures into
-    :class:`~psh.core.ExpansionError` after printing the user-facing
-    message, so command execution stops (like bash). Text not shaped
-    like ``$((...))`` evaluates to 0.
+    The Word-AST ``ExpansionEvaluator`` holds the bare expression already and
+    calls here directly; string callers that hold the full ``$((...))`` span go
+    through :func:`execute_arithmetic_expansion`, which strips and delegates.
 
     NOTE: no pre-expansion pass here. evaluate_arithmetic() expands
     $-constructs itself (via expand_string_variables, which delegates
@@ -547,12 +558,6 @@ def execute_arithmetic_expansion(expr: str, shell) -> int:
     (x='$y' makes $(($x)) a syntax error, not the value of y).
     """
     import sys
-
-    # Remove $(( and ))
-    if expr.startswith('$((') and expr.endswith('))'):
-        arith_expr = expr[3:-2]
-    else:
-        return 0
 
     try:
         return evaluate_arithmetic(arith_expr, shell)
@@ -575,3 +580,16 @@ def execute_arithmetic_expansion(expr: str, shell) -> int:
         print(f"psh: unexpected arithmetic error: {e}", file=sys.stderr)
         # Raise exception to stop command execution (like bash)
         raise ExpansionError(f"unexpected arithmetic error: {e}") from e
+
+
+def execute_arithmetic_expansion(expr: str, shell) -> int:
+    """Evaluate a ``$((expr))`` arithmetic-expansion string to its value.
+
+    The adapter for callers that hold the full ``$((...))`` source text (e.g.
+    the operand scanner slicing a span): strips the ``$((``/``))`` delimiters
+    and delegates to :func:`arithmetic_expansion_value`. Text not shaped like
+    ``$((...))`` evaluates to 0.
+    """
+    if expr.startswith('$((') and expr.endswith('))'):
+        return arithmetic_expansion_value(expr[3:-2], shell)
+    return 0
