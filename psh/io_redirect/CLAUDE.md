@@ -425,8 +425,10 @@ expanded exactly once, by the substitution's own child.
 allocates a FRESH fd >= 10, performs the redirect onto it, and stores the
 number in the shell variable `varname` — bash's named-fd form.
 `apply_var_fd_redirect`
-(`file_redirect.py#FileRedirector.apply_var_fd_redirect`, called once per
-command from `IOManager.apply_var_fd_redirects`) owns all four shapes:
+(`file_redirect.py#FileRedirector.apply_var_fd_redirect`, invoked per command
+from `IOManager`'s redirect-setup paths — `setup_builtin_redirections`,
+`setup_child_redirections`, `apply_permanent_redirections`) owns all four
+shapes:
 
 - **open** (`{v}>f`/`{v}<f`/`{v}>>f`) — open the file, then `fcntl(F_DUPFD, 10)`;
 - **duplicate** (`{v}>&N`, incl. dynamic `{v}>&$x`) — dup the source high;

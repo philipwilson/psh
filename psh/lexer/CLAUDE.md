@@ -19,9 +19,10 @@ Steps 2–3 are the shared `_post_lex` pipeline (`__init__.py#_post_lex`).
 adjacent word-like tokens (the literal run plus every quote/expansion token)
 into ONE `WORD` token carrying the run's parts, so the parser sees one token
 per shell word and never re-assembles a composite. It replaced the retired
-parser-side `TokenStream.peek_composite_sequence`; running after
-normalization means reserved words are already retyped and excluded from the
-word-like set (see `__init__.py#_post_lex` and `word_fusion.py#fuse_words`).
+parser-side composite-sequence assembly (`peek_composite_sequence`); running
+after normalization means reserved words are already retyped and excluded
+from the word-like set (see `__init__.py#_post_lex` and
+`word_fusion.py#fuse_words`).
 
 There is no post-lexing validation pass: context rules like "`;;` only
 inside `case`" are enforced by the parser (a `TokenTransformer` layer that

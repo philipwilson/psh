@@ -335,7 +335,8 @@ class FileRedirector:
         allocation is PERMANENT (parent-side, not part of any command's
         save/restore window) — the user closes it with ``{varname}>&-``, which
         closes the fd named by the variable (the variable keeps its value).
-        Called once per command from IOManager.apply_var_fd_redirects.
+        Called once per command from IOManager's redirect-setup paths
+        (setup_builtin_redirections / setup_child_redirections).
         """
         name = redirect.var_fd
         rtype = redirect.type
