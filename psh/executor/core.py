@@ -201,7 +201,7 @@ class ExecutorVisitor(ASTVisitor[int]):
                 if context.announce_out_of_loop:
                     keyword = "break" if isinstance(e, LoopBreak) else "continue"
                     print(f"{keyword}: only meaningful in a `for', `while', or `until' loop",
-                          file=sys.stderr)
+                          file=self.state.stderr)
                 exit_status = 1
                 self.state.last_exit_code = exit_status
                 if context.stop_on_out_of_loop:
@@ -574,7 +574,9 @@ class ExecutorVisitor(ASTVisitor[int]):
                 from .strategies import report_assignment_error
                 return report_assignment_error(self.state, e)
             except (ValueError, TypeError, OSError) as e:
-                print(f"psh: [[: {e}", file=sys.stderr)
+                # Sibling diagnostics in this method use state.stderr (the
+                # redirect- and capture-aware sink); match them.
+                print(f"psh: [[: {e}", file=self.state.stderr)
                 return 2  # Syntax error
 
     # Array operations

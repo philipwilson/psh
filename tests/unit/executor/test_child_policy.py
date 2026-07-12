@@ -6,7 +6,107 @@ import sys
 import textwrap
 from unittest.mock import MagicMock, call, patch
 
-from psh.executor.child_policy import apply_child_signal_policy
+import pytest
+
+from psh.core.exceptions import (
+    FunctionReturn,
+    LoopBreak,
+    LoopContinue,
+    TopLevelAbort,
+)
+from psh.executor.child_policy import (
+    CHILD_EXIT_EXCEPTIONS,
+    apply_child_signal_policy,
+    map_child_exception,
+)
+
+
+class TestMapChildException:
+    """The ONE child-exit taxonomy (H10): a control-flow/exit exception at a
+    forked child's top → the child's exit code. Every fork site delegates
+    here, so these pins guard the single mapping."""
+
+    def test_top_level_abort_maps_to_status(self):
+        assert map_child_exception(TopLevelAbort(2)) == 2
+
+    def test_function_return_maps_to_exit_code(self):
+        assert map_child_exception(FunctionReturn(3)) == 3
+
+    def test_loop_break_maps_to_exit_status(self):
+        assert map_child_exception(LoopBreak(exit_status=1)) == 1
+
+    def test_loop_break_none_status_maps_to_zero(self):
+        assert map_child_exception(LoopBreak(exit_status=None)) == 0
+
+    def test_loop_continue_maps_to_exit_status(self):
+        assert map_child_exception(LoopContinue(exit_status=0)) == 0
+
+    def test_system_exit_int_maps_to_code(self):
+        assert map_child_exception(SystemExit(4)) == 4
+
+    def test_system_exit_none_maps_to_zero(self):
+        # THE divergence the launcher copy got wrong (it mapped None → 1).
+        # Python's own convention: a bare sys.exit()/SystemExit(None) → 0.
+        assert map_child_exception(SystemExit(None)) == 0
+        assert map_child_exception(SystemExit()) == 0
+
+    def test_system_exit_nonint_noncode_maps_to_one(self):
+        assert map_child_exception(SystemExit("boom")) == 1
+
+    def test_unknown_exception_reraises(self):
+        # Not one of the CHILD_EXIT_EXCEPTIONS: callers catch exactly that
+        # group before delegating, so an unexpected type re-raises here.
+        with pytest.raises(RuntimeError):
+            map_child_exception(RuntimeError("x"))
+
+    def test_taxonomy_tuple_is_the_five_families(self):
+        assert set(CHILD_EXIT_EXCEPTIONS) == {
+            TopLevelAbort, FunctionReturn, LoopBreak, LoopContinue, SystemExit,
+        }
+
+
+class TestLauncherChildExitTaxonomy:
+    """ProcessLauncher's child body maps a body-level exit exception through
+    the shared taxonomy (H10). The launcher forks-and-exits by design, so
+    drive it in a subprocess: launch a body raising SystemExit(None)/(4) and
+    report the child's wait status. On the pre-H10 tree the None case exited
+    1 (the divergent launcher copy); after H10 it delegates to
+    map_child_exception → 0.
+    """
+
+    DRIVER = textwrap.dedent('''
+        import os
+        from psh.shell import Shell
+        from psh.executor.process_launcher import ProcessConfig, ProcessRole
+
+        shell = Shell(norc=True)
+        launcher = shell.process_launcher
+
+        def spawn(body):
+            cfg = ProcessConfig(role=ProcessRole.SINGLE, foreground=False)
+            pid, _ = launcher.launch(body, cfg)
+            _, status = os.waitpid(pid, 0)
+            return os.WEXITSTATUS(status)
+
+        def raise_none():
+            raise SystemExit(None)
+
+        def raise_int():
+            raise SystemExit(4)
+
+        print('none=%d' % spawn(raise_none), flush=True)
+        print('int=%d' % spawn(raise_int), flush=True)
+    ''')
+
+    def test_launcher_system_exit_none_is_zero(self):
+        result = subprocess.run(
+            [sys.executable, '-c', self.DRIVER],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        lines = result.stdout.splitlines()
+        assert 'none=0' in lines   # SystemExit(None) → 0 (was 1 pre-H10)
+        assert 'int=4' in lines    # SystemExit(4) → 4
 
 
 class TestApplyChildSignalPolicy:

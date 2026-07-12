@@ -84,3 +84,32 @@ class TestSubjectQuoteRemoval(ConformanceTest):
 
     def test_escaped_dollar_in_double_quotes(self):
         self.assert_identical_behavior(r'x=foo; [[ "\$x" == "\$x" ]]; echo $?')
+
+
+class TestDoubleQuoteLiteralSharedAcrossSites(ConformanceTest):
+    """A double-quoted literal part is expanded by ONE shared recipe
+    (``enhanced_test_evaluator._expand_dquote_literal``, R19 T7): its variables
+    expand, then the double-quote escapes are stripped (a backslash before a
+    non-special char stays literal). The subject (LHS), the ``==``/``!=``
+    pattern (RHS) and the ``=~`` regex (RHS) all feed that one recipe, so a
+    given double-quoted literal reads identically in every role — these pins
+    lock the three sites together so the dedup cannot silently drift one."""
+
+    def test_dquote_var_expands_then_literal_in_pattern(self):
+        # The var expands INSIDE the double-quoted literal; the result is a
+        # glob LITERAL (its `*` matches itself, not as a wildcard).
+        self.assert_identical_behavior('p="a*"; [[ "a*" == "$p" ]]; echo $?')
+        self.assert_identical_behavior('p="a*"; [[ ax == "$p" ]]; echo $?')
+
+    def test_dquote_var_expands_then_literal_in_regex(self):
+        # Same double-quoted literal as a =~ RHS: matched literally (the `.`
+        # is not a regex wildcard).
+        self.assert_identical_behavior('p="a.c"; [[ "a.c" =~ "$p" ]]; echo $?')
+        self.assert_identical_behavior('p="a.c"; [[ axc =~ "$p" ]]; echo $?')
+
+    def test_dquote_escaped_metachar_same_in_all_roles(self):
+        # `"a\.c"` keeps its backslash (double-quote escape rule) whether it
+        # is the pattern RHS, the regex RHS, or the subject LHS.
+        self.assert_identical_behavior(r'[[ "a\.c" == "a\.c" ]]; echo $?')
+        self.assert_identical_behavior(r'[[ "a\.c" =~ "a\.c" ]]; echo $?')
+        self.assert_identical_behavior(r's="a\.c"; [[ "$s" == "a\.c" ]]; echo $?')
