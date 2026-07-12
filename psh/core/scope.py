@@ -1,6 +1,6 @@
 """Hierarchical variable scope management with attribute support."""
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from .exceptions import ReadonlyVariableError
 from .locale_service import active_locale
@@ -882,45 +882,58 @@ class ScopeManager:
         """Check if we're currently in a function scope."""
         return len(self.scope_stack) > 1
 
+    def iter_effective_variables(self) -> Iterator[Tuple[str, Variable]]:
+        """Yield ``(name, Variable)`` for the innermost visible instance of
+        every name across the scope stack — the ONE shadow-resolution walk
+        shared by the whole-table listing surfaces.
+
+        Iterates global first (``scope_stack[0]``), inner scopes overriding, so
+        a local shadows the global and the LAST writer wins; each name is
+        yielded exactly once, at the position it first appeared. UNSET
+        tombstones ARE yielded (they carry the UNSET flag) — each caller
+        filters per its surface:
+
+        - ``get_all_variables`` / ``all_variables_with_attributes`` (``set`` /
+          ``declare -p`` no-name) drop them (``not is_unset``), so an inner
+          tombstone hides the outer variable — equivalent to the old ``pop``.
+        - ``all_exported_variables`` (``export -p``) keeps only
+          ``is_exported and not is_array`` — a declared-but-unset EXPORT
+          (``export FOO``) stays, a plain tombstone is filtered out.
+
+        Computed specials are NOT yielded (they have no stored cell); the
+        surfaces that list them inject ``OPTION_REFLECTION_SPECIALS`` after.
+        Command temp-env bindings are deliberately absent: the separate
+        ``command_temp_env`` stack is consulted by NAME lookup, never by
+        whole-table enumeration (bash's ``temporary_env``; see the class
+        docstring). ``sync_exports_to_environment`` deliberately does NOT use
+        this walk — it needs the exported-instance-per-name view (an exported
+        outer still contributes to the child env under a non-exported inner
+        shadow), which innermost-per-name would drop; see its docstring.
+        """
+        effective: Dict[str, Variable] = {}
+        for scope in self.scope_stack:  # global first; inner scopes override
+            effective.update(scope.variables)
+        yield from effective.items()
+
     def get_all_variables(self) -> Dict[str, str]:
-        """Get all variables visible in current scope as strings."""
-        result = {}
+        """Get all variables visible in current scope as strings.
 
-        # Start with global variables
-        for name, var in self.global_scope.variables.items():
-            if not var.is_unset:
-                result[name] = var.as_string()
-
-        # Override with variables from each scope (oldest to newest).
-        # An UNSET tombstone shadows any outer-scope variable, so it must
-        # remove the name rather than appear as an empty entry.
-        for scope in self.scope_stack[1:]:  # Skip global scope
-            for name, var in scope.variables.items():
-                if var.is_unset:
-                    result.pop(name, None)
-                else:
-                    result[name] = var.as_string()
-
-        return result
+        Shadow resolution (inner scopes override the global, UNSET tombstones
+        hide the outer name) is delegated to ``iter_effective_variables``.
+        """
+        return {name: var.as_string()
+                for name, var in self.iter_effective_variables()
+                if not var.is_unset}
 
     def all_variables_with_attributes(self) -> List[Variable]:
-        """Get all visible variables as Variable objects."""
-        # Use dict to handle shadowing correctly
-        all_vars: Dict[str, Variable] = {}
+        """Get all visible variables as Variable objects.
 
-        # Start with global variables
-        for name, var in self.global_scope.variables.items():
-            if not var.is_unset:
-                all_vars[name] = var
-
-        # Override with variables from each scope; UNSET tombstones shadow
-        # (hide) outer-scope variables rather than appearing themselves.
-        for scope in self.scope_stack[1:]:
-            for name, var in scope.variables.items():
-                if var.is_unset:
-                    all_vars.pop(name, None)
-                else:
-                    all_vars[name] = var
+        Shares the ``iter_effective_variables`` shadow-resolution walk with
+        ``get_all_variables``; tombstones are hidden the same way.
+        """
+        all_vars: Dict[str, Variable] = {
+            name: var for name, var in self.iter_effective_variables()
+            if not var.is_unset}
 
         # Computed option-reflection specials (SHELLOPTS/BASHOPTS) have no stored
         # cell but ARE enumerated by no-arg `set` and `declare -p` (bash lists
@@ -946,12 +959,14 @@ class ScopeManager:
         shadows any outer exported variable rather than appearing. Arrays are
         excluded (bash does not list them via ``export -p``). Used by
         ``export -p`` / bare ``export``.
+
+        Shares the ``iter_effective_variables`` innermost-per-name walk: a
+        non-exported inner instance shadows an exported outer one here (the
+        name is dropped from ``export -p``), which is bash-correct and DIFFERS
+        from ``sync_exports_to_environment`` — see P8-probes/07.
         """
-        effective: Dict[str, 'Variable'] = {}
-        for scope in self.scope_stack:  # global first, inner scopes override
-            for name, var in scope.variables.items():
-                effective[name] = var
-        return [v for v in effective.values() if v.is_exported and not v.is_array]
+        return [var for _name, var in self.iter_effective_variables()
+                if var.is_exported and not var.is_array]
 
     def find_exported_instance(self, name: str) -> Optional[Variable]:
         """Innermost EXPORTED, non-array, non-unset instance of *name*, else None.
@@ -991,7 +1006,18 @@ class ScopeManager:
         return None
 
     def sync_exports_to_environment(self, env: Dict[str, str]):
-        """Sync variables with EXPORT attribute to environment."""
+        """Sync variables with EXPORT attribute to environment.
+
+        Deliberately NOT built on ``iter_effective_variables``: this needs the
+        EXPORTED-instance-per-name view, not the innermost-per-name one. An
+        exported outer variable still contributes its value to the child env
+        even when a non-exported inner instance shadows it (bash: ``x=g;
+        export x; f(){ local +x x=l; env; }`` shows ``x=g``; ``find_exported_
+        instance`` semantics). The two-phase accumulation below ADDS each
+        exported instance without letting a non-exported inner one remove it,
+        which the innermost-only walk (used by ``export -p``) would drop —
+        proven distinct by P8-probes/07.
+        """
         # First, get all shell variables
         all_shell_vars: set[str] = set()
         for scope in self.scope_stack:
