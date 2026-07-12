@@ -324,14 +324,27 @@ class ControlFlowExecutor:
                 expanded_items = self._expand_loop_items(node)
             except BraceExpansionError as e:
                 return self._report_loop_brace_overflow(e)
+            # The `for VAR in WORDS` header body is loop-invariant (the
+            # variable name and the expanded word list don't change across
+            # iterations), so render it ONCE, lazily, the first time we
+            # trace — not once per iteration. Kept lazy (rather than hoisted
+            # unconditionally) so a trace-off loop pays nothing, and the
+            # `xtrace` CHECK stays inside the loop so a body toggling
+            # `set +x`/`set -x` mid-loop is honored per iteration (bash does).
+            # PS4 is re-expanded every iteration below: it can carry
+            # per-iteration expansions ($(...), $n), which bash re-evaluates.
+            xtrace_body: Optional[str] = None
             for item in expanded_items:
                 # set -x: bash re-traces the `for VAR in WORDS` header on EACH
                 # iteration (the expanded word list, quoted).
                 if self.state.options.get('xtrace'):
+                    if xtrace_body is None:
+                        words = ' '.join(
+                            xtrace_quote(w) for w in expanded_items)
+                        xtrace_body = f"for {node.variable} in {words}"
                     ps4 = self.expansion_manager.expand_ps4()
-                    words = ' '.join(xtrace_quote(w) for w in expanded_items)
-                    header = f"{ps4}for {node.variable} in {words}".rstrip()
-                    self.state.stderr.write(header + "\n")
+                    self.state.stderr.write(
+                        f"{ps4}{xtrace_body}".rstrip() + "\n")
                 # bash runs the DEBUG trap before binding the loop variable on
                 # EACH iteration (so `trap d DEBUG; for i in 1 2; do echo x;
                 # done` fires d before every `i=…` and every `echo`), with
