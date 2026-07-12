@@ -12,6 +12,7 @@ Patterns support nesting and pipe-separated alternatives.
 
 import os
 import re
+from functools import lru_cache
 from typing import List, Optional
 
 # Characters that introduce an extglob operator
@@ -301,6 +302,25 @@ def _bracket_to_regex(content: str, ic: bool = False) -> str:
     group (immune to the ambient flag) and combine it with the rest of the
     bracket — which still folds — by alternation (or a negative-lookahead
     atom when the bracket is negated).
+    """
+    # Cache the conversion, keyed additionally on the active locale's ctype
+    # identity: the POSIX [:class:] ranges spliced in below (posix_class_ranges)
+    # are locale-dependent, so a mid-session LC_CTYPE change must never serve a
+    # stale conversion. Within one pattern match (content, ic) is constant
+    # across subject positions, so this collapses the per-position rebuild the
+    # memoized engine would otherwise pay in _bracket_match to one compile.
+    from ..core.locale_service import active_locale
+    loc = active_locale()
+    ctype = loc.profile.ctype_name if loc is not None else None
+    return _bracket_to_regex_cached(content, ic, ctype)
+
+
+@lru_cache(maxsize=1024)
+def _bracket_to_regex_cached(content: str, ic: bool, _ctype: Optional[str]) -> str:
+    """Locale-keyed cache body of ``_bracket_to_regex`` (see it for semantics).
+
+    ``_ctype`` is the active locale's ctype identity so a mid-session
+    ``LC_CTYPE`` change cannot serve a stale POSIX-class conversion.
     """
     negate = ''
     if content[:1] in ('!', '^'):
