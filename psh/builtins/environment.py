@@ -556,6 +556,10 @@ class UnsetBuiltin(Builtin):
     def name(self) -> str:
         return "unset"
 
+    @property
+    def synopsis(self) -> str:
+        return "unset [-f] [-v] [-n] [name ...]"
+
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Unset variables and functions."""
         opts, names = self.parse_flags(args, shell, flags='fvn')
@@ -715,12 +719,15 @@ class UnsetBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """unset: unset [-f] name [name ...]
+        return """unset: unset [-f] [-v] [-n] [name ...]
 
     Unset variables or functions.
 
     Options:
-      -f    Treat names as functions
+      -f    Treat each NAME as a shell function
+      -v    Treat each NAME as a shell variable (the default)
+      -n    Treat NAME as a name reference and unset the nameref itself
+            rather than the variable it points to
 
     Without -f, remove the named variables from both shell
     variables and the environment."""

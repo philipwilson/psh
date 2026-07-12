@@ -369,6 +369,7 @@ class TestParserIntegration:
         assert "TOKEN PARSERS" in explanation
         assert "EXPANSION PARSERS" in explanation
         assert "COMMAND PARSERS" in explanation
+        assert "Key advantages" not in explanation
 
     def test_error_handling(self):
         """Test parse error handling."""

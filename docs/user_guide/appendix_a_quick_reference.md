@@ -361,11 +361,11 @@ set -o debug-exec-fork        # Show fork/exec details
 
 ### Directory Navigation
 ```bash
-cd [dir]    # Change directory
-pwd         # Print working directory
-pushd       # Push directory onto stack
-popd        # Pop directory from stack
-dirs        # Show directory stack
+cd [-L|-P] [dir]       # Change directory
+pwd [-LP]              # Print working directory
+pushd [-n] [dir]       # Push directory onto stack
+popd [-n]              # Pop directory from stack
+dirs [-clpv]           # Show directory stack
 ```
 
 ### I/O
@@ -377,10 +377,10 @@ read        # Read input
 
 ### Job Control
 ```bash
-jobs        # List jobs
-fg [job]    # Foreground job
-bg [job]    # Background job
-wait [pid]  # Wait for process
+jobs [-lnprs]          # List jobs
+fg [job]               # Foreground job
+bg [job]               # Background job
+wait [-fn] [-p var]    # Wait for process
 kill        # Send signal
 disown      # Remove job from job table
 trap        # Handle signals

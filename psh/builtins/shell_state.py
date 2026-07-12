@@ -538,7 +538,7 @@ class LocalBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """local: local [-aAilrux] [name[=value] ...]
+        return """local: local [-aAilnrux] [name[=value] ...]
 
     Create local variables within functions.
 
@@ -547,6 +547,7 @@ class LocalBuiltin(Builtin):
       -A    Declare associative array variables
       -i    Make variables have the 'integer' attribute
       -l    Convert values to lowercase on assignment
+      -n    Make NAME a name reference to the variable named by its value
       -r    Make variables readonly
       -u    Convert values to uppercase on assignment
       -x    Make variables export to the environment

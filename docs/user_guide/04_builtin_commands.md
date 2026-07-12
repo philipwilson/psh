@@ -1068,33 +1068,48 @@ PSH Shell, version 0.x.y
 These shell commands are defined internally. Type 'help name' to find out more
 about the function 'name'.
 
+Debug options available via 'set -o' or command line:
+  debug-ast                Show AST before execution
+  debug-tokens             Show tokens during parsing
+  debug-scopes             Show variable scope operations
+  debug-expansion          Show parameter/command expansions
+  debug-expansion-detail   Show detailed expansion steps
+  debug-exec               Show execution flow
+  debug-exec-fork          Show fork/exec details
+Use 'debug OPTION on/off' or 'debug-ast' for dedicated debug control.
+
  . FILENAME [ARGS]                      : [arguments]
- [ EXPRESSION ]                         alias
+ [ EXPRESSION ]                         alias [-p] [name[=value] ... ]
  ast-dot [-p] COMMAND                   bg
- cd [dir]                               command [-pVv] command [arg ...]
- debug [OPTION] [on|off]                debug-ast [on|off] [FORMAT]
- declare                                dirs [-clv] [+N | -N]
- disown [-h] [-ar] [jobspec ...]        echo [-neE] [arg ...]
- env                                    eval [ARG ...]
- exec [command [argument ...]]          exit [n]
- export                                 false
- fg                                     getopts optstring name [arg ...]
+ break [n]                              builtin [shell-builtin [arg ...]]
+ cd [-L|-P] [dir]                       command [-pVv] command [arg ...]
+ continue [n]                           debug [OPTION] [on|off]
+ debug-ast [on|off] [FORMAT]            declare
+ dirs [-clpv] [+N | -N]                 disown [-h] [-ar] [jobspec ... | p...
+ echo [-neE] [arg ...]                  env
+ eval [ARG ...]                         exec [-cl] [-a name] [command [arg...
+ exit [n]                               export
+ false                                  fg
+ getopts optstring name [arg ...]       hash [-lr] [-p pathname] [-dt] [na...
  help [-dms] [pattern ...]              history
- jobs                                   kill [-s signal | -signal] pid...
- local                                  parse-tree [-f FORMAT] [-p] COMMAND
+ jobs [-lnprs] [jobspec ...] or job...  kill [-s signal | -signal] pid... ...
+ let arg [arg ...]                      local
+ mapfile [-d delim] [-n count] [-O ...  parse-tree [-f FORMAT] [-p] COMMAND
  parser-config [COMMAND] [ARG]          parser-mode [MODE]
- parser-select [PARSER]                 popd [+N | -N]
- printf format [arguments ...]          pushd [dir | +N | -N]
- pwd                                    read [-rs] [-a array] [-d delim] ...
- readonly                               return
- set                                    shift [n]
- shopt                                  show-ast [-p] COMMAND
- signals [-v]                           source FILENAME [ARGS]
- test [EXPRESSION]                      trap [action] [condition...]
- true                                   type
- typeset                                unalias
- unset                                  version
- wait [pid|job_id ...]
+ parser-select [PARSER]                 popd [-n] [+N | -N]
+ print [-nrRelNsoOiPm] [-u fd] [-f ...  printf [-v var] format [arguments ...
+ pushd [-n] [dir | +N | -N]             pwd [-LP]
+ read [-rs] [-a array] [-d delim] [...  readonly
+ return                                 set
+ shift [n]                              shopt
+ show-ast [-p] COMMAND                  signals [-v]
+ source FILENAME [ARGS]                 test [EXPRESSION]
+ times                                  trap [-lp] [[arg] signal_spec ...]
+ true                                   type [-afptP] name [name ...]
+ typeset                                ulimit [-SHacdefilmnpqrstuvx] [limit]
+ umask [-p] [-S] [mode]                 unalias [-a] name [name ...]
+ unset [-f] [-v] [-n] [name ...]        version
+ wait [-fn] [-p var] [id ...]
 
 # Get detailed help for a specific builtin
 psh$ help echo
@@ -1112,8 +1127,8 @@ psh$ help -d
 # Synopsis mode - shows just command syntax
 psh$ help -s echo pwd read
 echo: echo [-neE] [arg ...]
-pwd: pwd
-read: read [-rs] [-a array] [-d delim] [-p prompt] [-t timeout] [-n chars] [name ...]
+pwd: pwd [-LP]
+read: read [-rs] [-a array] [-d delim] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [-u fd] [var ...]
 
 # Manpage format - detailed documentation
 psh$ help -m help
@@ -1722,7 +1737,6 @@ psh$ debug ast on
 psh$ debug tokens off
 psh$ debug expansion on
 psh$ debug exec on
-psh$ debug parser on
 psh$ debug scopes on
 ```
 
