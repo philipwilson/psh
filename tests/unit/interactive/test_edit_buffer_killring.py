@@ -254,3 +254,45 @@ class TestAlnumWordBoundaries:
         assert meta['d'] == 'kill_word'
         assert meta['\x7f'] == 'backward_kill_word'
         assert editor.key_handler.bindings['\x17'] == 'kill_word_backward'
+
+
+class TestUndoStackCap:
+    """The undo history is bounded at UNDO_HISTORY_MAX snapshots (P7).
+
+    A very long editing session would otherwise grow undo_stack without
+    limit. The cap is a deliberate behavior change at the margin: undo
+    depth beyond UNDO_HISTORY_MAX is unavailable (the oldest snapshots are
+    evicted). The cap is far above any interactive session's reach.
+    """
+
+    def test_undo_stack_bounded_at_cap(self):
+        from psh.interactive.edit_buffer import UNDO_HISTORY_MAX
+        buf = EditBuffer()
+        # Push far more than the cap of DISTINCT states.
+        for _ in range(UNDO_HISTORY_MAX + 500):
+            buf.insert('a')  # each insert is a genuinely new state (text grows)
+        # The history never exceeds the cap (unbounded on base: would be
+        # UNDO_HISTORY_MAX + 500 + 1).
+        assert len(buf.undo_stack) == UNDO_HISTORY_MAX
+
+    def test_oldest_snapshots_evicted_beyond_cap(self):
+        from psh.interactive.edit_buffer import UNDO_HISTORY_MAX
+        buf = EditBuffer()
+        for _ in range(UNDO_HISTORY_MAX + 50):
+            buf.insert('a')
+        # Undo as far back as the retained history allows; the empty
+        # initial state (dropped by the cap) can no longer be reached.
+        while buf.undo():
+            pass
+        assert buf.text != ''  # earliest reachable state is NOT the empty start
+
+    def test_undo_redo_still_works_within_cap(self):
+        # A short session (well under the cap) is entirely unaffected.
+        buf = EditBuffer()
+        buf.insert('a')
+        buf.insert('b')
+        assert buf.text == 'ab'
+        assert buf.undo() and buf.text == 'a'
+        assert buf.undo() and buf.text == ''
+        assert buf.redo() and buf.text == 'a'
+        assert buf.redo() and buf.text == 'ab'
