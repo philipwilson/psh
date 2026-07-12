@@ -4,7 +4,7 @@ Subscript/index/slice/length access on indexed and associative arrays,
 plus array-aware assignment. Mixed into VariableExpander (variable.py);
 methods use ``self.shell`` / ``self.state`` from the host class.
 """
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Tuple
 
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
@@ -15,6 +15,28 @@ else:
 
 class ArrayOpsMixin(_Base):
     """Array subscript, slice, length, and assignment operations."""
+
+    @staticmethod
+    def split_subscript(name: str) -> Optional[Tuple[str, str]]:
+        """Split ``base[subscript]`` into ``(base, subscript)``, or None.
+
+        THE one home for the ``NAME[...]`` shape rule ("``[`` present AND the
+        string ends with ``]``"): every array-read/write site that needs to
+        separate an array name from its subscript funnels through here instead
+        of re-deriving ``find('[')`` + slicing. Returns the RAW base name
+        (nameref resolution is a separate step via ``_resolve_array_name``) and
+        the raw subscript text (``@``/``*`` or an arithmetic/key expression).
+        A non-subscripted name (or one not ending in ``]``) returns None; an
+        empty base (``[i]``) returns ``('', 'i')`` — callers that reject an
+        empty base test ``base`` truthiness.
+
+        The parser's own subscript scanning (param_parser.py) stays separate:
+        it is the grammar producer, not a read-time consumer.
+        """
+        if '[' in name and name.endswith(']'):
+            bracket = name.find('[')
+            return name[:bracket], name[bracket + 1:-1]
+        return None
 
     def _resolve_array_name(self, array_name: str) -> str:
         """Resolve the array-name part of a subscript through namerefs.
@@ -67,8 +89,9 @@ class ArrayOpsMixin(_Base):
         """
         from ..core import AssociativeArray, IndexedArray
 
-        bracket_pos = subscripted.find('[')
-        array_name = self._resolve_array_name(subscripted[:bracket_pos])
+        parts = self.split_subscript(subscripted)
+        assert parts is not None  # caller passes a NAME[...] form
+        array_name = self._resolve_array_name(parts[0])
 
         var = self.state.scope_manager.get_variable_object(array_name)
 
@@ -95,9 +118,10 @@ class ArrayOpsMixin(_Base):
         """
         from ..core import AssociativeArray, IndexedArray
 
-        bracket_pos = var_content.find('[')
-        array_name = self._resolve_array_name(var_content[:bracket_pos])
-        index_expr = var_content[bracket_pos + 1:-1]
+        parts = self.split_subscript(var_content)
+        assert parts is not None  # caller passes a NAME[...] form
+        array_name = self._resolve_array_name(parts[0])
+        index_expr = parts[1]
 
         var = self.state.scope_manager.get_variable_object(array_name)
 
@@ -177,10 +201,10 @@ class ArrayOpsMixin(_Base):
         array element) can route subscripted writes here without reaching into
         a private method.
         """
-        if '[' in var_name and var_name.endswith(']'):
-            bracket_pos = var_name.find('[')
-            array_name = self._resolve_array_name(var_name[:bracket_pos])
-            index_expr = var_name[bracket_pos + 1:-1]
+        parts = self.split_subscript(var_name)
+        if parts is not None:
+            array_name = self._resolve_array_name(parts[0])
+            index_expr = parts[1]
 
             from ..core import AssociativeArray
             var = self.state.scope_manager.get_variable_object(array_name)

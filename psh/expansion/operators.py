@@ -166,11 +166,10 @@ class OperatorOpsMixin(_Base):
             return len(self.state.positional_params) > 0
         if var_name.isdigit():
             return 0 <= int(var_name) - 1 < len(self.state.positional_params)
-        if '[' in var_name and var_name.endswith(']'):
+        if (parts := self.split_subscript(var_name)) is not None:
             from ..core import AssociativeArray, IndexedArray
-            bracket = var_name.find('[')
-            name = self._resolve_array_name(var_name[:bracket])
-            index_expr = var_name[bracket + 1:-1]
+            name = self._resolve_array_name(parts[0])
+            index_expr = parts[1]
             var = self.state.scope_manager.get_variable_object(name)
             if var is None:
                 return False
@@ -506,8 +505,9 @@ class OperatorOpsMixin(_Base):
         assignment to the array NAME (``declare -a a='2'``) and ``${a[1]@a}``
         reports the array's flags, not the subscripted element.
         """
-        if '[' in var_name and var_name.endswith(']'):
-            return self._resolve_array_name(var_name[:var_name.find('[')])
+        subscript = self.split_subscript(var_name)
+        if subscript is not None:
+            return self._resolve_array_name(subscript[0])
         return var_name
 
     def _var_attr_flags(self, var_name: str) -> str:

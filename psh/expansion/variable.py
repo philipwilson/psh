@@ -82,7 +82,9 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
 
             # Plain ${arr[index]} / ${arr[@]} / ${arr[*]} subscript. This is the
             # bare form (no operator), so an absent element honors nounset.
-            if '[' in var_name and var_name.endswith(']') and var_name.find('[') > 0:
+            # A non-empty base is required (``${[i]}`` is not a subscript).
+            subscript = self.split_subscript(var_name)
+            if subscript is not None and subscript[0]:
                 return self._expand_array_subscript(var_name, check_nounset=True)
 
             # Plain ${var}. Honor nounset. The error already carries bash's
@@ -146,11 +148,10 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         elif var_name in ['#', '?', '$', '!', '@', '*', '0', '-']:
             # Special variables
             return self.state.get_special_variable(var_name)
-        elif '[' in var_name and var_name.endswith(']'):
+        elif (parts := self.split_subscript(var_name)) is not None:
             # Array element: arr[index]
-            bracket_pos = var_name.find('[')
-            array_name = self._resolve_array_name(var_name[:bracket_pos])
-            index_expr = var_name[bracket_pos + 1:-1]
+            array_name = self._resolve_array_name(parts[0])
+            index_expr = parts[1]
 
             from ..core import AssociativeArray, IndexedArray
             var = self.state.scope_manager.get_variable_object(array_name)
@@ -226,7 +227,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             else:
                 index = int(var_name) - 1
                 value = self.state.positional_params[index] if 0 <= index < len(self.state.positional_params) else ''
-        elif '[' in var_name and var_name.endswith(']'):
+        elif self.split_subscript(var_name) is not None:
             # Array element with parameter expansion. Whole-array @/* forms
             # return directly; a regular element access yields a scalar value
             # that falls through to the shared operator application below.
@@ -317,9 +318,10 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         directly; when False the *value* is a scalar to be fed through the
         shared operator application in ``expand_parameter_direct``.
         """
-        bracket_pos = var_name.find('[')
-        array_name = self._resolve_array_name(var_name[:bracket_pos])
-        index_expr = var_name[bracket_pos+1:-1]
+        parts = self.split_subscript(var_name)
+        assert parts is not None  # caller (expand_parameter_direct) checked NAME[...]
+        array_name = self._resolve_array_name(parts[0])
+        index_expr = parts[1]
 
         from ..core import AssociativeArray, IndexedArray
         var = self.state.scope_manager.get_variable_object(array_name)
@@ -490,11 +492,14 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             return True
         if len(target) == 1 and target in '@*#?$!-':
             return True
-        name = target
-        if '[' in target:
-            if not target.endswith(']'):
-                return False
-            name = target[:target.find('[')]
+        subscript = self.split_subscript(target)
+        if subscript is not None:
+            name = subscript[0]
+        elif '[' in target:
+            # '[' present but no closing ']' — not a valid subscripted name.
+            return False
+        else:
+            name = target
         return is_valid_name(name, self.state.options.get('posix', False))
 
     def expand_string_variables(self, text: str,
