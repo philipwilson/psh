@@ -4,7 +4,7 @@ import fcntl
 import os
 import stat
 import sys
-from typing import TYPE_CHECKING, List, TextIO, Tuple
+from typing import TYPE_CHECKING, List, TextIO, Tuple, cast
 
 from ..ast_nodes import Redirect
 from .planner import RedirectPlan, RedirectPlanner
@@ -27,6 +27,24 @@ def _dup2_preserve_target(opened_fd: int, target_fd: int):
         return
     os.dup2(opened_fd, target_fd)
     os.close(opened_fd)
+
+
+# The open(2) flags for each filename redirect type, in ONE place. Every path
+# that opens a redirect target — the per-type `_redirect_*` helpers, the
+# combined `&>`/`&>>` opener (which reuses the `>`/`>>` entries: a combined
+# redirect truncates or appends exactly like plain output, and its type may be
+# spelled `&>`/`&>>` or csh-style `>&`), and the named-fd `{v}>file` allocator
+# (`apply_var_fd_redirect`) — reads flags from here, so changing a mode is a
+# single edit. noclobber is orthogonal (a `>`/`&>` precondition), checked via
+# `check_noclobber`, never encoded in these flags.
+REDIRECT_OPEN_FLAGS: dict[str, int] = {
+    '<':   os.O_RDONLY,
+    '<>':  os.O_RDWR | os.O_CREAT,
+    '>':   os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+    '>|':  os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+    '>>':  os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+}
+
 
 
 class FileRedirector:
@@ -104,26 +122,52 @@ class FileRedirector:
     def _word_is_process_sub(word) -> bool:
         """True if the Word is a process-substitution target (`<(cmd)`/`>(cmd)`).
 
-        Such a target is resolved to a `/dev/fd/N` path by the
-        ProcessSubstitutionHandler (downstream in the planner), not by
-        field expansion, and is always a single fd path — never ambiguous.
+        Such a target is resolved to a `/dev/fd/N` path from its AST node by the
+        ProcessSubstitutionHandler (via the planner), not by field expansion,
+        and is always a single fd path — never ambiguous.
         """
         from ..ast_nodes import ExpansionPart, ProcessSubstitution
         return (len(word.parts) == 1
                 and isinstance(word.parts[0], ExpansionPart)
                 and isinstance(word.parts[0].expansion, ProcessSubstitution))
 
-    def expand_redirect_target(self, redirect):
-        """Expand a redirect target, enforcing bash's "ambiguous redirect" rule.
+    def redirect_procsub_node(self, redirect):
+        """Return the `ProcessSubstitution` node when this redirect's target is
+        a WHOLE-WORD process substitution (`< <(cmd)`, `> >(cmd)`), else None.
 
-        Shared redirect primitive: the planner calls this for every backend.
+        Shared redirect primitive: the planner calls this to decide procsub-ness
+        STRUCTURALLY, from the Word AST the parser already built — it never
+        re-sniffs the expanded string. That layering fixed two bugs: a quoted
+        literal `'<(echo x)'` was executed as a command (the sniff matched the
+        post-expansion text), and a `<(echo $x)` body was variable-expanded
+        once in the parent and again in the child. A redirect whose Word is not
+        a whole-word procsub is a filename, full stop. Only filename-target
+        redirects can carry one (heredoc/dup/close targets mean something else).
+        """
+        if not self._is_filename_redirect(redirect):
+            return None
+        word = getattr(redirect, 'target_word', None)
+        if word is not None and self._word_is_process_sub(word):
+            return word.parts[0].expansion
+        return None
+
+    def expand_redirect_target(self, redirect):
+        """Expand a FILENAME redirect target, enforcing bash's "ambiguous
+        redirect" rule.
+
+        Shared redirect primitive: the planner calls this for every NON-procsub
+        filename redirect, and ``apply_var_fd_redirect`` for ``{fd}>file``.
+        Process-substitution targets never reach here — the planner detects them
+        structurally (``redirect_procsub_node``) and resolves them from their
+        AST node, so nothing re-sniffs the expanded string.
 
         For filename-target redirects (`<`/`>`/`>>`/`<>`/`>|`/`&>`/`&>>`) with
         a parsed Word, expand through the full command-argument pipeline
         (variable/command/arithmetic expansion, IFS word-splitting of unquoted
-        expansions, and globbing). bash requires the result to be EXACTLY one
-        word: zero words (unset/empty unquoted target) or more than one word
-        (`$v` with v="a b", a glob matching ≥2 files) is an "ambiguous
+        expansions, and globbing — an EMBEDDED procsub like ``pre<(cmd)post``
+        resolves to its ``/dev/fd/N`` path here). bash requires the result to be
+        EXACTLY one word: zero words (unset/empty unquoted target) or more than
+        one word (`$v` with v="a b", a glob matching ≥2 files) is an "ambiguous
         redirect" error — and NOTHING is opened. A quoted target suppresses
         splitting/globbing, so it always yields one field and is never
         ambiguous.
@@ -137,24 +181,17 @@ class FileRedirector:
             return target
 
         word = getattr(redirect, 'target_word', None)
-        if word is not None and not self._word_is_process_sub(word):
-            from ..expansion.word_expansion_types import COMMAND_ARGUMENT
-            fields = self.shell.expansion_manager.expand_word_to_fields(
-                word, COMMAND_ARGUMENT)
-            if len(fields) != 1:
-                # bash names the original (pre-expansion) target word.
-                raise OSError(f"{word.source_text()}: ambiguous redirect")
-            return fields[0]
-
-        # Fallback for synthesized redirects without a parsed Word
-        # (e.g. constructed programmatically): legacy string expansion.
-        if not target:
+        if word is None:
+            # Synthesized redirect with no parsed Word (both parsers always
+            # attach one for a real filename redirect): use the literal target.
             return target
-        if not (hasattr(redirect, 'quote_type') and redirect.quote_type == "'"):
-            target = self.shell.expansion_manager.expand_string_variables(target)
-        if target.startswith('~'):
-            target = self.shell.expansion_manager.expand_tilde(target)
-        return target
+        from ..expansion.word_expansion_types import COMMAND_ARGUMENT
+        fields = self.shell.expansion_manager.expand_word_to_fields(
+            word, COMMAND_ARGUMENT)
+        if len(fields) != 1:
+            # bash names the original (pre-expansion) target word.
+            raise OSError(f"{word.source_text()}: ambiguous redirect")
+        return fields[0]
 
     def redirect_input_from_file(self, target, redirect):
         """Open file for input and dup2 to the redirect's fd (default 0).
@@ -164,7 +201,7 @@ class FileRedirector:
         not clobber stdin. Returns the target fd.
         """
         target_fd = redirect.fd if redirect.fd is not None else 0
-        fd = os.open(target, os.O_RDONLY)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS['<'], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
@@ -254,9 +291,7 @@ class FileRedirector:
         target_fd = redirect.fd if redirect.fd is not None else 1
         if redirect.type == '>':
             self.check_noclobber(target)
-        flags = os.O_WRONLY | os.O_CREAT
-        flags |= os.O_TRUNC if redirect.type == '>' else os.O_APPEND
-        fd = os.open(target, flags, 0o644)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS[redirect.type], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
@@ -327,22 +362,12 @@ class FileRedirector:
             return
 
         # Open-a-file forms: allocate the lowest free fd >= 10 (F_DUPFD).
+        if rtype not in REDIRECT_OPEN_FLAGS:
+            raise OSError(f"{rtype}: unsupported named-fd redirect")
         target = self.expand_redirect_target(redirect)
         if rtype == '>':
             self.check_noclobber(target)
-            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        elif rtype == '>|':
-            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        elif rtype == '>>':
-            flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
-        elif rtype == '<':
-            flags = os.O_RDONLY
-        elif rtype == '<>':
-            flags = os.O_RDWR | os.O_CREAT
-        else:
-            raise OSError(f"{rtype}: unsupported named-fd redirect")
-
-        opened = os.open(target, flags, 0o644)
+        opened = os.open(target, REDIRECT_OPEN_FLAGS[rtype], 0o644)
         try:
             newfd = fcntl.fcntl(opened, fcntl.F_DUPFD, 10)
         finally:
@@ -374,28 +399,29 @@ class FileRedirector:
         Shared redirect primitive (fd backend and builtin stream backend).
         """
         target_fd = redirect.fd if redirect.fd is not None else 0
-        fd = os.open(target, os.O_RDWR | os.O_CREAT, 0o644)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS['<>'], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
     def _redirect_clobber(self, target, redirect):
         """Force overwrite (>|), ignoring noclobber."""
         target_fd = redirect.fd if redirect.fd is not None else 1
-        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS['>|'], 0o644)
         _dup2_preserve_target(fd, target_fd)
         return target_fd
 
     def _redirect_combined(self, target, redirect):
-        """Redirect both stdout and stderr to file (&> or &>>)."""
-        flags = os.O_WRONLY | os.O_CREAT
+        """Redirect both stdout and stderr to file (&>, &>>, or csh-style >&).
+
+        The type may be spelled `&>`/`&>>` or `>&` (csh `>&word`); only the
+        `>>` suffix distinguishes append from truncate, so map onto the plain
+        `>`/`>>` open flags.
+        """
         is_append = redirect.type.endswith('>>')
-        if is_append:
-            flags |= os.O_APPEND
-        else:
-            if self.noclobber_blocks(target):
-                raise OSError(f"{target}: cannot overwrite existing file")
-            flags |= os.O_TRUNC
-        fd = os.open(target, flags, 0o644)
+        if not is_append:
+            self.check_noclobber(target)
+        fd = os.open(target, REDIRECT_OPEN_FLAGS['>>' if is_append else '>'],
+                     0o644)
         _dup2_preserve_target(fd, 1)   # stdout
         os.dup2(1, 2)                  # stderr → stdout
 
@@ -552,27 +578,34 @@ class FileRedirector:
                 os.dup2(saved_fd, fd)
                 os.close(saved_fd)
 
-    def _stream_sharing_fd(self, target_fd: int):
-        """Build a Python text stream that shares target_fd's open file description.
+    def dup_sharing_stream(self, fd: int, mode: str, *,
+                           buffering: int = -1) -> TextIO:
+        """A Python text stream that SHARES ``fd``'s open file description.
 
-        Used after a *permanent* fd-level redirect (os.open + dup2): builtins
-        write through the Python stream (sys.stdout/state.stdout) while
-        external children inherit the raw fd, so both views MUST share one
-        file offset. A second independent ``open(target, mode)`` would have
-        its own offset (and re-truncate in 'w' mode), making the two writers
-        overwrite each other. ``os.dup()`` shares the open file description
-        (offset and O_APPEND), so dup + fdopen gives both universes a single
-        file position. Line-buffered so builtin output reaches the file as
-        each line completes, interleaving with external commands like bash's
-        unbuffered writes. The dup also means the stream object never owns
-        target_fd itself — replacing it later (a second ``exec >file``)
-        closes only the dup.
+        Shared redirect primitive — the ONE dup+fdopen recipe for both
+        universes. A builtin acts through the Python stream object while an
+        external child (and any fd-level redirect) inherits the raw fd, so the
+        two views MUST share one file offset. A second independent
+        ``open(target, mode)`` would have its OWN offset (and would re-truncate
+        in 'w' mode), making the writers/readers overwrite or restart each
+        other. ``os.dup(fd)`` shares the open file description (offset and
+        O_APPEND); the stream never owns ``fd`` itself, so replacing it later
+        (a second ``exec >file``) closes only the dup.
+
+        * OUTPUT (``mode='w'``, ``buffering=1``): after a permanent ``exec
+          >file`` (``_rebind_output_stream``) or a builtin's ``n>&m`` dup —
+          line-buffered so builtin writes interleave with fd-level writers like
+          bash's unbuffered output.
+        * INPUT (``mode='r'``/``'r+'``): a builtin's ``read`` and a child it
+          spawns share ONE stdin position, so ``{ read a; read b; } < f`` and a
+          mid-builtin child advance the same offset (a second open would
+          restart at 0).
+
+        surrogateescape keeps non-UTF-8 shell bytes transparent, matching the
+        sys.std* byte policy set at psh's entry point.
         """
-        # surrogateescape so builtin writes of shell values carrying non-UTF-8
-        # bytes (surrogate escapes) round-trip to the file, matching bash and
-        # the sys.stdout/stderr byte policy set at psh's entry point.
-        return os.fdopen(os.dup(target_fd), 'w', buffering=1,
-                         errors='surrogateescape')
+        return cast(TextIO, os.fdopen(os.dup(fd), mode, buffering=buffering,
+                                      errors='surrogateescape'))
 
     def _rebind_output_stream(self, target_fd: int):
         """Point the shell's Python-level stdout/stderr at a redirected fd.
@@ -587,18 +620,18 @@ class FileRedirector:
         block writes for the reopened stream.
         """
         if target_fd == 1:
-            sys.stdout = self._stream_sharing_fd(1)
+            sys.stdout = self.dup_sharing_stream(1, 'w', buffering=1)
             self.shell.stdout = sys.stdout
             self.state.stdout = sys.stdout
         elif target_fd == 2:
-            sys.stderr = self._stream_sharing_fd(2)
+            sys.stderr = self.dup_sharing_stream(2, 'w', buffering=1)
             self.shell.stderr = sys.stderr
             self.state.stderr = sys.stderr
 
     def _rebind_input_stream(self, target_fd: int):
         """Point the shell's Python-level stdin at redirected fd 0."""
         if target_fd == 0:
-            sys.stdin = os.fdopen(os.dup(0), 'r')
+            sys.stdin = self.dup_sharing_stream(0, 'r')
             self.shell.stdin = sys.stdin
             self.state.stdin = sys.stdin
 
