@@ -115,6 +115,14 @@ class TokenGroups:
         TokenType.SELECT, TokenType.FUNCTION
     })
 
+    # Precomputed unions the parse hot loops match against, so a per-token
+    # check names a ready-made frozenset instead of rebuilding the union on
+    # every call (`WORD_LIKE | REDIRECTS` was reallocated once per argument /
+    # redirect match). Built once here at class-definition time.
+    WORD_LIKE_OR_REDIRECTS: FrozenSet[TokenType] = WORD_LIKE | REDIRECTS
+    WORD_LIKE_OR_CASE_PATTERNS: FrozenSet[TokenType] = (
+        WORD_LIKE | CASE_PATTERN_KEYWORDS)
+
 
 @dataclass
 class ErrorContext:
