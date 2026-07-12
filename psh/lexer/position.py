@@ -11,6 +11,8 @@ import bisect
 from dataclasses import dataclass
 from typing import Optional
 
+from ..core.exceptions import PshError
+
 
 @dataclass
 class Position:
@@ -80,14 +82,24 @@ class SourceMap:
         return None
 
 
-class UnclosedQuoteError(SyntaxError):
+class UnclosedQuoteError(PshError, SyntaxError):
     """A quoted string was still open at end of input.
 
     Structurally "incomplete input": more lines could close the quote, so
     line-gathering (the CommandAccumulator) keys off this exception type —
     not the message text — to keep reading. ``quote_char`` is the opening
     quote: ``'``, ``"``, ``$'`` or ``$"``.
-    """
+
+    Dual-inherits ``(PshError, SyntaxError)`` deliberately. It roots at
+    ``PshError`` like every other shell error (so ``exceptions.py``'s
+    "everything roots at PshError" claim and the strict-errors
+    expected-error taxonomy hold), AND it stays a ``SyntaxError`` because
+    load-bearing ``except SyntaxError`` sites depend on catching it WITHOUT
+    naming it: ``heredoc_lexer.py`` (a mid-construct quote spanning lines is
+    command continuation) and ``line_editor_helpers.py`` (an unlexable lone
+    line). ``PshError`` defines no ``__init__``, so ``super().__init__`` still
+    resolves to ``SyntaxError.__init__`` via the MRO — construction is
+    unchanged. See the P6 catch-site audit (reappraisal #19 ledger)."""
 
     def __init__(self, message: str, quote_char: str):
         self.quote_char = quote_char
