@@ -423,13 +423,27 @@ class ParameterExpansion:
 
     # Case modification. bash matches the pattern against individual
     # characters: ${v^^pat} examines each char, ${v^pat} only the first.
-    def _char_matches(self, char: str, pattern: str) -> bool:
+    def _char_predicate(self, pattern: str):
+        """Compile a single-char match predicate for a case-mod pattern ONCE.
+
+        The ``^ ^^ , ,, ~ ~~`` operators test the pattern against EVERY
+        character; building the glob→regex conversion per character (the old
+        per-call ``_char_matches``) was O(len(value)) conversions for a
+        ``${v^^pat}`` on a long value. This converts/compiles the matcher a
+        single time and returns a closure applied to each char (the ``_first``
+        variants call it for one char — same result, negligible cost).
+        """
         if self._neg(pattern):
-            from .extglob import extglob_fullmatch
-            return extglob_fullmatch(pattern, char)
+            from .pattern_engine import compile_cached, fullmatch
+            compiled = compile_cached(pattern)
+            return lambda ch: fullmatch(compiled, ch)
         regex = self.pattern_matcher.shell_pattern_to_regex(
             pattern, anchored=False, extglob_enabled=self._extglob)
-        return re.fullmatch(regex, char) is not None
+        compiled_re = re.compile(regex)
+        return lambda ch: compiled_re.fullmatch(ch) is not None
+
+    def _char_matches(self, char: str, pattern: str) -> bool:
+        return self._char_predicate(pattern)(char)
 
     # ^ ^^ , ,, ~ ~~ route their per-char case mapping through the locale
     # service: length-safe (ß stays ß) AND locale-gated (ASCII-only under the C
@@ -443,8 +457,8 @@ class ParameterExpansion:
     def uppercase_all(self, value: str, pattern: str = '?') -> str:
         """Uppercase every char matching the pattern."""
         loc = self.state.locale
-        return ''.join(loc.upper(c) if self._char_matches(c, pattern) else c
-                       for c in value)
+        matches = self._char_predicate(pattern)
+        return ''.join(loc.upper(c) if matches(c) else c for c in value)
 
     def lowercase_first(self, value: str, pattern: str = '?') -> str:
         """Lowercase the first char if it matches the pattern."""
@@ -455,8 +469,8 @@ class ParameterExpansion:
     def lowercase_all(self, value: str, pattern: str = '?') -> str:
         """Lowercase every char matching the pattern."""
         loc = self.state.locale
-        return ''.join(loc.lower(c) if self._char_matches(c, pattern) else c
-                       for c in value)
+        matches = self._char_predicate(pattern)
+        return ''.join(loc.lower(c) if matches(c) else c for c in value)
 
     def toggle_first(self, value: str, pattern: str = '?') -> str:
         """Toggle the case of the first char if it matches the pattern (${x~})."""
@@ -467,5 +481,5 @@ class ParameterExpansion:
     def toggle_all(self, value: str, pattern: str = '?') -> str:
         """Toggle the case of every char matching the pattern (${x~~})."""
         loc = self.state.locale
-        return ''.join(loc.toggle(c) if self._char_matches(c, pattern) else c
-                       for c in value)
+        matches = self._char_predicate(pattern)
+        return ''.join(loc.toggle(c) if matches(c) else c for c in value)
