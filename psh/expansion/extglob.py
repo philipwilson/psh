@@ -96,19 +96,26 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
 
     Args:
         pattern: Shell pattern potentially containing extglob operators.
-        anchored: If True, anchor the regex (^ and/or $).
+        anchored: If True, anchor the regex (``^`` and/or ``\\Z``).
         from_start: If anchored, anchor at start (True) or just at end (False).
         for_pathname: If True, * and ? do not match '/'.
         ic: If True (``nocasematch``), keep ``[:upper:]``/``[:lower:]``
             case-sensitive; the caller still applies ``re.IGNORECASE``.
+
+    The body is wrapped in ``(?s:...)`` (DOTALL) so the ``.``/``.*`` emitted
+    for ``?``/``*`` match a newline the way a real shell glob does (bash's
+    ``?``/``*`` match ``\\n``). The end anchor is ``\\Z`` (true end of string),
+    NOT ``$`` — ``$`` also matches just before a trailing newline, which would
+    over-match a subject like ``$'ab\\n'`` (``${x%b}`` must NOT strip).
     """
-    regex = _convert_pattern(pattern, for_pathname, top_level=True, ic=ic)
+    regex = '(?s:' + _convert_pattern(pattern, for_pathname,
+                                      top_level=True, ic=ic) + ')'
 
     if anchored:
         if from_start:
-            regex = '^' + regex + '$'
+            regex = '^' + regex + r'\Z'
         else:
-            regex = regex + '$'
+            regex = regex + r'\Z'
     return regex
 
 
@@ -117,12 +124,19 @@ def glob_to_regex_body(pattern: str, for_pathname: bool = False,
     """Convert a shell glob pattern to an *unanchored* regex body.
 
     The public entry point for the shared glob→regex conversion. Callers that
-    need anchoring add ``^``/``$`` themselves (see ``extglob_to_regex`` and
+    need anchoring add ``^``/``\\Z`` themselves (see ``extglob_to_regex`` and
     ``PatternMatcher.shell_pattern_to_regex``). ``ic`` (``nocasematch``) keeps
     ``[:upper:]``/``[:lower:]`` case-sensitive; see ``_bracket_to_regex``.
+
+    The body is wrapped in ``(?s:...)`` (DOTALL) so the ``.``/``.*`` emitted
+    for ``?``/``*`` match a newline like a real shell glob. The wrapper is
+    scoped, not a compile flag, precisely because this string is embedded in
+    larger regexes by callers (anchoring, prefix/suffix normalisation).
     """
-    return _convert_pattern(pattern, for_pathname, extglob, top_level=True,
-                            ic=ic)
+    return ('(?s:'
+            + _convert_pattern(pattern, for_pathname, extglob,
+                               top_level=True, ic=ic)
+            + ')')
 
 
 def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
@@ -183,7 +197,7 @@ def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
                     # rejects any string that merely STARTS with an
                     # alternative.
                     if top_level and i == 0 and close == len(pattern) - 1:
-                        result.append(f'(?!(?:{alt_group})$){star}')
+                        result.append(f'(?!(?:{alt_group})\\Z){star}')
                     else:
                         # Embedded negation (a!(b)c, !(b)c, !(b)*) is NOT
                         # expressible as a Python regex — the negation is a

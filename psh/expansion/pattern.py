@@ -50,7 +50,9 @@ class PatternMatcher:
                                        extglob=False, ic=ignorecase)
             if anchored and from_start:
                 regex = '^' + regex
-                # (suffix matching: callers add the '$' themselves)
+                # (end anchoring: callers append the \Z anchor themselves —
+                # see parameter_expansion._end_anchored; never '$', which
+                # also matches before a trailing newline)
 
         try:
             re.compile(regex)

@@ -167,14 +167,16 @@ class TestExtglobToRegex:
         assert re.fullmatch(regex, 'd') is None
 
     def test_anchored_start(self):
+        # End anchor is ``\Z`` (true end of string), not ``$`` (which also
+        # matches before a trailing newline and would over-match $'ab\n').
         regex = extglob_to_regex('@(a|b)', anchored=True, from_start=True)
         assert regex.startswith('^')
-        assert regex.endswith('$')
+        assert regex.endswith(r'\Z')
 
     def test_anchored_end_only(self):
         regex = extglob_to_regex('@(a|b)', anchored=True, from_start=False)
         assert not regex.startswith('^')
-        assert regex.endswith('$')
+        assert regex.endswith(r'\Z')
 
     def test_for_pathname(self):
         regex = extglob_to_regex('*', anchored=False, for_pathname=True)
