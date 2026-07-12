@@ -4,6 +4,12 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.711.0 (2026-07-12) - Reappraisal-19 B2: lexer Tokens no longer leak into the executor
+- **`ArrayElementAssignment.index` is a plain string** (appraisal H4): both parsers were already computing the subscript as a verbatim string, then wrapping it in a one-token list the executor unwrapped through a stringly-typed dead branch (`str(token.type) == 'TokenType.VARIABLE'` - unreachable for all real parser output). The Union is gone, both emit sites pass the string, the unwrap loop and dead branch are deleted, and every dual-typed reader (executor, formatter, debug visitor) collapses to a direct read.
+- Pure refactor, proven: 12-probe execution battery byte-identical incl. the `declare -f` formatter surface; the frozen parser corpus regenerated with exactly the index-wrapper lines changing (18/18, zero collateral); a new AST-shape invariant test asserts `index` is `str` with VERBATIM subscript text agreement across BOTH parsers (fails 7/7 on the old representation - red-on-base by construction, independently mutation-checked).
+- One visible non-shell delta, ruled accepted: `--debug-ast` dumps now render `index: "$i"` inline instead of the old two-line Token repr - the visualizer faithfully reflecting the retyped field. `docs/architecture/ast_data_flow.md`'s element-assignment row is truth-repaired to "verbatim subscript string".
+- Process: dev-implemented; 4-agent adversarial verification PASS with zero blockers.
+
 ## 0.710.0 (2026-07-12) - Reappraisal-19 T12: the test infrastructure stops maintaining its own twins
 - **One AST "asserting test" analyzer** (tests/conformance/_assert_analysis.py) feeds both meta-guards - the verbatim copy and its "mirrors the other file so the two guards agree" apology are gone.
 - **One bash-oracle policy**: the golden harness now resolves bash via the conformance framework's find_bash() (BASH_PATH -> Homebrew -> PATH) and RECORDS which oracle ran in the pytest report header - the 26 bash-4+ golden cases no longer break on stock-/bin/bash machines.
