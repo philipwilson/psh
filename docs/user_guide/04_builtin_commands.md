@@ -1127,8 +1127,8 @@ psh$ help -d
 # Synopsis mode - shows just command syntax
 psh$ help -s echo pwd read
 echo: echo [-neE] [arg ...]
-pwd: pwd
-read: read [-rs] [-a array] [-d delim] [-p prompt] [-t timeout] [-n chars] [name ...]
+pwd: pwd [-LP]
+read: read [-rs] [-a array] [-d delim] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [-u fd] [var ...]
 
 # Manpage format - detailed documentation
 psh$ help -m help
@@ -1737,7 +1737,6 @@ psh$ debug ast on
 psh$ debug tokens off
 psh$ debug expansion on
 psh$ debug exec on
-psh$ debug parser on
 psh$ debug scopes on
 ```
 
