@@ -1,34 +1,104 @@
-"""Directory stack builtin commands (pushd, popd, dirs)."""
+"""Directory stack builtin commands (pushd, popd, dirs).
+
+The PWD/OLDPWD write side and the logical-cwd read side are SHARED with cd:
+``navigation.update_pwd_vars`` / ``navigation.current_logical_dir`` (r19 H2
+— pushd/popd used to carry their own divergent updater copies without cd's
+readonly semantics, and read the cwd from ``shell.env`` where cd read the
+shell variable).
+"""
 
 import os
 from typing import TYPE_CHECKING, List, Optional
 
 from .base import Builtin
+from .navigation import current_logical_dir, update_pwd_vars
 from .registry import builtin
 
 if TYPE_CHECKING:
     from ..shell import Shell
 
 
-def _chdir_or_error(builtin: 'Builtin', target: str, shell: 'Shell') -> bool:
+def _chdir_or_error(builtin: 'Builtin', target: str, shell: 'Shell',
+                    display: Optional[str] = None) -> bool:
     """os.chdir(*target*), reporting a bash-style diagnostic on failure.
 
     Returns True on success, False on failure (message already printed). Shared
     by pushd/popd so a failed cd never leaves the stack out of sync with the
-    cwd — callers mutate the stack only after this returns True.
+    cwd — callers mutate the stack only after this returns True. *display*
+    names the path in the diagnostic when it differs from the chdir target:
+    bash reports the operand AS TYPED (``pushd nosuch`` -> "nosuch: No such
+    file or directory"), not the resolved absolute path.
     """
+    label = display if display is not None else target
     try:
         os.chdir(target)
         return True
     except FileNotFoundError:
-        builtin.error(f"{target}: No such file or directory", shell)
+        builtin.error(f"{label}: No such file or directory", shell)
     except NotADirectoryError:
-        builtin.error(f"{target}: Not a directory", shell)
+        builtin.error(f"{label}: Not a directory", shell)
     except PermissionError:
-        builtin.error(f"{target}: Permission denied", shell)
+        builtin.error(f"{label}: Permission denied", shell)
     except OSError as e:
-        builtin.error(f"{target}: {e.strerror or e}", shell)
+        builtin.error(f"{label}: {e.strerror or e}", shell)
     return False
+
+
+def _names_cwd(path: str) -> bool:
+    """Whether *path* is a (possibly symlink-named) name for the physical cwd."""
+    try:
+        return os.path.realpath(path) == os.getcwd()
+    except OSError:
+        return False
+
+
+def _ensure_stack(shell: 'Shell') -> 'DirectoryStack':
+    """The shell's directory stack, created on first use and top-synced.
+
+    ONE copy of the lazy init (it used to be pasted into pushd, popd and
+    dirs). Beyond creation, this re-syncs ``stack[0]`` to the current
+    directory on EVERY entry: a plain ``cd`` does not consult the stack, so
+    the top would otherwise go stale — bash's ``dirs`` always shows the
+    current directory as entry 0 (probe: ``pushd /var; cd /; dirs`` ->
+    ``/ /tmp``), and pushd's swap/rotate must operate on the real cwd.
+
+    The sync models bash's INTERNAL current-directory (which is not re-read
+    from ``$PWD`` at display time — probe: ``PWD=/xyz dirs`` prints the real
+    cwd): a top that still names the physical cwd is kept as-is (it may be a
+    better logical name than ``$PWD``, e.g. after a readonly PWD rejected the
+    update); otherwise the logical ``PWD`` variable is used when IT names the
+    cwd, else the physical cwd.
+    """
+    if not hasattr(shell.state, 'directory_stack'):
+        shell.state.directory_stack = DirectoryStack()
+    stack = shell.state.directory_stack
+    if not (stack.stack and _names_cwd(stack.stack[0])):
+        logical = current_logical_dir(shell)
+        stack.update_current(logical if _names_cwd(logical) else os.getcwd())
+    return stack
+
+
+def _print_stack(builtin: 'Builtin', stack: 'DirectoryStack',
+                 shell: 'Shell') -> None:
+    """Print the stack in pushd/popd's horizontal format (ONE copy)."""
+    output = ' '.join(format_directory_for_display(d) for d in stack.stack)
+    builtin.write_line(output, shell)
+
+
+def _resolve_target(directory: str, shell: 'Shell') -> str:
+    """Resolve a pushd directory operand to a logical absolute path.
+
+    Relative operands resolve against the LOGICAL current directory, so a
+    pushd from a symlink-named cwd records the symlink path like bash
+    (probe: ``cd link; pushd sub`` -> ``link/sub``, not the physical
+    ``real/sub``). No tilde handling here: the expansion stage already
+    expanded an unquoted ``~``, and bash does NOT expand a quoted ``'~'``
+    (probe: ``pushd '~'`` fails with No such file or directory).
+    """
+    if not os.path.isabs(directory):
+        return os.path.normpath(
+            os.path.join(current_logical_dir(shell), directory))
+    return directory
 
 
 def format_directory_for_display(directory: str, no_tilde: bool = False) -> str:
@@ -152,18 +222,14 @@ class PushdBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute pushd command."""
-        # Initialize directory stack if not present
-        if not hasattr(shell.state, 'directory_stack'):
-            shell.state.directory_stack = DirectoryStack()
-            # Use PWD if available to preserve logical path, otherwise use physical path
-            current_dir = shell.env.get('PWD', os.getcwd())
-            shell.state.directory_stack.initialize(current_dir)
-
-        stack = shell.state.directory_stack
+        stack = _ensure_stack(shell)
 
         # -n manipulates the stack WITHOUT changing directory (bash).
         if len(args) > 1 and args[1] == '-n':
             return self._pushd_no_cd(args[2:], stack, shell)
+
+        # The pre-change cwd, for OLDPWD (stack[0] was just synced to it).
+        old_dir = stack.stack[0]
 
         if len(args) == 1:
             # No arguments - swap top two directories. TRANSACTIONAL: chdir to
@@ -179,8 +245,11 @@ class PushdBuiltin(Builtin):
             if not _chdir_or_error(self, target, shell):
                 return 1
             stack.swap_top_two()
-            self._update_pwd_vars(target, shell)
-            self._print_stack(stack, shell)
+            # bash: the SWAP stands even when a readonly PWD/OLDPWD fails the
+            # variable update (probe: dirs shows the swapped stack, rc 1).
+            if not update_pwd_vars(self, shell, target, old_dir):
+                return 1
+            _print_stack(self, stack, shell)
             return 0
 
         arg = args[1]
@@ -208,58 +277,28 @@ class PushdBuiltin(Builtin):
             if not _chdir_or_error(self, target, shell):
                 return 1
             stack.rotate(offset)
-            self._update_pwd_vars(target, shell)
-            self._print_stack(stack, shell)
+            # bash: the ROTATION stands on a readonly PWD/OLDPWD (probe).
+            if not update_pwd_vars(self, shell, target, old_dir):
+                return 1
+            _print_stack(self, stack, shell)
             return 0
 
-        # Regular directory argument
-        directory = arg
-
-        # Expand tilde
-        if directory.startswith('~'):
-            if hasattr(shell.expansion_manager, 'expand_tilde'):
-                directory = shell.expansion_manager.expand_tilde(directory)
-            else:
-                directory = os.path.expanduser(directory)
-
-        # Convert to absolute path
-        if not os.path.isabs(directory):
-            directory = os.path.abspath(directory)
-
-        try:
-            # Get current directory from PWD to preserve logical path
-            current_dir = shell.env.get('PWD', os.getcwd())
-
-            # Change to directory first to validate it exists and is accessible
-            os.chdir(directory)
-
-            # Ensure current directory is on stack before pushing new one
-            # In bash, stack[0] always represents the CWD
-            if not stack.stack:
-                stack.initialize(current_dir)
-
-            # Push new directory onto stack (becomes new CWD at stack[0])
-            stack.push(directory)
-
-            # Update PWD variables
-            self._update_pwd_vars(directory, shell)
-
-            # Print the stack
-            self._print_stack(stack, shell)
-
-            return 0
-        except FileNotFoundError:
-            self.error(f"{directory}: No such file or directory", shell)
+        # Regular directory argument, routed through the same helpers as the
+        # stack forms: logical resolution, then the shared chdir-with-
+        # diagnostic (it used to re-implement the errno->message mapping that
+        # _chdir_or_error exists to centralize).
+        target = _resolve_target(arg, shell)
+        if not _chdir_or_error(self, target, shell, display=arg):
             return 1
-        except NotADirectoryError:
-            self.error(f"{directory}: Not a directory", shell)
+        if not update_pwd_vars(self, shell, target, old_dir):
+            # bash aborts BEFORE pushing when the variable update fails: the
+            # old top is REPLACED by the new cwd, not stacked below it
+            # (probe: `readonly PWD; pushd /var` -> dirs shows /var alone).
+            stack.update_current(target)
             return 1
-        except PermissionError:
-            self.error(f"{directory}: Permission denied", shell)
-            return 1
-        except OSError as e:
-            self.error(str(e), shell)
-            return 1
+        stack.push(target)
+        _print_stack(self, stack, shell)
+        return 0
 
     def _pushd_no_cd(self, args: List[str], stack: DirectoryStack,
                      shell: 'Shell') -> int:
@@ -272,7 +311,7 @@ class PushdBuiltin(Builtin):
         reproduce bash's duplicate-producing ``pushd -n +N`` quirk.
         """
         if not args:
-            self._print_stack(stack, shell)
+            _print_stack(self, stack, shell)
             return 0
 
         arg = args[0]
@@ -287,38 +326,14 @@ class PushdBuiltin(Builtin):
             if stack.rotate(offset) is None:
                 self.error("directory stack empty", shell)
                 return 1
-            self._print_stack(stack, shell)
+            _print_stack(self, stack, shell)
             return 0
 
-        directory = arg
-        if directory.startswith('~'):
-            if hasattr(shell.expansion_manager, 'expand_tilde'):
-                directory = shell.expansion_manager.expand_tilde(directory)
-            else:
-                directory = os.path.expanduser(directory)
-        if not os.path.isabs(directory):
-            directory = os.path.abspath(directory)
-
-        if not stack.stack:
-            stack.initialize(shell.env.get('PWD', os.getcwd()))
-        stack.stack.insert(1, directory)
-        self._print_stack(stack, shell)
+        # bash does not verify the path exists for -n; record it resolved
+        # (same logical resolution as the cd form — one helper).
+        stack.stack.insert(1, _resolve_target(arg, shell))
+        _print_stack(self, stack, shell)
         return 0
-
-    def _update_pwd_vars(self, directory: str, shell: 'Shell'):
-        """Update PWD and OLDPWD environment variables."""
-        old_pwd = shell.env.get('PWD', os.getcwd())
-
-        # Update the exported PWD/OLDPWD shell variables (bash's declare -x
-        # PWD/OLDPWD); export_variable's observer keeps shell.env in sync — the
-        # single env interface, no direct poke (appraisal H3).
-        shell.state.export_variable('OLDPWD', old_pwd)
-        shell.state.export_variable('PWD', directory)
-
-    def _print_stack(self, stack: DirectoryStack, shell: 'Shell'):
-        """Print current directory stack."""
-        output = ' '.join(format_directory_for_display(d) for d in stack.stack)
-        self.write_line(output, shell)
 
     @property
     def help(self) -> str:
@@ -357,14 +372,7 @@ class PopdBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute popd command."""
-        # Initialize directory stack if not present
-        if not hasattr(shell.state, 'directory_stack'):
-            shell.state.directory_stack = DirectoryStack()
-            # Use PWD if available to preserve logical path, otherwise use physical path
-            current_dir = shell.env.get('PWD', os.getcwd())
-            shell.state.directory_stack.initialize(current_dir)
-
-        stack = shell.state.directory_stack
+        stack = _ensure_stack(shell)
 
         # -n removes from the stack WITHOUT changing directory (bash).
         if len(args) > 1 and args[1] == '-n':
@@ -374,6 +382,9 @@ class PopdBuiltin(Builtin):
             self.error("directory stack empty", shell)
             return 1
 
+        # The pre-change cwd, for OLDPWD (stack[0] was just synced to it).
+        old_dir = stack.stack[0]
+
         if len(args) == 1:
             # No arguments - pop current directory. TRANSACTIONAL: the new top
             # would be stack[1]; chdir there FIRST and pop only on success, so a
@@ -381,9 +392,14 @@ class PopdBuiltin(Builtin):
             target = stack.stack[1]
             if not _chdir_or_error(self, target, shell):
                 return 1
+            if not update_pwd_vars(self, shell, target, old_dir):
+                # bash: a readonly PWD/OLDPWD fails the pop but KEEPS the
+                # entry; the top just tracks the new cwd (probe: dirs shows
+                # `/tmp /tmp`, rc 1, cwd changed).
+                stack.update_current(target)
+                return 1
             stack.pop()
-            self._update_pwd_vars(target, shell)
-            self._print_stack(stack, shell)
+            _print_stack(self, stack, shell)
             return 0
 
         # Handle index arguments (+N, -N)
@@ -413,13 +429,16 @@ class PopdBuiltin(Builtin):
                 target = stack.stack[1]
                 if not _chdir_or_error(self, target, shell):
                     return 1
+                if not update_pwd_vars(self, shell, target, old_dir):
+                    # Same keep-the-entry semantics as the no-arg form.
+                    stack.update_current(target)
+                    return 1
                 stack.pop(0)
-                self._update_pwd_vars(target, shell)
             else:
                 # Popping non-current directory - don't change directories
                 stack.pop(index)
 
-            self._print_stack(stack, shell)
+            _print_stack(self, stack, shell)
             return 0
 
         except ValueError:
@@ -439,7 +458,7 @@ class PopdBuiltin(Builtin):
                 self.error("directory stack empty", shell)
                 return 1
             stack.stack.pop(1)
-            self._print_stack(stack, shell)
+            _print_stack(self, stack, shell)
             return 0
 
         arg = args[0]
@@ -457,23 +476,8 @@ class PopdBuiltin(Builtin):
             self.error(f"directory stack index out of range: {arg}", shell)
             return 1
         stack.stack.pop(index)
-        self._print_stack(stack, shell)
+        _print_stack(self, stack, shell)
         return 0
-
-    def _update_pwd_vars(self, directory: str, shell: 'Shell'):
-        """Update PWD and OLDPWD environment variables."""
-        old_pwd = shell.env.get('PWD', os.getcwd())
-
-        # Update the exported PWD/OLDPWD shell variables (bash's declare -x
-        # PWD/OLDPWD); export_variable's observer keeps shell.env in sync — the
-        # single env interface, no direct poke (appraisal H3).
-        shell.state.export_variable('OLDPWD', old_pwd)
-        shell.state.export_variable('PWD', directory)
-
-    def _print_stack(self, stack: DirectoryStack, shell: 'Shell'):
-        """Print current directory stack."""
-        output = ' '.join(format_directory_for_display(d) for d in stack.stack)
-        self.write_line(output, shell)
 
     @property
     def help(self) -> str:
@@ -510,14 +514,7 @@ class DirsBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute dirs command."""
-        # Initialize directory stack if not present
-        if not hasattr(shell.state, 'directory_stack'):
-            shell.state.directory_stack = DirectoryStack()
-            # Use PWD if available to preserve logical path, otherwise use physical path
-            current_dir = shell.env.get('PWD', os.getcwd())
-            shell.state.directory_stack.initialize(current_dir)
-
-        stack = shell.state.directory_stack
+        stack = _ensure_stack(shell)
 
         # Parse options. NOTE: deliberately NOT parse_flags() — `-N` index
         # arguments (e.g. `dirs -1`) collide with single-dash flag syntax,
@@ -576,10 +573,10 @@ class DirsBuiltin(Builtin):
         # Handle index display
         if show_index is not None:
             directory = stack.get_directory(show_index)
-            if directory is None:
-                self.error(f"directory stack index out of range: {show_index}", shell)
-                return 1
-
+            # Range-validated during option parsing (nothing mutates the
+            # stack in between); one check, one error message (r19 L9 —
+            # a second differently-worded re-check used to live here).
+            assert directory is not None
             formatted = format_directory_for_display(directory, no_tilde)
             self.write_line(formatted, shell)
             return 0
