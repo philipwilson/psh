@@ -127,38 +127,41 @@ def _read_heredoc_delimiter(text: str, pos: int) -> Tuple[Optional[str], int]:
     Returns ``(delimiter, new_pos)`` with one level of quoting removed
     (``<<'EOF'``, ``<<"EOF"``, ``<<\\EOF`` all yield ``EOF``), or
     ``(None, pos)`` when no word follows on the line.
+
+    This scans the raw word EXTENT (finding where quotes/escapes end the word)
+    and then hands the raw span to the ONE delimiter-word rule
+    (``utils.heredoc_detection.unquote_heredoc_delimiter``) — so the terminator
+    text is computed identically here and in the heredoc lexer (M2).
     """
+    from ..utils.heredoc_detection import unquote_heredoc_delimiter
     n = len(text)
     while pos < n and text[pos] in ' \t':
         pos += 1
-    out = []
+    start = pos
     while pos < n and text[pos] not in ' \t\n;|&()<>':
         c = text[pos]
         if c == "'":
             end = text.find("'", pos + 1)
             if end == -1:
                 break
-            out.append(text[pos + 1:end])
             pos = end + 1
         elif c == '"':
             pos += 1
             while pos < n and text[pos] != '"':
-                if text[pos] == '\\' and pos + 1 < n:
-                    out.append(text[pos + 1])
-                    pos += 2
-                else:
-                    out.append(text[pos])
-                    pos += 1
+                # A backslash escapes the next byte for EXTENT purposes (so a
+                # ``\"`` does not close the quoted run); unquote_heredoc_delimiter
+                # decides which escapes are semantic.
+                pos += 2 if (text[pos] == '\\' and pos + 1 < n) else 1
             pos += 1
         elif c == '\\' and pos + 1 < n:
-            out.append(text[pos + 1])
             pos += 2
         else:
-            out.append(c)
             pos += 1
-    if not out:
+    raw = text[start:pos]
+    if not raw:
         return None, pos
-    return ''.join(out), pos
+    literal, _quoted = unquote_heredoc_delimiter(raw)
+    return literal, pos
 
 
 def _consume_heredoc_bodies(text: str, pos: int, pending: list) -> int:

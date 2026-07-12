@@ -27,6 +27,7 @@ from ..lexer import UnclosedQuoteError, tokenize
 from ..lexer.token_types import TokenType
 from ..parser import ParseError, Parser
 from ..utils import contains_heredoc, open_heredoc_delimiters
+from ..utils.heredoc_detection import scan_line_heredoc_markers
 
 # Tokens after which a newline joins as a plain space: putting `;` after
 # any of these would be a syntax error (`then;`, `do;`, `&&;`, `{;`, ...).
@@ -61,16 +62,39 @@ def convert_multiline_to_single(multiline_cmd: str) -> str:
             continue  # bash drops blank lines from the joined entry
         candidate = acc + '\n' + line
         if contains_heredoc(candidate):
-            # This line opens a heredoc, or an earlier (closed) one is
-            # already in acc: the newline must survive — a terminator
-            # only counts on a line of its own.
+            # A '<<' appears somewhere — but contains_heredoc is only a cheap
+            # over-approximation ('<<' substring), so the ACCURATE scanners
+            # decide here. The newline must survive when this line opens a
+            # heredoc (a terminator only counts on a line of its own), or when
+            # an earlier CLOSED heredoc is already in acc. Using
+            # contains_heredoc for the latter would keep newlines for an
+            # arithmetic shift ($((1<<2))) or a quoted '<<EOF' — the r19-T4
+            # bounce regression.
             open_heredocs = open_heredoc_delimiters(candidate)
-            if open_heredocs or contains_heredoc(acc):
+            if open_heredocs or _has_real_heredoc(acc):
                 acc = candidate
                 continue
         sep = _separator(acc, line)
         acc = acc[:-1] + line if sep is None else acc + sep + line
     return acc if acc is not None else ''
+
+
+def _has_real_heredoc(text: str) -> bool:
+    """True when *text* contains at least one REAL heredoc opener, decided by
+    the accurate quote/grammar-aware line scanner — NOT by ``contains_heredoc``
+    (a '<<' substring over-approximation that also matches arithmetic shifts
+    and quoted text). Callers use this only when no heredoc is currently open,
+    so the first marker found answers the question: command lines before it
+    are scanned with carried quote state, and lines after it are that
+    heredoc's body — irrelevant to "does text contain one"."""
+    if '<<' not in text:
+        return False
+    quote = None
+    for line in text.split('\n'):
+        markers, quote = scan_line_heredoc_markers(line, quote)
+        if markers:
+            return True
+    return False
 
 
 def _separator(acc: str, line: str) -> Optional[str]:

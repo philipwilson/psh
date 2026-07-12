@@ -522,17 +522,12 @@ class ShellState:
         # child (they never fire there) but keeps them LISTABLE (the POSIX
         # saved=$(trap) idiom) until the child's first trap modification.
         # Ignored ('') traps remain in effect. ERR/DEBUG escape the reset
-        # under set -E / set -T.
+        # under set -E / set -T — via the ONE exemption rule shared with
+        # TrapManager.enter_subshell_trap_environment (appraisal H9).
+        from .trap_manager import TrapManager
         self.trap_handlers = dict(parent.trap_handlers)
-        live = set()
-        if self.options.get('errtrace'):
-            live.add('ERR')
-        if self.options.get('functrace'):
-            live.add('DEBUG')
-        self.inherited_traps = {
-            name for name, action in self.trap_handlers.items()
-            if action != '' and name not in live
-        }
+        self.inherited_traps = TrapManager.compute_inherited_traps(
+            self.options, self.trap_handlers)
 
         # pushd/popd stack ((dirs) shows the parent's). Created lazily, hence
         # the guard.

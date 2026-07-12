@@ -129,6 +129,37 @@ class TestVerbatimNewlines:
         assert conv("if true\nthen\ncat <<EOF\nhi\nEOF\nfi") == \
             "if true; then\ncat <<EOF\nhi\nEOF\nfi"
 
+    def test_closed_heredoc_then_command_keeps_newlines(self):
+        # Once a REAL heredoc is in the entry, later newlines stay verbatim
+        # (rejoining would put the trailing command on the terminator line).
+        assert conv("cat <<EOF\nbody\nEOF\necho after") == \
+            "cat <<EOF\nbody\nEOF\necho after"
+
+    def test_arith_shift_in_if_joins(self):
+        # '<<' inside $(( )) is a left shift, not a heredoc: the compound
+        # joins like any other. Regression (r19-T4 bounce): contains_heredoc
+        # became a '<<' substring over-approximation and was still consumed
+        # here as a final answer, so the newline before `fi` survived and the
+        # entry split on history-file reload.
+        assert conv("if true\nthen echo $((1<<2))\nfi") == \
+            "if true; then echo $((1<<2)); fi"
+
+    def test_arith_shift_in_for_joins(self):
+        assert conv("for i in 1 2\ndo echo $((1<<2))\ndone") == \
+            "for i in 1 2; do echo $((1<<2)); done"
+
+    def test_arith_shift_in_while_joins(self):
+        assert conv("while false\ndo echo $((1<<2))\ndone") == \
+            "while false; do echo $((1<<2)); done"
+
+    def test_quoted_heredoc_operator_joins(self):
+        # A quoted '<<EOF' is text, not a heredoc: the compound joins. bash
+        # 5.2 PTY recording of `if true / then echo '<<EOF' / fi` shows the
+        # entry ends `...echo '<<EOF'; fi` — the quoted operator does not
+        # keep the newline.
+        assert conv("if true\nthen echo '<<EOF'\nfi") == \
+            "if true; then echo '<<EOF'; fi"
+
     def test_command_substitution_newline(self):
         assert conv("echo $(echo hi\n)") == "echo $(echo hi\n)"
 

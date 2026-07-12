@@ -132,3 +132,81 @@ class TestDeferredSignalTraps:
         result = run_psh(
             'trap "hit=yes" INT; kill -INT $$; echo "hit=$hit"')
         assert result.stdout == 'hit=yes\n'
+
+
+class TestTrapInheritanceIntoSubshellChildren:
+    """The ONE inherited-traps rule (appraisal H9): ERR stays live in a
+    subshell-style child under `set -E`, DEBUG under `set -T` — for BOTH a
+    forked child shell (clone_for_child: `( )`, `$( )`, `<( )`) AND a
+    backgrounded compound that reuses the parent Shell (enter_subshell_trap_
+    environment: `{ ...; } &`, `f &`). Those two paths used to disagree on the
+    DEBUG-under-functrace exemption. All expectations verified against bash 5.2.
+    """
+
+    def test_debug_functrace_inherited_into_bg_brace(self):
+        # THE H9 fix: a DEBUG trap under set -T fires inside a backgrounded
+        # brace group (3 DBG). Was 2 before — the DEBUG exemption was missing
+        # from enter_subshell_trap_environment.
+        result = run_psh('set -T; trap "echo DBG" DEBUG; { true; } & wait; echo done')
+        assert result.stdout == 'DBG\nDBG\nDBG\ndone\n'
+
+    def test_debug_no_functrace_not_inherited_into_bg_brace(self):
+        # Both branches of the symmetric fix: WITHOUT set -T the DEBUG trap does
+        # NOT fire inside the child (2 DBG, both from the parent).
+        result = run_psh('trap "echo DBG" DEBUG; { true; } & wait; echo done')
+        assert result.stdout == 'DBG\nDBG\ndone\n'
+
+    def test_debug_functrace_inherited_into_bg_function(self):
+        result = run_psh('set -T; trap "echo DBG" DEBUG; f(){ true; }; f & wait; echo done')
+        assert result.stdout == 'DBG\nDBG\nDBG\nDBG\nDBG\ndone\n'
+
+    def test_debug_functrace_inherited_into_subshell(self):
+        # The clone_for_child path (fresh child shell) — already correct.
+        result = run_psh('set -T; trap "echo DBG" DEBUG; ( true ); echo done')
+        assert result.stdout == 'DBG\nDBG\ndone\n'
+
+    def test_err_errtrace_inherited_into_bg_brace(self):
+        result = run_psh('set -E; trap "echo ET" ERR; { false; } & wait; echo done')
+        assert result.stdout == 'ET\ndone\n'
+
+    def test_err_no_errtrace_not_inherited_into_bg_brace(self):
+        result = run_psh('trap "echo ET" ERR; { false; } & wait; echo done')
+        assert result.stdout == 'done\n'
+
+
+class TestComputeInheritedTraps:
+    """Direct unit coverage of the single exemption rule."""
+
+    def _compute(self, *, errtrace=False, functrace=False, handlers):
+        from psh.core.trap_manager import TrapManager
+        opts = {'errtrace': errtrace, 'functrace': functrace}
+        return TrapManager.compute_inherited_traps(opts, handlers)
+
+    def test_err_exempt_under_errtrace_debug_reset(self):
+        # ERR stays live (not listed-only) under errtrace; DEBUG resets.
+        got = self._compute(errtrace=True, functrace=False,
+                            handlers={'ERR': 'e', 'DEBUG': 'd', 'INT': 'i'})
+        assert got == {'DEBUG', 'INT'}
+
+    def test_debug_exempt_under_functrace_err_reset(self):
+        # DEBUG stays live under functrace; ERR resets — the branch that used to
+        # differ between the two call sites.
+        got = self._compute(errtrace=False, functrace=True,
+                            handlers={'ERR': 'e', 'DEBUG': 'd', 'INT': 'i'})
+        assert got == {'ERR', 'INT'}
+
+    def test_both_options_exempt_both(self):
+        got = self._compute(errtrace=True, functrace=True,
+                            handlers={'ERR': 'e', 'DEBUG': 'd', 'INT': 'i'})
+        assert got == {'INT'}
+
+    def test_neither_option_all_reset(self):
+        got = self._compute(errtrace=False, functrace=False,
+                            handlers={'ERR': 'e', 'DEBUG': 'd', 'INT': 'i'})
+        assert got == {'ERR', 'DEBUG', 'INT'}
+
+    def test_ignored_traps_never_listed_only(self):
+        # An ignored ('') trap stays in effect (not in the listed-only set).
+        got = self._compute(errtrace=False, functrace=False,
+                            handlers={'INT': '', 'TERM': 't'})
+        assert got == {'TERM'}

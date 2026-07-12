@@ -423,117 +423,60 @@ class ModularLexer:
         self.emit_token(TokenType.COMMAND_SUB_BACKTICK, backtick_part.value, start_pos)
         return True
 
-    def _handle_quote(self, quote_char: str) -> bool:
-        """Handle quoted string."""
+    def _lex_quoted(self, prefix_len: int, rules_key: str,
+                    quote_type: str, label: Optional[str] = None) -> bool:
+        """Lex ONE quoted string and emit a STRING token — the shared flow for
+        all three quote handlers.
+
+        ``prefix_len`` chars of opener are skipped (1 for ``'``/``"``, 2 for
+        ``$'``/``$"``); the body is parsed by ``QUOTE_RULES[rules_key]`` with
+        ``quote_type`` as the escape context (equal to ``rules.quote_char`` for
+        the plain forms, so passing it is a no-op there; ``$'`` needs it for
+        ANSI-C escapes). ``quote_type`` is stamped on the emitted token;
+        ``label`` (defaulting to ``quote_type``) names the opener in the
+        unclosed-quote error — it differs only for ``$"``, which lexes as a
+        plain ``"`` STRING but must report ``$"`` when unterminated.
+        """
+        if label is None:
+            label = quote_type
         start_pos = self.get_current_position()
+        for _ in range(prefix_len):
+            self.advance()
 
-        # Skip opening quote
-        self.advance()
-
-        # Get quote rules
         from .quote_parser import QUOTE_RULES
-        rules = QUOTE_RULES.get(quote_char)
-        if not rules:
-            return False
-
-        # Parse the quoted string content using unified parser
+        rules = QUOTE_RULES[rules_key]
         parts, new_pos, found_closing = self.quote_parser.parse_quoted_string(
             self.input,
-            self.position,  # Current position (after opening quote)
+            self.position,  # current position (after the opener)
             rules,
+            quote_type=quote_type,
         )
-
-        # Check if quote was closed
         if not found_closing:
             raise UnclosedQuoteError(
-                f"Unclosed {quote_char} quote at position {start_pos}", quote_char)
+                f"Unclosed {label} quote at position {start_pos}", label)
 
-        # Update position
         self.position = new_pos
-
-        # Build complete string value
-        full_value = self._build_token_value(parts)
-
-        # Store parts for later use
-        self.current_parts = parts
-
-        # Emit token
-        self.emit_token(TokenType.STRING, full_value, start_pos, quote_char)
+        self.current_parts = parts  # stashed for the caller
+        self.emit_token(TokenType.STRING, self._build_token_value(parts),
+                        start_pos, quote_type)
         return True
+
+    def _handle_quote(self, quote_char: str) -> bool:
+        """Handle a plain single/double quoted string."""
+        return self._lex_quoted(1, quote_char, quote_char)
 
     def _handle_locale_string(self) -> bool:
         """Handle a locale string $\"...\".
 
-        Without a message catalog bash treats $"..." exactly like "...",
-        so lex it as a normal double-quoted STRING. The token spans the $
-        so composite-word adjacency is preserved (pre$"mid"post).
+        Without a message catalog bash treats $"..." exactly like "...", so lex
+        it as a normal double-quoted STRING. The token spans the $ so
+        composite-word adjacency is preserved (pre$"mid"post).
         """
-        start_pos = self.get_current_position()
-
-        # Skip $"
-        self.advance()  # Skip $
-        self.advance()  # Skip "
-
-        from .quote_parser import QUOTE_RULES
-        rules = QUOTE_RULES.get('"')
-        if not rules:
-            return False
-
-        parts, new_pos, found_closing = self.quote_parser.parse_quoted_string(
-            self.input,
-            self.position,  # Current position (after $")
-            rules,
-        )
-
-        if not found_closing:
-            raise UnclosedQuoteError(
-                f'Unclosed $" quote at position {start_pos}', '$"')
-
-        self.position = new_pos
-        full_value = self._build_token_value(parts)
-        self.current_parts = parts
-        self.emit_token(TokenType.STRING, full_value, start_pos, '"')
-        return True
+        return self._lex_quoted(2, '"', '"', label='$"')
 
     def _handle_ansi_c_quote(self) -> bool:
         """Handle ANSI-C quoted string $'...'."""
-        start_pos = self.get_current_position()
-
-        # Skip $'
-        self.advance()  # Skip $
-        self.advance()  # Skip '
-
-        # Get ANSI-C quote rules
-        from .quote_parser import QUOTE_RULES
-        rules = QUOTE_RULES.get("$'")
-        if not rules:
-            return False
-
-        # Parse the ANSI-C quoted string content
-        parts, new_pos, found_closing = self.quote_parser.parse_quoted_string(
-            self.input,
-            self.position,  # Current position (after $')
-            rules,
-            quote_type="$'"  # Pass quote type for proper escape handling
-        )
-
-        # Check if quote was closed
-        if not found_closing:
-            raise UnclosedQuoteError(
-                f"Unclosed $' quote at position {start_pos}", "$'")
-
-        # Update position
-        self.position = new_pos
-
-        # Build complete string value
-        full_value = self._build_token_value(parts)
-
-        # Store parts for later use
-        self.current_parts = parts
-
-        # Emit token - ANSI-C quotes produce STRING tokens
-        self.emit_token(TokenType.STRING, full_value, start_pos, "$'")
-        return True
+        return self._lex_quoted(2, "$'", "$'")
 
     def _try_recognizers(self) -> bool:
         """Try modular recognizers."""
