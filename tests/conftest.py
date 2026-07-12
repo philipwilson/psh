@@ -167,30 +167,23 @@ def temp_dir():
 
 
 @pytest.fixture
-def shell_with_temp_dir(shell, temp_dir):
-    """Shell instance operating in an isolated temporary working directory.
+def shell_with_temp_dir(isolated_shell_with_temp_dir):
+    """Deprecated thin alias of :func:`isolated_shell_with_temp_dir`.
 
-    Changes BOTH the process cwd and the shell's PWD to a per-test temp dir so
-    that redirections (``> file``) and relative file reads land there instead of
-    the shared working directory. The previous version only set ``PWD`` and left
-    ``> file`` writing to the real cwd — which collided across xdist workers
-    (fixed-name files like ``output.txt``) and caused flaky parallel failures.
+    This fixture once had subtly different semantics: it reused the ``shell``
+    fixture's instance (constructed *before* the chdir) and moved ``$PWD`` via
+    ``set_variable`` rather than constructing a fresh Shell inside the temp dir,
+    and it never set ``os.environ['PWD']``. That divergent twin was exactly the
+    "two blessed ways to do the same setup" pattern the reappraisal-#19 T12
+    slot converged: every current user was measured under the alias and the
+    difference proved inert (see ``tmp/r19-ledgers/T12-probes/
+    fixture_alias_verdict.txt``), so the two paths are now one.
+
+    Prefer ``isolated_shell_with_temp_dir`` directly in new tests. The ratchet
+    meta-test ``tests/unit/tooling/test_fixture_ratchets.py`` caps the number of
+    remaining ``shell_with_temp_dir`` references and only allows it to shrink.
     """
-    original_cwd = os.getcwd()
-    # Read via the API (reading the derived `variables` dict is fine); write
-    # via set_variable so the shell's real PWD actually changes — assigning to
-    # shell.state.variables['PWD'] mutates a throwaway derived dict and is a
-    # no-op (see ShellState.variables / the clean_shell fixture).
-    original_pwd = shell.state.get_variable('PWD', original_cwd)
-
-    os.chdir(temp_dir)
-    shell.state.set_variable('PWD', temp_dir)
-
-    try:
-        yield shell
-    finally:
-        os.chdir(original_cwd)
-        shell.state.set_variable('PWD', original_pwd)
+    return isolated_shell_with_temp_dir
 
 
 @pytest.fixture

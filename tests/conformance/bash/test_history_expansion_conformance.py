@@ -21,8 +21,6 @@ import subprocess
 import sys
 
 import pytest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import find_bash  # noqa: E402
 
 sys.path.insert(0, os.path.abspath(

@@ -12,10 +12,7 @@ The fix must NOT break real keyword recognition in genuine command
 position; the regression cases below pin that.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

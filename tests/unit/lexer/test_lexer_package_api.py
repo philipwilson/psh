@@ -5,12 +5,7 @@ These tests verify that the lexer package exposes the correct public API
 and that all components can be imported and used as expected.
 """
 
-import sys
-from pathlib import Path
 
-# Add PSH to path
-PSH_ROOT = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 from psh.lexer import (
     LexerConfig,

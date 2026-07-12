@@ -8,10 +8,7 @@ that file; here we pin that the enhanced ``[[ ]]`` form agrees with bash for the
 same operators.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

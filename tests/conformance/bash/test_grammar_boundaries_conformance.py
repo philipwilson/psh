@@ -11,10 +11,7 @@ Error messages differ between shells, so error cases compare exit status
 and stdout only; success cases require identical behavior.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

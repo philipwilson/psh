@@ -13,11 +13,9 @@ exit code + stderr substring, because bash prefixes the message with
 `bash: line N:` and psh does not (a separate systemic divergence, task #35).
 """
 
-import os
 import subprocess
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest, find_bash
 
 

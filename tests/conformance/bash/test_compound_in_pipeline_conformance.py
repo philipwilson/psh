@@ -8,11 +8,8 @@ and ``select`` did not (Tier R8.1), so they iterated only once when piped.
 These pin bash-identical full iteration.
 """
 
-import os
 import subprocess
 import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from conformance_framework import ConformanceTest
 

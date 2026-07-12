@@ -86,7 +86,7 @@ class PrintBuiltin(Builtin):
         if opts['prompt']:
             from ..interactive.prompt import PromptExpander
             expander = PromptExpander(shell)
-            rest = [expander.expand_prompt(a) for a in rest]
+            rest = [expander.decode_escapes(a) for a in rest]
 
         # -f: printf-style formatting takes over output entirely.
         if opts['format'] is not None:

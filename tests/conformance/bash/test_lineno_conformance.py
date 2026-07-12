@@ -22,10 +22,7 @@ continuation. Both are noted in CHANGELOG v0.485.0.
 Verified against bash 5.2.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

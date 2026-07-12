@@ -11,10 +11,7 @@ never-assigned array printing `declare -a a` vs an assigned-empty `declare -a a=
 — that needs an UNSET-array-state model and is not addressed here.)
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

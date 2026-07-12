@@ -1,10 +1,6 @@
 """Conformance tests for escaped dollar followed by parenthesis."""
 
-import os
-import sys
 
-# Add parent directory to path for framework import
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

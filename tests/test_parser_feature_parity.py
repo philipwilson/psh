@@ -4,10 +4,7 @@ This module systematically tests that both the recursive descent parser
 and parser combinator produce equivalent ASTs for all shell features.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dataclasses import dataclass
 from typing import Any, Tuple

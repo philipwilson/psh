@@ -14,23 +14,27 @@ the ``_assert_same_stdout_and_status`` pattern in the readonly conformance
 file). A bare investigative probe must therefore be converted to an assertion,
 an ``assert_*`` conformance helper, or moved out of the conformance tree.
 
-The AST-walk mirrors ``tests/conformance/test_claims_have_tests.py`` so the two
-guards agree on what "genuinely exercises a claim" means.
+The "does this test genuinely assert" primitives come from the shared
+``tests/conformance/_assert_analysis`` module — the same one
+``tests/conformance/test_claims_have_tests.py`` uses — so the two guards agree
+on what "genuinely exercises a claim" means BY CONSTRUCTION rather than by a
+hand-maintained mirror (reappraisal-#19 tests-infra M5).
 """
 
 import ast
 import os
+import sys
 
 import pytest
 
 CONF_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'conformance')
 
-# Assertion helpers provided by the ConformanceTest base class — a test that
-# calls one of these is asserting even without a bare ``assert``.
-_CONFORMANCE_ASSERT_HELPERS = frozenset({
-    'assert_identical_behavior', 'assert_documented_difference',
-    'assert_psh_extension',
-})
+sys.path.insert(0, os.path.abspath(CONF_DIR))
+from _assert_analysis import (  # noqa: E402
+    asserting_helper_names,
+    called_names,
+    has_bare_assert,
+)
 
 
 def _conformance_test_files():
@@ -46,50 +50,19 @@ def _conformance_test_files():
     return sorted(files)
 
 
-def _called_names(node):
-    for n in ast.walk(node):
-        if isinstance(n, ast.Call):
-            f = n.func
-            if isinstance(f, ast.Attribute):
-                yield f.attr
-            elif isinstance(f, ast.Name):
-                yield f.id
-
-
-def _has_bare_assert(node):
-    return any(isinstance(n, ast.Assert) for n in ast.walk(node))
-
-
-def _asserting_helper_names(tree):
-    """Names of module-level helpers that themselves assert (to a fixpoint)."""
-    names = set(_CONFORMANCE_ASSERT_HELPERS)
-    funcs = [n for n in ast.walk(tree)
-             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-    changed = True
-    while changed:
-        changed = False
-        for fn in funcs:
-            if fn.name in names:
-                continue
-            if _has_bare_assert(fn) or any(c in names for c in _called_names(fn)):
-                names.add(fn.name)
-                changed = True
-    return names
-
-
 def _bare_probe_tests_in_text(src):
     """Names of ``test_*`` functions in *src* that call ``check_behavior`` but
     neither assert directly nor delegate to an asserting helper."""
     tree = ast.parse(src)
-    helpers = _asserting_helper_names(tree)
+    helpers = asserting_helper_names(tree)
     offenders = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
                 and node.name.startswith('test'):
-            called = list(_called_names(node))
+            called = list(called_names(node))
             if 'check_behavior' not in called:
                 continue
-            if _has_bare_assert(node) or any(c in helpers for c in called):
+            if has_bare_assert(node) or any(c in helpers for c in called):
                 continue
             offenders.append(node.name)
     return offenders

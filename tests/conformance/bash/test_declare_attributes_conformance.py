@@ -18,10 +18,8 @@ Pins four bash-divergence fixes in the declare/typeset attribute area:
 All output verified identical to bash 5.2.
 """
 
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 
@@ -165,7 +163,6 @@ class TestIntegerAttributeArithmeticErrors(ConformanceTest):
         # exit 1 + something on stderr in both; the message WORDING differs
         # (bash "division by 0" vs psh "Division by zero"), so not compared.
         import subprocess
-        import sys
         psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                              capture_output=True, text=True)
         bash = subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)

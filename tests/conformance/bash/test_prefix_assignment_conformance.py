@@ -14,10 +14,7 @@ mode-aware behavior is pinned by the exec_p1a_* golden cases and
 tests/integration/test_special_builtin_modes.py.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

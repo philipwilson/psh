@@ -9,10 +9,7 @@ glob patterns stay literal, unquoted expansions split on $IFS, and
 """
 
 import os
-import sys
 
-# Add parent directory to path for framework import
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 
@@ -252,7 +249,6 @@ class TestInitializerValueTilde(ConformanceTest):
         keeps it literal. psh follows the 5.2.26 behavior; this test
         pins psh's output directly so it holds on either bash.
         """
-        import os
         home = os.path.expanduser('~')
         result = self.framework.run_in_psh('declare -A h; h=(~ v); echo "${!h[@]}"')
         assert result.stdout.strip() == home
@@ -265,7 +261,6 @@ class TestInitializerValueTilde(ConformanceTest):
         psh-only pin: same bash 5.2.21-vs-5.2.26 divergence as
         test_assoc_leading_tilde_still_expands (see its docstring).
         """
-        import os
         home = os.path.expanduser('~')
         result = self.framework.run_in_psh('declare -A h; h=([k]=~/x); echo "${h[k]}"')
         assert result.stdout.strip() == f"{home}/x"

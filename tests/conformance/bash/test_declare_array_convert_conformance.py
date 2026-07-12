@@ -21,10 +21,7 @@ because rendering a declared-but-never-assigned array (`declare -a a` vs
 `declare -a a=()`) is a separate, still-open difference.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 

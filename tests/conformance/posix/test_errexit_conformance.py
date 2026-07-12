@@ -8,10 +8,7 @@ else does. The user guide claims "Full support" for set -e — per the
 project's development principles, that claim is proven here.
 """
 
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from conformance_framework import ConformanceTest
 
 
