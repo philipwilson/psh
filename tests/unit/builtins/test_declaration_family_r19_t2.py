@@ -193,6 +193,101 @@ class TestPlusAttrRemoval:
         assert captured_shell.get_stdout() == 'declare -- G="z"\ndeclare -x G="g"\n'
 
 
+class TestUnsetReadonlyLocalIntegrity:
+    """r19-T2 BOUNCE blocker 1: a DECLARED-BUT-UNSET readonly local
+    (``local -r v`` — a tombstone that KEEPS its attributes) must get the same
+    readonly integrity as a set one on the +attr and value-redeclare paths.
+    The pre-fix tree routed tombstones down the fresh-local path, where
+    create_local clobbered attributes BEFORE remove_attribute ran — silently
+    stripping readonly. All expectations verified against bash 5.2
+    (T2-probes/unsetro_before.txt red-on-tip @bd5a31f0).
+    """
+
+    def test_plus_r_on_unset_readonly_rejected(self, captured_shell):
+        # M1: bash rc=1 'local: v: readonly variable', keeps `declare -r v`.
+        rc = captured_shell.run_command(
+            'f(){ local -r v; local +r v; echo "rc=$?"; declare -p v; }; f')
+        assert rc == 0
+        assert captured_shell.get_stdout() == 'rc=1\ndeclare -r v\n'
+        assert "local: v: readonly variable" in captured_shell.get_stderr()
+
+    def test_plus_r_with_value_on_unset_readonly_not_assigned(self, captured_shell):
+        # M2: the strip attempt fails BEFORE any mutation — value NOT set.
+        rc = captured_shell.run_command(
+            'f(){ local -r v; local +r v=9; echo "rc=$?"; declare -p v; }; f')
+        assert rc == 0
+        assert captured_shell.get_stdout() == 'rc=1\ndeclare -r v\n'
+        assert "local: v: readonly variable" in captured_shell.get_stderr()
+
+    def test_plus_x_on_unset_rx_keeps_readonly(self, captured_shell):
+        # M3: +x strips export only; READONLY survives on the tombstone
+        # (bash `declare -r e`, rc 0 — readonly guards value, not metadata).
+        rc = captured_shell.run_command(
+            'f(){ local -rx e; local +x e; echo "rc=$?"; declare -p e; }; f')
+        assert rc == 0
+        assert captured_shell.get_stdout() == 'rc=0\ndeclare -r e\n'
+        assert captured_shell.get_stderr() == ""
+
+    def test_value_redeclare_on_unset_readonly_rejected(self, captured_shell):
+        # M6: `local v=2` on a declared-unset readonly local is rejected
+        # (create_local guard extended to attribute-carrying tombstones).
+        rc = captured_shell.run_command(
+            'f(){ local -r v; local v=2; echo "rc=$?"; declare -p v; }; f')
+        assert rc == 0
+        assert captured_shell.get_stdout() == 'rc=1\ndeclare -r v\n'
+        assert "local: v: readonly variable" in captured_shell.get_stderr()
+
+    def test_function_continues_after_unset_readonly_error(self, captured_shell):
+        # M7 control: the per-arg failure is non-fatal (bash).
+        rc = captured_shell.run_command(
+            'f(){ local -r v; local +r v; echo AFTER; }; f')
+        assert rc == 0
+        assert captured_shell.get_stdout() == "AFTER\n"
+
+    def test_unset_created_tombstone_still_starts_fresh(self, captured_shell):
+        # C3 control (T1 semantics): an unset-CREATED tombstone had its
+        # attributes stripped, so `local x=2` after `unset x` starts fresh.
+        rc = captured_shell.run_command(
+            'f(){ local -i x=5; unset x; local x=2; echo "rc=$?"; declare -p x; }; f')
+        assert rc == 0
+        assert captured_shell.get_stdout() == 'rc=0\ndeclare -- x="2"\n'
+
+
+class TestLocalInvalidPlusFlag:
+    """Nit pin: an invalid +flag is an OPTION error, rc 2 (bash). The T2 +attr
+    parse moved this from rc 1 (`+z` used to fall through to the identifier
+    error) to bash's rc 2; the message dialect (psh 'invalid option: +z' vs
+    bash '+z: invalid option' + usage) is T3a's standardization territory.
+    """
+
+    def test_invalid_plus_flag_rc2(self, captured_shell):
+        rc = captured_shell.run_command('f(){ local +z v; }; f')
+        assert rc == 2
+        assert "invalid option" in captured_shell.get_stderr()
+
+
+class TestLocalNamerefSelfReferenceDivergence:
+    """DELIBERATE DIVERGENCE pin (r19-T2 ruling D1 — see the carries ledger,
+    tmp/r19-ledgers/CARRIES.md): in-function ``local -n r=r`` is where bash 5.2
+    only WARNS ('circular name reference') and returns rc 0, while psh REJECTS
+    with rc 1 + 'nameref variable self references not allowed' — the same rule
+    psh (and bash) apply at GLOBAL scope. Matching bash's in-function
+    warn-and-accept needs nameref-resolution work outside the declaration-
+    family slot; until then this pins psh's CURRENT divergent behavior so the
+    self-reference guard cannot silently vanish (the T2 bounce mutation-proved
+    the divergence was entirely unpinned — only the bash-matching GLOBAL case
+    had tests).
+    """
+
+    def test_local_nameref_self_reference_rejected_in_function(self, captured_shell):
+        rc = captured_shell.run_command(
+            'f(){ local -n r=r; echo "rc=$?"; }; f')
+        assert rc == 0
+        assert captured_shell.get_stdout() == "rc=1\n"
+        assert ("nameref variable self references not allowed"
+                in captured_shell.get_stderr())
+
+
 class TestLocalNamerefShapeValidation:
     """Item 3: local -n adopts declare's target-SHAPE validation (behavior)."""
 
