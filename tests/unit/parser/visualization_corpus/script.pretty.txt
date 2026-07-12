@@ -1,0 +1,439 @@
+Program:
+  statements: [
+    FunctionDef @line1:
+      name: 'process_files'
+      body:
+        StatementList:
+          statements: [
+            AndOrList @line2:
+              pipelines: [
+                Pipeline @line2:
+                  commands: [
+                    ForLoop:
+                      variable: 'f'
+                      items: [
+                        'a'
+                        'b'
+                        'c'
+                      ]
+                      body:
+                        StatementList:
+                          statements: [
+                            AndOrList @line3:
+                              pipelines: [
+                                Pipeline @line3:
+                                  commands: [
+                                    IfConditional:
+                                      condition:
+                                        StatementList:
+                                          statements: [
+                                            AndOrList @line3:
+                                              pipelines: [
+                                                Pipeline @line3:
+                                                  commands: [
+                                                    SimpleCommand:
+                                                      words: [
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: '['
+                                                          ]
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: '-f'
+                                                          ]
+                                                        Word:
+                                                          parts: [
+                                                            ExpansionPart:
+                                                              expansion:
+                                                                VariableExpansion:
+                                                                  name: 'f'
+                                                              quoted: True
+                                                              quote_char: '"'
+                                                          ]
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: ']'
+                                                          ]
+                                                      ]
+                                                  ]
+                                              ]
+                                          ]
+                                      then_part:
+                                        StatementList:
+                                          statements: [
+                                            AndOrList @line4:
+                                              pipelines: [
+                                                Pipeline @line4:
+                                                  commands: [
+                                                    SimpleCommand:
+                                                      redirects: [
+                                                        Redirect:
+                                                          type: '>>'
+                                                          target: 'log.txt'
+                                                          target_word:
+                                                            Word:
+                                                              parts: [
+                                                                LiteralPart:
+                                                                  text: 'log.txt'
+                                                              ]
+                                                      ]
+                                                      words: [
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: 'echo'
+                                                          ]
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: 'found '
+                                                              quoted: True
+                                                              quote_char: '"'
+                                                            ExpansionPart:
+                                                              expansion:
+                                                                VariableExpansion:
+                                                                  name: 'f'
+                                                              quoted: True
+                                                              quote_char: '"'
+                                                          ]
+                                                      ]
+                                                  ]
+                                              ]
+                                          ]
+                                      else_part:
+                                        StatementList:
+                                          statements: [
+                                            AndOrList @line6:
+                                              pipelines: [
+                                                Pipeline @line6:
+                                                  commands: [
+                                                    SimpleCommand:
+                                                      words: [
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: 'echo'
+                                                          ]
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: 'missing '
+                                                              quoted: True
+                                                              quote_char: '"'
+                                                            ExpansionPart:
+                                                              expansion:
+                                                                VariableExpansion:
+                                                                  name: 'f'
+                                                              quoted: True
+                                                              quote_char: '"'
+                                                          ]
+                                                      ]
+                                                    SimpleCommand:
+                                                      words: [
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: 'tee'
+                                                          ]
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: '-a'
+                                                          ]
+                                                        Word:
+                                                          parts: [
+                                                            LiteralPart:
+                                                              text: 'errors.log'
+                                                          ]
+                                                      ]
+                                                  ]
+                                                  pipe_stderr: [
+                                                    False
+                                                  ]
+                                              ]
+                                          ]
+                                  ]
+                              ]
+                          ]
+                      item_words: [
+                        Word:
+                          parts: [
+                            LiteralPart:
+                              text: 'a'
+                          ]
+                        Word:
+                          parts: [
+                            LiteralPart:
+                              text: 'b'
+                          ]
+                        Word:
+                          parts: [
+                            LiteralPart:
+                              text: 'c'
+                          ]
+                      ]
+                  ]
+              ]
+            AndOrList @line9:
+              pipelines: [
+                Pipeline @line9:
+                  commands: [
+                    WhileLoop:
+                      condition:
+                        StatementList:
+                          statements: [
+                            AndOrList @line9:
+                              pipelines: [
+                                Pipeline @line9:
+                                  commands: [
+                                    SimpleCommand:
+                                      words: [
+                                        Word:
+                                          parts: [
+                                            LiteralPart:
+                                              text: 'read'
+                                          ]
+                                        Word:
+                                          parts: [
+                                            LiteralPart:
+                                              text: 'line'
+                                          ]
+                                      ]
+                                  ]
+                              ]
+                          ]
+                      body:
+                        StatementList:
+                          statements: [
+                            AndOrList @line10:
+                              pipelines: [
+                                Pipeline @line10:
+                                  commands: [
+                                    SimpleCommand:
+                                      words: [
+                                        Word:
+                                          parts: [
+                                            LiteralPart:
+                                              text: 'echo'
+                                          ]
+                                        Word:
+                                          parts: [
+                                            ExpansionPart:
+                                              expansion:
+                                                VariableExpansion:
+                                                  name: 'line'
+                                              quoted: True
+                                              quote_char: '"'
+                                          ]
+                                      ]
+                                  ]
+                              ]
+                          ]
+                      redirects: [
+                        Redirect:
+                          type: '<'
+                          target: 'input.txt'
+                          target_word:
+                            Word:
+                              parts: [
+                                LiteralPart:
+                                  text: 'input.txt'
+                              ]
+                      ]
+                  ]
+              ]
+            AndOrList @line12:
+              pipelines: [
+                Pipeline @line12:
+                  commands: [
+                    SubshellGroup:
+                      statements:
+                        StatementList:
+                          statements: [
+                            AndOrList @line12:
+                              pipelines: [
+                                Pipeline @line12:
+                                  commands: [
+                                    SimpleCommand:
+                                      words: [
+                                        Word:
+                                          parts: [
+                                            LiteralPart:
+                                              text: 'cd'
+                                          ]
+                                        Word:
+                                          parts: [
+                                            LiteralPart:
+                                              text: '/tmp'
+                                          ]
+                                      ]
+                                  ]
+                                Pipeline @line12:
+                                  commands: [
+                                    SimpleCommand:
+                                      words: [
+                                        Word:
+                                          parts: [
+                                            LiteralPart:
+                                              text: 'ls'
+                                          ]
+                                      ]
+                                  ]
+                              ]
+                              operators: [
+                                '&&'
+                              ]
+                          ]
+                      background: True
+                  ]
+              ]
+            AndOrList @line13:
+              pipelines: [
+                Pipeline @line13:
+                  commands: [
+                    CaseConditional:
+                      expr: '$1'
+                      items: [
+                        CaseItem:
+                          patterns: [
+                            CasePattern:
+                              pattern: 'start'
+                              word:
+                                Word:
+                                  parts: [
+                                    LiteralPart:
+                                      text: 'start'
+                                  ]
+                          ]
+                          commands:
+                            StatementList:
+                              statements: [
+                                AndOrList @line14:
+                                  pipelines: [
+                                    Pipeline @line14:
+                                      commands: [
+                                        SimpleCommand:
+                                          words: [
+                                            Word:
+                                              parts: [
+                                                LiteralPart:
+                                                  text: 'echo'
+                                              ]
+                                            Word:
+                                              parts: [
+                                                LiteralPart:
+                                                  text: 'starting'
+                                              ]
+                                          ]
+                                      ]
+                                  ]
+                              ]
+                          terminator: ';;'
+                        CaseItem:
+                          patterns: [
+                            CasePattern:
+                              pattern: '*'
+                              word:
+                                Word:
+                                  parts: [
+                                    LiteralPart:
+                                      text: '*'
+                                  ]
+                          ]
+                          commands:
+                            StatementList:
+                              statements: [
+                                AndOrList @line15:
+                                  pipelines: [
+                                    Pipeline @line15:
+                                      commands: [
+                                        SimpleCommand:
+                                          words: [
+                                            Word:
+                                              parts: [
+                                                LiteralPart:
+                                                  text: 'echo'
+                                              ]
+                                            Word:
+                                              parts: [
+                                                LiteralPart:
+                                                  text: 'unknown'
+                                              ]
+                                          ]
+                                      ]
+                                  ]
+                              ]
+                          terminator: ';;'
+                      ]
+                      subject_word:
+                        Word:
+                          parts: [
+                            ExpansionPart:
+                              expansion:
+                                VariableExpansion:
+                                  name: '1'
+                              quoted: True
+                              quote_char: '"'
+                          ]
+                  ]
+              ]
+          ]
+    AndOrList @line18:
+      pipelines: [
+        Pipeline @line18:
+          commands: [
+            SimpleCommand:
+              words: [
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'process_files'
+                  ]
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'a'
+                  ]
+              ]
+          ]
+        Pipeline @line18:
+          commands: [
+            SimpleCommand:
+              words: [
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'echo'
+                  ]
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'done'
+                  ]
+              ]
+          ]
+        Pipeline @line18:
+          commands: [
+            SimpleCommand:
+              words: [
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'echo'
+                  ]
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'failed'
+                  ]
+              ]
+          ]
+      ]
+      operators: [
+        '&&'
+        '||'
+      ]
+  ]

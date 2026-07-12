@@ -1,0 +1,122 @@
+(Program
+  :statements ((FunctionDef @line1
+      :name process_files
+      :body (StatementList
+          :statements ((AndOrList @line2
+              :pipelines (Pipeline @line2
+                  :commands (ForLoop
+                      :variable f
+                      :items (a b c)
+                      :body (StatementList
+                          :statements (AndOrList @line3
+                              :pipelines (Pipeline @line3
+                                  :commands (IfConditional
+                                      :condition (StatementList
+                                          :statements (AndOrList @line3
+                                              :pipelines (Pipeline @line3
+                                                  :commands (SimpleCommand
+                                                      :arguments ("[" -f $f "]")))))
+                                      :then_part (StatementList
+                                          :statements (AndOrList @line4
+                                              :pipelines (Pipeline @line4
+                                                  :commands (SimpleCommand
+                                                      :arguments (echo "found $f")
+                                                      :redirects (Redirect
+                                                          :type >>
+                                                          :target log.txt
+                                                          :target_word (Word
+                                                              :parts (LiteralPart
+                                                                  :text log.txt)))))))
+                                      :else_part (StatementList
+                                          :statements (AndOrList @line6
+                                              :pipelines (Pipeline @line6
+                                                  :commands ((SimpleCommand
+                                                      :arguments (echo "missing $f"))
+                                                    (SimpleCommand
+                                                      :arguments (tee -a errors.log)))
+                                                  :pipe_stderr (false))))))))
+                      :item_words ((Word
+                          :parts (LiteralPart
+                              :text a))
+                        (Word
+                          :parts (LiteralPart
+                              :text b))
+                        (Word
+                          :parts (LiteralPart
+                              :text c))))))
+            (AndOrList @line9
+              :pipelines (Pipeline @line9
+                  :commands (WhileLoop
+                      :condition (StatementList
+                          :statements (AndOrList @line9
+                              :pipelines (Pipeline @line9
+                                  :commands (SimpleCommand
+                                      :arguments (read line)))))
+                      :body (StatementList
+                          :statements (AndOrList @line10
+                              :pipelines (Pipeline @line10
+                                  :commands (SimpleCommand
+                                      :arguments (echo $line)))))
+                      :redirects (Redirect
+                          :type <
+                          :target input.txt
+                          :target_word (Word
+                              :parts (LiteralPart
+                                  :text input.txt))))))
+            (AndOrList @line12
+              :pipelines (Pipeline @line12
+                  :commands (SubshellGroup
+                      :statements (StatementList
+                          :statements (AndOrList @line12
+                              :expression (&&
+                                (Pipeline @line12
+                                  :commands (SimpleCommand
+                                      :arguments (cd /tmp)))
+                                (Pipeline @line12
+                                  :commands (SimpleCommand
+                                      :arguments (ls))))))
+                      :background true)))
+            (AndOrList @line13
+              :pipelines (Pipeline @line13
+                  :commands (CaseConditional
+                      :expr $1
+                      :items ((CaseItem
+                          :patterns (CasePattern
+                              :pattern start
+                              :word (Word
+                                  :parts (LiteralPart
+                                      :text start)))
+                          :commands (StatementList
+                              :statements (AndOrList @line14
+                                  :pipelines (Pipeline @line14
+                                      :commands (SimpleCommand
+                                          :arguments (echo starting)))))
+                          :terminator ;;)
+                        (CaseItem
+                          :patterns (CasePattern
+                              :pattern *
+                              :word (Word
+                                  :parts (LiteralPart
+                                      :text *)))
+                          :commands (StatementList
+                              :statements (AndOrList @line15
+                                  :pipelines (Pipeline @line15
+                                      :commands (SimpleCommand
+                                          :arguments (echo unknown)))))
+                          :terminator ;;))
+                      :subject_word (Word
+                          :parts (ExpansionPart
+                              :expansion (VariableExpansion
+                                  :name 1)
+                              :quoted true
+                              :quote_char """))))))))
+    (AndOrList @line18
+      :expression (||
+        (&& (Pipeline @line18
+  :commands (SimpleCommand
+      :arguments (process_files a))) (Pipeline @line18
+  :commands (SimpleCommand
+      :arguments (echo done))))
+        (Pipeline @line18
+          :commands (SimpleCommand
+              :arguments (echo failed)))))))

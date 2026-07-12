@@ -1,0 +1,11 @@
+(Program
+  :statements (AndOrList @line1
+      :expression (||
+        (&& (Pipeline @line1
+  :commands (SimpleCommand
+      :arguments (cmd1))) (Pipeline @line1
+  :commands (SimpleCommand
+      :arguments (cmd2))))
+        (Pipeline @line1
+          :commands (SimpleCommand
+              :arguments (cmd3))))))

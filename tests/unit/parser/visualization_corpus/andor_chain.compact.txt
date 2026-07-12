@@ -1,0 +1,18 @@
+└── Program
+    └── statements: [1 items]
+        └── AndOrList
+            └── expression_tree: [1 items]
+                └── ||
+                    ├── &&
+                    │   ├── Pipeline
+                    │   │   └── commands: [1 items]
+                    │   │       └── SimpleCommand
+                    │   │           └── arguments: cmd1 (literal)
+                    │   └── Pipeline
+                    │       └── commands: [1 items]
+                    │           └── SimpleCommand
+                    │               └── arguments: cmd2 (literal)
+                    └── Pipeline
+                        └── commands: [1 items]
+                            └── SimpleCommand
+                                └── arguments: cmd3 (literal)

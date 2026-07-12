@@ -3,6 +3,7 @@
 from typing import Any, List, Tuple
 
 from ...ast_nodes import ASTNode
+from .node_fields import node_fields
 
 
 class AsciiTreeRenderer:
@@ -33,18 +34,24 @@ class AsciiTreeRenderer:
             'list_item': '• ',
         }
 
-    @staticmethod
-    def render(node: ASTNode, **kwargs) -> str:
+    @classmethod
+    def render(cls, node: ASTNode, **kwargs) -> str:
         """Render AST node as ASCII tree.
+
+        A ``@classmethod`` (not ``@staticmethod``) so subclasses render
+        through themselves: ``CompactAsciiTreeRenderer.render(ast)`` builds a
+        ``CompactAsciiTreeRenderer`` (compact_mode=True), not the base class.
+        The old static form hard-coded ``AsciiTreeRenderer(**kwargs)``, so
+        every subclass silently rendered with base settings (H16).
 
         Args:
             node: Root AST node to render
-            **kwargs: Arguments passed to AsciiTreeRenderer
+            **kwargs: Arguments passed to the renderer
 
         Returns:
             ASCII tree representation
         """
-        renderer = AsciiTreeRenderer(**kwargs)
+        renderer = cls(**kwargs)
         return renderer._render_node(node, "", True)
 
     def _truncate_text(self, text: str) -> str:
@@ -57,8 +64,11 @@ class AsciiTreeRenderer:
         """Format the main label for a node."""
         label = node.__class__.__name__
 
-        if self.show_positions and hasattr(node, 'position'):
-            label += f" @{node.position}"
+        # Positions read the parser-stamped ``line`` (matching ASTPrettyPrinter);
+        # AST nodes carry no ``position``/``column``, so the old hasattr check
+        # made show_positions a silent no-op here.
+        if self.show_positions and getattr(node, 'line', None) is not None:
+            label += f" @line{node.line}"
 
         return self._truncate_text(label)
 
@@ -74,51 +84,21 @@ class AsciiTreeRenderer:
             return str(value)
 
     def _get_node_fields(self, node: ASTNode) -> List[Tuple[str, Any]]:
-        """Get significant fields from a node."""
-        fields = []
+        """Get significant fields from a node.
 
+        The generic case is the shared ``node_fields`` dataclass-field walk;
+        two nodes get a display-shaping override: ``SimpleCommand`` (compact
+        one-line arguments) and ``AndOrList`` (operator-precedence tree).
+        """
         # Special handling for SimpleCommand to combine arguments compactly
         if node.__class__.__name__ == 'SimpleCommand':
             return self._get_simple_command_fields(node)
-
-        # Special handling for StatementList to avoid duplication
-        if node.__class__.__name__ == 'StatementList':
-            return self._get_statement_list_fields(node)
 
         # Special handling for AndOrList to show pipeline/operator relationships
         if node.__class__.__name__ == 'AndOrList':
             return self._get_and_or_list_fields(node)
 
-        # Get all non-private attributes
-        for attr_name in dir(node):
-            if (not attr_name.startswith('_') and
-                not callable(getattr(node, attr_name)) and
-                attr_name not in ['position', 'line', 'column']):
-                try:
-                    value = getattr(node, attr_name)
-                    if value is not None or self.show_empty_fields:
-                        # Skip empty lists unless show_empty_fields is True
-                        if isinstance(value, list) and not value and not self.show_empty_fields:
-                            continue
-                        # Skip false boolean values to reduce noise
-                        if isinstance(value, bool) and value is False:
-                            continue
-                        fields.append((attr_name, value))
-                except (AttributeError, TypeError):
-                    continue
-
-        return fields
-
-    def _get_statement_list_fields(self, node) -> List[Tuple[str, Any]]:
-        """Get fields for StatementList (only the canonical 'statements' list)."""
-        fields = []
-
-        # StatementList's only data is the 'statements' list.
-        statements = getattr(node, 'statements', [])
-        if statements or self.show_empty_fields:
-            fields.append(('statements', statements))
-
-        return fields
+        return node_fields(node, include_empty=self.show_empty_fields)
 
     def _get_and_or_list_fields(self, node) -> List[Tuple[str, Any]]:
         """Get fields for AndOrList showing pipeline/operator relationships."""
@@ -226,23 +206,12 @@ class AsciiTreeRenderer:
 
             fields.append(('arguments', compact_args))
 
-        # Add other fields (skip the raw args/words already rendered above)
-        skip_fields = {'args', 'words'}
-        for attr_name in dir(node):
-            if (not attr_name.startswith('_') and
-                not callable(getattr(node, attr_name)) and
-                attr_name not in ['position', 'line', 'column'] and
-                attr_name not in skip_fields):
-                try:
-                    value = getattr(node, attr_name)
-                    if value is not None or self.show_empty_fields:
-                        if isinstance(value, list) and not value and not self.show_empty_fields:
-                            continue
-                        if isinstance(value, bool) and value is False:
-                            continue
-                        fields.append((attr_name, value))
-                except (AttributeError, TypeError):
-                    continue
+        # Add other fields (skip the raw words already rendered compactly above;
+        # 'args' is a derived property, not a dataclass field, so node_fields
+        # never surfaces it).
+        for name, value in node_fields(node, include_empty=self.show_empty_fields):
+            if name != 'words':
+                fields.append((name, value))
 
         return fields
 
@@ -446,19 +415,6 @@ class CompactAsciiTreeRenderer(AsciiTreeRenderer):
         )
 
 
-class DetailedAsciiTreeRenderer(AsciiTreeRenderer):
-    """Detailed ASCII tree renderer showing all information."""
-
-    def __init__(self, **kwargs):
-        super().__init__(
-            compact_mode=False,
-            show_empty_fields=True,
-            show_positions=True,
-            max_width=100,
-            **kwargs
-        )
-
-
 # Convenience functions
 def render_ast_tree(ast: ASTNode, **kwargs) -> str:
     """Render AST as ASCII tree.
@@ -483,15 +439,3 @@ def render_compact_tree(ast: ASTNode) -> str:
         Compact ASCII tree string
     """
     return CompactAsciiTreeRenderer.render(ast)
-
-
-def render_detailed_tree(ast: ASTNode) -> str:
-    """Render AST as detailed ASCII tree.
-
-    Args:
-        ast: The AST node to render
-
-    Returns:
-        Detailed ASCII tree string
-    """
-    return DetailedAsciiTreeRenderer.render(ast)

@@ -17,6 +17,7 @@ from ....ast_nodes import (
     SubshellGroup,
     Word,
 )
+from ....lexer.keyword_defs import matches_keyword_type
 from ....lexer.token_types import Token, TokenType
 from ...array_flat_text import process_unquoted_element_escapes
 from ..helpers import ParseError, TokenGroups, unexpected_token_message
@@ -399,7 +400,7 @@ class CommandParser(ParserSubcomponent):
         while True:
             tok = self.parser.peek()
             in_run = saw_prefix and tok.type == TokenType.WORD
-            if tok.type == TokenType.TIME or (in_run and tok.value == 'time'):
+            if tok.type == TokenType.TIME or (in_run and matches_keyword_type(tok, TokenType.TIME)):
                 self.parser.advance()
                 saw_prefix = True
                 pipeline.timed = True

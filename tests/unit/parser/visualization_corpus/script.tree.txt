@@ -1,0 +1,221 @@
+└── Program
+    └── statements: [2 items]
+        ├── FunctionDef @line1
+        │   ├── name: "process_files"
+        │   └── body:
+        │       └── StatementList
+        │           └── statements: [4 items]
+        │               ├── AndOrList @line2
+        │               │   └── pipelines: [1 items]
+        │               │       └── Pipeline @line2
+        │               │           └── commands: [1 items]
+        │               │               └── ForLoop
+        │               │                   ├── variable: "f"
+        │               │                   ├── items: [3 items]
+        │               │                   │   ├── • "a"
+        │               │                   │   ├── • "b"
+        │               │                   │   └── • "c"
+        │               │                   ├── body:
+        │               │                   │   └── StatementList
+        │               │                   │       └── statements: [1 items]
+        │               │                   │           └── AndOrList @line3
+        │               │                   │               └── pipelines: [1 items]
+        │               │                   │                   └── Pipeline @line3
+        │               │                   │                       └── commands: [1 items]
+        │               │                   │                           └── IfConditional
+        │               │                   │                               ├── condition:
+        │               │                   │                               │   └── StatementList
+        │               │                   │                               │       └── statements: [1 items]
+        │               │                   │                               │           └── AndOrList @line3
+        │               │                   │                               │               └── pipelines: [1 items]
+        │               │                   │                               │                   └── Pipeline @line3
+        │               │                   │                               │                       └── commands: [1 items]
+        │               │                   │                               │                           └── SimpleCommand
+        │               │                   │                               │                               └── arguments:
+        │               │                   │                               │                                   ├── • [ (literal)
+        │               │                   │                               │                                   ├── • -f (literal)
+        │               │                   │                               │                                   ├── • "$f" (quoted, ")
+        │               │                   │                               │                                   └── • ] (literal)
+        │               │                   │                               ├── then_part:
+        │               │                   │                               │   └── StatementList
+        │               │                   │                               │       └── statements: [1 items]
+        │               │                   │                               │           └── AndOrList @line4
+        │               │                   │                               │               └── pipelines: [1 items]
+        │               │                   │                               │                   └── Pipeline @line4
+        │               │                   │                               │                       └── commands: [1 items]
+        │               │                   │                               │                           └── SimpleCommand
+        │               │                   │                               │                               ├── arguments:
+        │               │                   │                               │                               │   ├── • echo (literal)
+        │               │                   │                               │                               │   └── • "found $f" (quoted, ")
+        │               │                   │                               │                               └── redirects: [1 items]
+        │               │                   │                               │                                   └── Redirect
+        │               │                   │                               │                                       ├── type: ">>"
+        │               │                   │                               │                                       ├── target: "log.txt"
+        │               │                   │                               │                                       └── target_word:
+        │               │                   │                               │                                           └── Word
+        │               │                   │                               │                                               └── parts: [1 items]
+        │               │                   │                               │                                                   └── LiteralPart
+        │               │                   │                               │                                                       └── text: "log.txt"
+        │               │                   │                               └── else_part:
+        │               │                   │                                   └── StatementList
+        │               │                   │                                       └── statements: [1 items]
+        │               │                   │                                           └── AndOrList @line6
+        │               │                   │                                               └── pipelines: [1 items]
+        │               │                   │                                                   └── Pipeline @line6
+        │               │                   │                                                       ├── commands: [2 items]
+        │               │                   │                                                       │   ├── SimpleCommand
+        │               │                   │                                                       │   │   └── arguments:
+        │               │                   │                                                       │   │       ├── • echo (literal)
+        │               │                   │                                                       │   │       └── • "missing $f" (quoted, ")
+        │               │                   │                                                       │   └── SimpleCommand
+        │               │                   │                                                       │       └── arguments:
+        │               │                   │                                                       │           ├── • tee (literal)
+        │               │                   │                                                       │           ├── • -a (literal)
+        │               │                   │                                                       │           └── • errors.log (literal)
+        │               │                   │                                                       └── pipe_stderr: [1 items]
+        │               │                   │                                                           └── • false
+        │               │                   └── item_words: [3 items]
+        │               │                       ├── Word
+        │               │                       │   └── parts: [1 items]
+        │               │                       │       └── LiteralPart
+        │               │                       │           └── text: "a"
+        │               │                       ├── Word
+        │               │                       │   └── parts: [1 items]
+        │               │                       │       └── LiteralPart
+        │               │                       │           └── text: "b"
+        │               │                       └── Word
+        │               │                           └── parts: [1 items]
+        │               │                               └── LiteralPart
+        │               │                                   └── text: "c"
+        │               ├── AndOrList @line9
+        │               │   └── pipelines: [1 items]
+        │               │       └── Pipeline @line9
+        │               │           └── commands: [1 items]
+        │               │               └── WhileLoop
+        │               │                   ├── condition:
+        │               │                   │   └── StatementList
+        │               │                   │       └── statements: [1 items]
+        │               │                   │           └── AndOrList @line9
+        │               │                   │               └── pipelines: [1 items]
+        │               │                   │                   └── Pipeline @line9
+        │               │                   │                       └── commands: [1 items]
+        │               │                   │                           └── SimpleCommand
+        │               │                   │                               └── arguments:
+        │               │                   │                                   ├── • read (literal)
+        │               │                   │                                   └── • line (literal)
+        │               │                   ├── body:
+        │               │                   │   └── StatementList
+        │               │                   │       └── statements: [1 items]
+        │               │                   │           └── AndOrList @line10
+        │               │                   │               └── pipelines: [1 items]
+        │               │                   │                   └── Pipeline @line10
+        │               │                   │                       └── commands: [1 items]
+        │               │                   │                           └── SimpleCommand
+        │               │                   │                               └── arguments:
+        │               │                   │                                   ├── • echo (literal)
+        │               │                   │                                   └── • "$line" (quoted, ")
+        │               │                   └── redirects: [1 items]
+        │               │                       └── Redirect
+        │               │                           ├── type: "<"
+        │               │                           ├── target: "input.txt"
+        │               │                           └── target_word:
+        │               │                               └── Word
+        │               │                                   └── parts: [1 items]
+        │               │                                       └── LiteralPart
+        │               │                                           └── text: "input.txt"
+        │               ├── AndOrList @line12
+        │               │   └── pipelines: [1 items]
+        │               │       └── Pipeline @line12
+        │               │           └── commands: [1 items]
+        │               │               └── SubshellGroup
+        │               │                   ├── background: true
+        │               │                   └── statements:
+        │               │                       └── StatementList
+        │               │                           └── statements: [1 items]
+        │               │                               └── AndOrList @line12
+        │               │                                   └── expression_tree: [1 items]
+        │               │                                       └── &&
+        │               │                                           ├── Pipeline @line12
+        │               │                                           │   └── commands: [1 items]
+        │               │                                           │       └── SimpleCommand
+        │               │                                           │           └── arguments:
+        │               │                                           │               ├── • cd (literal)
+        │               │                                           │               └── • /tmp (literal)
+        │               │                                           └── Pipeline @line12
+        │               │                                               └── commands: [1 items]
+        │               │                                                   └── SimpleCommand
+        │               │                                                       └── arguments: ls (literal)
+        │               └── AndOrList @line13
+        │                   └── pipelines: [1 items]
+        │                       └── Pipeline @line13
+        │                           └── commands: [1 items]
+        │                               └── CaseConditional
+        │                                   ├── expr: "$1"
+        │                                   ├── items: [2 items]
+        │                                   │   ├── CaseItem
+        │                                   │   │   ├── terminator: ";;"
+        │                                   │   │   ├── patterns: [1 items]
+        │                                   │   │   │   └── CasePattern
+        │                                   │   │   │       ├── pattern: "start"
+        │                                   │   │   │       └── word:
+        │                                   │   │   │           └── Word
+        │                                   │   │   │               └── parts: [1 items]
+        │                                   │   │   │                   └── LiteralPart
+        │                                   │   │   │                       └── text: "start"
+        │                                   │   │   └── commands:
+        │                                   │   │       └── StatementList
+        │                                   │   │           └── statements: [1 items]
+        │                                   │   │               └── AndOrList @line14
+        │                                   │   │                   └── pipelines: [1 items]
+        │                                   │   │                       └── Pipeline @line14
+        │                                   │   │                           └── commands: [1 items]
+        │                                   │   │                               └── SimpleCommand
+        │                                   │   │                                   └── arguments:
+        │                                   │   │                                       ├── • echo (literal)
+        │                                   │   │                                       └── • starting (literal)
+        │                                   │   └── CaseItem
+        │                                   │       ├── terminator: ";;"
+        │                                   │       ├── patterns: [1 items]
+        │                                   │       │   └── CasePattern
+        │                                   │       │       ├── pattern: "*"
+        │                                   │       │       └── word:
+        │                                   │       │           └── Word
+        │                                   │       │               └── parts: [1 items]
+        │                                   │       │                   └── LiteralPart
+        │                                   │       │                       └── text: "*"
+        │                                   │       └── commands:
+        │                                   │           └── StatementList
+        │                                   │               └── statements: [1 items]
+        │                                   │                   └── AndOrList @line15
+        │                                   │                       └── pipelines: [1 items]
+        │                                   │                           └── Pipeline @line15
+        │                                   │                               └── commands: [1 items]
+        │                                   │                                   └── SimpleCommand
+        │                                   │                                       └── arguments:
+        │                                   │                                           ├── • echo (literal)
+        │                                   │                                           └── • unknown (literal)
+        │                                   └── subject_word:
+        │                                       └── Word
+        │                                           └── parts: [1 items]
+        │                                               └── ExpansionPart
+        │                                                   ├── quoted: true
+        │                                                   ├── quote_char: """
+        │                                                   └── expansion:
+        │                                                       └── VariableExpansion
+        │                                                           └── name: "1"
+        └── AndOrList @line18
+            └── expression_tree: [1 items]
+                └── ||
+                    ├── &&
+                    │   ├── Pipeline @line18
+                    │   │   └── commands: [1 items]
+                    │   │       └── SimpleCommand
+                    │   │           └── arguments: process_files (literal), a (literal)
+                    │   └── Pipeline @line18
+                    │       └── commands: [1 items]
+                    │           └── SimpleCommand
+                    │               └── arguments: echo (literal), done (literal)
+                    └── Pipeline @line18
+                        └── commands: [1 items]
+                            └── SimpleCommand
+                                └── arguments: echo (literal), failed (literal)

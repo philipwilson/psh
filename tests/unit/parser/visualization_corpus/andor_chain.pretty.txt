@@ -1,0 +1,43 @@
+Program:
+  statements: [
+    AndOrList @line1:
+      pipelines: [
+        Pipeline @line1:
+          commands: [
+            SimpleCommand:
+              words: [
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'cmd1'
+                  ]
+              ]
+          ]
+        Pipeline @line1:
+          commands: [
+            SimpleCommand:
+              words: [
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'cmd2'
+                  ]
+              ]
+          ]
+        Pipeline @line1:
+          commands: [
+            SimpleCommand:
+              words: [
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'cmd3'
+                  ]
+              ]
+          ]
+      ]
+      operators: [
+        '&&'
+        '||'
+      ]
+  ]

@@ -1,0 +1,22 @@
+Program:
+  statements: [
+    AndOrList @line1:
+      pipelines: [
+        Pipeline @line1:
+          commands: [
+            SimpleCommand:
+              words: [
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'echo'
+                  ]
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'hello'
+                  ]
+              ]
+          ]
+      ]
+  ]
