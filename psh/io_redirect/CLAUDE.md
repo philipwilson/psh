@@ -54,9 +54,11 @@ class IOManager:
 
 Every dispatch site (`apply_redirections`, `apply_permanent_redirections`,
 `setup_builtin_redirections`, `setup_child_redirections`) begins the SAME
-way: resolve a dynamic fd-dup, expand the target, and create any
-process-substitution resource. That common work lives once in
-`planner.py`:
+way: resolve a dynamic fd-dup, then decide procsub-or-filename STRUCTURALLY
+from the Word AST (`redirect_procsub_node`) — a whole-word `<(cmd)`/`>(cmd)`
+is resolved to a resource from its node (`resolve_procsub_resource(node)`),
+everything else is a filename expanded via `expand_redirect_target`. Nothing
+re-sniffs the expanded string. That common work lives once in `planner.py`:
 
 ```python
 plan = self.planner.plan(redirect)        # FileRedirector.planner
@@ -69,7 +71,7 @@ finally:
     plan.close_procsub(applied=applied)   # release procsub parent fd
 ```
 
-`RedirectPlan` carries `(redirect, target, procsub)` plus:
+`RedirectPlan` carries `(redirect, target, procsub, procsub_node)` plus:
 - `target_fd` — the single source of truth for "which fd does this
   redirect act on" (replaces the per-branch `redirect.fd if … else 0/1`
   classification).
@@ -90,8 +92,10 @@ A redirect-target substitution's parent fd has exactly these two fates, and
 dispatch site never pokes `handler.active_fds` itself.
 
 `ProcessSubstitutionResource` (in `process_sub.py`) owns one substitution's
-`(path, parent_fd, pid, cleanup_path)`; `resolve_procsub_resource()` builds
-it and `register_with(handler)` hands pid/cleanup-path to the enclosing
+`(path, parent_fd, pid, cleanup_path)`; `resolve_procsub_resource(node)` builds
+it from the `ProcessSubstitution` AST node (its raw `source`/`direction`, so the
+body is expanded once — by the child), and `register_with(handler)` hands
+pid/cleanup-path to the enclosing
 `process_sub_scope()`. `close_parent_fd_for_redirect()` and
 `hand_off_to_scope()` are the close-vs-transfer primitives the plan delegates
 to (the latter is the single place that appends to `active_fds`, shared by
@@ -256,8 +260,8 @@ bash-pinned nesting battery.
 
 `apply_permanent_redirections` (FileRedirector) does the fd-level redirect
 first, then rebinds the Python-level stream onto the **same open file
-description** via `_rebind_output_stream` → `_stream_sharing_fd`
-(`os.fdopen(os.dup(fd), 'w', buffering=1)`). Never re-`open()` the target
+description** via `_rebind_output_stream` → `dup_sharing_stream(fd, 'w',
+buffering=1)`. Never re-`open()` the target
 independently: a second open has its own offset (and re-truncates in 'w'
 mode), so builtin writes and external children would overwrite each other.
 `os.dup()` shares the description (offset and O_APPEND), giving both
@@ -286,11 +290,13 @@ Helpers used only within `file_redirect.py` stay private.
 | `redirect_readwrite(target, redirect)` | `<>` — open O_RDWR + dup2; returns target_fd |
 | `redirect_heredoc(redirect)` | `<<`/`<<-` — expand + unlinked temp file + dup2; returns content |
 | `redirect_herestring(redirect)` | `<<<` — expand + unlinked temp file + dup2; returns content |
-| `expand_redirect_target(redirect)` | Variable + tilde expansion for `<`/`>`/`>>`/`<>`/`>|`/`&>`/`&>>` (called by the planner) |
+| `redirect_procsub_node(redirect)` | Return the `ProcessSubstitution` node when the target is a whole-word `<(cmd)`/`>(cmd)` (structural, from the Word AST), else None; called by the planner to decide procsub-vs-filename without sniffing the expanded string |
+| `expand_redirect_target(redirect)` | Full field expansion (+ bash's ambiguous-redirect rule) for a NON-procsub filename target `<`/`>`/`>>`/`<>`/`>|`/`&>`/`&>>` (called by the planner and `apply_var_fd_redirect`) |
 | `resolve_dynamic_dup(redirect)` | Resolve a dynamic fd-dup target (`>&$fd`, `2>&$((n+1))`); called by the planner |
 | `noclobber_blocks(target)` | Predicate: noclobber set AND target is an existing regular file or dangling symlink (shared by all dispatchers; response differs: raise vs `os._exit`) |
-| `check_noclobber(target)` | Raises OSError if `noclobber_blocks(target)` |
+| `check_noclobber(target)` | Raises OSError if `noclobber_blocks(target)`; the ONE noclobber-refusal message (all three raise sites route here) |
 | `dup_fd_valid(dup_fd)` | Predicate: `dup_fd` is an open fd (for `>&`/`<&` validation) |
+| `dup_sharing_stream(fd, mode, *, buffering=-1)` | The ONE dup+fdopen recipe: a text stream sharing `fd`'s open file description (one offset). OUTPUT (`'w'`, `buffering=1`) for the `exec` rebind and a builtin `n>&m` dup; INPUT (`'r'`/`'r+'`) for a builtin `<`/`<>` stdin |
 | `procsub_handler` (property) | The shell's `ProcessSubstitutionHandler`; the planner resolves procsub targets through it |
 
 **Private (internal to `file_redirect.py`):**
@@ -302,7 +308,7 @@ Helpers used only within `file_redirect.py` stay private.
 | `_redirect_combined(target, redirect)` | `&>`/`&>>` — open + dup2(fd,1) + dup2(1,2) |
 | `_redirect_dup_fd(redirect)` | `>&`/`<&` — validate + dup2 or close |
 | `_redirect_close_fd(redirect)` | `>&-`/`<&-` — close fd |
-| `_stream_sharing_fd(fd)` / `_rebind_output_stream(fd)` | `exec >file` — Python stream sharing the redirected fd's open file description |
+| `_rebind_output_stream(fd)` | `exec >file` — point sys.stdout/stderr at a `dup_sharing_stream` of the redirected fd |
 
 Also: `_dup2_preserve_target(opened_fd, target_fd)` is a module-level
 function (not a method) that wraps `os.dup2()` + `os.close()` safely.
@@ -405,10 +411,15 @@ target = self.expand_redirect_target(redirect)
 target = self.file_redirector.expand_redirect_target(redirect)
 ```
 
-This expands variables (unless single-quoted) and tilde for all
-file-target redirect types: `<`, `>`, `>>`, `<>`, `>|`, and the combined
-forms `&>`/`&>>` (see the `redirect.type`/`redirect.combined` guard at the
-top of `expand_redirect_target` in `file_redirect.py`).
+For a NON-procsub filename target (`<`, `>`, `>>`, `<>`, `>|`, `&>`, `&>>`),
+this runs the parsed Word through the full command-argument pipeline
+(variable/command/arithmetic expansion, IFS splitting of unquoted expansions,
+globbing, and an embedded `pre<(cmd)post` procsub) and enforces bash's
+"ambiguous redirect" rule: the result must be EXACTLY one field, or NOTHING is
+opened (`psh: <word>: ambiguous redirect`, errno None). A WHOLE-WORD process
+substitution never reaches here — the planner detects it structurally
+(`redirect_procsub_node`) and resolves it from its AST node, so the body is
+expanded exactly once, by the substitution's own child.
 
 ## Testing
 
@@ -472,8 +483,9 @@ DEBUG IOManager: redirected stdout to 'output.txt' (mode 'w'); sys.stdout is now
 
 ### With Expansion (`psh/expansion/`)
 
-- Redirect targets expanded via `expansion_manager.expand_string_variables()`
-- Tilde expanded via `expansion_manager.expand_tilde()`
+- Filename targets expanded via `expand_word_to_fields` in COMMAND_ARGUMENT
+  context (full field expansion + the ambiguous-redirect rule); process-sub
+  targets never reach expansion — the planner carries the AST node directly
 - Heredoc content expanded based on delimiter quoting
 
 ### With Shell State (`psh/core/state.py`)

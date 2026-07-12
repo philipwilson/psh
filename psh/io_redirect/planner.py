@@ -11,16 +11,24 @@ from ..ast_nodes import Redirect
 from .process_sub import ProcessSubstitutionResource
 
 if TYPE_CHECKING:
+    from ..ast_nodes import ProcessSubstitution
     from .file_redirect import FileRedirector
     from .process_sub import ProcessSubstitutionHandler
 
 
 @dataclass
 class RedirectPlan:
-    """A resolved redirect plus optional process-substitution resource."""
+    """A resolved redirect plus optional process-substitution resource.
+
+    ``procsub_node`` records the structural fact the planner read from the
+    Word AST: it is the ``ProcessSubstitution`` node when the target is a
+    whole-word process substitution, else None. The resource in ``procsub`` is
+    created FROM that node — nothing downstream re-sniffs the expanded string.
+    """
     redirect: Redirect
     target: Optional[str]
     procsub: Optional[ProcessSubstitutionResource] = None
+    procsub_node: Optional['ProcessSubstitution'] = None
 
     @property
     def target_fd(self) -> int:
@@ -57,8 +65,16 @@ class RedirectPlanner:
 
     def plan(self, redirect: Redirect) -> RedirectPlan:
         redirect = self.file_redirector.resolve_dynamic_dup(redirect)
-        target = self.file_redirector.expand_redirect_target(redirect)
-        target, procsub = (
-            self.file_redirector.procsub_handler.resolve_procsub_resource(
-                target))
-        return RedirectPlan(redirect, target, procsub)
+        procsub_node = self.file_redirector.redirect_procsub_node(redirect)
+        if procsub_node is not None:
+            # Whole-word process substitution: the AST already told us so.
+            # Resolve it FROM the node (raw body text) — never re-sniff or
+            # re-expand a string.
+            target, procsub = (
+                self.file_redirector.procsub_handler.resolve_procsub_resource(
+                    procsub_node))
+        else:
+            # A non-procsub redirect is a filename, full stop.
+            target = self.file_redirector.expand_redirect_target(redirect)
+            procsub = None
+        return RedirectPlan(redirect, target, procsub, procsub_node)
