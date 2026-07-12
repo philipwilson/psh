@@ -248,7 +248,7 @@ class PwdBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "pwd"
+        return "pwd [-LP]"
 
     @property
     def description(self) -> str:
@@ -298,10 +298,14 @@ class PwdBuiltin(Builtin):
 
     @property
     def help(self) -> str:
-        return """pwd: pwd
+        return """pwd: pwd [-LP]
     Print the current working directory.
 
     Display the full pathname of the current working directory.
+
+    Options:
+      -L    print the logical path ($PWD, symlinks preserved; the default)
+      -P    print the physical path (all symlinks resolved)
 
     Exit Status:
     Returns 0 unless an error occurs while reading the pathname of the

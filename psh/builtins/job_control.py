@@ -25,7 +25,7 @@ class JobsBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        return "jobs [-lprs] [jobspec ...] or jobs -x command [args]"
+        return "jobs [-lnprs] [jobspec ...] or jobs -x command [args]"
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the jobs builtin."""

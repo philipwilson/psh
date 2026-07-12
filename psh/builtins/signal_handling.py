@@ -28,7 +28,7 @@ class TrapBuiltin(Builtin):
         return "Set signal handlers and exit traps"
 
     @property
-    def help_text(self) -> str:
+    def help(self) -> str:
         return """trap: Set signal handlers and exit traps
 
 SYNOPSIS

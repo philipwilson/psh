@@ -1,5 +1,35 @@
 """Tests for the shopt builtin."""
 
+from psh.builtins.shell_options import _SHOPT_DESCRIPTIONS
+from psh.core.option_registry import SHOPT_OPTION_NAMES
+
+
+class TestShoptHelpDerived:
+    """The `help shopt` option list is DERIVED from the SHOPT registry.
+
+    The old hand-kept list documented 8 of the 11 registry options (the
+    P5 help-oracle drift). These guards keep the list and its blurbs from
+    drifting from the registry again.
+    """
+
+    def test_help_lists_every_registry_option(self, captured_shell):
+        shell = captured_shell
+        assert shell.run_command('help shopt') == 0
+        out = shell.get_stdout()
+        for name in SHOPT_OPTION_NAMES:
+            assert name in out, f"help shopt omits registry option {name!r}"
+
+    def test_every_registry_option_has_a_blurb(self):
+        """A new shopt option must add its one-line description here, so the
+        derived help never renders a bare name."""
+        missing = [n for n in SHOPT_OPTION_NAMES if not _SHOPT_DESCRIPTIONS.get(n)]
+        assert not missing, (
+            f"shopt options with no _SHOPT_DESCRIPTIONS blurb: {missing}")
+
+    def test_no_stale_blurbs(self):
+        """Every blurb corresponds to a real registry option."""
+        stale = [n for n in _SHOPT_DESCRIPTIONS if n not in SHOPT_OPTION_NAMES]
+        assert not stale, f"stale _SHOPT_DESCRIPTIONS entries: {stale}"
 
 
 class TestShoptBasic:

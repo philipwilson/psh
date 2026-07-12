@@ -138,6 +138,13 @@ SHOPT_OPTION_NAMES = tuple(
     s.name for s in _SPECS if s.category is OptionCategory.SHOPT
 )
 
+# Debug option names, in registry order (drives the `debug` builtin's option
+# map and its help so the two cannot drift — the single source of truth for
+# WHICH `debug-*` toggles exist).
+DEBUG_OPTION_NAMES = tuple(
+    s.name for s in _SPECS if s.category is OptionCategory.DEBUG
+)
+
 # The `set -o` option table: every user-visible on/off SET option. This is
 # the ONE list behind `set -o` / `set +o` listings, `shopt -o` (which operates
 # on the set -o table, bash), and the computed $SHELLOPTS value — bash keeps
