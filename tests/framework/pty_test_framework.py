@@ -38,7 +38,6 @@ import pytest
 
 # Add PSH to path
 PSH_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 # Matches OSC sequences (terminal title etc., terminated by BEL or ST),
 # CSI sequences (cursor movement, colors), and other two-byte escapes.

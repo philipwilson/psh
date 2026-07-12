@@ -4,12 +4,7 @@ Unit tests for basic tokenization functionality.
 Tests the lexer in isolation without involving other components.
 """
 
-import sys
-from pathlib import Path
 
-# Add PSH to path
-PSH_ROOT = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 
 from psh.lexer import tokenize

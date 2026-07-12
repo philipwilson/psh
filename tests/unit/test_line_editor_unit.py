@@ -5,14 +5,9 @@ These tests verify LineEditor behavior by directly calling internal methods,
 bypassing the need for TTY and raw terminal mode.
 """
 
-import os
-import sys
 from unittest.mock import Mock, patch
 
 import pytest
-
-# Add PSH to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 
 # NOTE: termios/tty import fine without a TTY; never replace them in
 # sys.modules with Mocks — that leaks into every later import in the

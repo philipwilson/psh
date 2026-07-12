@@ -22,7 +22,6 @@ import pytest
 # Add framework to path
 TEST_ROOT = Path(__file__).parent.parent.parent
 PSH_ROOT = TEST_ROOT.parent
-sys.path.insert(0, str(PSH_ROOT))
 
 # Shell fixture imported automatically from conftest.py
 
