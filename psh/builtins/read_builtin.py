@@ -8,7 +8,7 @@ import tty
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-from ..core import IndexedArray, VarAttributes
+from ..core import IndexedArray, ReadError, VarAttributes
 from ..lexer.unicode_support import is_valid_name
 from .base import Builtin
 from .input_reader import InputReader, Outcome, make_reader
@@ -58,10 +58,10 @@ class ReadBuiltin(Builtin):
         """Execute the read builtin."""
         try:
             parsed = self._parse_options(args, shell)
-        except ValueError as e:
+        except ReadError as e:
             # A bad option VALUE (timeout/count/fd): bash status 1.
             self.error(str(e), shell)
-            return getattr(e, 'rc', 1)
+            return e.rc
         if parsed is None:
             # Invalid option / missing option-argument: parse_flags already
             # printed the error + usage line (bash status 2).
@@ -446,7 +446,7 @@ class ReadBuiltin(Builtin):
         option-argument is a usage error (bash status 2):
         ``parse_flags_ordered`` prints the message + usage line and we return
         ``None`` so ``execute`` returns 2. Invalid option *values* (bad
-        timeout/count/fd) raise ValueError with ``rc=1`` — bash distinguishes
+        timeout/count/fd) raise ``ReadError`` with ``rc=1`` — bash distinguishes
         usage errors from value errors. Values are validated by the walk's
         ``check`` hook AT their argv event, so combined errors keep bash's
         first-in-argv precedence regardless of class (``read -t abc -Z``
@@ -472,7 +472,7 @@ class ReadBuiltin(Builtin):
 
         def _apply(char: str, value: str) -> None:
             # Validates AND stores at the option's argv event (may raise
-            # ValueError with rc=1; the walk propagates to execute's handler).
+            # ReadError with rc=1; the walk propagates to execute's handler).
             self._apply_arg_option(char, value, options)
 
         events, operands = self.parse_flags_ordered(
@@ -512,10 +512,8 @@ class ReadBuiltin(Builtin):
                 if fd < 0:
                     raise ValueError
             except ValueError:
-                err = ValueError(
-                    f"{value}: invalid file descriptor specification")
-                setattr(err, 'rc', 1)
-                raise err from None
+                raise ReadError(
+                    f"{value}: invalid file descriptor specification") from None
             options['fd'] = fd
             options['fd_from_u'] = True
         elif char == 'p':
@@ -529,9 +527,8 @@ class ReadBuiltin(Builtin):
             except ValueError:
                 timeout = -1.0
             if timeout < 0:
-                err = ValueError(f"{value}: invalid timeout specification")
-                setattr(err, 'rc', 1)  # bash exits 1 for bad values (2 for bad options)
-                raise err
+                # bash exits 1 for bad values (2 for bad options).
+                raise ReadError(f"{value}: invalid timeout specification")
             options['timeout'] = timeout
         elif char == 'n':
             try:
@@ -539,9 +536,7 @@ class ReadBuiltin(Builtin):
             except ValueError:
                 max_chars = -1
             if max_chars < 0:
-                err = ValueError(f"{value}: invalid number")
-                setattr(err, 'rc', 1)
-                raise err
+                raise ReadError(f"{value}: invalid number")
             options['max_chars'] = max_chars
         elif char == 'N':
             # -N reads EXACTLY this many chars, ignoring the delimiter and
@@ -551,9 +546,7 @@ class ReadBuiltin(Builtin):
             except ValueError:
                 exact = -1
             if exact < 0:
-                err = ValueError(f"{value}: invalid number")
-                setattr(err, 'rc', 1)
-                raise err
+                raise ReadError(f"{value}: invalid number")
             options['exact_chars'] = exact
 
     def _read_input_is_tty(self, shell: 'Shell', fd: int) -> bool:

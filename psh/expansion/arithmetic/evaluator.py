@@ -334,7 +334,12 @@ class ArithmeticEvaluator:
         if isinstance(node, ArrayElementNode):
             key = self._array_key(node.name, node.index, node.index_text)
             return self.get_array_element(node.name, key)
-        raise ValueError(f"Unknown node type: {type(node)}")
+        # Cant-happen: the parser only builds the node types dispatched above.
+        # RuntimeError (not ValueError) so strict-errors surfaces a genuine
+        # internal defect here instead of masking it as a shell arithmetic
+        # error. The ValueError catch in _evaluate_arithmetic_inner is reserved
+        # for USER-reachable ValueErrors (the huge-int int() parse limit).
+        raise RuntimeError(f"internal: unknown arithmetic node type: {type(node)}")
 
     # -- Node-type evaluators ------------------------------------------------
 
@@ -348,7 +353,9 @@ class ArithmeticEvaluator:
             return 0 if operand else 1
         if node.op == ArithTokenType.BIT_NOT:
             return _to_signed64(~operand)
-        raise ValueError(f"Unknown unary operator: {node.op}")
+        # Cant-happen: the parser only builds these four unary operators.
+        # RuntimeError => strict-errors surfaces it as an internal defect.
+        raise RuntimeError(f"internal: unknown unary operator: {node.op}")
 
     def _eval_binary(self, node: BinaryOpNode) -> int:
         # Short-circuit operators — right side evaluated conditionally.
@@ -390,7 +397,9 @@ class ArithmeticEvaluator:
         # subscript was evaluated once in _resolve_lvalue.
         base_op = self._COMPOUND_TO_BASE.get(node.op)
         if base_op is None:
-            raise ValueError(f"Unknown assignment operator: {node.op}")
+            # Cant-happen: the parser only emits ASSIGN or a _COMPOUND_TO_BASE
+            # key. RuntimeError => strict-errors surfaces it as a defect.
+            raise RuntimeError(f"internal: unknown assignment operator: {node.op}")
         current = self._read_lvalue(name, key)
         value = self.evaluate(node.value)
         result = self._apply_binary_op(base_op, current, value)
@@ -470,7 +479,9 @@ class ArithmeticEvaluator:
         if op == ArithTokenType.RSHIFT:
             return _to_signed64(left) >> (right & 63)
 
-        raise ValueError(f"Unknown binary operator: {op}")
+        # Cant-happen: every operator the parser emits is handled above.
+        # RuntimeError => strict-errors surfaces it as an internal defect.
+        raise RuntimeError(f"internal: unknown binary operator: {op}")
 
 
 def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
@@ -538,6 +549,12 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
         # (see ArithParser.MAX_DEPTH's caveat; r19-T9 deferred ledger).
         raise ShellArithmeticError(str(e)) from e
     except (ValueError, OverflowError, MemoryError) as e:
+        # These stay caught because they are USER-reachable, not internal
+        # defects: e.g. int() on a literal past CPython's str->int digit limit
+        # (`$(( 999…<4300+ digits> ))`) raises ValueError, and an over-large
+        # allocation raises MemoryError. The evaluator's own cant-happen
+        # branches now raise RuntimeError (which is NOT caught here) so a real
+        # defect surfaces under strict-errors instead of being masked.
         raise ShellArithmeticError(str(e)) from e
 
 

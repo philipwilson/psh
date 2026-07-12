@@ -91,8 +91,9 @@ def handle_visitor_mode_for_content(shell: 'Shell', content: str,
                                   drop_dangling_at_eof=drop_dangling_at_eof)
         return apply_visitor_mode(shell, ast)
     except (PshError, SyntaxError) as e:
-        # ParseError (PshError) and UnclosedQuoteError (SyntaxError) are all
-        # expected syntax errors — render and return 2.
+        # ParseError (PshError) and UnclosedQuoteError (PshError+SyntaxError
+        # as of the r19-P6 dual-rooting) are all expected syntax errors —
+        # render and return 2.
         return _report_syntax_error(location, e)
     except Exception as e:
         # Anything else escaping the parse OR a visitor is an INTERNAL DEFECT.

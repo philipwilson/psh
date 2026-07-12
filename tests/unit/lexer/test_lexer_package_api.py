@@ -7,6 +7,8 @@ and that all components can be imported and used as expected.
 
 
 
+import pytest
+
 from psh.lexer import (
     LexerConfig,
     ModularLexer,
@@ -101,6 +103,42 @@ class TestLexerPublicAPI:
         # Both should tokenize successfully
         assert len(tokens_default) >= 2
         assert len(tokens_posix) >= 2
+
+
+class TestUnclosedQuoteErrorRooting:
+    """UnclosedQuoteError dual-inherits (PshError, SyntaxError) — reappraisal
+    #19 P6. It must root at PshError (so ``exceptions.py``'s "everything roots
+    at PshError" claim and the strict-errors expected-error taxonomy hold) AND
+    remain a SyntaxError (load-bearing ``except SyntaxError`` line-continuation
+    sites key off it without naming it)."""
+
+    def test_roots_at_psherror_and_stays_syntaxerror(self):
+        from psh.core.exceptions import PshError
+        from psh.lexer import UnclosedQuoteError
+
+        assert issubclass(UnclosedQuoteError, PshError)
+        assert issubclass(UnclosedQuoteError, SyntaxError)
+
+    def test_construction_and_quote_char_preserved(self):
+        from psh.lexer import UnclosedQuoteError
+
+        e = UnclosedQuoteError("Unclosed ' quote", "'")
+        assert e.quote_char == "'"
+        assert str(e) == "Unclosed ' quote"
+        # Catchable both ways (the two contracts it must satisfy).
+        from psh.core.exceptions import PshError
+        for exc_type in (PshError, SyntaxError):
+            try:
+                raise UnclosedQuoteError("x", '"')
+            except exc_type as caught:
+                assert caught.quote_char == '"'
+
+    def test_raised_by_lexer_on_unclosed_quote(self):
+        from psh.lexer import UnclosedQuoteError, tokenize
+
+        with pytest.raises(UnclosedQuoteError) as info:
+            tokenize("echo 'unterminated")
+        assert info.value.quote_char == "'"
 
 
 class TestDemotedImports:

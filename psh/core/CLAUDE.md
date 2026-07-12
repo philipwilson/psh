@@ -358,7 +358,12 @@ Two distinct families — do not mix them up:
   `FatalExpansionError` for the `${x:?}`/unknown-`@X`-transform kinds that
   exit a non-interactive shell — see `fatal_expansion_status` in
   `internal_errors.py` for the bash discard-line model),
-  `FunctionDefinitionError` (invalid/reserved/readonly function name).
+  `FunctionDefinitionError` (invalid/reserved/readonly function name), and
+  `ReadError` (a `read`/`mapfile` option-VALUE error carrying bash's exit
+  code). The lexer's `UnclosedQuoteError` also roots here, dual-inheriting
+  `(PshError, SyntaxError)` so the load-bearing `except SyntaxError`
+  line-continuation sites keep catching it — see its class docstring in
+  `lexer/position.py#UnclosedQuoteError`.
 - **Control-flow signals** (`LoopBreak`, `LoopContinue`, `FunctionReturn`)
   implement `break`/`continue`/`return` and deliberately do NOT derive
   from `PshError` — a blanket `except PshError` must never swallow a
@@ -366,9 +371,11 @@ Two distinct families — do not mix them up:
 
 ### Expected-error taxonomy & `strict-errors` (`internal_errors.py`)
 
-The four last-resort guards (command dispatch, builtin execution, function
-body, buffered-statement source) delegate to one helper,
-`report_internal_defect(state, exc, *, prefix, stream)`. It classifies the
+Every structurally identical last-resort guard — command dispatch, builtin
+execution, control-flow/compound execution, function body, buffered-statement
+source, the analysis-visitor modes, and trap-action bodies — delegates to one
+helper, `report_internal_defect(state, exc, *, prefix, stream)` (grep for its
+call sites rather than trusting a count here). It classifies the
 exception: an **expected shell error** — any `PshError`, `OSError`,
 `SyntaxError` (redirection/fork failures, lexer/parse errors, arithmetic
 errors) or `RecursionError` (runaway recursion hitting psh's implicit

@@ -26,6 +26,7 @@ from .exceptions import (
     LoopContinue,
     NamerefCycleError,
     PshError,
+    ReadError,
     ReadonlyVariableError,
     SpecialBuiltinUsageError,
     TopLevelAbort,
@@ -65,6 +66,7 @@ __all__ = [
     'FatalExpansionError',
     'FunctionDefinitionError',
     'ArraySubscriptError',
+    'ReadError',
     # Variables
     'Variable',
     'VarAttributes',
