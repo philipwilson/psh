@@ -430,26 +430,44 @@ class LocalBuiltin(Builtin):
         from the resulting LOCAL (bash's ``local +x``/``+i``/``+n``/... removal).
 
         The removal targets the local: if ``name`` is ALREADY local in this
-        scope we strip FIRST, so a value is transformed with the POST-removal
-        attributes (bash removes the attribute before assigning — ``local +i
-        n=2+3`` stores ``2+3`` literally, not the evaluated ``5``). A FRESH
-        local is established first (inheriting only EXPORT from the variable it
-        shadows), then the inherited attribute is stripped (``export G=g; f(){
-        local +x G=z; }`` gives a non-exported local shadow). ``+r`` on an
-        already-readonly local raises :class:`ReadonlyVariableError` (the loop
-        reports ``local: NAME: readonly variable``, keeping readonly).
+        scope — INCLUDING a declared-but-unset tombstone (``local -r v``), which
+        IS a local and keeps its attributes — we strip FIRST, so ``+r`` on a
+        readonly local raises :class:`ReadonlyVariableError` BEFORE anything can
+        mutate (bash: rc 1, readonly and value intact). The r19-T2 bounce
+        blocker: tombstones used to route down the fresh-local path, where
+        create_local clobbered the attributes before the removal ran, silently
+        STRIPPING readonly (``local -r v; local +r v`` must instead report
+        ``local: v: readonly variable``). Strip-first also means a value is
+        transformed with the POST-removal attributes (bash removes the
+        attribute before assigning — ``local +i n=2+3`` stores ``2+3``
+        literally, not the evaluated ``5``).
+
+        A tombstone ATTRS-ONLY redeclare (no value) is mutated IN PLACE
+        (remove + apply): create_local's fresh path (a tombstone is not a
+        ``redeclare``) would REPLACE the cell and drop its remaining attributes
+        (``local -rx e; local +x e`` must keep readonly — bash ``declare -r e``).
+
+        A FRESH name is established first (inheriting only EXPORT from the
+        variable it shadows), then the inherited attribute is stripped
+        (``export G=g; f(){ local +x G=z; }`` gives a non-exported local
+        shadow).
         """
         sm = shell.state.scope_manager
         if not remove_attrs:
             sm.create_local(name, value, add_attrs)
             return
         cur = sm.current_scope.variables.get(name)
-        already_local = cur is not None and not cur.is_unset
-        if already_local:
+        if cur is not None:
             sm.remove_attribute(name, remove_attrs)  # may raise (+r on readonly)
+            if value is None and cur.is_unset:
+                # Tombstone attrs-only: mutate in place, keep remaining attrs.
+                if add_attrs:
+                    sm.apply_attribute(name, add_attrs)
+                return
+            sm.create_local(name, value, add_attrs)
+            return
         sm.create_local(name, value, add_attrs)
-        if not already_local:
-            sm.remove_attribute(name, remove_attrs)
+        sm.remove_attribute(name, remove_attrs)
 
     def _save_dash_options(self, shell: 'Shell') -> None:
         """Record the current `set` options for `local -` restore-on-return.
