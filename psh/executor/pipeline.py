@@ -11,8 +11,6 @@ import signal
 import sys
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from ..core import LoopBreak, LoopContinue
-from ..core.exceptions import FunctionReturn
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
@@ -242,25 +240,21 @@ class PipelineExecutor:
                             signal.signal(signal.SIGTTOU, signal.SIG_DFL)
                             signal.signal(signal.SIGTTIN, signal.SIG_DFL)
 
-                        # Execute command with pipeline context
-                        # IMPORTANT: Update visitor's context to use the child_context
+                        # Execute command with pipeline context.
+                        # IMPORTANT: update the visitor's context to the
+                        # child_context. A control-flow / exit exception that
+                        # escapes this pipeline member — a `return`/`break`/
+                        # `continue` in a pipelined compound, `exit`, or a
+                        # fatal discard — is caught one frame up by
+                        # ProcessLauncher's child body and mapped through the
+                        # shared child-exit taxonomy: each member runs in its
+                        # OWN subshell process, so break/return cannot reach
+                        # the parent's loop/function (bash: `cat /dev/null |
+                        # break 0` inside a loop yields pipeline status 1). The
+                        # per-member catch that used to live here was a
+                        # redundant copy of the launcher's authoritative one.
                         visitor.context = child_context
-                        try:
-                            return visitor.visit(cmd_node)
-                        except FunctionReturn as fr:
-                            # `return` inside a pipelined compound exits THIS
-                            # subshell with the return code (bash: it cannot
-                            # return from the enclosing function — the function
-                            # body is in the parent process).
-                            return fr.exit_code
-                        except (LoopBreak, LoopContinue) as e:
-                            # A break/continue that escapes the subshell's own
-                            # loops just ends the subshell with the signal's
-                            # own status — 0 normally, 1 for the out-of-range
-                            # `break 0` case (bash: `cat /dev/null | break 0`
-                            # inside a loop yields pipeline status 1). It must
-                            # not surface as an internal "psh: error:".
-                            return e.exit_status or 0
+                        return visitor.visit(cmd_node)
 
                     return execute_fn
 

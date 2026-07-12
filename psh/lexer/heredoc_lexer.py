@@ -171,37 +171,13 @@ class HeredocLexer:
     def _delimiter_from_source(raw: str) -> Tuple[str, bool]:
         """Quote/escape-remove a raw heredoc delimiter word.
 
-        Returns (literal_terminator, quoted). The body terminator line must
-        equal the literal exactly; ANY quote or backslash in the delimiter makes
-        the body literal (no expansion). An unquoted ``$`` is just a literal
-        terminator char (``<<E$X`` → terminator ``E$X``, body still expands).
+        Delegates to the ONE delimiter-word rule
+        (``utils.heredoc_detection.unquote_heredoc_delimiter``); see M2 for why
+        this logic must not be re-implemented here. Returns
+        ``(literal_terminator, quoted)``.
         """
-        literal: List[str] = []
-        quoted = False
-        i = 0
-        n = len(raw)
-        while i < n:
-            c = raw[i]
-            if c == '\\' and i + 1 < n:
-                quoted = True
-                literal.append(raw[i + 1])
-                i += 2
-            elif c in ('"', "'"):
-                quoted = True
-                quote = c
-                i += 1
-                while i < n and raw[i] != quote:
-                    if quote == '"' and raw[i] == '\\' and i + 1 < n:
-                        literal.append(raw[i + 1])
-                        i += 2
-                    else:
-                        literal.append(raw[i])
-                        i += 1
-                i += 1  # skip the closing quote
-            else:
-                literal.append(c)
-                i += 1
-        return ''.join(literal), quoted
+        from ..utils.heredoc_detection import unquote_heredoc_delimiter
+        return unquote_heredoc_delimiter(raw)
 
     def _warn_eof_delimited(self, pending: List[Tuple[str, int]],
                             last_line: int) -> None:

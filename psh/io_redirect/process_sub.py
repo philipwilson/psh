@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
-    from ..ast_nodes import Redirect
+    from ..ast_nodes import ProcessSubstitution, Redirect
     from ..shell import Shell
 
 
@@ -297,15 +297,19 @@ class ProcessSubstitutionHandler:
         return path
 
     def resolve_procsub_resource(
-            self, target: Optional[str]
-            ) -> Tuple[Optional[str], Optional[ProcessSubstitutionResource]]:
-        """Resolve a redirect-target process substitution to a resource."""
-        if not (target and target.startswith(('<(', '>('))
-                and target.endswith(')')):
-            return target, None
-        direction = 'in' if target.startswith('<(') else 'out'
+            self, node: 'ProcessSubstitution'
+            ) -> Tuple[str, ProcessSubstitutionResource]:
+        """Resolve a redirect-target process substitution NODE to a resource.
+
+        The planner has already determined STRUCTURALLY (from the Word AST) that
+        this redirect's target is a whole-word process substitution, and hands
+        us the node. We create the substitution from the node's RAW body text
+        (``node.source``) — never from a re-expanded or re-sniffed string — so a
+        `<(echo $x)` body is expanded exactly once, by the substitution's own
+        child, matching bash. Returns ``(/dev/fd/N path, resource)``.
+        """
         parent_fd, fd_path, pid, cleanup_path = create_process_substitution(
-            target[2:-1], direction, self.shell)
+            node.source, node.direction, self.shell)
         resource = ProcessSubstitutionResource(
             fd_path, parent_fd, pid, cleanup_path)
         resource.register_with(self)

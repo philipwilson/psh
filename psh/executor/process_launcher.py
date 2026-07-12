@@ -12,13 +12,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
-from ..core.exceptions import (
-    FunctionReturn,
-    LoopBreak,
-    LoopContinue,
-    TopLevelAbort,
+from .child_policy import (
+    CHILD_EXIT_EXCEPTIONS,
+    flush_child_streams,
+    fork_with_signal_window,
+    map_child_exception,
 )
-from .child_policy import flush_child_streams, fork_with_signal_window
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -277,41 +276,23 @@ class ProcessLauncher:
             if not isinstance(exit_code, int):
                 exit_code = 0 if exit_code else 1
 
-        except SystemExit as e:
-            # Handle explicit exit() calls
-            exit_code = e.code if isinstance(e.code, int) else 1
+        except CHILD_EXIT_EXCEPTIONS as e:
+            # A control-flow / exit exception reaching this launcher child's
+            # top maps to the child's status via the ONE shared taxonomy
+            # (child_policy.map_child_exception): `break`/`continue`/`return`
+            # cannot cross the fork into the parent's loop/function (e.g.
+            # `return 5 &`, `break & wait`), a fatal discard (TopLevelAbort —
+            # readonly assignment / failglob in a pipeline member) is
+            # contained at the process boundary with its status, and `exit`
+            # (incl. bare `exit` → SystemExit(None) → 0) terminates only this
+            # child. Silent — bash is; the message, if any, was printed at
+            # the raise site. See map_child_exception for each arm's pin.
+            exit_code = map_child_exception(e)
 
         except KeyboardInterrupt:
-            # Ctrl-C
+            # Ctrl-C — launcher-local (a leaf child may exec an external
+            # binary; this arm is not part of the child-exit taxonomy).
             exit_code = 130  # 128 + SIGINT(2)
-
-        except FunctionReturn as e:
-            # `return` escaping to the top of a launcher child (e.g.
-            # `return 5 &` in a function): control flow cannot cross the
-            # fork, so it just ends this child with the return's status —
-            # bash: `f(){ return 5 & }; f` leaves the child status at 5,
-            # silently. Mirrors run_child_shell's substitution-child policy.
-            exit_code = e.exit_code
-
-        except (LoopBreak, LoopContinue) as e:
-            # `break`/`continue` escaping to the top of a launcher child
-            # (e.g. `break & wait` inside a loop): the enclosing loop lives
-            # in the parent process, so the signal cannot reach it — the
-            # child just ends with the signal's own status (0 normally, 1
-            # for out-of-range `break 0`), with NO extra message (bash is
-            # silent here; the empty "psh: error:" leak this replaces was a
-            # D2 regression). Same policy as run_child_shell.
-            exit_code = e.exit_status or 0
-
-        except TopLevelAbort as e:
-            # A fatal discard (readonly assignment, failed expansion,
-            # failglob) inside a launcher child — e.g. a pipeline member
-            # `echo $((1/0)) | cat` — is CONTAINED at the process
-            # boundary: the child ends with the abort status and the
-            # parent's line continues (bash). The message was printed at
-            # the raise site. Without this the BaseException would unwind
-            # into the forked copy of the parent's stack.
-            exit_code = e.status
 
         except Exception as e:
             # Unexpected error

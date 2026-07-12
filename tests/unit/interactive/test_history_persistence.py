@@ -58,6 +58,25 @@ def test_sequential_sessions_accumulate(histfile):
     assert _read(histfile) == ["from session A", "from session B"]
 
 
+def test_multiline_compound_with_arith_shift_roundtrips_as_one_entry(histfile):
+    """A multi-line compound containing an arithmetic '<<' must be recorded
+    in its single-line cmdhist form, so a save -> reload round-trip yields ONE
+    entry. Regression (r19-T4 bounce): the cmdhist joiner consumed the '<<'
+    substring over-approximation as a final answer, kept the newline before
+    `fi`, and the HISTFILE (one line per entry) reload SPLIT the command into
+    bogus entries ('fi', 'done')."""
+    m = _manager(histfile)
+    m.load_from_file()  # empty
+    m.add_to_history("if true\nthen echo $((1<<2))\nfi")
+    joined = "if true; then echo $((1<<2)); fi"
+    assert m.shell.state.history[-1] == joined  # recorded pre-joined
+    m.save_to_file()
+
+    fresh = _manager(histfile)
+    fresh.load_from_file()
+    assert fresh.shell.state.history == [joined]  # ONE entry, no 'fi' split
+
+
 def test_concurrent_sessions_do_not_clobber(histfile):
     """The core fix: two overlapping sessions both load, both add, both save;
     neither loses the other's commands (last-writer-wins is gone)."""

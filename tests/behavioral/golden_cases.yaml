@@ -1074,6 +1074,22 @@
   stderr: ""
   exit_code: 0
 
+# A double-quoted literal RHS is expanded by ONE shared recipe (R19 T7:
+# enhanced_test_evaluator._expand_dquote_literal + _rhs_walk): its variable
+# expands, then the result is matched LITERALLY — as a glob (==) and as a
+# regex (=~) alike, so the `*`/`.` are not metacharacters.
+- name: double_bracket_dquote_var_literal_pattern
+  command: 'p="a*"; [[ "a*" == "$p" ]] && [[ ax != "$p" ]] && echo Y'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: double_bracket_dquote_var_literal_regex
+  command: 'p="a.c"; [[ "a.c" =~ "$p" ]] && ! [[ axc =~ "$p" ]] && echo Y'
+  stdout: "Y\n"
+  stderr: ""
+  exit_code: 0
+
 - name: here_string_composite_quote_boundary
   command: 'v="a b"; cat <<< foo$v"dq"'
   stdout: "fooa bdq\n"
@@ -1133,6 +1149,39 @@
 - name: brace_group
   command: '{ echo a; echo b; }'
   stdout: "a\nb\n"
+  stderr: ""
+  exit_code: 0
+
+# The subshell child body (R19 T7: SubshellExecutor + child_policy.run_child_body):
+# exit code, its own EXIT trap, an EXIT trap that overrides the status, an
+# inherited-context return, and errexit-suppression seeding of an if-condition.
+- name: subshell_exit_code
+  command: '( exit 5 ); echo $?'
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subshell_exit_trap_fires
+  command: '( trap ''echo bye'' EXIT; echo hi )'
+  stdout: "hi\nbye\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subshell_exit_trap_sets_status
+  command: '( trap ''exit 7'' EXIT; echo hi )'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 7
+
+- name: subshell_return_inherited_context
+  command: 'f() { ( return 5; echo no ); }; f; echo $?'
+  stdout: "5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: subshell_errexit_suppressed_in_if_condition
+  command: 'set -e; if ( false ); then echo T; else echo F; fi'
+  stdout: "F\n"
   stderr: ""
   exit_code: 0
 
@@ -1682,6 +1731,94 @@
     -EOF
     echo after
   stdout: "hello\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+# Delimiter-unquoting rule (reappraisal #19 M2): the terminator text was
+# computed by three drifted copies. Inside DOUBLE quotes bash keeps a
+# backslash literal unless it precedes a double-quote special ($ ` " \); two
+# of the three copies dropped it, so `<<"A\B"` terminated at `AB` (wrong).
+- name: heredoc_delimiter_backslash_literal_in_dquote
+  command: |
+    cat <<"A\B"
+    hello $HOME
+    A\B
+    echo after
+  stdout: "hello $HOME\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_escaped_dquote_in_dquote
+  # `\"` inside the double-quoted delimiter IS an escape -> terminator `A"B`
+  command: |
+    cat <<"A\"B"
+    hi
+    A"B
+    echo after
+  stdout: "hi\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_delimiter_backslash_in_dquote_inside_cmdsub
+  # Same rule on the $(...) extent-scanner path (cmdsub_scanner): the scanner
+  # must find the SAME terminator or the substitution looks unclosed.
+  command: |
+    x=$(cat <<"A\B"
+    inner $HOME
+    A\B
+    )
+    echo "[$x]"
+  stdout: "[inner $HOME]\n"
+  stderr: ""
+  exit_code: 0
+
+# H2 (reappraisal #19): quote-aware heredoc detection. A heredoc flanked by
+# QUOTED parens must not be mistaken for a bit-shift inside arithmetic. The
+# old quote-blind `((`/`))` index-pairing dropped the heredoc entirely.
+- name: heredoc_flanked_by_quoted_parens
+  command: |
+    echo '(('
+    cat <<EOF
+    hello
+    EOF
+    echo '))'
+  stdout: "((\nhello\n))\n"
+  stderr: ""
+  exit_code: 0
+
+- name: heredoc_after_quoted_dollar_arith
+  command: |
+    echo '$(('
+    cat <<EOF
+    body
+    EOF
+    echo '))'
+  stdout: "$((\nbody\n))\n"
+  stderr: ""
+  exit_code: 0
+
+- name: quoted_heredoc_operator_squote_not_heredoc
+  # `<<EOF` inside single quotes is literal text, not a heredoc opener.
+  command: |
+    echo '<<EOF'
+    echo after
+  stdout: "<<EOF\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: quoted_heredoc_operator_dquote_not_heredoc
+  command: |
+    echo "<<EOF"
+    echo after
+  stdout: "<<EOF\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: arith_left_shift_not_heredoc_still
+  # contains_heredoc now over-approximates (sees '<<'), but the accurate path
+  # correctly treats `<<` inside $(( )) as a left shift, not a heredoc.
+  command: "echo $(( 1 << 3 ))"
+  stdout: "8\n"
   stderr: ""
   exit_code: 0
 
@@ -9622,4 +9759,136 @@
   command: 'f(){ local +z v; }; f; echo "rc=$?"'
   stdout: "rc=2\n"
   stderr: "invalid option"
+  exit_code: 0
+# SCRIPTING-LAYER SYNTAX-ERROR RENDERING (reappraisal #19 T6)
+# The trial→execute→_report_syntax_error path renders an incomplete construct
+# and an unterminated quote as exit-2 syntax errors. Characterization pins so
+# the shared lex_parse pipeline / unified renderer cannot regress the shapes.
+# =============================================================================
+
+- name: incomplete_if_reports_syntax_error_eof
+  # `if` alone hits end of input: both shells report an unexpected-EOF syntax
+  # error and exit 2 (psh renders a richer caret form; the phrase matches).
+  command: "if"
+  stdout: ""
+  stderr: "syntax error: unexpected end of file"
+  exit_code: 2
+
+- name: unclosed_double_quote_reports_syntax_error
+  # An unterminated quote surviving line-gathering routes through the ONE
+  # canonical renderer (not the internal-defect guard): `syntax error:
+  # Unclosed ...`, exit 2. The stderr substring is psh's wording (bash says
+  # "unexpected EOF while looking for matching"), but stdout and rc match
+  # bash exactly — and the compare-bash harness compares stdout+rc only, so
+  # this earns a real bash comparison rather than a psh_only skip.
+  command: 'echo "abc'
+  stdout: ""
+  stderr: "syntax error: Unclosed"
+  exit_code: 2
+
+# =============================================================================
+# T5 (io_redirect audit): process-substitution node-carry (H1), fd-behavior
+# trio, child-redirect error shape. See docs/reviews reappraisal #19.
+# =============================================================================
+
+# H1: a redirect target is decided procsub-or-filename STRUCTURALLY from the
+# Word AST, never by re-sniffing the expanded string. A QUOTED literal that
+# merely looks like a procsub is a filename (bash opens it -> ENOENT), not a
+# command to run.
+- name: procsub_quoted_literal_is_filename
+  command: "cat < '<(echo x)'"
+  stdout: ""
+  stderr: "No such file or directory"
+  exit_code: 1
+
+- name: procsub_input_whole_word
+  command: 'cat < <(echo hi)'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# A $var that word-splits to !=1 field is an ambiguous redirect (not a procsub).
+- name: procsub_lookalike_var_is_ambiguous
+  command: "x='<(echo hi)'; cat < $x"
+  stdout: ""
+  stderr: "ambiguous redirect"
+  exit_code: 1
+
+# The substitution body is expanded exactly ONCE, by its own child: `$x` (which
+# holds the literal `$y`) must print `$y`, not the parent's y=secret.
+- name: procsub_body_expanded_once
+  command: "x='$y'; y=secret; cat < <(echo $x)"
+  stdout: "$y\n"
+  stderr: ""
+  exit_code: 0
+
+- name: procsub_nested_input
+  command: 'cat <(cat <(echo a))'
+  stdout: "a\n"
+  stderr: ""
+  exit_code: 0
+
+# Trio (a): a builtin `<` after `exec 0<&-` must back fd 0 up to a HIGH slot
+# (tolerant of the closed fd) and read the file, not crash EBADF.
+- name: redirect_stdin_after_exec_close_builtin
+  command: 'f=$(mktemp); printf hello > "$f"; exec 0<&-; read x < "$f"; echo "got:$x"; rm -f "$f"'
+  stdout: "got:hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: redirect_stdin_after_exec_close_external
+  command: 'f=$(mktemp); printf hello > "$f"; exec 0<&-; cat < "$f"; rm -f "$f"'
+  stdout: "hello"
+  stderr: ""
+  exit_code: 0
+
+# Trio (b): `n<&-` closes fd n exactly like `n>&-` (direction only picks the
+# default fd). `echo hi 1<&-` must fail EBADF with NO leaked `hi`.
+- name: redirect_close_stdout_input_spelling
+  command: 'echo hi 1<&-'
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+- name: redirect_close_stdout_input_spelling_compound
+  command: '{ echo a; } 1<&-'
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+- name: redirect_close_stdout_input_spelling_printf
+  command: 'printf x 1<&-'
+  stdout: ""
+  stderr: "write error: Bad file descriptor"
+  exit_code: 1
+
+# ...but closing fd 2 (`2<&-`) leaves stdout untouched.
+- name: redirect_close_stderr_input_spelling
+  command: 'echo hi 2<&-'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+# Trio (c): a builtin `<` shares fd 0's offset, so two reads consume
+# consecutive lines (one stdin position across the redirected region).
+- name: redirect_stdin_shared_offset_two_reads
+  command: 'f=$(mktemp); printf "one\ntwo\nthree\n" > "$f"; { read a; read b; } < "$f"; echo "$a-$b"; rm -f "$f"'
+  stdout: "one-two\n"
+  stderr: ""
+  exit_code: 0
+
+# M1: a forked child's redirect-open failure prints bash's `psh: TARGET:
+# STRERROR`, not a raw `[Errno N] ...` repr (here a named-fd `{v}>` open).
+- name: redirect_child_var_fd_open_error_shape
+  command: 'ls {v}>/nonexistent/dir/x'
+  stdout: ""
+  stderr: "/nonexistent/dir/x: No such file or directory"
+  exit_code: 1
+
+# M3: noclobber never blocks a non-regular target (device) — the open-flags
+# table + check_noclobber leave /dev/null writable under `set -C`.
+- name: noclobber_allows_devnull
+  command: 'set -C; echo ok > /dev/null; echo done'
+  stdout: "done\n"
+  stderr: ""
   exit_code: 0
