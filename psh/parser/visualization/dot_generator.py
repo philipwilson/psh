@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from ...ast_nodes import ASTNode
 from ...visitor import ASTVisitor
+from .node_fields import node_fields
 
 
 class ASTDotGenerator(ASTVisitor[str]):
@@ -288,17 +289,9 @@ class ASTDotGenerator(ASTVisitor[str]):
         label = self._format_node_label(node, node_name)
         node_id = self._add_node(node, label)
 
-        # Add edges for all significant attributes
-        for attr_name in dir(node):
-            if (not attr_name.startswith('_') and
-                not callable(getattr(node, attr_name)) and
-                attr_name not in ['position', 'line', 'column']):
-                try:
-                    value = getattr(node, attr_name)
-                    if value is not None:
-                        self._process_field(node_id, attr_name, value)
-                except (AttributeError, TypeError):
-                    continue
+        # Add edges for every structural (dataclass) field.
+        for name, value in node_fields(node):
+            self._process_field(node_id, name, value)
 
         return node_id
 

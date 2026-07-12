@@ -3,6 +3,7 @@
 from typing import Any, List, Optional
 
 from ...ast_nodes import ASTNode
+from .node_fields import node_fields
 
 
 class SExpressionRenderer:
@@ -90,36 +91,19 @@ class SExpressionRenderer:
         return None
 
     def _get_node_fields(self, node: ASTNode) -> List[tuple]:
-        """Get significant fields from a node."""
-        fields = []
+        """Get significant fields from a node.
 
+        The generic case is the shared ``node_fields`` dataclass-field walk;
+        ``SimpleCommand`` (compact arguments) and ``AndOrList`` (operator
+        tree) keep display-shaping overrides.
+        """
         # Special handling for different node types
         if node.__class__.__name__ == 'SimpleCommand':
             return self._get_simple_command_fields(node)
-        elif node.__class__.__name__ == 'StatementList':
-            return self._get_statement_list_fields(node)
         elif node.__class__.__name__ == 'AndOrList':
             return self._get_and_or_list_fields(node)
 
-        # Get all non-private attributes
-        for attr_name in dir(node):
-            if (not attr_name.startswith('_') and
-                not callable(getattr(node, attr_name)) and
-                attr_name not in ['position', 'line', 'column']):
-                try:
-                    value = getattr(node, attr_name)
-                    if value is not None or self.show_empty_fields:
-                        # Skip empty lists unless show_empty_fields is True
-                        if isinstance(value, list) and not value and not self.show_empty_fields:
-                            continue
-                        # Skip false boolean values to reduce noise
-                        if isinstance(value, bool) and value is False:
-                            continue
-                        fields.append((attr_name, value))
-                except (AttributeError, TypeError):
-                    continue
-
-        return fields
+        return node_fields(node, include_empty=self.show_empty_fields)
 
     def _get_simple_command_fields(self, node) -> List[tuple]:
         """Get fields for SimpleCommand with compact argument representation."""
@@ -143,14 +127,6 @@ class SExpressionRenderer:
         if array_assignments:
             fields.append(('array_assignments', array_assignments))
 
-        return fields
-
-    def _get_statement_list_fields(self, node) -> List[tuple]:
-        """Get fields for StatementList without duplication."""
-        fields = []
-        statements = getattr(node, 'statements', [])
-        if statements or self.show_empty_fields:
-            fields.append(('statements', statements))
         return fields
 
     def _get_and_or_list_fields(self, node) -> List[tuple]:

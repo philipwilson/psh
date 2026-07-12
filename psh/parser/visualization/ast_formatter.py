@@ -13,13 +13,11 @@ For a summarized tree view see ``AsciiTreeRenderer``; this printer is the
 exhaustive field-by-field structural dump.
 """
 
-from typing import Any, List, Tuple
+from typing import Any
 
 from ...ast_nodes import ASTNode
 from ...visitor import ASTVisitor
-
-# Node metadata that is not a dataclass field but may shadow one defensively.
-_SKIP_ATTRS = frozenset({"line", "column", "position"})
+from .node_fields import node_fields
 
 
 class ASTPrettyPrinter(ASTVisitor[str]):
@@ -49,50 +47,24 @@ class ASTPrettyPrinter(ASTVisitor[str]):
     def _pad(self, indent: int) -> str:
         return " " * (indent * self.indent_size)
 
-    def _node_fields(self, node: ASTNode) -> List[Tuple[str, Any]]:
-        """Significant (name, value) pairs: dataclass fields that are set.
-
-        Skips ``None``, ``False`` flags, and empty collections (noise), plus
-        the ``line`` source metadata (a class attribute, not a field). Derived
-        properties such as ``SimpleCommand.args`` are not dataclass fields, so
-        they are naturally excluded — the canonical ``words`` are shown instead.
-        """
-        result: List[Tuple[str, Any]] = []
-        # __dataclass_fields__ is an ordered dict (definition order); using it
-        # keeps this dispatch-agnostic and avoids a typed dataclasses.fields()
-        # call on the abstract ASTNode base.
-        dc_fields = getattr(node, "__dataclass_fields__", None)
-        if not dc_fields:
-            return result  # not a dataclass (shouldn't happen for AST nodes)
-        for name in dc_fields:
-            if name in _SKIP_ATTRS:
-                continue
-            value = getattr(node, name, None)
-            if value is None or value is False:
-                continue
-            if isinstance(value, (list, tuple)) and len(value) == 0:
-                continue
-            result.append((name, value))
-        return result
-
     def _format_node(self, node: ASTNode, indent: int) -> str:
         pad = self._pad(indent)
         header = node.__class__.__name__
         if self.show_positions and getattr(node, "line", None) is not None:
             header += f" @line{node.line}"
 
-        node_fields = self._node_fields(node)
-        if not node_fields:
+        fields = node_fields(node)
+        if not fields:
             return f"{pad}{header}"
 
-        if self.compact_mode and all(_is_scalar(v) for _, v in node_fields):
-            inline = ", ".join(f"{n}={v!r}" for n, v in node_fields)
+        if self.compact_mode and all(_is_scalar(v) for _, v in fields):
+            inline = ", ".join(f"{n}={v!r}" for n, v in fields)
             line = f"{pad}{header}({inline})"
             if len(line) <= self.max_width:
                 return line
 
         lines = [f"{pad}{header}:"]
-        for name, value in node_fields:
+        for name, value in fields:
             lines.append(self._format_field(name, value, indent + 1))
         return "\n".join(lines)
 
