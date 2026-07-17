@@ -12,7 +12,7 @@ full suite, the linter, and the type checker all pass on your machine.
 
 ```bash
 python run_tests.py --parallel    # full suite (pytest-xdist; ~4x faster)
-ruff check psh tests              # lint (production AND test trees)
+ruff check psh tests tools        # lint (production, test, and tools trees)
 mypy                              # type check (config + scope in pyproject.toml)
 ```
 
@@ -23,13 +23,14 @@ known platform-divergent code paths the nightly is responsible for.)
 
 ## Validation tiers and the CI contract
 
-Three tiers, used at different moments. They are named consistently here, in
+Four tiers, used at different moments. They are named consistently here, in
 `run_tests.py`, and in the README:
 
 | Tier | Command | Scope | When |
 | --- | --- | --- | --- |
 | **quick** | `python run_tests.py --quick` | Curated smoke subset (unit tree + fast integration areas), parallel, ~20s | Tight local iteration |
-| **standard** (the gate) | `python run_tests.py --parallel` | Whole suite: parallel + serial + subshell phases | Before every merge, locally |
+| **standard** (the gate) | `python run_tests.py --parallel` | Whole suite in two phases: Phase 1 (xdist, `-m "not serial and not benchmark"`) then Phase 1b (serial-marked tests, no xdist). There is no separate subshell phase — subshell tests are ordinary Phase-1 tests. | Before every merge, locally |
+| **benchmark** | `python run_tests.py --benchmarks` | `benchmark`-marked CPU/wall-time microbenchmarks (`tests/performance/`), serial | Explicit runs; nightly step (artifact-only) |
 | **full** (nightly backstop) | `nightly.yml` | Standard **plus** live bash conformance, coverage, on Linux | Nightly on `main` |
 
 What runs where, stated plainly so the truth surface is honest:
@@ -38,13 +39,64 @@ What runs where, stated plainly so the truth surface is honest:
   (`state: disabled_manually`). There is no automated per-PR gate; the standard
   tier run on the author's machine **is** the gate.
 - **Nightly** (`nightly.yml`) runs the full tier on Linux as a backstop, not a
-  precondition for merge.
+  precondition for merge, plus the benchmark tier
+  (`python run_tests.py --benchmarks`) whose transcript is uploaded as a build
+  artifact. **Baseline disposition (integrator ruling, E1 bounce):** nightly
+  records benchmark output as an artifact only; baseline-delta tracking is
+  deferred to the campaign exit.
 - **Release** uses the same standard tier plus the version/stat sync checks in
-  `tests/unit/tooling/` (README statistics, doc pointers, version sync).
+  `tests/unit/tooling/` (README statistics, doc pointers, version sync), and
+  writes the release attestation (see below).
 
 The quick tier is for signal during development only — it deliberately omits
-the serial/subprocess-heavy areas and the performance suite, so a green quick
+the serial/subprocess-heavy areas and the benchmark tier, so a green quick
 run is **not** sufficient to merge.
+
+### The performance tree and the `benchmark` marker
+
+`tests/performance/` is ordinary collected content (the old global
+`--ignore=tests/performance` in `pytest.ini` is gone). Its tests are
+classified honestly:
+
+- **Timing microbenchmarks** (millisecond/second thresholds over CPU or wall
+  time) carry `benchmark` **and** `serial` markers. Every standard-gate phase
+  excludes `benchmark`, so removing the ignore did not import timing
+  thresholds into the xdist phase; the `serial` marker additionally keeps them
+  out of any manual `pytest -n auto -m "not serial"` run. They run in the
+  benchmark tier: `python run_tests.py --benchmarks`.
+- **Deterministic invariants** (large-input robustness; no timing) are
+  unmarked and run in the standard gate. The primary complexity guarantees
+  (state/transition-count guards, e.g.
+  `tests/unit/expansion/test_pattern_engine_matcher.py`) also live in the
+  standard gate; the timing benchmarks are a coarse backstop, not the
+  guarantee.
+
+### Structured phase evidence (manifests)
+
+Every `run_tests.py` phase loads `tools/pytest_phase_manifest.py` (via `-p`)
+and writes a JSON manifest (`tmp/phase-manifests/phase-N.json`): collected
+node ids in execution order plus counts for
+passed/failed/errored/skipped/xfailed/xpassed/deselected. A phase passes only
+when pytest exits 0 **and** its manifest is present, parseable, and
+internally consistent. **No nonzero pytest exit is ever translated to
+success** — the old xdist teardown-race carve-out is gone; if that race fires,
+the gate is red and is rerun. The combined summary is computed from manifests
+(never re-parsed transcript text) and deliberately excludes `deselected`.
+
+`--shuffle-seed N` deterministically shuffles the collected items of every
+phase (including the serial Phase 1b) via the same plugin; three seeded runs
+with identical censuses are the campaign's Phase-E exit evidence.
+
+### Release attestation (same-SHA tagging guard)
+
+`python run_tests.py --parallel --write-attestation` — on a fully green run it
+also runs `ruff check psh tests tools` and `mypy`, then writes
+`gate_attestation.json` at the repo root (schema, version, gated commit/tree,
+platform, per-phase counts, timestamps). Commit that file as the **final**
+commit before pushing a release. `.github/workflows/release-tag.yml` runs
+`tools/verify_gate_attestation.py` before tagging and fails loudly unless the
+attestation exists, names the version being tagged, points at an ancestor
+commit, and **nothing but the attestation changed since the gate ran**.
 
 ## Canonical commands
 
@@ -75,9 +127,11 @@ python run_tests.py --quick    # curated smoke subset, parallel (~20s)
 Runs the whole `tests/unit/` tree plus the fast, in-process integration areas
 (control flow, parameter expansion, arrays, functions, variables, pipelines) in
 parallel — about 8,300 tests in ~20s. It omits the serial/subprocess-heavy
-areas (redirection, subshells, job control, interactive, scripting) and the
-performance suite. Use it during development for a faster signal. It is **not**
-the gate — run the standard `--parallel` suite before merging.
+areas (redirection, subshells, job control, interactive, scripting) and
+explicitly excludes the benchmark tier (`-m "… and not benchmark"`, and
+`tests/performance/` is not among its paths). Use it during development for a
+faster signal. It is **not** the gate — run the standard `--parallel` suite
+before merging.
 
 ### 3) Manual focused runs
 

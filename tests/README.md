@@ -53,7 +53,10 @@ Parity tests pinning the recursive-descent parser against the educational
 parser-combinator implementation.
 
 ### `performance/`
-`benchmarks/` — speed/scaling checks (CPU-time based, marked `slow`).
+`benchmarks/` — timing microbenchmarks (marked `benchmark` + `serial`; run via
+`python run_tests.py --benchmarks`, excluded from the standard gate) plus
+unmarked deterministic large-input robustness tests that run in the gate. See
+`docs/testing_source_of_truth.md`.
 
 ### `regression/`
 Pinned regressions for specific past bugs.
