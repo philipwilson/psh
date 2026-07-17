@@ -12,7 +12,7 @@ full suite, the linter, and the type checker all pass on your machine.
 
 ```bash
 python run_tests.py --parallel    # full suite (pytest-xdist; ~4x faster)
-ruff check psh tests              # lint (production AND test trees)
+ruff check psh tests tools        # lint (production, test, and tools trees)
 mypy                              # type check (config + scope in pyproject.toml)
 ```
 
@@ -30,7 +30,7 @@ Four tiers, used at different moments. They are named consistently here, in
 | --- | --- | --- | --- |
 | **quick** | `python run_tests.py --quick` | Curated smoke subset (unit tree + fast integration areas), parallel, ~20s | Tight local iteration |
 | **standard** (the gate) | `python run_tests.py --parallel` | Whole suite in two phases: Phase 1 (xdist, `-m "not serial and not benchmark"`) then Phase 1b (serial-marked tests, no xdist). There is no separate subshell phase — subshell tests are ordinary Phase-1 tests. | Before every merge, locally |
-| **benchmark** | `python run_tests.py --benchmarks` | `benchmark`-marked CPU/wall-time microbenchmarks (`tests/performance/`), serial | Explicit runs; intended nightly addition |
+| **benchmark** | `python run_tests.py --benchmarks` | `benchmark`-marked CPU/wall-time microbenchmarks (`tests/performance/`), serial | Explicit runs; nightly step (artifact-only) |
 | **full** (nightly backstop) | `nightly.yml` | Standard **plus** live bash conformance, coverage, on Linux | Nightly on `main` |
 
 What runs where, stated plainly so the truth surface is honest:
@@ -39,9 +39,11 @@ What runs where, stated plainly so the truth surface is honest:
   (`state: disabled_manually`). There is no automated per-PR gate; the standard
   tier run on the author's machine **is** the gate.
 - **Nightly** (`nightly.yml`) runs the full tier on Linux as a backstop, not a
-  precondition for merge. The benchmark tier is *intended* to be added to the
-  nightly (`python run_tests.py --benchmarks` as an extra step); until that is
-  wired, benchmarks run only when invoked explicitly.
+  precondition for merge, plus the benchmark tier
+  (`python run_tests.py --benchmarks`) whose transcript is uploaded as a build
+  artifact. **Baseline disposition (integrator ruling, E1 bounce):** nightly
+  records benchmark output as an artifact only; baseline-delta tracking is
+  deferred to the campaign exit.
 - **Release** uses the same standard tier plus the version/stat sync checks in
   `tests/unit/tooling/` (README statistics, doc pointers, version sync), and
   writes the release attestation (see below).
@@ -88,7 +90,7 @@ with identical censuses are the campaign's Phase-E exit evidence.
 ### Release attestation (same-SHA tagging guard)
 
 `python run_tests.py --parallel --write-attestation` — on a fully green run it
-also runs `ruff check psh tests` and `mypy`, then writes
+also runs `ruff check psh tests tools` and `mypy`, then writes
 `gate_attestation.json` at the repo root (schema, version, gated commit/tree,
 platform, per-phase counts, timestamps). Commit that file as the **final**
 commit before pushing a release. `.github/workflows/release-tag.yml` runs

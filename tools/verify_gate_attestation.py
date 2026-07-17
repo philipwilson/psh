@@ -59,6 +59,9 @@ def _git(repo_root, *args):
 
 
 def _read_tree_version(repo_root):
+    # Reads psh/version.py from the WORKING TREE: sound in CI because the
+    # workflow runs on actions/checkout's clean checkout of HEAD, so the
+    # working tree IS the HEAD snapshot being tagged.
     version_py = Path(repo_root) / "psh" / "version.py"
     if not version_py.exists():
         return None

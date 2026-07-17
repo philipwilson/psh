@@ -238,9 +238,16 @@ def classify_manifest(manifest_text):
     * missing manifest            -> FAILURE (the phase cannot prove what ran)
     * unparseable/truncated JSON  -> FAILURE
     * wrong schema / malformed    -> FAILURE
+    * EMPTY collection            -> FAILURE (integrator ruling, E1 bounce:
+      a phase that ran nothing proves nothing, even at rc 0 — every real
+      phase collects tests; pytest itself exits 5 on empty collection)
     * outcome counts that do not sum to the collected-test count -> FAILURE
       (collection loss: a crashed worker leaves collected ids unreported)
     * any failed/errored count    -> FAILURE (defence in depth alongside rc)
+
+    xpassed counts do NOT fail here (integrator ruling, same bounce): a
+    non-strict xpass is not a failure in pytest's own semantics, and strict
+    xpasses already surface as ``failed``.
 
     ``counts`` is returned (possibly partial) even on failure so the combined
     summary can still display what is known. PURE function (no I/O).
@@ -265,6 +272,10 @@ def classify_manifest(manifest_text):
     if bad_fields:
         return False, ("❌ phase manifest counts missing/non-integer fields: "
                        f"{', '.join(bad_fields)}. FAILURE."), {}
+    if not collected:
+        return False, ("❌ phase manifest records an EMPTY collection — the "
+                       "phase ran nothing, which proves nothing. "
+                       "FAILURE."), counts
     executed = sum(counts[f] for f in MANIFEST_OUTCOME_FIELDS)
     if executed != len(collected):
         return False, (f"❌ phase manifest outcome total ({executed}) != "
@@ -469,6 +480,35 @@ def _git_output(repo_root, *args):
                           text=True, check=True).stdout.strip()
 
 
+def _dirty_tracked_paths(repo_root):
+    """Paths of tracked files with uncommitted changes, parsed losslessly.
+
+    Uses ``git status --porcelain -z``: NUL-delimited records with no quoting,
+    immune to the leading-space hazard of line parsing (a porcelain record for
+    an unstaged modification STARTS with a space — a whole-stdout ``strip()``
+    ate it and then ``[3:]`` truncated the first path's first character,
+    which broke the attestation self-exemption and printed mangled paths;
+    E1-bounce Blocker 1, pinned in test_gate_attestation.py). Each record is
+    ``XY <path>``; a rename/copy record (``R``/``C``) is followed by one
+    extra NUL-terminated field, the ORIGIN path — both sides count as dirty.
+    """
+    out = subprocess.run(
+        ['git', 'status', '--porcelain', '-z', '--untracked-files=no'],
+        cwd=repo_root, capture_output=True, text=True, check=True).stdout
+    paths = []
+    entries = iter(out.split('\0'))
+    for entry in entries:
+        if not entry:
+            continue
+        status, path = entry[:2], entry[3:]
+        paths.append(path)
+        if status[:1] in ('R', 'C'):
+            origin = next(entries, '')
+            if origin:
+                paths.append(origin)
+    return paths
+
+
 def _read_tree_version(repo_root):
     text = (Path(repo_root) / 'psh' / 'version.py').read_text(encoding='utf-8')
     m = re.search(r'__version__\s*=\s*"([^"]+)"', text)
@@ -487,7 +527,8 @@ def _run_attestation_checks(repo_root):
     """
     ruff_exe = shutil.which('ruff')
     ruff_cmd = ([ruff_exe] if ruff_exe else [sys.executable, '-m', 'ruff'])
-    ruff_cmd += ['check', 'psh', 'tests']
+    # Canonical lint scope includes tools/ (E1-bounce ruling R1).
+    ruff_cmd += ['check', 'psh', 'tests', 'tools']
     emit(f"Attestation check: {' '.join(ruff_cmd)}")
     ruff_proc = subprocess.run(ruff_cmd, cwd=repo_root, capture_output=True,
                                text=True)
@@ -518,12 +559,10 @@ def write_attestation(repo_root, phases, command):
     """
     repo_root = Path(repo_root)
     try:
-        dirty = _git_output(repo_root, 'status', '--porcelain',
-                            '--untracked-files=no')
+        dirty_paths = _dirty_tracked_paths(repo_root)
     except (subprocess.CalledProcessError, OSError) as e:
         emit(f"❌ cannot determine git state ({e}) — no attestation written.")
         return 1
-    dirty_paths = [line[3:] for line in dirty.splitlines() if line.strip()]
     dirty_paths = [p for p in dirty_paths if p != ATTESTATION_FILENAME]
     if dirty_paths:
         emit("❌ tracked files are modified — the gate did not run at a "

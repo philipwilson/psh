@@ -283,6 +283,14 @@ def test_manifest_missing_count_field_is_failure():
     assert not ok and "errored" in note
 
 
+def test_empty_collection_manifest_is_failure():
+    """Integrator ruling (E1 bounce): a structurally valid manifest whose
+    collection is EMPTY (all-zero counts) is a failure even at rc 0 — a phase
+    that ran nothing proves nothing."""
+    ok, note, _counts = run_tests.classify_manifest(_manifest(collected=[]))
+    assert not ok and "EMPTY" in note
+
+
 def test_collection_count_mismatch_is_failure():
     # 3 collected ids but only 2 reported outcomes: a lost worker's silence.
     data = json.loads(_manifest())

@@ -303,6 +303,46 @@ def test_write_attestation_green_path_writes_valid_file(tmp_path, monkeypatch):
     assert ok, messages
 
 
+def test_write_attestation_allows_unstaged_attestation_modification(
+        tmp_path, monkeypatch):
+    """E1-bounce Blocker-1 pin (a): the attestation file itself sitting
+    MODIFIED-UNSTAGED (porcelain ` M gate_attestation.json` — e.g. a repeated
+    --write-attestation at the same SHA) is exactly the self-exempt case; the
+    writer must proceed. The original implementation stripped porcelain
+    output whole, ate the leading space, truncated the first path's first
+    character, and therefore FALSELY REFUSED this documented re-gate flow
+    (demonstrated red at a4957b72)."""
+    monkeypatch.setattr(run_tests, "emit", lambda *a, **k: None)
+    monkeypatch.setattr(run_tests, "_run_attestation_checks",
+                        lambda repo_root: (True, True, 258))
+    repo = _make_repo(tmp_path)
+    _commit_attestation(repo, _attestation_dict(repo, version="1.2.2"))
+    # Unstaged modification of the attestation ONLY: porcelain's first (and
+    # only) record starts with a space — the historical mis-parse trigger.
+    (repo / vga.ATTESTATION_FILENAME).write_text("{\"stale\": true}\n")
+    rc = run_tests.write_attestation(repo, phases=[], command="x")
+    assert rc == 0, ("self-exemption must match an unstaged-modified "
+                     "attestation; the porcelain parse is mangling paths")
+    written = json.loads((repo / run_tests.ATTESTATION_FILENAME).read_text())
+    assert written["version"] == "1.2.3"
+
+
+def test_write_attestation_refusal_reports_exact_path(tmp_path, monkeypatch):
+    """E1-bounce Blocker-1 pin (b): a refusal must name the dirty tracked
+    file by its CORRECT, full path (the mis-parse printed `ther.txt` for
+    `other.txt`; demonstrated red at a4957b72)."""
+    emitted = []
+    monkeypatch.setattr(run_tests, "emit",
+                        lambda *a, **k: emitted.append(a[0] if a else ""))
+    repo = _make_repo(tmp_path)
+    (repo / "other.txt").write_text("uncommitted modification\n")
+    rc = run_tests.write_attestation(repo, phases=[], command="x")
+    assert rc == 1
+    listed = [m.strip() for m in emitted]
+    assert "other.txt" in listed, (
+        f"refusal must list the exact dirty path; emitted: {listed}")
+
+
 def test_write_attestation_rewrite_over_committed_attestation_allowed(
         tmp_path, monkeypatch):
     """Re-gating at a SHA where an OLD attestation is already tracked: the
@@ -331,5 +371,6 @@ def test_run_attestation_checks_real_ruff_and_mypy_missing_tolerated(
     scratch = tmp_path / "empty"
     (scratch / "psh").mkdir(parents=True)
     (scratch / "tests").mkdir()
+    (scratch / "tools").mkdir()  # canonical lint scope incl. tools/ (R1)
     ok, _ruff, _mypy_files = run_tests._run_attestation_checks(scratch)
     assert ok in (True, False)  # must return, never raise
