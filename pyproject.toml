@@ -170,13 +170,19 @@ check_untyped_defs = true
 module = "psh.parser.combinators.*"
 check_untyped_defs = true
 
-# Top-level package modules and the remaining parser modules (config,
-# package __init__, visualization). Completes check_untyped_defs across the
-# whole in-scope tree (R13.C).
+# Top-level package modules and the remaining parser modules. Completes
+# check_untyped_defs across the whole in-scope tree (R13.C). `psh.parser.*`
+# (NOT a bare `psh.parser`) is load-bearing: a bare module entry matches only
+# the package __init__, never submodules — psh/parser/array_flat_text.py
+# escaped deep checking that way (TESTINF-1, fixed campaign E1). The trailing
+# star covers psh.parser itself plus every current and future top-level
+# psh/parser module; the more-specific recursive_descent.*/combinators.*
+# sections above still apply. Guarded by
+# tests/unit/tooling/test_mypy_untyped_defs_coverage.py.
 [[tool.mypy.overrides]]
 module = ["psh", "psh.__main__", "psh.shell", "psh.version"]
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["psh.parser", "psh.parser.config", "psh.parser.visualization", "psh.parser.visualization.*"]
+module = ["psh.parser.*", "psh.parser.config", "psh.parser.visualization", "psh.parser.visualization.*"]
 check_untyped_defs = true

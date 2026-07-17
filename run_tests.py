@@ -12,9 +12,13 @@ Usage:
     python run_tests.py --parallel 8       # Parallel with 8 workers
     python run_tests.py --all-nocapture    # Run ALL tests with -s flag
     python run_tests.py --quick            # Curated fast smoke subset (parallel)
+    python run_tests.py --benchmarks       # Benchmark tier only (serial)
+    python run_tests.py --shuffle-seed 7   # Deterministic collection shuffle
+    python run_tests.py --parallel --write-attestation  # Gate + attestation
     python run_tests.py --help             # Show help
 
-Failure-safety guarantees (reappraisal #18 Tier-3 hardening):
+Failure-safety guarantees (reappraisal #18 Tier-3 hardening; boundary campaign
+E1 structured gate results):
     * Every phase runs under a per-phase timeout in its own process group; a
       wedged run is killed (group-wide) and reported as a FAILURE rather than
       hanging the gate forever.
@@ -23,21 +27,30 @@ Failure-safety guarantees (reappraisal #18 Tier-3 hardening):
       output fd open can never wedge the reader.
     * ``INTERNALERROR>`` output is NEVER stripped — a pytest internal error is
       surfaced verbatim and forced to a FAILURE.
-    * A phase reports success ONLY when pytest exits 0 with no internal error.
-      The sole exception is the benign pytest-xdist teardown race (exit 3 +
-      "cannot send (already closed?)"), and only when the run is provably
-      all-green (clean passed summary, no failures/errors, no worker loss).
+    * A phase reports success ONLY when pytest exits 0 with no internal error,
+      no xdist worker loss, and a valid structured phase manifest (written by
+      the ``tools/pytest_phase_manifest`` plugin) whose outcome counts are
+      complete and clean. NO nonzero pytest exit is EVER translated to
+      success — the historical carve-out for the "benign" xdist teardown race
+      is gone (campaign E1); if that race fires, the gate is red and is rerun.
+    * A missing, truncated, or internally inconsistent phase manifest is a
+      FAILURE independent of the transcript text or the exit status.
     * The complete run output is streamed to a results file so failures are
       inspectable without re-running the suite.
 """
 
 import argparse
+import itertools
+import json
 import os
+import platform as platform_mod
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 # --- Failure-safety constants -------------------------------------------------
@@ -72,6 +85,19 @@ QUICK_PATHS = [
 # Markers we key failure/masking decisions on.
 INTERNALERROR_TOKEN = 'INTERNALERROR>'
 XDIST_TEARDOWN_RACE = 'cannot send (already closed?)'
+
+# Structured phase-manifest contract (tools/pytest_phase_manifest.py). The
+# values are duplicated here so importing run_tests never imports pytest; a
+# tooling test pins the two modules to identical values so they cannot drift
+# (tests/unit/tooling/test_run_tests_hardening.py).
+MANIFEST_SCHEMA = 1
+MANIFEST_OUTCOME_FIELDS = ('passed', 'failed', 'errored', 'skipped',
+                           'xfailed', 'xpassed')
+
+# The same-SHA release attestation written by --write-attestation (campaign
+# E4) and verified by tools/verify_gate_attestation.py before release tagging.
+ATTESTATION_FILENAME = 'gate_attestation.json'
+ATTESTATION_SCHEMA = 1
 # Patterns that indicate a lost/crashed xdist worker (an incomplete run whose
 # surviving summary must NOT be trusted as all-green). Anchored to xdist's real
 # line formats — matched at line start (optionally behind a "[gwN]" prefix) —
@@ -152,72 +178,107 @@ def _kill_process_group(proc):
             pass
 
 
-def _is_provably_all_green(output):
-    """True only if *output* proves the run finished fully and all-green.
-
-    Requires a pytest summary that reports passes with zero failures/errors AND
-    no sign of a lost/crashed xdist worker. This is deliberately conservative:
-    a worker that crashes mid-run leaves a surviving summary that may show only
-    passes, so we must reject any crash marker regardless of the summary.
-    """
-    if _has_worker_loss(output):
-        return False
-    counts = parse_summary_counts(output)
-    if not counts or 'passed' not in counts:
-        return False
-    if counts.get('failed', 0) or counts.get('errors', 0):
-        return False
-    return True
-
-
 def classify_phase_result(returncode, output, parallel):
     """Map a pytest phase result to ``(phase_exit, note)``.
 
     ``phase_exit`` is 0 only for a genuinely successful phase; any other value
     is a FAILURE. ``note`` is a human-readable explanation (or '').
 
-    Guiding rule: a phase passes ONLY when pytest exits 0 with no internal
-    error in its output. The single exception is the benign pytest-xdist
-    teardown race (exit 3 + "cannot send (already closed?)"), and even that is
-    honoured only when the run is provably all-green (clean passed summary, no
-    failures/errors, no worker loss, no other internal error). Every other
-    abnormal exit — including a bare internal error — is a FAILURE.
+    Guiding rule (boundary campaign E1): NO nonzero pytest exit is EVER
+    translated to success, and an ``INTERNALERROR`` or xdist worker loss is a
+    failure regardless of the exit status or how clean the summary text looks.
+    The historical carve-out for the "benign" xdist teardown race (exit 3 +
+    "cannot send (already closed?)" + a provably all-green summary) is GONE:
+    transcript recognition is not evidence of completion — a Codex-review
+    counterexample showed the carve-out blessed a run that ALSO carried an
+    unrelated second INTERNALERROR. If the race ever fires again, the gate is
+    simply red and gets rerun; that is accepted policy, not a
+    reclassification.
 
     This is a PURE function (no I/O) so it can be unit-tested directly; see
-    tests/unit/tooling/test_run_tests_hardening.py.
+    tests/unit/tooling/test_run_tests_hardening.py. The *parallel* flag only
+    affects note wording, never the verdict.
     """
     has_internalerror = INTERNALERROR_TOKEN in output
 
     if returncode == 0:
-        # A clean exit must not carry an internal error. pytest normally exits
-        # 3 for INTERNALERROR, but never trust a swallowed one.
+        # A clean exit must not carry an internal error or a lost worker.
+        # pytest normally exits 3 for INTERNALERROR, but never trust a
+        # swallowed one; a crashed worker's surviving summary can look green.
         if has_internalerror:
             return 1, ("❌ pytest exited 0 but its output contains "
                        "INTERNALERROR — treating as FAILURE.")
+        if _has_worker_loss(output):
+            return 1, ("❌ pytest exited 0 but its output reports a "
+                       "lost/crashed xdist worker — the run is incomplete. "
+                       "FAILURE.")
         return 0, ""
 
-    # Benign pytest-xdist teardown race: exit 3 with the known channel-close
-    # message, and only when the run is provably complete and all-green.
-    if parallel and returncode == 3 and XDIST_TEARDOWN_RACE in output:
-        if _is_provably_all_green(output):
-            return 0, ("⚠️  pytest-xdist teardown race (exit 3, "
-                       "'cannot send (already closed?)') with a clean all-green "
-                       "summary and no worker loss — treated as PASS.")
-        return returncode, ("❌ exit 3 with 'cannot send (already closed?)' "
-                            "but the run is NOT provably all-green "
-                            "(failures/errors/worker-loss) — treating as "
-                            "FAILURE.")
-
-    # Any other nonzero exit is a failure. Call out internal errors loudly.
+    # Any nonzero exit is a failure — no exceptions. Call out the known
+    # teardown race and internal errors loudly so reruns are informed.
+    if returncode == 3 and XDIST_TEARDOWN_RACE in output and parallel:
+        return returncode, ("❌ pytest INTERNAL ERROR (exit 3) including the "
+                            "xdist teardown race ('cannot send (already "
+                            "closed?)'). The old all-green carve-out was "
+                            "removed (campaign E1): this phase FAILS — rerun "
+                            "the gate.")
     if has_internalerror:
         return returncode, (f"❌ pytest INTERNAL ERROR (exit {returncode}) "
                             f"— see INTERNALERROR output above. FAILURE.")
     return returncode, ""
 
 
+def classify_manifest(manifest_text):
+    """Validate a structured phase manifest; return ``(ok, note, counts)``.
+
+    *manifest_text* is the JSON text written by tools/pytest_phase_manifest
+    (or ``None`` when the file is missing). The manifest is judged on
+    STRUCTURE, never on transcript text:
+
+    * missing manifest            -> FAILURE (the phase cannot prove what ran)
+    * unparseable/truncated JSON  -> FAILURE
+    * wrong schema / malformed    -> FAILURE
+    * outcome counts that do not sum to the collected-test count -> FAILURE
+      (collection loss: a crashed worker leaves collected ids unreported)
+    * any failed/errored count    -> FAILURE (defence in depth alongside rc)
+
+    ``counts`` is returned (possibly partial) even on failure so the combined
+    summary can still display what is known. PURE function (no I/O).
+    """
+    if manifest_text is None:
+        return False, ("❌ phase manifest MISSING — the phase cannot prove "
+                       "what it ran. FAILURE."), {}
+    try:
+        data = json.loads(manifest_text)
+    except (ValueError, TypeError) as e:
+        return False, (f"❌ phase manifest unparseable/truncated ({e}). "
+                       "FAILURE."), {}
+    if not isinstance(data, dict) or data.get('schema') != MANIFEST_SCHEMA:
+        return False, ("❌ phase manifest has wrong/missing schema "
+                       f"(expected {MANIFEST_SCHEMA}). FAILURE."), {}
+    counts = data.get('counts')
+    collected = data.get('collected')
+    if not isinstance(counts, dict) or not isinstance(collected, list):
+        return False, "❌ phase manifest malformed. FAILURE.", {}
+    bad_fields = [f for f in MANIFEST_OUTCOME_FIELDS + ('deselected',)
+                  if not isinstance(counts.get(f), int)]
+    if bad_fields:
+        return False, ("❌ phase manifest counts missing/non-integer fields: "
+                       f"{', '.join(bad_fields)}. FAILURE."), {}
+    executed = sum(counts[f] for f in MANIFEST_OUTCOME_FIELDS)
+    if executed != len(collected):
+        return False, (f"❌ phase manifest outcome total ({executed}) != "
+                       f"collected count ({len(collected)}) — lost reports / "
+                       "collection loss. FAILURE."), counts
+    if counts['failed'] or counts['errored']:
+        return False, (f"❌ phase manifest records {counts['failed']} failed, "
+                       f"{counts['errored']} errored. FAILURE."), counts
+    return True, "", counts
+
+
 def run_command(cmd, description, env=None, parallel=False,
-                timeout=DEFAULT_PHASE_TIMEOUT):
-    """Run a pytest phase and return ``(phase_exit, output)``.
+                timeout=DEFAULT_PHASE_TIMEOUT, manifest_path=None):
+    """Run a pytest phase and return ``(phase_exit, output, counts)``.
 
     Output is captured to a real temporary file (never an inherited pipe): an
     orphaned grandchild that keeps the output fd open therefore cannot wedge
@@ -225,9 +286,24 @@ def run_command(cmd, description, env=None, parallel=False,
     file fd never blocks. The captured output is echoed verbatim (INTERNALERROR
     lines included) and mirrored to the persisted results file.
 
+    When *manifest_path* is given, ``--phase-manifest`` is appended to *cmd*
+    and the written manifest is validated with ``classify_manifest``; a
+    missing/truncated/inconsistent manifest forces the phase to FAILURE even
+    when pytest exited 0 with clean-looking output. ``counts`` is the
+    manifest's outcome-count dict ({} when unavailable).
+
     The phase runs in its own process group under *timeout*; on timeout the
     whole group is killed and the phase is reported as a FAILURE.
     """
+    if manifest_path is not None:
+        manifest_path = Path(manifest_path)
+        cmd = list(cmd) + ['--phase-manifest', str(manifest_path)]
+        # A stale manifest from an earlier run must never vouch for this one.
+        try:
+            manifest_path.unlink()
+        except FileNotFoundError:
+            pass
+
     emit(f"\n{'=' * 80}")
     emit(f"Running: {description}")
     emit(f"Command: {' '.join(cmd)}")
@@ -266,38 +342,24 @@ def run_command(cmd, description, env=None, parallel=False,
         emit(f"\n❌ TIMEOUT: '{description}' exceeded {timeout}s. "
              f"Killed the process group and reporting FAILURE "
              f"(exit {TIMEOUT_EXIT}).")
-        return TIMEOUT_EXIT, output
+        return TIMEOUT_EXIT, output, {}
 
     phase_exit, note = classify_phase_result(proc.returncode, output, parallel)
     if note:
         emit(note)
-    return phase_exit, output
 
-
-# Pytest summary tokens we aggregate across phases, e.g.
-# "=== 4844 passed, 272 skipped, 1 xfailed in 22.64s ===".
-_SUMMARY_FIELDS = ('passed', 'failed', 'errors', 'skipped',
-                   'xfailed', 'xpassed', 'deselected')
-
-
-def parse_summary_counts(output):
-    """Extract test-outcome counts from the LAST pytest summary line."""
     counts = {}
-    for line in reversed(output.splitlines()):
-        if 'passed' in line or 'failed' in line or 'error' in line:
-            for field in _SUMMARY_FIELDS:
-                # pytest pluralizes ONLY "error" — a single erroring test is
-                # written "1 error" (verified live), so match the singular too;
-                # missing it would let a lone error slip through the all-green
-                # guard. ("failed" is invariant; "1 failed" already matches.)
-                token = 'errors?' if field == 'errors' else field
-                # \b keeps "failed" from matching inside "xfailed"
-                m = re.search(rf'(\d+) {token}\b', line)
-                if m:
-                    counts[field] = int(m.group(1))
-            if counts:
-                return counts
-    return counts
+    if manifest_path is not None:
+        try:
+            manifest_text = manifest_path.read_text(encoding='utf-8')
+        except OSError:
+            manifest_text = None
+        manifest_ok, manifest_note, counts = classify_manifest(manifest_text)
+        if not manifest_ok:
+            emit(manifest_note)
+            if phase_exit == 0:
+                phase_exit = 1
+    return phase_exit, output, counts
 
 
 def golden_case_counts():
@@ -364,6 +426,141 @@ def print_census(phase_outputs):
         emit(f"\nXPASSED (unexpectedly passing — investigate): {len(xpasses)}")
         for test in xpasses:
             emit(f"        {test}")
+
+
+def pytest_base_cmd():
+    """The pytest launcher for every phase.
+
+    ALWAYS this interpreter (``sys.executable``), never a PATH-resolved
+    ``python`` (continuation appraisal medium 16 — the runner must gate the
+    environment it itself runs in), plus the structured phase-manifest plugin
+    (campaign E1) so every phase can write a manifest and honour
+    ``--shuffle-seed``.
+    """
+    return [sys.executable, '-m', 'pytest', '-p', 'tools.pytest_phase_manifest']
+
+
+# --- Same-SHA release attestation (campaign E4) -------------------------------
+
+
+def build_attestation(version, gated_commit, gated_tree, phases, ruff,
+                      mypy_files, command, timestamp, platform_info):
+    """Assemble the attestation document (PURE — all inputs injected).
+
+    The shape is verified by tools/verify_gate_attestation.py before release
+    tagging and pinned by tests/unit/tooling/test_gate_attestation.py.
+    """
+    return {
+        'schema': ATTESTATION_SCHEMA,
+        'version': version,
+        'gated_commit': gated_commit,
+        'gated_tree': gated_tree,
+        'platform': platform_info,
+        'phases': phases,
+        'ruff': ruff,
+        'mypy_files': mypy_files,
+        'timestamp': timestamp,
+        'command': command,
+    }
+
+
+def _git_output(repo_root, *args):
+    return subprocess.run(['git', *args], cwd=repo_root, capture_output=True,
+                          text=True, check=True).stdout.strip()
+
+
+def _read_tree_version(repo_root):
+    text = (Path(repo_root) / 'psh' / 'version.py').read_text(encoding='utf-8')
+    m = re.search(r'__version__\s*=\s*"([^"]+)"', text)
+    if not m:
+        raise ValueError('could not parse __version__ from psh/version.py')
+    return m.group(1)
+
+
+def _run_attestation_checks(repo_root):
+    """Run ruff + mypy for the attestation; return (ok, ruff, mypy_files).
+
+    Documented choice (campaign E4): ``--write-attestation`` runs the linter
+    and type checker ITSELF rather than trusting the ceremony to fill the
+    fields, so a written attestation always testifies to a ruff+mypy-green
+    tree. On failure nothing is written and the runner exits nonzero.
+    """
+    ruff_exe = shutil.which('ruff')
+    ruff_cmd = ([ruff_exe] if ruff_exe else [sys.executable, '-m', 'ruff'])
+    ruff_cmd += ['check', 'psh', 'tests']
+    emit(f"Attestation check: {' '.join(ruff_cmd)}")
+    ruff_proc = subprocess.run(ruff_cmd, cwd=repo_root, capture_output=True,
+                               text=True)
+    if ruff_proc.returncode != 0:
+        emit("❌ ruff check failed — no attestation written:")
+        emit((ruff_proc.stdout + ruff_proc.stderr).strip())
+        return False, False, 0
+
+    mypy_cmd = [sys.executable, '-m', 'mypy']
+    emit(f"Attestation check: {' '.join(mypy_cmd)}")
+    mypy_proc = subprocess.run(mypy_cmd, cwd=repo_root, capture_output=True,
+                               text=True)
+    mypy_out = (mypy_proc.stdout + mypy_proc.stderr).strip()
+    m = re.search(r'no issues found in (\d+) source files', mypy_out)
+    if mypy_proc.returncode != 0 or not m:
+        emit("❌ mypy failed (or produced no clean summary) — no attestation "
+             "written:")
+        emit(mypy_out[-2000:])
+        return False, True, 0
+    return True, True, int(m.group(1))
+
+
+def write_attestation(repo_root, phases, command):
+    """Write ATTESTATION_FILENAME for a fully green gate; return 0/1.
+
+    Refuses when tracked files (other than the attestation itself) are
+    modified: ``gated_commit`` must truthfully name the tree that was gated.
+    """
+    repo_root = Path(repo_root)
+    try:
+        dirty = _git_output(repo_root, 'status', '--porcelain',
+                            '--untracked-files=no')
+    except (subprocess.CalledProcessError, OSError) as e:
+        emit(f"❌ cannot determine git state ({e}) — no attestation written.")
+        return 1
+    dirty_paths = [line[3:] for line in dirty.splitlines() if line.strip()]
+    dirty_paths = [p for p in dirty_paths if p != ATTESTATION_FILENAME]
+    if dirty_paths:
+        emit("❌ tracked files are modified — the gate did not run at a "
+             "committed tree, so gated_commit would be a lie. No attestation "
+             "written:")
+        for p in dirty_paths:
+            emit(f"    {p}")
+        return 1
+
+    checks_ok, ruff_ok, mypy_files = _run_attestation_checks(repo_root)
+    if not checks_ok:
+        return 1
+
+    attestation = build_attestation(
+        version=_read_tree_version(repo_root),
+        gated_commit=_git_output(repo_root, 'rev-parse', 'HEAD'),
+        gated_tree=_git_output(repo_root, 'rev-parse', 'HEAD^{tree}'),
+        phases=phases,
+        ruff=ruff_ok,
+        mypy_files=mypy_files,
+        command=command,
+        timestamp=datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        platform_info={
+            'os': f"{platform_mod.system()} {platform_mod.release()}",
+            'python': platform_mod.python_version(),
+            'arch': platform_mod.machine(),
+        },
+    )
+    out_path = repo_root / ATTESTATION_FILENAME
+    with open(out_path, 'w', encoding='utf-8') as f:
+        json.dump(attestation, f, indent=2, sort_keys=False)
+        f.write('\n')
+    emit(f"\n✅ Attestation written: {out_path} "
+         f"(gated_commit {attestation['gated_commit'][:12]}, "
+         f"version {attestation['version']}). Commit it as the FINAL commit "
+         "before pushing — release-tag.yml refuses to tag without it.")
+    return 0
 
 
 def main():
@@ -439,6 +636,37 @@ Examples:
     )
 
     parser.add_argument(
+        '--benchmarks',
+        action='store_true',
+        help='Run ONLY the benchmark tier: `benchmark`-marked CPU/wall-time '
+             'microbenchmarks (tests/performance), serially (no xdist). These '
+             'are excluded from every standard-gate phase so millisecond '
+             'thresholds never flake the gate; intended for nightly/explicit '
+             'runs.'
+    )
+
+    parser.add_argument(
+        '--shuffle-seed',
+        type=int,
+        default=None,
+        metavar='N',
+        help='Deterministically shuffle collected tests in EVERY phase '
+             '(including the serial phase) via the phase-manifest plugin '
+             '(random.Random(N)). Used for the campaign Phase-E exit: three '
+             'standard runs under three seeds must produce identical '
+             'collection/outcome censuses.'
+    )
+
+    parser.add_argument(
+        '--write-attestation',
+        action='store_true',
+        help='On a fully green run, also run ruff+mypy and write '
+             f'{ATTESTATION_FILENAME} at the repo root (campaign E4). '
+             'release-tag.yml refuses to tag a version bump without a '
+             'matching attestation.'
+    )
+
+    parser.add_argument(
         '--timeout',
         type=int,
         default=DEFAULT_PHASE_TIMEOUT,
@@ -462,6 +690,14 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    # The attestation testifies to the STANDARD gate (campaign E4): a green
+    # quick/benchmark/all-nocapture run must never mint release evidence.
+    if args.write_attestation and (args.quick or args.all_nocapture
+                                   or args.benchmarks):
+        parser.error('--write-attestation is only valid for the standard '
+                     'gate (use: python run_tests.py --parallel '
+                     '--write-attestation)')
 
     # Open the persisted results file up front so the ENTIRE transcript
     # (banners, phase output, summary) is mirrored to disk.
@@ -491,8 +727,12 @@ def _run(args, results_path):
         env = os.environ.copy()
         env['PSH_TEST_PARSER'] = 'combinator'
 
-    # Build base pytest command
-    base_cmd = ['python', '-m', 'pytest']
+    # Build base pytest command. sys.executable + manifest plugin — see
+    # pytest_base_cmd().
+    base_cmd = pytest_base_cmd()
+
+    if args.shuffle_seed is not None:
+        base_cmd.extend(['--shuffle-seed', str(args.shuffle_seed)])
 
     if args.verbose:
         base_cmd.append('-v')
@@ -522,11 +762,41 @@ def _run(args, results_path):
     timeout = args.timeout
     exit_codes = []
     phase_outputs = []
+    phase_records = []  # [{'description':…, 'exit':…, 'counts':…}] per phase
+
+    # Structured phase manifests (campaign E1): one JSON file per phase under
+    # tmp/phase-manifests/. Load-bearing — creation failures propagate loudly.
+    manifest_dir = Path(__file__).parent / 'tmp' / 'phase-manifests'
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    manifest_seq = itertools.count(1)
+
+    def run_phase(cmd, description, parallel=False):
+        manifest_path = manifest_dir / f'phase-{next(manifest_seq)}.json'
+        exit_code, output, counts = run_command(
+            cmd, description, env=env, parallel=parallel, timeout=timeout,
+            manifest_path=manifest_path)
+        exit_codes.append(exit_code)
+        phase_outputs.append(output)
+        phase_records.append({'description': description, 'exit': exit_code,
+                              'counts': counts})
 
     if _RESULTS_FH is not None:
         emit(f"Persisting full run transcript to: {results_path}")
 
-    if args.quick:
+    if args.benchmarks:
+        # Benchmark tier: timing-threshold microbenchmarks, serial by design
+        # (they are also `serial`-marked so a bare `pytest -n auto` never runs
+        # them concurrently). Deliberately NOT part of the standard gate.
+        emit("\n" + "=" * 80)
+        emit(f"MODE: Benchmark tier (serial) [parser: {parser_label}]")
+        emit("  CPU/wall-time microbenchmarks (-m benchmark); excluded from")
+        emit("  the standard gate. See docs/testing_source_of_truth.md.")
+        emit("=" * 80)
+
+        cmd = base_cmd + ['tests/', '-m', 'benchmark']
+        run_phase(cmd, "Benchmark tier (serial)")
+
+    elif args.quick:
         # Genuine smoke tier: a curated fast subset, run in parallel. Deliberately
         # short-circuits the other modes — see QUICK_PATHS for the rationale.
         workers = args.parallel if args.parallel else 'auto'
@@ -536,25 +806,21 @@ def _run(args, results_path):
         emit("  Full gate: python run_tests.py --parallel")
         emit("=" * 80)
 
-        cmd = base_cmd + QUICK_PATHS + ['-m', 'not serial and not slow',
+        cmd = base_cmd + QUICK_PATHS + ['-m',
+                                        'not serial and not slow and not benchmark',
                                         '-n', workers]
-        exit_code, output = run_command(cmd, "Quick smoke tier", env=env,
-                                        parallel=True, timeout=timeout)
-        exit_codes.append(exit_code)
-        phase_outputs.append(output)
+        run_phase(cmd, "Quick smoke tier", parallel=True)
 
     elif args.all_nocapture:
-        # Simple mode: run everything with -s
+        # Simple mode: run everything with -s (including the benchmark tier —
+        # this diagnostic mode really does mean ALL tests, serially).
         emit("\n" + "=" * 80)
         emit(f"MODE: Running ALL tests with capture disabled (-s flag) [parser: {parser_label}]")
         emit("=" * 80)
 
         cmd = base_cmd + ['tests/', '-s']
 
-        exit_code, output = run_command(cmd, "All tests with capture disabled",
-                                        env=env, timeout=timeout)
-        exit_codes.append(exit_code)
-        phase_outputs.append(output)
+        run_phase(cmd, "All tests with capture disabled")
 
     else:
         # Smart mode: Run tests in phases
@@ -571,40 +837,38 @@ def _run(args, results_path):
         # Phase 1: Regular tests. When parallel, exclude `serial`-marked tests
         # (process/signal/job-control and in-process forked-fd tests that can't
         # run concurrently under xdist); they run in Phase 1b. In serial mode
-        # they run here inline. Subshell tests (tests/integration/subshells/) are
-        # ordinary Phase-1 tests: they pass under normal pytest capture — the -s
-        # flag has been unnecessary since v0.195.0, as forked children do
-        # fd-level I/O (see tests/integration/subshells/README.md).
+        # they run here inline. `benchmark`-marked timing tests are excluded
+        # from EVERY gate phase (they run in the --benchmarks tier), so
+        # removing the old pytest.ini performance ignore did not import
+        # millisecond thresholds into the gate. Subshell tests
+        # (tests/integration/subshells/) are ordinary Phase-1 tests: they pass
+        # under normal pytest capture — the -s flag has been unnecessary since
+        # v0.195.0, as forked children do fd-level I/O (see
+        # tests/integration/subshells/README.md).
         cmd = base_cmd + ['tests/']
-        phase1_markers = []
         if args.parallel:
-            phase1_markers.append('not serial')
-        if phase1_markers:
-            cmd.extend(['-m', ' and '.join(phase1_markers)])
+            phase1_marker = 'not serial and not benchmark'
+        else:
+            phase1_marker = 'not benchmark'
+        cmd.extend(['-m', phase1_marker])
         if args.parallel:
             cmd.extend(['-n', args.parallel])
 
         desc = "Phase 1: Regular tests"
         if args.parallel:
-            desc += f" (parallel, {args.parallel} workers, -m 'not serial')"
+            desc += f" (parallel, {args.parallel} workers, -m '{phase1_marker}')"
         else:
             desc += " (with capture)"
-        exit_code, output = run_command(cmd, desc, env=env,
-                                        parallel=bool(args.parallel),
-                                        timeout=timeout)
-        exit_codes.append(exit_code)
-        phase_outputs.append(output)
+        run_phase(cmd, desc, parallel=bool(args.parallel))
 
         # Phase 1b: serial-marked tests (process/signal/forked-fd). Only needed
         # in parallel mode — they were excluded from Phase 1. Run without xdist.
         if args.parallel:
             cmd = base_cmd + ['tests/']
-            cmd.extend(['-m', 'serial'])
-            exit_code, output = run_command(
-                cmd, "Phase 1b: serial tests (process/signal/forked-fd, no xdist)",
-                env=env, timeout=timeout)
-            exit_codes.append(exit_code)
-            phase_outputs.append(output)
+            cmd.extend(['-m', 'serial and not benchmark'])
+            run_phase(
+                cmd,
+                "Phase 1b: serial tests (process/signal/forked-fd, no xdist)")
 
         # Phase 2 (opt-in): golden behavioral cases compared against bash.
         # Gated behind --compare-bash because it requires bash on PATH; the
@@ -650,11 +914,7 @@ def _run(args, results_path):
                 desc += f", parallel={args.parallel})"
             else:
                 desc += ", serial)"
-            exit_code, output = run_command(
-                cmd, desc, env=env, parallel=bool(args.parallel),
-                timeout=timeout)
-            exit_codes.append(exit_code)
-            phase_outputs.append(output)
+            run_phase(cmd, desc, parallel=bool(args.parallel))
 
     # Optional skip/xfail census
     if args.census:
@@ -665,21 +925,38 @@ def _run(args, results_path):
     emit("TEST RUN SUMMARY")
     emit("=" * 80)
 
-    # Combined outcome totals across all phases
+    # Combined outcome totals across all phases, from the structured phase
+    # manifests (never re-parsed from transcript text). `deselected` is
+    # deliberately EXCLUDED from the combined tally — the compare-bash -k
+    # filter and --quick's -m selection produce large deselection counts that
+    # only inflate the banner (TESTINF-6); per-phase deselection is still
+    # recorded in each manifest.
     totals = {}
-    for output in phase_outputs:
-        for field, count in parse_summary_counts(output).items():
-            totals[field] = totals.get(field, 0) + count
+    unmanifested = []
+    for i, record in enumerate(phase_records, 1):
+        if record['counts']:
+            for field in MANIFEST_OUTCOME_FIELDS:
+                totals[field] = totals.get(field, 0) + record['counts'][field]
+        else:
+            unmanifested.append(i)
     if totals:
         combined = ', '.join(
-            f"{totals[f]} {f}" for f in _SUMMARY_FIELDS if f in totals)
-        emit(f"Combined across {len(phase_outputs)} phase(s): {combined}")
+            f"{totals[f]} {f}" for f in MANIFEST_OUTCOME_FIELDS if totals[f])
+        emit(f"Combined across {len(phase_records)} phase(s) "
+             f"(from phase manifests): {combined}")
+    if unmanifested:
+        emit(f"⚠️  No usable manifest for phase(s) "
+             f"{', '.join(map(str, unmanifested))} — totals are partial.")
 
     if _RESULTS_FH is not None:
         emit(f"Full transcript saved to: {results_path}")
 
     if all(code == 0 for code in exit_codes):
         emit("✅ All test phases PASSED")
+        if args.write_attestation:
+            return write_attestation(Path(__file__).parent, phase_records,
+                                     ' '.join([Path(sys.argv[0]).name]
+                                              + sys.argv[1:]))
         return 0
     else:
         emit("❌ Some test phases FAILED")
@@ -691,6 +968,8 @@ def _run(args, results_path):
             else:
                 status = "❌ FAILED"
             emit(f"   Phase {i}: {status} (exit code: {code})")
+        if args.write_attestation:
+            emit("❌ --write-attestation: refusing — the gate is not green.")
         return 1
 
 

@@ -4,6 +4,14 @@ Performance benchmarks for PSH parsing speed.
 Tests parsing performance with various sizes and complexities of input
 to ensure PSH maintains reasonable performance.
 
+Tier classification (campaign E1b audit, 2026-07-17): the two timing classes
+below are CPU-time MICROBENCHMARKS (millisecond thresholds) — they carry
+``benchmark`` + ``serial`` markers, are excluded from every standard-gate
+phase, and run via ``python run_tests.py --benchmarks``.
+``TestLargeInputRobustness`` (formerly misleadingly named ``TestMemoryUsage``
+while measuring no memory) contains deterministic no-timing invariants and
+runs in the standard gate.
+
 Measurement discipline (v0.313.0): wall-clock timing flakes under load
 (e.g. xdist worker contention), so these benchmarks measure
 ``time.process_time()`` — CPU time consumed by this process only, immune
@@ -20,6 +28,8 @@ from psh.lexer import tokenize
 from psh.parser import Parser
 
 
+@pytest.mark.benchmark
+@pytest.mark.serial
 class TestParsingPerformance:
     """Benchmark parsing performance."""
 
@@ -181,6 +191,8 @@ EOF{i}
         assert heredoc_time < 0.02
 
 
+@pytest.mark.benchmark
+@pytest.mark.serial
 class TestTokenizationPerformance:
     """Benchmark tokenization performance."""
 
@@ -222,34 +234,29 @@ class TestTokenizationPerformance:
         assert 8 < ratio2 < 12  # Should be roughly 10x
 
 
-class TestMemoryUsage:
-    """Test memory usage during parsing."""
+class TestLargeInputRobustness:
+    """Deterministic large-input robustness invariants (no timing, no memory
+    measurement — the class was named ``TestMemoryUsage`` for years while
+    measuring nothing of the kind; renamed honestly in campaign E1b). These
+    are ordinary standard-gate tests: they assert the parser completes on
+    large and deeply nested input without raising."""
 
-    def test_large_script_memory(self):
-        """Test memory usage parsing large scripts."""
-        # This would use memory profiling tools in a real implementation
-        # For now, just ensure we can parse large scripts without errors
-
-        # Generate a very large script
+    def test_large_script_parses(self):
+        """A 10,000-command script parses to a complete AST."""
         large_script = "\n".join(
             f"echo 'Line {i} with some text to make it realistic'"
             for i in range(10000)
         )
-
-        # Should be able to parse without memory errors
         parser = Parser(tokenize(large_script))
         ast = parser.parse()
         assert ast is not None
 
-    def test_recursive_structure_memory(self):
-        """Test memory usage with deeply recursive structures."""
-        # Generate deeply nested structure
+    def test_deeply_nested_structure_parses(self):
+        """100-deep nested `if` parses without hitting recursion limits."""
         depth = 100
         nested = "if true; then\n" * depth
         nested += "echo deep\n"
         nested += "fi\n" * depth
-
-        # Should handle deep recursion without stack overflow
         parser = Parser(tokenize(nested))
         ast = parser.parse()
         assert ast is not None

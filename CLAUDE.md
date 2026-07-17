@@ -146,10 +146,17 @@ automatic — there is **no manual `git tag`** step.
    - `README.md` — the `**Current Version**:` line (also the `**Tests**:` and
      `**Test Coverage**:` counts and Recent Development when they changed)
    - `ARCHITECTURE.md` — the `**Current Version**:` line
-5. Commit on the branch, push, open a PR (`gh pr create --head <branch>`),
+5. **Attestation (campaign E4):** commit the version bump, then at that commit
+   run `python run_tests.py --parallel --write-attestation > tmp/gate-attest.txt 2>&1`
+   (on a green run it also runs ruff+mypy itself and writes
+   `gate_attestation.json`). Commit `gate_attestation.json` as the FINAL
+   commit — `release-tag.yml` verifies it before tagging (version matches
+   HEAD's `psh/version.py`, gated commit is an ancestor, and nothing but the
+   attestation changed since the gate ran) and FAILS loudly otherwise.
+6. Push, open a PR (`gh pr create --head <branch>`),
    then merge immediately (`gh pr merge <n> --merge --delete-branch` — no CI to
-   wait on). `release-tag.yml` creates the `vX.Y.Z` tag on the version bump;
-   verify with `git fetch --tags`.
+   wait on). `release-tag.yml` creates the `vX.Y.Z` tag on the version bump
+   (attestation-gated as above); verify with `git fetch --tags`.
 
 ### Architecture documentation files and what they contain
 

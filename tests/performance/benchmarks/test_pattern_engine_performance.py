@@ -19,10 +19,18 @@ are the primary complexity guarantee; these timing guards are a coarse backstop.
 Budgets are chosen with a wide margin: the former exponential backends took
 hundreds of milliseconds to seconds at these sizes, the memoized engine takes
 well under a millisecond, so the 0.1s budget sits unambiguously between them.
+
+Tier: wall-time benchmark backstop (campaign E1b) — `benchmark` + `serial`
+marked, excluded from the standard gate, run via
+`python run_tests.py --benchmarks`. The PRIMARY complexity guarantee stays in
+the gate: the deterministic state-count guards in
+tests/unit/expansion/test_pattern_engine_matcher.py.
 """
 import time
 
 import pytest
+
+pytestmark = [pytest.mark.benchmark, pytest.mark.serial]
 
 
 def _elapsed(fn):

@@ -5,6 +5,15 @@ name: Auto-tag Release
 # merges (including asynchronous / auto-merged PRs) get tagged without a
 # manual `git tag` step. Triggered only when psh/version.py changes, so
 # doc-only or refactor-only merges never tag.
+#
+# Boundary Integrity Campaign E4 (2026-07-17): tagging is attestation-gated.
+# Before creating the tag, tools/verify_gate_attestation.py proves that
+# gate_attestation.json (written by `run_tests.py --parallel
+# --write-attestation` on a fully green local gate) exists, names the version
+# being tagged, points at an ancestor commit of HEAD, and that NOTHING except
+# the attestation file changed between that gated commit and HEAD. Any failed
+# check fails this workflow loudly and no tag is created. An absent
+# attestation is the (loud) bootstrap case — see the script's message.
 
 on:
   push:
@@ -31,6 +40,11 @@ jobs:
           V=$(python -c "import re,pathlib; t=pathlib.Path('psh/version.py').read_text(); print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', t).group(1))")
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Detected version: $V"
+
+      # Campaign E4: no attestation, no tag. fetch-depth 0 above guarantees
+      # the ancestor/diff checks can see the gated commit.
+      - name: Verify gate attestation
+        run: python3 tools/verify_gate_attestation.py
 
       - name: Create tag if absent
         run: |

@@ -3,13 +3,26 @@
 
 Reappraisal #18 Tier-3 found that ``run_tests.py`` could mask failures: it
 stripped ``INTERNALERROR>`` output and could translate pytest-xdist exit code 3
-into success merely because an earlier summary contained "passed". These tests
-pin the hardened ``classify_phase_result`` decision (a pure function) so the
-masking cannot silently return: a phase reports success ONLY for a clean exit 0
-with no internal error, or the narrowly-guarded, provably-all-green xdist
-teardown race.
+into success merely because an earlier summary contained "passed".
+
+Boundary campaign E1 (2026-07-17) removed the LAST translation: the carve-out
+that mapped the "benign" xdist teardown race (exit 3 + "cannot send (already
+closed?)" + a provably-all-green summary) to success. A Codex-review
+counterexample proved that carve-out could bless a run that ALSO carried an
+unrelated second ``INTERNALERROR`` (probe archived red-on-base at d1b8ef35:
+tmp/boundary-ledgers/E1-probes/01-codex-counterexample-red-on-base.txt).
+
+These tests pin the hardened decision functions (both PURE):
+
+* ``classify_phase_result`` — NO nonzero pytest exit ever classifies success;
+  ``INTERNALERROR`` and xdist worker loss fail even at exit 0.
+* ``classify_manifest`` — a missing, truncated, malformed, or internally
+  inconsistent structured phase manifest (tools/pytest_phase_manifest.py) is a
+  failure independent of transcript text and exit status.
 """
 
+import itertools
+import json
 import pathlib
 import shutil
 import subprocess
@@ -19,21 +32,46 @@ import time
 import pytest
 
 import run_tests
+from tools import pytest_phase_manifest as manifest_plugin
 
 GREEN_SUMMARY = "==== 4844 passed, 272 skipped, 1 xfailed in 22.64s ===="
 FAIL_SUMMARY = "==== 1 failed, 4843 passed, 272 skipped in 22.64s ===="
 ERROR_SUMMARY = "==== 2 errors, 4843 passed in 22.64s ===="
-# pytest writes a SINGLE error/failure in the SINGULAR (verified live:
-# "==== 1 error in 0.03s ====" / "==== 1 failed in 0.02s ===="). These pin the
-# masking hole the T3-2 verifier caught: a lone "1 error" must not slip through.
 ONE_ERROR_SUMMARY = "==== 4843 passed, 1 error in 22.64s ===="
 ONE_FAILED_SUMMARY = "==== 4843 passed, 1 failed in 22.64s ===="
 RACE_LINE = "INTERNALERROR> execnet.gateway_base.RemoteError: cannot send (already closed?)"
+UNRELATED_INTERNALERROR = "INTERNALERROR> RuntimeError: unrelated collection failure"
+WORKER_CRASH_LINES = "\n".join([
+    "[gw3] node down: Not properly terminated",
+    "Replacing crashed worker gw3",
+])
 
 
 def _exit(returncode, output, parallel=False):
     phase_exit, _note = run_tests.classify_phase_result(returncode, output, parallel)
     return phase_exit
+
+
+def _manifest(collected=None, passed=None, failed=0, errored=0, skipped=0,
+              xfailed=0, xpassed=0, deselected=0, schema=None):
+    """A structurally valid manifest dict (as JSON text) for classify_manifest."""
+    if collected is None:
+        collected = [f"tests/x.py::test_{i}" for i in range(3)]
+    if passed is None:
+        passed = len(collected) - failed - errored - skipped - xfailed - xpassed
+    return json.dumps({
+        "schema": run_tests.MANIFEST_SCHEMA if schema is None else schema,
+        "shuffle_seed": None,
+        "exitstatus": 0,
+        "collected": collected,
+        "counts": {
+            "passed": passed, "failed": failed, "errored": errored,
+            "skipped": skipped, "xfailed": xfailed, "xpassed": xpassed,
+            "deselected": deselected,
+        },
+        "failed_ids": [],
+        "errored_ids": [],
+    })
 
 
 # --- Clean success ------------------------------------------------------------
@@ -60,12 +98,20 @@ def test_exit_5_no_tests_collected_is_failure():
     assert _exit(5, "no tests ran in 0.01s") != 0
 
 
-# --- INTERNALERROR is never masked --------------------------------------------
+# --- INTERNALERROR / worker loss are never masked ------------------------------
 
 def test_internalerror_forced_failure_even_on_exit_0():
     # A swallowed internal error alongside a clean rc must NOT pass.
     output = GREEN_SUMMARY + "\n" + "INTERNALERROR> RuntimeError: boom"
     assert _exit(0, output) != 0
+
+
+def test_worker_loss_forced_failure_even_on_exit_0():
+    # Campaign E1: a lost worker leaves a green-looking surviving summary; the
+    # run is incomplete regardless of the exit status.
+    output = WORKER_CRASH_LINES + "\n" + GREEN_SUMMARY
+    assert _exit(0, output, parallel=True) != 0
+    assert _exit(0, output, parallel=False) != 0
 
 
 def test_internalerror_on_nonzero_is_failure():
@@ -74,17 +120,52 @@ def test_internalerror_on_nonzero_is_failure():
 
 
 def test_internalerror_serial_phase_not_translated():
-    # rc-3 translation is parallel-only; a serial-phase internal error fails.
     output = RACE_LINE + "\n" + GREEN_SUMMARY
     assert _exit(3, output, parallel=False) != 0
 
 
-# --- xdist teardown race: benign vs. dangerous --------------------------------
+# --- The xdist teardown race is a FAILURE (carve-out removed, campaign E1) ----
+#
+# INVERTED PINS: until d1b8ef35 the first two cases below were pinned as PASS
+# (test_benign_teardown_race_is_pass / ..._scary_test_name_is_still_pass).
+# The carve-out translated pytest exit 3 to success when the transcript looked
+# all-green. That translation is deleted; the same transcripts now pin FAILURE.
 
-def test_benign_teardown_race_is_pass():
-    # exit 3 + "cannot send" + clean all-green summary + no worker loss.
+def test_benign_teardown_race_is_failure():
+    # exit 3 + "cannot send" + clean all-green summary + no worker loss:
+    # previously the sole translated-to-success case. Now: red, rerun the gate.
     output = "\n".join([GREEN_SUMMARY, RACE_LINE])
-    assert _exit(3, output, parallel=True) == 0
+    assert _exit(3, output, parallel=True) != 0
+
+
+def test_teardown_race_with_scary_test_name_is_failure():
+    # Ordinary output plus the race at exit 3: also a failure now (the
+    # anchored worker-loss patterns are pinned separately below).
+    output = "\n".join([
+        "tests/x.py::test_recover_from_crashed_worker_node_down PASSED",
+        "SKIPPED [1] tests/y.py:3: skip because node crashed earlier",
+        GREEN_SUMMARY,
+        RACE_LINE,
+    ])
+    assert _exit(3, output, parallel=True) != 0
+
+
+def test_codex_counterexample_mixed_internalerror_is_failure():
+    """THE campaign counterexample (continuation finding F, Codex review).
+
+    A clean summary + the benign race line + an UNRELATED second
+    INTERNALERROR at rc 3 under parallel classified SUCCESS on the base
+    classifier (demonstrated red-on-base at d1b8ef35, transcript archived in
+    tmp/boundary-ledgers/E1-probes/). It must classify FAILURE forever.
+    """
+    output = "\n".join([
+        "==== 10 passed in 0.1s ====",
+        RACE_LINE,
+        UNRELATED_INTERNALERROR,
+    ])
+    phase_exit, note = run_tests.classify_phase_result(3, output, parallel=True)
+    assert phase_exit != 0
+    assert note, "a masked internal error must be called out loudly"
 
 
 def test_teardown_race_with_failures_is_failure():
@@ -97,77 +178,55 @@ def test_teardown_race_with_errors_is_failure():
     assert _exit(3, output, parallel=True) != 0
 
 
-def test_teardown_race_with_single_error_is_failure():
-    # NIT-1: a lone "1 error" (singular) must NOT be masked as all-green.
-    output = "\n".join([ONE_ERROR_SUMMARY, RACE_LINE])
-    assert _exit(3, output, parallel=True) != 0
-
-
-def test_teardown_race_with_single_failed_is_failure():
-    output = "\n".join([ONE_FAILED_SUMMARY, RACE_LINE])
-    assert _exit(3, output, parallel=True) != 0
-
-
-def test_teardown_race_with_scary_test_name_is_still_pass():
-    # NIT-2: ordinary output containing "crashed"/"node crashed" (a -v test line
-    # named for crash recovery, a skip reason) must NOT flip a benign race to
-    # red — only anchored xdist crash reports count as worker loss.
-    output = "\n".join([
-        "tests/x.py::test_recover_from_crashed_worker_node_down PASSED",
-        "SKIPPED [1] tests/y.py:3: skip because node crashed earlier",
-        GREEN_SUMMARY,
-        RACE_LINE,
-    ])
-    assert _exit(3, output, parallel=True) == 0
-
-
 def test_teardown_race_with_worker_crash_is_failure():
-    # Worker loss → surviving summary may show only passes; must NOT be trusted.
-    output = "\n".join([
-        "[gw3] node down: Not properly terminated",
-        "Replacing crashed worker gw3",
-        GREEN_SUMMARY,
-        RACE_LINE,
-    ])
+    output = "\n".join([WORKER_CRASH_LINES, GREEN_SUMMARY, RACE_LINE])
     assert _exit(3, output, parallel=True) != 0
 
 
 def test_exit_3_without_race_marker_is_failure():
-    # A generic internal error (no teardown-race marker) is never translated.
-    output = GREEN_SUMMARY
-    assert _exit(3, output, parallel=True) != 0
+    assert _exit(3, GREEN_SUMMARY, parallel=True) != 0
 
 
 def test_exit_3_race_without_summary_is_failure():
-    # No parseable summary → not provably all-green → failure.
-    output = RACE_LINE
-    assert _exit(3, output, parallel=True) != 0
+    assert _exit(3, RACE_LINE, parallel=True) != 0
 
 
-# --- _is_provably_all_green edge cases ----------------------------------------
+# --- Property sweep: NO (rc != 0, transcript) pair ever classifies success ----
 
-def test_provably_green_accepts_clean_summary():
-    assert run_tests._is_provably_all_green(GREEN_SUMMARY) is True
+_SWEEP_RCS = (1, 2, 3, 4, 5, run_tests.TIMEOUT_EXIT)
+_SWEEP_TRANSCRIPTS = (
+    "",
+    GREEN_SUMMARY,
+    FAIL_SUMMARY,
+    ERROR_SUMMARY,
+    ONE_ERROR_SUMMARY,
+    ONE_FAILED_SUMMARY,
+    RACE_LINE,
+    GREEN_SUMMARY + "\n" + RACE_LINE,
+    GREEN_SUMMARY + "\n" + RACE_LINE + "\n" + UNRELATED_INTERNALERROR,
+    WORKER_CRASH_LINES + "\n" + GREEN_SUMMARY,
+    WORKER_CRASH_LINES + "\n" + GREEN_SUMMARY + "\n" + RACE_LINE,
+    "collecting ...",
+    "no tests ran in 0.01s",
+    "!!! KeyboardInterrupt !!!",
+)
 
 
-def test_provably_green_rejects_failures():
-    assert run_tests._is_provably_all_green(FAIL_SUMMARY) is False
-
-
-def test_provably_green_rejects_crash_marker():
-    assert run_tests._is_provably_all_green("worker gw0 crashed\n" + GREEN_SUMMARY) is False
-
-
-def test_provably_green_rejects_missing_summary():
-    assert run_tests._is_provably_all_green("collecting ...") is False
-
-
-def test_provably_green_rejects_single_error():
-    assert run_tests._is_provably_all_green(ONE_ERROR_SUMMARY) is False
-
-
-def test_provably_green_rejects_single_failed():
-    assert run_tests._is_provably_all_green(ONE_FAILED_SUMMARY) is False
+def test_no_nonzero_exit_ever_classifies_success():
+    """Exhaustive corpus sweep over rc x transcript x parallel: rc != 0 can
+    NEVER map to phase success. This is the campaign's core no-translation
+    invariant stated as a property, so no future carve-out can sneak in via a
+    transcript shape the example-based pins above happen not to cover."""
+    offenders = []
+    for rc, transcript, parallel in itertools.product(
+            _SWEEP_RCS, _SWEEP_TRANSCRIPTS, (False, True)):
+        phase_exit, _note = run_tests.classify_phase_result(
+            rc, transcript, parallel)
+        if phase_exit == 0:
+            offenders.append((rc, parallel, transcript[:60]))
+    assert not offenders, (
+        "classify_phase_result translated a nonzero pytest exit to success "
+        f"for: {offenders}")
 
 
 def test_worker_loss_detection_anchored():
@@ -179,6 +238,150 @@ def test_worker_loss_detection_anchored():
     assert not run_tests._has_worker_loss(
         "tests/x.py::test_recover_from_crashed_worker PASSED")
     assert not run_tests._has_worker_loss("SKIPPED: node crashed last week")
+
+
+# --- classify_manifest: structural phase evidence -----------------------------
+
+def test_valid_manifest_classifies_ok():
+    ok, note, counts = run_tests.classify_manifest(_manifest())
+    assert ok and note == ""
+    assert counts["passed"] == 3
+
+
+def test_missing_manifest_is_failure():
+    ok, note, _counts = run_tests.classify_manifest(None)
+    assert not ok and "MISSING" in note
+
+
+def test_truncated_manifest_is_failure():
+    # Synthetic truncation: valid JSON cut mid-document.
+    text = _manifest()
+    ok, note, _counts = run_tests.classify_manifest(text[:len(text) // 2])
+    assert not ok and "unparseable" in note
+
+
+def test_empty_manifest_text_is_failure():
+    ok, _note, _counts = run_tests.classify_manifest("")
+    assert not ok
+
+
+def test_wrong_schema_manifest_is_failure():
+    ok, note, _counts = run_tests.classify_manifest(_manifest(schema=99))
+    assert not ok and "schema" in note
+
+
+def test_malformed_manifest_is_failure():
+    ok, _note, _counts = run_tests.classify_manifest(
+        json.dumps({"schema": run_tests.MANIFEST_SCHEMA}))
+    assert not ok
+
+
+def test_manifest_missing_count_field_is_failure():
+    data = json.loads(_manifest())
+    del data["counts"]["errored"]
+    ok, note, _counts = run_tests.classify_manifest(json.dumps(data))
+    assert not ok and "errored" in note
+
+
+def test_collection_count_mismatch_is_failure():
+    # 3 collected ids but only 2 reported outcomes: a lost worker's silence.
+    data = json.loads(_manifest())
+    data["counts"]["passed"] = 2
+    ok, note, _counts = run_tests.classify_manifest(json.dumps(data))
+    assert not ok and "collected" in note
+
+
+def test_manifest_failed_count_is_failure():
+    ok, _note, counts = run_tests.classify_manifest(_manifest(failed=1))
+    assert not ok
+    assert counts.get("failed") == 1
+
+
+def test_manifest_errored_count_is_failure():
+    ok, _note, _counts = run_tests.classify_manifest(_manifest(errored=1))
+    assert not ok
+
+
+def test_manifest_skips_and_xfails_are_not_failures():
+    ok, _note, _counts = run_tests.classify_manifest(
+        _manifest(skipped=1, xfailed=1))
+    assert ok
+
+
+# --- run_tests <-> plugin contract cannot drift -------------------------------
+
+def test_manifest_contract_matches_plugin():
+    """run_tests deliberately does not import the (pytest-importing) plugin;
+    the duplicated schema/field constants are pinned identical here."""
+    assert run_tests.MANIFEST_SCHEMA == manifest_plugin.MANIFEST_SCHEMA
+    assert run_tests.MANIFEST_OUTCOME_FIELDS == manifest_plugin.OUTCOME_FIELDS
+
+
+def test_pytest_base_cmd_uses_this_interpreter():
+    """Continuation medium 16: the runner must launch pytest with its OWN
+    interpreter (sys.executable), never a PATH-resolved 'python', and must
+    load the phase-manifest plugin in every phase."""
+    base = run_tests.pytest_base_cmd()
+    assert base[0] == sys.executable
+    assert base[1:3] == ['-m', 'pytest']
+    assert 'tools.pytest_phase_manifest' in base
+
+
+# --- run_command + manifest integration (subprocess-driven) -------------------
+
+def test_run_command_missing_manifest_fails_despite_clean_rc(monkeypatch, tmp_path):
+    """A phase whose child exits 0 with green-looking output but never writes
+    its manifest is a FAILURE — evidence of what ran is mandatory."""
+    monkeypatch.setattr(run_tests, 'emit', lambda *a, **k: None)
+    manifest = tmp_path / "phase.json"
+    rc, out, counts = run_tests.run_command(
+        [sys.executable, '-c', 'print("==== 10 passed in 0.1s ====")'],
+        'missing-manifest probe', timeout=30, manifest_path=manifest)
+    assert rc != 0
+    assert counts == {}
+    assert '10 passed' in out  # the transcript looked green; structure decides
+
+
+def test_run_command_truncated_manifest_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(run_tests, 'emit', lambda *a, **k: None)
+    manifest = tmp_path / "phase.json"
+    script = (
+        "import sys\n"
+        f"open({str(manifest)!r}, 'w').write('{{\"schema\": 1, \"coll')\n"
+        "print('==== 10 passed in 0.1s ====')\n"
+    )
+    rc, _out, counts = run_tests.run_command(
+        [sys.executable, '-c', script],
+        'truncated-manifest probe', timeout=30, manifest_path=manifest)
+    assert rc != 0
+    assert counts == {}
+
+
+def test_run_command_stale_manifest_never_vouches(monkeypatch, tmp_path):
+    """A manifest left by an EARLIER run must be deleted before the child
+    starts; a child that writes nothing then fails on the missing manifest."""
+    monkeypatch.setattr(run_tests, 'emit', lambda *a, **k: None)
+    manifest = tmp_path / "phase.json"
+    manifest.write_text(_manifest())
+    rc, _out, counts = run_tests.run_command(
+        [sys.executable, '-c', 'pass'],
+        'stale-manifest probe', timeout=30, manifest_path=manifest)
+    assert rc != 0
+    assert counts == {}
+
+
+def test_run_command_valid_manifest_passes(monkeypatch, tmp_path):
+    monkeypatch.setattr(run_tests, 'emit', lambda *a, **k: None)
+    manifest = tmp_path / "phase.json"
+    payload = _manifest()
+    script = (
+        f"open({str(manifest)!r}, 'w').write({payload!r})\n"
+    )
+    rc, _out, counts = run_tests.run_command(
+        [sys.executable, '-c', script],
+        'valid-manifest probe', timeout=30, manifest_path=manifest)
+    assert rc == 0
+    assert counts["passed"] == 3
 
 
 # --- NIT-3: pin the actual run_command hardening (timeout / killpg / file
@@ -203,8 +406,8 @@ def test_run_command_timeout_kills_whole_process_group(monkeypatch):
         "time.sleep(60)\n"
     )
     t0 = time.time()
-    rc, _out = run_tests.run_command([sys.executable, '-c', inner],
-                                     'killpg probe', timeout=2)
+    rc, _out, _counts = run_tests.run_command(
+        [sys.executable, '-c', inner], 'killpg probe', timeout=2)
     elapsed = time.time() - t0
     assert rc == run_tests.TIMEOUT_EXIT
     assert elapsed < 25, f"did not honour the 2s timeout (took {elapsed:.1f}s)"
@@ -232,8 +435,8 @@ def test_run_command_orphan_holding_output_does_not_wedge(monkeypatch):
         "os._exit(0)\n"
     )
     t0 = time.time()
-    rc, out = run_tests.run_command([sys.executable, '-c', inner],
-                                    'orphan probe', timeout=30)
+    rc, out, _counts = run_tests.run_command(
+        [sys.executable, '-c', inner], 'orphan probe', timeout=30)
     elapsed = time.time() - t0
     assert 'child-done' in out
     assert elapsed < 6, f"run_command wedged on an orphan-held pipe ({elapsed:.1f}s)"
