@@ -10,12 +10,12 @@ reach the SAME posix option the special-builtin exit-on-error policy reads, so
 a special-builtin usage error exits a non-interactive shell under either.
 """
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from shell_oracle import try_resolve_bash
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -26,7 +26,8 @@ _BASE_ENV = {k: v for k, v in os.environ.items()
              if k not in ('DISPLAY', 'XAUTHORITY', 'POSIXLY_CORRECT')}
 _BASE_ENV['PYTHONPATH'] = str(REPO_ROOT)
 
-BASH = shutil.which('bash') or '/bin/bash'
+_ORACLE = try_resolve_bash()
+BASH = _ORACLE.path if _ORACLE else 'bash-oracle-unavailable'
 
 
 def _psh(*args, env_extra=None, cwd=None):
@@ -48,7 +49,7 @@ def _bash(*args, env_extra=None, cwd=None):
                           cwd=cwd, env=env)
 
 
-@pytest.mark.skipif(not (shutil.which('bash')), reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 class TestPosixFlag:
     """``--posix`` enables posix mode at startup, matching bash."""
 
@@ -71,7 +72,7 @@ class TestPosixFlag:
         assert '--posix' in p.stdout
 
 
-@pytest.mark.skipif(not (shutil.which('bash')), reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 class TestPosixlyCorrectStartupEnv:
     """POSIXLY_CORRECT in the startup environment enables posix mode."""
 
@@ -94,7 +95,7 @@ class TestPosixlyCorrectStartupEnv:
         assert 'off' in p.stdout
 
 
-@pytest.mark.skipif(not (shutil.which('bash')), reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 class TestPosixScriptFile:
     """``--posix`` governs a script file, not just -c."""
 
@@ -107,7 +108,7 @@ class TestPosixScriptFile:
         assert 'on' in p.stdout
 
 
-@pytest.mark.skipif(not (shutil.which('bash')), reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 class TestSpecialBuiltinExitCrossRelease:
     """v0.673: --posix / POSIXLY_CORRECT reach the special-builtin exit policy.
 

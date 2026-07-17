@@ -18,6 +18,9 @@ exit code is what's compared.
 import sys
 
 from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 class TestExitStatus(ConformanceTest):
@@ -52,7 +55,7 @@ class TestExitStatus(ConformanceTest):
         script.write_text('exit 1 2 3\necho after=$?\n')
         psh = subprocess.run([sys.executable, '-m', 'psh', str(script)],
                              capture_output=True, text=True)
-        bash = subprocess.run(['bash', str(script)], capture_output=True, text=True)
+        bash = subprocess.run([BASH, str(script)], capture_output=True, text=True)
         assert psh.stdout == bash.stdout == 'after=1\n'
         assert psh.returncode == bash.returncode == 0
         assert 'too many arguments' in psh.stderr
@@ -66,7 +69,7 @@ class TestCdOptions(ConformanceTest):
         cmd = 'cd a b; echo rc=$?'
         psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                              capture_output=True, text=True)
-        bash = subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+        bash = subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
         assert psh.stdout == bash.stdout == 'rc=1\n'
         assert 'too many arguments' in psh.stderr
         assert 'too many arguments' in bash.stderr
@@ -85,6 +88,6 @@ class TestCdOptions(ConformanceTest):
         import subprocess
         psh = subprocess.run([sys.executable, '-m', 'psh', '-c', 'cd -Z'],
                              capture_output=True, text=True)
-        bash = subprocess.run(['bash', '-c', 'cd -Z'],
+        bash = subprocess.run([BASH, '-c', 'cd -Z'],
                               capture_output=True, text=True)
         assert psh.returncode == bash.returncode == 2

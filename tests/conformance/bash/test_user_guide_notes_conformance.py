@@ -29,7 +29,8 @@ import subprocess
 import sys
 import tempfile
 
-from conformance_framework import ConformanceTest, find_bash
+from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
 
 
 class TestPipelineNotes(ConformanceTest):
@@ -242,7 +243,7 @@ class TestFuncnameNotes(ConformanceTest):
             psh = subprocess.run([sys.executable, '-m', 'psh', path],
                                  capture_output=True, text=True,
                                  cwd=root, timeout=15)
-            bash = subprocess.run([find_bash(), path], capture_output=True,
+            bash = subprocess.run([resolve_bash().path, path], capture_output=True,
                                   text=True, timeout=15)
             assert psh.stdout == 'c b a\n', psh.stdout
             assert bash.stdout == 'c b a main\n', bash.stdout

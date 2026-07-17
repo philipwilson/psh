@@ -15,6 +15,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
 
@@ -26,7 +30,7 @@ def run_psh(*args, cwd=None, env=None, stdin_input=None):
 
 
 def run_bash(*args, cwd=None, env=None, stdin_input=None):
-    return subprocess.run(['bash', *args], capture_output=True, text=True,
+    return subprocess.run([BASH, *args], capture_output=True, text=True,
                           timeout=10, cwd=cwd, env=env or os.environ.copy(),
                           input=stdin_input)
 
@@ -107,7 +111,7 @@ class TestScriptFileCarriageReturn:
         script = tmp_path / 'cr.sh'
         script.write_bytes(b'x="a\rb"\nprintf %s "$x"\n')
         psh = self._bytes([sys.executable, '-m', 'psh', str(script)])
-        bash = subprocess.run(['bash', str(script)], capture_output=True,
+        bash = subprocess.run([BASH, str(script)], capture_output=True,
                               timeout=10).stdout
         assert psh == bash == b'a\rb'
 
@@ -115,7 +119,7 @@ class TestScriptFileCarriageReturn:
         script = tmp_path / 'cr2.sh'
         script.write_bytes(b"x='a\rb'\nprintf %s \"$x\"\n")
         psh = self._bytes([sys.executable, '-m', 'psh', str(script)])
-        bash = subprocess.run(['bash', str(script)], capture_output=True,
+        bash = subprocess.run([BASH, str(script)], capture_output=True,
                               timeout=10).stdout
         assert psh == bash == b'a\rb'
 
@@ -150,7 +154,7 @@ class TestScriptFileCRLFLineEndings:
         script.write_bytes(script_bytes)
         psh = subprocess.run([sys.executable, '-m', 'psh', str(script)],
                              capture_output=True, timeout=10, env=ENV)
-        bash = subprocess.run(['bash', str(script)], capture_output=True,
+        bash = subprocess.run([BASH, str(script)], capture_output=True,
                               timeout=10)
         return psh, bash
 

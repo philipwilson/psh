@@ -10,6 +10,9 @@ Not implemented: @K / @k (associative key/value display).
 """
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 class TestQuoteTransform:
@@ -167,7 +170,7 @@ class TestBashParity:
         import sys
         psh = subprocess.run([sys.executable, '-m', 'psh', '-c', script],
                              capture_output=True, text=True)
-        bash = subprocess.run(['bash', '-c', script],
+        bash = subprocess.run([BASH, '-c', script],
                               capture_output=True, text=True)
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode

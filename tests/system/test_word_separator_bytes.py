@@ -16,6 +16,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 NBSP = b'\xc2\xa0'          # U+00A0
 EN_SPACE = b'\xe2\x80\x82'  # U+2002
@@ -27,7 +30,7 @@ def _run_both_bytes(tmp_path, script_bytes, name='sep.sh'):
     script.write_bytes(script_bytes)
     psh = subprocess.run([sys.executable, '-m', 'psh', str(script)],
                          capture_output=True, timeout=15)
-    bash = subprocess.run(['bash', str(script)], capture_output=True,
+    bash = subprocess.run([BASH, str(script)], capture_output=True,
                           timeout=15)
     return psh, bash
 

@@ -15,23 +15,14 @@ per bucket (fast, truly differential). It is designed to pass UNCHANGED before
 and after the engine flip — proving the reroute is behaviour-preserving.
 """
 import os
-import shutil
 import subprocess
 import sys
 
 import pytest
+from shell_oracle import try_resolve_bash
 
-
-def _find_bash():
-    if "BASH_PATH" in os.environ and os.access(os.environ["BASH_PATH"], os.X_OK):
-        return os.environ["BASH_PATH"]
-    for p in ("/opt/homebrew/bin/bash", "/usr/local/bin/bash"):
-        if os.path.isfile(p) and os.access(p, os.X_OK):
-            return p
-    return shutil.which("bash")
-
-
-BASH = _find_bash()
+_ORACLE = try_resolve_bash()
+BASH = _ORACLE.path if _ORACLE else None
 PSH = [sys.executable, "-m", "psh"]
 
 pytestmark = pytest.mark.skipif(BASH is None, reason="bash oracle not available")

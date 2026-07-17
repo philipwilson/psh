@@ -12,6 +12,10 @@ import re
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def _psh(cmd):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
@@ -19,7 +23,7 @@ def _psh(cmd):
 
 
 def _bash(cmd):
-    return subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
 
 
 # bash default TIMEFORMAT: blank line, then real/user/sys as <m>m<s.SSS>s.

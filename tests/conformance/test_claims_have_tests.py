@@ -38,7 +38,7 @@ from _assert_analysis import (
     called_names,
     has_bare_assert,
 )
-from conformance_framework import find_bash
+from shell_oracle import resolve_bash
 
 GUIDE = os.path.join(os.path.dirname(__file__), '..', '..',
                      'docs', 'user_guide', '17_differences_from_bash.md')
@@ -324,7 +324,7 @@ def _runs_identically(script):
     stale row is one whose divergence probe has started running identically.
     """
     psh = _run(PSH, script)
-    bash = _run([find_bash()], script)
+    bash = _run([resolve_bash().path], script)
     return psh.stdout == bash.stdout and psh.returncode == bash.returncode
 
 

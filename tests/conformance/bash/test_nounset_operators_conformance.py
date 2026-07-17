@@ -14,13 +14,16 @@ import sys
 
 import pytest
 from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 def _exit(cmd):
     """(psh_rc, bash_rc) for `cmd` under a non-interactive shell."""
     psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                          capture_output=True, text=True)
-    bash = subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+    bash = subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
     return psh.returncode, bash.returncode
 
 

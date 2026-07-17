@@ -28,6 +28,10 @@ import signal
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def run_psh(cmd, timeout=15):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
@@ -35,7 +39,7 @@ def run_psh(cmd, timeout=15):
 
 
 def run_bash(cmd, timeout=15):
-    return subprocess.run(['bash', '-c', cmd],
+    return subprocess.run([BASH, '-c', cmd],
                           capture_output=True, text=True, timeout=timeout)
 
 

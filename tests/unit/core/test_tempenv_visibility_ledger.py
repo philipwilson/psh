@@ -21,14 +21,15 @@ Derived from the 16-case visibility probe run 2026-07-08 (worktree-psh vs bash).
 """
 
 import os
-import shutil
 import subprocess
 import sys
 
 import pytest
+from shell_oracle import try_resolve_bash
 
+_ORACLE = try_resolve_bash()
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None, reason="needs a live bash to compare against")
+    _ORACLE is None, reason="needs a live bash to compare against")
 
 
 def _clean_env():
@@ -44,7 +45,7 @@ def _run(argv, cmd):
 
 
 def _bash(cmd):
-    return _run(["bash", "--noprofile", "--norc", "-c"], cmd)
+    return _run([_ORACLE.path, "--noprofile", "--norc", "-c"], cmd)
 
 
 def _psh(cmd):

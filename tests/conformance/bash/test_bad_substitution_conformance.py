@@ -20,9 +20,10 @@ import subprocess
 import sys
 
 from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
 
 PSH = [sys.executable, '-m', 'psh', '-c']
-BASH = ['bash', '-c']
+BASH = [resolve_bash().path, '-c']
 
 
 def _run(argv, command):
@@ -30,10 +31,15 @@ def _run(argv, command):
 
 
 def _error_tail(stderr):
-    """Strip the shell-name (and bash's "line N:") prefix from an error line."""
+    """Strip the shell-name (and bash's "line N:") prefix from an error line.
+
+    bash's prefix is its $0 — with the resolve_bash() oracle that is a full
+    path ("/opt/homebrew/bin/bash: line 1: ..."), so the shell-name part is
+    matched as any non-space token ending in the shell name, not a bare word.
+    """
     line = stderr.strip()
-    # bash: "bash: line 1: ${}: bad substitution"; psh: "psh: ${}: bad substitution"
-    line = re.sub(r'^(bash|psh): (line \d+: )?', '', line)
+    # bash: "<argv0>: line 1: ${}: bad substitution"; psh: "psh: ${}: bad substitution"
+    line = re.sub(r'^(\S*bash|psh): (line \d+: )?', '', line)
     return line
 
 

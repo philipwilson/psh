@@ -16,6 +16,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
 
@@ -33,7 +37,7 @@ class TestNonSeekableSources:
     def test_process_substitution_script_operand(self):
         # The <(...) fd comes from an OUTER shell; psh must not pre-read it.
         result = subprocess.run(
-            ['bash', '-c', f'{sys.executable} -m psh <(echo "echo hello")'],
+            [BASH, '-c', f'{sys.executable} -m psh <(echo "echo hello")'],
             capture_output=True, text=True, timeout=10, env=ENV)
         assert result.returncode == 0
         assert result.stdout == 'hello\n'
@@ -58,7 +62,7 @@ class TestNonSeekableSources:
     def test_fifo_as_script(self, tmp_path):
         fifo = str(tmp_path / 'fifo')
         os.mkfifo(fifo)
-        writer = subprocess.Popen(['bash', '-c', f'echo "echo fifod" > {fifo}'])
+        writer = subprocess.Popen([BASH, '-c', f'echo "echo fifod" > {fifo}'])
         try:
             result = run_psh(fifo)
         finally:
@@ -72,7 +76,7 @@ class TestNonSeekableSources:
     def test_source_fifo(self, tmp_path):
         fifo = str(tmp_path / 'fifo')
         os.mkfifo(fifo)
-        writer = subprocess.Popen(['bash', '-c', f'echo "echo sfifod" > {fifo}'])
+        writer = subprocess.Popen([BASH, '-c', f'echo "echo sfifod" > {fifo}'])
         try:
             result = run_psh('-c', f'source {fifo}')
         finally:

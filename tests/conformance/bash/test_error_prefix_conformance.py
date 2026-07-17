@@ -15,10 +15,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
 
-from tests.conformance.conformance_framework import find_bash
-
-BASH = find_bash()
+BASH = resolve_bash().path
 
 
 def _run(argv, cmd, dollar0=None):

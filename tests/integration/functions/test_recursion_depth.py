@@ -29,6 +29,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 def _psh_c(cmd, strict=None):
@@ -56,7 +59,7 @@ def test_deep_recursion_succeeds(depth):
 def test_deep_recursion_matches_bash():
     cmd = RECURSE_N % 500
     psh = _psh_c(cmd)
-    bash = subprocess.run(['bash', '-c', cmd], capture_output=True, text=True,
+    bash = subprocess.run([BASH, '-c', cmd], capture_output=True, text=True,
                           timeout=120)
     assert psh.stdout == bash.stdout == 'rc=0\n'
     assert psh.returncode == bash.returncode == 0

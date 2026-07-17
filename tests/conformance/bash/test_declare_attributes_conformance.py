@@ -21,6 +21,9 @@ All output verified identical to bash 5.2.
 import sys
 
 from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 class TestDeclareIntegerCaseCombo(ConformanceTest):
@@ -165,7 +168,7 @@ class TestIntegerAttributeArithmeticErrors(ConformanceTest):
         import subprocess
         psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                              capture_output=True, text=True)
-        bash = subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+        bash = subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
         assert psh.returncode == bash.returncode == 1
         assert psh.stderr and bash.stderr
 

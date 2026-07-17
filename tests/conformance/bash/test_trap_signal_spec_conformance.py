@@ -18,7 +18,8 @@ and query interchangeably. Verified against bash 5.2.
 import subprocess
 import sys
 
-from conformance_framework import ConformanceTest, find_bash
+from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
 
 
 class TestTrapSignalSpecConformance(ConformanceTest):
@@ -38,7 +39,7 @@ class TestTrapSignalSpecConformance(ConformanceTest):
         cmd = "trap 'echo x' NOTASIGNAL; echo rc=$?"
         psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                              capture_output=True, text=True)
-        bash = subprocess.run([find_bash(), '-c', cmd],
+        bash = subprocess.run([resolve_bash().path, '-c', cmd],
                               capture_output=True, text=True)
         assert psh.stdout == bash.stdout == "rc=1\n"
         assert 'invalid signal specification' in psh.stderr
@@ -161,7 +162,7 @@ class TestTrapDisplayConformance(ConformanceTest):
         cmd = "trap -p NOSUCHSIG; echo rc=$?"
         psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                              capture_output=True, text=True)
-        bash = subprocess.run([find_bash(), '-c', cmd],
+        bash = subprocess.run([resolve_bash().path, '-c', cmd],
                               capture_output=True, text=True)
         assert psh.stdout == bash.stdout == "rc=1\n"
         assert 'NOSUCHSIG: invalid signal specification' in psh.stderr

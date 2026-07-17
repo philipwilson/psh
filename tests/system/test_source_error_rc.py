@@ -7,18 +7,17 @@ unreadable file, or binary — correct for the `psh file` INVOCATION path. bash'
 failures. Pinned against bash 5.2.
 """
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from shell_oracle import resolve_bash
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
 
-BASH = '/opt/homebrew/bin/bash' if os.path.exists('/opt/homebrew/bin/bash') \
-    else shutil.which('bash')
+BASH = resolve_bash().path
 
 
 def _source_rc_psh(path):

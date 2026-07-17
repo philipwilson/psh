@@ -25,20 +25,23 @@ three: captured stdout, captured stderr, and the fd-9 status.
 
 Subprocess tests: they permanently close the shell's own std fds, so they MUST
 NOT run in-process (that would clobber the runner's descriptors, and under
-xdist the worker channel). Pinned against bash 5.2.
+xdist the worker channel). Pinned against the resolve_bash() oracle (5.2),
+executed through the shared typed runner (hermetic env, own session,
+file-backed capture, bounded output).
 """
 import itertools
 import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+from shell_oracle import Completed, hermetic_shell_env, resolve_bash, run_shell_case
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
-BASH = "/opt/homebrew/bin/bash"
+ENV = hermetic_shell_env({'LC_ALL': 'C', 'LANG': 'C',
+                          'PYTHONPATH': str(REPO_ROOT)})
+BASH = resolve_bash().path
 
 
 def _closures(c0, c1, c2):
@@ -80,9 +83,9 @@ def _observe(argv, closures, pipeline_expr):
         script = (closures +
                   f'exec 9>{path}; {pipeline_expr}; '
                   f'printf "rc=%s ps=%s" "$?" "${{PIPESTATUS[*]}}" >&9')
-        r = subprocess.run(argv + ["-c", script], input=b'',
-                           capture_output=True, timeout=20,
-                           cwd=str(REPO_ROOT), env=ENV)
+        r = run_shell_case(argv + ["-c", script], stdin_data="",
+                           env=ENV, timeout=20)
+        assert isinstance(r, Completed), f"harness failure: {r!r}"
         with open(path) as f:
             status = _normalize_status(f.read())
         return r.stdout, r.stderr, status
@@ -111,8 +114,8 @@ def test_d1_closed_stdin_pipeline():
     """exec 0<&-; printf x | cat prints x, PIPESTATUS 0 0 (was 'Bad fd')."""
     out, err, status = _observe([sys.executable, "-m", "psh"], "exec 0<&-; ",
                                 "printf x | cat")
-    assert out == b"x"
-    assert err == b""
+    assert out == "x"
+    assert err == ""
     assert status == "rc=0 ps=0 0"
 
 
@@ -124,8 +127,8 @@ def test_d2_closed_stdout_upstream_keeps_write_end():
     """
     out, err, status = _observe([sys.executable, "-m", "psh"], "exec 1>&-; ",
                                 "printf x | cat")
-    assert b"printf" not in err  # upstream keeps its pipe write end
-    assert err == b"cat: stdout: Bad file descriptor\n"
+    assert "printf" not in err  # upstream keeps its pipe write end
+    assert err == "cat: stdout: Bad file descriptor\n"
     assert status == "rc=1 ps=0 1"
 
 
@@ -133,5 +136,5 @@ def test_ordinary_pipeline_unchanged():
     """The all-open pipeline is unchanged: x on stdout, PIPESTATUS 0 0."""
     out, err, status = _observe([sys.executable, "-m", "psh"], "",
                                 "printf x | cat")
-    assert out == b"x"
+    assert out == "x"
     assert status == "rc=0 ps=0 0"

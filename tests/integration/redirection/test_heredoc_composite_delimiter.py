@@ -21,7 +21,7 @@ def run(script):
 
 
 def run_bash(script):
-    return subprocess.run(['bash'], input=script, capture_output=True, text=True)
+    return subprocess.run([BASH], input=script, capture_output=True, text=True)
 
 
 CASES = [
@@ -39,6 +39,9 @@ CASES = [
 
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 @pytest.mark.parametrize('script,expected',

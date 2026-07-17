@@ -17,7 +17,8 @@ Verified against bash 5.2.
 import subprocess
 import sys
 
-from conformance_framework import ConformanceTest, find_bash
+from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
 
 
 class TestNounsetArithmeticErrors(ConformanceTest):
@@ -26,7 +27,7 @@ class TestNounsetArithmeticErrors(ConformanceTest):
     def _assert_unbound(self, cmd, name):
         psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                              capture_output=True, text=True)
-        bash = subprocess.run([find_bash(), '-c', cmd],
+        bash = subprocess.run([resolve_bash().path, '-c', cmd],
                               capture_output=True, text=True)
         assert bash.returncode != 0, f"expected bash to fail: {cmd}"
         assert psh.returncode == bash.returncode, (

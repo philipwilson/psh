@@ -16,6 +16,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 def _trace(cmd, runner):
@@ -30,7 +33,7 @@ def _psh(cmd):
 
 
 def _bash(cmd):
-    return subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
 
 
 @pytest.mark.parametrize("cmd", [

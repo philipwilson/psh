@@ -13,6 +13,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
 
@@ -22,7 +26,7 @@ def _run(script, tmp_path, name):
     path.write_text(script)
     psh = subprocess.run([sys.executable, '-m', 'psh', str(path)],
                          capture_output=True, text=True, timeout=10, env=ENV)
-    bash = subprocess.run(['bash', str(path)],
+    bash = subprocess.run([BASH, str(path)],
                           capture_output=True, text=True, timeout=10)
     return psh, bash
 

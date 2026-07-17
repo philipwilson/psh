@@ -10,6 +10,10 @@ no limit. Verified against bash 5.2 (error-message prefix differs by design).
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def _psh_c(cmd):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
@@ -17,7 +21,7 @@ def _psh_c(cmd):
 
 
 def _bash_c(cmd):
-    return subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
 
 
 def test_limit_caps_recursion_depth():

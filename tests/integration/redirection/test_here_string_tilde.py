@@ -11,6 +11,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 def _out(cmd, exe):
@@ -36,5 +39,5 @@ def _out(cmd, exe):
 ])
 def test_here_string_tilde_matches_bash(cmd):
     psh = _out(cmd, [sys.executable, '-m', 'psh', '-c'])
-    bash = _out(cmd, ['bash', '-c'])
+    bash = _out(cmd, [BASH, '-c'])
     assert psh == bash, cmd

@@ -20,11 +20,15 @@ as `false` with no trailing space. Subprocess + timeout; serial-by-path.
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 TIMEOUT = 15
 
 
 def _bash_c(s):
-    return subprocess.run(['bash', '-c', s], capture_output=True, text=True,
+    return subprocess.run([BASH, '-c', s], capture_output=True, text=True,
                           timeout=TIMEOUT).stdout
 
 
@@ -41,7 +45,7 @@ def _script(exe, s, tmp_path):
 
 
 def _bash_script(s, tmp_path):
-    return _script(['bash'], s, tmp_path)
+    return _script([BASH], s, tmp_path)
 
 
 def _psh_script(s, tmp_path):
@@ -49,7 +53,7 @@ def _psh_script(s, tmp_path):
 
 
 def _bash_stdin(s):
-    return subprocess.run(['bash'], input=s + "\n", capture_output=True,
+    return subprocess.run([BASH], input=s + "\n", capture_output=True,
                           text=True, timeout=TIMEOUT).stdout
 
 

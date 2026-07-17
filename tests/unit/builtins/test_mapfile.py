@@ -10,6 +10,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 def _run(script, stdin=""):
@@ -143,7 +146,7 @@ class TestMapfileBashParity:
     ])
     def test_matches_bash(self, script, stdin):
         psh = _run(script, stdin)
-        bash = subprocess.run(['bash', '-c', script], input=stdin,
+        bash = subprocess.run([BASH, '-c', script], input=stdin,
                               capture_output=True, text=True)
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode

@@ -17,6 +17,12 @@ import pytest
 PSH_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PSH_ROOT))
 
+# The shared oracle harness (tests/harness/shell_oracle.py) is the ONE bash
+# resolver + typed differential runner (campaign E2). tests/ is not a package,
+# so put the harness directory on sys.path here — every test module can then
+# `from shell_oracle import resolve_bash, run_shell_case` regardless of depth.
+sys.path.insert(0, str(PSH_ROOT / "tests" / "harness"))
+
 # On macOS with XQuartz installed, DISPLAY points at a launchd socket that
 # AUTO-STARTS XQuartz the moment any X11-capable client the suite spawns
 # connects to it (a GUI popping up mid-test-run). Strip it here, at import
@@ -105,6 +111,93 @@ def _restore_os_environ():
     for k, v in saved.items():
         if os.environ.get(k) != v:
             os.environ[k] = v
+
+
+#: Signals whose process-level dispositions in-process shells can mutate
+#: (psh's TrapManager installs real handlers for `trap` actions; job control
+#: touches TSTP/TTIN/TTOU/CHLD). SIGALRM is deliberately EXCLUDED —
+#: pytest-timeout owns it. SIGKILL/SIGSTOP cannot be caught anyway.
+_HERMETIC_SIGNALS = tuple(
+    getattr(signal, name) for name in (
+        'SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT', 'SIGPIPE', 'SIGCHLD',
+        'SIGTSTP', 'SIGTTIN', 'SIGTTOU', 'SIGUSR1', 'SIGUSR2', 'SIGWINCH',
+        'SIGCONT', 'SIGABRT',
+    ) if hasattr(signal, name)
+)
+
+
+@pytest.fixture(autouse=True)
+def _restore_signal_dispositions_and_std_fds():
+    """Snapshot/restore process signal dispositions, fds 0/1/2, and the
+    process-global libc locale per test (boundary campaign E3: hermetic
+    process state).
+
+    WHY suite-wide autouse: an in-process shell that runs `trap "..." SIG`
+    installs a REAL handler in the test runner's process
+    (``TrapManager._set_signal_handler``). ``Shell.close()`` restores it, but
+    a test that constructs a raw ``Shell()`` outside the fixture family — or
+    calls ``signal.signal`` itself — leaks the disposition into every later
+    test and, worse, into every later SUBPROCESS (an inherited SIG_IGN made
+    a whole class of fatal-signal tests silently meaningless in the past —
+    see the SIGINT-gate memory). Likewise a test that rewires fd 0/1/2
+    permanently corrupts the whole worker; and a shell given a non-C locale
+    profile calls libc ``setlocale`` PROCESS-GLOBALLY
+    (``LocaleService._try_setlocale``) — a later C-profile shell never calls
+    ``setlocale`` at all (C mode is the no-setlocale fast path), so a leaked
+    non-C worker locale would silently recolor every later collation/ctype
+    answer. Restoring is a handful of syscalls per test and acts only on
+    drift, so the fixture is safe at suite scope; scope rationale recorded
+    in the E23 boundary ledger.
+
+    The teardown runs AFTER the shell-family fixtures' cleanup (autouse
+    fixtures are set up first, torn down last), so it observes the
+    post-``Shell.close()`` state and only repairs genuine leaks.
+    """
+    import locale as _locale
+    try:
+        saved_locale = _locale.setlocale(_locale.LC_ALL)
+    except _locale.Error:  # pragma: no cover - unqueryable locale state
+        saved_locale = None
+    saved_signals = {}
+    for sig in _HERMETIC_SIGNALS:
+        try:
+            handler = signal.getsignal(sig)
+        except (OSError, ValueError):
+            continue
+        if handler is not None:  # None = non-Python handler; not restorable
+            saved_signals[sig] = handler
+    saved_fds = {}
+    for fd in (0, 1, 2):
+        try:
+            saved_fds[fd] = os.dup(fd)
+        except OSError:
+            pass
+    try:
+        yield
+    finally:
+        if saved_locale is not None:
+            try:
+                if _locale.setlocale(_locale.LC_ALL) != saved_locale:
+                    _locale.setlocale(_locale.LC_ALL, saved_locale)
+            except _locale.Error:  # pragma: no cover - unrestorable composite
+                pass
+        for sig, handler in saved_signals.items():
+            try:
+                if signal.getsignal(sig) is not handler:
+                    signal.signal(sig, handler)
+            except (OSError, ValueError, TypeError):
+                # ValueError: not in main thread — nothing we can do safely.
+                pass
+        for fd, dup in saved_fds.items():
+            try:
+                os.dup2(dup, fd)
+            except OSError:
+                pass
+            finally:
+                try:
+                    os.close(dup)
+                except OSError:
+                    pass
 
 
 @pytest.fixture

@@ -3,61 +3,45 @@ Comprehensive conformance testing framework.
 
 Provides infrastructure for comparing PSH behavior with bash and POSIX
 standards, tracking differences, and documenting compatibility.
+
+Oracle resolution and case execution are OWNED by the shared harness module
+``tests/harness/shell_oracle.py`` (campaign E2): ``resolve_bash()`` is the one
+bash-resolution ladder and ``run_shell_case()`` is the one typed runner.  A
+harness failure (spawn failure, timeout, decode failure) is rejected BEFORE
+any stdout/status/stderr comparison — two identical failures must never
+classify as conformance (continuation finding G).
 """
 
 import json
 import os
-import shutil
-import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "harness"))
+from shell_oracle import (  # noqa: E402
+    Completed,
+    ShellRunResult,
+    hermetic_shell_env,
+    resolve_bash,
+    run_shell_case,
+)
 
-def find_bash() -> str:
-    """Find the best available bash executable.
 
-    Searches for bash in the following order:
-    1. BASH_PATH environment variable (if set)
-    2. /opt/homebrew/bin/bash (Apple Silicon Mac with Homebrew)
-    3. /usr/local/bin/bash (Intel Mac with Homebrew)
-    4. bash in PATH (system bash or CI environment)
+class OracleHarnessFailure(AssertionError):
+    """A differential run failed in the HARNESS, not in shell behavior.
 
-    This ensures conformance tests use the latest bash on macOS (via Homebrew)
-    while still working in CI environments where bash is in the standard PATH.
-
-    For CI/CD or custom environments, set the BASH_PATH environment variable:
-        export BASH_PATH=/usr/bin/bash  # or wherever bash is located
-        pytest tests/conformance/
-
-    Returns:
-        Path to bash executable as string (not list)
+    Raised by the direct ``run_in_psh``/``run_in_bash``/``run_in_shell``
+    helpers so a caller can never mistake a spawn failure, timeout, or decode
+    failure for a comparable shell result.  Carries the typed variant.
     """
-    # Check environment variable first
-    if "BASH_PATH" in os.environ:
-        bash_path = os.environ["BASH_PATH"]
-        if os.path.isfile(bash_path) and os.access(bash_path, os.X_OK):
-            return bash_path
 
-    # Check common Homebrew locations (newer bash on macOS)
-    homebrew_paths = [
-        "/opt/homebrew/bin/bash",  # Apple Silicon
-        "/usr/local/bin/bash",      # Intel Mac
-    ]
-
-    for path in homebrew_paths:
-        if os.path.isfile(path) and os.access(path, os.X_OK):
-            return path
-
-    # Fall back to bash in PATH (works everywhere, including CI)
-    bash_in_path = shutil.which("bash")
-    if bash_in_path:
-        return bash_in_path
-
-    # Last resort: assume bash is available
-    return "bash"
+    def __init__(self, shell: str, result: ShellRunResult):
+        self.shell = shell
+        self.result = result
+        super().__init__(f"harness failure running {shell}: {result!r}")
 
 
 class ConformanceResult(Enum):
@@ -83,13 +67,27 @@ class CommandResult:
 
 @dataclass
 class ComparisonResult:
-    """Result of comparing PSH and bash behavior."""
+    """Result of comparing PSH and bash behavior.
+
+    ``psh_result``/``bash_result`` are ``None`` for a side whose run was a
+    HARNESS failure (spawn/timeout/decode); ``conformance`` is then
+    ``TEST_ERROR`` and ``notes`` names the typed failure.  Harness failures
+    never reach the behavior comparison.
+    """
     command: str
-    psh_result: CommandResult
-    bash_result: CommandResult
+    psh_result: Optional[CommandResult]
+    bash_result: Optional[CommandResult]
     conformance: ConformanceResult
     difference_id: Optional[str] = None
     notes: Optional[str] = None
+
+
+def _fmt_side(result: Optional[CommandResult]) -> str:
+    """Human-readable one-line rendering of one side for assertion messages."""
+    if result is None:
+        return "harness failure (no comparable result)"
+    return (f"stdout={result.stdout!r} stderr={result.stderr!r} "
+            f"exit={result.exit_code}")
 
 
 class ConformanceTestFramework:
@@ -100,10 +98,11 @@ class ConformanceTestFramework:
 
         Args:
             psh_path: Path to PSH executable (default: python -m psh)
-            bash_path: Path to bash executable (default: auto-detected best bash)
+            bash_path: Path to bash executable (default: the resolve_bash()
+                oracle — BASH_PATH -> Homebrew -> PATH, never bare ``bash``)
         """
         self.psh_path = psh_path or [sys.executable, "-m", "psh"]
-        bash_exec = bash_path or find_bash()
+        bash_exec = bash_path or resolve_bash().path
         self.bash_path = bash_exec if isinstance(bash_exec, list) else [bash_exec]
         self.project_root = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "..")
@@ -122,87 +121,69 @@ class ConformanceTestFramework:
             with open(catalog_path, 'r') as f:
                 self.differences_catalog = json.load(f)
 
+    def _run_typed(self, command: str, shell_cmd: List[str],
+                   env: Dict[str, str] = None,
+                   timeout: float = 10.0) -> ShellRunResult:
+        """Run command in the given shell, returning the TYPED runner result.
+
+        The environment is hermetic (all inherited ``LC_*``/``LANG`` and
+        ``DISPLAY`` stripped by the shared builder) with the suite's locale
+        pin (``LC_ALL=C``/``LANG=C`` — so sort order, error messages, and glob
+        ranges don't drift by machine) applied first and the case's own ``env``
+        layered on top.  Output decoding is UTF-8 + surrogateescape (lossless,
+        so psh-vs-bash byte comparison stays exact even for cases that emit
+        UTF-8 while running under the C-locale pin).  Each case runs in its
+        own temporary directory inside a fresh session, with bounded output.
+        """
+        case_env = {'LC_ALL': 'C', 'LANG': 'C'}
+        if env:
+            case_env.update(env)
+        return run_shell_case(
+            shell_cmd + ["-c", command],
+            env=hermetic_shell_env(case_env),
+            timeout=timeout,
+        )
+
+    @staticmethod
+    def _completed_to_result(run: Completed, shell_cmd: List[str],
+                             command: str) -> CommandResult:
+        return CommandResult(
+            stdout=run.stdout,
+            stderr=run.stderr,
+            exit_code=run.returncode,
+            execution_time=run.duration,
+            shell=" ".join(shell_cmd),
+            command=command,
+        )
+
     def run_in_shell(self, command: str, shell_cmd: List[str],
                      env: Dict[str, str] = None, timeout: float = 10.0) -> CommandResult:
-        """Run command in specified shell and return result."""
-        import time
+        """Run command in specified shell and return its completed result.
 
-        # Prepare environment. Pin the locale so sort order, error
-        # messages, and glob ranges don't drift by machine (same
-        # convention as the behavioral golden suite).
-        test_env = os.environ.copy()
-        test_env['LC_ALL'] = 'C'
-        test_env['LANG'] = 'C'
-        # Belt-and-braces alongside the conftest strip: an inherited DISPLAY
-        # would let any X11-capable child auto-start XQuartz on macOS.
-        test_env.pop('DISPLAY', None)
-        test_env.pop('XAUTHORITY', None)
-        if env:
-            test_env.update(env)
-
-        # For safety, run in temporary directory
-        with tempfile.TemporaryDirectory() as temp_dir:
-            start_time = time.time()
-            try:
-                result = subprocess.run(
-                    shell_cmd + ["-c", command],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    # Decode as UTF-8 explicitly rather than the parent process's
-                    # preferred encoding: the suite runs under LC_ALL=C (ASCII
-                    # preferred encoding), so a locale-pinned test whose shell
-                    # emits UTF-8 (e.g. `echo *` over accented filenames under
-                    # en_US.UTF-8) would otherwise raise a decode error that got
-                    # mislabelled as shell stderr. surrogateescape is lossless,
-                    # so psh-vs-bash byte comparison stays exact.
-                    encoding="utf-8",
-                    errors="surrogateescape",
-                    timeout=timeout,
-                    env=test_env,
-                    cwd=temp_dir
-                )
-                execution_time = time.time() - start_time
-
-                return CommandResult(
-                    stdout=result.stdout,
-                    stderr=result.stderr,
-                    exit_code=result.returncode,
-                    execution_time=execution_time,
-                    shell=" ".join(shell_cmd),
-                    command=command
-                )
-            except subprocess.TimeoutExpired:
-                execution_time = time.time() - start_time
-                return CommandResult(
-                    stdout="",
-                    stderr=f"Command timed out after {timeout}s",
-                    exit_code=124,  # timeout exit code
-                    execution_time=execution_time,
-                    shell=" ".join(shell_cmd),
-                    command=command
-                )
-            except Exception as e:
-                execution_time = time.time() - start_time
-                return CommandResult(
-                    stdout="",
-                    stderr=f"Execution error: {str(e)}",
-                    exit_code=127,
-                    execution_time=execution_time,
-                    shell=" ".join(shell_cmd),
-                    command=command
-                )
+        A harness failure (spawn failure, timeout, decode failure) raises
+        :class:`OracleHarnessFailure` — it is NOT rendered as a fake exit
+        code, so callers can never compare two failures as behavior.
+        """
+        run = self._run_typed(command, shell_cmd, env, timeout)
+        if not isinstance(run, Completed):
+            raise OracleHarnessFailure(" ".join(shell_cmd), run)
+        return self._completed_to_result(run, shell_cmd, command)
 
     def run_in_psh(self, command: str, env: Dict[str, str] = None,
                    timeout: float = 10.0) -> CommandResult:
         """Run command in PSH."""
+        return self.run_in_shell(command, self.psh_path,
+                                 self._psh_env(env), timeout)
+
+    def _psh_env(self, env: Dict[str, str] = None) -> Dict[str, str]:
+        """psh case env: the caller's env plus PYTHONPATH for this tree."""
         combined_env = dict(env) if env else {}
         existing_path = combined_env.get("PYTHONPATH") or os.environ.get("PYTHONPATH")
         pythonpath_parts = [self.project_root]
         if existing_path:
             pythonpath_parts.append(existing_path)
         combined_env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
-        return self.run_in_shell(command, self.psh_path, combined_env, timeout)
+        return combined_env
 
     def run_in_bash(self, command: str, env: Dict[str, str] = None,
                     timeout: float = 10.0) -> CommandResult:
@@ -211,11 +192,38 @@ class ConformanceTestFramework:
 
     def compare_behavior(self, command: str, env: Dict[str, str] = None,
                         timeout: float = 10.0) -> ComparisonResult:
-        """Compare PSH and bash behavior for a command."""
-        psh_result = self.run_in_psh(command, env, timeout)
-        bash_result = self.run_in_bash(command, env, timeout)
+        """Compare PSH and bash behavior for a command.
 
-        # Determine conformance status
+        Harness failures are rejected BEFORE the behavior comparison: a run
+        that did not complete makes the outcome ``TEST_ERROR`` with the typed
+        failure named in ``notes``.  In particular, two IDENTICAL harness
+        failures never classify as ``IDENTICAL`` (continuation finding G).
+        """
+        psh_run = self._run_typed(command, self.psh_path,
+                                  self._psh_env(env), timeout)
+        bash_run = self._run_typed(command, self.bash_path, env, timeout)
+
+        harness_notes = []
+        if not isinstance(psh_run, Completed):
+            harness_notes.append(f"psh harness failure: {psh_run!r}")
+        if not isinstance(bash_run, Completed):
+            harness_notes.append(f"bash harness failure: {bash_run!r}")
+        if harness_notes:
+            return ComparisonResult(
+                command=command,
+                psh_result=(self._completed_to_result(psh_run, self.psh_path, command)
+                            if isinstance(psh_run, Completed) else None),
+                bash_result=(self._completed_to_result(bash_run, self.bash_path, command)
+                             if isinstance(bash_run, Completed) else None),
+                conformance=ConformanceResult.TEST_ERROR,
+                notes="; ".join(harness_notes),
+            )
+
+        psh_result = self._completed_to_result(psh_run, self.psh_path, command)
+        bash_result = self._completed_to_result(bash_run, self.bash_path, command)
+
+        # Determine conformance status (both sides COMPLETED — harness
+        # failures were rejected above and never reach this comparison).
         conformance = self._analyze_conformance(psh_result, bash_result, command)
 
         # Look up difference ID if documented
@@ -231,11 +239,12 @@ class ConformanceTestFramework:
 
     def _analyze_conformance(self, psh_result: CommandResult,
                            bash_result: CommandResult, command: str) -> ConformanceResult:
-        """Analyze conformance between PSH and bash results."""
-        # Check for test execution errors (timeout)
-        if psh_result.exit_code == 124 or bash_result.exit_code == 124:
-            return ConformanceResult.TEST_ERROR
+        """Analyze conformance between two COMPLETED results.
 
+        Harness failures (spawn/timeout/decode) are typed and rejected in
+        :meth:`compare_behavior` before this point; the old exit-code-124
+        timeout sentinel is gone with them.
+        """
         # Check for identical behavior
         if (psh_result.stdout == bash_result.stdout and
             psh_result.stderr == bash_result.stderr and
@@ -302,8 +311,9 @@ class ConformanceTest:
 
         assert result.conformance == ConformanceResult.IDENTICAL, (
             f"PSH and bash behavior differs for: {command}\n"
-            f"PSH: stdout='{result.psh_result.stdout}' stderr='{result.psh_result.stderr}' exit={result.psh_result.exit_code}\n"
-            f"Bash: stdout='{result.bash_result.stdout}' stderr='{result.bash_result.stderr}' exit={result.bash_result.exit_code}"
+            f"PSH: {_fmt_side(result.psh_result)}\n"
+            f"Bash: {_fmt_side(result.bash_result)}"
+            + (f"\nNotes: {result.notes}" if result.notes else "")
         )
 
     def assert_documented_difference(self, command: str, difference_id: str,
@@ -332,7 +342,15 @@ class ConformanceTest:
         )
 
     def check_behavior(self, command: str, env: Dict[str, str] = None) -> ComparisonResult:
-        """Check behavior without assertion (for investigation)."""
+        """Check behavior without a CONFORMANCE assertion (for investigation).
+
+        Harness completedness IS asserted: every caller dereferences
+        ``psh_result``/``bash_result``, so a spawn/timeout/decode failure
+        surfaces here as a typed diagnostic instead of an ``AttributeError``
+        on a ``None`` side downstream.
+        """
         result = self.framework.compare_behavior(command, env)
         self.results.append(result)
+        assert result.psh_result is not None and result.bash_result is not None, (
+            f"harness failure (not shell behavior) for {command!r}: {result.notes}")
         return result

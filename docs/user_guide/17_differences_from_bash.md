@@ -585,15 +585,22 @@ honours the effective locale for:
   this only surfaces with a multibyte `-d` delimiter.
 - **PEP 538 residual (`PYTHONUTF8`).** In a bare or `LANG=C` environment
   CPython's PEP 538 coercion rewrites `LC_CTYPE` to a UTF-8 target before PSH
-  starts; PSH detects and strips that phantom (via `sys.flags.utf8_mode` plus a
-  coercion-target value), so it now presents bash's C locale under those
-  environments — `[[ é == [[:alpha:]] ]]` is false, `$LC_CTYPE` is empty, and no
-  `LC_CTYPE` is passed to children, all matching bash. The one residual is a user
-  who *forces* CPython's UTF-8 mode (`PYTHONUTF8=1` / `-X utf8`) **and** genuinely
-  sets `LC_CTYPE=C.UTF-8`: the forced `utf8_mode` makes the genuine value look
-  coerced, so PSH strips it where bash keeps it. `PYTHONUTF8` is a Python runtime
-  knob, not a shell-user path; an explicit `LC_ALL=C` is always fully
-  bash-faithful.
+  starts; PSH detects and strips that phantom, so it presents bash's C locale
+  under those environments — `[[ é == [[:alpha:]] ]]` is false, `$LC_CTYPE` is
+  empty, and no `LC_CTYPE` is passed to children, all matching bash. The strip
+  follows a conservative provenance rule: it fires only when the coercion is
+  *provable*. A nonempty inherited `LC_ALL` (which disables CPython's
+  coercion), `PYTHONCOERCECLOCALE=0`, or an explicit UTF-8-mode request
+  (`PYTHONUTF8=1` / `-X utf8`) each mark the inherited `LC_CTYPE` as genuine
+  (or unknowable), and PSH then KEEPS it exactly as bash does. The one
+  residual is the unknowable corner: under an explicit `PYTHONUTF8=1` (or
+  `PYTHONUTF8=0`, which leaves `utf8_mode` off while the coercion still
+  rewrites the environment) in an otherwise effectively-C environment the
+  coercion still runs, and PSH keeps the resulting `LC_CTYPE` where bash
+  (never seeing it) shows nothing.
+  `PYTHONUTF8` is a Python runtime knob, not a shell-user path; every pure
+  shell-visible environment — including `LC_ALL=C` combined with an inherited
+  terminal `LC_CTYPE` — is fully bash-faithful.
 
 ### Here Document Behavior
 

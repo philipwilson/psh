@@ -10,6 +10,10 @@ pin the ACCEPTANCE and round-trip behavior, which is shell-state-independent).
 
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 class TestSetOHistory:
     """`set -o history` and `set +o history` are accepted (rc 0)."""
@@ -22,13 +26,13 @@ class TestSetOHistory:
     def test_disable_accepted(self):
         psh = self._run([sys.executable, '-m', 'psh'],
                         'set +o history; echo rc=$?')
-        bash = self._run(['bash'], 'set +o history; echo rc=$?')
+        bash = self._run([BASH], 'set +o history; echo rc=$?')
         assert psh.stdout == bash.stdout == 'rc=0\n'
 
     def test_enable_accepted(self):
         psh = self._run([sys.executable, '-m', 'psh'],
                         'set -o history; echo rc=$?')
-        bash = self._run(['bash'], 'set -o history; echo rc=$?')
+        bash = self._run([BASH], 'set -o history; echo rc=$?')
         assert psh.stdout == bash.stdout == 'rc=0\n'
 
     def test_round_trips_in_listing(self):

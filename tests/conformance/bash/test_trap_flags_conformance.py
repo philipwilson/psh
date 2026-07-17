@@ -16,7 +16,8 @@ exit code + stderr substring, because bash prefixes the message with
 import subprocess
 import sys
 
-from conformance_framework import ConformanceTest, find_bash
+from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
 
 
 class TestTrapFlagClustersConformance(ConformanceTest):
@@ -51,7 +52,7 @@ class TestTrapBadOptionConformance(ConformanceTest):
     def _run(self, cmd):
         psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                              capture_output=True, text=True)
-        bash = subprocess.run([find_bash(), '-c', cmd],
+        bash = subprocess.run([resolve_bash().path, '-c', cmd],
                               capture_output=True, text=True)
         return psh, bash
 

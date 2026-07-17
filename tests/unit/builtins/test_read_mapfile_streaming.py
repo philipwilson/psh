@@ -22,9 +22,10 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
 
 PSH = [sys.executable, "-m", "psh"]
-BASH = "bash"
+BASH = resolve_bash().path
 
 
 def _run(argv, script, stdin_bytes, timeout=10):

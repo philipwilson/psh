@@ -4,6 +4,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 def _run(script):
@@ -162,7 +165,7 @@ class TestNamerefBashParity:
     ])
     def test_matches_bash(self, script):
         psh = _run(script)
-        bash = subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+        bash = subprocess.run([BASH, '-c', script], capture_output=True, text=True)
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode
 
@@ -230,6 +233,6 @@ class TestNamerefTargetValidation:
     ])
     def test_matches_bash(self, script):
         psh = _run(script)
-        bash = subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+        bash = subprocess.run([BASH, '-c', script], capture_output=True, text=True)
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode

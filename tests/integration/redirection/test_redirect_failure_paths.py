@@ -25,6 +25,10 @@ import os
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def run_psh(cmd, cwd=None):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
@@ -54,7 +58,7 @@ class TestOutputRedirectToMissingDir:
         """Status for a failed output-redirect open is 1, like bash 5.2."""
         cmd = 'echo hi > /nonexistent_zz/x; echo rc=$?'
         psh = run_psh(cmd, cwd=tmp_path)
-        bash = subprocess.run(['bash', '-c', cmd], cwd=tmp_path,
+        bash = subprocess.run([BASH, '-c', cmd], cwd=tmp_path,
                               capture_output=True, text=True)
         assert psh.stdout == bash.stdout == 'rc=1\n'
 
@@ -78,7 +82,7 @@ class TestInputRedirectFromMissingFile:
     def test_exit_status_matches_bash(self, tmp_path):
         cmd = 'cat < /nonexistent_file_zz; echo rc=$?'
         psh = run_psh(cmd, cwd=tmp_path)
-        bash = subprocess.run(['bash', '-c', cmd], cwd=tmp_path,
+        bash = subprocess.run([BASH, '-c', cmd], cwd=tmp_path,
                               capture_output=True, text=True)
         assert psh.stdout == bash.stdout == 'rc=1\n'
 
@@ -122,7 +126,7 @@ class TestPermissionDeniedRedirect:
         try:
             cmd = 'echo hi > ro/x; echo rc=$?'
             psh = run_psh(cmd, cwd=tmp_path)
-            bash = subprocess.run(['bash', '-c', cmd], cwd=tmp_path,
+            bash = subprocess.run([BASH, '-c', cmd], cwd=tmp_path,
                                   capture_output=True, text=True)
             assert psh.stdout == bash.stdout == 'rc=1\n'
         finally:

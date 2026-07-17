@@ -1,7 +1,8 @@
 """Put the conformance directory on sys.path for every conformance test.
 
 The conformance suite's shared modules — ``conformance_framework`` (the
-``ConformanceTest`` base + ``find_bash``) and ``_assert_analysis`` (the shared
+``ConformanceTest`` base; the bash oracle itself now comes from
+``tests/harness/shell_oracle.py#resolve_bash``) and ``_assert_analysis`` (the shared
 AST guard helpers) — live in THIS directory and are imported with bare names
 (``from conformance_framework import ConformanceTest``). pytest imports this
 conftest before any test module in the tree, so a single sys.path insert here

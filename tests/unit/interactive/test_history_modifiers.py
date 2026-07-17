@@ -10,8 +10,11 @@ to it directly (history expansion is interactive-only; there's no `-c` vehicle).
 import subprocess
 
 import pytest
+from shell_oracle import resolve_bash
 
 from psh.shell import Shell
+
+BASH = resolve_bash().path
 
 SEED = 'echo prev cmd'
 
@@ -19,7 +22,7 @@ SEED = 'echo prev cmd'
 def _bash_history_p(seed, ref):
     """bash's history expansion of `ref` with `seed` as the previous command."""
     out = subprocess.run(
-        ['bash', '-c', "set -H; history -s \"$1\"; history -p \"$2\"",
+        [BASH, '-c', "set -H; history -s \"$1\"; history -p \"$2\"",
          '_', seed, ref],
         capture_output=True, text=True)
     return out.stdout.rstrip('\n')
