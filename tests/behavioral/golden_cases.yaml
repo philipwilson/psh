@@ -6606,11 +6606,20 @@
   stderr: ""
   exit_code: 0
 
+# psh_only (campaign E23): the agreement with bash was CAPTURE-MODE-DEPENDENT.
+# bash 5.2 writes history via tempfile+rename when the target is a REGULAR
+# file (rename into /dev/ fails -> silent rc=1, empty output) and writes
+# directly only to non-regular targets (pipes). The old pipe-backed harness
+# therefore saw bash agree; the hermetic file-backed runner exposes the real
+# divergence. psh writes directly in both cases (this pin). Probe archived in
+# tmp/boundary-ledgers/E23-probes/r18t2-triage.txt; bash-fidelity for
+# history-file writing is a candidate for a later builtins package, not E3.
 - name: r18t2_builtins_history_write_to_stdout
   command: "set -o history; history -s x; history -w /dev/stdout"
   stdout: "x\n"
   stderr: ""
   exit_code: 0
+  psh_only: true
 # R18 T2-F INTERACTIVE CLUSTER
 # =============================================================================
 # The monitor ('m') flag is on only for a genuinely interactive shell with

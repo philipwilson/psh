@@ -58,9 +58,13 @@ def _run(argv, command):
 
 
 def _tail(stderr):
-    """Strip the shell-name (and bash's "line N:") prefix from an error line."""
+    """Strip the shell-name (and bash's "line N:") prefix from an error line.
+
+    bash's prefix is its $0 — a full path under the resolve_bash() oracle —
+    so the shell-name part matches any non-space token ending in the name.
+    """
     line = stderr.strip().splitlines()[-1] if stderr.strip() else ""
-    return re.sub(r'^(bash|psh): (line \d+: )?', '', line)
+    return re.sub(r'^(\S*bash|psh): (line \d+: )?', '', line)
 
 
 class TestValidAsciiNamesIdentical(ConformanceTest):
