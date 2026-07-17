@@ -60,10 +60,13 @@ def test_defaults_match_history():
 
 
 def test_short_to_long_map():
+    # H/histexpand added for bash parity (r21 CORE-4): bash accepts both
+    # `set -H` and invocation `-H`/`+H`.
     assert SHORT_TO_LONG == {
         "a": "allexport", "b": "notify", "B": "braceexpand", "C": "noclobber",
         "e": "errexit",
-        "E": "errtrace", "f": "noglob", "h": "hashall", "m": "monitor",
+        "E": "errtrace", "f": "noglob", "h": "hashall", "H": "histexpand",
+        "m": "monitor",
         "n": "noexec", "T": "functrace",
         "u": "nounset", "v": "verbose", "x": "xtrace",
     }

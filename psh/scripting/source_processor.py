@@ -126,6 +126,8 @@ class SourceProcessor(ScriptComponent):
         exit_code = 0
         command_start_line = 0
         accumulator = CommandAccumulator(self.shell)
+        accumulator.history_expansion_eligible = getattr(
+            input_source, 'history_expansion_eligible', True)
 
         while True:
             line = input_source.read_line()
@@ -344,7 +346,9 @@ class SourceProcessor(ScriptComponent):
         try:
             preprocessed = self._preprocess_command(
                 command_string, add_to_history,
-                drop_dangling_at_eof=input_source.eof_drops_dangling_continuation)
+                drop_dangling_at_eof=input_source.eof_drops_dangling_continuation,
+                history_expansion_eligible=getattr(
+                    input_source, 'history_expansion_eligible', True))
             if preprocessed is None:
                 # History expansion failed - this is the proper error path
                 # (the "event not found" message was already printed).
@@ -389,7 +393,9 @@ class SourceProcessor(ScriptComponent):
                                                  nested)
 
     def _preprocess_command(self, command_string: str, add_to_history: bool,
-                            drop_dangling_at_eof: bool = False) -> Optional[str]:
+                            drop_dangling_at_eof: bool = False,
+                            history_expansion_eligible: bool = True,
+                            ) -> Optional[str]:
         """Preprocess a raw buffered command string before parsing.
 
         Joins line continuations, performs (interactive) history expansion,
@@ -412,8 +418,10 @@ class SourceProcessor(ScriptComponent):
         # Perform history expansion before tokenization. The accumulator
         # already expanded silently for the completeness trial; this
         # pass is the REPORTING one — it echoes the expansion like bash
-        # and prints "event not found" errors.
-        if (not self.state.is_script_mode and
+        # and prints "event not found" errors. Only for an eligible source
+        # (never a -c command string or the rc file — bash; see
+        # InputSource.history_expansion_eligible).
+        if (not self.state.is_script_mode and history_expansion_eligible and
                 hasattr(self.shell, 'history_expander')):
             expanded_command = self.shell.history_expander.expand_history(command_string)
             if expanded_command is None:

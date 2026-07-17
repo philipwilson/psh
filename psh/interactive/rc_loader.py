@@ -30,6 +30,9 @@ def load_rc_file(shell: 'Shell') -> None:
             # never had any effect.)
             from ..scripting.input_sources import FileInput
             with FileInput(rc_file) as input_source:
+                # bash never bang-expands rc-file lines (probe-verified:
+                # `echo !!` in an --rcfile stays literal under -i -s).
+                input_source.history_expansion_eligible = False
                 shell.script_manager.execute_from_source(input_source, add_to_history=False)
 
         except Exception as e:

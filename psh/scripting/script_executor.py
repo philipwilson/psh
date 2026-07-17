@@ -33,7 +33,13 @@ class ScriptExecutor(ScriptComponent):
         old_positional = self.state.positional_params.copy()
 
         self.state.script_name = script_path
-        self.state.is_script_mode = True
+        # Script-mode error policies apply only OUTSIDE the interactive
+        # family: `psh -i script.sh` keeps bash's interactive discard-line
+        # model (an unbound-variable line is skipped, the script continues —
+        # probe Q1, tmp/boundary-ledgers/F1-probes/base-policy2.txt), while
+        # a plain script run aborts.
+        self.state.is_script_mode = not self.state.options.get(
+            'interactive', False)
         # A script-file shell reads from a file, not stdin: bash's $- has no 's'.
         self.state.options['stdin_mode'] = False
         self.state.positional_params = script_args

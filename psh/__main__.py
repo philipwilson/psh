@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
-"""Main entry point for psh when run as a module."""
-import sys
-from typing import Dict, List, Tuple, cast
+"""Main entry point for psh when run as a module.
 
-from .core.option_registry import OPTION_REGISTRY, SHORT_TO_LONG, OptionCategory
+The command line is interpreted in exactly ONE place —
+``psh.invocation.parse_invocation`` — which returns a frozen
+:class:`~psh.invocation.InvocationConfig` (campaign F1). ``main()`` renders
+help/version/errors, constructs the Shell FROM the config (options, parser,
+``$0``/positionals all installed before any input runs), runs the explicit
+startup step (bare ``-o`` listings, history, rc file), and dispatches on the
+config's source kind. No other code may read ``sys.argv`` (guarded by
+tests/unit/tooling/test_invocation_argv_guard.py).
+"""
+import sys
+
+from .invocation import InvocationError, SourceKind, parse_invocation
 from .scripting.visitor_modes import (
     handle_visitor_mode_for_command,
     handle_visitor_mode_for_content,
@@ -11,40 +20,6 @@ from .scripting.visitor_modes import (
 )
 from .shell import Shell
 from .version import get_version_info
-
-# Flags that take no value: flag → settings applied when present.
-_FLAG_TABLE: Dict[str, List[Tuple[str, object]]] = {
-    "--debug-ast": [("debug_ast", True)],
-    "--debug-ast=pretty": [("debug_ast", True), ("ast_format", "pretty")],
-    "--debug-ast=tree": [("debug_ast", True), ("ast_format", "tree")],
-    "--debug-ast=dot": [("debug_ast", True), ("ast_format", "dot")],
-    "--debug-ast=compact": [("debug_ast", True), ("ast_format", "compact")],
-    "--debug-ast=sexp": [("debug_ast", True), ("ast_format", "sexp")],
-    "--debug-tokens": [("debug_tokens", True)],
-    "--debug-scopes": [("debug_scopes", True)],
-    "--debug-expansion": [("debug_expansion", True)],
-    # Detail/fork imply the basic flag
-    "--debug-expansion-detail": [("debug_expansion_detail", True),
-                                 ("debug_expansion", True)],
-    "--debug-exec": [("debug_exec", True)],
-    "--debug-exec-fork": [("debug_exec_fork", True), ("debug_exec", True)],
-    "--validate": [("validate_only", True)],
-    "--format": [("format_only", True)],
-    "--metrics": [("metrics_only", True)],
-    "--security": [("security_only", True)],
-    "--lint": [("lint_only", True)],
-    "-i": [("force_interactive", True)],
-    "--force-interactive": [("force_interactive", True)],
-    "--norc": [("norc", True)],
-}
-
-# Short options that set a shell option (bash: -e -u -x -v -n -f -C -B; every
-# `set` single-letter option is also a valid invocation option, so `psh +B`
-# disables brace expansion like `bash +B`). Each maps to its long name via the
-# option registry (the single source of truth); a cluster like -eux enables all
-# three. -s (stdin) and -i (interactive) are handled separately as they are not
-# shell options.
-_SHORT_SET_OPTIONS = frozenset("euxvnfCB")
 
 HELP_TEXT = """Usage: psh [options] [script [args...]]
        psh [options] -c command [args...]
@@ -54,14 +29,17 @@ Python Shell (psh) - An educational Unix shell implementation
 Options:
   -c command       Execute command and exit
   -s               Read commands from stdin; operands become positional params
-  -i               Force interactive mode (load rc, set $- 'i' flag)
-  -e -u -x -v      Set shell options (errexit, nounset, xtrace, verbose)
-  -n -f -C -B      Set shell options (noexec, noglob, noclobber, braceexpand)
+  -i               Force interactive mode (load rc, set $- 'i' flag); +i cancels
+  -a -b -e -f -h -m Set shell options (allexport, notify, errexit, noglob,
+  -n -u -v -x        hashall, monitor, noexec, nounset, verbose, xtrace)
+  -B -C -E -H -T   Set shell options (braceexpand, noclobber, errtrace,
+                     histexpand, functrace)
   +e +x +B ...     A leading '+' turns the option OFF (bash set +x); clusters
   -o NAME          Enable shell option NAME by name (like set -o NAME)
   +o NAME          Disable shell option NAME by name (like set +o NAME)
+  -o / +o          Bare trailing -o/+o prints the option listing (like set -o)
   --               End of options; remaining arguments are operands
-  -h, --help       Show this help message and exit
+  --help           Show this help message and exit
   -V, --version    Show version information and exit
   --norc           Do not read ~/.pshrc on startup
   --posix          Enable POSIX mode at startup (like set -o posix)
@@ -96,167 +74,6 @@ Examples:
 def print_help() -> None:
     """Print the command-line usage text."""
     print(HELP_TEXT)
-
-
-def _resolve_long_option(name: str) -> "str | None":
-    """Resolve a ``-o NAME`` / ``+o NAME`` token to its canonical option name.
-
-    Returns the registered option name, or ``None`` if NAME is not a
-    user-settable option.  Mirrors the ``set -o`` check: any registered
-    non-INTERNAL option name is accepted (psh's ``set -o`` is a deliberate
-    superset of bash's set/shopt split), normalizing ``_`` vs ``-``.
-    """
-    for candidate in (name, name.replace('-', '_'), name.replace('_', '-')):
-        spec = OPTION_REGISTRY.get(candidate)
-        if spec is not None and spec.category is not OptionCategory.INTERNAL:
-            return candidate
-    return None
-
-
-def _value_option(argv: List[str], i: int, name: str) -> Tuple[str, int]:
-    """Read the value of ``name VALUE`` or ``name=VALUE`` at position *i*.
-
-    Returns (value, next_index).  Exits with status 2 if the
-    space-separated form is missing its argument.
-    """
-    if argv[i].startswith(name + "="):
-        return argv[i][len(name) + 1:], i + 1
-    if i + 1 < len(argv):
-        return argv[i + 1], i + 2
-    print(f"psh: {name} requires an argument", file=sys.stderr)
-    sys.exit(2)
-
-
-def parse_args(argv: List[str]) -> Tuple[Dict[str, object], List[str]]:
-    """Parse psh's option flags from *argv*, left to right.
-
-    Returns (options, operands).  Like bash, option parsing STOPS at the
-    first non-option argument — the script name, or the command string
-    after ``-c`` — so everything from there on belongs to the script
-    untouched (``psh script.sh -i foo`` passes both args through as
-    $1/$2).  ``--`` (or the historical lone ``-``) ends options
-    explicitly; an unknown option in flag position exits with status 2.
-
-    Both ``-`` and ``+`` short-option clusters are accepted: a leading
-    ``-`` ENABLES each flag, a leading ``+`` DISABLES it (bash ``set +x``).
-    ``-o NAME`` / ``+o NAME`` set a long option by name, and ``-c`` may be
-    clustered (``-xc 'cmd'``). Each set-option is recorded as a
-    ``(name, enable)`` pair so a later ``+x`` / ``-x`` overrides an earlier
-    one (bash: last wins).
-    """
-    options: Dict[str, object] = {
-        "debug_ast": False,
-        "debug_tokens": False,
-        "debug_scopes": False,
-        "debug_expansion": False,
-        "debug_expansion_detail": False,
-        "debug_exec": False,
-        "debug_exec_fork": False,
-        "norc": False,
-        "rcfile": None,
-        "parser_type": None,
-        "validate_only": False,
-        "format_only": False,
-        "metrics_only": False,
-        "security_only": False,
-        "lint_only": False,
-        "force_interactive": False,
-        "ast_format": None,
-        "command_mode": False,
-        "stdin_mode": False,
-        "set_options": [],
-        "help": False,
-        "version": False,
-    }
-
-
-    i = 0
-    while i < len(argv):
-        arg = argv[i]
-        if arg in ("--", "-"):
-            i += 1
-            break
-        if not arg.startswith(("-", "+")):
-            break
-        if arg in _FLAG_TABLE:
-            for key, value in _FLAG_TABLE[arg]:
-                options[key] = value
-            i += 1
-        elif arg == "-c":
-            options["command_mode"] = True
-            i += 1
-        elif arg in ("--help", "-h"):
-            options["help"] = True
-            i += 1
-        elif arg in ("--version", "-V"):
-            options["version"] = True
-            i += 1
-        elif arg == "--posix":
-            # bash `--posix`: enable posix mode at startup. Recorded as a
-            # set-option toggle so it applies through the same path as `-o
-            # posix` (main() writes shell.state.options after the shell is
-            # wired, firing the POSIXLY_CORRECT coupling — bash binds
-            # POSIXLY_CORRECT=y when --posix turns posix on).
-            cast(List[Tuple[str, bool]], options["set_options"]).append(
-                ("posix", True))
-            i += 1
-        elif arg == "--rcfile" or arg.startswith("--rcfile="):
-            options["rcfile"], i = _value_option(argv, i, "--rcfile")
-        elif arg == "--parser" or arg.startswith("--parser="):
-            options["parser_type"], i = _value_option(argv, i, "--parser")
-        elif not arg.startswith("--") and len(arg) > 1:
-            # A short-option cluster: -e, -eux, -s, -xc, +x, -o NAME, ...
-            # A leading '-' ENABLES each set-option, '+' DISABLES it (bash
-            # `set +x`). Each char sets a shell option (bash -e/-u/-x/-v/
-            # -n/-f/-C), or is -s (read stdin), -i (interactive), -c (a
-            # command string follows), or -o/+o (a long option by NAME).
-            enable = arg[0] == "-"
-            sign = arg[0]
-            j = 1
-            while j < len(arg):
-                ch = arg[j]
-                if ch in _SHORT_SET_OPTIONS:
-                    cast(List[Tuple[str, bool]], options["set_options"]).append(
-                        (SHORT_TO_LONG[ch], enable))
-                elif ch == "s":
-                    options["stdin_mode"] = True
-                elif ch == "i":
-                    options["force_interactive"] = True
-                elif ch == "c":
-                    options["command_mode"] = True
-                elif ch == "o":
-                    # -o/+o NAME: NAME is the rest of this cluster if any
-                    # (`-opipefail`), else the next argument (`-o pipefail`).
-                    name = arg[j + 1:]
-                    if name:
-                        j = len(arg)  # remainder is the NAME, not more flags
-                    elif i + 1 < len(argv):
-                        name = argv[i + 1]
-                        i += 1
-                    else:
-                        print(f"psh: {sign}o: option requires an argument",
-                              file=sys.stderr)
-                        sys.exit(2)
-                    long_name = _resolve_long_option(name)
-                    if long_name is None:
-                        print(f"psh: {name}: invalid option name",
-                              file=sys.stderr)
-                        sys.exit(2)
-                    cast(List[Tuple[str, bool]], options["set_options"]).append(
-                        (long_name, enable))
-                else:
-                    print(f"psh: {sign}{ch}: invalid option", file=sys.stderr)
-                    print("Try 'psh --help' for more information.",
-                          file=sys.stderr)
-                    sys.exit(2)
-                j += 1
-            i += 1
-        else:
-            print(f"psh: {arg}: invalid option", file=sys.stderr)
-            print("Try 'psh --help' for more information.", file=sys.stderr)
-            sys.exit(2)
-
-    return options, argv[i:]
 
 
 def _neutralize_closed_std_streams() -> None:
@@ -333,59 +150,27 @@ def main():
     import atexit
     atexit.register(_neutralize_closed_std_streams)
     _enable_byte_transparent_output()
-    opts, operands = parse_args(sys.argv[1:])
+
+    try:
+        config = parse_invocation(sys.argv[1:])
+    except InvocationError as exc:
+        for line in exc.lines:
+            print(line, file=sys.stderr)
+        sys.exit(exc.status)
 
     # --version wins over --help regardless of order (bash does the same);
     # both exit before a Shell is constructed (no rc sourcing, no history).
-    if opts["version"]:
+    if config.print_version:
         print(get_version_info())
         sys.exit(0)
-    if opts["help"]:
+    if config.print_help:
         print_help()
         sys.exit(0)
 
-    # POSIX `sh -c command_string [name [args...]]`: the command string is the
-    # first operand, the next is $0, and the rest are $1, $2, ...
-    command_mode = bool(opts["command_mode"])
-    stdin_mode = bool(opts["stdin_mode"])
-    if command_mode and not operands:
-        print("psh: -c: option requires an argument", file=sys.stderr)
-        sys.exit(2)
-
-    # The shell must know its run-mode at construction: bash sources ~/.pshrc,
-    # loads history, and enables line editing only for an INTERACTIVE shell —
-    # never for `-c` or a script file (_init_interactive decides this). With
-    # -s the first operand is a POSITIONAL parameter, not a script name.
-    init_script_name = (operands[0] if operands and not command_mode
-                        and not stdin_mode else None)
-
-    visitor_mode = any([opts["format_only"], opts["metrics_only"],
-                        opts["security_only"], opts["lint_only"],
-                        opts["validate_only"]])
-
-    # opts is Dict[str, object] (its build loop assigns by dynamic key, so it
-    # cannot be a TypedDict); convert each value to the concrete type Shell's
-    # constructor declares.
-    def _flag(key: str) -> bool:
-        return bool(opts[key])
-
-    def _opt_str(key: str) -> "str | None":
-        value = opts[key]
-        return None if value is None else str(value)
-
-    shell = Shell(debug_ast=_flag("debug_ast"), debug_tokens=_flag("debug_tokens"),
-                  debug_scopes=_flag("debug_scopes"),
-                  debug_expansion=_flag("debug_expansion"),
-                  debug_expansion_detail=_flag("debug_expansion_detail"),
-                  debug_exec=_flag("debug_exec"), debug_exec_fork=_flag("debug_exec_fork"),
-                  norc=_flag("norc"), rcfile=_opt_str("rcfile"),
-                  validate_only=_flag("validate_only"),
-                  format_only=_flag("format_only"), metrics_only=_flag("metrics_only"),
-                  security_only=_flag("security_only"), lint_only=_flag("lint_only"),
-                  ast_format=_opt_str("ast_format"),
-                  force_interactive=_flag("force_interactive"),
-                  script_name=init_script_name, command_mode=command_mode,
-                  )
+    # The frozen config carries EVERYTHING the shell needs: source kind,
+    # $0/positionals, ordered option transitions, parser, rc policy. The
+    # constructor applies all of it; startup input runs only afterwards.
+    shell = Shell(invocation=config)
 
     # This process IS psh: install process-global signal handlers (trap
     # checking, SIGCHLD bookkeeping). In-process embedders/tests construct
@@ -393,71 +178,47 @@ def main():
     # additionally re-runs setup and claims the foreground.
     shell.interactive_manager.signal_manager.setup_signal_handlers()
 
-    # Apply POSIX short options set on the command line (-e/-u/-x/-v/-n/-f/-C)
-    # BEFORE any input runs, so they govern the whole run and show up in $-.
-    for long_name, value in cast(List[Tuple[str, bool]], opts["set_options"]):
-        shell.state.options[long_name] = value
+    # Explicit startup step (never part of construction): bare -o/+o
+    # listings, then history, then the rc file — all AFTER the full
+    # invocation was applied, so the rc observes -u/--parser/positionals
+    # (continuation finding A) and runs for every interactive-family shell,
+    # including -ic and -i script.sh (#20 H17).
+    shell.run_invocation_startup()
 
-    # Apply --parser selection
-    if opts["parser_type"] is not None:
-        from .builtins import PARSERS
-        target = None
-        for name, aliases in PARSERS.items():
-            if opts["parser_type"] == name or opts["parser_type"] in aliases:
-                target = name
-                break
-        if target is None:
-            print(f"psh: unknown parser: {opts['parser_type']}", file=sys.stderr)
-            print("Available parsers: recursive_descent (rd), combinator (pc)", file=sys.stderr)
-            sys.exit(2)
-        shell.active_parser = target
+    visitor_mode = bool(config.analysis_modes)
 
-    if command_mode:
-        # Execute command with -c flag (script mode). Both mode options were
-        # already settled at construction: Shell.__init__ set command_mode
-        # ('c' in $-) BEFORE _init_interactive, which computed stdin_mode=False
-        # from it (shell.py) — so no re-setting is needed here. is_script_mode
-        # is the one genuinely post-construction flag (-c runs as a script).
-        shell.state.is_script_mode = True
-        command = operands[0]
-        # `-c '...' name a b` → $0=name, $1=a, $#=2 (bash).
-        if len(operands) > 1:
-            shell.state.script_name = operands[1]
-            shell.state.positional_params = list(operands[2:])
-        else:
-            shell.state.positional_params = []
+    if config.source_kind is SourceKind.COMMAND:
+        command = config.command
+        assert command is not None
 
         # Handle visitor modes for -c commands
         if visitor_mode:
-            exit_code = handle_visitor_mode_for_command(shell, command)
-            sys.exit(exit_code)
+            sys.exit(handle_visitor_mode_for_command(shell, command))
 
         # Use StringInput with script mode to process line-by-line like bash -c
         from .scripting.input_sources import StringInput
         input_source = StringInput(command, "-c", split_lines=True)
+        # bash never bang-expands the -c command string, even under -ic
+        # (`bash -ic 'echo !!'` prints `!!` — probe B8).
+        input_source.history_expansion_eligible = False
         exit_code = shell.script_manager.execute_as_main(
             input_source, add_to_history=False)
         sys.exit(exit_code)
-    elif operands and not stdin_mode:
-        # Script file execution
-        script_path = operands[0]
-        script_args = operands[1:]
+    elif config.source_kind is SourceKind.SCRIPT:
+        script_path = config.script_path
+        assert script_path is not None
 
         # Handle visitor modes for script files
         if visitor_mode:
-            exit_code = handle_visitor_mode_for_script(shell, script_path)
-            sys.exit(exit_code)
+            sys.exit(handle_visitor_mode_for_script(shell, script_path))
 
-        exit_code = shell.script_manager.run_script(script_path, script_args)
+        exit_code = shell.script_manager.run_script(
+            script_path, list(config.positionals))
         sys.exit(exit_code)
     else:
-        # No script operand (or -s): commands come from stdin. Under -s any
-        # remaining operands are the positional parameters ($1, $2, ...); $0
-        # stays the shell name (bash: `echo ... | bash -s a b` → $0=bash).
-        if stdin_mode:
-            shell.state.is_script_mode = True
-            shell.state.options['stdin_mode'] = True  # 's' in $-
-            shell.state.positional_params = list(operands)
+        # SourceKind.STDIN: commands come from stdin. Under -s any operands
+        # are already installed as the positional parameters ($1, $2, ...);
+        # $0 stays the shell name (bash: `echo ... | bash -s a b` → $0=bash).
 
         # Handle visitor modes for stdin: analysis modes NEVER execute their
         # input, so read ALL of stdin (piped input, or typed until EOF at a
@@ -469,9 +230,8 @@ def main():
             script_content = _read_all_stdin()
             # A script on stdin is a stream input: a dangling backslash at
             # EOF drops, exactly as the execution path treats it.
-            exit_code = handle_visitor_mode_for_content(
-                shell, script_content, "<stdin>", drop_dangling_at_eof=True)
-            sys.exit(exit_code)
+            sys.exit(handle_visitor_mode_for_content(
+                shell, script_content, "<stdin>", drop_dangling_at_eof=True))
 
         stdin = sys.stdin
         if stdin is not None and not stdin.closed and stdin.isatty():
@@ -489,7 +249,7 @@ def main():
             # startup, so this flag does not change handler selection.
             # Under -i the shell stays interactive-family (bash -i piped
             # discards the failing line and continues — probe-verified).
-            if not _flag("force_interactive"):
+            if not config.interactive:
                 shell.state.is_script_mode = True
             # Read fd 0 LAZILY — one command's lines at a time — so a `read`,
             # `cat`, or `mapfile` INSIDE the script consumes the SUBSEQUENT
@@ -500,10 +260,13 @@ def main():
             # simply yields no commands (exit 0). execute_as_main fires the
             # EXIT trap exactly once, including on empty input (no trap set,
             # so a no-op there).
+            # An interactive-family shell records its commands in history
+            # (bash: `history` under `-i -s` lists them); plain piped input
+            # does not.
             from .scripting.input_sources import StdinInput
             stdin_source = StdinInput(fd=0, name="<stdin>")
             exit_code = shell.script_manager.execute_as_main(
-                stdin_source, add_to_history=False)
+                stdin_source, add_to_history=config.interactive)
             sys.exit(exit_code)
 
 

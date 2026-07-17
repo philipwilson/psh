@@ -94,9 +94,12 @@ def test_rc_not_sourced_for_script_file(tmp_path):
 
 
 # A live interactive shell (tty stdin, no -c, no script) MUST still source rc.
-# Constructing Shell() with no mode flags under a tty is exactly what the REPL
-# entry path does; this exercises _init_interactive directly (the flaky part of
-# a full REPL subprocess is the pty/job-control loop, not the rc decision).
+# Constructing Shell() and running the explicit startup step is exactly what
+# the REPL entry path does (campaign F1: __main__ calls
+# run_invocation_startup, and run_interactive_loop re-runs it idempotently for
+# embedders); this exercises the decision directly (the flaky part of a full
+# REPL subprocess is the pty/job-control loop, not the rc decision).
+# CONSTRUCTION alone must NOT source it — that purity is asserted here too.
 _INTERACTIVE_HARNESS = r"""
 import os, pty, sys
 counter = os.environ["RC_COUNTER"]
@@ -106,13 +109,17 @@ sys.stdin = os.fdopen(0, 'r')
 assert sys.stdin.isatty()
 
 from psh.shell import Shell
-Shell(rcfile=os.environ["PSH_RCFILE"])   # no script_name, no command_mode
+shell = Shell(rcfile=os.environ["PSH_RCFILE"])  # no script_name, no command_mode
 
 def count():
     try:
         return sum(1 for _ in open(counter))
     except FileNotFoundError:
         return 0
+
+print("RC_AT_CONSTRUCTION=%d" % count())
+shell.run_invocation_startup()   # the REPL entry's explicit startup step
+shell.run_invocation_startup()   # idempotent: a second call must not re-run rc
 print("RC_COUNT=%d" % count())
 """
 
@@ -133,7 +140,12 @@ def test_rc_sourced_for_interactive_shell(tmp_path):
         cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=30, env=env,
     )
     assert result.returncode == 0, f"harness failed:\n{result.stderr}"
-    counts = [ln for ln in result.stdout.splitlines() if ln.startswith("RC_COUNT=")]
+    lines = result.stdout.splitlines()
+    construction = [ln for ln in lines if ln.startswith("RC_AT_CONSTRUCTION=")]
+    counts = [ln for ln in lines if ln.startswith("RC_COUNT=")]
+    assert construction == ["RC_AT_CONSTRUCTION=0"], (
+        f"Shell construction itself sourced the rc (F1 purity): {result.stdout!r}"
+    )
     assert counts == ["RC_COUNT=1"], (
-        f"interactive shell did not source ~/.pshrc exactly once: {result.stdout!r}"
+        f"interactive startup did not source ~/.pshrc exactly once: {result.stdout!r}"
     )

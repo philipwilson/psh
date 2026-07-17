@@ -46,6 +46,12 @@ class InteractiveManager:
         library embedder must not). This replaces the old "pytest in
         sys.modules" gate with a structural guarantee.
         """
+        # Startup input (history, rc) belongs to the explicit one-shot
+        # startup step, never to Shell construction (campaign F1). __main__
+        # already ran it; an embedder that constructs a Shell and enters the
+        # loop directly gets it here (idempotent, so never a double rc run).
+        self.shell.run_invocation_startup()
+
         # Set up signal handlers FIRST to ignore SIGTTOU/SIGTTIN
         # This must happen before ensure_foreground() to avoid being stopped
         self.signal_manager.setup_signal_handlers()

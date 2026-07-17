@@ -20,12 +20,14 @@ from .ast_nodes import (
     StatementList,
 )
 from .builtins import registry as builtin_registry
+from .builtins.environment import apply_set_o_option
 from .core import ShellState, TrapManager
 from .core.functions import FunctionManager
 from .executor.job_control import JobManager
 from .expansion import ExpansionManager
 from .expansion.aliases import AliasManager
-from .interactive import InteractiveManager
+from .interactive import InteractiveManager, load_rc_file
+from .invocation import InvocationConfig, SourceKind
 from .io_redirect import IOManager
 from .scripting.base import ScriptManager
 
@@ -74,11 +76,39 @@ class Shell:
                  format_only: bool = False, metrics_only: bool = False,
                  security_only: bool = False, lint_only: bool = False,
                  parent_shell: Optional['Shell'] = None, ast_format: Optional[str] = None,
-                 force_interactive: bool = False, command_mode: bool = False) -> None:
+                 force_interactive: bool = False, command_mode: bool = False,
+                 invocation: Optional['InvocationConfig'] = None) -> None:
         # Phase 0: interpreter headroom for the recursive engines. Must be
         # process-wide and early, so every path into this shell (scripts,
         # -c, interactive, in-process embedding) gets the same ceiling.
         _ensure_recursion_headroom()
+
+        # A frozen InvocationConfig (from parse_invocation) is authoritative
+        # for every invocation fact; the legacy keyword arguments remain as a
+        # compatible construction path for embedders and the test tree
+        # (F1 ledger: the config path is the ONLY one __main__ takes).
+        if invocation is not None:
+            if parent_shell is not None:
+                raise ValueError(
+                    "invocation= and parent_shell= are mutually exclusive")
+            args = list(invocation.positionals)
+            if invocation.source_kind is SourceKind.SCRIPT:
+                script_name = invocation.script_path
+            elif invocation.argv0 != "psh":
+                script_name = invocation.argv0  # -c 'cmd' name a b (POSIX $0)
+            else:
+                script_name = None
+            norc = invocation.norc
+            rcfile = invocation.rcfile
+            ast_format = invocation.ast_format
+            force_interactive = invocation.interactive
+            command_mode = invocation.source_kind is SourceKind.COMMAND
+            validate_only = "validate" in invocation.analysis_modes
+            format_only = "format" in invocation.analysis_modes
+            metrics_only = "metrics" in invocation.analysis_modes
+            security_only = "security" in invocation.analysis_modes
+            lint_only = "lint" in invocation.analysis_modes
+        self._invocation = invocation
 
         self._create_state(args, script_name, debug_ast, debug_tokens, debug_scopes,
                            debug_expansion, debug_expansion_detail, debug_exec,
@@ -86,7 +116,8 @@ class Shell:
 
         # `-c command` mode ('c' in $-). Set BEFORE _init_interactive so the
         # rc/history/line-editing decision sees it (bash never sources rc for
-        # -c). __main__ determines this from argv before constructing us.
+        # -c without -i). Derived from the invocation config above, or passed
+        # by a legacy caller.
         if command_mode:
             self.state.options['command_mode'] = True
 
@@ -108,6 +139,14 @@ class Shell:
         self._select_parser(parent_shell)
         self._init_traps()
         self._init_interactive(force_interactive)
+        if invocation is not None:
+            self._apply_invocation(invocation)
+
+        # The one-shot startup step (run_invocation_startup: bare -o
+        # listings, history, rc file) has NOT run: construction never reads
+        # startup input (campaign F1). Child shells (for_subshell/clone)
+        # must never run it at all.
+        self._invocation_startup_done = parent_shell is not None
 
     @classmethod
     def for_subshell(cls, parent: 'Shell', *, norc: bool = True) -> 'Shell':
@@ -240,7 +279,10 @@ class Shell:
 
         After: ``_active_parser`` is 'recursive_descent' (default) or
         'combinator'. A child shell keeps its parent's choice; otherwise
-        the PSH_TEST_PARSER environment hook (test matrix) wins.
+        the PSH_TEST_PARSER environment hook (test matrix) wins. An explicit
+        (already-validated) ``--parser`` choice from the invocation config
+        overrides both — applied in ``_apply_invocation``, so it is in force
+        BEFORE the rc file runs (probe class A2/rc-sees-parser).
         """
         self._active_parser = 'recursive_descent'
         if parent_shell is not None:
@@ -257,13 +299,22 @@ class Shell:
         self.trap_manager = TrapManager(self)
 
     def _init_interactive(self, force_interactive: bool) -> None:
-        """Phase 7: interactive-mode determination, history and rc loading.
+        """Phase 7: interactive-family determination (mode flags ONLY).
 
         Before: every component exists; the mode flag options hold defaults
-        or a parent's copies. After: the 'interactive', 'stdin_mode' and
-        'emacs' options reflect THIS process (recomputed even for child
-        shells), history is loaded for interactive shells, and the rc file
-        has run (interactive, non-script shells without --norc only).
+        or a parent's copies. After: the 'interactive', 'stdin_mode',
+        'emacs', 'histexpand' and 'monitor' options reflect THIS process
+        (recomputed even for child shells). This phase reads NO startup
+        input — history and the rc file belong to the explicit
+        ``run_invocation_startup`` step (campaign F1: construction purity),
+        which runs only after the full invocation is applied.
+
+        The interactive FAMILY (bash's ``interactive_shell``) is independent
+        of the input source (#20 H17): ``-i`` forces it for ``-c`` commands
+        and script files too (bash ``-ic`` sources the rc, sets ``i``/``H``
+        in ``$-``, and discards a failing line instead of aborting —
+        probe-pinned, tmp/boundary-ledgers/F1-probes/). Without ``-i`` it
+        holds exactly when commands come interactively from a terminal.
         """
         # A shell may be started with fd 0 already closed (`exec 0<&-; psh …`);
         # CPython then sets sys.stdin to None, so guard before .isatty() — a
@@ -271,34 +322,28 @@ class Shell:
         # never an AttributeError crash. Matches the stdin guard idiom used in
         # control_flow.py.
         stdin = sys.stdin
-        is_interactive = force_interactive or (
-            stdin is not None and not stdin.closed and stdin.isatty())
-        self.state.options['interactive'] = is_interactive
+        tty_stdin = stdin is not None and not stdin.closed and stdin.isatty()
 
-        # Running a script FILE or a -c COMMAND string is non-interactive even
-        # when stdin happens to be a terminal: bash sources rc, loads history,
-        # and enables line editing only for a genuinely interactive shell —
-        # never for -c or a script. BOTH mode flags are now known at
-        # construction (__main__ passes script_name / command_mode in), so this
-        # decision is finally correct. Previously it read is_script_mode BEFORE
-        # __main__ had set it, sourcing ~/.pshrc (and loading history) into every
-        # `psh -c '...'` and `psh script.sh` invoked from a terminal.
-        noninteractive_mode = (self.state.is_script_mode
-                               or self.state.options.get('command_mode', False))
-        live_interactive = is_interactive and not noninteractive_mode
+        # Reading a script FILE or a -c COMMAND string is non-interactive
+        # even when stdin happens to be a terminal — UNLESS -i forces the
+        # family (bash: `bash -c 'echo $-'` at a terminal has no `i`;
+        # `bash -ic` does).
+        noninteractive_source = (self.state.is_script_mode
+                                 or self.state.options.get('command_mode', False))
+        interactive_family = force_interactive or (
+            tty_stdin and not noninteractive_source)
+        self.state.options['interactive'] = interactive_family
 
-        # stdin_mode: reading commands interactively from stdin (no -c, no script)
-        self.state.options['stdin_mode'] = not noninteractive_mode
+        # stdin_mode ('s' in $-): commands come from standard input. The
+        # invocation config refines this (a forced -s keeps 's' even with -c,
+        # bash `-sc` → `hBcs`) in _apply_invocation.
+        self.state.options['stdin_mode'] = not noninteractive_source
 
-        # Load history only for a live interactive shell (bash never loads it
-        # for -c / scripts).
-        if live_interactive:
-            self.interactive_manager.load_history()
-
-        # emacs line-editing and '!' history expansion ('H' in $-) are
-        # interactive-only (bash).
-        self.state.options['emacs'] = live_interactive
-        self.state.options['histexpand'] = live_interactive
+        # emacs line-editing and '!' history expansion ('H' in $-) default on
+        # exactly for the interactive family (bash); an explicit CLI ±H
+        # transition overrides this default afterwards (bash `+H -ic`).
+        self.state.options['emacs'] = interactive_family
+        self.state.options['histexpand'] = interactive_family
 
         # Job control / monitor mode ('m' in $-) is on by default for a shell
         # bash considers interactive that can also control the terminal: the
@@ -308,11 +353,82 @@ class Shell:
         # `$-` and `set -o monitor` report truthfully (bash-probed:
         # tmp/probes-r18t2-interactive/probe_mi1_*).
         self.state.options['monitor'] = (
-            (live_interactive or force_interactive)
-            and self.state.supports_job_control)
+            interactive_family and self.state.supports_job_control)
 
-        if live_interactive and not self.state.norc:
-            from .interactive import load_rc_file
+    def _apply_invocation(self, config: 'InvocationConfig') -> None:
+        """Phase 8 (config path): apply the remaining invocation facts.
+
+        Runs AFTER the interactive-family defaults so an explicit CLI
+        transition overrides a derived default (bash: `+H -ic` removes the
+        family's H; probe E5b), and BEFORE any startup input can run.
+        After: every fact of the frozen config is installed — ordered option
+        transitions (through the one set-o toggle engine, so vi/emacs/
+        ignoreeof/posix couplings fire), stdin_mode refinement, script-mode
+        policy, and the validated parser choice.
+        """
+        # 's' in $-: a forced -s keeps stdin_mode even with -c (bash `-sc`
+        # → `hBcs`; probe E1a).
+        self.state.options['stdin_mode'] = (
+            config.forced_stdin or config.source_kind is SourceKind.STDIN)
+
+        for name, enable in config.option_transitions:
+            apply_set_o_option(self, name, enable)
+
+        # bash drops -m when the terminal cannot support job control
+        # ("cannot set terminal process group"; probes C5/E17: no `m` in $-).
+        if (self.state.options.get('monitor')
+                and not self.state.supports_job_control):
+            self.state.options['monitor'] = False
+
+        if config.parser is not None:
+            self._active_parser = config.parser
+
+        # Non-interactive-family -c/script runs use script-mode error
+        # policies; the interactive family keeps the discard-line model even
+        # for -c strings and script files (bash -ic / -i script.sh continue
+        # after an unbound-variable line — probes P5/Q1). STDIN sources are
+        # decided at dispatch (__main__: piped input without -i is script
+        # mode; a TTY REPL is not).
+        if config.source_kind is not SourceKind.STDIN:
+            self.state.is_script_mode = not self.state.options.get(
+                'interactive', False)
+
+    def run_invocation_startup(self) -> None:
+        """The explicit one-shot startup step (never part of construction).
+
+        In order: bare ``-o``/``+o`` listing requests (bash prints the
+        ``set -o`` table and continues; probe E3b), then — for the
+        interactive FAMILY only — history loading (stdin-sourced shells
+        only: bash `-i -s` lists the HISTFILE entries, `-ic` does not;
+        probe H1/H2) and the rc file (any source kind: `-ic` and
+        `-i script.sh` source it, #20 H17). Idempotent, so the REPL entry
+        (which also calls it for embedders) cannot double-run the rc; child
+        shells (``for_subshell``) are constructed with the step already
+        marked done and never repeat startup.
+        """
+        if self._invocation_startup_done:
+            return
+        self._invocation_startup_done = True
+
+        config = self._invocation
+        if config is not None and config.option_listings:
+            set_builtin = self.builtin_registry.get('set')
+            if set_builtin is not None:
+                for sign in config.option_listings:
+                    set_builtin.execute(['set', sign + 'o'], self)
+
+        if not self.state.options.get('interactive', False):
+            return
+
+        if config is None:
+            reads_stdin = not (self.state.is_script_mode
+                               or self.state.options.get('command_mode', False))
+        else:
+            reads_stdin = config.source_kind is SourceKind.STDIN
+        if reads_stdin:
+            self.interactive_manager.load_history()
+
+        if not self.state.norc:
             load_rc_file(self)
 
     # ------------------------------------------------------------------
