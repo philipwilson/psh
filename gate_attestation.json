@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "version": "0.725.0",
+  "gated_commit": "4d6a4965e00f945285acc1017951c10590c46d2e",
+  "gated_tree": "2c7ac017ebd5d79fcafbb8bbe31c99247b024a4d",
+  "platform": {
+    "os": "Darwin 25.5.0",
+    "python": "3.14.2",
+    "arch": "arm64"
+  },
+  "phases": [
+    {
+      "description": "Phase 1: Regular tests (parallel, auto workers, -m 'not serial and not benchmark')",
+      "exit": 0,
+      "counts": {
+        "passed": 17557,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 1574,
+        "xfailed": 8,
+        "xpassed": 0,
+        "deselected": 760
+      }
+    },
+    {
+      "description": "Phase 1b: serial tests (process/signal/forked-fd, no xdist)",
+      "exit": 0,
+      "counts": {
+        "passed": 742,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 0,
+        "xfailed": 2,
+        "xpassed": 0,
+        "deselected": 19155
+      }
+    }
+  ],
+  "ruff": true,
+  "mypy_files": 258,
+  "timestamp": "2026-07-17T21:14:31+00:00",
+  "command": "run_tests.py --parallel --write-attestation"
+}
