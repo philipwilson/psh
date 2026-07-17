@@ -21,7 +21,7 @@ import subprocess
 import sys
 
 import pytest
-from conformance_framework import find_bash  # noqa: E402
+from shell_oracle import resolve_bash  # noqa: E402
 
 sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..', '..', '..')))
@@ -36,7 +36,7 @@ def _bash_expand(history, expr):
     """(text, failed) from bash `history -p` after seeding `history -s`."""
     script = "".join(f"history -s {_shq(h)}\n" for h in history)
     script += f"history -p -- {_shq(expr)}\n"
-    r = subprocess.run([find_bash(), "-c", script],
+    r = subprocess.run([resolve_bash().path, "-c", script],
                        capture_output=True, text=True, timeout=10)
     return r.stdout.rstrip("\n"), r.returncode != 0
 

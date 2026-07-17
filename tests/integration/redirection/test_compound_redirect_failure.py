@@ -24,6 +24,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 BAD = '/nonexistent_zz_dir/x'
 
@@ -47,7 +50,7 @@ def run_psh(cmd, cwd=None):
 
 
 def run_bash(cmd, cwd=None):
-    return subprocess.run(['bash', '-c', cmd], capture_output=True,
+    return subprocess.run([BASH, '-c', cmd], capture_output=True,
                           text=True, cwd=cwd, timeout=15)
 
 

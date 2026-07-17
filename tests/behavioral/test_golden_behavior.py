@@ -8,38 +8,48 @@ against psh. Optionally, results can be compared against bash with
 the --compare-bash flag.
 """
 
-import os
-import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 import pytest
 import yaml
 
-# The bash oracle is resolved the SAME way the conformance framework resolves it
+# The bash oracle is resolved by the shared harness's resolve_bash() ladder
 # (BASH_PATH -> Homebrew -> PATH), not via a bare ``bash`` off PATH. 26 of the
 # comparison golden cases use bash-4+ syntax (declare -A, |&, case-mod); on a
 # machine whose PATH bash is macOS's stock /bin/bash 3.2 a bare ``bash`` made the
 # --compare-bash phase fail on environment rather than behavior (tests-infra
-# addendum #2). find_bash() picks the newest available bash consistently.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "conformance"))
-from conformance_framework import find_bash  # noqa: E402
+# addendum #2). Execution goes through the typed run_shell_case runner: a
+# harness failure (spawn/timeout/decode) raises instead of masquerading as
+# case output, each case runs hermetically (all inherited LC_*/LANG stripped,
+# fresh temp cwd, own session, bounded file-backed capture).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "harness"))
+from shell_oracle import (  # noqa: E402
+    Completed,
+    hermetic_shell_env,
+    resolve_bash,
+    run_shell_case,
+)
 
 CASES_FILE = Path(__file__).parent / "golden_cases.yaml"
 
 
 def _deterministic_env(env=None):
-    """Pin a C locale so glob collation etc. is reproducible across machines.
+    """Hermetic env with a C-locale pin so results are machine-independent.
 
     psh sorts glob results by ASCII codepoint; bash honours LC_COLLATE, so in a
     UTF-8 locale `echo *` diverges purely on sort order (a dictionary vs. ASCII
     difference, not a real behavioural one). Forcing LC_ALL=C makes both agree
     and keeps the comparison meaningful regardless of the developer's locale.
+    The shared hermetic builder additionally STRIPS every inherited LC_* /
+    LANG / DISPLAY first, so the developer's terminal locale (e.g. an
+    inherited LC_CTYPE) cannot leak into either shell.
     """
-    base = dict(os.environ if env is None else env)
-    base["LC_ALL"] = "C"
-    base["LANG"] = "C"
-    return base
+    case_env = {"LC_ALL": "C", "LANG": "C"}
+    if env:
+        case_env.update(env)
+    return hermetic_shell_env(case_env)
 
 
 def _load_cases():
@@ -56,28 +66,24 @@ def _case_ids(cases):
 _ALL_CASES = _load_cases()
 
 
+def _run_case(argv, *, env=None, timeout=10):
+    """Run one golden case via the typed runner; harness failures raise."""
+    run = run_shell_case(argv, env=_deterministic_env(env), timeout=timeout)
+    if not isinstance(run, Completed):
+        raise AssertionError(f"harness failure running {argv[0]}: {run!r}")
+    return run.stdout, run.stderr, run.returncode
+
+
 def _run_psh(command: str, *, env=None, timeout=10):
     """Run a command in psh and return (stdout, stderr, returncode)."""
-    result = subprocess.run(
-        [sys.executable, "-m", "psh", "-c", command],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        env=_deterministic_env(env),
-    )
-    return result.stdout, result.stderr, result.returncode
+    return _run_case([sys.executable, "-m", "psh", "-c", command],
+                     env=env, timeout=timeout)
 
 
 def _run_bash(command: str, *, env=None, timeout=10):
     """Run a command in bash and return (stdout, stderr, returncode)."""
-    result = subprocess.run(
-        [find_bash(), "-c", command],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        env=_deterministic_env(env),
-    )
-    return result.stdout, result.stderr, result.returncode
+    return _run_case([resolve_bash().path, "-c", command],
+                     env=env, timeout=timeout)
 
 
 @pytest.mark.parametrize("case", _ALL_CASES, ids=_case_ids(_ALL_CASES))
@@ -123,7 +129,18 @@ def test_golden(case):
 
 @pytest.mark.parametrize("case", _ALL_CASES, ids=_case_ids(_ALL_CASES))
 def test_golden_bash_comparison(case, request):
-    """Compare psh output against bash for conformance verification."""
+    """Compare psh output against bash for conformance verification.
+
+    DELIBERATE LOSS (campaign E2, amended doc): this comparison gates on
+    stdout + exit status ONLY.  stderr equality is deliberately not gated —
+    shell diagnostic wording legitimately differs (``psh:`` vs ``bash:``
+    prefixes, message phrasing), and the psh-only golden path (test_golden)
+    plus the conformance framework's IDENTICAL classification both DO assert
+    stderr.  The terminal consumer of the dropped fact is this comparison's
+    pass/fail verdict; no later semantic consumer sees the stderr text.  A
+    stderr-PRESENCE disagreement (one shell diagnosed, the other stayed
+    silent) is surfaced as a non-gating warning below.
+    """
     if not request.config.getoption("--compare-bash"):
         pytest.skip("--compare-bash not specified")
 
@@ -135,6 +152,13 @@ def test_golden_bash_comparison(case, request):
 
     psh_stdout, psh_stderr, psh_exit = _run_psh(command)
     bash_stdout, bash_stderr, bash_exit = _run_bash(command)
+
+    if bool(psh_stderr) != bool(bash_stderr):
+        warnings.warn(
+            f"stderr-presence disagreement for {case['name']!r}: "
+            f"psh={psh_stderr!r} bash={bash_stderr!r} (non-gating; "
+            f"golden comparison gates stdout+status only)",
+            stacklevel=1)
 
     assert psh_stdout == bash_stdout, (
         f"stdout divergence for {case['name']!r}\n"

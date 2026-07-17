@@ -18,9 +18,10 @@ import sys
 from pathlib import Path
 
 import pytest
+from shell_oracle import resolve_bash
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-BASH = "/opt/homebrew/bin/bash"
+BASH = resolve_bash().path
 
 pytestmark = pytest.mark.serial
 

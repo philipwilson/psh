@@ -19,9 +19,10 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
 
 PSH = [sys.executable, "-m", "psh", "--norc", "-c"]
-BASH = ["/opt/homebrew/bin/bash", "--noprofile", "--norc", "-c"]
+BASH = [resolve_bash().path, "--noprofile", "--norc", "-c"]
 
 
 def _run(argv, cmd):

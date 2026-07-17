@@ -16,17 +16,17 @@ pipes — an in-process text-layer probe is structurally blind to the fd sharing
 """
 
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+from shell_oracle import resolve_bash
 
 REPO_ROOT = str(Path(__file__).resolve().parents[2])
 PSH = [sys.executable, "-m", "psh"]
-BASH = shutil.which("bash") or "/bin/bash"
+BASH = resolve_bash().path
 
 pytestmark = pytest.mark.skipif(
     not os.path.exists(BASH), reason="bash oracle unavailable")

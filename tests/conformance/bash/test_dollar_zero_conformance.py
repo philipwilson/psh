@@ -8,15 +8,15 @@ report each shell's own name ($0 = "psh" vs "bash"), which is correct but not
 directly comparable, so these tests use real files.
 """
 
-import shutil
 import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
 
 pytestmark = pytest.mark.serial  # spawns subprocesses
 
-BASH = shutil.which("bash")
+BASH = resolve_bash().path
 
 
 def _run(shell_argv, script_path):

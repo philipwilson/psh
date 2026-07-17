@@ -21,19 +21,43 @@ source fd and preserve the target, matching bash apart from the universal
 Subprocess tests: they permanently close the shell's own std fds, so they MUST
 NOT run in-process. The substitution's delivery is observed on a fresh high
 descriptor (fd 9) written to a file, independent of the closed std fds. Pinned
-against bash 5.2.
+against the resolve_bash() oracle (5.2), executed through the shared typed
+runner (hermetic env, own session, file-backed capture, bounded output).
+
+Oracle sanity: on macOS, bash's own ``/dev/fd/N`` open for a procsub pipe can
+fail with EPERM in some execution environments (observed in the v0.724-era
+gate: ``/dev/fd/63: Operation not permitted`` on every write-side case, while
+the same commands pass in a normal session — psh itself is immune, it uses
+FIFOs). A bash that cannot process-substitute AT ALL in this environment is a
+broken ORACLE, not a psh divergence, so the bash-comparison tests skip loudly
+instead of comparing against its failure (typed-harness principle: a harness
+failure never enters a behavior comparison).
 """
 import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+from shell_oracle import Completed, hermetic_shell_env, resolve_bash, run_shell_case
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
-BASH = "/opt/homebrew/bin/bash"
+ENV = hermetic_shell_env({'LC_ALL': 'C', 'LANG': 'C',
+                          'PYTHONPATH': str(REPO_ROOT)})
+BASH = resolve_bash().path
+
+
+def _bash_procsub_sane():
+    """True when the bash oracle can procsub in THIS execution environment."""
+    r = run_shell_case([BASH, "-c", "echo probe > >(cat > /dev/null); wait"],
+                       stdin_data="", env=ENV, timeout=20)
+    return isinstance(r, Completed) and r.returncode == 0 and not r.stderr
+
+
+_require_sane_bash_oracle = pytest.mark.skipif(
+    not _bash_procsub_sane(),
+    reason="bash oracle cannot process-substitute in this environment "
+           "(/dev/fd EPERM class) — oracle harness failure, not psh behavior")
 
 
 def _observe(argv, closures, body):
@@ -43,9 +67,9 @@ def _observe(argv, closures, body):
         path = tf.name
     try:
         script = f'{closures}exec 9>{path}; {body}'
-        r = subprocess.run(argv + ["-c", script], input=b'',
-                           capture_output=True, timeout=20,
-                           cwd=str(REPO_ROOT), env=ENV)
+        r = run_shell_case(argv + ["-c", script], stdin_data="",
+                           env=ENV, timeout=20)
+        assert isinstance(r, Completed), f"harness failure: {r!r}"
         with open(path) as f:
             return r.stdout, r.stderr, f.read()
     finally:
@@ -68,6 +92,7 @@ WRITE_CASES = [
 ]
 
 
+@_require_sane_bash_oracle
 @pytest.mark.parametrize("closures,body", READ_CASES)
 def test_read_side_procsub_closed_fds_matches_bash(closures, body):
     psh = _observe([sys.executable, "-m", "psh"], closures, body)
@@ -75,6 +100,7 @@ def test_read_side_procsub_closed_fds_matches_bash(closures, body):
     assert psh == bash, f"{closures!r}: psh={psh!r} bash={bash!r}"
 
 
+@_require_sane_bash_oracle
 @pytest.mark.parametrize("closures,body", WRITE_CASES)
 def test_write_side_procsub_closed_fds_matches_bash(closures, body):
     psh = _observe([sys.executable, "-m", "psh"], closures, body)

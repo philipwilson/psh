@@ -17,6 +17,10 @@ Heredocs need real OS fds, so these run psh in a subprocess.
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def run(script):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', script],
@@ -24,7 +28,7 @@ def run(script):
 
 
 def run_bash(script):
-    return subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+    return subprocess.run([BASH, '-c', script], capture_output=True, text=True)
 
 
 def test_fd3_heredoc_body_delivered():

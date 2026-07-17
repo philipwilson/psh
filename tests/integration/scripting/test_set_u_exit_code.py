@@ -11,6 +11,10 @@ rather than continue — is tracked separately; this pins the exit code.)
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def run_c(cmd):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
@@ -18,7 +22,7 @@ def run_c(cmd):
 
 
 def run_bash_c(cmd):
-    return subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
 
 
 def run_script(tmp_path, body):
@@ -31,7 +35,7 @@ def run_script(tmp_path, body):
 def run_bash_script(tmp_path, body):
     script = tmp_path / "b.sh"
     script.write_text(body)
-    return subprocess.run(['bash', str(script)], capture_output=True, text=True)
+    return subprocess.run([BASH, str(script)], capture_output=True, text=True)
 
 
 def test_dash_c_exits_127():

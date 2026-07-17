@@ -20,6 +20,9 @@ are BSD-specific on macOS; Linux differs).
 import sys
 
 from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 class TestSignalListing(ConformanceTest):
@@ -87,7 +90,7 @@ class TestSignalListing(ConformanceTest):
             [sys.executable, "-m", "psh", "-c", cmd],
             capture_output=True, text=True)
         bash = subprocess.run(
-            ["bash", "-c", cmd], capture_output=True, text=True)
+            [BASH, "-c", cmd], capture_output=True, text=True)
         assert psh.returncode == bash.returncode == 1
         assert psh.stdout == bash.stdout == ""
         msg = f"{spec}: invalid signal specification"

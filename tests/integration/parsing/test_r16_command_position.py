@@ -23,6 +23,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 def _run(cmd, parser=None):
@@ -34,7 +37,7 @@ def _run(cmd, parser=None):
 
 
 def _bash(cmd):
-    return subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
 
 
 # g1: `[[ ]]` as a function body / case body (the odd-one-out among compound

@@ -68,9 +68,11 @@ from typing import Dict, List, Optional, cast
 import pytest
 
 # The test modules insert this directory onto sys.path themselves, but importing
-# find_bash here lets us record which bash acted as the oracle in the report.
+# resolve_bash here lets us record which bash acted as the oracle in the report.
 sys.path.insert(0, os.path.dirname(__file__))
-from conformance_framework import find_bash  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "harness"))
+from shell_oracle import resolve_bash  # noqa: E402
 
 CONFORMANCE_DIR = Path(__file__).resolve().parent
 
@@ -202,10 +204,9 @@ def build_pytest_args(paths: List[str], extra: List[str]) -> List[str]:
 
 def selection_paths(posix_only: bool, bash_only: bool) -> tuple[str, List[str]]:
     """Map the CLI selection flags to concrete test directories."""
-    if posix_only:
-        return "posix", [str(CONFORMANCE_DIR / "posix")]
-    if bash_only:
-        return "bash", [str(CONFORMANCE_DIR / "bash")]
+    for label in ("posix", "bash"):
+        if (posix_only if label == "posix" else bash_only):
+            return label, [str(CONFORMANCE_DIR / label)]
     return "all", [str(CONFORMANCE_DIR)]
 
 
@@ -216,7 +217,7 @@ def build_report(plugin: ConformanceReportPlugin, exit_code: int,
         "schema": "psh-conformance-report/1",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "selection": selection,
-        "bash_oracle": find_bash(),
+        "bash_oracle": (lambda o: f"{o.path} ({o.version})")(resolve_bash()),
         "duration_seconds": round(duration, 2),
         "pytest_exit_code": int(exit_code),
         "exit_code": final_code,

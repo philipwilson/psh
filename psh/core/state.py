@@ -985,18 +985,52 @@ class ShellState:
         under the same environment it uses the C locale, shows an empty
         ``$LC_CTYPE``, and passes no ``LC_CTYPE`` to children. Dropping the
         phantom from the inherited environment here (before it is imported as a
-        shell variable) makes all three match bash. A genuine ``LC_CTYPE`` the
-        user set is preserved: coercion is the only thing that pairs
-        ``utf8_mode`` with a coercion-target value, so a real ``en_US.UTF-8``
-        (utf8_mode 0) or any non-target value is untouched. The narrow residual —
-        a user who both sets ``LC_CTYPE=C.UTF-8`` and forces UTF-8 mode
-        (``PYTHONUTF8``/``-X utf8``) — is a documented corner (a Python runtime
-        knob, not a shell path; see docs/user_guide/17_differences_from_bash.md)."""
+        shell variable) makes all three match bash.
+
+        CONSERVATIVE PROVENANCE RULE (boundary campaign E3, continuation
+        finding H): the phantom is stripped only when the coercion is PROVABLE
+        from what CPython left behind; where provenance is unknowable the value
+        is KEPT (a genuine inherited variable must never be destroyed on a
+        guess). Coercion is provable only when every one of these holds:
+
+        * ``sys.flags.utf8_mode`` is set — every coercion target auto-enables
+          UTF-8 mode, so ``utf8_mode == 0`` (a genuine ``en_US.UTF-8``, or
+          ``C.UTF-8`` where the platform resolves it) proves no coercion;
+        * the value is one of the coercion targets;
+        * no NONEMPTY ``LC_ALL`` is inherited — CPython *skips* coercion
+          entirely when ``LC_ALL`` is set (``_Py_LegacyLocaleDetected``), so
+          e.g. ``LC_ALL=C`` + inherited ``LC_CTYPE=C.UTF-8`` is genuine and
+          bash keeps it visible for a later ``unset LC_ALL`` (this was the
+          v0.724 host-sensitive gate-failure trio);
+        * ``PYTHONCOERCECLOCALE`` is not ``0`` — that knob disables coercion,
+          so any surviving ``LC_CTYPE`` is genuine;
+        * UTF-8 mode was NOT explicitly requested via ``PYTHONUTF8`` or
+          ``-X utf8`` — an explicit request explains ``utf8_mode`` on its own,
+          so the pairing no longer proves coercion: a genuinely user-set
+          ``LC_CTYPE=C.UTF-8`` under ``PYTHONUTF8=1`` is indistinguishable
+          from a coerced one and is therefore KEPT. (Residual corner, the
+          price of keep-when-unknowable: under ``PYTHONUTF8=1`` in an
+          otherwise effectively-C env the coercion phantom is also kept,
+          where bash shows nothing — a Python runtime knob, not a shell
+          path; see docs/user_guide/17_differences_from_bash.md.)
+        """
         if not sys.flags.utf8_mode:
             return
         val = self.env.get('LC_CTYPE')
-        if val is not None and val.upper() in self._PEP538_COERCION_TARGETS:
-            del self.env['LC_CTYPE']
+        if val is None or val.upper() not in self._PEP538_COERCION_TARGETS:
+            return
+        if self.env.get('LC_ALL'):
+            return  # nonempty LC_ALL: CPython skipped coercion -> genuine
+        if self.env.get('PYTHONCOERCECLOCALE') == '0':
+            return  # coercion disabled -> genuine
+        xutf8 = sys._xoptions.get('utf8')
+        explicit_utf8 = (
+            (xutf8 is not None and xutf8 != '0')
+            or bool(self.env.get('PYTHONUTF8'))  # '0' -> utf8_mode 0 already
+        )
+        if explicit_utf8:
+            return  # utf8_mode explained by request -> provenance unknowable
+        del self.env['LC_CTYPE']
 
     def _locale_env_snapshot(self) -> Dict[str, str]:
         """The current values of the locale variables as bash resolves the

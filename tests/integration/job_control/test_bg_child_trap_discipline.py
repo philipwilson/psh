@@ -26,6 +26,7 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
 
 # psh is an editable install pointing at the MAIN tree; a subprocess
 # `python -m psh` launched with a foreign cwd would import MAIN, not this
@@ -68,8 +69,7 @@ def run_psh(script, tmp_path, stdin=None):
 
 
 def run_bash(script, tmp_path, stdin=None):
-    bash = '/opt/homebrew/bin/bash' if os.path.exists('/opt/homebrew/bin/bash') else 'bash'
-    return _run([bash], script, tmp_path, stdin)
+    return _run([resolve_bash().path], script, tmp_path, stdin)
 
 
 # Body templates: install a SIG trap that records a marker to break a capped

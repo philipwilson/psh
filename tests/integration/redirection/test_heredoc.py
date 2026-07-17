@@ -7,6 +7,10 @@ Tests for heredoc (<<) and here string (<<<) redirection functionality.
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def test_tokenize_heredoc():
     """Test that << is tokenized correctly."""
@@ -192,7 +196,7 @@ def test_heredoc_strip_tabs_indented_delimiter():
         [sys.executable, '-m', 'psh', '-c', script],
         capture_output=True, text=True,
     )
-    bash = subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+    bash = subprocess.run([BASH, '-c', script], capture_output=True, text=True)
 
     assert psh.returncode == 0
     assert bash.stdout == "indented\n"   # documents the correct behavior

@@ -25,6 +25,10 @@ import subprocess
 import sys
 import time
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def _run(argv, stdin=None):
     return subprocess.run([sys.executable, '-m', 'psh', *argv],
@@ -44,7 +48,7 @@ def run_psh_script(tmp_path, script):
 def run_bash_script(tmp_path, script):
     path = tmp_path / "case_bash.sh"
     path.write_text(script)
-    return subprocess.run(['bash', str(path)], capture_output=True, text=True)
+    return subprocess.run([BASH, str(path)], capture_output=True, text=True)
 
 
 class TestExitTrapScriptFile:
@@ -169,40 +173,48 @@ class TestExitTrapSubstitutionChildren:
         assert r.stdout == "x=hi\nparent\n"
 
 
-def _wait_for_child(pid, timeout=10.0):
-    """Block until `pid` has spawned a child process, then return True.
+def _wait_for_ready(ready_file, proc, timeout=10.0):
+    """Block until the script's readiness sentinel file exists.
 
-    In these tests the child is the script's `sleep`, which runs only AFTER the
-    `trap` line — so "the shell has a child" proves the trap is installed AND the
-    shell has entered the sleep. Signalling at that moment cannot race trap
-    installation; and because we signal the instant the sleep begins, the sleep
-    always has its full (short) duration left to hold the pipe. Both properties
-    are independent of machine load, unlike a fixed pre-signal delay. Returns
-    False if no child appears within `timeout` (caller signals anyway; the poll
-    never hangs).
+    The sentinel (``: > "$READY"``) is written by the script AFTER its trap
+    lines, so its existence proves the traps are installed — signalling at
+    that moment cannot race trap installation, independent of machine load.
+
+    Readiness used to be inferred from ``pgrep -P`` ("the shell has spawned
+    its ``sleep`` child"), but external process enumeration is
+    ENVIRONMENT-DEPENDENT: in the v0.724-era gate environment ``pgrep``
+    returned empty for live children, every poll ran out its 10s budget, and
+    the signal then landed on an already-exited shell — 13 spurious ``rc=0``
+    failures in this class that "passed in isolation" (the serial-phase
+    contaminator was this harness probe, not leaked signal state — boundary
+    campaign E3 ledger). An in-band file sentinel is observable in any
+    environment.
+
+    Returns True when ready. Returns False when the shell exited before the
+    sentinel appeared or the deadline passed — the caller must treat that as
+    a HARNESS failure rather than signal a corpse and assert on its exit.
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
-        r = subprocess.run(['pgrep', '-P', str(pid)],
-                           capture_output=True, text=True)
-        if r.stdout.strip():
+        if os.path.exists(ready_file):
             return True
+        if proc.poll() is not None:
+            # Shell already exited: the sentinel can never appear.
+            return False
         time.sleep(0.01)
     return False
 
 
-def _spawn_and_signal(argv, sig, delay=None, timeout=20):
-    """Start a shell, deliver `sig` to its PID once it is in the sleep, and
+def _spawn_and_signal(argv, sig, delay=None, timeout=20, ready_file=None):
+    """Start a shell, deliver `sig` to its PID once it is ready, and
     return (stdout, stderr, returncode). A negative returncode is -signum
     (WIFSIGNALED); >=0 is a normal exit code.
 
-    Readiness is EVENT-BASED by default (``delay=None``): wait for the shell to
-    spawn its ``sleep`` child (``_wait_for_child``) before signalling, rather
-    than guessing a fixed delay. This is load-independent and lets the scripts
-    use a short ``sleep`` (the orphan then holds the pipe only briefly, so
-    ``communicate`` returns fast). Pass an explicit ``delay=`` for a script with
-    no observable child (the builtin busy-loop case), which falls back to a
-    fixed pre-signal sleep.
+    Readiness is EVENT-BASED by default: wait for the script's sentinel file
+    (``ready_file``, injected by ``_inject_ready``) before signalling, rather
+    than guessing a fixed delay. Pass an explicit ``delay=`` for a script that
+    cannot write a sentinel before its observable phase (the builtin busy-loop
+    case), which falls back to a fixed pre-signal sleep.
 
     The signal goes to the shell PID only (not its process group), so the
     foreground `sleep` child is untouched — exactly the F3 probe: a fatal
@@ -213,10 +225,19 @@ def _spawn_and_signal(argv, sig, delay=None, timeout=20):
     proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             text=True)
-    if delay is None:
-        _wait_for_child(proc.pid)
-    else:
+    if delay is not None:
         time.sleep(delay)
+    else:
+        assert ready_file is not None, (
+            "harness bug: event-based readiness requires a sentinel file")
+        if not _wait_for_ready(ready_file, proc):
+            proc.kill()
+            out, err = proc.communicate()
+            raise AssertionError(
+                "HARNESS failure (not product behavior): the readiness "
+                f"sentinel never appeared (shell rc={proc.returncode}, "
+                f"out={out!r}, err={err!r}); signalling now would hit an "
+                "exited or unready shell")
     try:
         os.kill(proc.pid, sig)
     except ProcessLookupError:
@@ -230,16 +251,34 @@ def _spawn_and_signal(argv, sig, delay=None, timeout=20):
     return out, err, proc.returncode
 
 
+def _inject_ready(script, ready):
+    """Insert the readiness sentinel write immediately before the script's
+    ``sleep 0.5`` (which every event-based script in this file uses). Loud on
+    a script it cannot instrument, so readiness can never silently degrade
+    back into a timeout."""
+    assert 'sleep 0.5' in script, (
+        f"harness bug: no 'sleep 0.5' to anchor the sentinel in {script!r}")
+    return script.replace('sleep 0.5', f': > "{ready}"; sleep 0.5', 1)
+
+
 def _psh_script_signal(tmp_path, script, sig, **kw):
     path = tmp_path / "sig.sh"
+    if kw.get('delay') is None:
+        ready = tmp_path / "psh.ready"
+        script = _inject_ready(script, ready)
+        kw['ready_file'] = str(ready)
     path.write_text(script)
     return _spawn_and_signal([sys.executable, '-m', 'psh', str(path)], sig, **kw)
 
 
 def _bash_script_signal(tmp_path, script, sig, **kw):
     path = tmp_path / "sig_bash.sh"
+    if kw.get('delay') is None:
+        ready = tmp_path / "bash.ready"
+        script = _inject_ready(script, ready)
+        kw['ready_file'] = str(ready)
     path.write_text(script)
-    return _spawn_and_signal(['bash', str(path)], sig, **kw)
+    return _spawn_and_signal([BASH, str(path)], sig, **kw)
 
 
 class TestExitTrapOnFatalSignal:
@@ -294,24 +333,27 @@ class TestExitTrapOnFatalSignal:
 
     def test_command_mode_fires_exit_trap(self, tmp_path):
         # -c shares execute_as_main, so the same chokepoint fires.
+        ready = tmp_path / "cmode.ready"
         out, err, rc = _spawn_and_signal(
             [sys.executable, '-m', 'psh', '-c',
-             'trap "echo CBYE" EXIT; sleep 0.5'],
-            signal.SIGTERM)
+             _inject_ready('trap "echo CBYE" EXIT; sleep 0.5', ready)],
+            signal.SIGTERM, ready_file=str(ready))
         assert out == "CBYE\n"
         assert rc == -signal.SIGTERM
 
     def test_stdin_mode_fires_exit_trap(self, tmp_path):
         # Piped stdin is non-interactive too (is_script_mode is unset there),
         # so the fatal-signal path must fire the EXIT trap for it as well.
-        script = 'trap "echo SBYE" EXIT\nsleep 0.5\n'
+        ready = tmp_path / "stdin.ready"
+        script = _inject_ready('trap "echo SBYE" EXIT\nsleep 0.5\n', ready)
         proc = subprocess.Popen(
             [sys.executable, '-m', 'psh'], stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         proc.stdin.write(script)
         proc.stdin.flush()
         proc.stdin.close()
-        _wait_for_child(proc.pid)
+        assert _wait_for_ready(str(ready), proc), (
+            "HARNESS failure: stdin-mode shell never reached its sentinel")
         os.kill(proc.pid, signal.SIGTERM)
         out, err = proc.communicate(timeout=20)
         assert out == "SBYE\n"
@@ -399,9 +441,11 @@ class TestExitTrapOnFatalSignal:
 
     def test_exit0_in_exit_trap_command_mode_dies_by_signal(self, tmp_path):
         # -c mode shares the same signal path; the SystemExit must not escape.
+        ready = tmp_path / "cmode0.ready"
         out, err, rc = _spawn_and_signal(
             [sys.executable, '-m', 'psh', '-c',
-             'trap "echo cleanup; exit 0" EXIT; sleep 0.5'],
-            signal.SIGTERM)
+             _inject_ready('trap "echo cleanup; exit 0" EXIT; sleep 0.5',
+                           ready)],
+            signal.SIGTERM, ready_file=str(ready))
         assert out == "cleanup\n"
         assert rc == -signal.SIGTERM

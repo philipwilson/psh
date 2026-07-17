@@ -30,15 +30,15 @@ All driven through subprocesses so psh and bash are directly comparable and so
 closing fd 1 happens in a real process (never the test runner's own fds).
 """
 
-import shutil
 import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
 
 pytestmark = pytest.mark.serial  # spawns subprocesses; closes fds
 
-BASH = shutil.which("bash")
+BASH = resolve_bash().path
 
 
 def _psh(cmd):

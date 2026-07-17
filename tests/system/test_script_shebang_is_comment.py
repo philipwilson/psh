@@ -15,6 +15,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 def _write(tmp_path, name, content):
@@ -30,7 +33,7 @@ def run_psh_file(path):
 
 
 def run_bash_file(path):
-    return subprocess.run(['bash', path], capture_output=True, text=True)
+    return subprocess.run([BASH, path], capture_output=True, text=True)
 
 
 class TestShebangIsCommentForExplicitFile:

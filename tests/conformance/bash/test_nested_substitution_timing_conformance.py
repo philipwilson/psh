@@ -29,15 +29,14 @@ directly comparable (see CLAUDE.md bash-verification workflow).
 """
 
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
 
 import pytest
+from shell_oracle import resolve_bash
 
-BASH = shutil.which("bash") or (
-    "/opt/homebrew/bin/bash" if os.path.exists("/opt/homebrew/bin/bash") else None)
+BASH = resolve_bash().path
 
 # Run the worktree's psh, not any editable-installed copy in site-packages.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(

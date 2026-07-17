@@ -18,14 +18,15 @@ Verified against bash 5.2.
 import subprocess
 import sys
 
-from conformance_framework import ConformanceTest, find_bash
+from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
 
 
 def _both_unbound(cmd):
     """psh and bash both fail with an 'unbound variable' diagnostic."""
     psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                          capture_output=True, text=True)
-    bash = subprocess.run([find_bash(), '-c', cmd],
+    bash = subprocess.run([resolve_bash().path, '-c', cmd],
                           capture_output=True, text=True)
     return psh, bash
 

@@ -18,6 +18,10 @@ Permanent-fd / exec redirection in scripts -> always run psh in a subprocess.
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def run_psh_script(tmp_path, script, name="case.sh"):
     path = tmp_path / name
@@ -29,7 +33,7 @@ def run_psh_script(tmp_path, script, name="case.sh"):
 def run_bash_script(tmp_path, script):
     path = tmp_path / "case_bash.sh"
     path.write_text(script)
-    return subprocess.run(['bash', str(path)], capture_output=True, text=True)
+    return subprocess.run([BASH, str(path)], capture_output=True, text=True)
 
 
 def test_exec_close_fd3_in_script(tmp_path):

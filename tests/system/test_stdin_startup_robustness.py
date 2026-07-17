@@ -33,8 +33,10 @@ import os
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
 PSH = [sys.executable, "-m", "psh"]
-BASH = ["bash"]
+BASH = [resolve_bash().path]
 TRACEBACK = b"Traceback (most recent call last)"
 
 

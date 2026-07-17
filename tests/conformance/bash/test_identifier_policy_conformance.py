@@ -34,9 +34,10 @@ import subprocess
 import sys
 
 from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
 
 PSH = [sys.executable, '-m', 'psh', '-c']
-BASH = ['bash', '-c']
+BASH = [resolve_bash().path, '-c']
 
 
 # These tests compare how bash and psh RENDER Unicode identifier names (é,

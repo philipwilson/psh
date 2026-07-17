@@ -343,3 +343,51 @@ class TestDynamicLocaleReactivity(ConformanceTest):
         self.assert_identical_behavior(
             'LC_ALL=en_US.UTF-8; LC_ALL=C declare -u a=café; '
             'declare -u b=café; echo "$a $b"', env=C)
+
+
+class TestInheritedCtypeProvenance(ConformanceTest):
+    """A genuine inherited LC_CTYPE survives psh startup (campaign E3,
+    continuation finding H). CPython's PEP 538 coercion is DISABLED whenever a
+    nonempty LC_ALL is inherited, so an LC_CTYPE arriving alongside LC_ALL=C is
+    the user's own; bash keeps it — visible in ``$LC_CTYPE``, passed to
+    children, and effective again after ``unset LC_ALL``. psh used to strip it
+    as a coercion phantom (its utf8_mode+target discriminator ignored LC_ALL),
+    which is exactly what made three v0.724 gate results depend on the HOST
+    terminal's LC_CTYPE. The env here is explicit per case — the harness strips
+    every inherited locale variable first — so these rows are hermetic replays
+    of that failure mode, red on v0.724.
+    """
+
+    def test_lc_all_c_keeps_inherited_ctype_visible(self):
+        self.assert_identical_behavior(
+            'echo "[$LC_CTYPE]"',
+            env={'LC_ALL': 'C', 'LC_CTYPE': 'C.UTF-8'})
+
+    def test_kept_ctype_passes_to_children(self):
+        self.assert_identical_behavior(
+            'env | grep -c "^LC_CTYPE=" || true',
+            env={'LC_ALL': 'C', 'LC_CTYPE': 'C.UTF-8'})
+
+    def test_unset_lc_all_falls_back_to_inherited_ctype(self):
+        # The downstream half: after `unset LC_ALL` the kept variable becomes
+        # the effective ctype, live-compared against the same host bash.
+        self.assert_identical_behavior(
+            'unset LC_ALL; [[ é == [[:alpha:]] ]]; echo $?',
+            env={'LC_ALL': 'C', 'LC_CTYPE': 'en_US.UTF-8'})
+
+    def test_terminal_app_utf8_row(self):
+        # macOS Terminal.app exports LC_CTYPE=UTF-8 — the literal host value
+        # behind the v0.724 failures.
+        self.assert_identical_behavior(
+            'echo "[$LC_CTYPE]"; unset LC_ALL; [[ é == [[:alpha:]] ]]; echo $?',
+            env={'LC_ALL': 'C', 'LC_CTYPE': 'UTF-8'})
+
+    def test_assignment_over_kept_ctype_stays_exported(self):
+        # The inherited (exported) LC_CTYPE keeps its export attribute through
+        # a plain assignment, so the child sees the NEW value — the third
+        # v0.724 failure's exact shape.
+        self.assert_identical_behavior(
+            'unset LC_ALL; LC_CTYPE=en_US.UTF-8; '
+            '[[ é == [[:alpha:]] ]] && echo react=yes; '
+            'env | grep -c "^LC_CTYPE=" || true',
+            env={'LC_ALL': 'C', 'LC_CTYPE': 'C.UTF-8'})

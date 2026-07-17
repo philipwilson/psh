@@ -15,14 +15,14 @@ Two contracts are asserted:
 Red→green: every `set`/`hash -l` row and the control-char `declare -p` rows
 FAILED at base dff3e875.
 """
-import shutil
 import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
 
 PSH = [sys.executable, "-m", "psh"]
-BASH = shutil.which("bash") or "/bin/bash"
+BASH = resolve_bash().path
 
 
 def _sq(s):

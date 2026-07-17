@@ -11,6 +11,10 @@ so `g=glob; f(){ declare g; g=x; }; f` leaked `g=x` to the global. bash treats
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def run_psh(cmd):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
@@ -69,7 +73,7 @@ def test_attribute_accumulation_in_function():
     # declare -u then -l on a declared-but-unset local must accumulate/flip,
     # not reset (bash: -l wins -> lowercase).
     r = run_psh('f(){ declare -u y; declare -l y; y=AbC; echo "$y"; }; f')
-    bash = subprocess.run(['bash', '-c', 'f(){ declare -u y; declare -l y; y=AbC; echo "$y"; }; f'],
+    bash = subprocess.run([BASH, '-c', 'f(){ declare -u y; declare -l y; y=AbC; echo "$y"; }; f'],
                           capture_output=True, text=True)
     assert r.stdout == bash.stdout
 

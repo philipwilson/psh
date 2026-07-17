@@ -11,6 +11,10 @@ Verified against bash 5.2.
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def run_psh(cmd):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
@@ -88,7 +92,7 @@ class TestTrapInheritanceIntoFunctions:
     def test_err_nested_function_calls_default(self):
         cmd = "c=0; trap 'c=$((c+1))' ERR; g(){ false; }; f(){ g; }; f; echo \"fired=$c\""
         result = run_psh(cmd)
-        bash = subprocess.run(['bash', '-c', cmd], capture_output=True, text=True)
+        bash = subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
         assert result.stdout == bash.stdout
 
     def test_err_brace_group_transparent_fires_once(self):

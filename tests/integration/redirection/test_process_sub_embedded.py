@@ -26,6 +26,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 @functools.lru_cache(maxsize=1)
@@ -40,7 +43,7 @@ def _os_supports_affixed_write_side() -> bool:
     """
     try:
         probe = subprocess.run(
-            ['bash', '-c',
+            [BASH, '-c',
              'echo data | tee /.>(cat >/dev/null) >/dev/null'],
             capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.TimeoutExpired):

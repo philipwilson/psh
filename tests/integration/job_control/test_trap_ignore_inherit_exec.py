@@ -14,6 +14,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 PSH = [sys.executable, "-m", "psh", "-c"]
 
@@ -25,7 +28,7 @@ def _run(cmd):
 
 def _bash(cmd):
     return subprocess.run(
-        ["bash", "-c", cmd], capture_output=True, text=True, timeout=15)
+        [BASH, "-c", cmd], capture_output=True, text=True, timeout=15)
 
 
 @pytest.mark.serial

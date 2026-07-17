@@ -16,6 +16,10 @@ follow-up — H6b in the reappraisal report.)
 import subprocess
 import sys
 
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
+
 
 def _psh_c(cmd):
     return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
@@ -32,7 +36,7 @@ def _psh_script(tmp_path, script):
 def _bash_script(tmp_path, script):
     p = tmp_path / "case_bash.sh"
     p.write_text(script)
-    return subprocess.run(['bash', str(p)], capture_output=True, text=True)
+    return subprocess.run([BASH, str(p)], capture_output=True, text=True)
 
 
 def _assert_matches_bash_script(tmp_path, script):

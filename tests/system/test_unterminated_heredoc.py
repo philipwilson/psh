@@ -22,6 +22,9 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+BASH = resolve_bash().path
 
 
 def _run_both(tmp_path, script_text, name="case.sh"):
@@ -29,7 +32,7 @@ def _run_both(tmp_path, script_text, name="case.sh"):
     psh = subprocess.run([sys.executable, '-m', 'psh', name],
                          capture_output=True, text=True, cwd=tmp_path,
                          timeout=15)
-    bash = subprocess.run(['bash', name], capture_output=True, text=True,
+    bash = subprocess.run([BASH, name], capture_output=True, text=True,
                           cwd=tmp_path, timeout=15)
     return psh, bash
 
@@ -115,12 +118,12 @@ class TestUnterminatedHeredocOtherModes:
         if mode == "dash_c":
             psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
                                  capture_output=True, text=True, timeout=15)
-            bash = subprocess.run(['bash', '-c', cmd],
+            bash = subprocess.run([BASH, '-c', cmd],
                                   capture_output=True, text=True, timeout=15)
         else:
             psh = subprocess.run([sys.executable, '-m', 'psh'], input=cmd,
                                  capture_output=True, text=True, timeout=15)
-            bash = subprocess.run(['bash'], input=cmd,
+            bash = subprocess.run([BASH], input=cmd,
                                   capture_output=True, text=True, timeout=15)
         assert psh.stdout == bash.stdout == 'hello\n'
         assert psh.returncode == bash.returncode == 0
