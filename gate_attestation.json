@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "0.726.0",
-  "gated_commit": "fcbc17509720e941f13438945d82af350b65ae8f",
-  "gated_tree": "dc9828630c5720fa113a8a6edd3914ac6c224994",
+  "version": "0.727.0",
+  "gated_commit": "1b44d4a05fd908643d36773684281363166edf28",
+  "gated_tree": "826c902774ba99fd99bbbb37868384fdc364ff4f",
   "platform": {
     "os": "Darwin 25.5.0",
     "python": "3.14.2",
@@ -38,6 +38,6 @@
   ],
   "ruff": true,
   "mypy_files": 258,
-  "timestamp": "2026-07-17T22:00:32+00:00",
+  "timestamp": "2026-07-17T22:50:46+00:00",
   "command": "run_tests.py --parallel --write-attestation"
 }
