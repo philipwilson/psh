@@ -593,9 +593,11 @@ honours the effective locale for:
   coercion), `PYTHONCOERCECLOCALE=0`, or an explicit UTF-8-mode request
   (`PYTHONUTF8=1` / `-X utf8`) each mark the inherited `LC_CTYPE` as genuine
   (or unknowable), and PSH then KEEPS it exactly as bash does. The one
-  residual is the unknowable corner: under an explicit `PYTHONUTF8=1` in an
-  otherwise effectively-C environment the coercion still runs, and PSH keeps
-  the resulting `LC_CTYPE` where bash (never seeing it) shows nothing.
+  residual is the unknowable corner: under an explicit `PYTHONUTF8=1` (or
+  `PYTHONUTF8=0`, which leaves `utf8_mode` off while the coercion still
+  rewrites the environment) in an otherwise effectively-C environment the
+  coercion still runs, and PSH keeps the resulting `LC_CTYPE` where bash
+  (never seeing it) shows nothing.
   `PYTHONUTF8` is a Python runtime knob, not a shell-user path; every pure
   shell-visible environment — including `LC_ALL=C` combined with an inherited
   terminal `LC_CTYPE` — is fully bash-faithful.

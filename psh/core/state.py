@@ -993,9 +993,14 @@ class ShellState:
         is KEPT (a genuine inherited variable must never be destroyed on a
         guess). Coercion is provable only when every one of these holds:
 
-        * ``sys.flags.utf8_mode`` is set — every coercion target auto-enables
-          UTF-8 mode, so ``utf8_mode == 0`` (a genuine ``en_US.UTF-8``, or
-          ``C.UTF-8`` where the platform resolves it) proves no coercion;
+        * ``sys.flags.utf8_mode`` is set — with ``utf8_mode == 0`` the
+          pairing evidence is simply absent, so the value is kept. (For a
+          genuine ``en_US.UTF-8``, or ``C.UTF-8`` where the platform resolves
+          it, no coercion occurred and keeping is exactly right. The one
+          ``utf8_mode == 0`` state where coercion DID occur is an explicit
+          ``PYTHONUTF8=0`` in an effectively-C env: the coerced phantom is
+          then kept where bash shows nothing — same keep-direction corner as
+          the explicit-request case below, same Python-runtime-knob caveat.);
         * the value is one of the coercion targets;
         * no NONEMPTY ``LC_ALL`` is inherited — CPython *skips* coercion
           entirely when ``LC_ALL`` is set (``_Py_LegacyLocaleDetected``), so

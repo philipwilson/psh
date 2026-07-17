@@ -342,7 +342,15 @@ class ConformanceTest:
         )
 
     def check_behavior(self, command: str, env: Dict[str, str] = None) -> ComparisonResult:
-        """Check behavior without assertion (for investigation)."""
+        """Check behavior without a CONFORMANCE assertion (for investigation).
+
+        Harness completedness IS asserted: every caller dereferences
+        ``psh_result``/``bash_result``, so a spawn/timeout/decode failure
+        surfaces here as a typed diagnostic instead of an ``AttributeError``
+        on a ``None`` side downstream.
+        """
         result = self.framework.compare_behavior(command, env)
         self.results.append(result)
+        assert result.psh_result is not None and result.bash_result is not None, (
+            f"harness failure (not shell behavior) for {command!r}: {result.notes}")
         return result

@@ -128,8 +128,9 @@ _HERMETIC_SIGNALS = tuple(
 
 @pytest.fixture(autouse=True)
 def _restore_signal_dispositions_and_std_fds():
-    """Snapshot/restore process signal dispositions and fds 0/1/2 per test
-    (boundary campaign E3: hermetic process state).
+    """Snapshot/restore process signal dispositions, fds 0/1/2, and the
+    process-global libc locale per test (boundary campaign E3: hermetic
+    process state).
 
     WHY suite-wide autouse: an in-process shell that runs `trap "..." SIG`
     installs a REAL handler in the test runner's process
@@ -139,14 +140,24 @@ def _restore_signal_dispositions_and_std_fds():
     test and, worse, into every later SUBPROCESS (an inherited SIG_IGN made
     a whole class of fatal-signal tests silently meaningless in the past —
     see the SIGINT-gate memory). Likewise a test that rewires fd 0/1/2
-    permanently corrupts the whole worker. Restoring is a handful of
-    syscalls per test and acts only on drift, so the fixture is safe at
-    suite scope; scope rationale recorded in the E23 boundary ledger.
+    permanently corrupts the whole worker; and a shell given a non-C locale
+    profile calls libc ``setlocale`` PROCESS-GLOBALLY
+    (``LocaleService._try_setlocale``) — a later C-profile shell never calls
+    ``setlocale`` at all (C mode is the no-setlocale fast path), so a leaked
+    non-C worker locale would silently recolor every later collation/ctype
+    answer. Restoring is a handful of syscalls per test and acts only on
+    drift, so the fixture is safe at suite scope; scope rationale recorded
+    in the E23 boundary ledger.
 
     The teardown runs AFTER the shell-family fixtures' cleanup (autouse
     fixtures are set up first, torn down last), so it observes the
     post-``Shell.close()`` state and only repairs genuine leaks.
     """
+    import locale as _locale
+    try:
+        saved_locale = _locale.setlocale(_locale.LC_ALL)
+    except _locale.Error:  # pragma: no cover - unqueryable locale state
+        saved_locale = None
     saved_signals = {}
     for sig in _HERMETIC_SIGNALS:
         try:
@@ -164,6 +175,12 @@ def _restore_signal_dispositions_and_std_fds():
     try:
         yield
     finally:
+        if saved_locale is not None:
+            try:
+                if _locale.setlocale(_locale.LC_ALL) != saved_locale:
+                    _locale.setlocale(_locale.LC_ALL, saved_locale)
+            except _locale.Error:  # pragma: no cover - unrestorable composite
+                pass
         for sig, handler in saved_signals.items():
             try:
                 if signal.getsignal(sig) is not handler:

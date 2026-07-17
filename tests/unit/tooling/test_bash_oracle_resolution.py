@@ -20,6 +20,14 @@ ladder inline. This scanner flags, in every scanned file:
 ``'bash'`` appearing elsewhere (inside shell-script text, as a path component
 like ``tmp_path / 'bash'``, in prose) is not an oracle and is not flagged.
 
+Known-unflagged evasion forms (completeness caveat): an oracle reached
+through a longer ``shell=True`` command STRING (``subprocess.run('bash -c
+...', shell=True)`` — arg0 is a multi-word constant, not exactly ``'bash'``)
+or through ``os.system('bash ...')`` would slip past the argv-head/arg0
+rules. Verified at adoption that NO current test uses either form with a
+bash oracle (tree grep for ``shell=True`` / ``os.system``); if one appears,
+extend ``find_oracle_offenses`` rather than allowlisting it.
+
 The allowlist is SHRINKING: it may lose entries, never gain them without the
 justification being recorded here.
 """

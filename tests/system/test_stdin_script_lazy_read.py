@@ -22,14 +22,15 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import try_resolve_bash
 
 REPO_ROOT = str(Path(__file__).resolve().parents[2])
 PSH = [sys.executable, "-m", "psh"]
-BASH = resolve_bash().path
+_ORACLE = try_resolve_bash()
+BASH = _ORACLE.path if _ORACLE else "bash-oracle-unavailable"
 
 pytestmark = pytest.mark.skipif(
-    not os.path.exists(BASH), reason="bash oracle unavailable")
+    _ORACLE is None, reason="bash oracle unavailable")
 
 
 def _env():

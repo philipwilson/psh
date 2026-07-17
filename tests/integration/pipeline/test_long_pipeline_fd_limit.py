@@ -8,19 +8,23 @@ descriptors in the parent, so the same pipeline now runs.
 
 These tests lower RLIMIT_NOFILE in a bash wrapper and then exec the target
 shell (a modest pipeline under a lowered limit — never a 200-process storm at
-the default limit). They compare psh against bash at the same length and limit.
+the default limit). They compare psh against bash at the same length and limit,
+executed through the shared typed runner (hermetic env, own session,
+file-backed capture, bounded output) — the ulimit wrapper is ordinary script
+text, so run_shell_case runs it unchanged.
 
 Marked serial: they fork many short-lived processes and must not contend with
 other tests under xdist.
 """
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import Completed, hermetic_shell_env, resolve_bash, run_shell_case
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+ENV = hermetic_shell_env({'LC_ALL': 'C', 'LANG': 'C',
+                          'PYTHONPATH': str(REPO_ROOT)})
 BASH = resolve_bash().path
 
 pytestmark = pytest.mark.serial
@@ -36,9 +40,9 @@ def _run_under_limit(shell_cmd, nofile, nstages):
     pipeline = _pipeline(nstages)
     quoted = "'" + pipeline.replace("'", "'\\''") + "'"
     inner = f"ulimit -n {nofile}; exec {shell_cmd} -c {quoted}"
-    return subprocess.run([BASH, "-c", inner], cwd=str(REPO_ROOT),
-                          capture_output=True, text=True, timeout=60,
-                          stdin=subprocess.DEVNULL)
+    r = run_shell_case([BASH, "-c", inner], stdin_data="", env=ENV, timeout=60)
+    assert isinstance(r, Completed), f"harness failure: {r!r}"
+    return r
 
 
 PSH = f"{sys.executable} -m psh"
