@@ -14,6 +14,11 @@ Two properties matter:
 
 Thresholds are generous (guards, not tight benchmarks) to avoid flaking under
 load; a genuine algorithmic regression (per-match sweep) blows past them.
+
+Tier: wall-time benchmark (campaign E1b) — `benchmark` + `serial` marked
+(serial is doubly required: the UTF-8 case mutates the process-global libc
+locale), excluded from the standard gate, run via
+`python run_tests.py --benchmarks`.
 """
 import locale as _locale
 import time
@@ -22,6 +27,8 @@ import pytest
 
 from psh.core.locale_service import LocaleMode, LocaleService
 from psh.shell import Shell
+
+pytestmark = [pytest.mark.benchmark, pytest.mark.serial]
 
 
 class TestLocaleClassPerformance:

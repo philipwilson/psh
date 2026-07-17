@@ -52,6 +52,21 @@ jobs:
           python -m pytest -p no:cacheprovider -o addopts="" \
             tests/parser_differential/test_combinator_random_differential.py
 
+      # Benchmark tier (campaign E1b, integrator ruling R2 at the E1 bounce):
+      # `benchmark`-marked timing microbenchmarks, serial, excluded from the
+      # standard gate. Nightly records the transcript as a build artifact
+      # ONLY — baseline-delta tracking is deferred to campaign exit.
+      - name: Benchmark Tier (serial; artifact-only, no baseline deltas)
+        run: python run_tests.py --benchmarks --results-file tmp/benchmarks-nightly.txt
+
+      - name: Upload Benchmark Transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-transcript
+          path: tmp/benchmarks-nightly.txt
+          if-no-files-found: warn
+
       - name: Upload Coverage Report
         if: always()
         uses: actions/upload-artifact@v4

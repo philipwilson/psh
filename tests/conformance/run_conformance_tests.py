@@ -192,7 +192,7 @@ def build_pytest_args(paths: List[str], extra: List[str]) -> List[str]:
     """Assemble pytest arguments.
 
     ``-o addopts=`` clears ``pytest.ini``'s ``addopts`` entirely (currently
-    ``--tb=short --ignore=tests/performance``) so this runner controls output on
+    ``--tb=short``) so this runner controls output on
     its own terms and prints its own summary rather than pytest's progress.
     ``--tb=short`` keeps captured tracebacks compact in the report.
     """

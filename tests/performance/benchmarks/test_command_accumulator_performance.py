@@ -8,8 +8,9 @@ super-quadratic regression (e.g. an accidental extra re-lex per line, or a
 preprocessing step that stops short-circuiting): a 500-line function must
 still gather in a generous wall of CPU time.
 
-Excluded from the gate by path (pytest.ini `--ignore=tests/performance`);
-run explicitly with `pytest tests/performance/`.
+Tier: CPU-time benchmark (campaign E1b) — `benchmark` + `serial` marked,
+excluded from every standard-gate phase; run via
+`python run_tests.py --benchmarks` (or `pytest tests/performance/`).
 
 Measurement discipline (matches test_parsing_performance.py): time
 `time.process_time()` (CPU only, immune to preemption) and take the min
@@ -21,6 +22,8 @@ import pytest
 
 from psh.scripting.command_accumulator import CommandAccumulator
 from psh.shell import Shell
+
+pytestmark = [pytest.mark.benchmark, pytest.mark.serial]
 
 
 def _feed_all(shell, lines):
