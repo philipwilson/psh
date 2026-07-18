@@ -33,7 +33,7 @@ Callers resolve the target's kind and pass it in; the service never re-decides.
 import enum
 from typing import TYPE_CHECKING, Union
 
-from ..ast_nodes.words import LiteralPart, VariableExpansion, Word
+from ..ast_nodes.words import ExpansionPart, LiteralPart, VariableExpansion, Word, WordPart
 from ..core import arith_assignment_discard
 from ..lexer import tokenize
 from ..lexer.token_types import TokenType
@@ -111,7 +111,7 @@ class SubscriptEvaluator:
             return Word(parts=[LiteralPart(raw, quoted=False, quote_char=None)])
         if not tokens:
             return Word(parts=[LiteralPart(raw, quoted=False, quote_char=None)])
-        parts = []
+        parts: 'list[WordPart]' = []
         pos = 0
         for token in tokens:
             start = getattr(token, 'position', pos) or 0
@@ -181,8 +181,8 @@ class SubscriptEvaluator:
                             i += 1
                     text = ''.join(out)
                 pieces.append(text)
-            else:
-                # ExpansionPart: keep the source spelling (never re-expanded).
+            elif isinstance(part, ExpansionPart):
+                # Keep the source spelling (never re-expanded).
                 # VariableExpansion.__str__ drops the braces, so the braced
                 # spelling is reconstructed (bash keys `${x}` verbatim).
                 exp = part.expansion

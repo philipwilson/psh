@@ -21,8 +21,8 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from conformance_framework import ConformanceTest
+from shell_oracle import resolve_bash
 
 PSH_ROOT = Path(__file__).resolve().parents[3]
 
@@ -46,7 +46,7 @@ def _psh(cmd):
 
 
 def _bash(cmd):
-    return _run(['bash'], cmd)
+    return _run([resolve_bash().path], cmd)
 
 
 class TestAssocBareNameIsLiteral(ConformanceTest):
