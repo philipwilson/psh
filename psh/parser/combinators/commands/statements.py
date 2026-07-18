@@ -22,18 +22,36 @@ else:
 class StatementMixin(_Base):
     """Mixin providing statement and statement-list parsers for CommandParsers."""
 
+    # A function definition followed by one of these is a PipelineComponent, so
+    # it is wrapped through the and-or machinery rather than returned bare
+    # (#20 H9; campaign S5). Mirrors the recursive descent StatementParser.
+    _FUNCTION_DEF_CONTINUATIONS = frozenset({
+        'PIPE', 'PIPE_AND', 'AND_AND', 'OR_OR', 'AMPERSAND',
+    })
+
     def _build_statement_parser(self) -> Parser[Union[AndOrList, FunctionDef]]:
         """Build parser for statements: a function definition, else an and-or list.
 
         The function-definition head is read from ``self._function_def`` at
-        parse time (a never-matching parser until wiring fills the slot).
+        parse time (a never-matching parser until wiring fills the slot). A
+        STANDALONE definition is returned bare (the historical top-level shape);
+        a definition followed by a pipeline/and-or/background continuation is a
+        PipelineComponent, so it is reparsed through ``self.and_or_list`` (whose
+        pipeline element now accepts a function definition) so it wraps into
+        AndOrList -> Pipeline (#20 H9; campaign S5).
 
         Returns:
             Parser that produces statement nodes
         """
         def parse_statement(tokens: List[Token], pos: int) -> ParseResult:
             fn_result = self._function_def.parse(tokens, pos)
-            if fn_result.success or fn_result.committed:
+            if fn_result.success:
+                npos = fn_result.position
+                if (npos < len(tokens)
+                        and tokens[npos].type.name in self._FUNCTION_DEF_CONTINUATIONS):
+                    return self.and_or_list.parse(tokens, pos)
+                return fn_result
+            if fn_result.committed:
                 return fn_result
             return self.and_or_list.parse(tokens, pos)
 

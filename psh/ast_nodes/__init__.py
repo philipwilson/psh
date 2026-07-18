@@ -22,6 +22,8 @@ introspection that filters on the module name (e.g. the AST coverage-matrix
 meta-test) sees the package as a single module, exactly as before the split.
 """
 
+from typing import Union
+
 from .arrays import (
     ArrayAssignment,
     ArrayElementAssignment,
@@ -90,6 +92,36 @@ from .words import (
     WordPart,
 )
 
+# ---------------------------------------------------------------------------
+# PipelineComponent (campaign S5, #20 H9): the exhaustive typed sum of nodes
+# that can appear as a member of a Pipeline — a simple command, any compound
+# command, or a function definition. It is the §5 canonical type: the semantic
+# name for the element type of ``Pipeline.commands`` (``List[Command]`` at
+# runtime, since every member is a ``Command``). ``FunctionDef`` joined this sum
+# in S5 so ``f() { :; } | cat``, ``! f() { :; }``, ``time f() { :; }``,
+# ``x && f() { :; }`` and ``f() { :; } &`` parse and execute with bash-correct
+# context (single-member pipeline runs in-process and LEAKS; multi-member /
+# background forks and does NOT). The union membership is drift-locked EXHAUSTIVE
+# against reflection (every concrete ``Command`` subclass must appear, and no
+# ``Statement``-only node may) by
+# tests/unit/ast_nodes/test_pipeline_component_type.py.
+# ---------------------------------------------------------------------------
+PipelineComponent = Union[
+    SimpleCommand,
+    SubshellGroup,
+    BraceGroup,
+    WhileLoop,
+    UntilLoop,
+    ForLoop,
+    CStyleForLoop,
+    IfConditional,
+    CaseConditional,
+    SelectLoop,
+    ArithmeticEvaluation,
+    EnhancedTestStatement,
+    FunctionDef,
+]
+
 
 # ---------------------------------------------------------------------------
 # Present the package as a single logical module for introspection.
@@ -148,6 +180,7 @@ __all__ = [
     'SubshellGroup',
     'BraceGroup',
     'Pipeline',
+    'PipelineComponent',
     'AndOrList',
     'StatementList',
     'Program',

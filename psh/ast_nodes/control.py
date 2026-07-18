@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from .base import (
     ASTNode,
+    Command,
     Statement,
     UnifiedControlStructure,
 )
@@ -25,13 +26,31 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class FunctionDef(Statement):
-    """Function definition."""
+class FunctionDef(Statement, Command):
+    """Function definition.
+
+    A function definition is BOTH a ``Statement`` (a standalone ``f() { ...; }``
+    at statement level updates the parent function table) AND a ``Command`` — a
+    ``PipelineComponent`` — so it can appear as a pipeline member, negation/
+    ``time`` target, and-or-list element, or background job exactly as bash's
+    grammar allows (``f() { ...; } | cat``, ``! f() { :; }``, ``time f() { :; }``,
+    ``x && f() { :; }``, ``f() { :; } &``). Whether the definition leaks into the
+    parent follows the same fork rule as any command: a single-member pipeline
+    runs in the current shell (LEAKS); a multi-member pipeline or background
+    forks a child whose function-table write dies with the child (NO leak).
+    (#20 H9; campaign S5.)
+    """
     name: str
     body: StatementList
     # Redirections attached to the definition (f() { ...; } > file) are
     # applied at each CALL, not at definition time (bash).
     redirects: List[Redirect] = field(default_factory=list)
+    # The ``Command`` interface's second field. A function definition is never
+    # itself backgrounded (a trailing ``&`` backgrounds the enclosing and-or
+    # list — see StatementParser._apply_background), so this is always False for
+    # a FunctionDef; it exists so the pipeline executor's uniform
+    # ``node.commands[-1].background`` read never trips on a FunctionDef member.
+    background: bool = False
 
 
 @dataclass

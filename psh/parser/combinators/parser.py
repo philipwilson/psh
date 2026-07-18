@@ -125,13 +125,16 @@ class ParserCombinatorShellParser:
         statement, statement-list) reading two recursion *slots* at parse time.
         Here we fill those slots — no parser is rebuilt or reassigned:
 
-        * the pipeline element widens from a bare simple command to "control
-          structure / special command / simple command" so a compound command
-          can appear inside a pipeline (``for ...; do ...; done | grep``);
+        * the pipeline element widens from a bare simple command to "function
+          definition / control structure / special command / simple command" so
+          a compound command — or a function definition (``f() { :; } | cat``,
+          ``! f() { :; }``, ``time f() { :; }``, ``x && f() { :; }``; #20 H9,
+          campaign S5) — can appear inside a pipeline;
         * the statement head gains function definitions (tried first).
         """
         pipeline_element = (
-            self.control.control_structure
+            self.control.function_def
+            .or_else(self.control.control_structure)
             .or_else(self.special.special_command)
             .or_else(self.commands.simple_command)
         )
