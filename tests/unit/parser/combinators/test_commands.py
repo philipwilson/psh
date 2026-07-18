@@ -161,7 +161,7 @@ class TestCommandParsers:
         assert redirect.type == "<<"
         assert redirect.target == "EOF"
         # heredoc_key and heredoc_quoted are not part of the AST node
-        # They would be handled separately by a heredoc processor
+        # They is carried by the HeredocSpec (quoted flag) attached at construction
 
     def test_parse_here_string(self):
         """Test parsing here string redirection."""

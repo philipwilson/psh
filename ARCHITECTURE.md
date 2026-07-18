@@ -554,9 +554,10 @@ class ParserContext:
     current: int = 0
     config: ParserConfig = field(default_factory=ParserConfig)
 
-    # Pre-collected heredoc bodies (heredoc-aware parse only), keyed by the
-    # lexer-assigned heredoc_key; None otherwise.
-    heredoc_map: Optional[Mapping[str, object]] = None
+    # Pre-collected heredocs (heredoc-aware parse only): the LexedUnit's
+    # id-keyed map of LexedHeredoc entries (spec + collected body), keyed by
+    # the lexer-assigned ordinal heredoc_id; None otherwise.
+    heredocs: Optional[Mapping[int, LexedHeredoc]] = None
 
     # Source context
     source_text: Optional[str] = None

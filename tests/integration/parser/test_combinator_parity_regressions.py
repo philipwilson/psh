@@ -244,7 +244,7 @@ class TestTimePrefix:
 class TestHeredocsUnderCombinator:
     """Heredocs execute under --parser combinator (reappraisal #15 L2).
 
-    The combinator's redirection builder dropped ``token.heredoc_key``, so
+    The combinator's redirection builder dropped ``token.heredoc_id``, so
     bodies could never populate — masked because the source processor
     silently routed ALL heredoc input to the RD parser. The key now flows
     through and heredoc input parses with the ACTIVE parser.
@@ -560,3 +560,32 @@ class TestArrayEscapeResidualParity:
 
     def test_ordinary_array_idempotent(self):
         assert_three_way(r'declare -a n=(1 2 3); declare -p n')
+
+
+class TestHeredocRoutingSpy:
+    """Re-homed from the deleted test_heredoc_processor.py (S2 bounce fold).
+
+    Output-level parity masked a real silent-RD-routing bug once
+    (reappraisal-#15 L2): under --parser combinator, heredoc input was parsed
+    by the RD parser and nobody noticed. This spy proves heredoc input
+    genuinely reaches the combinator entry point.
+    """
+
+    def test_heredoc_input_reaches_combinator_parser(self, monkeypatch):
+        import psh.parser.combinators.parser as comb_mod
+        from psh.shell import Shell
+
+        calls = []
+        real = comb_mod.ParserCombinatorShellParser.parse_with_heredocs
+
+        def spy(self, tokens, heredocs, **kw):
+            calls.append(len(tokens))
+            return real(self, tokens, heredocs, **kw)
+
+        monkeypatch.setattr(
+            comb_mod.ParserCombinatorShellParser, "parse_with_heredocs", spy)
+        monkeypatch.setenv("PSH_TEST_PARSER", "combinator")
+        shell = Shell()
+        assert shell._active_parser == "combinator"
+        shell.run_command("cat <<EOF\nspy-body\nEOF")
+        assert calls, "heredoc input bypassed the active combinator parser"

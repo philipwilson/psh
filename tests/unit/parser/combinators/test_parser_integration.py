@@ -304,7 +304,12 @@ class TestParserIntegration:
             assert isinstance(stmt.pipelines[0].commands[0], SimpleCommand)
 
     def test_heredoc_support(self):
-        """Test heredoc content population."""
+        """parse_with_heredocs accepts the typed id-keyed map (S2 boundary).
+
+        Hand-built tokens carry ``heredoc_id=None`` so no attachment occurs
+        here; real attachment coverage lives in the S2 conformance module and
+        the parity suite. This is an API-shape smoke test only.
+        """
         parser = ParserCombinatorShellParser()
 
         tokens = [
@@ -313,14 +318,8 @@ class TestParserIntegration:
             make_token(TokenType.WORD, "EOF")
         ]
 
-        heredoc_contents = {'heredoc_1': 'Hello\nWorld\n'}
-
-        # Parse with heredocs
-        result = parser.parse_with_heredocs(tokens, heredoc_contents)
+        result = parser.parse_with_heredocs(tokens, {})
         assert isinstance(result, Program)
-
-        # Note: The actual heredoc population would happen if the
-        # redirect nodes had heredoc_key attributes set
 
     def test_parse_partial(self):
         """Test partial parsing."""

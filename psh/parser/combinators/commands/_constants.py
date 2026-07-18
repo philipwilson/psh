@@ -17,7 +17,3 @@ _FD_DUP_MOVE_RE = re.compile(r'^(\d*)([><])&(\d+)-$')
 _FD_DUP_BARE_RE = re.compile(r'^(\d*)([><])&$')
 
 # Token types that should be treated as word-like for composite merging
-_WORD_LIKE_TYPES = frozenset({
-    'WORD', 'STRING', 'VARIABLE', 'COMMAND_SUB',
-    'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION', 'PROCESS_SUB_IN', 'PROCESS_SUB_OUT',
-})
