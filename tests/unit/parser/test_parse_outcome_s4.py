@@ -160,13 +160,11 @@ def test_combinator_parse_outcome_incomplete_at_eof():
 
 # === the variants are frozen typed values ===
 
-@pytest.mark.parametrize("outcome", [
-    Complete(Program()),
-    Incomplete(ExpectedInput(), None),
-    Invalid(None),
+@pytest.mark.parametrize("outcome,attr", [
+    (Complete(Program()), "program"),
+    (Incomplete(ExpectedInput(), None), "error"),
+    (Invalid(None), "error"),
 ])
-def test_outcome_variants_are_frozen(outcome):
+def test_outcome_variants_are_frozen(outcome, attr):
     with pytest.raises(dataclasses.FrozenInstanceError):
-        outcome.__dict__  # sanity: it is a dataclass instance
-        object.__setattr__  # no-op reference
-        outcome.x = 1  # type: ignore[attr-defined]
+        setattr(outcome, attr, "mutated")

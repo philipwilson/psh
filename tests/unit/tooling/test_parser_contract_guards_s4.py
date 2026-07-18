@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from psh.lexer import tokenize
-from psh.parser import ParseInputs, Parser
+from psh.parser import ParseInputs
 from psh.parser.combinators.parser import ParserCombinatorShellParser
 from psh.parser.config import ParserConfig
 from psh.parser.recursive_descent.helpers import ErrorContext

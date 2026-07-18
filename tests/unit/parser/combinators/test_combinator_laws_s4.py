@@ -21,12 +21,11 @@ import pytest
 
 from psh.parser.combinators.core import (
     ParseFailure,
-    ParseSuccess,
     Parser,
+    ParseSuccess,
     many,
     optional,
 )
-
 
 # --- Representative parser factories (property-style coverage) ---
 

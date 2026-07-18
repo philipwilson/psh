@@ -21,7 +21,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from conformance_framework import ConformanceTest
 
 # Multiline scripts: each exercises a continuation construct. Chosen so the

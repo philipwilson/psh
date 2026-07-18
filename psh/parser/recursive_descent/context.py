@@ -16,7 +16,7 @@ delegate to ``inputs``/``state``, so no sub-parser changed. Because ``inputs``
 and ``state`` are built once per context and dropped with it, a parser instance
 retains no per-call state after ``parse()`` returns.
 """
-from typing import List, Mapping, Optional
+from typing import TYPE_CHECKING, List, Mapping, Optional
 
 from ...lexer.position import SourceMap
 from ...lexer.token_types import Token, TokenType
@@ -28,6 +28,9 @@ from .helpers import (
     describe_token,
     token_display_name,
 )
+
+if TYPE_CHECKING:
+    from ...lexer.heredoc_lexer import LexedHeredoc
 
 
 class ParserContext:
@@ -52,7 +55,7 @@ class ParserContext:
         tokens: List[Token],
         current: int = 0,
         config: Optional[ParserConfig] = None,
-        heredocs: "Optional[Mapping[int, object]]" = None,
+        heredocs: "Optional[Mapping[int, 'LexedHeredoc']]" = None,
         lexer_options: Optional[Mapping[str, object]] = None,
         source_text: Optional[str] = None,
         source_lines: Optional[List[str]] = None,
@@ -107,7 +110,7 @@ class ParserContext:
         return self.inputs.lexer_options
 
     @property
-    def heredocs(self) -> "Optional[Mapping[int, object]]":
+    def heredocs(self) -> "Optional[Mapping[int, 'LexedHeredoc']]":
         return self.inputs.heredocs
 
     @property

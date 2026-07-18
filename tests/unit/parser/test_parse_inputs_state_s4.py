@@ -11,7 +11,7 @@ import dataclasses
 import pytest
 
 from psh.lexer import tokenize
-from psh.parser import ParseInputs, ParserState, Parser
+from psh.parser import ParseInputs, Parser, ParserState
 from psh.parser.config import ParserConfig
 from psh.parser.recursive_descent.context import ParserContext
 
