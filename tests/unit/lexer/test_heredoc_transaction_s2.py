@@ -298,6 +298,21 @@ class TestFormatterRawEmission:
         out = self._format('cat <<-EOF\n\tbody\n\tEOF\n')
         assert '<<-EOF' in out
 
+    @pytest.mark.parametrize("raw", [
+        '$X', "$'EOF'", '"EOF"', 'E"O"F', "'EOF'", '<(x)',
+    ])
+    def test_raw_spelling_preserved_verbatim(self, raw):
+        # Every delimiter spelling re-emits VERBATIM — no cooked emission,
+        # no re-quote approximation (a single-quote re-wrap of the cooked
+        # terminator loses `$'…'`/`"…"`/composite spellings).
+        cooked_line = {'$X': '$X', "$'EOF'": 'EOF', '"EOF"': 'EOF',
+                       'E"O"F': 'EOF', "'EOF'": 'EOF', '<(x)': '<(x)'}[raw]
+        # A procsub-shaped delimiter needs the space (`<<<(x)` would be a
+        # here-string); other spellings glue directly to the operator.
+        sep = ' ' if raw.startswith('<') else ''
+        out = self._format(f'cat <<{sep}{raw}\nbody\n{cooked_line}\n')
+        assert f'<<{sep}{raw}' in out
+
     def test_format_reparse_fixpoint(self):
         for src in ('cat <<$X\nbody\n$X\n',
                     "cat <<$'EOF'\nb $y\nEOF\n",

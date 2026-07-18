@@ -740,9 +740,13 @@ class FormatterVisitor(ASTVisitor[str]):
         # round-trips as `<<$X` (not the cooked `<<X`), and a quoted
         # spelling (`<<'EOF'`, `<<$'EOF'`) keeps its own quotes — no
         # re-quoting approximation, so re-parsing preserves both the
-        # terminator and the expansion-suppression fact.
+        # terminator and the expansion-suppression fact. A procsub-SHAPED
+        # delimiter needs a space after the operator (`<<<(x)` would glue
+        # into a here-string) — same rule as the filename branch below.
         if node.type in ('<<', '<<-'):
-            return f"{op}{node.target or ''}"
+            delim = node.target or ''
+            sep = ' ' if delim[:2] in ('<(', '>(') else ''
+            return f"{op}{sep}{delim}"
 
         # Here string: format the Word (per-part quote context) so a composite
         # like `<<< foo$v"dq"` round-trips; fall back to re-quoting the flat
