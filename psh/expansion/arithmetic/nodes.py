@@ -51,14 +51,16 @@ class TernaryNode(ArithNode):
 class ArrayElementNode(ArithNode):
     """Array element READ (arr[index]).
 
-    ``index`` is the parsed subscript expression (used for indexed arrays,
-    which arithmetic-evaluate the subscript). ``index_text`` is the raw
-    subscript source text (used verbatim as the key for associative arrays,
-    where the subscript is a literal string, not an arithmetic expression).
+    ``index_text`` is the VERBATIM subscript source text (a SUBSCRIPT token's
+    value). It is interpreted only at evaluation, by target kind: an
+    associative array keys on it after quote removal; an indexed array (or a
+    scalar / undeclared name) lazily parses it as arithmetic — the campaign W2
+    subscript authority (see ``ArithmeticEvaluator._array_key``). Carrying
+    text, not a parsed expression, is what lets ``$((h[a b]))`` key ``a b``
+    without the subscript ever needing to lex as arithmetic (r21 A3).
     """
     name: str
-    index: ArithNode
-    index_text: str = ""
+    index_text: str
 
 
 @dataclass
@@ -67,16 +69,13 @@ class LValue:
 
     Reifying the lvalue lets assignment and increment/decrement have ONE
     implementation each (scalar and array alike) instead of scalar/array
-    twin nodes. ``subscript`` is ``None`` for a plain scalar (``x``); for an
-    array element (``a[i]``) it is the parsed subscript expression
-    (arithmetic-evaluated for indexed arrays) and ``subscript_text`` is the
-    raw subscript source text (used verbatim as the key for associative
-    arrays, whose subscripts are literal strings — see
-    :class:`ArrayElementNode`).
+    twin nodes. ``subscript_text`` is ``None`` for a plain scalar (``x``);
+    for an array element (``a[i]``) it is the verbatim subscript source text,
+    interpreted at evaluation by target kind exactly like
+    :class:`ArrayElementNode.index_text`.
     """
     name: str
-    subscript: Optional[ArithNode] = None
-    subscript_text: str = ""
+    subscript_text: Optional[str] = None
 
 
 @dataclass

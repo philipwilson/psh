@@ -67,6 +67,14 @@ class ArithTokenType(Enum):
     LBRACKET = auto()
     RBRACKET = auto()
 
+    # An array subscript captured VERBATIM (value = the raw text between the
+    # balanced brackets). Emitted only when `[` immediately follows an
+    # IDENTIFIER (bash: `h [k]` is not a subscript); the content is NOT
+    # arithmetic-tokenized here — an associative target keys on the raw text
+    # (after quote removal) and an indexed target lazily parses it as
+    # arithmetic at evaluation (campaign W2 / r21 A3).
+    SUBSCRIPT = auto()
+
     # End of input
     EOF = auto()
 
