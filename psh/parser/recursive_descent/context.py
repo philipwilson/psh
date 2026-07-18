@@ -1,18 +1,27 @@
 """Centralized parser context for PSH.
 
-This module provides the ParserContext class that consolidates all parser
-state into a single object: the token stream and position, the parser
-configuration, and source text for error messages.
+``ParserContext`` composes the two campaign-S4 halves of a parse call and owns
+the token stream that sits between them:
+
+* :class:`~psh.parser.parse_inputs.ParseInputs` — the FROZEN caller context
+  (source text, line offset, lexer options, collected heredocs, config).
+* :class:`~psh.parser.parse_inputs.ParserState` — the MUTABLE per-call state
+  (cursor, nesting/substitution depth, open-construct trail).
+* ``tokens`` — the parse SUBJECT: a private list the parser reads and (only for
+  the observationally-pure non-leading ``time`` → WORD slot rewrite) mutates.
+
+The historical flat accessor surface (``ctx.current``, ``ctx.tokens``,
+``ctx.source_text``, ``ctx.nesting_depth``, ...) is preserved as properties that
+delegate to ``inputs``/``state``, so no sub-parser changed. Because ``inputs``
+and ``state`` are built once per context and dropped with it, a parser instance
+retains no per-call state after ``parse()`` returns.
 """
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Mapping, Optional
 
 from ...lexer.position import SourceMap
 from ...lexer.token_types import Token, TokenType
-
-if TYPE_CHECKING:
-    from ...lexer.heredoc_lexer import LexedHeredoc
 from ..config import ParserConfig
+from ..parse_inputs import ParseInputs, ParserState
 from .helpers import (
     ErrorContext,
     ParseError,
@@ -20,119 +29,140 @@ from .helpers import (
     token_display_name,
 )
 
+if TYPE_CHECKING:
+    from ...lexer.heredoc_lexer import LexedHeredoc
 
-@dataclass
+
 class ParserContext:
     """Centralized parser state management.
 
-    Consolidates the parser's real state — token stream, position, config,
-    and source context — behind one object shared by the main parser and all
-    sub-parsers.
+    Consolidates the parser's real state — the token stream and cursor, config,
+    source context, and nesting/open-construct trail — behind one object shared
+    by the main parser and all sub-parsers. Internally the immutable caller
+    context lives in :attr:`inputs` (a frozen :class:`ParseInputs`) and the
+    mutable per-call state in :attr:`state` (a :class:`ParserState`); the flat
+    ``ctx.<field>`` surface is delegated to them.
+
+    The constructor keeps the historical keyword surface (``tokens=``,
+    ``config=``, ``source_text=``, ``line_offset=``, ``heredocs=``,
+    ``lexer_options=``, and the initial ``current``/``nesting_depth``/
+    ``substitution_depth`` seeds) so ``create_context`` and direct test
+    construction are unchanged.
     """
 
-    # Core parsing state
-    tokens: List[Token]
-    current: int = 0
-    config: ParserConfig = field(default_factory=ParserConfig)
+    def __init__(
+        self,
+        tokens: List[Token],
+        current: int = 0,
+        config: Optional[ParserConfig] = None,
+        heredocs: "Optional[Mapping[int, 'LexedHeredoc']]" = None,
+        lexer_options: Optional[Mapping[str, object]] = None,
+        source_text: Optional[str] = None,
+        source_lines: Optional[List[str]] = None,
+        line_offset: int = 0,
+        nesting_depth: int = 0,
+        substitution_depth: int = 0,
+    ) -> None:
+        # Immutable caller context (frozen). The sole ParseInputs construction
+        # site (guarded by test_parse_inputs_state_s4).
+        self.inputs = ParseInputs(
+            source_text=source_text,
+            line_offset=line_offset,
+            lexer_options=lexer_options,
+            heredocs=heredocs,
+            config=config or ParserConfig(),
+        )
+        # Mutable per-call state. Fresh for every context; nothing carries over.
+        self.state = ParserState(
+            cursor=current,
+            nesting_depth=nesting_depth,
+            substitution_depth=substitution_depth,
+        )
+        # The parse subject: a private token list the parser owns.
+        self.tokens = tokens
 
-    # Pre-collected heredocs (the LexedUnit's id-keyed map of LexedHeredoc
-    # entries: spec + collected body), keyed by the ``heredoc_id`` the lexer
-    # stamped on each ``<<``/``<<-`` operator token. Present only on the
-    # heredoc-aware parse path (``parse_with_heredocs`` / the interactive
-    # trial parse); None otherwise. When present, RedirectionParser takes the
-    # delimiter truth (raw spelling, quoted) and body from the spec entry and
-    # attaches them to the ``Redirect`` node AS IT IS CONSTRUCTED (no second
-    # AST walk); a heredoc redirect whose id is missing from the map is a
-    # hard error.
-    heredocs: Optional[Mapping[int, 'LexedHeredoc']] = None
+        # Derived error-display caches (excluded from the typed split; rebuilt
+        # from the immutable source_text). Built at construction below.
+        self._eof_token: Optional[Token] = None
+        self._source_map: Optional[SourceMap] = None
+        self._source_lines: Optional[List[str]] = source_lines
+        if source_text:
+            self._source_map = SourceMap(source_text)
+            if not self._source_lines:
+                self._source_lines = self._source_map.lines
 
-    # Lexer options (the shell option dict, e.g. ``{'extglob': True, ...}``) in
-    # effect for this parse. A plain data dict, NOT a Shell reference. Used only
-    # to RE-LEX the body of a nested command/process substitution with the same
-    # option-sensitive lexing as the outer command (notably ``extglob``, which
-    # governs whether ``@(a|b)`` is an extglob pattern). None outside the live
-    # shell parse path (standalone parser use lexes with defaults).
-    lexer_options: Optional[Mapping[str, object]] = None
+    # === Immutable-input delegation (read-only) ===
 
-    # Source context
-    source_text: Optional[str] = None
-    source_lines: Optional[List[str]] = None
-    # Number of source lines BEFORE this fragment in the enclosing input
-    # (0 when the fragment starts the input). Token .line values are
-    # fragment-relative; error reporting adds this offset so a multi-line
-    # script's diagnostics carry the ABSOLUTE line number. source_lines
-    # indexing stays fragment-relative.
-    line_offset: int = 0
+    @property
+    def config(self) -> ParserConfig:
+        return self.inputs.config
 
-    # Current compound-command nesting depth. Incremented/decremented by
-    # CommandParser.parse_pipeline_component — the single chokepoint every
-    # nested compound (brace group, subshell, if/while/for/case/select,
-    # ((...)), [[...]]) parses through — and checked there against
-    # MAX_NESTING_DEPTH so runaway nesting raises a clean ParseError
-    # instead of a Python RecursionError (the statement-parser analogue of
-    # ArithParser.MAX_DEPTH). Flat &&/||/pipe/`;` chains parse iteratively
-    # and never accumulate depth.
-    nesting_depth: int = 0
+    @property
+    def source_text(self) -> Optional[str]:
+        return self.inputs.source_text
 
-    # Nested modern-substitution depth (``$( $( ... ) )`` / process subs).
-    # Incremented by one for each ``$(...)``/``<(...)``/``>(...)`` body parsed
-    # at the outer parse (support/nested_parse.py), independently of
-    # ``nesting_depth`` because a substitution is not a compound command. It is
-    # capped so an adversarially deep substitution chain fails as a clean
-    # ParseError rather than an O(n^2) re-parse cascade — the interim cost of
-    # extracting-and-reparsing bodies until the lexer gains token-level
-    # substitution recursion (a separate campaign).
-    substitution_depth: int = 0
+    @property
+    def line_offset(self) -> int:
+        return self.inputs.line_offset
 
-    # Open-construct trail for incomplete-input hints. Parse methods push a
-    # name when they consume an opening keyword ('if', 'while', 'case',
-    # 'brace', ...), retitle it at internal transitions ('if' → 'then' →
-    # 'else'), and pop it when the closer is consumed. NO parse decision
-    # ever reads this list — the recursive call structure remains the
-    # parser's real grammar context. It exists for exactly one consumer:
-    # when a parse fails at end of input (ParseError.at_eof), the
-    # CommandAccumulator snapshots it as the honest answer to "which
-    # constructs are still open?", which drives the interactive
-    # continuation prompt ("if> ", "for then> "). On a successful parse
-    # it is balanced back to empty; after a failed parse the whole
-    # context is discarded with its parser.
-    open_constructs: List[str] = field(default_factory=list)
+    @property
+    def lexer_options(self) -> "Optional[Mapping[str, object]]":
+        return self.inputs.lexer_options
 
-    # Cached synthetic EOF returned when the cursor is past the token list.
-    # Built lazily on first past-end access (see _synthetic_eof) so repeated
-    # out-of-range peeks return one stable object rather than a fresh token
-    # each time. Not part of the public state; excluded from init/repr.
-    _eof_token: Optional[Token] = field(default=None, init=False, repr=False,
-                                        compare=False)
-    # The source line-structure map for error display. Built from source_text;
-    # None when the parser was handed a bare token list (no source). Excluded
-    # from init/repr/compare like the EOF cache.
-    _source_map: Optional[SourceMap] = field(default=None, init=False,
-                                             repr=False, compare=False)
+    @property
+    def heredocs(self) -> "Optional[Mapping[int, 'LexedHeredoc']]":
+        return self.inputs.heredocs
 
-    def __post_init__(self):
-        """Initialize derived state."""
-        if self.source_text:
-            self._source_map = SourceMap(self.source_text)
-            if not self.source_lines:
-                self.source_lines = self._source_map.lines
+    @property
+    def source_lines(self) -> Optional[List[str]]:
+        return self._source_lines
+
+    # === Mutable-state delegation (read/write) ===
+
+    @property
+    def current(self) -> int:
+        return self.state.cursor
+
+    @current.setter
+    def current(self, value: int) -> None:
+        self.state.cursor = value
+
+    @property
+    def nesting_depth(self) -> int:
+        return self.state.nesting_depth
+
+    @nesting_depth.setter
+    def nesting_depth(self, value: int) -> None:
+        self.state.nesting_depth = value
+
+    @property
+    def substitution_depth(self) -> int:
+        return self.state.substitution_depth
+
+    @substitution_depth.setter
+    def substitution_depth(self, value: int) -> None:
+        self.state.substitution_depth = value
+
+    @property
+    def open_constructs(self) -> List[str]:
+        return self.state.open_constructs
 
     # === Open-construct trail (incomplete-input hints only) ===
 
     def push_construct(self, name: str) -> None:
         """Record that an opening keyword was consumed ('if', 'while', ...)."""
-        self.open_constructs.append(name)
+        self.state.open_constructs.append(name)
 
     def retitle_construct(self, name: str) -> None:
         """Rename the innermost open construct at an internal transition
         (e.g. 'if' → 'then' once THEN is consumed)."""
-        if self.open_constructs:
-            self.open_constructs[-1] = name
+        if self.state.open_constructs:
+            self.state.open_constructs[-1] = name
 
     def pop_construct(self) -> None:
         """Record that the innermost construct's closer was consumed."""
-        if self.open_constructs:
-            self.open_constructs.pop()
+        if self.state.open_constructs:
+            self.state.open_constructs.pop()
 
     # === Token Access Methods ===
 
@@ -166,11 +196,11 @@ class ParserContext:
         and sentinel-free token streams. Negative positions are rejected —
         the parser never looks before the start of the stream.
         """
-        pos = self.current + offset
+        pos = self.state.cursor + offset
         if pos < 0:
             raise IndexError(
                 f"Parser peek at negative token position {pos} "
-                f"(current={self.current}, offset={offset})")
+                f"(current={self.state.cursor}, offset={offset})")
         if pos < len(self.tokens):
             return self.tokens[pos]
         return self._synthetic_eof()
@@ -183,8 +213,8 @@ class ParserContext:
         further advances stay parked at the end and return synthetic EOF.
         """
         token = self.peek()
-        if self.current < len(self.tokens):
-            self.current += 1
+        if self.state.cursor < len(self.tokens):
+            self.state.cursor += 1
         return token
 
     def at_end(self) -> bool:
@@ -194,8 +224,8 @@ class ParserContext:
         len(tokens)``, the sentinel-free case) or lands on an explicit EOF
         token (the normal lexer-terminated case).
         """
-        return self.current >= len(self.tokens) or \
-            self.tokens[self.current].type == TokenType.EOF
+        return self.state.cursor >= len(self.tokens) or \
+            self.tokens[self.state.cursor].type == TokenType.EOF
 
     def match(self, *token_types: TokenType) -> bool:
         """Check if current token matches any of the given types."""
@@ -288,13 +318,14 @@ class ParserContext:
         """Enhance error context with smart suggestions and context tokens."""
         # Add context tokens (up to 3 before and after current position),
         # kept on separate sides so they render correctly around -> HERE <-.
+        cursor = self.state.cursor
         context_before = []
-        for i in range(max(0, self.current - 3), self.current):
+        for i in range(max(0, cursor - 3), cursor):
             if i < len(self.tokens):
                 context_before.append(self._display_token(self.tokens[i]))
 
         context_after = []
-        for i in range(self.current + 1, min(len(self.tokens), self.current + 4)):
+        for i in range(cursor + 1, min(len(self.tokens), cursor + 4)):
             context_after.append(self._display_token(self.tokens[i]))
 
         error_context.context_before = context_before

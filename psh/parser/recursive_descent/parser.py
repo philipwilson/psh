@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, List, Mapping, Optional
 from ...ast_nodes import Program
 from ...lexer.token_types import Token
 from ..config import ParserConfig
+from ..parse_outcome import ParseOutcome, outcome_from_parse
 from .base_context import ContextBaseParser
 from .parsers.arithmetic import ArithmeticParser
 from .parsers.arrays import ArrayParser
@@ -109,6 +110,21 @@ class Parser(ContextBaseParser):
         except RecursionError:
             raise self.error(
                 "input too deeply nested to parse") from None
+
+    def parse_outcome(self) -> ParseOutcome:
+        """Parse into the honest ``Complete | Incomplete | Invalid`` sum.
+
+        This is the typed one-shot outcome (campaign S4 §8): ``Complete`` on a
+        successful parse, ``Incomplete`` when the parse failed at end of input
+        (carrying the open-construct trail and any unclosed-expansion kind that
+        drive the interactive continuation prompt), ``Invalid`` for a real
+        syntax error. The classification is computed once in
+        :func:`parse_outcome.outcome_from_parse`; :meth:`parse` remains the
+        terminal raising adapter over the same parse (``Complete`` → program,
+        otherwise raise). The open-construct trail is read from this parser's
+        own live context at the point the parse raised.
+        """
+        return outcome_from_parse(self.parse, lambda: self.ctx.open_constructs)
 
     def _parse_program(self) -> Program:
         """Parse the token stream into a ``Program`` (see :meth:`parse`)."""

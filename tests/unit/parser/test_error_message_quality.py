@@ -150,7 +150,10 @@ class TestDiagnosticInterface:
     def test_render_is_the_rich_form(self):
         err = _parse_error("if true; then echo x")
         rendered = err.render()
-        assert "Parse error at position" in rendered
+        # ONE coordinate system (S4 handoff 2): (line, column), no stripped
+        # token-stream byte offset when source coordinates are available.
+        assert "Parse error (line" in rendered
+        assert "Parse error at position" not in rendered
         assert "Expected 'fi', got end of input" in rendered
         assert "\n" in rendered  # multi-line: source line + caret + suggestions
 
@@ -183,6 +186,6 @@ class TestAnalysisModeRendersRichDiagnostic:
             capture_output=True, text=True, timeout=30)
         assert result.returncode == 2
         # Rich diagnostic elements (not the former bare one-liner):
-        assert "Parse error at position" in result.stderr
+        assert "Parse error (line" in result.stderr
         assert "Expected 'fi', got end of input" in result.stderr
         assert "Add 'fi' to close if statement" in result.stderr  # suggestion

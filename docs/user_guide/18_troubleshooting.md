@@ -13,7 +13,7 @@ Understanding PSH error messages helps quickly identify and fix problems.
 psh$ if [ -f file.txt ]
 > echo "exists"
 > 
-psh: <command>:3: Parse error at position 15: Expected 'then' after if condition
+psh: <command>:3: Parse error (line 3, column 1): Expected 'then' after if condition
 
 # Fix: Add missing 'then'
 psh$ if [ -f file.txt ]; then
@@ -32,7 +32,7 @@ psh$ echo "Hello world"
 psh$ for i in 1 2 3
 > echo $i
 > 
-psh: <command>:2: Parse error at position 8: Expected 'do' after for list
+psh: <command>:2: Parse error (line 2, column 1): Expected 'do' after for list
 
 # Fix: Add 'do' keyword
 psh$ for i in 1 2 3; do
@@ -208,9 +208,9 @@ fi
 
 psh$ psh script.sh
 Line 2
-psh: script.sh:3: Parse error at position 18: Expected 'then' after if condition
+psh: script.sh:3: Parse error (line 3, column 1): Expected 'then' after if condition
 
-# Command line errors show position
+# Command line errors show line and column
 psh$ echo "unclosed
 psh: <command>:1: Parse error: Unterminated string
 

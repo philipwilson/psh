@@ -170,7 +170,8 @@ class SpecialCommandParsers:
                     expression=expression,
                     redirects=redirects,
                     background=False,
-                    arith_template=build_arithmetic_template(expression),
+                    arith_template=build_arithmetic_template(
+                        expression, self.expansions.parse_ctx),
                 ),
                 position=pos
             )
@@ -337,7 +338,7 @@ class SpecialCommandParsers:
             # Delegate to WordBuilder so both parsers build the SAME node: the
             # body is parsed into a nested Program (rejecting invalid syntax at
             # the outer parse) with the raw source retained for execution.
-            expansion = WordBuilder.parse_expansion_token(token)
+            expansion = WordBuilder.parse_expansion_token(token, self.expansions.parse_ctx)
             assert isinstance(expansion, ProcessSubstitution)
 
             return ParseResult(

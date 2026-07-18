@@ -7,6 +7,15 @@ context-aware parsing, semantic analysis, and enhanced error recovery.
 """
 
 from .config import ParserConfig
+from .parse_inputs import ParseInputs, ParserState
+from .parse_outcome import (
+    Complete,
+    ExpectedInput,
+    Incomplete,
+    Invalid,
+    ParseOutcome,
+    materialize,
+)
 from .recursive_descent.helpers import (
     ParseError,
     SubstitutionSyntaxError,
@@ -23,6 +32,11 @@ __all__ = [
     'parse', 'parse_with_heredocs', 'create_parser', 'Parser',
     # Configuration
     'ParserConfig',
+    # Immutable inputs / mutable state (campaign S4)
+    'ParseInputs', 'ParserState',
+    # Total parse outcome (campaign S4)
+    'ParseOutcome', 'Complete', 'Incomplete', 'Invalid', 'ExpectedInput',
+    'materialize',
     # Errors
     'ParseError',
     'SubstitutionSyntaxError',
@@ -91,8 +105,11 @@ def parse_with_heredocs(tokens, heredocs, active_parser='rd',
     if _use_combinator(active_parser):
         from .combinators.parser import ParserCombinatorShellParser
 
+        # Thread lexer_options into the combinator too (campaign S4 handoff 3):
+        # its syntax templates build with the same option-sensitive budget as
+        # the recursive-descent path, rather than being dropped here.
         return ParserCombinatorShellParser(ParserConfig()).parse_with_heredocs(
-            tokens, heredocs)
+            tokens, heredocs, lexer_options=lexer_options)
     return utils_parse_with_heredocs(tokens, heredocs,
                                      lexer_options=lexer_options)
 

@@ -95,6 +95,19 @@ Prefer it over token-slice-and-reparse for any new body or header.
 > validators in `psh/visitor/` (e.g. `EnhancedValidatorVisitor`), not by the
 > parser. There is no parser-side validation subsystem.
 
+**Combinator algebra + per-call state (campaign S4).** The combinator primitives
+(`combinators/core.py`) honor three algebra laws, pinned property-style in
+`tests/unit/parser/combinators/test_combinator_laws_s4.py`: `optional` PRESERVES
+a committed failure (a cut is a real error, not "absent"), `then`/`map` PRESERVE
+the inner failure position (the farthest-error reach), and `many` REJECTS a
+zero-width success (no infinite loop). The build-once `ParserCombinatorShellParser`
+installs its per-call working state (the heredoc map on `CommandParsers`, the
+`ParseInputs` budget on `ExpansionParsers`) at parse start and CLEARS it in a
+`finally`, so the instance retains no per-call state after return; the
+`lexer_options`/`line_offset` budget is threaded via `ParseInputs` so its syntax
+templates build with the same budget as the RD parser. `parse_outcome()` returns
+the same `Complete | Incomplete | Invalid` sum as the RD parser.
+
 ## Core Patterns
 
 ### 1. Delegating Parser Pattern
@@ -161,29 +174,46 @@ single compound-command chokepoint — reached from
 nested function definitions is guarded exactly like a chain of bare brace
 groups.)
 
-```python
-class ParserContext:
-    tokens: List[Token]      # Token stream
-    current: int             # Current position
-    config: ParserConfig
+**Immutable inputs vs mutable state (campaign S4).** `ParserContext`
+(`recursive_descent/context.py#ParserContext`) composes two typed halves plus
+the parse subject: a FROZEN `ParseInputs` (`parser/parse_inputs.py#ParseInputs`
+— source_text, line_offset, lexer_options, heredocs, config; the immutable
+caller context) in `ctx.inputs`, and a mutable `ParserState`
+(`parser/parse_inputs.py#ParserState` — cursor, nesting_depth,
+substitution_depth, open_constructs) in `ctx.state`. The token stream itself is
+neither: it is the parse SUBJECT (`ctx.tokens`), a private list the parser owns
+and mutates only for the observationally-pure non-leading `time`→WORD slot
+rewrite. The historical flat surface (`ctx.current`, `ctx.tokens`,
+`ctx.source_text`, `ctx.nesting_depth`, ...) is preserved as properties
+delegating to `inputs`/`state`. `ParseInputs`/`ParserState` are built only in
+`ParserContext.__init__` (the funnel behind `create_context`) and the combinator
+(`combinators/parser.py`); both facts are guarded by
+`tests/unit/tooling/test_parser_contract_guards_s4.py`. Because inputs and state
+are per-context objects dropped with a single-use context, a parser instance
+retains no per-call state after `parse()` returns — the only `finally` in the RD
+parser is the balanced compound-nesting counter, not a post-return scrub.
 
-    # Pre-collected heredocs (heredoc-aware parse only): the LexedUnit's
-    # id-keyed map of LexedHeredoc entries (spec + body); None otherwise.
-    heredocs: Optional[Mapping[int, LexedHeredoc]]
-
-    # Source context (for error messages)
-    source_text: Optional[str]
-    source_lines: Optional[List[str]]
-
-    # Resource limit (see above)
-    nesting_depth: int
-```
+**Total parse outcome (campaign S4).** Both parser implementations expose
+`parse_outcome()` returning the typed `Complete | Incomplete | Invalid` sum
+(`parser/parse_outcome.py`); `outcome_from_parse` is the single place the
+trichotomy is decided (`at_eof` → `Incomplete` carrying the open-construct trail
+and unclosed-expansion kind; else `Invalid`). The raising `parse()` is the
+terminal materialization over the same parse (`materialize`), and stays the
+executor call sites' surface. The completeness oracle
+(`scripting/command_accumulator.py`) and the cmdhist joiner
+(`interactive/line_editor_helpers.py`) consume the typed `Incomplete` variant
+rather than re-deriving it from `ParseError.at_eof`. I3's resumable session
+returns the same sum.
 
 Parse errors: `consume()` raises a `ParseError` on the first unexpected token
 (no error-collection mode). `ParseError` has one diagnostic interface —
-`error.summary` (short reason), `error.render()` (rich: position, source line,
-caret, suggestions), and `str(error)` delegating to `render()`. Execution and
-analysis (`--validate` etc.) both print `render()`.
+`error.summary` (short reason), `error.render()` (rich), and `str(error)`
+delegating to `render()`. Execution and analysis (`--validate` etc.) both print
+`render()`. ONE coordinate system (campaign S4 handoff 2): the user-facing error
+coordinate is `(line, column)` in the original source and the caret is drawn at
+`column` under the source line; the token byte `position` is an internal
+token-stream offset (for heredoc-bearing input it indexes the stripped stream,
+not the shown source) shown only as a fallback when no line/column is available.
 
 ### 4. TokenGroups for Matching
 

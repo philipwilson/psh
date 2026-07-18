@@ -159,18 +159,32 @@ class ErrorContext:
         return f"Unexpected {self._token_description(self.token)}"
 
     def format_error(self) -> str:
-        """Format a detailed error message (position, caret, suggestions)."""
-        parts = [f"Parse error at position {self.position}"]
+        """Format a detailed error message (position, caret, suggestions).
 
+        ONE declared coordinate system (campaign S4 handoff 2): the user-facing
+        error coordinate is ``(line, column)`` in the ORIGINAL source, and the
+        caret below is drawn at ``column`` under the source line looked up by
+        ``line``. The token byte ``position`` is an INTERNAL token-stream offset
+        — for heredoc-bearing input the token stream is stripped of heredoc
+        bodies, so ``position`` indexes the stripped stream, not the shown
+        (body-bearing) source. It is therefore NOT presented as a source
+        coordinate: it appears only as the fallback when no ``line``/``column``
+        is available (a bare token list with no source context).
+        """
         if self.line is not None and self.column is not None:
-            parts.append(f" (line {self.line}, column {self.column})")
+            parts = [f"Parse error (line {self.line}, column {self.column})"]
+        else:
+            parts = [f"Parse error at position {self.position}"]
 
         parts.append(": ")
         parts.append(self.summary())
 
         error_msg = "".join(parts)
 
-        # Add source line context if available
+        # Add source line context if available. The caret is drawn at COLUMN
+        # (line-relative) under the source line — never at the token-stream
+        # `position` — so it stays in the same coordinate system as line/column
+        # even when the token stream was stripped of heredoc bodies.
         if self.source_line and self.column is not None:
             error_msg += f"\n\n{self.source_line}\n{' ' * (self.column - 1)}^"
 

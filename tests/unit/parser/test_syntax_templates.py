@@ -163,8 +163,9 @@ def test_arith_command_template_attached(parser):
     assert node.arith_template.text == node.expression
 
 
-def test_cstyle_for_clause_templates_attached():
-    node = _first(_parse("for ((i=0; i<3; i++)); do :; done"), CStyleForLoop)
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_cstyle_for_clause_templates_attached(parser):
+    node = _first(_parse("for ((i=0; i<3; i++)); do :; done", parser), CStyleForLoop)
     assert node is not None
     for tmpl, raw in ((node.init_template, node.init_expr),
                       (node.condition_template, node.condition_expr),
@@ -181,10 +182,11 @@ def test_element_assignment_index_spec_attached(parser):
     assert node.index_spec.text == node.index
 
 
-def test_subscripted_reference_spec_attached():
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_subscripted_reference_spec_attached(parser):
     # A subscripted ${arr[SUB]} stays a braced VariableExpansion with SUB in the
     # name; find the one that carries a subscript_spec.
-    root = _parse("a=(1 2 3); echo ${a[0+1]}")
+    root = _parse("a=(1 2 3); echo ${a[0+1]}", parser)
     import dataclasses
     found = None
     stack = [root]

@@ -158,7 +158,12 @@ class Parser(Generic[T]):
             result = self.parse(tokens, pos)
             if result.success:
                 return ParseSuccess(fn(cast(T, result.value)), result.position)
-            return ParseFailure(pos, result.error, expected=result.expected,
+            # Law: map preserves the inner FAILURE POSITION (how far the wrapped
+            # parser got) rather than resetting to the start — a mapped parser
+            # never consumes on failure, so the farthest-error diagnostic must
+            # reflect the wrapped parser's reach, not this call's start.
+            return ParseFailure(result.position, result.error,
+                                expected=result.expected,
                                 committed=result.committed)
 
         return Parser(mapped_parse)
@@ -175,16 +180,18 @@ class Parser(Generic[T]):
         def sequence_parse(tokens: List[Token], pos: int) -> ParseResult[Tuple[T, U]]:
             first_result = self.parse(tokens, pos)
             if not first_result.success:
-                return ParseFailure(pos, first_result.error,
+                # Law: then preserves the FAILURE POSITION of the failed member
+                # (how far the sequence got). Backtracking is NOT driven by this
+                # position — or_else always retries its alternative from its own
+                # start pos — so propagating the reach only sharpens the
+                # farthest-error diagnostic; a committed failure keeps its cut.
+                return ParseFailure(first_result.position, first_result.error,
                                     expected=first_result.expected,
                                     committed=first_result.committed)
 
             second_result = next_parser.parse(tokens, first_result.position)
             if not second_result.success:
-                # Atomic: a failed sequence resets to the start position, the
-                # same backtracking discipline as the deleted sequence() helper had. A committed
-                # failure keeps its cut so or_else upstream won't backtrack.
-                return ParseFailure(pos, second_result.error,
+                return ParseFailure(second_result.position, second_result.error,
                                     expected=second_result.expected,
                                     committed=second_result.committed)
 
@@ -288,6 +295,12 @@ def many(parser: Parser[T]) -> Parser[List[T]]:
                 if result.committed:
                     return cast(ParseResult[List[T]], result)
                 break
+            # Law: many REJECTS a success that made no progress. A zero-width
+            # success (position not advanced) would loop forever, so it ends the
+            # repetition instead of being counted as another element — the
+            # standard guard against `many` over an empty-matching parser.
+            if result.position <= current_pos:
+                break
             results.append(cast(T, result.value))
             current_pos = result.position
 
@@ -320,6 +333,13 @@ def optional(parser: Parser[T]) -> Parser[Optional[T]]:
     def parse_optional(tokens: List[Token], pos: int) -> ParseResult[Optional[T]]:
         result = parser.parse(tokens, pos)
         if result.success:
+            return cast(ParseResult[Optional[T]], result)
+        # Law: optional PRESERVES a committed failure. A cut means the wrapped
+        # parser consumed input and is certain of its production, so its failure
+        # is a real syntax error — turning it into "absent" (ParseSuccess(None))
+        # would swallow the error and let the grammar wander. Only a
+        # recoverable (non-committed) failure becomes the absent alternative.
+        if result.committed:
             return cast(ParseResult[Optional[T]], result)
         return ParseSuccess(None, pos)
 

@@ -243,6 +243,14 @@ class ArrayParsers:
                 value=value_text,
                 is_append=is_append,
                 value_word=value_word,
+                # ctx=None residual (campaign S4 handoff 3): ArrayParsers holds
+                # no per-call ParseInputs handle (it takes only token_parsers),
+                # so an array-ELEMENT-ASSIGNMENT subscript's nested-sub template
+                # builds with default budgets. The subscript text is
+                # ctx-independent, and every ${...}-operand / reference / arith
+                # template (the common case) IS threaded via the shared
+                # ExpansionParsers; this residual is documented, not chased,
+                # for the educational combinator.
                 index_spec=build_subscript_spec(subscript),
             ),
             position=pos,
