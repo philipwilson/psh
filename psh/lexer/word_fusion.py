@@ -133,7 +133,7 @@ def _fuse_run(run: List[Token], source: str) -> Token:
     payoff — it round-trips ``source[position:end_position]``, unlike the
     per-sub-token values which drop quotes/``$``); its ``parts`` concatenate
     each sub-token's contribution. Operator-token fields (``fd``/``var_fd``/
-    ``combined_redirect``/``heredoc_key``/``array_init``) are never carried by a
+    ``combined_redirect``/``heredoc_id``/``array_init``) are never carried by a
     word run, so they stay at their defaults.
     """
     start = run[0].position

@@ -12,21 +12,31 @@ from .ast_debug import print_ast_debug
 from .file_tests import file_newer_than, file_older_than, files_same
 from .heredoc_detection import (
     HEREDOC_MARKER_RE,
+    CollectedHeredoc,
+    HeredocSpec,
+    HeredocTermination,
+    PendingHeredocQueue,
     contains_heredoc,
     has_unclosed_heredoc,
     heredoc_terminator_matches,
     is_inside_expansion,
-    open_heredoc_delimiters,
+    make_heredoc_spec,
+    open_heredoc_specs,
 )
 from .signal_utils import SignalNotifier, get_signal_registry
 
 __all__ = [
     'SignalNotifier',
     'get_signal_registry',
+    'CollectedHeredoc',
+    'HeredocSpec',
+    'HeredocTermination',
+    'PendingHeredocQueue',
     'contains_heredoc',
     'has_unclosed_heredoc',
     'heredoc_terminator_matches',
-    'open_heredoc_delimiters',
+    'make_heredoc_spec',
+    'open_heredoc_specs',
     'is_inside_expansion',
     'HEREDOC_MARKER_RE',
     'print_ast_debug',

@@ -1,155 +1,132 @@
 """
 Heredoc collection support for the PSH lexer.
 
-This module provides functionality to collect heredoc content during lexing,
-allowing the lexer to properly handle multi-line heredoc input.
+The :class:`HeredocCollector` is the FIFO collector of the campaign-S2
+heredoc transaction: registration constructs a :class:`HeredocSpec` for each
+``<<``/``<<-`` operator (ordinal identity — duplicate textual delimiters are
+distinct), gathering routes every input line through the ONE head-of-queue
+close policy (:class:`PendingHeredocQueue`), and each completed body becomes
+a typed :class:`CollectedHeredoc` (terminated by its delimiter line or by
+end of input).
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
+
+from ..utils.heredoc_detection import (
+    CollectedHeredoc,
+    HeredocSpec,
+    HeredocTermination,
+    PendingHeredocQueue,
+    make_heredoc_spec,
+)
 
 
 @dataclass
+class _Gathering:
+    """Per-pending gathering state: body lines and the 1-based source line
+    where this heredoc's body begins. ``start_line`` is re-stamped when a
+    pending heredoc is promoted to queue head (matching the line bash
+    reports in its "delimited by end-of-file" warning)."""
+
+    start_line: int
+    lines: List[str] = field(default_factory=list)
+    last_line: int = 0
+
+
 class HeredocCollector:
-    """Manages heredoc collection during lexing."""
+    """The FIFO collector: registers specs, gathers bodies in source order.
 
-    @dataclass
-    class PendingHeredoc:
-        """Information about a heredoc being collected.
+    ``specs`` maps ordinal id -> :class:`HeredocSpec` (every heredoc ever
+    registered, in id order); ``collected`` maps id -> :class:`CollectedHeredoc`
+    for every COMPLETED body. The pending set is the :class:`PendingHeredocQueue`
+    — the sole close-decision authority.
+    """
 
-        ``key`` is the heredoc's index into ``collected`` — stored here so
-        content lines and completion are recorded against exactly this
-        heredoc (a delimiter-string scan misfiled content when two heredocs
-        shared a delimiter). ``start_line`` is the 1-based source line where
-        this heredoc's body gathering begins; the driver re-stamps it when a
-        pending heredoc is promoted to first (matching the line bash reports
-        in its "delimited by end-of-file" warning).
+    def __init__(self) -> None:
+        self.specs: Dict[int, HeredocSpec] = {}
+        self.collected: Dict[int, CollectedHeredoc] = {}
+        self.queue = PendingHeredocQueue()
+        self._gathering: Dict[int, _Gathering] = {}
+
+    def register_heredoc(self, raw: str, strip_tabs: bool, line: int,
+                         span: Tuple[int, int] = (0, 0)) -> HeredocSpec:
+        """Register a newly scanned ``<<``/``<<-`` operator's delimiter word.
+
+        ``raw`` is the exact source spelling of the delimiter word (from the
+        token span); the spec's cooked/quoted facts are derived by the sole
+        constructor :func:`make_heredoc_spec`. ``line`` is the 1-based source
+        line where this heredoc's body gathering would begin.
         """
-        key: str
-        delimiter: str
-        strip_tabs: bool
-        quoted: bool
-        start_line: int
-        start_col: int
-
-    # Pending heredocs that need content
-    pending: List[PendingHeredoc] = field(default_factory=list)
-
-    # Collected heredoc content
-    collected: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-
-    # Counter for unique heredoc keys
-    _counter: int = 0
-
-    def register_heredoc(self, delimiter: str, strip_tabs: bool, quoted: bool,
-                        line: int, col: int) -> str:
-        """
-        Register a new heredoc that needs content collection.
-
-        Args:
-            delimiter: The heredoc delimiter
-            strip_tabs: Whether to strip tabs (<<- operator)
-            quoted: Whether delimiter was quoted (affects expansion)
-            line: Line number where heredoc starts
-            col: Column number where heredoc starts
-
-        Returns:
-            Unique key for this heredoc
-        """
-        key = f"heredoc_{self._counter}_{delimiter}"
-        self._counter += 1
-
-        self.pending.append(self.PendingHeredoc(
-            key=key,
-            delimiter=delimiter,
-            strip_tabs=strip_tabs,
-            quoted=quoted,
-            start_line=line,
-            start_col=col
-        ))
-
-        # Initialize collected entry
-        self.collected[key] = {
-            'delimiter': delimiter,
-            'strip_tabs': strip_tabs,
-            'quoted': quoted,
-            'content': [],
-            'complete': False
-        }
-
-        return key
+        spec = make_heredoc_spec(ordinal=len(self.specs), raw=raw,
+                                 strip_tabs=strip_tabs, span=span)
+        self.specs[spec.id] = spec
+        self.queue.push(spec)
+        self._gathering[spec.id] = _Gathering(start_line=line)
+        return spec
 
     def has_pending_heredocs(self) -> bool:
-        """Check if there are heredocs waiting for content."""
-        return bool(self.pending)
+        """True while at least one registered heredoc still needs its body."""
+        return bool(self.queue)
 
-    def collect_line(self, line: str) -> List[Tuple[str, bool]]:
+    def restamp_head_start(self, line: int) -> None:
+        """The (new) head's body gathering begins at source line *line*."""
+        head = self.queue.head
+        if head is not None:
+            self._gathering[head.id].start_line = line
+
+    def collect_line(self, line: str, lineno: int = 0) -> Optional[int]:
+        """Feed one physical *line* to the head pending heredoc.
+
+        Delegates the terminator decision to the head-of-queue policy: if the
+        line terminates the HEAD, its :class:`CollectedHeredoc` is recorded
+        and the completed spec id returned; otherwise the line is body text
+        of the head (``<<-`` tab-stripping applied) and None is returned.
         """
-        Process a line for heredoc content collection.
+        head = self.queue.head
+        if head is None:
+            return None
+        closed = self.queue.feed_line(line)
+        if closed is not None:
+            self._finish(closed, HeredocTermination.DELIMITER)
+            return closed.id
+        gathering = self._gathering[head.id]
+        gathering.lines.append(line.lstrip('\t') if head.strip_tabs else line)
+        gathering.last_line = lineno
+        return None
 
-        Args:
-            line: The line to process
-
-        Returns:
-            List of (key, complete) tuples for heredocs that were completed
-        """
-        completed: List[Tuple[str, bool]] = []
-
-        # Only the FIRST pending heredoc is live (bodies are read in order).
-        if self.pending:
-            heredoc = self.pending[0]
-            # Is this line the terminator? bash requires the terminator line
-            # to equal the delimiter exactly (only <<- strips leading tabs);
-            # a line like "EOF " with trailing whitespace is body content,
-            # not the terminator. The shared rule also drops a CRLF
-            # line-ending CR so a CRLF script terminates.
-            from ..utils.heredoc_detection import heredoc_terminator_matches
-            if heredoc_terminator_matches(
-                    line, heredoc.delimiter, heredoc.strip_tabs):
-                self.collected[heredoc.key]['complete'] = True
-                completed.append((heredoc.key, True))
-                self.pending.pop(0)
-            else:
-                content_line = line
-                if heredoc.strip_tabs:
-                    content_line = line.lstrip('\t')
-                self.collected[heredoc.key]['content'].append(content_line)
-
-        return completed
-
-    def finalize_at_eof(self, last_line: int) -> List[Tuple[str, int]]:
+    def finalize_at_eof(self, last_line: int) -> List[Tuple[HeredocSpec, int]]:
         """End of input with heredocs still pending: delimit them by EOF.
 
         Bash does not drop an unterminated heredoc — it uses everything
         gathered so far as the body, warns ("here-document at line N
-        delimited by end-of-file"), and runs the command (silently swallowing
-        it was worse than bash's warn-and-recover). Content routing matches
-        bash: the first pending heredoc keeps the gathered lines; any later
-        pending heredocs get empty bodies.
+        delimited by end-of-file"), and runs the command. Content routing
+        matches bash: the first pending heredoc keeps the gathered lines;
+        any later pending heredocs get empty bodies. The typed
+        ``HeredocTermination.EOF`` outcome is recorded either way — a TRIAL
+        parse suppresses the warning, never the fact.
 
-        Returns ``(delimiter, start_line)`` pairs for the caller's warnings,
-        in order. The first pending heredoc reports the line its body
-        gathering began at (its — possibly re-stamped — ``start_line``);
-        later ones report ``last_line``, where their gathering would have
-        begun (bash reports the same line numbers).
+        Returns ``(spec, warn_line)`` pairs for the caller's warnings, in
+        order: the first pending heredoc reports the line its body gathering
+        began at (possibly re-stamped); later ones report ``last_line``,
+        where their gathering would have begun (bash reports the same).
         """
-        warnings: List[Tuple[str, int]] = []
-        for index, heredoc in enumerate(self.pending):
-            self.collected[heredoc.key]['complete'] = True
-            warnings.append((heredoc.delimiter,
-                             heredoc.start_line if index == 0 else last_line))
-        self.pending.clear()
+        warnings: List[Tuple[HeredocSpec, int]] = []
+        for index, spec in enumerate(self.queue.drain()):
+            gathering = self._gathering[spec.id]
+            warn_line = gathering.start_line if index == 0 else last_line
+            warnings.append((spec, warn_line))
+            self._finish(spec, HeredocTermination.EOF)
         return warnings
 
-    def get_content(self, key: str) -> Optional[str]:
-        """Get the collected content for a heredoc."""
-        if key in self.collected:
-            info = self.collected[key]
-            if info['complete']:
-                # Join lines with newlines and add final newline
-                content = '\n'.join(info['content'])
-                if info['content']:  # Add final newline if there was content
-                    content += '\n'
-                return content
-        return None
-
+    def _finish(self, spec: HeredocSpec, termination: HeredocTermination) -> None:
+        gathering = self._gathering.pop(spec.id)
+        lines = gathering.lines
+        body = '\n'.join(lines) + ('\n' if lines else '')
+        if lines:
+            span = (gathering.start_line,
+                    gathering.last_line or gathering.start_line)
+        else:
+            span = (gathering.start_line, gathering.start_line - 1)
+        self.collected[spec.id] = CollectedHeredoc(
+            spec_id=spec.id, body=body, termination=termination, span=span)

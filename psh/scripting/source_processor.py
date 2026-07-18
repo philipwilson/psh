@@ -488,7 +488,7 @@ class SourceProcessor(ScriptComponent):
             # prefixes it like bash's script name; the -c/stdin/eval
             # pseudo-names map to the "psh" prefix (bash prints "bash:").
             name = input_source.get_name()
-            tokens, heredoc_map = lex_and_expand(
+            tokens, heredocs = lex_and_expand(
                 command_string, self.shell,
                 source_name=None if name.startswith(('<', '-')) else name,
                 base_line=start_line if start_line > 0 else 1,
@@ -499,7 +499,7 @@ class SourceProcessor(ScriptComponent):
             # option-sensitive lexing (extglob) as this command; source_text and
             # line_offset improve the plain path's error reporting.
             ast = parse_tokens(
-                tokens, heredoc_map, self.shell,
+                tokens, heredocs, self.shell,
                 source_text=command_string,
                 line_offset=max(0, start_line - 1),
                 lexer_options=self.state.options)

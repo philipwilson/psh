@@ -38,9 +38,9 @@ if TYPE_CHECKING:
 from ..lexer import UnclosedQuoteError
 from ..parser import ParseError, Parser
 from ..utils import (
+    PendingHeredocQueue,
     contains_heredoc,
-    heredoc_terminator_matches,
-    open_heredoc_delimiters,
+    open_heredoc_specs,
 )
 from .input_preprocessing import process_line_continuations
 
@@ -121,11 +121,12 @@ class CommandAccumulator:
         # completeness-trial expansion must not either.
         self.history_expansion_eligible: bool = True
         self._lines: List[str] = []
-        # Pending heredoc bodies as (delimiter, strip_tabs) pairs. While
-        # non-empty, fed lines are body text checked incrementally against
-        # these delimiters — never re-scanning (or re-parsing) the whole
-        # buffer per body line.
-        self._open_heredocs: List[tuple] = []
+        # Pending heredoc bodies: the shared head-of-queue policy
+        # (utils.heredoc_detection.PendingHeredocQueue). While non-empty,
+        # fed lines are body text routed to the queue HEAD only — never
+        # compared with later pending delimiters (H1/G1), and never
+        # re-scanning (or re-parsing) the whole buffer per body line.
+        self._open_heredocs = PendingHeredocQueue()
         # The trial parser's live open-construct trail (see _trial_parse).
         self._open_constructs: List[str] = []
 
@@ -153,7 +154,7 @@ class CommandAccumulator:
     def reset(self) -> None:
         """Drop the buffer and start the next command."""
         self._lines = []
-        self._open_heredocs = []
+        self._open_heredocs = PendingHeredocQueue()
 
     def flush(self) -> Complete:
         """End of input: hand back whatever is buffered, unparsed.
@@ -197,13 +198,15 @@ class CommandAccumulator:
         """
         self._lines.append(line)
 
-        # Inside heredoc bodies, the line is body text: check it against
-        # the pending delimiters and nothing else (O(1) per body line).
+        # Inside heredoc bodies, the line is body text: the head-of-queue
+        # policy decides whether it terminates the FIRST open heredoc —
+        # nothing else is consulted (O(1) per body line; a line equal to a
+        # LATER pending delimiter is body text of the head).
         if self._open_heredocs:
-            self._close_heredocs_matching(line)
-            if self._open_heredocs:
-                return NeedMore(
-                    Hint(HintKind.HEREDOC, detail=self._open_heredocs[0][0]))
+            self._open_heredocs.feed_line(line)
+            head = self._open_heredocs.head
+            if head is not None:
+                return NeedMore(Hint(HintKind.HEREDOC, detail=head.cooked))
             # Every body delimited — fall through to the full trial.
 
         raw = self.buffer_text
@@ -227,10 +230,12 @@ class CommandAccumulator:
         # 2. Open heredoc: following lines are body text for the pending
         #    delimiters, NOT command text — don't show them to the parser.
         if contains_heredoc(preview):
-            self._open_heredocs = open_heredoc_delimiters(preview)
-            if self._open_heredocs:
-                return NeedMore(
-                    Hint(HintKind.HEREDOC, detail=self._open_heredocs[0][0]))
+            self._open_heredocs = PendingHeredocQueue()
+            for spec in open_heredoc_specs(preview):
+                self._open_heredocs.push(spec)
+            head = self._open_heredocs.head
+            if head is not None:
+                return NeedMore(Hint(HintKind.HEREDOC, detail=head.cooked))
 
         # 3. A failed/unexpanded history reference: complete, unparsed.
         #    Execution re-runs the expansion with reporting and either
@@ -268,14 +273,6 @@ class CommandAccumulator:
 
     # === Internals ===
 
-    def _close_heredocs_matching(self, line: str) -> None:
-        """Close the first pending heredoc whose delimiter is ``line``
-        (tab-stripped for ``<<-``) — same matching as the shared detector."""
-        for i, (word, strip_tabs) in enumerate(self._open_heredocs):
-            if heredoc_terminator_matches(line, word, strip_tabs):
-                del self._open_heredocs[i]
-                return
-
     def _trial_parse(self, preview: str):
         """Tokenize and parse ``preview`` with the recursive-descent parser.
 
@@ -297,14 +294,14 @@ class CommandAccumulator:
         """
         from .lex_parse import lex_and_expand
         self._open_constructs = []
-        tokens, heredoc_map = lex_and_expand(
+        tokens, heredocs = lex_and_expand(
             preview, self.shell,
             base_line=self.start_line,
             lexer_options=self.state.options,
             warn_unterminated=False)
         parser = Parser(tokens, source_text=preview,
                         line_offset=max(0, self.start_line - 1),
-                        heredoc_map=heredoc_map,
+                        heredocs=heredocs,
                         lexer_options=self.state.options)
         self._open_constructs = parser.ctx.open_constructs
         ast = parser.parse()

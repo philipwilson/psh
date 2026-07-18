@@ -29,15 +29,16 @@ class Parser(ContextBaseParser):
                  source_text: Optional[str] = None,
                  config: Optional[ParserConfig] = None,
                  line_offset: int = 0,
-                 heredoc_map: Optional[Mapping[str, object]] = None,
+                 heredocs: Optional[Mapping[int, object]] = None,
                  lexer_options: Optional[Mapping[str, object]] = None):
         # Configuration (create default if not provided)
         config = config or ParserConfig()
 
         # Create context. line_offset carries the number of source lines
         # before this fragment, so error messages report absolute lines.
-        # heredoc_map (when given) lets RedirectionParser attach here-doc
-        # bodies as each Redirect is constructed. lexer_options carries the
+        # heredocs (when given) is the LexedUnit's id-keyed heredoc map:
+        # RedirectionParser takes delimiter truth and body from each spec
+        # entry as the Redirect is constructed. lexer_options carries the
         # shell option dict so a nested substitution body is re-lexed with
         # the same option-sensitive lexing (extglob) as the outer command.
         ctx = create_context(
@@ -45,7 +46,7 @@ class Parser(ContextBaseParser):
             config=config,
             source_text=source_text,
             line_offset=line_offset,
-            heredoc_map=heredoc_map,
+            heredocs=heredocs,
             lexer_options=lexer_options,
         )
         super().__init__(ctx)

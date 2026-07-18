@@ -70,9 +70,9 @@ def parse_nested_command(source: str, *, line_offset: int = 0,
             message="command substitution nested too deeply",
             position=0, line=1, column=1))
 
-    tokens, heredoc_map = tokenize_with_heredocs(source, shell_options=lexer_options)
-    parser = Parser(tokens, source_text=source, line_offset=line_offset,
-                    heredoc_map=heredoc_map, lexer_options=lexer_options)
+    tokens, heredocs = tokenize_with_heredocs(source, shell_options=lexer_options)
+    parser = Parser(list(tokens), source_text=source, line_offset=line_offset,
+                    heredocs=heredocs, lexer_options=lexer_options)
     parser.ctx.nesting_depth = initial_depth
     parser.ctx.substitution_depth = substitution_depth
     return parser.parse()

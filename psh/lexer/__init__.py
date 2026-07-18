@@ -114,14 +114,18 @@ def tokenize_with_heredocs(input_string: str,
                            shell_options: Optional[Mapping[str, Any]] = None,
                            source_name: Optional[str] = None,
                            base_line: int = 1,
-                           warn_unterminated: bool = True) -> Tuple[List[Token], Dict[str, Dict[str, Any]]]:
+                           warn_unterminated: bool = True) -> "LexedUnit":
     """
     Tokenize a shell command string with heredoc support.
 
     This function tokenizes shell commands that may contain heredocs,
-    collecting the heredoc content for later processing. The post-lex
-    pipeline is the same as tokenize() — omitting brace expansion here once
-    silently disabled it on any command line containing a heredoc.
+    collecting each heredoc into the returned :class:`LexedUnit`'s id-keyed
+    ``heredocs`` map (spec + typed collected body). The post-lex pipeline is
+    the same as tokenize() — omitting brace expansion here once silently
+    disabled it on any command line containing a heredoc. The post-lex
+    SOURCE is the heredoc-stripped command text (what token spans index),
+    not ``input_string`` — slicing the body-bearing input at stripped-text
+    offsets gave fused words after a heredoc body corrupted values.
 
     Args:
         input_string: The shell command string to tokenize
@@ -130,19 +134,22 @@ def tokenize_with_heredocs(input_string: str,
             path; None → "psh", matching bash's "bash:" for -c/stdin)
         base_line: Absolute source line of input_string's first line, so the
             warning's line numbers match the enclosing file
-        warn_unterminated: False silences the unterminated-heredoc warning
-            (trial parses; the execution pass prints it)
+        warn_unterminated: False suppresses the unterminated-heredoc WARNING
+            (trial parses; the execution pass prints it). The typed EOF
+            termination is recorded either way.
 
     Returns:
-        Tuple of (tokens, heredoc_map) where heredoc_map contains collected heredoc content
+        The immutable :class:`LexedUnit` — ``(tokens, heredocs)`` as a
+        NamedTuple, so tuple unpacking still reads naturally.
     """
-    from .heredoc_lexer import HeredocLexer
+    from .heredoc_lexer import HeredocLexer, LexedUnit
 
     lexer = HeredocLexer(input_string, config=_make_config(shell_options),
                          source_name=source_name, base_line=base_line,
                          warn_unterminated=warn_unterminated)
-    tokens, heredoc_map = lexer.tokenize_with_heredocs()
-    return _post_lex(tokens, input_string, shell_options), heredoc_map
+    unit = lexer.tokenize_with_heredocs()
+    tokens = _post_lex(list(unit.tokens), lexer.command_text, shell_options)
+    return LexedUnit(tokens=tuple(tokens), heredocs=unit.heredocs)
 
 
 __all__ = [

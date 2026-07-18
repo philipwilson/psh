@@ -81,87 +81,79 @@ class RedirectionParser(ParserSubcomponent):
             return self._parse_standard_redirect(redirect_token)
 
     def _parse_heredoc(self, token: Token) -> Redirect:
-        """Parse here document redirect."""
-        # The delimiter word may START with an expansion-shaped token taken
-        # literally (``<<$VAR`` → terminator ``$VAR``, ``<<$(cmd)`` →
-        # terminator ``$(cmd)`` — bash never expands the delimiter), not just
-        # WORD/STRING. This set mirrors the lexer's _DELIMITER_PART_TYPES so
-        # the parser accepts exactly the delimiters HeredocLexer registered.
-        if not self.parser.match(TokenType.WORD, TokenType.STRING,
-                                 TokenType.VARIABLE, TokenType.COMMAND_SUB,
-                                 TokenType.COMMAND_SUB_BACKTICK,
-                                 TokenType.ARITH_EXPANSION):
+        """Parse here document redirect.
+
+        The delimiter tokens are consumed POSITIONALLY (so trailing composite
+        parts are not parsed as command arguments); the delimiter TRUTH — raw
+        spelling, quotedness, body — comes from the LexedUnit's spec entry,
+        keyed by the operator token's ``heredoc_id``. ``Redirect.target`` is
+        the RAW delimiter spelling (what the formatter re-emits); the literal
+        terminator is derived from it through the one quote-removal rule
+        wherever needed. Without a heredoc map (a bare ``Parser(tokens)``,
+        bodies still in the stream), the raw spelling is recovered from the
+        source span (or token values as a last resort) and quotedness from
+        the same one rule — never a private token-type heuristic.
+        """
+        # The delimiter word may START with any word-like piece taken
+        # literally (``<<$VAR`` → terminator ``$VAR``, ``<< <(x)`` →
+        # terminator ``<(x)`` — bash never expands the delimiter). The
+        # accept rule is shared with the lexer's registration scan
+        # (delimiter_token_acceptable: _DELIMITER_PART_TYPES + the procsub
+        # no-paren-nesting rule) so the parser accepts exactly the
+        # delimiters HeredocLexer registered.
+        from ....lexer.heredoc_lexer import delimiter_token_acceptable
+        if (self.parser.at_end()
+                or not delimiter_token_acceptable(self.parser.peek())):
             raise self.parser.error("Expected delimiter after here document operator")
 
-        delimiter_token = self.parser.advance()
-        delimiter = delimiter_token.value
-
-        # Determine if delimiter was quoted (disables variable expansion).
-        heredoc_quoted = (delimiter_token.type == TokenType.STRING
-                          or '\\' in delimiter_token.value)
-
+        delim_tokens = [self.parser.advance()]
         # A composite delimiter spans several ADJACENT word-like tokens
-        # (`<<E"O"F`, `<<E$X`). Consume them all so the trailing parts are not
-        # parsed as command arguments, and quote the body if any part was
-        # quoted/escaped. This token-level "was it quoted" test must agree with
-        # the source-level rule (utils.heredoc_detection.unquote_heredoc_delimiter,
-        # via HeredocLexer._delimiter_from_source) that recovers the terminator
-        # text and collects the body.
-        while (self.parser.peek().type in TokenGroups.WORD_LIKE
+        # (`<<E"O"F`, `<<E$X`, `<<E<(x)`). Consume them all.
+        while (delimiter_token_acceptable(self.parser.peek())
                and getattr(self.parser.peek(), 'adjacent_to_previous', False)):
-            part = self.parser.advance()
-            delimiter += part.value
-            if part.type == TokenType.STRING or '\\' in part.value:
-                heredoc_quoted = True
+            delim_tokens.append(self.parser.advance())
 
-        redirect = Redirect(
+        heredocs = self.parser.ctx.heredocs
+        heredoc_id = token.heredoc_id
+        if heredocs is not None:
+            # Heredoc-aware parse: the spec entry is the sole authority. A
+            # missing id or entry is a hard error, not a silent None.
+            if heredoc_id is None:
+                raise self.parser.error(
+                    "here document operator has no collected-body id")
+            entry = heredocs.get(heredoc_id)
+            if entry is None:
+                raise self.parser.error(
+                    f"here document body not collected (id {heredoc_id})")
+            return Redirect(
+                type=token.value,
+                target=entry.spec.raw,
+                heredoc_content=entry.collected.body,
+                heredoc_quoted=entry.spec.quoted,
+                heredoc_id=heredoc_id,
+                fd=token.fd,
+            )
+
+        # Bare parse (bodies still in the token stream; unit-test path):
+        # recover the raw spelling from the source span when available —
+        # token values drop a VARIABLE's `$` and a STRING's quotes — and
+        # derive quotedness through the one rule.
+        from ....utils.heredoc_detection import unquote_heredoc_delimiter
+        source_text = self.parser.ctx.source_text
+        start = delim_tokens[0].position
+        end = delim_tokens[-1].end_position
+        if source_text is not None and 0 <= start <= end <= len(source_text):
+            raw = source_text[start:end]
+        else:
+            raw = ''.join(part.value for part in delim_tokens)
+        _, heredoc_quoted = unquote_heredoc_delimiter(raw)
+        return Redirect(
             type=token.value,
-            target=delimiter,
-            heredoc_content=None,  # Filled from the heredoc map below, if present
+            target=raw,
+            heredoc_content=None,
             heredoc_quoted=heredoc_quoted,
-            fd=token.fd
+            fd=token.fd,
         )
-
-        # The lexer assigns a heredoc_key to each `<<`/`<<-` operator token
-        # (see HeredocLexer._mark_heredoc_tokens); a non-None value signals that
-        # the body was collected separately and lives in the heredoc map.
-        heredoc_key = token.heredoc_key
-        if heredoc_key is not None:
-            redirect.heredoc_key = heredoc_key
-
-        self._attach_heredoc_body(redirect)
-        return redirect
-
-    def _attach_heredoc_body(self, redirect: Redirect) -> None:
-        """Attach the collected here-document body to *redirect* when parsing
-        heredoc-aware (``ctx.heredoc_map`` present).
-
-        Replaces the former post-parse ``populate_heredoc_content`` AST walk:
-        the body is set as the ``Redirect`` is constructed, so there is no
-        second traversal and no delimiter-suffix guessing. On the heredoc-aware
-        path a heredoc redirect MUST carry a ``heredoc_key`` that is present in
-        the map — a missing key or entry is a hard error, not a silent None.
-        When parsing without a map (``ctx.heredoc_map is None``, e.g. a bare
-        ``Parser(tokens)``), the body stays None exactly as before.
-        """
-        heredoc_map = self.parser.ctx.heredoc_map
-        if heredoc_map is None:
-            return
-
-        key = redirect.heredoc_key
-        if key is None:
-            raise self.parser.error(
-                "here document operator has no collected-body key")
-        if key not in heredoc_map:
-            raise self.parser.error(
-                f"here document body not collected (key {key!r})")
-
-        info = heredoc_map[key]
-        if isinstance(info, dict):
-            redirect.heredoc_content = info['content']
-            redirect.heredoc_quoted = info.get('quoted', False)
-        elif isinstance(info, str):
-            redirect.heredoc_content = info
 
     def _parse_here_string(self, token: Token) -> Redirect:
         """Parse here string redirect."""

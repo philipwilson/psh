@@ -32,13 +32,16 @@ class ParserContext:
     current: int = 0
     config: ParserConfig = field(default_factory=ParserConfig)
 
-    # Pre-collected heredoc bodies, keyed by the lexer-assigned ``heredoc_key``
-    # on each ``<<``/``<<-`` operator token. Present only on the heredoc-aware
-    # parse path (``parse_with_heredocs`` / the interactive trial parse); None
-    # otherwise. When present, RedirectionParser attaches the body to the
-    # ``Redirect`` node AS IT IS CONSTRUCTED (no second AST walk), and a
-    # heredoc redirect whose key is missing from the map is a hard error.
-    heredoc_map: Optional[Mapping[str, object]] = None
+    # Pre-collected heredocs (the LexedUnit's id-keyed map of LexedHeredoc
+    # entries: spec + collected body), keyed by the ``heredoc_id`` the lexer
+    # stamped on each ``<<``/``<<-`` operator token. Present only on the
+    # heredoc-aware parse path (``parse_with_heredocs`` / the interactive
+    # trial parse); None otherwise. When present, RedirectionParser takes the
+    # delimiter truth (raw spelling, quoted) and body from the spec entry and
+    # attaches them to the ``Redirect`` node AS IT IS CONSTRUCTED (no second
+    # AST walk); a heredoc redirect whose id is missing from the map is a
+    # hard error.
+    heredocs: Optional[Mapping[int, object]] = None
 
     # Lexer options (the shell option dict, e.g. ``{'extglob': True, ...}``) in
     # effect for this parse. A plain data dict, NOT a Shell reference. Used only
