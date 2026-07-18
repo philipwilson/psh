@@ -107,12 +107,17 @@ class TokenGroups:
         TokenType.AMP_SEMICOLON
     })
 
-    # Keywords that can be valid case patterns
+    # Keywords that can be valid case patterns. Every reserved-word type is a
+    # legal pattern in bash (a pattern position is not a command start, but a
+    # pattern after `;;`/`(`/newline IS normalized at command position, so it
+    # arrives keyword-typed): `case time in a) :;; time) echo t;; esac`
+    # prints t, and `case in in (in) ...` matches. TIME included (S1; was the
+    # one omission — bash accepts it, probed red-on-base).
     CASE_PATTERN_KEYWORDS: FrozenSet[TokenType] = frozenset({
         TokenType.IF, TokenType.THEN, TokenType.ELSE, TokenType.FI, TokenType.ELIF,
         TokenType.WHILE, TokenType.UNTIL, TokenType.DO, TokenType.DONE, TokenType.FOR, TokenType.IN,
         TokenType.CASE, TokenType.ESAC,
-        TokenType.SELECT, TokenType.FUNCTION
+        TokenType.SELECT, TokenType.FUNCTION, TokenType.TIME
     })
 
     # Precomputed unions the parse hot loops match against, so a per-token

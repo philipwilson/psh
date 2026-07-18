@@ -14,6 +14,7 @@ from ....ast_nodes import (
 )
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token, TokenType
+from ...recursive_descent.helpers import TokenGroups
 from ..core import Parser, ParseResult
 from ..diagnostics import raise_committed_error
 from ..utils import format_token_value
@@ -264,11 +265,16 @@ class ConditionalParserMixin(_Base):
             while pos < len(tokens) and tokens[pos].type.name == 'NEWLINE':
                 pos += 1
 
-            # Parse case items until 'esac'
+            # Parse case items until 'esac'. Keyword-TYPED tokens are legal
+            # patterns too (a pattern after `;;`/`(`/newline is normalized at
+            # command position, so `in`, `if`, `time`, ... arrive typed):
+            # shared with the recursive descent parser via
+            # TokenGroups.CASE_PATTERN_KEYWORDS (S1 keyword-site alignment;
+            # previously `case if in a) :;; if) echo y;; esac` failed here).
             _CASE_PATTERN_TYPES = {
                 'WORD', 'STRING', 'VARIABLE',
                 'COMMAND_SUB', 'COMMAND_SUB_BACKTICK', 'ARITH_EXPANSION',
-            }
+            } | {t.name for t in TokenGroups.CASE_PATTERN_KEYWORDS}
             items = []
             while pos < len(tokens) and not matches_keyword(tokens[pos], 'esac'):
                 # Parse pattern(s)

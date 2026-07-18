@@ -7,22 +7,29 @@ This document provides guidance for working with the PSH lexer subsystem.
 The lexer transforms shell command strings into token streams using a **modular recognizer pattern**. The main entry point is `tokenize()` in `__init__.py`, which orchestrates:
 
 1. Tokenization via `ModularLexer`
-2. Keyword normalization (`KeywordNormalizer`)
-3. Word fusion (`word_fusion.fuse_words`)
+2. Word fusion (`word_fusion.fuse_words`)
+3. Keyword normalization (`KeywordNormalizer`)
 
 ```
-Input String → ModularLexer → KeywordNormalizer → fuse_words → Tokens
+Input String → ModularLexer → fuse_words → KeywordNormalizer → Tokens
 ```
 
 Steps 2–3 are the shared `_post_lex` pipeline (`__init__.py#_post_lex`).
-**Word fusion** runs AFTER normalization: it collapses each maximal run of
+**Word fusion runs FIRST** (campaign S1): it collapses each maximal run of
 adjacent word-like tokens (the literal run plus every quote/expansion token)
-into ONE `WORD` token carrying the run's parts, so the parser sees one token
-per shell word and never re-assembles a composite. It replaced the retired
-parser-side composite-sequence assembly (`peek_composite_sequence`); running
-after normalization means reserved words are already retyped and excluded
-from the word-like set (see `__init__.py#_post_lex` and
-`word_fusion.py#fuse_words`).
+into ONE `WORD` token carrying the run's parts and exact source span, so the
+COMPLETE lexical word exists before any reserved-word decision — bash's rule,
+where word boundaries are fixed by metacharacters alone. The normalizer then
+promotes a reserved word only when the complete word is an exact unquoted
+literal (`type==WORD`, no `parts`, no `quote_type`, exact spelling — the
+eligibility gate in `keyword_normalizer.py#KeywordNormalizer.normalize`).
+A keyword glued to an expansion (`then$x`) is therefore one plain WORD and a
+syntax error, matching bash; bare command-position `in` is typed `IN` and
+rejected by the parsers (bash/dash), while subject/header/pattern `in` sites
+are preserved. Fusion replaced the retired parser-side composite-sequence
+assembly (`peek_composite_sequence`); the ordering and eligibility invariants
+are pinned by `tests/unit/lexer/test_post_lex_fusion_order_b3.py` and
+`tests/unit/lexer/test_lexical_word_before_keywords_s1.py`.
 
 There is no post-lexing validation pass: context rules like "`;;` only
 inside `case`" are enforced by the parser (a `TokenTransformer` layer that
@@ -74,8 +81,8 @@ retired.
 | `unicode_support.py` | Unicode identifier handling |
 | `token_types.py` | `Token` and `TokenType` definitions (shared with the parser) |
 | `token_stream.py` | `TokenStream` - positioned token cursor + shared arithmetic-expression collector |
-| `keyword_normalizer.py` | `KeywordNormalizer` - retypes reserved words in command position (post-lex step 2) |
-| `word_fusion.py` | `fuse_words` - post-normalization word fusion, adjacent word-like tokens → one WORD-with-parts (post-lex step 3) |
+| `word_fusion.py` | `fuse_words` - word fusion, adjacent word-like tokens → one WORD-with-parts+span (post-lex step 2, BEFORE normalization) |
+| `keyword_normalizer.py` | `KeywordNormalizer` - retypes complete unquoted-literal reserved words in command position (post-lex step 3) |
 
 ## Core Patterns
 

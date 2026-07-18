@@ -7,11 +7,18 @@ adjacent run into one composite :class:`~psh.ast_nodes.Word` (via the now-retire
 ``TokenStream.peek_composite_sequence``).
 
 This module moves that assembly into the lexer's post-processing pass
-(``psh.lexer._post_lex``, after keyword normalization). A maximal run of
+(``psh.lexer._post_lex``, BEFORE keyword normalization). A maximal run of
 adjacent word-like tokens (``adjacent_to_previous`` True after the first) is
 fused into a single ``WORD`` token whose ``parts`` list carries one
 :class:`~psh.lexer.token_parts.TokenPart` per constituent piece, so the parser
 sees one token per shell word and never re-assembles.
+
+Running fusion FIRST realizes the complete-lexical-word invariant (campaign
+S1): word boundaries are fixed by metacharacters alone — exactly bash's word
+rule — and only then does the KeywordNormalizer decide reserved words, on
+COMPLETE words. A keyword spelling adjacent to an expansion or quote
+(``then$x``, ``then""``) therefore fuses into one plain WORD and is never a
+keyword, matching bash's syntax-error behavior for glued keyword prefixes.
 
 ``sub_token_to_parts`` is the per-token half (a word-like token → the
 TokenPart(s) it contributes); it mirrors the per-token dispatch of the old

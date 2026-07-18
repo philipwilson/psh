@@ -580,6 +580,16 @@ class ControlFlowExecutor:
         Returns:
             Exit status code
         """
+        # Same NAME rule as the for loop (bash: "`X': not a valid
+        # identifier", status 1, execution continues with the next
+        # statement) — the parser accepts any word-like subject and defers
+        # validity here.
+        if not is_valid_name(node.variable,
+                             self.state.options.get('posix', False)):
+            print(f"psh: `{node.variable}': not a valid identifier",
+                  file=self.shell.stderr)
+            return 1
+
         exit_status = 0
         with self._loop_depth(context):
             with self._compound_redirections(node) as applied, \
