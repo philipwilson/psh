@@ -149,6 +149,23 @@ MATRIX = [
     ("set_in_function_does_not_mark_source",
      ["--norc", "-c", "set -- p1 p2; . ./f a b; echo top:$1,$#"], None,
      {"f": "fn(){ set -- q; }\nfn\necho during:$1,$#\n"}, None),
+    # bash persists ONLY at variable_context==0 (source.def
+    # maybe_pop_dollar_vars): inside a FUNCTION, an args-passed source
+    # restores even after `set` (bounce blocker 2; red at 5c997ac1).
+    ("set_inside_args_source_in_function_restores",
+     ["--norc", "-c",
+      "g(){ . ./s a b; echo in-g:$1,$2,$#; }; set -- t1; g gp1 gp2; "
+      "echo top:$1,$#"], None,
+     {"s": "set -- X Y\necho in-s:$1,$2\n"}, None),
+    ("p9d_source_function_args_source_composition",
+     ["--norc", "-c", "set -- T1 T2; . ./outer o1 o2; echo top:$1,$2"], None,
+     {"outer": "g(){ . ./inner a b; echo g:$1,$2; }\ng f1 f2\n"
+               "echo outer:$1,$2\n",
+      "inner": "set -- X\necho inner:$1\n"}, None),
+    ("no_args_source_in_function_set_persists_to_function_frame",
+     ["--norc", "-c",
+      "g(){ . ./s; echo in-g:$1,$#; }; set -- t1; g gp1 gp2; echo top:$1,$#"],
+     None, {"s": "set -- X Y\n"}, None),
     ("nested_both_args_inner_set_persists_one_level",
      ["--norc", "-c", "set -- p1; . ./f1 a b; echo top:$1,$#"], None,
      {"f1": ". ./f2 c d\necho f1:$1,$#\n", "f2": "set -- z\n"}, None),

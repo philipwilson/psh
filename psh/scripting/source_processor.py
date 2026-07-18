@@ -269,7 +269,7 @@ class SourceProcessor(ScriptComponent):
         """
         if not (self.state.options.get('posix')
                 and self.state.is_script_mode
-                and getattr(input_source, 'posix_syntax_exit', True)):
+                and input_source.posix_syntax_exit):
             return
         if getattr(self.shell, '_current_executor', None) is not None:
             raise SpecialBuiltinUsageError(2)
@@ -369,8 +369,7 @@ class SourceProcessor(ScriptComponent):
 
             return self._dispatch_execution(
                 ast, nested,
-                stop_on_return=getattr(input_source,
-                                       'stops_on_function_return', False))
+                stop_on_return=input_source.stops_on_function_return)
         except ParseError as e:
             # Same canonical rendering as the trial-parse error path.
             self._report_syntax_error(e, input_source, start_line,
@@ -599,8 +598,7 @@ class SourceProcessor(ScriptComponent):
                     and self.shell._loop_depth_seed > 0):
                 raise e
             if (isinstance(e, FunctionReturn)
-                    and getattr(input_source, 'stops_on_function_return',
-                                False)):
+                    and input_source.stops_on_function_return):
                 # A sourced-program input (source/., rc): `return` stops the
                 # FILE — _dispatch_execution re-raised it, and this clause
                 # (reached via the enclosing except Exception) forwards it

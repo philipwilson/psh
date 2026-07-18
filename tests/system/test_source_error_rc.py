@@ -4,7 +4,8 @@ R18 T2-E (M-, LOW): psh's shared script validator returns 126 for a directory,
 unreadable file, or binary — correct for the `psh file` INVOCATION path. bash's
 `source` diverges: it returns 1 for a directory or unreadable file.
 `SourceBuiltin.execute` remaps those. As of campaign F3 (probes A6-A13,
-confirmed in bash 5.2's builtins/evalfile.c), `source` never content-sniffs:
+behaviorally pinned against the LIVE resolved oracle — the C sources are
+commentary only), `source` never content-sniffs:
 its `cannot execute binary file` refusal (126) fires only after MORE THAN 256
 deleted NUL bytes — a small NUL-carrying file is NUL-filtered and executed.
 Pinned against bash 5.2.

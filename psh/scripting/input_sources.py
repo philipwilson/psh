@@ -320,8 +320,11 @@ class StdinInput(InputSource):
         # Stream-channel NUL policy: bash's shell_getc layer discards every
         # NUL byte it reads (`e\0cho hi` on stdin runs `echo hi`); a script
         # on stdin is never content-sniffed. Deleting per record equals
-        # deleting over the stream, since NUL never ends a record. See
-        # program_source.py for the per-channel matrix.
+        # deleting over the stream, since NUL never ends a record. This IS
+        # the _CHANNEL_POLICY STDIN_SCRIPT row's _STREAM policy, applied
+        # here because the lazy fd read has no whole-content filter seam —
+        # if the table row changes, this line must change with it (mirror
+        # comment on the row in program_source.py).
         record = record.replace(b'\x00', b'')
         return record.decode('utf-8', errors='surrogateescape')
 

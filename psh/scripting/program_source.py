@@ -19,9 +19,13 @@ handling, RETURN-trap firing, and restoration on both normal and exception
 exits.
 
 NUL and invalid-byte policy is decided ONCE, in this module (continuation
-medium 5).  Ground truth is bash 5.2 (probe battery
-``tmp/boundary-ledgers/F3-probes/``, confirmed against the bash 5.2 sources
-``builtins/evalfile.c`` / ``general.c`` / ``shell.c``):
+medium 5).  Ground truth is the LIVE bash 5.2.26 oracle (probe battery
+``tmp/boundary-ledgers/F3-probes/``); the bash C sources
+(``builtins/evalfile.c`` / ``general.c`` / ``shell.c``) served as
+commentary for the mechanisms and are NOT authoritative — the unpatched
+5.2 tarball's shebang sniff differs from the patched 5.2.26 the oracle
+ladder resolves (see ``looks_binary_sample``), so every rule below is
+pinned by behavioral probes against the resolved oracle:
 
 * Invalid UTF-8 bytes are never a policy question: every channel decodes
   with ``errors='surrogateescape'`` so raw bytes round-trip (bash reads
@@ -40,9 +44,9 @@ medium 5).  Ground truth is bash 5.2 (probe battery
   For the ``source`` builtin only (``FEVAL_BUILTIN``), more than 256 deleted
   NULs refuses the file: ``cannot execute binary file``, status 126 — the
   rc path (bash ``maybe_execute_file``) has NO such limit.
-* The content SNIFF (``check_binary_file``: ELF magic; a ``#!`` first line
-  makes a NUL ANYWHERE in the sample binary; otherwise a NUL before the
-  first newline; sample = first 80 bytes) applies ONLY to the script-file
+* The content SNIFF (``check_binary_file``: ELF magic; otherwise a NUL
+  before the first newline — or before the SECOND newline when the first
+  line is ``#!``; sample = first 80 bytes) applies ONLY to the script-file
   INVOCATION channel (and its analysis twin ``--validate`` etc., which must
   agree with ``bash -n``).  ``source`` never content-sniffs (bash 5.2 sets
   ``FEVAL_CHECKBINARY`` nowhere), and neither do stdin or rc.
@@ -137,19 +141,36 @@ def evalfile_nul_filter(text: str, *, limited: bool = False,
 
 
 def looks_binary_sample(sample: bytes) -> bool:
-    """Bash 5.2 ``check_binary_file`` on a leading sample (script channel).
+    """The live oracle's ``check_binary_file`` on a leading sample.
 
-    The caller passes at most :data:`BINARY_SNIFF_WINDOW` bytes.  Rules, in
-    order: an ELF magic is binary; a ``#!`` first line makes a NUL ANYWHERE
-    in the sample binary; otherwise a NUL before the first newline is
-    binary.  Applies ONLY to the script-file invocation channel and its
+    The caller passes at most :data:`BINARY_SNIFF_WINDOW` bytes.  Rules
+    (probe-pinned against the RESOLVED bash oracle, 5.2.26): an ELF magic
+    is binary; otherwise a NUL before the FIRST newline is binary — except
+    that a ``#!`` first line extends the scan to the SECOND newline (the
+    interpreter line is allowed, the first script line is still sniffed).
+    A sample that runs out before the deciding newline is scanned to its
+    end.  Applies ONLY to the script-file invocation channel and its
     analysis twin — never to source/rc/stdin.
+
+    TRAP (bounce blocker 1): the unpatched bash-5.2 TARBALL memchrs the
+    WHOLE sample for ``#!`` files; the patched 5.2.26 the oracle ladder
+    resolves checks only before the second newline
+    (``#!/bin/sh\\nx=1\\necho a\\0b`` RUNS).  Behavioral probes against the
+    resolved oracle are the authority here — C-source citations are
+    commentary, and can cite the wrong dialect.  Probes: F3-probes/
+    bounce-base-shebang-5c997ac1.txt (sb1-sb7).
     """
     if len(sample) >= 4 and sample[:4] == b"\x7fELF":
         return True
-    if sample[:2] == b"#!":
-        return b"\x00" in sample
-    return b"\x00" in sample.split(b"\n", 1)[0]
+    newline_budget = 2 if sample[:2] == b"#!" else 1
+    for byte in sample:
+        if byte == 0x0A:
+            newline_budget -= 1
+            if newline_budget == 0:
+                return False
+        elif byte == 0x00:
+            return True
+    return False
 
 
 # Per-channel policy table: the SINGLE place the per-channel parse policies
@@ -167,6 +188,11 @@ _VERBATIM = "verbatim"
 _CHANNEL_POLICY = {
     #                       nul-policy             hist   eof_drops  stops_ret
     SourceChannel.SCRIPT_FILE:    (_STREAM,              True,  True,  False),
+    # NOTE: the STDIN row's _STREAM nul-policy is APPLIED inside
+    # StdinInput.read_line (per-record strip), not via a content_filter —
+    # the lazy fd read has no whole-content seam. Editing this row alone
+    # will NOT change stdin behavior; change StdinInput.read_line with it
+    # (mirror comment there).
     SourceChannel.STDIN_SCRIPT:   (_STREAM,              True,  True,  False),
     SourceChannel.COMMAND_STRING: (_VERBATIM,            False, False, False),
     SourceChannel.COMMAND_TEXT:   (_VERBATIM,            True,  False, False),
@@ -183,16 +209,17 @@ class ProgramSource:
     ``<command>``).  ``path``/``text``/``fd`` carry the actual origin —
     exactly one is meaningful per kind (files own their path and read it
     eagerly on open; the stdin kind owns fd 0 and reads it lazily, one line
-    at a time).  ``line_origin`` is the absolute line the text begins at
-    (>1 only for nested command text anchored at an invoking line — eval,
-    trap actions).  Construct via the per-channel classmethods only.
+    at a time).  Line origin is NOT carried here: nested command text
+    anchored at an invoking line (eval, trap actions) threads ``base_line``
+    through ``execute_from_source`` at execution time — the field joins
+    this type when I2/I3 make it live.  Construct via the per-channel
+    classmethods only.
     """
     kind: SourceChannel
     name: str
     path: Optional[str] = None
     text: Optional[str] = None
     fd: Optional[int] = None
-    line_origin: int = 1
     line_oriented: bool = True
     posix_syntax_exit: bool = True
 
@@ -321,9 +348,13 @@ def execute_sourced_file(shell: 'Shell', request: SourceRequest) -> int:
       deliberate divergence).
     * **positionals** — swapped for the extent when ``args`` were passed,
       restored on BOTH normal and exception exits UNLESS the file ran
-      ``set`` (``state.positionals_changed_by_set``; bash persists the
-      ``set`` values through the boundary and consumes the flag — probes
-      D5/D5c/D5d/D5g; ``shift`` does not count — D5b).
+      ``set`` AND the boundary sits OUTSIDE any shell function
+      (``state.positionals_changed_by_set`` + empty ``function_stack`` —
+      bash's ``maybe_pop_dollar_vars`` persists only at
+      ``variable_context == 0``, so ``g(){ . ./s a b; }`` restores the
+      function's positionals even after a ``set`` in ``s``; probes
+      D5/D5c/D5d/D5g and fc1/fc2/fc3, bounce blocker 2; ``shift`` does
+      not count — D5b).
     * **FunctionReturn** — ``return N`` stops the file.  For ``source`` the
       status becomes the builtin's status (probe D8); for the rc bash
       DISCARDS N — ``$?`` at the first prompt keeps the last pre-return
@@ -390,6 +421,13 @@ def execute_sourced_file(shell: 'Shell', request: SourceRequest) -> int:
     finally:
         state.source_depth -= 1
         if has_args:
-            if not state.positionals_changed_by_set:
+            # Persist set-assigned positionals ONLY outside shell functions
+            # (bash source.def maybe_pop_dollar_vars: variable_context == 0
+            # AND ARGS_SETBLTIN). Inside a function, the caller's
+            # positionals are restored even after a `set` in the sourced
+            # file (probes fc1/fc2 — bounce blocker 2).
+            persist = (state.positionals_changed_by_set
+                       and not state.function_stack)
+            if not persist:
                 state.positional_params = old_positional
             state.positionals_changed_by_set = prev_changed

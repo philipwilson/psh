@@ -1,10 +1,12 @@
 """NUL / invalid-byte channel-equivalence matrix (campaign F3, medium 5).
 
 The policy is decided ONCE in ``psh/scripting/program_source.py``; this
-matrix pins it per channel against the bash 5.2 oracle. Ground truth and
-red-on-base evidence: tmp/boundary-ledgers/F3-probes/ (base batteries A1-A14
-at SHA 11e6661d), cross-checked against the bash 5.2 sources
-(builtins/evalfile.c, general.c check_binary_file, shell.c).
+matrix pins it per channel against the LIVE bash oracle — the resolved
+5.2.26, which is the AUTHORITY (the bash C sources are commentary only:
+the unpatched 5.2 tarball's shebang sniff memchrs the whole sample, while
+the patched oracle checks only before the second newline — bounce blocker
+1). Ground truth and red-on-base evidence: tmp/boundary-ledgers/F3-probes/
+(base batteries A1-A14 at SHA 11e6661d; bounce-base-shebang at 5c997ac1).
 
 The facts a future reader will not believe without the transcripts:
 
@@ -19,9 +21,9 @@ The facts a future reader will not believe without the transcripts:
   (``cannot execute binary file``, 126). Content never matters: bash 5.2
   happily sources a file starting with the ELF magic. The rc channel has
   NO limit at all.
-* The content sniff (ELF magic; ``#!`` first line makes a NUL anywhere in
-  the sample binary; otherwise NUL before the first newline; sample = first
-  80 bytes) applies ONLY to the script-invocation channel and its analysis
+* The content sniff (ELF magic; otherwise NUL before the FIRST newline —
+  or before the SECOND newline when line 1 is ``#!``; sample = first 80
+  bytes) applies ONLY to the script-invocation channel and its analysis
   twin (``--validate`` agrees with ``bash -n``).
 * ``-c`` is an N/A channel for NUL: execve forbids NUL bytes in argv, so
   there is no program text a NUL could reach through it. In-process command
@@ -50,6 +52,16 @@ ELF_NL = b"\x7fELF\necho hi\n"
 SHEBANG_NUL = b"#!/bin/sh\necho a\x00b\n"
 SHEBANG_NUL_PAST80 = b"#!/bin/sh\n" + b"# " + b"x" * 75 + b"\necho o\x00k\n"
 WINDOW_EDGE = b"echo " + b"A" * 100 + b"\x00hi\necho ok\n"
+# The PATCHED-bash discriminators (bounce blocker 1): for `#!` files the
+# live oracle checks for a NUL only BEFORE THE SECOND NEWLINE — the
+# unpatched 5.2 tarball memchr'd the whole sample, and the two original
+# shebang rows above sat exactly in the two rules' agreement zone.
+SHEBANG_NUL_AFTER_2ND_NL = b"#!/bin/sh\nx=1\necho a\x00b\n"
+SHEBANG_NUL_ON_LINE1 = b"#!/bin\x00/sh\necho hi\n"
+SHEBANG_NO_2ND_NL_IN_WINDOW = (b"#!/bin/sh\n# " + b"x" * 40 + b"\x00"
+                               + b"x" * 40 + b"\necho hi\n")
+SHEBANG_2ND_NL_AT_WINDOW_EDGE = (b"#!/bin/sh\n" + b"# " + b"y" * 65 + b"\n"
+                                 + b"\x00echo hi\n")
 
 
 def _run(argv, *, stdin, cwd, shell_tag):
@@ -127,6 +139,16 @@ MATRIX = [
     ("source_big_fat_refused_126",
      ["--norc", "-c", ". ./f.bin; echo rc=$?"], None,
      {"f.bin": FAT_BIG}, "cannot execute binary file"),
+    # the EXACT threshold, live-oracle-probed (bounce re-audit: this
+    # boundary was C-derived; bounce-nul-threshold-live.txt confirms it
+    # behaviorally — 256 deleted NULs run, 257 refuse):
+    ("source_exactly_256_nuls_runs",
+     ["--norc", "-c", ". ./f; echo rc=$?"], None,
+     {"f": b"echo hi" + b"\x00\ntrue" * 256 + b"\n"}, None),
+    ("source_exactly_257_nuls_refused_126",
+     ["--norc", "-c", ". ./f; echo rc=$?"], None,
+     {"f": b"echo hi" + b"\x00\ntrue" * 257 + b"\n"},
+     "cannot execute binary file"),
     ("rc_big_fat_no_limit", ["--rcfile", "rc", "-i", "-s"], b"echo body\n",
      {"rc": FAT_BIG}, None),
     # --- script-channel sniff details (check_binary_file, 80-byte window) ---
@@ -134,12 +156,21 @@ MATRIX = [
      {"f": ELF_NL}, "cannot execute binary file"),
     ("source_elf_magic_no_sniff",
      ["--norc", "-c", ". ./f; echo rc=$?"], None, {"f": ELF_NL}, None),
-    ("script_shebang_nul_in_sample_126", ["--norc", "f"], None,
+    ("script_shebang_nul_before_2nd_nl_126", ["--norc", "f"], None,
      {"f": SHEBANG_NUL}, "cannot execute binary file"),
     ("script_shebang_nul_past_window_runs", ["--norc", "f"], None,
      {"f": SHEBANG_NUL_PAST80}, None),
     ("script_nul_outside_80_window_runs", ["--norc", "f"], None,
      {"f": WINDOW_EDGE}, None),
+    # patched-rule discriminators (bounce blocker 1; red at 5c997ac1):
+    ("script_shebang_nul_after_2nd_nl_runs", ["--norc", "f"], None,
+     {"f": SHEBANG_NUL_AFTER_2ND_NL}, None),
+    ("script_shebang_nul_on_line1_126", ["--norc", "f"], None,
+     {"f": SHEBANG_NUL_ON_LINE1}, "cannot execute binary file"),
+    ("script_shebang_no_2nd_nl_in_window_126", ["--norc", "f"], None,
+     {"f": SHEBANG_NO_2ND_NL_IN_WINDOW}, "cannot execute binary file"),
+    ("script_shebang_2nd_nl_at_window_edge_runs", ["--norc", "f"], None,
+     {"f": SHEBANG_2ND_NL_AT_WINDOW_EDGE}, None),
 ]
 
 
@@ -182,6 +213,17 @@ class TestAnalysisChannelParity:
                     cwd=str(tmp_path), shell_tag="bash")
         assert psh.returncode == bash.returncode == 126
         assert "cannot execute binary file" in psh.stderr
+
+    def test_validate_shebang_nul_after_2nd_nl_matches_bash_n(self, tmp_path):
+        # The patched shebang rule reaches the analysis twin too (bounce
+        # blocker 1: the verifier's case was 126 here vs bash -n's 0).
+        (tmp_path / "f.sh").write_bytes(SHEBANG_NUL_AFTER_2ND_NL)
+        psh = _run([sys.executable, "-m", "psh", "--validate", "f.sh"],
+                   stdin=None, cwd=str(tmp_path), shell_tag="psh")
+        bash = _run([_ORACLE.path, "-n", "f.sh"], stdin=None,
+                    cwd=str(tmp_path), shell_tag="bash")
+        assert psh.returncode == bash.returncode == 0
+        assert "No issues found" in psh.stdout
 
     def test_validate_stdin_strips_nuls(self, tmp_path):
         # Analysis of stdin applies the same stream NUL policy execution

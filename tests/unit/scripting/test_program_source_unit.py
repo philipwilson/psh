@@ -1,9 +1,12 @@
 """Unit pins for the ProgramSource normalization boundary (campaign F3).
 
 The behavioral truth is pinned bash-compared in
-tests/system/source_service/; these pins lock the REPRESENTATION: the exact
-filter algorithms (extracted from bash 5.2 builtins/evalfile.c and
-general.c), the per-channel policy table, and the frozen dataclass contract.
+tests/system/source_service/ — the LIVE resolved oracle (bash 5.2.26) is
+the authority; the bash C sources are commentary only (the unpatched 5.2
+tarball's shebang sniff differs from the patched oracle — bounce blocker
+1). These pins lock the REPRESENTATION: the probe-derived filter
+algorithms, the per-channel policy table, and the frozen dataclass
+contract.
 """
 import dataclasses
 
@@ -74,13 +77,27 @@ class TestEvalfileFilter:
 
 
 class TestBinarySniff:
-    """bash 5.2 check_binary_file, applied only to the script channel."""
+    """The live oracle's check_binary_file, script channel only.
+
+    Shebang rule = the PATCHED 5.2.26 one (NUL before the SECOND newline),
+    not the unpatched tarball's whole-sample memchr (bounce blocker 1;
+    probes sb1-sb7).
+    """
 
     def test_elf_magic_is_binary_even_with_newline(self):
         assert looks_binary_sample(b"\x7fELF\necho hi\n")
 
-    def test_shebang_widens_to_whole_sample(self):
+    def test_shebang_scans_to_second_newline_only(self):
+        # NUL on line 2 (before the 2nd newline): binary.
         assert looks_binary_sample(b"#!/bin/sh\necho a\x00b\n")
+        # NUL after the 2nd newline: NOT binary (the verifier's case).
+        assert not looks_binary_sample(b"#!/bin/sh\nx=1\necho a\x00b\n")
+        # NUL on the shebang line itself: binary.
+        assert looks_binary_sample(b"#!/bin\x00/sh\necho hi\n")
+        # No second newline within the sample, NUL present: binary (sb4).
+        assert looks_binary_sample(b"#!/bin/sh\n# xx\x00xx")
+        # Second newline just before the NUL: not binary (sb5).
+        assert not looks_binary_sample(b"#!/bin/sh\n# y\n\x00echo hi\n")
         assert not looks_binary_sample(b"#!/bin/sh\necho ok\n")
 
     def test_nul_before_first_newline(self):
