@@ -55,8 +55,18 @@ class ScriptExecutor(ScriptComponent):
                 # an explicit `exit`. (A sourced file does NOT run this path;
                 # `source` goes straight through execute_from_source, so its
                 # EXIT trap is deferred to the main shell's exit, like bash.)
+                #
+                # An interactive-FAMILY script run (`psh -i script.sh`)
+                # records each executed line into the session history, so a
+                # later `echo !!` resolves to the PREVIOUS script line —
+                # recording happens after the current line's own expansion
+                # (source_processor._preprocess_command order), exactly like
+                # bash. A plain script run records nothing (bash; probes
+                # B1/B5/B7, tmp/boundary-ledgers/F1-probes/bounce-*).
                 return self.shell.script_manager.execute_as_main(
-                    input_source, add_to_history=False)
+                    input_source,
+                    add_to_history=self.state.options.get(
+                        'interactive', False))
         except OSError as e:
             print(f"psh: {script_path}: {e}", file=sys.stderr)
             return 1

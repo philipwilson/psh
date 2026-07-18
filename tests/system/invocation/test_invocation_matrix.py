@@ -44,7 +44,16 @@ def _run(argv, *, stdin, cwd, histfile):
 
 
 def run_both(args, *, stdin=None, files=None, tmp_path, hist_content=None):
-    """Run psh and bash with identical args in *tmp_path*; return both."""
+    """Run psh and bash with identical args in *tmp_path*; return both.
+
+    ORDER IS LOAD-BEARING for the history rows: psh runs FIRST because an
+    interactive bash WRITES its session back to $HISTFILE on exit, while
+    psh's write-back is deliberately absent (ledgered I4 handoff). Running
+    bash first would leak its session into the file psh then loads (that
+    exact contamination produced three phantom diffs during the F1 bounce
+    investigation — see F1-probes/bounce-fixed-pre-commit.txt vs
+    bounce-fixed-isolated.txt).
+    """
     for rel, content in (files or {}).items():
         (tmp_path / rel).write_text(content)
     histfile = tmp_path / "histfile"
@@ -135,13 +144,31 @@ MATRIX = [
      None, None, None),
     ("i_s_piped_bang_expands", ["--norc", "-i", "-s"],
      "echo A\necho !!\n", None, None),
+    ("i_script_bang_expands", ["--norc", "-i", "s.sh"], None,
+     {"s.sh": "echo A\necho !!\n"}, None),
+    ("plain_script_no_bang_expansion", ["--norc", "s.sh"], None,
+     {"s.sh": "echo A\necho !!\n"}, None),
     ("plain_stdin_no_bang_expansion", ["--norc", "-s"],
      "echo A\necho !!\n", None, None),
-    # --- history loading (probes H1-H3) ---
+    # --- history loading + in-session recording (probes H1-H3, bounce B2-B7:
+    # the family's LINE-STREAM sources load the HISTFILE and record each
+    # executed line AFTER its own expansion; -c strings do neither) ---
     ("i_s_loads_and_records_history", ["--norc", "-i", "-s"], "history\n",
      None, None),
+    ("i_script_loads_histfile_for_bang", ["--norc", "-i", "s.sh"], None,
+     {"s.sh": "echo first:!!\n"}, None),
+    ("i_script_lists_and_records_history", ["--norc", "-i", "s.sh"], None,
+     {"s.sh": "history\n"}, None),
+    ("i_script_records_executed_lines", ["--norc", "-i", "s.sh"], None,
+     {"s.sh": "echo A\nhistory\n"}, None),
+    ("rc_lines_not_recorded", ["--rcfile", "rc", "-i", "-s"], "history\n",
+     {"rc": "echo RCA\n"}, None),
     ("ic_does_not_load_history", ["--norc", "-ic", "history"], None,
      None, None),
+    ("ic_does_not_record_commands", ["--norc", "-ic", "echo A; history"],
+     None, None, None),
+    ("plain_script_no_history", ["--norc", "s.sh"], None,
+     {"s.sh": "echo A\nhistory\n"}, None),
     ("plain_stdin_no_history", ["--norc", "-s"], "history\n", None, None),
     # --- other transitions through the same path ---
     ("last_wins_x_then_plus_x", ["--norc", "-x", "+x", "-c", "echo hi"],
@@ -157,7 +184,10 @@ MATRIX = [
      ["--norc", "-o", "ignoreeof", "-c", "echo $IGNOREEOF"], None, None, None),
 ]
 
-_HISTORY_ROWS = {"i_s_loads_and_records_history", "ic_does_not_load_history",
+_HISTORY_ROWS = {"i_s_loads_and_records_history",
+                 "i_script_loads_histfile_for_bang",
+                 "i_script_lists_and_records_history",
+                 "ic_does_not_load_history",
                  "plain_stdin_no_history"}
 
 

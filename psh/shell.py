@@ -398,13 +398,14 @@ class Shell:
 
         In order: bare ``-o``/``+o`` listing requests (bash prints the
         ``set -o`` table and continues; probe E3b), then — for the
-        interactive FAMILY only — history loading (stdin-sourced shells
-        only: bash `-i -s` lists the HISTFILE entries, `-ic` does not;
-        probe H1/H2) and the rc file (any source kind: `-ic` and
-        `-i script.sh` source it, #20 H17). Idempotent, so the REPL entry
-        (which also calls it for embedders) cannot double-run the rc; child
-        shells (``for_subshell``) are constructed with the step already
-        marked done and never repeat startup.
+        interactive FAMILY only — history loading (line-stream sources:
+        bash `-i -s` AND `-i script.sh` list/resolve the HISTFILE entries,
+        `-ic` does not; probes H1/H2 + bounce B2/B4) and the rc file (any
+        source kind: `-ic` and `-i script.sh` source it, #20 H17).
+        Idempotent, so the REPL entry (which also calls it for embedders)
+        cannot double-run the rc; child shells (``for_subshell``) are
+        constructed with the step already marked done and never repeat
+        startup.
         """
         if self._invocation_startup_done:
             return
@@ -420,12 +421,15 @@ class Shell:
         if not self.state.options.get('interactive', False):
             return
 
+        # History loads for LINE-STREAM sources (stdin, script file) of an
+        # interactive-family shell — never for a -c command string (bash:
+        # `-ic 'history'` lists nothing while `-i -s`/`-i script.sh` list
+        # the HISTFILE canaries and resolve `!!` against them).
         if config is None:
-            reads_stdin = not (self.state.is_script_mode
-                               or self.state.options.get('command_mode', False))
+            loads_history = not self.state.options.get('command_mode', False)
         else:
-            reads_stdin = config.source_kind is SourceKind.STDIN
-        if reads_stdin:
+            loads_history = config.source_kind is not SourceKind.COMMAND
+        if loads_history:
             self.interactive_manager.load_history()
 
         if not self.state.norc:
