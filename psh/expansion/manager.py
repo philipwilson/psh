@@ -16,6 +16,7 @@ from ..core.assignment_utils import ASSIGNMENT_PREFIX_RE
 from .brace_expansion_words import WordBraceExpander
 from .command_sub import CommandSubstitutionExecutor
 from .glob import GlobExpander
+from .subscript import SubscriptEvaluator
 from .tilde import TildeExpander
 from .variable import VariableExpander
 from .word_expander import WordExpander
@@ -55,6 +56,9 @@ class ExpansionManager:
         self.word_splitter = WordSplitter()
         self.word_expander = WordExpander(self)
         self.brace_expander = WordBraceExpander()
+        # The ONE array-subscript keying authority (campaign W2): indexed
+        # arithmetic vs associative string-key, decided by target kind.
+        self.subscript = SubscriptEvaluator(shell)
 
         # Initialize expansion evaluator (lazy import to avoid circular dependencies)
         self._evaluator: Optional['ExpansionEvaluator'] = None

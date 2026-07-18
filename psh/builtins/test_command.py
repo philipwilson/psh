@@ -22,13 +22,17 @@ def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
     if '[' in var_ref and var_ref.endswith(']'):
         var_name = var_ref[:var_ref.index('[')]
         key_expr = var_ref[var_ref.index('[') + 1:-1]
-        key = shell.expansion_manager.expand_string_variables(key_expr)
         var_obj = shell.state.scope_manager.get_variable_object(var_name)
         if not var_obj:
             return False
+        # The ONE subscript authority keys by target kind (campaign W2): an
+        # associative target keys on one word/quote expansion, an indexed one on
+        # arithmetic. `-v` never aborts on a bad subscript — just reports unset.
+        subscript = shell.expansion_manager.subscript
         if isinstance(var_obj.value, AssociativeArray):
-            return key in var_obj.value
+            return subscript.associative_key(key_expr) in var_obj.value
         if isinstance(var_obj.value, IndexedArray):
+            key = shell.expansion_manager.expand_string_variables(key_expr)
             try:
                 return int(key) in var_obj.value
             except ValueError:

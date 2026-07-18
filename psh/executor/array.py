@@ -13,9 +13,8 @@ from ..core import (
     IndexedArray,
     NamerefCycleError,
     VarAttributes,
-    arith_assignment_discard,
 )
-from ..expansion.arithmetic import ArithmeticError, evaluate_arithmetic
+from ..expansion.arithmetic import evaluate_arithmetic
 from ..expansion.word_expansion_types import ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEMENT
 
 if TYPE_CHECKING:
@@ -134,23 +133,6 @@ class ArrayOperationExecutor:
     # bare path always used — no string re-parsing.
     # ------------------------------------------------------------------ #
 
-    def _eval_subscript_fatal(self, index_text: str) -> int:
-        """Arithmetic-evaluate an indexed-array WRITE subscript.
-
-        An unset name evaluates cleanly to 0 (``a[junk]=v`` writes a[0],
-        bash); a subscript that fails to evaluate (``a[08]=v``: "value too
-        great for base", ``a[1//]=v``: syntax error) is a fatal expansion
-        error in bash — it must abort the whole command, never silently
-        address index 0. Mirrors ``VariableExpander._eval_array_index``
-        (the read-path chokepoint).
-        """
-        try:
-            return evaluate_arithmetic(index_text, self.shell)
-        except ArithmeticError as e:
-            print(f"psh: {e}", file=self.state.stderr)
-            self.state.last_exit_code = 1
-            arith_assignment_discard(self.state)
-
     def build_indexed_array(self, words: List['Word'],
                             into: Optional[IndexedArray] = None) -> IndexedArray:
         """Resolve indexed-array initializer element Words into an IndexedArray.
@@ -175,10 +157,10 @@ class ArrayOperationExecutor:
             explicit = self._split_explicit_element(word)
             if explicit is not None:
                 index_parts, value_word, elem_append = explicit
-                # bash always evaluates indexed-array subscripts as arithmetic
+                # bash always evaluates indexed-array subscripts as arithmetic;
+                # the ONE subscript authority expands then evaluates (campaign W2).
                 index_text = ''.join(str(p) for p in index_parts)
-                expanded_index = self.expansion_manager.expand_string_variables(index_text)
-                evaluated_index = self._eval_subscript_fatal(expanded_index)
+                evaluated_index = self.expansion_manager.subscript.indexed_index(index_text)
                 value = self.expansion_manager.expand_assignment_value_word(value_word)
                 if elem_append:
                     current = array.get(evaluated_index)
@@ -248,11 +230,6 @@ class ArrayOperationExecutor:
         Returns:
             Exit status code (0 for success)
         """
-        # The subscript is the verbatim text between the brackets; both parsers
-        # store it directly on ``node.index``. Expand any variables in it
-        # (``a[$i]=``, ``a[${var}]=``) before evaluating/keying below.
-        expanded_index = self.expansion_manager.expand_string_variables(node.index)
-
         # Resolve a nameref array target so ``declare -n r=arr; r[3]=x`` writes
         # arr[3] (bash). resolve_nameref_name returns the name unchanged for a
         # plain (non-nameref) variable, so non-nameref arrays are unaffected.
@@ -271,39 +248,25 @@ class ArrayOperationExecutor:
             print(f"{self.state.error_location_prefix()}{name}: readonly variable", file=self.state.stderr)
             return 1
 
-        # Determine index type - first check if it's numeric or string
-        is_numeric_index = False
-        cleaned_index = expanded_index
-        was_quoted = False
-
-        # Remove quotes if present to check the actual key
-        if len(cleaned_index) >= 2:
-            if (cleaned_index.startswith('"') and cleaned_index.endswith('"')) or \
-               (cleaned_index.startswith("'") and cleaned_index.endswith("'")):
-                was_quoted = True
-                cleaned_index = cleaned_index[1:-1]
-
-        # ``index`` is a string key for associative arrays and an int subscript
-        # for indexed arrays; the two stay correlated with ``is_numeric_index``
-        # and the array's concrete type below.
+        # target-kind BEFORE interpretation (campaign W2). An existing
+        # ASSOCIATIVE array keys on a literal string (one word/quote expansion);
+        # everything else — an existing indexed array, a scalar, or an UNDECLARED
+        # name — is arithmetic (bash's indexed default). Quoting does NOT infer
+        # an associative array (bash: `a["k"]=x` on an undeclared `a` is indexed
+        # index 0). The ONE subscript authority interprets accordingly.
+        subscript = self.expansion_manager.subscript
         index: Union[int, str]
-        if var_obj and isinstance(var_obj.value, AssociativeArray):
-            # Existing associative array: the subscript is the literal string
-            # key, never arithmetic (bash — `h[08]=v` is the key "08").
-            index = cleaned_index
+        if var_obj is not None and isinstance(var_obj.value, AssociativeArray):
+            index = subscript.associative_key(node.index)
             is_numeric_index = False
-        elif was_quoted:
-            # Quoted index — treat as string key (associative array).
-            # In bash, declare -A is needed for associative arrays, but PSH
-            # uses quoting to infer associative intent.
-            index = cleaned_index
-            is_numeric_index = False
+            # An empty associative subscript is a "bad array subscript" in bash
+            # (`a[""]=v`, `a[$empty]=v`), not a silent empty-key write.
+            if index == "":
+                print(f"{self.state.error_location_prefix()}{name}[{node.index}]: "
+                      f"bad array subscript", file=self.state.stderr)
+                return 1
         else:
-            # Unquoted index — always evaluate in arithmetic context (bash).
-            # An unset NAME evaluates cleanly to 0 (`a[junk]=v` writes a[0]);
-            # a subscript that fails to EVALUATE (`a[08]=v`, `a[1//]=v`) is a
-            # fatal expansion error, never a silent fallback key.
-            index = self._eval_subscript_fatal(cleaned_index)
+            index = subscript.indexed_index(node.index)
             is_numeric_index = True
 
         if var_obj and isinstance(var_obj.value, IndexedArray):

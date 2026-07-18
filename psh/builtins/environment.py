@@ -647,9 +647,9 @@ class UnsetBuiltin(Builtin):
     def _unset_array_element(self, var: str, shell: 'Shell') -> bool:
         """Unset one array element (``unset 'arr[index]'``).
 
-        Subscript evaluation delegates to the expansion subsystem's
-        canonical evaluators (VariableExpander._eval_array_index /
-        expand_array_index) rather than re-implementing them here.
+        Subscript evaluation delegates to the ONE subscript authority
+        (ExpansionManager.subscript — indexed arithmetic / associative key)
+        rather than re-implementing them here.
         Returns True on success, False on error (caller sets status 1).
         """
 
@@ -708,10 +708,11 @@ class UnsetBuiltin(Builtin):
             # indexed array keys on the arithmetic value. An out-of-range
             # negative subscript is "bad array subscript" (rc=1), like bash.
             key: "int | str"
+            subscript = shell.expansion_manager.subscript
             if isinstance(var_obj.value, AssociativeArray):
-                key = expander.expand_array_index(index_expr)
+                key = subscript.associative_key(index_expr)
             else:
-                key = expander._eval_array_index(index_expr)
+                key = subscript.indexed_index(index_expr)
             try:
                 shell.state.scope_manager.store.unset_element(array_name, key)
             except ArraySubscriptError:

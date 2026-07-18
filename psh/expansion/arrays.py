@@ -6,7 +6,7 @@ methods use ``self.shell`` / ``self.state`` from the host class.
 """
 from typing import TYPE_CHECKING, Optional, Tuple
 
-from ..core import AssociativeArray, IndexedArray, NamerefCycleError, UnboundVariableError, arith_assignment_discard
+from ..core import AssociativeArray, IndexedArray, NamerefCycleError, UnboundVariableError
 
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
@@ -63,24 +63,16 @@ class ArrayOpsMixin(_Base):
             return array_name
 
     def _eval_array_index(self, index_expr: str) -> int:
-        """Expand and arithmetically evaluate an indexed-array subscript.
+        """Evaluate an indexed-array subscript to an int (thin adapter).
 
-        This is THE canonical subscript evaluation (every indexed-array
-        access funnels through it): variables expand first, then the
-        result is evaluated as arithmetic. ``a[junk]`` with junk unset
-        addresses ``a[0]`` because the NAME evaluates cleanly to 0 (bash);
-        a subscript that fails to EVALUATE (``a[08]``, ``a[1//]``) is a
-        fatal expansion error aborting the whole command (bash), not a
-        silent index 0.
+        Delegates to the ONE subscript authority
+        (``ExpansionManager.subscript.indexed_index`` — campaign W2), which
+        expands then arithmetic-evaluates: ``a[i]`` with ``i=3`` addresses
+        ``a[3]`` (bare names are variable references in arithmetic), while a
+        subscript that fails to EVALUATE (``a[08]``, ``a[1//]``) is a fatal
+        expansion error aborting the whole command (bash), not a silent 0.
         """
-        from .arithmetic import ArithmeticError, evaluate_arithmetic
-        expanded = self.expand_array_index(index_expr)
-        try:
-            return evaluate_arithmetic(expanded, self.shell)
-        except ArithmeticError as e:
-            print(f"psh: {e}", file=self.state.stderr)
-            self.state.last_exit_code = 1
-            arith_assignment_discard(self.state)
+        return self.shell.expansion_manager.subscript.indexed_index(index_expr)
 
     def _expand_array_indices(self, subscripted: str) -> str:
         """Handle ${!arr[@]} and ${!arr[*]} — *subscripted* is ``arr[@]``.
@@ -149,7 +141,7 @@ class ArrayOpsMixin(_Base):
                 return ''
             return result
         elif var and isinstance(var.value, AssociativeArray):
-            expanded_key = self.expand_assoc_key(index_expr)
+            expanded_key = self.shell.expansion_manager.subscript.associative_key(index_expr)
             result = var.value.get(expanded_key)
             if result is None:
                 self._check_nounset_element(array_name, index_expr, check_nounset)
@@ -211,10 +203,11 @@ class ArrayOpsMixin(_Base):
             # resolution, create-if-absent, and observer notification — this
             # write never touches ``.value.set`` directly (core-state C2).
             key: "int | str"
+            subscript = self.shell.expansion_manager.subscript
             if var is not None and isinstance(var.value, AssociativeArray):
-                key = self.expand_assoc_key(index_expr)
+                key = subscript.associative_key(index_expr)
             else:
-                key = self._eval_array_index(index_expr)
+                key = subscript.indexed_index(index_expr)
             self.state.scope_manager.store.set_element(array_name, key, value)
         else:
             self.state.set_variable(var_name, value)
@@ -283,41 +276,6 @@ class ArrayOpsMixin(_Base):
             fields.append(k)
             fields.append(v)
         return fields
-
-    def expand_assoc_key(self, index_expr: str) -> str:
-        """Expand an associative-array subscript and apply quote removal.
-
-        bash applies quote removal to assoc subscripts: ``${h["k 1"]}`` and
-        ``${h['k 1']}`` address the key ``k 1``. This mirrors the assignment
-        side (executor/array.py), which strips one fully-wrapping quote pair
-        after expansion — keeping lookups symmetric with assignments.
-        """
-        expanded = self.expand_array_index(index_expr)
-        if (len(expanded) >= 2 and expanded[0] == expanded[-1]
-                and expanded[0] in ('"', "'")):
-            return expanded[1:-1]
-        return expanded
-
-    def expand_array_index(self, index_expr: str) -> str:
-        """Expand variables in array index expressions.
-
-        In array subscripts, bare variable names should be expanded as variables.
-        For example, in ${arr[i]}, 'i' should be expanded to its value.
-        """
-        # First try normal variable expansion in case it has $
-        expanded = self.expand_string_variables(index_expr)
-
-        # If no $ was found in the index, check if the whole thing is a variable name
-        if expanded == index_expr:
-            # Check if it's a valid variable name (letters, digits, underscore)
-            if index_expr and (index_expr[0].isalpha() or index_expr[0] == '_'):
-                if all(c.isalnum() or c == '_' for c in index_expr):
-                    # It's a valid variable name, expand it
-                    var_value = self.state.get_variable(index_expr, '')
-                    if var_value:
-                        return var_value
-
-        return expanded
 
     def array_fields(self, array_name: str, keys: bool = False) -> list:
         """Fields of an ``@``-subscripted array, from its NAME component.
