@@ -37,6 +37,14 @@ class ExpansionParsers:
         """
         self.config = config or ParserConfig()
         # WordBuilder uses static methods, no need to instantiate.
+        # Per-call parse budget (campaign S4 handoff 3): a ParseInputs carrying
+        # the shell's lexer_options and line_offset, so the combinator builds
+        # nested-substitution/syntax templates with the SAME budgets the
+        # recursive-descent parser threads through its ParserContext (notably
+        # extglob-aware re-lexing of a nested substitution body). Set for the
+        # duration of a parse by ParserCombinatorShellParser and cleared in its
+        # finally; None (defaults 0/None) outside a parse and for standalone use.
+        self.parse_ctx: "Optional[object]" = None
 
     def build_word_from_token(self, token: Token) -> Word:
         """Build a Word AST node from a token.
@@ -55,13 +63,13 @@ class ExpansionParsers:
         # that the lexer emits one WORD per multi-piece word. (A plain WORD has
         # no parts and falls through to the literal branch below.)
         if token.type.name == 'WORD' and token.parts:
-            return Word(parts=[WordBuilder.token_part_to_word_part(tp)
+            return Word(parts=[WordBuilder.token_part_to_word_part(tp, ctx=self.parse_ctx)
                                for tp in token.parts])
 
         # Check for decomposable parts from the lexer (a token with expansion parts)
         if WordBuilder.has_decomposable_parts(token):
             # Parts carry per-part quote context; Word.quote_type is derived.
-            word_parts = [WordBuilder.token_part_to_word_part(tp)
+            word_parts = [WordBuilder.token_part_to_word_part(tp, ctx=self.parse_ctx)
                           for tp in (token.parts or [])]
             return Word(parts=word_parts)
 
@@ -72,7 +80,7 @@ class ExpansionParsers:
 
         elif token.type.name == 'VARIABLE':
             # Variable expansion — delegate to WordBuilder for brace-stripping
-            expansion = WordBuilder.parse_expansion_token(token)
+            expansion = WordBuilder.parse_expansion_token(token, self.parse_ctx)
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name in ('COMMAND_SUB', 'COMMAND_SUB_BACKTICK'):
@@ -80,14 +88,14 @@ class ExpansionParsers:
             # the recursive-descent and combinator parsers build the SAME node:
             # $(...) carries a nested Program (parsed now, rejecting invalid
             # syntax at the outer parse); backticks keep program=None.
-            expansion = WordBuilder.parse_expansion_token(token)
+            expansion = WordBuilder.parse_expansion_token(token, self.parse_ctx)
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name == 'ARITH_EXPANSION':
             # Arithmetic expansion $((...)) — delegate to WordBuilder so both
             # parsers attach the same S3 template (read-time validates nested
             # $(); arithmetic grammar stays lazy).
-            expansion = WordBuilder._build_arith_expansion(token.value)
+            expansion = WordBuilder._build_arith_expansion(token.value, self.parse_ctx)
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name in ('PROCESS_SUB_IN', 'PROCESS_SUB_OUT'):
@@ -95,7 +103,7 @@ class ExpansionParsers:
             # representation as the recursive descent parser (WordBuilder),
             # so the expansion manager performs the substitution and
             # splices the /dev/fd/N path into the word.
-            expansion = WordBuilder.parse_expansion_token(token)
+            expansion = WordBuilder.parse_expansion_token(token, self.parse_ctx)
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         else:

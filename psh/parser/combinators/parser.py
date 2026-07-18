@@ -10,6 +10,8 @@ from ...ast_nodes import ASTNode, Program, Statement, StatementList
 from ...lexer.keyword_normalizer import KeywordNormalizer
 from ...lexer.token_types import Token, TokenType
 from ..config import ParserConfig
+from ..parse_inputs import ParseInputs
+from ..parse_outcome import ParseOutcome, outcome_from_parse
 from ..recursive_descent.helpers import ParseError, describe_token
 from .commands import create_command_parsers
 from .control_structures import create_control_structure_parsers
@@ -58,6 +60,13 @@ class ParserCombinatorShellParser:
         """
         self.config = config or ParserConfig()
         self.heredocs = heredocs
+        # Per-call immutable inputs (campaign S4 handoff 3): the ParseInputs
+        # budget (lexer_options/line_offset) threaded into template building.
+        # Set transiently by parse_with_heredocs; a bare parse() uses None
+        # (defaults), and parse() clears the per-module working copies in its
+        # finally so the instance retains NO per-call state after return
+        # (handoff 1). None by default.
+        self._parse_inputs: "Optional[ParseInputs]" = None
 
         # Initialize all parser modules
         self._initialize_modules()
@@ -162,10 +171,23 @@ class ParserCombinatorShellParser:
         Raises:
             ParseError: If parsing fails
         """
-        # Per-call collected-heredoc map: the redirection mixin builds each
-        # heredoc Redirect with its spec truth and body AT CONSTRUCTION (the
-        # former post-parse attachment-walk visitor is retired).
+        # Install the per-call working state on the shared long-lived modules —
+        # the collected-heredoc map (the redirection mixin builds each heredoc
+        # Redirect with its spec truth and body AT CONSTRUCTION) and the
+        # ParseInputs budget (template building) — and CLEAR both in the finally
+        # so this build-once grammar instance retains NO per-call state after
+        # return (campaign S4 handoff 1/3, guarded by the retains-nothing
+        # snapshot pin in test_parser_contract_guards_s4).
         self.commands.heredocs = self.heredocs
+        self.expansions.parse_ctx = self._parse_inputs
+        try:
+            return self._parse_body(tokens)
+        finally:
+            self.commands.heredocs = None
+            self.expansions.parse_ctx = None
+
+    def _parse_body(self, tokens: List[Token]) -> Program:
+        """The parse proper, run with per-call working state installed."""
         tokens, start_pos = self._prepare_tokens(tokens)
 
         # Empty input
@@ -214,20 +236,54 @@ class ParserCombinatorShellParser:
             return ast
         return Program(statements=[cast(Statement, ast)])
 
-    def parse_with_heredocs(self, tokens: List[Token],
-                            heredocs: "Mapping[int, 'LexedHeredoc']") -> Program:
+    def parse_with_heredocs(
+        self, tokens: List[Token],
+        heredocs: "Mapping[int, 'LexedHeredoc']",
+        lexer_options: "Optional[Mapping[str, object]]" = None,
+        line_offset: int = 0,
+    ) -> Program:
         """Parse tokens with collected-heredoc support.
 
         Args:
             tokens: List of tokens from the lexer (bodies lifted out;
                 operator tokens carry ``heredoc_id``)
             heredocs: The LexedUnit's id-keyed map of LexedHeredoc entries
+            lexer_options: Shell option dict in effect (campaign S4 handoff 3),
+                threaded via ParseInputs so nested-substitution/syntax templates
+                build with the same option-sensitive budget as the RD parser
+                (notably extglob-aware re-lexing of a nested substitution body).
+            line_offset: Enclosing line offset for nested-body diagnostics.
 
         Returns:
             Parsed AST with each heredoc Redirect built from its spec entry
+
+        The per-call heredoc map and ParseInputs are set for the duration of the
+        parse and RESTORED to their prior values afterwards, so the instance
+        retains no per-call state after return.
         """
+        saved_heredocs = self.heredocs
+        saved_inputs = self._parse_inputs
         self.heredocs = heredocs
-        return self.parse(tokens)
+        self._parse_inputs = ParseInputs(
+            lexer_options=lexer_options, line_offset=line_offset)
+        try:
+            return self.parse(tokens)
+        finally:
+            self.heredocs = saved_heredocs
+            self._parse_inputs = saved_inputs
+
+    def parse_outcome(self, tokens: List[Token]) -> ParseOutcome:
+        """Parse into the typed ``Complete | Incomplete | Invalid`` outcome sum.
+
+        The combinator's parity surface for the S4 outcome contract. The
+        combinator does not compute an open-construct trail, so ``Incomplete``
+        carries an empty trail; an end-of-input failure on an EOF token still
+        classifies as ``Incomplete`` via ``ParseError.at_eof`` (the default when
+        the offending token is EOF). Continuation-prompt detection remains
+        recursive-descent-only (the accumulator builds an RD parser), so this
+        exists for parity and I3-readiness, not to drive PS2.
+        """
+        return outcome_from_parse(lambda: self.parse(tokens), lambda: ())
 
     def parse_partial(self, tokens: List[Token]) -> Tuple[Optional[ASTNode], int]:
         """Parse as much as possible from the token stream.
@@ -243,22 +299,27 @@ class ParserCombinatorShellParser:
             Tuple of (AST node or None, position where parsing stopped)
         """
         self.commands.heredocs = self.heredocs
-        tokens, start_pos = self._prepare_tokens(tokens)
+        self.expansions.parse_ctx = self._parse_inputs
+        try:
+            tokens, start_pos = self._prepare_tokens(tokens)
 
-        # Empty input
-        if start_pos >= len(tokens):
+            # Empty input
+            if start_pos >= len(tokens):
+                return None, start_pos
+
+            # Try parsers from broadest to narrowest (heterogeneous Parser
+            # types, so the list is loosely typed).
+            candidates: list = [self.top_level, self.commands.statement, self.command]
+            for parser in candidates:
+                result = parser.parse(tokens, start_pos)
+                if result.success:
+                    return result.value, result.position
+
+            # Nothing could be parsed
             return None, start_pos
-
-        # Try parsers from broadest to narrowest (heterogeneous Parser types,
-        # so the list is loosely typed).
-        candidates: list = [self.top_level, self.commands.statement, self.command]
-        for parser in candidates:
-            result = parser.parse(tokens, start_pos)
-            if result.success:
-                return result.value, result.position
-
-        # Nothing could be parsed
-        return None, start_pos
+        finally:
+            self.commands.heredocs = None
+            self.expansions.parse_ctx = None
 
     def can_parse(self, tokens: List[Token]) -> bool:
         """Check if the tokens can be parsed without actually parsing.

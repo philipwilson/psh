@@ -455,12 +455,15 @@ class LoopParserMixin(_Base):
                     update_expr=update_expr,
                     body=body_result.value,
                     redirects=redirects,
-                    init_template=(build_arithmetic_template(init_expr)
-                                   if init_expr else None),
-                    condition_template=(build_arithmetic_template(cond_expr)
-                                        if cond_expr else None),
-                    update_template=(build_arithmetic_template(update_expr)
-                                     if update_expr else None),
+                    init_template=(build_arithmetic_template(
+                        init_expr, self.commands.expansions.parse_ctx)
+                        if init_expr else None),
+                    condition_template=(build_arithmetic_template(
+                        cond_expr, self.commands.expansions.parse_ctx)
+                        if cond_expr else None),
+                    update_template=(build_arithmetic_template(
+                        update_expr, self.commands.expansions.parse_ctx)
+                        if update_expr else None),
                 ),
                 position=pos
             )
