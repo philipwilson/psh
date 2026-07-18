@@ -24,6 +24,7 @@ from ...ast_nodes import (
 from ...lexer.token_stream import TokenStream
 from ...lexer.token_types import Token
 from ..config import ParserConfig
+from ..recursive_descent.support.syntax_templates import build_arithmetic_template
 from ..recursive_descent.support.word_builder import WordBuilder
 from .commands import CommandParsers
 from .core import Parser, ParseResult
@@ -168,7 +169,8 @@ class SpecialCommandParsers:
                 value=ArithmeticEvaluation(
                     expression=expression,
                     redirects=redirects,
-                    background=False
+                    background=False,
+                    arith_template=build_arithmetic_template(expression),
                 ),
                 position=pos
             )

@@ -7,7 +7,11 @@ context-aware parsing, semantic analysis, and enhanced error recovery.
 """
 
 from .config import ParserConfig
-from .recursive_descent.helpers import ParseError
+from .recursive_descent.helpers import (
+    ParseError,
+    SubstitutionSyntaxError,
+    is_substitution_origin,
+)
 
 # Import from final locations
 from .recursive_descent.parser import Parser
@@ -21,6 +25,8 @@ __all__ = [
     'ParserConfig',
     # Errors
     'ParseError',
+    'SubstitutionSyntaxError',
+    'is_substitution_origin',
 ]
 
 

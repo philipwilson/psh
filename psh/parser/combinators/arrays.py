@@ -15,6 +15,7 @@ from ..recursive_descent.parsers.arrays import (
     _NAME_START_RE,
     _unquoted_leading_literal,
 )
+from ..recursive_descent.support.syntax_templates import build_subscript_spec
 from ..recursive_descent.support.word_builder import WordBuilder
 from .core import ParseResult
 from .diagnostics import raise_committed_error
@@ -242,6 +243,7 @@ class ArrayParsers:
                 value=value_text,
                 is_append=is_append,
                 value_word=value_word,
+                index_spec=build_subscript_spec(subscript),
             ),
             position=pos,
         )

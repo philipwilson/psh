@@ -21,6 +21,7 @@ from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import Token, token_lexeme
 from ...recursive_descent.helpers import TokenGroups
+from ...recursive_descent.support.syntax_templates import build_arithmetic_template
 from ..core import ParseFailure, Parser, ParseResult, ParseSuccess, many
 from ..diagnostics import raise_committed_error
 
@@ -454,6 +455,12 @@ class LoopParserMixin(_Base):
                     update_expr=update_expr,
                     body=body_result.value,
                     redirects=redirects,
+                    init_template=(build_arithmetic_template(init_expr)
+                                   if init_expr else None),
+                    condition_template=(build_arithmetic_template(cond_expr)
+                                        if cond_expr else None),
+                    update_template=(build_arithmetic_template(update_expr)
+                                     if update_expr else None),
                 ),
                 position=pos
             )

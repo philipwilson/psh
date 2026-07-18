@@ -57,6 +57,18 @@ from .control import (
     WhileLoop,
 )
 from .redirects import Redirect
+
+# Syntax templates (campaign S3) — plain frozen carriers, NOT ASTNode
+# subclasses (so the AST coverage matrix / walk_ast schema, owned by S5, do not
+# enumerate them; they are carried BY nodes, not traversed as nodes). Imported
+# after .words because they reference Expansion/CommandSubstitution.
+from .syntax_templates import (
+    ArithmeticTemplate,
+    NestedSub,
+    SubscriptSpec,
+    SyntaxTemplate,
+    WordTemplate,
+)
 from .tests import (
     BinaryTestExpression,
     CompoundTestExpression,
@@ -119,6 +131,12 @@ __all__ = [
     'LiteralPart',
     'ExpansionPart',
     'Word',
+    # syntax templates (S3)
+    'SyntaxTemplate',
+    'WordTemplate',
+    'ArithmeticTemplate',
+    'SubscriptSpec',
+    'NestedSub',
     # arrays
     'ArrayAssignment',
     'ArrayInitialization',

@@ -19,6 +19,10 @@ if TYPE_CHECKING:
     from .arrays import ArrayInitialization  # noqa: F401
     from .commands import Program
 
+    # Syntax templates (campaign S3) import Expansion FROM this module, so they
+    # are string forward references here to avoid the cycle.
+    from .syntax_templates import ArithmeticTemplate, SubscriptSpec, WordTemplate  # noqa: F401
+
 # A name renderable as a bare ``$name``: a plain identifier, a single special
 # parameter ($?, $@, $*, $#, $$, $!, $-, $0), or a single positional digit.
 # Anything else (notably an array subscript like ``arr[@]``) needs ``${...}``.
@@ -89,6 +93,24 @@ class ParameterExpansion(Expansion):
     operator: Optional[str] = None  # :-, :=, :?, :+, #, ##, %, %%, /, // etc.
     word: Optional[str] = None  # The word part for operators like ${var:-word}
 
+    #: Typed operand carrier (campaign S3), set by the parser word builder for
+    #: an operator form built at parse time. ``word`` remains the raw operand
+    #: (the lazy pattern/word-grammar authority the operand expanders read);
+    #: ``word_template`` is the read-time-validation authority — its nested
+    #: modern ``$()``/``<()``/``>()`` were parsed and validated when the command
+    #: was read, so ``${x:-$(if)}`` rejects at read time like bash. None on the
+    #: runtime string-expansion path and for manually built nodes. Guard-
+    #: consistent: ``word_template.text == word`` (test_syntax_template_guards).
+    word_template: Optional['WordTemplate'] = field(
+        default=None, compare=False, repr=False)
+
+    #: Typed subscript carrier for a subscripted parameter (``${arr[SUB]}``),
+    #: where SUB lives in ``parameter``. Validates a nested ``$()`` in the
+    #: subscript at read time (``${a[$(if)]}``). None when the parameter has no
+    #: subscript. Guard-consistent with the subscript slice of ``parameter``.
+    subscript_spec: Optional['SubscriptSpec'] = field(
+        default=None, compare=False, repr=False)
+
     def __str__(self):
         # Prefix-names ${!prefix@}/${!prefix*}: the bang is a PREFIX and the
         # @/* a SUFFIX around the name. The operator string stores them
@@ -120,6 +142,15 @@ class VariableExpansion(Expansion):
     #: corpora and node-equality tests stay byte-identical.
     braced: bool = field(default=False, compare=False, repr=False)
 
+    #: Typed subscript carrier (campaign S3) for a subscripted reference
+    #: (``${arr[SUB]}``, which the word builder keeps as a braced
+    #: VariableExpansion with SUB inside ``name``). Read-time validates a nested
+    #: ``$()`` in the subscript (``${a[$(if)]}``). None for a plain name.
+    #: Excluded from eq/repr like ``braced``. Guard-consistent with the
+    #: subscript slice of ``name``.
+    subscript_spec: Optional['SubscriptSpec'] = field(
+        default=None, compare=False, repr=False)
+
     def __str__(self):
         # A subscripted reference (``arr[@]``, ``arr[0]``) or any name with
         # non-identifier characters must render as ``${name}`` — a bare
@@ -134,6 +165,14 @@ class VariableExpansion(Expansion):
 class ArithmeticExpansion(Expansion):
     """Represents arithmetic expansion $((...))."""
     expression: str  # The arithmetic expression
+
+    #: Typed carrier (campaign S3), set by the parser word builder. ``expression``
+    #: stays the raw text (the LAZY arithmetic-grammar authority — the arithmetic
+    #: is parsed only at evaluation, so ``op='+'; $((1 $op 2))`` works);
+    #: ``arith_template`` carries the read-time-validated nested ``$()``. None on
+    #: the runtime path / manual nodes. Guard: ``arith_template.text == expression``.
+    arith_template: Optional['ArithmeticTemplate'] = field(
+        default=None, compare=False, repr=False)
 
     def __str__(self):
         return f"$(({self.expression}))"

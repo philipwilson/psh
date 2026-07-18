@@ -7,7 +7,6 @@ arithmetic, process substitution) and Word AST node construction.
 from typing import Optional
 
 from ...ast_nodes import (
-    ArithmeticExpansion,
     ExpansionPart,
     LiteralPart,
     Word,
@@ -16,7 +15,6 @@ from ...lexer.token_types import Token
 from ..config import ParserConfig
 from ..recursive_descent.support.word_builder import (
     WordBuilder,
-    strip_arithmetic,
 )
 from .core import Parser, token
 
@@ -86,8 +84,10 @@ class ExpansionParsers:
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name == 'ARITH_EXPANSION':
-            # Arithmetic expansion $((...))
-            expansion = ArithmeticExpansion(strip_arithmetic(token.value))
+            # Arithmetic expansion $((...)) — delegate to WordBuilder so both
+            # parsers attach the same S3 template (read-time validates nested
+            # $(); arithmetic grammar stays lazy).
+            expansion = WordBuilder._build_arith_expansion(token.value)
             return Word(parts=[ExpansionPart(expansion, quoted=is_quoted, quote_char=qt)])
 
         elif token.type.name in ('PROCESS_SUB_IN', 'PROCESS_SUB_OUT'):

@@ -14,15 +14,19 @@ surfaced mid-stream with the wrong exit status. This module pins bash's timing.
 Two groups:
 
 * ERROR-TIMING  — invalid modern substitutions must reject at parse time
-  (nothing executes; exit status is bash's). These are ``xfail(strict)`` until
-  the AST/parser change lands; flipping to XPASS is the signal to drop the mark.
+  (nothing executes; exit status is bash's). Campaign S3 extended this to the
+  syntax-bearing regions whose own grammar stays lazy — parameter-expansion
+  operands, arithmetic templates, and array subscripts — which previously
+  routed through the raw-string engines and were documented divergences.
 * BEHAVIOR LOCKS — valid substitutions, alias timing, legacy-backtick
   continue-around-errors, heredoc bodies, byte content, deep nesting, and
   incomplete-input handling must stay identical to bash / to psh-today.
 
-Documented divergences that are intentionally OUT of scope for this campaign
-(they route through the raw-string expansion engine, not the Word AST) are
-pinned separately at the bottom so the boundary is explicit.
+The exit-CODE divergence (bash 127 vs psh's uniform 2 in string channels) and
+the heredoc-body case remain documented divergences at the bottom (the 127
+mapping is I3's job; the S3 timing match holds regardless). The broader S3
+timing matrix (quoting × channel × dead-branch × backtick-vs-$()) lives in
+``test_syntax_template_timing_conformance.py``.
 
 All cases drive full-buffer execution through subprocesses so psh and bash are
 directly comparable (see CLAUDE.md bash-verification workflow).
@@ -84,7 +88,7 @@ def _run_file(argv_prefix, script, env=None):
 
 # ==========================================================================
 # ERROR-TIMING: invalid modern substitution rejects the whole buffer.
-# xfail(strict) until the parse-time-validation change lands.
+# (Was xfail(strict) before the nested-program + S3 template work landed.)
 # ==========================================================================
 
 # Each entry is (id, command-run-via -c). In every case bash rejects the whole
@@ -118,6 +122,33 @@ _ERROR_TIMING_C = [
     ("alias_injected_syntax",
      "shopt -s expand_aliases; alias beg='for i in 1 2; do'; "
      "echo $(beg echo hi; done); echo after"),
+    # Campaign S3: the nested-shell-grammar check now also covers the syntax-
+    # bearing regions whose OWN grammar stays lazy — parameter-expansion
+    # operands, arithmetic templates ($(( )), (( )), C-style for clauses), and
+    # array subscripts. These were documented divergences until S3 (they routed
+    # through the raw-string operand/arith/subscript engines); they now reject
+    # at read time like bash. (Backticks and single-quoted bodies stay lazy —
+    # pinned separately in test_syntax_template_timing_conformance.py.)
+    ("operand_default", "echo before; x=set; echo ${x:-$(if)}; echo after"),
+    ("operand_default_unset", "echo before; unset x; echo ${x:-$(if)}; echo after"),
+    ("operand_assign", "echo before; unset x; echo ${x:=$(if)}; echo after"),
+    ("operand_altern", "echo before; x=y; echo ${x:+$(if)}; echo after"),
+    ("operand_error_op", "echo before; x=y; echo ${x:?$(if)}; echo after"),
+    ("operand_prefix_removal", "echo before; x=abc; echo ${x#$(if)}; echo after"),
+    ("operand_suffix_removal", "echo before; x=abc; echo ${x%$(if)}; echo after"),
+    ("operand_substitute", "echo before; x=abc; echo ${x/$(if)/z}; echo after"),
+    ("operand_dquoted", "echo before; x=set; echo ${x:-\"$(if)\"}; echo after"),
+    ("operand_nested", "echo before; x=set; echo ${x:-${y:-$(if)}}; echo after"),
+    ("operand_procsub", "echo before; x=set; echo ${x:-<(if)}; echo after"),
+    ("arith_expansion", "echo before; echo $(( $(if) + 1 )); echo after"),
+    ("arith_command", "echo before; (( $(if) )); echo after"),
+    ("arith_param_in_arith", "echo before; echo $(( ${x:-$(if)} )); echo after"),
+    ("cstyle_for_init", "echo before; for ((i=$(if); i<2; i++)); do echo x; done; echo after"),
+    ("cstyle_for_cond", "echo before; for ((i=0; $(if); i++)); do echo x; done; echo after"),
+    ("cstyle_for_update", "echo before; for ((i=0; i<2; i=$(if))); do echo x; done; echo after"),
+    ("subscript_ref", "echo before; a=(1 2 3); echo ${a[$(if)]}; echo after"),
+    ("subscript_assign", "echo before; a[$(if)]=v; echo after"),
+    ("subscript_arith_lvalue", "echo before; (( a[$(if)] = 1 )); echo after"),
 ]
 
 
@@ -320,16 +351,26 @@ def test_over_deep_cmdsub_nesting_is_clean_error():
 # ==========================================================================
 
 @pytest.mark.skipif(BASH is None, reason="bash not available")
-def test_divergence_c_mode_exit_code_is_127_in_bash():
-    """A cmdsub-body syntax error in ``bash -c`` exits 127 (a quirk of bash's
-    -c handling); the same error in stdin/file mode, and psh in every mode,
-    exits 2. psh uses its uniform syntax-error code 2. The FIX (nothing
-    executes) holds regardless; only the exact code differs."""
-    b = _bash_c("echo $(if)")
-    p = _psh_c("echo $(if)")
-    assert b.returncode == 127                 # bash -c quirk
-    assert p.returncode == 2                    # psh: uniform syntax-error code
-    assert b.stdout == p.stdout == ""           # neither executes anything
+@pytest.mark.parametrize("cmd", [
+    "echo $(if)",                       # top-level command sub
+    "cat <(if)",                        # process sub
+    "x=set; echo ${x:-$(if)}",          # S3: parameter-expansion operand
+    "echo $(( $(if) + 1 ))",            # S3: arithmetic template
+    "a=(1 2); echo ${a[$(if)]}",        # S3: array subscript
+    "a[$(if)]=v",                       # S3: element-assignment subscript
+])
+def test_divergence_c_mode_exit_code_is_127_in_bash(cmd):
+    """A substitution-body syntax error in ``bash -c`` exits 127 (a quirk of
+    bash's string-execution channels: -c/eval/source; stdin/file exit 2). psh
+    uses its uniform syntax-error code 2 in every channel. The TIMING match
+    (nothing executes, whole buffer rejected at read time) holds across the
+    whole S3 family; only the exact code differs, and that 127/frame-abort
+    mapping is the I3 consumer of S3's typed SubstitutionSyntaxError."""
+    b = _bash_c(cmd)
+    p = _psh_c(cmd)
+    assert b.returncode == 127                  # bash -c quirk (all substitutions)
+    assert p.returncode == 2                     # psh: uniform syntax-error code
+    assert b.stdout == p.stdout == ""            # neither executes anything
 
 
 # ==========================================================================
@@ -382,32 +423,37 @@ def test_extglob_cmdsub_body_syntax_error_still_rejects():
 
 
 @pytest.mark.skipif(BASH is None, reason="bash not available")
-def test_divergence_param_expansion_word_cmdsub_stays_runtime():
-    """`${x:-$(if)}`: the ``$(if)`` lives inside the parameter-expansion default
-    WORD, which param_parser stores as a raw string and the operand engine
-    expands at runtime (not a Word-AST CommandSubstitution node). bash rejects
-    it at read time; psh validates it only when the default is expanded. Fixing
-    this needs the parameter-operand structured-parse work (expansion-subsystem
-    Phase 3), out of scope for the Word-AST change here."""
+def test_param_expansion_word_cmdsub_now_rejects_at_read_time():
+    """CLOSED S3 divergence: `${x:-$(if)}` now rejects at read time like bash.
+
+    The ``$(if)`` lives inside the parameter-expansion default WORD. Until S3,
+    param_parser stored it as a raw string and the operand engine expanded it at
+    runtime, so psh continued past it. S3's WordTemplate validates the nested
+    modern substitution when the command is READ, so the whole buffer is
+    rejected before anything runs — matching bash. (rc differs: bash 127 in -c,
+    psh's uniform 2 — see the 127 family pin above.)"""
     cmd = "echo before; echo ${x:-$(if)}; echo after"
     b = _bash_c(cmd)
     p = _psh_c(cmd)
-    assert b.returncode != 0 and b.stdout == ""   # bash rejects whole buffer
-    assert "before" in p.stdout                    # psh continues (runtime)
+    assert b.returncode != 0 and b.stdout == ""     # bash rejects whole buffer
+    assert p.returncode != 0 and p.stdout == ""     # psh now rejects it too
+    assert "before" not in p.stdout and "after" not in p.stdout
 
 
 @pytest.mark.skipif(BASH is None, reason="bash not available")
-def test_divergence_arith_embedded_cmdsub_stays_runtime():
-    """`$(( $(if) ))`: the inner $() is embedded in a single ARITH_EXPANSION
-    token, invisible to the Word builder, so its syntax is validated only when
-    the arithmetic operand is expanded. bash rejects it at read time. This is a
-    known, documented divergence owned by the arithmetic/operand engine."""
+def test_arith_embedded_cmdsub_now_rejects_at_read_time():
+    """CLOSED S3 divergence: `$(( $(if) ))` now rejects at read time like bash.
+
+    The inner $() sits inside an ARITH_EXPANSION token. S3's ArithmeticTemplate
+    validates nested modern substitutions in the arithmetic region at read time
+    (the arithmetic grammar itself stays lazy), so the buffer is rejected before
+    anything runs — matching bash."""
     cmd = "echo before; echo $(( $(if) )); echo after"
     b = _bash_c(cmd)
     p = _psh_c(cmd)
     assert b.returncode != 0 and b.stdout == ""     # bash rejects whole buffer
-    # psh continues (runtime): "before" runs. Pin that this stays the boundary.
-    assert "before" in p.stdout
+    assert p.returncode != 0 and p.stdout == ""     # psh now rejects it too
+    assert "before" not in p.stdout
 
 
 @pytest.mark.skipif(BASH is None, reason="bash not available")
