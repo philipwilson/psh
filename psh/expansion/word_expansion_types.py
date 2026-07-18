@@ -1,4 +1,4 @@
-"""Data model for Word expansion: the policy table and walk IR.
+"""Data model for Word expansion: the policy table and the field IR.
 
 These are the value types the Word-expansion engine (``word_expander.py``)
 operates on, separated from the engine itself:
@@ -7,13 +7,19 @@ operates on, separated from the engine itself:
   expansion context permits (the three axes ``split``/``glob``/
   ``assignment_tilde``). Callers across the codebase import the named
   policies to say what context they are expanding in.
-- :class:`ExpandedSegment` and :class:`_WalkState` are the intermediate
-  representation a single composite/unquoted word walk accumulates.
+- :class:`FieldRun`, :class:`ExpandedField` and :class:`ExpandedWord` are the
+  field IR the engine builds: a word expands to zero-or-more explicit
+  ``ExpandedField`` values, each an ordered sequence of homogeneous-protection
+  :class:`FieldRun`s. This representation keeps shell field boundaries,
+  per-character glob protection, and split eligibility ALIVE through field
+  splitting and pathname generation, instead of flattening to a
+  ``str``/``list[str]`` before those passes run (reappraisal #20 H5/H6).
 
 This module is pure data (no shell or AST dependencies); keep it that way.
 """
+import enum
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
 
 @dataclass(frozen=True)
@@ -98,69 +104,98 @@ CASE_SUBJECT = WordExpansionPolicy(
     split=False, glob=False, assignment_tilde=False)
 
 
-@dataclass
-class ExpandedSegment:
-    """One contiguous piece of an expanded composite/unquoted word.
+class Protection(enum.Enum):
+    """Whether glob metacharacters in a :class:`FieldRun` act or stay literal.
 
-    The segment list is the explicit intermediate representation that
-    replaced the old parallel arrays (``result_parts`` +
-    ``splittable_idx``) plus the scattered word-level flags. Each part
-    walker appends one (or, for affixed ``$@``, the walker short-circuits)
-    segment; :meth:`WordExpander._finish` then reads the list in visibly
-    separate passes (field-split → glob → join).
+    ``ACTIVE`` runs come from unquoted, unescaped text (an unquoted literal or
+    an unquoted expansion result); their ``*``/``?``/``[`` act as pathname
+    patterns. ``PROTECTED`` runs come from quoted or backslash-escaped text;
+    their metacharacters are literal. Runs are homogeneous by protection, so a
+    mixed word such as ``a\\*b*`` keeps the escaped ``*`` PROTECTED while the
+    trailing ``*`` stays ACTIVE — the fix for #20 H6 (word-wide protection).
+    """
+    ACTIVE = enum.auto()
+    PROTECTED = enum.auto()
 
-    Attributes:
-        text: the expanded text of this segment, in word order.
-        quoted: True when the segment came from quoted context (a quoted
-            literal or a quoted expansion result). Drives the
-            "all parts quoted" decision for extglob detection — quoted
-            text never contributes globbing.
-        splittable: True only for the text of an UNQUOTED expansion
-            result — the sole text POSIX field-splitting may break apart
-            (literal/quoted text merges with neighbors but never splits).
-        glob_eligible: True when this segment contributes UNescaped glob
-            metacharacters from unquoted context (an unquoted literal
-            whose globs were all escaped is NOT eligible; quoted text is
-            never eligible). Drives the globbing pass.
+
+class Split(enum.Enum):
+    """Whether a :class:`FieldRun` may be broken on IFS.
+
+    ``IFS_ELIGIBLE`` marks the text of an UNQUOTED expansion result — the sole
+    text POSIX field splitting may break apart. ``NEVER`` marks literal and
+    quoted text, which merges with neighbours into one field but is never split
+    (``pre\\ post$x`` keeps ``pre post`` whole even with IFS spaces).
+    """
+    NEVER = enum.auto()
+    IFS_ELIGIBLE = enum.auto()
+
+
+@dataclass(slots=True)
+class FieldRun:
+    """One homogeneous-protection run of expanded text within a field.
+
+    A run carries the two facts every later pass needs kept per-character:
+    :class:`Protection` (does globbing treat this run's metacharacters as
+    patterns) and :class:`Split` (may IFS splitting break this run). ``origin``
+    is a provenance tag for debugging and guards only — never a decision input.
+
+    Runs are the atoms the field-splicing algebra moves: field splitting slices
+    ``IFS_ELIGIBLE`` runs and edge-joins ``NEVER`` runs; pathname generation
+    passes ``ACTIVE`` run text into the glob pattern raw and bracket-escapes
+    ``PROTECTED`` metacharacters. Runs are created, never mutated in place (the
+    algebra allocates fresh runs for split pieces), so they are a plain
+    ``slots`` dataclass — this is the hottest allocation in the shell and a
+    frozen dataclass triples construction cost.
     """
     text: str
-    quoted: bool
-    splittable: bool = False
-    glob_eligible: bool = False
-
-
-@dataclass
-class _WalkState:
-    """Mutable accumulator for one composite/unquoted word walk."""
-    #: The expanded segments, in word order; turned into the final
-    #: result by _finish() over explicit passes.
-    segments: List[ExpandedSegment] = field(default_factory=list)
-    #: True once any expansion (quoted or not) has been seen — gates the
-    #: leading-tilde rule (tilde expands only on the very first part,
-    #: before any expansion). Walk-time only; not used by _finish().
-    has_expansion: bool = False
-    # --- assignment-shaped word (NAME=...) value-tilde tracking ---
-    #: The unquoted ``NAME=``/``NAME+=`` prefix, or None when the word is
-    #: not assignment-shaped (or the policy disables assignment_tilde).
-    assign_prefix: Optional[str] = None
-    assign_seen: int = 0    # chars of assign_prefix consumed so far
-    value_len: int = 0      # value chars emitted before the current part
-    prev_char: str = ''     # last unquoted-literal char ('' after others)
-
-    # -- derived word-level views over the segment list (no separate
-    #    bookkeeping: each is computed from the segments on demand) --
+    protection: Protection
+    split: Split
+    origin: str = 'literal'
 
     @property
-    def has_unquoted_expansion(self) -> bool:
-        """Any unquoted-expansion text present (the only splittable text)."""
-        return any(s.splittable for s in self.segments)
+    def is_protected(self) -> bool:
+        return self.protection is Protection.PROTECTED
 
     @property
-    def has_unquoted_glob(self) -> bool:
-        """Any segment contributes unescaped unquoted glob metacharacters."""
-        return any(s.glob_eligible for s in self.segments)
+    def is_splittable(self) -> bool:
+        return self.split is Split.IFS_ELIGIBLE
+
+
+@dataclass(slots=True)
+class ExpandedField:
+    """One field of an expanded word: an ordered sequence of protection runs.
+
+    An empty ``runs`` list is one explicit empty field (e.g. ``"$x"`` with
+    ``x`` unset — one empty argument). Whether a word elides entirely versus
+    contributes one empty field is a property of :class:`ExpandedWord`, not of
+    this type.
+    """
+    runs: List[FieldRun] = field(default_factory=list)
 
     @property
-    def all_parts_quoted(self) -> bool:
-        """No unquoted segment was emitted (gates extglob detection)."""
-        return all(s.quoted for s in self.segments)
+    def text(self) -> str:
+        """The field's characters (quote removal already happened per run)."""
+        return ''.join(r.text for r in self.runs)
+
+    def add(self, run: FieldRun) -> None:
+        self.runs.append(run)
+
+
+@dataclass(slots=True)
+class ExpandedWord:
+    """The result of expanding one Word: zero or more explicit fields.
+
+    An empty ``fields`` list means the word elided entirely — an unquoted
+    expansion that produced no characters (``$unset`` alone). A single field
+    with empty runs is one explicit empty field. Materialization
+    (``WordExpander.materialize``) is the sole terminal boundary that turns
+    this back into ``argv`` strings, after field splitting and globbing.
+
+    ``has_active_glob`` is a producer-set fast-path hint: True when some ACTIVE
+    run carries a plain glob metacharacter, so materialization can skip its
+    per-field pathname check entirely when it is False (the common case). It is
+    only a hint — a False value never suppresses correct globbing because no
+    field can glob when no run is active-with-a-metacharacter.
+    """
+    fields: List[ExpandedField] = field(default_factory=list)
+    has_active_glob: bool = False

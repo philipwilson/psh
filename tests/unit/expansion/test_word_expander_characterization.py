@@ -1,9 +1,10 @@
-"""Characterization harness for WordExpander.expand() — the word-expansion engine.
+"""Characterization harness for the word-expansion engine.
 
-This is a SAFETY NET, not a behavior spec. It freezes the EXACT output of
-``WordExpander.expand(word, policy)`` across a large corpus, so a
-zero-behavior-change refactor of the engine (segment-IR / explicit passes,
-assessment recommendation B5) can be proven non-regressing.
+This is a SAFETY NET, not a behavior spec. It freezes the EXACT observable
+output of the field engine (``WordExpander.expand_to_word(word, policy)``
+materialized through ``WordExpander.materialize`` — collapsed to the
+historical one-field-is-a-scalar shape by the ``_expand`` helper) across a
+large corpus, so an engine refactor can be proven non-regressing.
 
 Each case:
   * parses a real shell fragment so the Word AST is realistic
@@ -55,7 +56,17 @@ def _word(src: str, idx: int = 1):
 
 
 def _expand(shell, src, policy, idx=1):
-    return shell.expansion_manager.word_expander.expand(_word(src, idx), policy)
+    """Materialize a word to its observable argv shape.
+
+    The engine now returns an ``ExpandedWord`` (``expand_to_word``) that
+    ``materialize`` turns into ``List[str]`` fields; this helper collapses that
+    to the historical observable shape these characterization cases pin — one
+    field is the scalar string, zero or many fields is a list — so the
+    behavioral assertions stay meaningful across the field-IR refactor.
+    """
+    we = shell.expansion_manager.word_expander
+    fields = we.materialize(we.expand_to_word(_word(src, idx), policy), policy)
+    return fields[0] if len(fields) == 1 else fields
 
 
 # --------------------------------------------------------------------------

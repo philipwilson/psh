@@ -21,7 +21,7 @@ Input Arguments → ExpansionManager → Expanded Arguments
 |------|---------|
 | `manager.py` | `ExpansionManager` - orchestrator: owns the sub-expanders, declaration-builtin recognition, public entry points |
 | `word_expander.py` | `WordExpander` - THE Word expansion engine (part walkers, IFS split, glob, escapes) |
-| `word_expansion_types.py` | The expansion data model: `WordExpansionPolicy` + named policy instances (`COMMAND_ARGUMENT`, `LOOP_ITEM`, ...), `ExpandedSegment`, `_WalkState` |
+| `word_expansion_types.py` | The expansion data model: `WordExpansionPolicy` + named policy instances (`COMMAND_ARGUMENT`, `LOOP_ITEM`, ...), and the field IR `FieldRun` (`Protection`/`Split`), `ExpandedField`, `ExpandedWord` |
 | `evaluator.py` | `ExpansionEvaluator` - evaluates expansion AST nodes |
 | `param_parser.py` | THE `${...}` content parser (`parse_parameter_expansion()`) — the single grammar shared by WordBuilder (parse time) and `expand_variable` (string contexts); module docstring is the grammar reference |
 | `variable.py` | `VariableExpander` - dispatch, special variables, `${!name}` indirection |
@@ -67,29 +67,36 @@ class ExpansionManager:
 
     def expand_arguments(self, command: SimpleCommand) -> List[str]:
         """Expand all arguments using Word AST nodes."""
-        # picks COMMAND_ARGUMENT or DECLARATION_ASSIGNMENT per word,
-        # then word_expander.expand(word, policy)
+        # picks COMMAND_ARGUMENT or DECLARATION_ASSIGNMENT per word, then
+        # word_expander.expand_to_word(word, policy) + .materialize(...)
 ```
 
 ### 2. Word AST Expansion (Primary Path)
 
 Arguments are expanded using Word AST nodes. Each `Word` contains
-`LiteralPart` and `ExpansionPart` nodes with per-part quote context.
-`WordExpander.expand(word, policy)` (in `word_expander.py`) walks the
-parts and applies expansions based on each part's `quoted` and
-`quote_char` fields; the `WordExpansionPolicy` names what the context
-permits (axes: `split`, `glob`, `assignment_tilde` — named instances
-`COMMAND_ARGUMENT`, `LOOP_ITEM`, `DECLARATION_ASSIGNMENT`,
-`ARRAY_INIT_ELEMENT`, `ASSOC_INIT_ELEMENT`):
+`LiteralPart` and `ExpansionPart` nodes with per-part quote context. The field
+engine is two methods in `word_expander.py`:
 
-```python
-def expand(self, word: Word, policy: WordExpansionPolicy) -> Union[str, List[str]]:
-    # Single-quoted: return literal
-    # Double-quoted: expand vars/commands, no splitting/globbing
-    # ANSI-C ($'...'): return literal (lexer already processed escapes)
-    # Composite/unquoted: _walk_literal_part/_walk_expansion_part per
-    # part on a _WalkState, then _finish() splits and globs per policy
-```
+- `WordExpander.expand_to_word(word, policy)` walks the parts (per-part `quoted`
+  / `quote_char`) and builds an `ExpandedWord` — zero or more explicit
+  `ExpandedField`s, each an ordered run of homogeneous-protection `FieldRun`s.
+  A multi-field `$@`/`[@]` SPLICES through the same algebra (no shortcut): the
+  first field attaches to the open field, the middle fields commit, the last
+  becomes the new open field, so `"$@"$x` lands the fragment in the right field
+  and still splits (`#20 H5`). Field splitting runs here for split policies.
+- `WordExpander.materialize(expanded_word, policy)` is the SOLE terminal
+  boundary that turns the field IR back into `argv` strings: it pathname-expands
+  a field only when an ACTIVE run carries a live glob/extglob metacharacter,
+  compiling the pattern from the runs so a PROTECTED (quoted/escaped)
+  metacharacter stays literal beside an active one (`#20 H6`), else joins.
+
+The `WordExpansionPolicy` names what the context permits (axes: `split`, `glob`,
+`assignment_tilde` — named instances `COMMAND_ARGUMENT`, `LOOP_ITEM`,
+`DECLARATION_ASSIGNMENT`, `ARRAY_INIT_ELEMENT`, `ASSOC_INIT_ELEMENT`,
+`CASE_SUBJECT`). The three funnels in `manager.py` (`expand_arguments`,
+`expand_word_to_fields`, `expand_word_as_subject`) are the only callers of the
+pair — the grep-verified chokepoint guarded by
+`tests/unit/expansion/test_field_ir_guards.py`.
 
 Key behaviors controlled by Word AST structure:
 - **Glob suppression**: Quoted `LiteralPart`/`ExpansionPart` nodes suppress globbing
@@ -227,22 +234,22 @@ Different quote types affect expansion:
 | `'single'` | No                | No          | No   | No         |
 | `$'ansi'`  | Escape sequences  | No          | No   | No         |
 
-### Array and $@ Expansion in Quotes
+### Array and $@ Expansion (the field-splicing algebra)
 
-Multi-field expansions inside quotes go through two helpers in
-`word_expander.py`:
+Multi-field expansions (`$@`, `${arr[@]}`, parameter ops applied to them),
+quoted OR unquoted, route through ONE algebra in `word_expander.py`:
 
 - `_field_expansion_fields(part)` returns the list of fields a part expands
   to (`"$@"`, `"${arr[@]}"`, and parameter ops applied to them — the latter
   via `FieldExpansionMixin.expand_to_fields()` in `fields.py`), or `None`
-  for ordinary single-field parts.
-- `_expand_at_with_affixes(...)` splices those fields into the word,
-  distributing prefix/suffix text onto the first/last field:
-
-```python
-# "x$@y" with params (a, b) → ["xa", "by"]
-# "$@" with no params → nothing
-```
+  for ordinary single-field parts (including `$*`/`${a[*]}`, which are scalar).
+- `_FieldBuilder.splice(fields)` distributes those fields with the splicing
+  algebra: the first field attaches to the open field, the middle fields commit
+  as their own fields, and the last field becomes the new open field — so an
+  affix or an adjacent unquoted fragment continues the right field (`"x$@y"`
+  with `(a, b)` → `xa`, `by`; empty `$@` between affixes → one field). There is
+  no `$@` shortcut: no walker returns `str | list[str]` and no join happens
+  before field splitting and pathname generation (`#20 H5`).
 
 ### Pattern and Replacement Operand Expansion
 
@@ -304,26 +311,26 @@ forms are dispatched separately (name listing / array keys).
 subscripts as full arithmetic expressions (`${arr[i+1]}`), so subscript
 errors surface as arithmetic errors.
 
-### IFS Word Splitting
+### IFS Word Splitting and per-character protection
 
-```python
-def _split_with_ifs(self, text: Optional[str]) -> List[str]:
-    # Only ever called on already-unquoted field text; quoted segments are
-    # kept intact by the segment walk before they reach here.
-    if text is None:
-        return []
-    ifs = self.state.get_variable('IFS', ' \t\n')
-    return self.word_splitter.split(text, ifs)
-```
+The field IR carries two facts per run through splitting and globbing:
+`FieldRun.protection` (`ACTIVE`/`PROTECTED`) and `FieldRun.split`
+(`NEVER`/`IFS_ELIGIBLE`). `WordExpander._field_split` splits each committed
+field (a `$@` boundary) independently: only `IFS_ELIGIBLE` runs (unquoted
+expansion text) produce field boundaries, `NEVER` runs edge-join, and an
+all-eligible field that splits to nothing elides (`$unset` alone → zero fields).
+It uses `WordSplitter.split_with_edges()` so leading/trailing IFS is reported
+and quoted text joins correctly onto adjacent fields (`a"$x"b`). Split pieces
+inherit the run's protection, so materialization still sees it.
 
-Splitting a composite word is segment-aware. The walk builds a list of
-`ExpandedSegment`s (`text`, `quoted`, `splittable`, `glob_eligible`); the
-field-splitting pass `_field_split_pass(segments)` in `word_expander.py`
-splits ONLY the segments that came from unquoted expansions
-(`segment.splittable`), using `WordSplitter.split_with_edges()` (which also
-reports whether the text had leading/trailing IFS) so quoted text joins
-correctly onto adjacent fields (`a"$x"b`). `_finish()` runs three explicit
-passes over the segment list: field-split → glob (`_glob_pass`) → join.
+Pathname generation is per-character: `WordExpander._pattern_from_runs` compiles
+one pattern from a field's runs, passing ACTIVE run text raw and bracket-escaping
+PROTECTED metacharacters (`[*]`, `[?]`, `[[]`, `[(]`, `[]]`) so a quoted/escaped
+`*` cannot glob beside an active one (`"*"*` → `[*]*`; `#20 H6`). The engine
+treats backslash as a literal character (see `glob.py#_compile_component`), so
+bracket-escaping — not backslash — is the portable literal-metacharacter form.
+`_unquoted_literal_runs` splits an unquoted literal into protection runs during
+escape processing (`a\*b*` → ACTIVE `a`, PROTECTED `*`, ACTIVE `b*`).
 
 ### Command Substitution
 
