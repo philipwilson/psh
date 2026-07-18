@@ -10,7 +10,7 @@ The CommandParsers class inherits from four mixin classes:
 - StatementMixin: statements and the recursion-based statement-list engine
 """
 
-from typing import Mapping, Optional
+from typing import TYPE_CHECKING, Mapping, Optional
 
 from ....ast_nodes import SimpleCommand
 from ....lexer.token_types import Token
@@ -23,6 +23,9 @@ from .pipelines import PipelineMixin
 from .redirections import RedirectionMixin
 from .simple import SimpleCommandMixin
 from .statements import StatementMixin
+
+if TYPE_CHECKING:
+    from ....lexer.heredoc_lexer import LexedHeredoc
 
 __all__ = [
     'CommandParsers',
@@ -57,7 +60,7 @@ class CommandParsers(RedirectionMixin, SimpleCommandMixin, PipelineMixin, Statem
         # before parsing; the redirection mixin reads it so each heredoc
         # Redirect is built with its spec truth and body AT CONSTRUCTION
         # (the post-parse HeredocProcessor attachment walk is retired).
-        self.heredocs: Optional[Mapping[int, object]] = None
+        self.heredocs: "Optional[Mapping[int, 'LexedHeredoc']]" = None
 
         self._initialize_parsers()
 

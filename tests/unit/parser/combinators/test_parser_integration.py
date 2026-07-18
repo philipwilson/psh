@@ -400,9 +400,9 @@ class TestParserIntegration:
         parser = create_parser_combinator_shell_parser()
         assert isinstance(parser, ParserCombinatorShellParser)
 
-        # With config and heredocs
+        # With config and an (id-keyed) collected-heredoc map
         config = ParserConfig()
-        heredocs = {'key': 'value'}
+        heredocs = {0: object()}
         parser = create_parser_combinator_shell_parser(config, heredocs)
         assert parser.config == config
-        assert parser.heredoc_contents == heredocs
+        assert parser.heredocs == heredocs

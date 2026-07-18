@@ -5,10 +5,13 @@ state into a single object: the token stream and position, the parser
 configuration, and source text for error messages.
 """
 from dataclasses import dataclass, field
-from typing import List, Mapping, Optional
+from typing import TYPE_CHECKING, List, Mapping, Optional
 
 from ...lexer.position import SourceMap
 from ...lexer.token_types import Token, TokenType
+
+if TYPE_CHECKING:
+    from ...lexer.heredoc_lexer import LexedHeredoc
 from ..config import ParserConfig
 from .helpers import (
     ErrorContext,
@@ -41,7 +44,7 @@ class ParserContext:
     # attaches them to the ``Redirect`` node AS IT IS CONSTRUCTED (no second
     # AST walk); a heredoc redirect whose id is missing from the map is a
     # hard error.
-    heredocs: Optional[Mapping[int, object]] = None
+    heredocs: Optional[Mapping[int, 'LexedHeredoc']] = None
 
     # Lexer options (the shell option dict, e.g. ``{'extglob': True, ...}``) in
     # effect for this parse. A plain data dict, NOT a Shell reference. Used only

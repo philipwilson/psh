@@ -5,7 +5,7 @@ This module handles preprocessing of shell input before tokenization,
 including line continuation processing according to POSIX specification.
 """
 
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 
 def process_line_continuations(text: str,

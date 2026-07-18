@@ -138,6 +138,7 @@ class RedirectionParser(ParserSubcomponent):
         # recover the raw spelling from the source span when available —
         # token values drop a VARIABLE's `$` and a STRING's quotes — and
         # derive quotedness through the one rule.
+        from ....lexer.heredoc_lexer import raw_delimiter_from_tokens
         from ....utils.heredoc_detection import unquote_heredoc_delimiter
         source_text = self.parser.ctx.source_text
         start = delim_tokens[0].position
@@ -145,7 +146,7 @@ class RedirectionParser(ParserSubcomponent):
         if source_text is not None and 0 <= start <= end <= len(source_text):
             raw = source_text[start:end]
         else:
-            raw = ''.join(part.value for part in delim_tokens)
+            raw = raw_delimiter_from_tokens(delim_tokens)
         _, heredoc_quoted = unquote_heredoc_delimiter(raw)
         return Redirect(
             type=token.value,

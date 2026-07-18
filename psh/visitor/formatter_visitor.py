@@ -676,12 +676,18 @@ class FormatterVisitor(ASTVisitor[str]):
         the line-completing site emits them via ``_flush_line`` — this is the
         single seam every heredoc-bearing construct funnels through (J2).
         """
+        from ..utils.heredoc_detection import unquote_heredoc_delimiter
         for r in redirects:
             if r.type in ('<<', '<<-') and r.heredoc_content is not None:
                 body = r.heredoc_content
                 if body and not body.endswith('\n'):
                     body += '\n'
-                self._pending_heredocs.append(body + (r.target or ''))
+                # The terminator LINE is the cooked (quote-removed) delimiter
+                # — target holds the RAW spelling (`'EOF'`, `$'EOF'`), and a
+                # raw terminator line would not terminate the re-parsed
+                # document. Derived through the one quote-removal rule.
+                cooked, _ = unquote_heredoc_delimiter(r.target or '')
+                self._pending_heredocs.append(body + cooked)
 
     def _flush_line(self, line: str) -> str:
         """Append (and clear) any queued heredoc bodies after ``line``.
@@ -729,13 +735,14 @@ class FormatterVisitor(ASTVisitor[str]):
         else:
             op = node.type
 
-        # Here document: keep the delimiter's quoting so re-parsing keeps the
-        # same expansion behavior (`<<'EOF'` must not become `<<EOF`).
+        # Here document: emit the RAW delimiter spelling verbatim (campaign
+        # S2 — `Redirect.target` carries the exact source word). `<<$X`
+        # round-trips as `<<$X` (not the cooked `<<X`), and a quoted
+        # spelling (`<<'EOF'`, `<<$'EOF'`) keeps its own quotes — no
+        # re-quoting approximation, so re-parsing preserves both the
+        # terminator and the expansion-suppression fact.
         if node.type in ('<<', '<<-'):
-            delim = node.target or ''
-            if node.heredoc_quoted:
-                delim = f"'{delim}'"
-            return f"{op}{delim}"
+            return f"{op}{node.target or ''}"
 
         # Here string: format the Word (per-part quote context) so a composite
         # like `<<< foo$v"dq"` round-trips; fall back to re-quoting the flat

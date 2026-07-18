@@ -5,7 +5,7 @@ Locks the source-faithful-token contract:
 - Token is frozen (never mutated after the lexer produces them).
 - SourceSpan derives from the token offsets and reconstructs the lexeme.
 - SourceMap is the one offset -> (line, column) + line-text service.
-- heredoc_key / array_init absence is signalled by None (a declared field),
+- heredoc_id / array_init absence is signalled by None (a declared field),
   NOT by a missing attribute — a token WITHOUT one must not be treated as
   carrying one.
 """
@@ -102,12 +102,12 @@ class TestSourceMap:
 class TestHeredocKeySentinel:
     """Absence of a collected heredoc body is None, not a missing attribute."""
 
-    def test_plain_token_heredoc_key_is_none(self):
-        assert Token(TokenType.WORD, "x", 0, 1).heredoc_key is None
-        assert Token(TokenType.HEREDOC, "<<", 0, 2).heredoc_key is None
+    def test_plain_token_heredoc_id_is_none(self):
+        assert Token(TokenType.WORD, "x", 0, 1).heredoc_id is None
+        assert Token(TokenType.HEREDOC, "<<", 0, 2).heredoc_id is None
 
     def test_uncollected_heredoc_body_is_scanned_not_normalized(self):
-        # heredoc_key is None => the body lines are still in the token stream,
+        # heredoc_id is None => the body lines are still in the token stream,
         # so the normalizer must enter heredoc mode and NOT reclassify a body
         # word that happens to spell a keyword. If a None key were wrongly read
         # as "collected", the body's `if` (after `;`) would become an IF token.
@@ -122,12 +122,15 @@ class TestHeredocKeySentinel:
         result = KeywordNormalizer().normalize(toks)
         assert result[4].type == TokenType.WORD  # 'if' stayed a body word
 
-    def test_collected_heredoc_key_is_set_and_maps(self):
-        toks, hmap = tokenize_with_heredocs("cat <<EOF\nhi\nEOF\n")
+    def test_collected_heredoc_id_is_set_and_maps(self):
+        toks, heredocs = tokenize_with_heredocs("cat <<EOF\nhi\nEOF\n")
         ops = [t for t in toks
                if t.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP)]
-        assert ops and ops[0].heredoc_key is not None
-        assert ops[0].heredoc_key in dict(hmap)
+        assert ops and ops[0].heredoc_id is not None
+        assert ops[0].heredoc_id in dict(heredocs)
+        entry = heredocs[ops[0].heredoc_id]
+        assert entry.spec.id == ops[0].heredoc_id
+        assert entry.collected.body == "hi\n"
 
 
 class TestArrayInitSentinel:

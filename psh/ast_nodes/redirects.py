@@ -12,17 +12,32 @@ if TYPE_CHECKING:
 @dataclass
 class Redirect(ASTNode):
     type: str  # '<', '>', '>>', '<<', '<<-', '<>', '>|', '2>', '2>>', '2>&1', etc.
-    target: Optional[str]  # None for fd-dup/close forms (e.g. '>&-', '2>&1')
+    # For a heredoc ('<<'/'<<-') this is the RAW delimiter word exactly as
+    # spelled in the source (`$X`, `'EOF'`, `$'EOF'`, `E"O"F`) — what the
+    # formatter re-emits; the literal terminator derives from it through the
+    # one quote-removal rule (utils.heredoc_detection). None for fd-dup/close
+    # forms (e.g. '>&-', '2>&1').
+    target: Optional[str]
     fd: Optional[int] = None  # File descriptor (None for stdin/stdout, 2 for stderr, etc.)
     dup_fd: Optional[int] = None  # For duplications like 2>&1
-    heredoc_content: Optional[str] = None  # For here documents
+    # The collected here-document body. On every live (heredoc-aware) parse
+    # path this is attached AS THE NODE IS CONSTRUCTED and is never None for
+    # a heredoc redirect ('' for an empty body); the executor treats a None
+    # body at execution as an internal defect. None only on bare token-level
+    # parses with no collected bodies (unit-test paths) and for non-heredoc
+    # redirect kinds.
+    heredoc_content: Optional[str] = None
     quote_type: Optional[str] = None  # Quote type used (' or " or None) for here strings
     heredoc_quoted: bool = False  # Whether heredoc delimiter was quoted (disables variable expansion)
     combined: bool = False  # True for &> and &>> (redirects both stdout and stderr)
     # Move form `[n]>&m-` / `[n]<&m-`: duplicate fd `dup_fd` onto `fd`, then
     # close the source `dup_fd` (bash keeps it open when dup_fd == fd).
     move: bool = False
-    heredoc_key: Optional[str] = None  # Lexer-assigned key linking to collected heredoc content
+    # The heredoc's stable spec id (its ORDINAL within the lexed unit —
+    # identity is positional, never delimiter text), linking this redirect
+    # to the LexedUnit's collected-heredoc entry. None for non-heredoc
+    # redirects and bare parses.
+    heredoc_id: Optional[int] = None
     # Named file descriptor: the variable from a `{varname}>file` prefix. The
     # shell allocates a free fd >= 10, opens onto it, and stores the number in
     # this variable (bash). The allocation is PERMANENT (not auto-closed after

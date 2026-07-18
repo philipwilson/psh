@@ -6,14 +6,17 @@ point for token streams whose here-document bodies were collected separately
 by the lexer.
 """
 
-from typing import Mapping, Optional, Sequence
+from typing import TYPE_CHECKING, Mapping, Optional, Sequence
 
 from ....ast_nodes import Program
 from ....lexer.token_types import Token
 
+if TYPE_CHECKING:
+    from ....lexer.heredoc_lexer import LexedHeredoc
+
 
 def parse_with_heredocs(tokens: Sequence[Token],
-                        heredocs: Mapping[int, object],
+                        heredocs: "Mapping[int, 'LexedHeredoc']",
                         lexer_options: Optional[Mapping[str, object]] = None) -> Program:
     """Parse *tokens* into an AST with pre-collected here-documents.
 

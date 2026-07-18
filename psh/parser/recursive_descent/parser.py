@@ -5,7 +5,7 @@ This module contains the main Parser class that orchestrates parsing by delegati
 to specialized parser modules for different language constructs.
 """
 
-from typing import List, Mapping, Optional
+from typing import TYPE_CHECKING, List, Mapping, Optional
 
 from ...ast_nodes import Program
 from ...lexer.token_types import Token
@@ -21,6 +21,9 @@ from .parsers.statements import StatementParser
 from .parsers.tests import TestParser
 from .support.context_factory import create_context
 
+if TYPE_CHECKING:
+    from ...lexer.heredoc_lexer import LexedHeredoc
+
 
 class Parser(ContextBaseParser):
     """Main parser class that orchestrates parsing by delegating to specialized parsers."""
@@ -29,7 +32,7 @@ class Parser(ContextBaseParser):
                  source_text: Optional[str] = None,
                  config: Optional[ParserConfig] = None,
                  line_offset: int = 0,
-                 heredocs: Optional[Mapping[int, object]] = None,
+                 heredocs: "Optional[Mapping[int, 'LexedHeredoc']]" = None,
                  lexer_options: Optional[Mapping[str, object]] = None):
         # Configuration (create default if not provided)
         config = config or ParserConfig()

@@ -269,30 +269,24 @@ class TestParseWithHeredocs:
         assert len(reds) == 1
         return reds[0]
 
-    def test_parse_with_heredocs_dict_format(self):
-        """Dict-format map attaches content (and quoted) at construction."""
+    def test_parse_with_heredocs_typed_entries(self):
+        """The LexedUnit's typed entries attach content (and quoted) at
+        construction — id-keyed, no string keys, no legacy dict/str shapes
+        (campaign S2)."""
         from psh.lexer import tokenize_with_heredocs
+        from psh.lexer.heredoc_lexer import LexedHeredoc
         from psh.parser import parse_with_heredocs
-        # tokenize_with_heredocs sets each `<<` token's heredoc_key — the
-        # production path. (Attachment is now key-driven; there is no
-        # delimiter-suffix fallback for keyless hand-built tokens.)
-        tokens, heredoc_map = tokenize_with_heredocs('cat <<EOF\nhello world\nEOF')
-        ast = parse_with_heredocs(tokens, heredoc_map)
+        # tokenize_with_heredocs stamps each `<<` token's heredoc_id — the
+        # production path. (Attachment is id-driven; there is no
+        # delimiter-suffix fallback for id-less hand-built tokens.)
+        tokens, heredocs = tokenize_with_heredocs('cat <<EOF\nhello world\nEOF')
+        assert all(isinstance(k, int) for k in heredocs)
+        assert all(isinstance(v, LexedHeredoc) for v in heredocs.values())
+        ast = parse_with_heredocs(tokens, heredocs)
         red = self._first_heredoc_redirect(ast)
         assert red.heredoc_content == 'hello world\n'
         assert red.heredoc_quoted is False
-
-    def test_parse_with_heredocs_string_format(self):
-        """String-valued map entries (legacy, non-dict) still attach as content."""
-        from psh.lexer import tokenize_with_heredocs
-        from psh.parser import parse_with_heredocs
-        tokens, heredoc_map = tokenize_with_heredocs('cat <<EOF\nhello world\nEOF')
-        # Replace the dict entry with a bare string under the same key.
-        key = next(iter(heredoc_map))
-        string_map = {key: 'hello world\n'}
-        ast = parse_with_heredocs(tokens, string_map)
-        red = self._first_heredoc_redirect(ast)
-        assert red.heredoc_content == 'hello world\n'
+        assert red.heredoc_id in heredocs
 
     def test_missing_map_entry_fails_loudly(self):
         """A heredoc redirect whose key is absent from the map is a hard error.

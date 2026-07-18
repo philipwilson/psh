@@ -299,7 +299,7 @@ class CommandAccumulator:
             base_line=self.start_line,
             lexer_options=self.state.options,
             warn_unterminated=False)
-        parser = Parser(tokens, source_text=preview,
+        parser = Parser(list(tokens), source_text=preview,
                         line_offset=max(0, self.start_line - 1),
                         heredocs=heredocs,
                         lexer_options=self.state.options)

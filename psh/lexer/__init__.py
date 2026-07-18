@@ -8,7 +8,7 @@ The main entry point is the tokenize() function which uses the ModularLexer
 as the single lexer implementation.
 """
 
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Mapping, Optional
 
 from .constants import KEYWORDS, SPECIAL_VARIABLES
 from .keyword_normalizer import KeywordNormalizer
@@ -30,6 +30,9 @@ from .unicode_support import (
     normalize_identifier,
     validate_identifier,
 )
+
+if TYPE_CHECKING:
+    from .heredoc_lexer import LexedUnit
 
 
 def _make_config(shell_options: Optional[Mapping[str, Any]] = None) -> LexerConfig:

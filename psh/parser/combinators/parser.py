@@ -4,7 +4,7 @@ This module integrates all the parser combinator modules into a cohesive
 parser for shell commands using functional combinators.
 """
 
-from typing import Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, List, Mapping, Optional, Tuple, cast
 
 from ...ast_nodes import ASTNode, Program, Statement, StatementList
 from ...lexer.keyword_normalizer import KeywordNormalizer
@@ -15,11 +15,13 @@ from .commands import create_command_parsers
 from .control_structures import create_control_structure_parsers
 from .diagnostics import error_context_for_token
 from .expansions import create_expansion_parsers
-from .heredoc_processor import create_heredoc_processor
 from .special_commands import create_special_command_parsers
 
 # Import all parser modules
 from .tokens import create_token_parsers
+
+if TYPE_CHECKING:
+    from ...lexer.heredoc_lexer import LexedHeredoc
 
 
 class ParserCombinatorShellParser:
@@ -46,15 +48,16 @@ class ParserCombinatorShellParser:
     """
 
     def __init__(self, config: Optional[ParserConfig] = None,
-                 heredoc_contents: Optional[Dict[str, str]] = None):
+                 heredocs: "Optional[Mapping[int, 'LexedHeredoc']]" = None):
         """Initialize the parser combinator.
 
         Args:
             config: Parser configuration
-            heredoc_contents: Optional map of heredoc keys to their content
+            heredocs: Optional id-keyed map of collected heredocs (the
+                LexedUnit's LexedHeredoc entries: spec + body)
         """
         self.config = config or ParserConfig()
-        self.heredoc_contents = heredoc_contents or {}
+        self.heredocs = heredocs
 
         # Initialize all parser modules
         self._initialize_modules()
@@ -87,9 +90,6 @@ class ParserCombinatorShellParser:
             token_parsers=self.tokens,
             command_parsers=self.commands
         )
-
-        # Create heredoc processor
-        self.heredoc_processor = create_heredoc_processor()
 
         # Wire circular dependencies
         self._wire_dependencies()
@@ -150,11 +150,6 @@ class ParserCombinatorShellParser:
             start_pos += 1
         return tokens, start_pos
 
-    def _apply_heredocs(self, ast):
-        """Populate heredoc content in AST if available."""
-        if self.heredoc_contents:
-            self.heredoc_processor.populate_heredocs(ast, self.heredoc_contents)
-
     def parse(self, tokens: List[Token]) -> Program:
         """Parse a list of tokens into an AST.
 
@@ -167,6 +162,10 @@ class ParserCombinatorShellParser:
         Raises:
             ParseError: If parsing fails
         """
+        # Per-call collected-heredoc map: the redirection mixin builds each
+        # heredoc Redirect with its spec truth and body AT CONSTRUCTION (the
+        # former post-parse HeredocProcessor attachment walk is retired).
+        self.commands.heredocs = self.heredocs
         tokens, start_pos = self._prepare_tokens(tokens)
 
         # Empty input
@@ -207,8 +206,6 @@ class ParserCombinatorShellParser:
                 f"Unexpected token after valid input: {describe_token(remaining_token)}",
             ))
 
-        self._apply_heredocs(ast)
-
         # Normalize to the canonical Program root: flatten a StatementList into
         # Program.statements; wrap a lone Statement as a one-element program.
         if isinstance(ast, StatementList):
@@ -218,24 +215,18 @@ class ParserCombinatorShellParser:
         return Program(statements=[cast(Statement, ast)])
 
     def parse_with_heredocs(self, tokens: List[Token],
-                           heredoc_contents: Dict[str, str]) -> Program:
-        """Parse tokens with heredoc content support.
-
-        This method performs a two-pass parse:
-        1. Parse the token stream into an AST
-        2. Populate heredoc content in AST nodes
+                            heredocs: "Mapping[int, 'LexedHeredoc']") -> Program:
+        """Parse tokens with collected-heredoc support.
 
         Args:
-            tokens: List of tokens from the lexer
-            heredoc_contents: Map of heredoc keys to their content
+            tokens: List of tokens from the lexer (bodies lifted out;
+                operator tokens carry ``heredoc_id``)
+            heredocs: The LexedUnit's id-keyed map of LexedHeredoc entries
 
         Returns:
-            Parsed AST with heredoc content populated
+            Parsed AST with each heredoc Redirect built from its spec entry
         """
-        # Store heredoc contents
-        self.heredoc_contents = heredoc_contents
-
-        # Parse normally (which will populate heredocs)
+        self.heredocs = heredocs
         return self.parse(tokens)
 
     def parse_partial(self, tokens: List[Token]) -> Tuple[Optional[ASTNode], int]:
@@ -251,6 +242,7 @@ class ParserCombinatorShellParser:
         Returns:
             Tuple of (AST node or None, position where parsing stopped)
         """
+        self.commands.heredocs = self.heredocs
         tokens, start_pos = self._prepare_tokens(tokens)
 
         # Empty input
@@ -263,7 +255,6 @@ class ParserCombinatorShellParser:
         for parser in candidates:
             result = parser.parse(tokens, start_pos)
             if result.success:
-                self._apply_heredocs(result.value)
                 return result.value, result.position
 
         # Nothing could be parsed
@@ -317,8 +308,6 @@ class ParserCombinatorShellParser:
          "if/case conditionals, while/until/for/select loops, functions"),
         ("special", "SPECIAL COMMAND PARSERS",
          "(( )) arithmetic, [[ ]] tests, process substitution"),
-        ("heredoc_processor", "HEREDOC PROCESSOR",
-         "post-parse heredoc body attachment"),
     )
 
     def explain_parse(self, tokens: List[Token]) -> str:
@@ -341,15 +330,15 @@ class ParserCombinatorShellParser:
 
 def create_parser_combinator_shell_parser(
     config: Optional[ParserConfig] = None,
-    heredoc_contents: Optional[Dict[str, str]] = None
+    heredocs: "Optional[Mapping[int, 'LexedHeredoc']]" = None
 ) -> ParserCombinatorShellParser:
     """Create and return a ParserCombinatorShellParser instance.
 
     Args:
         config: Optional parser configuration
-        heredoc_contents: Optional heredoc content map
+        heredocs: Optional id-keyed collected-heredoc map
 
     Returns:
         Initialized ParserCombinatorShellParser object
     """
-    return ParserCombinatorShellParser(config, heredoc_contents)
+    return ParserCombinatorShellParser(config, heredocs)

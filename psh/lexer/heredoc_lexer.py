@@ -88,6 +88,24 @@ def delimiter_token_acceptable(token: Token) -> bool:
     return token.type in _DELIMITER_PART_TYPES and _procsub_delimiter_ok(token)
 
 
+def raw_delimiter_from_tokens(delim_tokens: List[Token]) -> str:
+    """Fallback raw-spelling reconstruction from delimiter token VALUES.
+
+    Only for BARE parses with no source text to slice (the live heredoc-aware
+    path always takes ``raw`` from the spec). A quoted token's value has its
+    quotes removed, so the spelling is re-wrapped from ``quote_type`` — this
+    preserves quotedness through the one quote-removal rule even when the
+    exact original escapes are not recoverable.
+    """
+    pieces = []
+    for tok in delim_tokens:
+        if tok.quote_type:
+            pieces.append(f"{tok.quote_type}{tok.value}{tok.quote_type[-1]}")
+        else:
+            pieces.append(tok.value)
+    return ''.join(pieces)
+
+
 class HeredocLexer:
     """Lexer with heredoc collection support.
 
@@ -315,5 +333,5 @@ class HeredocLexer:
 
 __all__ = [
     'HeredocLexer', 'LexedHeredoc', 'LexedUnit', 'HeredocTermination',
-    'delimiter_token_acceptable',
+    'delimiter_token_acceptable', 'raw_delimiter_from_tokens',
 ]

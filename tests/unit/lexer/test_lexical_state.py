@@ -295,7 +295,7 @@ class TestCopyAndCarry:
         assert TokenType.IN in types
         assert TokenType.ESAC in types
         assert 'body' not in [t.value for t in toks]
-        assert any(v.get('content') == 'body\n' for v in hmap.values())
+        assert any(entry.collected.body == 'body\n' for entry in hmap.values())
 
 
 # --------------------------------------------------------------------------
