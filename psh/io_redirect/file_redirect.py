@@ -4,13 +4,75 @@ import fcntl
 import os
 import stat
 import sys
-from typing import TYPE_CHECKING, List, TextIO, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO, Tuple, cast
 
 from ..ast_nodes import ExpansionPart, ProcessSubstitution, Redirect
+from ..core.process_lease import ComponentKind, get_coordinator
 from .planner import RedirectPlan, RedirectPlanner
 
 if TYPE_CHECKING:
+    from ..core.state import ShellState
     from ..shell import Shell
+
+
+class _StdStreamBaseline:
+    """The restorable pre-permanent-redirect state of fds 0/1/2 + streams.
+
+    Captured by ``FileRedirector._acquire_permanent_stream_lease`` as the
+    STD_FDS component lease's baseline (campaign F2): CLOEXEC high dups of
+    the standard descriptors (or None where a descriptor was closed), the
+    ``sys.std*`` stream objects, and the shell's stream-override snapshot.
+    ``restore`` — the lease's release hook — closes whatever streams the
+    shell's permanent redirects installed (releasing their dup'd fds), puts
+    the original ``sys.std*`` objects and override state back, and dup2s the
+    saved descriptors onto 0/1/2 (re-closing one that was closed at
+    baseline). Best-effort per step so one failed restore cannot strand the
+    rest.
+    """
+
+    __slots__ = ('fds', 'sys_streams', 'overrides', 'state')
+
+    def __init__(self, fds: Dict[int, Optional[int]],
+                 sys_streams: Tuple[Any, Any, Any],
+                 overrides: Tuple[Any, Any, Any],
+                 state: 'ShellState') -> None:
+        self.fds = fds
+        self.sys_streams = sys_streams
+        self.overrides = overrides
+        self.state = state
+
+    def restore(self) -> None:
+        # Streams first: flush + close any object a permanent redirect
+        # installed (each owns a dup of the redirect target), then put the
+        # baseline objects back.
+        for name, baseline_stream in zip(('stdin', 'stdout', 'stderr'),
+                                         self.sys_streams, strict=True):
+            current = getattr(sys, name, None)
+            if current is not None and current is not baseline_stream:
+                for op in ('flush', 'close'):
+                    try:
+                        getattr(current, op)()
+                    except Exception:
+                        pass
+            setattr(sys, name, baseline_stream)
+        # Descriptors: dup2 the saved originals back (closing the backups);
+        # a descriptor that was CLOSED at baseline is closed again.
+        for fd, saved in self.fds.items():
+            if saved is None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                continue
+            try:
+                os.dup2(saved, fd)
+            except OSError:
+                pass
+            try:
+                os.close(saved)
+            except OSError:
+                pass
+        self.state.streams.restore(self.overrides)
 
 
 def _dup2_preserve_target(opened_fd: int, target_fd: int):
@@ -662,6 +724,62 @@ class FileRedirector:
         self.shell.stdout, self.shell.stderr, self.shell.stdin = shell_streams
         self.state.stdout, self.state.stderr, self.state.stdin = state_streams
 
+    def _acquire_permanent_stream_lease(self) -> None:
+        """Acquire the STD_FDS component lease before the first permanent
+        redirect (campaign F2).
+
+        Captures the restorable baseline — CLOEXEC high dups of fds 0/1/2
+        (``F_DUPFD_CLOEXEC``: a later successful ``os.exec`` must not leak
+        the backups into the new image — bash-pinned by the exec-CLOEXEC
+        test), the current ``sys.std*`` objects, and the shell's stream
+        overrides — and registers ONE lease with the process coordinator.
+        Idempotent: repeated permanent redirects (``exec >f1`` then
+        ``exec >f2``) keep the FIRST baseline, so deactivation restores the
+        pre-exec state, not an intermediate one. Permanent redirects remain
+        permanent INSIDE the active shell (nothing restores between
+        commands); the restore runs only when the owning shell deactivates
+        (``Shell.close()``/``shutdown()``) — which for an EMBEDDED shell
+        hands the hosting process its descriptors and streams back
+        (continuation finding B), and for the ``python -m psh`` process is
+        moot (the fd table dies with it).
+        """
+        coordinator = get_coordinator()
+        state = self.state
+        if coordinator.find_component(state, ComponentKind.STD_FDS) is not None:
+            return
+        baseline_fds: Dict[int, Optional[int]] = {}
+        try:
+            for fd in (0, 1, 2):
+                try:
+                    # Base 63, NOT 10: the per-command save area starts at 10
+                    # and bash-pinned `{v}>file` allocations expect the first
+                    # free fd >= 10 — long-lived lease backups parked at
+                    # 10-12 would shift every later named-fd number (bash
+                    # similarly parks its own long-lived internals high).
+                    baseline_fds[fd] = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC,
+                                                   63)
+                except OSError:
+                    baseline_fds[fd] = None  # fd closed at baseline
+            baseline = _StdStreamBaseline(
+                fds=baseline_fds,
+                sys_streams=(sys.stdin, sys.stdout, sys.stderr),
+                overrides=state.streams.snapshot(),
+                state=state,
+            )
+            coordinator.acquire_component(
+                state, ComponentKind.STD_FDS, restore=baseline.restore,
+                description='standard fds/streams (permanent exec redirects)')
+        except BaseException:
+            # Failed acquisition rolls back completely: close the dups we
+            # took so nothing is half-acquired (coordinator state untouched).
+            for saved in baseline_fds.values():
+                if saved is not None:
+                    try:
+                        os.close(saved)
+                    except OSError:
+                        pass
+            raise
+
     def apply_permanent_redirections(self, redirects: List[Redirect]):
         """Apply redirections permanently (for exec builtin).
 
@@ -673,7 +791,18 @@ class FileRedirector:
         already applied is rolled back (fds and Python streams restored) before
         the error propagates — bash undoes a failed exec's entire redirection
         list, so `exec 3>ok 4>/bad/x` leaves fd 3 closed, not pointing at ok.
+
+        Permanent redirects mutate the PROCESS (fds 0/1/2, ``sys.std*``), so
+        the first one acquires the coordinator's STD_FDS baseline lease
+        (campaign F2; see ``_acquire_permanent_stream_lease``). A list of
+        ONLY named-fd redirects (``exec {v}>file``) allocates user fds
+        without touching the standard descriptors/streams and takes no
+        lease — user fds are the user's to manage (bash: they survive
+        ``exec`` and are closed explicitly), and the allocation numbering
+        stays exactly bash's first-free->=10.
         """
+        if any(not redirect.var_fd for redirect in redirects):
+            self._acquire_permanent_stream_lease()
         # Pending buffered output belongs to the OLD destination; flush it
         # before the fd-level dup2 silently re-routes it to the new file.
         for stream in (self.state.stdout, self.state.stderr, sys.stdout, sys.stderr):

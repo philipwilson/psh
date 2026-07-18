@@ -43,6 +43,22 @@ Reactive as of Stage 4: the startup profile is read once at construction, and
 laid over a command (``LC_ALL=C cmd``). ``ShellState`` rides its
 reactive-special observer to call ``reinit`` on those four names; see
 ``docs/architecture/locale_service_design_2026-07-06.md`` (§5.2 Stage 4).
+
+**Construction purity (campaign F2).** ``ShellState`` builds its service
+DEFERRED (``deferred=True``): construction resolves the profile purely — no
+``setlocale`` and no process-active registration — and the libc application
+happens at shell ACTIVATION (or on a reactive non-C ``reinit``) under the
+``ProcessLeaseCoordinator``'s LOCALE component lease
+(``ShellState._acquire_locale_lease`` → :meth:`ensure_applied`), which
+captures the pre-application libc names (:func:`libc_locale_names`) and
+restores them when the embedded shell deactivates.  Constructing a second
+shell therefore changes NOTHING observable about the first — pinned by
+``tests/unit/core/test_construction_purity_f2.py``.  The process-active
+service (consumed by the stateless pattern helpers via :func:`active_locale`)
+is maintained SOLELY by the activation glue
+(:func:`set_process_active_locale`), never by construction.  A standalone
+service (``deferred=False``, the unit-test seam) keeps the historical
+apply-at-construction/reinit behaviour.
 """
 from __future__ import annotations
 
@@ -71,12 +87,24 @@ class LocaleMode(Enum):
 
 
 @dataclass(frozen=True)
-class LocaleProfile:
-    """The two effective locales a shell runs under, resolved and applied."""
+class LocaleContext:
+    """The two effective locales a shell runs under (campaign contract).
+
+    The frozen per-shell classification/collation/case-mapping policy — the
+    ``LocaleContext`` row of the boundary campaign's canonical representation
+    set (section 5).  Sole authority: the owning shell instance
+    (``shell.state.locale.profile``); libc application is a separate,
+    lease-guarded step (see the module docstring).
+    """
     ctype_name: str
     collate_name: str
     ctype_mode: LocaleMode
     collate_mode: LocaleMode
+
+
+#: Historical name (pre-campaign); the campaign contract name is
+#: :class:`LocaleContext`.
+LocaleProfile = LocaleContext
 
 
 #: Category-variable precedence chains (bash: ``LC_ALL`` overrides the specific
@@ -104,27 +132,19 @@ def _effective(env: Mapping[str, str], chain: tuple) -> str:
     return "C"
 
 
-def _resolve_profile(env: Mapping[str, str], *, apply: bool,
-                     warn: bool) -> LocaleProfile:
-    """Resolve the two effective locales from *env* (bash precedence) and,
-    when *apply*, drive the process ``setlocale``. Shared by startup
-    (:meth:`LocaleService.__init__`) and mid-session
-    (:meth:`LocaleService.reinit`). setlocale is process-global, so only a
-    category that resolves to a NON-C locale is touched; a category resolving to
-    C is left to the pure-Python C path. On a setlocale failure the shell warns
-    (like bash) and falls back to C for that category so it still runs."""
+def _resolve_profile(env: Mapping[str, str]) -> LocaleContext:
+    """Resolve the two effective locales from *env* (bash precedence).
+
+    PURE — no ``setlocale``.  Shared by startup (:meth:`LocaleService.__init__`)
+    and mid-session (:meth:`LocaleService.reinit`).  Driving the process
+    ``setlocale`` is the separate :meth:`LocaleService.ensure_applied` step,
+    which the activation-lease glue invokes for a deferred (shell-owned)
+    service.
+    """
     collate_name = _effective(env, _COLLATE_VARS)
     ctype_name = _effective(env, _CTYPE_VARS)
-    collate_mode = _classify(collate_name)
-    ctype_mode = _classify(ctype_name)
-    if apply:
-        if collate_mode is not LocaleMode.C and not _try_setlocale(
-                _locale.LC_COLLATE, collate_name, warn):
-            collate_name, collate_mode = "C", LocaleMode.C
-        if ctype_mode is not LocaleMode.C and not _try_setlocale(
-                _locale.LC_CTYPE, ctype_name, warn):
-            ctype_name, ctype_mode = "C", LocaleMode.C
-    return LocaleProfile(ctype_name, collate_name, ctype_mode, collate_mode)
+    return LocaleContext(ctype_name, collate_name,
+                         _classify(ctype_name), _classify(collate_name))
 
 
 class LocaleService:
@@ -135,12 +155,72 @@ class LocaleService:
     """
 
     def __init__(self, env: Mapping[str, str], *, apply: bool = True,
-                 warn: bool = True) -> None:
-        self.profile = _resolve_profile(env, apply=apply, warn=warn)
-        _activate(self)
+                 warn: bool = True, deferred: bool = False) -> None:
+        """Resolve the effective profile from *env*.
+
+        ``deferred=True`` (the shell-owned mode, campaign F2): construction
+        is PURE — the profile is resolved but libc is never touched and the
+        service is not registered process-active; the owning ``ShellState``
+        applies it at activation, under the coordinator's LOCALE lease
+        (:meth:`ensure_applied`).  ``deferred=False`` is the standalone /
+        unit-test seam: ``apply=True`` applies at construction and
+        :meth:`reinit` re-applies, matching the historical behaviour.
+        """
+        self._deferred = deferred
+        self._applied = False
+        self.profile = _resolve_profile(env)
+        if apply and not deferred:
+            self.ensure_applied(warn=warn)
+
+    @property
+    def pending_libc(self) -> bool:
+        """True when the profile needs a not-yet-performed libc application.
+
+        Only a non-C category ever needs libc; under the pinned test-suite
+        ``LC_ALL=C`` this is always False and no lease is taken.
+        """
+        return (not self._applied
+                and (self.profile.ctype_mode is not LocaleMode.C
+                     or self.profile.collate_mode is not LocaleMode.C))
+
+    def ensure_applied(self, *, warn: bool = True) -> None:
+        """Drive the process ``setlocale`` for the resolved profile (idempotent).
+
+        Only a category resolving to a NON-C locale is touched; a category
+        resolving to C is left to the pure-Python C path (byte-identical to
+        the historical behaviour, no libc churn).  On a setlocale failure the
+        shell warns (like bash) and falls back to C for that category so it
+        still runs.  For a deferred (shell-owned) service this runs ONLY
+        under the coordinator's LOCALE component lease
+        (``ShellState._acquire_locale_lease``), which captured the baseline
+        to restore at deactivation.
+        """
+        if self._applied:
+            return
+        self._applied = True
+        p = self.profile
+        collate_name, collate_mode = p.collate_name, p.collate_mode
+        ctype_name, ctype_mode = p.ctype_name, p.ctype_mode
+        if collate_mode is not LocaleMode.C and not _try_setlocale(
+                _locale.LC_COLLATE, collate_name, warn):
+            collate_name, collate_mode = "C", LocaleMode.C
+        if ctype_mode is not LocaleMode.C and not _try_setlocale(
+                _locale.LC_CTYPE, ctype_name, warn):
+            ctype_name, ctype_mode = "C", LocaleMode.C
+        self.profile = LocaleContext(ctype_name, collate_name,
+                                     ctype_mode, collate_mode)
+
+    def invalidate_application(self) -> None:
+        """Mark the profile un-applied (the LOCALE lease restore hook).
+
+        Called when the coordinator restores the libc baseline at
+        deactivation, so a later re-activation of the owning shell knows to
+        re-apply (re-acquiring the lease).
+        """
+        self._applied = False
 
     def reinit(self, env: Mapping[str, str], *, warn: bool = True) -> None:
-        """Recompute and re-apply the effective profile from *env*.
+        """Recompute (and, standalone, re-apply) the profile from *env*.
 
         Called when a locale variable (``LC_ALL``/``LC_CTYPE``/``LC_COLLATE``/
         ``LANG``) is assigned, unset, or laid over a command as a ``LC_ALL=C
@@ -152,9 +232,17 @@ class LocaleService:
         behaviour) without touching the process libc locale — the C-mode
         primitives never consult it, which also keeps in-process locale churn
         from leaking between shells. *env* is the caller's current view of the
-        four variables (see ``ShellState._locale_env_snapshot``)."""
-        self.profile = _resolve_profile(env, apply=True, warn=warn)
-        _activate(self)
+        four variables (see ``ShellState._locale_env_snapshot``).
+
+        A DEFERRED (shell-owned) service resolves only; the owning state's
+        observer performs the lease-guarded application immediately after
+        (``ShellState._sync_exported_variable`` → ``_acquire_locale_lease``),
+        so mid-session reactivity is unchanged — merely lease-accounted.
+        """
+        self.profile = _resolve_profile(env)
+        self._applied = False
+        if not self._deferred:
+            self.ensure_applied(warn=warn)
 
     # --- case mapping (LC_CTYPE) ------------------------------------------
     #
@@ -281,20 +369,54 @@ def _try_setlocale(category: int, name: str, warn: bool) -> bool:
 # The glob->regex converter (extglob.py) and pattern code are stateless
 # module-level functions with no shell handle, but character-class membership
 # is a function of the process-global locale — which is exactly what this
-# reflects. The most-recently-constructed service registers itself here so
-# those functions can ask "what does [:alpha:] mean right now?". Consistent
-# with setlocale itself being process-global.
+# reflects.  Campaign F2: the slot is maintained SOLELY by the activation
+# glue (``ShellState._on_activation_grant`` under the
+# ``ProcessLeaseCoordinator``) — the shell that holds the process owner token
+# is the one whose service answers "what does [:alpha:] mean right now?".
+# Construction NEVER writes it (that was the H18 defect: building a second
+# shell silently changed the first shell's pattern classification).
 _active: Optional["LocaleService"] = None
 
 
-def _activate(svc: "LocaleService") -> None:
+def set_process_active_locale(svc: Optional["LocaleService"]) -> None:
+    """Install *svc* as the process-active service (activation glue ONLY).
+
+    Called by ``ShellState._on_activation_grant`` when the process owner
+    token is granted or transferred — never by construction (campaign F2
+    construction purity; pinned by test_construction_purity_f2.py).
+    """
     global _active
     _active = svc
 
 
 def active_locale() -> Optional["LocaleService"]:
-    """The process's active locale service, or None before any shell exists."""
+    """The process's active locale service, or None before any shell ACTIVATED."""
     return _active
+
+
+# --- libc baseline capture/restore (the LOCALE component lease) -------------
+
+def libc_locale_names() -> Tuple[str, str]:
+    """The current libc ``(LC_CTYPE, LC_COLLATE)`` names.
+
+    The LOCALE component lease's baseline capture (and the activation
+    baselines record) — queried BEFORE :meth:`LocaleService.ensure_applied`
+    mutates anything, so :func:`restore_libc_locale` can put the process
+    back exactly where the embedding host had it.
+    """
+    return (_locale.setlocale(_locale.LC_CTYPE),
+            _locale.setlocale(_locale.LC_COLLATE))
+
+
+def restore_libc_locale(names: Tuple[str, str]) -> None:
+    """Restore a :func:`libc_locale_names` baseline (lease release hook)."""
+    ctype_name, collate_name = names
+    for category, name in ((_locale.LC_CTYPE, ctype_name),
+                           (_locale.LC_COLLATE, collate_name)):
+        try:
+            _locale.setlocale(category, name)
+        except _locale.Error:
+            pass  # baseline no longer valid on this host; best effort
 
 
 # --- POSIX character-class membership machinery ----------------------------

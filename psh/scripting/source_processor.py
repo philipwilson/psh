@@ -108,17 +108,22 @@ class SourceProcessor(ScriptComponent):
         exits; a guard INSIDE the eval'd text suppresses again) — see
         ``ExecutionContext.special_exit_floor``.
         """
-        executor = getattr(self.shell, '_current_executor', None)
-        if executor is None:
-            return self._run_from_source(input_source, add_to_history,
-                                         base_line)
-        saved_floor = executor.context.special_exit_floor
-        executor.context.special_exit_floor = executor.context.errexit_suppress
-        try:
-            return self._run_from_source(input_source, add_to_history,
-                                         base_line)
-        finally:
-            executor.context.special_exit_floor = saved_floor
+        # Implicit process activation (campaign F2): the outermost execution
+        # entry acquires the owner token + a LIFO lease BEFORE any parsing
+        # (the recursion headroom is an activation fact); nested runs (eval,
+        # source, trap actions) count depth on the same owner.
+        with self.shell.activation():
+            executor = getattr(self.shell, '_current_executor', None)
+            if executor is None:
+                return self._run_from_source(input_source, add_to_history,
+                                             base_line)
+            saved_floor = executor.context.special_exit_floor
+            executor.context.special_exit_floor = executor.context.errexit_suppress
+            try:
+                return self._run_from_source(input_source, add_to_history,
+                                             base_line)
+            finally:
+                executor.context.special_exit_floor = saved_floor
 
     def _run_from_source(self, input_source, add_to_history: bool = True,
                          base_line: int = 1) -> int:

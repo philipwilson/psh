@@ -266,6 +266,18 @@ mode), so builtin writes and external children would overwrite each other.
 universes one file position; line buffering makes builtin output interleave
 with externals like bash's unbuffered writes.
 
+Process ownership (campaign F2): the first permanent redirect that touches
+the standard descriptors acquires the coordinator's `STD_FDS` component
+lease (`_acquire_permanent_stream_lease` — baseline = `F_DUPFD_CLOEXEC`
+dups of 0/1/2 parked at fd >= 63 plus the stream snapshot). Redirects stay
+permanent inside the active shell; the baseline restores when the owning
+shell deactivates (`Shell.close()`/`shutdown()`), so an EMBEDDED shell
+hands the host its fds/streams back, and a successful `exec` of a new
+image never inherits the backups (CLOEXEC — bash-pinned by
+`tests/integration/redirection/test_std_fd_lease_f2.py`). A list of only
+named-fd redirects (`exec {v}>file`) takes no lease, keeping bash's
+first-free->=10 allocation numbering.
+
 ## Common Tasks
 
 ### Per-Type Redirect Helpers
