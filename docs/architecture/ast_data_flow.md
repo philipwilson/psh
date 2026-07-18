@@ -37,10 +37,10 @@ orchestrator and keeps the public entry points:
 | `expand_word_to_fields(word, policy)` (manager.py) | same pipeline, one Word → 0..n fields, under the named policy | for/select items (LOOP_ITEM), array initializer elements (ARRAY_INIT_ELEMENT / ASSOC_INIT_ELEMENT) |
 | `expand_assignment_value_word(word)` (manager.py → word_expander.py) | bash assignment-value policy: all expansions, NO splitting, NO globbing, tilde after `=`/`:` | scalar assignment values, array element values, assoc-array keys |
 | `expand_word_as_pattern(word)` (manager.py) | quoted parts glob-escaped (match literally), unquoted parts keep glob power | case patterns |
-| `WordExpander.expand(word, policy)` (word_expander.py) | the core walker (quote dispatch, per-part expansion, IFS split, glob) | internal — the entry points above |
+| `WordExpander.expand_to_word(word, policy)` + `materialize` (word_expander.py) | the field engine: per-part walk into `ExpandedWord` (protection runs, `$@` splicing, IFS split), then the sole IR→argv boundary (glob, join) | internal — the entry points above |
 | `expand_string_variables(text)` | `$`-constructs in flat text, no splitting/globbing/quote context | string contexts only (see table below) |
 
-`WordExpander.expand` and `expand_assignment_value_word` **raise
+`WordExpander.expand_to_word` and `expand_assignment_value_word` **raise
 `TypeError` on non-Word input** (audit 2026-06-12) — passing strings is a
 bug, not a feature.
 
@@ -64,7 +64,7 @@ lexer tokens (RichToken.parts)
   → SimpleCommand(words=[Word])               # words is the only store
   → CommandExecutor._execute_command()  [psh/executor/command.py]
   → ExpansionManager.expand_arguments()
-  → WordExpander.expand(word, policy) per word
+  → WordExpander.expand_to_word(word, policy) + materialize per word
 ```
 
 - **One source of truth**: `SimpleCommand` stores only `words`. The
@@ -84,9 +84,10 @@ lexer tokens (RichToken.parts)
   (manager.py); only then does the DECLARATION_ASSIGNMENT policy
   suppress splitting/globbing of the value. Ordinary commands word-split
   `foo=$v` arguments (bash).
-- Change quoting/splitting/globbing behavior → `WordExpander.expand` and
-  its helpers (`_split_part_fields`, `_glob_words`,
-  `_expand_at_with_affixes`) in `psh/expansion/word_expander.py`.
+- Change quoting/splitting/globbing behavior → the field engine
+  (`WordExpander.expand_to_word` and its helpers `_walk_literal_part` /
+  `_walk_expansion_part` / `_FieldBuilder.splice` / `_field_split`, and the
+  terminal `materialize` / `_glob_field`) in `psh/expansion/word_expander.py`.
 
 ### 2. Assignment values (`VAR=value`, `VAR=value cmd`)
 
@@ -220,7 +221,7 @@ an ordinary `ExpansionPart` inside a Word — whole-word and embedded
 
 Performed during Word expansion:
 
-- command words: `WordExpander.expand` handles the part type directly →
+- command words: `WordExpander._walk_expansion_part` handles the part type directly →
   `IOManager.create_process_substitution_for_expansion()` →
   `ProcessSubstitutionHandler` (`psh/io_redirect/process_sub.py`) — forks
   the child (its body runs through `run_child_shell` in
@@ -257,7 +258,7 @@ redirect-carrying node without visitor support fails that matrix.
 
 | Behavior | Change here |
 |---|---|
-| quoting/IFS/glob of command args | `WordExpander.expand` + helpers (expansion/word_expander.py) |
+| quoting/IFS/glob of command args | `WordExpander.expand_to_word` + `materialize` (expansion/word_expander.py) |
 | what a context permits (split/glob/value-tilde) | the named `WordExpansionPolicy` table (expansion/word_expander.py) |
 | assignment-value semantics (all contexts) | `expand_assignment_value_word` (expansion/word_expander.py) |
 | declaration-builtin recognition | `is_declaration_builtin_command` / `assignment_word_prefix` (manager.py) |

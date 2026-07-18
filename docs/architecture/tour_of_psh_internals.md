@@ -285,7 +285,8 @@ here on is visitors walking it (`psh/visitor/CLAUDE.md`).
 Expansion runs at execution time, per command (for pipeline members,
 inside each forked child — see §7). The orchestrator is
 `ExpansionManager.expand_arguments` (`psh/expansion/manager.py`); the
-engine that walks Word parts is `WordExpander.expand`
+engine that walks Word parts is `WordExpander.expand_to_word` (the
+field IR producer; `WordExpander.materialize` is the IR→argv boundary)
 (`psh/expansion/word_expander.py`). See `psh/expansion/CLAUDE.md` for
 the subsystem and `docs/architecture/ast_data_flow.md` for every
 context that feeds it.
