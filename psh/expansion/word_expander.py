@@ -1,4 +1,4 @@
-"""The Word expansion engine: named policies and the two word walkers.
+"""The Word expansion engine: the field-splicing algebra and the scalar walker.
 
 Every context that expands a Word AST node has a NAME here. The policy
 table at the top maps each context to the three axes that actually vary
@@ -12,26 +12,45 @@ between contexts (verified against every caller, 2026-06-12):
 | ``ARRAY_INIT_ELEMENT``  |  yes  | yes  | no               |
 | ``ASSOC_INIT_ELEMENT``  |  no   | no   | no               |
 
-Two walkers live side by side and are intentionally SEPARATE:
+Two producers live side by side and are intentionally SEPARATE:
 
-* :meth:`WordExpander.expand` — the field-producing engine for command
-  arguments, loop items and array initializer elements. A Word goes in,
-  zero or more fields come out (IFS splitting, globbing, ``$@`` field
-  semantics, the zero-field rule for vanished unquoted expansions).
-* :meth:`WordExpander.expand_assignment_value_word` — the scalar walker
-  for assignment VALUES (``v=...``, ``a[i]=...``, ``h=([k]=...)``).
-  It never produces fields, and its tilde trigger is different: the
-  value *starts* in tilde-trigger position (``v=~`` expands), whereas
-  the field engine only reaches tilde-trigger position after walking an
-  unquoted ``NAME=`` prefix. Merging them would re-tangle what the
-  policy table just untangled.
+* :meth:`WordExpander.expand_to_word` — the field-producing engine for command
+  arguments, loop items and array initializer elements. A Word goes in, an
+  :class:`ExpandedWord` (zero or more explicit fields, each an ordered run of
+  homogeneous-protection :class:`FieldRun`s) comes out. One terminal boundary,
+  :meth:`WordExpander.materialize`, turns that back into ``argv`` strings after
+  field splitting and pathname generation — the SOLE ``ExpandedWord`` -> strings
+  conversion (reappraisal #20 H5/H6: no ``str``/``list[str]`` walker, no ``$@``
+  shortcut, no join before splitting/globbing).
+* :meth:`WordExpander.expand_assignment_value_word` — the scalar walker for
+  assignment VALUES (``v=...``, ``a[i]=...``, ``h=([k]=...)``). It never
+  produces fields and never globs (an assignment value is one string), so it
+  legitimately materializes to a ``str`` directly; its tilde trigger differs
+  (the value *starts* in tilde-trigger position). Merging it with the field
+  engine would re-tangle what the policy table just untangled.
+
+The field-splicing algebra (``expand_to_word``):
+
+1. **walk** each Word part -> runs appended to an open field. A multi-field
+   ``$@``/``[@]`` expansion SPLICES: its first field's runs attach to the open
+   field, its middle fields commit, and its last field becomes the new open
+   field, so an adjacent unquoted fragment (``"$@"$x``) lands in the right
+   field and still splits. No-split policies join the fields with one space
+   instead (bash ``declare v="$@"``).
+2. **field-split** each committed field (split policies): ``IFS_ELIGIBLE`` runs
+   split on IFS, ``NEVER`` runs edge-join; an all-eligible field that splits to
+   nothing elides.
+3. **materialize** each field: pathname-expand when an ACTIVE run carries a
+   glob/extglob metacharacter (the pattern is compiled from the runs, PROTECTED
+   metacharacters bracket-escaped so a quoted/escaped ``*`` stays literal beside
+   an active one), otherwise join the runs. This is the terminal boundary.
 
 The escape processors (:meth:`WordExpander.process_dquote_escapes`,
-:meth:`WordExpander._process_unquoted_escapes`) live here WITH the
-walkers, not in ``utils/escapes.py`` — that module's dialect map
-deliberately excludes word-level (quote-context) escape processing.
+:meth:`WordExpander._process_unquoted_escapes`) live here WITH the walkers, not
+in ``utils/escapes.py`` — that module's dialect map deliberately excludes
+word-level (quote-context) escape processing.
 """
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ..ast_nodes import (
     ExpansionPart,
@@ -46,19 +65,101 @@ from ..core import TopLevelAbort
 from .glob import GLOB_METACHARS, has_glob_metacharacters
 from .operands import DQ_WORD
 from .word_expansion_types import (
-    ExpandedSegment,
+    ExpandedField,
+    ExpandedWord,
+    FieldRun,
+    Protection,
+    Split,
     WordExpansionPolicy,
-    _WalkState,
 )
 
 if TYPE_CHECKING:
     from .manager import ExpansionManager
 
+_ACTIVE = Protection.ACTIVE
+_PROTECTED = Protection.PROTECTED
+_NEVER = Split.NEVER
+_ELIGIBLE = Split.IFS_ELIGIBLE
 
-#: Sentinel: the expansion-part walker handled the part normally; keep
-#: walking. (A real return value — str or list, including '' and [] —
-#: means the part took over the whole word.)
-_CONTINUE_WALK = object()
+#: Characters that must be neutralised for a PROTECTED run to be a literal in a
+#: pathname pattern. The pathname glob engine treats backslash as a LITERAL
+#: character (a deliberate prior refactor — see ``glob._compile_component``), so
+#: protection is carried with single-character brackets (``[*]`` matches a
+#: literal ``*``) instead. Escaping ``(`` neutralises every extglob group, since
+#: an ``@(...)``/``?(...)``/... group cannot form without its ``(``.
+_PATHNAME_ESCAPE = frozenset('*?[(')
+
+
+class _FieldBuilder:
+    """Accumulates :class:`FieldRun`s into fields under the splicing algebra.
+
+    ``current`` is the open field (``None`` until the word contributes its first
+    run) that adjacent literal/scalar text and the last field of a spliced
+    ``$@``/``[@]`` extend. Committed fields are hard boundaries produced by a
+    multi-field expansion; per-field IFS splitting happens afterwards.
+    """
+
+    __slots__ = ('committed', 'current')
+
+    def __init__(self) -> None:
+        self.committed: List[ExpandedField] = []
+        self.current: Optional[ExpandedField] = None
+
+    @property
+    def has_content(self) -> bool:
+        """True once any run has been emitted (gates the leading-tilde rule)."""
+        return self.current is not None or bool(self.committed)
+
+    def add(self, run: FieldRun) -> None:
+        if self.current is None:
+            self.current = ExpandedField([])
+        self.current.runs.append(run)
+
+    def add_runs(self, runs: List[FieldRun]) -> None:
+        for run in runs:
+            self.add(run)
+
+    def splice(self, fields: List[ExpandedField]) -> None:
+        """Splice a multi-field ``$@``/``[@]`` expansion into the word.
+
+        The first field's runs attach to the open field; middle fields commit
+        as their own fields; the last field becomes the new open field so a
+        following fragment continues it. An empty ``fields`` (empty ``$@``) is a
+        no-op on field boundaries — ``pre"$@"post`` with no positionals stays
+        one field ``prepost``.
+        """
+        if not fields:
+            return
+        if self.current is None:
+            self.current = ExpandedField([])
+        self.current.runs.extend(fields[0].runs)
+        if len(fields) == 1:
+            return
+        self.committed.append(self.current)
+        self.committed.extend(fields[1:-1])
+        self.current = ExpandedField(list(fields[-1].runs))
+
+    def finish(self) -> List[ExpandedField]:
+        if self.current is not None:
+            self.committed.append(self.current)
+            self.current = None
+        return self.committed
+
+
+class _AssignCtx:
+    """Assignment-shaped word (``NAME=...``) value-tilde walk bookkeeping."""
+
+    __slots__ = ('has_expansion', 'assign_prefix', 'assign_seen',
+                 'value_len', 'prev_char')
+
+    def __init__(self) -> None:
+        self.has_expansion = False
+        #: The unquoted ``NAME=``/``NAME+=`` prefix, or None when the word is
+        #: not assignment-shaped (or the policy disables assignment_tilde).
+        self.assign_prefix: Optional[str] = None
+        self.assign_seen = 0    # chars of assign_prefix consumed so far
+        self.value_len = 0      # value chars emitted before the current part
+        self.prev_char = ''     # last unquoted-literal char ('' after others)
 
 
 class WordExpander:
@@ -79,136 +180,131 @@ class WordExpander:
     # The field-producing engine
     # ------------------------------------------------------------------
 
-    def expand(self, word: Word,
-               policy: WordExpansionPolicy) -> Union[str, List[str]]:
-        """Expand a Word AST node using per-part quote context.
+    def expand_to_word(self, word: Word,
+                       policy: WordExpansionPolicy) -> ExpandedWord:
+        """Expand a Word AST node to an :class:`ExpandedWord`.
 
-        Uses structural information from Word parts to determine glob
-        suppression, word splitting, and tilde expansion behavior; the
-        *policy* names what the surrounding context permits.
-
-        Returns:
-            Either a single string or a list of strings (for word
-            splitting or ``$@`` expansion).
+        Uses per-part quote context to decide protection and split
+        eligibility; *policy* names what the surrounding context permits.
+        Field splitting is applied here (for split policies); pathname
+        generation and the final flatten to strings happen in
+        :meth:`materialize`, the sole terminal boundary.
         """
         # Fallback audit 2026-06-12: every caller passes a Word built by a
-        # parser; coercing other types to str() masked type bugs as
-        # literal text. Fail loudly (v0.300 policy).
+        # parser; coercing other types to str() masked type bugs as literal
+        # text. Fail loudly (v0.300 policy).
         if not isinstance(word, Word):
             raise TypeError(
-                f"WordExpander.expand expects a Word AST node, got "
+                f"WordExpander.expand_to_word expects a Word AST node, got "
                 f"{type(word).__name__}: {word!r}")
 
-        # Single-quoted word: no expansion at all.
-        # ANSI-C quoted word ($'...'): lexer already processed escapes,
-        # treat as literal. Both are pure quote removal.
+        # Single-quoted / ANSI-C quoted word: pure quote removal, one
+        # protected field (the lexer already resolved $'...' escapes).
         if word.quote_type in ("'", "$'"):
-            return word.to_literal_string()
+            return ExpandedWord([ExpandedField(
+                [FieldRun(word.to_literal_string(), _PROTECTED, _NEVER,
+                          'quoted')])])
 
-        # Double-quoted word (uniform quote_type on the Word itself):
-        # expand variables/commands but no word splitting or globbing
-        if word.quote_type == '"':
-            return self._expand_double_quoted_word(word, policy)
+        # Everything else (a wholly double-quoted word — whose parts are each
+        # marked quoted='"' — and composite/unquoted words) walks one algebra.
+        return self._walk_word(word, policy)
 
-        # --- Composite / unquoted word: walk parts, then finish ---
-        st = _WalkState()
-        # Assignment-shaped word (NAME=... / NAME+=...): bash expands
-        # tilde prefixes in the value after the first '=' and after each
-        # ':' (command arguments and for/select items; indexed-array
-        # initializer elements use a tilde-free policy).
+    def _walk_word(self, word: Word,
+                   policy: WordExpansionPolicy) -> ExpandedWord:
+        builder = _FieldBuilder()
+        ctx = _AssignCtx()
+        # Assignment-shaped word (NAME=... / NAME+=...): bash expands tilde
+        # prefixes in the value after the first '=' and after each ':'.
         if policy.assignment_tilde:
-            st.assign_prefix = self.manager.assignment_word_prefix(word)
+            ctx.assign_prefix = self.manager.assignment_word_prefix(word)
 
-        # A colon-bounded leading tilde extent that spills into following
-        # parts (``~:$X`` -> ``$HOME:$X``, $X kept verbatim): pre-expand it
-        # into one literal so the walk sees the verbatim rest as ordinary
-        # text. (The single-literal-part case is handled in
-        # _walk_literal_part via _leading_tilde_expandable.)
+        # A colon-bounded leading tilde extent spilling into following parts
+        # (``~:$X`` -> ``$HOME:$X``, $X verbatim): pre-expand into one literal.
         extent_parts = self._collapse_leading_tilde_extent(word)
         if extent_parts is not None:
             word = Word(parts=extent_parts)
-            st.assign_prefix = None  # synthetic word is not assignment-shaped
+            ctx.assign_prefix = None  # synthetic word is not assignment-shaped
 
         for part_index, part in enumerate(word.parts):
             if isinstance(part, LiteralPart):
-                self._walk_literal_part(word, part_index, part, st)
+                self._walk_literal_part(word, part_index, part, ctx, builder)
             elif isinstance(part, ExpansionPart):
-                early = self._walk_expansion_part(word, part, st, policy)
-                if early is not _CONTINUE_WALK:
-                    return early
+                self._walk_expansion_part(part, ctx, builder, policy)
 
-        return self._finish(st, policy)
+        raw_fields = builder.finish()
+        if policy.split:
+            return ExpandedWord(self._field_split(raw_fields))
+        return ExpandedWord(raw_fields)
 
     def _walk_literal_part(self, word: Word, part_index: int,
-                           part: LiteralPart, st: _WalkState) -> None:
-        """Walk one LiteralPart: quote-aware escape processing,
-        assignment value-tilde tracking, leading-tilde expansion, and
-        unquoted-glob detection."""
+                           part: LiteralPart, ctx: _AssignCtx,
+                           builder: _FieldBuilder) -> None:
+        """Walk one LiteralPart: quote-aware escape processing, assignment
+        value-tilde tracking, leading-tilde expansion, per-character glob
+        protection."""
         text = part.text
-        if st.assign_prefix is not None and part.quoted:
-            # Quoted text never extends the assignment prefix and
-            # never triggers value-tilde expansion.
-            st.prev_char = ''
-            st.value_len += 1
+        if ctx.assign_prefix is not None and part.quoted:
+            # Quoted text never extends the assignment prefix and never
+            # triggers value-tilde expansion.
+            ctx.prev_char = ''
+            ctx.value_len += 1
         if part.quoted and part.quote_char == "'":
-            # Single-quoted literal: completely literal
-            st.segments.append(ExpandedSegment(text, quoted=True))
+            builder.add(FieldRun(text, _PROTECTED, _NEVER, 'single'))
         elif part.quoted and part.quote_char == "$'":
-            # ANSI-C quoted literal: lexer already processed escapes
-            st.segments.append(ExpandedSegment(text, quoted=True))
+            builder.add(FieldRun(text, _PROTECTED, _NEVER, 'ansi'))
         elif part.quoted and part.quote_char == '"':
-            # Double-quoted literal: after WordBuilder decomposition,
-            # expansions are separate ExpansionPart nodes, so this
-            # LiteralPart is purely literal text.  The lexer already resolved
-            # the double-quote escapes; only the deferred \$ still needs
-            # stripping (process_dquote_escapes).
+            # Double-quoted literal: the lexer already resolved the dquote
+            # escapes; only the deferred \$ still needs stripping.
             if '\\' in text:
                 text = self.process_dquote_escapes(text)
-            st.segments.append(ExpandedSegment(text, quoted=True))
+            builder.add(FieldRun(text, _PROTECTED, _NEVER, 'double'))
         else:
-            seg_has_glob = False
-            if st.assign_prefix is not None:
-                parts_follow = part_index < len(word.parts) - 1
-                remaining = len(st.assign_prefix) - st.assign_seen
-                if remaining > 0:
-                    take = min(remaining, len(text))
-                    st.assign_seen += take
-                    head, chunk = text[:take], text[take:]
-                    # A non-empty chunk directly follows the '='.
-                    trigger = bool(chunk)
-                else:
-                    head, chunk = '', text
-                    # ':' always re-triggers; the assignment '='
-                    # only when no value text has intervened.
-                    trigger = (st.prev_char == ':'
-                               or (st.prev_char == '=' and st.value_len == 0))
-                if chunk:
-                    expanded_chunk = self._expand_assignment_value_tildes(
-                        chunk, trigger, parts_follow)
-                    st.value_len += len(chunk)
-                    text = head + expanded_chunk
-                st.prev_char = text[-1] if text else st.prev_char
-            # Process escape sequences in unquoted text
-            if '\\' in text:
-                text, escaped_globs = self._process_unquoted_escapes(text)
-                # If glob chars remain that weren't escaped, track them
-                if has_glob_metacharacters(text) and not escaped_globs:
-                    seg_has_glob = True
-            else:
-                # Track unquoted glob chars
-                if has_glob_metacharacters(text):
-                    seg_has_glob = True
-            # Unquoted literal: tilde on first part if leading ~ and the
-            # tilde word is wholly unquoted literal (bash) — see
+            # Unquoted literal.
+            if ctx.assign_prefix is not None:
+                text = self._assignment_value_chunk(word, part_index, part,
+                                                    ctx, text)
+            # Unquoted literal: tilde on first part if leading ~ and the tilde
+            # word is wholly unquoted literal (bash) — see
             # _leading_tilde_expandable for the boundary rule.
-            if (not st.has_expansion and not st.segments
+            if (not ctx.has_expansion and not builder.has_content
                     and text.startswith('~')
                     and self._leading_tilde_expandable(
                         part.text,
                         parts_follow=part_index < len(word.parts) - 1)):
                 text = self.manager.expand_tilde(text)
-            st.segments.append(ExpandedSegment(
-                text, quoted=False, glob_eligible=seg_has_glob))
+            builder.add_runs(self._unquoted_literal_runs(text))
+
+    def _assignment_value_chunk(self, word: Word, part_index: int,
+                                part: LiteralPart, ctx: _AssignCtx,
+                                text: str) -> str:
+        """Apply assignment value-tilde expansion to an unquoted literal chunk.
+
+        Splits ``text`` into the ``NAME=`` prefix chars still owed and the
+        value chunk after them; value-tildes expand after the first ``=`` and
+        after each ``:``. Mutates ``ctx`` (prefix consumed, value length,
+        previous char). Returns the (possibly tilde-expanded) text.
+        """
+        parts_follow = part_index < len(word.parts) - 1
+        remaining = len(ctx.assign_prefix or '') - ctx.assign_seen
+        if remaining > 0:
+            take = min(remaining, len(text))
+            ctx.assign_seen += take
+            head, chunk = text[:take], text[take:]
+            # A non-empty chunk directly follows the '='.
+            trigger = bool(chunk)
+        else:
+            head, chunk = '', text
+            # ':' always re-triggers; the assignment '=' only when no value
+            # text has intervened.
+            trigger = (ctx.prev_char == ':'
+                       or (ctx.prev_char == '=' and ctx.value_len == 0))
+        if chunk:
+            expanded_chunk = self._expand_assignment_value_tildes(
+                chunk, trigger, parts_follow)
+            ctx.value_len += len(chunk)
+            text = head + expanded_chunk
+        ctx.prev_char = text[-1] if text else ctx.prev_char
+        return text
 
     @staticmethod
     def _leading_tilde_expandable(raw_text: str, parts_follow: bool) -> bool:
@@ -333,228 +429,159 @@ class WordExpander:
                                 quoted=False)
         return [collapsed] + resume
 
-    def _walk_expansion_part(self, word: Word, part: ExpansionPart,
-                             st: _WalkState,
-                             policy: WordExpansionPolicy) -> Any:
-        """Walk one ExpansionPart.
+    def _walk_expansion_part(self, part: ExpansionPart, ctx: _AssignCtx,
+                             builder: _FieldBuilder,
+                             policy: WordExpansionPolicy) -> None:
+        """Walk one ExpansionPart: append its run(s), or splice its fields."""
+        ctx.has_expansion = True
+        if ctx.assign_prefix is not None:
+            # Expansion results never trigger value-tilde expansion (the
+            # check is syntactic, on the pre-expansion word).
+            ctx.prev_char = ''
+            ctx.value_len += 1
 
-        Returns ``_CONTINUE_WALK`` when the part was accumulated normally;
-        otherwise the part took over the whole word and the return value
-        (a str or list, possibly ``''`` or ``[]``) is the final result —
-        quoted field expansions with affixes ("pre$@post") and a
-        standalone unquoted ``$@``/``${a[@]}`` short-circuit this way.
-        """
-        st.has_expansion = True
-        if st.assign_prefix is not None:
-            # Expansion results never trigger value-tilde expansion
-            # (the check is syntactic, on the pre-expansion word).
-            st.prev_char = ''
-            st.value_len += 1
-
-        # Process substitution (<(cmd) / >(cmd)) — whole-word or
-        # embedded. Perform it and splice the /dev/fd/N path into
-        # the word at this position. The path is NOT subject to
-        # word splitting or globbing (bash: process substitution
-        # is not a parameter/command/arithmetic expansion, so its
-        # result never field-splits, even with a pathological IFS).
+        # Process substitution (<(cmd) / >(cmd)) — whole-word or embedded.
+        # The /dev/fd/N path is spliced in unquoted-but-unsplittable: it is not
+        # a parameter/command/arithmetic expansion, so it never field-splits or
+        # globs (and it never carries a glob metacharacter anyway).
         if isinstance(part.expansion, ProcessSubstitution):
             path = self.shell.io_manager.create_process_substitution_for_expansion(
                 part.expansion.direction, part.expansion.source)
-            # The /dev/fd/N path is unquoted-but-unsplittable: it counts
-            # against all_parts_quoted (so extglob may still be detected on
-            # the joined word) yet is never field-split or globbed.
-            st.segments.append(ExpandedSegment(path, quoted=False))
-            return _CONTINUE_WALK
+            builder.add(FieldRun(path, _ACTIVE, _NEVER, 'procsub'))
+            return
 
-        # Handle quoted field expansions ("$@", "${a[@]}", ...) in
-        # composite words: pre"$@"post with params (a,b,c) →
-        # [prea, b, cpost]. In NO-SPLIT contexts (assoc-init elements,
-        # declaration assignment values) bash instead joins the fields
-        # into one word with single spaces — always spaces, regardless
-        # of IFS (probed 2026-06-13: `h=("$@" v)` with params ("a b", c)
-        # creates the single key "a b c"; `declare v="$@"` joins too).
-        if part.quoted:
-            fields = self._field_expansion_fields(part)
-            if fields is not None:
-                if not policy.split:
-                    if fields:
-                        st.segments.append(
-                            ExpandedSegment(' '.join(fields), quoted=True))
-                    # Zero fields contribute nothing. (bash goes on to
-                    # reject the then-empty word as an assoc key — "bad
-                    # array subscript" — but psh accepts empty assoc
-                    # keys generally; that pre-existing divergence is
-                    # independent of this path.)
-                    return _CONTINUE_WALK
-                return self._expand_at_with_affixes(
-                    word, part, [s.text for s in st.segments],
-                    in_double_quote=False, first_fields=fields)
+        # Field-producing expansion ("$@", "${a[@]}", "${@:2}", "${a[@]@Q}", …)
+        # — quoted or unquoted. Route ALL of them through the same splice
+        # algebra (no $@ shortcut). A quoted field is protected/unsplittable;
+        # an unquoted field is active/split-eligible (each field further
+        # IFS-splits). In no-split contexts bash joins the fields with a single
+        # space instead of producing boundaries.
+        fields = self._field_expansion_fields(part)
+        if fields is not None:
+            expanded = self._fields_to_expanded(fields, quoted=part.quoted)
+            if policy.split:
+                builder.splice(expanded)
+            elif expanded:
+                # No-split: join field texts with a single space (bash), one
+                # protected run. Empty $@ contributes nothing.
+                builder.add(FieldRun(' '.join(f.text for f in expanded),
+                                     _PROTECTED, _NEVER, 'field-join'))
+            return
 
-        # An unquoted field expansion standing alone ($@, ${a[@]}):
-        # expand to fields FIRST, then IFS-split each field, so
-        # parameter/element boundaries survive a custom IFS (bash).
-        # In no-split contexts the fields join with spaces instead and
-        # are never split or globbed (bash: `h=($@)` with params
-        # ("a b", c) creates the single key "a b c"; a literal `*`
-        # parameter stays literal). Until v0.326 this path ignored the
-        # policy — the flip to bash is Tier B10a, 2026-06-13.
-        if not part.quoted and len(word.parts) == 1:
-            ufields = self._field_expansion_fields(part)
-            if ufields is not None:
-                if not policy.split:
-                    return ' '.join(ufields) if ufields else []
-                out: List[str] = []
-                globby = False
-                for f in ufields:
-                    # A field carrying operand segments (a triggered
-                    # ${a[@]:-'a b'} default) splits and globs only its
-                    # unprotected regions (bash).
-                    fsegs = getattr(f, 'segments', None)
-                    if fsegs is None:
-                        pieces = self._split_with_ifs(f)
-                        out.extend(pieces)
-                        globby = globby or any(
-                            has_glob_metacharacters(piece) for piece in pieces)
-                    else:
-                        out.extend(self._field_split_pass(
-                            self._operand_segments_to_expanded(fsegs)))
-                        globby = globby or any(
-                            not protected and has_glob_metacharacters(text)
-                            for text, protected in fsegs)
-                if globby and not self.state.options.get('noglob', False):
-                    return self._glob_words(out)
-                return out
-
-        expanded = self.manager.expand_expansion(
+        # Ordinary single-field expansion.
+        result = self.manager.expand_expansion(
             part.expansion, quote_ctx=DQ_WORD if part.quoted else None)
         if part.quoted:
-            # Quoted expansion: no word splitting, no globbing on result
-            st.segments.append(ExpandedSegment(expanded, quoted=True))
-        else:
-            segs = getattr(expanded, 'segments', None)
-            if segs is not None:
-                # A value-operand result (${x:-word}): quoted/escaped
-                # regions of the operand are protected from splitting
-                # and globbing (bash: ${x:-'a b'} stays one field).
-                for seg in self._operand_segments_to_expanded(segs):
-                    st.segments.append(seg)
-                if not segs:
-                    # Empty operand: keep the zero-field rule (an
-                    # expansion that vanishes contributes no field).
-                    st.segments.append(ExpandedSegment(
-                        '', quoted=False, splittable=True))
+            builder.add(FieldRun(result, _PROTECTED, _NEVER, 'expansion'))
+            return
+        segs = getattr(result, 'segments', None)
+        if segs is not None:
+            # A value-operand result (${x:-word}): quoted/escaped regions of
+            # the operand are protected from splitting and globbing; unquoted
+            # regions stay active/split-eligible (bash: ${x:-'a b'} one field).
+            runs = self._operand_runs(segs)
+            if runs:
+                builder.add_runs(runs)
             else:
-                # Unquoted expansion: its text is the only splittable
-                # text, and glob chars in it trigger globbing.
-                has_glob = has_glob_metacharacters(expanded)
-                st.segments.append(ExpandedSegment(
-                    expanded, quoted=False, splittable=True,
-                    glob_eligible=has_glob))
-        return _CONTINUE_WALK
+                # Empty operand: keep the zero-field rule (an expansion that
+                # vanishes contributes no surviving field on its own).
+                builder.add(FieldRun('', _ACTIVE, _ELIGIBLE, 'operand'))
+            return
+        # Plain unquoted expansion: its text is the only split-eligible text,
+        # and glob chars in it are active.
+        builder.add(FieldRun(str(result), _ACTIVE, _ELIGIBLE, 'expansion'))
+
+    def _fields_to_expanded(self, fields: List, quoted: bool
+                            ) -> List[ExpandedField]:
+        """Map ``$@``/``[@]`` field strings to :class:`ExpandedField`s.
+
+        A quoted field is one PROTECTED, NEVER run. An unquoted field is
+        ACTIVE and IFS_ELIGIBLE (each field further splits), unless it carries
+        operand ``.segments`` (a triggered ``${a[@]:-'a b'}`` default), whose
+        protected regions stay protected.
+        """
+        out: List[ExpandedField] = []
+        for f in fields:
+            segs = getattr(f, 'segments', None)
+            if segs is not None and not quoted:
+                out.append(ExpandedField(self._operand_runs(segs)))
+            elif quoted:
+                out.append(ExpandedField(
+                    [FieldRun(str(f), _PROTECTED, _NEVER, 'field')]))
+            else:
+                out.append(ExpandedField(
+                    [FieldRun(str(f), _ACTIVE, _ELIGIBLE, 'field')]))
+        return out
 
     @staticmethod
-    def _operand_segments_to_expanded(
-            segs: Tuple[Tuple[str, bool], ...]) -> List[ExpandedSegment]:
-        """Map OperandResult (text, protected) pairs to ExpandedSegments.
+    def _operand_runs(segs: Tuple[Tuple[str, bool], ...]) -> List[FieldRun]:
+        """Map OperandResult (text, protected) pairs to :class:`FieldRun`s.
 
-        Protected regions (quoted/escaped operand text) become quoted
-        segments — never split, never globbed; unprotected regions stay
-        splittable and glob-eligible, like any unquoted expansion result.
+        Protected regions (quoted/escaped operand text) become PROTECTED,
+        NEVER runs; unprotected regions stay ACTIVE, IFS_ELIGIBLE like any
+        unquoted expansion result.
         """
         return [
-            ExpandedSegment(text, quoted=True) if protected
-            else ExpandedSegment(text, quoted=False, splittable=True,
-                                 glob_eligible=has_glob_metacharacters(text))
+            FieldRun(text, _PROTECTED, _NEVER, 'operand') if protected
+            else FieldRun(text, _ACTIVE, _ELIGIBLE, 'operand')
             for text, protected in segs
         ]
 
-    def _finish(self, st: _WalkState,
-                policy: WordExpansionPolicy) -> Union[str, List[str]]:
-        """Turn the walked segment list into the final str-or-list.
+    # ------------------------------------------------------------------
+    # Field splitting (pass 2): per committed field, split IFS_ELIGIBLE runs
+    # ------------------------------------------------------------------
 
-        Three visibly separate passes over ``st.segments``:
+    def _field_split(self,
+                     raw_fields: List[ExpandedField]) -> List[ExpandedField]:
+        """Split every committed field on IFS, preserving run protection.
 
-        1. **field-splitting pass** (:meth:`_field_split_pass`) — split the
-           splittable segments on IFS, edge-joining literal/quoted text;
-           runs only for splitting policies with an unquoted expansion
-           present. May settle the result to a multi-field list (then we
-           glob each field), a single field, or zero fields.
-        2. **glob pass** (:meth:`_glob_pass`) — pathname-expand when
-           unquoted glob metacharacters (or, in unquoted text, extglob
-           patterns) are present and the policy permits it.
-        3. **join/quote-removal** — concatenate any remaining segments
-           into the scalar result.
-
-        Quote removal already happened part-by-part during the walk (each
-        segment's ``text`` is post-quote-removal), so pass 3 is a plain
-        join.
-        """
-        has_unquoted_glob = st.has_unquoted_glob
-
-        # --- Pass 1: field splitting -----------------------------------
-        if st.has_unquoted_expansion and policy.split:
-            words = self._field_split_pass(st.segments)
-            if len(words) > 1:
-                return self._glob_pass(words, has_unquoted_glob, policy)
-            elif len(words) == 1:
-                result = words[0]
-            else:
-                # A purely unquoted expansion that splits to nothing (e.g.
-                # `set -- $unset`) contributes zero fields, not one empty one.
-                return []
-        else:
-            result = ''.join(s.text for s in st.segments)
-
-        # extglob patterns in unquoted text also count as glob-eligible.
-        if (not has_unquoted_glob and not st.all_parts_quoted
-                and self.state.options.get('extglob', False)):
-            from .extglob import contains_extglob
-            if contains_extglob(result):
-                has_unquoted_glob = True
-
-        # --- Pass 2: globbing (single word) + Pass 3: join -------------
-        globbed = self._glob_pass([result], has_unquoted_glob, policy)
-        if len(globbed) == 1:
-            return globbed[0]
-        return globbed
-
-    def _field_split_pass(self,
-                          segments: List[ExpandedSegment]) -> List[str]:
-        """Pass 1: IFS-split the splittable segments, edge-joining the rest.
-
-        Only the text of unquoted expansion segments
-        (``segment.splittable``) can produce field boundaries; literal and
-        quoted text never splits — even if it contains IFS characters that
-        arrived via escape processing (``pre\\ post$x`` stays one field) —
-        but it merges with adjacent expansion fragments into a single
-        field (``a"$x"b``). Uses :meth:`WordSplitter.split_with_edges` so a
-        leading/trailing IFS run is reported and the join is correct.
+        Each committed field (a ``$@`` boundary) is split independently; an
+        all-eligible field that splits to nothing elides (zero surviving
+        fields), which is how ``$unset`` alone contributes no argument.
         """
         ifs = self.state.get_variable('IFS', ' \t\n')
-        fields: List[str] = []
-        current: Optional[str] = None  # None = no field currently open
-        for seg in segments:
-            text = seg.text
-            if not seg.splittable:
-                current = (current or '') + text
+        out: List[ExpandedField] = []
+        for field in raw_fields:
+            out.extend(self._split_one_field(field.runs, ifs))
+        return out
+
+    def _split_one_field(self, runs: List[FieldRun],
+                         ifs: str) -> List[ExpandedField]:
+        """IFS-split one field's runs, edge-joining NEVER runs.
+
+        Only ``IFS_ELIGIBLE`` runs (unquoted expansion text) produce field
+        boundaries; ``NEVER`` runs merge with the neighbouring field. Uses
+        :meth:`WordSplitter.split_with_edges` so a leading/trailing IFS run is
+        reported and the join is correct (``a"$x"b``). Split pieces inherit the
+        original run's protection so pathname generation still sees it.
+        """
+        fields: List[ExpandedField] = []
+        current: Optional[ExpandedField] = None  # None = no field currently open
+        for run in runs:
+            if run.split is _NEVER:
+                if current is None:
+                    current = ExpandedField([])
+                current.runs.append(run)
                 continue
+            text = run.text
             pieces, leading, trailing = \
                 self.manager.word_splitter.split_with_edges(text, ifs)
             if leading and current is not None:
                 fields.append(current)
                 current = None
-                # A leading non-whitespace delimiter both closed the open
-                # field and produced an empty first piece — same boundary,
-                # drop the duplicate (pre$x with x=':a' is [pre, a]).
+                # A leading non-whitespace delimiter both closed the open field
+                # and produced an empty first piece — same boundary, drop the
+                # duplicate (pre$x with x=':a' is [pre, a]).
                 if pieces and pieces[0] == '' and text[0] not in ' \t\n':
                     pieces = pieces[1:]
             for k, piece in enumerate(pieces):
+                piece_run = FieldRun(piece, run.protection, _NEVER, run.origin)
                 if k == 0 and current is not None:
-                    current += piece
+                    current.runs.append(piece_run)
                 else:
                     if current is not None:
                         fields.append(current)
-                    current = piece
+                    current = ExpandedField([piece_run])
             if trailing and current is not None:
                 fields.append(current)
                 current = None
@@ -562,23 +589,155 @@ class WordExpander:
             fields.append(current)
         return fields
 
-    def _glob_pass(self, words: List[str], has_unquoted_glob: bool,
-                   policy: WordExpansionPolicy) -> List[str]:
-        """Pass 2: pathname-expand *words* when the word is glob-eligible.
+    # ------------------------------------------------------------------
+    # Materialization (terminal boundary): ExpandedWord -> argv strings
+    # ------------------------------------------------------------------
 
-        A no-op (returns *words* unchanged) unless unquoted glob
-        metacharacters are present, the policy permits globbing, and
-        noglob is off — so ``declare foo=*`` keeps the literal ``*`` even
-        when files would match.
+    def materialize(self, expanded: ExpandedWord,
+                    policy: WordExpansionPolicy) -> List[str]:
+        """Turn an :class:`ExpandedWord` into ``argv`` fields (the SOLE place
+        that converts the field IR back to strings).
+
+        Each field is pathname-expanded when the policy permits it, noglob is
+        off, and an ACTIVE run carries a glob/extglob metacharacter — the
+        pattern is compiled from the runs so a PROTECTED metacharacter cannot
+        act (H6). Otherwise the field's runs are joined (quote removal already
+        happened per run). An empty ``fields`` list means word elision.
         """
-        if (has_unquoted_glob and policy.glob
-                and not self.state.options.get('noglob', False)):
-            return self._glob_words(words)
-        return words
+        globbing = policy.glob and not self.state.options.get('noglob', False)
+        extglob_on = self.state.options.get('extglob', False)
+        result: List[str] = []
+        for field in expanded.fields:
+            if globbing and self._field_glob_eligible(field, extglob_on):
+                result.extend(self._glob_field(field))
+            else:
+                result.append(field.text)
+        return result
+
+    @staticmethod
+    def _field_glob_eligible(field: ExpandedField, extglob_on: bool) -> bool:
+        """True when an ACTIVE run of *field* carries a live glob metacharacter.
+
+        Only ACTIVE runs can introduce an active metacharacter; a PROTECTED
+        run's metacharacters are bracket-escaped in the pattern and never act.
+        Extglob detection scans the concatenated ACTIVE text so an operator and
+        its group in adjacent active runs are seen together.
+        """
+        active_text = ''.join(
+            r.text for r in field.runs if r.protection is _ACTIVE)
+        if has_glob_metacharacters(active_text):
+            return True
+        if extglob_on and active_text:
+            from .extglob import contains_extglob
+            return contains_extglob(active_text)
+        return False
+
+    def _glob_field(self, field: ExpandedField) -> List[str]:
+        """Pathname-expand one glob-eligible field, honoring protection.
+
+        The pattern is compiled from the runs (PROTECTED metacharacters
+        bracket-escaped); on a match its results are returned, on no match the
+        field's LITERAL text (not the bracketed pattern) is the fallback, under
+        nullglob/failglob rules — matching bash's word-level behavior.
+        """
+        pattern = self._pattern_from_runs(field.runs)
+        matches = self.manager.glob_expander.expand(pattern)
+        if matches and matches != [pattern]:
+            # glob_expander already returns sorted results.
+            return matches
+        literal = field.text
+        if self.state.options.get('failglob', False):
+            # failglob: a no-match glob DISCARDS the rest of the current line
+            # and resumes at the next one (bash 5.2), in every consumer of glob
+            # expansion. Under set -e a non-interactive shell EXITS instead.
+            print(f"{self.state.error_location_prefix()}no match: {literal}",
+                  file=self.state.stderr)
+            if (self.state.options.get('errexit')
+                    and self.state.is_script_mode):
+                raise SystemExit(1)
+            raise TopLevelAbort(1)
+        if self.state.options.get('nullglob', False):
+            return []  # nullglob: no matches -> nothing
+        return [literal]
+
+    def _pattern_from_runs(self, runs: List[FieldRun]) -> str:
+        """Compile a pathname pattern from a field's runs.
+
+        ACTIVE run text passes through raw (its metacharacters act); PROTECTED
+        run text is bracket-escaped so its metacharacters are literal in the
+        same pattern (``"*"*`` -> ``[*]*`` matches names beginning with a
+        literal ``*``).
+        """
+        return ''.join(
+            run.text if run.protection is _ACTIVE
+            else self._pathname_escape(run.text)
+            for run in runs)
+
+    @staticmethod
+    def _pathname_escape(text: str) -> str:
+        """Neutralise every glob/extglob metacharacter in a PROTECTED run.
+
+        Uses single-character brackets (``[*]``, ``[?]``, ``[[]``, ``[(]``) and
+        ``[]]`` for ``]`` — the pathname engine treats backslash as a literal
+        character, so bracket-escaping is the portable way to a literal
+        metacharacter.
+        """
+        out: List[str] = []
+        for c in text:
+            if c == ']':
+                out.append('[]]')
+            elif c in _PATHNAME_ESCAPE:
+                out.append('[' + c + ']')
+            else:
+                out.append(c)
+        return ''.join(out)
+
+    def _unquoted_literal_runs(self, text: str) -> List[FieldRun]:
+        """Escape-process unquoted literal text into protection runs.
+
+        A backslash escape protects the following character (``\\*`` keeps the
+        ``*`` literal); an unescaped glob metacharacter stays ACTIVE. Runs are
+        homogeneous by protection, so ``a\\*b*`` yields ACTIVE ``a``, PROTECTED
+        ``*``, ACTIVE ``b*`` — the per-character protection #20 H6 needs. All
+        runs are NEVER-split (literal text never IFS-splits).
+        """
+        if '\\' not in text:
+            # Fast path: no escapes -> one ACTIVE run (metacharacters, if any,
+            # act; a plain word with no metacharacter never globs anyway).
+            return [FieldRun(text, _ACTIVE, _NEVER, 'literal')]
+        runs: List[FieldRun] = []
+        buf: List[str] = []
+        buf_prot: Optional[Protection] = None
+
+        def flush() -> None:
+            nonlocal buf, buf_prot
+            if buf:
+                runs.append(FieldRun(''.join(buf), buf_prot or _ACTIVE,
+                                     _NEVER, 'literal'))
+                buf = []
+                buf_prot = None
+
+        i, n = 0, len(text)
+        while i < n:
+            if text[i] == '\\' and i + 1 < n:
+                # Every word-level escape strips the backslash and protects
+                # the escaped character (\$ \\ \` \" \' \~ \<space> \<newline>,
+                # an escaped glob metacharacter, or any other \<char>).
+                ch, prot = text[i + 1], _PROTECTED
+                i += 2
+            else:
+                ch, prot = text[i], _ACTIVE
+                i += 1
+            if buf and buf_prot is not prot:
+                flush()
+            buf.append(ch)
+            buf_prot = prot
+        flush()
+        return runs
 
     # ------------------------------------------------------------------
     # The scalar assignment-value walker (kept SEPARATE — see module
-    # docstring: its tilde trigger and no-field semantics differ).
+    # docstring: it never fields/globs and its tilde trigger differs).
     # ------------------------------------------------------------------
 
     def expand_assignment_value_word(self, word: Word) -> str:
@@ -698,12 +857,12 @@ class WordExpander:
         return ':'.join(out)
 
     # ------------------------------------------------------------------
-    # Field-expansion helpers ("$@", "${a[@]}", affix distribution)
+    # Field-expansion helper ("$@", "${a[@]}" field detection)
     # ------------------------------------------------------------------
 
     def _field_expansion_fields(self,
                                 part: ExpansionPart) -> Optional[List[str]]:
-        """Fields if this ExpansionPart is field-producing in double quotes.
+        """Fields if this ExpansionPart is field-producing.
 
         Returns the list of fields for ``$@``, ``${a[@]}``, ``${@:2}``,
         ``${a[@]:1:2}``, ``${a[@]@Q}`` etc., or None when the expansion has
@@ -724,138 +883,6 @@ class WordExpander:
             return self.manager.variable_expander.expand_to_fields(
                 exp.parameter, exp.operator, exp.word, quote_ctx=quote_ctx)
         return None
-
-    def _expand_double_quoted_word(self, word: Word,
-                                   policy: WordExpansionPolicy
-                                   ) -> Union[str, List[str]]:
-        """Expand a uniformly double-quoted Word (quote_type='"').
-
-        Handles multi-field expansion ("$@", "${a[@]}", slices, transforms)
-        and variable/command expansion but suppresses word splitting and
-        globbing. In NO-split contexts, field expansions join into one
-        word with single spaces instead of producing fields (bash:
-        `h=("$@")` with params ("a b", c) creates the single key "a b c";
-        see _walk_expansion_part).
-        """
-        result_parts: list = []
-        for part in word.parts:
-            if isinstance(part, LiteralPart):
-                # After WordBuilder decomposition, expansions are separate
-                # ExpansionPart nodes, so LiteralPart text is purely literal.
-                # The lexer resolved the dquote escapes; only \$ remains.
-                text = part.text
-                if '\\' in text:
-                    text = self.process_dquote_escapes(text)
-                result_parts.append(text)
-            elif isinstance(part, ExpansionPart):
-                fields = self._field_expansion_fields(part)
-                if fields is not None:
-                    if not policy.split:
-                        if fields:
-                            result_parts.append(' '.join(fields))
-                        continue
-                    return self._expand_at_with_affixes(
-                        word, part, result_parts, in_double_quote=True,
-                        first_fields=fields)
-
-                expanded = self.manager.expand_expansion(part.expansion,
-                                                          quote_ctx=DQ_WORD)
-                result_parts.append(expanded)
-
-        return ''.join(result_parts)
-
-    def _expand_at_with_affixes(self, word: Word, at_part: ExpansionPart,
-                                result_parts_before: List[str],
-                                in_double_quote: bool,
-                                first_fields: Optional[List[str]] = None):
-        """Distribute expansion fields across prefix/suffix text.
-
-        Used by both :meth:`expand` (composite words) and
-        :meth:`_expand_double_quoted_word` to handle field-producing
-        expansions ("$@", "${a[@]}", ...) with surrounding literal text.
-        Supports multiple field expansions in a single word.
-
-        Algorithm: walk parts left to right, accumulating text.  On each
-        field expansion, splice the fields into the result — the last
-        field becomes the seed for continued accumulation.
-
-        Example with params ``(1 2)``::
-
-            "a$@b$@c"  →  a1  2b1  2c
-
-        Args:
-            word: The Word AST node being expanded.
-            at_part: The first field-producing ExpansionPart in word.parts.
-            result_parts_before: Parts accumulated before ``at_part``.
-            in_double_quote: True when called from the double-quoted path
-                (all suffix literals are treated as double-quoted).
-            first_fields: Pre-computed fields for ``at_part`` (avoids
-                evaluating its expansion twice).
-
-        Returns:
-            A single string, a list of strings, or [] — a word consisting
-            solely of empty field expansions produces ZERO fields (bash:
-            ``"$@"`` with no parameters vanishes).
-        """
-        # current_seed: text accumulated so far that becomes the prefix
-        # of the next word.  We start with everything before the first
-        # field expansion. has_content distinguishes "one empty field"
-        # (some literal/scalar text was present) from "zero fields".
-        current_seed = ''.join(result_parts_before)
-        has_content = bool(result_parts_before)
-        result_words: list = []
-        found_first_at = False
-
-        def splice(fields: List[str]):
-            nonlocal current_seed, has_content
-            if not fields:
-                return
-            has_content = True
-            if len(fields) == 1:
-                current_seed += fields[0]
-            else:
-                result_words.append(current_seed + fields[0])
-                result_words.extend(fields[1:-1])
-                current_seed = fields[-1]
-
-        for p in word.parts:
-            if not found_first_at:
-                if p is at_part:
-                    found_first_at = True
-                    splice(first_fields if first_fields is not None else [])
-                # Parts before the first field expansion are already in
-                # result_parts_before
-                continue
-
-            # Process parts after the first field expansion
-            if isinstance(p, ExpansionPart) and (in_double_quote or p.quoted):
-                fields = self._field_expansion_fields(p)
-                if fields is not None:
-                    splice(fields)
-                    continue
-            if isinstance(p, LiteralPart):
-                t = p.text
-                if in_double_quote or (p.quoted and p.quote_char == '"'):
-                    if '\\' in t:
-                        t = self.process_dquote_escapes(t)
-                elif not p.quoted:
-                    if '\\' in t:
-                        t, _ = self._process_unquoted_escapes(t)
-                current_seed += t
-                has_content = True
-            elif isinstance(p, ExpansionPart):
-                current_seed += self.manager.expand_expansion(p.expansion)
-                has_content = True
-
-        # Finalize: the current seed becomes the last word
-        result_words.append(current_seed)
-
-        if len(result_words) == 1:
-            if result_words[0] == '' and not has_content:
-                # Only empty field expansions: zero fields (bash)
-                return []
-            return result_words[0]
-        return result_words
 
     # ------------------------------------------------------------------
     # Word-level escape processors (deliberately NOT in utils/escapes.py:
@@ -897,7 +924,9 @@ class WordExpander:
 
         Returns (processed_text, all_globs_escaped) where all_globs_escaped
         is True when glob chars were present but ALL were escaped (meaning
-        the result should NOT trigger globbing).
+        the result should NOT trigger globbing). Used by the scalar
+        assignment-value walker (the field engine builds protection runs
+        directly via :meth:`_unquoted_literal_runs`).
         """
         result = []
         had_glob_chars = False
@@ -928,55 +957,3 @@ class WordExpander:
             result.append(text[i])
             i += 1
         return ''.join(result), had_glob_chars and all_globs_escaped
-
-    # ------------------------------------------------------------------
-    # Splitting and globbing helpers
-    # ------------------------------------------------------------------
-
-    def _split_with_ifs(self, text: Optional[str]) -> List[str]:
-        """Split unquoted text using the current IFS.
-
-        Only ever called on already-unquoted field text (quoted segments are
-        kept intact by the segment walk before they reach here).
-        """
-        if text is None:
-            return []
-
-        ifs = self.state.get_variable('IFS', ' \t\n')
-        return self.manager.word_splitter.split(text, ifs)
-
-    def _glob_words(self, words: List[str]) -> List[str]:
-        """Apply glob expansion to a list of words."""
-        result = []
-        check_extglob = self.state.options.get('extglob', False)
-        for w in words:
-            is_glob = has_glob_metacharacters(w)
-            if not is_glob and check_extglob:
-                from .extglob import contains_extglob
-                is_glob = contains_extglob(w)
-            if is_glob:
-                matches = self.manager.glob_expander.expand(w)
-                if matches:
-                    # glob_expander.expand() already returns sorted results.
-                    result.extend(matches)
-                elif self.state.options.get('failglob', False):
-                    # failglob: a no-match glob DISCARDS the rest of the
-                    # current line and resumes at the next one (bash 5.2,
-                    # probe-verified — tmp/probes-r17t2-arith/), in every
-                    # consumer of glob expansion (command words, for-loop
-                    # words, array initializers). Under set -e a
-                    # non-interactive shell EXITS instead (bash exits even
-                    # from errexit-suppressed contexts like an if
-                    # condition, unlike the arithmetic discard family).
-                    print(f"{self.state.error_location_prefix()}no match: {w}", file=self.state.stderr)
-                    if (self.state.options.get('errexit')
-                            and self.state.is_script_mode):
-                        raise SystemExit(1)
-                    raise TopLevelAbort(1)
-                elif self.state.options.get('nullglob', False):
-                    pass  # nullglob: no matches -> nothing
-                else:
-                    result.append(w)
-            else:
-                result.append(w)
-        return result

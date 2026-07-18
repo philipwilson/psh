@@ -122,11 +122,8 @@ class ExpansionManager:
                     and self.assignment_word_prefix(bword) is not None)
                 policy = (DECLARATION_ASSIGNMENT if declaration_assignment
                           else COMMAND_ARGUMENT)
-                expanded = self.word_expander.expand(bword, policy)
-                if isinstance(expanded, list):
-                    args.extend(expanded)
-                else:
-                    args.append(expanded)
+                expanded = self.word_expander.expand_to_word(bword, policy)
+                args.extend(self.word_expander.materialize(expanded, policy))
                 first_field = False
 
         # Debug: show post-expansion args
@@ -208,11 +205,8 @@ class ExpansionManager:
         """
         fields: List[str] = []
         for bword in self.brace_expand_word(word):
-            expanded = self.word_expander.expand(bword, policy)
-            if isinstance(expanded, list):
-                fields.extend(expanded)
-            else:
-                fields.append(expanded)
+            expanded = self.word_expander.expand_to_word(bword, policy)
+            fields.extend(self.word_expander.materialize(expanded, policy))
         return fields
 
     def expand_assignment_value_word(self, word) -> str:
@@ -256,8 +250,8 @@ class ExpansionManager:
         the no-split engine returns as a list) is joined with spaces.
         """
         from .word_expansion_types import CASE_SUBJECT
-        result = self.word_expander.expand(word, CASE_SUBJECT)
-        return ' '.join(result) if isinstance(result, list) else result
+        expanded = self.word_expander.expand_to_word(word, CASE_SUBJECT)
+        return ' '.join(self.word_expander.materialize(expanded, CASE_SUBJECT))
 
     def expand_word_as_pattern(self, word) -> str:
         """Expand a Word into a glob-pattern string (case patterns).
