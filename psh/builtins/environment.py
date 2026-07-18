@@ -668,17 +668,21 @@ class UnsetBuiltin(Builtin):
         expander = shell.expansion_manager.variable_expander
 
         if index_expr in ('@', '*'):
-            # `unset 'arr[@]'` / `'arr[*]'` removes the ENTIRE array — but only
-            # for an INDEXED array (bash). For an associative array @/* is a
-            # literal key (fall through); for a scalar bash reports "not an
-            # array variable"; for an absent name it is a silent no-op success.
+            # `unset 'arr[@]'` / `'arr[*]'` on an INDEXED array removes every
+            # ELEMENT but keeps the (now empty) array variable and its
+            # attributes — bash 5.2 leaves `declare -a a=()` (probe-verified
+            # 2026-07-19; the "removes the entire array" rule pinned here
+            # before campaign W2 does not match bash 5.2). For an associative
+            # array @/* is a literal key (fall through); for a scalar bash
+            # reports "not an array variable"; for an absent name it is a
+            # silent no-op success.
             value = getattr(var_obj, 'value', None)
             if isinstance(value, IndexedArray):
-                try:
-                    shell.state.scope_manager.unset_variable(array_name)
-                except ReadonlyVariableError:
+                if var_obj is not None and var_obj.is_readonly:
                     self.error(f"{array_name}: cannot unset: readonly variable", shell)
                     return False
+                for idx in list(value.indices()):
+                    shell.state.scope_manager.store.unset_element(array_name, idx)
                 return True
             if not isinstance(value, AssociativeArray):
                 if var_obj is not None:

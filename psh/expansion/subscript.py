@@ -33,10 +33,11 @@ Callers resolve the target's kind and pass it in; the service never re-decides.
 import enum
 from typing import TYPE_CHECKING, Union
 
-from ..ast_nodes.words import LiteralPart, Word
+from ..ast_nodes.words import LiteralPart, VariableExpansion, Word
 from ..core import arith_assignment_discard
 from ..lexer import tokenize
 from ..lexer.token_types import TokenType
+from .arithmetic import ArithmeticError, evaluate_arithmetic
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -182,7 +183,13 @@ class SubscriptEvaluator:
                 pieces.append(text)
             else:
                 # ExpansionPart: keep the source spelling (never re-expanded).
-                pieces.append(str(part.expansion))
+                # VariableExpansion.__str__ drops the braces, so the braced
+                # spelling is reconstructed (bash keys `${x}` verbatim).
+                exp = part.expansion
+                if isinstance(exp, VariableExpansion) and exp.braced:
+                    pieces.append('${' + exp.name + '}')
+                else:
+                    pieces.append(str(exp))
         return ''.join(pieces)
 
     def indexed_index(self, raw: str) -> int:
@@ -195,12 +202,14 @@ class SubscriptEvaluator:
         fails to evaluate (``a[1//]``, ``a[08]``) is a fatal arithmetic error
         that discards the input (bash), not a silent index 0.
         """
-        from .arithmetic import ArithmeticError, evaluate_arithmetic
         expanded = self._manager.variable_expander.expand_string_variables(raw)
         try:
             return evaluate_arithmetic(expanded, self.shell)
         except ArithmeticError as e:
-            print(f"psh: {e}", file=self.state.stderr)
+            # Location-prefixed like every non-interactive runtime diagnostic
+            # (v0.690 convention; bash: `bash: line 1: 08: value too great…`).
+            print(f"{self.state.error_location_prefix()}{e}",
+                  file=self.state.stderr)
             self.state.last_exit_code = 1
             arith_assignment_discard(self.state)
 
