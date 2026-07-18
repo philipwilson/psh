@@ -246,7 +246,7 @@ class Token:
     fd: Optional[int] = None
     var_fd: Optional[str] = None
     combined_redirect: bool = False
-    heredoc_key: Optional[str] = None   # collected-heredoc-body link (None = none)
+    heredoc_id: Optional[int] = None    # ordinal link to the LexedUnit's collected heredoc (None = none)
     array_init: Optional[Any] = None    # combinator `name=(...)` payload
 
     @property
@@ -255,7 +255,7 @@ class Token:
 ```
 
 ### Enhanced Features as Standard
-- **Immutable**: frozen dataclass; classification/heredoc-key/retypes use `replace`
+- **Immutable**: frozen dataclass; classification/heredoc-id/retypes use `replace`
 - **Source-faithful**: `span` (a `SourceSpan`) reconstructs the lexeme from source
 - **Position Information**: line/column stored; `SourceMap` (`position.py`) is the
   one offset → (line, column) + line-text service (lexer + parser error path)

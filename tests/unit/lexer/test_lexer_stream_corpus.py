@@ -140,10 +140,14 @@ def _snap(fn, *args, **kwargs):
         result = fn(*args, **kwargs)
     except Exception as e:  # noqa: BLE001 — exceptions are part of the contract
         return ['EXC', type(e).__name__, str(e)]
-    if isinstance(result, tuple):  # tokenize_with_heredocs
-        tokens, heredoc_map = result
-        return [[_encode_token(t) for t in tokens],
-                sorted(heredoc_map.items())]
+    if isinstance(result, tuple):  # tokenize_with_heredocs -> LexedUnit
+        tokens, heredocs = result
+        enc_heredocs = sorted(
+            [key, entry.spec.raw, entry.spec.cooked, entry.spec.quoted,
+             entry.spec.strip_tabs, entry.collected.body,
+             entry.collected.termination.value]
+            for key, entry in (heredocs or {}).items())
+        return [[_encode_token(t) for t in tokens], enc_heredocs]
     return [_encode_token(t) for t in result]
 
 

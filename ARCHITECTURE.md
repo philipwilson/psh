@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.731.0
+**Current Version**: 0.732.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -409,7 +409,6 @@ The parser combinator is a functional parser implementation demonstrating elegan
 - **`control_structures/`** - Control structures (if, while, for, case, select)
 - **`special_commands.py`** - Special constructs (functions, arrays, process substitution)
 - **`parser.py`** - Main ShellParserCombinator class
-- **`heredoc_processor.py`** - Here document two-pass parsing
 
 **Key Features:**
 - **Functional Composition**: Combinators compose to build complex parsers
@@ -555,9 +554,10 @@ class ParserContext:
     current: int = 0
     config: ParserConfig = field(default_factory=ParserConfig)
 
-    # Pre-collected heredoc bodies (heredoc-aware parse only), keyed by the
-    # lexer-assigned heredoc_key; None otherwise.
-    heredoc_map: Optional[Mapping[str, object]] = None
+    # Pre-collected heredocs (heredoc-aware parse only): the LexedUnit's
+    # id-keyed map of LexedHeredoc entries (spec + collected body), keyed by
+    # the lexer-assigned ordinal heredoc_id; None otherwise.
+    heredocs: Optional[Mapping[int, LexedHeredoc]] = None
 
     # Source context
     source_text: Optional[str] = None

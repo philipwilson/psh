@@ -5,7 +5,7 @@ This module handles preprocessing of shell input before tokenization,
 including line continuation processing according to POSIX specification.
 """
 
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 
 def process_line_continuations(text: str,
@@ -57,16 +57,18 @@ def process_line_continuations(text: str,
     if '\\' not in text:
         return text
     from ..utils.heredoc_detection import (
+        PendingHeredocQueue,
         eol_backslash_is_literal,
-        heredoc_terminator_matches,
         scan_line_heredoc_markers,
     )
 
     lines = text.split('\n')
     out: List[str] = []
     # Heredocs opened on an earlier command line whose bodies we are now
-    # inside, as (terminator, strip_tabs, quoted) triples in body order.
-    pending: List[Tuple[str, bool, bool]] = []
+    # inside: the shared head-of-queue policy (a body line is only ever
+    # matched against the FIRST open heredoc's terminator).
+    pending = PendingHeredocQueue()
+    ordinal = 0
     quote: Optional[str] = None  # quote state carried across command lines
 
     i = 0
@@ -75,10 +77,13 @@ def process_line_continuations(text: str,
         i += 1
 
         if pending:
-            word, strip_tabs, quoted = pending[0]
-            if heredoc_terminator_matches(line, word, strip_tabs):
-                pending.pop(0)
-            elif not quoted:
+            head = pending.head
+            assert head is not None
+            if pending.feed_line(line) is None and not head.quoted:
+                # Body line of an unquoted-delimiter heredoc: join its
+                # continuations (the raw line was already checked as a
+                # terminator above — a terminator fused in by the join is
+                # body content, like bash).
                 while _ends_with_continuation(line):
                     if i < len(lines):
                         line = _drop_continuation(line) + lines[i]
@@ -107,8 +112,10 @@ def process_line_continuations(text: str,
             else:
                 break
         out.append(line)
-        markers, quote = scan_line_heredoc_markers(line, quote)
-        pending.extend(markers)
+        specs, quote = scan_line_heredoc_markers(line, quote, ordinal)
+        ordinal += len(specs)
+        for spec in specs:
+            pending.push(spec)
 
     return '\n'.join(out)
 

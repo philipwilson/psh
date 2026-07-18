@@ -349,8 +349,17 @@ class FileRedirector:
         """Point the redirect's fd (default stdin) at the heredoc content.
 
         Shared redirect primitive (fd backend and builtin stream backend).
-        Returns the expanded content."""
-        content = redirect.heredoc_content or ''
+        Returns the expanded content.
+
+        A heredoc redirect reaching execution with NO collected body is an
+        internal defect, never a silent empty document: every live parse
+        path attaches the body at Redirect construction (campaign S2 — an
+        empty body is '', not None)."""
+        content = redirect.heredoc_content
+        if content is None:
+            raise RuntimeError(
+                "heredoc redirect reached execution without a collected "
+                f"body (delimiter {redirect.target!r})")
         if content and not getattr(redirect, 'heredoc_quoted', False):
             # Heredoc bodies are a dquote-like context for nested
             # ${x:-word} operands (bash keeps the quotes of ${x:-'q'});

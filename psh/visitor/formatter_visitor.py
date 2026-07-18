@@ -5,6 +5,7 @@ This visitor demonstrates how to traverse the AST and produce formatted output,
 useful for debugging and understanding AST structure.
 """
 
+from ..utils.heredoc_detection import unquote_heredoc_delimiter  # noqa: I001
 from ..ast_nodes import (
     AndOrList,
     ArithmeticEvaluation,
@@ -681,7 +682,12 @@ class FormatterVisitor(ASTVisitor[str]):
                 body = r.heredoc_content
                 if body and not body.endswith('\n'):
                     body += '\n'
-                self._pending_heredocs.append(body + (r.target or ''))
+                # The terminator LINE is the cooked (quote-removed) delimiter
+                # — target holds the RAW spelling (`'EOF'`, `$'EOF'`), and a
+                # raw terminator line would not terminate the re-parsed
+                # document. Derived through the one quote-removal rule.
+                cooked, _ = unquote_heredoc_delimiter(r.target or '')
+                self._pending_heredocs.append(body + cooked)
 
     def _flush_line(self, line: str) -> str:
         """Append (and clear) any queued heredoc bodies after ``line``.
@@ -729,13 +735,18 @@ class FormatterVisitor(ASTVisitor[str]):
         else:
             op = node.type
 
-        # Here document: keep the delimiter's quoting so re-parsing keeps the
-        # same expansion behavior (`<<'EOF'` must not become `<<EOF`).
+        # Here document: emit the RAW delimiter spelling verbatim (campaign
+        # S2 — `Redirect.target` carries the exact source word). `<<$X`
+        # round-trips as `<<$X` (not the cooked `<<X`), and a quoted
+        # spelling (`<<'EOF'`, `<<$'EOF'`) keeps its own quotes — no
+        # re-quoting approximation, so re-parsing preserves both the
+        # terminator and the expansion-suppression fact. A procsub-SHAPED
+        # delimiter needs a space after the operator (`<<<(x)` would glue
+        # into a here-string) — same rule as the filename branch below.
         if node.type in ('<<', '<<-'):
             delim = node.target or ''
-            if node.heredoc_quoted:
-                delim = f"'{delim}'"
-            return f"{op}{delim}"
+            sep = ' ' if delim[:2] in ('<(', '>(') else ''
+            return f"{op}{sep}{delim}"
 
         # Here string: format the Word (per-part quote context) so a composite
         # like `<<< foo$v"dq"` round-trips; fall back to re-quoting the flat

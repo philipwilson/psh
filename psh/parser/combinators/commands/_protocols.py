@@ -17,7 +17,7 @@ change), and ``CommandParsers`` structurally satisfies it.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, List, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Protocol, Union
 
 if TYPE_CHECKING:
     from ....ast_nodes import (
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
         SimpleCommand,
         StatementList,
     )
+    from ....lexer.heredoc_lexer import LexedHeredoc
     from ....lexer.token_types import Token
     from ...config import ParserConfig
     from ..arrays import ArrayParsers
@@ -46,6 +47,9 @@ class CommandParsersProtocol(Protocol):
     tokens: "TokenParsers"
     expansions: "ExpansionParsers"
     arrays: "ArrayParsers"
+    # Per-call collected-heredoc map (id-keyed LexedHeredoc entries),
+    # assigned by ParserCombinatorShellParser.parse before parsing.
+    heredocs: "Optional[Mapping[int, LexedHeredoc]]"
     # ``redirection`` and ``statement`` are typed loosely (``Any`` /
     # ``Parser[Any]``) rather than pinned to their element type. The parse
     # closures append ``redirection.parse().value`` to a ``List[Redirect]``

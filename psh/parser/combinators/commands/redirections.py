@@ -7,13 +7,17 @@ strings, and fd-duplication words for ``CommandParsers``.
 from typing import TYPE_CHECKING, List, Optional
 
 from ....ast_nodes import Redirect
+from ....lexer.heredoc_lexer import (
+    delimiter_token_acceptable,
+    raw_delimiter_from_tokens,
+)
 from ....lexer.token_types import Token
+from ....utils.heredoc_detection import unquote_heredoc_delimiter
 from ..core import ParseResult
 from ._constants import (
     _FD_DUP_BARE_RE,
     _FD_DUP_MOVE_RE,
     _FD_DUP_RE,
-    _WORD_LIKE_TYPES,
 )
 
 if TYPE_CHECKING:
@@ -62,42 +66,57 @@ class RedirectionMixin(_Base):
 
         # Handle heredoc operators
         if op_token.type.name in ['HEREDOC', 'HEREDOC_STRIP']:
-            # Parse delimiter
-            if pos >= len(tokens) or tokens[pos].type.name == 'EOF':
+            # The delimiter tokens are consumed POSITIONALLY; the delimiter
+            # TRUTH (raw spelling, quotedness, body) comes from the
+            # LexedUnit's spec entry, keyed by the operator token's
+            # heredoc_id — mirrors the recursive descent parser's
+            # _parse_heredoc. The accept rule is shared with the lexer's
+            # registration scan (delimiter_token_acceptable).
+            if (pos >= len(tokens)
+                    or not delimiter_token_acceptable(tokens[pos])):
                 return ParseResult(
                     success=False,
                     error="Expected heredoc delimiter",
                     position=pos
                 )
 
-            delimiter_token = tokens[pos]
-            delimiter = delimiter_token.value
+            delim_tokens = [tokens[pos]]
             pos += 1
-
-            # Quoting anywhere in the delimiter disables body expansion. A
-            # composite delimiter spans several ADJACENT word-like tokens
-            # (`<<E"O"F`, `<<E$X`); consume them all so the trailing parts
-            # are not parsed as command arguments — mirrors the recursive
-            # descent parser's _parse_heredoc.
-            heredoc_quoted = (delimiter_token.type.name == 'STRING'
-                              or '\\' in delimiter_token.value)
+            # A composite delimiter spans several ADJACENT word-like tokens
+            # (`<<E"O"F`, `<<E$X`, `<<E<(x)`); consume them all so the
+            # trailing parts are not parsed as command arguments.
             while (pos < len(tokens)
-                   and tokens[pos].type.name in _WORD_LIKE_TYPES
+                   and delimiter_token_acceptable(tokens[pos])
                    and getattr(tokens[pos], 'adjacent_to_previous', False)):
-                part = tokens[pos]
-                delimiter += part.value
-                if part.type.name == 'STRING' or '\\' in part.value:
-                    heredoc_quoted = True
+                delim_tokens.append(tokens[pos])
                 pos += 1
 
-            redirect = Redirect(type=op_token.value, target=delimiter,
+            heredocs = self.heredocs
+            heredoc_id = op_token.heredoc_id
+            if heredocs is not None and heredoc_id is not None:
+                entry = heredocs.get(heredoc_id)
+                if entry is None:
+                    return ParseResult(
+                        success=False,
+                        error=f"here document body not collected (id {heredoc_id})",
+                        position=pos)
+                redirect = Redirect(type=op_token.value,
+                                    target=entry.spec.raw,
+                                    heredoc_content=entry.collected.body,
+                                    heredoc_quoted=entry.spec.quoted,
+                                    heredoc_id=heredoc_id,
+                                    fd=fd, var_fd=var_fd)
+                return ParseResult(success=True, value=redirect, position=pos)
+
+            # Bare parse (no collected map — bodies still in the stream):
+            # reconstruct the raw spelling from token values (the combinator
+            # has no source text) and derive quotedness through the one
+            # quote-removal rule — never a private token-type heuristic.
+            raw = raw_delimiter_from_tokens(delim_tokens)
+            _, heredoc_quoted = unquote_heredoc_delimiter(raw)
+            redirect = Redirect(type=op_token.value, target=raw,
                                 heredoc_quoted=heredoc_quoted, fd=fd,
-                                var_fd=var_fd)
-            # The lexer's collector key links this redirect to its body
-            # (populated post-parse by HeredocProcessor). A non-None key means a
-            # body was collected for this operator token.
-            if op_token.heredoc_key is not None:
-                redirect.heredoc_key = op_token.heredoc_key
+                                var_fd=var_fd, heredoc_id=heredoc_id)
             return ParseResult(success=True, value=redirect, position=pos)
 
         # Handle here string (<<<)

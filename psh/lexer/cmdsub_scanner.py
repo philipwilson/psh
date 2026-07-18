@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, List, Optional, Tuple
 
+from ..utils.heredoc_detection import PendingHeredocQueue, make_heredoc_spec
 from .command_position import CMDPOS_KEEPING_WORDS as _CMDPOS_KEEPING_WORDS
 from .pure_helpers import (
     ArithParenScan,
@@ -67,7 +68,8 @@ def _skip_until_unescaped(text: str, pos: int, end_char: str) -> int:
     return -1
 
 
-def _skip_dollar_paren(text: str, pos: int, pending_heredocs: list) -> int:
+def _skip_dollar_paren(text: str, pos: int,
+                       pending_heredocs: 'PendingHeredocQueue') -> int:
     """Index just past the ``$((...))``/``$(...)`` at *pos* (the ``$``), or -1.
 
     Applies the POSIX ``$((`` disambiguation (see
@@ -87,7 +89,8 @@ def _skip_dollar_paren(text: str, pos: int, pending_heredocs: list) -> int:
     return end if found else -1
 
 
-def _skip_double_quotes(text: str, pos: int, pending_heredocs: list) -> int:
+def _skip_double_quotes(text: str, pos: int,
+                        pending_heredocs: 'PendingHeredocQueue') -> int:
     """Index just past the ``"`` closing a double quote opened before *pos*.
 
     Returns -1 when the quote (or a nested expansion inside it) never closes.
@@ -122,18 +125,15 @@ def _skip_double_quotes(text: str, pos: int, pending_heredocs: list) -> int:
 
 
 def _read_heredoc_delimiter(text: str, pos: int) -> Tuple[Optional[str], int]:
-    """Read the delimiter word after ``<<`` / ``<<-``.
+    """Read the RAW delimiter word after ``<<`` / ``<<-``.
 
-    Returns ``(delimiter, new_pos)`` with one level of quoting removed
-    (``<<'EOF'``, ``<<"EOF"``, ``<<\\EOF`` all yield ``EOF``), or
-    ``(None, pos)`` when no word follows on the line.
-
-    This scans the raw word EXTENT (finding where quotes/escapes end the word)
-    and then hands the raw span to the ONE delimiter-word rule
-    (``utils.heredoc_detection.unquote_heredoc_delimiter``) — so the terminator
-    text is computed identically here and in the heredoc lexer (M2).
+    Returns ``(raw_word, new_pos)`` — quoting still present — or
+    ``(None, pos)`` when no word follows on the line. This scans the raw
+    word EXTENT (finding where quotes/escapes end the word); the caller
+    hands the raw span to the ONE spec constructor
+    (``utils.heredoc_detection.make_heredoc_spec``), so the terminator text
+    is computed identically here and in the heredoc lexer (M2).
     """
-    from ..utils.heredoc_detection import unquote_heredoc_delimiter
     n = len(text)
     while pos < n and text[pos] in ' \t':
         pos += 1
@@ -149,8 +149,8 @@ def _read_heredoc_delimiter(text: str, pos: int) -> Tuple[Optional[str], int]:
             pos += 1
             while pos < n and text[pos] != '"':
                 # A backslash escapes the next byte for EXTENT purposes (so a
-                # ``\"`` does not close the quoted run); unquote_heredoc_delimiter
-                # decides which escapes are semantic.
+                # ``\"`` does not close the quoted run); the spec's quote
+                # removal decides which escapes are semantic.
                 pos += 2 if (text[pos] == '\\' and pos + 1 < n) else 1
             pos += 1
         elif c == '\\' and pos + 1 < n:
@@ -160,33 +160,27 @@ def _read_heredoc_delimiter(text: str, pos: int) -> Tuple[Optional[str], int]:
     raw = text[start:pos]
     if not raw:
         return None, pos
-    literal, _quoted = unquote_heredoc_delimiter(raw)
-    return literal, pos
+    return raw, pos
 
 
-def _consume_heredoc_bodies(text: str, pos: int, pending: list) -> int:
+def _consume_heredoc_bodies(text: str, pos: int,
+                            pending: 'PendingHeredocQueue') -> int:
     """Consume heredoc body lines starting at *pos* (just after a newline).
 
-    Lines are matched against the pending delimiters in order (the body of
-    the first ``<<WORD`` on a line comes first, as in bash). Entries are
-    popped from *pending* as their delimiter lines are found; a non-empty
-    *pending* on return means the input ended mid-body (caller reports the
-    substitution as unclosed so more input can be gathered).
+    Each line is routed to the shared head-of-queue policy
+    (``PendingHeredocQueue.feed_line`` — the ONE close decision): it either
+    terminates the FIRST open heredoc or is that heredoc's body text; later
+    pending delimiters are never consulted (H1/G1). A non-empty *pending* on
+    return means the input ended mid-body (caller reports the substitution
+    as unclosed so more input can be gathered).
     """
-    from ..utils.heredoc_detection import heredoc_terminator_matches
     n = len(text)
     while pending:
         if pos >= n:
             return n
         nl = text.find('\n', pos)
         line_end = n if nl == -1 else nl
-        line = text[pos:line_end]
-        delimiter, strip_tabs = pending[0]
-        # The shared terminator rule keeps every heredoc-gathering layer in
-        # agreement (exact match, only <<- strips leading tabs, and a single
-        # CRLF line-ending CR is dropped so a CRLF here-doc still terminates).
-        if heredoc_terminator_matches(line, delimiter, strip_tabs):
-            pending.pop(0)
+        pending.feed_line(text[pos:line_end])
         pos = n if nl == -1 else nl + 1
     return pos
 
@@ -212,7 +206,7 @@ def _peek_plain_word(text: str, pos: int) -> str:
 def find_command_substitution_end(
     input_text: str,
     start_pos: int,
-    pending_heredocs: Optional[list] = None,
+    pending_heredocs: 'Optional[PendingHeredocQueue]' = None,
 ) -> Tuple[int, bool]:
     """Find the ``)`` that closes a ``$(`` command substitution.
 
@@ -332,7 +326,7 @@ class _CmdSubScanner:
                          would be recognized (start, after separators, ...)
         at_word_start -- True at the first char of a word (so ``#`` is a
                          comment only there)
-        pending_heredocs -- ``(delimiter, strip_tabs)`` queue, shared across
+        pending_heredocs -- shared PendingHeredocQueue of HeredocSpec, across
                          nested scans (bash reads bodies at the next physical
                          newline regardless of nesting depth)
     """
@@ -341,7 +335,7 @@ class _CmdSubScanner:
         self,
         text: str,
         start_pos: int,
-        pending_heredocs: Optional[list],
+        pending_heredocs: 'Optional[PendingHeredocQueue]',
     ) -> None:
         self.text = text
         self.n = len(text)
@@ -350,8 +344,9 @@ class _CmdSubScanner:
         self.case_stack: List[CaseScanState] = []
         self.command_position = True
         self.at_word_start = True
-        self.pending_heredocs: list = (
-            [] if pending_heredocs is None else pending_heredocs)
+        self.pending_heredocs: PendingHeredocQueue = (
+            PendingHeredocQueue() if pending_heredocs is None
+            else pending_heredocs)
 
     def scan(self) -> Tuple[int, bool]:
         """Drive the per-construct handlers until a result or end of input."""
@@ -615,9 +610,12 @@ class _CmdSubScanner:
         if text.startswith('<<', pos) and not text.startswith('<<<', pos):
             strip_tabs = text.startswith('<<-', pos)
             j = pos + (3 if strip_tabs else 2)
-            delimiter, j = _read_heredoc_delimiter(text, j)
-            if delimiter is not None:
-                self.pending_heredocs.append((delimiter, strip_tabs))
+            raw, j = _read_heredoc_delimiter(text, j)
+            if raw is not None:
+                # Spec identity is ordinal within this scan's (shared) queue.
+                self.pending_heredocs.push(make_heredoc_spec(
+                    self.pending_heredocs.pushed, raw, strip_tabs,
+                    span=(j - len(raw), j)))
                 self.pos = j
                 self.command_position = False
                 self.at_word_start = False

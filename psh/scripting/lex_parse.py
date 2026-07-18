@@ -9,8 +9,9 @@ sequence out by hand and the analysis copy had DRIFTED — it ignored
 (reappraisal #19 H11). The pipeline now lives here:
 
 - :func:`lex_and_expand` — heredoc gate → ``tokenize`` / ``tokenize_with_heredocs``
-  → alias expansion. THE shared lex→alias seam, called by all THREE callers, so
-  the sequence that drifted can no longer drift.
+  → alias expansion, returning the immutable ``LexedUnit``. THE shared
+  lex→alias seam, called by all THREE callers, so the sequence that drifted
+  can no longer drift.
 - :func:`parse_tokens` — dispatch a token stream to the shell's ACTIVE parser
   (recursive-descent or combinator), heredoc-aware. THE shared parse-dispatch,
   called by the two active-parser callers.
@@ -32,14 +33,16 @@ Lex/parse errors (``ParseError`` / ``UnclosedQuoteError``) pass through
 untouched — each caller interprets them (the trial as ``NeedMore``, the others
 as reportable syntax errors).
 """
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence
 
 from ..lexer import tokenize, tokenize_with_heredocs
+from ..lexer.heredoc_lexer import LexedUnit
 from ..parser import create_parser, parse_with_heredocs
 from ..utils import contains_heredoc
 
 if TYPE_CHECKING:
     from ..ast_nodes import Program
+    from ..lexer.heredoc_lexer import LexedHeredoc
     from ..lexer.token_types import Token
     from ..shell import Shell
 
@@ -83,28 +86,29 @@ def lex_and_expand(
     expand_aliases: bool = True,
     lexer_options: Optional[Any] = None,
     warn_unterminated: bool = True,
-) -> Tuple[List['Token'], Optional[Dict[str, Dict[str, Any]]]]:
+) -> LexedUnit:
     """Tokenize *text* (heredoc-aware) and alias-expand the token stream.
 
     The shared front half of every script-entry parse. ``contains_heredoc``
-    picks ``tokenize_with_heredocs`` (bodies collected into ``heredoc_map``, so a
-    body line like ``)`` is not tokenized as command text) or the plain
-    ``tokenize``. Aliases are expanded at the lex→parse seam when
-    ``expand_aliases`` is set — ``Shell.expand_aliases`` itself honours the
-    ``expand_aliases`` shopt, so this is the on/off switch for whether analysis /
-    trial parses consult the alias table at all.
+    picks ``tokenize_with_heredocs`` (bodies collected into the LexedUnit's
+    id-keyed ``heredocs`` map, so a body line like ``)`` is not tokenized as
+    command text) or the plain ``tokenize``. Aliases are expanded at the
+    lex→parse seam when ``expand_aliases`` is set — ``Shell.expand_aliases``
+    itself honours the ``expand_aliases`` shopt, so this is the on/off switch
+    for whether analysis / trial parses consult the alias table at all.
 
     ``lexer_options`` is the shell option dict (``extglob`` / ``posix``) applied
     to tokenization. ``source_name`` / ``base_line`` locate the
-    unterminated-heredoc warning; ``warn_unterminated=False`` silences it for a
-    completeness trial (the execution pass warns).
+    unterminated-heredoc warning; ``warn_unterminated=False`` suppresses it for
+    a completeness trial (the execution pass warns; the typed EOF termination
+    is recorded either way).
 
-    Returns ``(tokens, heredoc_map)`` — ``heredoc_map`` is ``None`` when *text*
-    contains no heredoc.
+    Returns a :class:`LexedUnit` — ``heredocs`` is ``None`` when *text*
+    contains no heredoc (plain lexing was performed).
     """
-    heredoc_map: Optional[Dict[str, Dict[str, Any]]]
+    heredocs: Optional[Mapping[int, 'LexedHeredoc']]
     if contains_heredoc(text):
-        tokens, heredoc_map = tokenize_with_heredocs(
+        tokens, heredocs = tokenize_with_heredocs(
             text,
             shell_options=lexer_options,
             source_name=source_name,
@@ -112,16 +116,16 @@ def lex_and_expand(
             warn_unterminated=warn_unterminated,
         )
     else:
-        tokens = tokenize(text, shell_options=lexer_options)
-        heredoc_map = None
+        tokens = tuple(tokenize(text, shell_options=lexer_options))
+        heredocs = None
     if expand_aliases:
-        tokens = shell.expand_aliases(tokens)
-    return tokens, heredoc_map
+        tokens = tuple(shell.expand_aliases(list(tokens)))
+    return LexedUnit(tokens=tuple(tokens), heredocs=heredocs)
 
 
 def parse_tokens(
-    tokens: List['Token'],
-    heredoc_map: Optional[Dict[str, Dict[str, Any]]],
+    tokens: Sequence['Token'],
+    heredocs: Optional[Mapping[int, 'LexedHeredoc']],
     shell: 'Shell',
     *,
     source_text: Optional[str] = None,
@@ -130,7 +134,7 @@ def parse_tokens(
 ) -> 'Program':
     """Parse a token stream with the shell's ACTIVE parser, heredoc-aware.
 
-    When ``heredoc_map`` is present the ``<<``/``<<-`` bodies are attached as the
+    When ``heredocs`` is present the ``<<``/``<<-`` bodies are attached as the
     redirects are constructed (``parse_with_heredocs``); otherwise a plain parser
     is built. Either way the recursive-descent or combinator implementation is
     chosen by ``shell.active_parser``. ``source_text`` / ``line_offset`` improve
@@ -139,9 +143,9 @@ def parse_tokens(
     re-lexes with the same option-sensitive lexing (extglob) as the outer
     command. Raises ``ParseError`` / ``UnclosedQuoteError`` unchanged.
     """
-    if heredoc_map is not None:
+    if heredocs is not None:
         return parse_with_heredocs(
-            tokens, heredoc_map,
+            tokens, heredocs,
             active_parser=shell.active_parser,
             lexer_options=lexer_options)
     parser = create_parser(
@@ -169,14 +173,14 @@ def lex_and_parse(
     the parser's ``line_offset`` (``base_line - 1``) and *text* is passed as the
     error-reporting ``source_text``. Errors pass through untouched.
     """
-    tokens, heredoc_map = lex_and_expand(
+    tokens, heredocs = lex_and_expand(
         text, shell,
         source_name=source_name,
         base_line=base_line,
         expand_aliases=expand_aliases,
         lexer_options=lexer_options)
     return parse_tokens(
-        tokens, heredoc_map, shell,
+        tokens, heredocs, shell,
         source_text=text,
         line_offset=max(0, base_line - 1),
         lexer_options=lexer_options)

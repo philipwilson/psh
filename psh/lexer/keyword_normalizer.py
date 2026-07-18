@@ -3,6 +3,7 @@
 from dataclasses import dataclass, replace
 from typing import List, Optional
 
+from ..utils.heredoc_detection import unquote_heredoc_delimiter
 from .command_position import (
     CASE_TERMINATORS,
     PIPELINE_PREFIX_TOKENS,
@@ -21,12 +22,20 @@ class _HeredocSkip:
     """The heredoc-skip mini-FSM used by :meth:`KeywordNormalizer.normalize`.
 
     When a ``<<``/``<<-`` operator's body lines are STILL in the token stream —
-    ``heredoc_key is None``, i.e. plain ``tokenize()`` rather than
+    ``heredoc_id is None``, i.e. plain ``tokenize()`` rather than
     ``tokenize_with_heredocs`` (which lifts bodies out) — the delimiter word and
     every body line must pass through UN-normalized (a body line ``done`` is not
     a keyword). This tracks that skip window; a collected body
-    (``heredoc_key`` set) is never entered, so real tokens after it are still
+    (``heredoc_id`` set) is never entered, so real tokens after it are still
     normalized.
+
+    The terminator comparison routes through the ONE delimiter-word rule
+    (``unquote_heredoc_delimiter``): a fused WORD delimiter's ``value`` is
+    its raw source spelling (S1), so ``<<E"O"F`` cooks to ``EOF`` and a body
+    line ``EOF`` ends the skip window; a lone STRING delimiter's value is
+    already the unquoted terminator text. (This token-level scan remains an
+    approximation of line-level gathering — it exists only for the
+    bodies-in-stream path, which no live pipeline uses for real heredocs.)
     """
     pending_delim: bool = False
     already_collected: bool = False
@@ -40,16 +49,24 @@ class _HeredocSkip:
         Returns False for ordinary command text the keyword FSM should classify.
         """
         if token.type in {TokenType.HEREDOC, TokenType.HEREDOC_STRIP}:
-            # Absent heredoc_key => body lines are still in the stream and we
+            # Absent heredoc_id => body lines are still in the stream and we
             # must scan for the delimiter; present => body was collected.
-            self.already_collected = token.heredoc_key is not None
+            self.already_collected = token.heredoc_id is not None
             self.pending_delim = True
             return True
         if self.pending_delim:
             # The token right after HEREDOC is the delimiter word.
-            if token.type == TokenType.WORD and not self.already_collected:
-                self.delimiter = token.value
-                self.in_body = True
+            if not self.already_collected:
+                if token.type == TokenType.WORD:
+                    # Raw source spelling -> the literal terminator, via the
+                    # one quote-removal rule (never a private approximation).
+                    self.delimiter = unquote_heredoc_delimiter(token.value)[0]
+                    self.in_body = True
+                elif token.type == TokenType.STRING:
+                    # A lone quoted delimiter ('EOF', $'EOF'): the token
+                    # value is already the unquoted terminator text.
+                    self.delimiter = token.value
+                    self.in_body = True
             self.pending_delim = False
             return True
         if self.in_body:

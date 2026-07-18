@@ -11,7 +11,7 @@ from psh.utils.heredoc_detection import (
     contains_heredoc,
     has_unclosed_heredoc,
     is_inside_expansion,
-    open_heredoc_delimiters,
+    open_heredoc_specs,
     scan_line_heredoc_markers,
     unquote_heredoc_delimiter,
 )
@@ -44,6 +44,19 @@ class TestUnquoteHeredocDelimiter:
         # single quotes: contents verbatim
         ("'A\\B'", "A\\B", True),
         ("'A\\\\B'", "A\\\\B", True),
+        # ANSI-C $'...': escapes decoded (campaign S2 / reappraisal #20 H3 —
+        # $'EOF' used to cook to "$EOF" and eat the terminator)
+        ("$'EOF'", "EOF", True),
+        ("$'E\\tF'", "E\tF", True),
+        ("$'E\\'F'", "E'F", True),
+        ("$'E\\x41F'", "EAF", True),
+        ("$'A'B", "AB", True),
+        # locale $"...": double-quote rules (translation is identity)
+        ('$"EOF"', "EOF", True),
+        ('$"A\\$B"', "A$B", True),
+        # procsub-shaped delimiter: literal text, unquoted (body expands)
+        ("<(x)", "<(x)", False),
+        (">(x)y", ">(x)y", False),
     ])
     def test_rule(self, raw, literal, quoted):
         assert unquote_heredoc_delimiter(raw) == (literal, quoted)
@@ -97,7 +110,8 @@ class TestHasUnclosedHeredoc:
         # the oracle wrongly reported "no open heredoc" (the accumulator then
         # ran the body as commands). The `))` here is heredoc BODY.
         assert has_unclosed_heredoc("echo '(('\ncat <<EOF\n))") is True
-        assert open_heredoc_delimiters("echo '(('\ncat <<EOF\n))") == [("EOF", False)]
+        specs = open_heredoc_specs("echo '(('\ncat <<EOF\n))")
+        assert [(s.cooked, s.strip_tabs) for s in specs] == [("EOF", False)]
 
     def test_quoted_arith_open_then_bare_heredoc(self):
         # A quoted `$((` before a bare heredoc must not open an arithmetic region.
@@ -143,13 +157,26 @@ class TestIsInsideExpansion:
 
 class TestScanLineHeredocMarkers:
     def test_quoted_paren_line_still_finds_heredoc(self):
-        markers, _ = scan_line_heredoc_markers("echo '((' <<EOF '))'")
-        assert markers == [("EOF", False, False)]
+        specs, _ = scan_line_heredoc_markers("echo '((' <<EOF '))'")
+        assert [(s.cooked, s.strip_tabs, s.quoted) for s in specs] == \
+            [("EOF", False, False)]
 
     def test_quoted_heredoc_operator_is_not_marker(self):
         # `<<EOF` inside quotes must not open a heredoc (both spellings).
         assert scan_line_heredoc_markers("echo '<<EOF'")[0] == []
         assert scan_line_heredoc_markers('echo "<<EOF"')[0] == []
+
+    def test_specs_carry_raw_and_ordinal_identity(self):
+        # The text-level scanner produces HeredocSpec values: raw spelling
+        # kept, ids ordinal from first_ordinal, spans line-relative.
+        line = "cat <<'A' <<A"
+        specs, _ = scan_line_heredoc_markers(line, None, 5)
+        assert [(s.id, s.raw, s.cooked, s.quoted) for s in specs] == [
+            (5, "'A'", "A", True),
+            (6, "A", "A", False),
+        ]
+        for s in specs:
+            assert line[s.span[0]:s.span[1]] == s.raw
 
 
 class TestContainsHeredoc:

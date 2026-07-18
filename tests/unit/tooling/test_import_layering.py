@@ -291,7 +291,10 @@ FUNC_IMPORT_CAPS = {
     'psh.scripting.visitor_modes': 9,
     'psh.shell': 5,
     'psh.utils.ast_debug': 6,
-    'psh.utils.heredoc_detection': 2,
+    # 3rd deferred import (S2): the ANSI-C escape decoder for $'...' heredoc
+    # delimiters — utils.heredoc_detection is module-level-imported by lexer
+    # modules, so importing psh.lexer back at module level is a real cycle.
+    'psh.utils.heredoc_detection': 3,
     'psh.visitor.enhanced_validator_visitor': 1,
 }
 

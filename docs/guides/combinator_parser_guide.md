@@ -147,7 +147,6 @@ combinators/
   control_structures/   - if/case (conditionals.py), loops (loops.py),
                           functions & groups (structures.py)
   special_commands.py   - (( )), [[ ]], process substitution
-  heredoc_processor.py  - Post-parse heredoc content population
   parser.py             - ParserCombinatorShellParser integration class
 ```
 
@@ -179,7 +178,7 @@ combinators/
 | Parameter expansion | expansions.py | (handled by lexer) |
 | Arithmetic expansion | expansions.py | (handled by lexer) |
 | I/O redirections | commands.py | parsers/redirections.py |
-| Heredoc post-processing | heredoc_processor.py | support/utils.py |
+| Heredoc attachment (at construction, id-keyed) | commands/, redirections.py | parsers/redirections.py |
 | Word AST construction | expansions.py | support/word_builder.py |
 
 ### Limitations

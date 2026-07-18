@@ -67,14 +67,15 @@ def _use_combinator(active_parser: str) -> bool:
         "'recursive_descent'/'rd' or 'combinator'")
 
 
-def parse_with_heredocs(tokens, heredoc_map, active_parser='rd',
+def parse_with_heredocs(tokens, heredocs, active_parser='rd',
                         lexer_options=None):
-    """Parse tokens with heredoc content using the selected implementation.
+    """Parse tokens with collected heredocs using the selected implementation.
 
     Args:
-        tokens: List of tokens (heredoc bodies absent; operator tokens carry
-            ``heredoc_key`` attributes linking them to ``heredoc_map``).
-        heredoc_map: Map of heredoc keys to ``{'content', 'quoted'}`` entries.
+        tokens: Token stream (heredoc bodies absent; operator tokens carry
+            ``heredoc_id`` linking them to ``heredocs``).
+        heredocs: The LexedUnit's id-keyed map of LexedHeredoc entries
+            (delimiter spec + collected body).
         active_parser: ``'recursive_descent'``/``'rd'`` (default) or
             ``'combinator'``. Any other name raises ``ValueError``.
         lexer_options: Shell option dict in effect, threaded so a nested
@@ -85,8 +86,8 @@ def parse_with_heredocs(tokens, heredoc_map, active_parser='rd',
         from .combinators.parser import ParserCombinatorShellParser
 
         return ParserCombinatorShellParser(ParserConfig()).parse_with_heredocs(
-            tokens, heredoc_map)
-    return utils_parse_with_heredocs(tokens, heredoc_map,
+            tokens, heredocs)
+    return utils_parse_with_heredocs(tokens, heredocs,
                                      lexer_options=lexer_options)
 
 

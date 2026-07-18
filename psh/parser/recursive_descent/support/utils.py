@@ -6,22 +6,27 @@ point for token streams whose here-document bodies were collected separately
 by the lexer.
 """
 
-from typing import List, Mapping, Optional
+from typing import TYPE_CHECKING, Mapping, Optional, Sequence
 
 from ....ast_nodes import Program
 from ....lexer.token_types import Token
 
+if TYPE_CHECKING:
+    from ....lexer.heredoc_lexer import LexedHeredoc
 
-def parse_with_heredocs(tokens: List[Token], heredoc_map: Mapping[str, object],
+
+def parse_with_heredocs(tokens: Sequence[Token],
+                        heredocs: "Mapping[int, 'LexedHeredoc']",
                         lexer_options: Optional[Mapping[str, object]] = None) -> Program:
-    """Parse *tokens* into an AST with pre-collected here-document bodies.
+    """Parse *tokens* into an AST with pre-collected here-documents.
 
-    The map (lexer-produced) is threaded into the parser so each ``<<``/``<<-``
-    ``Redirect`` gets its body attached AS IT IS CONSTRUCTED
-    (RedirectionParser._attach_heredoc_body) — there is no second AST traversal.
+    ``heredocs`` is the LexedUnit's id-keyed map (spec + collected body); it is
+    threaded into the parser so each ``<<``/``<<-`` ``Redirect`` gets its
+    delimiter truth and body AS IT IS CONSTRUCTED
+    (RedirectionParser._parse_heredoc) — there is no second AST traversal.
     ``lexer_options`` carries the shell option dict so a nested substitution
     body is re-lexed with the same option-sensitive lexing as the outer command.
     """
     from ..parser import Parser
-    return Parser(tokens, heredoc_map=heredoc_map,
+    return Parser(list(tokens), heredocs=heredocs,
                   lexer_options=lexer_options).parse()

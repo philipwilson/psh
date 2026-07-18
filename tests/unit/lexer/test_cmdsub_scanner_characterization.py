@@ -142,9 +142,12 @@ FROZEN_CASES = [
 def test_cmdsub_scanner_characterization(
     label, text, start, expected_end, expected_found, expected_pending
 ):
-    pending = []
+    from psh.utils.heredoc_detection import PendingHeredocQueue
+    pending = PendingHeredocQueue()
     end, found = find_command_substitution_end(text, start, pending)
     assert (end, found) == (expected_end, expected_found)
-    # Pending heredoc entries are (delimiter, strip_tabs) tuples; the frozen
-    # table stores them as lists, so normalize before comparing structurally.
-    assert [list(p) for p in pending] == expected_pending
+    # Pending heredocs are HeredocSpec values (campaign S2); the frozen
+    # table's [cooked_delimiter, strip_tabs] rows compare against the
+    # spec's cooked/strip_tabs facts — same semantics as the pre-S2
+    # (delimiter, strip_tabs) tuples.
+    assert [[s.cooked, s.strip_tabs] for s in pending.specs] == expected_pending

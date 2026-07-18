@@ -30,11 +30,13 @@ def run_psh_script(script, cwd=None):
                           capture_output=True, text=True, cwd=cwd, timeout=15)
 
 
-def body_of(heredoc_map, delim):
-    for key, info in heredoc_map.items():
-        if key.endswith('_' + delim):
-            return info['content']
-    raise AssertionError(f'no heredoc for {delim}: {list(heredoc_map)}')
+def body_of(heredocs, delim):
+    """Body of the (first) collected heredoc whose COOKED terminator is
+    *delim* — the LexedUnit map is id-keyed (ordinal identity)."""
+    for _key, entry in sorted(heredocs.items()):
+        if entry.spec.cooked == delim:
+            return entry.collected.body
+    raise AssertionError(f'no heredoc for {delim}: {dict(heredocs)}')
 
 
 class TestHeredocLexerUnit:
@@ -46,8 +48,10 @@ class TestHeredocLexerUnit:
 
     def test_quoted_delimiter_flag(self):
         _, hmap = tokenize_with_heredocs('cat <<"EOF"\n$x\nEOF\n')
-        key = next(iter(hmap))
-        assert hmap[key]['quoted'] is True
+        entry = next(iter(hmap.values()))
+        assert entry.spec.quoted is True
+        assert entry.spec.raw == '"EOF"'
+        assert entry.spec.cooked == 'EOF'
 
     def test_strip_tabs(self):
         _, hmap = tokenize_with_heredocs('cat <<-EOF\n\tindented\n\tEOF\n')

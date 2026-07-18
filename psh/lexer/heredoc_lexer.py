@@ -6,11 +6,22 @@ command text in ONE ModularLexer pass — so cross-line lexer state (open
 quotes, case/bracket depth, command position) survives. Earlier versions
 re-lexed each physical line with a fresh lexer, which broke any multi-line
 construct sharing a command with a heredoc.
+
+The lexer/parser boundary is the immutable :class:`LexedUnit`: the token
+stream plus an id-keyed map of :class:`LexedHeredoc` entries (spec +
+collected body). Operator tokens carry the spec's ordinal ``heredoc_id``;
+there are no string-derived heredoc keys (campaign S2).
 """
 
-from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass, replace
+from types import MappingProxyType
+from typing import TYPE_CHECKING, List, Mapping, NamedTuple, Optional, Tuple
 
+from ..utils.heredoc_detection import (
+    CollectedHeredoc,
+    HeredocSpec,
+    HeredocTermination,
+)
 from .heredoc_collector import HeredocCollector
 from .modular_lexer import ModularLexer
 from .state_context import LexerContext
@@ -19,14 +30,80 @@ from .token_types import Token, TokenType
 if TYPE_CHECKING:
     from .position import LexerConfig
 
+
+@dataclass(frozen=True)
+class LexedHeredoc:
+    """One heredoc at the lexer/parser boundary: its delimiter spec and its
+    collected body. Keyed by ``spec.id`` in :class:`LexedUnit.heredocs`."""
+
+    spec: HeredocSpec
+    collected: CollectedHeredoc
+
+
+class LexedUnit(NamedTuple):
+    """The immutable lexer/parser boundary for heredoc-aware lexing.
+
+    ``tokens`` is the post-lex token stream (heredoc bodies lifted out;
+    ``<<``/``<<-`` operator tokens carry their spec's ``heredoc_id``).
+    ``heredocs`` maps spec id -> :class:`LexedHeredoc` — a read-only view.
+    ``tokenize_with_heredocs`` always supplies the mapping (possibly empty);
+    the scripting seam (``lex_and_expand``) uses ``None`` to mean "plain,
+    non-heredoc-aware lexing was performed" (its parse dispatch keys on
+    that). A NamedTuple, so ``tokens, heredocs = ...`` unpacking reads
+    naturally at call sites.
+    """
+
+    tokens: Tuple[Token, ...]
+    heredocs: Optional[Mapping[int, LexedHeredoc]]
+
+
 # Token types that can be ADJACENT parts of one heredoc delimiter word
-# (`<<E"O"F`, `<<E$X`). Operators (`;`, `|`, redirects) end the word even when
-# they touch it (`<<EOF;`), so they are excluded.
+# (`<<E"O"F`, `<<E$X`, `<<E<(x)`). Operators (`;`, `|`, redirects) end the
+# word even when they touch it (`<<EOF;`), so they are excluded.
+# PROCESS_SUB_IN/OUT: bash accepts a process-substitution-SHAPED piece as
+# literal delimiter text (`cat << <(x)` terminates at the line `<(x)`;
+# `cat <<E<(x)` at `E<(x)` — bash 5.2), with NO paren nesting: the piece
+# extends to the FIRST `)` and `<< <(a(b)c)` is a bash syntax error. The
+# no-nesting rule is applied by _procsub_delimiter_ok, mirroring the
+# text-level scanner's `[<>]\([^()]*\)` unit so the two layers agree.
 _DELIMITER_PART_TYPES = frozenset({
     TokenType.WORD, TokenType.STRING, TokenType.VARIABLE,
     TokenType.COMMAND_SUB, TokenType.COMMAND_SUB_BACKTICK,
     TokenType.ARITH_EXPANSION,
+    TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT,
 })
+
+
+def _procsub_delimiter_ok(token: Token) -> bool:
+    """A procsub-shaped delimiter piece is accepted only without nested
+    parens (bash's heredoc-word reader does not nest them)."""
+    if token.type not in (TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT):
+        return True
+    return '(' not in token.value[2:]
+
+
+def delimiter_token_acceptable(token: Token) -> bool:
+    """Shared token-level delimiter-part rule for the heredoc scanners and
+    both parsers: a word-like part type, with the procsub no-nesting rule."""
+    return token.type in _DELIMITER_PART_TYPES and _procsub_delimiter_ok(token)
+
+
+def raw_delimiter_from_tokens(delim_tokens: List[Token]) -> str:
+    """Fallback raw-spelling reconstruction from delimiter token VALUES.
+
+    Only for BARE parses with no source text to slice (the live heredoc-aware
+    path always takes ``raw`` from the spec). A quoted token's value has its
+    quotes removed, so the spelling is re-wrapped from ``quote_type`` — this
+    preserves quotedness through the one quote-removal rule even when the
+    exact original escapes are not recoverable.
+    """
+    pieces = []
+    for tok in delim_tokens:
+        if tok.quote_type:
+            pieces.append(f"{tok.quote_type}{tok.value}{tok.quote_type[-1]}")
+        else:
+            pieces.append(tok.value)
+    return ''.join(pieces)
 
 
 class HeredocLexer:
@@ -37,10 +114,11 @@ class HeredocLexer:
     the message (a script path, or "psh" for -c/stdin/eval, like bash's
     "bash:" there) and ``base_line`` is the absolute line the source's
     first line sits on (source_processor passes the buffered command's
-    start line). ``warn_unterminated=False`` finalizes EOF-delimited
-    heredocs silently — for TRIAL parses (the command accumulator's
+    start line). ``warn_unterminated=False`` suppresses the WARNING for
+    EOF-delimited heredocs — for TRIAL parses (the command accumulator's
     completeness oracle), which must not print a warning the execution
-    pass will print again.
+    pass will print again. The typed ``HeredocTermination.EOF`` outcome is
+    recorded on the CollectedHeredoc either way.
     """
 
     def __init__(self, source: str, config: "Optional[LexerConfig]" = None,
@@ -52,6 +130,11 @@ class HeredocLexer:
         self.base_line = base_line
         self.warn_unterminated = warn_unterminated
         self.heredoc_collector = HeredocCollector()
+        # The heredoc-stripped command text the final token stream indexes
+        # into — set by tokenize_with_heredocs(). Post-lex passes (word
+        # fusion's span-faithful lexemes) must slice THIS text, never the
+        # body-bearing input source.
+        self.command_text: str = ''
 
     @staticmethod
     def _split_physical_lines(source: str) -> List[str]:
@@ -66,8 +149,8 @@ class HeredocLexer:
             lines.pop()  # trailing newline is a terminator, not a new line
         return [line[:-1] if line.endswith('\r') else line for line in lines]
 
-    def tokenize_with_heredocs(self) -> Tuple[List[Token], Dict[str, Dict[str, Any]]]:
-        """Tokenize and return (tokens, heredoc_map).
+    def tokenize_with_heredocs(self) -> LexedUnit:
+        """Tokenize and return the immutable :class:`LexedUnit`.
 
         Algorithm:
         1. Classify each physical line as command text or heredoc body.
@@ -85,7 +168,8 @@ class HeredocLexer:
 
         End of input with a heredoc still pending does NOT drop it: like
         bash, the gathered lines become the body ("delimited by
-        end-of-file") and a warning is printed to stderr.
+        end-of-file", the typed EOF termination) and a warning is printed
+        to stderr (suppressed for trial parses).
         """
         command_lines: List[str] = []
 
@@ -107,11 +191,11 @@ class HeredocLexer:
         lineno = 0
         for lineno, raw_line in enumerate(lines, start=1):
             if self.heredoc_collector.has_pending_heredocs():
-                completed = self.heredoc_collector.collect_line(raw_line)
-                if completed and self.heredoc_collector.pending:
+                completed = self.heredoc_collector.collect_line(raw_line, lineno)
+                if completed is not None:
                     # The next pending heredoc's body gathering begins here
                     # (bash reports this line in its EOF warning).
-                    self.heredoc_collector.pending[0].start_line = lineno
+                    self.heredoc_collector.restamp_head_start(lineno)
                 continue
 
             command_lines.append(raw_line)
@@ -151,49 +235,39 @@ class HeredocLexer:
         command_text = '\n'.join(command_lines)
         if self.source.endswith('\n'):
             command_text += '\n'
+        self.command_text = command_text
 
         # The single full-state tokenization of the command text.
         tokens = ModularLexer(command_text, config=self.config).tokenize()
         self._mark_heredoc_tokens(tokens)
 
-        heredoc_map: Dict[str, Dict[str, Any]] = {}
-        for key, info in self.heredoc_collector.collected.items():
-            if info['complete']:
-                heredoc_map[key] = {
-                    'content': self.heredoc_collector.get_content(key),
-                    'quoted': info['quoted'],
-                }
-        return tokens, heredoc_map
+        heredocs = {
+            spec_id: LexedHeredoc(spec=self.heredoc_collector.specs[spec_id],
+                                  collected=collected)
+            for spec_id, collected in self.heredoc_collector.collected.items()
+        }
+        return LexedUnit(tokens=tuple(tokens),
+                         heredocs=MappingProxyType(heredocs))
 
     # === Heredoc operator discovery ===
 
-    @staticmethod
-    def _delimiter_from_source(raw: str) -> Tuple[str, bool]:
-        """Quote/escape-remove a raw heredoc delimiter word.
-
-        Delegates to the ONE delimiter-word rule
-        (``utils.heredoc_detection.unquote_heredoc_delimiter``); see M2 for why
-        this logic must not be re-implemented here. Returns
-        ``(literal_terminator, quoted)``.
-        """
-        from ..utils.heredoc_detection import unquote_heredoc_delimiter
-        return unquote_heredoc_delimiter(raw)
-
-    def _warn_eof_delimited(self, pending: List[Tuple[str, int]],
+    def _warn_eof_delimited(self, pending: List[Tuple[HeredocSpec, int]],
                             last_line: int) -> None:
-        """Print bash's unterminated-heredoc warning for each finalized
+        """Print bash's unterminated-heredoc warning for each EOF-delimited
         heredoc: ``NAME: line M: warning: here-document at line N delimited
         by end-of-file (wanted `DELIM')`` — M is the EOF line, N the line
         the heredoc's body gathering began (both absolute via base_line).
+        The wanted delimiter is the spec's COOKED terminator (bash prints
+        the quote-removed word).
         """
         import sys
         name = self.source_name or 'psh'
         eof_line = self.base_line + last_line - 1
-        for delimiter, start_line in pending:
+        for spec, start_line in pending:
             at_line = self.base_line + start_line - 1
             print(f"{name}: line {eof_line}: warning: here-document at "
                   f"line {at_line} delimited by end-of-file "
-                  f"(wanted `{delimiter}')", file=sys.stderr)
+                  f"(wanted `{spec.cooked}')", file=sys.stderr)
 
     def _register_from_tokens(self, toks: List[Token],
                               text: str, lineno: int) -> None:
@@ -211,7 +285,7 @@ class HeredocLexer:
         for i, token in enumerate(toks):
             if token.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP):
                 if (i + 1 < len(toks)
-                        and toks[i + 1].type in _DELIMITER_PART_TYPES):
+                        and delimiter_token_acceptable(toks[i + 1])):
                     # (An operator with NO delimiter word after it — e.g.
                     # `cat << #comment`, `cat <<` at end of line — registers
                     # nothing; the parser reports the syntax error.)
@@ -221,36 +295,43 @@ class HeredocLexer:
                     # the terminator, and a composite (`E"O"F`, `<<E$X`) spans
                     # several tokens. Reconstructing from individual token
                     # *values* drops a VARIABLE part's `$` or a STRING's quotes;
-                    # the source slice preserves them. Quote/escape removal then
-                    # yields the literal terminator (and whether the body is
-                    # quoted = not expanded).
+                    # the source slice preserves them. The spec (built by the
+                    # sole constructor) derives the literal terminator and the
+                    # body-is-quoted fact from that raw spelling.
                     delim_toks = [toks[i + 1]]
                     j = i + 2
                     while (j < len(toks) and toks[j].adjacent_to_previous
-                           and toks[j].type in _DELIMITER_PART_TYPES):
+                           and delimiter_token_acceptable(toks[j])):
                         delim_toks.append(toks[j])
                         j += 1
-                    raw = text[delim_toks[0].position:delim_toks[-1].end_position]
-                    delimiter, quoted = self._delimiter_from_source(raw)
+                    span = (delim_toks[0].position, delim_toks[-1].end_position)
+                    raw = text[span[0]:span[1]]
                     self.heredoc_collector.register_heredoc(
-                        delimiter=delimiter,
+                        raw=raw,
                         strip_tabs=(token.type == TokenType.HEREDOC_STRIP),
-                        quoted=quoted,
-                        line=lineno, col=0,
+                        line=lineno, span=span,
                     )
 
     def _mark_heredoc_tokens(self, tokens: List[Token]) -> None:
-        """Attach collector keys to heredoc operator tokens, in order.
+        """Attach spec ids to heredoc operator tokens, in order.
 
-        A non-None ``heredoc_key`` (the declared Token field) is the signal, to
+        A non-None ``heredoc_id`` (the declared Token field) is the signal, to
         KeywordNormalizer and the parser, that this heredoc's body lines are
         NOT in the token stream. Tokens are immutable, so each marked token is
-        rebuilt in place with :func:`dataclasses.replace`.
+        rebuilt in place with :func:`dataclasses.replace`. Registration and
+        this pass both walk operators in source order, so the ordinal ids
+        line up positionally.
         """
-        keys = list(self.heredoc_collector.collected.keys())
+        ids = sorted(self.heredoc_collector.specs)
         idx = 0
         for i, token in enumerate(tokens):
             if token.type in (TokenType.HEREDOC, TokenType.HEREDOC_STRIP):
-                if idx < len(keys):
-                    tokens[i] = replace(token, heredoc_key=keys[idx])
+                if idx < len(ids):
+                    tokens[i] = replace(token, heredoc_id=ids[idx])
                     idx += 1
+
+
+__all__ = [
+    'HeredocLexer', 'LexedHeredoc', 'LexedUnit', 'HeredocTermination',
+    'delimiter_token_acceptable', 'raw_delimiter_from_tokens',
+]

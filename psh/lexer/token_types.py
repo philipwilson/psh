@@ -105,7 +105,7 @@ class Token:
     """Unified, immutable token for the shell lexer and parser.
 
     Tokens are ``frozen``: once produced by the lexer they are never mutated.
-    Stages that need a changed token (keyword classification, heredoc-key
+    Stages that need a changed token (keyword classification, heredoc-id
     attachment, in-parser retypes) build a new one with
     :func:`dataclasses.replace`. ``position``/``end_position`` remain the
     canonical stored offsets; :pyattr:`span` is a derived read-only view over
@@ -125,16 +125,17 @@ class Token:
     fd: Optional[int] = None  # File descriptor prefix (e.g., 2 in 2>file)
     var_fd: Optional[str] = None  # Named-fd prefix var (e.g. 'fd' in {fd}>file)
     combined_redirect: bool = False  # True for &> and &>> (stdout+stderr)
-    # Heredoc collector key, attached by the heredoc lexer to a `<<`/`<<-`
-    # operator token once its body has been collected. None means "no body was
-    # collected for this token" — the *declared* signal replaces the old
-    # dynamic-setattr-plus-hasattr convention. repr=False keeps Token's repr
-    # byte-identical to when this was a dynamic attribute (invisible in repr).
-    heredoc_key: Optional[str] = field(default=None, repr=False)
+    # Heredoc spec id (ordinal within the lexed unit), attached by the heredoc
+    # lexer to a `<<`/`<<-` operator token once its body has been collected.
+    # None means "no body was collected for this token" — bodies are still in
+    # the token stream (plain tokenize()). The id keys the LexedUnit's
+    # heredocs map; identity is ordinal, never delimiter text (campaign S2).
+    # repr=False keeps Token's repr stable (invisible in repr).
+    heredoc_id: Optional[int] = field(default=None, repr=False)
     # Structured `name=(...)` array initializer, stashed by the combinator on a
     # synthetic WORD token so `_build_simple_command` can recover it. None for
     # ordinary words. (Lexer-internal payload; retired with WordToken in a
-    # later phase.) repr=False for the same repr-stability reason as heredoc_key.
+    # later phase.) repr=False for the same repr-stability reason as heredoc_id.
     array_init: Optional[Any] = field(default=None, repr=False)
 
     @property

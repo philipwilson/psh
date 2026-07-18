@@ -27,7 +27,7 @@ from ..lexer import UnclosedQuoteError, tokenize
 from ..lexer.keyword_defs import matches_keyword
 from ..lexer.token_types import TokenType
 from ..parser import ParseError, Parser
-from ..utils import contains_heredoc, open_heredoc_delimiters
+from ..utils import contains_heredoc, open_heredoc_specs
 from ..utils.heredoc_detection import scan_line_heredoc_markers
 
 # Tokens after which a newline joins as a plain space: putting `;` after
@@ -47,7 +47,7 @@ _NO_SEMI_AFTER = frozenset({
 def convert_multiline_to_single(multiline_cmd: str) -> str:
     """Join a multi-line command into its single-line history form."""
     acc: Optional[str] = None
-    open_heredocs: List[Tuple[str, bool]] = []
+    open_heredocs: Tuple = ()
     for line in multiline_cmd.split('\n'):
         if acc is None:
             if line.strip():
@@ -57,7 +57,7 @@ def convert_multiline_to_single(multiline_cmd: str) -> str:
             # Heredoc body (and terminator) lines stay verbatim; the
             # detector re-scan notices which delimiters this line closed.
             acc += '\n' + line
-            open_heredocs = open_heredoc_delimiters(acc)
+            open_heredocs = open_heredoc_specs(acc)
             continue
         if not line.strip():
             continue  # bash drops blank lines from the joined entry
@@ -71,7 +71,7 @@ def convert_multiline_to_single(multiline_cmd: str) -> str:
             # contains_heredoc for the latter would keep newlines for an
             # arithmetic shift ($((1<<2))) or a quoted '<<EOF' — the r19-T4
             # bounce regression.
-            open_heredocs = open_heredoc_delimiters(candidate)
+            open_heredocs = open_heredoc_specs(candidate)
             if open_heredocs or _has_real_heredoc(acc):
                 acc = candidate
                 continue

@@ -11,9 +11,14 @@ script/-c/stdin parity lives in tests/integration/scripting/.
 
 from psh.scripting.input_preprocessing import process_line_continuations
 from psh.utils.heredoc_detection import (
-    open_heredoc_delimiters,
+    open_heredoc_specs,
     scan_line_heredoc_markers,
 )
+
+
+def _triples(specs):
+    """(cooked, strip_tabs, quoted) view of scanned HeredocSpec values."""
+    return [(s.cooked, s.strip_tabs, s.quoted) for s in specs]
 
 
 class TestCommentContext:
@@ -186,9 +191,10 @@ class TestHeredocMarkerScan:
     """The shared per-line marker scan (also used by the accumulator)."""
 
     def test_marker_reports_quoting(self):
-        markers, quote = scan_line_heredoc_markers("cat <<'A' <<B <<-\\C")
-        assert markers == [("A", False, True), ("B", False, False),
-                           ("C", True, True)]
+        specs, quote = scan_line_heredoc_markers("cat <<'A' <<B <<-\\C")
+        assert _triples(specs) == [("A", False, True), ("B", False, False),
+                                   ("C", True, True)]
+        assert [s.id for s in specs] == [0, 1, 2]  # ordinal identity
         assert quote is None
 
     def test_marker_in_comment_ignored(self):
@@ -201,15 +207,15 @@ class TestHeredocMarkerScan:
         then never matched -> the heredoc silently vanished)."""
         for delim in ('E*F', 'A?B', 'AB[cd]', 'E.F', 'E-F', '@X', 'E#F',
                       'E,F', 'E{a,b}F', '{abc}', '!', 'E+F', 'E=F', '123'):
-            markers, _ = scan_line_heredoc_markers(f"cat <<{delim}")
-            assert markers == [(delim, False, False)], delim
+            specs, _ = scan_line_heredoc_markers(f"cat <<{delim}")
+            assert _triples(specs) == [(delim, False, False)], delim
 
     def test_marker_word_ends_at_metacharacters(self):
         # `;` ends the delimiter word (bash); same for | & ( ) < > and blanks.
-        markers, _ = scan_line_heredoc_markers("cat <<EOF; echo hi")
-        assert markers == [("EOF", False, False)]
-        markers, _ = scan_line_heredoc_markers("cat <<EOF>out")
-        assert markers == [("EOF", False, False)]
+        specs, _ = scan_line_heredoc_markers("cat <<EOF; echo hi")
+        assert _triples(specs) == [("EOF", False, False)]
+        specs, _ = scan_line_heredoc_markers("cat <<EOF>out")
+        assert _triples(specs) == [("EOF", False, False)]
 
     def test_hash_cannot_start_a_delimiter(self):
         # `#` right after `<<` (with or without a space) begins a comment in
@@ -222,29 +228,29 @@ class TestHeredocMarkerScan:
     def test_leading_dash_delimiter_spellings(self):
         # `<< -EOF` is a plain heredoc with delimiter -EOF; `<<--EOF` is the
         # tab-stripping operator with delimiter -EOF.
-        markers, _ = scan_line_heredoc_markers("cat << -EOF")
-        assert markers == [("-EOF", False, False)]
-        markers, _ = scan_line_heredoc_markers("cat <<--EOF")
-        assert markers == [("-EOF", True, False)]
+        specs, _ = scan_line_heredoc_markers("cat << -EOF")
+        assert _triples(specs) == [("-EOF", False, False)]
+        specs, _ = scan_line_heredoc_markers("cat <<--EOF")
+        assert _triples(specs) == [("-EOF", True, False)]
 
     def test_crlf_line_ending_cr_not_part_of_delimiter(self):
         # A CRLF line's trailing CR is a line ending, not delimiter text
         # (the v0.600 CRLF-heredoc behavior depends on this).
-        markers, _ = scan_line_heredoc_markers("cat <<EOF\r")
-        assert markers == [("EOF", False, False)]
+        specs, _ = scan_line_heredoc_markers("cat <<EOF\r")
+        assert _triples(specs) == [("EOF", False, False)]
 
     def test_comment_quote_excluded_from_carried_state(self):
         _, quote = scan_line_heredoc_markers("echo hi # don't")
         assert quote is None
 
     def test_open_heredoc_delimiters_ignores_comment_marker(self):
-        assert open_heredoc_delimiters("echo hi # <<EOF") == []
+        assert open_heredoc_specs("echo hi # <<EOF") == ()
 
     def test_hash_inside_backtick_does_not_truncate_marker_scan(self):
         # A '#' inside a backtick is not a top-level comment, so a real
         # heredoc marker after the closed backtick is still found.
-        markers, quote = scan_line_heredoc_markers("cat `echo hi #` <<EOF")
-        assert markers == [("EOF", False, False)]
+        specs, quote = scan_line_heredoc_markers("cat `echo hi #` <<EOF")
+        assert _triples(specs) == [("EOF", False, False)]
         assert quote is None
 
     def test_apostrophe_inside_backtick_not_carried_quote(self):
