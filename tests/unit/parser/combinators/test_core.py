@@ -208,17 +208,28 @@ class TestParser:
         assert result.success is False
         assert result.error == "Failed"
 
-    def test_then_second_fails_resets_position(self):
-        """A failed then() is atomic: position resets to the start."""
+    def test_then_second_fails_preserves_failure_position(self):
+        """Law (campaign S4 §8): then preserves the FAILURE POSITION.
+
+        When the second member fails, the composite failure reports how far the
+        sequence got (the second parser's failure reach), not the sequence's
+        start. Backtracking is not driven by this position — or_else always
+        retries its alternative from its own start pos — so preserving the reach
+        only sharpens the farthest-error diagnostic. (Previously this reset to
+        the start, which violated the law.)
+        """
         def parse_ok(tokens, pos):
             return ParseResult(success=True, value="ok", position=pos + 1)
 
         def parse_fail(tokens, pos):
-            return ParseResult(success=False, error="boom", position=pos)
+            # Fails at pos+1 (one past where it started, i.e. it "reached" that far).
+            return ParseResult(success=False, error="boom", position=pos + 1)
 
         result = Parser(parse_ok).then(Parser(parse_fail)).parse([], 3)
         assert result.success is False
-        assert result.position == 3  # not 4 (the first parser's end)
+        # parse_ok: 3->4; parse_fail runs at 4, fails reaching 5. The law
+        # propagates the inner failure position (5), not the start (3).
+        assert result.position == 5
 
     def test_or_else(self):
         """Test alternative parsing."""
