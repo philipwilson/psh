@@ -16,7 +16,6 @@ import dataclasses
 import pytest
 
 from psh.invocation import (
-    InvocationConfig,
     InvocationError,
     SourceKind,
     parse_invocation,
