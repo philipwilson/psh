@@ -1,9 +1,10 @@
-"""Characterization harness for WordExpander.expand() — the word-expansion engine.
+"""Characterization harness for the word-expansion engine.
 
-This is a SAFETY NET, not a behavior spec. It freezes the EXACT output of
-``WordExpander.expand(word, policy)`` across a large corpus, so a
-zero-behavior-change refactor of the engine (segment-IR / explicit passes,
-assessment recommendation B5) can be proven non-regressing.
+This is a SAFETY NET, not a behavior spec. It freezes the EXACT observable
+output of the field engine (``WordExpander.expand_to_word(word, policy)``
+materialized through ``WordExpander.materialize`` — collapsed to the
+historical one-field-is-a-scalar shape by the ``_expand`` helper) across a
+large corpus, so an engine refactor can be proven non-regressing.
 
 Each case:
   * parses a real shell fragment so the Word AST is realistic

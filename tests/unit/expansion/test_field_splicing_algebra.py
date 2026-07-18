@@ -148,6 +148,133 @@ class TestH6GlobProtection:
 
 
 # --------------------------------------------------------------------------
+# Literal-match globbing (bounce blocker 1): a sole match whose filename
+# literally equals the pattern is a REAL match, never a no-match. RED at
+# pre-fix tip 2374d465 (nullglob dropped the field; failglob errored) — see
+# tmp/boundary-ledgers/W1-probes/bounce_red_at_prefix_tip.txt.
+# --------------------------------------------------------------------------
+
+class TestLiteralMatchGlob:
+    def test_literal_named_file_default(self, tmp_path):
+        assert _glob_fields(tmp_path, 'printf "<%s>" a*', ('a*',)) == "<a*>"
+
+    def test_literal_named_file_nullglob(self, tmp_path):
+        # The match set is exactly ['a*'] == [pattern]; bash keeps it.
+        assert _glob_fields(
+            tmp_path, 'shopt -s nullglob; printf "<%s>" a*', ('a*',)) \
+            == "<a*>"
+
+    def test_literal_named_file_failglob(self, tmp_path):
+        # failglob must NOT fire — the pattern DID match (rc 0 asserted by
+        # the helper).
+        assert _glob_fields(
+            tmp_path, 'shopt -s failglob; printf "<%s>" a*', ('a*',)) \
+            == "<a*>"
+
+    def test_star_only_entry_nullglob(self, tmp_path):
+        # A dir whose only entry is '*', pattern '*': match == pattern.
+        assert _glob_fields(
+            tmp_path, 'shopt -s nullglob; printf "<%s>" *', ('*',)) == "<*>"
+
+    def test_star_only_entry_failglob(self, tmp_path):
+        assert _glob_fields(
+            tmp_path, 'shopt -s failglob; printf "<%s>" *', ('*',)) == "<*>"
+
+    def test_literal_plus_other_match(self, tmp_path):
+        # Control: the literal-named file sorts alongside a second match.
+        assert _glob_fields(
+            tmp_path, 'shopt -s nullglob; printf "<%s>" a*', ('a*', 'ab')) \
+            == "<a*><ab>"
+
+
+# --------------------------------------------------------------------------
+# Extglob eligibility is adjacency-aware (bounce sweep): an operator formed
+# only by concatenating NON-adjacent ACTIVE runs (protected text between)
+# does not make the field glob-eligible — bash keeps the word literal. RED at
+# pre-fix tip 2374d465 (spurious failglob error / nullglob elision).
+# --------------------------------------------------------------------------
+
+class TestExtglobAdjacency:
+    def test_nonadjacent_operator_failglob_stays_literal(self, tmp_path):
+        assert _glob_fields(
+            tmp_path,
+            'a=@; b="(y)"; shopt -s extglob failglob; printf "<%s>" $a"*"$b',
+            ()) == "<@*(y)>"
+
+    def test_nonadjacent_operator_nullglob_stays_literal(self, tmp_path):
+        assert _glob_fields(
+            tmp_path,
+            'a=@; b="(y)"; shopt -s extglob nullglob; printf "<%s>" $a"*"$b',
+            ()) == "<@*(y)>"
+
+    def test_nonadjacent_no_metachar_failglob(self, tmp_path):
+        # Also exercises the old [pattern]-echo reachability: pattern @x(y)
+        # has no live metachar; the word must simply not be glob-eligible.
+        assert _glob_fields(
+            tmp_path,
+            'a=@; b="(y)"; shopt -s extglob failglob; printf "<%s>" $a"x"$b',
+            ()) == "<@x(y)>"
+
+    def test_adjacent_operator_still_globs(self, tmp_path):
+        # Control: a REAL extglob from one active run still pathname-expands.
+        assert _glob_fields(
+            tmp_path, 'x="@(y)"; shopt -s extglob; printf "<%s>" $x',
+            ('y',)) == "<y>"
+
+    def test_adjacent_operator_nullglob_vanishes(self, tmp_path):
+        # Control: a real extglob with no match vanishes under nullglob.
+        assert _glob_fields(
+            tmp_path, 'x="@(y)"; shopt -s extglob nullglob; printf "<%s>" $x',
+            ()) == "<>"
+
+
+# --------------------------------------------------------------------------
+# Embedded unquoted $@/[@] with affixes under custom IFS (bounce blocker 2):
+# an additional divergence class the branch fixed — base concatenated the
+# affix into a space-joined scalar and custom IFS could not resplit it
+# (base '<xa by>'; bash and branch '<xa><by>'). Probed three-way in
+# tmp/boundary-ledgers/W1-probes/bounce_red_at_prefix_tip.txt (base DIV rows).
+# --------------------------------------------------------------------------
+
+class TestEmbeddedUnquotedAtCustomIFS:
+    def test_at_both_affixes_ifs_colon(self, captured_shell):
+        assert _fields(
+            captured_shell,
+            'set -- a b; IFS=:; printf "<%s>" x$@y') == "<xa><by>"
+
+    def test_at_prefix_ifs_colon(self, captured_shell):
+        assert _fields(
+            captured_shell,
+            'set -- a b; IFS=:; printf "<%s>" x$@') == "<xa><b>"
+
+    def test_at_suffix_ifs_colon(self, captured_shell):
+        assert _fields(
+            captured_shell,
+            'set -- a b; IFS=:; printf "<%s>" $@y') == "<a><by>"
+
+    def test_array_at_both_affixes_ifs_colon(self, captured_shell):
+        assert _fields(
+            captured_shell,
+            'a=(a b); IFS=:; printf "<%s>" x${a[@]}y') == "<xa><by>"
+
+    def test_array_at_prefix_ifs_colon(self, captured_shell):
+        assert _fields(
+            captured_shell,
+            'a=(a b); IFS=:; printf "<%s>" x${a[@]}') == "<xa><b>"
+
+    def test_at_both_affixes_ifs_empty(self, captured_shell):
+        assert _fields(
+            captured_shell,
+            "set -- a b; IFS=''; printf \"<%s>\" x$@y") == "<xa><by>"
+
+    def test_at_value_with_ifs_char_splits(self, captured_shell):
+        # A parameter VALUE containing the IFS char still splits per field.
+        assert _fields(
+            captured_shell,
+            'set -- "a b" c; IFS=:; printf "<%s>" x$@y') == "<xa b><cy>"
+
+
+# --------------------------------------------------------------------------
 # H5 + H6 combined — splice a field, THEN glob the resulting field.
 # --------------------------------------------------------------------------
 

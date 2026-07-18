@@ -87,7 +87,8 @@ class TestPolicyTable:
 
 
 class TestExpandUnderPolicies:
-    """Direct WordExpander.expand() calls, two-three per policy."""
+    """Direct field-engine calls (expand_to_word + materialize via _shape),
+    two-three per policy."""
 
     @pytest.fixture
     def expander(self, captured_shell):

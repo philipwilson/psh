@@ -93,6 +93,100 @@ class TestGlobProtectionH6(ConformanceTest):
             ('fa', 'fb', 'abc'), 'printf "<%s>" fa*'))
 
 
+class TestLiteralMatchGlob(ConformanceTest):
+    """A sole match whose filename literally equals the pattern is a REAL
+    match — nullglob keeps it and failglob does not fire (bounce blocker 1)."""
+
+    def _in_dir(self, files, script):
+        touch = ' '.join(f"'{f}'" for f in files)
+        return (f'd=$(mktemp -d); cd "$d"; touch {touch}; '
+                f'{script}; cd /; rm -rf "$d"')
+
+    def test_literal_named_file_default(self):
+        self.assert_identical_behavior(self._in_dir(
+            ('a*',), 'printf "<%s>" a*'))
+
+    def test_literal_named_file_nullglob(self):
+        self.assert_identical_behavior(self._in_dir(
+            ('a*',), 'shopt -s nullglob; printf "<%s>" a*'))
+
+    def test_literal_named_file_failglob(self):
+        self.assert_identical_behavior(self._in_dir(
+            ('a*',), 'shopt -s failglob; printf "<%s>" a*'))
+
+    def test_star_only_entry_nullglob(self):
+        self.assert_identical_behavior(self._in_dir(
+            ('*',), 'shopt -s nullglob; printf "<%s>" *'))
+
+    def test_star_only_entry_failglob(self):
+        self.assert_identical_behavior(self._in_dir(
+            ('*',), 'shopt -s failglob; printf "<%s>" *'))
+
+
+class TestExtglobAdjacency(ConformanceTest):
+    """An extglob operator formed only across NON-adjacent active runs
+    (protected text between) does not make the word glob-eligible."""
+
+    def _in_empty_dir(self, script):
+        return (f'd=$(mktemp -d); cd "$d"; {script}; cd /; rm -rf "$d"')
+
+    def test_nonadjacent_operator_failglob(self):
+        self.assert_identical_behavior(self._in_empty_dir(
+            'a=@; b="(y)"; shopt -s extglob failglob; printf "<%s>" $a"*"$b'))
+
+    def test_nonadjacent_operator_nullglob(self):
+        self.assert_identical_behavior(self._in_empty_dir(
+            'a=@; b="(y)"; shopt -s extglob nullglob; printf "<%s>" $a"*"$b'))
+
+    def test_nonadjacent_no_metachar_failglob(self):
+        self.assert_identical_behavior(self._in_empty_dir(
+            'a=@; b="(y)"; shopt -s extglob failglob; printf "<%s>" $a"x"$b'))
+
+    def test_adjacent_operator_still_globs(self):
+        self.assert_identical_behavior(
+            'd=$(mktemp -d); cd "$d"; touch y; '
+            'x="@(y)"; shopt -s extglob; printf "<%s>" $x; '
+            'cd /; rm -rf "$d"')
+
+    def test_adjacent_operator_nullglob_vanishes(self):
+        self.assert_identical_behavior(self._in_empty_dir(
+            'x="@(y)"; shopt -s extglob nullglob; printf "<%s>" $x'))
+
+
+class TestEmbeddedUnquotedAtAffixes(ConformanceTest):
+    """Embedded unquoted $@/${a[@]} with affixes under custom IFS (bounce
+    blocker 2): the affix continues the first/last field and each field
+    IFS-splits independently."""
+
+    def test_at_both_affixes_ifs_colon(self):
+        self.assert_identical_behavior(
+            'set -- a b; IFS=:; printf "<%s>" x$@y')
+
+    def test_at_prefix_ifs_colon(self):
+        self.assert_identical_behavior(
+            'set -- a b; IFS=:; printf "<%s>" x$@')
+
+    def test_at_suffix_ifs_colon(self):
+        self.assert_identical_behavior(
+            'set -- a b; IFS=:; printf "<%s>" $@y')
+
+    def test_array_at_both_affixes_ifs_colon(self):
+        self.assert_identical_behavior(
+            'a=(a b); IFS=:; printf "<%s>" x${a[@]}y')
+
+    def test_array_at_prefix_ifs_colon(self):
+        self.assert_identical_behavior(
+            'a=(a b); IFS=:; printf "<%s>" x${a[@]}')
+
+    def test_at_both_affixes_ifs_empty(self):
+        self.assert_identical_behavior(
+            "set -- a b; IFS=''; printf \"<%s>\" x$@y")
+
+    def test_at_value_with_ifs_char_splits(self):
+        self.assert_identical_behavior(
+            'set -- "a b" c; IFS=:; printf "<%s>" x$@y')
+
+
 class TestFieldSplicingWithGlobH5H6(ConformanceTest):
     """Combined: splice a field, THEN glob the resulting field."""
 
