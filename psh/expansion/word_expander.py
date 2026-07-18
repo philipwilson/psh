@@ -645,17 +645,30 @@ class WordExpander:
 
         Only ACTIVE runs can introduce an active metacharacter; a PROTECTED
         run's metacharacters are bracket-escaped in the pattern and never act.
-        Extglob detection scans the concatenated ACTIVE text so an operator and
-        its group in adjacent active runs are seen together.
+        Plain-metacharacter detection is presence-based, so it may scan the
+        concatenated ACTIVE text. Extglob OPERATORS are positional (``@(``),
+        so extglob detection runs per maximal segment of ADJACENT active runs:
+        protected text between active runs breaks the operator in bash's
+        pattern too (``$a"*"$b`` with ``a=@ b='(y)'`` stays a literal word),
+        and concatenating across it would fabricate eligibility — observable
+        as a spurious failglob error / nullglob elision.
         """
         active_text = ''.join(
             r.text for r in field.runs if r.protection is _ACTIVE)
         if has_glob_metacharacters(active_text):
             return True
-        if extglob_on and active_text:
-            from .extglob import contains_extglob
-            return contains_extglob(active_text)
-        return False
+        if not (extglob_on and active_text):
+            return False
+        from .extglob import contains_extglob
+        segment: List[str] = []
+        for run in field.runs:
+            if run.protection is _ACTIVE:
+                segment.append(run.text)
+            elif segment:
+                if contains_extglob(''.join(segment)):
+                    return True
+                segment = []
+        return bool(segment) and contains_extglob(''.join(segment))
 
     def _glob_field(self, field: ExpandedField) -> List[str]:
         """Pathname-expand one glob-eligible field, honoring protection.
@@ -667,7 +680,15 @@ class WordExpander:
         """
         pattern = self._pattern_from_runs(field.runs)
         matches = self.manager.glob_expander.expand(pattern)
-        if matches and matches != [pattern]:
+        if matches:
+            # A nonempty result is a REAL match set. _field_glob_eligible
+            # guarantees a live metacharacter reaches the pattern (an ACTIVE
+            # plain metachar, or an extglob operator inside an adjacent-active
+            # segment — both pass through raw), so GlobExpander.expand()'s
+            # metachar-free `[pattern]` echo is unreachable from here, and a
+            # sole match whose filename literally equals the pattern (a file
+            # named `a*` matched by pattern `a*`) must NOT be reclassified as
+            # a no-match — bash keeps it under nullglob/failglob.
             # glob_expander already returns sorted results.
             return matches
         literal = field.text
