@@ -15,6 +15,13 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+#: First fd slot for long-lived STD_FDS lease backups. Above the >=10
+#: per-command save area (bash-pinned `{v}>file` numbering expects
+#: first-free->=10), below nothing a user can't also claim — hence the
+#: relocation protocol below when a user redirect targets a parked slot.
+_PARKING_BASE = 63
+
+
 class _StdStreamBaseline:
     """The restorable pre-permanent-redirect state of fds 0/1/2 + streams.
 
@@ -28,9 +35,19 @@ class _StdStreamBaseline:
     saved descriptors onto 0/1/2 (re-closing one that was closed at
     baseline). Best-effort per step so one failed restore cannot strand the
     rest.
+
+    Parked backups are USER-DISPLACEABLE (bash's model — internal saves get
+    out of the user's way): a user redirection targeting a parked slot
+    (``exec 63>f``, ``exec 64>&-``) must call :meth:`relocate_away_from`
+    BEFORE mutating the fd, which moves the backup to a fresh CLOEXEC slot;
+    without that, the user's dup2/close would silently replace the backup
+    and the shutdown restore would install the USER'S file as the host's
+    std fd (the F2 bounce blocker). ``active`` flips False at restore so a
+    stale baseline (already released, or copied into a forked child) never
+    relocates.
     """
 
-    __slots__ = ('fds', 'sys_streams', 'overrides', 'state')
+    __slots__ = ('fds', 'sys_streams', 'overrides', 'state', 'active')
 
     def __init__(self, fds: Dict[int, Optional[int]],
                  sys_streams: Tuple[Any, Any, Any],
@@ -40,8 +57,35 @@ class _StdStreamBaseline:
         self.sys_streams = sys_streams
         self.overrides = overrides
         self.state = state
+        self.active = True
+
+    def relocate_away_from(self, target_fds) -> None:
+        """Move any parked backup sitting on one of *target_fds*.
+
+        Called by the redirect application paths BEFORE they dup2/close a
+        user-chosen fd. The displaced backup keeps its open file description
+        (``F_DUPFD_CLOEXEC`` from the parking base — first free slot, which
+        skips both other parked fds and user-held fds) and the registry
+        (``self.fds``) is updated, so the shutdown restore still finds the
+        HOST's descriptors wherever they now live. An ``OSError`` from the
+        dup (fd-table exhaustion) propagates: the user redirect then fails
+        cleanly BEFORE any mutation, with the baseline intact.
+        """
+        if not self.active:
+            return
+        wanted = set(target_fds)
+        for std_fd, saved in self.fds.items():
+            if saved is not None and saved in wanted:
+                moved = fcntl.fcntl(saved, fcntl.F_DUPFD_CLOEXEC,
+                                    _PARKING_BASE)
+                self.fds[std_fd] = moved
+                try:
+                    os.close(saved)
+                except OSError:
+                    pass
 
     def restore(self) -> None:
+        self.active = False
         # Streams first: flush + close any object a permanent redirect
         # installed (each owns a dup of the redirect target), then put the
         # baseline objects back.
@@ -615,6 +659,10 @@ class FileRedirector:
                 self.apply_var_fd_redirect(redirect)
                 continue
             plan = self.planner.plan(redirect)
+            # A parked STD_FDS backup on this plan's target fd moves out of
+            # the way BEFORE the save (the vacated fd then saves as
+            # was-not-open, so the window's restore simply re-closes it).
+            self._clear_user_fds_from_parking(plan)
             applied = False
 
             try:
@@ -751,13 +799,18 @@ class FileRedirector:
         try:
             for fd in (0, 1, 2):
                 try:
-                    # Base 63, NOT 10: the per-command save area starts at 10
-                    # and bash-pinned `{v}>file` allocations expect the first
-                    # free fd >= 10 — long-lived lease backups parked at
-                    # 10-12 would shift every later named-fd number (bash
-                    # similarly parks its own long-lived internals high).
+                    # _PARKING_BASE (63), NOT 10: the per-command save area
+                    # starts at 10 and bash-pinned `{v}>file` allocations
+                    # expect the first free fd >= 10 — long-lived lease
+                    # backups parked at 10-12 would shift every later
+                    # named-fd number (bash similarly parks its own
+                    # long-lived internals high). F_DUPFD picks the first
+                    # FREE slot, so acquisition automatically avoids fds the
+                    # user already holds in the range; the reverse direction
+                    # (a LATER user redirect targeting a parked slot) is the
+                    # relocation protocol on _StdStreamBaseline.
                     baseline_fds[fd] = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC,
-                                                   63)
+                                                   _PARKING_BASE)
                 except OSError:
                     baseline_fds[fd] = None  # fd closed at baseline
             baseline = _StdStreamBaseline(
@@ -768,7 +821,11 @@ class FileRedirector:
             )
             coordinator.acquire_component(
                 state, ComponentKind.STD_FDS, restore=baseline.restore,
-                description='standard fds/streams (permanent exec redirects)')
+                description='standard fds/streams (permanent exec redirects)',
+                on_grant=state._on_activation_grant)
+            # Live registry for the relocation protocol: every redirect
+            # application consults it before taking a user-chosen fd.
+            self._std_baseline = baseline
         except BaseException:
             # Failed acquisition rolls back completely: close the dups we
             # took so nothing is half-acquired (coordinator state untouched).
@@ -779,6 +836,49 @@ class FileRedirector:
                     except OSError:
                         pass
             raise
+
+    @staticmethod
+    def _fds_claimed_by_plan(plan: RedirectPlan) -> set:
+        """The fd numbers this redirect will WRITE (dup2) or CLOSE.
+
+        The relocation protocol's input: any parked STD_FDS backup sitting
+        on one of these must move first. Covers the combined form (1 and 2),
+        close forms (explicit or default fd), dup destinations plus the
+        move form's closed source, and every open/heredoc form's target fd.
+        Read-only uses of an fd (a dup SOURCE that stays open) claim
+        nothing.
+        """
+        redirect = plan.redirect
+        if redirect.combined:
+            return {1, 2}
+        if redirect.type in ('>&-', '<&-'):
+            default = 1 if redirect.type == '>&-' else 0
+            return {redirect.fd if redirect.fd is not None else default}
+        claimed = {plan.target_fd}
+        if (redirect.type in ('>&', '<&') and redirect.move
+                and redirect.dup_fd is not None):
+            claimed.add(redirect.dup_fd)   # move form closes its source
+        return claimed
+
+    def _clear_user_fds_from_parking(self, plan: RedirectPlan) -> None:
+        """Displace parked STD_FDS backups from fds this plan will take.
+
+        Called BEFORE ``saved_fds_for_plan``/``apply_fd_plan`` in both the
+        temporary and the permanent application loop, so a user redirect
+        targeting the parking range (``exec 63>f``, ``echo x 63>f``,
+        ``exec 64>&-``) never silently replaces a host-fd backup (the F2
+        bounce blocker: the shutdown restore would have installed the
+        user's file as the host's std fd). No-ops when no live baseline
+        exists in THIS process — a forked child's copied baseline is stale
+        (its coordinator pid-reset the lease) and must not be shuffled.
+        """
+        baseline = getattr(self, '_std_baseline', None)
+        if baseline is None or not baseline.active:
+            return
+        if get_coordinator().find_component(
+                self.state, ComponentKind.STD_FDS) is None:
+            return  # stale (forked child / already released)
+        baseline.relocate_away_from(self._fds_claimed_by_plan(plan))
 
     def apply_permanent_redirections(self, redirects: List[Redirect]):
         """Apply redirections permanently (for exec builtin).
@@ -828,6 +928,9 @@ class FileRedirector:
                     continue
                 plan = self.planner.plan(redirect)
                 redirect = plan.redirect
+                # Displace any parked STD_FDS backup this redirect targets
+                # (user fds in the parking range must win — bounce blocker).
+                self._clear_user_fds_from_parking(plan)
                 saved_fds.extend(self.saved_fds_for_plan(plan))
                 applied = False
 

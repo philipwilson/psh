@@ -502,8 +502,14 @@ class Shell:
         with the process. ``close()`` exists for the MANY transient Shell
         instances — tests, the ``env`` builtin's child, subshell helpers — so
         their self-pipes are freed immediately rather than lingering until
-        garbage collection. It never touches the (possibly shared) stdin/
-        stdout/stderr streams, which the shell does not own.
+        garbage collection. Streams/fds it did not change are left alone —
+        but a shell that performed PERMANENT ``exec`` redirections holds the
+        STD_FDS component lease, and releasing it here restores the hosting
+        process's fds 0/1/2 and ``sys.std*`` objects to their pre-redirect
+        baseline (campaign F2: an embedded shell's process-global mutations
+        end with the shell; continuation finding B). ``shutdown(reason)`` is
+        the top-level cleanup path that ADDS the EXIT trap and history save
+        in front of this resource release.
         """
         # Release every process-global lease this shell holds and relinquish
         # the activation owner token (campaign F2): LIFO restores of the

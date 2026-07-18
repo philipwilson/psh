@@ -153,6 +153,39 @@ def test_utf8_locale_applies_at_activation(locale_guard):
     assert _pylocale.setlocale(_pylocale.LC_CTYPE) == host_ctype
 
 
+def test_close_clears_process_active_locale_slot(locale_guard):
+    """Bounce nit 3: after the owning shell deactivates, the process-active
+    slot must not keep pointing at the closed shell's service."""
+    shell = Shell(norc=True)
+    shell.run_command('true')
+    assert active_locale() is shell.state.locale
+    shell.close()
+    assert active_locale() is None
+
+
+def test_reactive_locale_write_outside_execution_installs_owner(locale_guard):
+    """Bounce nit 2: a component acquisition that TRANSFERS ownership (a
+    reactive non-C locale write on a shell that is not mid-execution) runs
+    the grant glue, so the process-active slot follows the new owner
+    instead of staying on the previous shell."""
+    if not _utf8_available():
+        pytest.skip(f"{UTF8_NAME} unavailable on this host")
+    with _EnvPatch(LC_ALL="C"):
+        s1 = Shell(norc=True)
+        s2 = Shell(norc=True)
+    try:
+        s1.run_command('true')                       # s1 owns, quiescent
+        assert active_locale() is s1.state.locale
+        # Direct state write on s2 — no execution, but the reactive locale
+        # observer needs the LOCALE lease, transferring ownership to s2.
+        s2.state.set_variable('LC_ALL', UTF8_NAME)
+        assert active_locale() is s2.state.locale    # glue ran on transfer
+        assert s2.run_command('[[ é == [[:alpha:]] ]]') == 0
+    finally:
+        s2.close()
+        s1.close()
+
+
 def test_construction_installs_no_signal_handlers():
     """Control (green on base since F1): handler installs are entry-point
     and trap-time only, never construction."""

@@ -485,7 +485,8 @@ class ShellState:
 
             coordinator.acquire_component(
                 self, ComponentKind.LOCALE, restore=_restore,
-                description='libc locale (LC_CTYPE/LC_COLLATE)')
+                description='libc locale (LC_CTYPE/LC_COLLATE)',
+                on_grant=self._on_activation_grant)
         service.ensure_applied()
 
     @classmethod

@@ -133,6 +133,147 @@ print('stdin-restored')
     assert 'stdin-restored' in result.stdout
 
 
+# --- parking-range composition pins (bounce blocker; red at 0ecb03f3) ------
+#
+# The lease parks its CLOEXEC backups at first-free >= 63.  A user redirect
+# targeting that range must DISPLACE the parked backup (relocation), never
+# silently replace it — on the pre-fix tip, `exec 63>f` dup2'd the user's
+# file over the parked backup of host fd 0, and the shutdown restore then
+# installed the USER'S FILE as the host's stdin.  Each pin asserts the host
+# fds' identity across close() with the composition applied.
+
+FD_GUARD_PRELUDE = PRELUDE + """
+def ident(fd):
+    try:
+        st = os.fstat(fd)
+        return (st.st_dev, st.st_ino, st.st_mode)
+    except OSError:
+        return None
+host_fds = {fd: ident(fd) for fd in (0, 1, 2)}
+"""
+
+FD_GUARD_CHECK = """
+after = {fd: ident(fd) for fd in (0, 1, 2)}
+assert after == host_fds, 'host std fds not restored: %r vs %r' % (after, host_fds)
+print('host-fds-restored')
+"""
+
+
+def _assert_restored(result):
+    assert result.returncode == 0, result.stderr
+    assert 'host-fds-restored' in result.stdout
+
+
+def test_user_redirect_into_parking_range_first_slot():
+    """`exec 63>f` (the very first parked slot = host fd 0's backup)."""
+    result = _run_embedded(FD_GUARD_PRELUDE + """
+s1 = Shell(norc=True)
+s1.run_command('exec > %s' % f1)
+s1.run_command('exec 63> %s' % f2)
+s1.run_command('echo user-file >&63')
+s1.close()
+assert open(f2).read() == 'user-file\\n'
+""" + FD_GUARD_CHECK)
+    _assert_restored(result)
+
+
+def test_user_redirect_into_parking_range_before_lease():
+    """`exec 63>f` as the FIRST permanent redirect: acquisition parks
+    around the range, then the user's own dup2 must still displace the
+    just-parked backup (acquisition happens before application)."""
+    result = _run_embedded(FD_GUARD_PRELUDE + """
+s1 = Shell(norc=True)
+s1.run_command('exec 63> %s' % f2)
+s1.run_command('echo direct >&63')
+s1.close()
+assert open(f2).read() == 'direct\\n'
+""" + FD_GUARD_CHECK)
+    _assert_restored(result)
+
+
+def test_user_redirect_second_parking_slot_after_exec_log():
+    """`exec >log` then `exec 64>f` (host fd 1's parked backup)."""
+    result = _run_embedded(FD_GUARD_PRELUDE + """
+s1 = Shell(norc=True)
+s1.run_command('exec > %s' % f1)
+s1.run_command('exec 64> %s' % f2)
+s1.run_command('echo one; echo user >&64')
+s1.close()
+assert open(f1).read() == 'one\\n'
+assert open(f2).read() == 'user\\n'
+""" + FD_GUARD_CHECK)
+    _assert_restored(result)
+
+
+def test_user_close_into_parking_range():
+    """`exec 2>errlog` then `exec 65>&-`: a CLOSE targeting a parked slot
+    (65 = host fd 2's backup) displaces the backup instead of destroying
+    it — with stderr REDIRECTED, a destroyed backup would leave the host's
+    fd 2 pointing at the user's errlog after close (red at the pre-fix
+    tip)."""
+    result = _run_embedded(FD_GUARD_PRELUDE + """
+s1 = Shell(norc=True)
+s1.run_command('exec > %s' % f1)
+s1.run_command('exec 2> %s' % f2)
+s1.run_command('exec 65>&-')
+s1.run_command('echo still-logging; echo err-line >&2')
+s1.close()
+assert open(f1).read() == 'still-logging\\n'
+assert open(f2).read() == 'err-line\\n'
+""" + FD_GUARD_CHECK)
+    _assert_restored(result)
+
+
+def test_temporary_redirect_window_into_parking_range():
+    """A PER-COMMAND redirect into the range (`echo x 63>f`) also
+    displaces; the window's restore re-closes the vacated fd."""
+    result = _run_embedded(FD_GUARD_PRELUDE + """
+s1 = Shell(norc=True)
+s1.run_command('exec > %s' % f1)
+s1.run_command('echo tmp 63> %s' % f2)
+s1.run_command('echo after')
+s1.close()
+assert open(f1).read() == 'tmp\\nafter\\n'
+""" + FD_GUARD_CHECK)
+    _assert_restored(result)
+
+
+def test_named_fd_allocation_walks_around_parking_range():
+    """{v} allocations that climb past 63 skip the parked slots (F_DUPFD
+    takes the first FREE fd) and every allocated fd works."""
+    result = _run_embedded(FD_GUARD_PRELUDE + """
+s1 = Shell(norc=True)
+s1.run_command('exec > %s' % f1)
+script = 'fds=""; for i in $(seq 1 60); do exec {v}>%s/nf$i.txt; fds="$fds $v"; echo n$i >&$v; done; echo $fds > %s' % (d, f2)
+s1.run_command(script)
+s1.close()
+allocated = open(f2).read().split()
+assert len(allocated) == 60, allocated
+assert len(set(allocated)) == 60, 'duplicate fd allocated'
+assert any(int(fd) > 63 for fd in allocated), allocated
+for i in (1, 30, 60):
+    assert open(os.path.join(d, 'nf%d.txt' % i)).read() == 'n%d\\n' % i
+""" + FD_GUARD_CHECK)
+    _assert_restored(result)
+
+
+def test_parking_range_neighbors_stay_clean():
+    """Controls: fds 62 and 70 (outside the parked slots) compose cleanly."""
+    result = _run_embedded(FD_GUARD_PRELUDE + """
+s1 = Shell(norc=True)
+s1.run_command('exec > %s' % f1)
+s1.run_command('exec 62> %s' % f2)
+f3 = os.path.join(d, 'third.txt')
+s1.run_command('exec 70> %s' % f3)
+s1.run_command('echo a >&62; echo b >&70; echo log')
+s1.close()
+assert open(f2).read() == 'a\\n'
+assert open(f3).read() == 'b\\n'
+assert open(f1).read() == 'log\\n'
+""" + FD_GUARD_CHECK)
+    _assert_restored(result)
+
+
 def _fd_lister(tmp_path) -> str:
     helper = tmp_path / "list_fds.py"
     helper.write_text(

@@ -55,17 +55,26 @@ SIGNAL_SIGNAL_ALLOWED = {
 
 def _attribute_calls(source: str, filename: str, modules: set,
                      attr: str) -> list:
-    """[(lineno, snippet)] for every ``<module>.<attr>(...)`` call, where
-    <module> is a plain name in *modules* (covers the ``import locale as
-    _locale`` spelling used in-tree), plus ``from <module> import <attr>``."""
-    hits = []
+    """[(lineno, snippet)] for every ``<name>.<attr>(...)`` call where
+    <name> binds one of *modules* — the plain module name, any PRE-SEEDED
+    alias in *modules* (the in-tree ``import locale as _locale`` spelling),
+    or any alias THIS FILE introduces (``import signal as sig``) — plus
+    ``from <module> import <attr>``.  Two passes: aliases first, so an
+    aliased import anywhere in the file is caught regardless of position."""
     tree = ast.parse(source, filename=filename)
+    names = set(modules)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in modules and alias.asname:
+                    names.add(alias.asname)
+    hits = []
     for node in ast.walk(tree):
         if (isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == attr
                 and isinstance(node.func.value, ast.Name)
-                and node.func.value.id in modules):
+                and node.func.value.id in names):
             hits.append((node.lineno, f"{node.func.value.id}.{attr}()"))
         elif isinstance(node, ast.ImportFrom) and node.module in modules:
             for alias in node.names:
@@ -143,6 +152,23 @@ def test_scanner_fires_on_setrecursionlimit_offender():
 def test_scanner_fires_on_signal_offender():
     source = "import signal\nsignal.signal(signal.SIGUSR1, handler)\n"
     assert _attribute_calls(source, "offender.py", {"signal"}, "signal")
+
+
+def test_scanner_fires_on_aliased_signal_offender():
+    # The alias is introduced by the offending FILE itself (bounce nit 4):
+    # `import signal as sig; sig.signal(...)` must be caught, in either
+    # order of appearance.
+    source = "import signal as sig\nsig.signal(2, handler)\n"
+    assert _attribute_calls(source, "offender.py", {"signal"}, "signal")
+    aliased_locale = "import locale as loc\nloc.setlocale(loc.LC_ALL, 'C')\n"
+    assert _attribute_calls(aliased_locale, "offender.py",
+                            {"locale", "_locale"}, "setlocale")
+    aliased_sys = "import sys as s\ns.setrecursionlimit(99999)\n"
+    assert _attribute_calls(aliased_sys, "offender.py", {"sys"},
+                            "setrecursionlimit")
+    # An alias of an UNRELATED module must not false-positive.
+    unrelated = "import signals_toolkit as sig\nsig.signal(2, handler)\n"
+    assert not _attribute_calls(unrelated, "clean.py", {"signal"}, "signal")
 
 
 def test_scanner_ignores_comments_and_strings():

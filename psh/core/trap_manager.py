@@ -155,12 +155,19 @@ class TrapManager:
         self._leased_dispositions.setdefault(signum, prior)
 
     def _register_signal_lease(self) -> None:
-        """Register the SIGNALS component lease with the process coordinator."""
+        """Register the SIGNALS component lease with the process coordinator.
+
+        Passes the owner's grant glue so a direct-API install that TRANSFERS
+        ownership (an embedder installing a trap on a quiescent shell)
+        also installs that shell's process-active locale — the same
+        semantics an activation-path transfer has.
+        """
         leased = self._leased_dispositions
         get_coordinator().acquire_component(
             self.state, ComponentKind.SIGNALS,
             restore=lambda: _restore_disposition_map(leased),
-            description='unmanaged-signal trap dispositions')
+            description='unmanaged-signal trap dispositions',
+            on_grant=self.state._on_activation_grant)
 
     def restore_leased_dispositions(self) -> None:
         """Restore every process-global signal disposition this shell leased.

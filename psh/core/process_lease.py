@@ -60,7 +60,11 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, List, Optional, Tuple
 
-from .locale_service import libc_locale_names
+from .locale_service import (
+    active_locale,
+    libc_locale_names,
+    set_process_active_locale,
+)
 
 # Python-frame headroom for psh's recursive engines (parser, expansion,
 # executor visitor). One shell function call burns ~18 Python frames and one
@@ -263,7 +267,9 @@ class ProcessLeaseCoordinator:
 
     def acquire_component(self, owner: Any, kind: ComponentKind, *,
                           restore: Callable[[], None],
-                          description: str = "") -> ComponentLease:
+                          description: str = "",
+                          on_grant: Optional[Callable[[], None]] = None
+                          ) -> ComponentLease:
         """Acquire (or return the existing) *kind* lease for *owner*.
 
         Idempotent per ``(owner, kind)`` — a repeated permanent redirect or a
@@ -271,12 +277,35 @@ class ProcessLeaseCoordinator:
         captures its restorable baseline BEFORE calling (so a competing-owner
         rejection here happens before any mutation and leaves nothing
         acquired).
+
+        A component acquisition can itself TRANSFER ownership (the embedder
+        edge: a reactive locale write or direct trap install on a shell that
+        is not mid-execution).  *on_grant* is the owner's grant glue — the
+        same callback ``activate`` runs — executed exactly when ownership
+        changed here, with the same complete-rollback contract, so a
+        transfer through this path also installs the new owner's
+        process-active locale instead of leaving the previous shell's
+        registered.
         """
         self._check_fork()
         existing = self.find_component(owner, kind)
         if existing is not None:
             return existing
-        self._ensure_owner(owner)
+        changed, rollback = self._ensure_owner(owner)
+        if changed:
+            try:
+                _ensure_recursion_headroom()
+                if on_grant is not None:
+                    on_grant()
+            except BaseException:
+                self._rollback_owner(rollback)
+                raise
+            # The grant glue may itself have acquired THIS kind (the locale
+            # glue lease-applies a non-C profile): stay idempotent per
+            # (owner, kind) rather than stacking a duplicate.
+            existing = self.find_component(owner, kind)
+            if existing is not None:
+                return existing
         lease = ComponentLease(self, self._owner_ref,  # type: ignore[arg-type]
                                kind, restore, description)
         self._components.append(lease)
@@ -357,6 +386,18 @@ class ProcessLeaseCoordinator:
             self._owner_ref, self._baselines, self._relinquish_pending = rollback
 
     def _clear_owner(self) -> None:
+        # A relinquished owner must not stay registered as the process-active
+        # locale (bounce nit 3: after close() the slot pointed at the closed
+        # shell's service; pattern helpers would keep consulting it). The
+        # defensive getattr keeps the coordinator generic — a dummy owner in
+        # a unit test simply has no `.locale`. Timing matters: this runs at
+        # ACTUAL relinquish (immediately, or at depth-0 unwind for a
+        # mid-execution close), never earlier — the shell's own EXIT trap
+        # still pattern-matches under its own locale during shutdown.
+        owner = self._owner_ref() if self._owner_ref is not None else None
+        service = getattr(owner, 'locale', None)
+        if service is not None and active_locale() is service:
+            set_process_active_locale(None)
         self._owner_ref = None
         self._baselines = None
         self._relinquish_pending = False
