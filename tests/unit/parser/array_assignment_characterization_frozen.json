@@ -47,17 +47,17 @@
   [
     "a= (1 2)",
     "ERR",
-    "ParseError: Parse error at position 3 (line 1, column 4): syntax error near unexpected token '('"
+    "ParseError: Parse error (line 1, column 4): syntax error near unexpected token '('"
   ],
   [
     "a =(1 2)",
     "ERR",
-    "ParseError: Parse error at position 3 (line 1, column 4): syntax error near unexpected token '('"
+    "ParseError: Parse error (line 1, column 4): syntax error near unexpected token '('"
   ],
   [
     "a = (1 2)",
     "ERR",
-    "ParseError: Parse error at position 4 (line 1, column 5): syntax error near unexpected token '('"
+    "ParseError: Parse error (line 1, column 5): syntax error near unexpected token '('"
   ],
   [
     "a[0]=v",
