@@ -60,16 +60,19 @@ def _make_config(shell_options: Optional[Mapping[str, Any]] = None) -> LexerConf
 
 def _post_lex(tokens: List[Token], source: str,
               shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:
-    """The shared post-lex pipeline: keyword normalization, then word fusion.
+    """The shared post-lex pipeline: word fusion, then keyword normalization.
 
-    Word fusion (``word_fusion.fuse_words``) runs AFTER keyword normalization:
-    a maximal run of adjacent word-like tokens becomes ONE WORD token carrying
-    the run's parts, so the parser sees one token per shell word and never
-    re-assembles a composite. Running it after normalization means reserved
-    words are already retyped (and excluded from the word-like set), so a
-    keyword adjacent to an expansion (``then$x``) fuses or not exactly as the
-    old parser-side ``peek_composite_sequence`` decided. ``source`` supplies the
-    fused token's span-faithful lexeme.
+    Word fusion (``word_fusion.fuse_words``) runs FIRST: a maximal run of
+    adjacent word-like tokens becomes ONE WORD token carrying the run's parts
+    and exact source span, so the COMPLETE lexical word exists before any
+    reserved-word decision — bash's rule, where word boundaries are fixed by
+    metacharacters alone and reserved words are recognized only when the whole
+    word is the exact unquoted spelling. A keyword glued to an expansion
+    (``then$x``) is therefore one plain WORD, never THEN + expansion (the old
+    normalize-first order promoted that keyword prefix; retired in campaign
+    S1, re-pinned to bash in
+    ``tests/unit/lexer/test_lexical_word_before_keywords_s1.py``).
+    ``source`` supplies the fused token's span-faithful lexeme.
 
     Brace expansion is NO LONGER a lexer pass — it moved to the Word stage
     (``ExpansionManager.brace_expand_word``, driven by
@@ -85,7 +88,7 @@ def _post_lex(tokens: List[Token], source: str,
     by the parser (see parsers/statements.py), not by a lexer pass.
     """
     from .word_fusion import fuse_words
-    return fuse_words(KeywordNormalizer().normalize(tokens), source)
+    return KeywordNormalizer().normalize(fuse_words(tokens, source))
 
 
 def tokenize(input_string: str, shell_options: Optional[Mapping[str, Any]] = None) -> List[Token]:

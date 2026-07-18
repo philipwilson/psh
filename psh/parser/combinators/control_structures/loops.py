@@ -19,9 +19,16 @@ from ....ast_nodes import (
 )
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_stream import TokenStream
-from ....lexer.token_types import Token
+from ....lexer.token_types import Token, token_lexeme
+from ...recursive_descent.helpers import TokenGroups
 from ..core import ParseFailure, Parser, ParseResult, ParseSuccess, many
 from ..diagnostics import raise_committed_error
+
+# The for/select subject may be ANY word-like token (bash accepts the word
+# syntactically and validates the NAME at execution — "not a valid
+# identifier", status 1, execution continues). Shared with the recursive
+# descent parser via TokenGroups so both subjects accept the same set.
+_SUBJECT_TOKEN_TYPES = frozenset(t.name for t in TokenGroups.WORD_LIKE)
 
 if TYPE_CHECKING:
     from ._protocols import ControlStructureProtocol
@@ -247,11 +254,13 @@ class LoopParserMixin(_Base):
 
             pos += 1  # Skip 'for'
 
-            # Parse variable name
-            if pos >= len(tokens) or tokens[pos].type.name != 'WORD':
+            # Parse variable name: any word-like token (source lexeme kept;
+            # NAME validity is checked at execution, matching bash — see
+            # _SUBJECT_TOKEN_TYPES).
+            if pos >= len(tokens) or tokens[pos].type.name not in _SUBJECT_TOKEN_TYPES:
                 raise_committed_error(tokens, pos, "Expected variable name after 'for'")
 
-            var_name = tokens[pos].value
+            var_name = token_lexeme(tokens[pos])
             pos += 1
 
             # Skip optional newlines before checking for 'in'
@@ -460,11 +469,12 @@ class LoopParserMixin(_Base):
 
             pos += 1  # Skip 'select'
 
-            # Parse variable name
-            if pos >= len(tokens) or tokens[pos].type.name != 'WORD':
+            # Parse variable name: any word-like token, same contract as the
+            # for loop (NAME validity deferred to execution, as in bash).
+            if pos >= len(tokens) or tokens[pos].type.name not in _SUBJECT_TOKEN_TYPES:
                 return ParseResult(success=False, error="Expected variable name after 'select'", position=pos)
 
-            var_name = tokens[pos].value
+            var_name = token_lexeme(tokens[pos])
             pos += 1
 
             # Expect 'in'

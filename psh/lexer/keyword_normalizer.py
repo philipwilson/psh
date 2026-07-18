@@ -121,7 +121,17 @@ class KeywordNormalizer:
             converted_type: Optional[TokenType] = None
             next_pattern_start = False
 
-            if token.type == TokenType.WORD and token_value:
+            # Complete-word eligibility (campaign S1): a reserved word is
+            # recognized only when the COMPLETE lexical word is an exact
+            # unquoted literal. This pass runs AFTER word fusion, so a token
+            # here is the whole shell word; a composite word carries `parts`
+            # (its typed pieces with per-part quote context) and a whole-token
+            # quoted word carries `quote_type` — neither is ever a keyword
+            # (`then$x`, `then""`, `"if"`). An escaped spelling (`\if`, `i\f`)
+            # keeps its backslash in `value`, so the exact-spelling
+            # comparison rejects it without a separate check.
+            if (token.type == TokenType.WORD and token_value
+                    and not token.parts and token.quote_type is None):
                 if st.subject_pending:
                     # Loop variable / case subject: stays a WORD even when
                     # spelled `in` (or any other keyword).
@@ -145,10 +155,17 @@ class KeywordNormalizer:
                     # `case a in esac` — esac right after `in` closes the case.
                     converted_type = TokenType.ESAC
                 elif st.command_position and token_value in KEYWORDS:
-                    if token_value == 'in' and not st.pending_in:
-                        converted_type = None
-                    else:
-                        converted_type = KEYWORD_TYPE_MAP.get(token_value)
+                    # Includes bare `in` at command position: bash and dash
+                    # reject it syntactically (`in` alone, after `;`/`|`/`&&`,
+                    # in a subshell, ...), so it is typed IN here and the
+                    # parsers reject the stray keyword. The legitimate `in`
+                    # sites are unaffected: for/case subjects are consumed by
+                    # `subject_pending` above, header `in` by the `pending_in`
+                    # branch, and case PATTERNS spelled `in` right after the
+                    # case's own `in` are not at command position (patterns
+                    # after `;;`/`(`/newline ARE typed IN and the parsers'
+                    # case-pattern sites accept keyword-typed tokens).
+                    converted_type = KEYWORD_TYPE_MAP.get(token_value)
 
             if converted_type:
                 token = replace(token, type=converted_type, is_keyword=True)

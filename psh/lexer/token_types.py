@@ -142,3 +142,28 @@ class Token:
         """The token's source range as a :class:`SourceSpan` (derived view)."""
         return SourceSpan(self.position, self.end_position)
 
+
+def token_lexeme(token: Token, source_text: Optional[str] = None) -> str:
+    """The token's EXACT SOURCE SPELLING (quotes, ``$``, escapes included).
+
+    With ``source_text`` available the span slice is authoritative (a fused
+    WORD's ``value`` already round-trips it). Without source (e.g. the
+    combinator parser is handed a bare token list) the lexeme is
+    reconstructed from the token's stripped fields: a STRING re-wraps its
+    ``quote_type`` (``$'...'`` closes with ``'``), a VARIABLE restores ``$``
+    (``value`` is ``x`` or ``{v}``); every other type already stores its full
+    source form in ``value``.
+
+    Used where a diagnostic must show the user's raw spelling — e.g. bash's
+    ``` `"in"': not a valid identifier ``` for a quoted for/select subject.
+    """
+    if source_text is not None and token.end_position > token.position:
+        return source_text[token.position:token.end_position]
+    if token.type == TokenType.STRING:
+        qt = token.quote_type or '"'
+        closing = "'" if qt == "$'" else qt
+        return f"{qt}{token.value}{closing}"
+    if token.type == TokenType.VARIABLE:
+        return f"${token.value}"
+    return token.value
+

@@ -23,7 +23,7 @@ from ....ast_nodes import (
     Word,
     WordPart,
 )
-from ....lexer.token_types import TokenType
+from ....lexer.token_types import TokenType, token_lexeme
 from ..helpers import TokenGroups, unexpected_token_message
 from .base import ParserSubcomponent
 
@@ -166,7 +166,7 @@ class ControlStructureParser(ParserSubcomponent):
                 self.parser.current = saved_pos
 
         # Traditional for loop
-        variable = self.parser.expect(TokenType.WORD).value
+        variable = self._parse_loop_variable()
         self.parser.skip_newlines()
 
         items: List[str]
@@ -198,6 +198,25 @@ class ControlStructureParser(ParserSubcomponent):
             redirects=redirects,
             background=False
         )
+
+    def _parse_loop_variable(self) -> str:
+        """The for/select subject word, accepted as ANY word-like token.
+
+        bash accepts any word here syntactically and validates the NAME at
+        execution: an invalid one prints ``` `X': not a valid identifier ```,
+        sets status 1, and execution CONTINUES with the next statement (the
+        executor's existing check in ``control_flow.py``). So a quoted or
+        expansion-bearing subject (``for "in" ...``, ``for $v ...``,
+        ``for $(cmd) ...``) must parse — only a non-word (``for ;``) is a
+        syntax error. The stored variable is the word's exact SOURCE LEXEME
+        so the diagnostic prints the raw spelling, matching bash.
+        """
+        if not self.parser.match_any(TokenGroups.WORD_LIKE):
+            raise self.parser.error(
+                f"Expected variable name, got '{self.parser.peek().value}'")
+        token = self.parser.peek()
+        self.parser.advance()
+        return token_lexeme(token, self.parser.ctx.source_text)
 
     def _parse_for_iterable(self) -> tuple[List[str], List[Word]]:
         """Parse the iterable part of a for/select loop.
@@ -446,7 +465,7 @@ class ControlStructureParser(ParserSubcomponent):
         self.parser.ctx.push_construct('select')
         self.parser.skip_newlines()
 
-        variable = self.parser.expect(TokenType.WORD).value
+        variable = self._parse_loop_variable()
         self.parser.skip_newlines()
 
         if self.parser.match(TokenType.IN):
