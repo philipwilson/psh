@@ -6294,7 +6294,7 @@
   stderr: ""
   exit_code: 0
 
-# bash's `source` returns 126 for a binary file (distinct from the 1 it
+# bash's `source` returns 126 after >256 stripped NULs (F3 model; was described as '126 for a binary file') (distinct from the 1 it
 # returns for a directory / unreadable file).
 - name: r18t2_glue_source_binary_returns_126
   command: "source /bin/ls; echo rc=$?"
