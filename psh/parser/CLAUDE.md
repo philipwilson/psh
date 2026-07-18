@@ -263,9 +263,18 @@ both parsers share one concrete root contract
 ```
 Statement → AndOrList (&&/|| chains)
 AndOrList → Pipeline (| chains)
-Pipeline → Command (simple or compound)
-Command → SimpleCommand | IfConditional | WhileLoop | ...
+Pipeline → PipelineComponent (| chains)
+PipelineComponent → SimpleCommand | IfConditional | WhileLoop | … | FunctionDef
 ```
+
+A function definition is a `PipelineComponent` too (campaign S5, #20 H9): bash's
+grammar makes a function definition a `command`, so `f() { :; } | cat`,
+`! f() { :; }`, `time f() { :; }`, `x && f() { :; }`, and `f() { :; } &` parse
+and run with bash-correct leak context. `parse_pipeline_component`
+(`recursive_descent/parsers/commands.py`) recognizes a def at command position;
+`parse_statement` keeps a STANDALONE def's bare top-level shape (a bare
+`FunctionDef` in `Program.statements`), wrapping it into the and-or machinery
+only when a pipeline/list/background continuation follows.
 
 ## Common Tasks
 

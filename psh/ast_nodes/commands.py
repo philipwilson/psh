@@ -76,7 +76,11 @@ class BraceGroup(CompoundCommand):
 
 @dataclass
 class Pipeline(ASTNode):
-    commands: List[Command] = field(default_factory=list)  # Now accepts both SimpleCommand and CompoundCommand
+    # Members are the PipelineComponent sum (see ast_nodes.PipelineComponent):
+    # SimpleCommand, any CompoundCommand, or FunctionDef. Typed List[Command]
+    # because every component is a Command; FunctionDef joined the sum in
+    # campaign S5 (#20 H9) so a function definition can be a pipeline member.
+    commands: List[Command] = field(default_factory=list)
     negated: bool = False  # True if pipeline is prefixed with !
     pipe_stderr: List[bool] = field(default_factory=list)  # pipe_stderr[i] True if |& between commands[i] and commands[i+1]
     timed: bool = False        # True if prefixed with the `time` reserved word

@@ -22,6 +22,8 @@ introspection that filters on the module name (e.g. the AST coverage-matrix
 meta-test) sees the package as a single module, exactly as before the split.
 """
 
+from typing import Union
+
 from .arrays import (
     ArrayAssignment,
     ArrayElementAssignment,
@@ -59,9 +61,13 @@ from .control import (
 from .redirects import Redirect
 
 # Syntax templates (campaign S3) — plain frozen carriers, NOT ASTNode
-# subclasses (so the AST coverage matrix / walk_ast schema, owned by S5, do not
-# enumerate them; they are carried BY nodes, not traversed as nodes). Imported
-# after .words because they reference Expansion/CommandSubstitution.
+# subclasses. Because they are not ASTNodes, the S5 walk_ast schema
+# (psh/visitor/traversal.py#AstChildSchema) never declares them as children and
+# walk_ast never descends into them (the template-descent decision, enforced by
+# construction and pinned in test_ast_child_schema_guard.py); the AST
+# coverage-matrix meta-test likewise skips them. They are carried BY nodes, not
+# traversed as nodes. Imported after .words because they reference
+# Expansion/CommandSubstitution.
 from .syntax_templates import (
     ArithmeticTemplate,
     NestedSub,
@@ -89,6 +95,36 @@ from .words import (
     Word,
     WordPart,
 )
+
+# ---------------------------------------------------------------------------
+# PipelineComponent (campaign S5, #20 H9): the exhaustive typed sum of nodes
+# that can appear as a member of a Pipeline — a simple command, any compound
+# command, or a function definition. It is the §5 canonical type: the semantic
+# name for the element type of ``Pipeline.commands`` (``List[Command]`` at
+# runtime, since every member is a ``Command``). ``FunctionDef`` joined this sum
+# in S5 so ``f() { :; } | cat``, ``! f() { :; }``, ``time f() { :; }``,
+# ``x && f() { :; }`` and ``f() { :; } &`` parse and execute with bash-correct
+# context (single-member pipeline runs in-process and LEAKS; multi-member /
+# background forks and does NOT). The union membership is drift-locked EXHAUSTIVE
+# against reflection (every concrete ``Command`` subclass must appear, and no
+# ``Statement``-only node may) by
+# tests/unit/ast_nodes/test_pipeline_component_type.py.
+# ---------------------------------------------------------------------------
+PipelineComponent = Union[
+    SimpleCommand,
+    SubshellGroup,
+    BraceGroup,
+    WhileLoop,
+    UntilLoop,
+    ForLoop,
+    CStyleForLoop,
+    IfConditional,
+    CaseConditional,
+    SelectLoop,
+    ArithmeticEvaluation,
+    EnhancedTestStatement,
+    FunctionDef,
+]
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +184,7 @@ __all__ = [
     'SubshellGroup',
     'BraceGroup',
     'Pipeline',
+    'PipelineComponent',
     'AndOrList',
     'StatementList',
     'Program',

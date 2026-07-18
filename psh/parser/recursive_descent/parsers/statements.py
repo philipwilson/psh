@@ -27,7 +27,24 @@ class StatementParser(ParserSubcomponent):
 
         # Check for function definition first
         if self.parser.functions.is_function_def():
-            stmt: Statement = self.parser.functions.parse_function_def()
+            funcdef = self.parser.functions.parse_function_def()
+            if funcdef.line is None:
+                funcdef.line = start_line
+            # A function definition is a PipelineComponent (#20 H9; S5). When a
+            # statement-leading def is followed by a pipeline/and-or/background
+            # continuation it is that pipeline's first component, so wrap it
+            # through the and-or machinery (`f() { :; } | cat`, `f() { :; } &`,
+            # `f() { :; } && g`). A STANDALONE def is returned bare, preserving
+            # the historical top-level shape (byte-identical --debug-ast /
+            # formatter / Program.statements; the prefix cases `! f`/`time f`
+            # never reach here — they start with `!`/`time`, so is_function_def
+            # is False and they flow through parse_pipeline_component).
+            if self.parser.match(TokenType.PIPE, TokenType.PIPE_AND,
+                                 TokenType.AND_AND, TokenType.OR_OR,
+                                 TokenType.AMPERSAND):
+                stmt: Statement = self.parse_and_or_list(first_component=funcdef)
+            else:
+                stmt = funcdef
         else:
             # Otherwise parse an and_or_list
             stmt = self.parse_and_or_list()
@@ -140,11 +157,16 @@ class StatementParser(ParserSubcomponent):
             raise self.parser.error(unexpected_token_message(self.parser.peek()))
         return command_list
 
-    def parse_and_or_list(self) -> AndOrList:
-        """Parse an and/or list."""
+    def parse_and_or_list(self, first_component=None) -> AndOrList:
+        """Parse an and/or list.
+
+        ``first_component`` seeds the first pipeline's leading component (a
+        statement-leading function definition used as a PipelineComponent —
+        S5); see ``CommandParser.parse_pipeline``.
+        """
         and_or_list = AndOrList()
 
-        pipeline = self.parser.commands.parse_pipeline()
+        pipeline = self.parser.commands.parse_pipeline(first_component=first_component)
         and_or_list.pipelines.append(pipeline)
 
         # Handle && and || operators

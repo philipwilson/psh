@@ -387,11 +387,26 @@ class CommandParser(ParserSubcomponent):
                 out.append(token.value)
         return ''.join(out)
 
-    def parse_pipeline(self) -> Pipeline:
-        """Parse a pipeline (commands connected by | or |&)."""
+    def parse_pipeline(self, first_component: Optional[Command] = None) -> Pipeline:
+        """Parse a pipeline (commands connected by | or |&).
+
+        ``first_component`` seeds the pipeline with an already-parsed leading
+        component instead of parsing one here. It is used only by
+        ``StatementParser`` when a statement-leading function definition is
+        followed by a pipeline/list continuation (``f() { :; } | cat``): the
+        def was parsed at statement level (to keep a standalone def's bare
+        shape), and if a continuation follows it must become a
+        PipelineComponent. A seeded component never carries a ``!``/``time``
+        prefix — those keep the def out of ``is_function_def`` at statement
+        start, so they reach ``parse_pipeline_component`` the ordinary way.
+        """
         pipeline = Pipeline()
         # Stamp the pipeline's first-token line so $LINENO tracks per pipeline
         # within a multi-line && / || chain (see ASTNode.line).
+        if first_component is not None:
+            pipeline.line = first_component.line
+            pipeline.commands.append(first_component)
+            return self._parse_pipeline_tail(pipeline)
         pipeline.line = self.parser.peek().line
 
         # `time [-p]` / `!` prefixes. bash's pipeline_command grammar is
@@ -437,8 +452,16 @@ class CommandParser(ParserSubcomponent):
         command = self.parse_pipeline_component()
         pipeline.commands.append(command)
 
-        # Parse additional piped commands (| or |&). POSIX allows a
-        # linebreak after the pipe operator.
+        return self._parse_pipeline_tail(pipeline)
+
+    def _parse_pipeline_tail(self, pipeline: Pipeline) -> Pipeline:
+        """Parse additional piped commands (``|`` or ``|&``) onto *pipeline*.
+
+        The leading component is already appended; this consumes the pipe
+        operators and their successors. POSIX allows a linebreak after the pipe
+        operator. Shared by the ordinary path and the ``first_component`` seed
+        (a function definition used as a pipeline component — S5).
+        """
         while self.parser.match(TokenType.PIPE, TokenType.PIPE_AND):
             is_pipe_stderr = self.parser.peek().type == TokenType.PIPE_AND
             self.parser.advance()
@@ -488,6 +511,15 @@ class CommandParser(ParserSubcomponent):
             self.parser.ctx.tokens[idx] = replace(
                 self.parser.ctx.tokens[idx],
                 type=TokenType.WORD, is_keyword=False)
+
+        # A function definition is a PipelineComponent (bash grammar: a
+        # `command` is a simple/compound command OR a function definition), so
+        # `! f() { :; }`, `time f() { :; }`, `x && f() { :; }`, `f() { :; } |
+        # cat` all reach here with a def at command position. Statement-leading
+        # standalone defs never do — parse_statement handles those directly and
+        # keeps their bare top-level shape (#20 H9; campaign S5).
+        if self.parser.functions.is_function_def():
+            return self.parser.functions.parse_function_def()
 
         compound = self._parse_compound_component()
         if compound is not None:
