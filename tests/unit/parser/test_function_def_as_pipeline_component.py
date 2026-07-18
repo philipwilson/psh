@@ -103,3 +103,28 @@ def test_def_with_redirect_stays_standalone(p):
     fd = p('f() { :; } > out.txt').statements[0]
     assert isinstance(fd, FunctionDef)
     assert fd.redirects and fd.redirects[0].target == 'out.txt'
+
+
+# --- still-invalid neighbors of the new grammar (integrator fixup, verify nit 7) ---
+# When defs became pipeline components, the diagnostics for these (still
+# rejected) inputs moved from the operator-token report to the generic
+# pipeline-head report ("Expected command", past the operator) — the same way
+# base psh already reports this defect class for any other pipeline head, and
+# closer to bash's second-token error position. Pinned so further drift shows.
+
+_STILL_INVALID_NEIGHBORS = [
+    ("double_pipe_gap", "f() { :; } | | g() { :; }"),
+    ("trailing_andand", "f() { :; } &&"),
+    ("double_pipeamp", "f() { :; } |& |& cat"),
+]
+
+
+@pytest.mark.parametrize(
+    "label,src", _STILL_INVALID_NEIGHBORS,
+    ids=[r[0] for r in _STILL_INVALID_NEIGHBORS])
+@pytest.mark.parametrize("p", PARSERS)
+def test_still_invalid_def_continuations_rejected(p, label, src):
+    with pytest.raises(Exception) as exc:
+        p(src)
+    if p is rd:
+        assert "Expected command" in str(exc.value)
