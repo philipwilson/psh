@@ -79,6 +79,7 @@ def _template_pairs(root):
 # A corpus exercising every region and every quoting/nesting shape.
 _CORPUS = [
     "x=set; echo ${x:-$(echo a)b~c}",
+    "x=set; echo ${x:-<(echo ok)}",
     "echo ${x#pat*} ${x%.txt} ${x/a/b} ${x//x/y}",
     "echo ${x:-`legacy`} ${x:-'$(lit)'}",
     "echo ${x:-${y:-$(echo deep)}}",

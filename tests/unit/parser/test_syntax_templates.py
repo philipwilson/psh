@@ -16,6 +16,7 @@ from psh.ast_nodes import (
     CStyleForLoop,
     NestedSub,
     ParameterExpansion,
+    ProcessSubstitution,
     SubscriptSpec,
     VariableExpansion,
     WordTemplate,
@@ -105,6 +106,7 @@ _ACCEPT = [
     ("word_squote", build_word_template, "'$(if)'"),       # single-quoted literal
     ("word_backtick", build_word_template, "`if`"),         # deferred
     ("word_pattern", build_word_template, "pat*/[abc]"),    # no subs
+    ("word_procsub", build_word_template, "<(echo hi)"),    # valid procsub body
     ("arith_valid", build_arithmetic_template, " $(echo 3) + 1 "),
     ("arith_shift", build_arithmetic_template, " 1 << 2 "),  # NOT a heredoc
     ("arith_lt", build_arithmetic_template, " a < b "),      # < NOT procsub
@@ -130,6 +132,19 @@ def test_parameter_operand_template_attached(parser):
     assert isinstance(node.word_template, WordTemplate)
     assert node.word_template.text == node.word
     assert len(node.word_template.validated) == 1
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_parameter_operand_valid_procsub_template_attached(parser):
+    node = _first(_parse("x=set; echo ${x:-<(echo hi)}", parser), ParameterExpansion)
+    assert node is not None and node.word == "<(echo hi)"
+    assert isinstance(node.word_template, WordTemplate)
+    assert node.word_template.text == node.word
+    assert len(node.word_template.validated) == 1
+    sub = node.word_template.validated[0]
+    assert isinstance(sub.expansion, ProcessSubstitution)
+    assert sub.expansion.program is not None
+    assert node.word_template.spans_reconstruct()
 
 
 @pytest.mark.parametrize("parser", ["rd", "combinator"])
