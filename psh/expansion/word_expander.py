@@ -99,11 +99,14 @@ class _FieldBuilder:
     multi-field expansion; per-field IFS splitting happens afterwards.
     """
 
-    __slots__ = ('committed', 'current')
+    __slots__ = ('committed', 'current', 'any_eligible')
 
     def __init__(self) -> None:
         self.committed: List[ExpandedField] = []
         self.current: Optional[ExpandedField] = None
+        #: True once any IFS_ELIGIBLE run is emitted — the field-splitting pass
+        #: is a no-op otherwise (all text is literal/quoted), so it is skipped.
+        self.any_eligible = False
 
     @property
     def has_content(self) -> bool:
@@ -114,6 +117,8 @@ class _FieldBuilder:
         if self.current is None:
             self.current = ExpandedField([])
         self.current.runs.append(run)
+        if run.split is _ELIGIBLE:
+            self.any_eligible = True
 
     def add_runs(self, runs: List[FieldRun]) -> None:
         for run in runs:
@@ -130,6 +135,9 @@ class _FieldBuilder:
         """
         if not fields:
             return
+        if not self.any_eligible:
+            self.any_eligible = any(
+                run.split is _ELIGIBLE for f in fields for run in f.runs)
         if self.current is None:
             self.current = ExpandedField([])
         self.current.runs.extend(fields[0].runs)
@@ -232,9 +240,21 @@ class WordExpander:
                 self._walk_expansion_part(part, ctx, builder, policy)
 
         raw_fields = builder.finish()
-        if policy.split:
-            return ExpandedWord(self._field_split(raw_fields))
-        return ExpandedWord(raw_fields)
+        # Field splitting is a no-op unless an unquoted expansion produced an
+        # IFS_ELIGIBLE run — skip its per-field machinery for all-literal/quoted
+        # words (the common case).
+        if policy.split and builder.any_eligible:
+            fields = self._field_split(raw_fields)
+        else:
+            fields = raw_fields
+        expanded = ExpandedWord(fields)
+        # Fast-path hint for materialize: only an ACTIVE run with a plain glob
+        # metacharacter can ever glob (computed once here rather than per field).
+        if policy.glob:
+            expanded.has_active_glob = any(
+                run.protection is _ACTIVE and has_glob_metacharacters(run.text)
+                for f in fields for run in f.runs)
+        return expanded
 
     def _walk_literal_part(self, word: Word, part_index: int,
                            part: LiteralPart, ctx: _AssignCtx,
@@ -604,11 +624,16 @@ class WordExpander:
         act (H6). Otherwise the field's runs are joined (quote removal already
         happened per run). An empty ``fields`` list means word elision.
         """
-        globbing = policy.glob and not self.state.options.get('noglob', False)
+        if not (policy.glob and not self.state.options.get('noglob', False)):
+            return [field.text for field in expanded.fields]
         extglob_on = self.state.options.get('extglob', False)
+        # Fast path: with no active glob metacharacter and extglob off, no field
+        # can pathname-expand — skip the per-field check entirely.
+        if not expanded.has_active_glob and not extglob_on:
+            return [field.text for field in expanded.fields]
         result: List[str] = []
         for field in expanded.fields:
-            if globbing and self._field_glob_eligible(field, extglob_on):
+            if self._field_glob_eligible(field, extglob_on):
                 result.extend(self._glob_field(field))
             else:
                 result.append(field.text)

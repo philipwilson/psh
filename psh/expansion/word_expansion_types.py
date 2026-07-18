@@ -130,7 +130,7 @@ class Split(enum.Enum):
     IFS_ELIGIBLE = enum.auto()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class FieldRun:
     """One homogeneous-protection run of expanded text within a field.
 
@@ -142,7 +142,10 @@ class FieldRun:
     Runs are the atoms the field-splicing algebra moves: field splitting slices
     ``IFS_ELIGIBLE`` runs and edge-joins ``NEVER`` runs; pathname generation
     passes ``ACTIVE`` run text into the glob pattern raw and bracket-escapes
-    ``PROTECTED`` metacharacters.
+    ``PROTECTED`` metacharacters. Runs are created, never mutated in place (the
+    algebra allocates fresh runs for split pieces), so they are a plain
+    ``slots`` dataclass — this is the hottest allocation in the shell and a
+    frozen dataclass triples construction cost.
     """
     text: str
     protection: Protection
@@ -187,5 +190,12 @@ class ExpandedWord:
     with empty runs is one explicit empty field. Materialization
     (``WordExpander.materialize``) is the sole terminal boundary that turns
     this back into ``argv`` strings, after field splitting and globbing.
+
+    ``has_active_glob`` is a producer-set fast-path hint: True when some ACTIVE
+    run carries a plain glob metacharacter, so materialization can skip its
+    per-field pathname check entirely when it is False (the common case). It is
+    only a hint — a False value never suppresses correct globbing because no
+    field can glob when no run is active-with-a-metacharacter.
     """
     fields: List[ExpandedField] = field(default_factory=list)
+    has_active_glob: bool = False

@@ -9,7 +9,6 @@ representation and its splicing algebra directly.
 Glob rows use ``isolated_shell_with_temp_dir`` with a controlled file set; the
 non-glob field-boundary rows use ``captured_shell``.
 """
-import dataclasses
 import os
 import subprocess
 import sys
@@ -182,10 +181,12 @@ class TestFieldRunIR:
         assert active.is_protected is False
         assert active.is_splittable is True
 
-    def test_field_run_is_frozen(self):
+    def test_field_run_uses_slots(self):
+        # A slots dataclass (not frozen — the hottest allocation in the shell;
+        # the algebra never mutates a run in place, it allocates new ones).
         r = FieldRun('a', _ACTIVE, _NEVER)
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            r.text = 'b'  # frozen dataclass
+        with pytest.raises(AttributeError):
+            r.unexpected_attr = 'b'  # __slots__ forbids new attributes
 
     def test_field_text_joins_runs(self):
         f = ExpandedField([
