@@ -10,9 +10,27 @@ from ..utils.signal_utils import (
     signal_number_to_name,
 )
 from .exceptions import FunctionReturn, LoopBreak, LoopContinue
+from .process_lease import ComponentKind, get_coordinator
 
 if TYPE_CHECKING:
     from ..shell import Shell
+
+
+def _restore_disposition_map(leased: Dict[int, Any]) -> None:
+    """Drain *leased*, restoring each signal's recorded prior disposition.
+
+    Module-level (no shell reference) so the coordinator's SIGNALS component
+    lease can hold it without pinning the shell (campaign F2 GC-safety);
+    shared verbatim by :meth:`TrapManager.restore_leased_dispositions`.
+    Draining makes concurrent/duplicate release paths idempotent.
+    """
+    while leased:
+        signum, prior = leased.popitem()
+        try:
+            signal.signal(signum, prior)
+        except (OSError, ValueError, TypeError):
+            pass  # signal became uncatchable / prior not restorable
+
 
 class TrapManager:
     """Manages trap handlers for the shell."""
@@ -117,9 +135,39 @@ class TrapManager:
         restore (H2). Called only AFTER a successful install, so a lease is
         never recorded for an uncatchable signal (KILL/STOP), whose
         ``signal.signal`` raised. A ``None`` prior (handler owned by non-Python
-        code, not restorable) is skipped. First lease per signal wins."""
-        if prior is not None:
-            self._leased_dispositions.setdefault(signum, prior)
+        code, not restorable) is skipped. First lease per signal wins.
+
+        Coordinator alignment (campaign F2): the first recorded lease
+        registers ONE ``SIGNALS`` component with the process coordinator
+        (subsequent signals fold into it). Because component leases require
+        the active owner token and a competing live owner is rejected at
+        activation, two shells can no longer hold OVERLAPPING dispositions
+        on one signal — the state whose out-of-order restore leaked a dead
+        shell's handler into the host (continuation finding B) is now
+        unrepresentable. The component's restore callback drains the SAME
+        map as :meth:`restore_leased_dispositions` and holds no reference
+        to the shell, so either release path works and GC stays possible.
+        """
+        if prior is None:
+            return
+        if not self._leased_dispositions:
+            self._register_signal_lease()
+        self._leased_dispositions.setdefault(signum, prior)
+
+    def _register_signal_lease(self) -> None:
+        """Register the SIGNALS component lease with the process coordinator.
+
+        Passes the owner's grant glue so a direct-API install that TRANSFERS
+        ownership (an embedder installing a trap on a quiescent shell)
+        also installs that shell's process-active locale — the same
+        semantics an activation-path transfer has.
+        """
+        leased = self._leased_dispositions
+        get_coordinator().acquire_component(
+            self.state, ComponentKind.SIGNALS,
+            restore=lambda: _restore_disposition_map(leased),
+            description='unmanaged-signal trap dispositions',
+            on_grant=self.state._on_activation_grant)
 
     def restore_leased_dispositions(self) -> None:
         """Restore every process-global signal disposition this shell leased.
@@ -129,15 +177,14 @@ class TrapManager:
         it found them, instead of leaking its trap handler (the H2 leak: after
         an in-process ``trap ':' USR1`` the host would otherwise swallow USR1).
         Idempotent — the lease map is drained, so a second call is a no-op.
+        Normally the coordinator's SIGNALS component release (run first in
+        ``Shell.close()``) has already drained the map; this direct call is
+        the belt-and-suspenders fallback — and the REAL restorer for a forked
+        child whose copied map predates its own (pid-reset) coordinator.
         Forked children reset their signals via the child policy and their
-        lease map dies with the process, so this is a no-op there.
+        lease map dies with the process, so this is usually a no-op there.
         """
-        while self._leased_dispositions:
-            signum, prior = self._leased_dispositions.popitem()
-            try:
-                signal.signal(signum, prior)
-            except (OSError, ValueError, TypeError):
-                pass  # signal became uncatchable / prior not restorable
+        _restore_disposition_map(self._leased_dispositions)
 
     def _canonical_signal_key(self, signal_spec: str) -> Optional[str]:
         """Canonical ``trap_handlers`` key for a user signal spec.

@@ -182,10 +182,13 @@ class REPLLoop(InteractiveComponent):
                 print()
                 break
 
-        # Run the EXIT trap (e.g. on Ctrl-D), then save history on exit
-        if hasattr(self.shell, 'trap_manager'):
-            self.shell.trap_manager.execute_exit_trap()
-        self.history_manager.save_to_file()
+        # THE top-level cleanup path (campaign F2): capture the EOF exit
+        # status (bash: the last command's $?), then Shell.shutdown('repl-eof')
+        # — EXIT trap, history save, process-lease release, in one idempotent
+        # place shared with the exit builtin and __main__'s final funnel.
+        exit_code = self.state.last_exit_code
+        self.shell.shutdown('repl-eof')
+        return exit_code
 ```
 
 ### Line Editor

@@ -33,11 +33,12 @@ Manager            (arrays)    State    Manager
 | `variables.py` | `Variable`, `VarAttributes`, `IndexedArray`, `AssociativeArray` |
 | `option_registry.py` | `OPTION_REGISTRY` (single source of truth for all shell options) + `ShellOptions` (registry-backed, dict-compatible container; `ShellState.options`) |
 | `options.py` | `OptionHandler` - option *behavior* helpers (nounset check, xtrace print) |
-| `locale_service.py` | `LocaleService` (on `ShellState.locale`) - effective LC_CTYPE/LC_COLLATE from env at startup; the one home for collation (`collate_key`/`compare`), locale-gated case mapping (`upper`/`lower`/`toggle`), and POSIX character-class membership (`in_class`, `posix_class_ranges` — host libc `iswctype` via ctypes). See `docs/architecture/locale_service_design_2026-07-06.md` |
+| `locale_service.py` | `LocaleService` (on `ShellState.locale`) - effective LC_CTYPE/LC_COLLATE from env at startup; the one home for collation (`collate_key`/`compare`), locale-gated case mapping (`upper`/`lower`/`toggle`), and POSIX character-class membership (`in_class`, `posix_class_ranges` — host libc `iswctype` via ctypes). Construction is PURE (campaign F2): the shell's service is `deferred=True`, libc application happens at activation under the coordinator's LOCALE lease (`ShellState._acquire_locale_lease`), and the process-active slot is written only by the activation glue (`set_process_active_locale`). See `docs/architecture/locale_service_design_2026-07-06.md` |
+| `process_lease.py` | `ProcessLeaseCoordinator` (campaign F2) - the ONE gate for process-global ownership: one active shell owner per process, LIFO `ActivationLease` nesting (implicit on first execution via `ShellState.activate`), `ComponentKind` leases (LOCALE / SIGNALS / STD_FDS) restored LIFO at `Shell.close()`/`shutdown()`, competing live owners rejected before mutation, fork-reset safety, and the recursion-headroom raise at ownership grant. Static ratchet: `tests/unit/tooling/test_process_global_ratchet_f2.py`; invariants: `tests/unit/core/test_process_lease.py`, purity pin `tests/unit/core/test_construction_purity_f2.py` |
 | `functions.py` | `FunctionManager` - shell function definitions |
 | `exceptions.py` | `PshError` root + error classes, and control-flow signals (`LoopBreak`, etc.) |
 | `internal_errors.py` | Expected-error taxonomy + `report_internal_defect` (strict-errors guard) |
-| `trap_manager.py` | Signal trap handling |
+| `trap_manager.py` | Signal trap handling. Unmanaged-signal installs lease the prior disposition; the first lease registers ONE `SIGNALS` component with the `ProcessLeaseCoordinator` (`_register_signal_lease`), so overlapping cross-shell leases on one signal are unrepresentable (continuation finding B) and restore order is coordinator-owned |
 | `assignment_utils.py` | Shared assignment validation utilities |
 
 ## Core Patterns

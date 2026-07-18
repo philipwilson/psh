@@ -52,23 +52,33 @@ class InteractiveManager:
         # loop directly gets it here (idempotent, so never a double rc run).
         self.shell.run_invocation_startup()
 
-        # Set up signal handlers FIRST to ignore SIGTTOU/SIGTTIN
-        # This must happen before ensure_foreground() to avoid being stopped
-        self.signal_manager.setup_signal_handlers()
-
-        # Now safe to ensure shell is in its own process group for job control
-        self.signal_manager.ensure_foreground()
-
+        # The REPL is an execution scope: hold the process activation lease
+        # for its whole extent (campaign F2). For `python -m psh` the process
+        # activated at startup, so this only counts depth; an embedder
+        # entering the loop directly takes ownership here — and a competing
+        # live shell holding leases is rejected BEFORE the signal installs
+        # below mutate anything.
+        activation = self.shell.activate()
         try:
-            return self.repl_loop.run()
+            # Set up signal handlers FIRST to ignore SIGTTOU/SIGTTIN
+            # This must happen before ensure_foreground() to avoid being stopped
+            self.signal_manager.setup_signal_handlers()
+
+            # Now safe to ensure shell is in its own process group for job control
+            self.signal_manager.ensure_foreground()
+
+            try:
+                return self.repl_loop.run()
+            finally:
+                # Restore the handlers saved by setup_signal_handlers() on EVERY
+                # exit path (EOF, `exit` builtin via SystemExit, exceptions).
+                # When this process IS psh the handlers die with the process
+                # anyway, but an embedder (Shell object inside another Python
+                # process, e.g. the test suite) must get its own signal
+                # dispositions back when the loop ends.
+                self.signal_manager.restore_default_handlers()
         finally:
-            # Restore the handlers saved by setup_signal_handlers() on EVERY
-            # exit path (EOF, `exit` builtin via SystemExit, exceptions).
-            # When this process IS psh the handlers die with the process
-            # anyway, but an embedder (Shell object inside another Python
-            # process, e.g. the test suite) must get its own signal
-            # dispositions back when the loop ends.
-            self.signal_manager.restore_default_handlers()
+            activation.release()
 
     def load_history(self):
         """Load command history from file."""

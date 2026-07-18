@@ -64,13 +64,11 @@ class ExitBuiltin(Builtin):
         # Set the exit code in shell state for EXIT trap
         shell.state.last_exit_code = exit_code
 
-        # Execute EXIT trap if set
-        if hasattr(shell, 'trap_manager'):
-            shell.trap_manager.execute_exit_trap()
-
-        # Save history before exiting
-        if hasattr(shell, 'interactive_manager'):
-            shell.interactive_manager.history_manager.save_to_file()
+        # THE top-level cleanup path (campaign F2): EXIT trap, history save,
+        # then close() — releasing every process-global lease this shell
+        # holds. Idempotent and shared with the REPL's EOF exit and
+        # __main__'s final funnel, so no route duplicates cleanup.
+        shell.shutdown('exit-builtin')
 
         sys.exit(exit_code)
 

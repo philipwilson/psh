@@ -146,10 +146,18 @@ class REPLLoop(InteractiveComponent):
                 print(f"psh: {e}", file=sys.stderr)
                 self.state.last_exit_code = 1
 
-        # Run the EXIT trap (e.g. on Ctrl-D), then save history on exit.
-        if hasattr(self.shell, 'trap_manager'):
-            self.shell.trap_manager.execute_exit_trap()
-        self.history_manager.save_to_file()
+        # The EOF exit status is the LAST command's status (bash: `false`
+        # then Ctrl-D exits 1), captured BEFORE the EXIT trap runs — the
+        # trap body's own commands must not change it (a trap-body `exit N`
+        # still overrides via SystemExit). Probe-pinned by
+        # tests/system/interactive/test_pty_shutdown_route_f2.py.
+        exit_code = self.state.last_exit_code
+
+        # THE top-level cleanup path (campaign F2): EXIT trap (e.g. on
+        # Ctrl-D), history save, lease release — idempotent and shared with
+        # the exit builtin (which, via SystemExit, never reaches here).
+        self.shell.shutdown('repl-eof')
+        return exit_code
 
     def _run_prompt_command(self):
         """Run $PROMPT_COMMAND before the primary prompt, bash-style.

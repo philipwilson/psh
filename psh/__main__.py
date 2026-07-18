@@ -12,7 +12,12 @@ tests/unit/tooling/test_invocation_argv_guard.py).
 """
 import sys
 
-from .invocation import InvocationError, SourceKind, parse_invocation
+from .invocation import (
+    InvocationConfig,
+    InvocationError,
+    SourceKind,
+    parse_invocation,
+)
 from .scripting.visitor_modes import (
     handle_visitor_mode_for_command,
     handle_visitor_mode_for_content,
@@ -169,15 +174,37 @@ def main():
 
     # The frozen config carries EVERYTHING the shell needs: source kind,
     # $0/positionals, ordered option transitions, parser, rc policy. The
-    # constructor applies all of it; startup input runs only afterwards.
+    # constructor applies all of it (construction is process-pure — campaign
+    # F2); startup input runs only afterwards.
     shell = Shell(invocation=config)
 
-    # This process IS psh: install process-global signal handlers (trap
-    # checking, SIGCHLD bookkeeping). In-process embedders/tests construct
-    # Shell directly and never get handlers installed; the interactive loop
-    # additionally re-runs setup and claims the foreground.
+    # This process IS psh: take the process activation ownership explicitly
+    # and hold it for the process lifetime (campaign F2). This raises the
+    # recursion headroom, registers the shell's locale as process-active,
+    # and lease-applies a non-C locale — i.e. the process-global setup that
+    # used to happen at construction now happens here, before any startup
+    # input or signal install.
+    shell.activate()
+
+    # Install process-global signal handlers (trap checking, SIGCHLD
+    # bookkeeping) under the active owner. In-process embedders/tests
+    # construct Shell directly and never get handlers installed; the
+    # interactive loop additionally re-runs setup and claims the foreground.
     shell.interactive_manager.signal_manager.setup_signal_handlers()
 
+    # From here on, EVERY exit path — normal source completion, sys.exit
+    # from a dispatch branch, a startup failure raising — funnels through
+    # the ONE top-level cleanup path, Shell.shutdown (campaign F2). Routes
+    # that already shut down (the exit builtin, the REPL's EOF) make the
+    # finally a no-op: shutdown is idempotent and keeps the first reason.
+    try:
+        _dispatch(shell, config)
+    finally:
+        shell.shutdown('main-exit')
+
+
+def _dispatch(shell: Shell, config: InvocationConfig) -> None:
+    """Run the configured source kind (extracted body of ``main()``)."""
     # Explicit startup step (never part of construction): bare -o/+o
     # listings, then history, then the rc file — all AFTER the full
     # invocation was applied, so the rc observes -u/--parser/positionals
@@ -238,8 +265,12 @@ def main():
 
         stdin = sys.stdin
         if stdin is not None and not stdin.closed and stdin.isatty():
-            # Interactive REPL (TTY attached)
-            shell.interactive_manager.run_interactive_loop()
+            # Interactive REPL (TTY attached). The loop's return value is the
+            # EOF exit status — the last command's status, like bash (`false`
+            # then Ctrl-D exits 1); an explicit `exit N` raises SystemExit
+            # through the loop instead and never reaches this sys.exit.
+            exit_code = shell.interactive_manager.run_interactive_loop()
+            sys.exit(exit_code if isinstance(exit_code, int) else 0)
         else:
             # Non-interactive: commands come from stdin and execute as a
             # script. With -i the interactive flag is still set (rc loaded,

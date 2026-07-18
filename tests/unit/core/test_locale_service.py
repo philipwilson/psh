@@ -173,12 +173,22 @@ class TestClassMembership:
         assert svc.in_class("٣", "digit") is False
 
     def test_posix_class_ranges_c_mode_is_ascii_table(self):
-        from psh.core.locale_service import posix_class_ranges
+        from psh.core.locale_service import (
+            active_locale,
+            posix_class_ranges,
+            set_process_active_locale,
+        )
         from psh.expansion.glob import _POSIX_CLASSES
-        LocaleService({"LC_ALL": "C"}, apply=False)  # activate C
-        assert posix_class_ranges("alpha") == _POSIX_CLASSES["alpha"]
-        assert posix_class_ranges("digit") == _POSIX_CLASSES["digit"]
-        assert posix_class_ranges("not_a_class") is None
+        saved = active_locale()
+        try:
+            # Campaign F2: construction never registers; install explicitly
+            # (the activation glue's job in production).
+            set_process_active_locale(LocaleService({"LC_ALL": "C"}, apply=False))
+            assert posix_class_ranges("alpha") == _POSIX_CLASSES["alpha"]
+            assert posix_class_ranges("digit") == _POSIX_CLASSES["digit"]
+            assert posix_class_ranges("not_a_class") is None
+        finally:
+            set_process_active_locale(saved)
 
     def test_range_token_format(self):
         from psh.core.locale_service import _range_token
@@ -215,9 +225,26 @@ class TestGlobasciirangesRegistered:
 
 
 class TestActiveRegistration:
-    def test_construction_registers_active(self):
-        svc = LocaleService({"LC_ALL": "C"}, apply=False)
-        assert active_locale() is svc
+    """Campaign F2 retired the construction-registers pin: building a service
+    (or a whole Shell) must change NOTHING process-global — the active slot
+    is written only by the activation glue (set_process_active_locale, called
+    under the ProcessLeaseCoordinator's ownership grant). The old
+    most-recently-CONSTRUCTED-wins behavior was the H18 defect (a second
+    shell's construction silently changed the first shell's pattern
+    classification); the end-to-end purity pin lives in
+    test_construction_purity_f2.py."""
+
+    def test_construction_does_not_register_active(self):
+        from psh.core.locale_service import set_process_active_locale
+        saved = active_locale()
+        try:
+            svc = LocaleService({"LC_ALL": "C"}, apply=False)
+            assert active_locale() is saved      # construction: no effect
+            assert active_locale() is not svc or saved is svc
+            set_process_active_locale(svc)       # the activation glue's write
+            assert active_locale() is svc
+        finally:
+            set_process_active_locale(saved)
 
 
 class TestReinit:
@@ -266,9 +293,20 @@ class TestReinit:
         svc.reinit({"LC_ALL": "", "LANG": "C"}, warn=False)
         assert svc.profile.ctype_mode is LocaleMode.C
 
-    def test_reinit_reactivates(self):
-        svc = LocaleService({"LC_ALL": "C"}, apply=False)
-        newer = LocaleService({"LC_ALL": "C"}, apply=False)
-        assert active_locale() is newer            # most-recently-built wins
-        svc.reinit({"LC_ALL": "C"}, warn=False)
-        assert active_locale() is svc              # reinit re-registers
+    def test_reinit_does_not_touch_active_slot(self):
+        # Campaign F2: the active slot belongs to the activation glue alone.
+        # A reinit — even of a non-active service — must not steal it (the
+        # pre-F2 re-register let an idle shell's reactive locale change
+        # hijack the active shell's pattern classification).
+        from psh.core.locale_service import set_process_active_locale
+        saved = active_locale()
+        try:
+            svc = LocaleService({"LC_ALL": "C"}, apply=False)
+            other = LocaleService({"LC_ALL": "C"}, apply=False)
+            set_process_active_locale(svc)
+            other.reinit({"LC_ALL": "C"}, warn=False)
+            assert active_locale() is svc          # unmoved
+            svc.reinit({"LC_ALL": "C"}, warn=False)
+            assert active_locale() is svc          # still unmoved
+        finally:
+            set_process_active_locale(saved)

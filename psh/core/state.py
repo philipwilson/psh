@@ -11,12 +11,19 @@ from .exceptions import ReadonlyVariableError
 from .execution_state import ExecutionState
 from .getopts_state import GetoptsState
 from .history_state import HistoryState
-from .locale_service import LocaleService
+from .locale_service import (
+    LocaleService,
+    active_locale,
+    libc_locale_names,
+    restore_libc_locale,
+    set_process_active_locale,
+)
 from .option_registry import (
     SET_O_OPTION_NAMES,
     SHOPT_OPTION_NAMES,
     ShellOptions,
 )
+from .process_lease import ComponentKind, get_coordinator
 from .scope import ScopeManager
 from .special_registry import SPECIAL_REGISTRY
 from .stream_bindings import StreamBindings
@@ -110,14 +117,19 @@ class ShellState:
         self._strip_coerced_lc_ctype()
 
         # Central locale service: resolves the effective LC_CTYPE/LC_COLLATE
-        # from the environment (bash precedence) and owns the process
-        # ``setlocale`` calls. In the C/POSIX locale it is side-effect free and
-        # every primitive stays byte-identical to psh's old codepoint/ASCII
-        # behaviour; a ``*.UTF-8`` locale enables faithful collation, case
-        # mapping, and character-class membership. Reactive as of Stage 4: the
-        # ``_sync_exported_variable`` observer re-derives it on any LC_*/LANG
-        # assignment, unset, or ``LC_ALL=C cmd`` temp-env prefix.
-        self.locale = LocaleService(self.env)
+        # from the environment (bash precedence). In the C/POSIX locale it is
+        # side-effect free and every primitive stays byte-identical to psh's
+        # old codepoint/ASCII behaviour; a ``*.UTF-8`` locale enables faithful
+        # collation, case mapping, and character-class membership. Reactive as
+        # of Stage 4: the ``_sync_exported_variable`` observer re-derives it on
+        # any LC_*/LANG assignment, unset, or ``LC_ALL=C cmd`` temp-env prefix.
+        # DEFERRED (campaign F2): construction resolves the profile PURELY —
+        # the process ``setlocale`` application happens at shell activation
+        # (or a reactive non-C reinit) under the ProcessLeaseCoordinator's
+        # LOCALE component lease (``_acquire_locale_lease``), and is restored
+        # when this shell deactivates. Constructing a Shell mutates nothing
+        # process-global (test_construction_purity_f2.py).
+        self.locale = LocaleService(self.env, deferred=True)
 
         # Initialize enhanced scope manager for variable scoping with attributes
         self.scope_manager = ScopeManager()
@@ -405,6 +417,78 @@ class ShellState:
             return f"{prog}: "
         return f"{prog}: line {self.scope_manager.get_current_line_number()}: "
 
+    # ------------------------------------------------------------------
+    # Process activation (campaign F2)
+    # ------------------------------------------------------------------
+
+    def activate(self):
+        """Obtain the process owner token and a LIFO activation lease.
+
+        The single entry to process-global ownership for this shell: the
+        ``ProcessLeaseCoordinator`` grants (or transfer-grants) the owner
+        token, raises the interpreter recursion headroom, and — via
+        ``_on_activation_grant`` — installs this shell's locale service as
+        the process-active one and lease-applies a non-C profile to libc.
+        Nested activation by the same owner is counted; a COMPETING live
+        owner holding leases raises ``LeaseError`` before any mutation, and
+        a partially failed grant rolls back completely (coordinator
+        semantics; see ``psh/core/process_lease.py``).
+
+        Implicit on first execution: the execution entry points
+        (``SourceProcessor.execute_from_source``, ``Shell.execute_program``/
+        ``execute_command_list``, the REPL/entry points) call this lazily,
+        so direct-construction embedders never activate a shell they only
+        inspect. Returns the ``ActivationLease``; callers release it (LIFO)
+        when their execution scope ends.
+        """
+        return get_coordinator().activate(
+            self, on_grant=self._on_activation_grant)
+
+    def _on_activation_grant(self) -> None:
+        """Process-global installation glue, run once per ownership grant.
+
+        Registers this shell's locale service as the process-active one
+        (consumed by the stateless pattern helpers via ``active_locale()``)
+        and, for a non-C profile, acquires the LOCALE component lease and
+        applies the profile to libc. Exception-safe: a failure restores the
+        previous process-active service and propagates so the coordinator
+        rolls the grant back.
+        """
+        previous = active_locale()
+        set_process_active_locale(self.locale)
+        try:
+            if self.locale.pending_libc:
+                self._acquire_locale_lease()
+        except BaseException:
+            set_process_active_locale(previous)
+            raise
+
+    def _acquire_locale_lease(self) -> None:
+        """Apply the locale profile to libc under the LOCALE component lease.
+
+        Captures the pre-application libc names as the restore baseline (so
+        deactivation puts the hosting process back exactly where it was and
+        marks the service un-applied for a later re-activation), then
+        applies. Idempotent per owner: a second call finds the existing
+        lease and only (re-)applies — the reactive mid-session path
+        (``_sync_exported_variable``) reuses it on every non-C profile
+        change.
+        """
+        coordinator = get_coordinator()
+        service = self.locale
+        if coordinator.find_component(self, ComponentKind.LOCALE) is None:
+            baseline = libc_locale_names()
+
+            def _restore(service=service, baseline=baseline):
+                restore_libc_locale(baseline)
+                service.invalidate_application()
+
+            coordinator.acquire_component(
+                self, ComponentKind.LOCALE, restore=_restore,
+                description='libc locale (LC_CTYPE/LC_COLLATE)',
+                on_grant=self._on_activation_grant)
+        service.ensure_applied()
+
     @classmethod
     def clone_for_child(cls, parent: 'ShellState',
                         context: ChildContext = ChildContext.SUBSHELL,
@@ -435,9 +519,11 @@ class ShellState:
         * the locale service is shared (reactive as of Stage 4, but every
           in-tree clone is a forked SUBSHELL — separate memory — so a child's
           mid-session ``reinit`` mutates only its own copy and the process
-          ``setlocale`` is inherited across the fork; a future IN_PROCESS
-          embedding would need to give the child its own service and
-          save/restore the process locale around it).
+          ``setlocale`` is inherited across the fork; the fork also resets
+          the child's ProcessLeaseCoordinator, so the child's own activation
+          re-accounts any libc application under its own lease — campaign
+          F2 — and an IN_PROCESS child activating simply transfers the owner
+          token from a quiescent parent).
 
         ``$PPID``/``$$`` stay stable across subshells (POSIX); RANDOM's
         generator state is deliberately reset (bash reseeds it in a subshell);
@@ -976,8 +1062,13 @@ class ShellState:
             # (``LC_ALL=C cmd``) immediately re-resolves the effective locale.
             # This observer fires on all of those — including temp-env setup AND
             # its scope-pop teardown — so the locale tracks live state both into
-            # and out of a prefixed command (Stage 4).
+            # and out of a prefixed command (Stage 4). The deferred service
+            # resolves purely; a resulting non-C profile is applied to libc
+            # HERE, under the coordinator's LOCALE lease (campaign F2), so the
+            # reactivity is unchanged — merely lease-accounted.
             self.locale.reinit(self._locale_env_snapshot())
+            if self.locale.pending_libc:
+                self._acquire_locale_lease()
 
     #: The four variables the effective locale is resolved from; a write/unset
     #: of any of them re-derives the locale profile (:meth:`_sync_exported_variable`).

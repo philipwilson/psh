@@ -13,7 +13,8 @@ logic: executors live in ``psh/executor/``, the ``--validate/--format/
 """
 import os
 import sys
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, TextIO
 
 from .ast_nodes import (
     Program,
@@ -23,6 +24,12 @@ from .builtins import registry as builtin_registry
 from .builtins.environment import apply_set_o_option
 from .core import ShellState, TrapManager
 from .core.functions import FunctionManager
+
+# The interpreter recursion-limit headroom for psh's recursive engines moved
+# to psh/core/process_lease.py (campaign F2): raising it is a process-global
+# mutation, so it happens at activation-ownership grant — never at
+# construction. RECURSION_LIMIT stays re-exported from its historical home.
+from .core.process_lease import RECURSION_LIMIT, get_coordinator  # noqa: F401
 from .executor.job_control import JobManager
 from .expansion import ExpansionManager
 from .expansion.aliases import AliasManager
@@ -32,33 +39,9 @@ from .io_redirect import IOManager
 from .scripting.base import ScriptManager
 
 if TYPE_CHECKING:
+    from .core.process_lease import ActivationLease
     from .executor.core import ExecutorVisitor
     from .lexer.token_types import Token
-
-
-# Python-frame headroom for psh's recursive engines (parser, expansion,
-# executor visitor). One shell function call burns ~18 Python frames and one
-# nested compound ~12 (measured empirically, 2026-07-04), so CPython's default
-# limit of 1000 capped shell recursion at ~50 calls — bash handles 5000+.
-# 40,000 frames gives ~2,200 shell-call / ~3,300 nested-compound depth.
-# Safe on the supported interpreters (>= 3.12): Python frames live on the
-# heap and C-stack recursion is guarded separately, so a runaway raises
-# RecursionError (converted to a clean shell error at the function-call
-# boundary / last-resort guards) rather than overflowing the OS stack —
-# verified to survive limits up to 60,000 even under `ulimit -s 512`.
-RECURSION_LIMIT = 40_000
-
-
-def _ensure_recursion_headroom() -> None:
-    """Raise the interpreter recursion limit to RECURSION_LIMIT.
-
-    Only ever raises, never lowers — an embedding process (e.g. the test
-    runner) that already set a higher limit keeps it. Process-wide by
-    nature; idempotent, so per-Shell invocation (including forked
-    subshell children) is harmless.
-    """
-    if sys.getrecursionlimit() < RECURSION_LIMIT:
-        sys.setrecursionlimit(RECURSION_LIMIT)
 
 
 class Shell:
@@ -78,10 +61,11 @@ class Shell:
                  parent_shell: Optional['Shell'] = None, ast_format: Optional[str] = None,
                  force_interactive: bool = False, command_mode: bool = False,
                  invocation: Optional['InvocationConfig'] = None) -> None:
-        # Phase 0: interpreter headroom for the recursive engines. Must be
-        # process-wide and early, so every path into this shell (scripts,
-        # -c, interactive, in-process embedding) gets the same ceiling.
-        _ensure_recursion_headroom()
+        # Construction is PROCESS-PURE (campaign F2): no setlocale, no signal
+        # installs, no recursion-limit raise, no cwd/fd changes — every
+        # process-global mutation waits for activation (implicit on first
+        # execution; see Shell.activate/ShellState.activate). Pinned by
+        # tests/unit/core/test_construction_purity_f2.py.
 
         # A frozen InvocationConfig (from parse_invocation) is authoritative
         # for every invocation fact; the legacy keyword arguments remain as a
@@ -436,8 +420,71 @@ class Shell:
             load_rc_file(self)
 
     # ------------------------------------------------------------------
+    # Process activation (campaign F2)
+    # ------------------------------------------------------------------
+
+    def activate(self) -> 'ActivationLease':
+        """Obtain the process owner token and a LIFO activation lease.
+
+        See ``ShellState.activate`` (the state is the owner token) and
+        ``psh/core/process_lease.py`` for the ownership contract: one active
+        shell per process, same-owner nesting counted, competing live
+        owners rejected before mutation, partial acquisition rolled back.
+        Implicit on first execution — ``run_command``/``run_script``/AST
+        execution acquire it lazily via :meth:`activation` — so embedders
+        and tests that merely construct a Shell never take ownership.
+        """
+        return self.state.activate()
+
+    @contextmanager
+    def activation(self) -> Iterator[None]:
+        """Context manager: hold an activation lease for one execution scope."""
+        lease = self.state.activate()
+        try:
+            yield
+        finally:
+            lease.release()
+
+    # ------------------------------------------------------------------
     # Resource lifecycle
     # ------------------------------------------------------------------
+
+    def shutdown(self, reason: str) -> None:
+        """THE top-level cleanup path (idempotent; campaign F2).
+
+        Every route out of a shell converges here: the ``exit`` builtin
+        (``reason='exit-builtin'``), the REPL's EOF exit (``'repl-eof'``),
+        and ``__main__``'s final funnel (``'main-exit'`` — covering normal
+        source completion and startup failures alike). In order: fire the
+        EXIT trap (itself at-most-once, so a route that already fired it is
+        a no-op), save history for the routes that historically saved it
+        (explicit ``exit`` and REPL EOF; a ``SystemExit`` raised by the EXIT
+        trap's own ``exit N`` skips the save, as before), then ``close()``
+        — which releases every process-global lease this shell holds, so an
+        EMBEDDED shell hands the hosting process its locale, signal
+        dispositions, and standard fds back. The first caller's *reason* is
+        recorded (``_shutdown_reason``); later calls return immediately.
+        The static census in tests/unit/tooling/ keeps top-level cleanup
+        from growing bypasses.
+        """
+        if getattr(self, '_shutdown_reason', None) is not None:
+            return
+        self._shutdown_reason = reason
+        try:
+            trap_manager = getattr(self, 'trap_manager', None)
+            if trap_manager is not None:
+                trap_manager.execute_exit_trap()
+            if reason in self._HISTORY_SAVING_SHUTDOWNS:
+                interactive_manager = getattr(self, 'interactive_manager', None)
+                if interactive_manager is not None:
+                    interactive_manager.history_manager.save_to_file()
+        finally:
+            self.close()
+
+    #: The shutdown routes that persist history (exactly the routes that
+    #: saved it before shutdown() unified cleanup: an explicit `exit` and
+    #: the REPL's EOF; -c/script/main completion never wrote the file).
+    _HISTORY_SAVING_SHUTDOWNS = frozenset({'exit-builtin', 'repl-eof'})
 
     def close(self) -> None:
         """Release the resources this Shell owns (idempotent).
@@ -455,9 +502,26 @@ class Shell:
         with the process. ``close()`` exists for the MANY transient Shell
         instances — tests, the ``env`` builtin's child, subshell helpers — so
         their self-pipes are freed immediately rather than lingering until
-        garbage collection. It never touches the (possibly shared) stdin/
-        stdout/stderr streams, which the shell does not own.
+        garbage collection. Streams/fds it did not change are left alone —
+        but a shell that performed PERMANENT ``exec`` redirections holds the
+        STD_FDS component lease, and releasing it here restores the hosting
+        process's fds 0/1/2 and ``sys.std*`` objects to their pre-redirect
+        baseline (campaign F2: an embedded shell's process-global mutations
+        end with the shell; continuation finding B). ``shutdown(reason)`` is
+        the top-level cleanup path that ADDS the EXIT trap and history save
+        in front of this resource release.
         """
+        # Release every process-global lease this shell holds and relinquish
+        # the activation owner token (campaign F2): LIFO restores of the
+        # libc locale, unmanaged-signal dispositions, and permanent std-fd/
+        # stream rebinds — so an embedded shell hands the hosting process
+        # its globals back, and a subsequent shell can take ownership.
+        # Mid-own-execution (the exit builtin), components restore now and
+        # the token releases when the activation stack unwinds.
+        state = getattr(self, 'state', None)
+        if state is not None:
+            get_coordinator().release_owner(state)
+
         interactive_manager = getattr(self, 'interactive_manager', None)
         if interactive_manager is not None:
             signal_manager = getattr(interactive_manager, 'signal_manager', None)
@@ -538,12 +602,19 @@ class Shell:
     # ------------------------------------------------------------------
 
     def execute_program(self, program: Program) -> int:
-        """Execute a parsed program (the canonical parser root)."""
-        return self._execute_with_visitor(program)
+        """Execute a parsed program (the canonical parser root).
+
+        Holds an activation lease for the execution's extent (implicit
+        activation, campaign F2): a nested call by the same shell counts
+        depth; the first execution in a process grants the owner token.
+        """
+        with self.activation():
+            return self._execute_with_visitor(program)
 
     def execute_command_list(self, command_list: StatementList) -> int:
         """Execute a nested command list (a subshell/brace-group body)."""
-        return self._execute_with_visitor(command_list)
+        with self.activation():
+            return self._execute_with_visitor(command_list)
 
     def _execute_with_visitor(self, node: Any) -> int:
         """Execute an AST node, reusing the active executor when nested.
