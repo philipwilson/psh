@@ -42,6 +42,18 @@ class InputSource(ABC):
     # into process_line_continuations(drop_dangling_at_eof=...).
     eof_drops_dangling_continuation: bool = False
 
+    # Whether history expansion (`!!`, `!n`, ...) may apply to this source's
+    # lines when the shell's interactive machinery is active. bash 5.2
+    # (probe-verified, tmp/boundary-ledgers/F1-probes/, campaign F1): the
+    # MAIN input stream of an interactive-family shell expands — the REPL,
+    # piped stdin under -i, and even a script file under `-i script.sh` —
+    # but a `-c` COMMAND STRING never does (`bash -ic 'echo !!'` prints
+    # `!!` literally), and neither does the rc file. __main__ clears this
+    # for the -c StringInput; rc_loader clears it for the rc FileInput.
+    # (The SourceProcessor gate additionally requires a non-script-mode
+    # shell, so plain scripts/stdin without -i never expand.)
+    history_expansion_eligible: bool = True
+
     @abstractmethod
     def read_line(self) -> Optional[str]:
         """Read the next line from the input source.

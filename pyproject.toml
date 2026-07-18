@@ -180,7 +180,7 @@ check_untyped_defs = true
 # sections above still apply. Guarded by
 # tests/unit/tooling/test_mypy_untyped_defs_coverage.py.
 [[tool.mypy.overrides]]
-module = ["psh", "psh.__main__", "psh.shell", "psh.version"]
+module = ["psh", "psh.__main__", "psh.invocation", "psh.shell", "psh.version"]
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]

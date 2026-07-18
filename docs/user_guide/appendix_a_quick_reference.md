@@ -9,8 +9,12 @@ psh [options] [script] [arguments]
 
 Options:
   -c COMMAND                Execute command string
-  -i                        Force interactive mode
-  -h, --help                Show help
+  -s                        Read commands from stdin; operands become $1, $2, ...
+  -i                        Force interactive mode (+i cancels)
+  -e -u -x -a -h ...        Set shell options at startup (bash letters incl.
+                              -h hashall; '+' turns off; clusters like -eux)
+  -o NAME / +o NAME         Enable/disable shell option by name (bare -o lists)
+  --help                    Show help
   -V, --version             Show version
   --norc                    Skip ~/.pshrc file
   --rcfile FILE             Use alternate RC file

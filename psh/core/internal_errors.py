@@ -107,9 +107,13 @@ def fatal_expansion_status(state: 'ShellState', exc: BaseException, *,
     so the status is returned instead of raising ``TopLevelAbort``.
     """
     if isinstance(exc, (FatalExpansionError, UnboundVariableError)):
-        if state.options.get('command_mode'):
+        if (state.options.get('command_mode')
+                and not state.options.get('interactive')):
             code = getattr(exc, 'exit_code', 127)  # UnboundVariable: 127
         else:
+            # Interactive-family shells discard the line with status 1 even
+            # for a -c string: `bash -ic 'set -u; echo $undef; echo after'`
+            # exits 1, not 127 (probe B6, campaign F1).
             code = 1
         if state.is_script_mode:
             raise SystemExit(code)

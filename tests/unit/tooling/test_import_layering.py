@@ -289,7 +289,7 @@ FUNC_IMPORT_CAPS = {
     'psh.scripting.lex_parse': 1,
     'psh.scripting.source_processor': 6,
     'psh.scripting.visitor_modes': 9,
-    'psh.shell': 6,
+    'psh.shell': 5,
     'psh.utils.ast_debug': 6,
     'psh.utils.heredoc_detection': 2,
     'psh.visitor.enhanced_validator_visitor': 1,

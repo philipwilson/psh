@@ -195,8 +195,14 @@ psh [options] [script] [arguments]
 
 Options:
   -c <command>              Execute command and exit
-  -i                        Force interactive mode
-  -h, --help                Show help message
+  -s                        Read commands from stdin; operands become $1, $2, ...
+  -i                        Force interactive mode (+i cancels)
+  -a -b -e -f -h -m -n -u   Set shell options at startup (like bash: allexport,
+  -v -x -B -C -E -H -T        notify, errexit, ..., hashall for -h); a leading
+                              '+' turns the option off, and clusters work (-eux)
+  -o NAME / +o NAME         Enable/disable a shell option by name (set -o NAME);
+                              a bare trailing -o/+o prints the option listing
+  --help                    Show help message
   -V, --version             Show version information
   --debug-ast               Show parsed AST before execution
   --debug-ast=FORMAT        AST format: tree, pretty, compact, dot, sexp

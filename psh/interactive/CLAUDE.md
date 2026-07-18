@@ -46,7 +46,7 @@ Tab completion is NOT a separate manager: it is `CompletionEngine`
 | `prompt.py` | `PromptExpander` - `\u`, `\h`, `\w`... escape expansion |
 | `signal_manager.py` | `SignalManager` - signal handling, SIGCHLD/SIGWINCH self-pipes |
 | `title.py` | Terminal title (`set_terminal_title`, `idle_title`, `command_title`) |
-| `rc_loader.py` | `load_rc_file` / `is_safe_rc_file` - startup RC loading |
+| `rc_loader.py` | `load_rc_file` / `is_safe_rc_file` - startup RC loading. Called ONLY from `Shell.run_invocation_startup` (shell.py) — the explicit, idempotent startup step that runs AFTER the full invocation (options, parser, positionals) is applied and NEVER during `Shell.__init__` (campaign F1; pinned by tests/system/invocation/). The rc runs for every interactive-FAMILY shell, including `-ic` and `-i script.sh` (bash), and its lines are never history-expanded (`history_expansion_eligible=False`). |
 | `base.py` | `InteractiveComponent` base class, `InteractiveManager` orchestrator |
 
 ### Job Control (`psh/executor/job_control.py`)

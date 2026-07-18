@@ -94,7 +94,10 @@ _SPECS = [
     _spec("nolog", False, OptionCategory.SET),
     _spec("posix", False, OptionCategory.SET),
     _spec("braceexpand", True, OptionCategory.SET, short_flag="B", dollar_dash="B"),
-    _spec("histexpand", True, OptionCategory.SET, dollar_dash="H"),
+    # bash accepts -H/+H both at invocation (`bash +H -ic ...`) and at runtime
+    # (`set -H`); registering the short flag closes reappraisal-21 CORE-4
+    # (the $- letter was reserved while the flag spelling was rejected).
+    _spec("histexpand", True, OptionCategory.SET, short_flag="H", dollar_dash="H"),
     _spec("history", True, OptionCategory.SET),
     _spec("emacs", False, OptionCategory.SET),
     _spec("vi", False, OptionCategory.SET),

@@ -114,6 +114,12 @@ class CommandAccumulator:
         # trial-parse errors use it so a multi-line script's syntax errors
         # report absolute line numbers, not buffer-relative ones.
         self.start_line: int = 1
+        # Whether history expansion may apply to this input (mirrors
+        # InputSource.history_expansion_eligible; the source processor
+        # copies the source's flag in). False for a -c command string and
+        # the rc file — bash never bang-expands those, so the silent
+        # completeness-trial expansion must not either.
+        self.history_expansion_eligible: bool = True
         self._lines: List[str] = []
         # Pending heredoc bodies as (delimiter, strip_tabs) pairs. While
         # non-empty, fed lines are body text checked incrementally against
@@ -207,7 +213,8 @@ class CommandAccumulator:
         # silently — errors and the expansion echo are the execution
         # path's job.
         preview = process_line_continuations(raw)
-        if not self.state.is_script_mode and hasattr(self.shell, 'history_expander'):
+        if (not self.state.is_script_mode and self.history_expansion_eligible
+                and hasattr(self.shell, 'history_expander')):
             expanded = self.shell.history_expander.expand_history(
                 preview, print_expansion=False, report_errors=False)
             if expanded is not None:
