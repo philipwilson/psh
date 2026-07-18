@@ -195,12 +195,12 @@ def main():
         if visitor_mode:
             sys.exit(handle_visitor_mode_for_command(shell, command))
 
-        # Use StringInput with script mode to process line-by-line like bash -c
-        from .scripting.input_sources import StringInput
-        input_source = StringInput(command, "-c", split_lines=True)
-        # bash never bang-expands the -c command string, even under -ic
-        # (`bash -ic 'echo !!'` prints `!!` — probe B8).
-        input_source.history_expansion_eligible = False
+        # The -c channel of the one program-text boundary: line-by-line like
+        # bash -c, and never bang-expanded, even under -ic (`bash -ic
+        # 'echo !!'` prints `!!` — probe B8). Per-channel policy lives in
+        # ProgramSource (program_source.py).
+        from .scripting.program_source import ProgramSource
+        input_source = ProgramSource.command_string(command).make_input_source()
         exit_code = shell.script_manager.execute_as_main(
             input_source, add_to_history=False)
         sys.exit(exit_code)
@@ -227,9 +227,12 @@ def main():
         # `cat script | psh --security` ran the very commands it was asked
         # to analyze.)
         if visitor_mode:
-            script_content = _read_all_stdin()
             # A script on stdin is a stream input: a dangling backslash at
-            # EOF drops, exactly as the execution path treats it.
+            # EOF drops and NUL bytes are discarded (the same normalization
+            # the execution path's StdinInput applies per record), so
+            # analysis sees the text execution would run.
+            from .scripting.program_source import strip_nul_stream
+            script_content = strip_nul_stream(_read_all_stdin())
             sys.exit(handle_visitor_mode_for_content(
                 shell, script_content, "<stdin>", drop_dangling_at_eof=True))
 
@@ -263,8 +266,8 @@ def main():
             # An interactive-family shell records its commands in history
             # (bash: `history` under `-i -s` lists them); plain piped input
             # does not.
-            from .scripting.input_sources import StdinInput
-            stdin_source = StdinInput(fd=0, name="<stdin>")
+            from .scripting.program_source import ProgramSource
+            stdin_source = ProgramSource.stdin_script().make_input_source()
             exit_code = shell.script_manager.execute_as_main(
                 stdin_source, add_to_history=config.interactive)
             sys.exit(exit_code)

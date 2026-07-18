@@ -367,7 +367,10 @@ class SourceProcessor(ScriptComponent):
             # Increment command number for successful parse
             self.state.command_number += 1
 
-            return self._dispatch_execution(ast, nested)
+            return self._dispatch_execution(
+                ast, nested,
+                stop_on_return=getattr(input_source,
+                                       'stops_on_function_return', False))
         except ParseError as e:
             # Same canonical rendering as the trial-parse error path.
             self._report_syntax_error(e, input_source, start_line,
@@ -510,7 +513,8 @@ class SourceProcessor(ScriptComponent):
 
         return ast
 
-    def _dispatch_execution(self, ast: ASTNode, nested: bool) -> int:
+    def _dispatch_execution(self, ast: ASTNode, nested: bool,
+                            stop_on_return: bool = False) -> int:
         """Execute a parsed AST, resolving control-flow signals at the boundary.
 
         Both parsers return a ``Program``, so there is no root-type branch: run
@@ -551,14 +555,20 @@ class SourceProcessor(ScriptComponent):
             self.state.last_exit_code = e.status
             return e.status
         except FunctionReturn as e:
-            # `return` reaching a NON-nested top level only happens in a
-            # subshell-style child that inherited a function/sourced-file
-            # context (ShellState.clone_for_child copies function_stack and
+            # A sourced-program input (source/., the rc file —
+            # ``stop_on_return`` from InputSource.stops_on_function_return)
+            # re-raises so execute_sourced_file (program_source.py) stops
+            # the FILE with that status: `return` in an rc must end the rc
+            # without a diagnostic, like bash (continuation medium 2).
+            # Nested (eval, trap action) it propagates to the enclosing
+            # function/source handler. Otherwise, `return` reaching a
+            # NON-nested top level only happens in a subshell-style child
+            # that inherited a function/sourced-file context
+            # (ShellState.clone_for_child copies function_stack and
             # source_depth): the child's input stops with that status,
             # like end-of-sourced-file (bash: x=$(return 3; echo x)
-            # leaves x empty, $? = 3). Nested (eval, trap action) it
-            # propagates to the enclosing function/source handler.
-            if nested:
+            # leaves x empty, $? = 3).
+            if nested or stop_on_return:
                 raise
             self.state.last_exit_code = e.exit_code
             return e.exit_code
@@ -587,6 +597,15 @@ class SourceProcessor(ScriptComponent):
                 raise e
             if (isinstance(e, (LoopBreak, LoopContinue))
                     and self.shell._loop_depth_seed > 0):
+                raise e
+            if (isinstance(e, FunctionReturn)
+                    and getattr(input_source, 'stops_on_function_return',
+                                False)):
+                # A sourced-program input (source/., rc): `return` stops the
+                # FILE — _dispatch_execution re-raised it, and this clause
+                # (reached via the enclosing except Exception) forwards it
+                # to execute_sourced_file. See InputSource.
+                # stops_on_function_return.
                 raise e
         # A fatal expansion error escaping a non-SimpleCommand context
         # (case subject, for-loop words, array initializer, redirect

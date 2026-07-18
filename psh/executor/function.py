@@ -216,6 +216,11 @@ class FunctionOperationExecutor:
         # Save current context
         old_function = context.current_function
         old_positional_params = self.shell.state.positional_params[:]
+        # The set-assigned marker travels WITH the positional frame (bash
+        # push_context): a `set` inside the function must not mark the
+        # caller's frame — an enclosing args-passed `source` still restores
+        # (probe D5e; see ShellState.positionals_changed_by_set).
+        old_positionals_changed = self.shell.state.positionals_changed_by_set
         old_loop_depth = context.loop_depth
 
         # Set up function context
@@ -281,3 +286,4 @@ class FunctionOperationExecutor:
             context.current_function = old_function
             context.loop_depth = old_loop_depth
             self.shell.state.positional_params = old_positional_params
+            self.shell.state.positionals_changed_by_set = old_positionals_changed

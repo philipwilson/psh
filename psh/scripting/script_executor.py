@@ -3,7 +3,7 @@ import sys
 from typing import List, Optional
 
 from .base import ScriptComponent
-from .input_sources import FileInput
+from .program_source import ProgramSource
 
 
 class ScriptExecutor(ScriptComponent):
@@ -45,11 +45,12 @@ class ScriptExecutor(ScriptComponent):
         self.state.positional_params = script_args
 
         try:
-            # A script file ARGUMENT is a bash stream input: a dangling
-            # backslash at true EOF is dropped (a sourced file keeps it) —
-            # see InputSource.eof_drops_dangling_continuation.
-            with FileInput(script_path,
-                           eof_drops_dangling_continuation=True) as input_source:
+            # A script file ARGUMENT is a bash STREAM input: a dangling
+            # backslash at true EOF is dropped and every NUL byte is
+            # discarded (a sourced file differs on both) — the per-channel
+            # policy table lives in ProgramSource (program_source.py).
+            source = ProgramSource.script_file(script_path)
+            with source.make_input_source() as input_source:
                 # execute_as_main fires the EXIT trap exactly once when the
                 # script finishes — at end-of-file, on a `set -e` abort, or on
                 # an explicit `exit`. (A sourced file does NOT run this path;

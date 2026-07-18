@@ -23,20 +23,31 @@ def load_rc_file(shell: 'Shell') -> None:
             return
 
         try:
-            # Source the file without adding to history.
-            # (We deliberately do NOT touch $0: an rc file runs in the shell's
-            # own context. A previous attempt assigned shell.variables['0'],
-            # which is a no-op — state.variables is a snapshot dict — so it
-            # never had any effect.)
-            from ..scripting.input_sources import FileInput
-            with FileInput(rc_file) as input_source:
-                # bash never bang-expands rc-file lines (probe-verified:
-                # `echo !!` in an --rcfile stays literal under -i -s).
-                input_source.history_expansion_eligible = False
-                shell.script_manager.execute_from_source(input_source, add_to_history=False)
+            # The rc runs through THE sourced-program service — rc is not a
+            # second source dialect (campaign F3, continuation medium 2): it
+            # gains source depth (so `return 7` cleanly ends the rc with no
+            # diagnostic and startup continues, like bash), the evalfile NUL
+            # policy, and restoration on exception exits. Per bash, the rc
+            # channel differs from `source` in exactly three ways, all owned
+            # by the service's channel table: no >256-NUL binary refusal, no
+            # RETURN-trap firing at rc end (probes B3/B6), and a `return N`
+            # status that is DISCARDED rather than becoming $? (probes
+            # B12/B13 — the return value below is deliberately ignored).
+            # Like `source`, rc lines are never bang-expanded and never
+            # recorded in history, and $0 is untouched (an rc file runs in
+            # the shell's own context).
+            from ..scripting.program_source import (
+                SourceChannel,
+                SourceRequest,
+                execute_sourced_file,
+            )
+            execute_sourced_file(
+                shell, SourceRequest(path=rc_file,
+                                     kind=SourceChannel.RC_FILE))
 
         except Exception as e:
-            # Print warning but continue shell startup
+            # Print warning but continue shell startup (an `exit` in the rc
+            # is a SystemExit — BaseException — and still exits the shell).
             print(f"psh: warning: error loading {rc_file}: {e}", file=sys.stderr)
 
 

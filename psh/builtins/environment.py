@@ -323,6 +323,16 @@ class ExportBuiltin(Builtin):
       -p    Print exported variables in declare -x format"""
 
 
+def _assign_positionals(shell: 'Shell', params: List[str]) -> None:
+    """The `set` builtin's positional-parameter assignment (bash
+    ``remember_args``): marks ``positionals_changed_by_set`` so an enclosing
+    args-passed ``source`` PERSISTS the new values instead of restoring the
+    caller's (bash ``pop_dollar_vars``/``ARGS_SETBLTIN``; probes D5-D5g,
+    campaign F3 — see ``program_source.execute_sourced_file``)."""
+    shell.state.positional_params = params
+    shell.state.positionals_changed_by_set = True
+
+
 @builtin
 class SetBuiltin(Builtin):
     """Set shell options and positional parameters."""
@@ -368,12 +378,12 @@ class SetBuiltin(Builtin):
                     shell.state.options['verbose'] = False
                     shell.state.options['xtrace'] = False
                 if i + 1 < len(args):
-                    shell.state.positional_params = args[i + 1:]
+                    _assign_positionals(shell, args[i + 1:])
                 return 0
 
             # -- separates options from positional parameters
             if arg == '--':
-                shell.state.positional_params = args[i + 1:]
+                _assign_positionals(shell, args[i + 1:])
                 return 0
 
             # Bare -o / +o without a following name: display options
@@ -426,7 +436,7 @@ class SetBuiltin(Builtin):
                 continue
 
             # First non-option argument: the rest are positional parameters
-            shell.state.positional_params = args[i:]
+            _assign_positionals(shell, args[i:])
             return 0
 
         return 0

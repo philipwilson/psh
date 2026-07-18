@@ -125,7 +125,7 @@ def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
     script that runs fine therefore also validates fine, instead of crashing
     the analysis with a ``UnicodeDecodeError``.
     """
-    from .input_sources import FileInput
+    from .program_source import ProgramSource
 
     # Pre-flight file checks (missing 127, directory/unreadable/binary 126)
     # via the SAME validator the execution path uses.
@@ -135,10 +135,10 @@ def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
         return validation_result
 
     try:
-        with FileInput(script_path) as file_input:
-            # Reconstruct the exact text the executor's accumulator sees:
-            # FileInput split the raw bytes into CR-normalized physical lines.
-            content = '\n'.join(file_input.lines)
+        # The script-file channel of the one program-text boundary: the
+        # exact text the executor sees (same decode, CR normalization, and
+        # stream NUL policy — program_source.py).
+        content = ProgramSource.script_file(script_path).read_text()
     except OSError as e:
         # A race (file vanished after the pre-flight) or other read error.
         print(f"psh: {script_path}: {e}", file=sys.stderr)

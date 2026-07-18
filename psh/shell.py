@@ -635,11 +635,12 @@ class Shell:
         exit when the action string itself fails to parse; see
         ``InputSource.posix_syntax_exit``).
         """
-        from .scripting.input_sources import StringInput
+        from .scripting.program_source import ProgramSource
 
-        # Use the unified execution system for consistency
-        input_source = StringInput(command_string, "<command>",
-                                   split_lines=line_oriented)
-        input_source.posix_syntax_exit = posix_syntax_exit
+        # The in-process command-text channel of the one program-text
+        # boundary (program_source.py).
+        input_source = ProgramSource.command_text(
+            command_string, line_oriented=line_oriented,
+            posix_syntax_exit=posix_syntax_exit).make_input_source()
         return self.script_manager.execute_from_source(
             input_source, add_to_history, base_line=base_line)

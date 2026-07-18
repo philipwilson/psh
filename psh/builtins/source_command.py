@@ -45,9 +45,9 @@ class SourceBuiltin(Builtin):
         filename = args[1]
         # POSIX/bash: `source file` with no extra args leaves $@/$# unchanged;
         # `source file x y` sets them to x y for the duration of the sourced
-        # file (and restores afterward). Only override when args were given.
-        has_source_args = len(args) > 2
-        source_args = args[2:] if has_source_args else []
+        # file (restored afterward unless the file ran `set` — the service
+        # owns that rule). Only override when args were given.
+        source_args = tuple(args[2:]) if len(args) > 2 else None
 
         # Find the script file
         script_path = self._find_source_file(filename, shell)
@@ -60,67 +60,40 @@ class SourceBuiltin(Builtin):
             self.error(f"{filename}: No such file or directory", shell)
             raise SpecialBuiltinUsageError(1)
 
-        # Validate the script file. The shared validator returns the codes
-        # bash uses for the script-INVOCATION path (`psh file`): 126 for a
-        # directory, unreadable file, or binary. bash's `source` diverges —
-        # it returns 1 for a directory or unreadable file and reserves 126
-        # for a binary file (probe-verified vs bash 5.2). The validator has
-        # already printed the diagnostic; remap the non-binary failures here.
-        validation_result = shell.script_manager.validate_script_file(script_path)
+        # Pre-flight checks. bash's `source` never content-sniffs the file
+        # (its `cannot execute binary file` refusal is the >256-NUL rule,
+        # owned by the sourced-program service — campaign F3 probes A6-A13),
+        # so the shared validator runs with binary_sniff=False; it returns
+        # the script-INVOCATION codes (126) for a directory or unreadable
+        # file, remapped here to bash's `source` codes.
+        validation_result = shell.script_manager.validate_script_file(
+            script_path, binary_sniff=False)
         if validation_result != 0:
             if os.path.isdir(script_path):
                 # A directory is a plain rc-1 failure — bash does NOT exit a
                 # POSIX-mode shell for it (probe: `. /` survives, rc 1).
                 return 1
-            if not os.access(script_path, os.R_OK):
-                # An unreadable file, like a missing one, exits a POSIX-mode
-                # non-interactive shell rc 1 (bash probe: Permission denied).
-                raise SpecialBuiltinUsageError(1)
-            return validation_result
+            # An unreadable file, like a missing one, exits a POSIX-mode
+            # non-interactive shell rc 1 (bash probe: Permission denied).
+            raise SpecialBuiltinUsageError(1)
 
-        # Save current shell state. bash NEVER changes $0 (script_name) when
-        # sourcing — the sourced file sees the CALLER's $0 — so we leave it
-        # untouched. Positional parameters are saved/restored ONLY when ARGS
-        # are passed: a no-args source SHARES the caller's positionals, so a
-        # `set --` inside it persists to the caller (bash).
-        old_script_mode = shell.state.is_script_mode
-        if has_source_args:
-            old_positional = shell.state.positional_params.copy()
-            shell.state.positional_params = source_args
-        # Keep current script mode (sourcing inherits mode)
-
-        shell.state.source_depth += 1
+        # bash NEVER changes $0 (script_name) when sourcing — the sourced
+        # file sees the CALLER's $0. Everything else (source depth, the
+        # positional swap with bash's `set`-persistence rule, FunctionReturn,
+        # the RETURN trap, restoration on exception exits, the >256-NUL
+        # binary refusal) is owned by the ONE sourced-program service — the
+        # same service rc loading uses (campaign F3: rc is not a second
+        # source dialect).
+        from ..scripting.program_source import (
+            SourceRequest,
+            execute_sourced_file,
+        )
         try:
-            from ..scripting.input_sources import FileInput
-            from .function_support import FunctionReturn
-            try:
-                with FileInput(script_path) as input_source:
-                    # Execute with no history since it's sourced
-                    exit_code = shell.script_manager.execute_from_source(
-                        input_source, add_to_history=False)
-            except FunctionReturn as ret:
-                # `return N` inside the sourced file: stop executing the file
-                # and make N the exit status of `source` itself (bash).
-                exit_code = ret.exit_code
-            # The RETURN trap fires each time a sourced file finishes —
-            # whether by end-of-file or an explicit `return` — with $? =
-            # the last command's status from before the return (bash).
-            # Unlike functions, `source` never hides the trap (it fires
-            # without set -T). A `return` in the action overrides the
-            # exit status (see TrapManager.execute_return_trap).
-            override = shell.trap_manager.execute_return_trap()
-            if override is not None:
-                exit_code = override
-            return exit_code
+            return execute_sourced_file(
+                shell, SourceRequest(path=script_path, args=source_args))
         except OSError as e:
             self.error(f"{script_path}: {e}", shell)
             return 1
-        finally:
-            shell.state.source_depth -= 1
-            # Restore previous state
-            if has_source_args:
-                shell.state.positional_params = old_positional
-            shell.state.is_script_mode = old_script_mode
 
     def _find_source_file(self, filename: str, shell: 'Shell') -> Optional[str]:
         """Find a source file, searching PATH if needed."""
