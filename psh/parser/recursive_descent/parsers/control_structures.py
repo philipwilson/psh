@@ -25,6 +25,7 @@ from ....ast_nodes import (
 )
 from ....lexer.token_types import TokenType, token_lexeme
 from ..helpers import TokenGroups, unexpected_token_message
+from ..support.syntax_templates import build_arithmetic_template
 from .base import ParserSubcomponent
 
 
@@ -290,13 +291,21 @@ class ControlStructureParser(ParserSubcomponent):
         self.parser.ctx.pop_construct()
         redirects = self.parser.redirections.parse_redirects()
 
+        update = increment if increment else None
+        ctx = self.parser.ctx
+        # Read-time validate nested $() in each clause; the arithmetic grammar
+        # of each clause stays lazy (parsed at its own execution point).
         return CStyleForLoop(
             init_expr=init,
             condition_expr=condition,
-            update_expr=increment if increment else None,
+            update_expr=update,
             body=body,
             redirects=redirects,
-            background=False
+            background=False,
+            init_template=build_arithmetic_template(init, ctx) if init else None,
+            condition_template=(build_arithmetic_template(condition, ctx)
+                                if condition else None),
+            update_template=build_arithmetic_template(update, ctx) if update else None,
         )
 
     def _parse_c_style_for_brace_body(self) -> StatementList:

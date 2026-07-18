@@ -45,6 +45,7 @@ from typing import List, Optional
 
 from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, LiteralPart, Word
 from ....lexer.token_types import Token, TokenType
+from ..support.syntax_templates import build_subscript_spec
 from .base import ParserSubcomponent
 
 # A valid assignment name is a portable identifier at the very start of the
@@ -262,12 +263,15 @@ class ArrayParser(ParserSubcomponent):
         value, value_word = self._element_value_from_head(
             head_token, candidate.head_len)
         subscript = candidate.subscript if candidate.subscript is not None else ''
+        # Read-time validate a nested $() in the subscript (a[$(if)]=v). The
+        # indexed/associative keying stays W2's SubscriptEvaluator.
         return ArrayElementAssignment(
             name=candidate.name,
             index=subscript,
             value=value,
             is_append=is_append,
             value_word=value_word,
+            index_spec=build_subscript_spec(subscript, self.parser.ctx),
         )
 
     def _element_value_from_head(self, head_token: Token,

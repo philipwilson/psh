@@ -208,6 +208,17 @@ class ParseError(PshError):
     caller never has to guess whether it is the raw reason or the full render.
     """
 
+    #: Whether this parse error originated in the BODY of a modern command or
+    #: process substitution ($(...), <(...), >(...)). False for every ordinary
+    #: parse error; True only on :class:`SubstitutionSyntaxError`. It is the
+    #: typed I3 PRODUCER CONTRACT: a substitution-body syntax error is fatal to
+    #: bash's string-execution frames (-c/eval/source, rc 127) while an ordinary
+    #: syntax error is not. Carrying that origin as a TYPE — not by re-parsing or
+    #: string-matching the message — is the semantic fact this boundary used to
+    #: lose. psh keeps its uniform exit code 2 today (the 127/frame-abort mapping
+    #: is I3's consumer job); this flag is behaviorally inert until then.
+    substitution_origin: bool = False
+
     def __init__(self, error_context: ErrorContext):
         self.error_context = error_context
         # .message is the SHORT reason (== summary), never the full render.
@@ -239,3 +250,51 @@ class ParseError(PshError):
     def render(self) -> str:
         """The rich diagnostic: position, source line, caret, suggestions."""
         return self.error_context.format_error()
+
+
+class SubstitutionSyntaxError(ParseError):
+    """A read-time syntax error in a modern substitution body (``$(...)`` etc.).
+
+    A subclass of :class:`ParseError` and therefore BEHAVIORALLY INERT today:
+    every ``except ParseError`` / ``isinstance(e, ParseError)`` site treats it
+    identically, the rendered diagnostic is the same, and psh's uniform
+    syntax-error exit code (2) is unchanged. Its only added fact is
+    ``substitution_origin = True`` — the typed I3 producer contract (see the
+    base attribute). Raised at the ONE chokepoint that parses substitution
+    bodies (``support/nested_parse.parse_nested_command``) and re-raised from
+    the S3 region validator, so no substitution-body syntax error escapes
+    untagged.
+
+    ``from_parse_error`` preserves the original error's structural signals
+    (``at_eof``, ``unclosed_expansion``, ``missing_terminator``) so
+    interactive/script continuation logic that keys on them is unaffected.
+    """
+
+    substitution_origin: bool = True
+
+    @classmethod
+    def from_parse_error(cls, err: 'ParseError') -> 'SubstitutionSyntaxError':
+        """Re-type an ordinary body ``ParseError`` as substitution-origin.
+
+        Copies the structural continuation signals verbatim so retyping is
+        inert. If *err* is already a ``SubstitutionSyntaxError`` (a
+        substitution nested in a substitution) it is returned unchanged, so the
+        INNERMOST origin is preserved rather than re-wrapped.
+        """
+        if isinstance(err, SubstitutionSyntaxError):
+            return err
+        new = cls(err.error_context)
+        new.at_eof = err.at_eof
+        new.unclosed_expansion = err.unclosed_expansion
+        new.missing_terminator = err.missing_terminator
+        return new
+
+
+def is_substitution_origin(err: BaseException) -> bool:
+    """THE named predicate: did this error originate in a substitution body?
+
+    The single seam I3 (and any consumer) uses to recognise the fatal-in-
+    string-channels class, instead of ``isinstance`` checks scattered across
+    call sites or message string-matching.
+    """
+    return getattr(err, 'substitution_origin', False)

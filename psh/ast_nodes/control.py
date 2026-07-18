@@ -9,7 +9,7 @@ bash.)
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from .base import (
     ASTNode,
@@ -19,6 +19,9 @@ from .base import (
 from .commands import StatementList
 from .redirects import Redirect
 from .words import Word
+
+if TYPE_CHECKING:
+    from .syntax_templates import ArithmeticTemplate  # noqa: F401
 
 
 @dataclass
@@ -95,6 +98,18 @@ class CStyleForLoop(UnifiedControlStructure):
     update_expr: Optional[str] = None
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False
+    # Typed carriers (campaign S3) for the three arithmetic clauses. The
+    # *_expr strings stay the LAZY arithmetic-grammar authority (each clause is
+    # arithmetic-parsed at its own execution point, so an unreached update
+    # clause's bad arithmetic never errors — bash timing); the *_template
+    # carriers hold the read-time-validated nested $() for each clause. None
+    # for a missing clause / manually built node. Guard: template.text == *_expr.
+    init_template: Optional['ArithmeticTemplate'] = field(
+        default=None, compare=False, repr=False)
+    condition_template: Optional['ArithmeticTemplate'] = field(
+        default=None, compare=False, repr=False)
+    update_template: Optional['ArithmeticTemplate'] = field(
+        default=None, compare=False, repr=False)
 
 
 @dataclass
@@ -149,3 +164,8 @@ class ArithmeticEvaluation(UnifiedControlStructure):
     expression: str
     redirects: List[Redirect] = field(default_factory=list)
     background: bool = False
+    # Typed carrier (campaign S3). ``expression`` stays the LAZY
+    # arithmetic-grammar authority; ``arith_template`` holds the read-time-
+    # validated nested $(). Guard: ``arith_template.text == expression``.
+    arith_template: Optional['ArithmeticTemplate'] = field(
+        default=None, compare=False, repr=False)

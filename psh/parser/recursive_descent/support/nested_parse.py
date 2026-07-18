@@ -59,13 +59,13 @@ def parse_nested_command(source: str, *, line_offset: int = 0,
     pattern. Imports are local to avoid an import cycle with the parser package,
     which reaches this module through ``WordBuilder``.
     """
-    from ..helpers import ErrorContext, ParseError
+    from ..helpers import ErrorContext, ParseError, SubstitutionSyntaxError
     from ..parser import Parser
 
     if substitution_depth > MAX_SUBSTITUTION_NESTING:
         # Fail before tokenizing/parsing the (potentially huge) body.
         tok = Token(TokenType.EOF, "", 0)
-        raise ParseError(ErrorContext(
+        raise SubstitutionSyntaxError(ErrorContext(
             token=tok,
             message="command substitution nested too deeply",
             position=0, line=1, column=1))
@@ -75,4 +75,14 @@ def parse_nested_command(source: str, *, line_offset: int = 0,
                     heredocs=heredocs, lexer_options=lexer_options)
     parser.ctx.nesting_depth = initial_depth
     parser.ctx.substitution_depth = substitution_depth
-    return parser.parse()
+    # THE chokepoint: any syntax error in a (closed) substitution body is
+    # re-typed with substitution origin. This is the ONE site that parses
+    # modern $()/<()/>() bodies (WordBuilder and the S3 region validator both
+    # route through it), so no substitution-body syntax error escapes untagged.
+    # Genuinely-unterminated substitutions never reach here — the lexer marks
+    # them *_unclosed and the parser raises an at_eof continuation error before
+    # WordBuilder builds the word (commands.py#_check_for_unclosed_expansions).
+    try:
+        return parser.parse()
+    except ParseError as err:
+        raise SubstitutionSyntaxError.from_parse_error(err) from None

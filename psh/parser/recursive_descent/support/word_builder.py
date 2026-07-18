@@ -22,6 +22,11 @@ from ....ast_nodes import (
 from ....core.assignment_utils import SHELL_NAME
 from ....expansion.param_parser import parse_parameter_expansion
 from ....lexer.token_types import Token, TokenType
+from .syntax_templates import (
+    build_arithmetic_template,
+    build_subscript_spec,
+    build_word_template,
+)
 
 # Token types that represent standalone expansion tokens
 # Pre-compiled regex patterns for variable name classification. A ``${inner}``
@@ -117,7 +122,7 @@ class WordBuilder:
             # Simple variable like $USER or ${USER}. Lexer already stripped the
             # leading $, so value is just the name (e.g. 'USER', '$' for $$,
             # '?' for $?, '{HOME}' for ${HOME}).
-            return WordBuilder._variable_name_to_expansion(value)
+            return WordBuilder._variable_name_to_expansion(value, ctx)
 
         elif token_type == TokenType.COMMAND_SUB:
             # Command substitution $(...): parse the body NOW so invalid nested
@@ -136,7 +141,7 @@ class WordBuilder:
 
         elif token_type == TokenType.ARITH_EXPANSION:
             # Arithmetic expansion $((...))
-            return ArithmeticExpansion(strip_arithmetic(value))
+            return WordBuilder._build_arith_expansion(value, ctx)
 
         elif token_type in (TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT):
             # Process substitution <(cmd) or >(cmd) — may stand alone as a
@@ -153,7 +158,7 @@ class WordBuilder:
             return VariableExpansion(value)
 
     @staticmethod
-    def _parse_parameter_expansion(value: str) -> ParameterExpansion:
+    def _parse_parameter_expansion(value: str, ctx=None) -> ParameterExpansion:
         """Parse a parameter expansion like ${var:-default}.
 
         Thin wrapper stripping the ``${``/``}`` delimiters; the grammar
@@ -162,6 +167,13 @@ class WordBuilder:
         Subscripted forms are fully parsed here — ``${arr[@]:1:2}`` is
         ParameterExpansion('arr[@]', ':', '1:2') at parse time, not a
         deferred opaque parameter string.
+
+        At parse time (``ctx`` present or not), the operand word and any
+        parameter subscript get their typed S3 templates attached, which
+        VALIDATES nested modern ``$()`` in them at read time — so
+        ``${x:-$(if)}`` / ``${a[$(if)]}`` reject when the command is read
+        (bash). The pure grammar classifier (param_parser) is unchanged and
+        stays validation-free for the runtime string-expansion path.
         """
         # parse_parameter_expansion always returns a ParameterExpansion (even
         # for an operator-less ${name}), so nothing to brace-flag here. The
@@ -170,10 +182,51 @@ class WordBuilder:
         # branch); this path only handles operator forms.
         if value.startswith('${') and value.endswith('}'):
             value = value[2:-1]
-        return parse_parameter_expansion(value)
+        node = parse_parameter_expansion(value)
+        WordBuilder._attach_param_templates(node, ctx)
+        return node
 
     @staticmethod
-    def _variable_name_to_expansion(name: str) -> Expansion:
+    def _build_arith_expansion(value: str, ctx=None) -> ArithmeticExpansion:
+        """Build an ArithmeticExpansion node and attach its typed template.
+
+        ``value`` is the ``$((...))`` source. The expression text stays the
+        lazy arithmetic-grammar authority; the template carries (and read-time
+        validates) the nested modern ``$()``. Shared by the standalone/composite
+        and fused-part expansion paths so both parsers build the identical node.
+        """
+        expr = strip_arithmetic(value)
+        node = ArithmeticExpansion(expr)
+        node.arith_template = build_arithmetic_template(expr, ctx)
+        return node
+
+    @staticmethod
+    def _attach_param_templates(node: ParameterExpansion, ctx) -> None:
+        """Validate and attach the operand + subscript templates of a ${...}."""
+        if node.word:
+            node.word_template = build_word_template(node.word, ctx)
+        subscript = WordBuilder._extract_subscript(node.parameter)
+        if subscript is not None:
+            node.subscript_spec = build_subscript_spec(subscript, ctx)
+
+    @staticmethod
+    def _extract_subscript(parameter: str) -> Optional[str]:
+        """The subscript text of a ``name[...]`` parameter, or None (nesting-aware)."""
+        bracket = parameter.find('[')
+        if bracket == -1:
+            return None
+        depth = 0
+        for i in range(bracket, len(parameter)):
+            if parameter[i] == '[':
+                depth += 1
+            elif parameter[i] == ']':
+                depth -= 1
+                if depth == 0:
+                    return parameter[bracket + 1:i]
+        return None
+
+    @staticmethod
+    def _variable_name_to_expansion(name: str, ctx=None) -> Expansion:
         """Classify a ``VARIABLE``-token name into its Expansion node.
 
         ``name`` is the lexer's stripped form: a bare name (``USER``, ``?``,
@@ -192,9 +245,15 @@ class WordBuilder:
             if _SIMPLE_VAR_RE.match(inner) or _SPECIAL_VAR_RE.match(inner):
                 # Brace-DELIMITED ${name}: does not fuse with a following
                 # name-char run under brace expansion (see braced field).
-                return VariableExpansion(inner, braced=True)
+                var = VariableExpansion(inner, braced=True)
+                # A subscripted reference (${arr[SUB]}) keeps SUB in the name;
+                # read-time validate a nested $() in it (${a[$(if)]}).
+                subscript = WordBuilder._extract_subscript(inner)
+                if subscript is not None:
+                    var.subscript_spec = build_subscript_spec(subscript, ctx)
+                return var
             # Contains operators — delegate to the parameter expansion parser.
-            return WordBuilder._parse_parameter_expansion(f"${{{inner}}}")
+            return WordBuilder._parse_parameter_expansion(f"${{{inner}}}", ctx)
         return VariableExpansion(name)
 
     @staticmethod
@@ -243,11 +302,11 @@ class WordBuilder:
             # a simple braced name to VariableExpansion(braced=True) — matching
             # the standalone/composite path — and operator forms to the
             # parameter parser.
-            return WordBuilder._variable_name_to_expansion(tp.value)
+            return WordBuilder._variable_name_to_expansion(tp.value, ctx)
 
         elif etype == 'parameter':
             # Value is the full ${...} syntax
-            return WordBuilder._parse_parameter_expansion(tp.value)
+            return WordBuilder._parse_parameter_expansion(tp.value, ctx)
 
         elif etype == 'command':
             src = strip_command_sub(tp.value)
@@ -256,7 +315,7 @@ class WordBuilder:
                 source=src, backtick_style=False)
 
         elif etype == 'arithmetic':
-            return ArithmeticExpansion(strip_arithmetic(tp.value))
+            return WordBuilder._build_arith_expansion(tp.value, ctx)
 
         elif etype == 'backtick':
             # Legacy backtick: not eagerly parsed (see parse_expansion_token).

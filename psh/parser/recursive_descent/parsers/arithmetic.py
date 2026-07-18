@@ -9,6 +9,7 @@ from typing import Optional
 from ....ast_nodes import ArithmeticEvaluation
 from ....lexer.token_stream import TokenStream
 from ....lexer.token_types import TokenType
+from ..support.syntax_templates import build_arithmetic_template
 from .base import ParserSubcomponent
 
 
@@ -31,10 +32,13 @@ class ArithmeticParser(ParserSubcomponent):
 
         redirects = self.parser.redirections.parse_redirects()
 
+        # Read-time validate nested $() in the arithmetic (the arithmetic
+        # grammar itself stays lazy — parsed at execution).
         return ArithmeticEvaluation(
             expression=expr,
             redirects=redirects,
-            background=False
+            background=False,
+            arith_template=build_arithmetic_template(expr, self.parser.ctx),
         )
 
     def _parse_arithmetic_expression_until_double_rparen(self) -> str:

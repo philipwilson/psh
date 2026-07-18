@@ -6,10 +6,13 @@ These appear as the ``array_assignments`` prefix of a SimpleCommand (and
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import TYPE_CHECKING, List, Optional
 
 from .base import ASTNode
 from .words import Word
+
+if TYPE_CHECKING:
+    from .syntax_templates import SubscriptSpec  # noqa: F401
 
 
 @dataclass
@@ -72,3 +75,12 @@ class ArrayElementAssignment(ArrayAssignment):
     # tilde after '='/':'). The A1 invariant tests enforce population.
     value_word: Word
     is_append: bool = False  # True for += assignment
+    # Typed subscript carrier (campaign S3), set by both parsers. ``index``
+    # stays the raw subscript (the lazy authority the executor expands/keys);
+    # ``index_spec`` is the read-time-validation authority — a nested ``$()`` in
+    # the subscript (``a[$(if)]=v``) is validated when the command is read. The
+    # indexed-vs-associative KEYING (the r21 six-implementations consolidation)
+    # is W2's SubscriptEvaluator, NOT decided here. None for manual nodes.
+    # Guard: ``index_spec.text == index``.
+    index_spec: Optional['SubscriptSpec'] = field(
+        default=None, compare=False, repr=False)

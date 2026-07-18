@@ -447,7 +447,9 @@ Deliberate properties of the nested parse:
   process_sub still run the body from `source`. This double-parse mirrors bash
   and keeps alias/byte/status/trap semantics byte-identical to before.
 - **Legacy backticks are excluded** (`program=None`, not eagerly parsed): bash
-  defers backtick parsing and continues around inner errors.
+  defers backtick parsing and continues around inner errors. The deferred-timing
+  policy is the named seam `NestedSub.is_deferred_backtick`
+  (`ast_nodes/syntax_templates.py`).
 - Depth is capped (`nested_parse.MAX_SUBSTITUTION_NESTING`, `ParserContext.`
   `substitution_depth`) so an adversarially deep `$( $( … ) )` chain is a clean,
   bounded `ParseError` rather than an O(n²) re-parse cascade — the interim cost
@@ -456,14 +458,35 @@ Deliberate properties of the nested parse:
 - The combinator parser routes substitution nodes through the SAME `WordBuilder`
   entry points, so parser-differential AST parity holds by direct comparison.
 
-**Known, documented divergences** (bash rejects at read time; psh validates at
-runtime — these route through the raw-string operand/arithmetic engines, not the
-Word AST, so they are out of scope until the expansion-subsystem structured
-work): `${x:-$(if)}` (parameter-expansion word), `$(( $(if) ))` (arithmetic
-operand), and `$(if)` inside a heredoc BODY. Also: a cmdsub-body syntax error in
-`bash -c` exits 127 (a quirk of bash's `-c` handling); psh uses its uniform
-syntax-error code 2. All are pinned in
-`tests/conformance/bash/test_nested_substitution_timing_conformance.py`.
+### Syntax templates: read-time nested validation with lazy own-grammar (S3)
+
+The syntax-bearing regions whose OWN grammar is lazy — a parameter-expansion
+operand (`${x:-WORD}`), an arithmetic expression (`$((E))`, `(( E ))`, a C-style
+`for` clause), and an array subscript (`arr[SUB]`) — no longer carry their nested
+shell grammar as an untyped string. Each gets a typed
+`WordTemplate`/`ArithmeticTemplate`/`SubscriptSpec` (`ast_nodes/syntax_templates.py`)
+built by the named region validators (`support/syntax_templates.py#build_*`).
+The template's `text` stays the raw region (the LAZY arithmetic/pattern authority
+the expansion engines read — dynamic arithmetic keeps working); its `subs` are the
+nested modern `$()`/`<()`/`>()` VALIDATED at read time (backticks deferred). So
+`${x:-$(if)}`, `$(( $(if) ))`, `${a[$(if)]}` now reject when the command is READ,
+matching bash, while `1 << 2` and `op='+'; $((1 $op 2))` stay valid. The invariant
+(template ↔ raw field consistency, no un-validated modern sub, backtick never
+carries a program) is guarded by `tests/unit/tooling/test_syntax_template_guards.py`.
+
+A substitution-body syntax error is raised as `SubstitutionSyntaxError` (an inert
+`ParseError` subclass; `is_substitution_origin`) at the one chokepoint
+`support/nested_parse.py#parse_nested_command`. It is the typed producer contract
+for the exit-code / eval-source-fatality mapping (I3's consumer job); psh keeps
+its uniform syntax-error code 2 today.
+
+**Remaining documented divergences** (pinned in
+`tests/conformance/bash/test_nested_substitution_timing_conformance.py` and
+`test_syntax_template_timing_conformance.py`): a substitution-body syntax error
+exits 127 in bash's string channels (`-c`/eval/source) and ABORTS the enclosing
+eval/source frame, while psh uses its uniform code 2 and continues past the frame
+(same mechanism, carried to campaign I3); and `$(if)` inside a heredoc BODY is
+expanded at runtime by both shells (not a template region).
 
 ## Configuration
 
