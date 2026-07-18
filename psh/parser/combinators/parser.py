@@ -164,7 +164,7 @@ class ParserCombinatorShellParser:
         """
         # Per-call collected-heredoc map: the redirection mixin builds each
         # heredoc Redirect with its spec truth and body AT CONSTRUCTION (the
-        # former post-parse HeredocProcessor attachment walk is retired).
+        # former post-parse attachment-walk visitor is retired).
         self.commands.heredocs = self.heredocs
         tokens, start_pos = self._prepare_tokens(tokens)
 

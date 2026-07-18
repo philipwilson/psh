@@ -8,7 +8,12 @@ import re
 from typing import List
 
 from ....ast_nodes import Redirect
+from ....lexer.heredoc_lexer import (
+    delimiter_token_acceptable,
+    raw_delimiter_from_tokens,
+)
 from ....lexer.token_types import Token, TokenType
+from ....utils.heredoc_detection import unquote_heredoc_delimiter
 from ..helpers import TokenGroups
 from .base import ParserSubcomponent
 
@@ -101,7 +106,6 @@ class RedirectionParser(ParserSubcomponent):
         # (delimiter_token_acceptable: _DELIMITER_PART_TYPES + the procsub
         # no-paren-nesting rule) so the parser accepts exactly the
         # delimiters HeredocLexer registered.
-        from ....lexer.heredoc_lexer import delimiter_token_acceptable
         if (self.parser.at_end()
                 or not delimiter_token_acceptable(self.parser.peek())):
             raise self.parser.error("Expected delimiter after here document operator")
@@ -138,8 +142,6 @@ class RedirectionParser(ParserSubcomponent):
         # recover the raw spelling from the source span when available —
         # token values drop a VARIABLE's `$` and a STRING's quotes — and
         # derive quotedness through the one rule.
-        from ....lexer.heredoc_lexer import raw_delimiter_from_tokens
-        from ....utils.heredoc_detection import unquote_heredoc_delimiter
         source_text = self.parser.ctx.source_text
         start = delim_tokens[0].position
         end = delim_tokens[-1].end_position

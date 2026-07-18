@@ -76,7 +76,6 @@ try it interactively.
 | `commands.py` | Simple commands, pipelines, and-or lists, statement lists |
 | `control_structures/` | Package of mixins: `conditionals.py` (if, case), `loops.py` (while, until, for, select), `structures.py` (functions, subshell/brace groups) |
 | `special_commands.py` | `(( ))`, `[[ ]]`, process substitution (NOT arrays — those live in `arrays.py`) |
-| `heredoc_processor.py` | Post-parse heredoc content population |
 | `utils.py` | Shared combinator helpers |
 | `parser.py` | `ParserCombinatorShellParser` integration class |
 
@@ -168,9 +167,9 @@ class ParserContext:
     current: int             # Current position
     config: ParserConfig
 
-    # Pre-collected heredoc bodies (heredoc-aware parse only), keyed by the
-    # lexer-assigned heredoc_key; None otherwise.
-    heredoc_map: Optional[Mapping[str, object]]
+    # Pre-collected heredocs (heredoc-aware parse only): the LexedUnit's
+    # id-keyed map of LexedHeredoc entries (spec + body); None otherwise.
+    heredocs: Optional[Mapping[int, LexedHeredoc]]
 
     # Source context (for error messages)
     source_text: Optional[str]
@@ -330,20 +329,27 @@ def _parse_compound_component(self) -> Optional[Command]:
 depth-guarded exactly like nested brace groups (no separate dispatch and no
 `parse_control_structure` ladder — both were removed).
 
-### Heredoc Collection
+### Heredoc Collection (campaign S2: one heredoc transaction)
 
 Heredocs are handled in two phases:
-1. The lexer (`tokenize_with_heredocs`) collects each body separately and
-   stamps a `heredoc_key` on the `<<`/`<<-` operator token; the bodies live
-   in a `heredoc_map` returned alongside the tokens.
-2. The parser attaches the body to the `Redirect` node AS IT IS CONSTRUCTED —
-   `parse_with_heredocs` / the interactive trial parse thread the map into
-   `Parser(..., heredoc_map=...)`, and `RedirectionParser._attach_heredoc_body`
-   looks the body up by key. Attachment is key-driven: a heredoc redirect whose
-   key is absent from the map is a hard error (no post-parse AST walk, no
-   delimiter-suffix guessing). The former post-parse `populate_heredoc_content`
-   AST walk was removed. (The educational combinator keeps its own
-   `HeredocProcessor` visitor with identical observable attachment.)
+1. The lexer (`tokenize_with_heredocs`) returns the immutable
+   `LexedUnit(tokens, heredocs)` (`psh/lexer/heredoc_lexer.py`): each
+   heredoc's delimiter facts live in a `HeredocSpec` (ordinal identity, raw
+   spelling, cooked terminator via the ONE quote-removal rule, quoted, tab
+   policy — `psh/utils/heredoc_detection.py#make_heredoc_spec`), its body in
+   a typed `CollectedHeredoc` (DELIMITER vs EOF termination), and the
+   `<<`/`<<-` operator token carries the spec's `heredoc_id`.
+2. Both parsers consume the delimiter tokens positionally but take the
+   delimiter TRUTH (raw target, quotedness, body) from the spec entry by id
+   AS THE `Redirect` IS CONSTRUCTED (`RedirectionParser._parse_heredoc`; the
+   combinator's redirection mixin reads its per-call `heredocs` map the same
+   way — its former post-parse attachment-walk visitor is retired). A heredoc
+   redirect whose id is absent from the map is a hard error (no post-parse
+   AST walk, no delimiter-suffix guessing). `Redirect.target` is the RAW
+   delimiter spelling (what the formatter re-emits); body-close decisions
+   everywhere route through the head-of-queue policy
+   (`PendingHeredocQueue.feed_line` — guarded single caller of
+   `heredoc_terminator_matches`).
 
 ## Testing
 

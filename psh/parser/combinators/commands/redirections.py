@@ -7,7 +7,12 @@ strings, and fd-duplication words for ``CommandParsers``.
 from typing import TYPE_CHECKING, List, Optional
 
 from ....ast_nodes import Redirect
+from ....lexer.heredoc_lexer import (
+    delimiter_token_acceptable,
+    raw_delimiter_from_tokens,
+)
 from ....lexer.token_types import Token
+from ....utils.heredoc_detection import unquote_heredoc_delimiter
 from ..core import ParseResult
 from ._constants import (
     _FD_DUP_BARE_RE,
@@ -67,7 +72,6 @@ class RedirectionMixin(_Base):
             # heredoc_id — mirrors the recursive descent parser's
             # _parse_heredoc. The accept rule is shared with the lexer's
             # registration scan (delimiter_token_acceptable).
-            from ....lexer.heredoc_lexer import delimiter_token_acceptable
             if (pos >= len(tokens)
                     or not delimiter_token_acceptable(tokens[pos])):
                 return ParseResult(
@@ -108,8 +112,6 @@ class RedirectionMixin(_Base):
             # reconstruct the raw spelling from token values (the combinator
             # has no source text) and derive quotedness through the one
             # quote-removal rule — never a private token-type heuristic.
-            from ....lexer.heredoc_lexer import raw_delimiter_from_tokens
-            from ....utils.heredoc_detection import unquote_heredoc_delimiter
             raw = raw_delimiter_from_tokens(delim_tokens)
             _, heredoc_quoted = unquote_heredoc_delimiter(raw)
             redirect = Redirect(type=op_token.value, target=raw,

@@ -48,7 +48,7 @@ retired.
 
 | File | Purpose |
 |------|---------|
-| `__init__.py` | Entry point: `tokenize()` and `tokenize_with_heredocs()` (shared `_post_lex` pipeline) |
+| `__init__.py` | Entry point: `tokenize()` and `tokenize_with_heredocs()` (shared `_post_lex` pipeline; the heredoc-aware entry returns the immutable `LexedUnit(tokens, heredocs)`) |
 | `modular_lexer.py` | Core tokenization engine (~650 lines) |
 | `state_context.py` | `LexicalState` (+ `LexicalRole`/`CasePhase`) - unified state; `LexerContext` alias |
 | `command_position.py` | Command-position vocabulary for all THREE tracking machines (lexer pass, normalizer, cmdsub scanner). Transition tables + asymmetries diagram: `docs/architecture/command_position.md` |
@@ -75,8 +75,8 @@ retired.
 | `expansion_parser.py` | Parse `${}`, `$()`, `$(())`, backticks |
 | `quote_parser.py` | Parse quoted strings (single, double, ANSI-C) |
 | `pure_helpers.py` | Stateless char-level helpers (`QuoteState`, delimiter matching, escape decoding) |
-| `heredoc_lexer.py` | Heredoc tokenization |
-| `heredoc_collector.py` | `HeredocCollector` - gathers pending heredoc bodies line-by-line |
+| `heredoc_lexer.py` | Heredoc tokenization; `LexedUnit`/`LexedHeredoc` (the lexer/parser boundary) |
+| `heredoc_collector.py` | `HeredocCollector` - the FIFO collector (HeredocSpec registration, head-of-queue body gathering, typed CollectedHeredoc) |
 | `token_parts.py` | `TokenPart` (per-part word metadata; RichToken retired) |
 | `unicode_support.py` | Unicode identifier handling |
 | `token_types.py` | `Token` and `TokenType` definitions (shared with the parser) |
@@ -226,7 +226,7 @@ keyword recognizer either: keywords are normalized from WORD tokens by the
 `Token` is `@dataclass(frozen=True)`: once the
 lexer emits a token it is never mutated. Stages that need a changed token build
 a new one with `dataclasses.replace` — the `KeywordNormalizer` (WORD → keyword
-type), the heredoc lexer (attaching `heredoc_key`), and in-parser retypes all
+type), the heredoc lexer (attaching `heredoc_id`), and in-parser retypes all
 do this. `position`/`end_position` are the canonical stored offsets; `span`
 (a `SourceSpan`) is a derived read-only view. `SourceMap` (`position.py`) is the
 one offset → (line, column) + line-text service (the lexer's `PositionTracker`

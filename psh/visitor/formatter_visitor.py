@@ -5,6 +5,7 @@ This visitor demonstrates how to traverse the AST and produce formatted output,
 useful for debugging and understanding AST structure.
 """
 
+from ..utils.heredoc_detection import unquote_heredoc_delimiter  # noqa: I001
 from ..ast_nodes import (
     AndOrList,
     ArithmeticEvaluation,
@@ -676,7 +677,6 @@ class FormatterVisitor(ASTVisitor[str]):
         the line-completing site emits them via ``_flush_line`` — this is the
         single seam every heredoc-bearing construct funnels through (J2).
         """
-        from ..utils.heredoc_detection import unquote_heredoc_delimiter
         for r in redirects:
             if r.type in ('<<', '<<-') and r.heredoc_content is not None:
                 body = r.heredoc_content

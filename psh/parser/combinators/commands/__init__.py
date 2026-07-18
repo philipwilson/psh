@@ -59,7 +59,7 @@ class CommandParsers(RedirectionMixin, SimpleCommandMixin, PipelineMixin, Statem
         # LexedHeredoc entries). ParserCombinatorShellParser.parse assigns it
         # before parsing; the redirection mixin reads it so each heredoc
         # Redirect is built with its spec truth and body AT CONSTRUCTION
-        # (the post-parse HeredocProcessor attachment walk is retired).
+        # (the former post-parse attachment-walk visitor is retired).
         self.heredocs: "Optional[Mapping[int, 'LexedHeredoc']]" = None
 
         self._initialize_parsers()

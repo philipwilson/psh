@@ -3,6 +3,7 @@
 from dataclasses import dataclass, replace
 from typing import List, Optional
 
+from ..utils.heredoc_detection import unquote_heredoc_delimiter
 from .command_position import (
     CASE_TERMINATORS,
     PIPELINE_PREFIX_TOKENS,
@@ -59,9 +60,6 @@ class _HeredocSkip:
                 if token.type == TokenType.WORD:
                     # Raw source spelling -> the literal terminator, via the
                     # one quote-removal rule (never a private approximation).
-                    from ..utils.heredoc_detection import (
-                        unquote_heredoc_delimiter,
-                    )
                     self.delimiter = unquote_heredoc_delimiter(token.value)[0]
                     self.in_body = True
                 elif token.type == TokenType.STRING:

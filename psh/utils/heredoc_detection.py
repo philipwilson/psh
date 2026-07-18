@@ -147,8 +147,10 @@ def unquote_heredoc_delimiter(raw: str) -> tuple[str, bool]:
                     i += 1
             i += 1  # skip the closing quote
         elif c == '$' and i + 1 < n and raw[i + 1] == "'":
-            # ANSI-C $'...': decode escapes with the ONE escape machinery
-            # (lazy import: utils must not import the lexer at module level).
+            # ANSI-C $'...': decode escapes with the ONE escape machinery.
+            # cycle-break: utils.heredoc_detection is module-level-imported
+            # by lexer modules; importing psh.lexer back here at module
+            # level would be a genuine import cycle.
             from ..lexer.pure_helpers import handle_ansi_c_escape
             quoted = True
             i += 2  # skip $'
@@ -270,10 +272,19 @@ class PendingHeredocQueue:
 
     def __init__(self) -> None:
         self._pending: Deque[HeredocSpec] = deque()
+        self._pushed = 0
 
     def push(self, spec: HeredocSpec) -> None:
         """Append a newly opened heredoc (source order)."""
         self._pending.append(spec)
+        self._pushed += 1
+
+    @property
+    def pushed(self) -> int:
+        """How many heredocs were EVER pushed — the next free ordinal for a
+        caller that keys spec identity to this queue's lifetime (the
+        ``$(...)`` extent scanner shares one queue across nested scans)."""
+        return self._pushed
 
     @property
     def head(self) -> Optional[HeredocSpec]:
@@ -630,7 +641,7 @@ def contains_heredoc(command_string: str) -> bool:
     """A cheap OVER-APPROXIMATION: does the command contain a ``<<`` at all?
 
     This is only a gate that decides whether to run the accurate, quote- and
-    grammar-aware scanner (``open_heredoc_delimiters`` /
+    grammar-aware scanner (``open_heredoc_specs`` /
     ``scan_line_heredoc_markers``) — never the final answer. It must NEVER
     return False for a real heredoc, so it deliberately does no arithmetic /
     quote analysis here: a false True just runs the accurate path (which
