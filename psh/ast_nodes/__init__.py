@@ -61,9 +61,13 @@ from .control import (
 from .redirects import Redirect
 
 # Syntax templates (campaign S3) — plain frozen carriers, NOT ASTNode
-# subclasses (so the AST coverage matrix / walk_ast schema, owned by S5, do not
-# enumerate them; they are carried BY nodes, not traversed as nodes). Imported
-# after .words because they reference Expansion/CommandSubstitution.
+# subclasses. Because they are not ASTNodes, the S5 walk_ast schema
+# (psh/visitor/traversal.py#AstChildSchema) never declares them as children and
+# walk_ast never descends into them (the template-descent decision, enforced by
+# construction and pinned in test_ast_child_schema_guard.py); the AST
+# coverage-matrix meta-test likewise skips them. They are carried BY nodes, not
+# traversed as nodes. Imported after .words because they reference
+# Expansion/CommandSubstitution.
 from .syntax_templates import (
     ArithmeticTemplate,
     NestedSub,

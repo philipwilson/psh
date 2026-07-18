@@ -18,7 +18,7 @@ AST → ASTVisitor.visit(node) → visit_NodeType(node) → Result
 | File | Purpose |
 |------|---------|
 | `base.py` | `ASTVisitor[T]` base class |
-| `traversal.py` | `iter_child_nodes()` / `visit_children()` - shared dataclass-field child walk used by the analysis visitors' `generic_visit` |
+| `traversal.py` | `walk_ast()` — the SOLE schema-declared structural traversal (reads `AstChildSchema`); `iter_child_nodes()` is a thin alias, `visit_children()`/`visit_word_substitution_bodies()` its callback protocol, used by the analysis visitors' `generic_visit` |
 | `analysis_helpers.py` | Shared redirect-traversal mixin for analysis visitors |
 | `word_analysis.py` | Structured Word-AST inspection (variable references, word classification) used by the validator/linter/security visitors instead of regexing rendered strings |
 | `constants.py` | Shared data: `SHELL_BUILTINS`, `DANGEROUS_COMMANDS`, `COMMON_TYPOS`, etc. |
@@ -227,6 +227,25 @@ from .traversal import visit_children
 def generic_visit(self, node) -> None:
     visit_children(self, node)   # visits every ASTNode child field
 ```
+
+### Structural traversal is schema-declared (`walk_ast` / `AstChildSchema`, S5)
+
+`walk_ast(node)` (`traversal.py#walk_ast`) is the ONE structural traversal:
+`iter_child_nodes`, `visit_children`, and `visit_word_substitution_bodies` all
+route through it, so no visitor hand-rolls a second generic child enumerator.
+It reads `AstChildSchema` (`traversal.py#AstChildSchema`), which DECLARES each
+concrete node's structural child fields and their container shape
+(`ChildShape.NODE` / `NODE_LIST` / `NODE_TUPLE_LIST`). Declaring the shape is
+what makes the traversal total over the tuple-in-list case
+(`IfConditional.elif_parts`) that a plain "is-it-an-ASTNode?" reflection walk
+silently skipped. The schema is drift-locked against reflection over the node
+annotations by `tests/unit/tooling/test_ast_child_schema_guard.py` (a new or
+removed child-bearing field, or a wrong shape, fails there), and the visualization
+walker `parser/visualization/node_fields.py` is guarded to agree with it. The S3
+syntax templates are deliberately non-`ASTNode`, so they are never in the schema
+and `walk_ast` never descends into them (matching how `CommandSubstitution.program`
+is a declared child yet reached in practice only by the opt-in
+`visit_word_substitution_bodies` helper).
 
 ### Collecting Results
 
