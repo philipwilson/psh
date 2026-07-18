@@ -409,7 +409,6 @@ The parser combinator is a functional parser implementation demonstrating elegan
 - **`control_structures/`** - Control structures (if, while, for, case, select)
 - **`special_commands.py`** - Special constructs (functions, arrays, process substitution)
 - **`parser.py`** - Main ShellParserCombinator class
-- **`heredoc_processor.py`** - Here document two-pass parsing
 
 **Key Features:**
 - **Functional Composition**: Combinators compose to build complex parsers
