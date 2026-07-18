@@ -7,6 +7,15 @@ context-aware parsing, semantic analysis, and enhanced error recovery.
 """
 
 from .config import ParserConfig
+from .parse_inputs import ParseInputs, ParserState
+from .parse_outcome import (
+    Complete,
+    ExpectedInput,
+    Incomplete,
+    Invalid,
+    ParseOutcome,
+    materialize,
+)
 from .recursive_descent.helpers import (
     ParseError,
     SubstitutionSyntaxError,
@@ -23,6 +32,11 @@ __all__ = [
     'parse', 'parse_with_heredocs', 'create_parser', 'Parser',
     # Configuration
     'ParserConfig',
+    # Immutable inputs / mutable state (campaign S4)
+    'ParseInputs', 'ParserState',
+    # Total parse outcome (campaign S4)
+    'ParseOutcome', 'Complete', 'Incomplete', 'Invalid', 'ExpectedInput',
+    'materialize',
     # Errors
     'ParseError',
     'SubstitutionSyntaxError',

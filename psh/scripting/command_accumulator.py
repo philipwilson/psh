@@ -11,12 +11,13 @@ comes from the REAL lexer and parser:
 
 - the lexer raises a structured ``UnclosedQuoteError`` when a quote spans
   the end of input;
-- the parser raises ``ParseError`` with ``at_eof=True`` (and
-  ``unclosed_expansion`` for ``$(``/``${``/``$((``/backtick) when the parse
-  fails at end of input, i.e. more lines could complete it;
-- the parser's ``ParserContext.open_constructs`` trail records which
-  constructs were still open at that failure ('if', 'then', 'while', ...),
-  which is exactly what the interactive continuation prompt wants to show;
+- the parser returns the typed ``Complete | Incomplete | Invalid`` outcome
+  (``parser.parse_outcome()``, campaign S4). ``Incomplete`` means the parse
+  failed at end of input, i.e. more lines could complete it; it carries an
+  ``ExpectedInput`` with the unclosed-expansion kind (``$(``/``${``/``$((``/
+  backtick) and the open-construct trail ('if', 'then', 'while', ...) — exactly
+  what the interactive continuation prompt wants to show. ``Invalid`` means the
+  command is complete but ill-formed; ``Complete`` carries the parsed AST;
 - heredoc bodies are tracked by the shared detector in
   ``utils/heredoc_detection.py`` (a body line like ``)`` must never be
   shown to the parser as command text).
@@ -36,7 +37,9 @@ if TYPE_CHECKING:
     from ..ast_nodes import ASTNode
 
 from ..lexer import UnclosedQuoteError
-from ..parser import ParseError, Parser
+from ..parser import Parser
+from ..parser.parse_outcome import Incomplete as ParsedIncomplete
+from ..parser.parse_outcome import Invalid as ParsedInvalid
 from ..utils import (
     PendingHeredocQueue,
     contains_heredoc,
@@ -127,8 +130,6 @@ class CommandAccumulator:
         # compared with later pending delimiters (H1/G1), and never
         # re-scanning (or re-parsing) the whole buffer per body line.
         self._open_heredocs = PendingHeredocQueue()
-        # The trial parser's live open-construct trail (see _trial_parse).
-        self._open_constructs: List[str] = []
 
     # === Buffer state ===
 
@@ -244,56 +245,63 @@ class CommandAccumulator:
         if contains_history_reference(preview):
             return self._complete(raw, preview)
 
-        # 4. The real oracle: tokenize and parse the preview.
+        # 4. The real oracle: tokenize and parse the preview into the honest
+        #    Complete | Incomplete | Invalid outcome sum (campaign S4). Only
+        #    the LEXER layer still signals through exceptions (an unclosed
+        #    quote / other lexer SyntaxError raised before parsing).
         try:
-            ast, tokens = self._trial_parse(preview)
+            outcome, tokens = self._trial_parse(preview)
         except UnclosedQuoteError as e:
             return NeedMore(
                 Hint(HintKind.UNCLOSED_QUOTE, detail=e.quote_char))
-        except ParseError as e:
-            if e.at_eof:
-                # Structurally incomplete: the parse failed at end of
-                # input, so more lines could complete it. The hint carries
-                # what the parser knows — which expansion is unclosed,
-                # and which constructs are still open.
-                if e.unclosed_expansion:
-                    kind, detail = HintKind.UNCLOSED_EXPANSION, e.unclosed_expansion
-                else:
-                    kind, detail = HintKind.INCOMPLETE_STRUCTURE, None
-                return NeedMore(
-                    Hint(kind, detail=detail,
-                         constructs=tuple(self._open_constructs)))
-            # A real syntax error: the command is complete but invalid.
-            return self._complete(raw, preview, error=e)
         except SyntaxError as e:
             # Lexer errors other than unclosed quotes are real errors too.
             return self._complete(raw, preview, error=e)
 
-        return self._complete(raw, preview, ast=ast, tokens=tokens)
+        if isinstance(outcome, ParsedIncomplete):
+            # Structurally incomplete: the parse failed at end of input, so
+            # more lines could complete it. The typed ExpectedInput carries
+            # what the parser knows — which expansion is unclosed, and which
+            # constructs are still open.
+            expected = outcome.expected
+            if expected.unclosed_expansion:
+                kind, detail = HintKind.UNCLOSED_EXPANSION, expected.unclosed_expansion
+            else:
+                kind, detail = HintKind.INCOMPLETE_STRUCTURE, None
+            return NeedMore(
+                Hint(kind, detail=detail, constructs=expected.constructs))
+        if isinstance(outcome, ParsedInvalid):
+            # A real syntax error: the command is complete but invalid.
+            return self._complete(raw, preview, error=outcome.error)
+
+        # Complete: reuse the parsed AST for execution.
+        return self._complete(raw, preview, ast=outcome.program, tokens=tokens)
 
     # === Internals ===
 
     def _trial_parse(self, preview: str):
-        """Tokenize and parse ``preview`` with the recursive-descent parser.
+        """Tokenize and parse ``preview``, returning ``(ParseOutcome, tokens)``.
 
         Shares the heredoc-aware lex→alias seam
         (:func:`scripting.lex_parse.lex_and_expand`) with the execution and
-        analysis paths, but builds the recursive-descent ``Parser`` itself:
-        the completeness oracle reads its ``open_constructs`` trail and relies
-        on its ``at_eof`` / ``unclosed_expansion`` signals, which the combinator
-        parser does not provide — so the trial is recursive-descent regardless
-        of the active parser (its AST is reused for execution only when
-        recursive descent is active too). A completed heredoc buffer lexes with
-        ``tokenize_with_heredocs`` so body lines stay out of the token stream (a
-        body line like ``)`` must not be a parse error), and the collected map
-        is threaded so each ``<<``/``<<-`` Redirect gets its body at
-        construction. ``warn_unterminated=False``: a trial must never print the
-        unterminated-heredoc warning — the execution pass, which re-lexes or
-        reuses this AST, warns. ``lexer_options`` mirrors the execution lexing so
-        a nested substitution body re-lexes with the same options (extglob).
+        analysis paths, but builds the recursive-descent ``Parser`` itself and
+        asks it for the typed ``Complete | Incomplete | Invalid`` outcome
+        (campaign S4): the completeness oracle relies on the ``Incomplete``
+        variant's open-construct trail and ``unclosed_expansion`` kind, which
+        the combinator parser does not compute — so the trial is
+        recursive-descent regardless of the active parser (its AST is reused for
+        execution only when recursive descent is active too). A completed
+        heredoc buffer lexes with ``tokenize_with_heredocs`` so body lines stay
+        out of the token stream (a body line like ``)`` must not be a parse
+        error), and the collected map is threaded so each ``<<``/``<<-``
+        Redirect gets its body at construction. ``warn_unterminated=False``: a
+        trial must never print the unterminated-heredoc warning — the execution
+        pass, which re-lexes or reuses this AST, warns. ``lexer_options``
+        mirrors the execution lexing so a nested substitution body re-lexes with
+        the same options (extglob). The lexer may still raise
+        ``UnclosedQuoteError`` / ``SyntaxError`` here; ``feed`` catches those.
         """
         from .lex_parse import lex_and_expand
-        self._open_constructs = []
         tokens, heredocs = lex_and_expand(
             preview, self.shell,
             base_line=self.start_line,
@@ -303,9 +311,7 @@ class CommandAccumulator:
                         line_offset=max(0, self.start_line - 1),
                         heredocs=heredocs,
                         lexer_options=self.state.options)
-        self._open_constructs = parser.ctx.open_constructs
-        ast = parser.parse()
-        return ast, tokens
+        return parser.parse_outcome(), tokens
 
     def _complete(self, raw: str, preview: str, ast=None, tokens=None,
                   error=None) -> Complete:

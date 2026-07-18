@@ -26,7 +26,8 @@ from typing import List, Optional, Tuple
 from ..lexer import UnclosedQuoteError, tokenize
 from ..lexer.keyword_defs import matches_keyword
 from ..lexer.token_types import TokenType
-from ..parser import ParseError, Parser
+from ..parser import Parser
+from ..parser.parse_outcome import Incomplete as ParsedIncomplete
 from ..utils import contains_heredoc, open_heredoc_specs
 from ..utils.heredoc_detection import scan_line_heredoc_markers
 
@@ -149,13 +150,16 @@ def _trial_parse(tokens: list) -> Tuple[Optional[str], Tuple[str, ...]]:
     expansion kind ('command', 'backtick', 'arithmetic', 'parameter') if
     the parse failed at end of input inside one, and the parser's
     open-construct trail (('case',), ('case', 'if'), ...).
+
+    Reads the parser's typed ``Incomplete`` outcome (campaign S4): an
+    end-of-input failure is exactly ``Incomplete``, whose ``ExpectedInput``
+    already carries both facts. A ``Complete`` or ``Invalid`` outcome means the
+    accumulated tokens are not open at EOF.
     """
-    parser = Parser(tokens)
-    try:
-        parser.parse()
-    except ParseError as e:
-        if e.at_eof:
-            return e.unclosed_expansion, tuple(parser.ctx.open_constructs)
+    outcome = Parser(tokens).parse_outcome()
+    if isinstance(outcome, ParsedIncomplete):
+        expected = outcome.expected
+        return expected.unclosed_expansion, expected.constructs
     return None, ()
 
 
