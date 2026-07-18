@@ -21,7 +21,8 @@ PSH_DIR = REPO_ROOT / "psh"
 # The ONLY modules that may touch sys.argv.
 ALLOWED = {
     "psh/__main__.py",
-    "psh/invocation.py",
+    # psh/invocation.py is deliberately NOT allowlisted: parse_invocation is
+    # pure (argv passed in), and the ratchet holds it to that.
 }
 
 

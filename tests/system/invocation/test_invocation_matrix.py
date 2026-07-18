@@ -152,6 +152,9 @@ MATRIX = [
     ("plus_B_braceexpand_off", ["--norc", "+B", "-c", "echo {a,b}"],
      None, None, None),
     ("noexec_n", ["--norc", "-n", "-c", "echo hi"], None, None, None),
+    # --- integrator fixup rows (verify NITs: unpinned coupling + mode-blind bang) ---
+    ("o_ignoreeof_binds_var",
+     ["--norc", "-o", "ignoreeof", "-c", "echo $IGNOREEOF"], None, None, None),
 ]
 
 _HISTORY_ROWS = {"i_s_loads_and_records_history", "ic_does_not_load_history",
@@ -223,6 +226,17 @@ class TestPshOnlyRows:
                    cwd=str(tmp_path), histfile=str(tmp_path / "hf"))
         assert psh.returncode == 0
         assert psh.stdout.startswith("Python Shell (psh) version ")
+
+    def test_o_vi_clears_emacs(self, tmp_path):
+        # Integrator fixup pin (verify NIT): routing CLI transitions through
+        # apply_set_o_option means -o vi fires the vi/emacs coupling exactly
+        # like `set -o vi` (the old raw options-dict write left emacs on).
+        psh = _run([sys.executable, "-m", "psh", "--norc", "-o", "vi",
+                    "-c", "set +o"], stdin=None, cwd=str(tmp_path),
+                   histfile=str(tmp_path / "hf"))
+        assert psh.returncode == 0
+        assert "set -o vi" in psh.stdout
+        assert "set +o emacs" in psh.stdout
 
     def test_help_is_long_option_only(self, tmp_path):
         psh = _run([sys.executable, "-m", "psh", "--help"], stdin=None,
