@@ -2,9 +2,13 @@
 
 R18 T2-E (M-, LOW): psh's shared script validator returns 126 for a directory,
 unreadable file, or binary — correct for the `psh file` INVOCATION path. bash's
-`source` diverges: it returns 1 for a directory or unreadable file, reserving
-126 for a binary file. `SourceBuiltin.execute` now remaps the non-binary
-failures. Pinned against bash 5.2.
+`source` diverges: it returns 1 for a directory or unreadable file.
+`SourceBuiltin.execute` remaps those. As of campaign F3 (probes A6-A13,
+behaviorally pinned against the LIVE resolved oracle — the C sources are
+commentary only), `source` never content-sniffs:
+its `cannot execute binary file` refusal (126) fires only after MORE THAN 256
+deleted NUL bytes — a small NUL-carrying file is NUL-filtered and executed.
+Pinned against bash 5.2.
 """
 import os
 import subprocess
@@ -48,11 +52,21 @@ def test_source_unreadable_file_returns_1(tmp_path):
         f.chmod(0o644)
 
 
-def test_source_binary_returns_126(tmp_path):
-    # A regular file with a NUL before the first newline is "binary".
+def test_source_small_binary_runs_after_nul_filter(tmp_path):
+    # bash 5.2's `source` has NO content sniff (unlike the invocation
+    # path): the two adjacent NULs truncate the text at `\x7fELF`, which
+    # runs as a command-not-found — 127, not 126 (F3 probes A6/A12).
     f = tmp_path / 'bin.sh'
     f.write_bytes(b'\x7fELF\x00\x00binary\n')
-    assert _source_rc_psh(str(f)) == 126
+    assert _source_rc_psh(str(f)) == _source_rc_bash(str(f)) == 127
+
+
+def test_source_true_binary_returns_126(tmp_path):
+    # More than 256 deleted NULs is bash's actual `source` binary rule
+    # (builtins/evalfile.c; F3 probe A13).
+    f = tmp_path / 'big.bin'
+    f.write_bytes(b'\x7fELF' + b'\x00noise\x00' * 300 + b'\n')
+    assert _source_rc_psh(str(f)) == _source_rc_bash(str(f)) == 126
 
 
 def test_source_nonexistent_returns_1(tmp_path):

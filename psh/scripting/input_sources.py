@@ -6,10 +6,16 @@ This module provides different input sources for the shell:
 - StdinInput: Read commands LAZILY from fd 0 (a script delivered on stdin)
 
 (Interactive REPL input is handled by psh/interactive/, not here.)
+
+Construction happens ONLY through ``ProgramSource.make_input_source()``
+(``psh/scripting/program_source.py``) — the one normalization boundary that
+decides each channel's byte/NUL policy and per-channel parse flags.  Direct
+construction elsewhere in ``psh/`` is forbidden by the static ratchet
+``tests/unit/tooling/test_program_source_guard.py``.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 
 class InputSource(ABC):
@@ -54,6 +60,24 @@ class InputSource(ABC):
     # shell, so plain scripts/stdin without -i never expand.)
     history_expansion_eligible: bool = True
 
+    # Whether a FunctionReturn escaping this source's top level (no
+    # enclosing executor) STOPS the source — the sourced-program channels
+    # (source/., rc), where `return` outside a function legally ends the
+    # file. The source processor re-raises so execute_sourced_file
+    # (program_source.py) resolves it; other sources keep the historical
+    # swallow-per-buffer behavior (a subshell-style child that inherited a
+    # sourced-file context). Set by ProgramSource.make_input_source().
+    stops_on_function_return: bool = False
+
+    def __enter__(self) -> 'InputSource':
+        """Context protocol: sources that own resources override (FileInput
+        reads its file here); the string/stdin sources need no setup."""
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object,
+                 exc_tb: object) -> None:
+        return None  # deliberate no-op default (B027): nothing to release
+
     @abstractmethod
     def read_line(self) -> Optional[str]:
         """Read the next line from the input source.
@@ -96,9 +120,14 @@ class FileInput(InputSource):
     """
 
     def __init__(self, file_path: str,
-                 eof_drops_dangling_continuation: bool = False):
+                 eof_drops_dangling_continuation: bool = False,
+                 content_filter: Optional[Callable[[str], str]] = None):
         self.file_path = file_path
         self.eof_drops_dangling_continuation = eof_drops_dangling_continuation
+        # The channel's NUL policy from ProgramSource (strip_nul_stream for
+        # a script-file argument, the evalfile filter for source/rc);
+        # applied to the decoded content before line-splitting.
+        self.content_filter = content_filter
         self.line_number = 0
         self.lines: List[str] = []
 
@@ -125,6 +154,10 @@ class FileInput(InputSource):
         with open(self.file_path, 'r', encoding='utf-8',
                   errors='surrogateescape', newline='') as f:
             content = f.read()
+        if self.content_filter is not None:
+            # The channel's NUL policy (program_source.py) — decided once,
+            # before the text is split into lines.
+            content = self.content_filter(content)
         self._load_lines(content)
         return self
 
@@ -284,6 +317,15 @@ class StdinInput(InputSource):
             return None
         self._last_hit_delimiter = self._reader.last_record_hit_delimiter
         self.line_number += 1
+        # Stream-channel NUL policy: bash's shell_getc layer discards every
+        # NUL byte it reads (`e\0cho hi` on stdin runs `echo hi`); a script
+        # on stdin is never content-sniffed. Deleting per record equals
+        # deleting over the stream, since NUL never ends a record. This IS
+        # the _CHANNEL_POLICY STDIN_SCRIPT row's _STREAM policy, applied
+        # here because the lazy fd read has no whole-content filter seam —
+        # if the table row changes, this line must change with it (mirror
+        # comment on the row in program_source.py).
+        record = record.replace(b'\x00', b'')
         return record.decode('utf-8', errors='surrogateescape')
 
     def is_interactive(self) -> bool:

@@ -4,14 +4,22 @@ import stat
 import sys
 
 from .base import ScriptComponent
+from .program_source import BINARY_SNIFF_WINDOW, looks_binary_sample
 
 
 class ScriptValidator(ScriptComponent):
     """Validates script files before execution."""
 
-    def validate_script_file(self, script_path: str) -> int:
+    def validate_script_file(self, script_path: str,
+                             binary_sniff: bool = True) -> int:
         """
         Validate script file and return appropriate exit code.
+
+        ``binary_sniff`` selects the script-INVOCATION channel's content
+        sniff (bash ``check_binary_file``).  The ``source`` builtin passes
+        False: bash 5.2 never content-sniffs a sourced file — its binary
+        refusal is the sourced-program service's >256-NUL rule
+        (psh/scripting/program_source.py).
 
         Returns:
             0 if file is valid
@@ -30,18 +38,23 @@ class ScriptValidator(ScriptComponent):
             print(f"psh: {script_path}: Permission denied", file=sys.stderr)
             return 126
 
-        if self.is_binary_file(script_path):
+        if binary_sniff and self.is_binary_file(script_path):
             print(f"psh: {script_path}: cannot execute binary file", file=sys.stderr)
             return 126
 
         return 0
 
     def is_binary_file(self, file_path: str) -> bool:
-        """Check if file is binary: a NUL byte before the first newline (bash's rule).
+        """Bash's script-invocation binary sniff (``check_binary_file``).
+
+        The rule set lives in ``program_source.looks_binary_sample`` (ELF
+        magic; ``#!`` first line makes a NUL anywhere in the sample binary;
+        otherwise a NUL before the first newline) over bash's exact 80-byte
+        window — a NUL at byte 90 does NOT refuse the file (probe A11).
 
         Only regular files are sniffed.  Reading from a pipe, FIFO, or device
-        here would CONSUME bytes the real open is about to read — `psh <(...)`,
-        `psh /dev/stdin`, and `source /dev/stdin` would silently no-op (bash
+        here would CONSUME bytes the real open is about to read — `psh <(...)`
+        and `psh /dev/stdin` would silently no-op (bash
         never re-reads its script fd, so it has no such hazard).  High bytes
         are NOT binary markers: a UTF-8 (or Latin-1) script must run.
         """
@@ -49,10 +62,10 @@ class ScriptValidator(ScriptComponent):
             if not stat.S_ISREG(os.stat(file_path).st_mode):
                 return False
             with open(file_path, 'rb') as f:
-                chunk = f.read(1024)
+                sample = f.read(BINARY_SNIFF_WINDOW)
                 # A /dev/fd path on macOS opens as a dup() SHARING the original
                 # descriptor's offset; rewind so the sniff leaves no trace.
                 f.seek(0)
-            return b'\0' in chunk.split(b'\n', 1)[0]
+            return looks_binary_sample(sample)
         except OSError:
             return True  # If we can't read it, assume binary

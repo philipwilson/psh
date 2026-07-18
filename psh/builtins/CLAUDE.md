@@ -59,7 +59,7 @@ The builtins subsystem provides shell built-in commands via a decorator-based re
 | File | Commands |
 |------|----------|
 | `function_support.py` | `declare`, `typeset`, `readonly`, `return` |
-| `source_command.py` | `source`, `.` |
+| `source_command.py` | `source`, `.` — thin: resolve the file (PATH walk via `CommandResolver.search_path`, mode=R_OK) and pre-flight it (no content sniff — bash's `source` has none); EXECUTION goes through the ONE sourced-program service (`psh/scripting/program_source.py#execute_sourced_file`, shared with rc loading), which owns source depth, positionals (with bash's `set`-persistence rule), `return`, the RETURN trap, and the >256-NUL binary refusal (campaign F3; guarded by `tests/unit/tooling/test_program_source_guard.py`) |
 | `eval_command.py` | `eval` |
 | `let_builtin.py` | `let` |
 

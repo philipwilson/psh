@@ -282,8 +282,20 @@ class ShellState:
 
         # Depth of nested `source`/`.` execution. `return` is legal inside a
         # sourced script (it stops the file), so ReturnBuiltin checks this in
-        # addition to function_stack.
+        # addition to function_stack. Maintained ONLY by the sourced-program
+        # service (psh/scripting/program_source.py#execute_sourced_file),
+        # which `source`/`.` AND rc loading share.
         self.source_depth = 0
+
+        # Whether the `set` builtin assigned the positional parameters since
+        # the flag was last saved. bash's dollar_vars_changed/ARGS_SETBLTIN:
+        # an args-passed `source` restores the caller's positionals on exit
+        # UNLESS the sourced file ran `set` (then the new values persist and
+        # the flag is consumed); function calls save/restore the flag with
+        # their own positional frame, so a `set` inside a function never
+        # marks the enclosing source (probes D5-D5g, F3). `shift` does not
+        # count (probe D5b).
+        self.positionals_changed_by_set = False
 
         # Re-entrancy depth of arithmetic evaluation. A variable whose value is
         # itself an expression is evaluated recursively (`x="x+1"; $((x))`), so
@@ -504,6 +516,7 @@ class ShellState:
         # `return` is legal in a child of a function/sourced-file context.
         self.function_stack = parent.function_stack.copy()
         self.source_depth = parent.source_depth
+        self.positionals_changed_by_set = parent.positionals_changed_by_set
 
         # Process-local arithmetic re-entrancy: a fresh evaluation context.
         self._arith_recursion_depth = 0

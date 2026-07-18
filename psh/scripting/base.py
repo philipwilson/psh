@@ -65,7 +65,9 @@ class ScriptManager:
         """
         return self.source_processor.execute_as_main(input_source, add_to_history)
 
-    def validate_script_file(self, script_path: str) -> int:
-        """Pre-flight file checks + syntax validation for a script file
-        (see ``ScriptValidator.validate_script_file``)."""
-        return self.script_validator.validate_script_file(script_path)
+    def validate_script_file(self, script_path: str,
+                             binary_sniff: bool = True) -> int:
+        """Pre-flight file checks for a script file; ``binary_sniff=False``
+        for the source channel (see ``ScriptValidator.validate_script_file``)."""
+        return self.script_validator.validate_script_file(
+            script_path, binary_sniff=binary_sniff)
