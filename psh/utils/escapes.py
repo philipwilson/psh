@@ -235,3 +235,37 @@ def quote_at_q(s: str) -> str:
     if has_control_char(s):
         return "$'" + ansi_c_encode(s) + "'"
     return single_quote(s)
+
+
+# Characters forcing an associative-array KEY into double quotes in reuse
+# output (`declare -p` / `${a[@]@A}` / `${a[@]@K}`). bash 5.2 (probe-verified
+# 2026-07-18): quoted for whitespace, quoting chars, `$`/backtick, glob and
+# bracket chars, redirection/control operators, `!` and `^`; BARE for
+# `. - : _ / , # = % +` and for `@`/`~` EMBEDDED in a longer key. The
+# whole-string specials `@`, `*` and `~` quote even alone (as bare subscript
+# text they would mean all-elements / tilde expansion on re-parse).
+_ASSOC_KEY_NEEDS_QUOTE = set(' \t\n"\'\\$`*?[]{}()<>|&;!^')
+_ASSOC_KEY_WHOLE_STRING_QUOTED = {'@', '*', '~'}
+
+
+def _escape_dquote(value: str) -> str:
+    """Escape for double-quoted reuse output (backslash, quote, `$`, backtick)."""
+    return (value.replace('\\', '\\\\').replace('"', '\\"')
+            .replace('$', '\\$').replace('`', '\\`'))
+
+
+def format_assoc_key(key: str) -> str:
+    """Render an associative-array key for reusable output — THE one rule.
+
+    Shared by ``declare -p`` (builtins/declare_format.py) and the ``@A``/``@K``
+    transforms (expansion/arrays.py), so a key renders identically on every
+    reuse surface (bash does the same): ``$'...'`` when it holds control
+    characters, double-quoted when it holds shell-special characters (or IS
+    ``@``/``*``/``~``, or is empty), bare otherwise.
+    """
+    if has_control_char(key):
+        return "$'" + ansi_c_encode(key) + "'"
+    if (key and key not in _ASSOC_KEY_WHOLE_STRING_QUOTED
+            and not any(c in _ASSOC_KEY_NEEDS_QUOTE for c in key)):
+        return key
+    return f'"{_escape_dquote(key)}"'

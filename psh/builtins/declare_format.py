@@ -7,6 +7,7 @@ no shell dependency.
 """
 from ..core.variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 from ..utils.escapes import ansi_c_encode, has_control_char
+from ..utils.escapes import format_assoc_key as _format_assoc_key
 
 # Attribute → flag char, in the order bash prints them.
 # Empirically verified against bash 5: the order is `a A i n r t x l u`
@@ -52,19 +53,15 @@ def quote_array_element(value: str) -> str:
     return quote_scalar_double(value)
 
 
-# Characters that force an associative-array KEY to be double-quoted in
-# `declare -p` output (bash leaves "plain" keys — alnum plus -._/:@+ — bare).
-_KEY_NEEDS_QUOTE = set(' \t\n"\'\\$`*?[]{}()<>|&;~#!=')
-
-
 def format_assoc_key(key: str) -> str:
-    """Render an associative-array key for reusable `declare -p` output:
-    bare when it has no shell-special characters (matching bash), else
-    double-quoted with the same escaping as a value. Without this, a key
-    containing a space/`$`/etc. produced non-re-parseable output."""
-    if key and not any(c in _KEY_NEEDS_QUOTE for c in key):
-        return key
-    return f'"{escape_value(key)}"'
+    """Render an associative-array key for reusable ``declare -p`` output.
+
+    Delegates to THE one key-rendering rule (``utils/escapes.py``:
+    ``$'...'`` for control characters, double-quoted for shell-special or
+    whole-string ``@``/``*``/``~`` keys, bare otherwise) shared with the
+    ``@A``/``@K`` transforms, so a key renders identically on every reuse
+    surface — bash does the same (campaign W2)."""
+    return _format_assoc_key(key)
 
 
 def format_declaration(var: Variable) -> str:

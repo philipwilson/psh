@@ -7,6 +7,7 @@ methods use ``self.shell`` / ``self.state`` from the host class.
 from typing import TYPE_CHECKING, Optional, Tuple
 
 from ..core import AssociativeArray, IndexedArray, NamerefCycleError, UnboundVariableError
+from ..utils.escapes import format_assoc_key
 
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
@@ -228,7 +229,10 @@ class ArrayOpsMixin(_Base):
 
         if var and isinstance(var.value, AssociativeArray):
             # bash emits a trailing space before ')' for associative arrays.
-            items = ' '.join(f'[{k}]={dq(v)}' for k, v in var.value.items())
+            # Keys render through THE one rule (utils/escapes.format_assoc_key),
+            # identically to declare -p (campaign W2).
+            items = ' '.join(f'[{format_assoc_key(k)}]={dq(v)}'
+                             for k, v in var.value.items())
             body = f'{items} ' if items else ''
             return f"declare -{flags} {array_name}=({body})"
         elif var and isinstance(var.value, IndexedArray):
@@ -261,7 +265,8 @@ class ArrayOpsMixin(_Base):
         Associative arrays get a trailing space (matching bash formatting).
         """
         pairs = self._array_keyvalue_pairs(var)
-        body = ' '.join(f'{k} {self._at_a_quote(v)}' for k, v in pairs)
+        body = ' '.join(f'{format_assoc_key(k)} {self._at_a_quote(v)}'
+                        for k, v in pairs)
         if var and isinstance(var.value, AssociativeArray) and body:
             body += ' '
         return body
