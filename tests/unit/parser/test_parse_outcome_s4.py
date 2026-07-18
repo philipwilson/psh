@@ -158,6 +158,32 @@ def test_combinator_parse_outcome_incomplete_at_eof():
     assert outcome.expected.constructs == ()
 
 
+# === DISCLOSED DIVERGENCE: combinator classifies unclosed EXPANSIONS as
+# Invalid where RD gives Incomplete (RD is faithful to the at_eof continuation
+# semantics; the combinator's expansion sub-parses do not surface at_eof).
+# No live surface consumes the combinator outcome (PS2/accumulator/cmdhist are
+# RD-only; the executor uses raising parse()). Pinned so drift is VISIBLE:
+# if the combinator gains at_eof-faithful expansion errors, these flip to
+# Incomplete and this pin must be updated — and the I3 carry requires closing
+# this divergence before I3 may consume the combinator outcome surface.
+
+_UNCLOSED_EXPANSION_DIVERGENCES = [
+    ("unclosed_cmdsub", "echo $(cat"),
+    ("unclosed_operand_cmdsub", "echo ${x:-$("),
+    ("unclosed_arith", "echo $((1+"),
+    ("unclosed_nested_cmdsub", "echo $(echo $(cat"),
+    ("unclosed_backtick_in_cmdsub", "echo $(echo `cat"),
+]
+
+
+@pytest.mark.parametrize(
+    "label,src", _UNCLOSED_EXPANSION_DIVERGENCES,
+    ids=[r[0] for r in _UNCLOSED_EXPANSION_DIVERGENCES])
+def test_unclosed_expansion_outcome_divergence_is_pinned(label, src):
+    assert isinstance(_rd_outcome(src), Incomplete)
+    assert isinstance(_comb_outcome(src), Invalid)
+
+
 # === the variants are frozen typed values ===
 
 @pytest.mark.parametrize("outcome,attr", [
