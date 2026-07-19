@@ -39,13 +39,17 @@ class TestH13ShadowingUnsetLocal(ConformanceTest):
             'export V=out; f(){ local V; printf "[%s]\\n" "${V:+D}"; }; f')
 
     def test_declared_unset_local_question_aborts(self):
-        # ${V?} fires because V is unset (not the exported outer): the shell aborts.
+        # ${V?} fires because the LOCAL V is unset (not the exported outer): the
+        # shell aborts before `echo AFTER` (rc 127, no output). Without `local V`
+        # this would read the global "out" and NOT abort. The error MESSAGE is
+        # suppressed (2>/dev/null) because it differs only in the documented
+        # location prefix (`psh:` vs the bash argv0); the abort is the behavior.
         self.assert_identical_behavior(
-            'export V=out; f(){ echo "${V?msg}"; }; f; echo AFTER')
+            'export V=out; f(){ local V; echo "${V?msg}"; }; f 2>/dev/null; echo AFTER')
 
     def test_declared_unset_local_assign_default(self):
         self.assert_identical_behavior(
-            'export V=out; f(){ echo "${V=assigned}"; echo "now=[$V]"; }; f')
+            'export V=out; f(){ local V; echo "${V=assigned}"; echo "now=[$V]"; }; f')
 
     def test_env_provided_var_local_shadow_unset(self):
         self.assert_identical_behavior(
