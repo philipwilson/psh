@@ -9,6 +9,7 @@ from .special_registry import (
     SpecialContext,
     SpecialParameterState,
 )
+from .variable_lookup import LookupStatus, VariableLookup
 from .variable_store import VariableStore
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
@@ -295,33 +296,54 @@ class ScopeManager:
             raise RuntimeError("Cannot pop global scope")
 
     def get_variable(self, name: str, default: Optional[str] = None) -> Optional[str]:
-        """Get variable value as string, following namerefs, or default."""
-        var = self._lookup_resolved(name)
-        if var:
-            return var.as_string()
-        return default
+        """Get variable value as string, following namerefs, or default.
 
-    def _lookup_resolved(self, name: str) -> Optional[Variable]:
-        """Look up a variable, following a nameref chain to its target.
-
-        A nameref stores its target *name* as its value. Returns the final
-        non-nameref Variable, or the nameref itself when its target is empty
-        (so reading a target-less nameref yields nothing). A cyclic chain
-        warns and reads as unset (bash: "warning: a: circular name
-        reference", the expansion is empty, status unchanged).
+        A thin projection of :meth:`lookup` (THE read authority): a name that is
+        MISSING or PRESENT_UNSET returns ``default``; only a VALUE yields its
+        string. There is no environment fallback — a declared-unset local never
+        resurrects an outer exported value (appraisal #20 H13).
         """
-        var = self.get_variable_object(name)
-        seen = set()
-        while var is not None and var.is_nameref:
+        result = self.lookup(name)
+        return result.value if result.status is LookupStatus.VALUE else default
+
+    def lookup(self, name: str) -> VariableLookup:
+        """THE tri-state variable-read authority.
+
+        Follows a nameref chain (read semantics) to its final target, then
+        classifies that target as MISSING / PRESENT_UNSET / VALUE. A
+        declared-unset local (tombstone, bare ``local x``, or declared-but-unset
+        export) stops the lookup at PRESENT_UNSET — it never falls through to an
+        outer instance or the environment (appraisal #20 H13). A cyclic nameref
+        warns and reads as MISSING (bash: expansion empty, status unchanged).
+
+        Consumers ask ``result.is_set`` (VALUE only — ``${x+w}`` / ``${x-w}``
+        set-ness), ``result.value`` (the string when set), and ``result.binding``
+        (the resolved cell, read-only). See ``variable_lookup.py``.
+        """
+        seen: set = set()
+        current = name
+        while True:
+            var = self.get_variable_object(current)
+            if var is None:
+                break
+            if not var.is_nameref:
+                return VariableLookup.of_value(var.as_string(), var)
             target = str(var.value) if var.value else ''
             if not target:
-                return var  # empty target — read the nameref's own value
+                # Empty-target nameref reads as its own (empty) value.
+                return VariableLookup.of_value(var.as_string(), var)
             if target in seen:
                 self.warn_nameref_cycle(name)
-                return None
+                return VariableLookup.missing()
             seen.add(target)
-            var = self.get_variable_object(target)
-        return var
+            current = target
+        # get_variable_object returned None: distinguish a genuinely MISSING name
+        # from a declared-unset cell (tombstone / declared-but-unset) that shows
+        # through get_declared_variable_object but reads as unset.
+        declared = self.get_declared_variable_object(current)
+        if declared is not None and declared.is_unset:
+            return VariableLookup.present_unset(declared)
+        return VariableLookup.missing()
 
     def warn_nameref_cycle(self, name: str) -> None:
         """Print bash's circular-nameref warning.
@@ -617,6 +639,24 @@ class ScopeManager:
         self._notify_path_changed(name)
         self._notify_variable_changed(name)
 
+    def _function_prefix_binding(self, name: str) -> Optional[Variable]:
+        """The current function invocation's prefix binding for *name*, or None.
+
+        A ``X=1 func`` prefix is modelled as a temp-env scope pushed directly
+        BELOW the function's own scope (``push_temp_env_scope``), so from the
+        function body the prefix layer is ``scope_stack[-2]`` when it is present.
+        bash merges those prefix vars into the function's locals, so a value-less
+        ``local x`` inherits the prefix binding rather than tombstoning over it.
+        Returns the binding only for a genuine prefix layer (``is_temp_env``);
+        an ordinary caller scope below the function is not a prefix.
+        """
+        if len(self.scope_stack) < 2:
+            return None
+        below = self.scope_stack[-2]
+        if below.is_temp_env and name in below.variables:
+            return below.variables[name]
+        return None
+
     def create_local(self, name: str, value: Optional[Any] = None,
                      attributes: VarAttributes = VarAttributes.NONE):
         """Create a local variable in the current scope.
@@ -689,6 +729,19 @@ class ScopeManager:
             assert existing_local is not None  # narrow for type-checker
             existing_local.attributes = attributes
             self._debug_print(f"Re-declaring local (attrs only): {name}")
+            self._notify_variable_changed(name)
+        elif (prefix := self._function_prefix_binding(name)) is not None:
+            # A function-prefix assignment (``x=1 f``) already made the name a
+            # local of THIS invocation — bash merges a function's prefix vars
+            # into its locals — so a value-less ``local x`` INHERITS the prefix
+            # value (and its export), rather than shadowing it with a tombstone.
+            # ``local x=`` (a value was given) still overrides via the branch
+            # above, and an outer function's ordinary local is NOT inherited (the
+            # prefix binding lives in the temp-env scope directly below this one).
+            var = Variable(name=name, value=prefix.value, attributes=attributes)
+            self.current_scope.variables[name] = var
+            self._debug_print(
+                f"Creating local from function prefix: {name} = {prefix.value}")
             self._notify_variable_changed(name)
         else:
             # Create a declared-but-unset local (``local var``): it

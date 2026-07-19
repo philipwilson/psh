@@ -7,7 +7,7 @@ slicing (:off:len), and @-transforms. Mixed into VariableExpander
 """
 
 import sys
-from typing import TYPE_CHECKING, NoReturn, Optional, cast
+from typing import TYPE_CHECKING, NoReturn, Optional
 
 from ..core import (
     AssociativeArray,
@@ -25,10 +25,6 @@ if TYPE_CHECKING:
     _Base = VariableExpanderProtocol
 else:
     _Base = object
-
-# Sentinel distinguishing an unset variable from one set to the empty
-# string (used by the non-colon operators ${x-}, ${x+}, ...).
-_UNSET = object()
 
 
 class OperatorOpsMixin(_Base):
@@ -167,7 +163,11 @@ class OperatorOpsMixin(_Base):
         """
         if var_name == '':
             return False
-        if var_name in ('?', '$', '!', '#', '-', '0'):
+        if var_name == '!':
+            # $! is UNSET until the first background job runs, then stays set to
+            # the last bg pid (bash: ``${!-x}`` yields ``x`` before any ``&``).
+            return self.state.last_bg_pid is not None
+        if var_name in ('?', '$', '#', '-', '0'):
             return True
         if var_name in ('@', '*'):
             return len(self.state.positional_params) > 0
@@ -189,10 +189,10 @@ class OperatorOpsMixin(_Base):
             if index_expr in ('@', '*'):
                 return var.value is not None
             return var.value is not None and self._eval_array_index(index_expr) == 0
-        # _UNSET is an identity sentinel for "variable absent"; the cast is
-        # type-only (get_variable's default is typed str), the `is not`
-        # identity check is unchanged.
-        return self.state.get_variable(var_name, cast(str, _UNSET)) is not _UNSET
+        # The tri-state authority: a name is "set" only when it resolves to a
+        # VALUE — a declared-unset local (PRESENT_UNSET) is unset, and there is
+        # no environment fallback to resurrect an outer exported value (#20 H13).
+        return self.state.scope_manager.lookup(var_name).is_set
 
     @staticmethod
     def _nonassignable_subject(var_name: str) -> Optional[str]:
