@@ -37,6 +37,7 @@ reinvents the unsafe `dup2` + blanket-close recipe.
 | `process_sub.py` | `ProcessSubstitutionHandler` + `ProcessSubstitutionResource` - process substitution (`<()`, `>()`) |
 | `planner.py` | `RedirectPlanner`/`RedirectPlan` - the shared resolve→expand→procsub planning phase; `plan_program` classifies a command's redirects into one ordered `RedirectProgram` |
 | `redirect_program.py` | `RedirectProgram`/`RedirectOp`/`RedirectOpKind` - the typed, source-ordered redirect operation sequence and its one immediate applicator `apply_in_order` (campaign R1) |
+| `input_cursor.py` | `OpenDescription` (owned open-file-description identity) + `InputCursorRegistry` (per-shell `ShellState.input_cursors`, campaign I1). `read`/`mapfile` borrow a persistent `InputCursor` (the reader in `builtins/input_reader.py`) keyed by description so a `read -N` count-boundary surplus survives across invocations. `exec 0<file` rebinds → new cursor (hook: `command.py#_rebind_input_cursors_after_exec`). SCOPED: dup-cross-fd sharing + temp-frame isolation are the deferred additive FULL fidelity; `OpenDescription` is the type R1 here-input can adopt |
 
 ## Core Patterns
 
