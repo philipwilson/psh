@@ -107,6 +107,12 @@ class ShellState:
         # snapshot()/restore() own the save/restore of that override state.
         self.streams = StreamBindings()
 
+        # Input cursors keyed by owned open-file-description identity (campaign
+        # I1): read/mapfile borrow a persistent InputCursor per description so a
+        # count-boundary surplus survives across invocations. Process-local (a
+        # forked child starts empty), like the stream bindings above.
+        self.input_cursors = self._new_input_cursor_registry()
+
         # Environment and variables (the ONE read of os.environ — see
         # the class docstring for the environment policy)
         self.env = os.environ.copy()
@@ -489,6 +495,16 @@ class ShellState:
                 on_grant=self._on_activation_grant)
         service.ensure_applied()
 
+    @staticmethod
+    def _new_input_cursor_registry():
+        """Build a fresh input-cursor registry (campaign I1).
+
+        Imported lazily so ``psh.core`` does not import ``psh.io_redirect`` at
+        module load (that package imports core — a top-level import would cycle).
+        """
+        from ..io_redirect.input_cursor import InputCursorRegistry
+        return InputCursorRegistry()
+
     @classmethod
     def clone_for_child(cls, parent: 'ShellState',
                         context: ChildContext = ChildContext.SUBSHELL,
@@ -545,6 +561,10 @@ class ShellState:
         # level; each child installs its own overrides (subshell pipes,
         # capture buffers) rather than the parent's.
         self.streams = StreamBindings()
+
+        # Input cursors are process-local too: a forked child inherits no
+        # userspace read buffer (campaign I1; bash carries none across a fork).
+        self.input_cursors = self._new_input_cursor_registry()
 
         # Environment + variable scopes: EXACT copies, no import, no seeding.
         self.env = parent.env.copy()

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 from ..core import IndexedArray, ReadError, VarAttributes
 from ..lexer.unicode_support import is_valid_name
 from .base import Builtin
-from .input_reader import InputReader, Outcome, make_reader
+from .input_reader import InputCursor, Outcome
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -103,10 +103,13 @@ class ReadBuiltin(Builtin):
                 return 1
 
         try:
-            # A single streaming reader over the resolved source (real fd or an
+            # A single streaming cursor over the resolved source (real fd or an
             # injected text stream) backs every mode below; it decodes UTF-8
             # incrementally and never consumes past the record it is asked for.
-            reader = make_reader(shell, options['fd'])
+            # The cursor is keyed to fd's open-file-description and PERSISTS
+            # across read invocations (campaign I1), so a `read -N` that split a
+            # malformed multibyte leaves its surplus for the next read.
+            reader = shell.state.input_cursors.cursor_for_fd(shell, options['fd'])
 
             # `read -t 0` is a non-consuming poll: success (0) if the fd is
             # readable (data ready OR at EOF), 1 if a read would block. It
@@ -230,7 +233,7 @@ class ReadBuiltin(Builtin):
             self.error(str(e), shell)
             return 1
 
-    def _read_continuations(self, line: str, reader: InputReader, delim: str,
+    def _read_continuations(self, line: str, reader: InputCursor, delim: str,
                             status: str) -> Tuple[str, str, bool]:
         """Honor backslash-<delimiter> line continuation (bash, non-raw).
 
@@ -618,7 +621,7 @@ class ReadBuiltin(Builtin):
             shell.stdout.flush()
         return on_char
 
-    def _read_normal(self, reader: InputReader,
+    def _read_normal(self, reader: InputCursor,
                      delimiter: str) -> Tuple[str, str]:
         """Read until the delimiter with no limit, echo, or timeout.
 
@@ -633,7 +636,7 @@ class ReadBuiltin(Builtin):
             delimiter=delimiter, include_delimiter=(delimiter == '\n'))
         return result.data, self._status(result)
 
-    def _read_special(self, reader: InputReader, fd: int, delimiter: str,
+    def _read_special(self, reader: InputCursor, fd: int, delimiter: str,
                       max_chars: Optional[int], silent: bool,
                       shell: 'Shell') -> Tuple[str, str]:
         """Read with special modes (silent and/or character limit).
@@ -683,7 +686,7 @@ class ReadBuiltin(Builtin):
         return result.data, self._status(result)
 
     def _read_exact(self, options: Dict[str, Any], var_names: List[str],
-                    shell: 'Shell', reader: InputReader) -> int:
+                    shell: 'Shell', reader: InputCursor) -> int:
         """Implement ``read -N count`` (read EXACTLY count characters).
 
         Unlike -n, the delimiter is ignored entirely and IFS does not split
@@ -727,7 +730,7 @@ class ReadBuiltin(Builtin):
 
         return 0 if ok else 1
 
-    def _read_with_timeout(self, reader: InputReader, fd: int, timeout: float,
+    def _read_with_timeout(self, reader: InputCursor, fd: int, timeout: float,
                            delimiter: str, max_chars: Optional[int],
                            silent: bool, shell: 'Shell') -> Tuple[str, str]:
         """Read with timeout support.
