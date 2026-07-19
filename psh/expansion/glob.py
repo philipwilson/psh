@@ -31,10 +31,12 @@ _POSIX_CLASSES = {
     'cntrl': '\x00-\x1f\x7f',   # 0x00-0x1f and 0x7f (literal control bytes)
 }
 
-# The pathname (``glob.glob``) path splits patterns on ``/`` before matching, so
-# a bracket range must not carry a literal ``/``. punct is the only class that
-# spans ``/`` (0x2f): drop it there — no filename can contain ``/``, so the
-# matched set is identical. Every other class is reused verbatim.
+# A slash-free variant of the class table: a pathname pattern is split on
+# ``/`` before per-component matching, so a bracket range must not carry a
+# literal ``/``. punct is the only class that spans ``/`` (0x2f): drop it
+# there — no filename can contain ``/``, so the matched set is identical.
+# Production-DEAD after W3 (the engine resolves classes via the locale
+# service); referenced only by ``normalize_bracket_expressions`` below.
 _POSIX_CLASSES_PATHNAME = {**_POSIX_CLASSES, 'punct': ':-@!-.[-`{-~'}
 
 _POSIX_CLASS_RE = re.compile(r'\[:(\w+):\]')
@@ -88,18 +90,19 @@ def translate_posix_classes(pattern: str) -> str:
 
 
 def normalize_bracket_expressions(pattern: str) -> str:
-    """Adapt shell bracket expressions to the form stdlib ``glob.glob`` /
-    ``fnmatch`` understand.
+    """Adapt shell bracket expressions to the form stdlib ``fnmatch``
+    understands (POSIX ``[[:class:]]`` → equivalent ranges, ``[^...]`` →
+    ``[!...]``).
 
-    Translates POSIX character classes ``[[:alpha:]]`` to equivalent ranges and
-    converts ``[^...]`` negation to fnmatch's ``[!...]`` form. This is now the
-    input shim for the ONE remaining ``fnmatch``-based path: the default
-    pathname-expansion walker (``glob.glob`` in ``GlobExpander.expand``). Every
-    other shell glob consumer — ``case`` / ``[[ == ]]`` / parameter expansion
-    (``psh/expansion/pattern.py``) and the nocaseglob / extglob / globstar
-    walkers (via ``_compile_component`` below) — routes through the single
-    glob→regex converter ``extglob.glob_to_regex_body`` instead, which handles
-    these bracket forms natively and never needs this rewrite.
+    PRODUCTION-DEAD after campaign W3: every pathname consumer now matches
+    per-name through the ONE compiled pattern engine
+    (``_component_matcher`` above), which handles these bracket forms
+    natively, so no production path needs this rewrite. Kept solely as the
+    historical-reference half of the ``fnmatch`` oracle in
+    ``tests/unit/expansion/test_unified_glob_converter.py``; slated for the
+    deferred census deletion alongside the retired regex-converter family
+    (``extglob.glob_to_regex_body`` / ``extglob_to_regex`` /
+    ``_convert_pattern``).
     """
     # POSIX classes first (so a negated class like [^[:digit:]] still works).
     # The pathname table drops '/' from punct (glob.glob splits on '/').

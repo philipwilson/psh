@@ -31,7 +31,7 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `operands.py` | `OperandOpsMixin` - expands pattern/replacement operands, `glob_escape()` |
 | `fields.py` | `FieldExpansionMixin` - `expand_to_fields()` for multi-field `$@`/array results |
 | `pattern.py` | `match_shell_pattern()` - the thin full-match facade for `case`/`[[ == ]]`/name filters: `PatternCompiler.compile(pattern).full_match(...)` — plain AND extglob route through the one engine (campaign W3; no regex path) |
-| `pattern_engine.py` | THE compiled shell-pattern engine: `PatternCompiler.compile`(raw string)/`compile_protected`(protection runs) → `CompiledPattern` with the FOUR relations (`full_match`/`matching_ends`/`matching_starts`/`span_at`+`matching_spans`); ITERATIVE memoized matcher (no recursion); `MatchProfile` (for_pathname, ic). Legacy `compile_pattern`/`reachable_ends`/`fullmatch`/`match_at`/`count_states` kept (see "Pattern matching engine" below) |
+| `pattern_engine.py` | THE compiled shell-pattern engine: `PatternCompiler.compile`(raw string)/`compile_protected`(protection runs) → `CompiledPattern` with the FOUR relations (`full_match`/`matching_ends`/`matching_starts`/`span_at`+`matching_spans`); iterative stars + literal chains (two-pointer boolean / forward position-set DP — star count never consumes recursion frames), recursion ONLY for extglob nesting depth; `MatchProfile` (for_pathname, ic). Legacy `compile_pattern`/`reachable_ends`/`fullmatch`/`match_at`/`count_states` kept (see "Pattern matching engine" below) |
 | `extglob.py` | Extglob scanning primitives (`_find_matching_paren`, `_split_pattern_list`, `_bracket_end`, `_bracket_match`), locale-aware bracket membership (`_bracket_to_regex`), and thin `extglob_fullmatch`/`extglob_match_at`/`_extglob_consume` that delegate to `pattern_engine`. (`glob_to_regex_body`/`extglob_to_regex`/`_convert_pattern` are production-DEAD after W3 — the regex matching path was retired; kept only as test oracles pending a census deletion) |
 | `parameter_expansion.py` | `ParameterExpansionOps` - string ops behind the operators (incl. `PATSUB_MATCH`); the engine, not the `ParameterExpansion` AST node |
 | `command_sub.py` | `CommandSubstitutionExecutor` - runs `$(cmd)` and `` `cmd` ``; the engine, not the `CommandSubstitution` AST node |
@@ -284,16 +284,20 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
   and `span_at(text, pos)` / `matching_spans(text)` (leftmost-longest
   substitution). `parameter_expansion.py` calls these directly — no operator
   builds a regex or does its own anchoring.
-- **Memoized; literal chains are iterative.** The matcher memoizes each
-  `(sequence, index, position)` state, so the adversarial plain glob `*a*a…*b`
-  and ambiguous extglob `*(a|aa)c` are `O(nodes·positions)`, not exponential
-  (#20 H7-c; the old Python-`re` plain path backtracked catastrophically). A run
-  of single-continuation nodes (`Literal`/`AnyChar`/`Bracket`) is consumed by an
-  inner while-loop, not recursion, so an arbitrarily long literal chain no longer
-  raises `RecursionError` (#20 H7-b); recursion depth is bounded by the pattern's
-  `Star`/`Extglob` branch count, not its length. `full_match` short-circuits (it
-  does not build the whole reachable-end set); the substitution scan reuses one
-  matcher across positions.
+- **Stars and literal chains are ITERATIVE; recursion only for extglob
+  nesting.** The boolean full match for extglob-free sequences (every plain
+  glob) is the classic two-pointer backtrack — zero recursion, one backtrack
+  point per star — and the reachable-end set is a forward position-set DP that
+  processes each element once (a `Star` becomes an interval union). Star and
+  literal COUNT therefore never consume recursion frames (a 50,000-star
+  pattern matches at any recursion limit — #20 H7-b + the W3 bounce ruling),
+  and the DP is its own memoization, so adversarial repetition (`*a*a…*b`,
+  `*(a|aa)c`) stays `O(nodes·positions)`, never exponential (#20 H7-c). The
+  ONLY recursion is into extglob alternatives — bounded by extglob NESTING
+  depth, a compile-time structural property; at the bound psh raises
+  `RecursionError` as an expected shell error (probed: bash 5.2 SEGFAULTS at
+  depth 30k where psh fails cleanly — pinned in `test_pattern_relations.py` +
+  the nightly benchmark tier).
 - **Policies stay outside the matcher** as a typed `MatchProfile`
   (`for_pathname`, `ic`); bracket membership and case folding delegate to the
   shared, locale-aware `extglob._bracket_match`/`_eq`, so POSIX `[:class:]`

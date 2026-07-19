@@ -96,6 +96,14 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
                      ic: bool = False) -> str:
     """Convert a shell pattern (with extglob operators) to a Python regex.
 
+    PRODUCTION-DEAD after campaign W3: every matching consumer routes through
+    the compiled engine (``pattern_engine``); no production code builds a
+    matching regex any more. Kept solely as the independent test ORACLE for
+    the engine's random-corpus differential
+    (``test_pattern_engine_matcher.py``); slated for the deferred census
+    deletion with ``glob_to_regex_body`` / ``_convert_pattern`` /
+    ``glob.normalize_bracket_expressions``.
+
     Args:
         pattern: Shell pattern potentially containing extglob operators.
         anchored: If True, anchor the regex (``^`` and/or ``\\Z``).
@@ -125,15 +133,16 @@ def glob_to_regex_body(pattern: str, for_pathname: bool = False,
                        extglob: bool = True, ic: bool = False) -> str:
     """Convert a shell glob pattern to an *unanchored* regex body.
 
-    The public entry point for the shared glob→regex conversion. Callers that
-    need anchoring add ``^``/``\\Z`` themselves (see ``extglob_to_regex`` and
-    ``PatternMatcher.shell_pattern_to_regex``). ``ic`` (``nocasematch``) keeps
-    ``[:upper:]``/``[:lower:]`` case-sensitive; see ``_bracket_to_regex``.
+    PRODUCTION-DEAD after campaign W3 (see ``extglob_to_regex`` above): the
+    former regex matching path was retired; kept only as a test oracle,
+    slated for the deferred census deletion. Callers that need anchoring add
+    ``^``/``\\Z`` themselves. ``ic`` (``nocasematch``) keeps ``[:upper:]``/
+    ``[:lower:]`` case-sensitive; see ``_bracket_to_regex``.
 
     The body is wrapped in ``(?s:...)`` (DOTALL) so the ``.``/``.*`` emitted
     for ``?``/``*`` match a newline like a real shell glob. The wrapper is
-    scoped, not a compile flag, precisely because this string is embedded in
-    larger regexes by callers (anchoring, prefix/suffix normalisation).
+    scoped, not a compile flag, because this string is embedded in larger
+    regexes (anchoring).
     """
     return ('(?s:'
             + _convert_pattern(pattern, for_pathname, extglob,
