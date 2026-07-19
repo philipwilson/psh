@@ -235,13 +235,25 @@ class ExportBuiltin(Builtin):
         attribute on a declared-but-unset variable: no environment entry
         appears until it is assigned (bash: ``export FOO; printenv FOO``
         fails, then ``FOO=now`` makes it visible to children).
+
+        A NAMEREF name exports its TARGET; a MISSING target gets the
+        declared-unset exported cell under the TARGET name — created
+        non-locally, so it survives the function (bash: ``f(){ declare -n
+        r=gv; export r; gv=5; }; f; printenv gv`` prints 5 — R2-B5 probe).
+        A cyclic chain warns twice and skips, rc 0 (R2-B2).
         """
         scope_manager = shell.state.scope_manager
-        if scope_manager.get_variable_object(key) is not None:
-            scope_manager.apply_attribute(key, VarAttributes.EXPORT)
+        try:
+            target = scope_manager.resolve_nameref_name(key)
+        except NamerefCycleError:
+            scope_manager.warn_nameref_cycle(key)
+            scope_manager.warn_nameref_cycle(key)
+            return
+        if scope_manager.get_variable_object(target) is not None:
+            scope_manager.apply_attribute(target, VarAttributes.EXPORT)
         else:
             scope_manager.set_variable(
-                key, "", attributes=VarAttributes.EXPORT | VarAttributes.UNSET,
+                target, "", attributes=VarAttributes.EXPORT | VarAttributes.UNSET,
                 local=False)
 
     def _export_functions(self, names: List[str], shell: 'Shell', *,

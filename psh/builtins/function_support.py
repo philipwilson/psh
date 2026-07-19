@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, cast
 from ..core import (
     AssociativeArray,
     IndexedArray,
+    NamerefCycleError,
     ReadonlyVariableError,
     SpecialBuiltinUsageError,
     TargetScope,
@@ -577,6 +578,38 @@ class DeclareBuiltin(Builtin):
             # bare ``declare NAME`` is local (== ``local NAME``), so an
             # outer-scope variable is invisible and must not be mutated — a
             # fresh local shadow is created instead (bash).
+            #
+            # A NAMEREF name resolves to its TARGET first (unless the op
+            # changes the nameref attribute itself): the target may live in
+            # ANY scope (the upvar idiom mutates a caller's local), and a
+            # MISSING target gets a declared-unset attribute-carrying cell in
+            # declare's target scope — bash ``declare -n r=missing; declare -i
+            # r`` leaves ``declare -i missing`` (R2-B5 probe matrix). A cyclic
+            # chain warns twice and skips the op, rc 0 (R2-B2).
+            sm = shell.state.scope_manager
+            target = arg
+            if not ((attributes | remove_attrs) & VarAttributes.NAMEREF):
+                try:
+                    target = sm.resolve_nameref_name(arg)
+                except NamerefCycleError:
+                    sm.warn_nameref_cycle(arg)
+                    sm.warn_nameref_cycle(arg)
+                    return 0
+            if target != arg:
+                # Nameref redirect: the op acts on the target WHEREVER it
+                # lives (not just declare's own scope — upvar semantics).
+                if sm.get_declared_variable_object(target) is not None:
+                    if remove_attrs:
+                        sm.remove_attribute(
+                            target, remove_attrs, global_scope=options['global'])
+                    if attributes:
+                        sm.apply_attribute(
+                            target, attributes, global_scope=options['global'])
+                else:
+                    self._set_variable_with_attributes(
+                        shell, target, "",
+                        attributes | VarAttributes.UNSET, options['global'])
+                return 0
             existing = self._declared_in_target_scope(shell, arg, options['global'])
             if existing:
                 if remove_attrs:

@@ -2,7 +2,7 @@
 
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
-from .exceptions import ReadonlyVariableError
+from .exceptions import NamerefCycleError, ReadonlyVariableError
 from .locale_service import active_locale
 from .special_registry import (
     OPTION_REFLECTION_SPECIALS,
@@ -705,6 +705,30 @@ class ScopeManager:
             return below.variables[name]
         return None
 
+    def _tempvar_inherit_source(self, name: str) -> Optional[Variable]:
+        """The variable a value-less ``local name`` INHERITS from, or None.
+
+        bash (att_tempvar model, R2-B1 probe matrix): a value-less ``local x``
+        copies the VALUE of the variable it shadows iff that variable carries
+        temp-env provenance — the function-prefix binding itself (``x=5 f``,
+        held here in the temp-env scope), or a local that (re)declared it in
+        the prefixed invocation (TEMPVAR flag). The nearest enclosing instance
+        decides: a provenance-less local (or a tombstone) in between BLOCKS
+        inheritance, and a plain global never qualifies (``x=5; f(){ g; };
+        g(){ local x; }`` reads unset). The scan excludes the current scope
+        (redeclares are handled separately) and the global scope.
+        """
+        for scope in reversed(self.scope_stack[1:-1]):
+            if name not in scope.variables:
+                continue
+            var = scope.variables[name]
+            if var.is_unset:
+                return None      # a tombstone shadows: nothing to inherit
+            if scope.is_temp_env or (var.attributes & VarAttributes.TEMPVAR):
+                return var
+            return None          # nearest instance lacks provenance
+        return None
+
     def create_local(self, name: str, value: Optional[Any] = None,
                      attributes: VarAttributes = VarAttributes.NONE):
         """Create a local variable in the current scope.
@@ -718,6 +742,23 @@ class ScopeManager:
         for scope in self.scope_stack[:-1]:  # Check all but current
             if name in scope.variables and scope.variables[name].is_readonly:
                 raise ReadonlyVariableError(name)
+        # A READONLY dynamic special (``readonly SECONDS``) records the
+        # attribute on the special registry's persistent overlay — no stored
+        # cell exists, so the loop above cannot see it. bash REFUSES the
+        # masking local (``local: SECONDS: readonly variable``, rc 1, function
+        # continues, reads stay dynamic) — R2-B4 probe matrix.
+        if (self._special.has_lifecycle(name)
+                and not self._local_shadows_special(name)
+                and (self._special.attributes_for(name) & VarAttributes.READONLY)):
+            raise ReadonlyVariableError(name)
+        # Temp-env provenance (bash att_tempvar): a local that (re)declares the
+        # SAME invocation's function-prefix binding — ``x=5 f`` then any
+        # ``local x[=V]`` in f — carries the TEMPVAR flag, so a deeper
+        # value-less ``local x`` can inherit its value (R2-B1 probe matrix:
+        # ``f(){ local x=L; g; }; g(){ local x; echo $x; }; x=5 f`` prints L,
+        # while the same chain WITHOUT the prefix reads unset).
+        if self._function_prefix_binding(name) is not None:
+            attributes |= VarAttributes.TEMPVAR
 
         # Re-declaring a variable ALREADY local in this scope MERGES its
         # existing attributes (bash): ``local -u x=ab; local x+=cd`` keeps
@@ -778,18 +819,21 @@ class ScopeManager:
             existing_local.attributes = attributes
             self._debug_print(f"Re-declaring local (attrs only): {name}")
             self._notify_variable_changed(name)
-        elif (prefix := self._function_prefix_binding(name)) is not None:
-            # A function-prefix assignment (``x=1 f``) already made the name a
-            # local of THIS invocation — bash merges a function's prefix vars
-            # into its locals — so a value-less ``local x`` INHERITS the prefix
-            # value (and its export), rather than shadowing it with a tombstone.
+        elif (source := self._tempvar_inherit_source(name)) is not None:
+            # A value-less ``local x`` INHERITS the value (and, via the
+            # shadowed-EXPORT rule above, the export) of a temp-env-provenance
+            # variable it shadows: the SAME invocation's prefix binding
+            # (``x=1 f`` — bash merges prefix vars into the function's locals)
+            # or an enclosing invocation's TEMPVAR local, at ANY call depth.
+            # The COPY carries TEMPVAR only in the prefixed invocation itself
+            # (the |= above); a deeper copy is an ordinary local, so a third
+            # frame does not inherit through it unless bash would (R2-B1).
             # ``local x=`` (a value was given) still overrides via the branch
-            # above, and an outer function's ordinary local is NOT inherited (the
-            # prefix binding lives in the temp-env scope directly below this one).
-            var = Variable(name=name, value=prefix.value, attributes=attributes)
+            # above, and a provenance-less shadowed variable is NOT inherited.
+            var = Variable(name=name, value=source.value, attributes=attributes)
             self.current_scope.variables[name] = var
             self._debug_print(
-                f"Creating local from function prefix: {name} = {prefix.value}")
+                f"Creating local from temp-env provenance: {name} = {source.value}")
             self._notify_variable_changed(name)
         else:
             # Create a declared-but-unset local (``local var``): it
@@ -1208,8 +1252,17 @@ class ScopeManager:
         # r`` / ``readonly r`` mark x — EXCEPT when the attribute being changed
         # IS the nameref attribute itself (``declare -n``/``declare +n``), where
         # it lands on the nameref cell. A non-nameref name resolves to itself.
+        # A CYCLIC chain warns TWICE and the op is SKIPPED, rc 0 (bash 5.2
+        # probe, R2-B2: ``declare -n a=b; declare -n b=a; declare -i a`` prints
+        # two circular-reference warnings and continues, even under set -e) —
+        # unlike a value WRITE, which rejects with an error.
         if not (attributes & VarAttributes.NAMEREF):
-            name = self.resolve_nameref_name(name)
+            try:
+                name = self.resolve_nameref_name(name)
+            except NamerefCycleError:
+                self.warn_nameref_cycle(name)
+                self.warn_nameref_cycle(name)
+                return
         # An active dynamic special has no stored cell — record the attribute on
         # its persistent overlay so ``readonly RANDOM`` / ``export SECONDS``
         # persist (and EXPORT materialises via the observer + find_exported_instance).
@@ -1266,9 +1319,15 @@ class ScopeManager:
         """
         # Attribute removal resolves a nameref to its TARGET (mirroring
         # apply_attribute), EXCEPT for the nameref attribute itself (``declare
-        # +n`` un-references the nameref cell, so it must NOT resolve).
+        # +n`` un-references the nameref cell, so it must NOT resolve). A cycle
+        # warns twice and skips the op, rc 0 (see apply_attribute).
         if not (attributes & VarAttributes.NAMEREF):
-            name = self.resolve_nameref_name(name)
+            try:
+                name = self.resolve_nameref_name(name)
+            except NamerefCycleError:
+                self.warn_nameref_cycle(name)
+                self.warn_nameref_cycle(name)
+                return
         # Active dynamic special: drop the attribute from its overlay. Removing
         # EXPORT (``export -n RANDOM``) lets the observer delete its env entry;
         # readonly cannot be removed (like any variable). A local-shadowed special
