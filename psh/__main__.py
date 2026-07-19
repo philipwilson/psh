@@ -110,7 +110,7 @@ def _read_all_stdin() -> str:
     """Return all of stdin as text, tolerating non-UTF-8 bytes.
 
     Reads the raw bytes and decodes them with surrogateescape, mirroring
-    FileInput's script treatment (psh/scripting/input_sources.py) so a binary
+    the file readers' treatment (psh/scripting/input_sources.py) so a binary
     or otherwise undecodable byte on stdin cannot crash psh with an uncaught
     UnicodeDecodeError — bash reads stdin bytes leniently (a stray byte simply
     becomes a "command not found"). Returns '' when stdin is unavailable

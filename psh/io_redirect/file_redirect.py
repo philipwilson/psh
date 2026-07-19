@@ -938,6 +938,26 @@ class FileRedirector:
             return  # stale (forked child / already released)
         baseline.relocate_away_from(self._fds_claimed_by_plan(plan))
 
+    def _relocate_reserved_script_fd(self, plan: RedirectPlan) -> None:
+        """Relocate the lazy SCRIPT_FILE reader off any fd this PERMANENT
+        redirect will seize (campaign I2).
+
+        Called from ``apply_permanent_redirections`` BEFORE the user's
+        dup2/close, so ``exec 255>f`` / ``exec 255<&-`` (whatever high fd the
+        reader landed on) moves the script descriptor to a fresh slot instead of
+        clobbering the running script — bash owns its fd 255 the same way (probe
+        O1). Only the permanent path calls this: a temporary redirect's
+        save/restore already preserves the descriptor (and bash does not
+        relocate for temp redirects). No-op when no script reader is registered
+        (source/rc are eager; a forked child's map is empty)."""
+        reserved = self.state.reserved_script_fds
+        if not reserved:
+            return
+        for fd in self._fds_claimed_by_plan(plan):
+            reader = reserved.get(fd)
+            if reader is not None:
+                reader.relocate_away_from(fd)
+
     def apply_permanent_redirections(self, redirects: List[Redirect]):
         """Apply redirections permanently (for exec builtin).
 
@@ -992,6 +1012,9 @@ class FileRedirector:
             # Displace any parked STD_FDS backup this redirect targets
             # (user fds in the parking range must win — bounce blocker).
             self._clear_user_fds_from_parking(plan)
+            # Relocate the lazy script descriptor off this fd if the user's
+            # permanent redirect targets it (campaign I2 — cannot clobber).
+            self._relocate_reserved_script_fd(plan)
             saved_fds.extend(self.saved_fds_for_plan(plan))
             applied = False
 

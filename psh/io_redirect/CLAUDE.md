@@ -39,6 +39,14 @@ reinvents the unsafe `dup2` + blanket-close recipe.
 | `redirect_program.py` | `RedirectProgram`/`RedirectOp`/`RedirectOpKind` - the typed, source-ordered redirect operation sequence and its one immediate applicator `apply_in_order` (campaign R1) |
 | `input_cursor.py` | `OpenDescription` (owned open-file-description identity) + `InputCursorRegistry` (per-shell `ShellState.input_cursors`, campaign I1). `read`/`mapfile` borrow a persistent `InputCursor` (the reader in `builtins/input_reader.py`) keyed by description so a `read -N` count-boundary surplus survives across invocations. `exec 0<file` rebinds → new cursor (hook: `command.py#_rebind_input_cursors_after_exec`). SCOPED: dup-cross-fd sharing + temp-frame isolation are the deferred additive FULL fidelity; `OpenDescription` is the type R1 here-input can adopt |
 
+The lazy SCRIPT_FILE reader (`scripting/input_sources.py#LazyFileInput`, campaign
+I2) owns a high-CLOEXEC script descriptor registered on
+`ShellState.reserved_script_fds`. `FileRedirector.apply_permanent_redirections`
+consults that map and calls `LazyFileInput.relocate_away_from` BEFORE a user's
+permanent `exec` redirect seizes the fd, so `exec 255>f` relocates the script
+source instead of clobbering it (bash owns its fd 255 the same way). Temporary
+redirects need no hook — their save/restore already preserves the descriptor.
+
 ## Core Patterns
 
 ### 1. IOManager Orchestration

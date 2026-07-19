@@ -60,9 +60,16 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional, Tuple
 
 from ..core import FunctionReturn
-from .input_sources import FileInput, InputSource, StdinInput, StringInput
+from .input_sources import (
+    FileInput,
+    InputSource,
+    LazyFileInput,
+    StdinInput,
+    StringInput,
+)
 
 if TYPE_CHECKING:
+    from ..core.state import ShellState
     from ..shell import Shell
 
 
@@ -274,7 +281,8 @@ class ProgramSource:
                                                     path=path)
         return None  # _VERBATIM
 
-    def make_input_source(self) -> InputSource:
+    def make_input_source(self,
+                          state: Optional['ShellState'] = None) -> InputSource:
         """Build the InputSource for this program, policies applied.
 
         This is the ONLY place InputSource objects are constructed for
@@ -282,12 +290,28 @@ class ProgramSource:
         tests/unit/tooling/test_program_source_guard.py); the per-channel
         flags come from the one policy table above instead of ad-hoc
         attribute pokes at call sites.
+
+        ``state`` (the shell's) is threaded ONLY for the SCRIPT_FILE channel's
+        lazy reader, which registers its owned descriptor on
+        ``state.reserved_script_fds`` so a permanent ``exec`` redirect to its
+        number relocates rather than clobbers it (campaign I2).  None on the
+        analysis path (``read_text``): analysis never executes, so no user
+        redirect can reach the fd.
         """
         _, hist, eof_drops, stops_ret = _CHANNEL_POLICY[self.kind]
         source: InputSource
         if self.kind is SourceChannel.STDIN_SCRIPT:
             assert self.fd is not None
             source = StdinInput(fd=self.fd, name=self.name)
+        elif self.kind is SourceChannel.SCRIPT_FILE:
+            # The SCRIPT-FILE argument is read LAZILY (block-buffered over an
+            # owned high-CLOEXEC fd) so memory is bounded, a FIFO producer can
+            # wait for the script's first side effect, and a self-appending
+            # script sees its appended lines (campaign I2, #20 H14). source/rc
+            # stay EAGER (below) — bash reads them eagerly too, and their
+            # evalfile NUL filter + >256 refusal are inherently whole-content.
+            assert self.path is not None
+            source = LazyFileInput(self.path, state=state)
         elif self.path is not None:
             source = FileInput(self.path,
                                eof_drops_dangling_continuation=eof_drops,
@@ -311,11 +335,21 @@ class ProgramSource:
         verbatim.  (The stdin kind is lazily line-read at execution time;
         analysis of stdin reads the descriptor itself and applies
         :func:`strip_nul_stream` — see ``psh/__main__.py``.)
+
+        Draining ``read_line`` (rather than an eager ``.lines``) works for the
+        eager FileInput and the lazy SCRIPT_FILE reader alike; the trailing
+        empty line a newline-terminated file yields reproduces the old
+        ``'\\n'.join(split('\\n'))`` text exactly.
         """
         if self.path is not None:
-            file_input = self.make_input_source()
-            with file_input:
-                return '\n'.join(file_input.lines)  # type: ignore[attr-defined]
+            with self.make_input_source() as file_input:
+                lines = []
+                while True:
+                    line = file_input.read_line()
+                    if line is None:
+                        break
+                    lines.append(line)
+                return '\n'.join(lines)
         assert self.text is not None
         return self.text
 
