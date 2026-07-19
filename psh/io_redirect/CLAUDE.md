@@ -35,7 +35,8 @@ reinvents the unsafe `dup2` + blanket-close recipe.
 | `manager.py` | `IOManager` - central orchestrator for all I/O operations |
 | `file_redirect.py` | `FileRedirector` - file-based redirections (`<`, `>`, `>>`, etc.) |
 | `process_sub.py` | `ProcessSubstitutionHandler` + `ProcessSubstitutionResource` - process substitution (`<()`, `>()`) |
-| `planner.py` | `RedirectPlanner`/`RedirectPlan` - the shared resolve→expand→procsub planning phase used by every dispatch site |
+| `planner.py` | `RedirectPlanner`/`RedirectPlan` - the shared resolve→expand→procsub planning phase; `plan_program` classifies a command's redirects into one ordered `RedirectProgram` |
+| `redirect_program.py` | `RedirectProgram`/`RedirectOp`/`RedirectOpKind` - the typed, source-ordered redirect operation sequence and its one immediate applicator `apply_in_order` (campaign R1) |
 
 ## Core Patterns
 
@@ -50,15 +51,34 @@ class IOManager:
         self.process_sub_handler = ProcessSubstitutionHandler(shell)
 ```
 
-### 1a. Shared Planning Phase (`RedirectPlanner` / `RedirectPlan`)
+### 1a. One ordered `RedirectProgram`, one applicator (campaign R1)
 
-Every dispatch site (`apply_redirections`, `apply_permanent_redirections`,
-`setup_builtin_redirections`, `setup_child_redirections`) begins the SAME
-way: resolve a dynamic fd-dup, then decide procsub-or-filename STRUCTURALLY
-from the Word AST (`redirect_procsub_node`) — a whole-word `<(cmd)`/`>(cmd)`
-is resolved to a resource from its node (`resolve_procsub_resource(node)`),
-everything else is a filename expanded via `expand_redirect_target`. Nothing
-re-sniffs the expanded string. That common work lives once in `planner.py`:
+Every dispatch site (`_apply_redirections`, `apply_permanent_redirections`,
+`setup_builtin_redirections`, `setup_child_redirections`) builds ONE typed,
+source-ordered program — `planner.plan_program(redirects)` — and walks it with
+`RedirectProgram.apply_in_order(apply_one)`, the single semantic applicator
+that applies each operation IMMEDIATELY, left-to-right. `apply_one` is the
+mechanical adapter (fd universe vs Python-stream universe); the ORDER and the
+per-redirect `RedirectOpKind` (OPEN_FILE / DUP_FD / CLOSE_FD / HERE_INPUT /
+COMBINED / VAR_FD) are computed once, in the program. There is no
+representation for a *deferred* operation — a close is applied in place, so a
+later `n>&m` that dups an already-closed fd fails with bash's "Bad file
+descriptor" (#20 H4; the freed-low-fd concern the old deferral guarded is
+covered by relocation — `_open_output_off_low_fds`). Guards:
+`tests/unit/tooling/test_redirect_program_guard_r1.py` (every site walks
+`apply_in_order`; `plan_program` is the sole producer) and
+`tests/unit/io_redirect/test_redirect_program_r1.py` (applicator immediacy).
+
+### 1b. Per-redirect resolution (`RedirectPlanner` / `RedirectPlan`)
+
+At each operation's turn the adapter resolves ONE redirect with
+`planner.plan(redirect)`: resolve a dynamic fd-dup, then decide
+procsub-or-filename STRUCTURALLY from the Word AST (`redirect_procsub_node`) —
+a whole-word `<(cmd)`/`>(cmd)` is resolved to a resource from its node
+(`resolve_procsub_resource(node)`), everything else is a filename expanded via
+`expand_redirect_target`. Nothing re-sniffs the expanded string (#20 C1;
+guard: the C1 tests above). Resolution stays per-operation so a substitution
+fork and a file open keep bash's source-order side effects:
 
 ```python
 plan = self.planner.plan(redirect)        # FileRedirector.planner
@@ -117,12 +137,16 @@ def with_redirections(self, redirects: List[Redirect]):
 `guarded_redirections` is the redirect-error chokepoint for the in-process
 COMPOUND commands (brace group, `if`/`for`/`while`/`until`/`case`, `[[ ]]`,
 `(( ))`). It wraps `with_redirections` but turns a redirect SETUP failure
-into bash's `psh: TARGET: STRERROR` diagnostic and yields `False` (so the
-caller skips the body and returns 1 — `|| fallback` runs, `set -e` still
-aborts). The one message shape is `format_redirect_error()`, shared by the
-simple-command, subshell and function-call redirect-failure sites too, so
-they no longer diverge (appraisal #15 C3). Only the setup is guarded — a
-body exception is not misreported as a redirect error.
+into bash's `<$0>: line N: TARGET: STRERROR` diagnostic and yields `False`
+(so the caller skips the body and returns 1 — `|| fallback` runs, `set -e`
+still aborts). The one message shape is `format_redirect_error(error, target,
+location=state.error_location_prefix())`, shared by the simple-command,
+subshell and function-call redirect-failure sites too, so they no longer
+diverge (appraisal #15 C3). The `location` prefix is the single source of
+truth every runtime diagnostic uses, so a redirect error carries bash's
+`line N:` exactly like a builtin write error (campaign R1, "diagnostic source
+computed once"). Only the setup is guarded — a body exception is not
+misreported as a redirect error.
 
 ### 3. File Descriptor Backup/Restore
 
@@ -327,12 +351,15 @@ function (not a method) that wraps `os.dup2()` + `os.close()` safely.
 
 1. Add a per-type helper on `FileRedirector` in `file_redirect.py`
 
-2. Call the helper from `apply_redirections`, `apply_permanent_redirections`,
-   `setup_child_redirections`, and `setup_builtin_redirections`. Each of these
-   first calls `self.planner.plan(redirect)` (see "Shared Planning Phase"),
-   so read `plan.redirect`/`plan.target`/`plan.target_fd` rather than
-   re-resolving/expanding, and rely on the dispatch site's `try/finally:
-   plan.close_procsub(applied=…)` for process-substitution fd cleanup.
+2. Wire the new operator into `classify_redirect` (redirect_program.py) so it
+   maps to the right `RedirectOpKind`, then handle that kind in each dispatch
+   site's `apply_one` (`_apply_redirections`, `apply_permanent_redirections`,
+   `setup_child_redirections`, `setup_builtin_redirections` — each walks
+   `plan_program(...).apply_in_order(apply_one)`). Inside `apply_one` resolve
+   with `self.planner.plan(redirect)` and read
+   `plan.redirect`/`plan.target`/`plan.target_fd` rather than
+   re-resolving/expanding, and rely on `try/finally: plan.close_procsub(
+   applied=…)` for process-substitution fd cleanup.
 
 3. Add tests in `tests/unit/io_redirect/` or `tests/integration/redirection/`
 
