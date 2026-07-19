@@ -161,13 +161,14 @@ class InputSource(ABC):
 
 
 class FileInput(InputSource):
-    """Input source for reading commands from script files.
+    """EAGER file input for ``source``/``.`` and rc files (bash STRING inputs).
 
-    ``eof_drops_dangling_continuation`` is per-USE, not per-class: a script
-    file ARGUMENT is a bash stream input (True — the script executor and
-    ``--validate`` pass it), while ``source``/``.`` and rc files are bash
-    STRING inputs (False, the default) even though psh reads all of them
-    through this class. See the base-class attribute for the bash rule.
+    Since I2, a script-file ARGUMENT routes through ``LazyFileInput`` (lazy,
+    high-CLOEXEC owned descriptor at bash's fd-255 convention); this class
+    serves only the eager ``source``/rc channels, where bash also consumes
+    the whole file up front (probed: a self-appending sourced file does NOT
+    see appended lines). ``eof_drops_dangling_continuation`` stays False for
+    these channels; see the base-class attribute for the bash rule.
     """
 
     def __init__(self, file_path: str,
@@ -183,17 +184,12 @@ class FileInput(InputSource):
         self.lines: List[str] = []
 
     def __enter__(self):
-        # Read the WHOLE script eagerly, then close the descriptor before any
-        # command runs. psh never needs the fd again (read_line serves from
-        # self.lines), and holding it open collided with user-visible fds:
-        # a plain open() landed on fd 3 (clobbered by `exec 3>&-` — the
-        # classic swap idiom), and the F_DUPFD_CLOEXEC relocation that
-        # replaced it parked the fd at 10 — exactly bash's base for `{var}`
-        # named-fd allocation — so `exec {fd}>/dev/null` returned 11 (bash:
-        # 10) and a script touching fd 10 itself hit a spurious
-        # "[Errno 9] Bad file descriptor" at close. (bash avoids the clash
-        # differently: it reads lazily and moves its script fd to 255; psh
-        # reads eagerly, so closing is simpler and cannot collide at all.)
+        # Read the WHOLE file eagerly, then close the descriptor before any
+        # command runs — correct for source/rc, where bash is also eager
+        # (probed) and the fd is never needed again (read_line serves from
+        # self.lines), so it cannot collide with user-visible fds. Script
+        # ARGUMENTS take the lazy path instead: LazyFileInput owns a live
+        # high-CLOEXEC descriptor with user-redirect relocation.
         #
         # Use surrogateescape so a non-UTF-8 byte in a script does not crash
         # the shell with an uncaught UnicodeDecodeError — bash processes script
