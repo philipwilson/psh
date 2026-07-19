@@ -23,17 +23,14 @@ import pytest
 
 pexpect = pytest.importorskip("pexpect")
 
+# The blessed bash oracle is resolved through the ONE resolver
+# (tests/harness/shell_oracle.py#resolve_bash), never a hardcoded path — the
+# E2 bash-oracle ratchet (test_bash_oracle_resolution) enforces this.
+from shell_oracle import try_resolve_bash  # noqa: E402
+
 PSH_ROOT = str(Path(__file__).resolve().parents[3])
 
 pytestmark = pytest.mark.serial
-
-
-def _find_bash():
-    for cand in ("/opt/homebrew/bin/bash", "/usr/local/bin/bash", "/bin/bash"):
-        if os.path.exists(cand):
-            return cand
-    from shutil import which
-    return which("bash")
 
 
 # (label, lines, offending_index): the line index at which the syntax error
@@ -101,9 +98,10 @@ def _spawn_bash(bash):
 @pytest.mark.parametrize("label,lines,offending", _ROWS,
                          ids=[r[0] for r in _ROWS])
 def test_mid_construct_error_line_matches_bash(label, lines, offending):
-    bash = _find_bash()
-    if not bash:
-        pytest.skip("no bash available for the parity comparison")
+    oracle = try_resolve_bash()
+    if oracle is None:
+        pytest.skip("no bash oracle available for the parity comparison")
+    bash = oracle.path
 
     psh_child = _spawn_psh()
     try:
