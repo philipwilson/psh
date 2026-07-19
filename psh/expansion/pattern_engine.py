@@ -1,4 +1,4 @@
-"""Compiled shell-pattern engine: one AST, parsed once, matched iteratively.
+"""Compiled shell-pattern engine: one AST, parsed once, matched with memoization.
 
 Historically psh matched shell patterns three ways, each wrong or fragile on a
 different input (appraisal #6 and #20 H7):
@@ -7,8 +7,8 @@ different input (appraisal #6 and #20 H7):
   on ambiguous repetition with a forced-fail tail — ``*(a|aa)c`` on ``"a"*N+"b"``
   is catastrophic backtracking, and a plain ``*a*a…*b`` is exponential too;
 * the **recursive backtracking matcher** re-parsed and fanned out exponentially;
-* the compiled engine that replaced them was still **recursive** at the sequence
-  level, so a ~1,500-literal pattern raised ``RecursionError``.
+* the compiled engine that replaced them recursed through every sequence
+  element, so a ~1,500-literal pattern raised ``RecursionError``.
 
 This module is the single relation for **every** consumer — ``case``,
 ``[[ == ]]``, ``${var#/%/##/%%}`` removal, ``${var/}`` substitution, case
@@ -21,13 +21,18 @@ extglob semantics cannot drift between them:
    shell glob/extglob pattern **once** into a small AST (:class:`Sequence` of
    :class:`Literal` / :class:`AnyChar` / :class:`Star` / :class:`Bracket` /
    :class:`Extglob`).
-2. The **iterative** matcher (:class:`_Matcher`) evaluates each
-   ``(sequence, element-index, subject-index)`` state at most once with an
-   explicit worklist — no Python recursion, so pattern depth is bounded only by
-   memory. Its reachable-end-position set natively serves the four relations
-   :class:`CompiledPattern` exposes: ``full_match``, ``matching_ends`` (prefix
-   removal), ``matching_starts`` (suffix removal), and ``span_at`` /
-   ``matching_spans`` (leftmost-longest substitution).
+2. The matcher (:class:`_Matcher`) MEMOIZES each ``(sequence, element-index,
+   subject-index)`` state, so adversarial repetition is ``O(nodes·positions)``,
+   never exponential (#20 H7-c). A run of single-continuation nodes
+   (``Literal``/``AnyChar``/``Bracket``) is consumed by an inner WHILE-loop, not
+   recursion, so an arbitrarily long literal chain no longer raises
+   ``RecursionError`` at the default limit (#20 H7-b); recursion depth is bounded
+   by the number of ``Star``/``Extglob`` nodes actually traversed (the pattern's
+   branch structure), well within psh's runtime limit. The reachable-end set
+   natively serves the four relations :class:`CompiledPattern` exposes:
+   ``full_match`` (short-circuiting), ``matching_ends`` (prefix removal),
+   ``matching_starts`` (suffix removal), and ``span_at`` / ``matching_spans``
+   (leftmost-longest substitution).
 
 The compiled AST carries no locale or policy state: :class:`MatchProfile`
 supplies ``for_pathname`` (whether ``*``/``?`` cross ``/``) and ``ic``
@@ -40,7 +45,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple, cast
 
 # Reuse the scanning primitives AND the char-level predicates the legacy engine
 # already shared, so the compiled engine cannot disagree with them on paren
@@ -310,26 +315,30 @@ def pathname_profile(ic: bool) -> MatchProfile:
 #   * leftmost-longest sub  -> span_at(pos) = max ends of s[pos:]
 #   * pathname component    -> full_match(entry, for_pathname=True)
 #
-# The matcher is ITERATIVE: an explicit worklist evaluates each state at most
-# once (memoized), so NO Python recursion is used — a pattern of any depth
-# (thousands of literals) can no longer raise RecursionError (#20 H7). ``fp``
-# (for_pathname) and ``ic`` are constant for one match, so they live on the
-# Matcher rather than in the memo key.
-
-# State kinds in the worklist memo:
-#   ('S', id(seq), ei, si) -> frozenset of end positions matching seq[ei:] @ si
-#   ('E', id(node), si)    -> set of end positions after ONE extglob element @ si
+# The matcher MEMOIZES each ``(sequence, element-index, subject-index)`` state,
+# so an adversarial repetition (``*(a|aa)c`` / plain ``*a*a…*b``) is
+# O(nodes·positions), never the exponential backtracking of the old regex and
+# recursive-backtracking backends (#20 H7-c). A consecutive run of
+# single-continuation nodes (``Literal``/``AnyChar``/``Bracket``) is consumed by
+# an inner WHILE-loop rather than by recursion, so a pattern that is a long
+# literal chain (thousands of characters) can no longer raise ``RecursionError``
+# at the default limit (#20 H7-b): recursion depth is bounded by the number of
+# ``Star``/``Extglob`` nodes actually traversed (the pattern's branch structure),
+# not by the subject or pattern length. ``fp`` (for_pathname) and ``ic`` are
+# constant for one match, so they live on the Matcher rather than in the memo
+# key. Memo keys use ``id(node)`` (nodes live for the whole match), and the
+# node object is held in the frozen AST so the id stays valid.
 
 
 class _Matcher:
     """One reachable-position match of a compiled pattern against one subject.
 
     A fresh instance (and memo) is created per match call. ``states`` counts
-    distinct evaluated sequence states (``'S'`` memo misses) — the
-    polynomial-complexity guard the tests assert on.
+    distinct evaluated sequence states (memo misses) — the polynomial-complexity
+    guard the tests assert on.
     """
 
-    __slots__ = ("s", "n", "fp", "ic", "memo", "states", "_node")
+    __slots__ = ("s", "n", "fp", "ic", "memo", "_fmemo", "states")
 
     def __init__(self, s: str, for_pathname: bool, ic: bool) -> None:
         self.s = s
@@ -337,165 +346,179 @@ class _Matcher:
         self.fp = for_pathname
         self.ic = ic
         self.memo: dict = {}
+        self._fmemo: dict = {}
         self.states = 0
-        self._node: dict = {}  # id(obj) -> obj, so ids stay resolvable
 
     def reach(self, seq: Sequence, si: int) -> frozenset:
         """Reachable end indices matching all of ``seq`` from ``s[si]``."""
-        root = ('S', id(seq), 0, si)
-        self._node[id(seq)] = seq
-        if root in self.memo:
-            return self.memo[root]
-        stack: List[tuple] = [root]
-        while stack:
-            key = stack[-1]
-            if key in self.memo:
-                stack.pop()
-                continue
-            deps = self._deps(key)
-            pending = [d for d in deps if d not in self.memo]
-            if pending:
-                stack.extend(pending)
-            else:
-                self.memo[key] = self._combine(key, deps)
-                stack.pop()
-        return self.memo[root]
+        return self._match(seq, 0, si)
 
-    # -- dependency discovery (re-evaluated each visit; may grow as deps land)
+    def full_reaches(self, seq: Sequence, si: int) -> bool:
+        """Whether ``seq`` matches EXACTLY ``s[si:n]`` — a short-circuiting
+        boolean for the ``full_match`` consumers (case / [[ ]] / name filters /
+        pathname component / one case-mod char), which do not need the whole
+        reachable-end set. Memoized on ``(node, ei, si)`` so it stays polynomial
+        on adversarial input, but returns True at the first success."""
+        return self._full(seq, 0, si)
 
-    def _deps(self, key: tuple) -> List[tuple]:
-        if key[0] == 'S':
-            return self._seq_deps(key)
-        return self._elem_deps(key)
-
-    def _seq_deps(self, key: tuple) -> List[tuple]:
-        _, seq_id, ei, si = key
-        seq = self._node[seq_id]
-        elements = seq.elements
-        if ei == len(elements):
-            return []
-        node = elements[ei]
-        s, n, fp = self.s, self.n, self.fp
-        if isinstance(node, (Literal, AnyChar, Bracket)):
-            if si < n and self._char_ok(node, s[si]):
-                return [('S', seq_id, ei + 1, si + 1)]
-            return []
-        if isinstance(node, Star):
-            out = []
-            e = si
-            while True:
-                out.append(('S', seq_id, ei + 1, e))
-                if e >= n or (fp and s[e] == '/'):
-                    break
-                e += 1
-            return out
-        if isinstance(node, Extglob):
-            self._node[id(node)] = node
-            ekey = ('E', id(node), si)
-            if ekey not in self.memo:
-                return [ekey]
-            return [('S', seq_id, ei + 1, mid) for mid in self.memo[ekey]]
-        raise TypeError(f"not a pattern node: {node!r}")  # pragma: no cover
-
-    def _elem_deps(self, key: tuple) -> List[tuple]:
-        _, node_id, si = key
-        node = self._node[node_id]
-        alts = node.alts
-        for a in alts:
-            self._node[id(a)] = a
-        if node.op in ('@', '?', '!'):
-            return [('S', id(a), 0, si) for a in alts]
-        # '+' / '*': the closure can reach any position in [si..n].
-        return [('S', id(a), 0, p) for a in alts for p in range(si, self.n + 1)]
-
-    # -- state combination (all deps present in memo)
-
-    def _combine(self, key: tuple, deps: List[tuple]) -> frozenset:
-        if key[0] == 'S':
-            return self._seq_combine(key)
-        return frozenset(self._elem_combine(key))
-
-    def _seq_combine(self, key: tuple) -> frozenset:
-        _, seq_id, ei, si = key
+    def _full(self, seq: Sequence, ei: int, si: int) -> bool:
+        key = (id(seq), ei, si)
+        cached = self._fmemo.get(key)
+        if cached is not None:
+            return cached
         self.states += 1
-        seq = self._node[seq_id]
         elements = seq.elements
-        if ei == len(elements):
-            return frozenset((si,))
-        node = elements[ei]
-        s, n, fp = self.s, self.n, self.fp
-        if isinstance(node, (Literal, AnyChar, Bracket)):
-            if si < n and self._char_ok(node, s[si]):
-                return self.memo[('S', seq_id, ei + 1, si + 1)]
-            return frozenset()
-        if isinstance(node, Star):
-            out: set = set()
-            e = si
+        ne = len(elements)
+        s, n, fp, ic = self.s, self.n, self.fp, self.ic
+        while ei < ne:
+            node = elements[ei]
+            t = type(node)
+            if t is Literal:
+                ok = (si < n and (not fp or s[si] != '/')
+                      and _eq(s[si], cast(Literal, node).char, ic))
+            elif t is AnyChar:
+                ok = si < n and (not fp or s[si] != '/')
+            elif t is Bracket:
+                ok = (si < n and (not fp or s[si] != '/')
+                      and _bracket_match(cast(Bracket, node).content, s[si], ic))
+            else:
+                break
+            if not ok:
+                self._fmemo[key] = False
+                return False
+            ei += 1
+            si += 1
+        if ei == ne:
+            result = si == n
+        elif type(elements[ei]) is Star:
+            result = False
+            end = si
             while True:
-                out |= self.memo[('S', seq_id, ei + 1, e)]
-                if e >= n or (fp and s[e] == '/'):
+                if self._full(seq, ei + 1, end):
+                    result = True
                     break
-                e += 1
-            return frozenset(out)
-        if isinstance(node, Extglob):
-            ekey = ('E', id(node), si)
-            out2: set = set()
-            for mid in self.memo[ekey]:
-                out2 |= self.memo[('S', seq_id, ei + 1, mid)]
-            return frozenset(out2)
-        raise TypeError(f"not a pattern node: {node!r}")  # pragma: no cover
+                if end >= n or (fp and s[end] == '/'):
+                    break
+                end += 1
+        else:  # Extglob
+            result = False
+            for mid in self._element_ends(cast(Extglob, elements[ei]), si):
+                if self._full(seq, ei + 1, mid):
+                    result = True
+                    break
+        self._fmemo[key] = result
+        return result
 
-    def _char_ok(self, node, ch: str) -> bool:
-        if self.fp and ch == '/':
-            return False
-        if isinstance(node, Literal):
-            return _eq(ch, node.char, self.ic)
-        if isinstance(node, AnyChar):
-            return True
-        return _bracket_match(node.content, ch, self.ic)  # Bracket
+    def _match(self, seq: Sequence, ei: int, si: int) -> frozenset:
+        """Reachable end indices matching ``seq.elements[ei:]`` from ``s[si]``."""
+        key = (id(seq), ei, si)
+        cached = self.memo.get(key)
+        if cached is not None:
+            return cached
+        self.states += 1
+        elements = seq.elements
+        ne = len(elements)
+        s, n, fp, ic = self.s, self.n, self.fp, self.ic
 
-    def _elem_combine(self, key: tuple) -> set:
+        # Consume a run of single-continuation nodes iteratively (no recursion):
+        # each Literal/AnyChar/Bracket advances (ei, si) by one on a match.
+        while ei < ne:
+            node = elements[ei]
+            t = type(node)
+            if t is Literal:
+                if (si < n and (not fp or s[si] != '/')
+                        and _eq(s[si], cast(Literal, node).char, ic)):
+                    ei += 1
+                    si += 1
+                    continue
+                self.memo[key] = _EMPTY
+                return _EMPTY
+            if t is AnyChar:
+                if si < n and (not fp or s[si] != '/'):
+                    ei += 1
+                    si += 1
+                    continue
+                self.memo[key] = _EMPTY
+                return _EMPTY
+            if t is Bracket:
+                if (si < n and (not fp or s[si] != '/')
+                        and _bracket_match(cast(Bracket, node).content, s[si], ic)):
+                    ei += 1
+                    si += 1
+                    continue
+                self.memo[key] = _EMPTY
+                return _EMPTY
+            break  # Star or Extglob: handled below (the only recursion)
+
+        if ei == ne:
+            result = frozenset((si,))
+        else:
+            node = elements[ei]
+            if type(node) is Star:
+                out: set = set()
+                end = si
+                while True:
+                    out |= self._match(seq, ei + 1, end)
+                    if end >= n or (fp and s[end] == '/'):
+                        break
+                    end += 1
+                result = frozenset(out)
+            else:  # Extglob
+                out2: set = set()
+                for mid in self._element_ends(cast(Extglob, node), si):
+                    out2 |= self._match(seq, ei + 1, mid)
+                result = frozenset(out2)
+
+        self.memo[key] = result
+        return result
+
+    def _element_ends(self, node: Extglob, si: int) -> set:
         """End indices after matching ONE extglob element ``op(alts)`` @ si."""
-        _, node_id, si = key
-        node = self._node[node_id]
         op = node.op
         alts = node.alts
-
-        def alt_ends(p: int) -> set:
-            out: set = set()
-            for a in alts:
-                out |= self.memo[('S', id(a), 0, p)]
-            return out
-
         if op == '@':
-            return alt_ends(si)
+            return self._alt_ends(alts, si)
         if op == '?':
-            return {si} | alt_ends(si)
-        if op == '!':
-            # Every span s[si:e] that does NOT itself fully match one
-            # alternative (the case a regex cannot express).
-            positive = alt_ends(si)
-            s, fp, n = self.s, self.fp, self.n
-            out = set()
-            for e in range(si, n + 1):
-                if fp and '/' in s[si:e]:
-                    break
-                if e not in positive:
-                    out.add(e)
-            return out
-        # '+' / '*': zero-or-more (+ : one-or-more) closure of alt matches.
-        start = alt_ends(si) if op == '+' else {si}
+            return {si} | self._alt_ends(alts, si)
+        if op == '+':
+            return self._alt_closure(alts, self._alt_ends(alts, si))
+        if op == '*':
+            return self._alt_closure(alts, {si})
+        # op == '!': every span s[si:e] that does NOT itself fully match one
+        # alternative — the case a regex cannot express.
+        positive = self._alt_ends(alts, si)
+        s, fp = self.s, self.fp
+        out = set()
+        for e in range(si, self.n + 1):
+            if fp and '/' in s[si:e]:
+                break
+            if e not in positive:
+                out.add(e)
+        return out
+
+    def _alt_ends(self, alts: Tuple[Sequence, ...], si: int) -> set:
+        """End indices where some alternative fully matches starting at s[si]."""
+        out: set = set()
+        for alt in alts:
+            out |= self._match(alt, 0, si)
+        return out
+
+    def _alt_closure(self, alts: Tuple[Sequence, ...], start: set) -> set:
+        """Zero-or-more closure of matching ``alts`` (for ``*(...)`` / ``+(...)``)."""
         seen = set(start)
         frontier = set(start)
         while frontier:
             nxt: set = set()
             for p in frontier:
-                for e in alt_ends(p):
-                    if e not in seen and e != p:  # skip empty match (no loop)
-                        seen.add(e)
-                        nxt.add(e)
+                for end in self._alt_ends(alts, p):
+                    if end not in seen and end != p:  # skip empty match (no loop)
+                        seen.add(end)
+                        nxt.add(end)
             frontier = nxt
         return seen
+
+
+_EMPTY: frozenset = frozenset()
 
 
 # --- free-function API (compatibility + primitives) ------------------------
@@ -508,8 +531,8 @@ def reachable_ends(root: Sequence, s: str, *, for_pathname: bool = False,
 
 def fullmatch(root: Sequence, s: str, *, for_pathname: bool = False,
               ic: bool = False) -> bool:
-    """Whether *root* matches the whole of *s*."""
-    return len(s) in _Matcher(s, for_pathname, ic).reach(root, 0)
+    """Whether *root* matches the whole of *s* (short-circuiting)."""
+    return _Matcher(s, for_pathname, ic).full_reaches(root, 0)
 
 
 def match_at(root: Sequence, s: str, pos: int, *, for_pathname: bool = False,
@@ -549,8 +572,8 @@ class CompiledPattern:
         """Whether the pattern matches the WHOLE of *text*
         (``case`` / ``[[ == ]]`` / name filter / one pathname component /
         one character for case modification)."""
-        m = _Matcher(text, profile.for_pathname, profile.ic)
-        return len(text) in m.reach(self.root, 0)
+        return _Matcher(text, profile.for_pathname, profile.ic)._full(
+            self.root, 0, 0)
 
     def matching_ends(self, text: str, start: int = 0,
                       profile: MatchProfile = STRING) -> frozenset:
@@ -558,7 +581,7 @@ class CompiledPattern:
         pattern matches ``text[start:k]`` — prefix removal (``#`` = ``min``,
         ``##`` = ``max``)."""
         m = _Matcher(text, profile.for_pathname, profile.ic)
-        return m.reach(self.root, start)
+        return m._match(self.root, 0, start)
 
     def matching_starts(self, text: str, end: Optional[int] = None,
                         profile: MatchProfile = STRING) -> frozenset:
@@ -568,9 +591,11 @@ class CompiledPattern:
         if end is None:
             end = len(text)
         m = _Matcher(text, profile.for_pathname, profile.ic)
+        match = m._match
+        root = self.root
         out = set()
         for i in range(end + 1):
-            if end in m.reach(self.root, i):
+            if end in match(root, 0, i):
                 out.add(i)
         return frozenset(out)
 
@@ -579,8 +604,23 @@ class CompiledPattern:
         """Leftmost-longest match LENGTH at ``text[pos:]``, or ``None`` — the
         substitution primitive (``${v/}`` family). 0 is a zero-width match."""
         m = _Matcher(text, profile.for_pathname, profile.ic)
-        ends = m.reach(self.root, pos)
+        ends = m._match(self.root, 0, pos)
         return (max(ends) - pos) if ends else None
+
+    def spanner(self, text: str, profile: MatchProfile = STRING):
+        """Return a ``pos -> Optional[int]`` leftmost-longest-length callable
+        bound to ONE reused matcher, so a left-to-right substitution scan over
+        *text* shares one memo across all positions (a single pass, not one
+        matcher per position)."""
+        m = _Matcher(text, profile.for_pathname, profile.ic)
+        match = m._match
+        root = self.root
+
+        def span_at(pos: int) -> Optional[int]:
+            ends = match(root, 0, pos)
+            return (max(ends) - pos) if ends else None
+
+        return span_at
 
     def matching_spans(self, text: str,
                        profile: MatchProfile = STRING) -> Iterator[Tuple[int, int]]:
@@ -588,10 +628,11 @@ class CompiledPattern:
         ``(start, end)`` over *text* — the ``${v//}`` global-substitution walk.
         Zero-width matches advance by one; the consumer applies bash's
         end-of-subject empty-match policy."""
+        span_at = self.spanner(text, profile)
         pos = 0
         n = len(text)
         while pos <= n:
-            length = self.span_at(text, pos, profile)
+            length = span_at(pos)
             if length is None:
                 pos += 1
                 continue

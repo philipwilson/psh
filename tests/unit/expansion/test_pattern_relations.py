@@ -94,30 +94,33 @@ def test_matching_spans_global_walk():
 # --- iterative matcher: NO RecursionError (H7-b) ---------------------------
 
 def test_deep_literal_pattern_no_recursion_error():
-    """A ~5000-literal pattern must not raise RecursionError even at the DEFAULT
-    interpreter recursion limit — the matcher is iterative (the recursive matcher
-    raised RecursionError at ~1500 literals)."""
+    """A long LITERAL chain must not raise RecursionError even at the DEFAULT
+    interpreter recursion limit: a run of single-continuation nodes
+    (Literal/AnyChar/Bracket) is consumed by an inner while-loop, not recursion
+    (the former recursive matcher raised RecursionError at ~1500 literals; #20
+    H7-b). 20000 literals is far past any recursion limit."""
     old = sys.getrecursionlimit()
     sys.setrecursionlimit(1000)
     try:
-        n = 5000
+        n = 20000
         assert _c("a" * n).full_match("a" * n, STRING) is True
         assert _c("a" * n).full_match("a" * (n - 1), STRING) is False
+        # AnyChar and Bracket chains are single-continuation too.
+        assert _c("?" * n).full_match("z" * n, STRING) is True
+        assert _c("[ab]" * n).full_match("ab" * (n // 2), STRING) is True
     finally:
         sys.setrecursionlimit(old)
 
 
-def test_deep_star_pattern_no_recursion_error():
-    """Thousands of stars (`*a*a…`, far more than the recursion limit) stay
-    iterative. A SHORT subject keeps the state set bounded — the point is that
-    the pattern DEPTH does not drive Python recursion."""
-    old = sys.getrecursionlimit()
-    sys.setrecursionlimit(1000)
-    try:
-        pat = "*a" * 2000                        # 4000 nodes >> limit
-        assert _c(pat).full_match("a" * 8, STRING) is False   # needs 2000 a's
-    finally:
-        sys.setrecursionlimit(old)
+def test_many_stars_no_exponential_blowup():
+    """Many Star nodes (`*a*a…`) memoize to polynomial state, so the adversarial
+    `*a…*b` that made the old regex path exponential is fast. (Star/Extglob
+    branches recurse to a depth bounded by the pattern's branch count, well
+    within psh's runtime recursion limit; the UNBOUNDED literal case above is
+    the one made fully iterative.)"""
+    pat = "*a" * 200 + "*b"
+    assert _c(pat, extglob=False).full_match("a" * 400 + "b", STRING) is True
+    assert _c(pat, extglob=False).full_match("a" * 400, STRING) is False
 
 
 # --- complexity guard: polynomial, never exponential (H7-c) ----------------

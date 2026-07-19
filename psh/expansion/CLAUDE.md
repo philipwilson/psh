@@ -284,12 +284,16 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
   and `span_at(text, pos)` / `matching_spans(text)` (leftmost-longest
   substitution). `parameter_expansion.py` calls these directly — no operator
   builds a regex or does its own anchoring.
-- **Iterative + memoized.** The matcher is an explicit two-phase worklist (NO
-  Python recursion), evaluating each `(sequence, index, position)` state at most
-  once. A ~1,500-literal pattern no longer raises `RecursionError` (#20 H7-b),
-  and the adversarial plain glob `*a*a…*b` and ambiguous extglob `*(a|aa)c` are
-  `O(nodes·positions)`, not exponential (#20 H7-c; the old Python-`re` plain
-  path backtracked catastrophically).
+- **Memoized; literal chains are iterative.** The matcher memoizes each
+  `(sequence, index, position)` state, so the adversarial plain glob `*a*a…*b`
+  and ambiguous extglob `*(a|aa)c` are `O(nodes·positions)`, not exponential
+  (#20 H7-c; the old Python-`re` plain path backtracked catastrophically). A run
+  of single-continuation nodes (`Literal`/`AnyChar`/`Bracket`) is consumed by an
+  inner while-loop, not recursion, so an arbitrarily long literal chain no longer
+  raises `RecursionError` (#20 H7-b); recursion depth is bounded by the pattern's
+  `Star`/`Extglob` branch count, not its length. `full_match` short-circuits (it
+  does not build the whole reachable-end set); the substitution scan reuses one
+  matcher across positions.
 - **Policies stay outside the matcher** as a typed `MatchProfile`
   (`for_pathname`, `ic`); bracket membership and case folding delegate to the
   shared, locale-aware `extglob._bracket_match`/`_eq`, so POSIX `[:class:]`

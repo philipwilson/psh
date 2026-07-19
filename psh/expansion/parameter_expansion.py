@@ -124,13 +124,13 @@ class ParameterExpansionOps:
                          replacement: Union[str, list]) -> str:
         """Replace first match (``${v/pat/repl}``)."""
         profile = string_profile(self._nocasematch)
-        compiled = self._compile(pattern)
+        span_at = self._compile(pattern).spanner(value, profile)
         n = len(value)
         # A zero-width match at end-of-subject is dropped for negation !(x) but
         # emitted for *(x)/plain *; only negation suppresses it.
         suppress_end_empty = self._neg(pattern)
         for p in range(n + 1):
-            length = compiled.span_at(value, p, profile)
+            length = span_at(p)
             if length is None:
                 continue
             if length == 0 and p == n and suppress_end_empty:
@@ -144,11 +144,9 @@ class ParameterExpansionOps:
                        replacement: Union[str, list]) -> str:
         """Replace all matches (``${v//pat/repl}``)."""
         profile = string_profile(self._nocasematch)
-        compiled = self._compile(pattern)
+        span_at = self._compile(pattern).spanner(value, profile)
         return self._substitute_scan(
-            value, replacement,
-            lambda pos: compiled.span_at(value, pos, profile),
-            negation=self._neg(pattern))
+            value, replacement, span_at, negation=self._neg(pattern))
 
     def _substitute_scan(self, value: str, replacement: Union[str, list],
                          match_at, *, negation: bool = False) -> str:
