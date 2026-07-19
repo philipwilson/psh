@@ -12,6 +12,7 @@ plus the empty/unset-PATH command-not-found MESSAGE alignment (a subprocess
 row against live bash, prefix-normalized).
 """
 
+import dataclasses
 import re
 import subprocess
 import sys
@@ -72,7 +73,7 @@ class TestNormalizedCommandName:
 
     def test_frozen(self):
         n = normalize_command_word('echo')
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             n.text = 'other'  # type: ignore[misc]
 
 
@@ -98,7 +99,7 @@ class TestCommandEnvOverlay:
         assert CommandEnvOverlay().effective_path(captured_shell) == '/tmp/xyz-r3'
 
     def test_frozen(self):
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             CommandEnvOverlay().has_path_override = True  # type: ignore[misc]
 
 
@@ -175,7 +176,7 @@ class TestResolveCommandModeAware:
     def test_resolved_command_frozen(self, captured_shell):
         r = _resolve(captured_shell, 'true')
         assert isinstance(r, ResolvedCommand)
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             r.assignments_persist = True  # type: ignore[misc]
 
 

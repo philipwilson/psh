@@ -76,7 +76,7 @@ class RedirectionMode(Enum):
     Once a command name resolves to an execution strategy, exactly one of
     these modes governs the redirection handling. The choice is decided in
     one place (``_decide_redirection_mode``) and dispatched in one place
-    (``_execute_with_strategy``).
+    (``_invoke_resolution``).
 
     BUILTIN_INPROCESS
         A builtin (or special builtin) running in THIS process, not in a
@@ -123,7 +123,7 @@ class ExecutionResult:
         builtin, so the caller (:meth:`CommandExecutor._run_command`) must
         NOT restore the prefix assignments — they persist in the current
         shell. False in default mode (carried through unchanged from the
-        :class:`CommandResolution`).
+        resolved command's ``assignments_persist``).
     """
 
     status: int
@@ -825,7 +825,7 @@ class CommandExecutor:
         """Select how a matched strategy's redirections are applied.
 
         This is the single place that encodes the redirection-mode policy;
-        ``_execute_with_strategy`` performs the single dispatch on the
+        ``_invoke_resolution`` performs the single dispatch on the
         result. See ``RedirectionMode`` for what each value means.
         """
         is_builtin = isinstance(

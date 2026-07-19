@@ -308,7 +308,7 @@ class ExecutionStrategy(ABC):
 
 
 # The complete POSIX special-builtin registry (policy data). Two mode-aware
-# consequences, both decided in CommandExecutor._resolve_command (F9):
+# consequences, both decided in command_resolution.resolve_command (F9):
 #
 #   - Prefix-assignment persistence: `VAR=v <special>` leaves VAR set ONLY in
 #     POSIX mode. In default (bash) mode the prefix is temporary, exactly like

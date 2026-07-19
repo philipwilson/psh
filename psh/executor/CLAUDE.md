@@ -20,8 +20,9 @@ Executor  Executor   Executor   Executor  Executor
 | File | Purpose |
 |------|---------|
 | `core.py` | `ExecutorVisitor` - main visitor coordinating all execution |
-| `command.py` | `CommandExecutor` - simple command dispatch (expansion, strategy selection, redirections) |
-| `command_assignments.py` | `CommandAssignments` - the `NAME=value` sub-domain (extract/apply_pure/apply_prefix/restore/commit); its module docstring states the POSIX assignment-ordering-and-persistence contract (persistence only in POSIX mode) |
+| `command.py` | `CommandExecutor` - simple command dispatch (expansion, one resolution, redirections). Normalizes the command word, builds the overlay, and resolves ONCE (`resolve_command`) BEFORE any scope/prefix decision, then drives the scope model / `exec` shortcut / POSIX prefix-error branch / persistence from the returned `ResolvedCommand` (never a raw-name recompute — #20 H10) |
+| `command_resolution.py` | `NormalizedCommandName` / `CommandEnvOverlay` / `ResolvedCommand` + `resolve_command` (R3). The SOLE mode-aware dispatch reader of the function/builtin registries; the raw `get_function`/`POSIX_SPECIAL_BUILTINS` dispatch recomputes are gone (guarded by `tests/unit/tooling/test_command_resolution_ratchet_r3.py`). The command hash/PATH stay with `command_resolver.py`, consulted by the external strategy via `CommandEnvOverlay.effective_path` |
+| `command_assignments.py` | `CommandAssignments` - the `NAME=value` sub-domain (extract/build_overlay/apply_pure/apply_prefix/restore/commit); its module docstring states the POSIX assignment-ordering-and-persistence contract (persistence only in POSIX mode) |
 | `pipeline.py` | `PipelineExecutor` - pipeline and process group management |
 | `control_flow.py` | `ControlFlowExecutor` - loops, conditionals, case |
 | `function.py` | `FunctionOperationExecutor` - function calls and scope |
@@ -57,7 +58,7 @@ class ExecutorVisitor:
 ### 2. Strategy Pattern for Commands
 
 Commands are dispatched through execution strategies whose order is
-**mode-aware**, decided once in `command.py#CommandExecutor._resolve_command`
+**mode-aware**, decided once in `command_resolution.py#resolve_command`
 from `set -o posix`:
 
 - **Default (bash) mode:** functions > (special | regular) builtins >
@@ -70,10 +71,13 @@ from `set -o posix`:
 The strategy instances live on `CommandExecutor.strategies` in
 default-mode order (`FunctionExecutionStrategy`,
 `SpecialBuiltinExecutionStrategy`, `BuiltinExecutionStrategy`,
-`ExternalExecutionStrategy`); `_resolve_command` moves special builtins to
-the front when `posix` is set and records the persistence policy in the
-returned `CommandResolution.prefix_assignments_persist` (True only for a
-special builtin resolved under `posix`).
+`ExternalExecutionStrategy`); `resolve_command` moves special builtins to
+the front when `posix` is set and returns a `ResolvedCommand` whose
+`assignments_persist` (True only for a special builtin under `posix`),
+`uses_temp_env_scope` (function → temp-env scope), and `is_exec_special`
+fields the dispatcher consumes — computed ONCE, before the scope/prefix
+decision, so a POSIX special builtin shadowed by a same-named function is no
+longer misclassified as a function (H10).
 
 Aliases are NOT a runtime strategy. They are expanded as a token-stream
 transform at the lex→parse boundary (`AliasManager.expand_aliases`, wired
