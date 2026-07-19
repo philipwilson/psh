@@ -5,10 +5,11 @@ resolution, target expansion, process-substitution creation, and target-fd
 classification. Backends still own how the plan is applied.
 """
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ..ast_nodes import Redirect
 from .process_sub import ProcessSubstitutionResource
+from .redirect_program import RedirectOp, RedirectProgram, classify_redirect
 
 if TYPE_CHECKING:
     from ..ast_nodes import ProcessSubstitution
@@ -62,6 +63,18 @@ class RedirectPlanner:
 
     def __init__(self, file_redirector: 'FileRedirector'):
         self.file_redirector = file_redirector
+
+    def plan_program(self, redirects: List[Redirect]) -> RedirectProgram:
+        """Classify a command's redirects into ONE typed, source-ordered program.
+
+        This is the sole producer of `RedirectProgram`: the operation KIND is
+        computed once here, in exact source order.  Resolution (`plan`) and
+        application stay per-operation, performed by the adapter at each
+        operation's turn (`RedirectProgram.apply_in_order`), so source-order
+        side effects (a substitution fork, a file open) are preserved.
+        """
+        return RedirectProgram(
+            [RedirectOp(classify_redirect(r), r) for r in redirects])
 
     def plan(self, redirect: Redirect) -> RedirectPlan:
         redirect = self.file_redirector.resolve_dynamic_dup(redirect)

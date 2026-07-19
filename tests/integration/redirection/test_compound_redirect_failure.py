@@ -13,7 +13,7 @@ verified against bash, is the same as for a simple command:
 
 One redirect-error chokepoint (``IOManager.guarded_redirections``) now
 serves every in-process compound dispatch site with one message format
-(``psh: TARGET: STRERROR``), matching the simple-command path.
+(``psh: line N: TARGET: STRERROR``), matching the simple-command path.
 
 Runs psh in a subprocess: process-level fd state must not touch the test
 runner's own fds — which keeps it xdist-safe, so it runs in the parallel
@@ -84,10 +84,10 @@ class TestCompoundRedirectFailure:
 
     def test_message_format_matches_simple_command(self, label, compound,
                                                    tmp_path):
-        """The diagnostic uses the same `psh: TARGET: ...` shape a simple
+        """The diagnostic uses the same `psh: line N: TARGET: ...` shape a simple
         command emits (the unified chokepoint), naming the bad target."""
         psh = run_psh(f'{compound} > {BAD}', cwd=tmp_path)
-        assert psh.stderr.startswith(f'psh: {BAD}:'), psh.stderr
+        assert psh.stderr.startswith(f'psh: line 1: {BAD}:'), psh.stderr
         assert 'unexpected error' not in psh.stderr
 
 
@@ -118,7 +118,7 @@ class TestCompoundRedirectFailureContexts:
         cmd = f'f() {{ echo hi; }} > {BAD}; f || echo fallback; echo rc=$?'
         psh = run_psh(cmd, cwd=tmp_path)
         assert psh.stdout == 'fallback\nrc=0\n', psh.stderr
-        assert psh.stderr.startswith(f'psh: {BAD}:'), psh.stderr
+        assert psh.stderr.startswith(f'psh: line 1: {BAD}:'), psh.stderr
 
     def test_combined_redirect_after_closed_stdout(self, tmp_path):
         """`exec 1>&-; { ...; } &> f` must not crash and must leave fd 2

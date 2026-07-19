@@ -72,6 +72,7 @@ from typing import TYPE_CHECKING, List, NoReturn, Optional, TextIO, Tuple, cast
 from ..ast_nodes import Command, Redirect
 from .file_redirect import FileRedirector
 from .process_sub import ProcessSubstitutionHandler
+from .redirect_program import RedirectOp, RedirectOpKind
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -189,21 +190,28 @@ def _redirect_error_name(error: OSError, target: Optional[str]) -> str:
     return str(error.errno)
 
 
-def format_redirect_error(error: OSError, target: Optional[str] = None) -> str:
-    """Format a redirect-setup ``OSError`` as bash's ``psh: TARGET: STRERROR``.
+def format_redirect_error(error: OSError, target: Optional[str] = None, *,
+                          location: str = "psh: ") -> str:
+    """Format a redirect-setup ``OSError`` as bash's ``<loc>TARGET: STRERROR``.
 
     This is the ONE message shape every redirect-failure site emits — simple
     command, in-process compound command, forked subshell, function call — so
     they no longer diverge (raw ``OSError`` repr vs prefixed message). A
     syscall failure (errno set: ENOENT/EISDIR/EACCES) becomes
-    ``psh: <target>: <strerror>``; a custom-message redirect error (errno
+    ``<loc><target>: <strerror>``; a custom-message redirect error (errno
     ``None``: noclobber, ambiguous redirect, bad fd) keeps its own message as
-    ``psh: <message>``.
+    ``<loc><message>``.
+
+    ``location`` is the caller's ``ShellState.error_location_prefix()`` — the
+    single source of truth every runtime diagnostic uses, so a redirect error
+    carries bash's ``<$0>: line N:`` exactly like a builtin write error (#20
+    R1 "diagnostic source computed once"). It defaults to bare ``psh: `` for
+    the rare synthetic caller that has no shell state.
     """
     if error.errno is None:
-        return f"psh: {error}"
+        return f"{location}{error}"
     name = _redirect_error_name(error, target)
-    return f"psh: {name}: {os.strerror(error.errno)}"
+    return f"{location}{name}: {os.strerror(error.errno)}"
 
 
 class _BuiltinStreamSnapshot:
@@ -335,7 +343,9 @@ class IOManager:
                 stream_restore = self._swap_closed_output_streams(redirects)
             except OSError as e:
                 # apply_redirections already rolled back its own partial state.
-                print(format_redirect_error(e), file=self.state.stderr)
+                print(format_redirect_error(
+                    e, location=self.state.error_location_prefix()),
+                    file=self.state.stderr)
                 yield False
                 return
             try:
@@ -482,65 +492,76 @@ class IOManager:
         frame = BuiltinRedirectFrame()
         self._builtin_frame_stack.append(frame)
 
-        # Fd-level closes (`>&-`/`<&-`) are deferred until every other
-        # redirect in this command has been applied: an immediate os.close()
-        # would free a low fd number (e.g. fd 1) that a LATER redirect's
-        # open() in this same command would then reuse — so `cmd 1>&- 2>file`
-        # would open the file ONTO fd 1, then close it on restore and corrupt
-        # the shell's stdout. bash opens redirect targets on high fds for the
-        # same reason; deferring the close gives the same result. The
-        # stream-universe swap (so the builtin's write fails) still happens in
-        # textual order via _builtin_redirect_close.
-        deferred_closes: List[Redirect] = []
+        # ONE typed, source-ordered program applied left-to-right, every
+        # operation IMMEDIATELY (#20 H4). An fd close (`>&-`/`<&-`, or the
+        # source-close half of a move `n>&m-`) is applied in place, not
+        # postponed: a later `n>&m` that dups a descriptor source order has
+        # already closed then fails with bash's "Bad file descriptor", instead
+        # of duplicating a still-open fd. The freed-low-fd concern the old
+        # deferral guarded against (a later `2>file` open landing on the fd 1 a
+        # `1>&-` freed) is handled by relocation — `_open_output_off_low_fds`
+        # / `_dup_output_fd_for_children` keep opens off fds 0/1/2 — so
+        # immediate closes cannot corrupt the shell's std fds.
+        program = self.file_redirector.planner.plan_program(command.redirects)
+
+        def apply_one(op: RedirectOp) -> None:
+            redirect = op.redirect
+            if op.kind is RedirectOpKind.VAR_FD:
+                # Named fd: persistent allocation in this process (the builtin
+                # runs in-process), stored in the variable.
+                self.file_redirector.apply_var_fd_redirect(redirect)
+                return
+            plan = self.file_redirector.planner.plan(redirect)
+            op.plan = plan
+            redirect = plan.redirect
+            target = plan.target
+            # A builtin runs in-process and reads /dev/fd/N, so its
+            # process-substitution read end must outlive this single redirect:
+            # hand it to the enclosing process_sub_scope() for deferred close
+            # rather than closing it after the dup2 (the close_procsub() path
+            # the external/permanent backends use).
+            plan.hand_procsub_to_scope(self.process_sub_handler)
+
+            if op.kind is RedirectOpKind.COMBINED:
+                self._builtin_redirect_combined(target, redirect, frame)
+            elif op.kind is RedirectOpKind.DUP_FD:
+                # A move (`n>&m-`) is a dup of m onto n followed by closing the
+                # source m (unless m == n). Apply the dup, then the source
+                # close IN PLACE — same source-order discipline as `>&-`.
+                dup_step, close_step = self._split_move_dup(redirect)
+                if redirect.type == '>&':
+                    self._builtin_redirect_dup(dup_step, frame)
+                else:
+                    self._builtin_redirect_fd_level(dup_step, frame)
+                if close_step is not None:
+                    self._apply_builtin_close(close_step, frame)
+            elif op.kind is RedirectOpKind.CLOSE_FD:
+                self._apply_builtin_close(redirect, frame)
+            elif redirect.type.startswith('<'):
+                # OPEN_FILE input (`<`, `<>`) and HERE_INPUT (`<<`/`<<-`/`<<<`).
+                self._builtin_redirect_stdin(target, redirect, frame)
+            else:
+                # OPEN_FILE output (`>`, `>>`, `>|`).
+                self._builtin_redirect_output_file(target, redirect, frame)
 
         try:
-            for redirect in command.redirects:
-                if redirect.var_fd:
-                    # Named fd: persistent allocation in this process (the
-                    # builtin runs in-process), stored in the variable.
-                    self.file_redirector.apply_var_fd_redirect(redirect)
-                    continue
-                plan = self.file_redirector.planner.plan(redirect)
-                redirect = plan.redirect
-                target = plan.target
-                # A builtin runs in-process and reads /dev/fd/N, so its
-                # process-substitution read end must outlive this single
-                # redirect: hand it to the enclosing process_sub_scope() for
-                # deferred close rather than closing it after the dup2 (the
-                # close_procsub() path the external/permanent backends use).
-                plan.hand_procsub_to_scope(self.process_sub_handler)
-
-                if redirect.combined:
-                    self._builtin_redirect_combined(target, redirect, frame)
-                elif redirect.type in ('<', '<>', '<<', '<<-', '<<<'):
-                    self._builtin_redirect_stdin(target, redirect, frame)
-                elif redirect.type in ('>', '>>', '>|'):
-                    self._builtin_redirect_output_file(target, redirect, frame)
-                elif redirect.type in ('>&', '<&'):
-                    # A move (`n>&m-`) is a dup of m onto n followed by closing
-                    # the source m (unless m == n). Apply the dup with the
-                    # existing helpers, then DEFER the source close so it reuses
-                    # the same stream-swap + late-close machinery as `>&-`.
-                    dup_step, close_step = self._split_move_dup(redirect)
-                    if redirect.type == '>&':
-                        self._builtin_redirect_dup(dup_step, frame)
-                    else:
-                        self._builtin_redirect_fd_level(dup_step, frame)
-                    if close_step is not None:
-                        self._builtin_redirect_close(close_step, frame)
-                        deferred_closes.append(close_step)
-                elif redirect.type in ('>&-', '<&-'):
-                    self._builtin_redirect_close(redirect, frame)
-                    deferred_closes.append(redirect)
-
-            # Apply the deferred fd-level closes now that all opens are done.
-            for redirect in deferred_closes:
-                self._builtin_redirect_fd_level(redirect, frame)
+            program.apply_in_order(apply_one)
         except Exception:
             self.restore_builtin_redirections(frame)
             raise
 
         return frame
+
+    def _apply_builtin_close(self, redirect: Redirect,
+                             frame: 'BuiltinRedirectFrame') -> None:
+        """A builtin `>&-`/`<&-` close, applied in source order.
+
+        The stream-universe swap (so the builtin's own write to a closed fd 1/2
+        raises EBADF) happens first, then the fd-level close IMMEDIATELY — never
+        postponed (#20 H4).
+        """
+        self._builtin_redirect_close(redirect, frame)
+        self._builtin_redirect_fd_level(redirect, frame)
 
     def _builtin_redirect_stdin(self, target, redirect,
                                 frame: BuiltinRedirectFrame):
@@ -558,7 +579,6 @@ class IOManager:
         the stream swap is skipped and the fd-level redirect is saved/restored
         through the frame's fd-save list (``_builtin_redirect_fd_level``).
         """
-        import io
         target_fd = redirect.fd if redirect.fd is not None else 0
         if target_fd != 0:
             # Body/file goes to a non-stdin fd: pure fd-level redirect, no
@@ -583,12 +603,19 @@ class IOManager:
             f = self.file_redirector.dup_sharing_stream(0, 'r+')
             frame.opened_streams.append(f)
             sys.stdin = f
-        elif redirect.type in ('<<', '<<-'):
-            content = self.file_redirector.redirect_heredoc(redirect)
-            sys.stdin = io.StringIO(content)
-        else:  # '<<<'
-            content = self.file_redirector.redirect_herestring(redirect)
-            sys.stdin = io.StringIO(content)
+        elif redirect.type in ('<<', '<<-', '<<<'):
+            # Materialize the body ONCE onto fd 0 (a temp file), then point
+            # sys.stdin at a DUP of fd 0 sharing that single open file
+            # description — NOT a separate io.StringIO (#20 H8). A builtin
+            # `read` and a child it spawns (`eval 'read x; cat'`) then advance
+            # ONE offset, exactly the input twin of the `<` case above.
+            if redirect.type == '<<<':
+                self.file_redirector.redirect_herestring(redirect)
+            else:
+                self.file_redirector.redirect_heredoc(redirect)
+            f = self.file_redirector.dup_sharing_stream(0, 'r')
+            frame.opened_streams.append(f)
+            sys.stdin = f
 
     @staticmethod
     def _open_output_off_low_fds(target: str, mode: str) -> TextIO:
@@ -772,9 +799,11 @@ class IOManager:
         ``<&-`` (input close) and closes of fd >= 3 have no output-stream
         counterpart and stay purely fd level.
 
-        Only the STREAM swap happens here, in textual order; the fd-level
-        close is deferred by setup_builtin_redirections (see the comment
-        there) so a later redirect's open() cannot grab the freed fd number.
+        Only the STREAM swap happens here; the fd-level close follows
+        IMMEDIATELY (``_apply_builtin_close`` pairs the two in source order —
+        #20 H4). The freed low fd number cannot be grabbed by a later
+        redirect's ``open()`` because ``_open_output_off_low_fds`` relocates
+        every builtin output target off fds 0/1/2.
         """
         target_fd = self.output_close_fd(redirect)
         if target_fd is None:
@@ -867,26 +896,36 @@ class IOManager:
         # so a builtin running inside a function called with a <(...)
         # argument cannot close the caller's still-needed fd.
 
-    @staticmethod
-    def _child_redirect_error(error: OSError,
+    def _child_redirect_error(self, error: OSError,
                               target: Optional[str] = None) -> NoReturn:
         """Emit a child redirect-setup failure through the ONE message shape and
         exit 1 — the forked-child counterpart of ``format_redirect_error``.
 
         Every failure site in ``setup_child_redirections`` routes here so a
         forked child never leaks a raw ``[Errno N] ...`` OSError repr where the
-        parent (and bash) print ``psh: TARGET: STRERROR``. It cannot ``raise``
-        (it runs after fork, past the point a normal exception can unwind), so
-        it writes the formatted message with ``os.write`` and ``os._exit(1)``.
+        parent (and bash) print ``<$0>: line N: TARGET: STRERROR``. It cannot
+        ``raise`` (it runs after fork, past the point a normal exception can
+        unwind), so it writes the formatted message with ``os.write`` and
+        ``os._exit(1)``. The location prefix is the child's own
+        ``error_location_prefix()`` — the forked copy still knows the command's
+        line number.
         """
-        os.write(2, (format_redirect_error(error, target) + "\n")
+        os.write(2, (format_redirect_error(
+            error, target, location=self.state.error_location_prefix()) + "\n")
                  .encode('utf-8'))
         os._exit(1)
 
     def setup_child_redirections(self, command: Command):
-        """Set up redirections in child process (after fork) using dup2."""
-        for redirect in command.redirects:
-            if redirect.var_fd:
+        """Set up redirections in child process (after fork) using dup2.
+
+        One typed, source-ordered program applied left-to-right (the fd
+        universe of the same applicator the builtin path uses).
+        """
+        program = self.file_redirector.planner.plan_program(command.redirects)
+
+        def apply_one(op: RedirectOp) -> None:
+            redirect = op.redirect
+            if op.kind is RedirectOpKind.VAR_FD:
                 # Named fd for a forked command (external / subshell): bash
                 # allocates it INSIDE the child, so the variable is set in the
                 # child (lost on exit) and the parent neither gets the variable
@@ -895,12 +934,12 @@ class IOManager:
                     self.file_redirector.apply_var_fd_redirect(redirect)
                 except OSError as e:
                     self._child_redirect_error(e)
-                continue
+                return
             try:
                 plan = self.file_redirector.planner.plan(redirect)
             except OSError as e:
                 self._child_redirect_error(e)
-            redirect = plan.redirect
+            op.plan = plan
             target = plan.target
             applied = False
 
@@ -915,6 +954,8 @@ class IOManager:
                 self._child_redirect_error(e, target)
             finally:
                 plan.close_procsub(applied=applied)
+
+        program.apply_in_order(apply_one)
 
     def create_process_substitution_for_expansion(self, direction: str,
                                                   command: str) -> str:

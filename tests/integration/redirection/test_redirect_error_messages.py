@@ -4,7 +4,7 @@ Reappraisal #17 io MED-1 + LOW-3: the FD_LEVEL_WINDOW dispatch path
 (function calls; builtins in pipelines/forked children) applied redirects
 with no guard, so a setup failure leaked the raw Python OSError repr
 ("psh: [Errno 21] Is a directory: 'd'") instead of bash's
-"psh: d: Is a directory". The empty-string target (`> ""`) additionally
+"psh: line 1: d: Is a directory". The empty-string target (`> ""`) additionally
 produced a different malformed message per path (`if target:` treated ''
 as absent). Both now route through format_redirect_error /
 guarded_redirections — the documented "one message shape" invariant is
@@ -37,26 +37,26 @@ class TestFdLevelWindowMessages:
         result = _run_psh('f(){ echo hi; }; f > d; echo rc=$?',
                           cwd=str(tmp_path))
         assert result.stdout == 'rc=1\n'
-        assert result.stderr.strip() == 'psh: d: Is a directory'
+        assert result.stderr.strip() == 'psh: line 1: d: Is a directory'
 
     def test_function_redirect_to_missing_dir(self):
         result = _run_psh(f'f(){{ echo hi; }}; f > {MISSING}; echo rc=$?')
         assert result.stdout == 'rc=1\n'
         assert result.stderr.strip() == \
-            f'psh: {MISSING}: No such file or directory'
+            f'psh: line 1: {MISSING}: No such file or directory'
 
     def test_builtin_in_pipeline_redirect_failure(self):
         result = _run_psh(f'echo x > {MISSING} | cat; echo rc=$?')
         assert result.stdout == 'rc=0\n'  # pipeline status is cat's
         assert result.stderr.strip() == \
-            f'psh: {MISSING}: No such file or directory'
+            f'psh: line 1: {MISSING}: No such file or directory'
 
     def test_function_in_pipeline_redirect_failure(self):
         result = _run_psh(
             f'f(){{ echo hi; }}; f > {MISSING} | cat; echo rc=$?')
         assert result.stdout == 'rc=0\n'
         assert result.stderr.strip() == \
-            f'psh: {MISSING}: No such file or directory'
+            f'psh: line 1: {MISSING}: No such file or directory'
 
     def test_no_raw_oserror_repr_anywhere(self, tmp_path):
         (tmp_path / 'd').mkdir()
@@ -73,10 +73,10 @@ class TestFdLevelWindowMessages:
 
 
 class TestEmptyTargetOneShape:
-    """`> ""` prints bash's `psh: : No such file or directory` on EVERY
+    """`> ""` prints bash's `psh: line 1: : No such file or directory` on EVERY
     dispatch path (was: three different malformed messages)."""
 
-    EXPECTED = 'psh: : No such file or directory'
+    EXPECTED = 'psh: line 1: : No such file or directory'
 
     @pytest.mark.parametrize('cmd', [
         '> ""',                        # no command word
@@ -99,7 +99,7 @@ class TestAssignmentRedirectOrdering:
         result = _run_psh(f'x=5 > {MISSING}; echo x=[$x] rc=$?')
         assert result.stdout == 'x=[5] rc=1\n'
         assert result.stderr.strip() == \
-            f'psh: {MISSING}: No such file or directory'
+            f'psh: line 1: {MISSING}: No such file or directory'
 
     def test_cmdsub_value_runs_before_redirect(self):
         result = _run_psh(f'x=$(echo 9) > {MISSING}; echo x=[$x] rc=$?')
@@ -110,7 +110,7 @@ class TestAssignmentRedirectOrdering:
             f'a=(1 2); a[0]=x > {MISSING}; echo a0=[${{a[0]}}] rc=$?')
         assert result.stdout == 'a0=[x] rc=1\n'
         assert result.stderr.strip() == \
-            f'psh: {MISSING}: No such file or directory'
+            f'psh: line 1: {MISSING}: No such file or directory'
 
     def test_pure_assignment_value_reads_original_stdin(self, tmp_path):
         """bash: `x=$(cat) < file` expands the value with the ORIGINAL

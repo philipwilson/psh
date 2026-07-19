@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO, Tuple, cast
 from ..ast_nodes import ExpansionPart, ProcessSubstitution, Redirect
 from ..core.process_lease import ComponentKind, get_coordinator
 from .planner import RedirectPlan, RedirectPlanner
+from .redirect_program import RedirectOp, RedirectOpKind
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -658,16 +659,24 @@ class FileRedirector:
 
     def _apply_redirections(self, redirects: List[Redirect],
                             saved_fds: List[Tuple[int, int | None]]) -> List[Tuple[int, int | None]]:
-        """Apply redirections, appending (fd, saved_fd) pairs to saved_fds."""
-        for redirect in redirects:
-            if redirect.var_fd:
+        """Apply redirections, appending (fd, saved_fd) pairs to saved_fds.
+
+        One typed, source-ordered program applied left-to-right (the fd
+        universe of the shared applicator) — the save/restore window backend.
+        """
+        program = self.planner.plan_program(redirects)
+
+        def apply_one(op: RedirectOp) -> None:
+            redirect = op.redirect
+            if op.kind is RedirectOpKind.VAR_FD:
                 # Named-fd redirect ({fd}>file): allocate a persistent fd >= 10
                 # in THIS process and store its number in the variable. Not
                 # added to saved_fds — it is never restored after the command
                 # (bash keeps it open; the user closes it with {fd}>&-).
                 self.apply_var_fd_redirect(redirect)
-                continue
+                return
             plan = self.planner.plan(redirect)
+            op.plan = plan
             # A parked STD_FDS backup on this plan's target fd moves out of
             # the way BEFORE the save (the vacated fd then saves as
             # was-not-open, so the window's restore simply re-closes it).
@@ -681,6 +690,7 @@ class FileRedirector:
             finally:
                 plan.close_procsub(applied=applied)
 
+        program.apply_in_order(apply_one)
         return saved_fds
 
     def restore_redirections(self, saved_fds: List[Tuple[int, int | None]]):
@@ -910,7 +920,8 @@ class FileRedirector:
         ``exec`` and are closed explicitly), and the allocation numbering
         stays exactly bash's first-free->=10.
         """
-        if any(not redirect.var_fd for redirect in redirects):
+        program = self.planner.plan_program(redirects)
+        if any(op.kind is not RedirectOpKind.VAR_FD for op in program):
             self._acquire_permanent_stream_lease()
         # Pending buffered output belongs to the OLD destination; flush it
         # before the fd-level dup2 silently re-routes it to the new file.
@@ -928,46 +939,51 @@ class FileRedirector:
         # dropped on SUCCESS only, so a later-redirect failure's rollback can
         # still restore them (symmetric with the saved_fds backups below).
         closed_dups: List[TextIO] = []
-        try:
-            for redirect in redirects:
-                if redirect.var_fd:
-                    # Named-fd redirect under `exec`: same persistent allocation
-                    # (already permanent, so no stream rebind needed).
-                    self.apply_var_fd_redirect(redirect)
-                    continue
-                plan = self.planner.plan(redirect)
-                redirect = plan.redirect
-                # Displace any parked STD_FDS backup this redirect targets
-                # (user fds in the parking range must win — bounce blocker).
-                self._clear_user_fds_from_parking(plan)
-                saved_fds.extend(self.saved_fds_for_plan(plan))
-                applied = False
 
-                try:
-                    self.apply_fd_plan(plan)
-                    # Rebind the Python-level stream onto the redirected fd.
-                    # Dispatch by direction using the planner's target_fd (the
-                    # single source of truth for which fd this redirect acts on)
-                    # rather than re-enumerating every redirect.type: input forms
-                    # (`<`, `<>`, `<<`, `<<-`, `<<<`) rebind stdin; output forms
-                    # (`>`, `>>`, `>|`) rebind the target fd; `&>`/`&>>` rebind
-                    # both 1 and 2; a `>&`/`<&` duplication rebinds its own fd;
-                    # a `>&-` close of fd 1/2 points the stream at a sentinel.
-                    if redirect.combined:
-                        self._rebind_output_stream(1)
-                        self._rebind_output_stream(2)
-                    elif '&' in redirect.type:  # >& <& (dup) or >&- <&- (close)
-                        if redirect.fd is not None and redirect.dup_fd is not None:
-                            self._rebind_output_stream(redirect.fd)
-                        else:
-                            self._rebind_closed_output_stream(redirect, closed_dups)
-                    elif redirect.type.startswith('<'):
-                        self._rebind_input_stream(plan.target_fd)
-                    else:  # '>', '>>', '>|'
-                        self._rebind_output_stream(plan.target_fd)
-                    applied = True
-                finally:
-                    plan.close_procsub(applied=applied)
+        def apply_one(op: RedirectOp) -> None:
+            redirect = op.redirect
+            if op.kind is RedirectOpKind.VAR_FD:
+                # Named-fd redirect under `exec`: same persistent allocation
+                # (already permanent, so no stream rebind needed).
+                self.apply_var_fd_redirect(redirect)
+                return
+            plan = self.planner.plan(redirect)
+            op.plan = plan
+            redirect = plan.redirect
+            # Displace any parked STD_FDS backup this redirect targets
+            # (user fds in the parking range must win — bounce blocker).
+            self._clear_user_fds_from_parking(plan)
+            saved_fds.extend(self.saved_fds_for_plan(plan))
+            applied = False
+
+            try:
+                self.apply_fd_plan(plan)
+                # Rebind the Python-level stream onto the redirected fd.
+                # Dispatch by direction using the planner's target_fd (the
+                # single source of truth for which fd this redirect acts on)
+                # rather than re-enumerating every redirect.type: input forms
+                # (`<`, `<>`, `<<`, `<<-`, `<<<`) rebind stdin; output forms
+                # (`>`, `>>`, `>|`) rebind the target fd; `&>`/`&>>` rebind
+                # both 1 and 2; a `>&`/`<&` duplication rebinds its own fd;
+                # a `>&-` close of fd 1/2 points the stream at a sentinel.
+                if op.kind is RedirectOpKind.COMBINED:
+                    self._rebind_output_stream(1)
+                    self._rebind_output_stream(2)
+                elif op.kind in (RedirectOpKind.DUP_FD, RedirectOpKind.CLOSE_FD):
+                    if redirect.fd is not None and redirect.dup_fd is not None:
+                        self._rebind_output_stream(redirect.fd)
+                    else:
+                        self._rebind_closed_output_stream(redirect, closed_dups)
+                elif redirect.type.startswith('<'):
+                    self._rebind_input_stream(plan.target_fd)
+                else:  # '>', '>>', '>|'
+                    self._rebind_output_stream(plan.target_fd)
+                applied = True
+            finally:
+                plan.close_procsub(applied=applied)
+
+        try:
+            program.apply_in_order(apply_one)
         except Exception:
             self._rollback_std_streams(saved_streams)
             self.restore_redirections(saved_fds)
