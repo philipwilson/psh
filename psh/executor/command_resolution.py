@@ -29,13 +29,22 @@ remains the sole reader of the command hash and PATH, and the external strategy
 consults :attr:`CommandEnvOverlay.effective_path` when it performs that search.
 A static ratchet (``tests/unit/tooling/test_command_resolution_ratchet_r3.py``)
 fails on a raw dispatch read reintroduced into ``command.py`` outside this module.
+
+Resolution runs once PER COMMAND, so the three types are ``slots=True`` (NOT
+``frozen``): frozen dataclasses pay a per-field ``object.__setattr__`` on every
+construction, measurable on this hot path. They follow the campaign's ratified
+allocate-fresh-never-mutate discipline (the W1 ``FieldRun`` / R2 ``VariableLookup``
+precedent — slots-non-frozen with a slots guard pin instead of frozen); the
+``slots`` layout already forbids growing an instance with a stray attribute. The
+overlay is still a VALUE (built once, never mutated); the "immutable view" in the
+type descriptions is that discipline, not a ``frozen`` enforcement.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Sequence, Tuple
 
 from .strategies import (
     BuiltinExecutionStrategy,
@@ -64,7 +73,7 @@ class DispatchKind(Enum):
     EXTERNAL = "external"
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class NormalizedCommandName:
     """A command word after quote removal, with its bypass provenance.
 
@@ -99,7 +108,7 @@ def normalize_command_word(text: str, *,
     )
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class CommandEnvOverlay:
     """The immutable typed view of a command's effective environment.
 
@@ -142,7 +151,7 @@ class CommandEnvOverlay:
 EMPTY_OVERLAY = CommandEnvOverlay()
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class ResolvedCommand:
     """The single result of resolving a command word to how it dispatches.
 
@@ -189,7 +198,7 @@ def _kind_for_strategy(strategy: 'ExecutionStrategy') -> DispatchKind:
 
 
 def resolve_command(shell: 'Shell',
-                    strategies: Tuple['ExecutionStrategy', ...],
+                    strategies: Sequence['ExecutionStrategy'],
                     normalized: NormalizedCommandName,
                     overlay: CommandEnvOverlay,
                     context: object) -> Optional[ResolvedCommand]:

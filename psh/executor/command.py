@@ -70,6 +70,13 @@ if TYPE_CHECKING:
     from .core import ExecutorVisitor
 
 
+# The dispatch kinds that shift a name (not None) into the job manager's
+# last-simple-command register — module constant so the hot dispatch path
+# does not rebuild the tuple each call.
+_BUILTIN_DISPATCH_KINDS = frozenset(
+    {DispatchKind.SPECIAL_BUILTIN, DispatchKind.BUILTIN})
+
+
 class RedirectionMode(Enum):
     """How a matched command's redirections are applied.
 
@@ -756,8 +763,7 @@ class CommandExecutor:
         # externals shift a None in (they clear the exemption, like
         # bash); pure assignments never reach here (no shift).
         self.shell.job_manager.note_simple_command(
-            cmd_name if resolved.dispatch_kind in (
-                DispatchKind.SPECIAL_BUILTIN, DispatchKind.BUILTIN)
+            cmd_name if resolved.dispatch_kind in _BUILTIN_DISPATCH_KINDS
             else None)
         return self._invoke_resolution(
             resolved, cmd_name, args, node, context, invocation)

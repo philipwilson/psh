@@ -12,7 +12,6 @@ plus the empty/unset-PATH command-not-found MESSAGE alignment (a subprocess
 row against live bash, prefix-normalized).
 """
 
-import dataclasses
 import os
 import re
 import subprocess
@@ -77,10 +76,13 @@ class TestNormalizedCommandName:
         assert normalize_command_word('a/b').has_slash is True
         assert normalize_command_word('ab').has_slash is False
 
-    def test_frozen(self):
+    def test_slots_no_dict(self):
+        # slots-non-frozen (allocate-fresh-never-mutate hot-path precedent):
+        # no __dict__, and a stray attribute is rejected by the slots layout.
         n = normalize_command_word('echo')
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            n.text = 'other'  # type: ignore[misc]
+        assert not hasattr(n, '__dict__')
+        with pytest.raises(AttributeError):
+            n.stray = 1  # type: ignore[attr-defined]
 
 
 class TestCommandEnvOverlay:
@@ -104,9 +106,11 @@ class TestCommandEnvOverlay:
         captured_shell.state.env['PATH'] = '/tmp/xyz-r3'
         assert CommandEnvOverlay().effective_path(captured_shell) == '/tmp/xyz-r3'
 
-    def test_frozen(self):
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            CommandEnvOverlay().has_path_override = True  # type: ignore[misc]
+    def test_slots_no_dict(self):
+        ov = CommandEnvOverlay()
+        assert not hasattr(ov, '__dict__')
+        with pytest.raises(AttributeError):
+            ov.stray = 1  # type: ignore[attr-defined]
 
 
 class TestResolveCommandModeAware:
@@ -179,11 +183,12 @@ class TestResolveCommandModeAware:
         finally:
             captured_shell.state.options['posix'] = False
 
-    def test_resolved_command_frozen(self, captured_shell):
+    def test_resolved_command_slots(self, captured_shell):
         r = _resolve(captured_shell, 'true')
         assert isinstance(r, ResolvedCommand)
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            r.assignments_persist = True  # type: ignore[misc]
+        assert not hasattr(r, '__dict__')
+        with pytest.raises(AttributeError):
+            r.stray = 1  # type: ignore[attr-defined]
 
 
 def _norm_prefix(text: str) -> str:
