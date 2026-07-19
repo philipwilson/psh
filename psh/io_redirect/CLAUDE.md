@@ -111,6 +111,19 @@ A redirect-target substitution's parent fd has exactly these two fates, and
 **both are owned by `RedirectPlan`/`ProcessSubstitutionResource`** — a
 dispatch site never pokes `handler.active_fds` itself.
 
+**`n>&n` self-dup leniency (bash rule, probe-verified):** a dup whose source
+and target fd coincide POST-RESOLUTION (`3>&3`, `3<&3`, `3>&3-`, and
+`3>&$x` with x=3) is an unconditional success no-op — no validation, no
+syscall, no fd change, even when fd n is closed or never opened. The one
+predicate is `redirect_program.is_self_dup`; every dup path consults it
+(`_validate_dup_source`, `_redirect_dup_fd`, `saved_fds_for_plan`, the
+builtin stream half in `_builtin_redirect_dup` — which still installs the
+closed-stream sentinel when a CLOSED fd 1/2 is self-dup'd, so the builtin's
+own write fails like bash — and the `exec` stream rebind). Pinned by
+`tests/integration/redirection/test_self_dup_leniency_r1.py`. An INVALID dup
+source's diagnostic names the SOURCE fd for the static spelling but the
+TARGET fd for the dynamic spelling (`_bad_dup_source_error`, bash-pinned).
+
 `ProcessSubstitutionResource` (in `process_sub.py`) owns one substitution's
 `(path, parent_fd, pid, cleanup_path)`; `resolve_procsub_resource(node)` builds
 it from the `ProcessSubstitution` AST node (its raw `source`/`direction`, so the
@@ -260,10 +273,14 @@ Python-stream writes (appraisal #15 C1).
    - Transactional: a failure part-way through rolls back THIS frame only
 2. Execute builtin
 3. restore_builtin_redirections(frame)
-   - Restore that frame's fd-level saves first
    - Restore the snapshot's original stream objects
    - Close exactly the files setup opened (never whatever happens to be
-     in sys.stdout — after `cmd 2>&1` that IS the shell's real stdout)
+     in sys.stdout — after `cmd 2>&1` that IS the shell's real stdout).
+     Streams close BEFORE the fd-level restore — each stream owns its own
+     fd, and a source-ordered close can free an fd NUMBER that a later
+     internal dup reused; restoring first would let the stream close
+     destroy the just-restored descriptor (R1 bounce blocker)
+   - Restore that frame's fd-level saves
    - dup2 the saved fd 0 back
 ```
 
