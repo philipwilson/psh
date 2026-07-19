@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "0.737.0",
-  "gated_commit": "1272fc48dca69250bc9a8d02dea3c2526be7e39c",
-  "gated_tree": "89daa3814382479cbd5c6787eb099b853ea8ce55",
+  "version": "0.738.0",
+  "gated_commit": "b970999da3f1f4505ad23158370b871ed691e7a2",
+  "gated_tree": "8663f66d7f971fe7f2b08609bff9231f6d4461b7",
   "platform": {
     "os": "Darwin 25.5.0",
     "python": "3.14.2",
@@ -13,13 +13,13 @@
       "description": "Phase 1: Regular tests (parallel, auto workers, -m 'not serial and not benchmark')",
       "exit": 0,
       "counts": {
-        "passed": 18752,
+        "passed": 18797,
         "failed": 0,
         "errored": 0,
-        "skipped": 1574,
+        "skipped": 1590,
         "xfailed": 8,
         "xpassed": 0,
-        "deselected": 793
+        "deselected": 794
       }
     },
     {
@@ -32,12 +32,12 @@
         "skipped": 0,
         "xfailed": 2,
         "xpassed": 0,
-        "deselected": 20350
+        "deselected": 20412
       }
     }
   ],
   "ruff": true,
   "mypy_files": 265,
-  "timestamp": "2026-07-19T00:46:38+00:00",
+  "timestamp": "2026-07-19T04:47:36+00:00",
   "command": "run_tests.py --parallel --write-attestation"
 }
