@@ -190,3 +190,42 @@ def test_histfile_roundtrip_ignorespace_never_persists_secret(tmp_path):
     assert "secret" not in content
     assert content == "echo keep\n"
     assert os.path.exists(shell.state.history_file)
+
+
+# --- HISTIGNORE routes through the ONE pattern engine (campaign W3) ---
+# bash 5.2 truth (live interactive probe, archived:
+# tmp/boundary-ledgers/W3-probes/namefilter-probe.txt): HISTIGNORE patterns
+# honor extglob groups ONLY when `shopt -s extglob` is set (bash compiles them
+# with FNM_EXTMATCH conditionally), and backslash escapes a metacharacter.
+# The former stdlib-fnmatch path did neither.
+
+def test_histignore_extglob_group_honored_when_extglob_on():
+    # RED on base (fnmatch: '@(ls|pwd)' matches neither line -> both kept).
+    shell = _shell(histignore="@(ls|pwd)")
+    shell.state.options['extglob'] = True
+    for c in ["ls", "pwd", "echo keep"]:
+        shell.run_command(c)
+    assert shell.state.history == ["echo keep"]
+
+
+def test_histignore_extglob_group_literal_when_extglob_off():
+    # extglob OFF (default): '@(ls|pwd)' does not act as a group, so the
+    # lines are recorded (parity with the old fnmatch path AND with bash).
+    assert _hist(histignore="@(ls|pwd)",
+                 commands=["ls", "pwd", "echo keep"]) == \
+        ["ls", "pwd", "echo keep"]
+
+
+def test_histignore_backslash_escapes_metacharacter():
+    # RED on base: with HISTIGNORE='a\*b' the engine treats '\*' as an
+    # ESCAPED (literal) star, so the literal line 'a*b' is dropped and
+    # 'aXb' is kept; stdlib fnmatch read '\' as an ordinary character and
+    # kept both. (bash: backslash escapes in HISTIGNORE patterns.)
+    assert _hist(histignore=r"a\*b", commands=["a*b", "aXb", "echo keep"]) == \
+        ["aXb", "echo keep"]
+
+
+def test_histignore_unescaped_star_still_wildcards():
+    # Control row: an unescaped '*' is a live wildcard (both lines dropped).
+    assert _hist(histignore="a*b", commands=["a*b", "aXb", "echo keep"]) == \
+        ["echo keep"]

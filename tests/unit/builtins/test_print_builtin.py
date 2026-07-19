@@ -123,6 +123,13 @@ class TestPrintMatch:
         captured_shell.run_command("print -m '?' a bb c")
         assert captured_shell.get_stdout() == "a c\n"
 
+    def test_match_backslash_escape_is_literal(self, captured_shell):
+        # W3: print -m routes through the shell pattern engine, where a
+        # backslash escapes the following metacharacter ('f\*' matches the
+        # literal 'f*' only). RED on base (stdlib fnmatch kept both out).
+        captured_shell.run_command(r"print -m 'f\*' 'f*' fX")
+        assert captured_shell.get_stdout() == "f*\n"
+
 
 class TestPrintSort:
     def test_sort_ascending(self, captured_shell):

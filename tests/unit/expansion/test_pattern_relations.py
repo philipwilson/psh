@@ -280,3 +280,132 @@ def test_pathname_backslash_in_value_stays_literal(isolated_shell_with_temp_dir)
     sh.run_command(r"x='a\*b'")
     out = sh.expansion_manager.glob_expander.expand(r'a\\*b')
     assert out == ['a\\Zb']
+
+
+# --- BOUNCE blocker 1 pins: star count never consumes recursion frames -----
+# bash 5.2 truth (probe transcripts: tmp/boundary-ledgers/W3-probes/
+# starprobe-red-at-6a2653bf.txt [5 rows RED at the pre-fix tip with
+# 'maximum recursion depth exceeded'] and starprobe-green-postfix.txt).
+# The matcher recursed ONE FRAME PER STAR; the fix makes star handling
+# iterative (two-pointer boolean / forward position-set DP), so 50,000-star
+# patterns match at ANY recursion limit, like base and bash.
+
+_N_STARS = 50000
+
+
+def test_engine_50k_stars_full_match_at_default_limit():
+    old = sys.getrecursionlimit()
+    sys.setrecursionlimit(1000)
+    try:
+        cp = _c("*" * _N_STARS, extglob=False)
+        assert cp.full_match("abc", STRING) is True
+        assert cp.full_match("", STRING) is True
+    finally:
+        sys.setrecursionlimit(old)
+
+
+def test_engine_50k_stars_matching_ends_at_default_limit():
+    old = sys.getrecursionlimit()
+    sys.setrecursionlimit(1000)
+    try:
+        cp = _c("*" * _N_STARS, extglob=False)
+        # All-stars reaches every position: ${x#...} -> min 0, ${x##...} -> max.
+        assert cp.matching_ends("abc", 0, STRING) == frozenset({0, 1, 2, 3})
+    finally:
+        sys.setrecursionlimit(old)
+
+
+def test_engine_50k_star_chain_at_default_limit():
+    old = sys.getrecursionlimit()
+    sys.setrecursionlimit(1000)
+    try:
+        cp = _c("*a" * _N_STARS, extglob=False)
+        assert cp.full_match("a" * _N_STARS, STRING) is True   # exact chain
+        assert cp.full_match("abc", STRING) is False           # needs 50k a's
+    finally:
+        sys.setrecursionlimit(old)
+
+
+def test_shell_param_removal_50k_stars(captured_shell):
+    # bash: ${x#<50k stars>} -> 'abc' (shortest = empty), ${x##...} -> ''.
+    stars = "*" * _N_STARS
+    rc = captured_shell.run_command(
+        f'x=abc; printf "%s|%s|" "${{x#{stars}}}" "${{x##{stars}}}"')
+    assert rc == 0
+    assert captured_shell.get_stdout() == "abc||"
+    assert captured_shell.get_stderr() == ""
+
+
+def test_shell_case_50k_stars(captured_shell):
+    stars = "*" * _N_STARS
+    rc = captured_shell.run_command(
+        f'case abc in {stars}) echo M;; *) echo N;; esac')
+    assert rc == 0
+    assert captured_shell.get_stdout() == "M\n"
+
+
+def test_shell_case_50k_star_chain_no_match(captured_shell):
+    chain = "*a" * _N_STARS
+    rc = captured_shell.run_command(
+        f'case abc in {chain}) echo Y;; *) echo N;; esac')
+    assert rc == 0
+    assert captured_shell.get_stdout() == "N\n"
+
+
+def test_shell_pathname_50k_stars(isolated_shell_with_temp_dir):
+    sh = isolated_shell_with_temp_dir
+    _mkfiles(['a', 'b'])
+    # bash: an all-stars pattern expands to every non-hidden name.
+    assert sh.expansion_manager.glob_expander.expand("*" * _N_STARS) == ['a', 'b']
+
+
+# --- extglob NESTING bound: the one remaining (structural) recursion -------
+
+def test_matcher_extglob_nesting_bound_raises_recursion_error():
+    """The structural bound: extglob NESTING depth is the ONLY recursion left
+    in the matcher. Past the interpreter limit it raises RecursionError — the
+    EXPECTED-shell-error type under strict-errors (taxonomy in
+    psh/core/CLAUDE.md), never a corrupted state. The AST is built
+    programmatically (an iterative loop) so this pins the MATCHER's bound
+    without the parser's own (matching-depth) recursion. Shell-level failure
+    mode probed vs bash 5.2 and archived (tmp/boundary-ledgers/W3-probes/
+    nesting-bound-probe.txt): at nesting depth 30,000 psh fails CLEANLY
+    (command rc 1, diagnostic, shell continues) while bash SEGFAULTS
+    (rc -11); the slow full-shell row lives in the nightly benchmark tier
+    (tests/performance/benchmarks/test_pattern_engine_performance.py)."""
+    from psh.expansion.pattern_engine import Extglob, Literal, Sequence
+    seq = Sequence((Literal("x"),))
+    for _ in range(2000):
+        seq = Sequence((Extglob("@", (seq,)),))
+    old = sys.getrecursionlimit()
+    sys.setrecursionlimit(1000)
+    try:
+        with pytest.raises(RecursionError):
+            CompiledPattern(seq).full_match("x", STRING)
+    finally:
+        sys.setrecursionlimit(old)
+
+
+def test_compile_extglob_nesting_bound_raises_recursion_error():
+    """The COMPILER recurses once per extglob nesting level too (it is the
+    tighter gate: the matcher can never out-recurse a pattern that compiled).
+    Past the limit it raises the same expected RecursionError."""
+    depth = 2000
+    pat = "@(" * depth + "x" + ")" * depth
+    old = sys.getrecursionlimit()
+    sys.setrecursionlimit(1000)
+    try:
+        with pytest.raises(RecursionError):
+            compile_pattern(pat)
+    finally:
+        sys.setrecursionlimit(old)
+
+
+def test_extglob_nesting_within_bound_matches(captured_shell):
+    # Control: nesting well within the bound matches (bash parity, depth 100).
+    depth = 100
+    pat = "@(" * depth + "x" + ")" * depth
+    captured_shell.run_command("shopt -s extglob")
+    rc = captured_shell.run_command(f"[[ x == {pat} ]] && echo M")
+    assert rc == 0
+    assert captured_shell.get_stdout() == "M\n"

@@ -107,3 +107,29 @@ def test_long_subject_plain_glob_is_linear():
     dt = _elapsed(lambda: match_shell_pattern(subject, "a*b",
                                               extglob_enabled=True))
     assert dt < 0.5, f"plain glob on long subject took {dt:.3f}s"
+
+
+@pytest.mark.timeout(600)
+def test_extglob_nesting_past_bound_fails_cleanly_shell_level():
+    """W3 bounce constraint (b), full-shell nightly backstop: at extglob
+    nesting depth 30,000 (past psh's 40k-frame runtime recursion limit at
+    ~2-3 frames per nesting level) the pattern path raises RecursionError as
+    an EXPECTED shell error under strict-errors — the command fails with a
+    clean diagnostic and the SHELL CONTINUES uncorrupted. Probed vs bash 5.2
+    (archived: tmp/boundary-ledgers/W3-probes/nesting-bound-probe.txt): bash
+    SEGFAULTS (rc -11) on the same input. Slow (~2 min: the per-level
+    matching-paren scans are quadratic in depth), hence benchmark-tier.
+    The fast structural pins live in
+    tests/unit/expansion/test_pattern_relations.py."""
+    import subprocess
+    import sys as _sys
+    depth = 30000
+    pat = "@(" * depth + "x" + ")" * depth
+    script = ("shopt -s extglob\n"
+              f"if [[ x == {pat} ]]; then echo M; else echo N; fi\n"
+              "echo ALIVE rc=$?")
+    r = subprocess.run([_sys.executable, "-m", "psh", "-c", script],
+                       capture_output=True, text=True, timeout=590)
+    assert r.returncode == 0
+    assert "ALIVE rc=1" in r.stdout
+    assert "recursion" in r.stderr.lower()
