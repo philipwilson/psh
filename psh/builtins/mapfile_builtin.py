@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, List
 from ..core import IndexedArray, ReadError, VarAttributes
 from ..lexer.unicode_support import is_valid_name
 from .base import Builtin
-from .input_reader import Outcome, make_reader
+from .input_reader import Outcome
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -134,7 +134,7 @@ class MapfileBuiltin(Builtin):
         """Read the requested records, leaving the rest of the stream intact.
 
         With a line ``count`` (``-n``), records are read one at a time through
-        the shared :class:`InputReader` and reading STOPS once ``skip + count``
+        the shared :class:`InputCursor` and reading STOPS once ``skip + count``
         records have been consumed. This is what fixes the historical drain
         bug: ``mapfile -n1`` used to slurp the whole descriptor into a userspace
         buffer, so a following ``cat`` on the same pipe saw nothing; now only
@@ -145,7 +145,7 @@ class MapfileBuiltin(Builtin):
         bulk drain is behaviorally identical to bash (nothing is left over
         either way) and avoids reading a large file one byte at a time.
         """
-        reader = make_reader(shell, fd)
+        reader = shell.state.input_cursors.cursor_for_fd(shell, fd)
         if count == 0:
             all_lines = self._split_lines(reader.read_all(), delim)
             return all_lines[skip:] if skip else all_lines

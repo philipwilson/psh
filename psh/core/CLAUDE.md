@@ -361,8 +361,9 @@ fresh `os.environ` import and no seeded defaults, so a name the parent unset
 stays unset in the child (no resurrection). Mutable inheritable data (env,
 variable scopes with DEEP-copied arrays, command hash, options, execution
 state, history, positional params, function stack, directory stack, traps) is
-deep-cloned; process-local data (streams, terminal, arithmetic re-entrancy) is
-reset; the locale is shared. `$PPID`/`$$` stay stable across subshells; RANDOM
+deep-cloned; process-local data (streams, terminal, arithmetic re-entrancy, and
+the `input_cursors` registry — a forked child inherits no userspace read buffer,
+matching bash; campaign I1) is reset; the locale is shared. `$PPID`/`$$` stay stable across subshells; RANDOM
 reseeds. Mode flags (`interactive`, `stdin_mode`, `emacs`) are recomputed
 afterwards by `Shell._init_interactive`. Jobs are never copied. The Shell-level
 half (copying function/alias managers — per-instance `Function` metadata so a

@@ -157,14 +157,14 @@ class TestErrorAndStreamPaths:
 
 class TestPartialDrainHonorsDelimiter:
     def test_delimiter_buffered_in_partial_is_honored(self):
-        """If a prior char read left a delimiter byte in _partial, the byte
+        """If a prior read left a delimiter byte in _pushback, the byte
         record must stop there and push the remainder back — never skip past a
         record boundary. (StdinInput never mixes reads; this pins the guard.)"""
         r = _pipe(b"AFTER\n")
         try:
             reader = InputReader(fd=r)
-            # Simulate a mixed prior char read that buffered "x\ny" mid-decode.
-            reader._partial = bytearray(b"x\ny")
+            # Simulate a mixed prior read that buffered "x\ny" raw bytes.
+            reader._pushback = bytearray(b"x\ny")
             assert reader.read_record_bytes(delimiter_byte=NL) == b"x"
             # The remainder "y" was pushed back, then the fd's "AFTER" follows.
             assert reader.read_record_bytes(delimiter_byte=NL) == b"yAFTER"

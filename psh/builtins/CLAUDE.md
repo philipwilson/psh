@@ -371,14 +371,19 @@ def execute(self, args, shell):
     line = shell.stdin.readline()
 ```
 
-For anything more than a casual one-line read, use the shared streaming
-reader (`psh/builtins/input_reader.py`, `make_reader(shell, fd)`) rather
-than reading the shell's stdin directly. It decodes UTF-8 incrementally and,
-crucially, reads a non-seekable source one record at a time so it never
-consumes past what you asked for — the property that lets `read`/`mapfile`
-leave the rest of a pipe readable for the next consumer. A bulk read of the
-whole descriptor drains the pipe and starves whatever runs next; that was the
-historical `mapfile -n1` drain bug.
+For anything more than a casual one-line read, use the shared record reader
+`InputCursor` (`psh/builtins/input_reader.py`) rather than reading the shell's
+stdin directly. `read`/`mapfile` obtain a PERSISTENT cursor from the per-shell
+registry — `shell.state.input_cursors.cursor_for_fd(shell, fd)` — keyed by the
+fd's owned open-file-description identity (campaign I1), so a `read -N` that
+split a malformed multibyte leaves its surplus for the next read on that
+description. The cursor decodes bytes through one incremental UTF-8
+`surrogateescape` decoder — a malformed byte round-trips as a lone surrogate
+(NOT U+FFFD; #20 H16) — and reads a non-seekable source one record at a time so
+it never consumes past what you asked for (leaving the rest of a pipe readable
+for the next consumer; a bulk read drains the pipe — the historical `mapfile
+-n1` drain bug). `make_reader(shell, fd)` builds a one-off cursor; the registry
+persists fd-backed ones.
 
 ### Working with Job Control
 

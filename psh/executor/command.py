@@ -64,6 +64,7 @@ from .strategies import (
 )
 
 if TYPE_CHECKING:
+    from ..ast_nodes import Redirect
     from ..shell import Shell
     from .command_assignments import RawAssignment
     from .context import ExecutionContext
@@ -974,6 +975,32 @@ class CommandExecutor:
             print(f"{loc}{e.filename or 'exec'}: {e.strerror}",
                   file=self.state.stderr)
 
+    # Input-redirect operator types: an `exec` of one of these (re)binds the
+    # target fd to a NEW open file description, so any InputCursor keyed to the
+    # OLD description must be dropped (campaign I1). Dup/close (`<&`/`<&-`) also
+    # rebind the read side.
+    _INPUT_REBIND_TYPES = frozenset(
+        {'<', '<>', '<<', '<<-', '<<<', '<&', '<&-'})
+
+    def _rebind_input_cursors_after_exec(self, redirects: List['Redirect']) -> None:
+        """After a successful `exec` redirect, drop input cursors on rebound fds.
+
+        `exec 0<file` gives fd 0 a new open description; the persistent cursor
+        keyed to the old one must not carry over (its decoder/queue state would
+        leak). We rebind the fd of every explicit-fd redirect and every
+        input-family default-stdin redirect; output-only fds hold no cursor, so
+        rebinding them is a harmless no-op.
+        """
+        registry = self.state.input_cursors
+        for redirect in redirects:
+            fd = redirect.fd
+            if fd is None:
+                if redirect.type in self._INPUT_REBIND_TYPES:
+                    fd = 0
+                else:
+                    continue
+            registry.rebind(fd)
+
     def _handle_exec_builtin(self, node: 'SimpleCommand', command_args: List[str],
                             assignments: List[tuple]) -> int:
         """Handle exec builtin with access to redirections."""
@@ -1001,6 +1028,7 @@ class CommandExecutor:
             if node.redirects:
                 try:
                     self.io_manager.apply_permanent_redirections(node.redirects)
+                    self._rebind_input_cursors_after_exec(node.redirects)
                     return 0
                 except OSError as e:
                     self._report_exec_redirect_error(e)
@@ -1017,6 +1045,7 @@ class CommandExecutor:
             if node.redirects:
                 try:
                     self.io_manager.apply_permanent_redirections(node.redirects)
+                    self._rebind_input_cursors_after_exec(node.redirects)
                 except OSError as e:
                     self._report_exec_redirect_error(e)
                     return 1

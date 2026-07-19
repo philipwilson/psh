@@ -1,27 +1,45 @@
-"""One streaming input service shared by the ``read`` and ``mapfile`` builtins.
+"""The source-lifetime byte cursor shared by ``read``, ``mapfile`` and script
+input.
 
-Both builtins need the same thing: pull characters from an input source one
-record at a time, without ever consuming past the record they asked for, so
+Every consumer needs the same primitive: pull records/characters from one open
+file description without ever consuming past the record it asked for, so
 whatever is left stays available to the next consumer. bash guarantees exactly
-this — ``printf 'a\\nb\\n' | { read x; cat; }`` prints ``b`` — and it holds for
-pipes, terminals and regular files alike. The reader below provides that single
-primitive.
+this — ``printf 'a\\nb\\n' | { read x; cat; }`` prints ``b`` — for pipes,
+terminals and regular files alike. :class:`InputCursor` provides that primitive.
 
 Design notes (educational shell — clarity over micro-optimizations):
 
-* **UTF-8 safe.** A byte descriptor is decoded incrementally, so a multibyte
-  character split across ``os.read`` boundaries decodes to the right character
-  instead of a run of U+FFFD replacements. (The previous per-byte
-  ``os.read(fd, 1).decode('utf-8', 'replace')`` mangled every multibyte char and
-  even left an orphaned trailing byte in the stream for the next reader.)
+* **Byte-preserving, surrogateescape round-trip (campaign I1 / #20 H16).** The
+  fd byte stream is decoded through ONE incremental UTF-8 decoder with
+  ``errors='surrogateescape'``. A valid multibyte character split across
+  ``os.read`` boundaries still decodes to the right character; a MALFORMED byte
+  round-trips as a lone surrogate (``\\udc80``-``\\udcff``) that
+  ``.encode('utf-8', 'surrogateescape')`` restores to the exact byte on output.
+  This replaced a hand-rolled decoder that used ``errors='replace'`` (U+FFFD)
+  and, worse, mis-read the byte after a malformed lead as a continuation —
+  eating record delimiters and cascading every following record into
+  replacement characters (#20 H16). The model is a deliberate HYBRID: a valid
+  multibyte char is one char (like a UTF-8 locale), a malformed byte is one
+  surrogate char (like the C locale's byte-per-char). It does NOT replicate a
+  particular libc's ``mbrtowc`` quirks (an incomplete lead swallowing the
+  following delimiter, ``read -N`` over-reading on a trailing incomplete lead);
+  those are documented deliberate divergences.
 
 * **Never over-reads.** Bytes are pulled one at a time from a non-seekable
-  source, so the reader stops exactly at the delimiter/count boundary and the
-  rest of the stream is untouched. This is the whole point of the service: a
-  bulk ``os.read(fd, 65536)`` would drain a pipe and starve the next consumer.
+  source, so a record read stops exactly at the delimiter boundary and the rest
+  of the stream is untouched. A bulk ``os.read(fd, 65536)`` would drain a pipe
+  and starve the next consumer.
+
+* **Decoded queue owned across reads.** One byte feed can emit more than one
+  character (a buffered malformed lead resolves to a surrogate PLUS the byte
+  that disambiguated it). The surplus is held in :attr:`_decoded` and belongs to
+  the cursor's lifetime, not one ``read`` call — so a ``read -N 1`` that split a
+  malformed multibyte leaves the surplus for the NEXT read on this cursor
+  (see :mod:`psh.io_redirect` for how a cursor is keyed to an open-file
+  description so ``exec 3<&0`` shares it).
 
 * **Injectable source and sinks.** The source is either a real fd or a text
-  stream (e.g. a ``StringIO`` under test); neither the reader nor its callers
+  stream (e.g. a ``StringIO`` under test); neither the cursor nor its callers
   reach for the ``sys.stdin`` global. Echo, when requested, goes to a passed-in
   callback rather than a hard-wired ``sys.stdout``.
 
@@ -33,12 +51,14 @@ Design notes (educational shell — clarity over micro-optimizations):
   :class:`Outcome` says how it ended (DATA / EOF / TIMEOUT / ERROR), rather than
   threading bare status strings around.
 """
+import codecs
 import enum
 import io
 import os
 import select
 import time
-from typing import TYPE_CHECKING, Callable, Optional, TextIO
+from collections import deque
+from typing import TYPE_CHECKING, Callable, Deque, Optional, TextIO
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -78,33 +98,64 @@ class ReadResult:
                 f"hit_delimiter={self.hit_delimiter})")
 
 
-class InputReader:
-    """Record-oriented character reader over an fd or a text stream.
+class InputCursor:
+    """Record-oriented byte cursor over an fd or an injected text stream.
 
     Construct with exactly one source:
 
-    * ``InputReader(fd=N)`` reads bytes from OS descriptor ``N`` and decodes
-      them incrementally as UTF-8 (invalid bytes become U+FFFD, matching the
-      shell's ``errors='replace'`` policy elsewhere).
-    * ``InputReader(stream=obj)`` reads already-decoded characters from a text
+    * ``InputCursor(fd=N)`` reads bytes from OS descriptor ``N`` and decodes
+      them incrementally as UTF-8 with ``errors='surrogateescape'`` (a malformed
+      byte round-trips as a lone surrogate).
+    * ``InputCursor(stream=obj)`` reads already-decoded characters from a text
       stream's ``read(1)`` (e.g. a ``StringIO`` test stdin). Text streams never
       block, so a deadline is not enforced against them.
+
+    The cursor owns per-open-description state that outlives one ``read`` call:
+    the incremental decoder, the decoded-character queue, the raw byte pushback
+    used by the byte-record path, and the last-delimiter flag. EOF is NOT cached
+    — a fresh attempt re-reads the fd, matching a terminal whose ``Ctrl-D`` is
+    one-shot rather than sticky.
     """
 
     def __init__(self, *, fd: Optional[int] = None,
                  stream: Optional[TextIO] = None) -> None:
         if (fd is None) == (stream is None):
-            raise ValueError("InputReader needs exactly one of fd or stream")
+            raise ValueError("InputCursor needs exactly one of fd or stream")
         self._fd = fd
         self._stream = stream
-        # Incremental UTF-8 decode state for the fd path: bytes gathered so far
-        # for the character currently being assembled.
-        self._partial = bytearray()
+        # Char path (fd source): ONE incremental UTF-8 surrogateescape decoder
+        # spanning every read on this cursor, and the queue of characters it has
+        # emitted but a read has not yet consumed (a byte feed can emit several).
+        # INVARIANT: a live decoder object exists IFF bytes are pending
+        # mid-sequence — `_decoder is None` means "clean state", which lets
+        # `_next_char_from_fd` take the ASCII fast path (chr(byte), no decoder
+        # call) for the overwhelmingly common all-ASCII workload.
+        self._decoder: Optional[codecs.IncrementalDecoder] = None
+        self._decoded: Deque[str] = deque()
+        # Byte-record path (StdinInput): raw bytes read past a record boundary,
+        # held for the next byte-record read. The char path never touches this
+        # (a cursor is used for one path or the other; they are never mixed).
+        self._pushback = bytearray()
         # Whether the most recent read_record_bytes record ended AT its
-        # delimiter (True) or at EOF/error (False). StdinInput consults it
-        # to tell a newline-terminated final line from an unterminated one
-        # — the record bytes alone cannot distinguish them.
+        # delimiter (True) or at EOF/error (False). StdinInput consults it to
+        # tell a newline-terminated final line from an unterminated one.
         self.last_record_hit_delimiter = False
+
+    @property
+    def fd(self) -> Optional[int]:
+        """The OS descriptor this cursor reads, or ``None`` for a stream source.
+
+        The :class:`~psh.io_redirect.input_cursor.InputCursorRegistry` reads this
+        to decide whether a cursor is keyed to an open-file-description (fd-based,
+        persisted) or is a per-call stream-backed cursor (not persisted).
+        """
+        return self._fd
+
+    def _get_decoder(self) -> codecs.IncrementalDecoder:
+        if self._decoder is None:
+            self._decoder = codecs.getincrementaldecoder('utf-8')(
+                'surrogateescape')
+        return self._decoder
 
     # -- polling -------------------------------------------------------------
 
@@ -117,8 +168,8 @@ class InputReader:
         """
         if self._fd is None:
             return 0  # a text stream never blocks
-        if self._partial:
-            return 0  # bytes already buffered mid-character
+        if self._decoded or self._pushback:
+            return 0  # characters/bytes already buffered on this cursor
         try:
             ready, _, _ = select.select([self._fd], [], [], 0)
         except (OSError, ValueError):
@@ -132,17 +183,20 @@ class InputReader:
 
         For callers that will consume the entire input anyway (``mapfile`` with
         no line count reads to EOF, leaving nothing for a later reader — bash
-        does the same). A bulk read is then behaviorally identical to reading
-        record by record but far cheaper, so this is the one place the reader
-        does large ``os.read`` blocks. Because it reads to EOF the whole byte
-        run is decoded at once, so there is no multibyte-boundary concern. Do
-        NOT use this when input must be left for a later consumer.
+        does the same). Decoding is still ``surrogateescape`` so a non-UTF-8
+        byte round-trips; because it reads to EOF the whole byte run is decoded
+        at once, so there is no multibyte-boundary concern. Do NOT use this when
+        input must be left for a later consumer.
         """
         if self._stream is not None:
             return self._stream.read()
         assert self._fd is not None  # exactly one of fd/stream is set
-        chunks = [bytes(self._partial)]  # any bytes buffered mid-character
-        self._partial.clear()
+        # Any characters already decoded on this cursor come first, then any raw
+        # pushback bytes, then the rest of the descriptor.
+        prefix = ''.join(self._decoded)
+        self._decoded.clear()
+        chunks = [bytes(self._pushback)]
+        self._pushback.clear()
         while True:
             try:
                 block = os.read(self._fd, 65536)
@@ -151,7 +205,15 @@ class InputReader:
             if not block:
                 break
             chunks.append(block)
-        return b''.join(chunks).decode('utf-8', errors='replace')
+        # Drain any character the cursor's decoder was still assembling, then
+        # the bulk bytes, so a split multibyte at the seam is not lost. (A None
+        # decoder is clean state — nothing pending; see the __init__ invariant.)
+        pending = ''
+        if self._decoder is not None:
+            pending = self._decoder.decode(b'', final=True)
+            self._decoder = None
+        tail = b''.join(chunks).decode('utf-8', errors='surrogateescape')
+        return prefix + pending + tail
 
     # -- public record reads -------------------------------------------------
 
@@ -194,16 +256,12 @@ class InputReader:
         bytes; the NEXT call then returns ``None``.
 
         Unlike :meth:`read_record` this does not decode: **the caller owns the
-        decode policy**, and the two policies coexist deliberately. ``read`` and
-        ``mapfile`` go through :meth:`read_record`, which decodes incrementally
-        with ``errors='replace'`` (a bad byte becomes U+FFFD) — right for
-        interactive-style record reads that hand characters to the shell.
-        ``StdinInput`` instead splits on the newline byte here and batch-decodes
-        each physical line with ``errors='surrogateescape'``, so a non-UTF-8
-        SCRIPT byte round-trips exactly as the ``FileInput`` script path treats
-        it (the ``replace`` policy would destroy that round-trip). Because the
-        delimiter (newline) can never be a UTF-8 continuation byte, splitting at
-        the byte level before decoding is exact for either policy.
+        decode policy**. ``read``/``mapfile`` decode through :meth:`read_record`
+        (incremental surrogateescape); ``StdinInput`` splits on the newline byte
+        here and batch-decodes each physical line, also with surrogateescape.
+        Because the delimiter (newline/NUL/colon) is always a single ASCII byte
+        that can never be a UTF-8 continuation byte, splitting at the byte level
+        before decoding is exact for either caller.
         """
         if self._stream is not None:
             # Already-decoded text source (e.g. a StringIO test stdin): read one
@@ -224,15 +282,13 @@ class InputReader:
                 chars.append(ch)
             return ''.join(chars).encode('utf-8', errors='surrogateescape')
         assert self._fd is not None  # exactly one of fd/stream is set
-        # Drain any bytes a prior char read buffered mid-character (normally
-        # empty: StdinInput, the sole caller, never mixes char and byte reads
-        # on one reader). Honor a delimiter already among them and push the
-        # remainder back, so a mixed caller can never skip past a record end.
-        drained = bytes(self._partial)
-        self._partial.clear()
+        # Honor a delimiter already among the pushback and push the remainder
+        # back, so a record boundary can never be skipped.
+        drained = bytes(self._pushback)
+        self._pushback.clear()
         split = drained.find(delimiter_byte)
         if split != -1:
-            self._partial = bytearray(drained[split + 1:])
+            self._pushback = bytearray(drained[split + 1:])
             self.last_record_hit_delimiter = True
             return drained[:split]
         buf = bytearray(drained)
@@ -280,69 +336,44 @@ class InputReader:
             return ch, Outcome.DATA, None
         return self._next_char_from_fd(deadline)
 
-    # -- fd path: incremental UTF-8 decode -----------------------------------
+    # -- fd path: incremental surrogateescape decode -------------------------
 
     def _next_char_from_fd(self, deadline: Optional[float]):
-        """Assemble one UTF-8 character from the byte descriptor.
+        """Return the next decoded character from the byte descriptor.
 
-        Reads exactly the bytes of one character (never lookahead), so a
-        non-seekable stream is never consumed past the character returned.
+        Reads exactly the bytes needed to emit the next character (at most one
+        byte of lookahead, to disambiguate a malformed lead), so a record read
+        never consumes past its delimiter. A byte feed that emits several
+        characters (a malformed lead resolved to a surrogate PLUS the following
+        byte) leaves the surplus in :attr:`_decoded` for the next read.
         """
         while True:
+            if self._decoded:
+                return self._decoded.popleft(), Outcome.DATA, None
             byte, outcome, err = self._next_byte(deadline)
             if outcome is not Outcome.DATA:
-                if outcome is Outcome.EOF and self._partial:
-                    # Truncated multibyte sequence at EOF: emit one replacement
-                    # for the dangling bytes, then let EOF surface next call.
-                    self._partial.clear()
-                    return '�', Outcome.DATA, None
+                if outcome is Outcome.EOF and self._decoder is not None:
+                    # Flush any bytes the decoder was still assembling as
+                    # surrogates (a truncated multibyte at EOF round-trips).
+                    tail = self._decoder.decode(b'', final=True)
+                    self._decoder = None  # EOF may be transient (tty Ctrl-D)
+                    if tail:
+                        self._decoded.extend(tail)
+                        return self._decoded.popleft(), Outcome.DATA, None
                 return None, outcome, err
-
-            self._partial.append(byte)
-            char = self._try_decode()
-            if char is not None:
-                return char, Outcome.DATA, None
-            # else: need more continuation bytes for this character.
-
-    def _try_decode(self) -> Optional[str]:
-        """Decode ``self._partial`` if it now holds one complete character.
-
-        Returns the character (clearing the buffer), or ``None`` if more
-        continuation bytes are still needed. A byte sequence that cannot form a
-        valid character resolves to U+FFFD so the reader always makes progress.
-        """
-        first = self._partial[0]
-        if first < 0x80:
-            expected = 1
-        elif first >> 5 == 0b110:
-            expected = 2
-        elif first >> 4 == 0b1110:
-            expected = 3
-        elif first >> 3 == 0b11110:
-            expected = 4
-        else:
-            # Continuation byte or invalid lead byte with nothing to attach to:
-            # not a valid start, so this single byte is a decode error.
-            self._partial.clear()
-            return '�'
-
-        # Any byte after the first that is not a 0b10xxxxxx continuation means
-        # the sequence is malformed: the current char is a replacement and the
-        # offending byte starts the next character.
-        for b in self._partial[1:]:
-            if b >> 6 != 0b10:
-                self._partial = bytearray([b])
-                return '�'
-
-        if len(self._partial) < expected:
-            return None  # still gathering continuation bytes
-
-        try:
-            char = self._partial.decode('utf-8')
-        except UnicodeDecodeError:
-            char = '�'
-        self._partial.clear()
-        return char
+            if self._decoder is None and byte < 0x80:
+                # ASCII fast path: clean decoder state (invariant above), so a
+                # 7-bit byte IS its character — no decoder call.
+                return chr(byte), Outcome.DATA, None
+            decoder = self._get_decoder()
+            emitted = decoder.decode(bytes([byte]))
+            if emitted:
+                self._decoded.extend(emitted)
+                if decoder.getstate()[0] == b'':
+                    # Nothing buffered: drop the decoder so the invariant
+                    # (`None` == clean) holds and the fast path resumes.
+                    self._decoder = None
+            # else: the decoder is buffering a multibyte lead; read another byte.
 
     def _next_byte(self, deadline: Optional[float]):
         """Read one byte from the fd, honoring the shared deadline."""
@@ -366,8 +397,14 @@ class InputReader:
         return chunk[0], Outcome.DATA, None
 
 
-def make_reader(shell: 'Shell', fd: int) -> InputReader:
-    """Build an :class:`InputReader` for a builtin reading from ``fd``.
+#: Backwards-compatible alias. ``InputReader`` was renamed to the typed
+#: :class:`InputCursor` (campaign I1); the old name is retained so external
+#: references keep resolving during the migration window.
+InputReader = InputCursor
+
+
+def make_reader(shell: 'Shell', fd: int) -> InputCursor:
+    """Build an :class:`InputCursor` for a builtin reading from ``fd``.
 
     The real OS descriptor is authoritative whenever it is valid — this covers
     redirections in forked subshells (``( ... ) < file``), pipes and files,
@@ -384,13 +421,13 @@ def make_reader(shell: 'Shell', fd: int) -> InputReader:
     """
     stream = shell.stdin
     if 'DontReadFromInput' in stream.__class__.__name__:
-        return InputReader(fd=fd)
+        return InputCursor(fd=fd)
     try:
         stream.fileno()
     except (AttributeError, io.UnsupportedOperation):
-        return InputReader(stream=stream)
+        return InputCursor(stream=stream)
     try:
         os.fstat(fd)
-        return InputReader(fd=fd)
+        return InputCursor(fd=fd)
     except (OSError, AttributeError, ValueError):
-        return InputReader(stream=stream)
+        return InputCursor(stream=stream)
