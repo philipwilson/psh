@@ -17,16 +17,22 @@ Three campaign contract types (§5):
 
 - :class:`NormalizedCommandName` — the post-quote-removal command word plus
   bypass provenance. It cannot consume a resolution; it is produced first.
-- :class:`CommandEnvOverlay` — the immutable typed view of the command's
-  effective environment (the expanded prefix assignments; the PATH the command
-  resolves against). It never mutates live scope.
+- :class:`CommandEnvOverlay` — the typed view of the command's effective
+  environment: which names the prefix assigns and the resolution-relevant
+  facts they imply (a temporary PATH; a POSIXLY_CORRECT posix-mode flip). It
+  never mutates live scope. Values are deliberately NOT expanded at overlay
+  build time — expanding early would reorder command-substitution side effects
+  (``A=$(c1) PATH=$(c2) cmd`` must run c1 then c2); ``apply_prefix`` expands
+  and installs them left-to-right after resolution, and the external
+  strategy's deferred PATH search then reads the live environment the
+  installed overlay determines.
 - :class:`ResolvedCommand` — the single dispatch answer: kind, strategy, POSIX
   status, prefix-assignment persistence, ``exec`` policy, temp-env-scope policy.
 
 ``resolve_command`` is the SOLE reader of the function/builtin registries for a
 dispatch decision; the v0.660 :class:`~psh.executor.command_resolver.CommandResolver`
-remains the sole reader of the command hash and PATH, and the external strategy
-consults :attr:`CommandEnvOverlay.effective_path` when it performs that search.
+remains the sole reader of the command hash and PATH (consulted by the external
+strategy at execute time, against the live environment described above).
 A static ratchet (``tests/unit/tooling/test_command_resolution_ratchet_r3.py``)
 fails on a raw dispatch read reintroduced into ``command.py`` outside this module.
 
@@ -123,28 +129,34 @@ class CommandEnvOverlay:
     ``assignment_names``
         The names the prefix assigns, in source order (metadata available BEFORE
         the values are installed — resolution never needs the values, only
-        whether a PATH override is present).
+        which facts the names imply).
     ``has_path_override``
-        True when one of the prefix assignments is ``PATH=...``; then the
-        command resolves against the temporary PATH rather than the shell's.
+        True when one of the prefix assignments is ``PATH=...``: the command
+        runs under a temporary PATH. Resolution's strategy CHOICE does not
+        consult it (external is the catch-all; its PATH search is deferred to
+        execute time, by which point ``apply_prefix`` has installed the
+        temporary PATH into the live environment the search reads) — the field
+        records the fact for the transaction.
+    ``has_posix_override``
+        True when the prefix assigns ``POSIXLY_CORRECT`` (directly or through
+        a nameref) and the assignment is not readonly-blocked. bash's
+        ``sv_strict_posix`` coupling turns posix mode ON the moment the
+        temporary binding is installed — BEFORE the command's own lookup — so
+        the command a ``POSIXLY_CORRECT=1`` prefix decorates resolves IN POSIX
+        MODE (special builtins beat same-named functions; their prefix
+        assignments persist). Probe-derived rule (bash 5.2): NAME-level — any
+        value counts, even ``''`` or an unset-variable expansion; a READONLY
+        POSIXLY_CORRECT blocks the flip (the assignment fails and posix never
+        turns on). This is the ONLY resolution input a prefix assignment can
+        mutate (SHELLOPTS is readonly; the function/builtin registries are
+        unreachable from prefix expansion because command substitutions fork),
+        so carrying this one fact into :func:`resolve_command` restores the
+        resolve-after-install semantics under resolve-BEFORE-install ordering.
     """
 
     assignment_names: Tuple[str, ...] = ()
     has_path_override: bool = False
-
-    def effective_path(self, shell: 'Shell') -> str:
-        """The PATH the command resolves against.
-
-        Read at resolution/search time: with a ``PATH=`` prefix installed, the
-        live environment already reflects the temporary PATH (the prefix layer
-        materialises into ``state.env`` through the exported-variable observer),
-        so this is that temporary PATH; otherwise it is the shell's PATH. This
-        is the value the external strategy's ``CommandResolver`` search uses, so
-        ``PATH=/only cmd`` resolves against ``/only`` and a stale hash entry the
-        temporary PATH excludes is rejected — the behavior the resolver already
-        gets right, now named as the overlay's projection.
-        """
-        return shell.env.get('PATH', '')
+    has_posix_override: bool = False
 
 
 # The overlay for a command with no prefix assignments — the hot-path default.
@@ -214,22 +226,29 @@ def resolve_command(shell: 'Shell',
       special builtins take precedence over functions; a prefix before one
       PERSISTS.
 
+    "POSIX mode" here is the live ``posix`` option OR the overlay's
+    ``has_posix_override``: a ``POSIXLY_CORRECT=1`` prefix flips posix in bash
+    BEFORE the command's own lookup (the assignment installs first there), so
+    resolving before installation must consult the overlay fact or the very
+    command the prefix decorates resolves in the wrong mode.
+
     This is the SOLE place a dispatch decision reads the function/builtin
     registries (via the strategies' ``can_execute``); the raw
     ``get_function`` / ``in POSIX_SPECIAL_BUILTINS`` recomputes the executor used
     to take before resolving are gone (the H10 authority-timing inversion). The
-    command hash and PATH stay with the v0.660 ``CommandResolver``, consulted by
-    the external strategy against ``overlay.effective_path``.
+    command hash and PATH stay with the v0.660 ``CommandResolver``; the external
+    strategy's deferred search reads the live environment, into which
+    ``apply_prefix`` has by then installed any temporary PATH the overlay names.
 
-    ``context`` and ``overlay`` are accepted for the campaign resolution
-    contract; the strategy CHOICE is PATH-independent (external is the
-    always-true catch-all and its PATH search is deferred to execute time), so
-    resolution can and must precede prefix-assignment installation.
+    The strategy CHOICE is PATH-independent (external is the always-true
+    catch-all and its PATH search is deferred to execute time), so resolution
+    can and must precede prefix-assignment installation.
 
     Returns ``None`` only if no strategy matches (unreachable in practice — the
     external strategy is the catch-all), preserving the historical 127 fallback.
     """
-    posix = shell.state.options.get('posix', False)
+    posix = (shell.state.options.get('posix', False)
+             or overlay.has_posix_override)
     ordered = strategies
     if posix:
         # POSIX lookup precedence: special builtins ahead of functions.

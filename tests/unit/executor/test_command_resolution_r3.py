@@ -102,9 +102,36 @@ class TestCommandEnvOverlay:
         overlay = ca.build_overlay([('PATH', '/only', None)])
         assert overlay.has_path_override is True
 
-    def test_effective_path_reads_live_env(self, captured_shell):
-        captured_shell.state.env['PATH'] = '/tmp/xyz-r3'
-        assert CommandEnvOverlay().effective_path(captured_shell) == '/tmp/xyz-r3'
+    def test_no_prefix_returns_shared_empty_overlay(self, captured_shell):
+        # The hot-path singleton: no per-command allocation without a prefix.
+        ca = CommandAssignments(captured_shell)
+        assert ca.build_overlay([]) is EMPTY_OVERLAY
+
+    def test_posix_override_name_level(self, captured_shell):
+        # bash sv_strict_posix: ANY POSIXLY_CORRECT assignment counts — the
+        # value (even empty) is irrelevant, so detection is name-level.
+        ca = CommandAssignments(captured_shell)
+        assert ca.build_overlay(
+            [('POSIXLY_CORRECT', '1', None)]).has_posix_override is True
+        assert ca.build_overlay(
+            [('POSIXLY_CORRECT', '', None)]).has_posix_override is True
+        assert ca.build_overlay(
+            [('OTHER', '1', None)]).has_posix_override is False
+
+    def test_posix_override_through_nameref(self, captured_shell):
+        # bash flips posix for `declare -n r=POSIXLY_CORRECT; r=1 cmd`.
+        captured_shell.run_command('declare -n r3ref=POSIXLY_CORRECT')
+        ca = CommandAssignments(captured_shell)
+        assert ca.build_overlay(
+            [('r3ref', '1', None)]).has_posix_override is True
+
+    def test_posix_override_blocked_by_readonly(self, captured_shell):
+        # A readonly POSIXLY_CORRECT blocks the flip (the assignment will
+        # fail; bash never turns posix on — probe E1/E1b).
+        captured_shell.run_command('readonly POSIXLY_CORRECT')
+        ca = CommandAssignments(captured_shell)
+        assert ca.build_overlay(
+            [('POSIXLY_CORRECT', '1', None)]).has_posix_override is False
 
     def test_slots_no_dict(self):
         ov = CommandEnvOverlay()
@@ -162,6 +189,20 @@ class TestResolveCommandModeAware:
             assert r.assignments_persist is True
         finally:
             captured_shell.state.options['posix'] = False
+
+    def test_overlay_posix_override_resolves_posix(self, captured_shell):
+        # A POSIXLY_CORRECT prefix resolves the command IN POSIX MODE even
+        # though the live option is still off (resolution precedes install).
+        captured_shell.run_command('eval(){ :; }')
+        assert captured_shell.state.options.get('posix') is False
+        normalized = normalize_command_word('eval')
+        overlay = CommandEnvOverlay(
+            assignment_names=('POSIXLY_CORRECT',), has_posix_override=True)
+        r = resolve_command(captured_shell, _strategies(), normalized,
+                            overlay, None)
+        assert r.dispatch_kind is DispatchKind.SPECIAL_BUILTIN
+        assert r.assignments_persist is True
+        assert r.uses_temp_env_scope is False
 
     def test_exec_special_default_mode(self, captured_shell):
         r = _resolve(captured_shell, 'exec')

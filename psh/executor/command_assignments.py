@@ -52,7 +52,7 @@ from ..core import (
 )
 from ..core.options import xtrace_quote
 from ..expansion.arithmetic import ShellArithmeticError
-from .command_resolution import CommandEnvOverlay
+from .command_resolution import EMPTY_OVERLAY, CommandEnvOverlay
 
 if TYPE_CHECKING:
     from ..ast_nodes import SimpleCommand, Word, WordPart
@@ -184,25 +184,65 @@ class CommandAssignments:
     # Overlay (the typed effective-environment view for resolution)
     # ------------------------------------------------------------------
 
-    @staticmethod
     def build_overlay(
-            raw_assignments: List[RawAssignment]) -> 'CommandEnvOverlay':
-        """Build the immutable :class:`CommandEnvOverlay` for a command's prefix.
+            self, raw_assignments: List[RawAssignment]) -> 'CommandEnvOverlay':
+        """Build the :class:`CommandEnvOverlay` for a command's prefix.
 
         Carries the metadata resolution needs BEFORE the values are installed:
-        the assigned names (source order) and whether a ``PATH=`` override is
-        present. The values themselves are NOT expanded here — the strategy
-        choice is PATH-independent, and expanding a value early would run its
-        command substitution out of left-to-right order (``A=$(c1)
-        PATH=$(c2) cmd``). The PATH the command resolves against is read from the
-        live environment at search time via :meth:`CommandEnvOverlay.effective_path`,
-        after :meth:`apply_prefix` installs the temporary PATH.
+        the assigned names (source order), whether a ``PATH=`` override is
+        present, and whether a ``POSIXLY_CORRECT`` assignment will flip posix
+        mode for the command's own resolution. The values themselves are NOT
+        expanded here — expanding a value early would run its command
+        substitution out of left-to-right order (``A=$(c1) PATH=$(c2) cmd``);
+        :meth:`apply_prefix` expands and installs them after resolution, and
+        the deferred external PATH search reads the live environment then.
+
+        The POSIXLY_CORRECT fact mirrors bash's sv_strict_posix coupling rule
+        (probe-derived, R3 bounce): NAME-level (any value — even empty or an
+        unset-variable expansion — counts), through a NAMEREF (``declare -n
+        r=POSIXLY_CORRECT; r=1 cmd`` flips), but a READONLY POSIXLY_CORRECT
+        blocks the flip (the assignment will fail; bash never turns posix on,
+        and a same-named function keeps winning the lookup). The readonly walk
+        is the one :meth:`ScopeManager.set_command_temp_env_var` performs at
+        install, so the overlay predicts the install outcome exactly.
+
+        The common case — a command with NO prefix assignments — returns the
+        shared :data:`EMPTY_OVERLAY` singleton (no per-command allocation on
+        the hot path).
         """
+        if not raw_assignments:
+            return EMPTY_OVERLAY
+        scope_manager = self.state.scope_manager
         names = tuple(name for name, _value, _word in raw_assignments)
+        has_posix = False
+        for name in names:
+            if name != 'POSIXLY_CORRECT':
+                # A nameref prefix writes through to its target (bash flips
+                # posix for `declare -n r=POSIXLY_CORRECT; r=1 cmd`). A cycle
+                # cannot reach POSIXLY_CORRECT as a final target; treat it as
+                # a non-match (apply_prefix reports the cycle later).
+                try:
+                    name = scope_manager.resolve_nameref_name(name)
+                except NamerefCycleError:
+                    continue
+            if name == 'POSIXLY_CORRECT' \
+                    and not self._readonly_blocks('POSIXLY_CORRECT'):
+                has_posix = True
+                break
         return CommandEnvOverlay(
             assignment_names=names,
             has_path_override='PATH' in names,
+            has_posix_override=has_posix,
         )
+
+    def _readonly_blocks(self, name: str) -> bool:
+        """True when the innermost scope instance of *name* is readonly — the
+        same walk ``set_command_temp_env_var`` performs, so the overlay
+        predicts exactly whether the install will be refused."""
+        for scope in reversed(self.state.scope_manager.scope_stack):
+            if name in scope.variables:
+                return scope.variables[name].is_readonly
+        return False
 
     # ------------------------------------------------------------------
     # Pure assignments (no command word)

@@ -731,9 +731,12 @@ class CommandExecutor:
         typed fields. Called BEFORE any scope or prefix-assignment decision, so
         the scope model, ``exec`` shortcut, POSIX prefix-error branch, and
         persistence all flow from this one value instead of raw-name recomputes
-        (#20 H10). ``overlay`` and ``context`` are the campaign resolution
-        contract; the external strategy consults ``overlay.effective_path`` when
-        it runs its (deferred) PATH search.
+        (#20 H10). The overlay carries the resolution-relevant prefix facts —
+        in particular ``has_posix_override``, so a ``POSIXLY_CORRECT=1`` prefix
+        resolves ITS OWN command in posix mode (bash installs assignments before
+        lookup; resolving first must consult the fact instead). The external
+        strategy's deferred PATH search reads the live environment, which
+        ``apply_prefix`` updates with any temporary PATH before dispatch.
         """
         return resolve_command(
             self.shell, tuple(self.strategies), normalized, overlay, context)
