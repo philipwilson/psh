@@ -83,14 +83,20 @@ class TestUtf8Decoding:
             os.close(fd)
         assert result.data == "😀"
 
-    def test_truncated_multibyte_at_eof_is_replacement(self):
-        fd = _pipe(b"\xc3")  # lone UTF-8 lead byte, then EOF
+    def test_truncated_multibyte_at_eof_round_trips(self):
+        # A lone UTF-8 lead byte at EOF round-trips as a surrogate (campaign
+        # I1 / #20 H16): bash keeps the raw byte (`printf '\xc3' | read x` ->
+        # $'\303' in both C and UTF-8 locales), so surrogateescape's \udcc3
+        # (which .encode('utf-8','surrogateescape') restores to \xc3) is
+        # correct — NOT the U+FFFD this used to assert.
+        fd = _pipe(b"\xc3")
         try:
             result = InputReader(fd=fd).read_record(
                 delimiter="\n", include_delimiter=True)
         finally:
             os.close(fd)
-        assert result.data == "�"
+        assert result.data == "\udcc3"
+        assert result.data.encode("utf-8", "surrogateescape") == b"\xc3"
         assert result.outcome is Outcome.EOF
 
 
