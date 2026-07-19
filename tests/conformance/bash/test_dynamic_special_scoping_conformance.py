@@ -52,6 +52,51 @@ class TestLocalMasksDynamicSpecial(ConformanceTest):
             'export SECONDS; f(){ local SECONDS=5; printenv SECONDS; }; f')
 
 
+class TestPrefixMasksDynamicSpecial(ConformanceTest):
+    """Bounce B3: a function-prefix assignment over a dynamic special
+    (`RANDOM=5 f`) MASKS it for the invocation, like a local — the prefix
+    binding lives in the temp-env scope, which `_local_shadows_special` scans.
+    Bash-correct at tip; pinned so a mutation restricting the mask to
+    non-temp-env scopes goes red (mutation transcript in
+    tmp/boundary-ledgers/R2-probes/mutation-tempenv-mask.txt)."""
+
+    def test_random_prefix_masks_and_body_write_updates(self):
+        self.assert_identical_behavior(
+            'f(){ echo "[$RANDOM]"; RANDOM=7; echo "[$RANDOM]"; }; RANDOM=5 f')
+
+    def test_seconds_prefix_masks(self):
+        self.assert_identical_behavior(
+            'f(){ echo "[$SECONDS]"; }; SECONDS=42 f')
+
+    def test_random_prefix_declare_p_shows_binding(self):
+        self.assert_identical_behavior(
+            'f(){ declare -p RANDOM; }; RANDOM=5 f')
+
+    def test_random_dynamic_again_after_prefix_call(self):
+        self.assert_identical_behavior(
+            'f(){ :; }; RANDOM=5 f; v=$RANDOM; '
+            'case "$v" in (*[!0-9]*|"") echo notnum;; (*) echo dynamic;; esac')
+
+
+class TestReadonlySpecialRefusesLocal(ConformanceTest):
+    """Bounce B4: `readonly SECONDS` (overlay readonly, no stored cell) REFUSES
+    a masking local — bash: 'local: SECONDS: readonly variable', rc 1, the
+    function CONTINUES, and reads stay dynamic. Message suppressed here (the
+    location prefix differs by the documented convention); the message body is
+    pinned in tests/unit/core/test_dynamic_special_masking.py. Rows were RED at
+    tip 9c1cdde5 (the local was silently created)."""
+
+    def test_readonly_seconds_local_refused_reads_dynamic(self):
+        self.assert_identical_behavior(
+            'readonly SECONDS; f(){ local SECONDS=5 2>/dev/null; '
+            'echo "in=[$SECONDS]"; }; f; echo "rc=$? after"')
+
+    def test_readonly_random_local_refused_continues(self):
+        self.assert_identical_behavior(
+            'readonly RANDOM; f(){ local RANDOM=7 2>/dev/null; echo done; }; '
+            'f; echo "rc=$?"')
+
+
 class TestGlobalDynamicSpecialStillActive(ConformanceTest):
     """A global assignment SEEDS the dynamic special (not a mask) — parity."""
 

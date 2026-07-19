@@ -66,3 +66,44 @@ class TestNamerefAttributeDoesNotResolve:
         mgr.set_variable('plain', 'v')
         mgr.apply_attribute('plain', VarAttributes.INTEGER)
         assert mgr.get_variable_object('plain').is_integer
+
+
+class TestCycleAttributeOpsWarnTwiceAndContinue:
+    """Bounce B2: an attribute op on a nameref CYCLE prints bash's circular-
+    reference warning TWICE, is skipped, and the command succeeds (rc 0) —
+    unlike a value write, which rejects. Behavioral rc/continuation twins in
+    tests/conformance/bash/test_nameref_attribute_conformance.py."""
+
+    def test_declare_i_on_cycle_warns_twice_rc0(self, captured_shell):
+        assert captured_shell.run_command('declare -n a=b; declare -n b=a') == 0
+        rc = captured_shell.run_command('declare -i a')
+        assert rc == 0
+        warnings = [ln for ln in captured_shell.get_stderr().splitlines()
+                    if 'circular name reference' in ln]
+        assert len(warnings) == 2
+        # State unchanged: both cells still plain namerefs.
+        mgr = captured_shell.state.scope_manager
+        assert mgr.get_variable_object('a').is_nameref
+        assert not mgr.get_variable_object('a').is_integer
+
+    def test_export_on_cycle_warns_twice_rc0(self, captured_shell):
+        captured_shell.run_command('declare -n a=b; declare -n b=a')
+        assert captured_shell.run_command('export a') == 0
+        warnings = [ln for ln in captured_shell.get_stderr().splitlines()
+                    if 'circular name reference' in ln]
+        assert len(warnings) == 2
+
+    def test_engine_level_cycle_skips_and_warns_twice(self, captured_shell):
+        """Direct apply_attribute callers (not just builtins) get the policy.
+        warn_nameref_cycle writes to sys.stderr; capture it directly since
+        this bypasses run_command's stream swap."""
+        import contextlib
+        import io
+        mgr = captured_shell.state.scope_manager
+        captured_shell.run_command('declare -n a=b; declare -n b=a')
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            mgr.apply_attribute('a', VarAttributes.INTEGER)  # must not raise
+        warnings = [ln for ln in buf.getvalue().splitlines()
+                    if 'circular name reference' in ln]
+        assert len(warnings) == 2

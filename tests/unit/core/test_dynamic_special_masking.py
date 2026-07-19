@@ -89,3 +89,29 @@ class TestMaskedMutation:
         # own-scope tombstone: reads as unset, does NOT resurrect the special
         assert mgr.lookup('RANDOM').is_set is False
         mgr.pop_scope()
+
+
+class TestReadonlySpecialRefusesLocal:
+    """Bounce B4: a READONLY dynamic special (overlay readonly, no stored
+    cell) refuses a masking local with bash's message body, rc 1, function
+    continues, reads stay dynamic. rc/continuation twins in
+    tests/conformance/bash/test_dynamic_special_scoping_conformance.py."""
+
+    def test_message_body_and_continuation(self, captured_shell):
+        assert captured_shell.run_command('readonly SECONDS') == 0
+        rc = captured_shell.run_command(
+            'f(){ local SECONDS=5; echo "in=[$SECONDS]"; }; f')
+        assert rc == 0  # the echo runs; the function continues past the error
+        assert 'local: SECONDS: readonly variable' in captured_shell.get_stderr()
+        # reads stayed dynamic: the masked literal 5 must NOT appear
+        assert 'in=[5]' not in captured_shell.get_stdout()
+
+    def test_engine_level_refusal(self, captured_shell):
+        from psh.core.exceptions import ReadonlyVariableError
+        import pytest
+        mgr = captured_shell.state.scope_manager
+        captured_shell.run_command('readonly RANDOM')
+        mgr.push_scope('f')
+        with pytest.raises(ReadonlyVariableError):
+            mgr.create_local('RANDOM', '7')
+        mgr.pop_scope()

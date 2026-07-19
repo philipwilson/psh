@@ -98,9 +98,77 @@ class TestFunctionPrefixLocal(ConformanceTest):
         self.assert_identical_behavior('f(){ local -i x; echo "[$x]"; }; x=10 f')
 
     def test_outer_function_local_not_inherited(self):
-        # Only THIS invocation's prefix is inherited, not an outer local.
+        # A provenance-less outer local is never inherited (no prefix anywhere).
         self.assert_identical_behavior(
             'g(){ local x; echo "[$x]"; }; f(){ local x=7; g; }; f')
+
+
+class TestFunctionPrefixLocalDepth(ConformanceTest):
+    """Bounce B1: prefix inheritance is DEPTH-AWARE (bash att_tempvar model).
+    A value-less `local x` inherits value+export from the nearest enclosing
+    temp-env-provenance instance at ANY call depth: the prefix binding itself,
+    or a local that (re)declared it in the prefixed invocation (which keeps
+    provenance). A provenance-less instance in between BLOCKS inheritance, and
+    copies do not carry provenance onward. All rows probed against bash 5.2
+    (R2-B1 matrix); the depth/intervening rows were RED at tip 9c1cdde5."""
+
+    def test_depth2_inherits_prefix(self):
+        self.assert_identical_behavior(
+            'g(){ local x; echo "g=[${x-U}]"; }; f(){ g; }; x=5 f')
+
+    def test_depth3_inherits_prefix(self):
+        self.assert_identical_behavior(
+            'h(){ local x; echo "h=[${x-U}]"; }; g(){ h; }; f(){ g; }; x=5 f')
+
+    def test_intervening_value_local_keeps_provenance(self):
+        # f redeclares the merged prefix binding with a value: g inherits L.
+        self.assert_identical_behavior(
+            'g(){ local x; echo "g=[${x-U}]"; }; f(){ local x=L; g; }; x=5 f')
+
+    def test_intervening_valueless_local_keeps_provenance(self):
+        self.assert_identical_behavior(
+            'g(){ local x; echo "g=[${x-U}]"; }; f(){ local x; g; }; x=5 f')
+
+    def test_body_write_updates_what_deeper_local_inherits(self):
+        self.assert_identical_behavior(
+            'g(){ local x; echo "g=[${x-U}]"; }; f(){ x=W; g; }; x=5 f')
+
+    def test_unset_prefix_blocks_inheritance(self):
+        self.assert_identical_behavior(
+            'g(){ local x; echo "g=[${x-U}]"; }; f(){ unset x; g; }; x=5 f')
+
+    def test_plain_global_never_inherited(self):
+        self.assert_identical_behavior(
+            'g(){ local x; echo "g=[${x-U}]"; }; f(){ g; }; x=5; f')
+
+    def test_deeper_fresh_value_local_has_no_provenance(self):
+        # g's `local x=G` (a different frame from the prefixed one) is a fresh
+        # variable WITHOUT provenance — h does not inherit G.
+        self.assert_identical_behavior(
+            'h(){ local x; echo "h=[${x-U}]"; }; g(){ local x=G; h; }; '
+            'f(){ g; }; x=5 f')
+
+    def test_copies_do_not_carry_provenance(self):
+        # g's value-less inherit from f's provenance local is an ordinary
+        # local: h reads unset.
+        self.assert_identical_behavior(
+            'h(){ local x; echo "h=[${x-U}]"; }; g(){ local x; h; }; '
+            'f(){ local x=L; g; }; x=5 f')
+
+    def test_direct_tempenv_copy_has_no_provenance(self):
+        self.assert_identical_behavior(
+            'h(){ local x; echo "h=[${x-U}]"; }; '
+            'g(){ local x; echo "g=[${x-U}]"; h; }; f(){ g; }; x=5 f')
+
+    def test_inherited_copy_keeps_export_declare_p(self):
+        self.assert_identical_behavior(
+            'g(){ local x; declare -p x; }; '
+            'f(){ local x=L; declare -p x; g; }; x=5 f')
+
+    def test_tombstoned_provenance_local_blocks(self):
+        self.assert_identical_behavior(
+            'g(){ local x; echo "[${x-U}]"; }; '
+            'f(){ local x=L; unset x; g; }; x=5 f')
 
 
 class TestBangAbsence(ConformanceTest):
