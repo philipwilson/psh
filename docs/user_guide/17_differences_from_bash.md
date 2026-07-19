@@ -878,9 +878,9 @@ fi
 | shopt options | Yes | Partial | checkhash, dotglob, expand_aliases, extglob, failglob, globstar, inherit_errexit, nocaseglob, nocasematch, nullglob |
 | Extended glob patterns | Yes | Yes | ?() *() +() @() !() (enable extglob before the line) |
 | read options | Yes | Partial | -r -d -p -t -n -N -s -a -u supported; -e/-i (readline editing) not |
-| command history (`history`) | Yes | Yes | Listing (interactive) + file-sync/edit flags -c/-d/-w/-r/-a/-n/-s; -p (expand-and-print) not supported |
+| command history (`history`) | Yes | Yes | Listing (interactive) + file-sync/edit flags -c/-d/-w/-r/-a/-n/-s, and -p (expand-and-print without storing) |
 | Aliases | Yes | Yes | Expanded in scripts/`-c` too by default (bash: interactive-only); `shopt -u expand_aliases` disables — see 17.3 |
-| History expansion (!!, !n) | Yes | Yes | Full support for interactive event/word designators + :h/:t/:r/:e/:s/:g& modifiers + ^old^new; :q/:x modifiers and !# designator not yet supported |
+| History expansion (!!, !n) | Yes | Yes | Full support for interactive event/word designators (incl. !#) + :h/:t/:r/:e/:s/:g&/:p/:q/:x modifiers + ^old^new quick substitution |
 | Coprocesses | Yes | No | Not implemented |
 | Programmable completion | Yes | No | Basic tab completion only |
 | Namerefs (declare -n / local -n) | Yes | Yes | Scalar and array-element targets; chains; local -n |
@@ -1024,7 +1024,6 @@ grep -E 'read .*-[ei]' script.sh              # read -e/-i (readline editing) un
 #   set -T / declare -ft hiding model)
 
 # Not supported:
-# - History expansion :q/:x word-quoting modifiers and the !# event designator
 # - Coprocesses (coproc)
 # - Programmable completion (complete, compgen)
 # - caller builtin
