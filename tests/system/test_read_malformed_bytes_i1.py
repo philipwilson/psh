@@ -26,11 +26,13 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
 
 PSH_ROOT = os.environ.get(
     "PSH_ROOT",
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
 )
+BASH = resolve_bash().path
 
 
 def _psh(script: bytes, stdin: bytes) -> bytes:
@@ -43,8 +45,11 @@ def _psh(script: bytes, stdin: bytes) -> bytes:
 
 
 def _bash_c_locale(script: bytes, stdin: bytes) -> bytes:
+    # The oracle BINARY comes from the sanctioned resolver (E2 ratchet); the
+    # run mode stays local because these cases compare RAW stdout bytes and
+    # run_shell_case's decoded-text policy would hide the byte-level facts.
     p = subprocess.run(
-        ["bash", "-c", script.decode()],
+        [BASH, "-c", script.decode()],
         input=stdin, capture_output=True, timeout=15,
         env={**os.environ, "LC_ALL": "C", "LANG": "C"},
     )

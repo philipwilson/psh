@@ -35,6 +35,8 @@ documented in the I1 ledger with discriminating bash probes.
 """
 from typing import TYPE_CHECKING, Dict
 
+from ..builtins.input_reader import make_reader
+
 if TYPE_CHECKING:
     from ..builtins.input_reader import InputCursor
     from ..shell import Shell
@@ -86,8 +88,6 @@ class InputCursorRegistry:
         there is no description to key nor byte-level surplus to carry — so it is
         returned fresh, matching the pre-registry per-call behavior.
         """
-        from ..builtins.input_reader import make_reader
-
         desc = self._fd_to_desc.get(fd)
         if desc is not None:
             cursor = self._desc_to_cursor.get(desc)

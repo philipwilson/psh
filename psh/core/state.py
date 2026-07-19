@@ -28,6 +28,7 @@ from .scope import ScopeManager
 from .special_registry import SPECIAL_REGISTRY
 from .stream_bindings import StreamBindings
 from .terminal_state import TerminalState
+from .trap_manager import TrapManager
 from .variables import VarAttributes
 
 
@@ -502,6 +503,7 @@ class ShellState:
         Imported lazily so ``psh.core`` does not import ``psh.io_redirect`` at
         module load (that package imports core — a top-level import would cycle).
         """
+        # cycle-break: psh.io_redirect.__init__ -> manager -> psh.core
         from ..io_redirect.input_cursor import InputCursorRegistry
         return InputCursorRegistry()
 
@@ -643,7 +645,6 @@ class ShellState:
         # Ignored ('') traps remain in effect. ERR/DEBUG escape the reset
         # under set -E / set -T — via the ONE exemption rule shared with
         # TrapManager.enter_subshell_trap_environment (appraisal H9).
-        from .trap_manager import TrapManager
         self.trap_handlers = dict(parent.trap_handlers)
         self.inherited_traps = TrapManager.compute_inherited_traps(
             self.options, self.trap_handlers)

@@ -14,6 +14,11 @@ import subprocess
 import sys
 
 import pytest
+from shell_oracle import resolve_bash
+
+# Oracle binary from the sanctioned resolver (E2 ratchet); raw-bytes run mode
+# stays local because these cases compare RAW stdout bytes.
+BASH = resolve_bash().path
 
 PSH_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -29,7 +34,7 @@ def _psh(script: bytes, stdin: bytes) -> bytes:
 
 def _bash_c(script: bytes, stdin: bytes) -> bytes:
     return subprocess.run(
-        ["bash", "-c", script.decode()], input=stdin, capture_output=True,
+        [BASH, "-c", script.decode()], input=stdin, capture_output=True,
         timeout=15, env={**os.environ, "LC_ALL": "C", "LANG": "C"},
     ).stdout
 
@@ -67,7 +72,7 @@ class TestTempRedirectComposition:
         script = (b"read a; read b < " + str(f).encode()
                   + b"; read c; printf '%s|%s|%s\\n' \"$a\" \"$b\" \"$c\"")
         out = _psh(script, b"S1\nS2\nS3\n")
-        bash = subprocess.run(["bash", "-c", script.decode()], input=b"S1\nS2\nS3\n",
+        bash = subprocess.run([BASH, "-c", script.decode()], input=b"S1\nS2\nS3\n",
                               capture_output=True, timeout=15).stdout
         assert out == bash == b"S1|F1|S2\n"
 
@@ -83,7 +88,7 @@ class TestDeliberateLossDupAlias:
         script = (b"exec 3<&0; read -u 0 a; read -u 3 b; read -u 0 c; "
                   b"printf '%s|%s|%s\\n' \"$a\" \"$b\" \"$c\"")
         out = _psh(script, b"one\ntwo\nthree\n")
-        bash = subprocess.run(["bash", "-c", script.decode()],
+        bash = subprocess.run([BASH, "-c", script.decode()],
                               input=b"one\ntwo\nthree\n",
                               capture_output=True, timeout=15).stdout
         assert out == bash == b"one|two|three\n"
