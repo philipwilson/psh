@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "0.739.0",
-  "gated_commit": "a519fbac9f17a6f750a53f157a9be628d18a6c7e",
-  "gated_tree": "0379c576ee76caaf550abbe5b8ed0f6b199d4d04",
+  "version": "0.740.0",
+  "gated_commit": "41cbf9e91eb4dce31a2bd56233e94185fb55be9f",
+  "gated_tree": "3611b6fdaa7fd55ed04f6637c717b8b3fa74120d",
   "platform": {
     "os": "Darwin 25.5.0",
     "python": "3.14.2",
@@ -13,31 +13,31 @@
       "description": "Phase 1: Regular tests (parallel, auto workers, -m 'not serial and not benchmark')",
       "exit": 0,
       "counts": {
-        "passed": 18921,
+        "passed": 18936,
         "failed": 0,
         "errored": 0,
         "skipped": 1590,
         "xfailed": 8,
         "xpassed": 0,
-        "deselected": 794
+        "deselected": 853
       }
     },
     {
       "description": "Phase 1b: serial tests (process/signal/forked-fd, no xdist)",
       "exit": 0,
       "counts": {
-        "passed": 775,
+        "passed": 834,
         "failed": 0,
         "errored": 0,
         "skipped": 0,
         "xfailed": 2,
         "xpassed": 0,
-        "deselected": 20536
+        "deselected": 20551
       }
     }
   ],
   "ruff": true,
-  "mypy_files": 266,
-  "timestamp": "2026-07-19T08:18:57+00:00",
+  "mypy_files": 267,
+  "timestamp": "2026-07-19T11:01:48+00:00",
   "command": "run_tests.py --parallel --write-attestation"
 }
