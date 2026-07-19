@@ -64,8 +64,20 @@ _ICASE_DIVERGENT = {'[[:upper:]]', '[[:lower:]]'}
 @pytest.mark.parametrize('ignorecase', [False, True])
 @pytest.mark.parametrize('comp', _PATTERNS)
 def test_component_matches_fnmatch_reference(comp, ignorecase):
-    """The engine per-name matcher matches what the old fnmatch path matched,
-    except for the two case-class patterns under ignorecase (pinned below)."""
+    """The engine per-name matcher matches what the old fnmatch path matched
+    for BACKSLASH-FREE patterns (the ordinary-glob inertness pin), except for
+    the two case-class patterns under ignorecase (pinned below).
+
+    Backslash-containing patterns are excluded: ``_component_matcher`` now
+    consumes the ONE canonical protection encoding (``\\`` = escape;
+    pattern_engine.runs_to_pattern_string), so ``\\*`` is a literal ``*`` rather
+    than a literal backslash + wildcard. The residual value-backslash-is-literal
+    behavior is preserved end-to-end by the encoder's doubling of ACTIVE
+    backslashes (pinned by the pathname differential and by
+    test_backslash_is_escape_in_canonical_encoding below)."""
+    if '\\' in comp:
+        pytest.skip("backslash contract changed: _component_matcher takes the "
+                    "canonical \\=escape encoding, not raw fnmatch input")
     if ignorecase and comp in _ICASE_DIVERGENT:
         pytest.skip("engine keeps [[:upper:]]/[[:lower:]] case-sensitive (bug fix)")
     ref = _fnmatch_reference(comp, ignorecase)
@@ -91,13 +103,18 @@ def test_nocaseglob_keeps_posix_case_classes_sensitive():
     assert rng('B') is True
 
 
-def test_backslash_is_literal_not_escape():
-    """In the pathname adapter a residual backslash is a LITERAL character (as
-    stdlib glob/fnmatch treat it), NOT an escape — this preserves the
-    deliberate divergence from the case/[[ path (which honors ``\\`` escapes)."""
-    m = _component_matcher(r'a\*b')
-    assert m('a\\b') is True      # backslash + '*' matches 'a\\b'
-    assert m('a*b') is False      # NOT treated as escaped '*'
+def test_backslash_is_escape_in_canonical_encoding():
+    """``_component_matcher`` consumes the ONE canonical protection encoding
+    (``\\`` = escape). A residual VALUE backslash stays literal because the
+    encoder (runs_to_pattern_string) doubles ACTIVE backslashes before matching:
+    the component ``a\\\\*b`` is a literal ``\\`` + wildcard, matching ``a\\Zb``;
+    a single ``a\\*b`` is an escaped ``*`` (literal), matching ``a*b``."""
+    doubled = _component_matcher('a\\\\*b')   # value 'a\*b' encodes to a\\*b
+    assert doubled('a\\Zb') is True           # literal backslash + wildcard
+    assert doubled('a*b') is False
+    escaped = _component_matcher(r'a\*b')      # a quoted '*' -> escaped -> literal
+    assert escaped('a*b') is True
+    assert escaped('aZb') is False
 
 
 def test_set_operator_bracket_no_warning():

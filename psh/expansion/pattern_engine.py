@@ -198,25 +198,37 @@ def compile_cached(pattern: str, extglob: bool = True) -> Sequence:
 
 # --- protection-direct compiler (per-character ACTIVE/PROTECTED runs) -------
 
+#: Characters with glob/extglob significance SOMEWHERE (top level or inside a
+#: bracket): the plain metacharacters, the extglob prefixes and grouping, and
+#: the bracket-only specials ``-`` (range) / ``^`` (negation-at-start). A
+#: PROTECTED occurrence of any of these must be ``\\``-escaped to become a
+#: literal char / bracket member; every other character is already literal and
+#: is left RAW — in particular ``/`` stays raw so a pathname pattern still
+#: splits into components (a ``/`` is a separator regardless of quoting).
+_GLOB_SIGNIFICANT = frozenset('*?[]()|@!+-^\\')
+
+
 def runs_to_pattern_string(parts) -> str:
     """Normalize ``(text, protected)`` runs into ONE canonical pattern string.
 
     This is the single, correct protection encoding that replaces the two former
     ad-hoc ones (``word_expander._pattern_from_runs`` bracket-escaping and
-    ``operands.glob_escape`` backslash-escaping): every PROTECTED character is
-    ``\\``-escaped so it is a literal char / bracket member wherever it appears
-    (top level OR inside an active ``[...]`` — fixing #20 H7 carry-2), and an
-    ACTIVE backslash is doubled so it stays a literal character (a residual
-    ``\\`` reaching a pattern from an expansion is literal, as bash treats
-    variable-value backslashes). ACTIVE glob metacharacters stay live. The
-    result feeds :func:`compile_pattern` unchanged, so all bracket / class /
-    nesting handling is the one tested parser.
+    ``operands.glob_escape`` backslash-escaping): every glob-significant
+    PROTECTED character is ``\\``-escaped so it is a literal char / bracket
+    member wherever it appears (top level OR inside an active ``[...]`` — fixing
+    #20 H7 carry-2), and an ACTIVE backslash is doubled so it stays a literal
+    character (a residual ``\\`` reaching a pattern from an expansion is
+    literal, as bash treats variable-value backslashes). ACTIVE glob
+    metacharacters stay live. The result feeds :func:`compile_pattern`
+    unchanged (``\\`` = escape), so all bracket / class / nesting handling is
+    the one tested parser.
     """
     out: List[str] = []
     for text, protected in parts:
         if protected:
             for ch in text:
-                out.append('\\')
+                if ch in _GLOB_SIGNIFICANT:
+                    out.append('\\')
                 out.append(ch)
         else:
             for ch in text:
