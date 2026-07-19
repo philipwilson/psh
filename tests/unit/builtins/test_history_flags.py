@@ -180,10 +180,25 @@ class TestErrors:
         assert rc == 2
         assert 'option requires an argument' in captured_shell.get_stderr()
 
-    def test_expand_print_honest_error(self, captured_shell):
+    def test_expand_print_plain_word(self, captured_shell):
+        # history -p ARG expands ARG and prints the result (bash); a plain word
+        # with no reference prints verbatim, rc 0 (campaign I4 wired -p).
         rc = _run(captured_shell, 'history -p something')
-        assert rc == 2
-        assert 'not supported' in captured_shell.get_stderr()
+        assert rc == 0
+        assert captured_shell.get_stdout() == 'something\n'
+
+    def test_expand_print_expands_reference(self, captured_shell):
+        # history -p forces expansion regardless of `set +H` (bash).
+        _run(captured_shell, 'history -s "echo one two"')
+        captured_shell.clear_output()
+        rc = _run(captured_shell, 'history -p "!!:$"')
+        assert rc == 0
+        assert captured_shell.get_stdout() == 'two\n'
+
+    def test_expand_print_failed_reference(self, captured_shell):
+        rc = _run(captured_shell, 'history -p "!nope"')
+        assert rc == 1
+        assert 'event not found' in captured_shell.get_stderr()
 
     def test_read_missing_file(self, captured_shell, tmp_path):
         rc = _run(captured_shell, f'history -r {tmp_path / "nope.txt"}')

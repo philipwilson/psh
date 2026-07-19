@@ -28,11 +28,18 @@ def _bash_history_p(seed, ref):
     return out.stdout.rstrip('\n')
 
 
-def _psh_expand(seed, ref):
+def _psh_result(seed, ref):
+    """The typed HistoryExpansionResult for `ref` given `seed` as the prior cmd."""
     sh = Shell(norc=True)
     sh.state.options['histexpand'] = True
     sh.state.history.append(seed)
-    return sh.history_expander.expand_history(ref, print_expansion=False)
+    return sh.history_expander.expand_history(ref)
+
+
+def _psh_expand(seed, ref):
+    """The expanded text (None on error) — comparable with bash `history -p`."""
+    r = _psh_result(seed, ref)
+    return None if r.is_error else r.text
 
 
 @pytest.mark.parametrize('ref', [
@@ -79,14 +86,14 @@ def test_modifiers_match_bash(seed, ref):
     assert _psh_expand(seed, ref) == _bash_history_p(seed, ref)
 
 
-def test_print_modifier_prints_and_suppresses_execution(capsys):
-    # :p prints the expansion and returns '' so nothing executes (bash).
-    sh = Shell(norc=True)
-    sh.state.options['histexpand'] = True
-    sh.state.history.append('echo hello')
-    result = sh.history_expander.expand_history('!!:p', print_expansion=False)
-    assert result == ''                       # nothing to execute
-    assert capsys.readouterr().out == 'echo hello\n'  # printed
+def test_print_modifier_is_print_only_outcome():
+    # :p is a distinct PRINT_ONLY outcome carrying the expansion text; the
+    # producer no longer prints (the reporting consumer does) — the typed
+    # result is the authority, so nothing executes and the text is recorded.
+    r = _psh_result('echo hello', '!!:p')
+    assert r.is_print_only
+    assert r.text == 'echo hello'
+    assert r.recordable_text == 'echo hello'  # bash records the :p expansion
 
 
 def test_repeat_substitution_modifier():
@@ -98,30 +105,26 @@ def test_repeat_substitution_modifier():
 
 
 def test_bad_modifier_is_error():
-    sh = Shell(norc=True)
-    sh.state.options['histexpand'] = True
-    sh.state.history.append('echo hi')
-    # An unknown modifier letter is a bad word specifier (returns None).
-    assert sh.history_expander.expand_history('!!:Z', report_errors=False) is None
+    # An unknown modifier letter is a bad word specifier: an ERROR outcome.
+    r = _psh_result('echo hi', '!!:Z')
+    assert r.is_error
+    assert 'bad word specifier' in r.error
 
 
-def test_substitution_failed_is_distinct_from_bad_word_specifier(capsys):
+def test_substitution_failed_is_distinct_from_bad_word_specifier():
     # Campaign #19 Finding 6: a :s/old/new/ whose `old` is absent from the
     # selected line is bash's "substitution failed" (quoting the exact
     # modifier spec), a DIFFERENT error class from a malformed/out-of-range
-    # "bad word specifier". Both still abort the expansion (return None).
-    sh = Shell(norc=True)
-    sh.state.options['histexpand'] = True
-    sh.state.history.append('echo alpha')
-
-    assert sh.history_expander.expand_history('!!:s/NOPE/X/') is None
-    err = capsys.readouterr().err
-    assert 'substitution failed' in err          # bash's wording
-    assert 'bad word specifier' not in err
-    assert ':s/NOPE/X/' in err                    # the exact modifier spec
+    # "bad word specifier". Both are ERROR outcomes; the diagnostic distinguishes
+    # them (now carried in the typed result's `error` field, not printed here).
+    r = _psh_result('echo alpha', '!!:s/NOPE/X/')
+    assert r.is_error
+    assert 'substitution failed' in r.error       # bash's wording
+    assert 'bad word specifier' not in r.error
+    assert ':s/NOPE/X/' in r.error                 # the exact modifier spec
 
     # A genuinely bad word designator stays "bad word specifier".
-    assert sh.history_expander.expand_history('!!:9') is None
-    err = capsys.readouterr().err
-    assert 'bad word specifier' in err
-    assert 'substitution failed' not in err
+    r = _psh_result('echo alpha', '!!:9')
+    assert r.is_error
+    assert 'bad word specifier' in r.error
+    assert 'substitution failed' not in r.error

@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from ..ast_nodes import ASTNode
+    from ..interactive.history_result import HistoryExpansionResult
 
 from ..parser.session import (
     Completeness,
@@ -119,6 +120,9 @@ class CommandAccumulator:
         # expansion must not either. Read dynamically by the injected preprocess
         # hook, so a caller may set it after construction.
         self.history_expansion_eligible: bool = True
+        # The typed HistoryExpansionResult from the most recent _preprocess call,
+        # read by _detects_history_reference in the SAME feed cycle (campaign I4).
+        self._last_history_result: "Optional[HistoryExpansionResult]" = None
         self._session = ParserDriver.start_session(SessionInputs(
             lex=self._lex,
             preprocess=self._preprocess,
@@ -191,26 +195,33 @@ class CommandAccumulator:
 
     def _preprocess(self, raw: str) -> str:
         """Join backslash-newline continuations, then (interactively) apply
-        history expansion silently — errors and the expansion echo are the
-        execution path's job. Threaded UNCHANGED into the engine; this is the
-        injection point where campaign I4's typed history expansion will plug
-        in (its call timing is I4's probe matrix — do not reshape it here)."""
+        history expansion silently for the completeness trial. This is the I3
+        injection point for campaign I4's TYPED history expansion. ACTIVATION
+        consumes the F1 interactive-FAMILY flag (`options['interactive']`) plus
+        source eligibility — NOT is_script_mode. The producer is pure (no print,
+        no record); the typed `HistoryExpansionResult` is CACHED so
+        _detects_history_reference reads its `kind` rather than re-scanning with
+        a regex. On a NONE/EXPANDED outcome the trial parses the resulting text;
+        an ERROR keeps the raw preview (routed complete-but-unparsed below)."""
         preview = process_line_continuations(raw)
-        if (not self.state.is_script_mode and self.history_expansion_eligible
+        self._last_history_result = None
+        if (self.state.options.get('interactive', False)
+                and self.history_expansion_eligible
                 and hasattr(self.shell, 'history_expander')):
-            expanded = self.shell.history_expander.expand_history(
-                preview, print_expansion=False, report_errors=False)
-            if expanded is not None:
-                preview = expanded
+            result = self.shell.history_expander.expand_history(preview)
+            self._last_history_result = result
+            if not result.is_error:
+                preview = result.text
         return preview
 
-    @staticmethod
-    def _detects_history_reference(preview: str) -> bool:
-        """A failed/unexpanded history reference makes the buffer complete but
-        unparsed; execution re-runs the expansion with reporting and either
-        prints the "event not found" error or executes the result."""
-        from ..interactive.history_expansion import contains_history_reference
-        return contains_history_reference(preview)
+    def _detects_history_reference(self, preview: str) -> bool:
+        """A history reference that FAILED (ERROR) or is PRINT-ONLY makes the
+        buffer complete but unparsed; execution re-runs the expansion with
+        reporting and either prints the diagnostic, prints the ``:p`` expansion
+        (executing nothing), or would have executed the result. Reads the TYPED
+        result cached by :meth:`_preprocess` (campaign I4) — not a regex."""
+        result = self._last_history_result
+        return result is not None and (result.is_error or result.is_print_only)
 
     # === Engine → gathering-result mapping ===
 

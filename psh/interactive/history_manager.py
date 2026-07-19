@@ -144,7 +144,8 @@ class HistoryManager(InteractiveComponent):
         read = 0
         try:
             if os.path.exists(self.state.history_file):
-                with open(self.state.history_file, 'r') as f:
+                with open(self.state.history_file, 'r',
+                          encoding='utf-8', errors='surrogateescape') as f:
                     for line in f:
                         line = line.rstrip('\n')
                         if line:
@@ -187,7 +188,8 @@ class HistoryManager(InteractiveComponent):
             # private (the old open(,'w') left it at the umask default).
             fd = os.open(self.state.history_file,
                          os.O_RDWR | os.O_CREAT, 0o600)
-            with os.fdopen(fd, 'r+') as f:
+            with os.fdopen(fd, 'r+', encoding='utf-8',
+                           errors='surrogateescape') as f:
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                 try:
                     existing = [ln.rstrip('\n') for ln in f if ln.strip()]
@@ -249,7 +251,8 @@ class HistoryManager(InteractiveComponent):
         target = path or self.state.history_file
         try:
             fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, 'w') as f:
+            with os.fdopen(fd, 'w', encoding='utf-8',
+                           errors='surrogateescape') as f:
                 if self.state.history:
                     f.write('\n'.join(self.state.history) + '\n')
         except OSError:
@@ -269,7 +272,8 @@ class HistoryManager(InteractiveComponent):
         new_entries = self.state.history[self._file_synced_len:]
         try:
             fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-            with os.fdopen(fd, 'a') as f:
+            with os.fdopen(fd, 'a', encoding='utf-8',
+                           errors='surrogateescape') as f:
                 if new_entries:
                     f.write('\n'.join(new_entries) + '\n')
         except OSError:
@@ -327,7 +331,8 @@ class HistoryManager(InteractiveComponent):
     def _read_file_lines(self, path: str) -> Optional[List[str]]:
         """Non-empty, newline-stripped lines of *path*; None on OSError."""
         try:
-            with open(path, 'r') as f:
+            with open(path, 'r', encoding='utf-8',
+                      errors='surrogateescape') as f:
                 return [ln.rstrip('\n') for ln in f if ln.strip()]
         except OSError:
             return None

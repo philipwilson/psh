@@ -144,10 +144,12 @@ three""")
         assert "\\" in last_command or "two" in last_command
 
     def test_history_expansion_not_saved(self, clean_shell, capsys):
-        """Test that history expansion commands are not saved to history."""
-        # History expansion is interactive-only by default (bash); enable it
-        # explicitly to exercise the !! expansion behavior in this test shell.
+        """The RAW `!!` is never recorded; bash records its EXPANSION instead."""
+        # History expansion activates on the interactive FAMILY (campaign I4;
+        # bash only bang-expands interactive shells) plus histexpand — set both
+        # to exercise the !! expansion behavior in this in-process test shell.
         clean_shell.state.options['histexpand'] = True
+        clean_shell.state.options['interactive'] = True
         # Execute some commands
         clean_shell.run_command("echo first")
         clean_shell.run_command("echo second")
