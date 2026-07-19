@@ -46,8 +46,15 @@ from ..io_redirect.manager import format_redirect_error
 from ..parser.array_flat_text import array_init_argv_key
 from .array import ArrayOperationExecutor
 from .command_assignments import CommandAssignments
+from .command_resolution import (
+    CommandEnvOverlay,
+    DispatchKind,
+    NormalizedCommandName,
+    ResolvedCommand,
+    normalize_command_word,
+    resolve_command,
+)
 from .strategies import (
-    POSIX_SPECIAL_BUILTINS,
     BuiltinExecutionStrategy,
     ExecutionStrategy,
     ExternalExecutionStrategy,
@@ -63,13 +70,20 @@ if TYPE_CHECKING:
     from .core import ExecutorVisitor
 
 
+# The dispatch kinds that shift a name (not None) into the job manager's
+# last-simple-command register — module constant so the hot dispatch path
+# does not rebuild the tuple each call.
+_BUILTIN_DISPATCH_KINDS = frozenset(
+    {DispatchKind.SPECIAL_BUILTIN, DispatchKind.BUILTIN})
+
+
 class RedirectionMode(Enum):
     """How a matched command's redirections are applied.
 
     Once a command name resolves to an execution strategy, exactly one of
     these modes governs the redirection handling. The choice is decided in
     one place (``_decide_redirection_mode``) and dispatched in one place
-    (``_execute_with_strategy``).
+    (``_invoke_resolution``).
 
     BUILTIN_INPROCESS
         A builtin (or special builtin) running in THIS process, not in a
@@ -101,31 +115,6 @@ class RedirectionMode(Enum):
 
 
 @dataclass
-class CommandResolution:
-    """The result of *resolving* a command name to a strategy.
-
-    Separates "which strategy handles this command, and what policy does
-    that imply" (resolve) from "invoke it" (see :class:`ExecutionResult`).
-    The resolution carries the matched strategy plus the one policy bit the
-    invoke phase and its caller need:
-
-    prefix_assignments_persist
-        True only when, **in POSIX mode**, the command resolved to a POSIX
-        special builtin (``:`` ``.`` ``eval`` ``export`` ``readonly``
-        ``set`` ``unset`` …), whose ``NAME=value`` prefix assignments then
-        persist in the current shell rather than being restored after the
-        command. In default (non-POSIX) mode this is always False — a
-        prefix before a special builtin is temporary, like any builtin
-        (the mode gate lives in :meth:`_resolve_command`). This replaces
-        the previous ``isinstance(strategy, SpecialBuiltinExecutionStrategy)``
-        check threaded through a positional boolean.
-    """
-
-    strategy: 'ExecutionStrategy'
-    prefix_assignments_persist: bool
-
-
-@dataclass
 class ExecutionResult:
     """The result of *invoking* a resolved command.
 
@@ -141,7 +130,7 @@ class ExecutionResult:
         builtin, so the caller (:meth:`CommandExecutor._run_command`) must
         NOT restore the prefix assignments — they persist in the current
         shell. False in default mode (carried through unchanged from the
-        :class:`CommandResolution`).
+        resolved command's ``assignments_persist``).
     """
 
     status: int
@@ -191,12 +180,14 @@ class CommandExecutor:
         # scripting/source_processor.py and command_accumulator.py), so by
         # the time the executor runs the command word is already the
         # alias-expanded token.
-        self.strategies = [
+        # An immutable tuple, built once — resolve_command receives it
+        # directly (no per-dispatch conversion; R3 bounce perf wiring).
+        self.strategies = (
             FunctionExecutionStrategy(),
             SpecialBuiltinExecutionStrategy(),
             BuiltinExecutionStrategy(),
-            ExternalExecutionStrategy()
-        ]
+            ExternalExecutionStrategy(),
+        )
 
     def execute(self, node: 'SimpleCommand', context: 'ExecutionContext') -> int:
         """
@@ -404,6 +395,7 @@ class CommandExecutor:
         prefix_assignments_persist = False
         prefix = None
         pushed_temp_scope = False
+        resolved = None
 
         try:
             # Phase 2: Expand the remaining arguments. POSIX expands the
@@ -470,6 +462,12 @@ class CommandExecutor:
             cmd_name = expanded_args[0]
             cmd_args = expanded_args[1:]
 
+            # Normalize the command word (post-quote-removal spelling + bypass
+            # provenance) — a typed value that CANNOT consume a resolution, so
+            # it is produced first (campaign R3 / #20 H10).
+            normalized = normalize_command_word(
+                cmd_name, backslash_bypass=backslash_quoted)
+
             # bash: $_ holds the last argument of the previous command.
             # Set it after this command's own expansion (which still saw
             # the old value) so the NEXT command reads this one's last arg.
@@ -478,6 +476,16 @@ class CommandExecutor:
             except ReadonlyVariableError:
                 pass
 
+            # Build the immutable command-environment overlay (the prefix
+            # metadata resolution needs) and RESOLVE ONCE, before any scope
+            # or dispatch decision. This is the H10 authority-timing fix: the
+            # scope model (function temp-env scope vs command temp-env layer),
+            # the ``exec`` shortcut, prefix-assignment persistence, and the
+            # POSIX prefix-error branch are all driven by this one
+            # ``ResolvedCommand`` — never recomputed from raw names.
+            overlay = self.assignments.build_overlay(raw_assignments)
+            resolved = self.resolve_command(normalized, overlay, context)
+
             # When the command resolves to a shell FUNCTION, temp-env prefix
             # assignments follow bash's temporary-variable-context model: they
             # act as an exported scope layered under the function's own locals,
@@ -485,10 +493,12 @@ class CommandExecutor:
             # ``declare -g``/``export`` reaches the global and survives. We push
             # that scope HERE (before value expansion, so `A=1 B=$A f` sees A in
             # the layer) and pop it in the finally; a mid-expansion error still
-            # unwinds cleanly because the push precedes apply_prefix.
-            is_function_call = (
-                self.function_manager.get_function(cmd_name) is not None)
-            if is_function_call and raw_assignments:
+            # unwinds cleanly because the push precedes apply_prefix. A POSIX
+            # special builtin shadowed by a same-named function resolves to the
+            # BUILTIN (not the function), so it correctly takes the persist path
+            # instead of the discarded-scope path (H10).
+            if (resolved is not None and resolved.uses_temp_env_scope
+                    and raw_assignments):
                 self.state.scope_manager.push_temp_env_scope()
                 pushed_temp_scope = True
 
@@ -519,7 +529,7 @@ class CommandExecutor:
                 # eval/source boundaries, next line runs with $? = 1.
                 # Default (bash) mode instead reports the error and RUNS
                 # the command (the path below).
-                if (cmd_name in POSIX_SPECIAL_BUILTINS
+                if (resolved is not None and resolved.is_posix_special
                         and self.state.is_script_mode):
                     sys.exit(1)
                 raise TopLevelAbort(1)
@@ -531,11 +541,12 @@ class CommandExecutor:
 
             # Special handling for exec builtin (needs access to
             # redirections). A user-defined exec() function shadows the
-            # builtin (bash), so the special case only applies when no
-            # function will take the lookup — including for `\exec`, which
-            # (F2) no longer bypasses the function.
-            if cmd_name == 'exec' and \
-                    not self.function_manager.get_function('exec'):
+            # builtin in default mode (bash), so the special case applies only
+            # when resolution picked the ``exec`` special builtin — including
+            # for `\exec` (F2: the backslash does not bypass the function) and
+            # for POSIX mode (where the special builtin shadows the function).
+            # Driven by the one resolution, never a fresh raw-name read (H10).
+            if resolved is not None and resolved.is_exec_special:
                 return self._handle_exec_builtin(node, expanded_args, prefix.applied)
 
             # Deliver structured array initializers to declaration
@@ -552,9 +563,9 @@ class CommandExecutor:
             pending_inits = self._collect_array_inits(command_node)
             invocation = (BuiltinContext(array_inits=pending_inits)
                           if pending_inits else EMPTY_BUILTIN_CONTEXT)
-            # Execute the command using the appropriate strategy
-            result = self._execute_with_strategy(
-                cmd_name, cmd_args, node, context, invocation,
+            # Dispatch the ALREADY-resolved command (no second resolution).
+            result = self._dispatch_resolved(
+                resolved, cmd_name, cmd_args, node, context, invocation,
             )
             prefix_assignments_persist = result.prefix_assignments_persist
             return result.status
@@ -710,30 +721,42 @@ class CommandExecutor:
         """
         OptionHandler.print_xtrace(self.shell, [cmd_name] + args)
 
-    def _execute_with_strategy(self, cmd_name: str, args: List[str],
-                              node: 'SimpleCommand', context: 'ExecutionContext',
-                              invocation: BuiltinContext = EMPTY_BUILTIN_CONTEXT
-                              ) -> ExecutionResult:
-        """Resolve the command to a strategy, then invoke it.
+    def resolve_command(self, normalized: NormalizedCommandName,
+                        overlay: CommandEnvOverlay,
+                        context: 'ExecutionContext'
+                        ) -> Optional[ResolvedCommand]:
+        """Resolve a normalized command word to its :class:`ResolvedCommand`.
 
-        Two phases, as typed data:
-
-        1. :meth:`_resolve_command` picks the matching strategy and the
-           prefix-assignment-persistence policy it implies → a
-           :class:`CommandResolution`.
-        2. :meth:`_invoke_resolution` applies the resolved strategy's
-           redirections in the one mode decided by
-           ``_decide_redirection_mode`` and runs it → an
-           :class:`ExecutionResult`.
-
-        Returns:
-            An :class:`ExecutionResult` carrying the exit status and the
-            ``prefix_assignments_persist`` policy (True only for a POSIX
-            special builtin resolved in POSIX mode), which the caller uses
-            to decide whether to restore the prefix assignments.
+        The ONE mode-aware dispatch resolution: delegates to the
+        :func:`command_resolution.resolve_command` chokepoint, which reads the
+        function/builtin registries once and returns every dispatch decision as
+        typed fields. Called BEFORE any scope or prefix-assignment decision, so
+        the scope model, ``exec`` shortcut, POSIX prefix-error branch, and
+        persistence all flow from this one value instead of raw-name recomputes
+        (#20 H10). The overlay carries the resolution-relevant prefix facts —
+        in particular ``has_posix_override``, so a ``POSIXLY_CORRECT=1`` prefix
+        resolves ITS OWN command in posix mode (bash installs assignments before
+        lookup; resolving first must consult the fact instead). The external
+        strategy's deferred PATH search reads the live environment, which
+        ``apply_prefix`` updates with any temporary PATH before dispatch.
         """
-        resolution = self._resolve_command(cmd_name)
-        if resolution is None:
+        return resolve_command(
+            self.shell, self.strategies, normalized, overlay, context)
+
+    def _dispatch_resolved(self, resolved: Optional[ResolvedCommand],
+                           cmd_name: str, args: List[str],
+                           node: 'SimpleCommand', context: 'ExecutionContext',
+                           invocation: BuiltinContext = EMPTY_BUILTIN_CONTEXT
+                           ) -> ExecutionResult:
+        """Invoke an already-resolved command (no second resolution).
+
+        Shifts bash's last/this_shell_builtin register, then applies the
+        resolved strategy's redirections in the one mode decided by
+        :meth:`_decide_redirection_mode` and runs it → an
+        :class:`ExecutionResult` carrying the exit status and the
+        ``assignments_persist`` policy.
+        """
+        if resolved is None:
             # Should never happen: ExternalExecutionStrategy.can_execute
             # always matches. Preserves the historical 127 fallback.
             return ExecutionResult(status=127, prefix_assignments_persist=False)
@@ -745,56 +768,12 @@ class CommandExecutor:
         # externals shift a None in (they clear the exemption, like
         # bash); pure assignments never reach here (no shift).
         self.shell.job_manager.note_simple_command(
-            cmd_name if isinstance(
-                resolution.strategy,
-                (SpecialBuiltinExecutionStrategy, BuiltinExecutionStrategy))
+            cmd_name if resolved.dispatch_kind in _BUILTIN_DISPATCH_KINDS
             else None)
         return self._invoke_resolution(
-            resolution, cmd_name, args, node, context, invocation)
+            resolved, cmd_name, args, node, context, invocation)
 
-    def _resolve_command(self, cmd_name: str) -> Optional[CommandResolution]:
-        """Resolve a command name to the strategy that will run it.
-
-        Lookup order and prefix-assignment persistence are BOTH mode-aware
-        (F9), decided here once from ``set -o posix``:
-
-        - Default (bash) mode: functions > (special|regular) builtins >
-          external — functions shadow even special builtins. A prefix before a
-          special builtin is TEMPORARY, like any builtin.
-        - POSIX mode: special builtins > functions > regular builtins >
-          external — special builtins take precedence over functions. A prefix
-          before a special builtin PERSISTS.
-
-        There is no command-word bypass here. Aliases are expanded earlier as
-        a token-stream transform (the `\\cmd` backslash naturally avoids alias
-        expansion because the leading-backslash WORD never matches an alias
-        name), and `\\cmd` does NOT bypass functions or builtins (F2). The
-        `command`/`builtin` builtins, which DO bypass functions, resolve their
-        target internally rather than through this method.
-
-        Returns None only if no strategy matches (unreachable in practice,
-        since ExternalExecutionStrategy is the catch-all).
-        """
-        posix = self.state.options.get('posix', False)
-        strategies = self.strategies
-        if posix:
-            # POSIX lookup precedence: special builtins ahead of functions.
-            special = [s for s in self.strategies
-                       if isinstance(s, SpecialBuiltinExecutionStrategy)]
-            rest = [s for s in self.strategies
-                    if not isinstance(s, SpecialBuiltinExecutionStrategy)]
-            strategies = special + rest
-        for strategy in strategies:
-            if strategy.can_execute(cmd_name, self.shell):
-                return CommandResolution(
-                    strategy=strategy,
-                    prefix_assignments_persist=(
-                        posix and isinstance(
-                            strategy, SpecialBuiltinExecutionStrategy)),
-                )
-        return None
-
-    def _invoke_resolution(self, resolution: CommandResolution,
+    def _invoke_resolution(self, resolved: ResolvedCommand,
                            cmd_name: str, args: List[str],
                            node: 'SimpleCommand',
                            context: 'ExecutionContext',
@@ -804,11 +783,11 @@ class CommandExecutor:
 
         Applies the resolved strategy's redirections according to the one
         mode decided by :meth:`_decide_redirection_mode`, then executes it.
-        The resolution's ``prefix_assignments_persist`` policy is carried
+        The resolution's ``assignments_persist`` policy is carried
         through unchanged to the returned :class:`ExecutionResult`.
         """
-        strategy = resolution.strategy
-        persist = resolution.prefix_assignments_persist
+        strategy = resolved.strategy
+        persist = resolved.assignments_persist
         mode = self._decide_redirection_mode(strategy, context, node.background)
 
         if mode is RedirectionMode.BUILTIN_INPROCESS:
@@ -857,7 +836,7 @@ class CommandExecutor:
         """Select how a matched strategy's redirections are applied.
 
         This is the single place that encodes the redirection-mode policy;
-        ``_execute_with_strategy`` performs the single dispatch on the
+        ``_invoke_resolution`` performs the single dispatch on the
         result. See ``RedirectionMode`` for what each value means.
         """
         is_builtin = isinstance(
