@@ -21,8 +21,8 @@ from psh.expansion.pattern_engine import (
     CompiledPattern,
     MatchProfile,
     PatternCompiler,
-    count_states,
     compile_pattern,
+    count_states,
     runs_to_pattern_string,
 )
 
@@ -108,12 +108,14 @@ def test_deep_literal_pattern_no_recursion_error():
 
 
 def test_deep_star_pattern_no_recursion_error():
-    """Deep alternating stars (`*a*a…`) also stay iterative."""
+    """Thousands of stars (`*a*a…`, far more than the recursion limit) stay
+    iterative. A SHORT subject keeps the state set bounded — the point is that
+    the pattern DEPTH does not drive Python recursion."""
     old = sys.getrecursionlimit()
     sys.setrecursionlimit(1000)
     try:
-        pat = "*a" * 1000
-        assert _c(pat).full_match("a" * 2000, STRING) is True
+        pat = "*a" * 2000                        # 4000 nodes >> limit
+        assert _c(pat).full_match("a" * 8, STRING) is False   # needs 2000 a's
     finally:
         sys.setrecursionlimit(old)
 
@@ -147,9 +149,10 @@ def test_for_pathname_star_does_not_cross_slash():
 
 
 def test_match_profile_is_typed_and_frozen():
+    import dataclasses
     p = MatchProfile(for_pathname=True, ic=True)
     assert (p.for_pathname, p.ic) == (True, True)
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         p.ic = False  # frozen
 
 
@@ -205,3 +208,72 @@ def test_compiled_pattern_reused_across_profiles():
 
 def test_public_compiledpattern_type():
     assert isinstance(_c("x"), CompiledPattern)
+
+
+# --- pathname glob: carry-2 + nocaseglob (in-process; tests THIS tree) ------
+# Expected values are bash 5.2-verified (tmp/boundary-ledgers/W3-probes/
+# pathname-stage3.txt). Run in-process so the worktree GlobExpander is exercised
+# (a subprocess `-m psh` from a tempdir imports the editable-installed MAIN).
+
+def _mkfiles(names):
+    import os
+    for n in names:
+        open(os.path.join(os.getcwd(), n), 'w').close()
+
+
+def test_pathname_carry2_quoted_dash_is_literal_member(isolated_shell_with_temp_dir):
+    sh = isolated_shell_with_temp_dir
+    _mkfiles(['a', 'b', 'c', '-x'])
+    # [a"-"c]* : _pattern_from_runs yields the canonical [a\-c]* ; {a,-,c} members
+    # -> matches '-x', 'a', 'c' (NOT 'b'), bash collation order.
+    assert sh.expansion_manager.glob_expander.expand(r'[a\-c]*') == ['-x', 'a', 'c']
+
+
+def test_pathname_carry2_quoted_caret_is_literal_member(isolated_shell_with_temp_dir):
+    sh = isolated_shell_with_temp_dir
+    _mkfiles(['^x', 'ax', 'zx'])
+    # ["^"a]* -> [\^a]* : members {^,a}, NOT negation -> '^x','ax' (NOT 'zx').
+    assert sh.expansion_manager.glob_expander.expand(r'[\^a]*') == ['^x', 'ax']
+
+
+def test_pathname_carry2_quoted_bang_is_literal_member(isolated_shell_with_temp_dir):
+    sh = isolated_shell_with_temp_dir
+    _mkfiles(['!x', 'ax', 'zx'])
+    assert sh.expansion_manager.glob_expander.expand(r'[\!a]*') == ['!x', 'ax']
+
+
+def test_pathname_nocaseglob_keeps_upper_class_case_sensitive(
+        isolated_shell_with_temp_dir):
+    sh = isolated_shell_with_temp_dir
+    _mkfiles(['abc', 'XYZ'])
+    sh.run_command('shopt -s nocaseglob')
+    # bash: nocaseglob keeps [[:upper:]] case-sensitive -> only 'XYZ'.
+    assert sh.expansion_manager.glob_expander.expand('*[[:upper:]]*') == ['XYZ']
+
+
+def test_pathname_nocaseglob_folds_literals(isolated_shell_with_temp_dir):
+    # Non-case-colliding names (APFS is case-insensitive): the lowercase-'b'
+    # file 'qbq' is matched by the uppercase-'B' pattern ONLY under nocaseglob.
+    sh = isolated_shell_with_temp_dir
+    _mkfiles(['qbq', 'xyz'])
+    assert sh.expansion_manager.glob_expander.expand('*B*') == []   # case-sensitive
+    sh.run_command('shopt -s nocaseglob')
+    assert sh.expansion_manager.glob_expander.expand('*B*') == ['qbq']  # folds
+
+
+def test_pathname_trailing_slash_directories_only(isolated_shell_with_temp_dir):
+    import os
+    sh = isolated_shell_with_temp_dir
+    os.mkdir('d1'); os.mkdir('d2'); open('f1', 'w').close()
+    # dir*/ restricts to directories and appends '/'.
+    assert sh.expansion_manager.glob_expander.expand('d*/') == ['d1/', 'd2/']
+
+
+def test_pathname_backslash_in_value_stays_literal(isolated_shell_with_temp_dir):
+    sh = isolated_shell_with_temp_dir
+    _mkfiles(['aQb', 'a\\Zb'])
+    # x='a\*b' -> field ACTIVE 'a\*b' -> encoder doubles the backslash ->
+    # a\\*b -> literal backslash + wildcard: matches 'a\Zb', not 'aQb'.
+    sh.run_command(r"x='a\*b'")
+    out = sh.expansion_manager.glob_expander.expand(r'a\\*b')
+    assert out == ['a\\Zb']

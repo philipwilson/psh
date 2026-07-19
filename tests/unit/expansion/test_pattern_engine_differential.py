@@ -74,6 +74,22 @@ ROWS = [
     ("brk1", "*", "[*?]", False), ("brk2", "a", "[*?]", False),
     ("brk3", "-", "[-a]", False), ("brk4", "^", "[a^]", False),
     ("brk5", "!", "[a!]", False),
+    # #20 H7 carry-2: a QUOTED class-special char inside an ACTIVE bracket is a
+    # literal member, not class syntax. [a"-"c] = {a,-,c}, not range a-c.
+    ("c2rng_b", "b", '[a"-"c]', False), ("c2rng_dash", "-", '[a"-"c]', False),
+    ("c2rng_a", "a", '[a"-"c]', False),
+    ("c2caret_a", "a", '["^"a]', False), ("c2caret_x", "x", '["^"a]', False),
+    ("c2caret_c", "^", '["^"a]', False),
+    ("c2bang_b", "!", '["!"a]', False), ("c2bang_x", "x", '["!"a]', False),
+    ("c2rbrk", "]", '[a"]"c]', False), ("c2rbrk_b", "b", '[a"]"c]', False),
+    # unquoted controls: class meaning intact.
+    ("c2ctl_rng", "b", "[a-c]", False), ("c2ctl_neg", "x", "[!a]", False),
+    # #20 H7-c: an adversarial plain glob that was exponential on the old regex
+    # path must still agree with bash (and, per the timeout, run fast).
+    ("adv_no", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "*a*a*a*a*a*a*a*a*a*a*a*a*a*b", False),
+    ("adv_yes", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+     "*a*a*a*a*a*a*a*a*a*a*a*a*a*b", False),
     ("emp1", "", "", True), ("emp2", "x", "", True), ("emp3", "", "abc", False),
     ("anc1", "abcdef", "abc*", False), ("anc2", "abcdef", "*def", False),
     ("anc3", "abcdef", "*cd*", False),
