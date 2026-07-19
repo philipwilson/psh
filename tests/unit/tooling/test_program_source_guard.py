@@ -2,8 +2,8 @@
 
 Two chokepoints, both grep-verifiable:
 
-1. **InputSource construction census** — ``FileInput``/``StringInput``/
-   ``StdinInput`` may be constructed only inside
+1. **InputSource construction census** — ``FileInput``/``LazyFileInput``/
+   ``StringInput``/``StdinInput`` may be constructed only inside
    ``psh/scripting/program_source.py`` (the normalization boundary that
    decides each channel's NUL/byte policy and parse flags) and their own
    defining module. A direct construction elsewhere would reopen a second,
@@ -23,7 +23,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PSH_DIR = REPO_ROOT / "psh"
 
-INPUT_SOURCE_CLASSES = {"FileInput", "StringInput", "StdinInput"}
+INPUT_SOURCE_CLASSES = {"FileInput", "LazyFileInput", "StringInput",
+                        "StdinInput"}
 
 # The ONLY modules that may construct InputSource objects.
 ALLOWED_CONSTRUCTORS = {

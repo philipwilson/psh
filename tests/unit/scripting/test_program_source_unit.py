@@ -12,7 +12,12 @@ import dataclasses
 
 import pytest
 
-from psh.scripting.input_sources import FileInput, StdinInput, StringInput
+from psh.scripting.input_sources import (
+    FileInput,
+    LazyFileInput,
+    StdinInput,
+    StringInput,
+)
 from psh.scripting.program_source import (
     BINARY_SNIFF_WINDOW,
     BinaryProgramText,
@@ -126,7 +131,9 @@ class TestChannelPolicyTable:
         p = tmp_path / "s.sh"
         p.write_text("echo hi\n")
         src = ProgramSource.script_file(str(p)).make_input_source()
-        assert isinstance(src, FileInput)
+        # The SCRIPT-FILE argument is read LAZILY (campaign I2, #20 H14) —
+        # source/rc stay eager FileInput (below).
+        assert isinstance(src, LazyFileInput)
         assert self._flags(src) == (True, True, False, True)
 
     def test_stdin_channel(self):
@@ -170,10 +177,15 @@ class TestChannelPolicyTable:
 
 class TestNulPolicyThroughInputSources:
     def test_script_file_stream_delete(self, tmp_path):
+        # STREAM policy: delete EVERY NUL (unchanged by the lazy reader, which
+        # strips per record). The lazy source has no eager `.lines`; drain
+        # read_line for the first two physical lines.
         p = tmp_path / "s.sh"
         p.write_bytes(b"echo A\x00\x00B\necho C\n")
         with ProgramSource.script_file(str(p)).make_input_source() as src:
-            assert src.lines[:2] == ["echo AB", "echo C"]
+            first = src.read_line()
+            second = src.read_line()
+            assert [first, second] == ["echo AB", "echo C"]
 
     def test_sourced_file_pair_truncates(self, tmp_path):
         p = tmp_path / "f"

@@ -1,6 +1,6 @@
 """
 The script-reading descriptor must not collide with user fds (reappraisal #14
-H3, then #17 io MED-2).
+H3, then #17 io MED-2; the lazy reader of campaign I2 / #20 H14).
 
 A plain open() landed the script file on fd 3, so a script doing `exec 3>&-`
 or the classic `exec 3>&1 1>&2 2>&3 3>&-` stdout/stderr swap clobbered the fd
@@ -8,9 +8,17 @@ psh read the script from — at close it raised a spurious
 "[Errno 9] Bad file descriptor" and exit 1. The first fix relocated the fd
 via F_DUPFD_CLOEXEC to >= 10 — which parked it EXACTLY on bash's `{var}`
 named-fd allocation base, so `exec {fd}>/dev/null` returned 11 (bash: 10) and
-a script touching fd 10 itself hit the same spurious EBADF. FileInput now
-reads the whole script eagerly and CLOSES the descriptor before any command
-runs, so no collision is possible at any fd. Verified against bash 5.2.
+a script touching fd 10 itself hit the same spurious EBADF.
+
+Campaign I2 (#20 H14) made the SCRIPT-FILE argument LAZY (block-buffered), so
+the descriptor is now LIVE for the script's lifetime rather than eagerly read
+and closed. It is relocated to a HIGH CLOEXEC slot (F_DUPFD_CLOEXEC from fd
+255, bash's script-fd convention): out of the swap idiom's fds 0-9, out of the
+`{v}` first-free->=10 numbering (F_DUPFD skips the open slot), and CLOEXEC so
+children/exec'd images never inherit it. A temporary redirect to its number
+save/restores it; a PERMANENT `exec` redirect to its number relocates the
+reader first (cannot clobber — bash owns its fd 255 identically). Every case
+below stays bash-verified under the lazy reader.
 
 Permanent-fd / exec redirection in scripts -> always run psh in a subprocess.
 """
