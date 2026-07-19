@@ -307,6 +307,15 @@ paths in `scope.py`:
   `resolve_nameref_name` to the target — `declare -n r=x; declare -i r` makes
   x integer, `readonly r`/`export r` mark x — EXCEPT the nameref attribute
   itself (`declare -n`/`declare +n`), which lands on the reference cell.
+  A MISSING target gets a declared-unset attribute-carrying cell (the upvar
+  idiom `declare -n ref=$1; declare -i ref`): declare/typeset/readonly create
+  it in declare's target scope (LOCAL inside a function —
+  `function_support.py#_declare_bare_name`), export creates it non-locally so
+  it survives the function (`environment.py#_export_existing`). A CYCLIC
+  chain under an attribute op warns TWICE and CONTINUES rc 0 (bash; unlike a
+  value write, which rejects) — the catch lives in the
+  `apply_attribute`/`remove_attribute` chokepoint and the two builtin
+  pre-resolutions.
 
 Tests: `tests/unit/core/test_nameref.py`.
 
@@ -437,12 +446,16 @@ set, and a persistent-attribute OVERLAY. Two categories:
   `find_exported_instance`, and shown by `declare -p NAME`), and `unset`
   DEACTIVATES the name (it becomes an ordinary variable, bash). Every one of
   those interception points (plus the two read paths and `find_exported_instance`)
-  consults `_local_shadows_special(name)`: a `local RANDOM` makes RANDOM an
-  ordinary variable in that scope and any nested call (dynamic scoping),
-  suspending the dynamic behaviour until the scope exits, while a global
-  `RANDOM=5` still SEEDS. The uniformity is drift-locked by
-  `tests/unit/tooling/test_variable_truth_guard.py` (every `has_lifecycle`
-  gate must consult the mask).
+  consults `_local_shadows_special(name)`: a `local RANDOM` — or a
+  function-prefix `RANDOM=5 f` (the temp-env scope is in the scan) — makes
+  RANDOM an ordinary variable for that scope and any nested call (dynamic
+  scoping), suspending the dynamic behaviour until the scope exits, while a
+  global `RANDOM=5` still SEEDS. A READONLY special (overlay readonly)
+  REFUSES a masking local outright (`create_local`'s special-readonly gate:
+  bash `local: SECONDS: readonly variable`, rc 1, function continues, reads
+  stay dynamic). The uniformity is drift-locked by
+  `tests/unit/tooling/test_variable_truth_guard.py` (every `has_lifecycle` /
+  `is_computed` gate must consult the mask).
 - **Shell-view specials** (`lifecycle=False`): computed read that SHADOWS any
   stored variable; assignment/readonly/unset all take the ordinary path
   (already bash-correct, so no interception).
@@ -502,7 +515,13 @@ through it. No production code poke `state.env[...]` directly.
   throughs to the layer while `export`/`declare -g` write past it, and `unset`
   peels it to reveal the shell variable underneath. A function call instead uses
   a temp-env SCOPE (`set_temp_env_var`), which IS enumerated in the body (bash
-  merges a function's prefix vars into its locals). `push_command_temp_env` /
+  merges a function's prefix vars into its locals). That merge carries
+  PROVENANCE (bash `att_tempvar`, psh `VarAttributes.TEMPVAR`): a `local x[=V]`
+  in the PREFIXED invocation keeps it, and a value-less `local x` at any deeper
+  call inherits value+export from the nearest provenance-carrying instance it
+  shadows — copies do not carry it onward
+  (`scope.py#ScopeManager._tempvar_inherit_source`; R2-B1 probe matrix).
+  `push_command_temp_env` /
   `pop_command_temp_env` / `set_command_temp_env_var` own the stack; `restore`
   pops it, `commit` (POSIX special builtin) promotes the bindings to real
   exported vars then pops.

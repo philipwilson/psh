@@ -107,8 +107,9 @@ class TestReadonlySpecialRefusesLocal:
         assert 'in=[5]' not in captured_shell.get_stdout()
 
     def test_engine_level_refusal(self, captured_shell):
-        from psh.core.exceptions import ReadonlyVariableError
         import pytest
+
+        from psh.core.exceptions import ReadonlyVariableError
         mgr = captured_shell.state.scope_manager
         captured_shell.run_command('readonly RANDOM')
         mgr.push_scope('f')
