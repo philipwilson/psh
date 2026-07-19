@@ -161,6 +161,35 @@ def test_x_modifier_quotes_each_word(expander):
     assert r.text == "'echo' 'a' 'b' 'c'"
 
 
+# --- Heredoc-body span scan (incl. the dq-cmdsub reopen; bounce blocker 2) --
+
+def test_heredoc_body_spans_dquoted_cmdsub():
+    # `$(` inside double quotes reopens command context (bash), so the heredoc
+    # opened there is real: its body + terminator lines are suppressed spans.
+    # RED at cd3ddb0b^ (flat quote flags saw the opener as quoted -> no spans).
+    from psh.interactive.history_expansion import heredoc_body_spans
+    cmd = 'echo "$(cat <<EOF\n!!\nEOF\n)"'
+    assert heredoc_body_spans(cmd) == [(18, 20), (21, 24)]
+
+
+def test_heredoc_body_expansion_suppressed_in_dquoted_cmdsub(expander):
+    _seed(expander, "echo seed")
+    r = expander.expand_history('echo "$(cat <<EOF\n!!\nEOF\n)"')
+    assert r.kind is HistoryExpansionKind.NONE  # the body !! is NOT a reference
+    assert "!!" in r.text                        # left literal
+
+
+def test_heredoc_body_spans_controls():
+    # Controls around the reopen delta: a dquoted marker WITHOUT a cmdsub is
+    # not a heredoc; `$((` in dquotes is arithmetic (its << is a shift); an
+    # unquoted cmdsub opener and a plain heredoc still detect (unchanged).
+    from psh.interactive.history_expansion import heredoc_body_spans
+    assert heredoc_body_spans('echo "<<EOF" done\n!!') == []
+    assert heredoc_body_spans('echo "$((1<<2))"\n!!') == []
+    assert heredoc_body_spans('echo $(cat <<EOF\n!!\nEOF\n)') == [(17, 19), (20, 23)]
+    assert heredoc_body_spans('cat <<EOF\n!!\nEOF') == [(10, 12), (13, 16)]
+
+
 # --- Frozen dataclass ----------------------------------------------------
 
 def test_result_is_frozen():

@@ -81,6 +81,23 @@ CASES = {
     # --- activation ---
     "set_plus_H_records_literal": ["set +H", "echo one", "!!", "history"],
     "set_minus_H_reenables": ["set +H", "set -H", "echo one", "!!", "history"],
+    # --- heredoc-body suppression in reopened contexts (bounce blocker 2) ---
+    # A heredoc whose OPENER sits inside a double-quoted $( … ): bash reopens
+    # command context inside "$( so the heredoc is real and its body is
+    # LITERAL (never bang-expanded). The pre-fix scanner's flat quote flags
+    # saw only "quoted" and expanded the body (red at cd3ddb0b^). No history
+    # dump in these rows: the dump carries a pre-existing cmdhist trailing-
+    # newline artifact that is history-expansion-independent.
+    "heredoc_in_dquoted_cmdsub_body_literal":
+        ["echo seed", 'echo "$(cat <<EOF', "!!", "EOF", ')"'],
+    "heredoc_in_unquoted_cmdsub_body_literal":
+        ["echo seed", "echo $(cat <<EOF", "!!", "EOF", ")"],
+    "heredoc_in_backtick_in_dquote_body_literal":
+        ["echo seed", 'echo "`cat <<EOF', "!!", "EOF", '`"'],
+    "dquoted_marker_without_cmdsub_not_heredoc":
+        ["echo seed", 'echo "<<EOF" done', "!!"],
+    "arith_shift_in_dquote_not_heredoc":
+        ["echo seed", 'echo "$((1<<2))" ok', "!!"],
 }
 
 

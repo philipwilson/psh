@@ -102,6 +102,12 @@ MULTI = ["ls /usr/bin", "grep foo bar.txt baz.txt", "cat a.c b.c"]
     (["echo hello world"], "!!:s/hello/goodbye/"),
     (["echo aa aa aa"], "!!:gs/aa/bb/"),
     (["one two three"], "!!:s/two/2/:s/three/3/"),
+    # :q / :x word-quoting modifiers (campaign I4).
+    (["echo a'b'c"], "!!:q"),
+    (["echo one two three"], "!!:x"),
+    (["echo one two three"], "!!:2:q"),
+    # !# — the current line typed so far (campaign I4).
+    (ABG, "echo pre !#"),
     # ^old^new quick substitution.
     (["echo hello world"], "^hello^goodbye"),
     (["ECHO x"], "^ECHO^echo"),
