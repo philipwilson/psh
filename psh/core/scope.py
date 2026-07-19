@@ -153,6 +153,21 @@ class ScopeManager:
         ``set -a`` must not auto-export them (see ShellState.set_variable)."""
         return self._special.has_lifecycle(name)
 
+    def _local_shadows_special(self, name: str) -> bool:
+        """True iff a dynamic (lifecycle) special *name* is currently shadowed by
+        a LOCAL variable. bash: ``local RANDOM`` makes RANDOM an ordinary
+        variable in that scope (and any nested call, via dynamic scoping) until
+        the declaring scope exits, suspending the dynamic behaviour — while a
+        global ``RANDOM=5`` still SEEDS. Every special-interception point (read,
+        ``declare -p``, seed-assign, attribute change, unset) consults this so a
+        shadowing local wins uniformly. Cheap on the hot path: only lifecycle
+        names ever reach the scope scan, and the scan is over non-global scopes
+        only (a global cell for these names cannot exist — the seed interception
+        prevents it)."""
+        if not self._special.has_lifecycle(name):
+            return False
+        return any(name in scope.variables for scope in self.scope_stack[1:])
+
     def enable_debug(self, enabled: bool = True):
         """Enable or disable debug output for scope operations."""
         self._debug = enabled
@@ -392,10 +407,14 @@ class ScopeManager:
 
     def get_variable_object(self, name: str) -> Optional[Variable]:
         """Get the full Variable object through scope chain (no nameref deref)."""
-        # Check for special variables first
-        special_var = self._get_special_variable(name)
-        if special_var is not None:
-            return special_var
+        # Check for special variables first — UNLESS a local shadows a dynamic
+        # special (``local RANDOM``), in which case the stored local wins (bash).
+        # The shadow test precedes _get_special_variable so a masked read never
+        # advances RANDOM's generator as a side effect.
+        if not self._local_shadows_special(name):
+            special_var = self._get_special_variable(name)
+            if special_var is not None:
+                return special_var
 
         # A command temporary-environment binding (``VAR=x cmd`` over a
         # builtin/external) SHADOWS the shell variable for name lookup — this is
@@ -452,7 +471,11 @@ class ScopeManager:
         value carrying the effective attributes — ``declare -p RANDOM`` shows
         ``declare -ir RANDOM="..."`` like bash, rather than "not found".
         """
-        if self._special.has_lifecycle(name):
+        # An active dynamic special has no stored cell (so ``declare -p RANDOM``
+        # shows the computed value) — UNLESS a local shadows it, when the local
+        # cell is what ``declare -p`` must display (``local RANDOM=5`` -> ``declare
+        # -- RANDOM="5"``, bash).
+        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):
             return self._get_special_variable(name)
         # A command temp-env binding is shown by ``declare -p NAME`` (name
         # lookup), matching bash's ``FOO=bar declare -p FOO`` -> ``declare -x
@@ -534,6 +557,7 @@ class ScopeManager:
         # snapshot into the environment. An array assignment or a nameref
         # DEFINITION is not a special write and falls through.
         if (self._special.has_lifecycle(name)
+                and not self._local_shadows_special(name)
                 and not (attributes & VarAttributes.NAMEREF)
                 and not isinstance(value, (IndexedArray, AssociativeArray))):
             if self._special.attributes_for(name) & VarAttributes.READONLY:
@@ -793,8 +817,11 @@ class ScopeManager:
         # string; `unset EPOCHSECONDS` makes it a plain unset name). A readonly
         # special cannot be unset (bash: "cannot unset: readonly variable").
         # An active special has no stored Variable, so deactivate and return —
-        # there is nothing to clear from the scope chain.
-        if self._special.has_lifecycle(name):
+        # there is nothing to clear from the scope chain. A local-shadowed
+        # special (``local RANDOM=5; unset RANDOM``) instead unsets the LOCAL
+        # cell through the normal scope walk below (bash: the own-scope tombstone
+        # keeps it unset while the function lives; the special does not resurrect).
+        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):
             if self._special.attributes_for(name) & VarAttributes.READONLY:
                 raise ReadonlyVariableError(name)
             self._special.deactivate(name)
@@ -1060,7 +1087,12 @@ class ScopeManager:
         tv = self._command_temp_env_lookup(name)
         if tv is not None and tv.is_exported and not tv.is_array and not tv.is_unset:
             return tv
+        # A local shadow masks the dynamic special here too: an exported
+        # ``local SECONDS=5`` must materialise 5 into the child env, not the
+        # special's computed snapshot (bash). When masked, fall through to the
+        # scope walk, which returns the exported local.
         if (self._special.has_lifecycle(name)
+                and not self._local_shadows_special(name)
                 and (self._special.attributes_for(name) & VarAttributes.EXPORT)):
             return self._get_special_variable(name)
         for scope in reversed(self.scope_stack):
@@ -1147,10 +1179,19 @@ class ScopeManager:
         both succeed; only a value assignment fails). ``global_scope``
         (``declare -g``) targets the global instance past any local shadow.
         """
+        # Attribute changes resolve a nameref to its TARGET — ``declare -n r=x;
+        # declare -i r`` makes x integer (so ``r=3+4`` stores 7), and ``export
+        # r`` / ``readonly r`` mark x — EXCEPT when the attribute being changed
+        # IS the nameref attribute itself (``declare -n``/``declare +n``), where
+        # it lands on the nameref cell. A non-nameref name resolves to itself.
+        if not (attributes & VarAttributes.NAMEREF):
+            name = self.resolve_nameref_name(name)
         # An active dynamic special has no stored cell — record the attribute on
         # its persistent overlay so ``readonly RANDOM`` / ``export SECONDS``
         # persist (and EXPORT materialises via the observer + find_exported_instance).
-        if self._special.has_lifecycle(name):
+        # A local-shadowed special (``local RANDOM=5; declare -i RANDOM``) takes
+        # the ordinary path so the attribute lands on the LOCAL cell (bash).
+        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):
             self._special.add_attributes(name, attributes)
             self._notify_variable_changed(name)
             return
@@ -1199,10 +1240,16 @@ class ScopeManager:
         ``global_scope`` (``declare -g``) targets the global instance past
         any local shadow.
         """
+        # Attribute removal resolves a nameref to its TARGET (mirroring
+        # apply_attribute), EXCEPT for the nameref attribute itself (``declare
+        # +n`` un-references the nameref cell, so it must NOT resolve).
+        if not (attributes & VarAttributes.NAMEREF):
+            name = self.resolve_nameref_name(name)
         # Active dynamic special: drop the attribute from its overlay. Removing
         # EXPORT (``export -n RANDOM``) lets the observer delete its env entry;
-        # readonly cannot be removed (like any variable).
-        if self._special.has_lifecycle(name):
+        # readonly cannot be removed (like any variable). A local-shadowed special
+        # takes the ordinary path so the removal lands on the local cell.
+        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):
             if (attributes & VarAttributes.READONLY
                     and (self._special.attributes_for(name) & VarAttributes.READONLY)):
                 raise ReadonlyVariableError(name)
