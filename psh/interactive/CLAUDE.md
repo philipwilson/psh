@@ -269,8 +269,9 @@ the components together:
   wraps the editor, prompting with PS2 until a complete logical command
   is read. It does NOT decide completeness itself: every line is fed to
   the shared `CommandAccumulator`
-  (`psh/scripting/command_accumulator.py`) — the same parser-driven
-  oracle the script/`-c` reader uses — which answers
+  (`psh/scripting/command_accumulator.py`) — the scripting adapter over
+  the ONE completeness engine `parser.session.ParseSession` (campaign I3)
+  that the script/`-c` reader also drives — which answers
   `Complete | NeedMore(hint)`. The hint carries what the lexer/parser
   actually know (pending heredoc delimiter, open quote character,
   unclosed expansion kind, and the parser's open-construct trail), and

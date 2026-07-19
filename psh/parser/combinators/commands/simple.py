@@ -10,6 +10,7 @@ from ....ast_nodes import ArrayAssignment, Redirect, SimpleCommand
 from ....lexer.token_types import Token, TokenType
 from ....parser.recursive_descent.helpers import ParseError
 from ...array_flat_text import process_unquoted_element_escapes
+from ...unclosed_expansion import detect_unclosed_expansion
 from ..core import Parser, ParseResult
 from ..diagnostics import error_context_for_token
 
@@ -71,10 +72,17 @@ class SimpleCommandMixin(_Base):
                 word_result = self.tokens.word_like.parse(tokens, pos)
                 if word_result.success:
                     assert word_result.value is not None
-                    unclosed = self._unclosed_expansion_error(word_result.value)
+                    unclosed = detect_unclosed_expansion(word_result.value)
                     if unclosed is not None:
-                        raise ParseError(error_context_for_token(
-                            word_result.value, unclosed))
+                        # at_eof: an open expansion consumes to end of input, so
+                        # more lines could close it — Incomplete, not Invalid,
+                        # exactly like the recursive-descent parser (campaign
+                        # S4/I3, the shared detect_unclosed_expansion producer).
+                        error = ParseError(error_context_for_token(
+                            word_result.value, unclosed.message))
+                        error.at_eof = True
+                        error.unclosed_expansion = unclosed.kind
+                        raise error
                     if self.arrays.is_initializer_head(tokens, pos):
                         init_result = self.arrays.parse_initialization(tokens, pos)
                         if not init_result.success:
@@ -133,32 +141,6 @@ class SimpleCommandMixin(_Base):
             )
 
         return Parser(parse_simple_command)
-
-    @staticmethod
-    def _unclosed_expansion_error(tok: Token) -> Optional[str]:
-        """Return an error message if the token carries an unclosed expansion.
-
-        The lexer tolerates ``${``, ``$(``, `` ` ``, ``$((``, and ``<(``/``>(``
-        without their closer (interactive line-continuation needs the tokens);
-        at parse time they are syntax errors. Mirrors the recursive descent
-        parser's _check_for_unclosed_expansions.
-        """
-        for part in tok.parts or ():
-            if part.expansion_type and part.expansion_type.endswith('_unclosed'):
-                return f"syntax error: unclosed expansion '{part.value}'"
-        value = tok.value
-        kind = tok.type.name
-        if kind == 'VARIABLE' and value.startswith('${') and not value.endswith('}'):
-            return f"syntax error: unclosed parameter expansion '{value}'"
-        if kind == 'COMMAND_SUB' and not value.endswith(')'):
-            return f"syntax error: unclosed command substitution '{value}'"
-        if kind == 'COMMAND_SUB_BACKTICK' and value.count('`') == 1:
-            return f"syntax error: unclosed backtick substitution '{value}'"
-        if kind == 'ARITH_EXPANSION' and not value.endswith('))'):
-            return f"syntax error: unclosed arithmetic expansion '{value}'"
-        if kind in ('PROCESS_SUB_IN', 'PROCESS_SUB_OUT') and not value.endswith(')'):
-            return f"syntax error: unclosed process substitution '{value}'"
-        return None
 
     def _build_simple_command(self, word_tokens: List[Token],
                              redirects: List[Redirect],

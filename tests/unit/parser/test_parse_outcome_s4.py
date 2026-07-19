@@ -158,30 +158,39 @@ def test_combinator_parse_outcome_incomplete_at_eof():
     assert outcome.expected.constructs == ()
 
 
-# === DISCLOSED DIVERGENCE: combinator classifies unclosed EXPANSIONS as
-# Invalid where RD gives Incomplete (RD is faithful to the at_eof continuation
-# semantics; the combinator's expansion sub-parses do not surface at_eof).
-# No live surface consumes the combinator outcome (PS2/accumulator/cmdhist are
-# RD-only; the executor uses raising parse()). Pinned so drift is VISIBLE:
-# if the combinator gains at_eof-faithful expansion errors, these flip to
-# Incomplete and this pin must be updated — and the I3 carry requires closing
-# this divergence before I3 may consume the combinator outcome surface.
+# === PARITY (was a DISCLOSED DIVERGENCE, closed by campaign I3): both parsers
+# classify an unclosed EXPANSION at end of input as Incomplete with the SAME
+# unclosed-expansion kind. The combinator used to give Invalid here because its
+# expansion errors did not surface at_eof; the shared detect_unclosed_expansion
+# producer (parser/unclosed_expansion.py) now feeds BOTH parsers, so a $(/${/
+# $((/`/<( left open reads as continuable input in each. This parity is the
+# I3-readiness precondition — I3's resumable session consumes the combinator
+# outcome surface, so the two must agree. (The open-construct TRAIL still
+# differs — RD computes it, the combinator returns () — a separate, accepted
+# combinator limitation pinned by test_combinator_parse_outcome_incomplete_at_eof.)
 
-_UNCLOSED_EXPANSION_DIVERGENCES = [
-    ("unclosed_cmdsub", "echo $(cat"),
-    ("unclosed_operand_cmdsub", "echo ${x:-$("),
-    ("unclosed_arith", "echo $((1+"),
-    ("unclosed_nested_cmdsub", "echo $(echo $(cat"),
-    ("unclosed_backtick_in_cmdsub", "echo $(echo `cat"),
+_UNCLOSED_EXPANSION_PARITY = [
+    ("unclosed_cmdsub", "echo $(cat", "command"),
+    ("unclosed_operand_cmdsub", "echo ${x:-$(", "parameter"),
+    ("unclosed_arith", "echo $((1+", "arithmetic"),
+    ("unclosed_nested_cmdsub", "echo $(echo $(cat", "command"),
+    ("unclosed_backtick_in_cmdsub", "echo $(echo `cat", "command"),
 ]
 
 
 @pytest.mark.parametrize(
-    "label,src", _UNCLOSED_EXPANSION_DIVERGENCES,
-    ids=[r[0] for r in _UNCLOSED_EXPANSION_DIVERGENCES])
-def test_unclosed_expansion_outcome_divergence_is_pinned(label, src):
-    assert isinstance(_rd_outcome(src), Incomplete)
-    assert isinstance(_comb_outcome(src), Invalid)
+    "label,src,kind", _UNCLOSED_EXPANSION_PARITY,
+    ids=[r[0] for r in _UNCLOSED_EXPANSION_PARITY])
+def test_unclosed_expansion_outcome_parity(label, src, kind):
+    rd = _rd_outcome(src)
+    comb = _comb_outcome(src)
+    assert isinstance(rd, Incomplete)
+    assert isinstance(comb, Incomplete)
+    # Same continuation KIND from both parsers (the shared producer).
+    assert rd.expected.unclosed_expansion == kind
+    assert comb.expected.unclosed_expansion == kind
+    # Both carry an at_eof ParseError (structurally "more input could complete").
+    assert rd.error.at_eof and comb.error.at_eof
 
 
 # === the variants are frozen typed values ===

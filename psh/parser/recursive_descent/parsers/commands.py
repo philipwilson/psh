@@ -20,23 +20,17 @@ from ....ast_nodes import (
 from ....lexer.keyword_defs import matches_keyword_type
 from ....lexer.token_types import Token, TokenType
 from ...array_flat_text import process_unquoted_element_escapes
+from ...unclosed_expansion import detect_unclosed_expansion
 from ..helpers import ParseError, TokenGroups, unexpected_token_message
 from ..support.word_builder import WordBuilder
 from .base import ParserSubcomponent
 from .redirections import _FD_DUP_RE
 
-# Mapping from expansion_type to (description, prefix, chars_to_skip)
-_UNCLOSED_EXPANSION_MSGS = {
-    'parameter_unclosed': ("unclosed parameter expansion", '${', 2),
-    'command_unclosed': ("unclosed command substitution", '$(', 2),
-    'arithmetic_unclosed': ("unclosed arithmetic expansion", '$((', 3),
-    'backtick_unclosed': ("unclosed backtick substitution", '`', 1),
-}
-
 # Token types whose parts may carry an unclosed expansion. Hoisted to a
 # module-level frozenset so the per-token membership check in
 # _check_for_unclosed_expansions is a set lookup, not a fresh list-literal
-# built and linearly scanned on every token.
+# built and linearly scanned on every token. (The (message, kind) fact itself
+# is produced by the shared detect_unclosed_expansion, so both parsers agree.)
 _EXPANSION_BEARING_TOKENS = frozenset({
     TokenType.WORD, TokenType.COMMAND_SUB, TokenType.COMMAND_SUB_BACKTICK,
     TokenType.ARITH_EXPANSION, TokenType.VARIABLE,
@@ -92,53 +86,22 @@ class CommandParser(ParserSubcomponent):
         raise error
 
     def _check_for_unclosed_expansions(self, token: Token) -> None:
-        """Check if a token contains unclosed expansions and raise appropriate errors."""
-        # Check tokens that might contain expansions
+        """Raise an ``at_eof`` ParseError if TOKEN carries an unclosed expansion.
+
+        The (message, kind) fact is produced by the shared
+        ``detect_unclosed_expansion`` (``parser/unclosed_expansion.py``); this
+        method turns a non-``None`` result into the recursive-descent parser's
+        rich ``at_eof`` error so an open ``$(``/``${``/``$((``/`` ` ``/``<(``
+        at end of input is INCOMPLETE input (interactive/script line-gathering
+        keeps reading). The combinator consumes the same producer, so both
+        parsers classify these identically (campaign S4/I3).
+        """
         if token.type not in _EXPANSION_BEARING_TOKENS:
             return
-
-        # Check token parts for unclosed expansions
-        if token.parts:
-            for part in token.parts:
-                if part.expansion_type and part.expansion_type.endswith('_unclosed'):
-                    kind = part.expansion_type[:-len('_unclosed')]
-                    fmt = _UNCLOSED_EXPANSION_MSGS.get(part.expansion_type)
-                    if fmt:
-                        desc, prefix, skip = fmt
-                        error_msg = f"syntax error: {desc} '{prefix}{part.value[skip:]}'"
-                    else:
-                        error_msg = f"syntax error: unclosed expansion '{part.value}'"
-
-                    self._raise_syntax_error(error_msg, token, at_eof=True,
-                                             unclosed=kind)
-
-        # Also check for specific token types that indicate unclosed expansions
-        if token.type == TokenType.COMMAND_SUB and not token.value.endswith(')'):
-            self._raise_syntax_error(
-                f"syntax error: unclosed command substitution '{token.value}'", token,
-                at_eof=True, unclosed='command')
-        elif token.type == TokenType.COMMAND_SUB_BACKTICK and token.value.count('`') == 1:
-            self._raise_syntax_error(
-                f"syntax error: unclosed backtick substitution '{token.value}'", token,
-                at_eof=True, unclosed='backtick')
-        elif token.type == TokenType.ARITH_EXPANSION and not token.value.endswith('))'):
-            self._raise_syntax_error(
-                f"syntax error: unclosed arithmetic expansion '{token.value}'", token,
-                at_eof=True, unclosed='arithmetic')
-        elif token.type == TokenType.VARIABLE and token.value.startswith('${') and not token.value.endswith('}'):
-            self._raise_syntax_error(
-                f"syntax error: unclosed parameter expansion '{token.value}'", token,
-                at_eof=True, unclosed='parameter')
-        elif token.type in (TokenType.PROCESS_SUB_IN, TokenType.PROCESS_SUB_OUT) \
-                and not token.value.endswith(')'):
-            # An unclosed `<(`/`>(` swallows everything to end of input (so a
-            # `<<EOF` inside it stays nested, like $(...)). Treat it as
-            # incomplete input — interactive/script line-gathering reads more
-            # lines until the matching ')' arrives (multi-line process subs,
-            # including heredocs inside them).
-            self._raise_syntax_error(
-                f"syntax error: unclosed process substitution '{token.value}'", token,
-                at_eof=True, unclosed='command')
+        unclosed = detect_unclosed_expansion(token)
+        if unclosed is not None:
+            self._raise_syntax_error(unclosed.message, token,
+                                     at_eof=True, unclosed=unclosed.kind)
 
     def parse_command(self) -> SimpleCommand:
         """Parse a single command with its arguments and redirections."""
