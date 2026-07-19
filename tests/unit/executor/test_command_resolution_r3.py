@@ -13,6 +13,7 @@ row against live bash, prefix-normalized).
 """
 
 import dataclasses
+import os
 import re
 import subprocess
 import sys
@@ -36,7 +37,12 @@ from psh.executor.strategies import (
     SpecialBuiltinExecutionStrategy,
 )
 
-BASH = "/opt/homebrew/bin/bash"
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "harness"))
+from shell_oracle import try_resolve_bash  # noqa: E402
+
+_ORACLE = try_resolve_bash()
+BASH = _ORACLE.path if _ORACLE else None
 
 
 def _strategies():
@@ -189,8 +195,7 @@ def _norm_prefix(text: str) -> str:
     return "\n".join(out)
 
 
-@pytest.mark.skipif(not __import__('os').path.exists(BASH),
-                    reason="PATH bash 5.2 not present")
+@pytest.mark.skipif(BASH is None, reason="bash oracle not available")
 class TestEmptyPathNotFoundMessage:
     """bash reports a bare-name miss under an EMPTY or UNSET PATH as
     'No such file or directory' (rc 127), not 'command not found'; a
