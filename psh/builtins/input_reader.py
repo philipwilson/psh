@@ -126,6 +126,10 @@ class InputCursor:
         # Char path (fd source): ONE incremental UTF-8 surrogateescape decoder
         # spanning every read on this cursor, and the queue of characters it has
         # emitted but a read has not yet consumed (a byte feed can emit several).
+        # INVARIANT: a live decoder object exists IFF bytes are pending
+        # mid-sequence — `_decoder is None` means "clean state", which lets
+        # `_next_char_from_fd` take the ASCII fast path (chr(byte), no decoder
+        # call) for the overwhelmingly common all-ASCII workload.
         self._decoder: Optional[codecs.IncrementalDecoder] = None
         self._decoded: Deque[str] = deque()
         # Byte-record path (StdinInput): raw bytes read past a record boundary,
@@ -201,11 +205,13 @@ class InputCursor:
             if not block:
                 break
             chunks.append(block)
-        # A fresh decoder drains any character the cursor's decoder was still
-        # assembling, then the bulk bytes, so a split multibyte at the seam is
-        # not lost.
-        pending = self._get_decoder().decode(b'', final=True)
-        self._decoder = None
+        # Drain any character the cursor's decoder was still assembling, then
+        # the bulk bytes, so a split multibyte at the seam is not lost. (A None
+        # decoder is clean state — nothing pending; see the __init__ invariant.)
+        pending = ''
+        if self._decoder is not None:
+            pending = self._decoder.decode(b'', final=True)
+            self._decoder = None
         tail = b''.join(chunks).decode('utf-8', errors='surrogateescape')
         return prefix + pending + tail
 
@@ -346,18 +352,27 @@ class InputCursor:
                 return self._decoded.popleft(), Outcome.DATA, None
             byte, outcome, err = self._next_byte(deadline)
             if outcome is not Outcome.DATA:
-                if outcome is Outcome.EOF:
+                if outcome is Outcome.EOF and self._decoder is not None:
                     # Flush any bytes the decoder was still assembling as
                     # surrogates (a truncated multibyte at EOF round-trips).
-                    tail = self._get_decoder().decode(b'', final=True)
+                    tail = self._decoder.decode(b'', final=True)
                     self._decoder = None  # EOF may be transient (tty Ctrl-D)
                     if tail:
                         self._decoded.extend(tail)
                         return self._decoded.popleft(), Outcome.DATA, None
                 return None, outcome, err
-            emitted = self._get_decoder().decode(bytes([byte]))
+            if self._decoder is None and byte < 0x80:
+                # ASCII fast path: clean decoder state (invariant above), so a
+                # 7-bit byte IS its character — no decoder call.
+                return chr(byte), Outcome.DATA, None
+            decoder = self._get_decoder()
+            emitted = decoder.decode(bytes([byte]))
             if emitted:
                 self._decoded.extend(emitted)
+                if decoder.getstate()[0] == b'':
+                    # Nothing buffered: drop the decoder so the invariant
+                    # (`None` == clean) holds and the fast path resumes.
+                    self._decoder = None
             # else: the decoder is buffering a multibyte lead; read another byte.
 
     def _next_byte(self, deadline: Optional[float]):
