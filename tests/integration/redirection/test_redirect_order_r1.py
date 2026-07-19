@@ -16,6 +16,14 @@ function) — the mode-blind lesson: the divergence lived in exactly one univers
 All cases run psh in a fresh ``-m psh -c`` subprocess (the child owns the fds;
 no in-process fd rewrite, so parallel-safe).  Expected values are bash-5.2
 verified (see tmp/boundary-ledgers/R1-probes/probe2-base-5989ed9e.txt).
+
+DISCRIMINATING PRECONDITION (accidentally-green defense): the ``exec
+3>/dev/null`` prelude makes fd 3 OPEN before each close-then-dup row, so the
+``4>&3`` failure is attributable ONLY to the preceding source-ordered ``3>&-``
+— never to fd 3 having simply never been opened (a never-opened ``4>&3`` fails
+for that independent reason, and ``n>&n`` self-dups are lenient anyway — see
+test_self_dup_leniency_r1.py).  A row that dropped the prelude could go green
+without exercising the ordering at all.
 """
 import os
 import subprocess

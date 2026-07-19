@@ -97,3 +97,29 @@ def test_script_mode_uses_scriptname_and_line():
     out, err, rc = run_psh_script("echo a\ncat <nope\necho b\n")
     assert "s.sh: line 2: nope: No such file or directory" in err, err
     assert out == "a\nb\n", (out, err)
+
+
+# ---- bad dup SOURCE naming: static names the source, dynamic the target ----
+# bash 5.2 probe-verified (R1-probes/bounce-probes.txt): `4>&9` (static) ->
+# `9: Bad file descriptor`, but `4>&$x` with x=9 (dynamic) -> `4: Bad file
+# descriptor` — the dynamic spelling names the fd being REDIRECTED. Both
+# directions. (Bounce nit 1: psh named the resolved source in both.)
+
+def test_static_dup_bad_source_names_source():
+    out, err, rc = run_psh_c("echo hi 4>&9")
+    assert "line 1: 9: Bad file descriptor" in err, err
+
+
+def test_dynamic_dup_bad_source_names_target():
+    out, err, rc = run_psh_c("x=9; echo hi 4>&$x")
+    assert "line 1: 4: Bad file descriptor" in err, err
+
+
+def test_static_input_dup_bad_source_names_source():
+    out, err, rc = run_psh_c("cat 4<&9")
+    assert "line 1: 9: Bad file descriptor" in err, err
+
+
+def test_dynamic_input_dup_bad_source_names_target():
+    out, err, rc = run_psh_c("x=9; cat 4<&$x")
+    assert "line 1: 4: Bad file descriptor" in err, err

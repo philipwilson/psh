@@ -70,3 +70,36 @@ def test_heredoc_quoted_delim_shared_cursor_no_expansion():
         "eval 'read x; cat' <<'EOF'\n$HOME\nkeep\nEOF\n")
     assert out == "keep\n", (out, err)
     assert "$HOME" not in out  # first line consumed literally by read
+
+
+# ---- documented deliberate loss: heredoc backing substrate (R1 bounce nit 2)
+#
+# psh materializes EVERY heredoc/here-string in an anonymous temp file
+# (`_content_to_fd` — a pipe would deadlock for bodies over the kernel pipe
+# buffer, and one seekable description is what lets builtin and child share
+# the H8 cursor).  bash 5.2 uses a PIPE for small heredocs and a temp file
+# only for large ones.  Consequence: a consumer that exploits seekability —
+# lseek(0), or a POSIX-conforming filter that reads ahead and repositions
+# stdin (GNU head; BSD head does not, so macOS shows no divergence for the
+# head-then-read composition) — can observe the substrate.  This is a
+# DELIBERATE, documented divergence: one open description is the H8 contract;
+# matching bash's small-heredoc pipe would re-split the cursor or deadlock.
+
+def test_substrate_small_heredoc_is_seekable_documented_divergence():
+    # CURRENT psh behavior pinned: lseek(0) on a small-heredoc stdin succeeds
+    # (temp file).  bash's pipe-backed small heredoc fails ESPIPE (rc 1) —
+    # deliberately NOT matched (see note above).
+    out, err, rc = run_psh(
+        'python3 -c "import os; os.lseek(0,0,0)" <<EOF\ntiny\nEOF\n'
+        "echo rc=$?")
+    assert out == "rc=0\n", (out, err)
+
+
+def test_substrate_external_consumer_first_matches_bash_on_this_host():
+    # External-consumer-first composition (bounce nit 2's row): BSD head
+    # consumes the whole small body on either substrate, so psh matches
+    # bash here on macOS; pinned so any substrate change surfaces visibly.
+    out, err, rc = run_psh(
+        'eval "head -n1 >/dev/null; read x; echo x=[$x]" <<EOF\n'
+        "line1\nline2\nline3\nEOF\n")
+    assert out == "x=[]\n", (out, err)
