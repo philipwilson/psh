@@ -3,6 +3,7 @@ import fcntl
 import os
 from typing import TYPE_CHECKING, List, Optional
 
+from ..expansion.pattern import match_shell_pattern
 from .base import InteractiveComponent
 from .line_editor_helpers import convert_multiline_to_single
 
@@ -68,7 +69,6 @@ class HistoryManager(InteractiveComponent):
         set — extglob groups (bash uses ``FNM_EXTMATCH`` there), and never
         backtracks exponentially. Case-sensitive (bash).
         """
-        from ..expansion.pattern import match_shell_pattern
         raw = self.state.get_variable('HISTIGNORE', '') or ''
         patterns = [p for p in raw.split(':') if p]
         if not patterns:
