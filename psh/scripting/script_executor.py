@@ -50,7 +50,10 @@ class ScriptExecutor(ScriptComponent):
             # discarded (a sourced file differs on both) — the per-channel
             # policy table lives in ProgramSource (program_source.py).
             source = ProgramSource.script_file(script_path)
-            with source.make_input_source() as input_source:
+            # Pass state so the lazy reader registers its owned descriptor on
+            # state.reserved_script_fds (a permanent `exec` redirect to its
+            # number relocates the reader instead of clobbering it — I2).
+            with source.make_input_source(self.state) as input_source:
                 # execute_as_main fires the EXIT trap exactly once when the
                 # script finishes — at end-of-file, on a `set -e` abort, or on
                 # an explicit `exit`. (A sourced file does NOT run this path;

@@ -114,6 +114,14 @@ class ShellState:
         # forked child starts empty), like the stream bindings above.
         self.input_cursors = self._new_input_cursor_registry()
 
+        # Owned script-file descriptors (campaign I2): fd -> LazyFileInput. A
+        # lazy SCRIPT_FILE reader registers its relocated high-CLOEXEC fd here
+        # so a PERMANENT `exec` redirect to that number relocates the reader
+        # (FileRedirector.apply_permanent_redirections) rather than clobbering
+        # the script source. Process-local (a forked child does not own the
+        # parent's script reader — a fresh empty map in clone_for_child).
+        self.reserved_script_fds: Dict[int, Any] = {}
+
         # Environment and variables (the ONE read of os.environ — see
         # the class docstring for the environment policy)
         self.env = os.environ.copy()
@@ -567,6 +575,13 @@ class ShellState:
         # Input cursors are process-local too: a forked child inherits no
         # userspace read buffer (campaign I1; bash carries none across a fork).
         self.input_cursors = self._new_input_cursor_registry()
+
+        # A forked child does not own the parent's script reader (campaign I2):
+        # start with a fresh empty reserved-fd map. The child inherits the
+        # CLOEXEC script fd at the OS level but never reads it, and a clobber of
+        # its own copy cannot affect the parent's descriptor. (Type declared in
+        # __init__; this `self` is a `cls.__new__` local, so no annotation.)
+        self.reserved_script_fds = {}
 
         # Environment + variable scopes: EXACT copies, no import, no seeding.
         self.env = parent.env.copy()
