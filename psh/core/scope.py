@@ -2,13 +2,14 @@
 
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
-from .exceptions import ReadonlyVariableError
+from .exceptions import NamerefCycleError, ReadonlyVariableError
 from .locale_service import active_locale
 from .special_registry import (
     OPTION_REFLECTION_SPECIALS,
     SpecialContext,
     SpecialParameterState,
 )
+from .variable_lookup import VariableLookup
 from .variable_store import VariableStore
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
@@ -151,6 +152,21 @@ class ScopeManager:
         Public predicate for callers that must treat these specially — e.g.
         ``set -a`` must not auto-export them (see ShellState.set_variable)."""
         return self._special.has_lifecycle(name)
+
+    def _local_shadows_special(self, name: str) -> bool:
+        """True iff a dynamic (lifecycle) special *name* is currently shadowed by
+        a LOCAL variable. bash: ``local RANDOM`` makes RANDOM an ordinary
+        variable in that scope (and any nested call, via dynamic scoping) until
+        the declaring scope exits, suspending the dynamic behaviour — while a
+        global ``RANDOM=5`` still SEEDS. Every special-interception point (read,
+        ``declare -p``, seed-assign, attribute change, unset) consults this so a
+        shadowing local wins uniformly. Cheap on the hot path: only lifecycle
+        names ever reach the scope scan, and the scan is over non-global scopes
+        only (a global cell for these names cannot exist — the seed interception
+        prevents it)."""
+        if not self._special.has_lifecycle(name):
+            return False
+        return any(name in scope.variables for scope in self.scope_stack[1:])
 
     def enable_debug(self, enabled: bool = True):
         """Enable or disable debug output for scope operations."""
@@ -295,33 +311,75 @@ class ScopeManager:
             raise RuntimeError("Cannot pop global scope")
 
     def get_variable(self, name: str, default: Optional[str] = None) -> Optional[str]:
-        """Get variable value as string, following namerefs, or default."""
-        var = self._lookup_resolved(name)
-        if var:
-            return var.as_string()
-        return default
+        """Get variable value as string, following namerefs, or default.
 
-    def _lookup_resolved(self, name: str) -> Optional[Variable]:
-        """Look up a variable, following a nameref chain to its target.
-
-        A nameref stores its target *name* as its value. Returns the final
-        non-nameref Variable, or the nameref itself when its target is empty
-        (so reading a target-less nameref yields nothing). A cyclic chain
-        warns and reads as unset (bash: "warning: a: circular name
-        reference", the expansion is empty, status unchanged).
+        The string projection of the tri-state read (see :meth:`lookup`, THE
+        set-ness authority): a name that is MISSING or PRESENT_UNSET returns
+        ``default``; only a VALUE yields its string. Both projections share the
+        ONE resolver walk (:meth:`_resolve_read`); this one skips building a
+        ``VariableLookup`` because the string path — the shell's hottest read —
+        does not care WHY a name is unset. There is no environment fallback — a
+        declared-unset local never resurrects an outer exported value
+        (appraisal #20 H13).
         """
-        var = self.get_variable_object(name)
-        seen = set()
-        while var is not None and var.is_nameref:
+        var, _ = self._resolve_read(name)
+        return var.as_string() if var is not None else default
+
+    def _resolve_read(self, name: str) -> Tuple[Optional[Variable], str]:
+        """The ONE read-resolution walk shared by :meth:`get_variable` and
+        :meth:`lookup`: follow a nameref chain (read semantics) to its final
+        cell. Returns ``(cell, final_name)`` — ``cell`` is None for a missing /
+        declared-unset final name (``lookup`` classifies which, using
+        ``final_name``). A cyclic chain warns and reads as unset (bash: the
+        expansion is empty, status unchanged). The cycle set is allocated
+        lazily — a plain (non-nameref) read never pays for it."""
+        seen: Optional[set] = None
+        current = name
+        while True:
+            var = self.get_variable_object(current)
+            if var is None:
+                return None, current
+            if not var.is_nameref:
+                return var, current
             target = str(var.value) if var.value else ''
             if not target:
-                return var  # empty target — read the nameref's own value
-            if target in seen:
+                # Empty-target nameref reads as its own (empty) value.
+                return var, current
+            if seen is None:
+                seen = set()
+            elif target in seen:
                 self.warn_nameref_cycle(name)
-                return None
+                return None, current
             seen.add(target)
-            var = self.get_variable_object(target)
-        return var
+            current = target
+
+    def lookup(self, name: str) -> VariableLookup:
+        """THE tri-state variable-read authority.
+
+        Follows a nameref chain (read semantics, via :meth:`_resolve_read`) to
+        its final target, then classifies it as MISSING / PRESENT_UNSET /
+        VALUE. A declared-unset local (tombstone, bare ``local x``, or
+        declared-but-unset export) stops the lookup at PRESENT_UNSET — it never
+        falls through to an outer instance or the environment (appraisal #20
+        H13). A cyclic nameref warns and reads as MISSING (bash: expansion
+        empty, status unchanged).
+
+        Consumers ask ``result.is_set`` (VALUE only — ``${x+w}`` / ``${x-w}``
+        set-ness), ``result.value`` (the string when set), and ``result.binding``
+        (the resolved cell, read-only). See ``variable_lookup.py``.
+        """
+        var, final_name = self._resolve_read(name)
+        if var is not None:
+            return VariableLookup.of_value(var.as_string(), var)
+        # The walk found no readable cell: distinguish a genuinely MISSING name
+        # from a declared-unset cell (tombstone / declared-but-unset) that shows
+        # through get_declared_variable_object but reads as unset. Classified at
+        # the FINAL name, so a nameref to a declared-unset target reports the
+        # target's declared state.
+        declared = self.get_declared_variable_object(final_name)
+        if declared is not None and declared.is_unset:
+            return VariableLookup.present_unset(declared)
+        return VariableLookup.missing()
 
     def warn_nameref_cycle(self, name: str) -> None:
         """Print bash's circular-nameref warning.
@@ -370,10 +428,17 @@ class ScopeManager:
 
     def get_variable_object(self, name: str) -> Optional[Variable]:
         """Get the full Variable object through scope chain (no nameref deref)."""
-        # Check for special variables first
-        special_var = self._get_special_variable(name)
-        if special_var is not None:
-            return special_var
+        # Check for special variables first — UNLESS a local shadows a dynamic
+        # special (``local RANDOM``), in which case the stored local wins (bash).
+        # The shadow test precedes _get_special_variable so a masked read never
+        # advances RANDOM's generator as a side effect. The is_computed gate is
+        # the ONE fast-path membership test an ordinary name pays here (this is
+        # the shell's hottest read); the mask consult runs only for computed
+        # names.
+        if self._special.is_computed(name) and not self._local_shadows_special(name):
+            special_var = self._get_special_variable(name)
+            if special_var is not None:
+                return special_var
 
         # A command temporary-environment binding (``VAR=x cmd`` over a
         # builtin/external) SHADOWS the shell variable for name lookup — this is
@@ -430,7 +495,11 @@ class ScopeManager:
         value carrying the effective attributes — ``declare -p RANDOM`` shows
         ``declare -ir RANDOM="..."`` like bash, rather than "not found".
         """
-        if self._special.has_lifecycle(name):
+        # An active dynamic special has no stored cell (so ``declare -p RANDOM``
+        # shows the computed value) — UNLESS a local shadows it, when the local
+        # cell is what ``declare -p`` must display (``local RANDOM=5`` -> ``declare
+        # -- RANDOM="5"``, bash).
+        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):
             return self._get_special_variable(name)
         # A command temp-env binding is shown by ``declare -p NAME`` (name
         # lookup), matching bash's ``FOO=bar declare -p FOO`` -> ``declare -x
@@ -512,6 +581,7 @@ class ScopeManager:
         # snapshot into the environment. An array assignment or a nameref
         # DEFINITION is not a special write and falls through.
         if (self._special.has_lifecycle(name)
+                and not self._local_shadows_special(name)
                 and not (attributes & VarAttributes.NAMEREF)
                 and not isinstance(value, (IndexedArray, AssociativeArray))):
             if self._special.attributes_for(name) & VarAttributes.READONLY:
@@ -617,6 +687,48 @@ class ScopeManager:
         self._notify_path_changed(name)
         self._notify_variable_changed(name)
 
+    def _function_prefix_binding(self, name: str) -> Optional[Variable]:
+        """The current function invocation's prefix binding for *name*, or None.
+
+        A ``X=1 func`` prefix is modelled as a temp-env scope pushed directly
+        BELOW the function's own scope (``push_temp_env_scope``), so from the
+        function body the prefix layer is ``scope_stack[-2]`` when it is present.
+        bash merges those prefix vars into the function's locals, so a value-less
+        ``local x`` inherits the prefix binding rather than tombstoning over it.
+        Returns the binding only for a genuine prefix layer (``is_temp_env``);
+        an ordinary caller scope below the function is not a prefix.
+        """
+        if len(self.scope_stack) < 2:
+            return None
+        below = self.scope_stack[-2]
+        if below.is_temp_env and name in below.variables:
+            return below.variables[name]
+        return None
+
+    def _tempvar_inherit_source(self, name: str) -> Optional[Variable]:
+        """The variable a value-less ``local name`` INHERITS from, or None.
+
+        bash (att_tempvar model, R2-B1 probe matrix): a value-less ``local x``
+        copies the VALUE of the variable it shadows iff that variable carries
+        temp-env provenance — the function-prefix binding itself (``x=5 f``,
+        held here in the temp-env scope), or a local that (re)declared it in
+        the prefixed invocation (TEMPVAR flag). The nearest enclosing instance
+        decides: a provenance-less local (or a tombstone) in between BLOCKS
+        inheritance, and a plain global never qualifies (``x=5; f(){ g; };
+        g(){ local x; }`` reads unset). The scan excludes the current scope
+        (redeclares are handled separately) and the global scope.
+        """
+        for scope in reversed(self.scope_stack[1:-1]):
+            if name not in scope.variables:
+                continue
+            var = scope.variables[name]
+            if var.is_unset:
+                return None      # a tombstone shadows: nothing to inherit
+            if scope.is_temp_env or (var.attributes & VarAttributes.TEMPVAR):
+                return var
+            return None          # nearest instance lacks provenance
+        return None
+
     def create_local(self, name: str, value: Optional[Any] = None,
                      attributes: VarAttributes = VarAttributes.NONE):
         """Create a local variable in the current scope.
@@ -630,6 +742,23 @@ class ScopeManager:
         for scope in self.scope_stack[:-1]:  # Check all but current
             if name in scope.variables and scope.variables[name].is_readonly:
                 raise ReadonlyVariableError(name)
+        # A READONLY dynamic special (``readonly SECONDS``) records the
+        # attribute on the special registry's persistent overlay — no stored
+        # cell exists, so the loop above cannot see it. bash REFUSES the
+        # masking local (``local: SECONDS: readonly variable``, rc 1, function
+        # continues, reads stay dynamic) — R2-B4 probe matrix.
+        if (self._special.has_lifecycle(name)
+                and not self._local_shadows_special(name)
+                and (self._special.attributes_for(name) & VarAttributes.READONLY)):
+            raise ReadonlyVariableError(name)
+        # Temp-env provenance (bash att_tempvar): a local that (re)declares the
+        # SAME invocation's function-prefix binding — ``x=5 f`` then any
+        # ``local x[=V]`` in f — carries the TEMPVAR flag, so a deeper
+        # value-less ``local x`` can inherit its value (R2-B1 probe matrix:
+        # ``f(){ local x=L; g; }; g(){ local x; echo $x; }; x=5 f`` prints L,
+        # while the same chain WITHOUT the prefix reads unset).
+        if self._function_prefix_binding(name) is not None:
+            attributes |= VarAttributes.TEMPVAR
 
         # Re-declaring a variable ALREADY local in this scope MERGES its
         # existing attributes (bash): ``local -u x=ab; local x+=cd`` keeps
@@ -690,6 +819,22 @@ class ScopeManager:
             existing_local.attributes = attributes
             self._debug_print(f"Re-declaring local (attrs only): {name}")
             self._notify_variable_changed(name)
+        elif (source := self._tempvar_inherit_source(name)) is not None:
+            # A value-less ``local x`` INHERITS the value (and, via the
+            # shadowed-EXPORT rule above, the export) of a temp-env-provenance
+            # variable it shadows: the SAME invocation's prefix binding
+            # (``x=1 f`` — bash merges prefix vars into the function's locals)
+            # or an enclosing invocation's TEMPVAR local, at ANY call depth.
+            # The COPY carries TEMPVAR only in the prefixed invocation itself
+            # (the |= above); a deeper copy is an ordinary local, so a third
+            # frame does not inherit through it unless bash would (R2-B1).
+            # ``local x=`` (a value was given) still overrides via the branch
+            # above, and a provenance-less shadowed variable is NOT inherited.
+            var = Variable(name=name, value=source.value, attributes=attributes)
+            self.current_scope.variables[name] = var
+            self._debug_print(
+                f"Creating local from temp-env provenance: {name} = {source.value}")
+            self._notify_variable_changed(name)
         else:
             # Create a declared-but-unset local (``local var``): it
             # shadows any outer variable but reads as unset (bash:
@@ -740,8 +885,11 @@ class ScopeManager:
         # string; `unset EPOCHSECONDS` makes it a plain unset name). A readonly
         # special cannot be unset (bash: "cannot unset: readonly variable").
         # An active special has no stored Variable, so deactivate and return —
-        # there is nothing to clear from the scope chain.
-        if self._special.has_lifecycle(name):
+        # there is nothing to clear from the scope chain. A local-shadowed
+        # special (``local RANDOM=5; unset RANDOM``) instead unsets the LOCAL
+        # cell through the normal scope walk below (bash: the own-scope tombstone
+        # keeps it unset while the function lives; the special does not resurrect).
+        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):
             if self._special.attributes_for(name) & VarAttributes.READONLY:
                 raise ReadonlyVariableError(name)
             self._special.deactivate(name)
@@ -1007,7 +1155,12 @@ class ScopeManager:
         tv = self._command_temp_env_lookup(name)
         if tv is not None and tv.is_exported and not tv.is_array and not tv.is_unset:
             return tv
+        # A local shadow masks the dynamic special here too: an exported
+        # ``local SECONDS=5`` must materialise 5 into the child env, not the
+        # special's computed snapshot (bash). When masked, fall through to the
+        # scope walk, which returns the exported local.
         if (self._special.has_lifecycle(name)
+                and not self._local_shadows_special(name)
                 and (self._special.attributes_for(name) & VarAttributes.EXPORT)):
             return self._get_special_variable(name)
         for scope in reversed(self.scope_stack):
@@ -1094,10 +1247,28 @@ class ScopeManager:
         both succeed; only a value assignment fails). ``global_scope``
         (``declare -g``) targets the global instance past any local shadow.
         """
+        # Attribute changes resolve a nameref to its TARGET — ``declare -n r=x;
+        # declare -i r`` makes x integer (so ``r=3+4`` stores 7), and ``export
+        # r`` / ``readonly r`` mark x — EXCEPT when the attribute being changed
+        # IS the nameref attribute itself (``declare -n``/``declare +n``), where
+        # it lands on the nameref cell. A non-nameref name resolves to itself.
+        # A CYCLIC chain warns TWICE and the op is SKIPPED, rc 0 (bash 5.2
+        # probe, R2-B2: ``declare -n a=b; declare -n b=a; declare -i a`` prints
+        # two circular-reference warnings and continues, even under set -e) —
+        # unlike a value WRITE, which rejects with an error.
+        if not (attributes & VarAttributes.NAMEREF):
+            try:
+                name = self.resolve_nameref_name(name)
+            except NamerefCycleError:
+                self.warn_nameref_cycle(name)
+                self.warn_nameref_cycle(name)
+                return
         # An active dynamic special has no stored cell — record the attribute on
         # its persistent overlay so ``readonly RANDOM`` / ``export SECONDS``
         # persist (and EXPORT materialises via the observer + find_exported_instance).
-        if self._special.has_lifecycle(name):
+        # A local-shadowed special (``local RANDOM=5; declare -i RANDOM``) takes
+        # the ordinary path so the attribute lands on the LOCAL cell (bash).
+        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):
             self._special.add_attributes(name, attributes)
             self._notify_variable_changed(name)
             return
@@ -1146,10 +1317,22 @@ class ScopeManager:
         ``global_scope`` (``declare -g``) targets the global instance past
         any local shadow.
         """
+        # Attribute removal resolves a nameref to its TARGET (mirroring
+        # apply_attribute), EXCEPT for the nameref attribute itself (``declare
+        # +n`` un-references the nameref cell, so it must NOT resolve). A cycle
+        # warns twice and skips the op, rc 0 (see apply_attribute).
+        if not (attributes & VarAttributes.NAMEREF):
+            try:
+                name = self.resolve_nameref_name(name)
+            except NamerefCycleError:
+                self.warn_nameref_cycle(name)
+                self.warn_nameref_cycle(name)
+                return
         # Active dynamic special: drop the attribute from its overlay. Removing
         # EXPORT (``export -n RANDOM``) lets the observer delete its env entry;
-        # readonly cannot be removed (like any variable).
-        if self._special.has_lifecycle(name):
+        # readonly cannot be removed (like any variable). A local-shadowed special
+        # takes the ordinary path so the removal lands on the local cell.
+        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):
             if (attributes & VarAttributes.READONLY
                     and (self._special.attributes_for(name) & VarAttributes.READONLY)):
                 raise ReadonlyVariableError(name)

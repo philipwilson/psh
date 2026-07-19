@@ -235,13 +235,25 @@ class ExportBuiltin(Builtin):
         attribute on a declared-but-unset variable: no environment entry
         appears until it is assigned (bash: ``export FOO; printenv FOO``
         fails, then ``FOO=now`` makes it visible to children).
+
+        A NAMEREF name exports its TARGET; a MISSING target gets the
+        declared-unset exported cell under the TARGET name — created
+        non-locally, so it survives the function (bash: ``f(){ declare -n
+        r=gv; export r; gv=5; }; f; printenv gv`` prints 5 — R2-B5 probe).
+        A cyclic chain warns twice and skips, rc 0 (R2-B2).
         """
         scope_manager = shell.state.scope_manager
-        if scope_manager.get_variable_object(key) is not None:
-            scope_manager.apply_attribute(key, VarAttributes.EXPORT)
+        try:
+            target = scope_manager.resolve_nameref_name(key)
+        except NamerefCycleError:
+            scope_manager.warn_nameref_cycle(key)
+            scope_manager.warn_nameref_cycle(key)
+            return
+        if scope_manager.get_variable_object(target) is not None:
+            scope_manager.apply_attribute(target, VarAttributes.EXPORT)
         else:
             scope_manager.set_variable(
-                key, "", attributes=VarAttributes.EXPORT | VarAttributes.UNSET,
+                target, "", attributes=VarAttributes.EXPORT | VarAttributes.UNSET,
                 local=False)
 
     def _export_functions(self, names: List[str], shell: 'Shell', *,
@@ -607,7 +619,16 @@ class UnsetBuiltin(Builtin):
 
             exit_code = 0
             for var in names:
-                if not nameref_mode and '[' not in var:
+                if nameref_mode:
+                    # bash: `unset -n NAME` unsets the nameref VARIABLE itself
+                    # (not its target), but ONLY when NAME actually holds a
+                    # nameref — on a plain variable, an array, or a missing name
+                    # it is a SILENT NO-OP (probe-verified, bash 5.2: `x=v;
+                    # unset -n x` leaves x set).
+                    cell = shell.state.scope_manager.get_variable_object(var)
+                    if cell is None or not cell.is_nameref:
+                        continue
+                elif '[' not in var:
                     try:
                         var = shell.state.scope_manager.resolve_nameref_name(var)
                     except NamerefCycleError as e:

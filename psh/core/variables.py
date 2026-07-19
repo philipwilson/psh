@@ -22,6 +22,15 @@ class VarAttributes(Flag):
     NAMEREF = auto()     # -n: Name reference (indirect)
     TRACE = auto()       # -t: Function tracing enabled
     UNSET = auto()       # Variable explicitly unset in this scope
+    TEMPVAR = auto()     # INTERNAL (bash att_tempvar): temp-env provenance.
+    #                      Set on a local that (re)declares the SAME
+    #                      invocation's function-prefix binding (`x=5 f` then
+    #                      `local x[=V]` inside f). A deeper value-less
+    #                      `local x` inherits the VALUE of a provenance-
+    #                      carrying shadowed variable, but the copy does NOT
+    #                      carry the flag (R2-B1 probe matrix, bash 5.2).
+    #                      Never rendered: declare -p / ${x@a} letter maps
+    #                      are explicit tuples without it.
 
 
 @dataclass

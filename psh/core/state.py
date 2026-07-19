@@ -951,13 +951,18 @@ class ShellState:
         return self.scope_manager.get_all_variables()
 
     def get_variable(self, name: str, default: str = '') -> str:
-        """Get variable value, checking shell variables first, then environment."""
-        # Check scope manager first (includes locals and globals)
+        """Get a shell variable's value, or *default* if it is not set.
+
+        Delegates to the scope manager's tri-state authority
+        (`ScopeManager.lookup`). There is NO environment fallback: inherited
+        environment entries were imported as exported shell variables at startup
+        (opaque non-identifier entries live in ``_env_base``, never referenced by
+        name), so a fallback here would be a SECOND lookup authority that
+        resurrects an outer exported value under a declared-unset local
+        (appraisal #20 H13). A MISSING or declared-unset (PRESENT_UNSET) name
+        returns *default*."""
         result = self.scope_manager.get_variable(name)
-        if result is not None:
-            return result
-        # Fall back to environment
-        return self.env.get(name, default)
+        return result if result is not None else default
 
     def set_variable(self, name: str, value: Any):
         """Set a shell variable.
