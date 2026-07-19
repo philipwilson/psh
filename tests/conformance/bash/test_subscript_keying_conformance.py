@@ -346,6 +346,17 @@ class TestSpecialSubscriptsAndBuiltins(ConformanceTest):
         self.assert_identical_behavior(
             'declare -A a; a["*"]=star; declare -p a')
 
+    def test_assoc_key_class_rendering_rows(self):
+        # One row per renderer key class (single-key so enumeration order
+        # cannot interfere): whole-string ~ (quoted), embedded dot / @
+        # (bare), shell-special ! (quoted). Control-char, space, @ and *
+        # classes are pinned by their own rows in this file.
+        for cmd in ('declare -A a; a["~"]=t; declare -p a',
+                    'declare -A a; a[a.b]=d; declare -p a',
+                    'declare -A a; a[a@b]=e; declare -p a',
+                    'declare -A a; a["a!b"]=x; declare -p a'):
+            self.assert_identical_behavior(cmd)
+
     def test_test_v_assoc_key(self):
         self.assert_identical_behavior(
             'declare -A a=([x]=1); test -v "a[x]" && echo yes || echo no')
