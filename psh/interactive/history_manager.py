@@ -36,6 +36,12 @@ class HistoryManager(InteractiveComponent):
     truncate-and-rewrite made the last shell to exit overwrite the rest).
     ``_file_synced_len`` tracks how many of ``state.history``'s entries are
     already on disk.
+
+    Every file path (load/save/-w/-a/-r/-n) opens with
+    ``encoding='utf-8', errors='surrogateescape'`` (campaign I4; I1 byte
+    doctrine) so arbitrary bytes round-trip: a malformed byte loads as a lone
+    surrogate and re-encodes to the same byte on write, never raising
+    ``UnicodeDecodeError``.
     """
 
     def __init__(self, shell: 'Shell') -> None:

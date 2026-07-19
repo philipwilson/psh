@@ -186,15 +186,14 @@ history -r [file]       # Read (append) FILE's lines into the list
 history -a [file]       # Append entries new since the last write/append
 history -n [file]       # Read only FILE lines not yet read this session
 history -s cmd args     # Store "cmd args" as one entry without running it
-# `history -p` (expand-and-print without storing) is not supported.
+history -p arg args     # Expand each ARG and print it, without storing/running
 ```
 
 History *expansion* is supported in interactive mode: event
-designators (`!!`, `!n`, `!-n`, `!string`, `!?string?`), word designators
-(`!$`, `!^`, `!*`, `!!:n`, `!!:n-m`), the `:h`/`:t`/`:r`/`:e`/`:s`/`:g&`/`:p`
-modifiers, and `^old^new` quick substitution all match bash. The `:q`/`:x`
-word-quoting modifiers and the `!#` (current-line) event designator are not
-yet supported.
+designators (`!!`, `!n`, `!-n`, `!string`, `!?string?`, `!#`), word designators
+(`!$`, `!^`, `!*`, `!!:n`, `!!:n-m`), the
+`:h`/`:t`/`:r`/`:e`/`:s`/`:g&`/`:p`/`:q`/`:x` modifiers, and `^old^new` quick
+substitution all match bash.
 
 ### Job Control
 

@@ -7,6 +7,7 @@ producer directly (in-process, histexpand forced on); the bash-compared
 end-to-end behavior lives in tests/conformance/bash/test_history_outcomes_i4.py.
 """
 
+import dataclasses
 import io
 
 import pytest
@@ -164,5 +165,5 @@ def test_x_modifier_quotes_each_word(expander):
 
 def test_result_is_frozen():
     r = HistoryExpansionResult(HistoryExpansionKind.NONE, "x")
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         r.kind = HistoryExpansionKind.EXPANDED  # type: ignore[misc]

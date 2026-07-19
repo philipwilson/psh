@@ -40,8 +40,9 @@ Tab completion is NOT a separate manager: it is `CompletionEngine`
 | `multiline_handler.py` | `MultiLineInputHandler` - PS2 loop; completeness decided by the shared `CommandAccumulator` (`psh/scripting/command_accumulator.py`) |
 | `tab_completion.py` | `CompletionEngine` - path completion (used by LineEditor) |
 | `terminal.py` | `TerminalManager` - raw-mode enter/exit context manager |
-| `history_manager.py` | `HistoryManager` - command history storage/persistence |
-| `history_expansion.py` | `HistoryExpander` - `!!`, `!n`, `!string` expansion |
+| `history_manager.py` | `HistoryManager` - command history storage/persistence. The five history-file paths (startup `load_from_file`, exit `save_to_file`, `-w` `write_history`, `-a` `append_history`, `-r`/`-n` `_read_file_lines`) all open with `encoding='utf-8', errors='surrogateescape'` (campaign I4; I1 byte doctrine) so arbitrary bytes round-trip — a lone `\xff` is `\udcff` in memory and re-encodes to `\xff` on write. |
+| `history_result.py` | `HistoryExpansionResult(kind, text, error, spans)` + `HistoryExpansionKind` (NONE/EXPANDED/PRINT_ONLY/ERROR) — the typed outcome of `expand_history` (campaign I4) |
+| `history_expansion.py` | `HistoryExpander.expand_history(command) -> HistoryExpansionResult` — the SOLE history-expansion producer (`!!`, `!n`, `!string`, `!#`, `^old^new`, word designators, `:h :t :r :e :s :gs :& :p :q :x`). PURE: never prints, never records. Consumers branch on `result.kind`; the retired `contains_history_reference` regex and the `''`/`None` sentinels are gone from the inference path (guarded by `tests/unit/tooling/test_history_result_guard_i4.py`). Heredoc BODY spans are skipped (`heredoc_body_spans`). |
 | `prompt_manager.py` | `PromptManager` - PS1/PS2 retrieval and expansion |
 | `prompt.py` | `PromptExpander` - `\u`, `\h`, `\w`... escape expansion |
 | `signal_manager.py` | `SignalManager` - signal handling, SIGCHLD/SIGWINCH self-pipes |
@@ -296,6 +297,15 @@ to bash 5.2 by
 `tests/unit/test_line_editor_helpers.py`. Recording happens before
 parsing, so syntactically invalid commands are still recallable for
 editing.
+
+WHAT is recorded is decided by the typed `HistoryExpansionResult` the
+source processor consumes (campaign I4), never by string identity: bash
+records the EXPANDED line for a fired reference (`!!` → the previous
+command), the RAW line for a NONE outcome (a literal `!!` under `set +H`
+is a recordable command, not a dropped reference), the expansion for a
+`:p` PRINT_ONLY (printed to stderr, executed nothing), and NOTHING for an
+ERROR (event not found). Activation is the F1 interactive-FAMILY flag
+(`state.options['interactive']`) plus `histexpand` — never `is_script_mode`.
 
 ALIAS CONTRACT (reappraisal #15 K1): the editor's `HistoryNavigator`
 holds the `state.history` list OBJECT for the whole session — every
