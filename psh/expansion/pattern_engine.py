@@ -21,18 +21,22 @@ extglob semantics cannot drift between them:
    shell glob/extglob pattern **once** into a small AST (:class:`Sequence` of
    :class:`Literal` / :class:`AnyChar` / :class:`Star` / :class:`Bracket` /
    :class:`Extglob`).
-2. The matcher (:class:`_Matcher`) MEMOIZES each ``(sequence, element-index,
-   subject-index)`` state, so adversarial repetition is ``O(nodes·positions)``,
-   never exponential (#20 H7-c). A run of single-continuation nodes
-   (``Literal``/``AnyChar``/``Bracket``) is consumed by an inner WHILE-loop, not
-   recursion, so an arbitrarily long literal chain no longer raises
-   ``RecursionError`` at the default limit (#20 H7-b); recursion depth is bounded
-   by the number of ``Star``/``Extglob`` nodes actually traversed (the pattern's
-   branch structure), well within psh's runtime limit. The reachable-end set
-   natively serves the four relations :class:`CompiledPattern` exposes:
-   ``full_match`` (short-circuiting), ``matching_ends`` (prefix removal),
-   ``matching_starts`` (suffix removal), and ``span_at`` / ``matching_spans``
-   (leftmost-longest substitution).
+2. The matcher (:class:`_Matcher`) handles stars and literal chains
+   ITERATIVELY: the boolean full match for extglob-free sequences is the
+   classic two-pointer backtrack (zero recursion, one backtrack point per
+   star), and the reachable-end set is a forward position-set DP that
+   processes each element once (a Star becomes an interval union). Star and
+   literal COUNT therefore never consume recursion frames — a 50,000-star
+   pattern matches at any recursion limit (#20 H7-b + bounce ruling) — and the
+   DP is its own memoization, so adversarial repetition stays
+   ``O(nodes·positions)``, never exponential (#20 H7-c). The ONLY recursion is
+   into extglob alternatives — bounded by extglob NESTING depth, a compile-time
+   structural property; past the interpreter limit that raises
+   ``RecursionError``, an EXPECTED shell error under strict-errors. The
+   reachable-end set natively serves the four relations
+   :class:`CompiledPattern` exposes: ``full_match``, ``matching_ends`` (prefix
+   removal), ``matching_starts`` (suffix removal), and ``span_at`` /
+   ``matching_spans`` (leftmost-longest substitution).
 
 The compiled AST carries no locale or policy state: :class:`MatchProfile`
 supplies ``for_pathname`` (whether ``*``/``?`` cross ``/``) and ``ic``
@@ -113,8 +117,23 @@ class Extglob:
 @dataclass(eq=False)
 class Sequence:
     """An ordered run of nodes; the compiled form of a whole pattern or one
-    extglob alternative."""
+    extglob alternative.
+
+    ``has_extglob`` is a lazily computed routing hint (see
+    :func:`_seq_has_extglob`): a sequence with no :class:`Extglob` element is
+    matched by the fully iterative fast paths (two-pointer boolean / forward
+    DP), never recursing at all."""
     elements: Tuple[object, ...] = field(default_factory=tuple)
+    has_extglob: Optional[bool] = None
+
+
+def _seq_has_extglob(seq: Sequence) -> bool:
+    """Whether *seq* contains an :class:`Extglob` element (lazily cached)."""
+    he = seq.has_extglob
+    if he is None:
+        he = any(type(e) is Extglob for e in seq.elements)
+        seq.has_extglob = he
+    return he
 
 
 # --- compiler (raw string; ``\\`` is an escape) ----------------------------
@@ -304,173 +323,196 @@ def pathname_profile(ic: bool) -> MatchProfile:
     return PATHNAME_IC if ic else PATHNAME
 
 
-# --- iterative matcher -----------------------------------------------------
+# --- the matcher: iterative stars, recursion only for extglob nesting -------
 #
-# Reachable-end-position-set semantics: ``_reach(root, si)`` returns every index
-# ``k`` such that the whole pattern fully matches ``s[si:k]``. This is the
-# contract every consumer is built from:
+# Reachable-end-position-set semantics: ``_ends(seq, ei, si)`` returns every
+# index ``k`` such that ``seq.elements[ei:]`` fully matches ``s[si:k]``. This is
+# the contract every consumer is built from:
 #   * full match          -> len(s) in ends
 #   * prefix removal (#/##) -> min/max of matching_ends
 #   * suffix removal (%/%%) -> matching_starts (i where s[i:end] fully matches)
 #   * leftmost-longest sub  -> span_at(pos) = max ends of s[pos:]
 #   * pathname component    -> full_match(entry, for_pathname=True)
 #
-# The matcher MEMOIZES each ``(sequence, element-index, subject-index)`` state,
-# so an adversarial repetition (``*(a|aa)c`` / plain ``*a*a…*b``) is
-# O(nodes·positions), never the exponential backtracking of the old regex and
-# recursive-backtracking backends (#20 H7-c). A consecutive run of
-# single-continuation nodes (``Literal``/``AnyChar``/``Bracket``) is consumed by
-# an inner WHILE-loop rather than by recursion, so a pattern that is a long
-# literal chain (thousands of characters) can no longer raise ``RecursionError``
-# at the default limit (#20 H7-b): recursion depth is bounded by the number of
-# ``Star``/``Extglob`` nodes actually traversed (the pattern's branch structure),
-# not by the subject or pattern length. ``fp`` (for_pathname) and ``ic`` are
-# constant for one match, so they live on the Matcher rather than in the memo
-# key. Memo keys use ``id(node)`` (nodes live for the whole match), and the
-# node object is held in the frozen AST so the id stays valid.
+# STAR COUNT NEVER CONSUMES RECURSION FRAMES (bounce ruling, 2026-07-19):
+#   * ``_full_simple`` — the boolean full match for sequences WITHOUT extglob
+#     (every plain glob) — is the classic two-pointer backtrack algorithm: one
+#     backtrack point per star, O(n*m) worst case, ZERO recursion. 50,000
+#     consecutive stars or a ``*a*a…`` x50k chain match at any recursion limit.
+#   * ``_ends`` walks the sequence with a forward position-set DP: each element
+#     transforms the reachable-position set once (a Star turns it into a union
+#     of intervals), so the DP itself IS the memoization — adversarial
+#     repetition (``*(a|aa)c``, ``?(a)…!(z)``, plain ``*a*a…*b``) stays
+#     O(nodes*positions), never exponential (#20 H7-c), and literal chains /
+#     stars never recurse (#20 H7-b).
+#   * The ONLY recursion is ``_ends`` -> ``_element_ends`` -> alternative
+#     ``_ends`` — one level per extglob NESTING depth, a compile-time structural
+#     property (the compiler itself recurses per nesting level, so the matcher
+#     can never out-recurse the pattern that compiled). Past the interpreter
+#     limit this raises ``RecursionError``, which is an EXPECTED shell error
+#     under strict-errors (see the taxonomy in ``psh/core/CLAUDE.md``) — pinned
+#     by ``test_pattern_relations.py``.
+#
+# ``fp`` (for_pathname) and ``ic`` are constant for one match, so they live on
+# the Matcher rather than in any key.
 
 
 class _Matcher:
-    """One reachable-position match of a compiled pattern against one subject.
+    """One match of a compiled pattern against one subject.
 
-    A fresh instance (and memo) is created per match call. ``states`` counts
-    distinct evaluated sequence states (memo misses) — the polynomial-complexity
-    guard the tests assert on.
+    A fresh instance is created per relation call (``matching_starts`` and the
+    substitution ``spanner`` reuse one across entry positions). ``states``
+    counts (element, position) evaluations in the forward DP — the
+    polynomial-complexity guard the tests assert on.
     """
 
-    __slots__ = ("s", "n", "fp", "ic", "memo", "_fmemo", "states")
+    __slots__ = ("s", "n", "fp", "ic", "states", "_nslash")
 
     def __init__(self, s: str, for_pathname: bool, ic: bool) -> None:
         self.s = s
         self.n = len(s)
         self.fp = for_pathname
         self.ic = ic
-        self.memo: dict = {}
-        self._fmemo: dict = {}
         self.states = 0
+        self._nslash: Optional[List[int]] = None
 
-    def reach(self, seq: Sequence, si: int) -> frozenset:
-        """Reachable end indices matching all of ``seq`` from ``s[si]``."""
-        return self._match(seq, 0, si)
+    # -- shared precompute ---------------------------------------------------
 
-    def full_reaches(self, seq: Sequence, si: int) -> bool:
-        """Whether ``seq`` matches EXACTLY ``s[si:n]`` — a short-circuiting
-        boolean for the ``full_match`` consumers (case / [[ ]] / name filters /
-        pathname component / one case-mod char), which do not need the whole
-        reachable-end set. Memoized on ``(node, ei, si)`` so it stays polynomial
-        on adversarial input, but returns True at the first success."""
-        return self._full(seq, 0, si)
+    def _next_slash(self) -> List[int]:
+        """``ns[p]`` = index of the first ``/`` at or after ``p``, else ``n``.
+
+        Lazily built once per matcher; only the for_pathname Star transition
+        needs it (a star's reachable interval ends at the next slash)."""
+        ns = self._nslash
+        if ns is None:
+            s, n = self.s, self.n
+            ns = [n] * (n + 1)
+            nxt = n
+            for p in range(n - 1, -1, -1):
+                if s[p] == '/':
+                    nxt = p
+                ns[p] = nxt
+            self._nslash = ns
+        return ns
+
+    # -- boolean full match: iterative two-pointer (no extglob) --------------
 
     def _full(self, seq: Sequence, ei: int, si: int) -> bool:
-        key = (id(seq), ei, si)
-        cached = self._fmemo.get(key)
-        if cached is not None:
-            return cached
-        self.states += 1
-        elements = seq.elements
-        ne = len(elements)
+        """Whether ``seq.elements[ei:]`` matches EXACTLY ``s[si:n]``."""
+        if _seq_has_extglob(seq):
+            return self.n in self._ends(seq, ei, si)
+        return self._full_simple(seq.elements, ei, si)
+
+    def _full_simple(self, elements: Tuple[object, ...], ei: int,
+                     si: int) -> bool:
+        """Classic glob two-pointer backtrack (Literal/AnyChar/Bracket/Star
+        only): greedy advance, on mismatch re-extend the MOST RECENT star by
+        one subject character. One backtrack point suffices for plain globs
+        (the standard fnmatch algorithm); a star never consumes ``/`` under
+        for_pathname, and literal ``/`` elements force slash alignment, so the
+        per-component argument carries over. O(n*m) worst case, no recursion,
+        no allocation."""
         s, n, fp, ic = self.s, self.n, self.fp, self.ic
-        while ei < ne:
-            node = elements[ei]
-            t = type(node)
-            if t is Literal:
-                ok = (si < n and (not fp or s[si] != '/')
-                      and _eq(s[si], cast(Literal, node).char, ic))
-            elif t is AnyChar:
-                ok = si < n and (not fp or s[si] != '/')
-            elif t is Bracket:
-                ok = (si < n and (not fp or s[si] != '/')
-                      and _bracket_match(cast(Bracket, node).content, s[si], ic))
-            else:
-                break
-            if not ok:
-                self._fmemo[key] = False
+        ne = len(elements)
+        p, i = ei, si
+        star_p = -1
+        star_i = si
+        while i < n:
+            if p < ne:
+                node = elements[p]
+                t = type(node)
+                if t is Star:
+                    star_p = p
+                    star_i = i
+                    p += 1
+                    continue
+                if t is Literal:
+                    if _eq(s[i], cast(Literal, node).char, ic):
+                        p += 1
+                        i += 1
+                        continue
+                elif t is AnyChar:
+                    if not fp or s[i] != '/':
+                        p += 1
+                        i += 1
+                        continue
+                else:  # Bracket
+                    if ((not fp or s[i] != '/')
+                            and _bracket_match(cast(Bracket, node).content,
+                                               s[i], ic)):
+                        p += 1
+                        i += 1
+                        continue
+            # Mismatch (or pattern exhausted with subject left): backtrack.
+            if star_p < 0:
                 return False
-            ei += 1
-            si += 1
-        if ei == ne:
-            result = si == n
-        elif type(elements[ei]) is Star:
-            result = False
-            end = si
-            while True:
-                if self._full(seq, ei + 1, end):
-                    result = True
-                    break
-                if end >= n or (fp and s[end] == '/'):
-                    break
-                end += 1
-        else:  # Extglob
-            result = False
-            for mid in self._element_ends(cast(Extglob, elements[ei]), si):
-                if self._full(seq, ei + 1, mid):
-                    result = True
-                    break
-        self._fmemo[key] = result
-        return result
+            if fp and s[star_i] == '/':
+                return False  # the star cannot consume the '/'
+            star_i += 1
+            i = star_i
+            p = star_p + 1
+        # Subject exhausted: any trailing stars match empty.
+        while p < ne and type(elements[p]) is Star:
+            p += 1
+        return p == ne
 
-    def _match(self, seq: Sequence, ei: int, si: int) -> frozenset:
-        """Reachable end indices matching ``seq.elements[ei:]`` from ``s[si]``."""
-        key = (id(seq), ei, si)
-        cached = self.memo.get(key)
-        if cached is not None:
-            return cached
-        self.states += 1
+    # -- reachable-end set: forward position-set DP --------------------------
+
+    def _ends(self, seq: Sequence, ei: int, si: int) -> frozenset:
+        """Every ``k`` such that ``seq.elements[ei:]`` matches ``s[si:k]``.
+
+        A forward DP over the elements: ``positions`` is the set of subject
+        indices reachable after consuming the elements so far. Each element is
+        processed ONCE (Star expands the set to a union of intervals — no
+        recursion), so 50,000 stars are 50,000 iterations of this loop. Only an
+        Extglob element recurses (into its alternatives' ``_ends``), bounding
+        recursion by extglob NESTING depth."""
         elements = seq.elements
-        ne = len(elements)
         s, n, fp, ic = self.s, self.n, self.fp, self.ic
-
-        # Consume a run of single-continuation nodes iteratively (no recursion):
-        # each Literal/AnyChar/Bracket advances (ei, si) by one on a match.
-        while ei < ne:
-            node = elements[ei]
+        positions = {si}
+        for idx in range(ei, len(elements)):
+            if not positions:
+                return _EMPTY
+            self.states += len(positions)
+            node = elements[idx]
             t = type(node)
             if t is Literal:
-                if (si < n and (not fp or s[si] != '/')
-                        and _eq(s[si], cast(Literal, node).char, ic)):
-                    ei += 1
-                    si += 1
-                    continue
-                self.memo[key] = _EMPTY
-                return _EMPTY
-            if t is AnyChar:
-                if si < n and (not fp or s[si] != '/'):
-                    ei += 1
-                    si += 1
-                    continue
-                self.memo[key] = _EMPTY
-                return _EMPTY
-            if t is Bracket:
-                if (si < n and (not fp or s[si] != '/')
-                        and _bracket_match(cast(Bracket, node).content, s[si], ic)):
-                    ei += 1
-                    si += 1
-                    continue
-                self.memo[key] = _EMPTY
-                return _EMPTY
-            break  # Star or Extglob: handled below (the only recursion)
-
-        if ei == ne:
-            result = frozenset((si,))
-        else:
-            node = elements[ei]
-            if type(node) is Star:
-                out: set = set()
-                end = si
-                while True:
-                    out |= self._match(seq, ei + 1, end)
-                    if end >= n or (fp and s[end] == '/'):
-                        break
-                    end += 1
-                result = frozenset(out)
-            else:  # Extglob
-                out2: set = set()
-                for mid in self._element_ends(cast(Extglob, node), si):
-                    out2 |= self._match(seq, ei + 1, mid)
-                result = frozenset(out2)
-
-        self.memo[key] = result
-        return result
+                ch = cast(Literal, node).char
+                positions = {p + 1 for p in positions
+                             if p < n and _eq(s[p], ch, ic)}
+            elif t is AnyChar:
+                positions = {p + 1 for p in positions
+                             if p < n and (not fp or s[p] != '/')}
+            elif t is Bracket:
+                content = cast(Bracket, node).content
+                positions = {p + 1 for p in positions
+                             if p < n and (not fp or s[p] != '/')
+                             and _bracket_match(content, s[p], ic)}
+            elif t is Star:
+                if not fp:
+                    positions = set(range(min(positions), n + 1))
+                else:
+                    # Union of intervals [p, next_slash(p)] — a star reaches
+                    # any position up to (and including the index of) the next
+                    # '/', which it cannot consume.
+                    ns = self._next_slash()
+                    new: set = set()
+                    covered = -1
+                    for p in sorted(positions):
+                        limit = ns[p]
+                        if limit <= covered:
+                            continue  # interval fully covered already
+                        start = p if p > covered else covered + 1
+                        new.update(range(start, limit + 1))
+                        covered = limit
+                    positions = new
+            else:  # Extglob: the one recursive element (nesting depth only)
+                eg = cast(Extglob, node)
+                new2: set = set()
+                for p in positions:
+                    new2 |= self._element_ends(eg, p)
+                positions = new2
+        return frozenset(positions)
 
     def _element_ends(self, node: Extglob, si: int) -> set:
         """End indices after matching ONE extglob element ``op(alts)`` @ si."""
@@ -489,22 +531,23 @@ class _Matcher:
         positive = self._alt_ends(alts, si)
         s, fp = self.s, self.fp
         out = set()
-        for e in range(si, self.n + 1):
-            if fp and '/' in s[si:e]:
+        for end in range(si, self.n + 1):
+            if fp and '/' in s[si:end]:
                 break
-            if e not in positive:
-                out.add(e)
+            if end not in positive:
+                out.add(end)
         return out
 
     def _alt_ends(self, alts: Tuple[Sequence, ...], si: int) -> set:
         """End indices where some alternative fully matches starting at s[si]."""
         out: set = set()
         for alt in alts:
-            out |= self._match(alt, 0, si)
+            out |= self._ends(alt, 0, si)
         return out
 
     def _alt_closure(self, alts: Tuple[Sequence, ...], start: set) -> set:
-        """Zero-or-more closure of matching ``alts`` (for ``*(...)`` / ``+(...)``)."""
+        """Zero-or-more closure of matching ``alts`` (for ``*(...)``/``+(...)``);
+        iterative frontier expansion."""
         seen = set(start)
         frontier = set(start)
         while frontier:
@@ -516,6 +559,16 @@ class _Matcher:
                         nxt.add(end)
             frontier = nxt
         return seen
+
+    # -- public wrappers -----------------------------------------------------
+
+    def reach(self, seq: Sequence, si: int) -> frozenset:
+        """Reachable end indices matching all of ``seq`` from ``s[si]``."""
+        return self._ends(seq, 0, si)
+
+    def full_reaches(self, seq: Sequence, si: int) -> bool:
+        """Whether ``seq`` matches EXACTLY ``s[si:n]``."""
+        return self._full(seq, 0, si)
 
 
 _EMPTY: frozenset = frozenset()
@@ -531,7 +584,7 @@ def reachable_ends(root: Sequence, s: str, *, for_pathname: bool = False,
 
 def fullmatch(root: Sequence, s: str, *, for_pathname: bool = False,
               ic: bool = False) -> bool:
-    """Whether *root* matches the whole of *s* (short-circuiting)."""
+    """Whether *root* matches the whole of *s* (iterative for plain globs)."""
     return _Matcher(s, for_pathname, ic).full_reaches(root, 0)
 
 
@@ -581,7 +634,7 @@ class CompiledPattern:
         pattern matches ``text[start:k]`` — prefix removal (``#`` = ``min``,
         ``##`` = ``max``)."""
         m = _Matcher(text, profile.for_pathname, profile.ic)
-        return m._match(self.root, 0, start)
+        return m._ends(self.root, 0, start)
 
     def matching_starts(self, text: str, end: Optional[int] = None,
                         profile: MatchProfile = STRING) -> frozenset:
@@ -591,7 +644,7 @@ class CompiledPattern:
         if end is None:
             end = len(text)
         m = _Matcher(text, profile.for_pathname, profile.ic)
-        match = m._match
+        match = m._ends
         root = self.root
         out = set()
         for i in range(end + 1):
@@ -604,16 +657,16 @@ class CompiledPattern:
         """Leftmost-longest match LENGTH at ``text[pos:]``, or ``None`` — the
         substitution primitive (``${v/}`` family). 0 is a zero-width match."""
         m = _Matcher(text, profile.for_pathname, profile.ic)
-        ends = m._match(self.root, 0, pos)
+        ends = m._ends(self.root, 0, pos)
         return (max(ends) - pos) if ends else None
 
     def spanner(self, text: str, profile: MatchProfile = STRING):
         """Return a ``pos -> Optional[int]`` leftmost-longest-length callable
         bound to ONE reused matcher, so a left-to-right substitution scan over
-        *text* shares one memo across all positions (a single pass, not one
-        matcher per position)."""
+        *text* shares the matcher's per-subject precompute (the next-slash
+        table) instead of building one matcher per position."""
         m = _Matcher(text, profile.for_pathname, profile.ic)
-        match = m._match
+        match = m._ends
         root = self.root
 
         def span_at(pos: int) -> Optional[int]:
