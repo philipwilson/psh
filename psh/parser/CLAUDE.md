@@ -199,11 +199,41 @@ parser is the balanced compound-nesting counter, not a post-return scrub.
 trichotomy is decided (`at_eof` → `Incomplete` carrying the open-construct trail
 and unclosed-expansion kind; else `Invalid`). The raising `parse()` is the
 terminal materialization over the same parse (`materialize`), and stays the
-executor call sites' surface. The completeness oracle
-(`scripting/command_accumulator.py`) and the cmdhist joiner
+executor call sites' surface. The completeness engine
+(`parser/session.py#ParseSession`, campaign I3) and the cmdhist joiner
 (`interactive/line_editor_helpers.py`) consume the typed `Incomplete` variant
-rather than re-deriving it from `ParseError.at_eof`. I3's resumable session
-returns the same sum.
+rather than re-deriving it from `ParseError.at_eof`.
+
+An unclosed `$(`/`${`/`$((`/`` ` ``/`<(` at end of input is produced as the
+`at_eof` `Incomplete` fact by ONE shared detector,
+`parser/unclosed_expansion.py#detect_unclosed_expansion(token) ->
+(message, kind)` — consumed by BOTH parsers (RD's
+`commands.py#_check_for_unclosed_expansions` and the combinator's
+`commands/simple.py`), so they classify an open expansion identically (campaign
+I3 work item 1 closed the S4 disclosed divergence where the combinator gave
+`Invalid`; the parity pin is `test_parse_outcome_s4.py#test_unclosed_expansion_outcome_parity`).
+
+**Incremental completeness engine (campaign I3, #20 H15).** `ParserDriver.start_session(inputs)`
+(`parser/session.py`) returns the single `ParseSession` that BOTH line-gathering
+channels drive — the script/`-c`/stdin reader via `scripting/command_accumulator.py`
+(a thin adapter injecting the history-expansion preprocess hook and the
+heredoc-aware alias-expanding lex seam, so the parser package stays
+scripting-free) and the interactive PS2 loop via that same accumulator.
+`feed(line)` returns the typed `Completeness` (mapping onto the
+`Complete | Incomplete | Invalid` sum) plus the gathering payload. Genuinely
+incremental where the architecture allows: a heredoc BODY line is O(1) (S2
+pending-queue match, no lex/parse) and a multi-command stream commits-and-drops
+each complete command (O(N)). A single OPEN logical command (a growing `if…fi`,
+a quoted string) re-lexes+re-parses its own accumulated text per feed → O(k²)
+(bounded by one command) — the fenced RESIDUAL, CAUSED by an oracle constraint:
+bash reports a mid-construct syntax error IMMEDIATELY (PTY-pinned in
+`tests/system/interactive/test_multiline_immediate_error_i3.py`), so the parse
+cannot be deferred to structural close; and ModularLexer is forward-only,
+cannot resume mid-construct. Full H15 closure needs a resumable lexer+parser
+(bash's re-entrant model), recorded on the post-campaign register. The op-count
+invariants (heredoc/multi-command LINEAR, the residual O(k²) by doubling-ratio)
+are pinned in `tests/unit/parser/test_session_linearity_i3.py`; the one-engine
+chokepoint + synthetic offender in `tests/unit/tooling/test_session_engine_guard_i3.py`.
 
 Parse errors: `consume()` raises a `ParseError` on the first unexpected token
 (no error-collection mode). `ParseError` has one diagnostic interface —
