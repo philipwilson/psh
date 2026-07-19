@@ -1,45 +1,51 @@
-"""Compiled shell-pattern engine: one AST, parsed once, matched with memoization.
+"""Compiled shell-pattern engine: one AST, parsed once, matched iteratively.
 
-Historically psh matched shell patterns two ways, each exponential on a
-different adversarial input (expansion appraisal finding #6):
+Historically psh matched shell patterns three ways, each wrong or fragile on a
+different input (appraisal #6 and #20 H7):
 
 * the **regex** backend (``extglob._convert_pattern`` → Python ``re``) blows up
   on ambiguous repetition with a forced-fail tail — ``*(a|aa)c`` on ``"a"*N+"b"``
-  is catastrophic backtracking;
-* the **backtracking matcher** (``extglob._match_from``) recomputes
-  ``(pattern-position, subject-index)`` states with no memo and re-parses the
-  pattern string on every visit — ``?(a)…?(a)!(z)`` fans out exponentially.
+  is catastrophic backtracking, and a plain ``*a*a…*b`` is exponential too;
+* the **recursive backtracking matcher** re-parsed and fanned out exponentially;
+* the compiled engine that replaced them was still **recursive** at the sequence
+  level, so a ~1,500-literal pattern raised ``RecursionError``.
 
-This module replaces both with a single design:
+This module is the single relation for **every** consumer — ``case``,
+``[[ == ]]``, ``${var#/%/##/%%}`` removal, ``${var/}`` substitution, case
+modification, pathname components, and name filters (``HISTIGNORE``) — so glob /
+extglob semantics cannot drift between them:
 
-1. :func:`compile_pattern` parses a shell glob/extglob pattern **once** into a
-   small AST (:class:`Sequence` of :class:`Literal` / :class:`AnyChar` /
-   :class:`Star` / :class:`Bracket` / :class:`Extglob` nodes). Parsing reuses
-   the same scanning primitives the old engines shared (matching-paren finder,
-   ``|``-splitter, bracket-end finder), so bracket/escape/nesting semantics
-   cannot drift.
-2. :func:`reachable_ends` (this file's matcher, added alongside) evaluates each
-   ``(node, subject-index)`` state at most once, returning the set of subject
-   positions a node can consume to — which natively serves full match, prefix
-   and suffix removal, leftmost-longest substitution, and negation.
+1. :func:`compile_pattern` (raw string, ``\\`` = escape) and
+   :func:`PatternCompiler.compile_protected` (per-character ACTIVE/PROTECTED
+   runs, consumed directly — the sole entry for quoted/escaped patterns) parse a
+   shell glob/extglob pattern **once** into a small AST (:class:`Sequence` of
+   :class:`Literal` / :class:`AnyChar` / :class:`Star` / :class:`Bracket` /
+   :class:`Extglob`).
+2. The **iterative** matcher (:class:`_Matcher`) evaluates each
+   ``(sequence, element-index, subject-index)`` state at most once with an
+   explicit worklist — no Python recursion, so pattern depth is bounded only by
+   memory. Its reachable-end-position set natively serves the four relations
+   :class:`CompiledPattern` exposes: ``full_match``, ``matching_ends`` (prefix
+   removal), ``matching_starts`` (suffix removal), and ``span_at`` /
+   ``matching_spans`` (leftmost-longest substitution).
 
-The compiled AST carries no locale or policy state: ``for_pathname`` (whether
-``*``/``?`` cross ``/``) and ``ic`` (``nocasematch`` folding) are supplied at
-match time, exactly as the legacy matcher took them, so one compiled pattern is
-reusable across contexts. Bracket membership still delegates to the shared,
+The compiled AST carries no locale or policy state: :class:`MatchProfile`
+supplies ``for_pathname`` (whether ``*``/``?`` cross ``/``) and ``ic``
+(``nocasematch``/``nocaseglob`` folding) at match time, so one compiled pattern
+is reusable across contexts. Bracket membership still delegates to the shared,
 locale-aware ``extglob._bracket_match`` (which resolves POSIX ``[:class:]`` via
-the locale service), so v0.655 class semantics are preserved byte-for-byte.
+the locale service), so class semantics are preserved byte-for-byte.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import List, Tuple
+from typing import Iterator, List, Optional, Tuple
 
-# Reuse the scanning primitives AND the char-level predicates the two legacy
-# engines already shared, so the compiled engine cannot disagree with them on
-# paren matching, alternative splitting, where a bracket expression ends,
-# bracket membership (locale-aware POSIX classes), or case folding.
+# Reuse the scanning primitives AND the char-level predicates the legacy engine
+# already shared, so the compiled engine cannot disagree with them on paren
+# matching, alternative splitting, where a bracket expression ends, bracket
+# membership (locale-aware POSIX classes), or case folding.
 from .extglob import (
     _EXTGLOB_PREFIXES,
     _bracket_end,
@@ -80,7 +86,10 @@ class Bracket:
     ``!``/``^`` for negation and contain ``[:class:]`` names and ``\\``-escaped
     members). Membership is decided at match time by the shared, locale-aware
     ``extglob._bracket_match`` so POSIX-class / nocase / invalid-set semantics
-    stay identical to the rest of the shell.
+    stay identical to the rest of the shell. A PROTECTED (quoted/escaped)
+    class-special member is carried as a ``\\``-escaped char in ``content`` by
+    :func:`PatternCompiler.compile_protected`, so ``[a"-"c]`` is the set
+    ``{a,-,c}`` (a literal ``-``), not the range ``a-c`` (#20 H7 carry-2).
     """
     content: str
 
@@ -103,23 +112,26 @@ class Sequence:
     elements: Tuple[object, ...] = field(default_factory=tuple)
 
 
-# --- compiler --------------------------------------------------------------
+# --- compiler (raw string; ``\\`` is an escape) ----------------------------
 
 def compile_pattern(pattern: str, *, extglob: bool = True,
                     for_pathname: bool = False) -> Sequence:
-    """Parse a shell glob/extglob *pattern* into a :class:`Sequence` AST.
+    """Parse a raw shell glob/extglob *pattern* string into a :class:`Sequence`.
+
+    ``\\`` escapes the next character (standard glob string semantics — used for
+    name filters and any consumer holding a raw pattern string). Quoted/escaped
+    patterns whose protection is known per-character use
+    :func:`PatternCompiler.compile_protected` instead.
 
     ``extglob`` False makes the prefixes ``?*+@!`` ordinary (only ``?`` and
-    ``*`` keep their glob meaning), matching ``extglob._convert_pattern``'s
-    ``extglob=False`` mode used when the shopt is off. ``for_pathname`` is
-    accepted for symmetry with the legacy API but is a match-time policy (it
-    does not change the AST), so it is not stored here.
+    ``*`` keep their glob meaning). ``for_pathname`` is accepted for symmetry
+    with the legacy API but is a match-time policy (it does not change the AST).
     """
     return _parse(pattern, 0, len(pattern), extglob)
 
 
 def _parse(pattern: str, start: int, end: int, extglob: bool) -> Sequence:
-    """Compile ``pattern[start:end]`` into a Sequence."""
+    """Compile ``pattern[start:end]`` into a Sequence (``\\`` = escape)."""
     elements: List[object] = []
     i = start
     while i < end:
@@ -180,38 +192,132 @@ def _parse_alt(alt: str, extglob: bool) -> Sequence:
 @lru_cache(maxsize=4096)
 def compile_cached(pattern: str, extglob: bool = True) -> Sequence:
     """Memoized :func:`compile_pattern` for hot consumers (same pattern reused
-    across a loop / many subjects). ``for_pathname`` is not a key because it
-    does not affect the AST (it is a match-time policy)."""
+    across a loop / many subjects)."""
     return compile_pattern(pattern, extglob=extglob)
 
 
-# --- memoized matcher ------------------------------------------------------
+# --- protection-direct compiler (per-character ACTIVE/PROTECTED runs) -------
+
+def runs_to_pattern_string(parts) -> str:
+    """Normalize ``(text, protected)`` runs into ONE canonical pattern string.
+
+    This is the single, correct protection encoding that replaces the two former
+    ad-hoc ones (``word_expander._pattern_from_runs`` bracket-escaping and
+    ``operands.glob_escape`` backslash-escaping): every PROTECTED character is
+    ``\\``-escaped so it is a literal char / bracket member wherever it appears
+    (top level OR inside an active ``[...]`` — fixing #20 H7 carry-2), and an
+    ACTIVE backslash is doubled so it stays a literal character (a residual
+    ``\\`` reaching a pattern from an expansion is literal, as bash treats
+    variable-value backslashes). ACTIVE glob metacharacters stay live. The
+    result feeds :func:`compile_pattern` unchanged, so all bracket / class /
+    nesting handling is the one tested parser.
+    """
+    out: List[str] = []
+    for text, protected in parts:
+        if protected:
+            for ch in text:
+                out.append('\\')
+                out.append(ch)
+        else:
+            for ch in text:
+                out.append('\\\\' if ch == '\\' else ch)
+    return ''.join(out)
+
+
+class PatternCompiler:
+    """Compile a shell pattern into a :class:`CompiledPattern`.
+
+    Two entry points, one AST:
+
+    * :meth:`compile` — a raw pattern string (``\\`` = escape). Name filters and
+      any consumer that only has a string.
+    * :meth:`compile_protected` — per-character ACTIVE/PROTECTED runs, consumed
+      directly. The sole entry for quoted/escaped patterns (pathname fields,
+      ``${...}`` operands, ``case`` / ``[[ ]]`` word patterns), so a quoted
+      metacharacter cannot glob and a quoted class-special character inside an
+      active bracket stays a literal member.
+    """
+
+    @staticmethod
+    def compile(pattern: str, *, extglob: bool = True) -> "CompiledPattern":
+        return CompiledPattern(compile_cached(pattern, extglob))
+
+    @staticmethod
+    def compile_protected(parts, *, extglob: bool = True) -> "CompiledPattern":
+        """Compile ``parts`` (a list of ``(text, protected)``) directly."""
+        return CompiledPattern(
+            compile_cached(runs_to_pattern_string(parts), extglob))
+
+
+# --- match profile ---------------------------------------------------------
+
+@dataclass(frozen=True)
+class MatchProfile:
+    """The match-time policy for one consumer (typed, not loose booleans).
+
+    ``for_pathname`` — ``*``/``?``/``[`` and ``!(...)`` never cross ``/`` (the
+    pathname consumer; slash-COMPONENT splitting and leading-dot policy are
+    layered OVER the engine in ``glob.py``, never inside the matcher).
+    ``ic`` — case-insensitive folding. The CALLER supplies it from the option
+    that governs its consumer: ``nocasematch`` for ``case`` / ``[[ == ]]`` /
+    substitution, ``nocaseglob`` for pathname, and always ``False`` for
+    prefix/suffix removal, case modification, and name filters.
+    """
+    for_pathname: bool = False
+    ic: bool = False
+
+
+#: The plain string-matching profile (case / [[ ]] / removal / name filters).
+STRING = MatchProfile(for_pathname=False, ic=False)
+#: Case-insensitive string matching (nocasematch consumers).
+STRING_IC = MatchProfile(for_pathname=False, ic=True)
+#: One pathname component, case-sensitive.
+PATHNAME = MatchProfile(for_pathname=True, ic=False)
+#: One pathname component, case-insensitive (nocaseglob).
+PATHNAME_IC = MatchProfile(for_pathname=True, ic=True)
+
+
+def string_profile(ic: bool) -> MatchProfile:
+    """String profile honoring *ic* (nocasematch)."""
+    return STRING_IC if ic else STRING
+
+
+def pathname_profile(ic: bool) -> MatchProfile:
+    """Pathname-component profile honoring *ic* (nocaseglob)."""
+    return PATHNAME_IC if ic else PATHNAME
+
+
+# --- iterative matcher -----------------------------------------------------
 #
-# Reachable-end-position-set semantics: ``reachable_ends(root, s)`` returns every
-# index ``k`` such that the whole pattern fully matches ``s[:k]``. This is the
-# same contract the legacy backtracking matcher (extglob._extglob_consume)
-# exposed, and it directly serves every consumer:
-#   * full match          -> len(s) in reachable_ends(root, s)
-#   * prefix removal (#/##) -> min/max of reachable_ends(root, s)
-#   * suffix removal (%/%%) -> scan start i, test fullmatch of s[i:]
-#   * leftmost-longest sub  -> match_at(root, s, pos) = max ends of s[pos:]
-#   * pathname component    -> fullmatch(root, entry, for_pathname=True)
+# Reachable-end-position-set semantics: ``_reach(root, si)`` returns every index
+# ``k`` such that the whole pattern fully matches ``s[si:k]``. This is the
+# contract every consumer is built from:
+#   * full match          -> len(s) in ends
+#   * prefix removal (#/##) -> min/max of matching_ends
+#   * suffix removal (%/%%) -> matching_starts (i where s[i:end] fully matches)
+#   * leftmost-longest sub  -> span_at(pos) = max ends of s[pos:]
+#   * pathname component    -> full_match(entry, for_pathname=True)
 #
-# The single change from the legacy matcher that kills the exponential blow-up
-# is MEMOIZATION: each (sequence, element-index, subject-index) state is
-# evaluated at most once. ``for_pathname`` and ``ic`` are constant for one match
-# call, so they live on the Matcher rather than in the memo key.
+# The matcher is ITERATIVE: an explicit worklist evaluates each state at most
+# once (memoized), so NO Python recursion is used — a pattern of any depth
+# (thousands of literals) can no longer raise RecursionError (#20 H7). ``fp``
+# (for_pathname) and ``ic`` are constant for one match, so they live on the
+# Matcher rather than in the memo key.
+
+# State kinds in the worklist memo:
+#   ('S', id(seq), ei, si) -> frozenset of end positions matching seq[ei:] @ si
+#   ('E', id(node), si)    -> set of end positions after ONE extglob element @ si
 
 
 class _Matcher:
     """One reachable-position match of a compiled pattern against one subject.
 
     A fresh instance (and memo) is created per match call. ``states`` counts
-    distinct evaluated ``(sequence, index, position)`` states (memo misses) —
-    the polynomial-complexity guard the performance tests assert on.
+    distinct evaluated sequence states (``'S'`` memo misses) — the
+    polynomial-complexity guard the tests assert on.
     """
 
-    __slots__ = ("s", "n", "fp", "ic", "memo", "states")
+    __slots__ = ("s", "n", "fp", "ic", "memo", "states", "_node")
 
     def __init__(self, s: str, for_pathname: bool, ic: bool) -> None:
         self.s = s
@@ -220,128 +326,265 @@ class _Matcher:
         self.ic = ic
         self.memo: dict = {}
         self.states = 0
+        self._node: dict = {}  # id(obj) -> obj, so ids stay resolvable
 
-    def match_seq(self, seq: Sequence, ei: int, si: int) -> frozenset:
-        """Reachable end indices matching ``seq.elements[ei:]`` from ``s[si]``."""
-        key = (id(seq), ei, si)
-        cached = self.memo.get(key)
-        if cached is not None:
-            return cached
-        self.states += 1
+    def reach(self, seq: Sequence, si: int) -> frozenset:
+        """Reachable end indices matching all of ``seq`` from ``s[si]``."""
+        root = ('S', id(seq), 0, si)
+        self._node[id(seq)] = seq
+        if root in self.memo:
+            return self.memo[root]
+        stack: List[tuple] = [root]
+        while stack:
+            key = stack[-1]
+            if key in self.memo:
+                stack.pop()
+                continue
+            deps = self._deps(key)
+            pending = [d for d in deps if d not in self.memo]
+            if pending:
+                stack.extend(pending)
+            else:
+                self.memo[key] = self._combine(key, deps)
+                stack.pop()
+        return self.memo[root]
+
+    # -- dependency discovery (re-evaluated each visit; may grow as deps land)
+
+    def _deps(self, key: tuple) -> List[tuple]:
+        if key[0] == 'S':
+            return self._seq_deps(key)
+        return self._elem_deps(key)
+
+    def _seq_deps(self, key: tuple) -> List[tuple]:
+        _, seq_id, ei, si = key
+        seq = self._node[seq_id]
         elements = seq.elements
         if ei == len(elements):
-            result = frozenset((si,))
-            self.memo[key] = result
-            return result
-
+            return []
         node = elements[ei]
-        s, n, fp, ic = self.s, self.n, self.fp, self.ic
-        out: set = set()
-
-        if isinstance(node, Literal):
-            if si < n and _eq(s[si], node.char, ic):
-                out |= self.match_seq(seq, ei + 1, si + 1)
-        elif isinstance(node, AnyChar):
-            if si < n and (not fp or s[si] != '/'):
-                out |= self.match_seq(seq, ei + 1, si + 1)
-        elif isinstance(node, Star):
-            end = si
+        s, n, fp = self.s, self.n, self.fp
+        if isinstance(node, (Literal, AnyChar, Bracket)):
+            if si < n and self._char_ok(node, s[si]):
+                return [('S', seq_id, ei + 1, si + 1)]
+            return []
+        if isinstance(node, Star):
+            out = []
+            e = si
             while True:
-                out |= self.match_seq(seq, ei + 1, end)
-                if end >= n or (fp and s[end] == '/'):
+                out.append(('S', seq_id, ei + 1, e))
+                if e >= n or (fp and s[e] == '/'):
                     break
-                end += 1
-        elif isinstance(node, Bracket):
-            if (si < n and (not fp or s[si] != '/')
-                    and _bracket_match(node.content, s[si], ic)):
-                out |= self.match_seq(seq, ei + 1, si + 1)
-        elif isinstance(node, Extglob):
-            for mid in self._element_ends(node, si):
-                out |= self.match_seq(seq, ei + 1, mid)
-        else:  # pragma: no cover - defensive
-            raise TypeError(f"not a pattern node: {node!r}")
+                e += 1
+            return out
+        if isinstance(node, Extglob):
+            self._node[id(node)] = node
+            ekey = ('E', id(node), si)
+            if ekey not in self.memo:
+                return [ekey]
+            return [('S', seq_id, ei + 1, mid) for mid in self.memo[ekey]]
+        raise TypeError(f"not a pattern node: {node!r}")  # pragma: no cover
 
-        result = frozenset(out)
-        self.memo[key] = result
-        return result
+    def _elem_deps(self, key: tuple) -> List[tuple]:
+        _, node_id, si = key
+        node = self._node[node_id]
+        alts = node.alts
+        for a in alts:
+            self._node[id(a)] = a
+        if node.op in ('@', '?', '!'):
+            return [('S', id(a), 0, si) for a in alts]
+        # '+' / '*': the closure can reach any position in [si..n].
+        return [('S', id(a), 0, p) for a in alts for p in range(si, self.n + 1)]
 
-    def _element_ends(self, node: Extglob, si: int) -> set:
-        """End indices after matching ONE extglob element ``op(alts)`` from si."""
+    # -- state combination (all deps present in memo)
+
+    def _combine(self, key: tuple, deps: List[tuple]) -> frozenset:
+        if key[0] == 'S':
+            return self._seq_combine(key)
+        return frozenset(self._elem_combine(key))
+
+    def _seq_combine(self, key: tuple) -> frozenset:
+        _, seq_id, ei, si = key
+        self.states += 1
+        seq = self._node[seq_id]
+        elements = seq.elements
+        if ei == len(elements):
+            return frozenset((si,))
+        node = elements[ei]
+        s, n, fp = self.s, self.n, self.fp
+        if isinstance(node, (Literal, AnyChar, Bracket)):
+            if si < n and self._char_ok(node, s[si]):
+                return self.memo[('S', seq_id, ei + 1, si + 1)]
+            return frozenset()
+        if isinstance(node, Star):
+            out: set = set()
+            e = si
+            while True:
+                out |= self.memo[('S', seq_id, ei + 1, e)]
+                if e >= n or (fp and s[e] == '/'):
+                    break
+                e += 1
+            return frozenset(out)
+        if isinstance(node, Extglob):
+            ekey = ('E', id(node), si)
+            out2: set = set()
+            for mid in self.memo[ekey]:
+                out2 |= self.memo[('S', seq_id, ei + 1, mid)]
+            return frozenset(out2)
+        raise TypeError(f"not a pattern node: {node!r}")  # pragma: no cover
+
+    def _char_ok(self, node, ch: str) -> bool:
+        if self.fp and ch == '/':
+            return False
+        if isinstance(node, Literal):
+            return _eq(ch, node.char, self.ic)
+        if isinstance(node, AnyChar):
+            return True
+        return _bracket_match(node.content, ch, self.ic)  # Bracket
+
+    def _elem_combine(self, key: tuple) -> set:
+        """End indices after matching ONE extglob element ``op(alts)`` @ si."""
+        _, node_id, si = key
+        node = self._node[node_id]
         op = node.op
         alts = node.alts
+
+        def alt_ends(p: int) -> set:
+            out: set = set()
+            for a in alts:
+                out |= self.memo[('S', id(a), 0, p)]
+            return out
+
         if op == '@':
-            return self._alt_ends(alts, si)
+            return alt_ends(si)
         if op == '?':
-            return {si} | self._alt_ends(alts, si)
-        if op == '+':
-            return self._alt_closure(alts, self._alt_ends(alts, si))
-        if op == '*':
-            return self._alt_closure(alts, {si})
-        # op == '!': every span s[si:e] that does NOT itself fully match one
-        # alternative. This is the case a regex cannot express.
-        positive = self._alt_ends(alts, si)
-        out = set()
-        s, fp = self.s, self.fp
-        for end in range(si, self.n + 1):
-            if fp and '/' in s[si:end]:
-                break
-            if end not in positive:
-                out.add(end)
-        return out
-
-    def _alt_ends(self, alts: Tuple[Sequence, ...], si: int) -> set:
-        """End indices where some alternative fully matches starting at s[si]."""
-        out: set = set()
-        for alt in alts:
-            out |= self.match_seq(alt, 0, si)
-        return out
-
-    def _alt_closure(self, alts: Tuple[Sequence, ...], start: set) -> set:
-        """Zero-or-more closure of matching ``alts`` (for ``*(...)`` / ``+(...)``)."""
+            return {si} | alt_ends(si)
+        if op == '!':
+            # Every span s[si:e] that does NOT itself fully match one
+            # alternative (the case a regex cannot express).
+            positive = alt_ends(si)
+            s, fp, n = self.s, self.fp, self.n
+            out = set()
+            for e in range(si, n + 1):
+                if fp and '/' in s[si:e]:
+                    break
+                if e not in positive:
+                    out.add(e)
+            return out
+        # '+' / '*': zero-or-more (+ : one-or-more) closure of alt matches.
+        start = alt_ends(si) if op == '+' else {si}
         seen = set(start)
         frontier = set(start)
         while frontier:
             nxt: set = set()
             for p in frontier:
-                for end in self._alt_ends(alts, p):
-                    if end not in seen and end != p:  # skip empty match (no loop)
-                        seen.add(end)
-                        nxt.add(end)
+                for e in alt_ends(p):
+                    if e not in seen and e != p:  # skip empty match (no loop)
+                        seen.add(e)
+                        nxt.add(e)
             frontier = nxt
         return seen
 
 
+# --- free-function API (compatibility + primitives) ------------------------
+
 def reachable_ends(root: Sequence, s: str, *, for_pathname: bool = False,
                    ic: bool = False) -> frozenset:
     """Every index ``k`` such that *root* fully matches ``s[:k]``."""
-    return _Matcher(s, for_pathname, ic).match_seq(root, 0, 0)
+    return _Matcher(s, for_pathname, ic).reach(root, 0)
 
 
 def fullmatch(root: Sequence, s: str, *, for_pathname: bool = False,
               ic: bool = False) -> bool:
     """Whether *root* matches the whole of *s*."""
-    return len(s) in reachable_ends(root, s, for_pathname=for_pathname, ic=ic)
+    return len(s) in _Matcher(s, for_pathname, ic).reach(root, 0)
 
 
 def match_at(root: Sequence, s: str, pos: int, *, for_pathname: bool = False,
-             ic: bool = False):
+             ic: bool = False) -> Optional[int]:
     """Leftmost-longest match LENGTH of *root* at ``s[pos:]``, or None.
 
-    Used by the substitution operators (``${v/pat/r}``): bash takes the longest
-    match at the leftmost position, so this returns ``max`` of the reachable
-    ends of ``s[pos:]``.
+    bash takes the longest match at the leftmost position (substitution), so
+    this returns ``max`` of the reachable ends of ``s[pos:]`` minus ``pos``.
     """
-    ends = reachable_ends(root, s[pos:], for_pathname=for_pathname, ic=ic)
-    return max(ends) if ends else None
+    m = _Matcher(s, for_pathname, ic)
+    ends = m.reach(root, pos)
+    return (max(ends) - pos) if ends else None
 
 
 def count_states(root: Sequence, s: str, *, for_pathname: bool = False,
                  ic: bool = False) -> int:
-    """Number of distinct ``(sequence, index, position)`` states evaluated for a
-    full-pattern match of *s* — the polynomial-complexity guard for tests."""
+    """Number of distinct sequence states evaluated for a full-pattern match of
+    *s* — the polynomial-complexity guard for tests."""
     m = _Matcher(s, for_pathname, ic)
-    m.match_seq(root, 0, 0)
+    m.reach(root, 0)
     return m.states
+
+
+# --- the four relations on a compiled pattern ------------------------------
+
+class CompiledPattern:
+    """One parse of a shell pattern; exposes the four relations its consumers
+    need. Compiled once (via :class:`PatternCompiler`), reused across subjects
+    and profiles (the AST carries no policy — :class:`MatchProfile` does)."""
+
+    __slots__ = ("root",)
+
+    def __init__(self, root: Sequence) -> None:
+        self.root = root
+
+    def full_match(self, text: str, profile: MatchProfile = STRING) -> bool:
+        """Whether the pattern matches the WHOLE of *text*
+        (``case`` / ``[[ == ]]`` / name filter / one pathname component /
+        one character for case modification)."""
+        m = _Matcher(text, profile.for_pathname, profile.ic)
+        return len(text) in m.reach(self.root, 0)
+
+    def matching_ends(self, text: str, start: int = 0,
+                      profile: MatchProfile = STRING) -> frozenset:
+        """Every end index ``k`` (``start <= k <= len(text)``) such that the
+        pattern matches ``text[start:k]`` — prefix removal (``#`` = ``min``,
+        ``##`` = ``max``)."""
+        m = _Matcher(text, profile.for_pathname, profile.ic)
+        return m.reach(self.root, start)
+
+    def matching_starts(self, text: str, end: Optional[int] = None,
+                        profile: MatchProfile = STRING) -> frozenset:
+        """Every start index ``i`` (``0 <= i <= end``) such that the pattern
+        matches ``text[i:end]`` — suffix removal (``%`` = ``max`` start / shortest
+        suffix, ``%%`` = ``min`` start / longest suffix)."""
+        if end is None:
+            end = len(text)
+        m = _Matcher(text, profile.for_pathname, profile.ic)
+        out = set()
+        for i in range(end + 1):
+            if end in m.reach(self.root, i):
+                out.add(i)
+        return frozenset(out)
+
+    def span_at(self, text: str, pos: int,
+                profile: MatchProfile = STRING) -> Optional[int]:
+        """Leftmost-longest match LENGTH at ``text[pos:]``, or ``None`` — the
+        substitution primitive (``${v/}`` family). 0 is a zero-width match."""
+        m = _Matcher(text, profile.for_pathname, profile.ic)
+        ends = m.reach(self.root, pos)
+        return (max(ends) - pos) if ends else None
+
+    def matching_spans(self, text: str,
+                       profile: MatchProfile = STRING) -> Iterator[Tuple[int, int]]:
+        """Left-to-right leftmost-longest non-overlapping match spans
+        ``(start, end)`` over *text* — the ``${v//}`` global-substitution walk.
+        Zero-width matches advance by one; the consumer applies bash's
+        end-of-subject empty-match policy."""
+        pos = 0
+        n = len(text)
+        while pos <= n:
+            length = self.span_at(text, pos, profile)
+            if length is None:
+                pos += 1
+                continue
+            yield (pos, pos + length)
+            pos += length if length > 0 else 1
 
 
 # --- unparse (for round-trip tests / debugging) ----------------------------
