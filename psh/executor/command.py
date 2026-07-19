@@ -922,7 +922,9 @@ class CommandExecutor:
             # their existing `psh: <message>` formatting is preserved.
             if e.errno is None:
                 raise
-            print(format_redirect_error(e), file=self.state.stderr)
+            print(format_redirect_error(
+                e, location=self.state.error_location_prefix()),
+                file=self.state.stderr)
             return 1
         try:
             # Update shell streams for builtins that might use them
@@ -983,12 +985,14 @@ class CommandExecutor:
         errno-less OSErrors carry psh's own complete message
         (noclobber/ambiguous/bad-fd) — print it verbatim rather than
         "exec: None" (mirrors setup_child_redirections). Otherwise use bash's
-        "psh: FILE: STRERROR" (e.g. "bash: FILE: No such file or directory").
+        "<$0>: line N: FILE: STRERROR". The location prefix is the single
+        source of truth every runtime diagnostic uses (R1).
         """
+        loc = self.state.error_location_prefix()
         if e.errno is None:
-            print(f"psh: {e}", file=self.state.stderr)
+            print(f"{loc}{e}", file=self.state.stderr)
         else:
-            print(f"psh: {e.filename or 'exec'}: {e.strerror}",
+            print(f"{loc}{e.filename or 'exec'}: {e.strerror}",
                   file=self.state.stderr)
 
     def _handle_exec_builtin(self, node: 'SimpleCommand', command_args: List[str],

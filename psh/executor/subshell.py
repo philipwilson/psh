@@ -144,8 +144,9 @@ class SubshellExecutor:
                     try:
                         sub.io_manager.apply_redirections(redirects)
                     except OSError as e:
-                        os.write(2, (format_redirect_error(e) + "\n")
-                                 .encode('utf-8', errors='replace'))
+                        os.write(2, (format_redirect_error(
+                            e, location=sub.state.error_location_prefix())
+                            + "\n").encode('utf-8', errors='replace'))
                         return 1
                 return sub.execute_command_list(statements)
 
@@ -232,8 +233,9 @@ class SubshellExecutor:
                     if redirects:
                         saved_fds = subshell.io_manager.apply_redirections(redirects)
                 except OSError as e:
-                    os.write(2, (format_redirect_error(e) + "\n")
-                             .encode('utf-8', errors='replace'))
+                    os.write(2, (format_redirect_error(
+                        e, location=subshell.state.error_location_prefix())
+                        + "\n").encode('utf-8', errors='replace'))
                     return 1
                 try:
                     return subshell.execute_command_list(statements)
@@ -279,8 +281,9 @@ class SubshellExecutor:
                     if node.redirects:
                         saved_fds = self.io_manager.apply_redirections(node.redirects)
                 except OSError as e:
-                    os.write(2, (format_redirect_error(e) + "\n")
-                             .encode('utf-8', errors='replace'))
+                    os.write(2, (format_redirect_error(
+                        e, location=self.state.error_location_prefix())
+                        + "\n").encode('utf-8', errors='replace'))
                     return 1
                 try:
                     return visitor.visit(node.statements)
