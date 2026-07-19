@@ -53,6 +53,22 @@ def _dup_cloexec_high(fd: int, floor: int) -> int:
     return dup
 
 
+def _make_input_cursor(fd: int):
+    """Build a record-oriented ``InputCursor`` over ``fd``.
+
+    The ``psh.builtins`` import is DEFERRED (function-level) because importing it
+    at module load would cycle: ``scripting.input_sources`` ->
+    ``builtins/__init__`` -> ``source_command`` -> ``scripting.program_source``
+    -> ``scripting.input_sources`` (mid-load). This one chokepoint is the SOLE
+    deferred builtins import in the module — ``StdinInput`` and the non-seekable
+    ``LazyFileInput`` path share it — keeping the import-layering ratchet at one.
+    """
+    # cycle-break: builtins/__init__ -> source_command -> program_source ->
+    # input_sources (see the docstring); by first use the shell is built.
+    from ..builtins.input_reader import InputCursor
+    return InputCursor(fd=fd)
+
+
 class InputSource(ABC):
     """Abstract base class for shell input sources."""
 
@@ -314,11 +330,10 @@ class StdinInput(InputSource):
     eof_drops_dangling_continuation: bool = True
 
     def __init__(self, fd: int = 0, name: str = "<stdin>"):
-        # Import here (not at module load) so scripting/ does not import the
-        # builtins package at import time; by the time a StdinInput is built the
-        # shell is fully constructed and psh.builtins is loaded.
-        from ..builtins.input_reader import InputCursor
-        self._reader = InputCursor(fd=fd)
+        # The record reader (shared with read/mapfile). Built through the
+        # module-level chokepoint so the builtins import stays deferred exactly
+        # once (see _make_input_cursor).
+        self._reader = _make_input_cursor(fd)
         self._name = name
         self.line_number = 0
         self._eof = False
@@ -460,8 +475,7 @@ class LazyFileInput(InputSource):
             os.lseek(self._fd, 0, os.SEEK_CUR)
         except OSError:
             self._seekable = False
-            from ..builtins.input_reader import InputCursor
-            self._cursor = InputCursor(fd=self._fd)
+            self._cursor = _make_input_cursor(self._fd)
         if self._state is not None:
             self._state.reserved_script_fds[self._fd] = self
         return self
@@ -505,8 +519,7 @@ class LazyFileInput(InputSource):
             # only fires BETWEEN lines (during command execution), where a
             # never-over-read record cursor has no pending pushback/decoder
             # state, so rebuilding it on the relocated fd is lossless.
-            from ..builtins.input_reader import InputCursor
-            self._cursor = InputCursor(fd=new)
+            self._cursor = _make_input_cursor(new)
 
     def read_line(self) -> Optional[str]:
         """Read the next physical line, or None at true EOF.
