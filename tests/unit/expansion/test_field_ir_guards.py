@@ -123,14 +123,16 @@ class TestProtectionHonored:
     def _expander(self, captured_shell):
         return captured_shell.expansion_manager.word_expander
 
-    def test_protected_metachar_is_bracket_escaped(self, captured_shell):
+    def test_protected_metachar_is_backslash_escaped(self, captured_shell):
         we = self._expander(captured_shell)
         field = ExpandedField([
             FieldRun('*', _PROTECTED, _NEVER),   # quoted star -> literal
             FieldRun('*', _ACTIVE, _NEVER),      # unquoted star -> pattern
         ])
-        # The protected star becomes [*]; the active star stays a wildcard.
-        assert we._pattern_from_runs(field.runs) == '[*]*'
+        # Protection is consumed directly via the ONE canonical encoder
+        # (pattern_engine.runs_to_pattern_string, `\` = escape): the protected
+        # star becomes ``\*`` (literal); the active star stays a wildcard.
+        assert we._pattern_from_runs(field.runs) == r'\**'
 
     def test_active_only_pattern_is_raw(self, captured_shell):
         we = self._expander(captured_shell)
@@ -140,8 +142,9 @@ class TestProtectionHonored:
     def test_all_extglob_metachars_neutralized(self, captured_shell):
         we = self._expander(captured_shell)
         field = ExpandedField([FieldRun('?(X)[a]', _PROTECTED, _NEVER)])
-        # ? ( [ escaped; ] -> []]; the group can no longer form.
-        assert we._pattern_from_runs(field.runs) == '[?][(]X)[[]a[]]'
+        # ? ( [ ] escaped (the significant chars); X and the raw ) stay literal
+        # (a `)` with no live `(` cannot form a group) -> the group can't form.
+        assert we._pattern_from_runs(field.runs) == r'\?\(X\)\[a\]'
 
     def test_synthetic_offender_that_ignores_protection_is_caught(
             self, captured_shell):
@@ -158,9 +161,9 @@ class TestProtectionHonored:
             return ''.join(r.text for r in runs)
 
         assert offender_pattern(field.runs) == '**'   # both stars active — WRONG
-        # The correct engine keeps the first star literal:
+        # The correct engine keeps the first star literal (`\*`):
         we = self._expander(captured_shell)
-        assert we._pattern_from_runs(field.runs) == '[*]*'
+        assert we._pattern_from_runs(field.runs) == r'\**'
         assert offender_pattern(field.runs) != we._pattern_from_runs(field.runs)
 
 

@@ -321,7 +321,16 @@ class OperandOpsMixin(_Base):
             return end if found else i + 2
         return i + 1
 
-    _GLOB_SPECIALS = set('\\*?[]()|@!+')
+    # Glob syntax that a quoted/escaped operand character must be protected
+    # from. Besides the top-level metacharacters (``* ? [ ]`` and the extglob
+    # prefixes ``( ) | @ ! +``), this includes the characters that are special
+    # ONLY inside a bracket expression — ``-`` (range), ``^`` (negation at the
+    # start) — because a quoted class-special char inside an ACTIVE bracket is a
+    # literal member, not class syntax (bash: ``[a"-"c]`` is the set {a,-,c},
+    # not the range a-c; #20 H7 carry-2). A backslash-escaped such char is a
+    # literal member wherever it lands (the engine's ``_bracket_match`` reads
+    # ``\c`` inside ``[...]`` as a member), so escaping them uniformly is safe.
+    _GLOB_SPECIALS = set('\\*?[]()|@!+-^')
 
     @classmethod
     def glob_escape(cls, text: str) -> str:

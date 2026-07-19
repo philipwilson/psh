@@ -64,3 +64,25 @@ class TestHelpBannerVersion:
         out = shell.get_stdout()
         assert f'PSH Shell, version {__version__}' in out
         assert '0.54.0' not in out
+
+
+class TestHelpPatternEngine:
+    """`help PATTERN` routes through the ONE shell pattern engine (W3).
+
+    bash oracle (live, archived in tmp/boundary-ledgers/W3-probes/
+    namefilter-probe.txt): bash's `help 'e\\cho'` honors the backslash
+    escape and shows the echo help with rc 0. The former stdlib-fnmatch
+    path treated the backslash as an ordinary character and found no topic
+    (rc 1) — this row is RED on base.
+    """
+
+    def test_help_backslash_escape_matches(self, captured_shell):
+        rc = captured_shell.run_command(r"help 'e\cho'")
+        assert rc == 0
+        assert "echo" in captured_shell.get_stdout()
+
+    def test_help_glob_pattern_still_matches(self, captured_shell):
+        # Control: an unescaped wildcard keeps its glob power (parity).
+        rc = captured_shell.run_command("help 'ech*'")
+        assert rc == 0
+        assert "echo" in captured_shell.get_stdout()

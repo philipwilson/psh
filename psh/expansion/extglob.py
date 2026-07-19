@@ -11,6 +11,7 @@ Patterns support nesting and pipe-separated alternatives.
 """
 import os
 import re
+import warnings
 from functools import lru_cache
 from typing import List, Optional
 
@@ -95,6 +96,14 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
                      ic: bool = False) -> str:
     """Convert a shell pattern (with extglob operators) to a Python regex.
 
+    PRODUCTION-DEAD after campaign W3: every matching consumer routes through
+    the compiled engine (``pattern_engine``); no production code builds a
+    matching regex any more. Kept solely as the independent test ORACLE for
+    the engine's random-corpus differential
+    (``test_pattern_engine_matcher.py``); slated for the deferred census
+    deletion with ``glob_to_regex_body`` / ``_convert_pattern`` /
+    ``glob.normalize_bracket_expressions``.
+
     Args:
         pattern: Shell pattern potentially containing extglob operators.
         anchored: If True, anchor the regex (``^`` and/or ``\\Z``).
@@ -124,15 +133,16 @@ def glob_to_regex_body(pattern: str, for_pathname: bool = False,
                        extglob: bool = True, ic: bool = False) -> str:
     """Convert a shell glob pattern to an *unanchored* regex body.
 
-    The public entry point for the shared glob→regex conversion. Callers that
-    need anchoring add ``^``/``\\Z`` themselves (see ``extglob_to_regex`` and
-    ``PatternMatcher.shell_pattern_to_regex``). ``ic`` (``nocasematch``) keeps
-    ``[:upper:]``/``[:lower:]`` case-sensitive; see ``_bracket_to_regex``.
+    PRODUCTION-DEAD after campaign W3 (see ``extglob_to_regex`` above): the
+    former regex matching path was retired; kept only as a test oracle,
+    slated for the deferred census deletion. Callers that need anchoring add
+    ``^``/``\\Z`` themselves. ``ic`` (``nocasematch``) keeps ``[:upper:]``/
+    ``[:lower:]`` case-sensitive; see ``_bracket_to_regex``.
 
     The body is wrapped in ``(?s:...)`` (DOTALL) so the ``.``/``.*`` emitted
     for ``?``/``*`` match a newline like a real shell glob. The wrapper is
-    scoped, not a compile flag, precisely because this string is embedded in
-    larger regexes by callers (anchoring, prefix/suffix normalisation).
+    scoped, not a compile flag, because this string is embedded in larger
+    regexes (anchoring).
     """
     return ('(?s:'
             + _convert_pattern(pattern, for_pathname, extglob,
@@ -404,7 +414,13 @@ def _bracket_to_regex_cached(content: str, ic: bool, _ctype: Optional[str]) -> s
             regex = group
 
     try:
-        re.compile(regex)
+        with warnings.catch_warnings():
+            # A bracket may hold a regex set-operator sequence (``&&``/``||``/
+            # ``~~``/``--``); ``re`` raises a FutureWarning for those. bash
+            # matches them as literal members, so validate silently — the old
+            # stdlib ``fnmatch`` pathname path escaped them and never warned.
+            warnings.simplefilter('ignore')
+            re.compile(regex)
     except re.error:
         # bash (verified 5.2): an invalid set matches nothing; a NEGATED
         # invalid set matches any one character.
@@ -419,9 +435,15 @@ def _bracket_match(cls: str, ch: str, ic: bool) -> bool:
     becomes its bash-verified match-nothing / match-any substitute), so no
     ``re.error`` guard is needed here. ``ic`` is threaded through so
     ``[:upper:]`` / ``[:lower:]`` stay case-sensitive under ``nocasematch``.
+
+    A set-operator sequence (``&&``/``||``/``~~``) inside the class raises a
+    ``re`` FutureWarning; bash matches such characters literally, so the match
+    is done silently (the old ``fnmatch`` pathname path never warned).
     """
-    return re.match(_bracket_to_regex(cls, ic), ch,
-                    re.IGNORECASE if ic else 0) is not None
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        return re.match(_bracket_to_regex(cls, ic), ch,
+                        re.IGNORECASE if ic else 0) is not None
 
 
 def _eq(a: str, b: str, ic: bool) -> bool:

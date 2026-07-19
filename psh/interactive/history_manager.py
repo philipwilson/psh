@@ -3,6 +3,7 @@ import fcntl
 import os
 from typing import TYPE_CHECKING, List, Optional
 
+from ..expansion.pattern import match_shell_pattern
 from .base import InteractiveComponent
 from .line_editor_helpers import convert_multiline_to_single
 
@@ -61,18 +62,24 @@ class HistoryManager(InteractiveComponent):
         HISTIGNORE is a colon-separated list of glob patterns; a pattern must
         match the WHOLE line (no implicit ``*``). ``&`` matches the previous
         history line. Checked after the HISTCONTROL filters.
+
+        Matching routes through the ONE shell pattern engine (not stdlib
+        ``fnmatch``) so a HISTIGNORE pattern is not exempt from the shell's glob
+        semantics: it honors ``\\`` escapes and — when ``shopt -s extglob`` is
+        set — extglob groups (bash uses ``FNM_EXTMATCH`` there), and never
+        backtracks exponentially. Case-sensitive (bash).
         """
-        import fnmatch
         raw = self.state.get_variable('HISTIGNORE', '') or ''
         patterns = [p for p in raw.split(':') if p]
         if not patterns:
             return False
+        extglob = self.state.options.get('extglob', False)
         prev = self.state.history[-1] if self.state.history else None
         for pat in patterns:
             if pat == '&':
                 if command == prev:
                     return True
-            elif fnmatch.fnmatchcase(command, pat):
+            elif match_shell_pattern(command, pat, extglob_enabled=extglob):
                 return True
         return False
 

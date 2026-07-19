@@ -30,9 +30,9 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `operators.py` | `OperatorOpsMixin` - `${VAR:-...}`, `${VAR#...}`, `${VAR/p/r}`, case ops |
 | `operands.py` | `OperandOpsMixin` - expands pattern/replacement operands, `glob_escape()` |
 | `fields.py` | `FieldExpansionMixin` - `expand_to_fields()` for multi-field `$@`/array results |
-| `pattern.py` | `match_shell_pattern()` - the consumer-facing dispatch facade: extglob → compiled engine, plain glob → regex; `PatternMatcher` still builds the plain-glob→regex |
-| `pattern_engine.py` | THE compiled shell-pattern engine: `compile_pattern()` (parse-once AST) + memoized `reachable_ends`/`fullmatch`/`match_at` (see "Pattern matching engine" below) |
-| `extglob.py` | Extglob scanning primitives (`_find_matching_paren`, `_split_pattern_list`, `_bracket_end`, `_bracket_match`), the glob→regex converter (`glob_to_regex_body`), and thin `extglob_fullmatch`/`extglob_match_at`/`_extglob_consume` that delegate to `pattern_engine` |
+| `pattern.py` | `match_shell_pattern()` - the thin full-match facade for `case`/`[[ == ]]`/name filters: `PatternCompiler.compile(pattern).full_match(...)` — plain AND extglob route through the one engine (campaign W3; no regex path) |
+| `pattern_engine.py` | THE compiled shell-pattern engine: `PatternCompiler.compile`(raw string)/`compile_protected`(protection runs) → `CompiledPattern` with the FOUR relations (`full_match`/`matching_ends`/`matching_starts`/`span_at`+`matching_spans`); iterative stars + literal chains (two-pointer boolean / forward position-set DP — star count never consumes recursion frames), recursion ONLY for extglob nesting depth; `MatchProfile` (for_pathname, ic). Legacy `compile_pattern`/`reachable_ends`/`fullmatch`/`match_at`/`count_states` kept (see "Pattern matching engine" below) |
+| `extglob.py` | Extglob scanning primitives (`_find_matching_paren`, `_split_pattern_list`, `_bracket_end`, `_bracket_match`), locale-aware bracket membership (`_bracket_to_regex`), and thin `extglob_fullmatch`/`extglob_match_at`/`_extglob_consume` that delegate to `pattern_engine`. (`glob_to_regex_body`/`extglob_to_regex`/`_convert_pattern` are production-DEAD after W3 — the regex matching path was retired; kept only as test oracles pending a census deletion) |
 | `parameter_expansion.py` | `ParameterExpansionOps` - string ops behind the operators (incl. `PATSUB_MATCH`); the engine, not the `ParameterExpansion` AST node |
 | `command_sub.py` | `CommandSubstitutionExecutor` - runs `$(cmd)` and `` `cmd` ``; the engine, not the `CommandSubstitution` AST node |
 | `tilde.py` | `TildeExpander` - handles `~` and `~user` |
@@ -262,41 +262,59 @@ list of literal strings interleaved with the `PATSUB_MATCH` sentinel
 (defined in `parameter_expansion.py`), which stands for the matched text —
 this is how a literal `&` in a patsub replacement works.
 
-### Pattern matching engine (`pattern_engine.py`)
+### Pattern matching engine (`pattern_engine.py`) — the ONE iterative relation
 
-One compiled representation matches shell patterns for **all five** consumers —
-`case`, `[[ string == pattern ]]`, `${var#/%/##/%%}` removal, `${var/}`
-substitution, and pathname extglob components — so glob/extglob semantics cannot
-drift between them.
+One compiled representation matches shell patterns for **every** consumer —
+`case`, `[[ == ]]`, `${var#/%/##/%%}` removal, `${var/}` substitution, case
+modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
+`help`) — so glob/extglob semantics cannot drift between them (campaign W3,
+#20 H7). There is no parallel regex matching path.
 
-- **Parse once.** `compile_pattern(pattern)` builds a small AST (`Sequence` of
-  `Literal` / `AnyChar` / `Star` / `Bracket` / `Extglob`). `compile_cached`
-  memoizes it for hot loops. Parsing reuses `extglob.py`'s scanning primitives,
-  so bracket/escape/nesting handling matches the rest of the shell.
-- **Match with memoization.** `reachable_ends(root, s)` returns every index `k`
-  where the pattern fully matches `s[:k]`, evaluating each `(node, position)`
-  state at most once. That single reachable-end set serves every consumer:
-  full match (`len(s) in ends`), prefix/suffix removal (`min`/`max` and a
-  start-index scan), leftmost-longest substitution (`match_at` = `max` ends of
-  `s[pos:]`), and pathname-component matching (`for_pathname=True`).
-- **Why it exists.** It replaced two backends that were each exponential on a
-  different adversarial input (expansion appraisal finding #6): the Python-`re`
-  path blew up on ambiguous repetition (`*(a|aa)c`), and the former recursive
-  backtracking matcher (`_match_from`, now deleted) blew up on sequential
-  optional fan-out (`?(a)…!(z)`). Memoization makes both `O(nodes·positions)`.
-- **Policies stay outside the matcher.** `for_pathname` and `nocasematch`
-  (`ic`) are match-time arguments; bracket membership and case folding delegate
-  to the shared, locale-aware `extglob._bracket_match` / `_eq`, so v0.655 POSIX
-  `[:class:]` semantics are preserved exactly. dotglob/globstar/nullglob/
-  failglob/symlink handling live in the pathname walker (`glob.py`), not here.
-- **Not routed through it:** the plain-glob pathname fast path (`glob.glob` /
-  `_compile_component`'s glob→regex conversion). That is a *converter*, not the
-  matcher, and is linear — kept on stdlib/regex by design and byte-verified
-  against the old `fnmatch` path.
+- **Compile once, two entries.** `PatternCompiler.compile(pattern)` (a raw
+  string; `\` = escape — name filters) and `PatternCompiler.compile_protected(
+  parts)` (per-character `(text, protected)` runs, consumed DIRECTLY via the one
+  canonical encoder `runs_to_pattern_string`) both build a `CompiledPattern`
+  wrapping a small AST (`Sequence` of `Literal`/`AnyChar`/`Star`/`Bracket`/
+  `Extglob`). `compile_cached` memoizes. Parsing reuses `extglob.py`'s scanning
+  primitives.
+- **The four relations** on `CompiledPattern` are exactly what consumers need:
+  `full_match(text)` (case/`[[`/name filter/one pathname entry/one case-mod
+  char), `matching_ends(text, start)` (prefix removal — `#`=min, `##`=max),
+  `matching_starts(text, end)` (suffix removal — `%`=max start, `%%`=min start),
+  and `span_at(text, pos)` / `matching_spans(text)` (leftmost-longest
+  substitution). `parameter_expansion.py` calls these directly — no operator
+  builds a regex or does its own anchoring.
+- **Stars and literal chains are ITERATIVE; recursion only for extglob
+  nesting.** The boolean full match for extglob-free sequences (every plain
+  glob) is the classic two-pointer backtrack — zero recursion, one backtrack
+  point per star — and the reachable-end set is a forward position-set DP that
+  processes each element once (a `Star` becomes an interval union). Star and
+  literal COUNT therefore never consume recursion frames (a 50,000-star
+  pattern matches at any recursion limit — #20 H7-b + the W3 bounce ruling),
+  and the DP is its own memoization, so adversarial repetition (`*a*a…*b`,
+  `*(a|aa)c`) stays `O(nodes·positions)`, never exponential (#20 H7-c). The
+  ONLY recursion is into extglob alternatives — bounded by extglob NESTING
+  depth, a compile-time structural property; at the bound psh raises
+  `RecursionError` as an expected shell error (probed: bash 5.2 SEGFAULTS at
+  depth 30k where psh fails cleanly — pinned in `test_pattern_relations.py` +
+  the nightly benchmark tier).
+- **Policies stay outside the matcher** as a typed `MatchProfile`
+  (`for_pathname`, `ic`); bracket membership and case folding delegate to the
+  shared, locale-aware `extglob._bracket_match`/`_eq`, so POSIX `[:class:]`
+  semantics are preserved exactly. dotglob/globstar/nullglob/failglob/symlink
+  and slash-component/leading-dot policy layer OVER the engine in `glob.py`,
+  never inside the matcher.
+- **Protection is consumed directly** (`compile_protected`): a PROTECTED
+  (quoted/escaped) character is a literal char / bracket member wherever it
+  lands — so a quoted class-special char inside an ACTIVE bracket stays a
+  literal member (`[a"-"c]` = `{a,-,c}`, not the range `a-c`; #20 H7 carry-2).
+  This retired both former interim encodings (`_pattern_from_runs`
+  bracket-escaping and `operands.glob_escape`'s incomplete set).
 
 Complexity is guarded deterministically by `count_states()` (see
-`tests/unit/expansion/test_pattern_engine_matcher.py`), which also property-tests
-`reachable_ends` equality against the former matcher over ~24k random cases.
+`tests/unit/expansion/test_pattern_engine_matcher.py` and
+`test_pattern_relations.py`); behavior is locked against live bash in
+`test_pattern_engine_differential.py`.
 
 ### Indirection: `${!name}`
 
@@ -342,13 +360,17 @@ and quoted text joins correctly onto adjacent fields (`a"$x"b`). Split pieces
 inherit the run's protection, so materialization still sees it.
 
 Pathname generation is per-character: `WordExpander._pattern_from_runs` compiles
-one pattern from a field's runs, passing ACTIVE run text raw and bracket-escaping
-PROTECTED metacharacters (`[*]`, `[?]`, `[[]`, `[(]`, `[]]`) so a quoted/escaped
-`*` cannot glob beside an active one (`"*"*` → `[*]*`; `#20 H6`). The engine
-treats backslash as a literal character (see `glob.py#_compile_component`), so
-bracket-escaping — not backslash — is the portable literal-metacharacter form.
-`_unquoted_literal_runs` splits an unquoted literal into protection runs during
-escape processing (`a\*b*` → ACTIVE `a`, PROTECTED `*`, ACTIVE `b*`).
+one pattern from a field's runs through the ONE canonical protection encoder
+(`pattern_engine.runs_to_pattern_string`): ACTIVE run text passes raw (its
+metacharacters act), a PROTECTED run's glob-significant characters are
+`\`-escaped so they are literal wherever they land — top level OR inside an
+active bracket (`"*"*` → `\**`; `[a"-"c]` → `[a\-c]` = `{a,-,c}`; `#20 H6`+
+carry-2). `glob.GlobExpander.expand` matches the result through the same engine
+(`\` = escape; `glob.py#_component_matcher`), and an ACTIVE value backslash is
+doubled by the encoder so it stays literal — one protection semantics shared
+with the `${...}` operand path. `_unquoted_literal_runs` splits an unquoted
+literal into protection runs during escape processing (`a\*b*` → ACTIVE `a`,
+PROTECTED `*`, ACTIVE `b*`).
 
 ### Command Substitution
 

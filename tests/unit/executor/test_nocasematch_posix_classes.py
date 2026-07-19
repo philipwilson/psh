@@ -4,12 +4,14 @@ ledger item b).
 ``shopt -s nocasematch`` folds literals, ranges (``[A-Z]``) and sets
 (``[abc]``) case-insensitively, but bash leaves the ``[[:upper:]]`` /
 ``[[:lower:]]`` classes case-SENSITIVE — they keep meaning "an
-actually-uppercase / -lowercase character". H6 (v0.585) taught the shared
-pattern engine (``shell_pattern_to_regex``) to protect those two classes when
-``ignorecase`` is set, but the ``[[`` / ``case`` matcher
-(``match_shell_pattern``) applied ``re.IGNORECASE`` WITHOUT forwarding the
-flag to the builder, so ``[[ h == [[:upper:]] ]]`` wrongly matched under
-nocasematch. Every expected value is pinned to bash 5.2.26 (C locale).
+actually-uppercase / -lowercase character". H6 (v0.585) first taught the
+then-regex pattern path to protect those two classes when ``ignorecase`` is
+set (a historical ``[[``/``case`` bug applied ``re.IGNORECASE`` without
+forwarding the flag, so ``[[ h == [[:upper:]] ]]`` wrongly matched under
+nocasematch); since campaign W3 the semantics live in the ONE compiled
+engine's locale-aware bracket membership (``extglob._bracket_to_regex`` via
+``match_shell_pattern``). Every expected value is pinned to bash 5.2.26
+(C locale).
 """
 
 

@@ -81,13 +81,6 @@ _PROTECTED = Protection.PROTECTED
 _NEVER = Split.NEVER
 _ELIGIBLE = Split.IFS_ELIGIBLE
 
-#: Characters that must be neutralised for a PROTECTED run to be a literal in a
-#: pathname pattern. The pathname glob engine treats backslash as a LITERAL
-#: character (a deliberate prior refactor — see ``glob._compile_component``), so
-#: protection is carried with single-character brackets (``[*]`` matches a
-#: literal ``*``) instead. Escaping ``(`` neutralises every extglob group, since
-#: an ``@(...)``/``?(...)``/... group cannot form without its ``(``.
-_PATHNAME_ESCAPE = frozenset('*?[(')
 
 
 class _FieldBuilder:
@@ -707,36 +700,18 @@ class WordExpander:
         return [literal]
 
     def _pattern_from_runs(self, runs: List[FieldRun]) -> str:
-        """Compile a pathname pattern from a field's runs.
-
-        ACTIVE run text passes through raw (its metacharacters act); PROTECTED
-        run text is bracket-escaped so its metacharacters are literal in the
-        same pattern (``"*"*`` -> ``[*]*`` matches names beginning with a
-        literal ``*``).
-        """
-        return ''.join(
-            run.text if run.protection is _ACTIVE
-            else self._pathname_escape(run.text)
-            for run in runs)
-
-    @staticmethod
-    def _pathname_escape(text: str) -> str:
-        """Neutralise every glob/extglob metacharacter in a PROTECTED run.
-
-        Uses single-character brackets (``[*]``, ``[?]``, ``[[]``, ``[(]``) and
-        ``[]]`` for ``]`` — the pathname engine treats backslash as a literal
-        character, so bracket-escaping is the portable way to a literal
-        metacharacter.
-        """
-        out: List[str] = []
-        for c in text:
-            if c == ']':
-                out.append('[]]')
-            elif c in _PATHNAME_ESCAPE:
-                out.append('[' + c + ']')
-            else:
-                out.append(c)
-        return ''.join(out)
+        """Compile a pathname pattern from a field's runs, consuming protection
+        directly through the ONE canonical encoder (``pattern_engine.
+        runs_to_pattern_string``): an ACTIVE run's metacharacters act, a
+        PROTECTED run's glob-significant characters are ``\\``-escaped so they
+        are literal wherever they land — including inside an active bracket, so
+        ``[a"-"c]`` is the set ``{a,-,c}`` not the range ``a-c`` (#20 H7
+        carry-2). ``glob.GlobExpander.expand`` matches the result through the
+        same engine (``\\`` = escape), so there is one protection semantics for
+        pathname and ``${...}`` operands alike."""
+        from .pattern_engine import runs_to_pattern_string
+        return runs_to_pattern_string(
+            (run.text, run.protection is not _ACTIVE) for run in runs)
 
     def _unquoted_literal_runs(self, text: str) -> List[FieldRun]:
         """Escape-process unquoted literal text into protection runs.
