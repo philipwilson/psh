@@ -21,6 +21,7 @@ from ..core.option_registry import (
     SHORT_TO_LONG,
     OptionCategory,
 )
+from ..expansion.subscript import SubscriptUse, TargetKind
 from ..lexer.unicode_support import is_valid_name
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import escape_value
@@ -711,12 +712,16 @@ class UnsetBuiltin(Builtin):
             # associative array keys on the expanded literal subscript; an
             # indexed array keys on the arithmetic value. An out-of-range
             # negative subscript is "bad array subscript" (rc=1), like bash.
-            key: "int | str"
             subscript = shell.expansion_manager.subscript
-            if isinstance(var_obj.value, AssociativeArray):
-                key = subscript.associative_key(index_expr)
-            else:
-                key = subscript.indexed_index(index_expr)
+            kind = (TargetKind.ASSOCIATIVE
+                    if isinstance(var_obj.value, AssociativeArray)
+                    else TargetKind.INDEXED)
+            key = subscript.evaluate(index_expr, kind, SubscriptUse.UNSET)
+            if key is None:
+                # bash 5.2: `unset 'a[]'` / `unset "a[$e]"` with an
+                # (expanded-)empty INDEXED subscript is a silent no-op
+                # (probe-verified 2026-07-19 — a[0] survives).
+                return True
             try:
                 shell.state.scope_manager.store.unset_element(array_name, key)
             except ArraySubscriptError:

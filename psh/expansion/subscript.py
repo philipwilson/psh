@@ -51,8 +51,21 @@ class TargetKind(enum.Enum):
 
 
 class SubscriptUse(enum.Enum):
-    """Which surface is keying — used only for diagnostics and the empty-key
-    policy (write/read/is-set reject an empty subscript; test/unset tolerate)."""
+    """Which surface is keying — drives the EMPTY-subscript policy for
+    indexed targets in :meth:`SubscriptEvaluator.evaluate`.
+
+    bash 5.2 treats an (expanded-)empty indexed subscript differently per
+    surface (probe-verified 2026-07-19): read/write address index 0 (empty
+    arithmetic evaluates to 0), while ``test -v``/``[[ -v`` report silently
+    unset and ``unset`` is a silent no-op. So ``TEST_V`` and ``UNSET`` make
+    :meth:`~SubscriptEvaluator.evaluate` return ``None`` ("no target") for an
+    empty indexed subscript; every other use falls through to arithmetic.
+    The remaining empty policies live at their consumer sites: the WRITE path
+    rejects an empty ASSOCIATIVE key
+    (executor/array.py#execute_array_element_assignment) and the ARITHMETIC
+    path rejects an empty verbatim subscript
+    (arithmetic/evaluator.py#_array_key) — both "bad array subscript".
+    """
     READ = enum.auto()
     WRITE = enum.auto()
     IS_SET = enum.auto()
@@ -60,6 +73,10 @@ class SubscriptUse(enum.Enum):
     TEST_V = enum.auto()
     ARITH = enum.auto()
     DECLARE = enum.auto()
+
+
+#: Uses whose EMPTY indexed subscript means "no target" (None), not index 0.
+_EMPTY_IS_NO_TARGET = frozenset({SubscriptUse.TEST_V, SubscriptUse.UNSET})
 
 
 class SubscriptEvaluator:
@@ -202,7 +219,11 @@ class SubscriptEvaluator:
         fails to evaluate (``a[1//]``, ``a[08]``) is a fatal arithmetic error
         that discards the input (bash), not a silent index 0.
         """
-        expanded = self._manager.variable_expander.expand_string_variables(raw)
+        return self._evaluate_expanded_index(
+            self._manager.variable_expander.expand_string_variables(raw))
+
+    def _evaluate_expanded_index(self, expanded: str) -> int:
+        """Arithmetic-evaluate an already-``$``-expanded indexed subscript."""
         try:
             return evaluate_arithmetic(expanded, self.shell)
         except ArithmeticError as e:
@@ -214,8 +235,19 @@ class SubscriptEvaluator:
             arith_assignment_discard(self.state)
 
     def evaluate(self, raw: str, kind: TargetKind,
-                 use: SubscriptUse = SubscriptUse.READ) -> Union[int, str]:
-        """Interpret ``raw`` for a target of ``kind`` — the one dispatch point."""
+                 use: SubscriptUse = SubscriptUse.READ
+                 ) -> Union[int, str, None]:
+        """Interpret ``raw`` for a target of ``kind`` — the one dispatch point.
+
+        Returns the string key (associative), the int index (indexed), or
+        ``None`` when *use* is ``TEST_V``/``UNSET`` and the indexed subscript
+        expands to EMPTY — bash's "no target" surfaces (silently-unset ``-v``,
+        no-op ``unset``; see :class:`SubscriptUse`). The one shared expansion
+        pass means a command substitution in the subscript runs exactly once.
+        """
         if kind is TargetKind.ASSOCIATIVE:
             return self.associative_key(raw)
-        return self.indexed_index(raw)
+        expanded = self._manager.variable_expander.expand_string_variables(raw)
+        if expanded == '' and use in _EMPTY_IS_NO_TARGET:
+            return None
+        return self._evaluate_expanded_index(expanded)

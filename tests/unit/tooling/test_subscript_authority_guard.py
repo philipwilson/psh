@@ -76,8 +76,7 @@ SANCTIONED_ASSOC_CALLERS = {
     'psh/expansion/variable.py',        # ${h[k]} string path
     'psh/expansion/operators.py',       # +/-/? is-set
     'psh/expansion/arithmetic/evaluator.py',  # arith lvalue/read (expand_dollar=False)
-    'psh/builtins/environment.py',      # unset
-    'psh/builtins/test_command.py',     # test -v / [[ -v
+    'psh/builtins/test_command.py',     # test -v / [[ -v (assoc arm)
     'psh/executor/array.py',            # element assignment
 }
 
@@ -104,12 +103,26 @@ def test_indexed_index_called_only_from_sanctioned_set():
     expected = {
         'psh/expansion/subscript.py',
         'psh/expansion/arrays.py',
-        'psh/builtins/environment.py',
         'psh/executor/array.py',
     }
     assert callers == expected, (
         f"indexed_index caller set changed: added {callers - expected}, "
         f"removed {expected - callers}.")
+
+
+def test_evaluate_dispatch_called_only_from_sanctioned_set():
+    """``evaluate(raw, kind, use)`` is the use-aware dispatch: the surfaces
+    with a bash EMPTY-subscript policy (``test -v`` silently-unset, ``unset``
+    silent no-op) route through it, so ``SubscriptUse`` genuinely drives
+    behavior (empty indexed subscript -> ``None``/no-target)."""
+    callers = _callers_of(r'subscript\.evaluate\(')
+    expected = {
+        'psh/builtins/test_command.py',   # -v: empty -> silently unset
+        'psh/builtins/environment.py',    # unset: empty -> silent no-op
+    }
+    assert callers == expected, (
+        f"SubscriptEvaluator.evaluate caller set changed: added "
+        f"{callers - expected}, removed {expected - callers}.")
 
 
 def test_guard_detects_new_caller():

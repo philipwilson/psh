@@ -309,6 +309,12 @@ class TestIndexedArithmetic(ConformanceTest):
         assert p.returncode == b.returncode == 1
         assert _strip_prefix(p.stderr) == _strip_prefix(b.stderr)
         assert 'value too great for base (error token is "08")' in p.stderr
+        # DIRECT prefix pin (deliberately NOT satisfiable via _strip_prefix,
+        # which normalizes both the old and new shapes): the subscript
+        # arithmetic diagnostic carries the v0.690 location prefix like
+        # bash's `bash: line 1: 08: ...`. A regression to the old bare
+        # `psh: 08: ...` must turn this row red (bounce blocker B).
+        assert p.stderr.startswith('psh: line 1: 08:'), p.stderr
 
     def test_huge_index_overflow(self):
         self.assert_identical_behavior(
@@ -361,9 +367,82 @@ class TestSpecialSubscriptsAndBuiltins(ConformanceTest):
         self.assert_identical_behavior(
             'declare -A a=([x]=1); unset "a[x]"; declare -p a')
 
-    def test_unset_indexed_at_removes_array(self):
+    def test_unset_indexed_at_empties_array(self):
+        # bash 5.2 keeps the (now empty) array variable: `declare -a a=()`.
         self.assert_identical_behavior(
             'a=(1 2); unset "a[@]"; declare -p a; echo "rc=$?"')
+
+    def test_unset_empty_subscript_is_noop(self):
+        self.assert_identical_behavior(
+            'a=(1 2); unset "a[]"; echo "rc=$? [${a[0]:-gone}]"')
+
+    def test_unset_expanded_empty_subscript_is_noop(self):
+        self.assert_identical_behavior(
+            'a=(1 2); e=; unset "a[$e]"; echo "rc=$? [${a[0]:-gone}]"')
+
+    def test_test_v_arith_expression_subscript(self):
+        self.assert_identical_behavior(
+            'a=(x y z); test -v "a[1+1]" && echo Y || echo N')
+
+    def test_test_v_bare_name_derefs(self):
+        self.assert_identical_behavior(
+            'a=(x y z); i=2; test -v "a[i]" && echo Y || echo N')
+
+    def test_test_v_bare_name_recursion(self):
+        self.assert_identical_behavior(
+            'a=(x y z); i=j; j=1; test -v "a[i]" && echo Y || echo N')
+
+    def test_test_v_negative_index(self):
+        self.assert_identical_behavior(
+            'a=(x y z); test -v "a[-1]" && echo Y || echo N')
+
+    def test_test_v_scalar_index_zero(self):
+        self.assert_identical_behavior(
+            'x=5; test -v "x[0]" && echo Y || echo N; '
+            'test -v "x[1]" && echo Y || echo N; '
+            'test -v "x[1-1]" && echo Y || echo N')
+
+    def test_test_v_unset_name_still_reports_unset(self):
+        self.assert_identical_behavior(
+            'unset z; test -v "z[0]" && echo Y || echo N')
+
+    def test_test_v_empty_subscript_silently_unset(self):
+        self.assert_identical_behavior(
+            'a=(x y); test -v "a[]"; echo after rc=$?')
+
+    def test_test_v_expanded_empty_silently_unset(self):
+        self.assert_identical_behavior(
+            'a=(x y); e=; test -v "a[$e]"; echo after rc=$?')
+
+    def test_bracket_bracket_v_arith_rows(self):
+        self.assert_identical_behavior(
+            'a=(x y z); [[ -v a[1+1] ]] && echo Y || echo N; '
+            'i=2; [[ -v a[i] ]] && echo Y || echo N; '
+            '[[ -v a[-1] ]] && echo Y || echo N; '
+            'x=5; [[ -v x[0] ]] && echo Y || echo N')
+
+    def test_test_v_negative_out_of_range_warns(self):
+        # Non-fatal warning + unset (prefix-stripped bodies match).
+        cmd = 'a=(x y); test -v "a[-9]"; echo after rc=$?'
+        p, b = _psh(cmd), _bash(cmd)
+        assert p.returncode == b.returncode == 0
+        assert p.stdout == b.stdout == 'after rc=1\n'
+        assert _strip_prefix(p.stderr) == _strip_prefix(b.stderr)
+        assert 'a: bad array subscript' in p.stderr
+
+    def test_test_v_invalid_arith_is_fatal(self):
+        # bash fatally discards the line (`after` never runs, rc 1) — psh
+        # matches the BEHAVIOR; the message wording is the documented general
+        # arith-tokenizer divergence (see
+        # test_divergence_arith_error_wording_not_keying).
+        for cmd in ('a=(x y); test -v "a[1//]"; echo after rc=$?',
+                    'unset z; test -v "z[1//]"; echo after rc=$?',
+                    'a=(x y); [[ -v a[1//] ]]; echo after rc=$?',
+                    'a=(x y); [[ -v "a[1//]" ]]; echo after rc=$?'):
+            p, b = _psh(cmd), _bash(cmd)
+            assert p.returncode == b.returncode == 1, (cmd, p, b)
+            assert 'after' not in p.stdout and 'after' not in b.stdout
+            assert p.stderr.strip() and b.stderr.strip()
 
     def test_declare_p_spaced_keys_roundtrip(self):
         self.assert_identical_behavior(

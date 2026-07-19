@@ -167,6 +167,39 @@ class TestConsumerSitesKeyIdentically:
         assert sh.run_command('test -v "h[\'k 1\']"') == 0
         assert sh.run_command('test -v "h[absent]"') == 1
 
+    def test_test_v_indexed_routes_through_authority(self, captured_shell):
+        # Bounce blocker A: the indexed arm of -v arithmetic-evaluates via
+        # the service — expression, bare-name deref (with recursion),
+        # negative index, scalar-as-index-0 (all bash 5.2).
+        sh = captured_shell
+        sh.run_command('a=(x y z); i=j; j=1; s=5')
+        assert sh.run_command('test -v "a[1+1]"') == 0
+        assert sh.run_command('test -v "a[i]"') == 0
+        assert sh.run_command('test -v "a[-1]"') == 0
+        assert sh.run_command('test -v "a[9]"') == 1
+        assert sh.run_command('test -v "s[0]"') == 0
+        assert sh.run_command('test -v "s[1-1]"') == 0
+        assert sh.run_command('test -v "s[1]"') == 1
+
+    def test_test_v_empty_subscript_silently_unset(self, captured_shell):
+        sh = captured_shell
+        sh.run_command('a=(x y); e=')
+        assert sh.run_command('test -v "a[]"') == 1
+        assert sh.run_command('test -v "a[$e]"') == 1
+        assert sh.get_stderr() == ''
+
+    def test_test_v_negative_oor_warns_nonfatal(self, captured_shell):
+        sh = captured_shell
+        sh.run_command('a=(x y)')
+        assert sh.run_command('test -v "a[-9]"') == 1
+        assert 'a: bad array subscript' in sh.get_stderr()
+
+    def test_unset_empty_subscript_is_noop(self, captured_shell):
+        sh = captured_shell
+        sh.run_command('a=(1 2); e=; unset "a[]"; unset "a[$e]"; '
+                       'echo "[${a[0]:-gone}]"')
+        assert sh.get_stdout().strip() == '[1]'
+
     def test_initializer_and_element_write_agree(self, captured_shell):
         sh = captured_shell
         sh.run_command("declare -A h=([a'b']=init); h[a'b']=elem; "
