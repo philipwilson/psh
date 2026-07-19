@@ -180,12 +180,14 @@ class CommandExecutor:
         # scripting/source_processor.py and command_accumulator.py), so by
         # the time the executor runs the command word is already the
         # alias-expanded token.
-        self.strategies = [
+        # An immutable tuple, built once — resolve_command receives it
+        # directly (no per-dispatch conversion; R3 bounce perf wiring).
+        self.strategies = (
             FunctionExecutionStrategy(),
             SpecialBuiltinExecutionStrategy(),
             BuiltinExecutionStrategy(),
-            ExternalExecutionStrategy()
-        ]
+            ExternalExecutionStrategy(),
+        )
 
     def execute(self, node: 'SimpleCommand', context: 'ExecutionContext') -> int:
         """
@@ -739,7 +741,7 @@ class CommandExecutor:
         ``apply_prefix`` updates with any temporary PATH before dispatch.
         """
         return resolve_command(
-            self.shell, tuple(self.strategies), normalized, overlay, context)
+            self.shell, self.strategies, normalized, overlay, context)
 
     def _dispatch_resolved(self, resolved: Optional[ResolvedCommand],
                            cmd_name: str, args: List[str],
