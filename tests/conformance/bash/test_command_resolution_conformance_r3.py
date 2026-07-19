@@ -160,3 +160,130 @@ class TestPrefixInboundCarryEmptyArithSubscript(ConformanceTest):
         assert 'done=0' in result.bash_result.stdout
         # psh (current, unchanged by R3): fatal-discards the command.
         assert 'done=0' not in result.psh_result.stdout
+
+
+class TestPosixlyCorrectPrefixResolution(ConformanceTest):
+    """A ``POSIXLY_CORRECT=`` prefix flips posix mode for THE COMMAND IT
+    PREFIXES (R3 bounce blocker 1).
+
+    bash installs temporary assignments before command lookup, so the
+    sv_strict_posix coupling turns posix on BEFORE the prefixed command
+    resolves: a special builtin then beats a same-named function and its
+    prefix assignments (including POSIXLY_CORRECT itself) PERSIST. psh
+    resolves before installing, so ``CommandEnvOverlay.has_posix_override``
+    carries the fact into ``resolve_command``. Non-subshell constructions
+    throughout — the pre-existing one-shot pin piped ``set -o | grep``,
+    whose subshell LHS masked the persistence half in both shells.
+    """
+
+    # --- the three verifier faces (red at the pre-fix tip bd21bb4f) ------
+
+    def test_persistence_face(self):
+        self.assert_identical_behavior(
+            'unset X; X=kept POSIXLY_CORRECT=1 :; echo "${X-unset}"')
+
+    def test_posix_mode_persists_after_special(self):
+        self.assert_identical_behavior(
+            'POSIXLY_CORRECT=1 :; '
+            'shopt -qo posix && echo posix-on || echo posix-off; '
+            'echo "${POSIXLY_CORRECT-unset}"')
+
+    def test_dispatch_face_special_beats_function(self):
+        self.assert_identical_behavior(
+            'eval(){ echo fn; }; POSIXLY_CORRECT=1 eval "echo builtin-ran"')
+
+    # --- value rule: NAME-level ------------------------------------------
+
+    def test_empty_value_still_flips(self):
+        self.assert_identical_behavior(
+            'eval(){ echo fn; }; POSIXLY_CORRECT= eval "echo builtin-ran"')
+
+    def test_unset_var_expansion_still_flips(self):
+        self.assert_identical_behavior(
+            'unset x; eval(){ echo fn; }; '
+            'POSIXLY_CORRECT=$x eval "echo builtin-ran"')
+
+    def test_empty_value_persistence(self):
+        self.assert_identical_behavior(
+            'unset X; X=kept POSIXLY_CORRECT= :; echo "${X-unset}"')
+
+    # --- nameref write-through -------------------------------------------
+
+    def test_nameref_prefix_flips(self):
+        self.assert_identical_behavior(
+            'declare -n r=POSIXLY_CORRECT; eval(){ echo fn; }; '
+            'r=1 eval "echo builtin-ran"')
+
+    def test_nameref_prefix_persistence(self):
+        self.assert_identical_behavior(
+            'declare -n r=POSIXLY_CORRECT; unset X; X=kept r=1 :; '
+            'echo "${X-unset}"')
+
+    # --- readonly blocks the flip (parity guard on the refinement) -------
+
+    def test_readonly_blocks_flip_function_wins(self):
+        self.assert_identical_behavior(
+            'readonly POSIXLY_CORRECT 2>/dev/null; eval(){ echo fn; }; '
+            '{ POSIXLY_CORRECT=1 eval "echo builtin-ran"; } 2>/dev/null')
+
+    def test_readonly_posix_stays_off(self):
+        self.assert_identical_behavior(
+            'readonly POSIXLY_CORRECT 2>/dev/null; '
+            '{ POSIXLY_CORRECT=1 :; } 2>/dev/null; echo "rc=$?"; '
+            'shopt -qo posix && echo on || echo off')
+
+    # --- per-command-kind: posix reverts for non-persisting kinds --------
+
+    def test_regular_builtin_posix_reverts(self):
+        self.assert_identical_behavior(
+            'POSIXLY_CORRECT=1 true; '
+            'shopt -qo posix && echo on || echo off; '
+            'echo "${POSIXLY_CORRECT-unset}"')
+
+    def test_function_posix_reverts_after_but_on_during(self):
+        self.assert_identical_behavior(
+            'f(){ shopt -qo posix && echo in-on || echo in-off; }; '
+            'POSIXLY_CORRECT=1 f; shopt -qo posix && echo on || echo off')
+
+    # --- companions persist alongside, any order -------------------------
+
+    def test_companion_assignments_persist(self):
+        self.assert_identical_behavior(
+            'unset X Y; X=kept Y=also POSIXLY_CORRECT=1 :; '
+            'echo "${X-unset} ${Y-unset}"')
+
+    def test_posixly_correct_first_order(self):
+        self.assert_identical_behavior(
+            'unset X; POSIXLY_CORRECT=1 X=kept :; echo "${X-unset}"')
+
+    # --- already posix: redundant ----------------------------------------
+
+    def test_redundant_under_set_o_posix(self):
+        self.assert_identical_behavior(
+            'set -o posix; unset X; X=kept POSIXLY_CORRECT=1 :; '
+            'echo "${X-unset}"')
+
+
+class TestPosixExecShadowedByFunction(ConformanceTest):
+    """posix-mode ``exec`` shadowed by a same-named function routes to the
+    EXEC BUILTIN (R3 bounce blocker 2 — the bash-convergent change the
+    original round left with only an enum-level unit row).
+
+    In default mode the function wins (control row); under ``set -o posix``
+    or a ``POSIXLY_CORRECT=1`` prefix the special builtin wins, so
+    ``exec 3>&1`` performs the permanent redirection. Red on base b8c7bb74
+    (base ran the function, rc 1 on the later ``>&3``).
+    """
+
+    def test_posix_mode_exec_shadowed_runs_builtin(self):
+        self.assert_identical_behavior(
+            'exec(){ echo fn; }; set -o posix; exec 3>&1; echo out >&3')
+
+    def test_default_mode_function_wins_control(self):
+        self.assert_identical_behavior(
+            'exec(){ echo fn; }; exec 3>&1; '
+            '{ echo out >&3; } 2>/dev/null; echo "rc3=$?"')
+
+    def test_posixly_correct_prefix_exec_shadowed(self):
+        self.assert_identical_behavior(
+            'exec(){ echo fn; }; POSIXLY_CORRECT=1 exec 3>&1; echo out >&3')

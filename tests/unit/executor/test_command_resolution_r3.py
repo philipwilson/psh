@@ -275,3 +275,37 @@ class TestEmptyPathNotFoundMessage:
         p, b = self._both('PATH=: zzznope 2>&1; echo rc=$?')
         assert 'command not found' in p.stdout
         assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
+
+
+@pytest.mark.skipif(BASH is None, reason="bash oracle not available")
+class TestPosixlyPrefixInputModes:
+    """The POSIXLY_CORRECT-prefix persistence face across INPUT MODES
+    (the mode-blind-pin lesson): -c, stdin, and script file."""
+
+    SCRIPT = 'unset X; X=kept POSIXLY_CORRECT=1 :; echo "${X-unset}"'
+
+    def _psh(self, argv, stdin=None):
+        return subprocess.run([sys.executable, '-m', 'psh', *argv],
+                              input=stdin, capture_output=True, text=True)
+
+    def _bash(self, argv, stdin=None):
+        return subprocess.run([BASH, '--norc', '--noprofile', *argv],
+                              input=stdin, capture_output=True, text=True)
+
+    def test_dash_c(self):
+        p, b = self._psh(['-c', self.SCRIPT]), self._bash(['-c', self.SCRIPT])
+        assert p.stdout == b.stdout == 'kept\n'
+        assert p.returncode == b.returncode
+
+    def test_stdin(self):
+        p = self._psh([], stdin=self.SCRIPT + '\n')
+        b = self._bash([], stdin=self.SCRIPT + '\n')
+        assert p.stdout == b.stdout == 'kept\n'
+        assert p.returncode == b.returncode
+
+    def test_script_file(self, tmp_path):
+        f = tmp_path / 'posixly_prefix.sh'
+        f.write_text(self.SCRIPT + '\n')
+        p, b = self._psh([str(f)]), self._bash([str(f)])
+        assert p.stdout == b.stdout == 'kept\n'
+        assert p.returncode == b.returncode

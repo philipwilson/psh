@@ -86,8 +86,16 @@ class TestPosixlyCorrectCoupling(ConformanceTest):
     # --- temporary-env one-shot (cross-release with v0.669) --------------
 
     def test_one_shot_builtin_sees_posix(self):
-        # A POSIXLY_CORRECT=1 prefix on a builtin flips posix for that command
-        # only; the shell reverts afterwards.
+        # A POSIXLY_CORRECT=1 prefix flips posix for the prefixed command.
+        # CONSTRUCTION CAVEAT (R3 bounce): the pipe LHS is a SUBSHELL, so the
+        # persistence half of the semantics never reaches this parent — in
+        # BOTH shells the second `set -o` shows posix off, which masked the
+        # resolve-before-install regression. (`set` is a POSIX special
+        # builtin: outside a subshell the prefix PERSISTS and posix stays
+        # on.) The non-subshell persistence/dispatch matrix lives in
+        # test_command_resolution_conformance_r3.py::
+        # TestPosixlyCorrectPrefixResolution; this row keeps pinning the
+        # subshell-scoped composition itself.
         self.assert_identical_behavior(
             'POSIXLY_CORRECT=1 set -o | grep posix; set -o | grep posix')
 
