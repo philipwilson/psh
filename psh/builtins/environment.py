@@ -607,7 +607,16 @@ class UnsetBuiltin(Builtin):
 
             exit_code = 0
             for var in names:
-                if not nameref_mode and '[' not in var:
+                if nameref_mode:
+                    # bash: `unset -n NAME` unsets the nameref VARIABLE itself
+                    # (not its target), but ONLY when NAME actually holds a
+                    # nameref — on a plain variable, an array, or a missing name
+                    # it is a SILENT NO-OP (probe-verified, bash 5.2: `x=v;
+                    # unset -n x` leaves x set).
+                    cell = shell.state.scope_manager.get_variable_object(var)
+                    if cell is None or not cell.is_nameref:
+                        continue
+                elif '[' not in var:
                     try:
                         var = shell.state.scope_manager.resolve_nameref_name(var)
                     except NamerefCycleError as e:
