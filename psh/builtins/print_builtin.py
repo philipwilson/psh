@@ -27,11 +27,11 @@ Unsupported zsh flags (accepted nowhere; reported as an error): -z, -c, -C,
 -D, -x, -X, -a, -p.
 """
 
-import fnmatch
 import sys
 from typing import TYPE_CHECKING, List, Tuple
 
 from ..core.exceptions import PshError
+from ..expansion.pattern import match_shell_pattern
 from ..utils.escapes import process_echo_escapes
 from ..utils.printf_formatter import format_printf
 from .base import Builtin
@@ -75,7 +75,8 @@ class PrintBuiltin(Builtin):
                 rest = []
             else:
                 pattern = rest[0]
-                rest = [a for a in rest[1:] if fnmatch.fnmatch(a, pattern)]
+                rest = [a for a in rest[1:]
+                        if match_shell_pattern(a, pattern)]
 
         # -o / -O: sort arguments (optionally case-insensitively with -i).
         if opts['sort'] or opts['rsort']:

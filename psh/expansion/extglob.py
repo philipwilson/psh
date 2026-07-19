@@ -11,6 +11,7 @@ Patterns support nesting and pipe-separated alternatives.
 """
 import os
 import re
+import warnings
 from functools import lru_cache
 from typing import List, Optional
 
@@ -404,7 +405,13 @@ def _bracket_to_regex_cached(content: str, ic: bool, _ctype: Optional[str]) -> s
             regex = group
 
     try:
-        re.compile(regex)
+        with warnings.catch_warnings():
+            # A bracket may hold a regex set-operator sequence (``&&``/``||``/
+            # ``~~``/``--``); ``re`` raises a FutureWarning for those. bash
+            # matches them as literal members, so validate silently — the old
+            # stdlib ``fnmatch`` pathname path escaped them and never warned.
+            warnings.simplefilter('ignore')
+            re.compile(regex)
     except re.error:
         # bash (verified 5.2): an invalid set matches nothing; a NEGATED
         # invalid set matches any one character.
@@ -419,9 +426,15 @@ def _bracket_match(cls: str, ch: str, ic: bool) -> bool:
     becomes its bash-verified match-nothing / match-any substitute), so no
     ``re.error`` guard is needed here. ``ic`` is threaded through so
     ``[:upper:]`` / ``[:lower:]`` stay case-sensitive under ``nocasematch``.
+
+    A set-operator sequence (``&&``/``||``/``~~``) inside the class raises a
+    ``re`` FutureWarning; bash matches such characters literally, so the match
+    is done silently (the old ``fnmatch`` pathname path never warned).
     """
-    return re.match(_bracket_to_regex(cls, ic), ch,
-                    re.IGNORECASE if ic else 0) is not None
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        return re.match(_bracket_to_regex(cls, ic), ch,
+                        re.IGNORECASE if ic else 0) is not None
 
 
 def _eq(a: str, b: str, ic: bool) -> bool:

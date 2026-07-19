@@ -1,15 +1,17 @@
-"""Convergence pin for the single glob→regex converter (appraisal #18 elegance).
+"""Convergence pin for pathname per-component matching through the ONE engine.
 
 Pathname expansion's per-component matching (the nocaseglob / extglob /
-globstar walkers) now routes through the SAME converter used by ``case`` /
-``[[ == ]]`` / parameter expansion (``extglob.glob_to_regex_body``), via the
-pathname adapter ``glob._compile_component`` — replacing the old stdlib
-``fnmatch.translate`` + ``normalize_bracket_expressions`` path.
+globstar walkers) routes through the SAME compiled pattern engine used by
+``case`` / ``[[ == ]]`` / parameter expansion (``pattern_engine`` via the
+pathname adapter ``glob._component_matcher``; campaign W3) — replacing the old
+regex/``fnmatch`` per-name path.
 
-These tests pin that the adapter reproduces, byte-for-byte, what the previous
-``fnmatch``-based path matched (so the reroute is a zero-behavior-change
-refactor), and exercise the tricky bracket / class / negation / escape cases
-directly.
+These tests pin that the engine adapter reproduces, byte-for-byte, what the
+previous ``fnmatch``-based path matched for the CASE-SENSITIVE profile and for
+the case-INSENSITIVE profile on every pattern EXCEPT those holding
+``[[:upper:]]`` / ``[[:lower:]]`` — where the engine correctly keeps those two
+classes case-sensitive under ``nocaseglob`` (bash), a bug the old
+``re.IGNORECASE`` path had (pinned separately below).
 """
 
 import fnmatch
@@ -18,18 +20,17 @@ import warnings
 
 import pytest
 
-from psh.expansion.glob import _compile_component, normalize_bracket_expressions
+from psh.expansion.glob import _component_matcher, normalize_bracket_expressions
 
 
 def _fnmatch_reference(comp, ignorecase):
     """The pre-refactor pathname matcher: ``fnmatch.translate`` applied to the
-    ``normalize_bracket_expressions``-adapted component. This is exactly what
-    ``_glob_nocase`` / ``_match_glob_component`` used before the converter was
-    unified, so ``_compile_component`` must agree with it on every input."""
+    ``normalize_bracket_expressions``-adapted component."""
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        return re.compile(fnmatch.translate(normalize_bracket_expressions(comp)),
-                          re.IGNORECASE if ignorecase else 0)
+        rx = re.compile(fnmatch.translate(normalize_bracket_expressions(comp)),
+                        re.IGNORECASE if ignorecase else 0)
+    return lambda s: rx.fullmatch(s) is not None
 
 
 # Single path components (never contain '/'): plain wildcards, bracket sets,
@@ -54,44 +55,67 @@ _STRINGS = [
     'a&b', 'a|b', 'axxb', 'aXbXc',
 ]
 
+#: Patterns whose ignorecase behaviour is DELIBERATELY different from the old
+#: fnmatch path: the engine keeps [[:upper:]]/[[:lower:]] case-sensitive under
+#: nocaseglob (bash), rather than folding them via re.IGNORECASE.
+_ICASE_DIVERGENT = {'[[:upper:]]', '[[:lower:]]'}
+
 
 @pytest.mark.parametrize('ignorecase', [False, True])
 @pytest.mark.parametrize('comp', _PATTERNS)
 def test_component_matches_fnmatch_reference(comp, ignorecase):
-    """_compile_component must match exactly what the old fnmatch path matched."""
+    """The engine per-name matcher matches what the old fnmatch path matched,
+    except for the two case-class patterns under ignorecase (pinned below)."""
+    if ignorecase and comp in _ICASE_DIVERGENT:
+        pytest.skip("engine keeps [[:upper:]]/[[:lower:]] case-sensitive (bug fix)")
     ref = _fnmatch_reference(comp, ignorecase)
-    got = _compile_component(comp, ignorecase=ignorecase)
+    got = _component_matcher(comp, ignorecase=ignorecase)
     for s in _STRINGS:
-        assert (got.fullmatch(s) is not None) == (ref.fullmatch(s) is not None), (
+        assert got(s) == ref(s), (
             f"divergence: pattern={comp!r} string={s!r} ignorecase={ignorecase}")
+
+
+def test_nocaseglob_keeps_posix_case_classes_sensitive():
+    """Under nocaseglob (ignorecase=True) the engine keeps [[:upper:]] /
+    [[:lower:]] case-SENSITIVE — bash: `shopt -s nocaseglob; *[[:upper:]]*`
+    matches only actually-uppercase names. The old re.IGNORECASE regex path
+    wrongly folded them (matched lowercase too)."""
+    up = _component_matcher('[[:upper:]]', ignorecase=True)
+    assert up('A') is True
+    assert up('a') is False       # NOT folded — the fix
+    lo = _component_matcher('[[:lower:]]', ignorecase=True)
+    assert lo('a') is True
+    assert lo('A') is False
+    # A plain literal/range under ignorecase still folds (bash nocaseglob).
+    rng = _component_matcher('[a-c]', ignorecase=True)
+    assert rng('B') is True
 
 
 def test_backslash_is_literal_not_escape():
     """In the pathname adapter a residual backslash is a LITERAL character (as
     stdlib glob/fnmatch treat it), NOT an escape — this preserves the
     deliberate divergence from the case/[[ path (which honors ``\\`` escapes)."""
-    rx = _compile_component(r'a\*b')
-    assert rx.fullmatch('a\\b') is not None      # backslash + '*' matches 'a\\b'
-    assert rx.fullmatch('a*b') is None           # NOT treated as escaped '*'
+    m = _component_matcher(r'a\*b')
+    assert m('a\\b') is True      # backslash + '*' matches 'a\\b'
+    assert m('a*b') is False      # NOT treated as escaped '*'
 
 
 def test_set_operator_bracket_no_warning():
-    """A bracket containing a regex set-operator sequence (&&, ||) must compile
+    """A bracket containing a regex set-operator sequence (&&, ||) must match
     without leaking a FutureWarning to the caller (the old fnmatch path escaped
-    them and never warned)."""
+    them and never warned; the engine's one bracket compiler now suppresses)."""
     with warnings.catch_warnings():
         warnings.simplefilter('error')  # any warning becomes an exception
-        rx = _compile_component('*[a&&b]*')
-    # '&' is matched as a literal set member, exactly as before.
-    assert rx.fullmatch('xax') is not None
-    assert rx.fullmatch('x&x') is not None
-    assert rx.fullmatch('xzx') is None
+        m = _component_matcher('*[a&&b]*')
+        # '&' is matched as a literal set member, exactly as before.
+        assert m('xax') is True
+        assert m('x&x') is True
+        assert m('xzx') is False
 
 
 def test_uncompilable_pattern_matches_nothing():
-    """An adapter that somehow produced an uncompilable regex must degrade to
-    'match nothing' (bash behavior), never raise."""
-    # A well-formed but pathological input still yields a usable matcher.
-    rx = _compile_component('[z-a]')  # reversed range: bash matches nothing
-    assert rx.fullmatch('a') is None
-    assert rx.fullmatch('z') is None
+    """A pathological input (reversed range) degrades to 'match nothing' (bash
+    behavior), never raises."""
+    m = _component_matcher('[z-a]')  # reversed range: bash matches nothing
+    assert m('a') is False
+    assert m('z') is False

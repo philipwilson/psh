@@ -2,8 +2,7 @@
 import glob
 import os
 import re
-import warnings
-from typing import TYPE_CHECKING, Iterator, List, Tuple
+from typing import TYPE_CHECKING, Callable, Iterator, List, Tuple
 
 from ..core.locale_service import LocaleMode, posix_class_ranges
 
@@ -113,50 +112,36 @@ def normalize_bracket_expressions(pattern: str) -> str:
     return pattern
 
 
-def _compile_component(comp: str, ignorecase: bool = False) -> 're.Pattern[str]':
-    """Compile a single pathname COMPONENT glob to a full-match regex using the
-    shell's one glob→regex converter (``extglob.glob_to_regex_body``).
+def _component_matcher(comp: str, ignorecase: bool = False) -> Callable[[str], bool]:
+    """Return a predicate ``entry -> bool`` matching one pathname COMPONENT glob
+    through the shell's ONE compiled pattern engine (``pattern_engine``).
 
-    This is the pathname side of the converter shared with ``case`` /
-    ``[[ == ]]`` / parameter-expansion matching (``psh/expansion/pattern.py``),
-    so bracket/class/escape semantics can no longer drift between "matching a
-    pattern against a filename" and "matching it against a string". Two
-    pathname-specific adjustments make the result reproduce, byte-for-byte, what
-    the previous stdlib ``fnmatch``-based path matched (verified over ~26k
-    pattern/string pairs, case-sensitive and -insensitive):
+    This is the pathname side of the single relation shared with ``case`` /
+    ``[[ == ]]`` / parameter-expansion matching, so bracket/class/escape
+    semantics can no longer drift between "matching a pattern against a
+    filename" and "matching it against a string", and a pathological component
+    (``*a*a…*b``) can no longer backtrack exponentially (#20 H7).
 
-    * ``for_pathname=True`` so ``*``/``?`` become ``[^/]*``/``[^/]`` (a single
-      component never spans ``/``), and ``extglob=False`` because extglob
-      components are handled by the caller before a component reaches here.
+    * ``PATHNAME`` profile → ``*``/``?`` never cross ``/`` (a single component
+      never spans it), and ``extglob=False`` because extglob components are
+      handled by the caller before a component reaches here.
     * Backslashes are doubled first. A residual backslash reaching pathname
       matching (e.g. ``x="a\\*b"; echo $x``) is a LITERAL character — as stdlib
-      ``glob``/``fnmatch`` treat it — whereas the converter reads ``\\x`` as an
-      escape. Doubling (``\\`` -> ``\\\\``) makes the converter emit a literal
-      backslash and keep the following metacharacter live, matching the old
-      path exactly. This deliberately PRESERVES the long-standing divergence
-      from the ``case``/``[[`` path, which honors ``\\`` escapes; converging
-      that is a behavior change, out of scope for this refactor.
-
-    Warnings are silenced while compiling: stdlib ``fnmatch`` escaped the regex
-    set-operator sequences (``&&``/``||``/``~~``) that can occur inside a
-    bracket, so the old pathname path never emitted the ``FutureWarning`` that
-    ``re`` now raises for them. The resulting match set is identical, so
-    silencing keeps stderr byte-identical to the previous behavior.
+      ``glob``/``fnmatch`` treat it — whereas ``compile`` reads ``\\x`` as an
+      escape. Doubling (``\\`` -> ``\\\\``) keeps it a literal backslash with
+      the following metacharacter live. This deliberately PRESERVES the
+      long-standing divergence from the ``case``/``[[`` path, which honors
+      ``\\`` escapes.
+    * ``ignorecase`` (``nocaseglob``) uses the engine's locale-aware bracket
+      membership, which — like ``nocasematch`` — keeps ``[[:upper:]]`` /
+      ``[[:lower:]]`` case-SENSITIVE (bash: ``shopt -s nocaseglob; *[[:upper:]]*``
+      matches only actually-uppercase names). The former regex path folded them
+      via ``re.IGNORECASE``, a bug this fixes.
     """
-    from .extglob import glob_to_regex_body
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            # The conversion is inside the suppression block too: the shared
-            # converter validates each bracket class with its own re.compile
-            # (extglob._bracket_to_regex), which is where the set-operator
-            # FutureWarning is raised.
-            body = glob_to_regex_body(comp.replace('\\', '\\\\'),
-                                      for_pathname=True, extglob=False)
-            return re.compile(body, re.IGNORECASE if ignorecase else 0)
-    except re.error:
-        # bash quietly matches nothing for an uncompilable pattern; never crash.
-        return re.compile('(?!)')
+    from .pattern_engine import PatternCompiler, pathname_profile
+    compiled = PatternCompiler.compile(comp.replace('\\', '\\\\'), extglob=False)
+    profile = pathname_profile(ignorecase)
+    return lambda entry: compiled.full_match(entry, profile)
 
 
 class GlobExpander:
@@ -245,7 +230,6 @@ class GlobExpander:
         the class through the locale service. The default case-sensitive,
         classless path stays on ``glob.glob``.
         """
-        flags = re.IGNORECASE if ignorecase else 0
         sep = os.sep
         if pattern.startswith(sep):
             current = [sep]
@@ -258,10 +242,9 @@ class GlobExpander:
             if comp == '':
                 continue
             has_magic = has_glob_metacharacters(comp)
-            if has_magic:
-                regex = _compile_component(comp, ignorecase=ignorecase)
-            else:
-                regex = re.compile(re.escape(comp) + r'\Z', flags)
+            # One matcher for magic AND literal components: a literal comp
+            # compiles to an all-Literal pattern (exact match, ic-folded).
+            matches = _component_matcher(comp, ignorecase=ignorecase)
 
             nxt = []
             for base in current:
@@ -274,7 +257,7 @@ class GlobExpander:
                     if (has_magic and not dotglob
                             and entry.startswith('.') and not comp.startswith('.')):
                         continue
-                    if regex.fullmatch(entry):
+                    if matches(entry):
                         nxt.append(os.path.join(base, entry) if base else entry)
             current = nxt
 
@@ -491,12 +474,13 @@ class GlobExpander:
                     result.append(os.path.join(base, name) if base else name)
             return result
 
-        if has_glob_metacharacters(comp):
-            regex = _compile_component(comp)
-            is_pattern = True
+        is_pattern = has_glob_metacharacters(comp)
+        if is_pattern:
+            matches = _component_matcher(comp)  # case-sensitive pathname match
         else:
-            regex = None  # literal component: exact-name match (existence check)
-            is_pattern = False
+            # Literal component: exact-name match (existence check).
+            def matches(entry: str, _c: str = comp) -> bool:
+                return entry == _c
 
         for base in bases:
             listing_dir = base if base else '.'
@@ -508,7 +492,6 @@ class GlobExpander:
                 if (is_pattern and not dotglob
                         and entry.startswith('.') and not comp.startswith('.')):
                     continue
-                if (entry == comp if regex is None
-                        else regex.fullmatch(entry) is not None):
+                if matches(entry):
                     result.append(os.path.join(base, entry) if base else entry)
         return result

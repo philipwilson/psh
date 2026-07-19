@@ -1,8 +1,8 @@
 """Help builtin command."""
 
-import fnmatch
 from typing import TYPE_CHECKING, List
 
+from ..expansion.pattern import match_shell_pattern
 from ..version import __version__
 from .base import Builtin
 from .registry import builtin
@@ -47,7 +47,7 @@ class HelpBuiltin(Builtin):
             matched_builtins = []
             for builtin_obj in all_builtins:
                 for pattern in patterns:
-                    if fnmatch.fnmatch(builtin_obj.name, pattern):
+                    if match_shell_pattern(builtin_obj.name, pattern):
                         matched_builtins.append(builtin_obj)
                         break
 
