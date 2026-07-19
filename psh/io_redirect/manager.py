@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING, List, NoReturn, Optional, TextIO, Tuple, cast
 from ..ast_nodes import Command, Redirect
 from .file_redirect import FileRedirector
 from .process_sub import ProcessSubstitutionHandler
-from .redirect_program import RedirectOp, RedirectOpKind
+from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -746,7 +746,24 @@ class IOManager:
 
         Dups of fds >= 3 (``3>&1``) have no stream counterpart and are purely
         fd level.
+
+        ``n>&n`` (post-resolution) is bash's success NO-OP — nothing is
+        validated, duplicated, or saved (``redirect_program.is_self_dup``).
+        One stream-universe consequence remains: when the self-dup'd fd is
+        1/2 and CLOSED (``exec 1>&-; echo hi 1>&1``), the redirect succeeds
+        but the builtin's own WRITE must fail with bash's ``write error: Bad
+        file descriptor`` — so the closed-stream sentinel is installed, the
+        exact treatment a bare ``1>&-`` close gives the stream half.
         """
+        if is_self_dup(redirect):
+            if (redirect.fd in (1, 2)
+                    and not self.file_redirector.dup_fd_valid(redirect.fd)):
+                if redirect.fd == 1:
+                    frame.snapshot.note_stdout()
+                else:
+                    frame.snapshot.note_stderr()
+                self.swap_output_stream_closed(redirect.fd)
+            return
         if redirect.fd in (1, 2) and redirect.dup_fd is not None:
             # Validates dup_fd and dup2's m onto fd n (independent of a later
             # reassignment of m); fd n's target is now a snapshot of m's.
@@ -850,11 +867,6 @@ class IOManager:
             # state rather than leak fds/streams.
             self._builtin_frame_stack.remove(frame)
 
-        # Restore any file descriptors this frame saved (fd >= 3 etc.)
-        if frame.saved_fds:
-            self.file_redirector.restore_redirections(frame.saved_fds)
-            frame.saved_fds = []
-
         # Restore the original stream objects first, then close exactly the
         # files setup opened. Never close whatever happens to be in
         # sys.stdout/sys.stderr: after `cmd 2>&1`, sys.stderr IS the shell's
@@ -868,12 +880,26 @@ class IOManager:
         if snapshot.stdin is not None:
             sys.stdin = snapshot.stdin
 
+        # Close this frame's opened streams BEFORE re-installing the saved
+        # fds (each stream owns its own fd — an opened file or a CLOEXEC dup —
+        # so its close flushes through that fd regardless of the std fds).
+        # Order is load-bearing (R1 bounce blocker): when a source-ordered
+        # close freed an fd NUMBER that a later stream dup then reused (`read
+        # x 3>&- <f` — the stdin dup lands on the freed fd 3), restoring
+        # saved fds first would dup2 the original BACK onto that number and
+        # the stream close here would then destroy the just-restored
+        # descriptor. Closing our own dups first makes the collision inert.
         for f in frame.opened_streams:
             try:
                 f.close()
             except OSError:
                 pass
         frame.opened_streams = []
+
+        # Now restore the file descriptors this frame saved (fd >= 3 etc.)
+        if frame.saved_fds:
+            self.file_redirector.restore_redirections(frame.saved_fds)
+            frame.saved_fds = []
 
         # Restore fd 0. note_stdin backed it up to a HIGH slot, or recorded
         # None when fd 0 was already closed (`exec 0<&-`). Mirror _save_fd_high

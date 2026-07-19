@@ -74,9 +74,24 @@ class RedirectOp:
     redirect: 'Redirect'
     plan: Optional['RedirectPlan'] = None
 
-    @property
-    def is_var_fd(self) -> bool:
-        return self.kind is RedirectOpKind.VAR_FD
+
+def is_self_dup(redirect: 'Redirect') -> bool:
+    """bash's ``n>&n`` rule: a dup whose source and target fd coincide is an
+    unconditional SUCCESS NO-OP — no validation, no syscall, no fd change —
+    even when fd n is closed or was never opened (probe-verified vs bash 5.2:
+    every universe, both directions, the move spelling ``n>&n-``, and a
+    DYNAMICALLY resolved source ``n>&$x`` with x == n).
+
+    POST-RESOLUTION predicate: a dynamic dup carries ``dup_fd=None`` until
+    ``resolve_dynamic_dup`` runs, so callers apply this to the plan's resolved
+    redirect, never the raw AST node.  The one place the rule is written; every
+    dup path (validation, fd apply, save planning, builtin stream half, exec
+    stream rebind) consults it.
+    """
+    return (redirect.type in ('>&', '<&') and not redirect.combined
+            and redirect.fd is not None
+            and redirect.dup_fd is not None
+            and redirect.dup_fd == redirect.fd)
 
 
 @dataclass

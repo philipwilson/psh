@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO, Tuple, cast
 from ..ast_nodes import ExpansionPart, ProcessSubstitution, Redirect
 from ..core.process_lease import ComponentKind, get_coordinator
 from .planner import RedirectPlan, RedirectPlanner
-from .redirect_program import RedirectOp, RedirectOpKind
+from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -495,11 +495,33 @@ class FileRedirector:
             os.close(opened)
         self.shell.state.set_variable(name, str(newfd))
 
+    @staticmethod
+    def _bad_dup_source_error(redirect: Redirect) -> OSError:
+        """The one ``Bad file descriptor`` shape for an invalid dup SOURCE.
+
+        bash names the SOURCE fd for the static spelling (``4>&9`` ->
+        ``9: Bad file descriptor``) but the TARGET fd for the dynamic spelling
+        (``4>&$x`` with x=9 -> ``4: Bad file descriptor``) — probe-verified,
+        both directions.  A dynamically resolved redirect is recognizable
+        post-resolution: ``resolve_dynamic_dup`` fills ``dup_fd`` on a COPY
+        that keeps the expandable ``target`` text, while a static dup parses
+        with ``target=None``.
+        """
+        was_dynamic = redirect.target not in (None, '', '-')
+        name = redirect.fd if was_dynamic else redirect.dup_fd
+        return OSError(f"{name}: Bad file descriptor")
+
     def _redirect_dup_fd(self, redirect):
-        """Handle >&/<& fd duplication (and the move form). Validates source fd."""
+        """Handle >&/<& fd duplication (and the move form). Validates source fd.
+
+        ``n>&n`` (post-resolution) is bash's success no-op — see
+        ``redirect_program.is_self_dup``; nothing is validated or changed.
+        """
+        if is_self_dup(redirect):
+            return
         if redirect.fd is not None and redirect.dup_fd is not None:
             if not self.dup_fd_valid(redirect.dup_fd):
-                raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
+                raise self._bad_dup_source_error(redirect)
             os.dup2(redirect.dup_fd, redirect.fd)
             # Move form `[n]>&m-`: close the source m after duplicating it onto
             # n. bash keeps the fd open when source and destination coincide.
@@ -579,10 +601,14 @@ class FileRedirector:
             return None
 
     def _validate_dup_source(self, redirect: Redirect) -> None:
-        """Validate the source fd for >&/<& before saving target fds."""
+        """Validate the source fd for >&/<& before saving target fds.
+
+        ``n>&n`` skips validation entirely (bash's success no-op)."""
+        if is_self_dup(redirect):
+            return
         if (redirect.fd is not None and redirect.dup_fd is not None
                 and not self.dup_fd_valid(redirect.dup_fd)):
-            raise OSError(f"{redirect.dup_fd}: Bad file descriptor")
+            raise self._bad_dup_source_error(redirect)
 
     def saved_fds_for_plan(self, plan: RedirectPlan) -> List[Tuple[int, int | None]]:
         """Return fd backups needed before applying a temporary plan.
@@ -601,6 +627,9 @@ class FileRedirector:
                              '>|', '>', '>>'):
             return [(plan.target_fd, self._save_fd_high(plan.target_fd))]
         if redirect.type in ('>&', '<&'):
+            if is_self_dup(redirect):
+                return []  # bash's n>&n success no-op: nothing changes,
+                #            so nothing is saved or restored.
             self._validate_dup_source(redirect)
             saves: List[Tuple[int, int | None]] = []
             if (redirect.fd is not None
@@ -735,10 +764,20 @@ class FileRedirector:
           mid-builtin child advance the same offset (a second open would
           restart at 0).
 
+        The dup is ``F_DUPFD_CLOEXEC`` with a floor of 3, never a bare
+        ``os.dup``: a bare dup takes the LOWEST free slot, and after a
+        source-ordered ``1>&-``/``2>&-`` in the same command that slot is a
+        std fd — the internal stream would occupy the very descriptor the
+        user closed (a child would see it open, and the frame restore would
+        later close the restored descriptor out from under the shell — the
+        R1 bounce blocker).  CLOEXEC matches ``os.dup``'s PEP-446
+        non-inheritability, so exec'd children never see the internal dup.
+
         surrogateescape keeps non-UTF-8 shell bytes transparent, matching the
         sys.std* byte policy set at psh's entry point.
         """
-        return cast(TextIO, os.fdopen(os.dup(fd), mode, buffering=buffering,
+        dup = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC, 3)
+        return cast(TextIO, os.fdopen(dup, mode, buffering=buffering,
                                       errors='surrogateescape'))
 
     def _rebind_output_stream(self, target_fd: int):
@@ -970,7 +1009,10 @@ class FileRedirector:
                     self._rebind_output_stream(1)
                     self._rebind_output_stream(2)
                 elif op.kind in (RedirectOpKind.DUP_FD, RedirectOpKind.CLOSE_FD):
-                    if redirect.fd is not None and redirect.dup_fd is not None:
+                    if is_self_dup(redirect):
+                        pass  # bash's n>&n success no-op: streams untouched
+                        #       (`exec 1>&1` after `exec 1>&-` stays closed).
+                    elif redirect.fd is not None and redirect.dup_fd is not None:
                         self._rebind_output_stream(redirect.fd)
                     else:
                         self._rebind_closed_output_stream(redirect, closed_dups)
