@@ -27,6 +27,7 @@ Manager            (arrays)    State    Manager
 | `command_hash.py` | `CommandHashTable` - remembered command locations (`hash` builtin; cleared via `ScopeManager.path_changed` on any PATH write) |
 | `scope.py` | `ScopeManager`, `VariableScope` - the scope stack (flat list, `scope_stack[0]` global) |
 | `variable_store.py` | `VariableStore` (`scope_manager.store`) - the single variable-WRITE transaction boundary (readonly/nameref/observer guards); see "Variable-mutation model" below |
+| `variable_lookup.py` | `LookupStatus` (MISSING/PRESENT_UNSET/VALUE) + `VariableLookup` - the typed tri-state result of `ScopeManager.lookup()`, the single variable-READ authority (appraisal #20 H13; see "Scope Stack" below) |
 | `getopts_state.py` | `GetoptsState` - typed `getopts` scan state (OPTIND tracking, restart detection) |
 | `special_registry.py` | `SPECIAL_REGISTRY` + `SpecialParameterState` - the single declarative table + typed lifecycle state for computed specials (RANDOM/SECONDS/LINENO/...); see "Computed Special Parameters" below |
 | `environment.py` | `is_environ_shell_name` - the one rule deciding which inherited env entries become shell variables vs stay opaque (appraisal H3) |
@@ -100,8 +101,18 @@ parent pointer; lookups walk the stack from the top down. Each scope holds
 - `push_scope(name)` appends `VariableScope(name=name)` and returns it
   (`VariableScope.__init__` takes only `name` — there is no `parent`).
 - `pop_scope()` removes the top scope on function exit (never the global).
-- `get_variable(name, default)` returns the value as a string following the
-  nameref chain; `get_variable_object(name)` returns the full `Variable`
+- `lookup(name)` (`scope.py#ScopeManager.lookup`, `variable_lookup.py`) is THE
+  tri-state read authority: it returns a `VariableLookup(MISSING |
+  PRESENT_UNSET | VALUE, binding)`, following namerefs. A declared-unset local
+  (tombstone / bare `local x` / declared-but-unset export) stops the lookup at
+  PRESENT_UNSET — it never falls through to an outer instance or the
+  environment (appraisal #20 H13). `get_variable(name, default)` is its string
+  projection (VALUE → its value, else `default`), and `ShellState.get_variable`
+  delegates with **no env fallback** (inherited env is imported as exported
+  shell variables at startup; a fallback would resurrect an outer exported
+  value under a `local` shadow). The parameter operators' set-ness
+  (`operators.py#_param_is_set`) asks `lookup(name).is_set`.
+- `get_variable_object(name)` returns the full `Variable`
   through the scope stack WITHOUT nameref deref (`UNSET` tombstones make the
   lookup return None).
 
@@ -284,14 +295,18 @@ state.scope_manager.pop_scope()  # local_var no longer visible
 A nameref `Variable` stores its target *name* as its value. Two resolution
 paths in `scope.py`:
 
-- **Reads**: `_lookup_resolved()` follows the nameref chain to the final
-  non-nameref `Variable`. A cyclic chain prints bash's
-  "warning: NAME: circular name reference" (via `warn_nameref_cycle()`)
+- **Reads**: `lookup(name)` (the tri-state read authority — see below) follows
+  the nameref chain to the final non-nameref `Variable`. A cyclic chain prints
+  bash's "warning: NAME: circular name reference" (via `warn_nameref_cycle()`)
   and reads as unset.
 - **Writes/unsets**: `resolve_nameref_name(name)` returns the final target
   *name*. A nameref with an empty target resolves to its own name (so
   `declare -n r; r=x` sets r's target rather than writing through). A
   cycle raises `NamerefCycleError` (rejecting the write, like bash).
+- **Attribute changes** (`apply_attribute`/`remove_attribute`) also
+  `resolve_nameref_name` to the target — `declare -n r=x; declare -i r` makes
+  x integer, `readonly r`/`export r` mark x — EXCEPT the nameref attribute
+  itself (`declare -n`/`declare +n`), which lands on the reference cell.
 
 Tests: `tests/unit/core/test_nameref.py`.
 
@@ -420,7 +435,14 @@ set, and a persistent-attribute OVERLAY. Two categories:
   RANDOM` / `export SECONDS` PERSIST on the overlay (enforced on later
   assignment, materialised into `state.env` as a snapshot through
   `find_exported_instance`, and shown by `declare -p NAME`), and `unset`
-  DEACTIVATES the name (it becomes an ordinary variable, bash).
+  DEACTIVATES the name (it becomes an ordinary variable, bash). Every one of
+  those interception points (plus the two read paths and `find_exported_instance`)
+  consults `_local_shadows_special(name)`: a `local RANDOM` makes RANDOM an
+  ordinary variable in that scope and any nested call (dynamic scoping),
+  suspending the dynamic behaviour until the scope exits, while a global
+  `RANDOM=5` still SEEDS. The uniformity is drift-locked by
+  `tests/unit/tooling/test_variable_truth_guard.py` (every `has_lifecycle`
+  gate must consult the mask).
 - **Shell-view specials** (`lifecycle=False`): computed read that SHADOWS any
   stored variable; assignment/readonly/unset all take the ordinary path
   (already bash-correct, so no interception).
