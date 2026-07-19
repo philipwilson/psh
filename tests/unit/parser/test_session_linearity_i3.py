@@ -113,7 +113,7 @@ def test_open_construct_residual_is_quadratic_by_design():
     defect:
 
     * bash reports a mid-construct syntax error IMMEDIATELY (PTY-proven — see
-      ``tests/conformance/bash/test_multiline_immediate_error_i3_conformance``:
+      ``tests/system/interactive/test_multiline_immediate_error_i3.py``:
       `if true; then echo )` errors on the offending line, not deferred to
       `fi`), so the completeness trial CANNOT be deferred to structural close —
       it must run on every feed to stay faithful;

@@ -41,12 +41,6 @@ _PART_UNCLOSED = {
 }
 
 # The token types whose value/parts may carry an open expansion. A hoisted
-# frozenset so the membership gate is a set lookup, not a rebuilt list literal.
-EXPANSION_BEARING_TOKENS = frozenset({
-    'WORD', 'COMMAND_SUB', 'COMMAND_SUB_BACKTICK',
-    'ARITH_EXPANSION', 'VARIABLE',
-    'PROCESS_SUB_IN', 'PROCESS_SUB_OUT',
-})
 
 
 @dataclass(frozen=True)

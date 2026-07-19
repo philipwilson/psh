@@ -1,7 +1,7 @@
 """The one heredoc-aware lex→alias→parse pipeline for the scripting layer.
 
 Three script-entry callers must turn buffered text into an AST the same way:
-the completeness-trial parser (``command_accumulator._trial_parse``), the
+the completeness-trial parser (``parser/session.py#ParseSession._trial_parse``), the
 execution parser (``source_processor._parse_command``), and the analysis
 parser (``visitor_modes._parse_for_analysis``). Historically each wrote the
 sequence out by hand and the analysis copy had DRIFTED — it ignored

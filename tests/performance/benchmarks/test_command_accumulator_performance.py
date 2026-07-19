@@ -1,6 +1,6 @@
 """Timing sanity check for CommandAccumulator.feed (P7 item 1).
 
-`CommandAccumulator.feed` re-parses the WHOLE buffer on every fed line
+`CommandAccumulator.feed` re-parses the WHOLE buffer (cost model now documented on ParseSession.feed) on every fed line
 (correctness first — see its docstring), so gathering a logical command of
 N physical lines is O(N^2) in the parser. That is an accepted, documented
 bound; this guard is NOT a tight benchmark. It exists to catch a *future*

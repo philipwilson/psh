@@ -336,7 +336,7 @@ class SourceProcessor(ScriptComponent):
             # Echo the command to stderr before execution. ``command_string``
             # may carry ONE trailing newline that the accumulator kept as a
             # line-continuation "reprieve" for preprocessing (see
-            # _strip_trailing_separators): a buffer like ``echo a\<newline>``
+            # parser/session.py#_strip_trailing_separators): a buffer like ``echo a\<newline>``
             # whose backslash-newline pair runs into EOF. print() supplies the
             # line's own trailing newline, so echoing the reprieve too would add
             # a spurious blank line — bash echoes the raw line just once.
@@ -457,7 +457,7 @@ class SourceProcessor(ScriptComponent):
 
         # Alias expansion is a token-stream transform applied at the
         # lex->parse seam (see the expand_aliases calls below and in
-        # command_accumulator._trial_parse), not a runtime strategy.
+        # parser/session.py#ParseSession._trial_parse), not a runtime strategy.
         return command_string
 
     def _parse_command(self, complete: Complete, command_string: str,
