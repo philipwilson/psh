@@ -24,11 +24,19 @@ The ``binding`` half exposes the resolved ``Variable`` cell so consumers that
 need attributes / scope identity (``${x@a}``, ``declare -p``) can read them
 WITHOUT a second lookup. It is a READ view: lookups never mutate; every write
 goes through the mutation engine (`variable_store.py` / `scope.py`).
+
+``VariableLookup`` is a plain ``__slots__`` class rather than a frozen
+dataclass: ``lookup()`` sits on the shell's hottest read path and freezing
+roughly triples construction cost (``object.__setattr__`` per field — the same
+measurement that drove W1's non-frozen ``FieldRun`` ruling). The discipline is
+ALLOCATE-FRESH-NEVER-MUTATE: every instance is built by one of the three
+factories below and never written after construction. ``__slots__`` keeps
+instances closed (no ``__dict__`` to grow ad-hoc state on), guarded by the
+slots test in ``tests/unit/core/test_variable_lookup.py``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Optional
 
@@ -44,18 +52,34 @@ class LookupStatus(Enum):
     VALUE = auto()
 
 
-@dataclass(frozen=True)
 class VariableLookup:
     """The typed result of ``ScopeManager.lookup(name)``.
 
     ``value`` is the string value when (and only when) ``status is VALUE``.
     ``binding`` is the resolved ``Variable`` cell for VALUE and PRESENT_UNSET
     reads (read-only view), or ``None`` for MISSING.
+
+    Instances are allocate-fresh-never-mutate (module docstring); build them
+    only through :meth:`missing` / :meth:`present_unset` / :meth:`of_value`.
     """
 
-    status: LookupStatus
-    value: Optional[str] = None
-    binding: "Optional[Variable]" = None
+    __slots__ = ("status", "value", "binding")
+
+    def __init__(self, status: LookupStatus, value: Optional[str] = None,
+                 binding: "Optional[Variable]" = None):
+        self.status = status
+        self.value = value
+        self.binding = binding
+
+    def __repr__(self) -> str:
+        return (f"VariableLookup({self.status.name}, value={self.value!r}, "
+                f"binding={self.binding!r})")
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, VariableLookup):
+            return NotImplemented
+        return (self.status is other.status and self.value == other.value
+                and self.binding == other.binding)
 
     @property
     def is_set(self) -> bool:

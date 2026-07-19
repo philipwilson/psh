@@ -9,7 +9,7 @@ from .special_registry import (
     SpecialContext,
     SpecialParameterState,
 )
-from .variable_lookup import LookupStatus, VariableLookup
+from .variable_lookup import VariableLookup
 from .variable_store import VariableStore
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
@@ -313,49 +313,70 @@ class ScopeManager:
     def get_variable(self, name: str, default: Optional[str] = None) -> Optional[str]:
         """Get variable value as string, following namerefs, or default.
 
-        A thin projection of :meth:`lookup` (THE read authority): a name that is
-        MISSING or PRESENT_UNSET returns ``default``; only a VALUE yields its
-        string. There is no environment fallback — a declared-unset local never
-        resurrects an outer exported value (appraisal #20 H13).
+        The string projection of the tri-state read (see :meth:`lookup`, THE
+        set-ness authority): a name that is MISSING or PRESENT_UNSET returns
+        ``default``; only a VALUE yields its string. Both projections share the
+        ONE resolver walk (:meth:`_resolve_read`); this one skips building a
+        ``VariableLookup`` because the string path — the shell's hottest read —
+        does not care WHY a name is unset. There is no environment fallback — a
+        declared-unset local never resurrects an outer exported value
+        (appraisal #20 H13).
         """
-        result = self.lookup(name)
-        return result.value if result.status is LookupStatus.VALUE else default
+        var, _ = self._resolve_read(name)
+        return var.as_string() if var is not None else default
+
+    def _resolve_read(self, name: str) -> Tuple[Optional[Variable], str]:
+        """The ONE read-resolution walk shared by :meth:`get_variable` and
+        :meth:`lookup`: follow a nameref chain (read semantics) to its final
+        cell. Returns ``(cell, final_name)`` — ``cell`` is None for a missing /
+        declared-unset final name (``lookup`` classifies which, using
+        ``final_name``). A cyclic chain warns and reads as unset (bash: the
+        expansion is empty, status unchanged). The cycle set is allocated
+        lazily — a plain (non-nameref) read never pays for it."""
+        seen: Optional[set] = None
+        current = name
+        while True:
+            var = self.get_variable_object(current)
+            if var is None:
+                return None, current
+            if not var.is_nameref:
+                return var, current
+            target = str(var.value) if var.value else ''
+            if not target:
+                # Empty-target nameref reads as its own (empty) value.
+                return var, current
+            if seen is None:
+                seen = set()
+            elif target in seen:
+                self.warn_nameref_cycle(name)
+                return None, current
+            seen.add(target)
+            current = target
 
     def lookup(self, name: str) -> VariableLookup:
         """THE tri-state variable-read authority.
 
-        Follows a nameref chain (read semantics) to its final target, then
-        classifies that target as MISSING / PRESENT_UNSET / VALUE. A
-        declared-unset local (tombstone, bare ``local x``, or declared-but-unset
-        export) stops the lookup at PRESENT_UNSET — it never falls through to an
-        outer instance or the environment (appraisal #20 H13). A cyclic nameref
-        warns and reads as MISSING (bash: expansion empty, status unchanged).
+        Follows a nameref chain (read semantics, via :meth:`_resolve_read`) to
+        its final target, then classifies it as MISSING / PRESENT_UNSET /
+        VALUE. A declared-unset local (tombstone, bare ``local x``, or
+        declared-but-unset export) stops the lookup at PRESENT_UNSET — it never
+        falls through to an outer instance or the environment (appraisal #20
+        H13). A cyclic nameref warns and reads as MISSING (bash: expansion
+        empty, status unchanged).
 
         Consumers ask ``result.is_set`` (VALUE only — ``${x+w}`` / ``${x-w}``
         set-ness), ``result.value`` (the string when set), and ``result.binding``
         (the resolved cell, read-only). See ``variable_lookup.py``.
         """
-        seen: set = set()
-        current = name
-        while True:
-            var = self.get_variable_object(current)
-            if var is None:
-                break
-            if not var.is_nameref:
-                return VariableLookup.of_value(var.as_string(), var)
-            target = str(var.value) if var.value else ''
-            if not target:
-                # Empty-target nameref reads as its own (empty) value.
-                return VariableLookup.of_value(var.as_string(), var)
-            if target in seen:
-                self.warn_nameref_cycle(name)
-                return VariableLookup.missing()
-            seen.add(target)
-            current = target
-        # get_variable_object returned None: distinguish a genuinely MISSING name
+        var, final_name = self._resolve_read(name)
+        if var is not None:
+            return VariableLookup.of_value(var.as_string(), var)
+        # The walk found no readable cell: distinguish a genuinely MISSING name
         # from a declared-unset cell (tombstone / declared-but-unset) that shows
-        # through get_declared_variable_object but reads as unset.
-        declared = self.get_declared_variable_object(current)
+        # through get_declared_variable_object but reads as unset. Classified at
+        # the FINAL name, so a nameref to a declared-unset target reports the
+        # target's declared state.
+        declared = self.get_declared_variable_object(final_name)
         if declared is not None and declared.is_unset:
             return VariableLookup.present_unset(declared)
         return VariableLookup.missing()
@@ -410,8 +431,11 @@ class ScopeManager:
         # Check for special variables first — UNLESS a local shadows a dynamic
         # special (``local RANDOM``), in which case the stored local wins (bash).
         # The shadow test precedes _get_special_variable so a masked read never
-        # advances RANDOM's generator as a side effect.
-        if not self._local_shadows_special(name):
+        # advances RANDOM's generator as a side effect. The is_computed gate is
+        # the ONE fast-path membership test an ordinary name pays here (this is
+        # the shell's hottest read); the mask consult runs only for computed
+        # names.
+        if self._special.is_computed(name) and not self._local_shadows_special(name):
             special_var = self._get_special_variable(name)
             if special_var is not None:
                 return special_var

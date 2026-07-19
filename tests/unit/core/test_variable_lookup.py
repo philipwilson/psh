@@ -130,14 +130,22 @@ class TestGetVariableProjection:
 
 
 class TestVariableLookupType:
-    def test_frozen(self):
+    def test_slots_closed_no_dict(self):
+        """VariableLookup is a plain __slots__ class (allocate-fresh-never-
+        mutate; W1's non-frozen FieldRun precedent — freezing roughly triples
+        construction cost on the shell's hottest read path). __slots__ keeps
+        instances CLOSED: no __dict__ to grow ad-hoc state on."""
         r = VariableLookup.of_value('v')
+        assert not hasattr(r, '__dict__')
         try:
-            r.value = 'other'  # type: ignore[misc]
-        except Exception as e:
-            assert e.__class__.__name__ in ('FrozenInstanceError', 'AttributeError')
+            r.extra = 1  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
         else:
-            raise AssertionError("VariableLookup must be frozen")
+            raise AssertionError("VariableLookup must not accept new attributes")
+
+    def test_missing_is_shared_singleton(self):
+        assert VariableLookup.missing() is VariableLookup.missing()
 
     def test_factory_helpers(self):
         assert VariableLookup.missing().status is LookupStatus.MISSING

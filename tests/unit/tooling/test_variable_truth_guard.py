@@ -73,11 +73,19 @@ def test_param_is_set_uses_the_tri_state_authority():
 
 # --- Invariant 3: every dynamic-special interception is masking-aware --------
 
-# The two predicate methods ARE the masking machinery, not interception sites:
-# is_dynamic_special exposes has_lifecycle as the public predicate, and
-# _local_shadows_special guards on it. has_lifecycle(name) inside their bodies is
-# exempt from the "must consult the mask" rule.
-_EXEMPT_METHODS = ('def is_dynamic_special', 'def _local_shadows_special')
+# Machinery methods are exempt from the "must consult the mask" rule:
+# is_dynamic_special exposes has_lifecycle as the public predicate;
+# _local_shadows_special guards on it; _get_special_variable is the compute
+# engine (its CALLERS mask — it is reached only through masked gates);
+# resolve_nameref_name uses is_computed for a side-effect-free NAME inspection
+# only (a shadowing plain local is never a nameref, so its resolve-to-self
+# answer is identical masked or unmasked).
+_EXEMPT_METHODS = ('def is_dynamic_special', 'def _local_shadows_special',
+                   'def _get_special_variable', 'def resolve_nameref_name')
+
+# Both spellings gate a special interception: the lifecycle-only sites use
+# has_lifecycle(name); the read path uses the wider is_computed(name).
+_GATE_TOKENS = ('has_lifecycle(name)', 'is_computed(name)')
 
 
 def _exempt_line_ranges(lines):
@@ -102,7 +110,7 @@ def _unmasked_interceptions(text: str):
         any(sig in ln for ln in lines) for sig in _EXEMPT_METHODS) else []
     offenders = []
     for i, line in enumerate(lines):
-        if 'has_lifecycle(name)' not in line:
+        if not any(tok in line for tok in _GATE_TOKENS):
             continue
         if any(lo <= i < hi for lo, hi in exempt):
             continue
@@ -130,9 +138,19 @@ def test_masking_guard_detects_offender():
         "        if self._special.has_lifecycle(name):\n"
         "            self._special.assign(name, value)\n"
     )
+    bad_read = (
+        "        if self._special.is_computed(name):\n"
+        "            return self._get_special_variable(name)\n"
+    )
     good = (
         "        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):\n"
         "            self._special.assign(name, value)\n"
     )
+    good_read = (
+        "        if self._special.is_computed(name) and not self._local_shadows_special(name):\n"
+        "            return self._get_special_variable(name)\n"
+    )
     assert _unmasked_interceptions(bad), "scanner must catch the unmasked gate"
+    assert _unmasked_interceptions(bad_read), "scanner must catch an unmasked is_computed read gate"
     assert not _unmasked_interceptions(good), "a masked gate must pass"
+    assert not _unmasked_interceptions(good_read), "a masked read gate must pass"
