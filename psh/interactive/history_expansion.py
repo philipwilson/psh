@@ -10,18 +10,26 @@ sentinels or a regex. The producer is PURE — it never prints and never records
 consumers echo/print/record from the result.
 """
 
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 from ..utils.heredoc_detection import (
+    HEREDOC_MARKER_RE,
     PendingHeredocQueue,
+    _comment_start,
     contains_heredoc,
-    scan_line_heredoc_markers,
+    is_inside_expansion,
+    make_heredoc_spec,
 )
 from .history_result import (
     HistoryExpansionKind,
     HistoryExpansionResult,
     HistoryExpansionSpan,
 )
+
+# A context frame for _context_flags: "'" / '"' for quote spans, or a mutable
+# ['cs', paren_depth] list for a $( … ) command substitution reopened INSIDE
+# double quotes (the one construct the shared _quote_flags is blind to).
+_CtxFrame = Union[str, List]
 
 
 def _shell_single_quote(text: str) -> str:
@@ -33,6 +41,121 @@ def _shell_single_quote(text: str) -> str:
     return "'" + text.replace("'", "'\\''") + "'"
 
 
+def _context_flags(line: str, stack: List[_CtxFrame]):
+    """Per-char suppressed flags for *line* plus the carried context stack.
+
+    A local variant of ``heredoc_detection._quote_flags`` with ONE delta: a
+    ``$(`` opened INSIDE double quotes pushes an effectively-UNQUOTED command-
+    substitution frame (bash re-parses the substitution body as a fresh command
+    context), popping back to the double quote on its balancing ``)`` — so a
+    heredoc opener inside ``"$( … "`` is detected where the shared scanner's
+    flat quote flags see only "quoted". ``$((`` inside quotes stays suppressed
+    (arithmetic — its ``<<`` is a shift). Everything else mirrors the shared
+    conventions: backslash pairs, per-line backtick interiors (flagged but not
+    carried), quote chars flagged True. The shared oracle itself is untouched
+    (S2 fence); this feeds only the history-expansion span scan below.
+
+    *stack* frames: ``"'"``/``'"'`` quote spans (carried across command lines
+    for multi-line strings) and ``['cs', depth]`` command-substitution frames.
+    Returns ``(flags, stack_after)``; the input stack is not mutated.
+    """
+    stack = [f.copy() if isinstance(f, list) else f for f in stack]
+    flags: List[bool] = []
+    backtick = False  # per-line, like the shared _quote_flags
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        top = stack[-1] if stack else None
+        quote = top if isinstance(top, str) else None
+        if c == '\\' and quote != "'" and i + 1 < n:
+            inside = quote is not None or backtick
+            flags.append(inside)
+            flags.append(inside)
+            i += 2
+            continue
+        if backtick:
+            flags.append(True)
+            if c == '`':
+                backtick = False
+            i += 1
+            continue
+        if quote == "'":
+            flags.append(True)
+            if c == "'":
+                stack.pop()
+            i += 1
+            continue
+        if quote == '"':
+            # THE delta: $( (but not $(( arithmetic) reopens command context.
+            if (c == '$' and i + 1 < n and line[i + 1] == '('
+                    and line[i + 2:i + 3] != '('):
+                flags.append(False)
+                flags.append(False)
+                stack.append(['cs', 0])
+                i += 2
+                continue
+            flags.append(True)
+            if c == '"':
+                stack.pop()
+            i += 1
+            continue
+        # Top level or inside a $( … ) frame: effectively unquoted.
+        if c == '`':
+            backtick = True
+            flags.append(True)
+        elif c in ('"', "'"):
+            stack.append(c)
+            flags.append(True)
+        elif (c == '$' and i + 1 < n and line[i + 1] == '('
+                and line[i + 2:i + 3] != '('):
+            flags.append(False)
+            flags.append(False)
+            stack.append(['cs', 0])
+            i += 2
+            continue
+        else:
+            flags.append(False)
+            if isinstance(top, list):
+                if c == '(':
+                    top[1] += 1
+                elif c == ')':
+                    if top[1] == 0:
+                        stack.pop()
+                    else:
+                        top[1] -= 1
+        i += 1
+    return flags, stack
+
+
+def _scan_line_markers_ctx(line: str, stack: List[_CtxFrame],
+                           first_ordinal: int):
+    """The heredocs one command line opens, with dq-cmdsub-aware context.
+
+    Mirrors ``heredoc_detection.scan_line_heredoc_markers`` (comment exclusion,
+    quoted-marker exclusion, ``is_inside_expansion`` for closed cmdsub/arith/
+    param regions) but computes flags with :func:`_context_flags` so a marker
+    inside a ``"$( …`` reopened context is live. Returns ``(specs, stack_after)``.
+    """
+    flags, stack_after = _context_flags(line, stack)
+    comment_at = _comment_start(line, flags)
+    if comment_at < len(line):
+        # Recompute the carried context up to the comment so comment text
+        # (e.g. an apostrophe in `# don't`) is excluded (shared convention).
+        _, stack_after = _context_flags(line[:comment_at], stack)
+    specs = []
+    for match in HEREDOC_MARKER_RE.finditer(line, 0, comment_at):
+        if is_inside_expansion(line, match.start(), flags):
+            continue
+        if match.start() < len(flags) and flags[match.start()]:
+            continue  # quoted "<<WORD" is not a heredoc
+        specs.append(make_heredoc_spec(
+            ordinal=first_ordinal + len(specs),
+            raw=match.group(2),
+            strip_tabs=bool(match.group(1)),
+            span=(match.start(2), match.end(2))))
+    return specs, stack_after
+
+
 def heredoc_body_spans(command: str) -> List[Tuple[int, int]]:
     """The ``[start, end)`` char spans of *command* that are heredoc BODY text.
 
@@ -40,17 +163,20 @@ def heredoc_body_spans(command: str) -> List[Tuple[int, int]]:
     command verbatim). psh joins the whole logical command — opener plus body —
     into one string before expanding, so the flat scanner would otherwise
     expand a ``!!`` sitting in a heredoc body. This walks the command line by
-    line with the SAME machinery the completeness oracle uses
-    (:func:`scan_line_heredoc_markers` + :class:`PendingHeredocQueue`): while a
-    heredoc is open, each line is body/terminator text — never command text —
-    so its char range is marked suppressed. Non-overlapping, source-ordered.
+    line with the completeness oracle's close policy
+    (:class:`PendingHeredocQueue`) and a context-aware opener scan
+    (:func:`_scan_line_markers_ctx` — the shared scanner plus the
+    ``$(``-inside-double-quotes reopen bash performs, which the flat quote
+    flags are blind to): while a heredoc is open, each line is
+    body/terminator text — never command text — so its char range is marked
+    suppressed. Non-overlapping, source-ordered.
     """
     if not contains_heredoc(command):
         return []
     spans: List[Tuple[int, int]] = []
     queue = PendingHeredocQueue()
     ordinal = 0
-    quote_state = None  # quote carried across COMMAND lines (multi-line strings)
+    ctx_stack: List[_CtxFrame] = []  # quote/cmdsub context across command lines
     pos = 0
     for line in command.split('\n'):
         line_start = pos
@@ -61,8 +187,7 @@ def heredoc_body_spans(command: str) -> List[Tuple[int, int]]:
             spans.append((line_start, line_end))
             queue.feed_line(line)
         else:
-            specs, quote_state = scan_line_heredoc_markers(
-                line, quote_state, ordinal)
+            specs, ctx_stack = _scan_line_markers_ctx(line, ctx_stack, ordinal)
             ordinal += len(specs)
             for spec in specs:
                 queue.push(spec)
