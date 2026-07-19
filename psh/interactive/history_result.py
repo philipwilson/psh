@@ -68,6 +68,10 @@ class HistoryExpansionResult:
         return self.kind is HistoryExpansionKind.PRINT_ONLY
 
     @property
+    def is_expanded(self) -> bool:
+        return self.kind is HistoryExpansionKind.EXPANDED
+
+    @property
     def changed(self) -> bool:
         """A reference actually fired (EXPANDED or PRINT_ONLY).
 

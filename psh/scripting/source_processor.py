@@ -21,7 +21,6 @@ from ..core import (
     TopLevelAbort,
     report_internal_defect,
 )
-from ..interactive.history_result import HistoryExpansionKind
 from ..lexer import UnclosedQuoteError
 from ..lexer.token_formatter import TokenFormatter
 from ..parser import ParseError
@@ -456,8 +455,7 @@ class SourceProcessor(ScriptComponent):
                 # actually expanded a reference and the input is a terminal.
                 command_string = result.text
                 record_text = result.text
-                if (result.kind is HistoryExpansionKind.EXPANDED
-                        and sys.stdin.isatty()):
+                if result.is_expanded and sys.stdin.isatty():
                     print(result.text)
 
         # Record in history (interactive use). This is the ONE history
