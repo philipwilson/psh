@@ -14,6 +14,7 @@ from typing import List, Tuple, Union
 
 from ..utils.heredoc_detection import (
     HEREDOC_MARKER_RE,
+    HeredocSpec,
     PendingHeredocQueue,
     _comment_start,
     contains_heredoc,
@@ -142,7 +143,7 @@ def _scan_line_markers_ctx(line: str, stack: List[_CtxFrame],
         # Recompute the carried context up to the comment so comment text
         # (e.g. an apostrophe in `# don't`) is excluded (shared convention).
         _, stack_after = _context_flags(line[:comment_at], stack)
-    specs = []
+    specs: List[HeredocSpec] = []
     for match in HEREDOC_MARKER_RE.finditer(line, 0, comment_at):
         if is_inside_expansion(line, match.start(), flags):
             continue
