@@ -4,6 +4,7 @@ import stat
 from typing import TYPE_CHECKING, List
 
 from ..core import AssociativeArray, IndexedArray
+from ..expansion.subscript import SubscriptUse, TargetKind
 from ..utils.file_tests import file_newer_than, file_older_than, files_same
 from .base import Builtin
 from .registry import builtin
@@ -22,18 +23,36 @@ def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
     if '[' in var_ref and var_ref.endswith(']'):
         var_name = var_ref[:var_ref.index('[')]
         key_expr = var_ref[var_ref.index('[') + 1:-1]
-        key = shell.expansion_manager.expand_string_variables(key_expr)
+        # The ONE subscript authority keys by target kind (campaign W2), the
+        # same routing as unset (environment.py#_unset_array_element): an
+        # associative target keys on one word/quote expansion; everything else
+        # — indexed array, scalar, or an UNSET name — arithmetic-evaluates.
+        # bash 5.2 (probe-verified 2026-07-19, W2-probes/test_v_matrix.txt):
+        # an EMPTY subscript is silently unset; an invalid-arithmetic
+        # subscript is the same FATAL line-discarding error as on read/write,
+        # even when the name itself is unset (`test -v 'z[1//]'` aborts
+        # before the lookup); a negative out-of-range index warns
+        # "NAME: bad array subscript" (non-fatal) and reports unset.
+        subscript = shell.expansion_manager.subscript
         var_obj = shell.state.scope_manager.get_variable_object(var_name)
-        if not var_obj:
+        if var_obj is not None and isinstance(var_obj.value, AssociativeArray):
+            return subscript.associative_key(key_expr) in var_obj.value
+        idx = subscript.evaluate(key_expr, TargetKind.INDEXED,
+                                 SubscriptUse.TEST_V)  # fatal on bad arith
+        if idx is None or var_obj is None:
+            # Empty subscript (silently unset) or unset name — the subscript
+            # was still arithmetic-evaluated first, exactly like bash.
             return False
-        if isinstance(var_obj.value, AssociativeArray):
-            return key in var_obj.value
+        assert isinstance(idx, int)
         if isinstance(var_obj.value, IndexedArray):
-            try:
-                return int(key) in var_obj.value
-            except ValueError:
+            if var_obj.value.negative_out_of_range(idx):
+                print(f"{shell.state.error_location_prefix()}"
+                      f"{var_name}: bad array subscript",
+                      file=shell.state.stderr)
                 return False
-        return False
+            return var_obj.value.get(idx) is not None
+        # Scalar: acts as a one-element array at index 0 (bash).
+        return var_obj.value is not None and idx == 0
 
     # Bare name. For an array, bash's `-v name` tests element 0 (`-v name[0]`),
     # so an empty array — even one explicitly assigned `=()` — is "unset".

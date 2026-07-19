@@ -179,7 +179,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 result = var.value.get(self._eval_array_index(index_expr))
                 return result if result is not None else ''
             elif var and isinstance(var.value, AssociativeArray):
-                expanded_key = self.expand_assoc_key(index_expr)
+                expanded_key = self.shell.expansion_manager.subscript.associative_key(index_expr)
                 result = var.value.get(expanded_key)
                 return result if result is not None else ''
             else:

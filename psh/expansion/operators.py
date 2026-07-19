@@ -182,7 +182,8 @@ class OperatorOpsMixin(_Base):
             if isinstance(var.value, IndexedArray):
                 return var.value.get(self._eval_array_index(index_expr)) is not None
             if isinstance(var.value, AssociativeArray):
-                return var.value.get(self.expand_array_index(index_expr)) is not None
+                key = self.shell.expansion_manager.subscript.associative_key(index_expr)
+                return var.value.get(key) is not None
             # Scalar with a subscript: bash treats x[0] as set iff x is set
             # (a scalar acts as an array with one element at index 0).
             if index_expr in ('@', '*'):

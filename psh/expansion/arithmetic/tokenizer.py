@@ -235,13 +235,44 @@ class ArithTokenizer:
           ``$((3---x))`` = 3 - --x, decrementing x).
         """
         prev = self.tokens[-1].type if self.tokens else None
-        if prev in (ArithTokenType.IDENTIFIER, ArithTokenType.RBRACKET):
-            return True  # postfix position
+        if prev in (ArithTokenType.IDENTIFIER, ArithTokenType.SUBSCRIPT):
+            return True  # postfix position (`x++`, `a[i]++`)
         i = self.position + 2
         while i < len(self.expr) and self.expr[i].isspace():
             i += 1
         return i < len(self.expr) and (self.expr[i].isalpha()
                                        or self.expr[i] == '_')
+
+    def _read_subscript(self, ident: str) -> ArithToken:
+        """Capture ``[ ... ]`` after an adjacent identifier, VERBATIM.
+
+        The subscript's content is not arithmetic-tokenized: bash captures the
+        raw text to the matching bracket (nesting counted, quote-blind — its
+        own quote removal ran on the whole expression earlier) and only later
+        interprets it by target kind: associative targets key on the raw text
+        after quote removal; indexed targets lazily parse it as arithmetic.
+        That is why ``$((h[a b]))`` and ``$((h[ foo ]))`` key ``a b`` and
+        `` foo `` for an associative ``h`` — never stripped, never required to
+        lex as arithmetic (r21 A3). An unclosed subscript is bash's
+        "bad array subscript" error.
+        """
+        start_pos = self.position
+        self.advance()  # consume '['
+        depth = 1
+        content_start = self.position
+        while self.position < len(self.expr):
+            ch = self.expr[self.position]
+            if ch == '[':
+                depth += 1
+            elif ch == ']':
+                depth -= 1
+                if depth == 0:
+                    raw = self.expr[content_start:self.position]
+                    self.advance()  # consume ']'
+                    return ArithToken(ArithTokenType.SUBSCRIPT, raw, start_pos)
+            self.advance()
+        raise SyntaxError(
+            f"{ident}[{self.expr[content_start:]}: bad array subscript")
 
     def _match_operator(self, start_pos: int) -> Optional[ArithToken]:
         """Return the longest ``_OPERATORS`` token starting at the current
@@ -283,10 +314,15 @@ class ArithTokenizer:
                 self.tokens.append(ArithToken(ArithTokenType.NUMBER, value, start_pos))
                 continue
 
-            # Identifiers
+            # Identifiers — an IMMEDIATELY following `[` starts an array
+            # subscript, captured verbatim to the balanced `]` (see
+            # _read_subscript). bash requires adjacency: `h [k]` is a syntax
+            # error, not a subscript.
             if char is not None and (char.isalpha() or char == '_'):
                 ident = self.read_identifier()
                 self.tokens.append(ArithToken(ArithTokenType.IDENTIFIER, ident, start_pos))
+                if self.current_char() == '[':
+                    self.tokens.append(self._read_subscript(ident))
                 continue
 
             # bash tolerates double-quoted operands inside $(( )): the quotes

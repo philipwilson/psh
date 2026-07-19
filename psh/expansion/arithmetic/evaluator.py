@@ -181,20 +181,27 @@ class ArithmeticEvaluator:
         except NamerefCycleError:
             return name
 
-    def _array_key(self, name: str, index_node: ArithNode, index_text: str) -> Union[int, str]:
-        """Resolve the subscript of an array reference to its lookup key.
+    def _array_key(self, name: str, index_text: str) -> Union[int, str]:
+        """Resolve a verbatim subscript to its lookup key — target kind FIRST.
 
-        For an associative array the subscript is the LITERAL text used
-        directly as the key (bash: bare identifiers are not variable
-        references). For everything else (indexed arrays, scalars, or a
-        not-yet-created array) the subscript is arithmetic-evaluated to an
-        int.
+        The ONE subscript authority (``ExpansionManager.subscript``, campaign
+        W2) interprets the captured raw text: an associative array keys on it
+        after quote removal WITHOUT re-expanding ``$``-constructs (the
+        arithmetic pre-pass already substituted them, and bash never rescans
+        substituted text — ``k='$x'; $((h[$k]))`` keys the literal ``$x``);
+        an indexed array, scalar, or undeclared name lazily parses it as
+        arithmetic (``expand=False`` for the same already-substituted reason),
+        so ``a[i++]`` side-effects fire exactly once per lvalue resolution.
+        An empty subscript is bash's "bad array subscript" error.
         """
+        if index_text == '':
+            raise ShellArithmeticError(f"{name}[]: bad array subscript")
         var = self.shell.state.scope_manager.get_variable_object(
             self._nameref_target(name))
         if var is not None and isinstance(var.value, AssociativeArray):
-            return index_text
-        return self.evaluate(index_node)
+            return self.shell.expansion_manager.subscript.associative_key(
+                index_text, expand_dollar=False)
+        return evaluate_arithmetic(index_text, self.shell, expand=False)
 
     def get_array_element(self, name: str, key: Union[int, str]) -> int:
         """Read an array element (or scalar via index 0) as an integer.
@@ -249,10 +256,9 @@ class ArithmeticEvaluator:
         Evaluating the subscript a single time here — not once per read and
         once per write — is what makes ``a[b++] += 1`` increment ``b`` only
         once, matching bash."""
-        if lvalue.subscript is None:
+        if lvalue.subscript_text is None:
             return lvalue.name, None
-        return lvalue.name, self._array_key(
-            lvalue.name, lvalue.subscript, lvalue.subscript_text)
+        return lvalue.name, self._array_key(lvalue.name, lvalue.subscript_text)
 
     def _read_lvalue(self, name: str, key: Optional[Union[int, str]]) -> int:
         """Read the current integer value of a resolved lvalue target."""
@@ -332,7 +338,7 @@ class ArithmeticEvaluator:
         if isinstance(node, IncDecNode):
             return self._eval_incdec(node)
         if isinstance(node, ArrayElementNode):
-            key = self._array_key(node.name, node.index, node.index_text)
+            key = self._array_key(node.name, node.index_text)
             return self.get_array_element(node.name, key)
         # Cant-happen: the parser only builds the node types dispatched above.
         # RuntimeError (not ValueError) so strict-errors surfaces a genuine
@@ -522,10 +528,10 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
         tokenizer = ArithTokenizer(expanded_expr)
         tokens = tokenizer.tokenize()
 
-        # Parse. Pass the (already $-expanded) source so the parser can slice
-        # the raw subscript text of array references (associative arrays use
-        # the literal subscript as their key).
-        parser = ArithParser(tokens, expanded_expr)
+        # Parse. Array subscripts arrive as verbatim SUBSCRIPT tokens (the
+        # tokenizer captured them raw); interpretation by target kind happens
+        # at evaluation (the W2 subscript authority).
+        parser = ArithParser(tokens)
         ast = parser.parse()
 
         # Evaluate

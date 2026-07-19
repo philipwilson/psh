@@ -251,7 +251,6 @@ FUNC_IMPORT_CAPS = {
     'psh.executor.process_launcher': 1,
     'psh.executor.strategies': 3,
     'psh.executor.subshell': 6,
-    'psh.expansion.arrays': 1,
     'psh.expansion.command_sub': 2,
     'psh.expansion.extglob': 4,
     'psh.expansion.glob': 4,
@@ -260,6 +259,11 @@ FUNC_IMPORT_CAPS = {
     'psh.expansion.operators': 1,
     'psh.expansion.parameter_expansion': 12,
     'psh.expansion.pattern': 2,
+    # cycle-break: the W2 subscript authority re-lexes raw subscript text via
+    # the parser word-builder (parser.word_builder imports expansion at module
+    # level, so the reverse edge must stay function-level). arrays.py's old
+    # deferred arithmetic import (cap 1) retired with _eval_array_index's body.
+    'psh.expansion.subscript': 1,
     'psh.expansion.word_expander': 2,
     'psh.interactive.base': 4,
     'psh.interactive.multiline_handler': 1,

@@ -25,7 +25,8 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `evaluator.py` | `ExpansionEvaluator` - evaluates expansion AST nodes |
 | `param_parser.py` | THE `${...}` content parser (`parse_parameter_expansion()`) — the single grammar shared by WordBuilder (parse time) and `expand_variable` (string contexts); module docstring is the grammar reference |
 | `variable.py` | `VariableExpander` - dispatch, special variables, `${!name}` indirection |
-| `arrays.py` | `ArrayOpsMixin` - `${arr[i]}`, `${arr[@]}`, `_eval_array_index()` |
+| `arrays.py` | `ArrayOpsMixin` - `${arr[i]}`, `${arr[@]}` access (keying via `subscript.py`) |
+| `subscript.py` | `SubscriptEvaluator` - THE one array-subscript keying authority (indexed arithmetic vs associative string key, decided by target kind; campaign W2) |
 | `operators.py` | `OperatorOpsMixin` - `${VAR:-...}`, `${VAR#...}`, `${VAR/p/r}`, case ops |
 | `operands.py` | `OperandOpsMixin` - expands pattern/replacement operands, `glob_escape()` |
 | `fields.py` | `FieldExpansionMixin` - `expand_to_fields()` for multi-field `$@`/array results |
@@ -305,11 +306,28 @@ names the parameter actually expanded. `${!name<op>...}` resolves the
 indirection first, then applies the operator. `${!prefix*}`/`${!arr[@]}`
 forms are dispatched separately (name listing / array keys).
 
-### Array Subscript Arithmetic
+### Array Subscript Keying — ONE authority
 
-`ArrayOpsMixin._eval_array_index()` (`arrays.py`) evaluates indexed-array
-subscripts as full arithmetic expressions (`${arr[i+1]}`), so subscript
-errors surface as arithmetic errors.
+`SubscriptEvaluator` (`subscript.py`, on `shell.expansion_manager.subscript`)
+is the single interpreter for array subscripts (campaign W2; r21's signature
+finding was six inconsistent implementations). The invariant is
+**target kind BEFORE interpretation**: the caller resolves the DECLARED
+variable's kind (undeclared defaults to indexed; quoting never infers
+associative), then calls `associative_key()` (one word/quote expansion under
+assignment-value semantics — composite quoting, `$'...'` decode, no
+split/glob, bare names literal) or `indexed_index()` (expand, then lazily
+arithmetic-evaluate — `${arr[i+1]}`; failures are fatal arithmetic errors).
+Read/write/is-set/unset/`test -v`/arithmetic/initializer all route here
+(BOTH arms — `test -v`'s indexed arm included, bounce-fix 2026-07-19) —
+the caller sets are pinned by
+`tests/unit/tooling/test_subscript_authority_guard.py`. `evaluate(raw, kind,
+use)` is the use-aware dispatch: `SubscriptUse.TEST_V`/`UNSET` return `None`
+for an (expanded-)empty indexed subscript (bash: silently-unset `-v`, no-op
+`unset`), while read/write address index 0. In ARITHMETIC context the
+subscript is a verbatim `SUBSCRIPT` token (`arithmetic/
+tokenizer.py#_read_subscript`) and the assoc rule runs with
+`expand_dollar=False` (the arith pre-pass already substituted `$`-constructs;
+bash never rescans). `_eval_array_index()` remains as a thin adapter.
 
 ### IFS Word Splitting and per-character protection
 

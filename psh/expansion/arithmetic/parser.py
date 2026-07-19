@@ -1,6 +1,6 @@
 """Recursive-descent parser for shell arithmetic expressions."""
 
-from typing import List, Optional, Tuple, cast
+from typing import List, Optional, cast
 
 from .nodes import (
     ArithNode,
@@ -60,12 +60,8 @@ class ArithParser:
         ArithTokenType.BIT_XOR_ASSIGN,
     )
 
-    def __init__(self, tokens: List[ArithToken], source: str = ""):
+    def __init__(self, tokens: List[ArithToken]):
         self.tokens = tokens
-        # The (already $-expanded) source expression text. Used to slice the
-        # raw subscript of an array reference verbatim, so associative arrays
-        # can use the literal subscript text as their key.
-        self.source = source
         self.current = 0
         # Current expression-nesting depth; see MAX_DEPTH.
         self._depth = 0
@@ -326,31 +322,23 @@ class ArithParser:
         if isinstance(node, VariableNode):
             return LValue(node.name)
         if isinstance(node, ArrayElementNode):
-            return LValue(node.name, node.index, node.index_text)
+            return LValue(node.name, node.index_text)
         return None
 
     def _parse_lvalue(self, name: str) -> LValue:
         """Build the lvalue for ``name`` after its IDENTIFIER is consumed,
-        reading an optional ``[subscript]`` (scalar vs array element)."""
-        if self.match(ArithTokenType.LBRACKET):
-            index, index_text = self._parse_subscript()
-            return LValue(name, index, index_text)
-        return LValue(name)
+        taking an optional SUBSCRIPT token (scalar vs array element).
 
-    def _parse_subscript(self) -> Tuple[ArithNode, str]:
-        """Parse ``[index]`` after an array name.
-
-        Returns the parsed subscript expression (for indexed-array
-        arithmetic) and the raw subscript source text (for associative-array
-        literal keys). Assumes the next token is ``LBRACKET``.
+        The tokenizer captured the subscript VERBATIM (``_read_subscript``);
+        it is never parsed as arithmetic here. Interpretation happens at
+        evaluation, by target kind (the W2 subscript authority) — which is
+        what lets ``$((h[a b]))`` key ``a b`` for an associative ``h`` and
+        keeps indexed subscript arithmetic lazy.
         """
-        lbracket = self.advance()  # consume '['
-        index = self.parse_comma()  # Allow full expressions in the index
-        rbracket = self.expect(ArithTokenType.RBRACKET)
-        index_text = ""
-        if self.source:
-            index_text = self.source[lbracket.position + 1:rbracket.position].strip()
-        return index, index_text
+        if self.match(ArithTokenType.SUBSCRIPT):
+            token = self.advance()
+            return LValue(name, cast(str, token.value))
+        return LValue(name)
 
     def parse_primary(self) -> ArithNode:
         """Parse primary expressions"""
@@ -370,9 +358,9 @@ class ArithParser:
                 return AssignmentNode(lvalue, op, value)
 
             # Plain read.
-            if lvalue.subscript is None:
+            if lvalue.subscript_text is None:
                 return VariableNode(lvalue.name)
-            return ArrayElementNode(lvalue.name, lvalue.subscript, lvalue.subscript_text)
+            return ArrayElementNode(lvalue.name, lvalue.subscript_text)
 
         # Parenthesized expressions
         if self.match(ArithTokenType.LPAREN):

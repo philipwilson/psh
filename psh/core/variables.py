@@ -316,9 +316,14 @@ class AssociativeArray:
         self._elements.clear()
 
     def as_string(self) -> str:
-        """String representation (empty for associative arrays)."""
-        # Bash doesn't allow ${assoc} without subscript
-        return ""
+        """String representation: the element keyed ``"0"`` (bash), else empty.
+
+        bash expands an unsubscripted ``$assoc`` as ``${assoc[0]}`` — the value
+        under the literal string key ``0`` — exactly as ``IndexedArray.as_string``
+        returns index 0. ``declare -A a=([0]=zero [x]=y); echo "$a"`` prints
+        ``zero`` (r21 A5 / CORE-V1).
+        """
+        return self._elements.get("0", "")
 
     def __repr__(self):
         return f"AssociativeArray({self._elements})"
