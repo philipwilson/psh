@@ -52,6 +52,7 @@ from ..core import (
 )
 from ..core.options import xtrace_quote
 from ..expansion.arithmetic import ShellArithmeticError
+from .command_resolution import CommandEnvOverlay
 
 if TYPE_CHECKING:
     from ..ast_nodes import SimpleCommand, Word, WordPart
@@ -178,6 +179,30 @@ class CommandAssignments:
         # Unreachable: args is DERIVED from words, so every valid index
         # has a Word. Kept as a defensive default.
         return True
+
+    # ------------------------------------------------------------------
+    # Overlay (the typed effective-environment view for resolution)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def build_overlay(
+            raw_assignments: List[RawAssignment]) -> 'CommandEnvOverlay':
+        """Build the immutable :class:`CommandEnvOverlay` for a command's prefix.
+
+        Carries the metadata resolution needs BEFORE the values are installed:
+        the assigned names (source order) and whether a ``PATH=`` override is
+        present. The values themselves are NOT expanded here — the strategy
+        choice is PATH-independent, and expanding a value early would run its
+        command substitution out of left-to-right order (``A=$(c1)
+        PATH=$(c2) cmd``). The PATH the command resolves against is read from the
+        live environment at search time via :meth:`CommandEnvOverlay.effective_path`,
+        after :meth:`apply_prefix` installs the temporary PATH.
+        """
+        names = tuple(name for name, _value, _word in raw_assignments)
+        return CommandEnvOverlay(
+            assignment_names=names,
+            has_path_override='PATH' in names,
+        )
 
     # ------------------------------------------------------------------
     # Pure assignments (no command word)

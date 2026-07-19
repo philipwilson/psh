@@ -80,7 +80,8 @@ def exec_external(full_args: List[str], env: dict,
 
 
 def format_exec_failure(cmd_name: str, exc: OSError,
-                        resolved_path: Optional[str] = None
+                        resolved_path: Optional[str] = None,
+                        *, empty_path: bool = False
                         ) -> Tuple[str, int]:
     """Format a failed exec as bash's diagnostic; return ``(message, status)``.
 
@@ -101,12 +102,18 @@ def format_exec_failure(cmd_name: str, exc: OSError,
     in ExternalExecutionStrategy, before the fork). A missing command
     given as a *pathname* (one containing a slash) is likewise reported
     as "No such file or directory", not "command not found" — bash reserves
-    "command not found" for a bare name that PATH couldn't resolve.
+    "command not found" for a bare name that a NON-empty PATH couldn't
+    resolve. When PATH is empty or unset (``empty_path``), bash does not
+    attempt a search and reports the bare name as "No such file or directory"
+    too (``PATH= cmd`` / ``unset PATH; cmd`` — both still 127; probe-verified
+    bash 5.2). ``PATH=:`` (a non-empty PATH of cwd-only) is a search that
+    misses → "command not found", so the discriminator is emptiness, not
+    whether cwd was searched.
     """
     if isinstance(exc, FileNotFoundError):
         if resolved_path is not None:
             return f"{resolved_path}: No such file or directory", 127
-        if '/' in cmd_name:
+        if '/' in cmd_name or empty_path:
             return f"{cmd_name}: No such file or directory", 127
         return f"{cmd_name}: command not found", 127
     # Report bash's strerror ("Permission denied", "Is a directory"), not
@@ -134,7 +141,11 @@ def report_exec_failure(cmd_name: str, exc: OSError,
     runtime error); the child inherits the parent's script_name/line/options
     at fork, so the prefix is correct.
     """
-    message, status = format_exec_failure(cmd_name, exc, resolved_path)
+    # bash reports a bare-name miss under an EMPTY or UNSET PATH as
+    # "No such file or directory" rather than "command not found" (both 127).
+    empty_path = not state.env.get('PATH')
+    message, status = format_exec_failure(
+        cmd_name, exc, resolved_path, empty_path=empty_path)
     # surrogateescape on the diagnostics: a command name carrying non-UTF-8
     # bytes (from a non-UTF-8 script, read with surrogateescape) must not make
     # the error message itself raise UnicodeEncodeError — the byte round-trips
