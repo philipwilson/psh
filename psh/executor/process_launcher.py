@@ -10,7 +10,7 @@ import signal
 import sys
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, ClassVar, Optional, Tuple
 
 from .child_policy import (
     CHILD_EXIT_EXCEPTIONS,
@@ -31,6 +31,79 @@ class ProcessRole(Enum):
     SINGLE = "single"                    # Standalone command
     PIPELINE_LEADER = "pipeline_leader"  # First command in pipeline
     PIPELINE_MEMBER = "pipeline_member"  # Non-first command in pipeline
+
+
+@dataclass(frozen=True)
+class AsyncJobPolicy:
+    """The signal & stdin dispositions POSIX gives an ASYNCHRONOUS job when
+    job control is off (bash: ``setup_async_signals`` + the simple-command
+    ``/dev/null`` stdin redirect).
+
+    Computed ONCE from ``(background?, job-control-off?)`` and applied to EVERY
+    member of the job. The two dispositions are INDEPENDENT (campaign J1 /
+    #20 H11 — the pre-J1 code fused them and gated the pair on role SINGLE, so
+    a background *pipeline* member kept the default SIGINT/SIGQUIT and a
+    delayed ``kill -INT`` on a background pipeline killed it 130, where bash
+    lets it run to completion):
+
+    * ``ignore_int_quit`` — set SIGINT/SIGQUIT to SIG_IGN. Applies to every
+      LEAF member of the group (a standalone command AND each pipeline
+      member). A shell-process compound (``( ) &`` / ``{ } &`` / a
+      backgrounded function) instead re-arms trap-checking handlers via
+      ``run_background_shell_child`` so a body-set INT/QUIT trap can fire over
+      the ignored default — so this skips ``is_shell_process`` children.
+    * ``redirect_stdin_from_devnull`` — dup ``/dev/null`` onto fd 0 so a
+      backgrounded reader does not steal the script's stdin. Applies only to a
+      member that would otherwise read the OUTER stdin: a standalone command
+      (role SINGLE). bash leaves an async pipeline's leader attached to the
+      real stdin (probe-pinned vs bash 5.2: ``cat | tr &`` reads stdin,
+      ``cat &`` gets /dev/null), and non-leader members already read a pipe.
+    """
+    ignore_int_quit: bool
+    redirect_stdin_from_devnull: bool
+
+    #: The inactive policy (foreground, or job control on): apply() is a no-op.
+    INACTIVE: ClassVar["AsyncJobPolicy"]
+
+    @classmethod
+    def for_launch(cls, *, background: bool,
+                   job_control_off: bool) -> "AsyncJobPolicy":
+        """The policy for one launch: active only for a backgrounded job with
+        job control off, otherwise the inactive policy."""
+        active = background and job_control_off
+        return cls(ignore_int_quit=active, redirect_stdin_from_devnull=active)
+
+    def apply(self, config: "ProcessConfig") -> None:
+        """Apply this policy in the current (freshly forked) child, honoring
+        the child's role and shell-process status. Called AFTER
+        ``apply_child_signal_policy`` reset handlers and BEFORE ``io_setup``
+        so an explicit body redirect (``cmd < file &``) still wins fd 0."""
+        if self.redirect_stdin_from_devnull and config.role is ProcessRole.SINGLE:
+            self._redirect_stdin_from_devnull()
+        if self.ignore_int_quit and not config.is_shell_process:
+            for sig in (signal.SIGINT, signal.SIGQUIT):
+                try:
+                    # SIG_IGN survives exec (POSIX), so an external leaf stays
+                    # immune to a stray SIGINT delivered to the async group.
+                    signal.signal(sig, signal.SIG_IGN)
+                except (OSError, ValueError):
+                    pass
+
+    @staticmethod
+    def _redirect_stdin_from_devnull() -> None:
+        try:
+            devnull = os.open(os.devnull, os.O_RDONLY)
+            try:
+                os.dup2(devnull, 0)
+            finally:
+                if devnull != 0:
+                    os.close(devnull)
+        except OSError:
+            pass
+
+
+AsyncJobPolicy.INACTIVE = AsyncJobPolicy(
+    ignore_int_quit=False, redirect_stdin_from_devnull=False)
 
 
 @dataclass
@@ -255,15 +328,19 @@ class ProcessLauncher:
                 is_shell_process=config.is_shell_process,
             )
 
-            # 2b. POSIX asynchronous-list rules, applied only when job control
-            # is OFF (non-interactive) to a standalone backgrounded job (a bg
-            # pipeline's members set up their own stdin from the pipe and are
-            # left alone). See bash: an async list with job control disabled
-            # has its stdin redirected from /dev/null and ignores SIGINT/
-            # SIGQUIT. This runs BEFORE io_setup so an explicit body redirect
-            # (`cmd < file &`) still wins.
-            if config.role == ProcessRole.SINGLE and not config.foreground:
-                self._apply_async_job_defaults(config)
+            # 2b. POSIX asynchronous-list dispositions, applied only when job
+            # control is OFF (non-interactive) to EVERY member of a
+            # backgrounded job — not just a standalone command (#20 H11). The
+            # AsyncJobPolicy separates the two facts: the SIGINT/SIGQUIT-ignore
+            # goes to every leaf member (so a bg *pipeline* member no longer
+            # dies 130 on a delayed `kill -INT`), while the /dev/null-stdin
+            # redirect stays on the standalone command only. Runs BEFORE
+            # io_setup so an explicit body redirect (`cmd < file &`) still wins.
+            if not config.foreground:
+                AsyncJobPolicy.for_launch(
+                    background=True,
+                    job_control_off=self._job_control_off(),
+                ).apply(config)
 
             # 3. Set up I/O redirections if provided
             if config.io_setup:
@@ -318,36 +395,6 @@ class ProcessLauncher:
         """
         return (self.state.is_script_mode
                 or not self.state.options.get('interactive', False))
-
-    def _apply_async_job_defaults(self, config: ProcessConfig) -> None:
-        """Apply the POSIX async-list defaults to this backgrounded child.
-
-        Only when job control is off. Redirects stdin from /dev/null so a
-        backgrounded reader (`read &`, `cat &`) does not steal the script's
-        stdin. For a LEAF child (an external about to exec, or a bg builtin —
-        not a shell-process compound) also sets SIGINT/SIGQUIT to SIG_IGN,
-        which survives exec (POSIX). A shell-process compound instead re-arms
-        the trap-checking handlers via run_background_shell_child, so a
-        body-set INT/QUIT trap can still fire while the untrapped default is
-        ignore.
-        """
-        if not self._job_control_off():
-            return
-        try:
-            devnull = os.open(os.devnull, os.O_RDONLY)
-            try:
-                os.dup2(devnull, 0)
-            finally:
-                if devnull != 0:
-                    os.close(devnull)
-        except OSError:
-            pass
-        if not config.is_shell_process:
-            for sig in (signal.SIGINT, signal.SIGQUIT):
-                try:
-                    signal.signal(sig, signal.SIG_IGN)
-                except (OSError, ValueError):
-                    pass
 
     def _parent_setup(self, pid: int, config: ProcessConfig) -> int:
         """Parent process setup after fork.
