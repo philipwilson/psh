@@ -50,16 +50,21 @@ signatures), which is exactly the "does the producer expose this surface"
 question the pin asks. Consumers narrow via string (``TYPE_CHECKING``)
 annotations, so a migration adds NO runtime import edge to this package.
 
-Scope note (Q1 census, ``tmp/boundary-ledgers/Q1.md``): this slot MIGRATES the
-``IOContext`` reader boundary (``make_reader`` / ``InputCursorRegistry
-.cursor_for_fd`` took ``Shell``, used only ``.stdin``). The other four
-protocols are DEFINED against their producers and conformance-pinned; their
-touched-set consumers genuinely retain ``Shell`` for a need no protocol covers
-(``subscript`` forwards ``shell`` to ``evaluate_arithmetic``; the ``child_policy``
-runners reach the trap/signal/executor machinery; ``resolve_command`` forwards
-``shell`` to ``ExecutionStrategy.can_execute``) and are recorded, with their
-justification, in the shrink-only ratchet
-``tests/unit/tooling/test_shell_consumer_ratchet_q1.py``.
+Scope note (Q1 census, ``tmp/boundary-ledgers/Q1.md``): this slot MIGRATES two
+boundaries. ``IOContext`` — the reader boundary (``make_reader`` /
+``InputCursorRegistry.cursor_for_fd`` took ``Shell``, used only ``.stdin``).
+``JobRuntime`` — ``ForegroundJobSession`` took the concrete ``JobManager`` and
+now takes this protocol (mypy-checked: ``JobManager`` satisfies it structurally).
+``VariableAccess`` / ``ExpansionContext`` / ``LocaleContext`` are DEFINED against
+their producers, member-frozen and conformance-pinned, but consumer adoption is
+POST-CAMPAIGN: their touched-set consumers genuinely retain ``Shell`` for a need
+no protocol covers (``subscript`` forwards ``shell`` to ``evaluate_arithmetic``;
+the ``child_policy`` runners reach the trap/signal/executor machinery;
+``resolve_command`` forwards ``shell`` to ``ExecutionStrategy.can_execute``;
+``execute_sourced_file`` owns the source-depth / positionals / RETURN-trap
+transaction) — each recorded, with its justification, in the shrink-only ratchet
+``tests/unit/tooling/test_shell_consumer_ratchet_q1.py``. Their exact member
+sets are frozen by ``tests/unit/protocols/test_protocol_conformance_q1.py``.
 """
 from __future__ import annotations
 
@@ -170,11 +175,12 @@ class IOContext(Protocol):
 class JobRuntime(Protocol):
     """The job-table / terminal-transfer / wait surface (``JobManager``).
 
-    The foreground-job transaction (``executor/foreground_session.py#
-    ForegroundJobSession``) drives exactly this subset of ``JobManager``
-    (``executor/job_control.py``) — create/register a job, hand it (and reclaim)
-    the terminal, wait, report a signal death, rotate the current job. It is the
-    named contract for that surface; ``JobManager`` structurally satisfies it.
+    MIGRATED consumer (Q1): the foreground-job transaction
+    (``executor/foreground_session.py#ForegroundJobSession``) takes THIS (was the
+    concrete ``JobManager``) and drives exactly this subset — create/register a
+    job, hand it (and reclaim) the terminal, wait, report a signal death, rotate
+    the current job. ``JobManager`` (``executor/job_control.py``) structurally
+    satisfies it (mypy-checked at the call site).
     """
 
     #: The shell state, wired via ``JobManager.set_shell_state`` (read to publish

@@ -20,9 +20,11 @@ These prove two things at once:
 """
 
 import io
+import typing
 
 import pytest
 
+from psh import protocols as P
 from psh.protocols import (
     ExpansionContext,
     IOContext,
@@ -31,6 +33,33 @@ from psh.protocols import (
     VariableAccess,
 )
 from psh.shell import Shell
+
+# The EXACT member-name set of each protocol — frozen (protocol-side sharpness).
+# The isinstance conformance pins below are producer-side only: they would still
+# pass if a protocol GAINED or LOST a member the producer happens to have. This
+# freeze makes any change to a protocol's surface a deliberate edit here.
+EXPECTED_MEMBERS = {
+    "VariableAccess": {"get_variable", "set_variable", "get_special_variable"},
+    "ExpansionContext": {"expand_string_variables", "expand_assignment_value_word",
+                         "variable_expander", "word_expander"},
+    "IOContext": {"stdin", "stdout", "stderr"},
+    "JobRuntime": {"shell_state", "terminal_pgid_if_owned", "create_job",
+                   "set_foreground_job", "transfer_terminal_control",
+                   "wait_for_job", "report_signal_death_at",
+                   "finish_foreground_job", "remove_job"},
+    "LocaleContext": {"collate_key", "compare", "upper", "lower", "toggle",
+                      "in_class"},
+}
+
+
+def test_protocol_member_sets_are_frozen():
+    assert set(EXPECTED_MEMBERS) == set(P.__all__)
+    for name, expected in EXPECTED_MEMBERS.items():
+        actual = typing.get_protocol_members(getattr(P, name))
+        assert actual == expected, (
+            f"{name} member set changed: added {sorted(actual - expected)}, "
+            f"removed {sorted(expected - actual)}. Update EXPECTED_MEMBERS only "
+            f"if the protocol surface change is intended.")
 
 
 @pytest.fixture
