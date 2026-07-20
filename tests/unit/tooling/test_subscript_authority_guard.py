@@ -75,7 +75,7 @@ SANCTIONED_ASSOC_CALLERS = {
     'psh/expansion/arrays.py',          # read + set_var_or_array_element
     'psh/expansion/variable.py',        # ${h[k]} string path
     'psh/expansion/operators.py',       # +/-/? is-set
-    'psh/expansion/arithmetic/evaluator.py',  # arith lvalue/read (expand_dollar=False)
+    'psh/expansion/arithmetic/evaluator.py',  # arith lvalue/read (raw subscript, provenance)
     'psh/builtins/test_command.py',     # test -v / [[ -v (assoc arm)
     'psh/executor/array.py',            # element assignment
 }

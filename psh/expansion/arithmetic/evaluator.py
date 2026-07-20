@@ -184,24 +184,40 @@ class ArithmeticEvaluator:
     def _array_key(self, name: str, index_text: str) -> Union[int, str]:
         """Resolve a verbatim subscript to its lookup key — target kind FIRST.
 
-        The ONE subscript authority (``ExpansionManager.subscript``, campaign
-        W2) interprets the captured raw text: an associative array keys on it
-        after quote removal WITHOUT re-expanding ``$``-constructs (the
-        arithmetic pre-pass already substituted them, and bash never rescans
-        substituted text — ``k='$x'; $((h[$k]))`` keys the literal ``$x``);
-        an indexed array, scalar, or undeclared name lazily parses it as
-        arithmetic (``expand=False`` for the same already-substituted reason),
-        so ``a[i++]`` side-effects fire exactly once per lvalue resolution.
-        An empty subscript is bash's "bad array subscript" error.
+        The subscript arrives RAW (its ``$``-forms held out of the arithmetic
+        pre-pass by ``_arith_preexpand``), so the ONE subscript authority
+        (``ExpansionManager.subscript``, campaign W2) interprets it with full
+        provenance: an associative array keys it under assignment-value
+        semantics (the SAME engine ``h[$k]=v`` uses) — source-spelled quotes and
+        backslashes are removed, but characters arriving via ``$k`` stay
+        LITERAL, matching bash (``k='"q"'; (( h[$k]=1 ))`` keys ``"q"``, and
+        ``k='$x'; (( h[$k]=1 ))`` keys the literal ``$x`` — a substituted
+        ``$`` is never rescanned). An indexed array, scalar, or undeclared name
+        expands then arithmetic-evaluates the raw text, so ``a[i++]``
+        side-effects fire exactly once per lvalue resolution. An empty subscript
+        is bash's "bad array subscript" error.
         """
         if index_text == '':
             raise ShellArithmeticError(f"{name}[]: bad array subscript")
         var = self.shell.state.scope_manager.get_variable_object(
             self._nameref_target(name))
+        subscript = self.shell.expansion_manager.subscript
         if var is not None and isinstance(var.value, AssociativeArray):
-            return self.shell.expansion_manager.subscript.associative_key(
-                index_text, expand_dollar=False)
-        return evaluate_arithmetic(index_text, self.shell, expand=False)
+            key = subscript.associative_key(index_text)
+            # bash's empty-subscript policy: an empty key from substitution or
+            # literal-empty text is fatal; a source empty-quoted key (h[""]) is
+            # a valid empty key (raw_has_source_quote only re-lexes, so the one
+            # keying expansion above is not doubled).
+            if key == '' and not subscript.raw_has_source_quote(index_text):
+                raise ShellArithmeticError(f"{name}[]: bad array subscript")
+            return key
+        # Indexed / scalar / undeclared: the $-forms held out of the pre-pass
+        # (_arith_preexpand) are substituted here ONCE, then arithmetic-evaluated
+        # with expand=False. An empty expansion is bash's "bad array subscript".
+        flat = _arith_preexpand(index_text, self.shell)
+        if flat == '':
+            raise ShellArithmeticError(f"{name}[]: bad array subscript")
+        return evaluate_arithmetic(flat, self.shell, expand=False)
 
     def get_array_element(self, name: str, key: Union[int, str]) -> int:
         """Read an array element (or scalar via index 0) as an integer.
@@ -490,6 +506,121 @@ class ArithmeticEvaluator:
         raise RuntimeError(f"internal: unknown binary operator: {op}")
 
 
+def _skip_dollar_form(expr: str, i: int) -> int:
+    """Index just past the ``$``-form starting at ``expr[i] == '$'``.
+
+    Quote-blind, delimiter-balanced: ``${...}``/``$(...)``/``$((...))`` skip to
+    their matching brace/paren, ``$name``/``$1``/``$?`` skip their operand.
+    Used only to keep a ``[`` INSIDE a ``$``-form (``${arr[0]}``, ``$(cmd[…])``)
+    from being mistaken for an arithmetic subscript in
+    :func:`_mask_arith_subscripts`; imperfect balancing can only over-skip, never
+    start a spurious subscript, so the pre-pass stays safe."""
+    n = len(expr)
+    j = i + 1
+    if j >= n:
+        return j
+    c = expr[j]
+    if c in '{(':
+        close = '}' if c == '{' else ')'
+        depth = 0
+        while j < n:
+            if expr[j] == c:
+                depth += 1
+            elif expr[j] == close:
+                depth -= 1
+                if depth == 0:
+                    return j + 1
+            j += 1
+        return j
+    if c.isalpha() or c == '_':
+        while j < n and (expr[j].isalnum() or expr[j] == '_'):
+            j += 1
+        return j
+    # Single-char special parameter ($1, $?, $@, $#, $*, $!, $$, $-).
+    return j + 1
+
+
+def _bracket_region_end(expr: str, i: int) -> Optional[int]:
+    """Index just past the ``]`` closing the ``[`` at ``expr[i]`` (nesting
+    counted, quote-blind — exactly like ``ArithTokenizer._read_subscript``), or
+    ``None`` if unbalanced (left for the tokenizer to reject like bash)."""
+    n = len(expr)
+    depth = 0
+    while i < n:
+        c = expr[i]
+        if c == '[':
+            depth += 1
+        elif c == ']':
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return None
+
+
+def _mask_arith_subscripts(expr: str) -> "Tuple[str, list]":
+    """Replace each top-level ``IDENT[...]`` subscript region with a NUL
+    placeholder, returning ``(masked_expr, [raw_region, ...])``.
+
+    This is what makes arithmetic associative keys provenance-faithful (W2 /
+    CV1): the subscript is held OUT of the ``$``-substitution pre-pass so its
+    ``$k`` reaches the subscript authority UNSUBSTITUTED, exactly as a
+    non-arithmetic ``h[$k]=v`` does. The authority then keys the RAW text under
+    assignment-value semantics — source-spelled quotes/backslashes are removed,
+    but characters arriving via ``$k`` stay literal (bash never quote-removes
+    substituted subscript text: ``k='"q"'; (( h[$k]=1 ))`` keys ``"q"``).
+
+    Only an ``IDENT`` immediately followed by ``[`` starts a subscript (bash
+    adjacency; ``h [k]`` is not one); ``$``-forms are skipped whole so a bracket
+    inside ``${...}``/``$(...)`` is never masked."""
+    out: 'list[str]' = []
+    regions: 'list[str]' = []
+    i = 0
+    n = len(expr)
+    while i < n:
+        ch = expr[i]
+        if ch == '$':
+            j = _skip_dollar_form(expr, i)
+            out.append(expr[i:j])
+            i = j
+        elif ch == '`':
+            k = expr.find('`', i + 1)
+            j = n if k == -1 else k + 1
+            out.append(expr[i:j])
+            i = j
+        elif ch.isalpha() or ch == '_':
+            j = i + 1
+            while j < n and (expr[j].isalnum() or expr[j] == '_'):
+                j += 1
+            out.append(expr[i:j])
+            i = j
+            if i < n and expr[i] == '[':
+                end = _bracket_region_end(expr, i)
+                if end is not None:
+                    regions.append(expr[i:end])
+                    out.append('\x00%d\x00' % (len(regions) - 1))
+                    i = end
+        else:
+            out.append(ch)
+            i += 1
+    return ''.join(out), regions
+
+
+def _arith_preexpand(expr: str, shell) -> str:
+    """Run the arithmetic ``$``-substitution pre-pass, holding array-subscript
+    regions RAW (see :func:`_mask_arith_subscripts`). Subscript-free expressions
+    take the byte-identical fast path."""
+    if '[' not in expr:
+        return shell.expansion_manager.expand_string_variables(
+            expr, quote_ctx=DQ_STRING)
+    masked, regions = _mask_arith_subscripts(expr)
+    expanded = shell.expansion_manager.expand_string_variables(
+        masked, quote_ctx=DQ_STRING)
+    for idx, raw in enumerate(regions):
+        expanded = expanded.replace('\x00%d\x00' % idx, raw)
+    return expanded
+
+
 def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
     """Evaluate an arithmetic expression with the given shell context.
 
@@ -519,10 +650,11 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
         # First, expand all shell variables and parameter expansions.
         # Arithmetic is a dquote-like context for nested ${x:-word}
         # operands (bash: $(( ${u:-"5"} )) is 5+..., but $(( ${u:-'5'} ))
-        # keeps the single quotes and is a syntax error).
-        expanded_expr = (shell.expansion_manager.expand_string_variables(
-                             expr, quote_ctx=DQ_STRING)
-                         if expand else expr)
+        # keeps the single quotes and is a syntax error). Array-subscript
+        # regions are held RAW through this pass (_arith_preexpand) so an
+        # associative key's $k is not substituted-then-quote-removed — the
+        # subscript authority keys the raw text with provenance (W2/CV1).
+        expanded_expr = _arith_preexpand(expr, shell) if expand else expr
 
         # Tokenize the expanded expression
         tokenizer = ArithTokenizer(expanded_expr)

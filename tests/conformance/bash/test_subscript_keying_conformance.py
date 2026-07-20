@@ -161,6 +161,54 @@ class TestArithSubscriptVerbatim(ConformanceTest):
             'echo "${h[k]}"')
 
 
+class TestArithSubscriptProvenance(ConformanceTest):
+    """CV1: an arith associative key tracks PROVENANCE — quote/escape removal
+    applies to SOURCE-spelled characters only, NEVER to characters arriving via
+    ``$k``. These rows were DIVERGENT before v0.750.0 (psh quote-removed the
+    substituted text); the doctrine $-half (no re-expansion of a substituted
+    ``$``) stays bash-exact. Probed against bash 5.2
+    (tmp/boundary-ledgers/CV-probes/cv1_matrix.sh)."""
+
+    def test_substituted_double_quotes_stay_literal(self):
+        # k='"q"' -> bash keys "q" (quotes kept), not q.
+        self.assert_identical_behavior(
+            'declare -A h; k=\'"q"\'; (( h[$k]=3 )); declare -p h')
+
+    def test_substituted_single_quotes_stay_literal(self):
+        self.assert_identical_behavior(
+            'declare -A h; k="\'a b\'"; (( h[$k]=5 )); declare -p h')
+
+    def test_substituted_backslash_dollar_stays_literal(self):
+        self.assert_identical_behavior(
+            "declare -A h; k='\\$x'; (( h[$k]=9 )); declare -p h")
+
+    def test_braced_substitution_stays_literal(self):
+        self.assert_identical_behavior(
+            'declare -A h; k=\'"q"\'; (( h[${k}]=1 )); declare -p h')
+
+    def test_mixed_source_and_substituted(self):
+        self.assert_identical_behavior(
+            'declare -A h; k=\'"q"\'; (( h[p$k]=1 )); declare -p h')
+
+    def test_read_side_substituted_quotes_miss(self):
+        # h has plain key q; k='"q"' looks up the quoted key (absent) -> 0.
+        self.assert_identical_behavior(
+            'declare -A h; h[q]=7; k=\'"q"\'; echo $(( h[$k] ))')
+
+    def test_read_side_substituted_quotes_hit(self):
+        self.assert_identical_behavior(
+            'declare -A h; h[\'"q"\']=7; k=\'"q"\'; echo $(( h[$k] ))')
+
+    def test_let_spelling_substituted_quotes(self):
+        self.assert_identical_behavior(
+            'declare -A h; k=\'"q"\'; let \'h[$k]=1\'; declare -p h')
+
+    def test_for_loop_spelling_substituted_quotes(self):
+        self.assert_identical_behavior(
+            'declare -A h; k=\'"q"\'; '
+            'for (( h[$k]=0; h[$k]<1; h[$k]++ )); do :; done; declare -p h')
+
+
 class TestAnsiCKeyDecode(ConformanceTest):
     """r21 A4: $'...' subscripts decode like any word."""
 

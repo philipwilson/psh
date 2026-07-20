@@ -79,23 +79,62 @@ class TestAssociativeKey:
         assert subscript.associative_key('a *') == 'a *'
 
 
-class TestAssociativeKeyArithEntryState:
-    """expand_dollar=False: quote removal WITHOUT $-re-expansion."""
+class TestArithAssociativeKeyProvenance:
+    """Arithmetic associative subscripts key with PROVENANCE (campaign W2/CV1).
 
-    def test_dollar_stays_source_spelling(self, captured_shell, subscript):
-        captured_shell.run_command('x=5')
-        assert subscript.associative_key('$x', expand_dollar=False) == '$x'
-        assert subscript.associative_key('${x}', expand_dollar=False) == '${x}'
+    The subscript's $-forms are held out of the arithmetic pre-pass
+    (arithmetic/evaluator.py#_arith_preexpand), so it reaches the ONE keying
+    engine RAW and is keyed exactly like a non-arithmetic ``h[$k]=v``: source-
+    spelled quotes/backslashes are removed, but characters arriving via ``$k``
+    stay LITERAL and a substituted ``$`` is never rescanned. Every row is
+    bash 5.2-verified (tmp/boundary-ledgers/CV-probes/cv1_matrix.sh)."""
 
-    def test_quote_removal_still_applies(self, subscript):
-        assert subscript.associative_key('"q w"', expand_dollar=False) == 'q w'
-        assert subscript.associative_key("'q'", expand_dollar=False) == 'q'
+    def _key(self, sh, setup, sub):
+        # Write via arithmetic, then read the stored key back out with declare.
+        sh.clear_output()
+        sh.run_command(f'declare -A h; {setup}; (( h[{sub}]=1 )); declare -p h')
+        return sh.get_stdout()
 
-    def test_unquoted_backslash_escape_removed(self, subscript):
-        assert subscript.associative_key('\\$x', expand_dollar=False) == '$x'
+    def test_substituted_double_quotes_stay_literal(self, captured_shell):
+        # k='"q"' -> bash keys "q" (quotes kept), NOT q.
+        out = self._key(captured_shell, "k='\"q\"'", '$k')
+        assert '["\\"q\\""]="1"' in out
 
-    def test_ansi_c_decodes(self, subscript):
-        assert subscript.associative_key("$'t u'", expand_dollar=False) == 't u'
+    def test_substituted_single_quotes_stay_literal(self, captured_shell):
+        out = self._key(captured_shell, "k=\"'a b'\"", '$k')
+        assert '["\'a b\'"]="1"' in out
+
+    def test_substituted_backslash_dollar_stays_literal(self, captured_shell):
+        out = self._key(captured_shell, "k='\\$x'", '$k')
+        assert '\\$x' in out  # backslash + dollar retained, not stripped
+
+    def test_source_double_quotes_are_removed(self, captured_shell):
+        # SOURCE-spelled quotes ARE removed (h["q"] keys q) — provenance cuts
+        # the other way for characters spelled in the arithmetic source.
+        out = self._key(captured_shell, ':', '"q"')
+        assert '[q]="1"' in out
+
+    def test_braced_substitution_stays_literal(self, captured_shell):
+        out = self._key(captured_shell, "k='\"q\"'", '${k}')
+        assert '["\\"q\\""]="1"' in out
+
+    def test_mixed_source_and_substituted(self, captured_shell):
+        # p is source (kept), $k contributes its literal quotes.
+        out = self._key(captured_shell, "k='\"q\"'", 'p$k')
+        assert '["p\\"q\\""]="1"' in out
+
+    def test_dollar_literal_never_reexpanded(self, captured_shell):
+        # Doctrine $-half (must stay bash-exact): a substituted literal $x is
+        # NOT re-expanded — keys \$x, not x's value.
+        out = self._key(captured_shell, "x=5; k='$x'", '$k')
+        assert '\\$x' in out and '[5]' not in out
+
+    def test_read_side_missing_key(self, captured_shell):
+        # h has key q; reading with k='"q"' looks up "q" (absent) -> 0.
+        captured_shell.clear_output()
+        captured_shell.run_command(
+            'declare -A h; h[q]=7; k=\'"q"\'; echo $(( h[$k] ))')
+        assert captured_shell.get_stdout().strip() == '0'
 
 
 class TestIndexedIndex:
