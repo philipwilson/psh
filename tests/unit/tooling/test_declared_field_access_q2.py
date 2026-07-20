@@ -199,16 +199,14 @@ def _scan_tree():
 
 # --- the frozen set: current provable declared-member accesses ---------------
 #
-# Each is defensive access to a member the receiver's class GUARANTEES. Unless
-# noted, replacing it with direct access (``x.f`` / dropping the hasattr guard's
-# dead else-branch) is behavior-inert — deferred to a typed-access cleanup
-# (recorded in the Q2 ledger's carry register). MAY ONLY SHRINK.
-#
-# ONE reviewed exception (NOT the anti-pattern): core/state.py
-# ``hasattr(self, 'scope_manager')`` in the ``debug_scopes`` setter guards a
-# CONSTRUCTION-ORDERING window — the setter can fire (via an options override)
-# before ``__init__`` assigns ``scope_manager``, so the attr genuinely may be
-# absent there. It is legitimately defensive; it stays frozen and justified.
+# Each is defensive access to a member the receiver's class GUARANTEES.
+# Replacing it with direct access (``x.f`` / dropping the hasattr guard's dead
+# else-branch) is behavior-inert — deferred to a typed-access cleanup (recorded
+# in the Q2 ledger's carry register). MAY ONLY SHRINK. All 26 are debt — the
+# former "reviewed exception" (state.py ``hasattr(self, 'scope_manager')`` in the
+# ``debug_scopes`` setter) was PROVEN unreachable-defensive dead code at Q2 B3
+# (the setter has zero callers; scope_manager is assigned before options), so the
+# dead guard was DELETED and this set shrank 27 -> 26.
 FROZEN_DECLARED_MEMBER_ACCESSES = sorted([
     ("psh/builtins/base.py", "hasattr", "shell", "stdout"),
     ("psh/builtins/base.py", "hasattr", "shell", "stderr"),
@@ -217,7 +215,6 @@ FROZEN_DECLARED_MEMBER_ACCESSES = sorted([
     ("psh/builtins/print_builtin.py", "hasattr", "shell", "stdout"),
     ("psh/builtins/print_builtin.py", "hasattr", "shell", "stderr"),
     ("psh/builtins/read_builtin.py", "getattr", "shell", "stdin"),
-    ("psh/core/state.py", "hasattr", "self", "scope_manager"),  # construction-order guard
     ("psh/executor/control_flow.py", "hasattr", "self.shell", "stdin"),
     ("psh/executor/core.py", "getattr", "node", "background"),
     ("psh/executor/job_control.py", "hasattr", "self.shell_state", "foreground_pgid"),
