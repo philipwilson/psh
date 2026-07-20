@@ -10,10 +10,13 @@ History expansion is INTERACTIVE-ONLY in both shells (bash and psh disable it
 for non-interactive `-c`/scripts), so the standard `assert_identical_behavior`
 `-c` harness cannot exercise it. Instead we use bash's own non-interactive
 expansion engine as the oracle: `history -s EVENT` seeds the event list and
-`history -p EXPR` performs (and prints) the expansion without a tty. psh has no
-`history -p`, so we drive psh's real expansion engine (`HistoryExpander`) in
-process against the same seeded history. Both sides are thus the shells' actual
-expansion code, compared byte-for-byte.
+`history -p EXPR` performs (and prints) the expansion without a tty. psh HAS
+`history -p` too (campaign I4; the interactive recording/removal rule is pinned
+by test_history_p_interactive_conformance.py), but here we drive psh's real
+expansion engine (`HistoryExpander`) in process against the same seeded history
+— the SAME code `history -p` runs — so this file compares the two shells'
+expansion engines byte-for-byte, isolated from any recording differences. Both
+sides are thus the shells' actual expansion code.
 """
 
 import os

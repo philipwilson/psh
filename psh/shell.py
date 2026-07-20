@@ -689,8 +689,10 @@ class Shell:
     def active_parser(self, name: str) -> None:
         self._active_parser = name
 
-    def add_history(self, command: str) -> None:
-        """Record a command in the interactive history.
+    def add_history(self, command: str) -> bool:
+        """Record a command in the interactive history; return True iff an
+        entry was actually appended (False when recording is disabled or the
+        line was HISTCONTROL/HISTIGNORE-filtered).
 
         Public entry point so callers do not walk
         interactive_manager.history_manager.add_to_history directly.
@@ -698,8 +700,8 @@ class Shell:
         disables command-history recording (bash).
         """
         if not self.state.options.get('history', True):
-            return
-        self.interactive_manager.history_manager.add_to_history(command)
+            return False
+        return self.interactive_manager.history_manager.add_to_history(command)
 
     def expand_aliases(self, tokens: 'List[Token]') -> 'List[Token]':
         """Alias-expand a token stream at the lex->parse boundary.

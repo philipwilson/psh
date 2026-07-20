@@ -103,8 +103,11 @@ class HistoryBuiltin(Builtin):
             return self._delete(rest, shell, hist_mgr)
 
         if flag == '-s':
-            # Store the args as one entry, without executing them.
+            # Store the args as one entry, without executing them. bash strips
+            # the `history -s ...` invocation itself first, so the stored line
+            # REPLACES it rather than lingering beside it (CV3).
             if rest:
+                self._strip_own_invocation(shell)
                 hist_mgr.store_entry(' '.join(rest))
             return 0
 
@@ -112,6 +115,24 @@ class HistoryBuiltin(Builtin):
             return self._expand_print(rest, shell)
 
         return self._usage_error(f"{flag}: invalid option", shell)
+
+    @staticmethod
+    def _strip_own_invocation(shell: 'Shell') -> None:
+        """Remove the `history -p`/`-s` invocation's OWN just-recorded history
+        entry (bash) — so a `!!` operand refers to the command BEFORE the
+        `history` call and the invocation does not linger. Interactive-family
+        only, and ONLY the verified invocation: the source processor records the
+        line it added (``_last_recorded_history_line``); a HISTCONTROL/HISTIGNORE
+        -filtered or non-recorded line leaves the marker None, so no prior entry
+        is stripped by mistake (the ignorespace/ignoredups edge — probed vs bash
+        5.2). The list is mutated in place, preserving the editor list-alias
+        contract. Called only when there are operands (bash: `history -p`/`-s`
+        with no operands strips nothing)."""
+        state = shell.state
+        line = getattr(state, '_last_recorded_history_line', None)
+        if line is not None and state.history and state.history[-1] == line:
+            del state.history[-1]
+            state._last_recorded_history_line = None
 
     def _expand_print(self, rest: List[str], shell: 'Shell') -> int:
         """``history -p arg...``: history-expand each ARG and print the result
@@ -125,6 +146,11 @@ class HistoryBuiltin(Builtin):
             return 2
         if rest and rest[0] == '--':
             rest = rest[1:]
+        # bash strips the `history -p ...` invocation from history BEFORE
+        # expanding (only WITH operands), so a `!!` operand refers to the
+        # command before this `history -p`, not to the invocation itself.
+        if rest:
+            self._strip_own_invocation(shell)
         status = 0
         for arg in rest:
             # force=True: `history -p` expands regardless of `set +H` (bash).

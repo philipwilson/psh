@@ -102,8 +102,8 @@ class HistoryManager(InteractiveComponent):
         hist[:] = [h for h in hist if h != command]
         self._file_synced_len = max(0, self._file_synced_len - removed_before_sync)
 
-    def add_to_history(self, command: str) -> None:
-        """Add a command to history.
+    def add_to_history(self, command: str) -> bool:
+        """Add a command to history; return True iff an entry was appended.
 
         A multi-line command becomes ONE entry, joined into its
         single-line ``; `` form like bash's cmdhist option (the joiner
@@ -114,24 +114,26 @@ class HistoryManager(InteractiveComponent):
         is recorded (no dedup); ``ignorespace`` drops a line beginning with a
         space, ``ignoredups`` drops a line equal to the previous entry,
         ``erasedups`` removes all prior copies first, and HISTIGNORE drops lines
-        matching its glob patterns.
+        matching its glob patterns. The False return (line was filtered out) is
+        what lets ``history -p``/``-s`` know NOT to strip a prior entry as if it
+        were their own invocation (CV3).
         """
         histcontrol = self._histcontrol_options()
         # ignorespace: a line beginning with a space is not recorded (checked on
         # the raw line, before the multi-line join).
         if 'ignorespace' in histcontrol and command[:1] == ' ':
-            return
+            return False
         if '\n' in command:
             command = convert_multiline_to_single(command)
         # HISTIGNORE: drop lines matching any colon-separated glob pattern.
         if self._histignore_matches(command):
-            return
+            return False
         if 'erasedups' in histcontrol:
             self._erase_duplicates(command)
         elif 'ignoredups' in histcontrol:
             # Drop a line identical to the immediately previous entry.
             if self.state.history and self.state.history[-1] == command:
-                return
+                return False
         self.state.history.append(command)
         # Trim history if it exceeds max size. The trim drops entries from
         # the FRONT, so the persisted-length marker (an index into the list)
@@ -144,6 +146,7 @@ class HistoryManager(InteractiveComponent):
             dropped = len(self.state.history) - self.state.max_history_size
             del self.state.history[:dropped]
             self._file_synced_len = max(0, self._file_synced_len - dropped)
+        return True
 
     def load_from_file(self) -> None:
         """Load command history from file."""

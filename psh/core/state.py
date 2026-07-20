@@ -278,6 +278,12 @@ class ShellState:
         # max_history_size delegate to it via properties).
         self.history_state = HistoryState()
 
+        # The history entry the CURRENT top-level command recorded (if any),
+        # so `history -p`/`-s` can strip their OWN just-added invocation and
+        # ONLY that (CV3). Reset per command by the source processor; None when
+        # nothing was recorded (non-interactive, HISTCONTROL/HISTIGNORE drop).
+        self._last_recorded_history_line: Optional[str] = None
+
         # Editor configuration
         self.edit_mode = 'emacs'
 
@@ -643,6 +649,9 @@ class ShellState:
 
         # Process-local arithmetic re-entrancy: a fresh evaluation context.
         self._arith_recursion_depth = 0
+
+        # Per-command transient (CV3): no command has recorded history yet.
+        self._last_recorded_history_line = None
 
         # $PPID / $$ stay stable across subshells (POSIX).
         self.initial_ppid = parent.initial_ppid
