@@ -70,11 +70,13 @@ is an identity function here — but each is one sentence away:
   rewritten from the history list first
   (`psh/interactive/history_expansion.py`); `-c` mode skips this.
 - **Brace expansion** — `echo out.{txt,log}` would be expanded — but
-  note that in psh this happens *after* tokenization, on the token
-  stream (`TokenBraceExpander` in `psh/expansion/brace_expansion.py`),
-  so generated text is never re-lexed and quote context is available.
-  It is listed here because POSIX puts it first conceptually; the
-  mechanism lives at the end of `tokenize()`.
+  note that in psh this happens at the **Word-expansion stage** (since
+  v0.678: `ExpansionManager.brace_expand_word` → `WordBraceExpander` in
+  `psh/expansion/brace_expansion_words.py`), where bash performs it,
+  reading the live `braceexpand` option — so `{a,b}` stays one WORD in
+  the token stream and expands at execution time. It is listed here
+  because POSIX puts it first conceptually. (The old token-stream
+  `TokenBraceExpander` pass was retired in v0.678.)
 
 The driver for all of this is `psh/scripting/source_processor.py`,
 which reads input (from `-c`, a script, or the interactive editor) and
@@ -90,9 +92,12 @@ with the real lexer and parser and reports *why* more input is needed.
 ## 3. Tokenization
 
 The lexer entry point is `tokenize()` (`psh/lexer/__init__.py`), which
-runs three passes: `ModularLexer` → `KeywordNormalizer` →
-`TokenBraceExpander`. See `psh/lexer/CLAUDE.md` for the recognizer
-architecture; this section shows what comes out.
+runs `ModularLexer` and then two post-lex passes: `fuse_words`
+(composite-WORD fusion, FIRST) → `KeywordNormalizer` (keyword
+classification of complete unquoted literals). Brace expansion is NOT a
+lexer pass (it moved to the Word-expansion stage in v0.678). See
+`psh/lexer/CLAUDE.md` for the recognizer architecture; this section shows
+what comes out.
 
 ```bash
 $ python -m psh --debug-tokens -c 'echo "Hello, $USER" | wc -c > out.txt'
@@ -415,7 +420,9 @@ problem; it is the recommended read on this stage.
 each child, `CommandExecutor` expands the arguments (§6 — this is why
 expansion of pipeline members happens post-fork) and tries execution
 strategies in POSIX lookup order (`psh/executor/strategies.py`):
-special builtins → functions → builtins → aliases → external.
+special builtins → functions → builtins → external. (Aliases are not a
+runtime strategy — they are expanded earlier as a lex→parse token-stream
+transform; R8.6b retired the old `AliasExecutionStrategy`.)
 
 - `echo` matches `BuiltinExecutionStrategy`: it runs as Python code
   *inside* the forked child — no exec. Because

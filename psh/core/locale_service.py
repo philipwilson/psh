@@ -102,8 +102,12 @@ class LocaleContext:
     collate_mode: LocaleMode
 
 
-#: Historical name (pre-campaign); the campaign contract name is
-#: :class:`LocaleContext`.
+#: Historical (pre-campaign) name for the canonical :class:`LocaleContext`
+#: (brief §5). Owner: the locale service (this module). It has ZERO code
+#: consumers (grep-verified, campaign Q3 census) and survives only because the
+#: dated design record ``docs/architecture/locale_service_design_2026-07-06.md``
+#: still uses the name. Removal condition: safe to delete outright once that
+#: design record is archived — no code migration is required.
 LocaleProfile = LocaleContext
 
 

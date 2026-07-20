@@ -180,8 +180,9 @@ audit.
 - **Patterns**: `CasePattern.word` (built by RD `_parse_case_pattern` and
   combinator `_make_case_pattern`) → `expand_word_as_pattern()` — quoted
   text matches literally, unquoted keeps glob power. Matching itself is
-  `expansion/pattern.py` (`match_shell_pattern`, the single
-  pattern-to-regex engine, extglob-aware).
+  `expansion/pattern.py` (`match_shell_pattern`, a thin facade over the ONE
+  compiled pattern engine `pattern_engine.py`; extglob-aware, NO regex
+  path — campaign W3).
 - `CasePattern.word=None` falls back to expanding the flat
   `pattern` string — classification (b), a combinator-parser bridge
   (it emits None when `build_word_from_token` rejects the pattern token).

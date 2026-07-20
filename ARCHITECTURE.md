@@ -78,8 +78,8 @@ psh/
 │   ├── manager.py           # Orchestrates expansion order; expand_word_to_fields
 │   ├── variable.py + arrays/operators/operands/fields mixins
 │   ├── parameter_expansion.py / command_sub.py / tilde.py / glob.py
-│   ├── pattern_engine.py    # THE compiled shell-pattern engine (parse-once AST + memoized matcher, all 5 consumers)
-│   ├── pattern.py           # consumer dispatch facade (extglob→engine, plain glob→regex); extglob.py = scanning + glob→regex converter
+│   ├── pattern_engine.py    # THE compiled shell-pattern engine (parse-once AST + memoized matcher; CompiledPattern + 4 relations; every consumer)
+│   ├── pattern.py           # consumer dispatch facade: plain AND extglob route through the ONE compiled engine (W3; NO regex path); extglob.py = scanning primitives (extglob_to_regex is now a production-dead PERMANENT reference oracle)
 │   ├── arithmetic/ / brace_expansion.py / word_splitter.py / evaluator.py
 │   └── aliases.py           # AliasManager
 ├── executor/                # Visitor-based executor package
@@ -95,6 +95,7 @@ psh/
 ├── interactive/             # REPL, line editor, history, completion, signals
 ├── builtins/                # Builtin commands (registry + implementations)
 ├── visitor/                 # Formatter/validator/security/metrics/linter visitors
+├── protocols/               # Narrow runtime service protocols (Q1): VariableAccess/ExpansionContext/IOContext/JobRuntime/LocaleContext — a true leaf; implementations import protocols, never the reverse
 └── utils/                   # Shared helpers (escapes.py dialect map, formatting)
 ```
 
@@ -121,6 +122,7 @@ Input → Preprocessing → Tokenization → Keyword Normalization → Parsing �
 6. **One Fork Helper, One Child Signal Policy, One Substitution-Child Runner**: every fork site forks via `fork_with_signal_window()` and every child applies `apply_child_signal_policy()`; *job-controlled* process creation (commands, pipelines, subshells) additionally goes through `ProcessLauncher`, while command/process substitution fork directly by design (they are not jobs) and run their child bodies through the shared `run_child_shell()` (child Shell construction, exception→exit-code mapping, `flush_child_streams()`, `os._exit`); all of this lives in `psh/executor/child_policy.py`
 7. **Exit Status Discipline**: every execution path returns an integer exit status
 8. **Fail Loudly**: internal errors raise; only user-facing shell errors map to exit codes (v0.300 policy)
+9. **Narrow Service Protocols (dependency direction)**: migrated boundaries depend on the narrow `psh/protocols` interfaces (`VariableAccess`, `ExpansionContext`, `IOContext`, `JobRuntime`, `LocaleContext`) rather than the whole `Shell`; the import edge is one-way — an implementation may import a protocol, a protocol never imports an implementation (campaign Q1; enforced by `tests/unit/tooling/test_protocol_layering_q1.py`, and the full-`Shell` consumer set only shrinks via `tests/unit/tooling/test_shell_consumer_ratchet_q1.py`)
 
 ### "Where do I change X?"
 
