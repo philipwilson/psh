@@ -76,20 +76,22 @@ def test_env_fallback_guard_detects_offender():
 _ENV_NAME_READ = re.compile(
     r"""\benv\s*(?:\.get\(\s*|\[\s*)['"](PATH|CDPATH)['"]""")
 
-# (repo-relative file) -> the EXACT stripped SOURCE LINES where an env read of
-# PATH/CDPATH is LEGITIMATE. Anchored to the specific SITES (not the whole file),
-# so a NEW offending env.get('PATH') added anywhere in an allowlisted file is
-# still caught — the file-scope hole is closed (CV2 nit-1). A known-divergent
-# consumer read is FIXED (routed through get_variable), never allowlisted (the
-# integrator ruling: converge the class, no carve-outs).
-_ENV_NAME_READ_ALLOWLIST_LINES = {
+# (repo-relative file, EXACT stripped source line) -> the specific SITES where
+# an env read of PATH/CDPATH is LEGITIMATE. Keyed on the (file, line) PAIR — not
+# the line text alone — so the file-scope hole AND the verbatim-copy-into-another-
+# file hole are both closed (CV2 nit-1/round-2 nit): the exempt line is legitimate
+# only IN its file. A known-divergent consumer read is FIXED (routed through
+# get_variable), never allowlisted (the integrator ruling: converge the class).
+_ENV_NAME_READ_ALLOWLIST_SITES = {
     # ENOEXEC re-resolution runs in the FORKED CHILD, reading the child's own env
     # after execvpe already found+started the file (a bare-name miss is
     # force_not_found in the PARENT before any fork, so this never re-searches
     # under a `local PATH` shadow):
-    "full_args[0], path=env.get('PATH', os.defpath)) or full_args[0]",
+    ("psh/executor/strategies.py",
+     "full_args[0], path=env.get('PATH', os.defpath)) or full_args[0]"),
     # the --debug-exec line only DISPLAYS the child env PATH:
-    'f"PATH={shell.env.get(\'PATH\', \'NOT_SET\')[:50]}...",',
+    ("psh/executor/strategies.py",
+     'f"PATH={shell.env.get(\'PATH\', \'NOT_SET\')[:50]}...",'),
 }
 
 
@@ -109,35 +111,41 @@ def _env_name_reads():
 
 def test_path_cdpath_env_reads_are_allowlisted():
     offenders = [(rel, ln, txt) for rel, ln, txt in _env_name_reads()
-                 if txt not in _ENV_NAME_READ_ALLOWLIST_LINES]
+                 if (rel, txt) not in _ENV_NAME_READ_ALLOWLIST_SITES]
     assert not offenders, (
         "A consumer reads PATH/CDPATH from the child-env projection instead of "
         "the variable-truth lookup (state.get_variable) — a declared-unset "
         "`local PATH`/`local CDPATH` would RESURRECT the outer export (#20 H13 / "
-        f"CV2). Route it through get_variable, or justify the EXACT source line "
-        f"in _ENV_NAME_READ_ALLOWLIST_LINES: {offenders}")
+        f"CV2). Route it through get_variable, or justify the EXACT (file, line) "
+        f"site in _ENV_NAME_READ_ALLOWLIST_SITES: {offenders}")
 
 
-def test_allowlist_lines_are_all_present():
-    """Shrink-only: every allowlisted source line must still exist (a moved/
-    deleted legitimate read must be pruned, not left as dead cover)."""
-    live = {txt for _, _, txt in _env_name_reads()}
-    stale = _ENV_NAME_READ_ALLOWLIST_LINES - live
-    assert not stale, f"allowlisted env-read line(s) no longer present: {stale}"
+def test_allowlist_sites_are_all_present():
+    """Shrink-only: every allowlisted (file, line) site must still exist (a
+    moved/deleted legitimate read must be pruned, not left as dead cover)."""
+    live = {(rel, txt) for rel, _, txt in _env_name_reads()}
+    stale = _ENV_NAME_READ_ALLOWLIST_SITES - live
+    assert not stale, f"allowlisted env-read site(s) no longer present: {stale}"
 
 
 def test_path_env_read_scanner_detects_offender():
     """Self-test: a synthetic consumer env read is matched; get_variable is not;
-    and a NEW offending read PLANTED in an allowlisted file (line not in the
-    allowlist) is caught — the file-scope hole is closed."""
+    a NEW offending read PLANTED in an allowlisted file is caught (file-scope
+    hole closed); and an allowed line COPIED VERBATIM into another file is caught
+    (the (file, line)-pair key closes the copy hole)."""
     assert _ENV_NAME_READ.search("p = shell.env.get('PATH', '')")
     assert _ENV_NAME_READ.search('d = self.shell.env["CDPATH"]')
     assert not _ENV_NAME_READ.search("p = shell.state.get_variable('PATH', '')")
     assert not _ENV_NAME_READ.search("x = env.get('HOME', '')")
-    # A planted offender line in strategies.py would NOT be in the allowlist:
+    # A planted offender line in an allowlisted file is NOT in the site set:
     planted = "sneaky = shell.env.get('PATH', '')"
     assert _ENV_NAME_READ.search(planted)
-    assert planted not in _ENV_NAME_READ_ALLOWLIST_LINES
+    assert ("psh/executor/strategies.py", planted) \
+        not in _ENV_NAME_READ_ALLOWLIST_SITES
+    # And an allowlisted LINE copied into a DIFFERENT file is caught:
+    copied = "full_args[0], path=env.get('PATH', os.defpath)) or full_args[0]"
+    assert ("psh/builtins/hash_builtin.py", copied) \
+        not in _ENV_NAME_READ_ALLOWLIST_SITES
 
 
 # --- Invariant 2: _param_is_set routes plain names through lookup ------------

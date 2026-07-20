@@ -35,10 +35,18 @@ introduced (B2 non-executable last-resort PATH candidate lost; B3 exec's F_OK
 walk stopping early) plus three model refutations in the fixed families (B1
 `(( ))`'s extra source-dquote round dropped; B4 the history strip is a
 line-scoped PERSISTENT flag not a single-shot marker; B5 the flag inherits into
-`$()`). All 5 are now fixed and pinned (regressions red-at-tip, model fixes
-red-on-base); the 12 nits are dispositioned above (carries #23-26) and in the
-guard/harness fixes. *(The integrator fills the final frozen scorecard line —
-updated slot/bounce totals — at ceremony.)*
+`$()`). All 5 were fixed and pinned (carries #23-26). A **round-2 re-verify then
+BOUNCED again** — **10 blockers (incl. 4 regressions the first bounce
+introduced) + 9 nits**: R1 `[[` operands got the extra round (should be
+let-like), R2 stored-value recursion inherited the flag, R3 the two-tier
+fallback predicate (isfile → stat-exists, directories poison the slot), R4 the
+history strip over-applied to multi-physical-line commands; the model
+corrections M1 (conditional round-2: any-expansion subscript keeps its round-1
+output), M2 (integer-attribute values are let-like), M3 (empty-history
+delete-failure). All 7 fix-items are now fixed and pinned (regressions
+red-at-tip, model corrections red-on-base/at-tip); the deep esoterica are carried
+(#27-30) with characterization pins. *(The integrator fills the final frozen
+scorecard line — updated slot/bounce totals — at ceremony.)*
 
 | Rel | PR | Pkg | Outcome (one line) |
 |-----|----|-----|--------------------|
@@ -155,10 +163,12 @@ accidentally.
 
 One row per registered carry with disposition (CLOSED-with-pointer, or
 CARRIED-with-description). Items #1-2 are CLOSED by the Q3 slot; rows #18-22 were
-added by the closing-verification slot (dev-cv, v0.750.0), and #23-26 by its
-BOUNCE fix (the focused re-verify found 5 production blockers + 12 nits; #23 the
-B1 nested-quote arith carriers, #24 the B2/B3 two-tier introspection+wording
-residual, #25 `history -ps` clustering, #26 a base-identical no-divergence note).
+added by the closing-verification slot (dev-cv, v0.750.0), #23-26 by its FIRST
+bounce, and #27-30 by its SECOND bounce (the round-2 re-verify found 10 blockers
+incl. 4 self-introduced regressions + 9 nits; all 7 fix-items landed, and #27 the
+sticky-hash of the non-exec lose-on — which corrects a `ab2fecba` design note —
+#28 the nested-subscript assignment extractor, #29 heredoc history newlines, #30
+the DESIRABLE executable-FIFO-earlier deviation, were carried).
 
 **Correction-of-record (R3 precedent — the git message stands, corrected here):**
 commit `f74ec47c`'s message says "bash's empty-subscript policy is preserved".
@@ -196,6 +206,10 @@ only the quote-provenance and two-round keying were touched.
 | 24 | CV2 two-tier introspection + Permission-denied wording | **CARRIED (dev-cv bounce, B2/B3 N4).** `type`/`command -v`/`type -P` REPORT a non-executable file found on PATH (rc 0, bash) but psh's X_OK introspection says "not found" (rc 1) — pre-existing (base+branch); converging needs a two-tier flag in the resolver candidate model without loosening the X_OK exec/hash search. And the two-tier last-resort candidate reports rc 126 in both shells but bash names the ABS PATH while psh names the bare command word. Both-sides pins `test_cv_carry_characterization.py::TestTwoTierIntrospectionResidual` / `::TestPermissionDeniedWording`. |
 | 25 | `history -ps` clustered-flag rejection | **CARRIED (dev-cv bounce).** bash accepts the CLUSTERED `history -ps arg` (`-p`+`-s`); psh's hand-rolled history option scan rejects `-ps` as an invalid option (rc 2) — even though psh's OWN usage line advertises `history -ps arg [arg...]`. Documented divergence (the history builtin's justified hand-rolled parser, per the F5/Q2 allowlist). |
 | 26 | cmdsub-with-`;` in an arith subscript | **NOTE (dev-cv bounce, base-identical).** A command substitution containing `;` inside an arithmetic subscript (`$(( h[$(echo a; echo b)] ))`) is handled IDENTICALLY by bash, base, and the B1-patched branch (no parse error introduced by the round-1 dquote pass) — recorded so the B1 change's inertness on this shape is not re-litigated. No divergence, no pin needed beyond the CV1 regression battery. |
+| 27 | sticky-hash of the non-exec lose-on | **CARRIED (dev-cv round-2, integrator-ruled).** bash IMPLICITLY HASHES the non-executable last-resort (126) candidate at exec time (`hash` lists it afterward; it can beat a later executable within the unchanged PATH); psh does NOT insert a 126 candidate into the command hash (a directory lose-on is hashed by neither). Implementing implicit insertion would risk the resolve-once/hash machinery at campaign close. **Corrects commit `ab2fecba`'s design note "bash hashes only executables" — bash ALSO hashes the non-exec lose-on** (correction-of-record, R3 precedent). Both-sides pin `test_cv_carry_characterization.py::TestStickyNonExecHash`. |
+| 28 | nested-subscript indexed ASSIGNMENT extractor split | **CARRIED (dev-cv round-2).** `a[h[q]]=Z` (an associative subscript nested inside an indexed-array element ASSIGNMENT target): bash writes `a[2]=Z`; psh's element-assignment subscript extractor splits at the inner `[` and errors "bad array subscript". The READ side `${a[h[q]]}` works in both — only the assignment-target extractor is affected. Documented divergence. |
+| 29 | heredoc history entries missing trailing newline | **CARRIED (dev-cv round-2).** A command whose logical line includes a heredoc body is recorded in interactive history without bash's trailing-newline detail — a cosmetic history-rendering difference, not a functional one. |
+| 30 | executable-FIFO-earlier: bash HANG vs psh skip | **CARRIED (dev-cv round-2, DESIRABLE deviation — recorded).** With an EXECUTABLE (mode 755) FIFO earlier on PATH and a real executable later, bash execve's the FIFO and HANGS (blocked on open); psh's X_OK gate requires a regular file, so it treats the FIFO as a non-X_OK candidate and runs the later executable. psh's behavior is preferable (no hang); recorded so it is not "fixed" back into a hang. Consistent with R3 (a FIFO is a valid last-resort only when it is the SOLE candidate). |
 
 ---
 

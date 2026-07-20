@@ -121,3 +121,38 @@ class TestPermissionDeniedWording:
         assert "/bin/cvsole: Permission denied" in b.stderr
         assert "cvsole: Permission denied" in p.stderr
         assert f"{nonexec_on_path}/bin/cvsole" not in p.stderr    # psh: bare word
+
+
+class TestStickyNonExecHash:
+    """Carry #27 (CV2 R3): bash IMPLICITLY HASHES the non-executable last-resort
+    (126) candidate at exec time — `hash` lists it afterward, and it can beat a
+    later executable within the (unchanged) PATH — whereas psh does NOT insert a
+    126 candidate into the command hash. A DIRECTORY lose-on is hashed by neither
+    (control). Implementing implicit insertion would risk the resolve-once/hash
+    machinery at campaign close (integrator ruling: CARRY). This corrects
+    commit ab2fecba's design note "bash hashes only executables" — bash also
+    hashes the non-exec lose-on. Probed vs bash 5.2."""
+
+    @pytest.fixture
+    def hashtree(self, tmp_path):
+        b = tmp_path / "bin"
+        b.mkdir()
+        (b / "cvh").write_text("#!/bin/sh\n")
+        (b / "cvh").chmod(0o644)                     # sole NON-EXECUTABLE
+        (tmp_path / "dbin").mkdir()
+        (tmp_path / "dbin" / "cvd").mkdir()          # sole DIRECTORY candidate
+        return tmp_path
+
+    def test_bash_hashes_nonexec_lose_on_psh_does_not(self, hashtree):
+        # After a 126 non-exec run, bash's hash lists cvh; psh's is empty.
+        cmd = f'PATH={hashtree}/bin; cvh 2>/dev/null; hash 2>&1'
+        assert "cvh" in _run([BASH], cmd).stdout             # bash hashed it
+        psh_out = _run(PSH, cmd).stdout
+        assert "cvh" not in psh_out                          # psh did NOT
+        assert "empty" in psh_out.lower()
+
+    def test_directory_lose_on_hashed_by_neither(self, hashtree):
+        # Control: a directory candidate (127) is hashed by NEITHER shell.
+        cmd = f'PATH={hashtree}/dbin; cvd 2>/dev/null; hash 2>&1'
+        assert "cvd" not in _run([BASH], cmd).stdout
+        assert "cvd" not in _run(PSH, cmd).stdout
