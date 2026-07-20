@@ -581,17 +581,16 @@ class ExternalExecutionStrategy(ExecutionStrategy):
         elif use_hash:
             resolved_path = shell.command_resolver.resolve_for_exec(cmd_name)
             if resolved_path is None and '/' not in cmd_name:
-                # A bare-name miss on the variable-truth PATH is DEFINITIVE
-                # (CV2 face b): bash reports "command not found" and never lets
-                # the child re-search a child-env PATH that a `local PATH`
-                # (declared-unset) shadow would resurrect. resolve_for_exec
-                # returns None WITHOUT searching when hashall is off, so do the
-                # variable-PATH search here for that case; a None from a real
-                # PATH miss is final.
-                if not shell.state.options.get('hashall', True):
-                    matches = shell.command_resolver.search_path(
-                        cmd_name, shell.state.get_variable('PATH', ''))
-                    resolved_path = matches[0] if matches else None
+                # resolve_for_exec missed on the X_OK hash search (or, under
+                # set +h, did not search). Fall back to bash's TWO-TIER
+                # variable-PATH search (CV2 B2): an X_OK match runs, a sole
+                # last-resort NON-executable candidate is exec'd (EACCES ->
+                # "Permission denied", 126), and only a name that is NOWHERE on
+                # the variable-truth PATH is "command not found" (127) — never a
+                # fork into a child-env PATH that a `local PATH` shadow would
+                # resurrect (CV2 face b).
+                resolved_path = shell.command_resolver.search_path_two_tier(
+                    cmd_name, shell.state.get_variable('PATH', ''))
                 force_not_found = resolved_path is None
         else:
             # env override: no shell hash; execvpe walks the (overridden) env.

@@ -73,6 +73,72 @@ def cvtree(tmp_path):
     return tmp_path
 
 
+@pytest.fixture
+def twotier(tmp_path):
+    """PATH dirs for bash's two-tier search: a sole non-exec candidate, and a
+    non-exec-early + exec-late pair (same command name)."""
+    (tmp_path / "only").mkdir()
+    (tmp_path / "only" / "cvsole").write_text("#!/bin/sh\necho RAN-ONLY\n")
+    (tmp_path / "only" / "cvsole").chmod(0o644)          # exists, NOT executable
+    (tmp_path / "early").mkdir()
+    (tmp_path / "early" / "cvx").write_text("#!/bin/sh\necho RAN-EARLY\n")
+    (tmp_path / "early" / "cvx").chmod(0o644)            # non-exec, earlier
+    (tmp_path / "late").mkdir()
+    (tmp_path / "late" / "cvx").write_text("#!/bin/sh\necho RAN-LATE\n")
+    (tmp_path / "late" / "cvx").chmod(0o755)             # exec, later
+    return tmp_path
+
+
+class TestTwoTierPathSearch:
+    """CV2 B2/B3: bash's PATH execution search is TWO-TIER — an X_OK match wins,
+    a sole non-executable candidate is the LAST RESORT (execve -> EACCES ->
+    rc 126), and a non-executable earlier on PATH never shadows an executable
+    later. The unified CV2 fix regressed these (X_OK miss treated as definitive
+    -> 127; exec's F_OK walk stopped at the first existing file). RED at the fix
+    tip. Rows compare the behavioral fact (rc / which ran) with stderr
+    suppressed — the "Permission denied" WORDING (bash abs-path vs psh bare name)
+    is a separate carried divergence (register #24)."""
+
+    def test_b2_sole_nonexec_plain(self, twotier):
+        # bash: rc 126 (Permission denied), NOT 127 (command not found).
+        _assert_same(f'PATH={twotier}/only; cvsole 2>/dev/null; echo rc=$?',
+                     twotier)
+
+    def test_b2_sole_nonexec_pipeline(self, twotier):
+        _assert_same(
+            f'PATH={twotier}/only; cvsole 2>/dev/null | cat; echo rc=$?',
+            twotier)
+
+    def test_b2_sole_nonexec_command_builtin(self, twotier):
+        _assert_same(
+            f'PATH={twotier}/only; command cvsole 2>/dev/null; echo rc=$?',
+            twotier)
+
+    def test_b2_sole_nonexec_set_plus_h(self, twotier):
+        _assert_same(
+            f'PATH={twotier}/only; set +h; cvsole 2>/dev/null; echo rc=$?',
+            twotier)
+
+    def test_b2_sole_nonexec_tempenv_prefix(self, twotier):
+        _assert_same(
+            f'PATH={twotier}/only cvsole 2>/dev/null; echo rc=$?', twotier)
+
+    def test_b3_nonexec_early_exec_late_plain(self, twotier):
+        # bash runs the executable LATER one, not the non-exec earlier.
+        _assert_same(f'PATH={twotier}/early:{twotier}/late; cvx 2>/dev/null',
+                     twotier)
+
+    def test_b3_nonexec_early_exec_late_exec(self, twotier):
+        _assert_same(
+            f'PATH={twotier}/early:{twotier}/late; exec cvx 2>/dev/null; echo NR',
+            twotier)
+
+    def test_d1b_sole_exec_still_runs(self, twotier):
+        # Kept-green: a sole EXECUTABLE candidate runs (exec replaces process).
+        _assert_same(f'PATH={twotier}/late; exec cvx 2>/dev/null; echo NR',
+                     twotier)
+
+
 class TestCdpathVariableTruth:
     """CDPATH is read from the variable, never resurrected from the export."""
 

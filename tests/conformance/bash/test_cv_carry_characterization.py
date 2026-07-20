@@ -1,21 +1,22 @@
 """Both-sides characterization pins for closing-verification carry register
 (dev-cv, v0.750.0). These are DOCUMENTED DIVERGENCES — psh's behavior is pinned
 alongside bash's so a future accidental change to EITHER is caught. They are
-carried (carry register #18, #19 in docs/reviews/boundary_campaign_close_2026-07),
+carried (carry register #18-24 in docs/reviews/boundary_campaign_close_2026-07),
 not fixed, per the closing-verification dispositions.
 """
 import subprocess
 import sys
 
+import pytest
 from shell_oracle import resolve_bash
 
 BASH = resolve_bash().path
 PSH = [sys.executable, "-m", "psh"]
 
 
-def _run(argv, cmd):
+def _run(argv, cmd, cwd=None):
     return subprocess.run(argv + ["-c", cmd], capture_output=True, text=True,
-                          timeout=20)
+                          timeout=20, cwd=cwd)
 
 
 class TestPosixSpecialBuiltinRedirectFatality:
@@ -62,3 +63,61 @@ class TestAnsiCHighEscapeByteModel:
         psh = subprocess.run(PSH + ["-c", cmd], capture_output=True, timeout=20)
         assert bash.stdout == b"\x80"
         assert psh.stdout == b"\xc2\x80"                      # UTF-8 of U+0080
+
+
+@pytest.fixture
+def nonexec_on_path(tmp_path):
+    """A sole non-executable (644) regular file on a bin dir."""
+    binp = tmp_path / "bin"
+    binp.mkdir()
+    f = binp / "cvsole"
+    f.write_text("#!/bin/sh\necho X\n")
+    f.chmod(0o644)
+    return tmp_path
+
+
+class TestTwoTierIntrospectionResidual:
+    """Carry #24 (R3/CV2 N4): bash's `type`/`command -v`/`type -P` REPORT a
+    non-executable file found on PATH (rc 0, two-tier existence), while psh's
+    introspection uses the X_OK search and says "not found" (rc 1). Pre-existing
+    (base AND branch); converging it would need a two-tier flag threaded through
+    the resolver's candidate model WITHOUT loosening the X_OK-only exec/hash
+    search — deferred. `type -a` (X_OK only) already MATCHES bash. Probed vs
+    bash 5.2."""
+
+    def test_type_reports_nonexec_in_bash(self, nonexec_on_path):
+        cmd = f'PATH={nonexec_on_path}/bin; type cvsole >/dev/null 2>&1; echo $?'
+        assert _run([BASH], cmd).stdout.strip() == "0"       # bash: reports it
+        assert _run(PSH, cmd).stdout.strip() == "1"          # psh: not found
+
+    def test_command_v_reports_nonexec_in_bash(self, nonexec_on_path):
+        cmd = (f'PATH={nonexec_on_path}/bin; '
+               'command -v cvsole >/dev/null 2>&1; echo $?')
+        assert _run([BASH], cmd).stdout.strip() == "0"
+        assert _run(PSH, cmd).stdout.strip() == "1"
+
+    def test_type_a_matches_bash_not_found(self, nonexec_on_path):
+        # type -a is X_OK-only in BOTH shells (kept-green control).
+        cmd = f'PATH={nonexec_on_path}/bin; type -a cvsole >/dev/null 2>&1; echo $?'
+        assert _run([BASH], cmd).stdout.strip() == "1"
+        assert _run(PSH, cmd).stdout.strip() == "1"
+
+
+class TestPermissionDeniedWording:
+    """Carry #24 (CV2 B2 wording): the two-tier last-resort candidate reports
+    rc 126 in BOTH shells, but bash names the ABSOLUTE PATH while psh names the
+    BARE command word — a pre-existing message-wording difference (the exec/
+    external diagnostics name the raw word, not the resolved path). rc + the
+    behavioral fact (not run) are pinned by the two-tier conformance rows; only
+    the wording differs. Probed vs bash 5.2."""
+
+    def test_permission_denied_rc126_both_word_differs(self, nonexec_on_path):
+        cmd = f'PATH={nonexec_on_path}/bin; cvsole; echo rc=$?'
+        b = _run([BASH], cmd)
+        p = _run(PSH, cmd)
+        assert "rc=126" in b.stdout and "rc=126" in p.stdout      # SAME rc
+        assert "Permission denied" in b.stderr and "Permission denied" in p.stderr
+        # bash names the resolved absolute path; psh names the bare word.
+        assert "/bin/cvsole: Permission denied" in b.stderr
+        assert "cvsole: Permission denied" in p.stderr
+        assert f"{nonexec_on_path}/bin/cvsole" not in p.stderr    # psh: bare word

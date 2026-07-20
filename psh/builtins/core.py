@@ -224,15 +224,14 @@ class ExecBuiltin(Builtin):
             # the child-env projection — a declared-unset `local PATH` must not
             # resurrect the outer export (#20 H13 / CV2). bash locates with the
             # shell's PATH then hands the child the requested env, so this
-            # applies to `-c` (empty child env) too. Match on EXISTENCE (F_OK,
-            # not X_OK) so a found-but-non-executable file is exec'd and reported
-            # "Permission denied" (126) like bash, rather than "not found"; a
-            # bare-name MISS leaves exec_file empty and is reported
-            # "<name>: not found" below (never re-searching a resurrected env
-            # PATH via execvpe).
-            found = shell.command_resolver.search_path(
-                exec_file, shell.state.get_variable('PATH', ''), mode=os.F_OK)
-            exec_file = found[0] if found else ''
+            # applies to `-c` (empty child env) too. Use bash's TWO-TIER search
+            # (CV2 B3): an X_OK match wins over a non-executable earlier on PATH,
+            # and a sole non-executable candidate is still exec'd and reported
+            # "Permission denied" (126); a bare-name MISS leaves exec_file empty
+            # and is reported "<name>: not found" below (never re-searching a
+            # resurrected env PATH via execvpe).
+            exec_file = shell.command_resolver.search_path_two_tier(
+                exec_file, shell.state.get_variable('PATH', '')) or ''
 
         argv0 = opts['a'] if opts['a'] is not None else command[0]
         if opts['l']:

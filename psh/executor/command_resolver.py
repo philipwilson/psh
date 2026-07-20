@@ -174,6 +174,30 @@ class CommandResolver:
                 results.append(full_path)
         return results
 
+    def search_path_two_tier(self, name: str, path_str: str) -> Optional[str]:
+        """bash's TWO-TIER PATH resolution for EXECUTION (CV2 B2/B3): the first
+        ``X_OK``-executable match wins; failing that, the FIRST existing
+        regular-file candidate is the LAST RESORT (``execve`` then ``EACCES`` ->
+        "Permission denied", 126); ``None`` when the name is nowhere on PATH
+        ("command not found", 127). A slash-name is taken as given if it is a
+        regular file. Mirrors bash's ``find_user_command_internal`` remembering
+        the first ``FS_EXISTS`` candidate while it keeps looking for an
+        ``FS_EXECABLE`` one — so a non-executable earlier on PATH never shadows
+        an executable later, and a sole non-executable candidate is still tried
+        (and reported not-executable) rather than "not found"."""
+        if '/' in name:
+            return name if os.path.isfile(name) else None
+        fallback: Optional[str] = None
+        for component in path_str.split(':'):
+            directory = component if component else '.'
+            full_path = os.path.join(directory, name)
+            if os.path.isfile(full_path):
+                if os.access(full_path, os.X_OK):
+                    return full_path
+                if fallback is None:
+                    fallback = full_path
+        return fallback
+
     # -- ordered resolution ------------------------------------------------
 
     def resolve(self, name: str, query: ResolveQuery = DEFAULT_QUERY) -> Resolution:
