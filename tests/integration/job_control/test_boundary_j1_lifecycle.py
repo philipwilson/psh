@@ -194,3 +194,44 @@ def test_disown_h_keeps_job_in_table():
     assert "sleep 3" in out_h, out_h
     out_plain, _, _ = _psh("sleep 3 & disown; jobs")
     assert "sleep 3" not in out_plain, out_plain
+
+
+# ---- B3: `wait` tests the returned pid separately from status ----------------
+# The untracked-pid path branched on `status != 0`, so an already-exited-0
+# child (status 0) was misclassified as still-running -> ECHILD -> 127. bash
+# returns 0. Fix: branch on the RETURNED pid; a disowned pid (reap_registry)
+# returns 0 immediately regardless of its actual status (bash-pinned).
+
+def test_wait_disowned_exited_zero_returns_zero():
+    # RED on base: was 127 (status-vs-pid conflation).
+    out, err, rc = _psh("sleep 0.1 & p=$!; disown; sleep 0.4; wait $p; echo rc=$?")
+    assert out == "rc=0\n", (out, err)
+
+
+def test_wait_disowned_exited_nonzero_still_returns_zero():
+    # bash returns 0 for ANY disowned pid's wait, regardless of exit status.
+    out, err, rc = _psh(
+        "(sleep 0.1; exit 7) & p=$!; disown; sleep 0.4; wait $p; echo rc=$?")
+    assert out == "rc=0\n", (out, err)
+
+
+def test_wait_disowned_still_running_returns_zero_immediately():
+    out, err, rc = _psh("sleep 0.5 & p=$!; disown; wait $p; echo rc=$?")
+    assert out == "rc=0\n", (out, err)
+
+
+def test_wait_never_a_child_returns_127():
+    out, err, rc = _psh("wait 99999 2>/dev/null; echo rc=$?")
+    assert out == "rc=127\n", (out, err)
+
+
+def test_wait_tracked_exited_zero_returns_zero():
+    # Regression guard for the fix: a TRACKED exited-0 child still returns 0.
+    out, err, rc = _psh("sleep 0.1 & p=$!; sleep 0.4; wait $p; echo rc=$?")
+    assert out == "rc=0\n", (out, err)
+
+
+def test_wait_tracked_exited_nonzero_returns_status():
+    out, err, rc = _psh(
+        "(sleep 0.1; exit 7) & p=$!; sleep 0.4; wait $p; echo rc=$?")
+    assert out == "rc=7\n", (out, err)

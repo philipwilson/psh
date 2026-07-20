@@ -668,22 +668,40 @@ class WaitBuiltin(Builtin):
                         exit_status = remembered
                         continue
 
-                    # Try to wait for the specific PID
+                    # A DISOWNED child (in the reap registry, no longer in the
+                    # user-visible table): bash's `wait <pid>` on it returns 0
+                    # IMMEDIATELY, regardless of its state or actual exit status
+                    # (probe-pinned vs bash 5.2: disowned exit-0/7/42 all → 0,
+                    # running → 0 without blocking). Reap any zombie so it is
+                    # not leaked, then report success.
+                    if pid in shell.job_manager.reap_registry:
+                        reported_pid = pid
+                        exit_status = 0
+                        try:
+                            reaped, _ = os.waitpid(pid, os.WNOHANG)
+                            if reaped == pid:
+                                shell.job_manager.reap_registry.pop(pid, None)
+                        except OSError:
+                            shell.job_manager.reap_registry.pop(pid, None)
+                        continue
+
+                    # Try to wait for the specific PID. Branch on the RETURNED
+                    # PID, never the status (#20 J1/B3): waitpid(WNOHANG) returns
+                    # (pid, status) once reaped and (0, 0) while still running —
+                    # an already-exited-0 child has status 0, so testing
+                    # `status != 0` misclassified it as running, hit ECHILD on
+                    # the blocking wait, and wrongly reported "not a child" / 127.
                     try:
-                        _, status = os.waitpid(pid, os.WNOHANG)
-                        if status != 0:
-                            # Process already terminated
+                        reaped, status = os.waitpid(pid, os.WNOHANG)
+                        if reaped == pid:
+                            # Reaped just now (status may legitimately be 0).
                             reported_pid = pid
                             exit_status = self._extract_exit_status(status)
                         else:
-                            # Process still running - wait for it
-                            try:
-                                _, status = os.waitpid(pid, 0)
-                                reported_pid = pid
-                                exit_status = self._extract_exit_status(status)
-                            except (ChildProcessError, OSError):
-                                self.error(f"pid {pid} is not a child of this shell", shell)
-                                exit_status = 127
+                            # reaped == 0: still running — block-wait for it.
+                            _, status = os.waitpid(pid, 0)
+                            reported_pid = pid
+                            exit_status = self._extract_exit_status(status)
                     except (ChildProcessError, OSError):
                         self.error(f"pid {pid} is not a child of this shell", shell)
                         exit_status = 127
