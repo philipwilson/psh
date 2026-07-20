@@ -140,11 +140,12 @@ def test_new_fullmatch_agrees_with_regex_converter_on_nonneg():
     """New full-match == the regex converter for negation-free extglob.
 
     ``pattern_engine`` (the production matcher for case / [[ == ]] / removal /
-    substitution) and ``extglob_to_regex`` (the production glob→regex converter
-    still used by ``pattern.py``'s regex path) must agree on every non-negation
-    extglob pattern — a standing consistency check between the two live
-    backends. Negation is not expressible as a Python regex, so it is excluded;
-    plain globs are compared elsewhere.
+    substitution) and ``extglob_to_regex`` (the independent regex-backed
+    reference oracle — production-dead after W3, but retained PERMANENTLY for
+    exactly this differential cross-check; campaign Q3 ruling) must agree on
+    every non-negation extglob pattern — a standing consistency check between
+    the two live backends. Negation is not expressible as a Python regex, so it
+    is excluded; plain globs are compared elsewhere.
     """
     mismatches = []
     for pat, subj in _cases(seed=555, count=6000):

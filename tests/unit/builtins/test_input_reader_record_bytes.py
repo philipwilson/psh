@@ -1,4 +1,4 @@
-"""Unit pins for InputReader.read_record_bytes — the byte-record drain.
+"""Unit pins for InputCursor.read_record_bytes — the byte-record drain.
 
 read_record_bytes is the never-over-read primitive the lazy stdin-as-script
 reader (StdinInput) is built on: it returns the raw bytes up to (not including)
@@ -14,7 +14,7 @@ is untouched (see test_read_mapfile_streaming.py).
 import io
 import os
 
-from psh.builtins.input_reader import InputReader
+from psh.builtins.input_reader import InputCursor
 
 NL = 0x0A
 
@@ -33,7 +33,7 @@ class TestNeverOverReads:
         rest — the reader consumed the delimiter and not one byte more."""
         r = _pipe(b"line one\nDATA-FOR-NEXT-CONSUMER\nmore\n")
         try:
-            reader = InputReader(fd=r)
+            reader = InputCursor(fd=r)
             assert reader.read_record_bytes(delimiter_byte=NL) == b"line one"
             # The bytes a following `read`/`cat` would get, verbatim:
             assert os.read(r, 4096) == b"DATA-FOR-NEXT-CONSUMER\nmore\n"
@@ -45,20 +45,20 @@ class TestNeverOverReads:
         p.write_bytes(b"cmd\nrest1\nrest2\n")
         fd = os.open(str(p), os.O_RDONLY)
         try:
-            reader = InputReader(fd=fd)
+            reader = InputCursor(fd=fd)
             assert reader.read_record_bytes(delimiter_byte=NL) == b"cmd"
             assert os.read(fd, 4096) == b"rest1\nrest2\n"
         finally:
             os.close(fd)
 
     def test_two_readers_share_the_fd_position(self):
-        """A fresh InputReader over the same fd continues where the first
+        """A fresh InputCursor over the same fd continues where the first
         stopped (models StdinInput handing off to the read builtin)."""
         r = _pipe(b"a\nb\nc\n")
         try:
-            first = InputReader(fd=r)
+            first = InputCursor(fd=r)
             assert first.read_record_bytes(delimiter_byte=NL) == b"a"
-            second = InputReader(fd=r)  # a different reader, same fd
+            second = InputCursor(fd=r)  # a different reader, same fd
             assert second.read_record_bytes(delimiter_byte=NL) == b"b"
             assert first.read_record_bytes(delimiter_byte=NL) == b"c"
         finally:
@@ -69,7 +69,7 @@ class TestRecordBoundaries:
     def test_sequential_records(self):
         r = _pipe(b"one\ntwo\nthree\n")
         try:
-            reader = InputReader(fd=r)
+            reader = InputCursor(fd=r)
             assert reader.read_record_bytes(delimiter_byte=NL) == b"one"
             assert reader.read_record_bytes(delimiter_byte=NL) == b"two"
             assert reader.read_record_bytes(delimiter_byte=NL) == b"three"
@@ -82,7 +82,7 @@ class TestRecordBoundaries:
         NEXT call returns None."""
         r = _pipe(b"has-nl\nno-nl")
         try:
-            reader = InputReader(fd=r)
+            reader = InputCursor(fd=r)
             assert reader.read_record_bytes(delimiter_byte=NL) == b"has-nl"
             assert reader.read_record_bytes(delimiter_byte=NL) == b"no-nl"
             assert reader.read_record_bytes(delimiter_byte=NL) is None
@@ -92,7 +92,7 @@ class TestRecordBoundaries:
     def test_empty_input_is_none(self):
         r = _pipe(b"")
         try:
-            assert InputReader(fd=r).read_record_bytes(delimiter_byte=NL) is None
+            assert InputCursor(fd=r).read_record_bytes(delimiter_byte=NL) is None
         finally:
             os.close(r)
 
@@ -100,7 +100,7 @@ class TestRecordBoundaries:
         """A blank line yields b'' (an empty record), distinct from None (EOF)."""
         r = _pipe(b"\n\nx\n")
         try:
-            reader = InputReader(fd=r)
+            reader = InputCursor(fd=r)
             assert reader.read_record_bytes(delimiter_byte=NL) == b""
             assert reader.read_record_bytes(delimiter_byte=NL) == b""
             assert reader.read_record_bytes(delimiter_byte=NL) == b"x"
@@ -111,7 +111,7 @@ class TestRecordBoundaries:
     def test_custom_delimiter(self):
         r = _pipe(b"a:b:c")
         try:
-            reader = InputReader(fd=r)
+            reader = InputCursor(fd=r)
             assert reader.read_record_bytes(delimiter_byte=ord(":")) == b"a"
             assert reader.read_record_bytes(delimiter_byte=ord(":")) == b"b"
             assert reader.read_record_bytes(delimiter_byte=ord(":")) == b"c"
@@ -125,7 +125,7 @@ class TestRawBytesNoDecode:
         the caller (StdinInput) owns the surrogateescape decode."""
         r = _pipe(b"caf\xe9\n\xff\xfe\n")
         try:
-            reader = InputReader(fd=r)
+            reader = InputCursor(fd=r)
             assert reader.read_record_bytes(delimiter_byte=NL) == b"caf\xe9"
             assert reader.read_record_bytes(delimiter_byte=NL) == b"\xff\xfe"
         finally:
@@ -135,7 +135,7 @@ class TestRawBytesNoDecode:
         euro = "€".encode("utf-8")  # e2 82 ac — none of which is 0x0a
         r = _pipe(euro + b"\n")
         try:
-            assert InputReader(fd=r).read_record_bytes(delimiter_byte=NL) == euro
+            assert InputCursor(fd=r).read_record_bytes(delimiter_byte=NL) == euro
         finally:
             os.close(r)
 
@@ -146,10 +146,10 @@ class TestErrorAndStreamPaths:
         os.close(w)
         os.close(r)  # fd now invalid
         # os.read raises EBADF -> Outcome.ERROR -> None (no exception escapes).
-        assert InputReader(fd=r).read_record_bytes(delimiter_byte=NL) is None
+        assert InputCursor(fd=r).read_record_bytes(delimiter_byte=NL) is None
 
     def test_stream_path_matches_fd_semantics(self):
-        reader = InputReader(stream=io.StringIO("one\ntwo"))
+        reader = InputCursor(stream=io.StringIO("one\ntwo"))
         assert reader.read_record_bytes(delimiter_byte=NL) == b"one"
         assert reader.read_record_bytes(delimiter_byte=NL) == b"two"
         assert reader.read_record_bytes(delimiter_byte=NL) is None
@@ -162,7 +162,7 @@ class TestPartialDrainHonorsDelimiter:
         record boundary. (StdinInput never mixes reads; this pins the guard.)"""
         r = _pipe(b"AFTER\n")
         try:
-            reader = InputReader(fd=r)
+            reader = InputCursor(fd=r)
             # Simulate a mixed prior read that buffered "x\ny" raw bytes.
             reader._pushback = bytearray(b"x\ny")
             assert reader.read_record_bytes(delimiter_byte=NL) == b"x"

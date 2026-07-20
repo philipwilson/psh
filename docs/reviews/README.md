@@ -124,3 +124,4 @@ A chain where each reassessment supersedes the previous.
 | [lexer_token_set_appraisal_2026-02-19](lexer_token_set_appraisal_2026-02-19.md) | Early lexer token-set appraisal |
 | [codebase_recommendations_2026-02-17](codebase_recommendations_2026-02-17.md) | Early improvement recommendations |
 | [arithmetic_review](arithmetic_review.md) | Early review of the original arithmetic module (since decomposed into `psh/expansion/arithmetic/`) |
+| [boundary_campaign_close_2026-07](boundary_campaign_close_2026-07.md) | Boundary Integrity Campaign — closing report (final ledger, 27-type census, deliberate-loss registry, carry audit, H1-H19+C1 closure table) |

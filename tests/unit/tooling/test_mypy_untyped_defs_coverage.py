@@ -26,10 +26,59 @@ import subprocess
 import sys
 import textwrap
 import tomllib
+import warnings
 
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+
+
+# Campaign Q3 (WP5): the git self-checks below verify the hardcoded module lists
+# against the actual campaign-created set. When git or the base tag is
+# unavailable (a shallow/tarball checkout) the check cannot run — but it must
+# not SKIP SILENTLY, or drift in the list goes undetected with no signal. Emit a
+# warning naming exactly what protection is lost, THEN skip. Green-repo behavior
+# (git + base tag present) is unchanged: the assertion runs.
+_SELFCHECK_UNVERIFIED = (
+    "SELF-CHECK SKIPPED: cannot verify {name} against the git enumeration "
+    "(git log --diff-filter=A v0.724.0..75ab5625 -- psh/): {reason}. The "
+    "hardcoded list is TRUSTED UNVERIFIED here — drift between it and the "
+    "actual campaign-created set will go UNDETECTED until this test runs in a "
+    "full checkout with the base tag present."
+)
+
+
+def _created_modules_from_git():
+    """Dotted campaign-created ``psh`` modules from the git enumeration, or
+    ``(None, reason)`` when git or the base tag/range is unavailable."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "--diff-filter=A", "--pretty=format:",
+             "--name-only", "v0.724.0..75ab5625", "--", "psh/"],
+            cwd=ROOT, capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, f"git unavailable ({type(e).__name__})"
+    if out.returncode != 0:
+        return None, "base tag/range v0.724.0..75ab5625 not present in this checkout"
+    created = set()
+    for ln in out.stdout.splitlines():
+        ln = ln.strip()
+        if ln.endswith(".py"):
+            dotted = ln[:-3].replace("/", ".")
+            if dotted.endswith(".__init__"):
+                dotted = dotted[:-len(".__init__")]
+            created.add(dotted)
+    return created, None
+
+
+def _warn_selfcheck_unverified(list_name, reason):
+    """Emit the loud 'protection lost' warning (Q3 WP5). Kept separate from the
+    ``pytest.skip`` so it is unit-testable without catching Skipped."""
+    warnings.warn(
+        _SELFCHECK_UNVERIFIED.format(name=list_name, reason=reason),
+        stacklevel=2,
+    )
 
 
 # --- mypy override-resolution model -------------------------------------------
@@ -249,31 +298,32 @@ def test_migrated_modules_have_complete_signatures():
 
 def test_migrated_modules_are_the_campaign_created_set():
     """MIGRATED_MODULES is exactly the git-derived campaign-created set (+
-    protocols) — verified against git when the base tag is present."""
-    try:
-        out = subprocess.run(
-            ["git", "log", "--diff-filter=A", "--pretty=format:",
-             "--name-only", "v0.724.0..75ab5625", "--", "psh/"],
-            cwd=ROOT, capture_output=True, text=True, timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        pytest.skip("git unavailable")
-    if out.returncode != 0:
-        pytest.skip("base tag/range unavailable in this checkout")
-    created = set()
-    for ln in out.stdout.splitlines():
-        ln = ln.strip()
-        if ln.endswith(".py"):
-            dotted = ln[:-3].replace("/", ".")
-            if dotted.endswith(".__init__"):
-                dotted = dotted[:-len(".__init__")]
-            created.add(dotted)
+    protocols) — verified against git when the base tag is present. When git or
+    the tag is absent the self-check WARNS loudly (Q3 WP5) before skipping, so
+    the lost verification is visible rather than silent."""
+    created, reason = _created_modules_from_git()
+    if created is None:
+        _warn_selfcheck_unverified("MIGRATED_MODULES", reason)
+        pytest.skip(reason)
     # protocols is the one migrated package created as psh/protocols/__init__.py.
     created.add("psh.protocols")
     assert set(MIGRATED_MODULES) == created, (
         "MIGRATED_MODULES drifted from the git-created set:\n"
         f"  only in git: {sorted(created - set(MIGRATED_MODULES))}\n"
         f"  only in list: {sorted(set(MIGRATED_MODULES) - created)}")
+
+
+def test_selfcheck_warns_loudly_when_git_unavailable(monkeypatch):
+    """Q3 WP5: the campaign-created-set self-check must WARN (naming the lost
+    protection) rather than skip silently when git/the base tag is unavailable —
+    otherwise list drift goes undetected with zero signal in shallow checkouts."""
+    def _boom(*args, **kwargs):
+        raise OSError("git not available")
+    monkeypatch.setattr(subprocess, "run", _boom)
+    created, reason = _created_modules_from_git()
+    assert created is None and "git unavailable" in reason
+    with pytest.warns(UserWarning, match="TRUSTED UNVERIFIED"):
+        _warn_selfcheck_unverified("MIGRATED_MODULES", reason)
 
 
 def test_full_signature_discipline_only_grows():

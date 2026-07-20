@@ -17,6 +17,15 @@ result types (`NeedMore` / `Complete`) that the two readers consume.
 WHY more input is needed — or ``Complete``, carrying the buffered text and,
 when the recursive-descent trial parse succeeded, the parsed AST and token
 stream so the execution path need not parse the same text a second time.
+
+Ownership / lifetime: this is the sanctioned, PERMANENT terminal adapter for
+the scripting↔parser boundary (campaign I3 Option-A ruling; brief §15.2's
+"justified terminal adapter"). Owner: the scripting layer (`psh/scripting/`).
+It is NOT a migration-window shim and has no removal condition — it exists so
+the scripting-only concerns (backslash-continuation join, history expansion,
+the heredoc-aware alias-expanding lex seam) stay OUT of the parser package
+while both readers still consume ONE completeness engine. The completeness
+LOGIC lives in `parser.session.ParseSession`; this module only adapts.
 """
 
 import enum

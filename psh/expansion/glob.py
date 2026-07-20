@@ -36,7 +36,8 @@ _POSIX_CLASSES = {
 # literal ``/``. punct is the only class that spans ``/`` (0x2f): drop it
 # there — no filename can contain ``/``, so the matched set is identical.
 # Production-DEAD after W3 (the engine resolves classes via the locale
-# service); referenced only by ``normalize_bracket_expressions`` below.
+# service); the dependency of ``normalize_bracket_expressions`` below — the
+# PERMANENT fnmatch reference oracle (campaign Q3 ruling) — so it stays.
 _POSIX_CLASSES_PATHNAME = {**_POSIX_CLASSES, 'punct': ':-@!-.[-`{-~'}
 
 _POSIX_CLASS_RE = re.compile(r'\[:(\w+):\]')
@@ -96,14 +97,16 @@ def normalize_bracket_expressions(pattern: str) -> str:
 
     No PRODUCTION path needs this rewrite after campaign W3 (every pathname
     consumer matches per-name through the ONE compiled pattern engine
-    ``_component_matcher`` above), but it is NOT dead: it is the live reference
-    half of the ``fnmatch`` oracle in
+    ``_component_matcher`` above), but it is NOT dead: it is a PERMANENT
+    reference oracle (campaign Q3 integrator ruling — NOT a deferred deletion),
+    the live ``fnmatch`` reference half of the oracle in
     ``tests/unit/expansion/test_unified_glob_converter.py`` (which cross-checks
     ``_component_matcher`` against ``fnmatch.translate(normalize_bracket_
-    expressions(comp))``). Retiring it — and the ``extglob_to_regex`` /
-    ``_convert_pattern`` differential oracle — is a coverage tradeoff left to a
-    later decision (the fully-unreferenced ``extglob.glob_to_regex_body`` sibling
-    WAS deleted, campaign Q2 census).
+    expressions(comp))``). It and the ``extglob_to_regex`` / ``_convert_pattern``
+    differential oracle earn their keep as live differential infrastructure and
+    stay; ``_POSIX_CLASSES_PATHNAME`` stays as its dependency. (The
+    fully-unreferenced ``extglob.glob_to_regex_body`` sibling WAS deleted in the
+    campaign Q2 census — it had no oracle.)
     """
     # POSIX classes first (so a negated class like [^[:digit:]] still works).
     # The pathname table drops '/' from punct (glob.glob splits on '/').
