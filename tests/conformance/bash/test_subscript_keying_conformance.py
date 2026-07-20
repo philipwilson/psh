@@ -209,6 +209,73 @@ class TestArithSubscriptProvenance(ConformanceTest):
             'for (( h[$k]=0; h[$k]<1; h[$k]++ )); do :; done; declare -p h')
 
 
+class TestArithExtraDquoteRound(ConformanceTest):
+    r"""CV1 B1: an arithmetic-COMMAND body (`(( ))`/`$(( ))`) is not
+    shell-word-processed, so bash applies an EXTRA round-1 dquote pass to
+    SOURCE-spelled subscript text before the associative keying —
+    `(( expr )) == let "expr"` — while `let` (its arg already shell-processed)
+    does NOT. The unified W2/CV1 engine dropped this extra round; these rows were
+    RED at the fix's tip (kept `"q"`), GREEN on base and after. Substituted text
+    is provenance-protected: it survives both rounds LITERAL. Bash 5.2-verified.
+    """
+
+    def test_backslash_dquote_write(self):
+        # (( h[\"q\"]=1 )) -> bash q (round1 \" -> ", round2 removes it).
+        self.assert_identical_behavior(
+            r'declare -A h; (( h[\"q\"]=1 )); declare -p h')
+
+    def test_backslash_dquote_read(self):
+        self.assert_identical_behavior(
+            r'declare -A h; h[q]=7; echo $(( h[\"q\"] ))')
+
+    def test_double_backslash(self):
+        self.assert_identical_behavior(
+            r'declare -A h; (( h[\\q]=1 )); declare -p h')
+
+    def test_backslash_letter(self):
+        self.assert_identical_behavior(
+            r'declare -A h; (( h[\q]=1 )); declare -p h')
+
+    def test_backslash_dollar_stays_literal(self):
+        # The extra round must NOT un-escape \$ into an expandable $x.
+        self.assert_identical_behavior(
+            r'declare -A h; x=5; (( h[\$x]=1 )); declare -p h')
+
+    def test_substituted_survives_extra_round(self):
+        # k's quotes arrive via $k and survive BOTH rounds literal.
+        self.assert_identical_behavior(
+            'declare -A h; k=\'"q"\'; (( h["x$k"]=1 )); declare -p h')
+
+    def test_let_has_no_extra_round(self):
+        # let 'h[\"q\"]=1' keeps "q" (one round only) — contrast with (( )).
+        self.assert_identical_behavior(
+            r"""declare -A h; let 'h[\"q\"]=1'; declare -p h""")
+
+
+def _arith_key(cmd):
+    """(stdout, rc) of psh/bash for an arith-subscript write, for the carrier
+    documented-divergence rows (they compare psh vs bash EXPLICITLY, since they
+    intentionally differ)."""
+    p = _psh(cmd)
+    b = _bash(cmd)
+    return p.stdout, b.stdout
+
+
+def test_divergence_arith_nested_quote_carriers():
+    r"""CV1 B1 carry (register #23): a SINGLE-nested source quote in an
+    arithmetic subscript — `(( h['"q"']=1 ))` / `(( h["'q'"]=1 ))` — is fully
+    quote-removed by bash (key `q`) but psh's model applies only ONE extra
+    dquote round (round 1 does not treat `'`/`"` as delimiters), keying the inner
+    quotes literally. Divergent on BASE too (pre-existing, NOT a regression);
+    the model's documented limit. bash 5.2-verified both-sides."""
+    p1, b1 = _arith_key('declare -A h; (( h[\'"q"\']=1 )); declare -p h')
+    assert '[q]="1"' in b1                       # bash removes both quote layers
+    assert '["\\"q\\""]="1"' in p1               # psh keys the inner "q"
+    p2, b2 = _arith_key('declare -A h; (( h["\'q\'"]=1 )); declare -p h')
+    assert '[q]="1"' in b2
+    assert '["\'q\'"]="1"' in p2                 # psh keys the inner 'q'
+
+
 class TestAnsiCKeyDecode(ConformanceTest):
     """r21 A4: $'...' subscripts decode like any word."""
 

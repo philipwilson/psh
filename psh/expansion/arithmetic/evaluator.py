@@ -69,9 +69,14 @@ class ArithmeticEvaluator:
     # bound.
     MAX_EVAL_DEPTH = 1024
 
-    def __init__(self, shell):
+    def __init__(self, shell, arith_source_quotes: bool = True):
         self.shell = shell
         self._eval_depth = 0
+        # True for `(( ))`/`$(( ))` (body not shell-processed → apply the extra
+        # dquote round to source-spelled associative subscripts); False for
+        # `let` (its arg was already shell-processed). See
+        # _arith_source_dquote_round (W2/CV1 B1).
+        self._arith_source_quotes = arith_source_quotes
 
     def get_variable(self, name: str) -> int:
         """Get variable value, converting to integer.
@@ -136,7 +141,8 @@ class ArithmeticEvaluator:
             # names / expression text ("a+1", "0x10") contain no $ and are
             # unaffected; the name-chain fast path above (isidentifier) is a
             # separate ARITH-VALUE recursion, also unaffected.
-            return evaluate_arithmetic(value, self.shell, expand=False)
+            return evaluate_arithmetic(value, self.shell, expand=False,
+                                       arith_source_quotes=self._arith_source_quotes)
 
     def set_variable(self, name: str, value: int) -> None:
         """Set variable value"""
@@ -163,7 +169,8 @@ class ArithmeticEvaluator:
         # expand=False for the same reason as get_variable: an array element /
         # scalar value reached here is a STORED value, never re-$-expanded
         # (bash: `arr=('$y'); $((arr[0]))` is a syntax error, not $y's value).
-        return evaluate_arithmetic(value, self.shell, expand=False)
+        return evaluate_arithmetic(value, self.shell, expand=False,
+                                   arith_source_quotes=self._arith_source_quotes)
 
     def _nameref_target(self, name: str) -> str:
         """Resolve a nameref to its target name for array element ops.
@@ -192,10 +199,12 @@ class ArithmeticEvaluator:
         backslashes are removed, but characters arriving via ``$k`` stay
         LITERAL, matching bash (``k='"q"'; (( h[$k]=1 ))`` keys ``"q"``, and
         ``k='$x'; (( h[$k]=1 ))`` keys the literal ``$x`` — a substituted
-        ``$`` is never rescanned). An indexed array, scalar, or undeclared name
-        expands then arithmetic-evaluates the raw text, so ``a[i++]``
-        side-effects fire exactly once per lvalue resolution. An empty subscript
-        is bash's "bad array subscript" error.
+        ``$`` is never rescanned). For ``(( ))``/``$(( ))`` (not ``let``) the
+        source text ALSO gets bash's extra round-1 dquote pass first
+        (``_arith_source_dquote_round``; W2/CV1 B1). An indexed array, scalar, or
+        undeclared name expands then arithmetic-evaluates the raw text, so
+        ``a[i++]`` side-effects fire exactly once per lvalue resolution. An empty
+        subscript is bash's "bad array subscript" error.
         """
         if index_text == '':
             raise ShellArithmeticError(f"{name}[]: bad array subscript")
@@ -203,12 +212,17 @@ class ArithmeticEvaluator:
             self._nameref_target(name))
         subscript = self.shell.expansion_manager.subscript
         if var is not None and isinstance(var.value, AssociativeArray):
-            key = subscript.associative_key(index_text)
+            # Round 1: bash's extra dquote pass on source-spelled text for
+            # `(( ))`/`$(( ))` (a `let` arg was already shell-processed, so it
+            # skips this). Round 2 is the provenance-tracking associative key.
+            key_src = (_arith_source_dquote_round(index_text, self.shell)
+                       if self._arith_source_quotes else index_text)
+            key = subscript.associative_key(key_src)
             # bash's empty-subscript policy: an empty key from substitution or
             # literal-empty text is fatal; a source empty-quoted key (h[""]) is
             # a valid empty key (raw_has_source_quote only re-lexes, so the one
             # keying expansion above is not doubled).
-            if key == '' and not subscript.raw_has_source_quote(index_text):
+            if key == '' and not subscript.raw_has_source_quote(key_src):
                 raise ShellArithmeticError(f"{name}[]: bad array subscript")
             return key
         # Indexed / scalar / undeclared: the $-forms held out of the pre-pass
@@ -217,7 +231,8 @@ class ArithmeticEvaluator:
         flat = _arith_preexpand(index_text, self.shell)
         if flat == '':
             raise ShellArithmeticError(f"{name}[]: bad array subscript")
-        return evaluate_arithmetic(flat, self.shell, expand=False)
+        return evaluate_arithmetic(flat, self.shell, expand=False,
+                                   arith_source_quotes=self._arith_source_quotes)
 
     def get_array_element(self, name: str, key: Union[int, str]) -> int:
         """Read an array element (or scalar via index 0) as an integer.
@@ -621,12 +636,78 @@ def _arith_preexpand(expr: str, shell) -> str:
     return expanded
 
 
-def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
+def _mask_dollar_forms(raw: str) -> "Tuple[str, list]":
+    """Mask ``$``-forms, ``\\$`` escapes, and backticks in ``raw`` with NUL
+    placeholders; return ``(masked, [form, ...])``.
+
+    Used by the ``(( ))`` round-1 dquote pass (:func:`_arith_source_dquote_round`)
+    so a SUBSTITUTED value survives round 1 LITERAL (its provenance is
+    protected), and a source ``\\$x`` is NOT un-escaped into an expandable
+    ``$x`` — both are held out and interpreted by the round-2 associative-key
+    engine instead."""
+    out: 'list[str]' = []
+    forms: 'list[str]' = []
+    i = 0
+    n = len(raw)
+    while i < n:
+        ch = raw[i]
+        if ch == '\\' and i + 1 < n and raw[i + 1] == '$':
+            forms.append(raw[i:i + 2])
+            out.append('\x00%d\x00' % (len(forms) - 1))
+            i += 2
+        elif ch == '$':
+            j = _skip_dollar_form(raw, i)
+            forms.append(raw[i:j])
+            out.append('\x00%d\x00' % (len(forms) - 1))
+            i = j
+        elif ch == '`':
+            k = raw.find('`', i + 1)
+            j = n if k == -1 else k + 1
+            forms.append(raw[i:j])
+            out.append('\x00%d\x00' % (len(forms) - 1))
+            i = j
+        else:
+            out.append(ch)
+            i += 1
+    return ''.join(out), forms
+
+
+def _arith_source_dquote_round(raw: str, shell) -> str:
+    """Round 1 of bash's TWO-round ``(( ))``/``$(( ))`` associative-subscript
+    keying (W2/CV1 B1).
+
+    An arithmetic-command body is NOT shell-word-processed, so bash applies a
+    dquote-context pass to SOURCE-spelled subscript text before the associative
+    keying (round 2): ``(( h[\\"q\\"]=1 ))`` keys ``q`` (round 1 ``\\"``->``"``,
+    round 2 removes it), consistent with ``(( expr ))`` == ``let "expr"``.
+    ``let`` itself skips round 1 (its argument was already shell-processed).
+    ``$``-forms and ``\\$`` are held out (:func:`_mask_dollar_forms`) so a
+    substituted value stays LITERAL across both rounds and a source ``\\$x``
+    keys the literal ``$x``. Text with no escape/substitution is byte-identical.
+    """
+    if '\\' not in raw and '$' not in raw and '`' not in raw:
+        return raw
+    masked, forms = _mask_dollar_forms(raw)
+    processed = shell.expansion_manager.expand_string_variables(
+        masked, quote_ctx=DQ_STRING)
+    for idx, form in enumerate(forms):
+        processed = processed.replace('\x00%d\x00' % idx, form)
+    return processed
+
+
+def evaluate_arithmetic(expr: str, shell, expand: bool = True,
+                        arith_source_quotes: bool = True) -> int:
     """Evaluate an arithmetic expression with the given shell context.
 
     ``expand=False`` skips the $-construct pass for text that is ALREADY
     expanded (e.g. a ``[[ -eq ]]`` operand): a residual literal ``$`` is
     then a syntax error, matching bash, which never rescans expanded text.
+
+    ``arith_source_quotes=True`` is the ``(( ))``/``$(( ))`` default: bash
+    applies an extra round-1 dquote pass to a source-spelled associative
+    subscript because the body is not shell-word-processed. ``let`` passes
+    ``False`` (its argument was already shell-processed). See
+    :func:`_arith_source_dquote_round` / ``_array_key`` (W2/CV1 B1).
     """
     # Bound re-entrancy so a self-referential/deeply-chained expression trips
     # a clean arithmetic error instead of a RecursionError (see
@@ -639,12 +720,14 @@ def evaluate_arithmetic(expr: str, shell, expand: bool = True) -> int:
         if depth >= _MAX_ARITH_RECURSION:
             raise ShellArithmeticError(
                 f"{expr.strip()}: expression recursion level exceeded")
-        return _evaluate_arithmetic_inner(expr, shell, expand)
+        return _evaluate_arithmetic_inner(expr, shell, expand,
+                                          arith_source_quotes)
     finally:
         shell.state._arith_recursion_depth = depth - 1
 
 
-def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
+def _evaluate_arithmetic_inner(expr: str, shell, expand: bool,
+                               arith_source_quotes: bool = True) -> int:
     """Tokenize/parse/evaluate one arithmetic expression (no depth guard)."""
     try:
         # First, expand all shell variables and parameter expansions.
@@ -667,7 +750,7 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool) -> int:
         ast = parser.parse()
 
         # Evaluate
-        evaluator = ArithmeticEvaluator(shell)
+        evaluator = ArithmeticEvaluator(shell, arith_source_quotes)
         return evaluator.evaluate(ast)
 
     except (SyntaxError, ShellArithmeticError) as e:
