@@ -217,6 +217,22 @@ this matches **interactive** bash. Bash is mode-inconsistent here: a
 non-interactive `bash -c` prints only the `ambiguous job spec` line and returns
 0. PSH deliberately renders the interactive-style diagnostic regardless of mode.
 
+**`huponexit` login model (boundary J1 — deliberate difference).** PSH
+implements `shopt -s huponexit`: when an interactive shell exits it sends
+SIGHUP (SIGCONT first to any stopped job) to its running jobs, honoring the
+`disown -h` no-hup flag. Bash gates this on an interactive *login* shell; PSH
+has no login-shell concept, so **every interactive PSH shell is treated as
+login-like for `huponexit`** — an interactive non-login shell with `huponexit`
+set HUPs its jobs on exit where bash (non-login) would not. A non-interactive
+shell never HUPs on exit (parity with bash — bash HUPs on exit only for a login
+shell). This is NOT a claim of bash parity for the interactive non-login case;
+it is a documented psh model. Separately, an interactive PSH shell that
+RECEIVES an untrapped SIGHUP (including a genuine terminal disconnect, which
+delivers SIGHUP to the session leader) resends SIGHUP to its jobs — SIGCONT
+first for stopped jobs, `disown -h` honored — then exits, matching bash's
+`hangup_all_jobs`. A non-interactive shell that receives SIGHUP just dies,
+without fanning out (parity with bash).
+
 ### Process Substitution
 
 ```bash

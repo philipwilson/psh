@@ -34,6 +34,7 @@ _SHOPT_DESCRIPTIONS = {
     "inherit_errexit": "Command substitutions inherit 'set -e'",
     "checkhash": "Re-verify hashed command paths before executing them",
     "expand_aliases": "Expand aliases (on by default in every mode)",
+    "huponexit": "SIGHUP running jobs when an interactive shell exits",
 }
 
 

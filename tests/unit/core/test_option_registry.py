@@ -35,7 +35,7 @@ EXPECTED_OPTIONS = {
     # shopt
     "dotglob", "nullglob", "failglob", "extglob", "nocaseglob", "nocasematch",
     "globstar", "globasciiranges", "inherit_errexit", "checkhash",
-    "expand_aliases",
+    "expand_aliases", "huponexit",
     # internal (shell-set)
     "interactive", "stdin_mode", "command_mode",
 }
@@ -76,7 +76,7 @@ def test_shopt_option_names():
     assert set(SHOPT_OPTION_NAMES) == {
         "dotglob", "nullglob", "failglob", "extglob", "nocaseglob",
         "nocasematch", "globstar", "globasciiranges", "inherit_errexit",
-        "checkhash", "expand_aliases",
+        "checkhash", "expand_aliases", "huponexit",
     }
 
 

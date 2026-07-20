@@ -10,6 +10,7 @@ import sys
 from typing import TYPE_CHECKING, List
 
 from ..io_redirect.manager import format_redirect_error
+from .foreground_session import ForegroundJobSession
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
@@ -109,13 +110,22 @@ class SubshellExecutor:
 
     def _execute_foreground_subshell(self, statements, redirects: List['Redirect'],
                                      errexit_suppress: int = 0) -> int:
-        """Execute subshell in foreground with proper isolation."""
-        # Manage terminal control only when this shell actually owns the
-        # terminal (real capability check — no test-runner sniffing).
-        original_pgid = self.job_manager.terminal_pgid_if_owned()
-        is_interactive = original_pgid is not None
+        """Execute subshell in foreground with proper isolation.
+
+        Runs through the shared foreground-job transaction
+        (:class:`ForegroundJobSession`) exactly like an external command or a
+        pipeline — the same registration, terminal transfer/reclaim, signal-
+        death diagnostic (a subshell killed by SIGTERM now prints
+        ``Terminated: 15`` like bash — #20 H12), current-job rotation, and
+        exception cleanup.
+        """
+        # Open the transaction BEFORE the launch: it captures the terminal
+        # owner while this shell still owns it (a real capability check — no
+        # test-runner sniffing).
+        session = ForegroundJobSession.open(self.job_manager)
         if self.state.options.get('debug-exec'):
-            print(f"DEBUG Subshell: terminal owner pgid={original_pgid}", file=sys.stderr)
+            print(f"DEBUG Subshell: terminal owner pgid={session.original_pgid}",
+                  file=sys.stderr)
 
         # Create execution function
         def execute_fn():
@@ -184,28 +194,51 @@ class SubshellExecutor:
 
         pid, pgid = self.launcher.launch(execute_fn, config)
 
-        # Hand the terminal to the subshell's process group if interactive
-        if is_interactive and original_pgid is not None:
-            self.job_manager.transfer_terminal_control(pgid, "Subshell")
+        # The one foreground transaction: register (foreground-job tracking +
+        # terminal transfer), wait, announce a signal death, reclaim the
+        # terminal + drop the DONE job. try/finally = exception cleanup.
+        #
+        # A subshell that is itself a PIPELINE MEMBER (or nested in another
+        # subshell) runs here inside a forked child: it must NOT self-announce
+        # its death (#20 J1/B2 — bash announces only the status-determining
+        # member, from the enclosing pipeline). Only the top-level shell
+        # (not in a forked child) announces directly.
+        in_forked_child = getattr(self.state, 'in_forked_child', False)
+        try:
+            session.register(pgid, "<subshell>", [(pid, "subshell")])
+            exit_status = session.wait()
+            if not in_forked_child:
+                session.report_signal_death()
+        finally:
+            session.finish()
 
-        # Create job for tracking the subshell
-        job = self.job_manager.create_job(pgid, "<subshell>")
-        job.add_process(pid, "subshell")
-        job.foreground = True
-
-        # Use job manager to wait (handles SIGCHLD properly)
-        exit_status = self.job_manager.wait_for_job(job)
-
-        # Reclaim the terminal for the parent shell if interactive
-        if is_interactive:
-            self.job_manager.restore_shell_foreground()
-
-        # Clean up job
-        from .job_control import JobState
-        if job.state == JobState.DONE:
-            self.job_manager.remove_job(job.job_id)
+        # When this subshell is a forked child (a pipeline member / nested
+        # subshell) and its body died by an unhandled fatal signal, RE-RAISE
+        # that signal so THIS process dies by it too, instead of returning
+        # 128+N as a normal exit. The enclosing pipeline then sees a real
+        # signal death (WIFSIGNALED) and announces the status-determining
+        # member exactly as bash does — a pipeline-member subshell that exits
+        # "normally" with 128+N would mask the signal from the pipeline.
+        if in_forked_child:
+            self._reraise_child_signal_death(session)
 
         return exit_status
+
+    @staticmethod
+    def _reraise_child_signal_death(session) -> None:
+        """If the subshell's body died by a signal, re-raise it on this
+        (forked-child) process so the enclosing pipeline sees a true signal
+        death. No-op for a normal exit / stop. The disposition mutation itself
+        lives with the child signal-policy owner (`child_policy.die_by_signal`,
+        F2 ratchet). See _execute_foreground_subshell."""
+        job = session.job
+        if job is None or not job.processes:
+            return
+        raw = job.processes[-1].status
+        if raw is None or not os.WIFSIGNALED(raw):
+            return
+        from .child_policy import die_by_signal
+        die_by_signal(os.WTERMSIG(raw))
 
     def _execute_background_subshell(self, statements, redirects: List['Redirect']) -> int:
         """Execute subshell in background with job control tracking."""

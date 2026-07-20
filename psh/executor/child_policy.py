@@ -198,6 +198,29 @@ def flush_child_streams(*streams) -> None:
             pass
 
 
+def die_by_signal(sig: int) -> None:
+    """Re-raise a fatal signal on THIS (forked-child) process so it dies BY the
+    signal — a genuine ``WIFSIGNALED`` death (128+N) — instead of returning
+    128+N as a normal exit.
+
+    Restoring a signal's default disposition and delivering it to self is a
+    signal-DISPOSITION mutation, so it lives with the child signal-policy owner
+    (campaign F2 ratchet: ``signal.signal`` belongs to the lease/policy owners,
+    never scattered across executors). Flushes Python buffers first
+    (``os.kill`` bypasses them). Used by a foreground subshell that is a
+    pipeline member / nested subshell to PROPAGATE its body's fatal-signal
+    death, so the enclosing pipeline's status-determining member owns the
+    diagnostic exactly as bash does (#20 J1/B2). No-op if the disposition
+    cannot be reset or the signal cannot be delivered.
+    """
+    flush_child_streams(sys.stdout, sys.stderr)
+    try:
+        signal.signal(sig, signal.SIG_DFL)
+        os.kill(os.getpid(), sig)
+    except (OSError, ValueError):
+        pass
+
+
 def run_background_shell_child(shell: 'Shell',
                                body: Callable[[], int]) -> int:
     """Run a backgrounded compound body with full trap discipline.

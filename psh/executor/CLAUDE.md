@@ -28,7 +28,8 @@ Executor  Executor   Executor   Executor  Executor
 | `function.py` | `FunctionOperationExecutor` - function calls and scope |
 | `subshell.py` | `SubshellExecutor` - subshells and brace groups |
 | `array.py` | `ArrayOperationExecutor` - array initialization |
-| `process_launcher.py` | `ProcessLauncher` - unified process creation |
+| `process_launcher.py` | `ProcessLauncher` - unified process creation, plus `AsyncJobPolicy` (the POSIX async-list signal/stdin dispositions for a backgrounded job when job control is off; #20 H11) |
+| `foreground_session.py` | `ForegroundJobSession` - the ONE foreground-job transaction (registration, terminal transfer/reclaim, wait, signal-death report, current-job rotation, exception cleanup) shared by external commands, pipelines, and foreground subshells (#20 H12) |
 | `child_policy.py` | The "becoming a healthy child process" chapter: `fork_with_signal_window()`, `apply_child_signal_policy()`, `map_child_exception()` (the ONE child-exit taxonomy), `run_child_body()` (shared child-Shell body runner), `run_child_shell()` (substitution-child runner, built on `run_child_body`), `flush_child_streams()` |
 | `job_control.py` | `JobManager`, `Job`, `Process` - job table and waiting (moved into the package in v0.285). The shared value vocabulary `JobState`/`JobSpecOutcome`/`JobSpecResult`/`jobspec_error_messages`/`exit_status_from_wait_status` lives in `psh/core/job_state.py` (so the job builtins need not import the executor — P4) and is re-exported here for existing callers |
 | `strategies.py` | Execution strategies for different command types, plus shared helpers `report_exec_failure()` and `execute_builtin_guarded()` |
@@ -291,6 +292,48 @@ exit-code mapping every fork site needs — `map_child_exception()`
 Note: `expansion/command_sub.py` keeps a documented parent-side SIGCHLD
 reset (SIG_DFL around the fork/waitpid) so the interactive SIGCHLD
 notification path can't steal the substitution child's exit status.
+
+### Foreground-job transaction & async policy (campaign J1)
+
+Two typed invariants own the job/signal boundary:
+
+- **`foreground_session.py#ForegroundJobSession`** is the ONE foreground-job
+  transaction. A command (`strategies.py`), a pipeline (`pipeline.py`), and a
+  foreground subshell (`subshell.py`) each `ForegroundJobSession.open(...)`
+  BEFORE the launch, then `register`/`wait`(`_all`)/`report_signal_death`/
+  `finish` — the same registration, terminal transfer/reclaim, signal-death
+  diagnostic, current-job rotation, and (via `finish`'s idempotence in a
+  `try/finally`) exception cleanup. No launch path open-codes
+  `finish_foreground_job`/`report_signal_death_at`/`set_foreground_job`/
+  `wait_for_job` — that drift produced the silent-subshell bug and is guarded
+  by `tests/unit/tooling/test_foreground_session_sole_owner_j1.py`. Signal-death
+  reporting has one chokepoint, `JobManager.report_signal_death_at`. (`fg`/`bg`
+  are a SEPARATE transaction — they RESUME an existing job — so they call the
+  primitives directly.)
+- **`process_launcher.py#AsyncJobPolicy`** carries the POSIX async-list
+  dispositions for a backgrounded job when job control is off. Its two facts
+  are INDEPENDENT: `ignore_int_quit` (SIGINT/SIGQUIT → SIG_IGN) applies to
+  EVERY leaf member (a bg *pipeline* member no longer dies on a delayed
+  `kill -INT`), while `redirect_stdin_from_devnull` stays a role-SINGLE fact
+  (bash leaves an async pipeline leader on the real stdin). Compound
+  shell-process children are skipped — they re-arm trap handlers via
+  `child_policy.run_background_shell_child`.
+
+Exit-time / hangup job disposition lives on the one `Shell.shutdown` →
+`_dispose_jobs_at_exit(force_hup)` path (#20 H19). Two hangup triggers, one
+chokepoint (`JobManager.hangup_jobs`, SIGCONT-before-SIGHUP, `Job.no_hup`
+honored): a NORMAL exit HUPs only under interactive+`huponexit`
+(login-narrowing model — psh has no login shells; a documented difference, NOT
+bash parity for the non-login case), while a RECEIVED SIGHUP (reason
+`'signal-hup'`, wired from `SignalManager._handle_signal_with_trap_check`) fans
+out UNCONDITIONALLY then dies 128+HUP — bash's `hangup_all_jobs`; a real
+terminal disconnect rides this same path (it delivers SIGHUP to the session
+leader). Plus detached-child reaping via `reap_registry`/`reap_detached`.
+PARTIALLY closed: prompt-time reaping of a disowned/unwaited child while a
+non-interactive shell lives is a carried residual (needs a general async
+reaper) — see `docs/missing_features.md`. (Probe-construction caveat: the
+`kill -HUP` fan-out is only reproducible against bash in a REAL terminal —
+tmux — not the python-pty family; see the J1 ledger.)
 
 ### Process Group Management
 

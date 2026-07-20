@@ -213,7 +213,27 @@ class SignalManager(InteractiveComponent):
             if signum != signal.SIGQUIT:
                 self._terminate_from_signal(signum)
         else:
-            # Interactive REPL: preserve existing re-raise behavior.
+            # Interactive REPL receiving an untrapped terminating signal.
+            if signum == signal.SIGHUP:
+                # bash's hangup_all_jobs: an interactive shell that RECEIVES
+                # SIGHUP fans SIGHUP out to its jobs (SIGCONT first for a
+                # stopped job, honoring `disown -h`), runs the EXIT trap, and
+                # saves history — all on THE shutdown path — then dies 128+HUP
+                # (#20 J1/B4). Verified with a tmux-hosted real terminal; the
+                # earlier "kill -HUP is parity" reading was a python-pty
+                # construction artifact (see the J1 ledger + probe caveat).
+                try:
+                    self.shell.shutdown('signal-hup')
+                except BaseException:
+                    # An `exit N` inside the EXIT trap raises SystemExit; the
+                    # signal death still wins (bash), so swallow and re-raise.
+                    pass
+                for stream in (self.state.stdout, self.state.stderr):
+                    try:
+                        stream.flush()
+                    except (OSError, ValueError, AttributeError):
+                        pass
+            # Re-raise so the wait status is a genuine signal death (128+N).
             self._signal_registry.register(signum, signal.SIG_DFL, "SignalManager:default")
             os.kill(os.getpid(), signum)
 

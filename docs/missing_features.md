@@ -349,11 +349,19 @@ smaller than the two projects above but were still left for later:
   method treats the error-prefix as an intentional difference. Low value-to-risk.
 - **`mapfile -C callback` / `-c quantum`** — documented gap in the `mapfile`
   builtin; the callback-every-N-lines feature is unimplemented.
-- **SIGHUP-on-exit / `huponexit` (and `disown -h`)** — psh does not send
-  SIGHUP to its jobs when the shell exits, so there is no `huponexit` shopt
-  and `disown -h` is accepted only for compatibility (it leaves the job in
-  the table but marks nothing). Implementing this needs an exit-time hangup
-  pass over the job table plus the per-job no-hup flag.
+- **Prompt-time reaping of a disowned/unwaited child while the shell lives
+  (boundary J1 residual).** The SIGHUP/huponexit story is otherwise complete:
+  `shopt -s huponexit` HUPs running jobs (SIGCONT first for stopped, honoring
+  `disown -h`) when an interactive shell exits, and an interactive shell that
+  RECEIVES an untrapped SIGHUP fans SIGHUP out to its jobs then exits — both on
+  the one `Shell.shutdown` path (a genuine terminal disconnect delivers SIGHUP
+  to the session leader, so it rides the same fan-out path). What is NOT done:
+  a disowned running child (or a plain unwaited bg child) that exits while a
+  NON-interactive shell lives leaves a transient zombie until the shell exits
+  (bash reaps async via a global SIGCHLD handler). psh keeps reap ownership
+  separate from the job table (`JobManager.reap_registry`, swept at shutdown
+  and alongside bg-completion notices) but has no general async non-interactive
+  reaper — adding one risks stealing command-substitution statuses. Deferred.
 - **Tier-1 follow-ups deferred during v0.540–547** (see CHANGELOG and
   `memory/psh-reappraisal-14.md`):
   - `trap ... RETURN` pseudo-signal + exact `functrace=on` DEBUG fire-counts (H2c).

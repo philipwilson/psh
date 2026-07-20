@@ -539,7 +539,8 @@ def pytest_runtest_setup(item):
         # The remaining legacy interactive tests stay opt-in.
         if ("test_pty_smoke" in str(item.fspath)
                 or "test_pty_shutdown_route_f2" in str(item.fspath)
-                or "test_multiline_immediate_error_i3" in str(item.fspath)):
+                or "test_multiline_immediate_error_i3" in str(item.fspath)
+                or "test_pty_huponexit_j1" in str(item.fspath)):
             return
         if not item.config.getoption("--run-interactive", default=False):
             pytest.skip("Interactive tests skipped (use --run-interactive to run)")

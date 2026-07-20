@@ -145,6 +145,11 @@ class Job:
         self.state = JobState.RUNNING
         self.foreground = True
         self.notified = False
+        # `disown -h`: exempt this job from SIGHUP when the shell exits, while
+        # keeping it in the job table (#20 H19). A TYPED field the one
+        # Shell.shutdown HUP/CONT path reads — not a dynamically-attached
+        # attribute — so its absence can never be silently "no hangup policy".
+        self.no_hup = False
         self.tmodes: Optional[list] = None  # Terminal modes when suspended
         # O(1) lookup/accounting: pid -> index in self.processes, and a live
         # count per ProcessState so update_state() need not scan the list.
@@ -301,6 +306,13 @@ class JobManager:
         # get_job_by_pid is O(1) rather than a scan over every process of
         # every job (the F14 O(N^2) status-processing path).
         self.pid_index: Dict[int, Job] = {}
+        # pid -> pgid of a child DETACHED from the user-visible job table
+        # (`disown` of a running job) but still OWNED for reaping (#20 H19).
+        # Reap ownership is deliberately SEPARATE from job-table membership:
+        # removing a job from `jobs`/`pid_index` must not lose the ability to
+        # reap its still-running child, or a disowned child that later exits is
+        # orphaned as a zombie until the shell dies.
+        self.reap_registry: Dict[int, int] = {}
         # pid -> remembered exit status of a job reaped by an EXPLICIT
         # `wait <pid>` and already removed, so a repeated explicit
         # `wait <pid>` returns the same status bash retains (rather than
@@ -364,6 +376,60 @@ class JobManager:
                 self.previous_job = None
 
             del self.jobs[job_id]
+
+    def detach_running_job(self, job: 'Job') -> None:
+        """Drop a job from the user-visible table (``disown``) while KEEPING
+        reap ownership of any still-running member (#20 H19).
+
+        Job-table membership (``jobs``/``fg``/``%N`` see it) and child-reap
+        ownership are SEPARATE facts. Bare ``disown`` removes the first but
+        must not lose the second: a disowned child that later exits should be
+        reaped, not orphaned as a zombie. Its still-running pids move to the
+        reap registry before the job leaves the table; :meth:`reap_detached`
+        collects them once they exit.
+        """
+        for proc in job.processes:
+            if proc.state is ProcessState.RUNNING:
+                self.reap_registry[proc.pid] = job.pgid
+        self.remove_job(job.job_id)
+
+    def reap_detached(self) -> None:
+        """Non-blocking reap of detached (disowned) children (#20 H19).
+
+        Collects any registered child that has since exited and drops it from
+        the registry; leaves still-running ones registered. Called on the
+        shell-shutdown path and opportunistically alongside the bg-completion
+        notice, so a disowned child is psh's to reap independent of the job
+        table.
+        """
+        for pid in list(self.reap_registry):
+            try:
+                reaped, _status = os.waitpid(pid, os.WNOHANG)
+            except OSError:
+                # ECHILD (already reaped elsewhere / no longer our child).
+                self.reap_registry.pop(pid, None)
+                continue
+            if reaped == pid:
+                self.reap_registry.pop(pid, None)
+
+    def hangup_jobs(self) -> None:
+        """Send SIGHUP to every job NOT marked ``no_hup`` (``disown -h``).
+
+        The exit-time HUP the one ``Shell.shutdown`` path invokes for an
+        interactive shell with ``huponexit`` set (bash's ``hangup_all_jobs``).
+        A stopped job is sent SIGCONT FIRST so it wakes to act on the HUP
+        (bash), then SIGHUP; a ``disown -h`` job is skipped, and an
+        already-finished job needs nothing.
+        """
+        for job in list(self.jobs.values()):
+            if job.no_hup or job.state == JobState.DONE:
+                continue
+            try:
+                if job.state == JobState.STOPPED:
+                    os.killpg(job.pgid, signal.SIGCONT)
+                os.killpg(job.pgid, signal.SIGHUP)
+            except OSError:
+                pass
 
     def remember_job_statuses(self, job: 'Job') -> None:
         """Retain a completed job's per-pid exit status for a later `wait`.
@@ -546,28 +612,34 @@ class JobManager:
             return self.shell_state.stderr
         return sys.stderr
 
-    def report_abnormal_termination(self, job: Job) -> None:
-        """Announce a foreground job killed by a signal, the way bash does.
+    def report_signal_death_at(self, job: Job, index: int) -> None:
+        """Announce the signal death of the status-determining member (bash).
+
+        THE single chokepoint for a foreground job's signal-death diagnostic —
+        used for a single command / subshell (the last process) and for a
+        pipeline (the member whose status became ``$?``: the last member
+        normally, the rightmost failing member under pipefail). Every
+        foreground path — external command, pipeline, and subshell — routes
+        here through :class:`ForegroundJobSession`.
 
         bash prints e.g. ``Terminated: 15`` / ``Segmentation fault: 11`` to
-        stderr — even non-interactively — when a foreground command dies by a
-        signal other than SIGINT/SIGPIPE, so a following command isn't preceded
-        by unexplained silence. The exit status (128+N) is set by the caller and
-        left unchanged; this only adds the diagnostic. The last process's status
-        is the one announced (it becomes ``$?``), matching bash.
+        stderr — even non-interactively — when the announced member died by a
+        signal other than SIGINT/SIGPIPE (:func:`abnormal_termination_message`),
+        so a following command isn't preceded by unexplained silence. The exit
+        status (128+N) is set by the caller and left unchanged; this only adds
+        the diagnostic. Silent for a normal exit, a stop, SIGINT/SIGPIPE, and
+        inside a command/process substitution (bash announces only in the main
+        shell and ``( )`` subshells).
 
         (bash additionally prefixes a ``bash: line N: PID`` job header for
         every signal except SIGTERM; psh emits just the signal description,
         which is exact for SIGTERM and carries the same wording otherwise.)
-
-        Silent inside a command/process substitution — bash does not announce
-        signal deaths there, only in the main shell and ( ) subshells.
         """
         if self.shell_state is not None and self.shell_state.in_substitution:
             return
-        if not job.processes:
+        if not 0 <= index < len(job.processes):
             return
-        status = job.processes[-1].status
+        status = job.processes[index].status
         if status is None:
             return
         message = abnormal_termination_message(status)
@@ -630,6 +702,10 @@ class JobManager:
         # Remove completed jobs after notification
         for job_id in completed:
             self.remove_job(job_id)
+
+        # Opportunistically reap detached (disowned) children too, so their
+        # reap ownership does not depend on the job table (#20 H19).
+        self.reap_detached()
 
     def register_background_job(self, job: Job, shell_state=None, last_pid: Optional[int] = None):
         """Mark a job as running in the background and update bookkeeping."""
