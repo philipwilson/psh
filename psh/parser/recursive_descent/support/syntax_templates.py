@@ -45,7 +45,7 @@ from .nested_parse import parse_nested_command
 _EXPANSION = ExpansionParser(None)
 
 
-def _validate_body(body: str, ctx) -> 'Program':
+def _validate_body(body: str, ctx: "Optional[object]") -> 'Program':
     """Parse a modern substitution body at read time (raises on invalid syntax).
 
     Routes through the ONE chokepoint (``parse_nested_command``), which re-types
@@ -84,7 +84,7 @@ def _skip_ansi_c(text: str, i: int) -> int:
 
 
 def _scan(text: str, base: int, dq: bool, allow_procsub: bool,
-          ctx) -> List[NestedSub]:
+          ctx: "Optional[object]") -> List[NestedSub]:
     """Scan ``text`` for nested modern substitutions, validating each.
 
     ``base`` is ``text``'s absolute offset in the enclosing region (so recorded
@@ -148,7 +148,7 @@ def _scan(text: str, base: int, dq: bool, allow_procsub: bool,
 
 
 def _handle_dollar(etype: Optional[str], value: str, text: str, i: int,
-                   nxt: int, base: int, dq: bool, ctx,
+                   nxt: int, base: int, dq: bool, ctx: "Optional[object]",
                    subs: List[NestedSub]) -> None:
     """Dispatch a ``$``-expansion found by the lexer's extent scanner."""
     if etype == 'command':
@@ -173,7 +173,7 @@ def _handle_dollar(etype: Optional[str], value: str, text: str, i: int,
     # 'variable' and a bare literal '$' need no validation.
 
 
-def build_word_template(text: str, ctx=None) -> WordTemplate:
+def build_word_template(text: str, ctx: "Optional[object]" = None) -> WordTemplate:
     """Validate the nested shell grammar of a parameter-expansion operand.
 
     ``text`` is the raw operand (``${x:-<text>}``), quotes included. Process
@@ -183,7 +183,7 @@ def build_word_template(text: str, ctx=None) -> WordTemplate:
     return WordTemplate(text=text, subs=tuple(_scan(text, 0, False, True, ctx)))
 
 
-def build_arithmetic_template(text: str, ctx=None) -> ArithmeticTemplate:
+def build_arithmetic_template(text: str, ctx: "Optional[object]" = None) -> ArithmeticTemplate:
     """Validate the nested shell grammar of an arithmetic region.
 
     ``text`` is the raw arithmetic expression (``$((<text>))`` / ``(( <text> ))``
@@ -194,7 +194,7 @@ def build_arithmetic_template(text: str, ctx=None) -> ArithmeticTemplate:
     return ArithmeticTemplate(text=text, subs=tuple(_scan(text, 0, False, False, ctx)))
 
 
-def build_subscript_spec(text: str, ctx=None) -> SubscriptSpec:
+def build_subscript_spec(text: str, ctx: "Optional[object]" = None) -> SubscriptSpec:
     """Validate the nested shell grammar of an array subscript.
 
     ``text`` is the raw subscript (``arr[<text>]``). Nested modern ``$()`` are

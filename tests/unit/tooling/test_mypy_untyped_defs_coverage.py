@@ -39,19 +39,18 @@ def _load_pyproject():
         return tomllib.load(f)
 
 
-def override_entries(cfg):
-    """``[(pattern, check_untyped_defs)]`` in file order, from every override
-    section that sets the flag. Sections not setting it are irrelevant to this
-    resolution and are skipped."""
+def override_entries(cfg, flag="check_untyped_defs"):
+    """``[(pattern, <flag>)]`` in file order, from every override section that
+    sets ``flag``. Sections not setting it are skipped."""
     entries = []
     for section in cfg["tool"]["mypy"].get("overrides", []):
-        if "check_untyped_defs" not in section:
+        if flag not in section:
             continue
         modules = section["module"]
         if isinstance(modules, str):
             modules = [modules]
         for pattern in modules:
-            entries.append((pattern, bool(section["check_untyped_defs"])))
+            entries.append((pattern, bool(section[flag])))
     return entries
 
 
@@ -190,3 +189,114 @@ def test_bare_module_override_does_not_reach_submodules_empirically(tmp_path):
     assert star.returncode != 0 and "deep.py" in star.stdout, (
         "expected the .* override to catch the submodule body error, got:\n"
         + star.stdout + star.stderr)
+
+
+# === Q2 family 9: incomplete public signatures in migrated packages ==========
+#
+# The boundary campaign CREATED/migrated these modules; each must carry COMPLETE
+# typed signatures — mypy `disallow_untyped_defs` (no fully-untyped def) AND
+# `disallow_incomplete_defs` (no partially-annotated def) — matching the lexer
+# package precedent. This ratchet freezes THAT discipline: every migrated module
+# must resolve to BOTH flags true, the migrated set is the git-derived
+# campaign-created set (self-checked), and the set of full-signature modules may
+# only GROW. A synthetic offender (a migrated module with no covering override)
+# is flagged.
+#
+# Source of truth (Q1 CREATED_MODULES, git --diff-filter=A v0.724.0..75ab5625 --
+# psh/) + psh.protocols; dotted module names.
+MIGRATED_MODULES = [
+    "psh.ast_nodes.syntax_templates",
+    "psh.core.process_lease",
+    "psh.core.variable_lookup",
+    "psh.executor.command_resolution",
+    "psh.executor.foreground_session",
+    "psh.expansion.subscript",
+    "psh.interactive.history_result",
+    "psh.invocation",
+    "psh.io_redirect.input_cursor",
+    "psh.io_redirect.redirect_program",
+    "psh.parser.parse_inputs",
+    "psh.parser.parse_outcome",
+    "psh.parser.recursive_descent.support.syntax_templates",
+    "psh.parser.session",
+    "psh.parser.unclosed_expansion",
+    "psh.scripting.program_source",
+    "psh.protocols",
+]
+
+
+def _resolves_flag(module, flag):
+    cfg = _load_pyproject()
+    default = bool(cfg["tool"]["mypy"].get(flag, False))
+    entries = override_entries(cfg, flag)
+    return resolve_check_untyped_defs(module, entries, default)
+
+
+def test_migrated_modules_have_complete_signatures():
+    """Every migrated module resolves to disallow_untyped_defs = true AND
+    disallow_incomplete_defs = true — complete typed public signatures."""
+    missing = []
+    for module in MIGRATED_MODULES:
+        if not _resolves_flag(module, "disallow_untyped_defs"):
+            missing.append(f"{module}: disallow_untyped_defs not true")
+        if not _resolves_flag(module, "disallow_incomplete_defs"):
+            missing.append(f"{module}: disallow_incomplete_defs not true")
+    assert not missing, (
+        "migrated boundary modules without full-signature discipline — add a "
+        "pyproject override (disallow_untyped_defs + disallow_incomplete_defs) "
+        "and complete the signatures, do not loosen:\n  " + "\n  ".join(missing))
+
+
+def test_migrated_modules_are_the_campaign_created_set():
+    """MIGRATED_MODULES is exactly the git-derived campaign-created set (+
+    protocols) — verified against git when the base tag is present."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "--diff-filter=A", "--pretty=format:",
+             "--name-only", "v0.724.0..75ab5625", "--", "psh/"],
+            cwd=ROOT, capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pytest.skip("git unavailable")
+    if out.returncode != 0:
+        pytest.skip("base tag/range unavailable in this checkout")
+    created = set()
+    for ln in out.stdout.splitlines():
+        ln = ln.strip()
+        if ln.endswith(".py"):
+            dotted = ln[:-3].replace("/", ".")
+            if dotted.endswith(".__init__"):
+                dotted = dotted[:-len(".__init__")]
+            created.add(dotted)
+    # protocols is the one migrated package created as psh/protocols/__init__.py.
+    created.add("psh.protocols")
+    assert set(MIGRATED_MODULES) == created, (
+        "MIGRATED_MODULES drifted from the git-created set:\n"
+        f"  only in git: {sorted(created - set(MIGRATED_MODULES))}\n"
+        f"  only in list: {sorted(set(MIGRATED_MODULES) - created)}")
+
+
+def test_full_signature_discipline_only_grows():
+    """The set of psh modules under disallow_untyped_defs may only GROW — a
+    module that HAD the discipline (lexer package + the migrated set) must keep
+    it. Frozen baseline of covered PACKAGES/modules."""
+    cfg = _load_pyproject()
+    entries = override_entries(cfg, "disallow_untyped_defs")
+    default = bool(cfg["tool"]["mypy"].get("disallow_untyped_defs", False))
+    covered = {m for m in (psh_modules() + MIGRATED_MODULES)
+               if resolve_check_untyped_defs(m, entries, default)}
+    # Everything currently disciplined must stay disciplined (grow-only).
+    frozen_min = set(MIGRATED_MODULES) | {
+        m for m in psh_modules() if m == "psh.lexer" or m.startswith("psh.lexer.")}
+    regressed = sorted(frozen_min - covered)
+    assert not regressed, (
+        "these modules LOST disallow_untyped_defs discipline — the ratchet only "
+        f"grows; restore their override:\n  {regressed}")
+
+
+def test_synthetic_migrated_module_without_override_is_flagged():
+    """A fabricated migrated module that no disallow override covers is caught —
+    proving the ratchet is not vacuous."""
+    offender = "psh.zzz_migrated_but_uncovered"
+    assert _resolves_flag(offender, "disallow_untyped_defs") is False
+    assert _resolves_flag(offender, "disallow_incomplete_defs") is False
