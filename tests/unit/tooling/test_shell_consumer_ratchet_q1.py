@@ -43,8 +43,33 @@ import ast
 import pathlib
 import re
 import subprocess
+import warnings
+
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+
+
+# Campaign Q3 (WP5): the git self-check below verifies CREATED_MODULES against
+# the actual campaign-added set. When git or the base tag is unavailable it must
+# WARN (naming the protection lost) before skipping — never skip silently, or
+# list drift goes undetected in shallow/tarball checkouts. This mirrors the
+# uniform F9 hardening in test_mypy_untyped_defs_coverage.py. Green-repo
+# behavior (git + tag present) is unchanged: the assertion runs.
+_SELFCHECK_UNVERIFIED = (
+    "SELF-CHECK SKIPPED: cannot verify {name} against the git enumeration "
+    "(git log --diff-filter=A v0.724.0..75ab5625 -- psh/): {reason}. The "
+    "hardcoded list is TRUSTED UNVERIFIED here — drift between it and the "
+    "actual campaign-created set will go UNDETECTED until this test runs in a "
+    "full checkout with the base tag present."
+)
+
+
+def _warn_selfcheck_unverified(list_name, reason):
+    warnings.warn(
+        _SELFCHECK_UNVERIFIED.format(name=list_name, reason=reason),
+        stacklevel=2,
+    )
 
 
 # Files the campaign ADDED (git --diff-filter=A v0.724.0..75ab5625 -- psh/).
@@ -194,18 +219,21 @@ def test_scanned_modules_all_exist():
 
 def test_created_modules_match_enumeration():
     """CREATED_MODULES is exactly the campaign-added set. Verified against git
-    when the base tag is present; skipped otherwise (shallow checkout)."""
+    when the base tag is present; when git or the tag is absent the self-check
+    WARNS loudly (Q3 WP5) before skipping, never silently (shallow checkout)."""
     try:
         out = subprocess.run(
             ["git", "log", "--diff-filter=A", "--pretty=format:",
              "--name-only", "v0.724.0..75ab5625", "--", "psh/"],
             cwd=ROOT, capture_output=True, text=True, timeout=30,
         )
-    except (OSError, subprocess.SubprocessError):
-        import pytest
+    except (OSError, subprocess.SubprocessError) as e:
+        _warn_selfcheck_unverified(
+            "CREATED_MODULES", f"git unavailable ({type(e).__name__})")
         pytest.skip("git unavailable")
     if out.returncode != 0:
-        import pytest
+        _warn_selfcheck_unverified(
+            "CREATED_MODULES", "base tag/range v0.724.0..75ab5625 not present")
         pytest.skip("base tag/range unavailable in this checkout")
     enumerated = {ln.strip() for ln in out.stdout.splitlines()
                   if ln.strip().endswith(".py")}
@@ -215,6 +243,14 @@ def test_created_modules_match_enumeration():
         f"  only in git: {sorted(enumerated - set(CREATED_MODULES))}\n"
         f"  only in list: {sorted(set(CREATED_MODULES) - enumerated)}"
     )
+
+
+def test_selfcheck_warns_loudly_when_git_unavailable():
+    """Q3 WP5: the git self-check WARNS (naming the lost protection) rather than
+    skipping silently — so CREATED_MODULES drift is signalled even in a checkout
+    without git/the base tag. Uniform with the F9 twin."""
+    with pytest.warns(UserWarning, match="TRUSTED UNVERIFIED"):
+        _warn_selfcheck_unverified("CREATED_MODULES", "git unavailable (OSError)")
 
 
 def test_no_unrecorded_full_shell_consumers():
