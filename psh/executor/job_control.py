@@ -546,33 +546,48 @@ class JobManager:
             return self.shell_state.stderr
         return sys.stderr
 
-    def report_abnormal_termination(self, job: Job) -> None:
-        """Announce a foreground job killed by a signal, the way bash does.
+    def report_signal_death_at(self, job: Job, index: int) -> None:
+        """Announce the signal death of the status-determining member (bash).
+
+        THE single chokepoint for a foreground job's signal-death diagnostic —
+        used for a single command / subshell (the last process) and for a
+        pipeline (the member whose status became ``$?``: the last member
+        normally, the rightmost failing member under pipefail). Every
+        foreground path — external command, pipeline, and subshell — routes
+        here through :class:`ForegroundJobSession`.
 
         bash prints e.g. ``Terminated: 15`` / ``Segmentation fault: 11`` to
-        stderr — even non-interactively — when a foreground command dies by a
-        signal other than SIGINT/SIGPIPE, so a following command isn't preceded
-        by unexplained silence. The exit status (128+N) is set by the caller and
-        left unchanged; this only adds the diagnostic. The last process's status
-        is the one announced (it becomes ``$?``), matching bash.
+        stderr — even non-interactively — when the announced member died by a
+        signal other than SIGINT/SIGPIPE (:func:`abnormal_termination_message`),
+        so a following command isn't preceded by unexplained silence. The exit
+        status (128+N) is set by the caller and left unchanged; this only adds
+        the diagnostic. Silent for a normal exit, a stop, SIGINT/SIGPIPE, and
+        inside a command/process substitution (bash announces only in the main
+        shell and ``( )`` subshells).
 
         (bash additionally prefixes a ``bash: line N: PID`` job header for
         every signal except SIGTERM; psh emits just the signal description,
         which is exact for SIGTERM and carries the same wording otherwise.)
-
-        Silent inside a command/process substitution — bash does not announce
-        signal deaths there, only in the main shell and ( ) subshells.
         """
         if self.shell_state is not None and self.shell_state.in_substitution:
             return
-        if not job.processes:
+        if not 0 <= index < len(job.processes):
             return
-        status = job.processes[-1].status
+        status = job.processes[index].status
         if status is None:
             return
         message = abnormal_termination_message(status)
         if message is not None:
             print(message, file=self._notification_stream())
+
+    def report_abnormal_termination(self, job: Job) -> None:
+        """Announce a signal-killed single foreground command / subshell.
+
+        Thin wrapper over :meth:`report_signal_death_at` selecting the LAST
+        process (whose status becomes ``$?``).
+        """
+        if job.processes:
+            self.report_signal_death_at(job, len(job.processes) - 1)
 
     def _sigpipe_suppressed(self, status: Optional[int]) -> bool:
         """True when bash would print NO notice for this completed bg job.

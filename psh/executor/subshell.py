@@ -109,13 +109,24 @@ class SubshellExecutor:
 
     def _execute_foreground_subshell(self, statements, redirects: List['Redirect'],
                                      errexit_suppress: int = 0) -> int:
-        """Execute subshell in foreground with proper isolation."""
-        # Manage terminal control only when this shell actually owns the
-        # terminal (real capability check — no test-runner sniffing).
-        original_pgid = self.job_manager.terminal_pgid_if_owned()
-        is_interactive = original_pgid is not None
+        """Execute subshell in foreground with proper isolation.
+
+        Runs through the shared foreground-job transaction
+        (:class:`ForegroundJobSession`) exactly like an external command or a
+        pipeline — the same registration, terminal transfer/reclaim, signal-
+        death diagnostic (a subshell killed by SIGTERM now prints
+        ``Terminated: 15`` like bash — #20 H12), current-job rotation, and
+        exception cleanup.
+        """
+        from .foreground_session import ForegroundJobSession
+
+        # Open the transaction BEFORE the launch: it captures the terminal
+        # owner while this shell still owns it (a real capability check — no
+        # test-runner sniffing).
+        session = ForegroundJobSession.open(self.job_manager)
         if self.state.options.get('debug-exec'):
-            print(f"DEBUG Subshell: terminal owner pgid={original_pgid}", file=sys.stderr)
+            print(f"DEBUG Subshell: terminal owner pgid={session.original_pgid}",
+                  file=sys.stderr)
 
         # Create execution function
         def execute_fn():
@@ -184,26 +195,15 @@ class SubshellExecutor:
 
         pid, pgid = self.launcher.launch(execute_fn, config)
 
-        # Hand the terminal to the subshell's process group if interactive
-        if is_interactive and original_pgid is not None:
-            self.job_manager.transfer_terminal_control(pgid, "Subshell")
-
-        # Create job for tracking the subshell
-        job = self.job_manager.create_job(pgid, "<subshell>")
-        job.add_process(pid, "subshell")
-        job.foreground = True
-
-        # Use job manager to wait (handles SIGCHLD properly)
-        exit_status = self.job_manager.wait_for_job(job)
-
-        # Reclaim the terminal for the parent shell if interactive
-        if is_interactive:
-            self.job_manager.restore_shell_foreground()
-
-        # Clean up job
-        from .job_control import JobState
-        if job.state == JobState.DONE:
-            self.job_manager.remove_job(job.job_id)
+        # The one foreground transaction: register (foreground-job tracking +
+        # terminal transfer), wait, announce a signal death, reclaim the
+        # terminal + drop the DONE job. try/finally = exception cleanup.
+        try:
+            session.register(pgid, "<subshell>", [(pid, "subshell")])
+            exit_status = session.wait()
+            session.report_signal_death()
+        finally:
+            session.finish()
 
         return exit_status
 

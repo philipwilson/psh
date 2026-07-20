@@ -614,12 +614,14 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             from ..interactive.title import command_title, set_terminal_title
             set_terminal_title(command_title(cmd_name, shell))
 
-        # Manage terminal control only for foreground commands when this
-        # shell actually owns the terminal (real capability check — no
-        # test-runner sniffing).
-        original_pgid = None
+        # Open the foreground-job transaction BEFORE the launch: it captures
+        # the terminal owner while this shell still owns the terminal (a real
+        # capability check — no test-runner sniffing). A backgrounded command
+        # is not a foreground session.
+        session = None
         if not background:
-            original_pgid = shell.job_manager.terminal_pgid_if_owned()
+            from .foreground_session import ForegroundJobSession
+            session = ForegroundJobSession.open(shell.job_manager)
 
         # The launcher applies the unified child signal policy on fork
         launcher = shell.process_launcher
@@ -662,31 +664,16 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             shell.job_manager.launch_background(
                 pgid, command_string, [(pid, str(full_args[0]))])
             return 0
-        else:
-            # Foreground job - create it for tracking and give it terminal control
-            job = shell.job_manager.create_job(pgid, command_string)
-            job.add_process(pid, str(full_args[0]))
-            job.foreground = True
-            shell.job_manager.set_foreground_job(job)
 
-            # Hand the terminal to the new foreground process group
-            if original_pgid is not None:
-                if shell.job_manager.transfer_terminal_control(pgid, "ExternalStrategy"):
-                    shell.state.foreground_pgid = pgid
-
-            # Use job manager to wait (it handles SIGCHLD)
-            exit_status = shell.job_manager.wait_for_job(job)
-
-            # Announce abnormal termination (Terminated / Segmentation fault /
-            # ...) the way bash does for a signal-killed foreground command.
-            shell.job_manager.report_abnormal_termination(job)
-
-            # Reclaim the terminal (if we handed it over) and clear
-            # foreground-job bookkeeping (a stopped job stays as %+).
-            shell.job_manager.finish_foreground_job(original_pgid is not None, job)
-
-            # Clean up
-            if job.state == JobState.DONE:
-                shell.job_manager.remove_job(job.job_id)
-
-            return exit_status
+        # Foreground: the one transaction — registration + terminal transfer,
+        # wait, signal-death diagnostic, terminal reclaim + DONE-job drop. The
+        # try/finally gives exception cleanup (a wait that raises still
+        # reclaims the terminal). J1.
+        assert session is not None
+        try:
+            session.register(pgid, command_string, [(pid, str(full_args[0]))])
+            exit_status = session.wait()
+            session.report_signal_death()
+        finally:
+            session.finish()
+        return exit_status
