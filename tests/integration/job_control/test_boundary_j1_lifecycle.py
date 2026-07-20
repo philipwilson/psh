@@ -139,6 +139,46 @@ def test_fg_subshell_normal_exit_no_diagnostic():
     assert err.strip() == "", err
 
 
+# ---- B2: a pipeline-MEMBER subshell announces only via the status member -----
+# Routing subshell.py through ForegroundJobSession made a subshell that is a
+# pipeline member self-announce its death (spurious). Fix: a forked-child
+# subshell does not self-announce AND re-raises its body's fatal signal so the
+# enclosing pipeline announces the status-determining member, exactly like bash.
+
+def test_pipeline_nonfinal_subshell_death_is_silent():
+    # `( kill ) | cat`: the subshell is NOT the status member (cat is, exit 0),
+    # so bash announces nothing. RED at the pre-B2 tip (spurious "Terminated").
+    out, err, rc = _psh("( kill -s TERM $BASHPID ) | cat; echo after=$?")
+    assert "Terminated" not in err, err
+    assert out == "after=0\n", (out, err)
+
+
+def test_pipeline_middle_subshell_death_is_silent():
+    out, err, rc = _psh("echo x | ( kill -s TERM $BASHPID ) | cat; echo after=$?")
+    assert "Terminated" not in err, err
+
+
+def test_pipeline_final_subshell_death_is_announced():
+    # `cat | ( kill )`: the subshell IS the status member, so bash announces —
+    # psh now propagates the signal so the pipeline sees it and announces.
+    out, err, rc = _psh("cat </dev/null | ( kill -s TERM $BASHPID ); echo after=$?")
+    assert "Terminated" in err, err
+    assert out == "after=143\n", (out, err)
+
+
+def test_pipefail_nonfinal_subshell_death_is_announced():
+    # Under pipefail the failing non-final subshell IS status-determining.
+    out, err, rc = _psh(
+        "set -o pipefail; ( kill -s TERM $BASHPID ) | cat; echo after=$?")
+    assert "Terminated" in err, err
+
+
+def test_pipeline_member_subshell_pipestatus_reflects_signal():
+    out, err, rc = _psh(
+        "( kill -s TERM $BASHPID ) | cat; echo ps=${PIPESTATUS[0]},${PIPESTATUS[1]}")
+    assert out == "ps=143,0\n", (out, err)
+
+
 # ---- H19: huponexit option + disown -h keep-in-table -------------------------
 
 def test_huponexit_is_a_real_shopt_option():

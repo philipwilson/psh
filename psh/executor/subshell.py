@@ -6,6 +6,7 @@ process isolation and environment management.
 """
 
 import os
+import signal
 import sys
 from typing import TYPE_CHECKING, List
 
@@ -197,14 +198,56 @@ class SubshellExecutor:
         # The one foreground transaction: register (foreground-job tracking +
         # terminal transfer), wait, announce a signal death, reclaim the
         # terminal + drop the DONE job. try/finally = exception cleanup.
+        #
+        # A subshell that is itself a PIPELINE MEMBER (or nested in another
+        # subshell) runs here inside a forked child: it must NOT self-announce
+        # its death (#20 J1/B2 — bash announces only the status-determining
+        # member, from the enclosing pipeline). Only the top-level shell
+        # (not in a forked child) announces directly.
+        in_forked_child = getattr(self.state, 'in_forked_child', False)
         try:
             session.register(pgid, "<subshell>", [(pid, "subshell")])
             exit_status = session.wait()
-            session.report_signal_death()
+            if not in_forked_child:
+                session.report_signal_death()
         finally:
             session.finish()
 
+        # When this subshell is a forked child (a pipeline member / nested
+        # subshell) and its body died by an unhandled fatal signal, RE-RAISE
+        # that signal so THIS process dies by it too, instead of returning
+        # 128+N as a normal exit. The enclosing pipeline then sees a real
+        # signal death (WIFSIGNALED) and announces the status-determining
+        # member exactly as bash does — a pipeline-member subshell that exits
+        # "normally" with 128+N would mask the signal from the pipeline.
+        if in_forked_child:
+            self._reraise_child_signal_death(session)
+
         return exit_status
+
+    @staticmethod
+    def _reraise_child_signal_death(session) -> None:
+        """If the subshell's body died by a signal, re-raise it in this
+        (forked-child) process so the enclosing pipeline sees a true signal
+        death. No-op for a normal exit / stop. See _execute_foreground_subshell."""
+        job = session.job
+        if job is None or not job.processes:
+            return
+        raw = job.processes[-1].status
+        if raw is None or not os.WIFSIGNALED(raw):
+            return
+        sig = os.WTERMSIG(raw)
+        # Flush before dying — os._exit/os.kill bypass Python buffer flushing.
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                stream.flush()
+            except (OSError, ValueError, AttributeError):
+                pass
+        try:
+            signal.signal(sig, signal.SIG_DFL)
+            os.kill(os.getpid(), sig)
+        except (OSError, ValueError):
+            pass
 
     def _execute_background_subshell(self, statements, redirects: List['Redirect']) -> int:
         """Execute subshell in background with job control tracking."""
