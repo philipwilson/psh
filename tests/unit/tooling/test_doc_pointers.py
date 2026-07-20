@@ -45,15 +45,20 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-# Documentation files under test.
+# Documentation files under test. Campaign Q2 (S2 guard-scope widening carry)
+# extends the sweep beyond psh/: the ROOT ``CLAUDE.md`` (the orientation doc, the
+# densest source of `file.py#symbol` pointers) and every ``tests/**/CLAUDE.md``
+# are scanned too, so a stale pointer in them fails just as loudly.
 DOC_FILES = sorted(
     [
         PROJECT_ROOT / "ARCHITECTURE.md",
+        PROJECT_ROOT / "CLAUDE.md",
         PROJECT_ROOT / "docs" / "architecture" / "ast_data_flow.md",
         PROJECT_ROOT / "docs" / "architecture" / "tour_of_psh_internals.md",
         PROJECT_ROOT / "docs" / "architecture" / "command_position.md",
     ]
     + list((PROJECT_ROOT / "psh").rglob("CLAUDE.md"))
+    + list((PROJECT_ROOT / "tests").rglob("CLAUDE.md"))
 )
 
 # ---------------------------------------------------------------------------
@@ -110,9 +115,13 @@ DEF_RE = re.compile(r"^(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
 
 @pytest.fixture(scope="module")
 def source_corpus():
-    """{path: text} for every production and test Python file."""
+    """{path: text} for every production, test, AND tools Python file.
+
+    Q2 (S2 widening carry): ``tools/`` is scanned too, so a doc pointer to a
+    tools symbol (``def``/``ClassName``/``function()``) resolves instead of
+    silently failing R3/R4 or being invisible."""
     corpus = {}
-    for base in ("psh", "tests"):
+    for base in ("psh", "tests", "tools"):
         for path in (PROJECT_ROOT / base).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
@@ -135,11 +144,10 @@ def _suffix_match(token: str, corpus) -> bool:
 
 
 def _class_files(cls: str, corpus):
+    # Q2 (S2 widening carry): a documented ClassName may be defined under psh/,
+    # tests/, OR tools/ — resolve against the whole corpus, not just psh/.
     pattern = re.compile(rf"^class {re.escape(cls)}\b", re.MULTILINE)
-    return [
-        path for path, text in corpus.items()
-        if path.is_relative_to(PROJECT_ROOT / "psh") and pattern.search(text)
-    ]
+    return [path for path, text in corpus.items() if pattern.search(text)]
 
 
 def _check_inline_tokens(doc: Path, corpus):
@@ -165,7 +173,7 @@ def _check_inline_tokens(doc: Path, corpus):
                 continue  # `NAME.md` style file names, not symbols
             files = _class_files(cls, corpus)
             if not files:
-                failures.append(f"R3 class not found in psh/: `{token}`")
+                failures.append(f"R3 class not found in psh/tests/tools/: `{token}`")
             elif not any(
                 re.search(rf"\b{re.escape(member)}\b", corpus[f]) for f in files
             ):
@@ -250,6 +258,10 @@ def test_scanned_docs_exist():
     """If a scanned doc is deleted/renamed, fail here rather than silently
     shrinking coverage."""
     assert (PROJECT_ROOT / "ARCHITECTURE.md").is_file()
+    assert (PROJECT_ROOT / "CLAUDE.md").is_file()  # Q2: root orientation doc scanned
     assert (PROJECT_ROOT / "docs/architecture/ast_data_flow.md").is_file()
     assert (PROJECT_ROOT / "docs/architecture/tour_of_psh_internals.md").is_file()
-    assert len(DOC_FILES) >= 12  # ARCHITECTURE + ast_data_flow + tour + 9 CLAUDE.md
+    # ARCHITECTURE + root CLAUDE + ast_data_flow + tour + command_position
+    # + 9 psh CLAUDE.md (+ any tests/**/CLAUDE.md).
+    assert len(DOC_FILES) >= 13
+    assert (PROJECT_ROOT / "CLAUDE.md") in DOC_FILES

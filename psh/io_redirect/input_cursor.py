@@ -118,8 +118,3 @@ class InputCursorRegistry:
         old = self._fd_to_desc.pop(fd, None)
         if old is not None:
             self._desc_to_cursor.pop(old, None)
-
-    def reset(self) -> None:
-        """Drop every cursor (child fork / explicit teardown)."""
-        self._fd_to_desc.clear()
-        self._desc_to_cursor.clear()

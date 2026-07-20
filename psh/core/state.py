@@ -959,8 +959,10 @@ class ShellState:
     @debug_scopes.setter
     def debug_scopes(self, value):
         self.options['debug-scopes'] = value
-        if hasattr(self, 'scope_manager'):
-            self.scope_manager.enable_debug(value)
+        # scope_manager is assigned in __init__ before any option handling, so
+        # it is always present here (the former `hasattr` guard was unreachable-
+        # defensive dead code — this setter has no callers at all; Q2 B3).
+        self.scope_manager.enable_debug(value)
 
     @property
     def variables(self) -> Dict[str, str]:

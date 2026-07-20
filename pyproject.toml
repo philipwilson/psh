@@ -190,3 +190,32 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = ["psh.parser.*", "psh.parser.config", "psh.parser.visualization", "psh.parser.visualization.*"]
 check_untyped_defs = true
+
+# Campaign Q2 (§13, "incomplete public signatures in migrated packages"):
+# every boundary-campaign-created/migrated module must carry COMPLETE typed
+# signatures — no untyped def, no partially-annotated def (matching the lexer
+# package precedent above). New code in these modules stays fully typed rather
+# than loosening this. Guarded (the set may only GROW) by
+# tests/unit/tooling/test_mypy_untyped_defs_coverage.py.
+[[tool.mypy.overrides]]
+module = [
+    "psh.ast_nodes.syntax_templates",
+    "psh.core.process_lease",
+    "psh.core.variable_lookup",
+    "psh.executor.command_resolution",
+    "psh.executor.foreground_session",
+    "psh.expansion.subscript",
+    "psh.interactive.history_result",
+    "psh.invocation",
+    "psh.io_redirect.input_cursor",
+    "psh.io_redirect.redirect_program",
+    "psh.parser.parse_inputs",
+    "psh.parser.parse_outcome",
+    "psh.parser.recursive_descent.support.syntax_templates",
+    "psh.parser.session",
+    "psh.parser.unclosed_expansion",
+    "psh.scripting.program_source",
+    "psh.protocols",
+]
+disallow_incomplete_defs = true
+disallow_untyped_defs = true

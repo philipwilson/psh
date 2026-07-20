@@ -125,3 +125,109 @@ def test_resolver_is_the_sole_dispatch_reader():
     src = RESOLUTION_PY.read_text()
     assert "def resolve_command(" in src
     assert "can_execute" in src
+
+
+# === Q2 family 4: tree-wide widening (command-registry reads outside resolution)
+#
+# The original R3 ratchet guarded ONE file (command.py, the dispatcher). Q2
+# widens the same three dispatch-read shapes across the WHOLE executor dispatch
+# package (psh/executor/*.py): a raw function-table / special-builtin / builtin-
+# registry membership read anywhere in the executor is a dispatch decision and
+# must live in the resolution machinery, never leak into another executor module.
+#
+# Allowlist = the executor files that ARE the resolution machinery resolve_command
+# drives (each verified to contain a flagged read; shrink-only). The dispatcher
+# command.py is NOT allowlisted (it must stay at 0 — the original R3 invariant).
+#
+# DELIBERATELY OUT OF SCOPE: introspection BUILTINS (`type`, `command -v`, `hash`,
+# `help`, `declare -f`, `export -f`, `readonly -f`) read these registries to
+# REPORT or MANAGE them, not to decide command execution — a categorically
+# different, legitimate use. Scoping the detector to the executor dispatch path
+# (where a raw read IS a dispatch decision) keeps the allowlist to the 3 genuine
+# resolution-machinery files instead of needing ~10 builtin exemptions.
+#
+# Q2 nit-1 — evasion shapes DECLARED OUT OF SCOPE (verified zero live instances):
+# an ALIASED import of the membership set (`from ... import POSIX_SPECIAL_BUILTINS
+# as SPECIALS; name in SPECIALS`), a getattr-SMUGGLED table read
+# (`getattr(fm, 'get_function')(name)`), and a RAW-dict membership on the function
+# store (`name in fm.functions`). These are dynamic/indirect; a heuristic covering
+# them would false-positive on unrelated `.has(`/membership. If one appears in the
+# executor, harden `dispatch_reads` rather than allowlisting it.
+
+EXECUTOR_DIR = ROOT / "psh" / "executor"
+
+RESOLUTION_MACHINERY = {
+    "strategies.py":
+        "the ExecutionStrategy.can_execute delegates resolve_command selects "
+        "among (SpecialBuiltin/Builtin/Function can_execute) AND the canonical "
+        "POSIX_SPECIAL_BUILTINS definition — the reads here ARE the one "
+        "mode-aware resolution",
+    "command_resolver.py":
+        "the PATH/hash + typed-Candidate service: it reads the function/builtin/"
+        "special registries to BUILD the ResolvedCommand candidates (and the "
+        "type/command -v introspection view), i.e. it computes the resolution, "
+        "not a shortcut around it",
+    "function.py":
+        "execute_function_call fetches the function BODY to RUN it after the "
+        "FunctionExecutionStrategy already won resolution (127 if it vanished "
+        "between resolve and run) — a post-resolution fetch, not a decision",
+}
+
+
+def _executor_dispatch_offenses():
+    """{filename: offenses} for every psh/executor/*.py with a dispatch read."""
+    out = {}
+    for path in sorted(EXECUTOR_DIR.glob("*.py")):
+        offs = dispatch_reads(path.read_text())
+        if offs:
+            out[path.name] = offs
+    return out
+
+
+def test_no_dispatch_reads_outside_resolution_machinery():
+    """No executor module outside the resolution machinery makes a raw dispatch
+    read (widens the command.py-only R3 guard across the dispatch package)."""
+    offending = {name: offs for name, offs in _executor_dispatch_offenses().items()
+                 if name not in RESOLUTION_MACHINERY}
+    assert not offending, (
+        "raw command-dispatch registry read in an executor module that is NOT "
+        "the resolution machinery — route the decision through resolve_command / "
+        "ResolvedCommand (or, if this file genuinely BECAME resolution machinery, "
+        "add it to RESOLUTION_MACHINERY with a specific reason):\n  "
+        + "\n  ".join(f"{n}: {o}" for n, o in sorted(offending.items())))
+
+
+def test_resolution_machinery_entries_still_read_registries():
+    """Shrink-only: an allowlisted machinery file that no longer contains a
+    dispatch read must be pruned."""
+    live = _executor_dispatch_offenses()
+    for name in RESOLUTION_MACHINERY:
+        assert (EXECUTOR_DIR / name).exists(), f"machinery file missing: {name}"
+        assert name in live, (
+            f"{name} no longer contains a dispatch-registry read — remove its "
+            "RESOLUTION_MACHINERY entry (the ratchet only shrinks)")
+
+
+def test_every_machinery_entry_has_justification():
+    for name, reason in RESOLUTION_MACHINERY.items():
+        assert isinstance(reason, str) and len(reason.strip()) >= 30, (
+            f"RESOLUTION_MACHINERY[{name!r}] needs a specific justification")
+
+
+def test_widened_scan_flags_a_read_in_a_non_machinery_file():
+    """SYNTHETIC OFFENDER: a dispatch read placed in a non-machinery executor
+    module (modeled here as command.py's name) is caught by the widened scan —
+    proving the tree-wide rule bites beyond the resolution machinery."""
+    offender_src = (
+        "class Dispatcher:\n"
+        "    def run(self, name):\n"
+        "        if name in POSIX_SPECIAL_BUILTINS:\n"
+        "            return self._special(name)\n"
+        "        return self.function_manager.get_function(name)\n"
+    )
+    offs = dispatch_reads(offender_src)
+    # A file holding these reads, if NOT in RESOLUTION_MACHINERY, fails the scan.
+    assert offs and "command.py" not in RESOLUTION_MACHINERY
+    kinds = {r.split("(")[0].strip() for r, _ in offs}
+    assert "special-builtin membership read" in kinds
+    assert "function-table dispatch read" in kinds

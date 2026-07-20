@@ -98,11 +98,13 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
 
     PRODUCTION-DEAD after campaign W3: every matching consumer routes through
     the compiled engine (``pattern_engine``); no production code builds a
-    matching regex any more. Kept solely as the independent test ORACLE for
-    the engine's random-corpus differential
-    (``test_pattern_engine_matcher.py``); slated for the deferred census
-    deletion with ``glob_to_regex_body`` / ``_convert_pattern`` /
-    ``glob.normalize_bracket_expressions``.
+    matching regex any more. Kept as the independent test ORACLE for the
+    engine's random-corpus differential (``test_pattern_engine_matcher.py``) —
+    a live cross-check between the two backends, so it is NOT dead (its
+    dependency ``_convert_pattern`` likewise stays). The fully-unreferenced
+    ``glob_to_regex_body`` sibling was deleted (campaign Q2 census); retiring
+    this oracle and ``glob.normalize_bracket_expressions`` is a differential-
+    coverage tradeoff left to a later decision.
 
     Args:
         pattern: Shell pattern potentially containing extglob operators.
@@ -127,27 +129,6 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
         else:
             regex = regex + r'\Z'
     return regex
-
-
-def glob_to_regex_body(pattern: str, for_pathname: bool = False,
-                       extglob: bool = True, ic: bool = False) -> str:
-    """Convert a shell glob pattern to an *unanchored* regex body.
-
-    PRODUCTION-DEAD after campaign W3 (see ``extglob_to_regex`` above): the
-    former regex matching path was retired; kept only as a test oracle,
-    slated for the deferred census deletion. Callers that need anchoring add
-    ``^``/``\\Z`` themselves. ``ic`` (``nocasematch``) keeps ``[:upper:]``/
-    ``[:lower:]`` case-sensitive; see ``_bracket_to_regex``.
-
-    The body is wrapped in ``(?s:...)`` (DOTALL) so the ``.``/``.*`` emitted
-    for ``?``/``*`` match a newline like a real shell glob. The wrapper is
-    scoped, not a compile flag, because this string is embedded in larger
-    regexes (anchoring).
-    """
-    return ('(?s:'
-            + _convert_pattern(pattern, for_pathname, extglob,
-                               top_level=True, ic=ic)
-            + ')')
 
 
 def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,

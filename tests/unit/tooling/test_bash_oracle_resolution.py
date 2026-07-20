@@ -20,13 +20,30 @@ ladder inline. This scanner flags, in every scanned file:
 ``'bash'`` appearing elsewhere (inside shell-script text, as a path component
 like ``tmp_path / 'bash'``, in prose) is not an oracle and is not flagged.
 
-Known-unflagged evasion forms (completeness caveat): an oracle reached
-through a longer ``shell=True`` command STRING (``subprocess.run('bash -c
-...', shell=True)`` — arg0 is a multi-word constant, not exactly ``'bash'``)
-or through ``os.system('bash ...')`` would slip past the argv-head/arg0
-rules. Verified at adoption that NO current test uses either form with a
-bash oracle (tree grep for ``shell=True`` / ``os.system``); if one appears,
-extend ``find_oracle_offenses`` rather than allowlisting it.
+**Campaign Q2 (§13, "Bash-oracle bypasses") — the two evasion forms the E2
+docstring flagged are now caught:**
+
+* a ``shell=True`` command STRING whose first whitespace token is ``bash``
+  (``subprocess.run('bash -c ...', shell=True)`` — arg0 is a multi-word
+  constant, not exactly ``'bash'``), and
+* ``os.system('bash ...')`` / ``os.popen('bash ...')``.
+
+Verified at Q2 adoption that NO current test uses either form (tree grep for
+``shell=True`` with bash / ``os.system`` / ``os.popen`` — zero hits), so closing
+the gap keeps the tree green while removing the completeness caveat.
+
+Q2 nit-1 hardening: the ``shell=1`` truthy-int form (not just ``shell=True``) is
+now caught. Declared OUT OF SCOPE (no live instance): an ABSOLUTE bash path NOT
+in the four-entry ``HARDCODED_BASH_PATHS`` set (an exotic install prefix like
+``/opt/local/bin/bash``) — the set cannot enumerate every prefix, and the
+bare-``bash`` command-word rules catch the common case; if one appears, add the
+path to ``HARDCODED_BASH_PATHS``.
+
+Residual known-unflagged forms (documented, not currently used): an oracle
+assembled by string concatenation/format at runtime (``f"{sh} -c ..."``), or
+launched via a helper that hides the literal. These are dynamic, not static
+literals; if one appears, extend ``find_oracle_offenses`` rather than
+allowlisting it.
 
 The allowlist is SHRINKING: it may lose entries, never gain them without the
 justification being recorded here.
@@ -68,6 +85,37 @@ def iter_scanned_files():
                 yield os.path.join(dirpath, fn)
 
 
+def _cmd_string_first_token_is_bash(node):
+    """True if *node* is a string literal whose first whitespace token is
+    exactly ``bash`` (so ``"bash -c ..."`` and ``"bash"`` match, but
+    ``"rebash"`` / ``"/bin/bash x"`` / script text like ``"exec bash"`` do
+    not — the command word must LEAD)."""
+    if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+        return False
+    toks = node.value.split()
+    return bool(toks) and toks[0] == _BARE
+
+
+def _call_has_shell_true(node):
+    # shell=True OR the truthy shell=1 form (Q2 nit-1 — evasion via an int).
+    for kw in node.keywords:
+        if kw.arg == "shell" and isinstance(kw.value, ast.Constant):
+            v = kw.value.value
+            if v is True or (isinstance(v, int) and not isinstance(v, bool) and v != 0):
+                return True
+    return False
+
+
+def _callee_attr(node):
+    """The called attribute name (``run`` for ``subprocess.run(...)``,
+    ``system`` for ``os.system(...)``), or '' for a bare-name/other call."""
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    return ""
+
+
 def find_oracle_offenses(src):
     """Return [(lineno, kind, detail)] oracle offenses in Python source."""
     tree = ast.parse(src)
@@ -77,6 +125,18 @@ def find_oracle_offenses(src):
         return isinstance(node, ast.Constant) and node.value == value
 
     for node in ast.walk(tree):
+        # os.system('bash ...') / os.popen('bash ...') — a shell-string oracle.
+        if isinstance(node, ast.Call) and _callee_attr(node) in ("system", "popen") \
+                and node.args and _cmd_string_first_token_is_bash(node.args[0]):
+            offenses.append((node.args[0].lineno, "os-system-bash-string",
+                             node.args[0].value))
+        # subprocess.<run|Popen|call|check_output|check_call>('bash ...',
+        # shell=True) — a multi-word command string the argv-head rule misses.
+        if isinstance(node, ast.Call) and _call_has_shell_true(node) \
+                and node.args and _cmd_string_first_token_is_bash(node.args[0]) \
+                and not const_is(node.args[0], _BARE):
+            offenses.append((node.args[0].lineno, "shell-true-bash-string",
+                             node.args[0].value))
         # Hardcoded oracle path literal, anywhere.
         if isinstance(node, ast.Constant) and isinstance(node.value, str) \
                 and node.value in HARDCODED_BASH_PATHS:
@@ -181,6 +241,48 @@ def test_guard_ignores_non_oracle_bash_strings():
         "d = tmp_path / '" + _BARE + "'\n"
         "cmd = 'exec " + _BARE + " -c true'\n"
         "label = '" + _BARE + "'\n"
+    )
+    assert find_oracle_offenses(snippet) == []
+
+
+def test_guard_flags_shell_true_command_string():
+    """Q2: a multi-word 'bash -c ...' string with shell=True is caught (the
+    argv-head/arg0 rules miss it because arg0 is not exactly 'bash')."""
+    snippet = (
+        "import subprocess\n"
+        "subprocess.run('" + _BARE + " -c \"echo hi\"', shell=True)\n"
+    )
+    kinds = {k for _, k, _ in find_oracle_offenses(snippet)}
+    assert "shell-true-bash-string" in kinds
+
+
+def test_guard_flags_shell_one_truthy_int():
+    """Q2 nit-1: shell=1 (truthy int, not shell=True) is caught."""
+    snippet = (
+        "import subprocess\n"
+        "subprocess.run('" + _BARE + " -c true', shell=1)\n"
+    )
+    kinds = {k for _, k, _ in find_oracle_offenses(snippet)}
+    assert "shell-true-bash-string" in kinds
+
+
+def test_guard_flags_os_system_bash_string():
+    """Q2: os.system('bash ...') / os.popen('bash ...') is caught."""
+    snip1 = "import os\nos.system('" + _BARE + " -c true')\n"
+    snip2 = "import os\nos.popen('" + _BARE + " -lc \"echo\"')\n"
+    assert "os-system-bash-string" in {k for _, k, _ in find_oracle_offenses(snip1)}
+    assert "os-system-bash-string" in {k for _, k, _ in find_oracle_offenses(snip2)}
+
+
+def test_guard_ignores_shell_true_non_bash_and_leading_path():
+    """shell=True with a NON-bash command, and a command whose first token is a
+    PATH (not the bare word 'bash'), are not flagged by the new rules — the
+    command WORD must lead, and only the bare-word oracle counts here."""
+    snippet = (
+        "import subprocess, os\n"
+        "subprocess.run('sh -c true', shell=True)\n"          # not bash
+        "subprocess.run('re" + _BARE + " -c x', shell=True)\n"  # 'rebash', not bash
+        "os.system('echo " + _BARE + "')\n"                     # bash not the command word
     )
     assert find_oracle_offenses(snippet) == []
 

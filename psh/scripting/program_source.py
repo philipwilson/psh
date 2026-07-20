@@ -57,7 +57,7 @@ pinned by behavioral probes against the resolved oracle:
 import sys
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 from ..core import FunctionReturn
 from .input_sources import (
@@ -268,7 +268,7 @@ class ProgramSource:
 
     # -- the normalization boundary ------------------------------------
 
-    def _content_filter(self):
+    def _content_filter(self) -> "Optional[Callable[[str], str]]":
         """The NUL-policy content filter for this channel's file text."""
         policy = _CHANNEL_POLICY[self.kind][0]
         if policy == _STREAM:

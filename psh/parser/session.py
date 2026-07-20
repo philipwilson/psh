@@ -59,6 +59,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence, Tuple
 
 if TYPE_CHECKING:
     from ..ast_nodes import Program
+    from .parse_outcome import ParseOutcome
 
 from ..lexer import UnclosedQuoteError
 from ..utils import (
@@ -122,7 +123,7 @@ class SessionStep:
     text: str = ''
     source: str = ''
     program: Optional["Program"] = None
-    tokens: Optional[list] = None
+    tokens: Optional[Sequence[Any]] = None
     error: Optional[Exception] = None
     hint: Optional[ContinuationHint] = None
 
@@ -350,7 +351,7 @@ class ParseSession:
 
     # === Internals ===
 
-    def _trial_parse(self, preview: str):
+    def _trial_parse(self, preview: str) -> "Tuple[ParseOutcome, Sequence[Any]]":
         """Tokenize and parse ``preview``, returning ``(ParseOutcome, tokens)``.
 
         Uses the injected heredoc-aware lex→alias seam (shared with execution
@@ -375,8 +376,10 @@ class ParseSession:
         self.ops.tokens_parsed += len(tokens)
         return parser.parse_outcome(), tokens
 
-    def _complete(self, raw: str, preview: str, program=None, tokens=None,
-                  error=None) -> SessionStep:
+    def _complete(self, raw: str, preview: str,
+                  program: 'Optional[Program]' = None,
+                  tokens: Optional[Sequence[Any]] = None,
+                  error: Optional[Exception] = None) -> SessionStep:
         # Trailing newlines are bare statement separators — strip them from both
         # views so the execution path's own preprocessing of ``text`` can be
         # matched against ``source`` for AST reuse (one exception in

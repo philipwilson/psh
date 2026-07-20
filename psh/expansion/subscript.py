@@ -40,7 +40,9 @@ from ..lexer.token_types import TokenType
 from .arithmetic import ArithmeticError, evaluate_arithmetic
 
 if TYPE_CHECKING:
+    from ..core.state import ShellState
     from ..shell import Shell
+    from .manager import ExpansionManager
 
 
 class TargetKind(enum.Enum):
@@ -89,11 +91,11 @@ class SubscriptEvaluator:
         self.shell = shell
 
     @property
-    def state(self):
+    def state(self) -> "ShellState":
         return self.shell.state
 
     @property
-    def _manager(self):
+    def _manager(self) -> "ExpansionManager":
         return self.shell.expansion_manager
 
     # -- The re-lex bridge: raw subscript text -> one Word --------------------

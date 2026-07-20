@@ -21,7 +21,7 @@ stream so the execution path need not parse the same text a second time.
 
 import enum
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Optional, Sequence, Tuple, Union
 
 if TYPE_CHECKING:
     from ..ast_nodes import ASTNode
@@ -88,7 +88,7 @@ class Complete:
     text: str
     source: str = ''
     ast: Optional["ASTNode"] = None
-    tokens: Optional[list] = None
+    tokens: Optional[Sequence[Any]] = None
     error: Optional[Exception] = None
 
 
