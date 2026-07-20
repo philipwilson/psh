@@ -24,6 +24,17 @@ Verify scorecard at close (from campaign memory): **24 dev slots → 16 bounces 
 package landed attestation-gated per E4; compare-bash stayed 2,986/24 EXACT
 throughout; conformance grew monotonically to 2,539.
 
+**Closing-verification slot (dev-cv, v0.750.0):** a fresh closing verification
+(4,253 probes / 68 composed cases / 103 strength attacks) found and
+dispositioned **3 production blockers + 17 nits**. The three blockers were REAL
+divergences that refuted shipped claims — CV1 (W2 arith-context quote
+provenance), CV2 (R2/H13 PATH/CDPATH projection-vs-variable reads, converged
+across 6 consumer faces by integrator ruling), CV3 (I4 interactive `history -p`/
+`-s` invocation removal) — each now fixed and pinned red-on-base. The 17 nits are
+guard gaps (F8/F5/construction-purity), record defects (this report, the conftest
+docstring), and the W3 probe-harness patch. *(The integrator fills the final
+frozen scorecard line — updated slot/bounce totals — at ceremony.)*
+
 | Rel | PR | Pkg | Outcome (one line) |
 |-----|----|-----|--------------------|
 | 0.725.0 | #471 | E1+E4 | Structured phase-manifest gate (no nonzero exit → success; complexity/benchmark tiers split); SHA-attestation gating `release-tag.yml` (ancestor + attestation-only-diff checks). |
@@ -65,7 +76,7 @@ terminal adapter (§15.2).**
 
 | # | Type | Producer (`file.py#symbol`) | Production consumers (grep-derived) |
 |---|------|-----------------------------|-------------------------------------|
-| 1 | ShellRunResult | `tests/harness/shell_oracle.py#run_shell_case` (Union `Completed\|SpawnFailure\|Timeout\|DecodeFailure`) | TEST-tree type (the oracle-runner contract): 13 test files call `run_shell_case`; not a `psh/` production type by design. |
+| 1 | ShellRunResult | `tests/harness/shell_oracle.py#run_shell_case` (Union `Completed\|SpawnFailure\|Timeout\|DecodeFailure`) | TEST-tree type (the oracle-runner contract): 12 test files CALL `run_shell_case` (the census methodology subtracts the producer file `tests/harness/shell_oracle.py` itself from the 13 grep hits); not a `psh/` production type by design. |
 | 2 | InvocationConfig | `psh/invocation.py#parse_invocation` | `__main__.py`, `shell.py`. |
 | 3 | ActivationLease | `psh/core/process_lease.py#ProcessLeaseCoordinator.activate` | `core/state.py`, `shell.py`. |
 | 4 | LocaleContext | `psh/core/locale_service.py#LocaleContext` (frozen; on `LocaleService.profile`) | shell instance via `state.locale`; pattern engine/case/collation. **Name note:** a Q1 `psh/protocols#LocaleContext` *Protocol* reuses the name (interface, NOT a 2nd impl); `LocaleProfile` is a documented dead rename alias (0 consumers). |
@@ -121,12 +132,12 @@ accidentally.
 | F1 | Text-level invocation differences (usage wording, `--` handling) | F1.md §"Documented text-level differences"; invocation matrix rows. |
 | F2 | `cwd` (`cd` persistence) + recursion-limit are PROCESS-OWNED shell semantics, never restored on lease release (§16) | `ProcessBaselines` docstring; `test_process_lease.py`. |
 | F3 | `ProgramSource` line-origin NOT carried at parse time (threaded at execution); rc return-status discarded; D10 `bash` SEGFAULTs where psh fails clean at the recursion limit | F3.md ledger; `test_program_source_guard.py`; NUL channel matrix. |
-| I1 | SCOPED byte-cursor deliberate-loss registry: malformed multibyte count-boundary family (mbrtowc quirks) and inherited-fd 0/1/2 with unknowable aliases are documented losses, not chased | I1.md §"Deliberate-loss registry"; `I1-probes/deliberate-loss-probes.txt`. |
+| I1 | SCOPED byte-cursor deliberate-loss registry: (a) the malformed-multibyte count-boundary family — including the MIXED valid+malformed `read -N` case, whose count boundary matches NEITHER the UTF-8 nor the C-locale bash oracle (a HYBRID model, not merely "mbrtowc quirks"; carry #21) — and (b) inherited-fd 0/1/2 with unknowable aliases, are documented losses, not chased | I1.md §"Deliberate-loss registry"; `I1-probes/deliberate-loss-probes.txt`. |
 | I2 | Lazy source BLOCK SIZE is a documented deliberate loss (a mid-block edit before the block is read is not seen) | I2.md; `small_append`/`big_append` red-on-base pins + `truncate_self`/`rewrite_ahead` controls. |
 | I3 | Full linear completeness on a single open construct is O(k²) (bash's PTY-proven immediate mid-construct errors force per-feed parsing) — CHARACTERIZED, not eliminated; the full fix is a resumable lexer+parser (see carry register) | I3.md Option-A ruling; `test_session_linearity_i3.py` (doubling-ratio characterization). |
-| S3 | rc-127 channel split NOT chased — uniform rc 2 for substitution syntax errors (documented divergence, family-pinned) | S3.md §"documented divergences". |
+| S3→I3 | Substitution-body syntax error in a STRING channel (`-c`/`eval`/`source`): bash exits fatally with **rc 127 AND aborts the enclosing eval/source frame**; psh gives uniform **rc 2** and does NOT frame-abort. Both halves (the rc-127 channel split AND the eval/source frame-abort) travel together as ONE family. S3 shipped the typed producer contract (`SubstitutionSyntaxError` / `is_substitution_origin`, raised at the `parse_nested_command` chokepoint) and HANDED the consumption to I3; **I3 never consumed it**, so the contract is inert and this remains a LIVE documented divergence (see carry #22). | S3.md "Design + declared deviations (all ruled by integrator)" DEVIATION 1 + "New handoffs → To I3 (PRODUCER CONTRACT)"; 6-way green pin `tests/conformance/bash/test_nested_substitution_timing_conformance.py::test_divergence_c_mode_exit_code_is_127_in_bash` (parametrized: operand `$(if)`, procsub `<(if)`, param `${x:-$(if)}`, arith `$(($(if)+1))`, subscript-read `${a[$(if)]}`, subscript-write `a[$(if)]=v`). |
 | S4→I3 (**CLOSED — historical, not a live loss**) | The unclosed-expansion parser OUTCOME briefly differed (combinator=Invalid, rd=Incomplete) when disclosed in S4; **I3 CLOSED it** — the shared `detect_unclosed_expansion` producer now feeds BOTH parsers, so both classify an unclosed expansion at EOF as Incomplete. Listed only for provenance; there is no live divergence and no both-ways pin. | `tests/unit/parser/test_parse_outcome_s4.py::test_unclosed_expansion_outcome_parity` (both parsers Incomplete). |
-| W2 | ARITH-context associative-subscript keying doctrine: inside an arithmetic context the associative key receives quote/escape removal but NO `$`-re-expansion (the source spelling of a `$`-form is kept, not re-expanded) — a documented deliberate divergence | brief §9 amendment + W2.md; `tests/unit/expansion/test_subscript_evaluator.py` (`expand_dollar=False`: `test_dollar_stays_source_spelling` / `test_quote_removal_still_applies`) + `tests/conformance/bash/test_subscript_keying_conformance.py`. |
+| W2 | ARITH-context associative-subscript keying — BOTH halves, stated precisely (updated by CV1, v0.750.0): **(1) the `$`-half** — a substituted `$`-form's SOURCE SPELLING is kept and NEVER re-expanded (`k='$x'; (( h[$k]=1 ))` keys the literal `$x`; `$(echo hi)` in a value keys literally) — is **bash-EXACT doctrine, NOT a divergence**. **(2) the quote-provenance half** — quote/escape removal applies to SOURCE-spelled subscript characters only, never to characters that ARRIVED via substitution (`k='"q"'; (( h[$k]=1 ))` keys `"q"`, not `q`) — was a REAL divergence (psh quote-removed substituted text); **CLOSED by CV1**, so it is no longer a live loss. This row is retained for provenance; neither half is now a live divergence. | brief §9 amendment + W2.md; CV1 pins `tests/unit/expansion/test_subscript_evaluator.py::TestArithAssociativeKeyProvenance` + `tests/conformance/bash/test_subscript_keying_conformance.py::TestArithSubscriptProvenance` (9 live-bash rows); `psh/expansion/CLAUDE.md` arith-keying prose (both halves). |
 | R1 | Heredoc substrate: psh uses a temp file for the heredoc body's shared file description where bash may use a pipe — documented deliberate loss next to the H8 pins (lseek discriminator; BSD-probed) | R1.md §"Heredoc substrate"; `test_heredoc_shared_cursor_r1.py`. |
 | R2 | bash tempvar/nameref provenance model realized as psh's; `shell.env` structural realization sanctioned (env -i constraint) | R2.md; `test_variable_lookup.py`. |
 | J1 | huponexit LOGIN-narrowing: psh has no login-shell concept, so the exit-HUP gate is `interactive + huponexit` (not bash's `interactive login`) — SANCTIONED deliberate difference | J1.md §H19; `docs/user_guide/17_differences_from_bash.md` §17; `test_pty_huponexit_j1.py`. |
@@ -138,7 +149,10 @@ accidentally.
 ## (d) Post-campaign carry register — audit
 
 One row per registered carry with disposition (CLOSED-with-pointer, or
-CARRIED-with-description). Two items are CLOSED by this Q3 slot.
+CARRIED-with-description). Items #1-2 are CLOSED by the Q3 slot; rows #18-22 were
+added by the closing-verification slot (dev-cv, v0.750.0) — five carries the
+fresh closing verification surfaced (#18/#19 now both-sides characterization-
+pinned, #20/#21 registered residuals, #22 the S3→I3 unconsumed producer contract).
 
 | # | Carry | Disposition |
 |---|-------|-------------|
@@ -159,6 +173,11 @@ CARRIED-with-description). Two items are CLOSED by this Q3 slot.
 | 15 | tcsetattr-drain probe note | CARRIED. J1 probe note (terminal-drain probe construction). |
 | 16 | RESUMABLE-PARSER CAMPAIGN (full #20 H15) | CARRIED as a future campaign. I3 ruling: full linear completeness needs a resumable lexer+parser (campaign-scale, Option B recorded); H15 is PARTIALLY closed + characterized (part (g)). |
 | 17 | J1 Linux-nightly watch (amended J1 ruling — a MUST) | **CARRIED — NOT yet discharged as of this report.** The first `nightly.yml` run after the J1 merge must be checked for the new monitor-mode rows in `tests/unit/executor/test_boundary_j1_job_lifecycle.py` and the promoted PTY signal fan-out tests — macOS (the local gate host) has a signal/pgroup coverage gap, so Linux-vs-bash for these is exercised only in the nightly. Recorded here because `tmp/` ledgers are scaffolding; this durable row keeps the obligation from being lost. |
+| 18 | R3 posix-mode special-builtin redirect-error fatality | **CARRIED (registered by dev-cv, v0.750.0).** In POSIX mode a redirection error on a POSIX SPECIAL builtin is FATAL in bash (the shell exits mid-line); psh reports the error and CONTINUES (both agree in default mode). Now BOTH-SIDES characterization-pinned: `tests/conformance/bash/test_cv_carry_characterization.py::TestPosixSpecialBuiltinRedirectFatality`. |
+| 19 | `$'\xNN'` (NN >= 0x80) escape byte model | **CARRIED (registered by dev-cv).** bash emits the RAW byte 0xNN; psh emits the UTF-8 ENCODING of codepoint U+00NN (`$'\xff'` → `c3 bf`, not `ff`) — a pre-existing byte-model divergence. Characterization-pinned both sides: `test_cv_carry_characterization.py::TestAnsiCHighEscapeByteModel`. |
+| 20 | interactive `key_decoder` replace-decode | **CARRIED (registered by dev-cv).** The interactive line editor's `KeyDecoder` decodes stdin bytes with `errors='replace'` (a malformed byte becomes U+FFFD on screen), unlike the I1 surrogateescape READ path — a criterion-4 residual scoped as a terminal-UI NON-GOAL (a keystroke that can't be decoded is not data to round-trip; the fix would degrade the interactive editor with no bash-parity gain). Registered so the residual is not re-discovered; no pin (terminal-UI, PTY-only). |
+| 21 | I1 mixed valid+malformed `read -N` count-boundary | **CARRIED (registered by dev-cv).** A `read -N` spanning a mix of VALID and MALFORMED multibyte bytes lands on a count boundary that matches NEITHER the UTF-8 nor the C-locale bash oracle — a HYBRID model, not "just mbrtowc quirks" (the part (c) I1 row is corrected accordingly). Documented loss, not chased; `I1-probes/deliberate-loss-probes.txt`. |
+| 22 | S3→I3 substitution-origin producer contract NOT consumed | **CARRIED (registered by dev-cv).** S3 shipped the typed `SubstitutionSyntaxError`/`is_substitution_origin` PRODUCER CONTRACT (at the `parse_nested_command` chokepoint) and handed the mapping to I3; **I3 never consumed it**, so it is inert and the rc-127 channel split + eval/source frame-abort remain a LIVE documented divergence family (part (c) S3→I3 row; 6-way green pin `test_nested_substitution_timing_conformance.py::test_divergence_c_mode_exit_code_is_127_in_bash`). |
 
 ---
 
@@ -194,9 +213,15 @@ mypy                         → Success: no issues found in 274 source files
   adds one index row for this file at ceremony, which restores the gate to
   20,190. This is a coordination item, not a behavioral regression.
 
-Probe transcripts (this slot): `tmp/boundary-ledgers/Q3-probes/` —
+Probe transcripts (Q3 slot): `tmp/boundary-ledgers/Q3-probes/` —
 `census.sh` + `census-consumers.txt` (27-type census), `hpin-verification.txt`
-(H-pin existence/xfail check), `gate-devcomplete.txt` (the gate transcript).
+(H-pin existence/xfail check — reconciled by the closing-verification slot, see
+below), `gate-devcomplete.txt` (the gate transcript). Closing-verification slot
+(v0.750.0) probes: `tmp/boundary-ledgers/CV-probes/` — `cv1_matrix.sh`,
+`cv2_matrix.sh` + `cv2_hash_exec_source.sh`, `cv3_bash.sh` (three-way blocker
+matrices), `cv-hpin-verification.txt` (the reconciled H-pin re-run), and
+`w3-fixed/` (the six W3 harnesses patched to honor `$W3_PSH_ROOT` with a
+validated fallback — the integrator swaps them into the archive at ceremony).
 Archived per-slot ledgers and probes for E1..Q2 live beside them.
 
 ---
@@ -230,11 +255,20 @@ module-level symbols an out-of-tree consumer could import. Summarized from
 
 ## (g) #20 H1–H19 + C1 closure table
 
-Status verified at `59324a55`. Every named pin was collected AND run: **591 pin
-executions, 0 skipped, 0 xfailed** (see `Q3-probes/hpin-verification.txt`; the
-suite's 23 xfail markers are all in unrelated files — phase-manifest plugin,
-interactive history/completion, pty smoke, benchmarks, absent-features ledger).
-This table feeds the integrator's §15.1 closing verification.
+Every named pin was collected AND run. The closing-verification slot RE-RAN a
+reproducible selection — the 21 closure-table pin FILES below — at the final SHA:
+**604 passed, 0 skipped, 0 xfailed** (`CV-probes/cv-hpin-verification.txt`, exact
+command recorded). This reconciles the stale Q3 figure: `Q3-probes/hpin-
+verification.txt` claimed **591** at `59324a55`, but that "217 unit + 369
+conf/sys/int + 5 H7-diff" bucket selection was not preserved; running the 21
+closure-table FILES gives **603** for the pre-slot file contents, and this slot's
+construction-purity fix added ONE test to the H18 pin file
+(`test_construction_purity_f2.py::test_construction_writes_nothing_to_os_environ`),
+so the reconciled count is **603 + 1 = 604**. The suite's 23 xfail markers are all
+in unrelated files (phase-manifest plugin, interactive history/completion, pty
+smoke, benchmarks, absent-features ledger) — none an H-pin. H15/H19 remain PARTIAL
+by ruling (their pins pass; the partiality is scope, not a skip). This table feeds
+the integrator's §15.1 closing verification.
 
 | Finding | Status | Pinning test (`file::function`, verified present, not skip/xfail) |
 |---------|--------|-------------------------------------------------------------------|
