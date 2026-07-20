@@ -98,13 +98,16 @@ def extglob_to_regex(pattern: str, anchored: bool = True,
 
     PRODUCTION-DEAD after campaign W3: every matching consumer routes through
     the compiled engine (``pattern_engine``); no production code builds a
-    matching regex any more. Kept as the independent test ORACLE for the
-    engine's random-corpus differential (``test_pattern_engine_matcher.py``) —
-    a live cross-check between the two backends, so it is NOT dead (its
-    dependency ``_convert_pattern`` likewise stays). The fully-unreferenced
-    ``glob_to_regex_body`` sibling was deleted (campaign Q2 census); retiring
-    this oracle and ``glob.normalize_bracket_expressions`` is a differential-
-    coverage tradeoff left to a later decision.
+    matching regex any more. This is a PERMANENT reference oracle (campaign Q3
+    integrator ruling — NOT a deferred deletion): it is the independent,
+    regex-backed differential cross-check for the compiled engine's random
+    corpus, in ``tests/unit/expansion/test_pattern_engine_matcher.py``
+    (``test_new_fullmatch_agrees_with_regex_converter_on_nonneg`` — a standing
+    consistency check between the two live backends). It earns its keep as live
+    differential infrastructure, so it is NOT dead and stays; its dependency
+    ``_convert_pattern`` stays for the same reason. (The fully-unreferenced
+    ``glob_to_regex_body`` sibling was deleted in the campaign Q2 census — it
+    had no oracle.)
 
     Args:
         pattern: Shell pattern potentially containing extglob operators.
