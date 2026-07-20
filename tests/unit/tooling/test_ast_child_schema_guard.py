@@ -327,8 +327,14 @@ _REFLECTION_ALLOWLIST = {
 }
 
 # The reflection primitives that signal generic dataclass-field traversal.
-_REFLECT_ATTRS = {"fields", "is_dataclass"}          # <dataclasses-alias>.<attr>()
-_REFLECT_DUNDER = {"__dataclass_fields__", "__dict__"}
+# ``asdict``/``astuple`` RECURSE through nested dataclasses (a whole-AST descent
+# hidden behind one call), so they are the same evasion shape as a hand-rolled
+# fields() walk and are scanned alongside it (CV closing verification).
+_REFLECT_ATTRS = {"fields", "is_dataclass", "asdict", "astuple"}  # <dc-alias>.<attr>()
+# ``__annotations__`` enumerates a node's declared fields — a declared-SHAPE
+# reflection that could drive a generic descent, so it is scanned like the other
+# field dunders (none exist in psh/; this keeps a new one from sneaking in).
+_REFLECT_DUNDER = {"__dataclass_fields__", "__dict__", "__annotations__"}
 
 
 def _dataclasses_import_bindings(tree):
@@ -370,6 +376,10 @@ def _find_reflection_primitives(src: str):
         if isinstance(node, _ast.Attribute):
             if node.attr in _REFLECT_DUNDER:
                 hits.append((node.lineno, node.attr))
+            elif node.attr == "getmembers":
+                # inspect.getmembers(node) enumerates every attribute — a generic
+                # reflection that could stand in for a schema-declared walk.
+                hits.append((node.lineno, "getmembers"))
             elif (node.attr in _REFLECT_ATTRS
                   and isinstance(node.value, _ast.Name)
                   and node.value.id in module_aliases):
@@ -447,13 +457,44 @@ def test_offender_generic_reflection_recursion_is_flagged():
 
 def test_offender_dunder_reflection_is_flagged():
     """SYNTHETIC OFFENDER: descending via __dataclass_fields__ / __dict__ / vars
-    is detected (evasion shapes that avoid the ``dataclasses`` module name)."""
+    / __annotations__ is detected (evasion shapes that avoid the ``dataclasses``
+    module name)."""
     off1 = "def w(n):\n    for k in n.__dataclass_fields__:\n        w(getattr(n, k))\n"
     off2 = "def w(n):\n    for k, v in n.__dict__.items():\n        w(v)\n"
     off3 = "def w(n):\n    for k, v in vars(n).items():\n        w(v)\n"
+    off4 = "def w(n):\n    for k in n.__annotations__:\n        w(getattr(n, k))\n"
     assert any(p == "__dataclass_fields__" for _, p in _find_reflection_primitives(off1))
     assert any(p == "__dict__" for _, p in _find_reflection_primitives(off2))
     assert any(p == "vars()" for _, p in _find_reflection_primitives(off3))
+    assert any(p == "__annotations__" for _, p in _find_reflection_primitives(off4))
+
+
+def test_offender_asdict_astuple_getmembers_is_flagged():
+    """SYNTHETIC OFFENDER (CV closing verification): a whole-AST descent hidden
+    behind ``dataclasses.asdict``/``astuple`` (which recurse through nested
+    dataclasses), the from-imported alias, and ``inspect.getmembers`` are all
+    detected — they are generic field reflection just like a hand-rolled
+    ``fields()`` walk."""
+    off_mod = (
+        "import dataclasses\n"
+        "def dump(n):\n"
+        "    return dataclasses.asdict(n), dataclasses.astuple(n)\n"
+    )
+    prims = {p for _, p in _find_reflection_primitives(off_mod)}
+    assert {"dataclasses.asdict", "dataclasses.astuple"} <= prims, prims
+
+    off_from = (
+        "from dataclasses import asdict as A\n"
+        "def dump(n):\n    return A(n)\n"
+    )
+    assert "A" in {p for _, p in _find_reflection_primitives(off_from)}
+
+    off_inspect = (
+        "import inspect\n"
+        "def dump(n):\n"
+        "    return [v for _, v in inspect.getmembers(n)]\n"
+    )
+    assert "getmembers" in {p for _, p in _find_reflection_primitives(off_inspect)}
 
 
 def test_offender_aliased_dataclasses_import_is_flagged():
