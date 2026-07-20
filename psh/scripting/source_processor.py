@@ -418,6 +418,12 @@ class SourceProcessor(ScriptComponent):
         end with a joinable dangling continuation — mid-source, the
         accumulator keeps reading instead of completing such a buffer.
         """
+        # Whether this logical command was ONE physical input line — measured
+        # BEFORE line-continuation joining, so a `\`-continued or multi-line
+        # command has embedded newlines here (CV3 R4). bash's `history -p`
+        # unverified delete fires only for a single-physical-line command.
+        single_physical_line = '\n' not in command_string.rstrip('\n')
+
         # Process line continuations first
         from .input_preprocessing import process_line_continuations
         command_string = process_line_continuations(
@@ -482,6 +488,7 @@ class SourceProcessor(ScriptComponent):
         if add_to_history:
             self.state._history_line_pending_strip = bool(
                 record_text.strip() and self.shell.add_history(record_text))
+            self.state._history_line_single_physical = single_physical_line
 
         # Alias expansion is a token-stream transform applied at the
         # lex->parse seam (see the expand_aliases calls below and in

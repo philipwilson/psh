@@ -159,3 +159,50 @@ class TestHistoryStripCmdsubInheritanceB5:
     def test_cmdsub_s_does_not_affect_parent(self):
         _assert_same_interactive(
             ['echo seed', 'echo got $(history -s ZZZ)', 'history'])
+
+
+class TestHistoryStripPhysicalLineR4:
+    r"""CV3 R4: bash's `history -p` unverified delete fires ONLY when the
+    invoking LOGICAL line was read as ONE physical line — a `\`-continued /
+    multi-line command KEEPS its invocation. `history -s`'s delete has NO such
+    restriction. The prior fix deleted on any recorded line (destructive on a
+    continuation with multiple `-p`). RED at the fix tip. bash 5.2-verified."""
+
+    def test_p_on_continuation_line_keeps_invocation(self):
+        # `history -p \<nl>'!!'` spans 2 physical lines -> no delete; !! then
+        # refers to the invocation itself (kept), matching bash.
+        _assert_same_interactive(
+            ['echo seed', "history -p \\", "'!!'", 'history'])
+
+    def test_s_on_continuation_line_still_replaces(self):
+        _assert_same_interactive(
+            ['echo seed', 'history -s XXX \\', 'YYY', 'history'])
+
+    def test_p_multi_then_history_keeps(self):
+        _assert_same_interactive(
+            ['echo one', 'echo two', 'history -p a \\', 'b', 'history'])
+
+    def test_p_destructive_double_delete_on_continuation(self):
+        # Two -p on a continuation line: the prior tip deleted THROUGH echo seed;
+        # bash keeps everything (multi-physical -> no delete).
+        _assert_same_interactive(
+            ['echo seed', 'history -p a; history -p b \\', 'c', 'history'])
+
+
+class TestHistoryStripDeleteFailureM3:
+    r"""CV3 M3: when the strip is DUE but the history is EMPTY at that point
+    (`history -c` cleared it earlier on the same line), the delete fails —
+    bash's `-p` prints NOTHING and returns 1 (no operand expanded), and `-s`
+    stores NOTHING and does NOT consume the flag. bash 5.2-verified."""
+
+    def test_p_delete_failure_prints_nothing_rc1(self):
+        _assert_same_interactive(
+            ['echo seed', "history -c; history -p '!!'; echo rc=$?", 'history'])
+
+    def test_s_delete_failure_stores_nothing(self):
+        _assert_same_interactive(
+            ['echo seed', 'history -c; history -s XXX; history'])
+
+    def test_p_literal_delete_failure_prints_nothing(self):
+        _assert_same_interactive(
+            ['echo seed', 'history -c; history -p a; history'])

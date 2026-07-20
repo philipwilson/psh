@@ -286,6 +286,11 @@ class ShellState:
         # source/cmdsub bodies INHERIT it (so a `history -p` inside them still
         # strips), and it is inherited across a subshell fork (clone_for_child).
         self._history_line_pending_strip: bool = False
+        # Whether that line was read as ONE physical line (CV3 R4): bash's `-p`
+        # unverified delete fires ONLY for a single-physical-line command
+        # (a `\`-continued or multi-line command keeps its invocation); `-s`
+        # deletes regardless. Set with the flag; inherited the same way.
+        self._history_line_single_physical: bool = True
 
         # Editor configuration
         self.edit_mode = 'emacs'
@@ -653,10 +658,12 @@ class ShellState:
         # Process-local arithmetic re-entrancy: a fresh evaluation context.
         self._arith_recursion_depth = 0
 
-        # CV3 B5: the history strip flag INHERITS across a subshell fork, so a
-        # `history -p` inside `$(...)` on a recorded line strips the invocation
-        # (its `!!` then refers to the command BEFORE the line, matching bash).
+        # CV3 B5/R4: the history strip flag + its single-physical-line dimension
+        # INHERIT across a subshell fork, so a `history -p` inside `$(...)` on a
+        # recorded line strips the invocation (its `!!` then refers to the
+        # command BEFORE the line, matching bash).
         self._history_line_pending_strip = parent._history_line_pending_strip
+        self._history_line_single_physical = parent._history_line_single_physical
 
         # $PPID / $$ stay stable across subshells (POSIX).
         self.initial_ppid = parent.initial_ppid
