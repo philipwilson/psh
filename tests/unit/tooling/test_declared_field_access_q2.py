@@ -19,10 +19,15 @@ element type of a ``List[T]``/``Optional[T]`` annotation; or a known
 ``self.shell`` / ``self.state`` / ``self.shell_state`` binding. Receivers it
 CANNOT statically type (an unannotated ``node``/``part`` param, an unannotated
 container element) are deliberately NOT claimed — a heuristic broad enough to
-reach them would need mass exemptions. The manual census recorded ~116
-declared-field accesses tree-wide; this mechanically self-verifying detector
-locks the subset it can PROVE and prevents new provable ones. The remainder is a
-recorded typed-access-cleanup carry, not silently ignored.
+reach them would need mass exemptions. The archived census
+(``tmp/boundary-ledgers/Q2-probes/getattr_sites.txt``, derived by
+``scan_getattr.py``) records **168 constant-attr getattr/hasattr sites (152
+unique signatures)** tree-wide; this mechanically self-verifying detector
+resolves and locks the subset it can PROVE a declared-member access for and
+prevents new provable ones. The remainder (dynamic attr names, module/exception/
+Optional/unresolvable receivers, non-declared attrs) is out of scope; a
+typed-access cleanup is a recorded carry. (An earlier "~116" figure was an
+unverified subagent estimate with no derivation and is retracted.)
 
 The frozen set is the CURRENT provable-declared-member accesses. It may only
 SHRINK: fixing a site (``getattr(x,'f',d)`` → ``x.f``, behavior-inert because
