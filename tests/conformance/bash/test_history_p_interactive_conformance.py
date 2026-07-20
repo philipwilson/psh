@@ -26,21 +26,29 @@ _PREFIX_RE = re.compile(r'^[^:\n]*: (line \d+: )?', re.MULTILINE)
 _PATH = os.environ.get('PATH', '/usr/bin:/bin')
 
 
-def _run_i(argv, lines):
+def _run_i(argv, rc_flags, lines):
     with tempfile.NamedTemporaryFile(prefix='cv3hist', delete=True) as tf:
         histfile = tf.name  # a fresh, empty path — no banked history
     script = ''.join(line + '\n' for line in lines)
-    r = subprocess.run(argv + ['-i'], input=script, capture_output=True,
-                       text=True, timeout=20, env={'HISTFILE': histfile,
-                                                    'PATH': _PATH, 'TERM': 'dumb'})
+    # Isolated HOME + rc-skip flags so the ORACLE (bash) never sources the
+    # user's real ~/.bashrc / ~/.bash_profile (HISTCONTROL, aliases, prompts
+    # would make it a fragile oracle) — the harness controls the whole
+    # environment (CV3 nit-6).
+    with tempfile.TemporaryDirectory(prefix='cv3home') as home:
+        r = subprocess.run(
+            argv + rc_flags + ['-i'], input=script, capture_output=True,
+            text=True, timeout=20,
+            env={'HISTFILE': histfile, 'PATH': _PATH, 'TERM': 'dumb',
+                 'HOME': home})
     Path(histfile).unlink(missing_ok=True)
     return _PREFIX_RE.sub('', r.stdout)
 
 
 def _assert_same_interactive(lines):
-    # psh FIRST (banked-histfile gotcha).
-    psh = _run_i([sys.executable, '-m', 'psh'], lines)
-    bash = _run_i([resolve_bash().path], lines)
+    # psh FIRST (banked-histfile gotcha). Both skip rc files (bash also
+    # --noprofile; psh has no profile files).
+    psh = _run_i([sys.executable, '-m', 'psh'], ['--norc'], lines)
+    bash = _run_i([resolve_bash().path], ['--norc', '--noprofile'], lines)
     assert psh == bash, f"psh {psh!r} != bash {bash!r}\nlines: {lines}"
 
 

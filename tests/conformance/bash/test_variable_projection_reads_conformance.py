@@ -245,7 +245,13 @@ class TestExecPathVariableTruth:
     """`exec NAME` locates the program on the variable PATH (builtins/core.py).
 
     exec replaces the process on success, so the rows compare stdout + status
-    with stderr suppressed (the exec diagnostic wording is compared elsewhere)."""
+    with stderr suppressed. The exec/external diagnostic WORDING is NOT pinned
+    identical here: for the empty-PATH / `local PATH` shadow corner bash prints
+    the resolved ABSOLUTE PATH ("<abs>: No such file or directory") while psh
+    names the bare command word — a pre-existing message-wording difference
+    carried as register #24 (TestPermissionDeniedWording in
+    test_cv_carry_characterization.py pins the abs-path-vs-bare-word divergence
+    both sides)."""
 
     def test_declared_unset_local_shadow_not_found(self, cvtree):
         # RED ON BASE: psh exec'd cvcmd via the resurrected PATH; bash 127.

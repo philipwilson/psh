@@ -16,10 +16,11 @@ It also pins:
 - **campaign Q2 (§13, "visitor recursion outside walk_ast"):** no production
   module re-implements generic AST-tree descent by reflecting over a node's
   dataclass fields — the anti-pattern #20 named (the elif-skip class of bug). The
-  reflection primitives (``dataclasses.fields`` / ``dataclasses.is_dataclass`` /
-  ``__dataclass_fields__`` / ``vars`` / ``.__dict__``) used to walk a node's
-  fields are confined to a justified, shrink-only allowlist; a synthetic offender
-  proves the scan bites.
+  reflection primitives (``dataclasses.fields`` / ``.is_dataclass`` / ``.asdict``
+  / ``.astuple`` / ``__dataclass_fields__`` / ``vars`` / ``.__dict__`` /
+  ``.__annotations__`` / ``inspect.getmembers``) used to walk a node's fields are
+  confined to a justified, shrink-only allowlist; synthetic offenders (including
+  the ``asdict``/``astuple``/``getmembers`` widening) prove the scan bites.
 """
 import ast as _ast
 import dataclasses
@@ -294,8 +295,11 @@ def test_no_template_carrier_field_is_a_declared_child():
 # ``walk_ast`` (reading ``AstChildSchema``) is the SOLE structural AST traversal.
 # The anti-pattern is a SECOND traversal engine: code that descends an AST tree
 # by reflecting over a node's dataclass fields generically (``dataclasses.fields``
-# / ``__dataclass_fields__`` / ``vars`` / ``.__dict__``) and recursing — the exact
-# shape whose historical instance silently skipped ``IfConditional.elif_parts``.
+# / ``.asdict`` / ``.astuple`` / ``__dataclass_fields__`` / ``vars`` / ``.__dict__``
+# / ``.__annotations__`` / ``inspect.getmembers``) and recursing — the exact shape
+# whose historical instance silently skipped ``IfConditional.elif_parts``
+# (``asdict``/``astuple`` hide a whole-AST descent behind one recursive call; the
+# widened set is scanned by ``_find_reflection_primitives``, CV closing verify).
 # This scan flags those reflection primitives in production code (``psh/**``);
 # the allowlist is the small set of files that legitimately reflect, each with a
 # specific reason, and it may only SHRINK.
@@ -363,12 +367,17 @@ def _dataclasses_import_bindings(tree):
 def _find_reflection_primitives(src: str):
     """Return [(lineno, primitive)] generic field-reflection primitives in *src*.
 
-    Matches ``<dataclasses-alias>.fields``/``.is_dataclass`` (the module name OR
-    any ``import dataclasses as X`` alias), the bare imported name (``from
-    dataclasses import fields [as F]``), ``vars(...)``, and
-    ``<expr>.__dataclass_fields__`` / ``<expr>.__dict__`` (attribute OR the
-    getattr-string form). Comments and docstrings that merely name these do NOT
-    match (this is an AST scan)."""
+    Matches the ``dataclasses`` reflectors ``.fields``/``.is_dataclass``/
+    ``.asdict``/``.astuple`` (``_REFLECT_ATTRS`` — the module name OR any
+    ``import dataclasses as X`` alias) and the bare imported name of any of them
+    (``from dataclasses import fields [as F]``); ``vars(...)`` and
+    ``inspect.getmembers(...)`` calls; and the field dunders
+    ``<expr>.__dataclass_fields__`` / ``.__dict__`` / ``.__annotations__``
+    (``_REFLECT_DUNDER`` — attribute OR the getattr-string form). ``asdict``/
+    ``astuple`` recurse through nested dataclasses (a whole-AST descent behind
+    one call) and ``getmembers``/``__annotations__`` enumerate a node's declared
+    shape, so all are the same evasion class as a hand-rolled ``fields()`` walk.
+    Comments and docstrings that merely name these do NOT match (AST scan)."""
     tree = _ast.parse(src)
     module_aliases, bare_names = _dataclasses_import_bindings(tree)
     hits = []
