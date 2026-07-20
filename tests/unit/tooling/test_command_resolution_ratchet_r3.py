@@ -145,6 +145,14 @@ def test_resolver_is_the_sole_dispatch_reader():
 # different, legitimate use. Scoping the detector to the executor dispatch path
 # (where a raw read IS a dispatch decision) keeps the allowlist to the 3 genuine
 # resolution-machinery files instead of needing ~10 builtin exemptions.
+#
+# Q2 nit-1 — evasion shapes DECLARED OUT OF SCOPE (verified zero live instances):
+# an ALIASED import of the membership set (`from ... import POSIX_SPECIAL_BUILTINS
+# as SPECIALS; name in SPECIALS`), a getattr-SMUGGLED table read
+# (`getattr(fm, 'get_function')(name)`), and a RAW-dict membership on the function
+# store (`name in fm.functions`). These are dynamic/indirect; a heuristic covering
+# them would false-positive on unrelated `.has(`/membership. If one appears in the
+# executor, harden `dispatch_reads` rather than allowlisting it.
 
 EXECUTOR_DIR = ROOT / "psh" / "executor"
 

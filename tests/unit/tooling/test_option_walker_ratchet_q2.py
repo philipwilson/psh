@@ -10,13 +10,16 @@ CLASSES; each carries a SPECIFIC reason its grammar is idiosyncratic, and the se
 may only SHRINK (a class migrated to ``parse_flags`` drops out).
 
 **Detector line.** It flags a ``Builtin``-subclass class whose body contains a
-``<x>.startswith('-')`` / ``<x>.startswith('+')`` call — the getopt-style
-leading-sign scan the walker replaces. It deliberately does NOT claim
-option-detection by EQUALITY (``arg == '-v'``) or MEMBERSHIP (``arg in
-('--verbose', '-h')``): ``printf``'s ``-v``, ``test``/``[``'s operators, and the
-long-option-only debug builtins use those shapes, which are not the getopt scan
-the walker exists to replace. A synthetic offender proves the scan bites; a
-``parse_flags`` user proves it does not false-positive.
+``<x>.startswith('-')`` / ``<x>.startswith('+')`` call — including the TUPLE form
+``startswith(('-', '+'))`` (Q2 nit-1 uniform hardening; the tuple-constant
+evasion class was proven live-exploitable in F5). Declared OUT OF SCOPE (no live
+instance; a heuristic broad enough would false-positive on legitimate value
+checks): option-detection by INDEX-EQUALITY (``arg[0] == '-'``), by whole
+EQUALITY (``arg == '-v'``), or by MEMBERSHIP (``arg in ('--verbose', '-h')``) —
+``printf``'s ``-v``, ``test``/``[``'s operators, and the long-option-only debug
+builtins use those shapes, which are not the getopt scan the walker replaces.
+Synthetic offenders (single + tuple) prove the scan bites; a ``parse_flags`` user
+proves it does not false-positive.
 """
 
 import ast
@@ -94,13 +97,24 @@ def _is_builtin_subclass(classdef):
     return False
 
 
+def _is_leading_sign_arg(node):
+    """True if *node* is a '-'/'+' Constant, or a Tuple/List/Set CONTAINING one
+    (the ``startswith(('-', '+'))`` tuple form — Q2 nit-1)."""
+    if isinstance(node, ast.Constant):
+        return node.value in ("-", "+")
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return any(isinstance(e, ast.Constant) and e.value in ("-", "+")
+                   for e in node.elts)
+    return False
+
+
 def _scans_leading_sign(classdef):
-    """True if the class body calls ``<x>.startswith('-')`` / ``'+'``."""
+    """True if the class body calls ``<x>.startswith('-'|'+')`` (single OR the
+    ``startswith(('-', '+'))`` tuple form)."""
     for n in ast.walk(classdef):
         if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                 and n.func.attr == "startswith" and n.args
-                and isinstance(n.args[0], ast.Constant)
-                and n.args[0].value in ("-", "+")):
+                and _is_leading_sign_arg(n.args[0])):
             return True
     return False
 
@@ -171,6 +185,17 @@ def test_offender_plus_scanner_is_flagged():
         "class BarBuiltin(Builtin):\n"
         "    def m(self, a):\n"
         "        return a.startswith('+')\n"
+    )
+    cd = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.ClassDef))
+    assert _scans_leading_sign(cd)
+
+
+def test_offender_tuple_startswith_is_flagged():
+    """Q2 nit-1: the tuple-constant startswith evasion is caught."""
+    src = (
+        "class BazBuiltin(Builtin):\n"
+        "    def m(self, a):\n"
+        "        return a.startswith(('-', '+'))\n"
     )
     cd = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.ClassDef))
     assert _scans_leading_sign(cd)

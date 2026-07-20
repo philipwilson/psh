@@ -21,6 +21,14 @@ BROAD_MASKING is SHRINK-ONLY — narrowing a site (tighten the try body or the
 exception type) removes its entry; the narrowings themselves are a deferred
 behavioral-campaign carry (they change what a genuine internal defect does, so
 they are NOT in Q2's zero-behavior-change scope).
+
+Q2 nit-1 hardening: the QUALIFIED-except shape (``except mod.ValueError``) is now
+caught (``_exc_name`` reads the Attribute attr). Declared OUT OF SCOPE (no live
+instance): an exception caught under an IMPORT ALIAS (``from x import ValueError
+as VE; except VE``) — the name no longer reads ``ValueError``; and a
+NESTED-swallow re-raise (a ``raise`` inside an inner ``try`` in the handler that
+does not actually re-raise the outer error) — the ``raise``-anywhere check treats
+it conservatively as re-raising.
 """
 
 import ast
@@ -30,13 +38,23 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 PSH = ROOT / "psh"
 
 
+def _exc_name(node):
+    """The bare exception name for a handler-type element: ``ValueError`` for a
+    Name, ``ValueError`` for the qualified ``mod.ValueError`` Attribute (Q2 nit-1
+    — the qualified-except evasion). None otherwise."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
 def _exc_names(handler):
     t = handler.type
     if isinstance(t, ast.Tuple):
-        return tuple(e.id for e in t.elts if isinstance(e, ast.Name))
-    if isinstance(t, ast.Name):
-        return (t.id,)
-    return ()
+        return tuple(n for n in (_exc_name(e) for e in t.elts) if n is not None)
+    n = _exc_name(t)
+    return (n,) if n is not None else ()
 
 
 def _catches_vt(handler):
@@ -152,8 +170,9 @@ NARROW_SAFE = {
         "defensive around ERROR-REPORTING output (print to a possibly-broken "
         "stream) — this IS the internal-defect reporter; it must not itself "
         "raise a new defect",
-    ("psh/core/locale_service.py", ("ValueError",), ("strcoll",)):
-        "_locale.strcoll's ValueError is its documented signal (locale collate)",
+    ("psh/core/locale_service.py", ("ValueError", "Error"), ("strcoll",)):
+        "_locale.strcoll's ValueError/locale.Error is its documented signal "
+        "(locale collate); the qualified locale.Error is now seen (nit-1)",
     ("psh/core/trap_manager.py", ("OSError", "ValueError"),
      ("getsignal", "signal")):
         "signal.signal/getsignal documented signal (invalid/uncatchable signal)",
@@ -252,6 +271,23 @@ def test_offender_compound_single_statement_masker_is_flagged():
     )
     cands = broad_vt_candidates(src, "psh/fake.py")
     assert cands, "the >=5-distinct-call disjunct must catch the compound masker"
+
+
+def test_offender_qualified_except_is_flagged():
+    """Q2 nit-1: `except mod.ValueError` (qualified) with a broad body is caught
+    (it evaded the Name-only exception matcher)."""
+    src = (
+        "import builtins\n"
+        "def f(a):\n"
+        "    try:\n"
+        "        x = s1(a)\n"
+        "        s2(x)\n"
+        "        s3(x)\n"
+        "    except builtins.ValueError:\n"
+        "        return 1\n"
+    )
+    cands = broad_vt_candidates(src, "psh/fake.py")
+    assert cands, "qualified except mod.ValueError must be caught"
 
 
 def test_narrow_catch_is_not_flagged():

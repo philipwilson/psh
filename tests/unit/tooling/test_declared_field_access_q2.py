@@ -34,6 +34,11 @@ SHRINK: fixing a site (``getattr(x,'f',d)`` → ``x.f``, behavior-inert because
 ``f`` is guaranteed) removes its entry. A NEW provable site fails
 ``test_no_new_declared_member_access``. Synthetic offenders prove the resolver
 bites and does not false-positive on dynamic/module receivers.
+
+Q2 nit-1 — DECLARED OUT OF SCOPE (verified zero live instances): ``getattr``/
+``hasattr`` reached through a LOCAL ALIAS (``g = getattr; g(obj, 'field')``) — the
+call's func is not the builtin name ``getattr``/``hasattr``, so the scan skips it.
+Alias tracking would add fragility for a shape no production code uses.
 """
 
 import ast

@@ -32,6 +32,13 @@ Verified at Q2 adoption that NO current test uses either form (tree grep for
 ``shell=True`` with bash / ``os.system`` / ``os.popen`` — zero hits), so closing
 the gap keeps the tree green while removing the completeness caveat.
 
+Q2 nit-1 hardening: the ``shell=1`` truthy-int form (not just ``shell=True``) is
+now caught. Declared OUT OF SCOPE (no live instance): an ABSOLUTE bash path NOT
+in the four-entry ``HARDCODED_BASH_PATHS`` set (an exotic install prefix like
+``/opt/local/bin/bash``) — the set cannot enumerate every prefix, and the
+bare-``bash`` command-word rules catch the common case; if one appears, add the
+path to ``HARDCODED_BASH_PATHS``.
+
 Residual known-unflagged forms (documented, not currently used): an oracle
 assembled by string concatenation/format at runtime (``f"{sh} -c ..."``), or
 launched via a helper that hides the literal. These are dynamic, not static
@@ -90,9 +97,13 @@ def _cmd_string_first_token_is_bash(node):
 
 
 def _call_has_shell_true(node):
-    return any(kw.arg == "shell"
-               and isinstance(kw.value, ast.Constant) and kw.value.value is True
-               for kw in node.keywords)
+    # shell=True OR the truthy shell=1 form (Q2 nit-1 — evasion via an int).
+    for kw in node.keywords:
+        if kw.arg == "shell" and isinstance(kw.value, ast.Constant):
+            v = kw.value.value
+            if v is True or (isinstance(v, int) and not isinstance(v, bool) and v != 0):
+                return True
+    return False
 
 
 def _callee_attr(node):
@@ -240,6 +251,16 @@ def test_guard_flags_shell_true_command_string():
     snippet = (
         "import subprocess\n"
         "subprocess.run('" + _BARE + " -c \"echo hi\"', shell=True)\n"
+    )
+    kinds = {k for _, k, _ in find_oracle_offenses(snippet)}
+    assert "shell-true-bash-string" in kinds
+
+
+def test_guard_flags_shell_one_truthy_int():
+    """Q2 nit-1: shell=1 (truthy int, not shell=True) is caught."""
+    snippet = (
+        "import subprocess\n"
+        "subprocess.run('" + _BARE + " -c true', shell=1)\n"
     )
     kinds = {k for _, k, _ in find_oracle_offenses(snippet)}
     assert "shell-true-bash-string" in kinds
