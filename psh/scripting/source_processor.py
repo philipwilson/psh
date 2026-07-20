@@ -8,9 +8,8 @@ accumulator already trial-parsed the command, so when the recursive-descent
 parser is active the execution path reuses its AST instead of parsing the
 same text twice.
 """
-import dataclasses
 import sys
-from typing import Any, Optional, cast
+from typing import Optional, cast
 
 from ..ast_nodes import ASTNode, Program
 from ..core import (
@@ -25,30 +24,32 @@ from ..lexer import UnclosedQuoteError
 from ..lexer.token_formatter import TokenFormatter
 from ..parser import ParseError
 from ..utils.ast_debug import print_ast_debug
+from ..visitor.traversal import walk_ast
 from .base import ScriptComponent
 from .command_accumulator import CommandAccumulator, Complete, NeedMore
 
 
-def _offset_line_numbers(obj: Any, delta: int) -> None:
+def _offset_line_numbers(node: ASTNode, delta: int) -> None:
     """Add *delta* to every stamped ``.line`` in an AST subtree, in place.
 
     The parser stamps statement nodes with buffer-relative lines; this
     converts them to absolute source lines (offset by where the buffer
     began) once, before execution — so a function body bakes in its
-    definition-site lines rather than its call-site line. Recurses through
-    ASTNode dataclass fields and list/tuple containers (e.g.
-    ``IfConditional.elif_parts``, a list of StatementList tuples). See
-    ``ASTNode.line``.
+    definition-site lines rather than its call-site line.
+
+    Descends through the ONE schema-declared structural traversal
+    (``visitor.traversal.walk_ast``) rather than a private field-reflection
+    walk, so it reaches exactly the child-bearing fields every other pass
+    reaches — including ``IfConditional.elif_parts`` (a list of StatementList
+    tuples) and substitution bodies — and never descends into a non-``ASTNode``
+    carrier (the S3 syntax templates). ``.line`` is a bare class attribute, not
+    a schema field, so this wrapper mutates it explicitly per node before
+    descending; the per-node write is order-independent. See ``ASTNode.line``.
     """
-    if isinstance(obj, ASTNode):
-        if obj.line is not None:
-            obj.line += delta
-        if dataclasses.is_dataclass(obj):
-            for field in dataclasses.fields(obj):
-                _offset_line_numbers(getattr(obj, field.name, None), delta)
-    elif isinstance(obj, (list, tuple)):
-        for item in obj:
-            _offset_line_numbers(item, delta)
+    if node.line is not None:
+        node.line += delta
+    for child in walk_ast(node):
+        _offset_line_numbers(child, delta)
 
 
 class SourceProcessor(ScriptComponent):
