@@ -94,15 +94,16 @@ def normalize_bracket_expressions(pattern: str) -> str:
     understands (POSIX ``[[:class:]]`` → equivalent ranges, ``[^...]`` →
     ``[!...]``).
 
-    PRODUCTION-DEAD after campaign W3: every pathname consumer now matches
-    per-name through the ONE compiled pattern engine
-    (``_component_matcher`` above), which handles these bracket forms
-    natively, so no production path needs this rewrite. Kept solely as the
-    historical-reference half of the ``fnmatch`` oracle in
-    ``tests/unit/expansion/test_unified_glob_converter.py``; slated for the
-    deferred census deletion alongside the retired regex-converter family
-    (``extglob.glob_to_regex_body`` / ``extglob_to_regex`` /
-    ``_convert_pattern``).
+    No PRODUCTION path needs this rewrite after campaign W3 (every pathname
+    consumer matches per-name through the ONE compiled pattern engine
+    ``_component_matcher`` above), but it is NOT dead: it is the live reference
+    half of the ``fnmatch`` oracle in
+    ``tests/unit/expansion/test_unified_glob_converter.py`` (which cross-checks
+    ``_component_matcher`` against ``fnmatch.translate(normalize_bracket_
+    expressions(comp))``). Retiring it — and the ``extglob_to_regex`` /
+    ``_convert_pattern`` differential oracle — is a coverage tradeoff left to a
+    later decision (the fully-unreferenced ``extglob.glob_to_regex_body`` sibling
+    WAS deleted, campaign Q2 census).
     """
     # POSIX classes first (so a negated class like [^[:digit:]] still works).
     # The pathname table drops '/' from punct (glob.glob splits on '/').

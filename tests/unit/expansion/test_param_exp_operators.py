@@ -234,11 +234,10 @@ def test_positional_parameter_operators(shell, capsys):
 class TestPatternBracketClasses:
     """Bracket-class behavior in pattern-operator removal/substitution.
 
-    Pins the shared glob->regex conversion (psh/expansion/extglob.py
-    glob_to_regex_body), which the parameter-expansion operators now reuse.
-    A leading ']' in a class is a literal member (POSIX); the former inline
-    converter produced an invalid empty class and raised "unterminated
-    character set".
+    Pins the shared shell-pattern matching (the ONE compiled `pattern_engine`,
+    campaign W3) the parameter-expansion operators use. A leading ']' in a
+    class is a literal member (POSIX); the former inline converter produced an
+    invalid empty class and raised "unterminated character set".
     """
 
     def test_leading_bracket_class_prefix_no_match(self, shell, capsys):
