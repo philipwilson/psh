@@ -10,6 +10,7 @@ import sys
 from typing import TYPE_CHECKING, List
 
 from ..io_redirect.manager import format_redirect_error
+from .foreground_session import ForegroundJobSession
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
@@ -118,8 +119,6 @@ class SubshellExecutor:
         ``Terminated: 15`` like bash — #20 H12), current-job rotation, and
         exception cleanup.
         """
-        from .foreground_session import ForegroundJobSession
-
         # Open the transaction BEFORE the launch: it captures the terminal
         # owner while this shell still owns it (a real capability check — no
         # test-runner sniffing).

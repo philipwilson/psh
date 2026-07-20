@@ -28,6 +28,7 @@ from ..core import (
 )
 from ..expansion.arithmetic import ShellArithmeticError
 from .child_policy import run_background_shell_child
+from .foreground_session import ForegroundJobSession
 from .function import FunctionOperationExecutor
 from .process_launcher import ProcessConfig, ProcessRole
 
@@ -619,7 +620,6 @@ class ExternalExecutionStrategy(ExecutionStrategy):
         # is not a foreground session.
         session = None
         if not background:
-            from .foreground_session import ForegroundJobSession
             session = ForegroundJobSession.open(shell.job_manager)
 
         # The launcher applies the unified child signal policy on fork

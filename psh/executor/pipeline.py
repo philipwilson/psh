@@ -11,6 +11,7 @@ import sys
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ..ast_nodes import SimpleCommand
+from .foreground_session import ForegroundJobSession
 from .process_launcher import ProcessConfig, ProcessRole
 
 if TYPE_CHECKING:
@@ -18,7 +19,6 @@ if TYPE_CHECKING:
     from ..shell import Shell
     from .context import ExecutionContext
     from .core import ExecutorVisitor
-    from .foreground_session import ForegroundJobSession
 
 
 def _close_quiet(fd: Optional[int]) -> None:
@@ -182,7 +182,6 @@ class PipelineExecutor:
         # pipeline is not a foreground session.
         session = None
         if not is_background:
-            from .foreground_session import ForegroundJobSession
             session = ForegroundJobSession.open(self.job_manager)
         original_pgid = session.original_pgid if session is not None else None
         if self.state.options.get('debug-exec'):
