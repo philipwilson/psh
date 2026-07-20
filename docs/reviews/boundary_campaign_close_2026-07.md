@@ -47,7 +47,7 @@ throughout; conformance grew monotonically to 2,539.
 | 0.743.0 | #489 | I2 | Lazy `ProgramSource` (`LazyFileInput`, block-buffer/never-over-read); memory bounded; fd-255 convention; closes #20 H14. |
 | 0.744.0 | #490 | I3 | `ParseSession` = ONE completeness engine (accumulator = thin adapter); comb-vs-rd outcome converged; #20 H15 PARTIALLY closed (Option A, oracle-forced). |
 | 0.745.0 | #491 | I4 | Typed `HistoryExpansionResult`; `:p`→stderr, heredoc-body suppression, `history -p` wired; 5 byte paths surrogateescape. |
-| 0.746.0 | #492 | J1 | ONE job lifecycle: `AsyncJobPolicy` every-member, `ForegroundJobSession` with die-by-signal announce; typed `no_hup`/huponexit/reap; closes #20 H11+H12, H19 substantially. |
+| 0.746.0 | #492 | J1 | ONE job lifecycle: `AsyncJobPolicy` every-member, `ForegroundJobSession` with die-by-signal announce; typed `no_hup`/huponexit/reap; closes #20 H11+H12; H19 PARTIAL (ruling 2 — substantially closed, residual + Linux-nightly watch carried). |
 | 0.747.0 | #493 | Q1 | Five narrow `psh/protocols` (VariableAccess/ExpansionContext/IOContext/JobRuntime/LocaleContext); IOContext+JobRuntime migrated; shrink-only full-Shell ratchet. |
 | 0.748.0 | #494 | Q2 | Nine cross-cutting ratchets landed sequentially (option walkers, getattr/hasattr on declared fields, broad VT catches, registry-outside-resolution, redirect re-derivation, oracle bypass, syntax-bearing raw fields, visitor recursion, incomplete signatures). |
 | 0.749.0 | TBD | Q3 | This slot — documentation closure + dead-surface sweep + closing report (see below). |
@@ -125,7 +125,8 @@ accidentally.
 | I2 | Lazy source BLOCK SIZE is a documented deliberate loss (a mid-block edit before the block is read is not seen) | I2.md; `small_append`/`big_append` red-on-base pins + `truncate_self`/`rewrite_ahead` controls. |
 | I3 | Full linear completeness on a single open construct is O(k²) (bash's PTY-proven immediate mid-construct errors force per-feed parsing) — CHARACTERIZED, not eliminated; the full fix is a resumable lexer+parser (see carry register) | I3.md Option-A ruling; `test_session_linearity_i3.py` (doubling-ratio characterization). |
 | S3 | rc-127 channel split NOT chased — uniform rc 2 for substitution syntax errors (documented divergence, family-pinned) | S3.md §"documented divergences". |
-| S4 | Unclosed-expansion parser OUTCOME differs by parser (combinator=Invalid, rd=Incomplete) — disclosed, pinned both ways | S4.md; combinator-vs-rd outcome pins. |
+| S4→I3 (**CLOSED — historical, not a live loss**) | The unclosed-expansion parser OUTCOME briefly differed (combinator=Invalid, rd=Incomplete) when disclosed in S4; **I3 CLOSED it** — the shared `detect_unclosed_expansion` producer now feeds BOTH parsers, so both classify an unclosed expansion at EOF as Incomplete. Listed only for provenance; there is no live divergence and no both-ways pin. | `tests/unit/parser/test_parse_outcome_s4.py::test_unclosed_expansion_outcome_parity` (both parsers Incomplete). |
+| W2 | ARITH-context associative-subscript keying doctrine: inside an arithmetic context the associative key receives quote/escape removal but NO `$`-re-expansion (the source spelling of a `$`-form is kept, not re-expanded) — a documented deliberate divergence | brief §9 amendment + W2.md; `tests/unit/expansion/test_subscript_evaluator.py` (`expand_dollar=False`: `test_dollar_stays_source_spelling` / `test_quote_removal_still_applies`) + `tests/conformance/bash/test_subscript_keying_conformance.py`. |
 | R1 | Heredoc substrate: psh uses a temp file for the heredoc body's shared file description where bash may use a pipe — documented deliberate loss next to the H8 pins (lseek discriminator; BSD-probed) | R1.md §"Heredoc substrate"; `test_heredoc_shared_cursor_r1.py`. |
 | R2 | bash tempvar/nameref provenance model realized as psh's; `shell.env` structural realization sanctioned (env -i constraint) | R2.md; `test_variable_lookup.py`. |
 | J1 | huponexit LOGIN-narrowing: psh has no login-shell concept, so the exit-HUP gate is `interactive + huponexit` (not bash's `interactive login`) — SANCTIONED deliberate difference | J1.md §H19; `docs/user_guide/17_differences_from_bash.md` §17; `test_pty_huponexit_j1.py`. |
@@ -157,6 +158,7 @@ CARRIED-with-description). Two items are CLOSED by this Q3 slot.
 | 14 | procsub-`$!`-wait | CARRIED. J1-noted process-substitution `$!`/`wait` interaction. |
 | 15 | tcsetattr-drain probe note | CARRIED. J1 probe note (terminal-drain probe construction). |
 | 16 | RESUMABLE-PARSER CAMPAIGN (full #20 H15) | CARRIED as a future campaign. I3 ruling: full linear completeness needs a resumable lexer+parser (campaign-scale, Option B recorded); H15 is PARTIALLY closed + characterized (part (g)). |
+| 17 | J1 Linux-nightly watch (amended J1 ruling — a MUST) | **CARRIED — NOT yet discharged as of this report.** The first `nightly.yml` run after the J1 merge must be checked for the new monitor-mode rows in `tests/unit/executor/test_boundary_j1_job_lifecycle.py` and the promoted PTY signal fan-out tests — macOS (the local gate host) has a signal/pgroup coverage gap, so Linux-vs-bash for these is exercised only in the nightly. Recorded here because `tmp/` ledgers are scaffolding; this durable row keeps the obligation from being lost. |
 
 ---
 
@@ -255,9 +257,11 @@ This table feeds the integrator's §15.1 closing verification.
 | H16 | closed | `tests/unit/builtins/test_input_cursor_i1.py::test_malformed_lead_before_ascii_round_trips` (+ `tests/system/test_read_malformed_bytes_i1.py::test_read_malformed_matches_c_locale_bash`) |
 | H17 | closed | `tests/system/invocation/test_invocation_matrix.py::test_matrix_row` (parametrized `ic_*`/`i_script_*`/`i_s_piped_*` rows) |
 | H18 | closed | `tests/unit/core/test_construction_purity_f2.py::test_second_shell_construction_changes_nothing_utf8_first` |
-| H19 | closed (substantially; prompt-reap residual carried, part (d) #12) | `tests/unit/executor/test_boundary_j1_job_lifecycle.py::test_hangup_jobs_conts_stopped_before_hup` |
+| H19 | **PARTIAL** (J1 ruling 2 — substantially closed; prompt-reap/general-reaper residual carried, part (d) #12; Linux-nightly watch, part (d) #17) | `tests/unit/executor/test_boundary_j1_job_lifecycle.py::test_hangup_jobs_conts_stopped_before_hup` |
 
-**Summary:** C1 held; H1–H14, H16–H18 closed with Bash-pinned tests; H19 closed
-substantially (one residual carried); **H15 is the only PARTIAL** — oracle-forced
-per the I3 Option-A ruling, characterized, with the full fix scoped as the
-post-campaign RESUMABLE-PARSER campaign.
+**Summary:** C1 held; H1–H14, H16–H18 closed with Bash-pinned tests. **TWO
+findings are PARTIAL:** **H15** (oracle-forced per the I3 Option-A ruling,
+characterized; full fix scoped as the post-campaign RESUMABLE-PARSER campaign)
+and **H19** (J1 ruling 2 — substantially closed, one prompt-reap/general-reaper
+residual carried plus the Linux-nightly watch obligation). The remaining
+findings are closed.
