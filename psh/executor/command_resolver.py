@@ -213,8 +213,13 @@ class CommandResolver:
         PATH search (bash), counting a hit; ``populate_hash`` remembers a
         fresh find (executor only).
         """
+        # PATH comes from the VARIABLE (tri-state), not the child-env projection:
+        # a declared-unset `local PATH` shadows an outer export (bash searches an
+        # empty PATH), it must not resurrect it (#20 H13 / CV2). get_variable sees
+        # a command temp-env `PATH=... cmd` prefix, so the installed-prefix PATH is
+        # still what the deferred search reads.
         path_str = (query.path if query.path is not None
-                    else self.shell.env.get('PATH', ''))
+                    else self.shell.state.get_variable('PATH', ''))
 
         if query.all_matches:
             return [Candidate(CandidateKind.EXTERNAL, name, path=path)

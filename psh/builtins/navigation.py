@@ -136,8 +136,10 @@ class CdBuiltin(Builtin):
         if not os.path.isabs(path):
             # If it's not a relative path starting with . or .., search CDPATH
             if not (path.startswith('./') or path.startswith('../') or path == '.' or path == '..'):
-                # Check both shell variables and environment variables for CDPATH
-                cdpath = shell.state.get_variable('CDPATH') or shell.env.get('CDPATH', '')
+                # CDPATH is read from the VARIABLE (tri-state), never the child-env
+                # projection: a declared-unset `local CDPATH` must shadow an outer
+                # export (bash NOCD), not resurrect it (#20 H13 / CV2).
+                cdpath = shell.state.get_variable('CDPATH')
                 if cdpath:
                     # Split CDPATH on colons and search each directory
                     for search_dir in cdpath.split(':'):

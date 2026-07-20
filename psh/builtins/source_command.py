@@ -113,8 +113,11 @@ class SourceBuiltin(Builtin):
         # old hand walk SKIPPED empty components, but bash (and search_path)
         # maps an empty component to the cwd and searches it IN ORDER — so
         # `PATH=":/dir" source f` picks the cwd copy, not /dir.
+        # PATH from the VARIABLE (tri-state), not the child-env projection: a
+        # declared-unset `local PATH` shadows the outer export (bash searches an
+        # empty PATH and fails), it must not resurrect it (#20 H13 / CV2).
         matches = shell.command_resolver.search_path(
-            filename, shell.env.get('PATH', ''), mode=os.R_OK)
+            filename, shell.state.get_variable('PATH', ''), mode=os.R_OK)
         if matches:
             return matches[0]
 

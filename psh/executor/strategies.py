@@ -143,7 +143,9 @@ def report_exec_failure(cmd_name: str, exc: OSError,
     """
     # bash reports a bare-name miss under an EMPTY or UNSET PATH as
     # "No such file or directory" rather than "command not found" (both 127).
-    empty_path = not state.env.get('PATH')
+    # PATH is read from the VARIABLE (tri-state), so a declared-unset `local PATH`
+    # shows as empty here too (#20 H13 / CV2), not resurrected from the child-env.
+    empty_path = not state.get_variable('PATH')
     message, status = format_exec_failure(
         cmd_name, exc, resolved_path, empty_path=empty_path)
     # surrogateescape on the diagnostics: a command name carrying non-UTF-8
@@ -578,6 +580,19 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                     force_not_found = True
         elif use_hash:
             resolved_path = shell.command_resolver.resolve_for_exec(cmd_name)
+            if resolved_path is None and '/' not in cmd_name:
+                # A bare-name miss on the variable-truth PATH is DEFINITIVE
+                # (CV2 face b): bash reports "command not found" and never lets
+                # the child re-search a child-env PATH that a `local PATH`
+                # (declared-unset) shadow would resurrect. resolve_for_exec
+                # returns None WITHOUT searching when hashall is off, so do the
+                # variable-PATH search here for that case; a None from a real
+                # PATH miss is final.
+                if not shell.state.options.get('hashall', True):
+                    matches = shell.command_resolver.search_path(
+                        cmd_name, shell.state.get_variable('PATH', ''))
+                    resolved_path = matches[0] if matches else None
+                force_not_found = resolved_path is None
         else:
             # env override: no shell hash; execvpe walks the (overridden) env.
             resolved_path = None
