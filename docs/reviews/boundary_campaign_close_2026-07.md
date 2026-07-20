@@ -9,7 +9,7 @@ slot Q3 (v0.749.0, PR TBD).
 representation/consumer census, deliberate-loss registry, post-campaign carry
 audit, H1–H19+C1 closure table, exact commands, and public-API changes.
 
-**RELEASE-SHA:** `<filled at ceremony — the v0.749.0 attestation-gated commit>`
+**RELEASE-SHA:** the `gated_commit` recorded in the committed `gate_attestation.json` attesting version 0.749.0 (the v0.749.0 bump commit, tagged `v0.749.0` on merge). Report content finalized at `378bfd1b` + this ceremony fixup.
 
 Working ledgers and probe transcripts referenced below live under
 `tmp/boundary-ledgers/` (per-slot `<SLOT>.md` + `<SLOT>-probes/`); this committed
@@ -50,7 +50,7 @@ throughout; conformance grew monotonically to 2,539.
 | 0.746.0 | #492 | J1 | ONE job lifecycle: `AsyncJobPolicy` every-member, `ForegroundJobSession` with die-by-signal announce; typed `no_hup`/huponexit/reap; closes #20 H11+H12; H19 PARTIAL (ruling 2 — substantially closed, residual + Linux-nightly watch carried). |
 | 0.747.0 | #493 | Q1 | Five narrow `psh/protocols` (VariableAccess/ExpansionContext/IOContext/JobRuntime/LocaleContext); IOContext+JobRuntime migrated; shrink-only full-Shell ratchet. |
 | 0.748.0 | #494 | Q2 | Nine cross-cutting ratchets landed sequentially (option walkers, getattr/hasattr on declared fields, broad VT catches, registry-outside-resolution, redirect re-derivation, oracle bypass, syntax-bearing raw fields, visitor recursion, incomplete signatures). |
-| 0.749.0 | TBD | Q3 | This slot — documentation closure + dead-surface sweep + closing report (see below). |
+| 0.749.0 | this release | Q3 | This slot — documentation closure + dead-surface sweep + closing report (see below). |
 
 ---
 
