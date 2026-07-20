@@ -386,13 +386,21 @@ class ProcessLauncher:
             os._exit(exit_code)
 
     def _job_control_off(self) -> bool:
-        """True when the shell runs without job control (non-interactive).
+        """True when the shell runs without job control.
 
-        psh enables job control only for the interactive REPL; a script, a
-        ``-c`` string or piped stdin all run with it off — exactly where the
-        POSIX asynchronous-list defaults (stdin ← /dev/null, ignore INT/QUIT)
-        apply. Mirrors SignalManager._in_noninteractive_shell.
+        Job control (monitor mode) is ENABLED by ``set -m`` regardless of
+        input mode, and by an interactive shell; it is OFF for a plain script,
+        a ``-c`` string, or piped stdin. The POSIX asynchronous-list defaults
+        (stdin ← /dev/null, ignore INT/QUIT) apply ONLY when job control is off
+        — so ``set -m`` in a script must suppress them, matching bash, where a
+        bg member of an async list under monitor mode is still killed by a
+        stray ``kill -INT`` (#20 J1/B1: `monitor` was previously ignored, so an
+        async member wrongly survived under `set -m`). The charter computes the
+        policy from "background status and monitor/job-control mode" — this is
+        the monitor/job-control-mode half.
         """
+        if self.state.options.get('monitor', False):
+            return False
         return (self.state.is_script_mode
                 or not self.state.options.get('interactive', False))
 

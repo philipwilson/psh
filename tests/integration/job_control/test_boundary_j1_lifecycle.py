@@ -64,6 +64,51 @@ def test_bg_single_async_stdin_is_devnull_but_pipeline_leader_is_not():
     assert out2 == "HI\n", out2  # pipeline leader read the real stdin
 
 
+# ---- B1: `set -m` (monitor) enables job control -> NO async signal policy ----
+# The async-list INT/QUIT-ignore applies only when job control is OFF. Under
+# `set -m` (even non-interactively) job control is ON, so a bg member is killed
+# by a stray signal (rc 130/131), matching bash. `_job_control_off` now consults
+# the `monitor` option. RED sides: the SINGLE-under-set-m row is red-on-base
+# (base ignored monitor for SINGLE too); the pipeline-under-set-m row is red at
+# the pre-B1 tip (H11 introduced the leak for pipeline members).
+
+def test_setm_single_member_still_dies_on_sigint():
+    out, err, rc = _psh(
+        "set -m; sleep 0.4 & p=$!; sleep 0.15; kill -INT $p 2>/dev/null; "
+        "wait $p; echo rc=$?")
+    assert out == "rc=130\n", (out, err)
+
+
+def test_setm_single_member_still_dies_on_sigquit():
+    out, err, rc = _psh(
+        "set -m; sleep 0.4 & p=$!; sleep 0.15; kill -QUIT $p 2>/dev/null; "
+        "wait $p; echo rc=$?")
+    assert out == "rc=131\n", (out, err)
+
+
+def test_setm_pipeline_member_still_dies_on_sigint():
+    out, err, rc = _psh(
+        "set -m; sleep 0.4 | cat & p=$!; sleep 0.15; kill -INT $p 2>/dev/null; "
+        "wait $p; echo rc=$?")
+    assert out == "rc=130\n", (out, err)
+
+
+def test_setm_pipeline_member_still_dies_on_sigquit():
+    out, err, rc = _psh(
+        "set -m; sleep 0.4 | cat & p=$!; sleep 0.15; kill -QUIT $p 2>/dev/null; "
+        "wait $p; echo rc=$?")
+    assert out == "rc=131\n", (out, err)
+
+
+def test_no_monitor_bg_pipeline_member_still_ignores_int():
+    # Regression guard: the B1 monitor fix must NOT break the H11 no-monitor
+    # case — a bg pipeline member with job control OFF still ignores INT (rc 0).
+    out, err, rc = _psh(
+        "sleep 0.4 | cat & p=$!; sleep 0.15; kill -INT $p 2>/dev/null; "
+        "wait $p; echo rc=$?")
+    assert out == "rc=0\n", (out, err)
+
+
 # ---- H12: foreground subshell signal death prints bash's diagnostic ---------
 
 def test_fg_subshell_sigterm_prints_terminated():
