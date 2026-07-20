@@ -306,6 +306,34 @@ class TestArithSourceQuotesModelR1R2M1(ConformanceTest):
             r"""declare -A h; (( h[\"q\"]=1 )); declare -p h""")
 
 
+class TestArithIntegerAttributeLetLikeM2(ConformanceTest):
+    r"""CV1 M2: an INTEGER-attribute value (declare -i / local -i / -ai element,
+    scalar or +=) is a shell-processed value, so an associative subscript inside
+    it gets NO extra `(( ))` round-1 dquote pass — `declare -i v='h[\"q\"]'`
+    keys "q" -> unset -> 0 (bash), not q -> 7. Pre-existing divergence, converged
+    into the arith_source_quotes class. bash 5.2-verified."""
+
+    def test_declare_i_scalar(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; declare -i v='h[\"q\"]'; echo $v""")
+
+    def test_local_i_scalar(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; f(){ local -i v='h[\"q\"]'; echo $v; }; f""")
+
+    def test_i_scalar_append(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; declare -i v=0; v+='h[\"q\"]'; echo $v""")
+
+    def test_ai_element(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; declare -ai a; a[0]='h[\"q\"]'; echo ${a[0]}""")
+
+    def test_ai_element_append(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; declare -ai a=(1); a[0]+='h[\"q\"]'; echo ${a[0]}""")
+
+
 def _arith_key(cmd):
     """(stdout, rc) of psh/bash for an arith-subscript write, for the carrier
     documented-divergence rows (they compare psh vs bash EXPLICITLY, since they

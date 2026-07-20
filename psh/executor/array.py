@@ -367,9 +367,15 @@ class ArrayOperationExecutor:
         (bash applies the case attribute to array elements too).
         """
         if is_integer:
-            rhs = evaluate_arithmetic(expanded_value or '0', self.shell)
+            # arith_source_quotes=False: an -ai integer element value is a
+            # shell-processed value (let-like), so an associative subscript
+            # inside it gets NO extra (( )) round-1 dquote pass (W2/CV1 M2).
+            rhs = evaluate_arithmetic(expanded_value or '0', self.shell,
+                                      arith_source_quotes=False)
             if is_append:
-                base = evaluate_arithmetic(current, self.shell) if current else 0
+                base = (evaluate_arithmetic(current, self.shell,
+                                            arith_source_quotes=False)
+                        if current else 0)
                 rhs = base + rhs
             return str(rhs)
         if is_append and current is not None:
