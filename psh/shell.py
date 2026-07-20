@@ -478,42 +478,49 @@ class Shell:
                 interactive_manager = getattr(self, 'interactive_manager', None)
                 if interactive_manager is not None:
                     interactive_manager.history_manager.save_to_file()
-            self._dispose_jobs_at_exit()
+            # A received SIGHUP fans out unconditionally (bash's hangup_all_jobs);
+            # a normal exit keeps the interactive+huponexit gate.
+            self._dispose_jobs_at_exit(force_hup=(reason == 'signal-hup'))
         finally:
             self.close()
 
-    def _dispose_jobs_at_exit(self) -> None:
+    def _dispose_jobs_at_exit(self, *, force_hup: bool = False) -> None:
         """Exit-time job disposition on THE shutdown path (campaign J1 / H19).
 
         Two facts, both honored here and nowhere else:
 
-        * ``huponexit`` — send SIGHUP (SIGCONT first for a stopped job) to
-          every job not marked ``disown -h`` (``Job.no_hup``). bash gates this
-          on an interactive login shell; psh has no login-shell concept, so the
-          gate is interactive + ``huponexit`` — a non-interactive script never
-          reaches it, matching bash (which HUPs on exit only for a login
-          shell). See the J1 ledger for the login-gate narrowing.
+        * job hangup — send SIGHUP (SIGCONT first for a stopped job) to every
+          job not marked ``disown -h`` (``Job.no_hup``). Two triggers:
+
+          - **received SIGHUP** (``force_hup``, reason ``'signal-hup'``): bash's
+            ``hangup_all_jobs`` — an interactive shell that RECEIVES SIGHUP fans
+            out UNCONDITIONALLY (independent of ``huponexit``), then dies 128+HUP
+            (tmux-hosted real-terminal probe; #20 J1/B4 — the earlier
+            "kill -HUP is parity" claim was a python-pty construction artifact).
+          - **normal exit** with ``huponexit``: bash gates the exit-time HUP on
+            an interactive login shell; psh has no login-shell concept, so the
+            gate is interactive + ``huponexit`` (login-narrowing, ruling 1).
+
+          Both require an interactive shell — a non-interactive shell that
+          receives SIGHUP just dies (no fan-out; all constructions agree).
         * detached-child reaping — collect any disowned child psh still owns
           (:meth:`JobManager.reap_detached`) so it is reaped rather than left
           for init.
-
-        Both are independent of the history write in :meth:`shutdown` (they
-        signal / reap processes, not the histfile), so this order is not
-        observable and I4's history-write path is untouched.
         """
         job_manager = getattr(self, 'job_manager', None)
         state = getattr(self, 'state', None)
         if job_manager is None or state is None:
             return
-        if (state.options.get('interactive')
-                and state.options.get('huponexit')):
+        interactive = state.options.get('interactive')
+        if interactive and (force_hup or state.options.get('huponexit')):
             job_manager.hangup_jobs()
         job_manager.reap_detached()
 
-    #: The shutdown routes that persist history (exactly the routes that
-    #: saved it before shutdown() unified cleanup: an explicit `exit` and
-    #: the REPL's EOF; -c/script/main completion never wrote the file).
-    _HISTORY_SAVING_SHUTDOWNS = frozenset({'exit-builtin', 'repl-eof'})
+    #: The shutdown routes that persist history. The explicit ``exit`` and the
+    #: REPL's EOF saved it before shutdown() unified cleanup; a received SIGHUP
+    #: also saves it (bash: interactive SIGHUP writes the histfile — tmux
+    #: real-terminal probe). ``-c``/script/main completion never wrote the file.
+    _HISTORY_SAVING_SHUTDOWNS = frozenset({'exit-builtin', 'repl-eof', 'signal-hup'})
 
     def close(self) -> None:
         """Release the resources this Shell owns (idempotent).

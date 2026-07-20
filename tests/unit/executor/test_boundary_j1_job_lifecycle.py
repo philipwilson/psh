@@ -224,3 +224,53 @@ def test_dispose_jobs_at_exit_no_hup_when_option_off(monkeypatch):
         assert sent == []
     finally:
         shell.close()
+
+
+# ---- received SIGHUP: force_hup fans out UNCONDITIONALLY of huponexit (B4) ---
+
+def test_dispose_force_hup_fans_out_without_huponexit(monkeypatch):
+    # A received SIGHUP (force_hup) fans out even with huponexit OFF (bash's
+    # hangup_all_jobs) — the interactive gate still applies.
+    shell = _shell()
+    try:
+        shell.state.options['interactive'] = True
+        shell.state.options['huponexit'] = False
+        job = _make_job(shell.job_manager, 1212)
+        sent = []
+        monkeypatch.setattr(os, "killpg",
+                            lambda pgid, sig: sent.append((pgid, sig)))
+        shell._dispose_jobs_at_exit(force_hup=True)
+        assert (job.pgid, signal.SIGHUP) in sent
+    finally:
+        shell.close()
+
+
+def test_dispose_force_hup_still_requires_interactive(monkeypatch):
+    # Non-interactive receipt does NOT fan out (all constructions agree).
+    shell = _shell()
+    try:
+        shell.state.options['interactive'] = False
+        _make_job(shell.job_manager, 1313)
+        sent = []
+        monkeypatch.setattr(os, "killpg",
+                            lambda pgid, sig: sent.append((pgid, sig)))
+        shell._dispose_jobs_at_exit(force_hup=True)
+        assert sent == []
+    finally:
+        shell.close()
+
+
+def test_shutdown_signal_hup_reason_fans_out(monkeypatch):
+    # End-to-end on the shutdown path: reason 'signal-hup' forces the fan-out.
+    shell = _shell()
+    try:
+        shell.state.options['interactive'] = True
+        shell.state.options['huponexit'] = False
+        job = _make_job(shell.job_manager, 1414)
+        sent = []
+        monkeypatch.setattr(os, "killpg",
+                            lambda pgid, sig: sent.append((pgid, sig)))
+        shell.shutdown('signal-hup')
+        assert (job.pgid, signal.SIGHUP) in sent
+    finally:
+        shell.close()

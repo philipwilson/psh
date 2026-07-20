@@ -319,14 +319,21 @@ Two typed invariants own the job/signal boundary:
   shell-process children are skipped — they re-arm trap handlers via
   `child_policy.run_background_shell_child`.
 
-Exit-time job disposition (huponexit HUP/CONT honoring `Job.no_hup`, detached-
-child reaping via `JobManager.reap_registry`/`reap_detached`) lives on the one
-`Shell.shutdown` → `_dispose_jobs_at_exit` path (#20 H19, PARTIALLY closed:
-typed `no_hup`/`huponexit`/reap-separation shipped; the fan-out on a genuine
-terminal *disconnect* and prompt-time reaping of a disowned child while the
-shell lives are carried — see `docs/missing_features.md`). huponexit follows a
-login-narrowing model (psh has no login shells; every interactive shell is
-login-like) — a documented difference, NOT bash parity for the non-login case.
+Exit-time / hangup job disposition lives on the one `Shell.shutdown` →
+`_dispose_jobs_at_exit(force_hup)` path (#20 H19). Two hangup triggers, one
+chokepoint (`JobManager.hangup_jobs`, SIGCONT-before-SIGHUP, `Job.no_hup`
+honored): a NORMAL exit HUPs only under interactive+`huponexit`
+(login-narrowing model — psh has no login shells; a documented difference, NOT
+bash parity for the non-login case), while a RECEIVED SIGHUP (reason
+`'signal-hup'`, wired from `SignalManager._handle_signal_with_trap_check`) fans
+out UNCONDITIONALLY then dies 128+HUP — bash's `hangup_all_jobs`; a real
+terminal disconnect rides this same path (it delivers SIGHUP to the session
+leader). Plus detached-child reaping via `reap_registry`/`reap_detached`.
+PARTIALLY closed: prompt-time reaping of a disowned/unwaited child while a
+non-interactive shell lives is a carried residual (needs a general async
+reaper) — see `docs/missing_features.md`. (Probe-construction caveat: the
+`kill -HUP` fan-out is only reproducible against bash in a REAL terminal —
+tmux — not the python-pty family; see the J1 ledger.)
 
 ### Process Group Management
 

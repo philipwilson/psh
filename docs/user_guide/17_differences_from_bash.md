@@ -226,8 +226,12 @@ login-like for `huponexit`** — an interactive non-login shell with `huponexit`
 set HUPs its jobs on exit where bash (non-login) would not. A non-interactive
 shell never HUPs on exit (parity with bash — bash HUPs on exit only for a login
 shell). This is NOT a claim of bash parity for the interactive non-login case;
-it is a documented psh model. PSH also does not replicate bash's separate
-fan-out on a genuine terminal *disconnect* (see `docs/missing_features.md`).
+it is a documented psh model. Separately, an interactive PSH shell that
+RECEIVES an untrapped SIGHUP (including a genuine terminal disconnect, which
+delivers SIGHUP to the session leader) resends SIGHUP to its jobs — SIGCONT
+first for stopped jobs, `disown -h` honored — then exits, matching bash's
+`hangup_all_jobs`. A non-interactive shell that receives SIGHUP just dies,
+without fanning out (parity with bash).
 
 ### Process Substitution
 

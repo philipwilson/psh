@@ -86,35 +86,65 @@ def test_disown_h_exempts_job_from_huponexit(tmp_path):
     assert _run_and_check_survival(tmp_path, huponexit=True, disown_h=True) is True
 
 
-def test_kill_hup_to_interactive_shell_does_not_fan_out(tmp_path):
-    """Received-SIGHUP parity (boundary J1 ruling 3, corrected finding).
+def _child_alive(pid):
+    import os
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
 
-    A programmatic ``kill -HUP`` to an interactive shell does NOT fan SIGHUP out
-    to its jobs — in EITHER shell. Probe-derived vs bash 5.2 (trap-based;
-    tmp/boundary-ledgers/J1-probes/sighup_definitive.txt): bash fans out only on
-    a genuine terminal DISCONNECT, which it distinguishes from an explicit
-    ``kill -HUP``. PSH matches the kill -HUP case (parity); the disconnect
-    fan-out is a documented residual (docs/missing_features.md). This pins the
-    parity so the corrected model can't silently regress into a spurious
-    kill -HUP fan-out.
-    """
+
+def _received_hup_child_alive(disown_h=False):
+    """Start a bg `sleep &`, send SIGHUP to the shell, and report whether the
+    child is still alive. False => the shell fanned SIGHUP out to it."""
     import os
     import signal
 
-    marker = tmp_path / "hupmark"
     child = _spawn()
     try:
-        # child traps HUP and marks a file; only the shell's fan-out could send
-        # HUP to a running bg child (a running orphaned pgroup gets no kernel HUP).
-        child.send("{ trap ': > %s' HUP; sleep 3; } &\r" % marker)
+        child.send("sleep 5 & echo C=$!\r")
+        child.expect(r"C=(\d+)")
+        cpid = int(child.match.group(1))
         child.expect(PROMPT)
+        if disown_h:
+            child.send("disown -h\r")
+            child.expect(PROMPT)
         time.sleep(0.2)
-        os.kill(child.pid, signal.SIGHUP)      # explicit kill -HUP to the shell
+        os.kill(child.pid, signal.SIGHUP)      # the shell RECEIVES SIGHUP
         time.sleep(0.8)
-        # The shell did not fan out, so the child never caught HUP.
-        assert not marker.exists()
+        alive = _child_alive(cpid)
+        try:
+            os.kill(cpid, signal.SIGKILL)
+        except OSError:
+            pass
+        return alive
     finally:
         child.close(force=True)
+
+
+def test_received_sighup_fans_out_to_jobs():
+    """Received-SIGHUP fan-out (boundary J1 ruling 3, FINAL model).
+
+    An interactive shell that RECEIVES an untrapped SIGHUP resends SIGHUP to its
+    jobs (bash's hangup_all_jobs), then exits — verified in a tmux-hosted REAL
+    terminal (tmp/boundary-ledgers/J1-probes/probe_sighup_tmux.py). PSH's
+    fan-out is unconditional, so it is observable in ANY construction; this pins
+    it via a plain bg child (killed by the fan-out).
+
+    PROBE-CONSTRUCTION CAVEAT: an earlier "kill -HUP is parity" reading was a
+    python-pty artifact — BASH does not fan out under pexpect/pty.fork but DOES
+    under tmux. This pin asserts PSH's model, so it is construction-robust; the
+    bash comparison lives in the tmux probe (see the J1 ledger's three-state
+    ruling-3 history). A HUP-trapping child is NOT used: psh's backgrounded
+    brace group does not fire a body-set HUP trap (a separate quirk).
+    """
+    assert _received_hup_child_alive() is False   # child was HUP'd
+
+
+def test_received_sighup_honors_disown_h():
+    # disown -h exempts a job from the received-SIGHUP fan-out (Job.no_hup).
+    assert _received_hup_child_alive(disown_h=True) is True   # child survived
 
 
 if __name__ == "__main__":  # pragma: no cover - manual smoke
