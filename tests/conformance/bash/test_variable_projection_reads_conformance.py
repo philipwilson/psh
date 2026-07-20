@@ -17,6 +17,7 @@ declared-unset-shadow row was DIVERGENT before v0.750.0 (psh resurrected the
 export); the non-shadow rows matched at base and are kept-green parity.
 Probed against bash 5.2 (tmp/boundary-ledgers/CV-probes/cv2_matrix.sh).
 """
+import os
 import re
 import subprocess
 import sys
@@ -75,8 +76,9 @@ def cvtree(tmp_path):
 
 @pytest.fixture
 def twotier(tmp_path):
-    """PATH dirs for bash's two-tier search: a sole non-exec candidate, and a
-    non-exec-early + exec-late pair (same command name)."""
+    """PATH dirs for bash's two-tier search: a sole non-exec candidate, a
+    non-exec-early + exec-late pair, a FIFO candidate, and directory-held slots
+    (same command name)."""
     (tmp_path / "only").mkdir()
     (tmp_path / "only" / "cvsole").write_text("#!/bin/sh\necho RAN-ONLY\n")
     (tmp_path / "only" / "cvsole").chmod(0o644)          # exists, NOT executable
@@ -86,6 +88,15 @@ def twotier(tmp_path):
     (tmp_path / "late").mkdir()
     (tmp_path / "late" / "cvx").write_text("#!/bin/sh\necho RAN-LATE\n")
     (tmp_path / "late" / "cvx").chmod(0o755)             # exec, later
+    (tmp_path / "fifo").mkdir()
+    os.mkfifo(str(tmp_path / "fifo" / "cvf"))            # a FIFO on PATH
+    (tmp_path / "dir").mkdir()
+    (tmp_path / "dir" / "cvd").mkdir()                   # a DIRECTORY named cvd
+    (tmp_path / "dirne").mkdir()
+    (tmp_path / "dirne" / "cvn").mkdir()                 # dir cvn (earlier)
+    (tmp_path / "nelate").mkdir()
+    (tmp_path / "nelate" / "cvn").write_text("#!/bin/sh\n")
+    (tmp_path / "nelate" / "cvn").chmod(0o644)           # non-exec cvn (later)
     return tmp_path
 
 
@@ -136,6 +147,33 @@ class TestTwoTierPathSearch:
     def test_d1b_sole_exec_still_runs(self, twotier):
         # Kept-green: a sole EXECUTABLE candidate runs (exec replaces process).
         _assert_same(f'PATH={twotier}/late; exec cvx 2>/dev/null; echo NR',
+                     twotier)
+
+    def test_r3_fifo_sole_candidate_is_kept_126(self, twotier):
+        # A FIFO STAT-EXISTS but is not a regular executable → last resort
+        # (execve → EACCES → 126), NOT "command not found" (127). RED at tip
+        # (isfile excluded the FIFO). </dev/null so bash's execve doesn't block.
+        _assert_same(
+            f'PATH={twotier}/fifo; cvf </dev/null 2>/dev/null; echo rc=$?',
+            twotier)
+
+    def test_r3_directory_sole_candidate_is_discarded_127(self, twotier):
+        _assert_same(f'PATH={twotier}/dir; cvd 2>/dev/null; echo rc=$?', twotier)
+
+    def test_r3_directory_poisons_slot_over_later_nonexec(self, twotier):
+        # dir cvn earlier + non-exec cvn later: bash's directory poisons the
+        # slot → 127 (the later non-exec does NOT rescue it). RED at tip (126).
+        _assert_same(
+            f'PATH={twotier}/dirne:{twotier}/nelate; cvn 2>/dev/null; echo rc=$?',
+            twotier)
+
+    def test_r3_fifo_exec_builtin(self, twotier):
+        _assert_same(
+            f'PATH={twotier}/fifo; exec cvf </dev/null 2>/dev/null; echo NR',
+            twotier)
+
+    def test_r3_directory_command_builtin(self, twotier):
+        _assert_same(f'PATH={twotier}/dir; command cvd 2>/dev/null; echo rc=$?',
                      twotier)
 
 

@@ -175,27 +175,32 @@ class CommandResolver:
         return results
 
     def search_path_two_tier(self, name: str, path_str: str) -> Optional[str]:
-        """bash's TWO-TIER PATH resolution for EXECUTION (CV2 B2/B3): the first
-        ``X_OK``-executable match wins; failing that, the FIRST existing
-        regular-file candidate is the LAST RESORT (``execve`` then ``EACCES`` ->
-        "Permission denied", 126); ``None`` when the name is nowhere on PATH
-        ("command not found", 127). A slash-name is taken as given if it is a
-        regular file. Mirrors bash's ``find_user_command_internal`` remembering
-        the first ``FS_EXISTS`` candidate while it keeps looking for an
-        ``FS_EXECABLE`` one — so a non-executable earlier on PATH never shadows
-        an executable later, and a sole non-executable candidate is still tried
-        (and reported not-executable) rather than "not found"."""
+        """bash's TWO-TIER PATH resolution for EXECUTION (CV2 B2/B3, R3): the
+        first ``X_OK``-executable REGULAR-FILE match wins; failing that, the
+        FIRST STAT-EXISTS candidate of ANY type is the LAST RESORT — kept if it
+        is a FIFO / non-executable file / device (``execve`` then ``EACCES`` ->
+        "Permission denied", 126), but DISCARDED if it is a DIRECTORY (bash's
+        directory "poisons" the slot: even a later non-executable does not
+        rescue it -> "command not found", 127). ``None`` when the name is nowhere
+        on PATH. A slash-name is taken as given if it exists (execve reports its
+        own EACCES/EISDIR). Mirrors bash's ``find_user_command_internal``
+        remembering the first ``FS_EXISTS`` candidate while it keeps looking for
+        an ``FS_EXECABLE`` one — so a non-executable earlier never shadows an
+        executable later, and a sole non-executable/FIFO candidate is still
+        tried (reported not-executable) rather than "not found"."""
         if '/' in name:
-            return name if os.path.isfile(name) else None
+            return name if os.path.exists(name) else None
         fallback: Optional[str] = None
         for component in path_str.split(':'):
             directory = component if component else '.'
             full_path = os.path.join(directory, name)
-            if os.path.isfile(full_path):
-                if os.access(full_path, os.X_OK):
+            if os.path.exists(full_path):
+                if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
                     return full_path
                 if fallback is None:
-                    fallback = full_path
+                    fallback = full_path      # first STAT-EXISTS (any type)
+        if fallback is not None and os.path.isdir(fallback):
+            return None                        # a directory poisons the slot
         return fallback
 
     # -- ordered resolution ------------------------------------------------
