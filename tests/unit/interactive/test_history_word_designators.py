@@ -25,10 +25,12 @@ def expander():
 
 
 def _expand(expander, history, command):
+    """The expanded text, or None on an ERROR outcome (the historical contract
+    these designator assertions were written against; campaign I4 retyped the
+    producer to a HistoryExpansionResult)."""
     expander.state.history[:] = list(history)
-    return expander.expand_history(
-        command, print_expansion=False, report_errors=False
-    )
+    r = expander.expand_history(command)
+    return None if r.is_error else r.text
 
 
 # Single history entry: "echo alpha beta gamma" (word0=echo, args alpha/beta/gamma)
@@ -129,7 +131,7 @@ def test_quoting_respected_in_word_split(expander):
     'echo !^',       # !^ on an argless command (no word 1)
 ])
 def test_bad_word_specifier_returns_none(expander, expr):
-    # report_errors=False, but a bad word specifier still aborts (None).
+    # A bad word specifier is an ERROR outcome (the helper maps it to None).
     assert _expand(expander, ['true'], expr) is None
 
 

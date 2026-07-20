@@ -109,13 +109,35 @@ class HistoryBuiltin(Builtin):
             return 0
 
         if flag == '-p':
-            # Perform history expansion on args and print without storing.
-            # Implementing this needs the interactive '!' expansion engine;
-            # be honest rather than echo a misleadingly-unexpanded result.
-            self.error("-p: history expansion not supported by psh", shell)
-            return 2
+            return self._expand_print(rest, shell)
 
         return self._usage_error(f"{flag}: invalid option", shell)
+
+    def _expand_print(self, rest: List[str], shell: 'Shell') -> int:
+        """``history -p arg...``: history-expand each ARG and print the result
+        to STDOUT without storing it (bash). This is the SECOND consumer of the
+        typed HistoryExpansionResult (campaign I4): the outcome ``kind`` drives
+        printing vs the error path — no re-derivation. A leading ``--`` ends
+        option processing (bash)."""
+        expander = getattr(shell, 'history_expander', None)
+        if expander is None:  # pragma: no cover - every Shell builds one
+            self.error("-p: history expansion unavailable", shell)
+            return 2
+        if rest and rest[0] == '--':
+            rest = rest[1:]
+        status = 0
+        for arg in rest:
+            # force=True: `history -p` expands regardless of `set +H` (bash).
+            result = expander.expand_history(arg, force=True)
+            if result.is_error:
+                # bash reports a `history -p` failure and returns nonzero.
+                self.error(result.error, shell)
+                status = 1
+            else:
+                # NONE / EXPANDED / PRINT_ONLY all print their resulting text;
+                # `history -p` never executes and never records.
+                self.write_line(result.text, shell)
+        return status
 
     def _delete(self, rest: List[str], shell: 'Shell',
                 hist_mgr: 'HistoryManager') -> int:
@@ -194,8 +216,8 @@ class HistoryBuiltin(Builtin):
       -r [file]    Read (append) FILE's contents into the history list
       -w [file]    Write the whole history list to FILE
       -s arg ...   Store ARGs as a single entry, without executing them
-
-    The -p (expand-and-print) option is not supported.
+      -p arg ...   History-expand each ARG and print the result, without
+                   storing or executing
 
     Default is to show the entire history."""
 

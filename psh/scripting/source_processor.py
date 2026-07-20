@@ -423,37 +423,57 @@ class SourceProcessor(ScriptComponent):
             command_string, drop_dangling_at_eof=drop_dangling_at_eof)
 
         # Perform history expansion before tokenization. The accumulator
-        # already expanded silently for the completeness trial; this
-        # pass is the REPORTING one — it echoes the expansion like bash
-        # and prints "event not found" errors. Only for an eligible source
+        # already expanded silently for the completeness trial; this pass is
+        # the REPORTING one — it echoes the expansion like bash and prints the
+        # diagnostic on failure. ACTIVATION consumes the F1 interactive-FAMILY
+        # flag (`options['interactive']`) plus the source-level eligibility
         # (never a -c command string or the rc file — bash; see
-        # InputSource.history_expansion_eligible).
-        if (not self.state.is_script_mode and history_expansion_eligible and
-                hasattr(self.shell, 'history_expander')):
-            expanded_command = self.shell.history_expander.expand_history(command_string)
-            if expanded_command is None:
-                # History expansion failed - signal the proper error path
+        # InputSource.history_expansion_eligible), NOT is_script_mode. histexpand
+        # is checked inside expand_history. The result is a typed
+        # HistoryExpansionResult: `kind` (NONE/EXPANDED/PRINT_ONLY/ERROR) is the
+        # authority — recording and the error path read it, never a regex or
+        # `expanded_text != original_text` (campaign I4).
+        record_text = command_string  # default: record the raw line verbatim
+        if (self.state.options.get('interactive', False)
+                and history_expansion_eligible
+                and hasattr(self.shell, 'history_expander')):
+            result = self.shell.history_expander.expand_history(command_string)
+            if result.is_error:
+                # bash: print the diagnostic, execute NOTHING, record NOTHING.
+                print(f"psh: {result.error}", file=sys.stderr)
                 return None
-            command_string = expanded_command
+            if result.is_print_only:
+                # :p — print the expansion, record it, execute NOTHING (bash).
+                # The interactive :p modifier prints to STDERR (bash; distinct
+                # from the `history -p` BUILTIN, which prints to stdout).
+                print(result.text, file=sys.stderr)
+                record_text = result.text
+                command_string = ''
+            else:
+                # NONE (unchanged) or EXPANDED: the resulting text runs and is
+                # recorded. bash echoes the command it is about to run when it
+                # actually expanded a reference and the input is a terminal.
+                command_string = result.text
+                record_text = result.text
+                if result.is_expanded and sys.stdin.isatty():
+                    print(result.text)
 
         # Record in history (interactive use). This is the ONE history
         # writer: it sees the complete logical command, so multi-line
         # constructs land as a single joined entry (bash cmdhist).
         # Done before parsing so that, like bash, commands with syntax
         # errors are still recallable for editing.
-        # The command is passed RAW — bash stores the line verbatim
-        # (leading/trailing whitespace included), and the semantic
-        # filters inside add_to_history depend on the unmodified text:
+        # `record_text` is the EXPANDED line for a fired reference (bash records
+        # the expansion, not the raw `!!`) and the RAW line otherwise — bash
+        # stores it verbatim (leading/trailing whitespace included), and the
+        # semantic filters inside add_to_history depend on the unmodified text:
         # HISTCONTROL=ignorespace keys on the leading space, and
-        # ignoredups/HISTIGNORE compare/match the verbatim line. A
-        # pre-strip here made ignorespace a silent no-op on the real
-        # entry path (reappraisal #17 H7 privacy leak). Whitespace-only
-        # commands are still skipped (deliberate divergence: bash
-        # records them).
-        if add_to_history and command_string.strip():
-            from ..interactive.history_expansion import contains_history_reference
-            if not contains_history_reference(command_string):
-                self.shell.add_history(command_string)
+        # ignoredups/HISTIGNORE compare/match the verbatim line. A pre-strip
+        # here made ignorespace a silent no-op on the real entry path
+        # (reappraisal #17 H7 privacy leak). Whitespace-only commands are still
+        # skipped (deliberate divergence: bash records them).
+        if add_to_history and record_text.strip():
+            self.shell.add_history(record_text)
 
         # Alias expansion is a token-stream transform applied at the
         # lex->parse seam (see the expand_aliases calls below and in

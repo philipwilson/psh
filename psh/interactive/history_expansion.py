@@ -2,25 +2,198 @@
 
 This module implements bash-compatible history expansion, processing history
 references like !!, !n, !-n, and !string before commands are tokenized.
+
+The public entry point :meth:`HistoryExpander.expand_history` returns a typed
+:class:`HistoryExpansionResult` (campaign I4): the four distinct outcomes
+(NONE / EXPANDED / PRINT_ONLY / ERROR) are the ``kind`` field, not overloaded
+sentinels or a regex. The producer is PURE — it never prints and never records;
+consumers echo/print/record from the result.
 """
 
-import re
-import sys
-from typing import Optional
+from typing import List, Tuple, Union
 
-# A line containing one of these history references (!!, !n, !-n, !word,
-# !?word?) must be passed straight to execution rather than parse-tested for
-# completeness or recorded verbatim in history. This single source of truth is
-# shared by the multiline/line-editor completeness checks and the
-# source-processor history filtering (previously copied inline at four sites).
-HISTORY_REFERENCE_RE = re.compile(
-    r'(?:^|\s)!(?:!|[0-9]+|-[0-9]+|[a-zA-Z][a-zA-Z0-9]*|\?[^?]*\?)(?:\s|$)'
+from ..utils.heredoc_detection import (
+    HEREDOC_MARKER_RE,
+    HeredocSpec,
+    PendingHeredocQueue,
+    _comment_start,
+    contains_heredoc,
+    is_inside_expansion,
+    make_heredoc_spec,
+)
+from .history_result import (
+    HistoryExpansionKind,
+    HistoryExpansionResult,
+    HistoryExpansionSpan,
 )
 
+# A context frame for _context_flags: "'" / '"' for quote spans, or a mutable
+# ['cs', paren_depth] list for a $( … ) command substitution reopened INSIDE
+# double quotes (the one construct the shared _quote_flags is blind to).
+_CtxFrame = Union[str, List]
 
-def contains_history_reference(text: str) -> bool:
-    """Return True if *text* contains a history reference (``!!``, ``!n``, …)."""
-    return HISTORY_REFERENCE_RE.search(text) is not None
+
+def _shell_single_quote(text: str) -> str:
+    """Quote *text* as a single shell word (``:q`` / ``:x`` modifiers).
+
+    Wrap in single quotes, rendering an embedded ``'`` as ``'\\''`` — the
+    bash-faithful escaping the history ``:q`` modifier produces (``echo a'b'c``
+    -> ``'echo a'\\''b'\\''c'``)."""
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
+def _context_flags(line: str, stack: List[_CtxFrame]):
+    """Per-char suppressed flags for *line* plus the carried context stack.
+
+    A local variant of ``heredoc_detection._quote_flags`` with ONE delta: a
+    ``$(`` opened INSIDE double quotes pushes an effectively-UNQUOTED command-
+    substitution frame (bash re-parses the substitution body as a fresh command
+    context), popping back to the double quote on its balancing ``)`` — so a
+    heredoc opener inside ``"$( … "`` is detected where the shared scanner's
+    flat quote flags see only "quoted". ``$((`` inside quotes stays suppressed
+    (arithmetic — its ``<<`` is a shift). Everything else mirrors the shared
+    conventions: backslash pairs, per-line backtick interiors (flagged but not
+    carried), quote chars flagged True. The shared oracle itself is untouched
+    (S2 fence); this feeds only the history-expansion span scan below.
+
+    *stack* frames: ``"'"``/``'"'`` quote spans (carried across command lines
+    for multi-line strings) and ``['cs', depth]`` command-substitution frames.
+    Returns ``(flags, stack_after)``; the input stack is not mutated.
+    """
+    stack = [f.copy() if isinstance(f, list) else f for f in stack]
+    flags: List[bool] = []
+    backtick = False  # per-line, like the shared _quote_flags
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        top = stack[-1] if stack else None
+        quote = top if isinstance(top, str) else None
+        if c == '\\' and quote != "'" and i + 1 < n:
+            inside = quote is not None or backtick
+            flags.append(inside)
+            flags.append(inside)
+            i += 2
+            continue
+        if backtick:
+            flags.append(True)
+            if c == '`':
+                backtick = False
+            i += 1
+            continue
+        if quote == "'":
+            flags.append(True)
+            if c == "'":
+                stack.pop()
+            i += 1
+            continue
+        if quote == '"':
+            # THE delta: $( (but not $(( arithmetic) reopens command context.
+            if (c == '$' and i + 1 < n and line[i + 1] == '('
+                    and line[i + 2:i + 3] != '('):
+                flags.append(False)
+                flags.append(False)
+                stack.append(['cs', 0])
+                i += 2
+                continue
+            flags.append(True)
+            if c == '"':
+                stack.pop()
+            i += 1
+            continue
+        # Top level or inside a $( … ) frame: effectively unquoted.
+        if c == '`':
+            backtick = True
+            flags.append(True)
+        elif c in ('"', "'"):
+            stack.append(c)
+            flags.append(True)
+        elif (c == '$' and i + 1 < n and line[i + 1] == '('
+                and line[i + 2:i + 3] != '('):
+            flags.append(False)
+            flags.append(False)
+            stack.append(['cs', 0])
+            i += 2
+            continue
+        else:
+            flags.append(False)
+            if isinstance(top, list):
+                if c == '(':
+                    top[1] += 1
+                elif c == ')':
+                    if top[1] == 0:
+                        stack.pop()
+                    else:
+                        top[1] -= 1
+        i += 1
+    return flags, stack
+
+
+def _scan_line_markers_ctx(line: str, stack: List[_CtxFrame],
+                           first_ordinal: int):
+    """The heredocs one command line opens, with dq-cmdsub-aware context.
+
+    Mirrors ``heredoc_detection.scan_line_heredoc_markers`` (comment exclusion,
+    quoted-marker exclusion, ``is_inside_expansion`` for closed cmdsub/arith/
+    param regions) but computes flags with :func:`_context_flags` so a marker
+    inside a ``"$( …`` reopened context is live. Returns ``(specs, stack_after)``.
+    """
+    flags, stack_after = _context_flags(line, stack)
+    comment_at = _comment_start(line, flags)
+    if comment_at < len(line):
+        # Recompute the carried context up to the comment so comment text
+        # (e.g. an apostrophe in `# don't`) is excluded (shared convention).
+        _, stack_after = _context_flags(line[:comment_at], stack)
+    specs: List[HeredocSpec] = []
+    for match in HEREDOC_MARKER_RE.finditer(line, 0, comment_at):
+        if is_inside_expansion(line, match.start(), flags):
+            continue
+        if match.start() < len(flags) and flags[match.start()]:
+            continue  # quoted "<<WORD" is not a heredoc
+        specs.append(make_heredoc_spec(
+            ordinal=first_ordinal + len(specs),
+            raw=match.group(2),
+            strip_tabs=bool(match.group(1)),
+            span=(match.start(2), match.end(2))))
+    return specs, stack_after
+
+
+def heredoc_body_spans(command: str) -> List[Tuple[int, int]]:
+    """The ``[start, end)`` char spans of *command* that are heredoc BODY text.
+
+    bash never history-expands heredoc body lines (they are passed to the
+    command verbatim). psh joins the whole logical command — opener plus body —
+    into one string before expanding, so the flat scanner would otherwise
+    expand a ``!!`` sitting in a heredoc body. This walks the command line by
+    line with the completeness oracle's close policy
+    (:class:`PendingHeredocQueue`) and a context-aware opener scan
+    (:func:`_scan_line_markers_ctx` — the shared scanner plus the
+    ``$(``-inside-double-quotes reopen bash performs, which the flat quote
+    flags are blind to): while a heredoc is open, each line is
+    body/terminator text — never command text — so its char range is marked
+    suppressed. Non-overlapping, source-ordered.
+    """
+    if not contains_heredoc(command):
+        return []
+    spans: List[Tuple[int, int]] = []
+    queue = PendingHeredocQueue()
+    ordinal = 0
+    ctx_stack: List[_CtxFrame] = []  # quote/cmdsub context across command lines
+    pos = 0
+    for line in command.split('\n'):
+        line_start = pos
+        line_end = pos + len(line)  # excludes the '\n'
+        if queue:
+            # Inside open heredoc bodies: the line either terminates the HEAD or
+            # is its body text — never command text, never history-expanded.
+            spans.append((line_start, line_end))
+            queue.feed_line(line)
+        else:
+            specs, ctx_stack = _scan_line_markers_ctx(line, ctx_stack, ordinal)
+            ordinal += len(specs)
+            for spec in specs:
+                queue.push(spec)
+        pos = line_end + 1  # skip the '\n'
+    return spans
 
 
 # Sentinels used by the event/word-designator resolvers below to distinguish
@@ -118,29 +291,29 @@ class HistoryExpander:
         # Set by a :p modifier during one expand_history call: print, don't run.
         self._print_only = False
 
-    def expand_history(
-        self,
-        command: str,
-        print_expansion: bool = True,
-        report_errors: bool = True,
-    ) -> Optional[str]:
-        """Expand history references in a command string.
+    def expand_history(self, command: str,
+                       force: bool = False) -> HistoryExpansionResult:
+        """Expand history references in *command*, returning a typed outcome.
 
-        Args:
-            command: The command string to expand
-            print_expansion: Whether to print the expanded command to stdout
-            report_errors: Whether to print "event not found" errors
+        PURE: never prints, never records. The :class:`HistoryExpansionResult`
+        ``kind`` is the authority (NONE / EXPANDED / PRINT_ONLY / ERROR); the
+        reporting consumer echoes/prints/records from it and the silent
+        completeness trial reads only ``kind``.
+
+        ``force`` bypasses the ``histexpand`` option gate — the explicit
+        ``history -p`` builtin expands regardless of ``set +H`` (bash).
 
         Supports:
-        - !! : Previous command
-        - !n : Command number n
-        - !-n : n commands back
-        - !string : Most recent command starting with string
-        - !?string? : Most recent command containing string
+        - !! : Previous command; !n / !-n : by number; !string / !?string? ;
+          !# : the current line so far; ^old^new : quick substitution.
+        - word designators (:0 :^ :$ :* :n-m) and modifiers
+          (:h :t :r :e :s :gs :& :p :q :x).
         """
-        # Skip expansion if history expansion is disabled
-        if not self.state.options.get('histexpand', True):
-            return command
+        # Skip expansion if history expansion is disabled: a NONE outcome whose
+        # text is the input verbatim (bash still RECORDS such a line — a literal
+        # `!!` with `set +H` is a recordable command, not a dropped reference).
+        if not force and not self.state.options.get('histexpand', True):
+            return HistoryExpansionResult(HistoryExpansionKind.NONE, command)
 
         # Get history from the shell
         history = self.state.history
@@ -148,16 +321,21 @@ class HistoryExpander:
         # ^old^new[^] quick substitution: only when it is the FIRST char of the
         # line (bash). Equivalent to !!:s/old/new/. Handled before the scanner.
         if command.startswith('^'):
-            quick = self._expand_quick_substitution(command, history,
-                                                     report_errors)
+            quick = self._expand_quick_substitution(command, history)
             if quick is not _NOT_QUICK_SUB:
                 return quick
 
         # Per-call print-only flag (set by a :p modifier).
         self._print_only = False
 
-        # Track if we made any expansions
+        # Heredoc BODY spans: bash never history-expands heredoc body text, so
+        # those char ranges are emitted verbatim (like a single-quoted span).
+        body_spans = heredoc_body_spans(command)
+        body_i = 0
+
+        # Track whether any reference fired, and each resolved reference's span.
         expanded = False
+        spans: List[HistoryExpansionSpan] = []
         result = []
         n = len(command)
         i = 0
@@ -176,6 +354,17 @@ class HistoryExpander:
         # Process the command character by character to handle quotes properly.
         while i < n:
             char = command[i]
+
+            # Inside a heredoc BODY span: emit verbatim, NO expansion and NO
+            # context feed (the body is invisible to the command's `!`/quote/
+            # bracket logic — bash reads it as literal data).
+            while body_i < len(body_spans) and i >= body_spans[body_i][1]:
+                body_i += 1
+            if (body_i < len(body_spans)
+                    and body_spans[body_i][0] <= i < body_spans[body_i][1]):
+                result.append(char)
+                i += 1
+                continue
 
             # Inside a single-quoted span: everything is literal until the
             # closing ' (or end of line for an unterminated quote).
@@ -226,42 +415,45 @@ class HistoryExpander:
             if (char == '!' and i + 1 < n and command[i + 1] != '='
                     and not ctx.suppressed()):
                 # A history reference is an EVENT designator (!!, !n, !-n,
-                # !string, !?string?) optionally followed by a WORD designator
-                # (:n, :^, :$, :*, :n-m, ...). The shorthands !^, !$ and !* are
-                # an implicit !! event plus a word designator. Resolve the event
-                # first, then apply any word designator to the event's line.
-                resolved = self._resolve_event(command, i, history)
+                # !string, !?string?, !#) optionally followed by a WORD
+                # designator (:n, :^, :$, :*, :n-m, ...). The shorthands !^, !$
+                # and !* are an implicit !! event plus a word designator.
+                # Resolve the event first, then any word designator/modifiers.
+                # !# is the current line so far — the text already emitted.
+                resolved = self._resolve_event(command, i, history,
+                                               ''.join(result))
                 if resolved is not None:
                     event_text, event_label, j = resolved
                     if event_text is _EVENT_NOT_FOUND:
-                        if report_errors:
-                            print(f"psh: {event_label}: event not found",
-                                  file=sys.stderr)
-                        return None
+                        return HistoryExpansionResult(
+                            HistoryExpansionKind.ERROR, '',
+                            error=f"{event_label}: event not found",
+                            spans=(HistoryExpansionSpan(i, j),))
 
                     # Apply an optional word designator, then any :modifiers
-                    # (:h/:t/:r/:e, :s/:gs/:&, :p) to the event text.
+                    # (:h/:t/:r/:e, :s/:gs/:&, :p, :q, :x) to the event text.
                     selected = self._apply_word_designator(command, j, event_text)
                     if selected is not _BAD_WORD_SPECIFIER:
                         text, j = selected
                         selected = self.apply_modifiers(text, command, j)
                     if selected is _BAD_WORD_SPECIFIER:
-                        if report_errors:
-                            spec = command[j:self._word_designator_end(command, j)]
-                            print(f"psh: {spec}: bad word specifier",
-                                  file=sys.stderr)
-                        return None
+                        spec = command[j:self._word_designator_end(command, j)]
+                        return HistoryExpansionResult(
+                            HistoryExpansionKind.ERROR, '',
+                            error=f"{spec}: bad word specifier",
+                            spans=(HistoryExpansionSpan(i, j),))
                     if selected[0] is _SUBSTITUTION_FAILED:
                         # A :s/old/new/ whose `old` was not found: bash's
                         # distinct "substitution failed" error class.
-                        if report_errors:
-                            print(f"psh: {selected[1]}: substitution failed",
-                                  file=sys.stderr)
-                        return None
+                        return HistoryExpansionResult(
+                            HistoryExpansionKind.ERROR, '',
+                            error=f"{selected[1]}: substitution failed",
+                            spans=(HistoryExpansionSpan(i, j),))
 
                     text, j = selected
                     expanded = True
                     result.append(text)
+                    spans.append(HistoryExpansionSpan(i, j))
                     # The consumed reference (command[i:j], the raw !... text —
                     # NOT the expansion) still advances the context for a later
                     # `!`, matching the old backward scans.
@@ -278,26 +470,29 @@ class HistoryExpander:
             i += 1
 
         final_result = ''.join(result)
+        span_tuple = tuple(spans)
 
-        # A :p modifier prints the expansion and suppresses execution (bash):
-        # print it (always, like bash) and return the empty string so the
-        # caller runs nothing.
+        # A :p modifier means "print, don't execute" (bash): a distinct
+        # PRINT_ONLY outcome carrying the expansion text — the reporting
+        # consumer prints it and records it, but nothing runs.
         if self._print_only:
-            print(final_result, file=self.shell.stdout)
-            return ''
+            return HistoryExpansionResult(
+                HistoryExpansionKind.PRINT_ONLY, final_result, spans=span_tuple)
 
-        # If we made expansions, print the expanded command (only when print_expansion is True)
-        if expanded and print_expansion and sys.stdin.isatty():
-            print(final_result)
+        if expanded:
+            return HistoryExpansionResult(
+                HistoryExpansionKind.EXPANDED, final_result, spans=span_tuple)
 
-        return final_result
+        # No reference fired: the input is unchanged (a literal command).
+        return HistoryExpansionResult(HistoryExpansionKind.NONE, final_result)
 
-    def _expand_quick_substitution(self, command: str, history, report_errors: bool):
+    def _expand_quick_substitution(self, command: str, history):
         """Expand a ``^old^new[^]`` quick substitution on the previous command.
 
-        Returns the expanded string, ``None`` on error (no history / no match),
-        or the ``_NOT_QUICK_SUB`` sentinel if this is not actually a quick sub
-        (so the normal scanner runs — e.g. a bare ``^`` with no second ``^``).
+        Returns a :class:`HistoryExpansionResult` (EXPANDED, or ERROR on no
+        history / no match), or the ``_NOT_QUICK_SUB`` sentinel if this is not
+        actually a quick sub (so the normal scanner runs — e.g. a bare ``^``
+        with no second ``^``).
         """
         # ^old^new^   (the final ^ is optional; old must be non-empty)
         rest = command[1:]
@@ -312,18 +507,19 @@ class HistoryExpander:
         if not old:
             return _NOT_QUICK_SUB
         if not history:
-            if report_errors:
-                print("psh: :s: substitution failed", file=sys.stderr)
-            return None
+            return HistoryExpansionResult(
+                HistoryExpansionKind.ERROR, '', error=":s: substitution failed")
         last = history[-1]
         if old not in last:
-            if report_errors:
-                print(f"psh: {command}: substitution failed", file=sys.stderr)
-            return None
+            return HistoryExpansionResult(
+                HistoryExpansionKind.ERROR, '',
+                error=f"{command}: substitution failed")
         self._last_sub = (old, new)
-        return last.replace(old, new, 1) + suffix
+        return HistoryExpansionResult(
+            HistoryExpansionKind.EXPANDED, last.replace(old, new, 1) + suffix,
+            spans=(HistoryExpansionSpan(0, len(command)),))
 
-    def _resolve_event(self, command: str, i: int, history):
+    def _resolve_event(self, command: str, i: int, history, current_line: str):
         """Resolve the event designator beginning at ``command[i]`` (a ``!``).
 
         Returns a ``(event_text, event_label, end_index)`` tuple where
@@ -332,7 +528,8 @@ class HistoryExpander:
         recognized event pattern (so the caller treats it as a literal).
 
         ``event_text`` is the matched command line, or the ``_EVENT_NOT_FOUND``
-        sentinel if the event reference matched no history entry.
+        sentinel if the event reference matched no history entry. ``current_line``
+        is the text expanded so far on this line — the ``!#`` designator.
         """
         n = len(command)
         c1 = command[i + 1] if i + 1 < n else ''
@@ -342,6 +539,11 @@ class HistoryExpander:
             if history:
                 return history[-1], '!!', i + 2
             return _EVENT_NOT_FOUND, '!!', i + 2
+
+        # !# - the current command line typed so far (bash). Never fails; when
+        # nothing precedes it the expansion is the empty string.
+        if c1 == '#':
+            return current_line, '!#', i + 2
 
         # !$, !^, !*, !:n - implicit !! event plus a word designator. The word
         # designator itself is handled by _apply_word_designator, which is
@@ -363,6 +565,10 @@ class HistoryExpander:
                 return None  # bare !- with no digits
             num = int(command[i + 1:j])
             label = f'!{command[i + 1:j]}'
+            if num == 0:
+                # Event numbers are 1-based; !0 / !-0 is not an event (bash:
+                # "event not found"), NOT history[0].
+                return _EVENT_NOT_FOUND, label, j
             if num > 0:
                 if num <= len(history):
                     return history[num - 1], label, j
@@ -562,8 +768,10 @@ class HistoryExpander:
         ``:s`` old-text is absent (``spec`` is the exact modifier text for the
         "substitution failed" diagnostic). Supported: ``:h`` ``:t`` ``:r`` ``:e``
         (pathname head/tail/root/ext on the whole selection), ``:s/old/new/``
-        and ``:gs//`` global, ``:&`` (repeat last sub, ``:g&`` global), and
-        ``:p`` (print, don't execute — sets a flag the caller honors).
+        and ``:gs//`` global, ``:&`` (repeat last sub, ``:g&`` global),
+        ``:p`` (print, don't execute — sets a flag the caller honors),
+        ``:q`` (quote the whole selection as one shell word) and ``:x`` (quote
+        each word separately).
         """
         n = len(command)
         while k < n and command[k] == ':':
@@ -583,6 +791,15 @@ class HistoryExpander:
                 text = self._mod_ext(text); k = m + 1
             elif mod == 'p':
                 self._print_only = True; k = m + 1
+            elif mod == 'q':
+                # :q — quote the selection so it is one word, immune to further
+                # expansion (bash). The whole text becomes a single quoted word.
+                text = _shell_single_quote(text); k = m + 1
+            elif mod == 'x':
+                # :x — like :q but break the selection into words at blanks and
+                # quote each separately (bash).
+                text = ' '.join(_shell_single_quote(w) for w in text.split())
+                k = m + 1
             elif mod in ('s', '&'):
                 result = self._mod_subst(text, command, m, glob)
                 if result is _BAD_WORD_SPECIFIER:

@@ -33,14 +33,13 @@ The corpus combines:
     metacharacter alphabet, so structural interactions are covered mechanically.
 """
 
-import contextlib
-import io
 import json
 from itertools import product
 from pathlib import Path
 
 import pytest
 
+from psh.interactive.history_result import HistoryExpansionKind
 from psh.shell import Shell
 
 GOLDEN_PATH = (Path(__file__).parent / "fixtures" / "history_expansion"
@@ -209,28 +208,27 @@ CORPUS = HAND_CASES + _combinatorial_cases()
 def _capture(expander, history, command):
     """Return ``{result, stderr, pstdout}`` for one expand_history call.
 
-    ``result`` is the return value (expanded string, ``None`` on error, ``''``
-    for a ``:p`` print-only expansion, or ``"<EXC:...>"`` if it raised).
-    ``stderr`` is the error text (``report_errors=True``).  ``pstdout`` is what
-    a ``:p`` modifier printed to ``shell.stdout``.
+    The producer now returns a typed :class:`HistoryExpansionResult` (campaign
+    I4) and PRINTS NOTHING. This maps that result back onto the historical
+    ``(result, stderr, pstdout)`` observable the golden froze, so the golden
+    keeps pinning the EXPANSION ENGINE byte-for-byte, independent of where
+    consumers print: ``result`` is the expanded string (``None`` on error,
+    ``''`` for ``:p``), ``stderr`` the diagnostic the reporting consumer would
+    emit, ``pstdout`` the text a ``:p`` yields.
     """
     expander.state.history[:] = list(history)
     expander._last_sub = None
     expander._print_only = False
-    buf_out = io.StringIO()
-    buf_err = io.StringIO()
-    saved_stdout = expander.shell.stdout
-    expander.shell.stdout = buf_out
     try:
-        with contextlib.redirect_stderr(buf_err):
-            result = expander.expand_history(
-                command, print_expansion=False, report_errors=True)
+        r = expander.expand_history(command)
     except Exception as exc:  # pragma: no cover - defensive; frozen if it fires
-        result = f"<EXC:{type(exc).__name__}:{exc}>"
-    finally:
-        expander.shell.stdout = saved_stdout
-    return {"result": result, "stderr": buf_err.getvalue(),
-            "pstdout": buf_out.getvalue()}
+        return {"result": f"<EXC:{type(exc).__name__}:{exc}>",
+                "stderr": "", "pstdout": ""}
+    if r.kind is HistoryExpansionKind.ERROR:
+        return {"result": None, "stderr": f"psh: {r.error}\n", "pstdout": ""}
+    if r.kind is HistoryExpansionKind.PRINT_ONLY:
+        return {"result": "", "stderr": "", "pstdout": r.text + "\n"}
+    return {"result": r.text, "stderr": "", "pstdout": ""}
 
 
 def _make_expander():

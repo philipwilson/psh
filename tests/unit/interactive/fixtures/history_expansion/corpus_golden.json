@@ -925,12 +925,12 @@
   "pstdout": ""
  },
  {
-  "result": "cat <<EOF\necho prev cmd\nEOF",
+  "result": "cat <<EOF\n!!\nEOF",
   "stderr": "",
   "pstdout": ""
  },
  {
-  "result": "cat <<'EOF'\necho prev cmd\nEOF",
+  "result": "cat <<'EOF'\n!!\nEOF",
   "stderr": "",
   "pstdout": ""
  },
