@@ -327,20 +327,44 @@ _REFLECTION_ALLOWLIST = {
 }
 
 # The reflection primitives that signal generic dataclass-field traversal.
-_REFLECT_ATTRS = {"fields", "is_dataclass"}          # dataclasses.<attr>(...)
-_REFLECT_NAMES = {"fields", "is_dataclass"}          # bare, `from dataclasses import`
+_REFLECT_ATTRS = {"fields", "is_dataclass"}          # <dataclasses-alias>.<attr>()
 _REFLECT_DUNDER = {"__dataclass_fields__", "__dict__"}
+
+
+def _dataclasses_import_bindings(tree):
+    """Resolve how *tree* refers to the dataclasses reflection primitives.
+
+    Returns (module_aliases, bare_names): ``module_aliases`` is every name bound
+    to the ``dataclasses`` MODULE (``import dataclasses`` -> {'dataclasses'};
+    ``import dataclasses as _dc`` -> {'_dc'}); ``bare_names`` is every local name
+    bound directly to ``fields``/``is_dataclass`` (``from dataclasses import
+    fields as F`` -> {'F', ...}). This closes the aliased-import evasion —
+    ``import dataclasses as _dc; _dc.fields(node)`` is caught."""
+    module_aliases = set()
+    bare_names = set()
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Import):
+            for alias in node.names:
+                if alias.name == "dataclasses":
+                    module_aliases.add(alias.asname or "dataclasses")
+        elif isinstance(node, _ast.ImportFrom) and node.module == "dataclasses":
+            for alias in node.names:
+                if alias.name in _REFLECT_ATTRS:
+                    bare_names.add(alias.asname or alias.name)
+    return module_aliases, bare_names
 
 
 def _find_reflection_primitives(src: str):
     """Return [(lineno, primitive)] generic field-reflection primitives in *src*.
 
-    Matches ``dataclasses.fields``/``dataclasses.is_dataclass`` (attribute or the
-    bare imported name), ``vars(...)``, and ``<expr>.__dataclass_fields__`` /
-    ``<expr>.__dict__`` attribute access. Comments and docstrings that merely
-    name these do NOT match (this is an AST scan).
-    """
+    Matches ``<dataclasses-alias>.fields``/``.is_dataclass`` (the module name OR
+    any ``import dataclasses as X`` alias), the bare imported name (``from
+    dataclasses import fields [as F]``), ``vars(...)``, and
+    ``<expr>.__dataclass_fields__`` / ``<expr>.__dict__`` (attribute OR the
+    getattr-string form). Comments and docstrings that merely name these do NOT
+    match (this is an AST scan)."""
     tree = _ast.parse(src)
+    module_aliases, bare_names = _dataclasses_import_bindings(tree)
     hits = []
     for node in _ast.walk(tree):
         if isinstance(node, _ast.Attribute):
@@ -348,12 +372,12 @@ def _find_reflection_primitives(src: str):
                 hits.append((node.lineno, node.attr))
             elif (node.attr in _REFLECT_ATTRS
                   and isinstance(node.value, _ast.Name)
-                  and node.value.id == "dataclasses"):
-                hits.append((node.lineno, f"dataclasses.{node.attr}"))
+                  and node.value.id in module_aliases):
+                hits.append((node.lineno, f"{node.value.id}.{node.attr}"))
         elif isinstance(node, _ast.Call) and isinstance(node.func, _ast.Name):
             if node.func.id == "vars":
                 hits.append((node.lineno, "vars()"))
-            elif node.func.id in _REFLECT_NAMES:
+            elif node.func.id in bare_names:
                 hits.append((node.lineno, node.func.id))
         # getattr(node, "__dataclass_fields__"/"__dict__", ...) — the string form
         # (also the getattr-smuggling evasion of the attribute-access shapes).
@@ -430,6 +454,36 @@ def test_offender_dunder_reflection_is_flagged():
     assert any(p == "__dataclass_fields__" for _, p in _find_reflection_primitives(off1))
     assert any(p == "__dict__" for _, p in _find_reflection_primitives(off2))
     assert any(p == "vars()" for _, p in _find_reflection_primitives(off3))
+
+
+def test_offender_aliased_dataclasses_import_is_flagged():
+    """SYNTHETIC OFFENDER (aliased-import evasion): ``import dataclasses as _dc;
+    _dc.fields(...)`` and ``from dataclasses import fields as F; F(...)`` must be
+    caught — the detector resolves the dataclasses import bindings, so an alias
+    cannot smuggle a second traversal engine past it."""
+    aliased_mod = (
+        "import dataclasses as _dc\n"
+        "def w(n):\n"
+        "    for f in _dc.fields(n):\n"
+        "        w(getattr(n, f.name))\n"
+    )
+    prims = {p for _, p in _find_reflection_primitives(aliased_mod)}
+    assert "_dc.fields" in prims, prims
+
+    aliased_from = (
+        "from dataclasses import fields as F, is_dataclass as ID\n"
+        "def w(n):\n"
+        "    if ID(n):\n"
+        "        for f in F(n):\n"
+        "            w(getattr(n, f.name))\n"
+    )
+    prims = {p for _, p in _find_reflection_primitives(aliased_from)}
+    assert {"F", "ID"} <= prims, prims
+
+    # And a bare `fields` that is NOT imported from dataclasses is NOT flagged
+    # (no false positive on an unrelated local `fields` helper).
+    unrelated = "def fields(n):\n    return n.cols\ndef g(n):\n    return fields(n)\n"
+    assert all(p not in ("fields",) for _, p in _find_reflection_primitives(unrelated))
 
 
 def test_scanner_ignores_named_field_visit_and_prose():
