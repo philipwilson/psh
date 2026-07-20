@@ -278,11 +278,14 @@ class ShellState:
         # max_history_size delegate to it via properties).
         self.history_state = HistoryState()
 
-        # The history entry the CURRENT top-level command recorded (if any),
-        # so `history -p`/`-s` can strip their OWN just-added invocation and
-        # ONLY that (CV3). Reset per command by the source processor; None when
-        # nothing was recorded (non-interactive, HISTCONTROL/HISTIGNORE drop).
-        self._last_recorded_history_line: Optional[str] = None
+        # bash's LINE-SCOPED history strip flag (CV3 B4/B5): True while the
+        # current input LINE was recorded and no `history -s` has consumed it.
+        # Each `history -p <args>` on the line deletes the last (unverified)
+        # entry and KEEPS the flag; the first `history -s <args>` deletes and
+        # CONSUMES it. A REAL input line resets it (source processor); eval/
+        # source/cmdsub bodies INHERIT it (so a `history -p` inside them still
+        # strips), and it is inherited across a subshell fork (clone_for_child).
+        self._history_line_pending_strip: bool = False
 
         # Editor configuration
         self.edit_mode = 'emacs'
@@ -650,8 +653,10 @@ class ShellState:
         # Process-local arithmetic re-entrancy: a fresh evaluation context.
         self._arith_recursion_depth = 0
 
-        # Per-command transient (CV3): no command has recorded history yet.
-        self._last_recorded_history_line = None
+        # CV3 B5: the history strip flag INHERITS across a subshell fork, so a
+        # `history -p` inside `$(...)` on a recorded line strips the invocation
+        # (its `!!` then refers to the command BEFORE the line, matching bash).
+        self._history_line_pending_strip = parent._history_line_pending_strip
 
         # $PPID / $$ stay stable across subshells (POSIX).
         self.initial_ppid = parent.initial_ppid

@@ -104,10 +104,11 @@ class HistoryBuiltin(Builtin):
 
         if flag == '-s':
             # Store the args as one entry, without executing them. bash strips
-            # the `history -s ...` invocation itself first, so the stored line
-            # REPLACES it rather than lingering beside it (CV3).
+            # the current line's last (unverified) entry first — so the stored
+            # line REPLACES the invocation — and the first `-s` CONSUMES the
+            # line's strip flag, blocking later strips on the same line (CV3).
             if rest:
-                self._strip_own_invocation(shell)
+                self._strip_own_invocation(shell, consume=True)
                 hist_mgr.store_entry(' '.join(rest))
             return 0
 
@@ -117,22 +118,22 @@ class HistoryBuiltin(Builtin):
         return self._usage_error(f"{flag}: invalid option", shell)
 
     @staticmethod
-    def _strip_own_invocation(shell: 'Shell') -> None:
-        """Remove the `history -p`/`-s` invocation's OWN just-recorded history
-        entry (bash) — so a `!!` operand refers to the command BEFORE the
-        `history` call and the invocation does not linger. Interactive-family
-        only, and ONLY the verified invocation: the source processor records the
-        line it added (``_last_recorded_history_line``); a HISTCONTROL/HISTIGNORE
-        -filtered or non-recorded line leaves the marker None, so no prior entry
-        is stripped by mistake (the ignorespace/ignoredups edge — probed vs bash
-        5.2). The list is mutated in place, preserving the editor list-alias
-        contract. Called only when there are operands (bash: `history -p`/`-s`
-        with no operands strips nothing)."""
+    def _strip_own_invocation(shell: 'Shell', consume: bool = False) -> None:
+        """bash's line-scoped history strip (CV3 B4/B5): while the current input
+        LINE's strip flag is set, `history -p`/`-s` WITH operands delete the LAST
+        history entry (UNVERIFIED — bash does not identity-check), so a `!!`
+        operand refers to the command BEFORE this call and the invocation does
+        not linger. On one line, each `-p` deletes and KEEPS the flag (so
+        `history -p a; history -p b` deletes through), while the first `-s`
+        deletes and CONSUMES it (``consume=True``) — later `-p`/`-s` on the line
+        then strip nothing. The flag is False when the line was NOT recorded
+        (HISTCONTROL/HISTIGNORE, non-interactive), so no prior entry is stripped
+        by mistake. In-place mutation preserves the editor list-alias contract."""
         state = shell.state
-        line = getattr(state, '_last_recorded_history_line', None)
-        if line is not None and state.history and state.history[-1] == line:
+        if getattr(state, '_history_line_pending_strip', False) and state.history:
             del state.history[-1]
-            state._last_recorded_history_line = None
+        if consume:
+            state._history_line_pending_strip = False
 
     def _expand_print(self, rest: List[str], shell: 'Shell') -> int:
         """``history -p arg...``: history-expand each ARG and print the result

@@ -473,16 +473,15 @@ class SourceProcessor(ScriptComponent):
         # here made ignorespace a silent no-op on the real entry path
         # (reappraisal #17 H7 privacy leak). Whitespace-only commands are still
         # skipped (deliberate divergence: bash records them).
-        # Track the entry this command recorded (if any) so `history -p`/`-s`
-        # can strip their OWN just-added invocation before expanding/storing
-        # (bash), and ONLY that — a line dropped by HISTCONTROL/HISTIGNORE or
-        # a non-recording context leaves the marker None, so no prior entry is
-        # mistaken for the invocation (CV3). Reset every command.
-        recorded_line = None
-        if add_to_history and record_text.strip():
-            if self.shell.add_history(record_text):
-                recorded_line = record_text
-        self.state._last_recorded_history_line = recorded_line
+        # bash's line-scoped history strip flag (CV3 B4/B5): a REAL input line
+        # sets it to whether it was recorded (so `history -p`/`-s` on the line
+        # can strip the invocation); a line dropped by HISTCONTROL/HISTIGNORE
+        # leaves it False (no misfire). Non-recording contexts (eval/source/
+        # cmdsub bodies — add_to_history=False) do NOT touch it, so a
+        # `history -p` inside them INHERITS the enclosing line's flag (bash).
+        if add_to_history:
+            self.state._history_line_pending_strip = bool(
+                record_text.strip() and self.shell.add_history(record_text))
 
         # Alias expansion is a token-stream transform applied at the
         # lex->parse seam (see the expand_aliases calls below and in

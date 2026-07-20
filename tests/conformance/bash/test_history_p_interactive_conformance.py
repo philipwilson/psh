@@ -88,3 +88,66 @@ class TestHistorySInteractiveReplace:
 
     def test_s_no_args_retains_invocation(self):
         _assert_same_interactive(['echo seed', 'history -s', 'history'])
+
+
+class TestHistoryLineScopedStripB4:
+    """CV3 B4: bash's history strip is a LINE-SCOPED PERSISTENT flag, not a
+    single-shot verified marker. While a recorded line's flag is set, EACH
+    `history -p <args>` on the line deletes the LAST (unverified) entry and KEEPS
+    the flag; the FIRST `history -s <args>` deletes and CONSUMES it. So multiple
+    invocations on one line delete THROUGH earlier entries. Divergent on base
+    AND at the prior fix tip (the identity-verified single-shot model kept the
+    prior entry) — RED ON BASE. bash 5.2-verified (-i piped)."""
+
+    def test_two_p_one_line_deletes_through(self):
+        _assert_same_interactive(
+            ['echo seed', 'history -p a; history -p b', 'history'])
+
+    def test_three_p_one_line_deletes_through(self):
+        _assert_same_interactive(
+            ['echo one', 'echo two',
+             'history -p a; history -p b; history -p c', 'history'])
+
+    def test_p_then_s_one_line(self):
+        _assert_same_interactive(
+            ['echo seed', "history -p '!!'; history -s BBB", 'history'])
+
+    def test_s_consumes_flag_blocks_later_p(self):
+        _assert_same_interactive(
+            ['echo seed', 'history -s XXX; history -p a', 'history'])
+
+    def test_p_midline_command_then_p_deletes_through(self):
+        # `echo mid` mid-line does NOT record a new entry, so the second -p
+        # deletes through `echo seed`.
+        _assert_same_interactive(
+            ['echo seed', 'history -p a; echo mid; history -p b', 'history'])
+
+    def test_p_no_operands_one_line_retains(self):
+        _assert_same_interactive(
+            ['echo seed', 'history -p; history -p', 'history'])
+
+    def test_eval_inherits_line_flag(self):
+        _assert_same_interactive(
+            ['echo seed', 'eval "history -p \'!!\'"', 'history'])
+
+    def test_eval_on_line_after_p(self):
+        _assert_same_interactive(
+            ['echo seed', 'history -p a; eval "history -p b"', 'history'])
+
+
+class TestHistoryStripCmdsubInheritanceB5:
+    """CV3 B5: the line strip flag INHERITS across a subshell fork, so a
+    `history -p` inside `$(...)` on a recorded line strips the invocation (its
+    `!!` then refers to the command BEFORE the line). A `history -s` inside
+    `$(...)` does not affect the parent history (its store/delete are on the
+    discarded child copy) — kept-green. RED ON BASE (the clone reset the flag).
+    """
+
+    def test_cmdsub_p_inherits_and_strips(self):
+        # bash prints 'got echo seed' (the -p inside $() saw the pre-line state).
+        _assert_same_interactive(
+            ['echo seed', "echo got $(history -p '!!')", 'history'])
+
+    def test_cmdsub_s_does_not_affect_parent(self):
+        _assert_same_interactive(
+            ['echo seed', 'echo got $(history -s ZZZ)', 'history'])
