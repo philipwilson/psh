@@ -296,6 +296,13 @@ class FgBuiltin(Builtin):
                 os.killpg(job.pgid, signal.SIGCONT)
 
             exit_status = jm.wait_for_job(job)
+            # A resumed foreground job that dies by a signal announces its
+            # death exactly like a freshly launched one — bash prints e.g.
+            # "Terminated: 15" for a fg'd job killed by a signal (#20 J1/nit 3:
+            # the resume transaction never called the reporting chokepoint, so
+            # psh was silent). The last process is the status-determining one.
+            if job.processes:
+                jm.report_signal_death_at(job, len(job.processes) - 1)
         finally:
             # ALWAYS clear foreground-job bookkeeping, even if wait_for_job
             # raised. Reclaim the terminal only when we actually transferred it

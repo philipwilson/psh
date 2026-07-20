@@ -28,11 +28,11 @@ _LAUNCH_MODULES = [
 ]
 
 # Transaction primitives that belong to the session (or the fg/bg resume path),
-# never to a launch module directly.
+# never to a launch module directly. (report_abnormal_termination was DELETED
+# as a dead wrapper — nit 2; report_signal_death_at is the single reporter.)
 _PRIMITIVES = (
     "finish_foreground_job",
     "report_signal_death_at",
-    "report_abnormal_termination",
     "set_foreground_job",
     "wait_for_job",
 )
@@ -72,12 +72,15 @@ def test_every_launch_module_uses_the_session():
 
 
 def test_signal_death_reporting_has_one_chokepoint():
-    """report_signal_death_at is the single signal-death reporter; the only
-    caller of the wrapper report_abnormal_termination is its own definition and
-    the session (no path re-implements the abnormal_termination_message print)."""
+    """report_signal_death_at is the single signal-death reporter; no path
+    re-implements the abnormal_termination_message print outside it (the dead
+    report_abnormal_termination wrapper was deleted — nit 2)."""
     printers = []
+    # Exclude by FULL relative path — the definitions live in the EXECUTOR's
+    # job_control.py; psh/builtins/job_control.py must NOT be exempted (nit 1).
+    definitions = _PSH / "executor" / "job_control.py"
     for path in _PSH.rglob("*.py"):
-        if path.name == "job_control.py":
+        if path == definitions:
             continue  # the definitions live here
         text = path.read_text(encoding="utf-8")
         # a foreground signal-death print reconstructed outside the chokepoint

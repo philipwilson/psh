@@ -8,7 +8,7 @@ base 9b725f14 (v0.745.0) and matches live bash 5.2.26:
   backgrounded job, not just role SINGLE. Base killed the member (rc 130/131).
 - H12 (ForegroundJobSession): a foreground SUBSHELL killed by a signal prints
   bash's abnormal-termination diagnostic (``Terminated: 15`` &c). Base was
-  SILENT — the subshell path bypassed report_abnormal_termination.
+  SILENT — the subshell path never reported it (now via report_signal_death_at).
 - H19 (typed no_hup / huponexit): ``shopt -s huponexit`` is a real option and
   ``disown -h`` keeps the job in the table (typed Job.no_hup). Base rejected
   the option / had no typed field.
@@ -235,3 +235,20 @@ def test_wait_tracked_exited_nonzero_returns_status():
     out, err, rc = _psh(
         "(sleep 0.1; exit 7) & p=$!; sleep 0.4; wait $p; echo rc=$?")
     assert out == "rc=7\n", (out, err)
+
+
+# ---- nit 3: `fg` of a signal-killed job announces its death (bash) -----------
+# The fg RESUME transaction never called the reporting chokepoint, so a fg'd
+# job killed by a signal was silent in psh (base AND branch). RED on base.
+
+def test_fg_resumed_job_signal_death_is_announced():
+    out, err, rc = _psh(
+        'set -m; sh -c "sleep 0.2; kill -TERM \\$\\$" & fg %1; echo after=$?')
+    assert "Terminated" in err, err
+    assert out.strip().endswith("after=143"), (out, err)
+
+
+def test_fg_resumed_job_normal_exit_is_silent():
+    out, err, rc = _psh("set -m; sleep 0.15 & fg %1; echo after=$?")
+    assert "Terminated" not in err, err
+    assert out.strip().endswith("after=0"), (out, err)

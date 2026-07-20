@@ -646,15 +646,6 @@ class JobManager:
         if message is not None:
             print(message, file=self._notification_stream())
 
-    def report_abnormal_termination(self, job: Job) -> None:
-        """Announce a signal-killed single foreground command / subshell.
-
-        Thin wrapper over :meth:`report_signal_death_at` selecting the LAST
-        process (whose status becomes ``$?``).
-        """
-        if job.processes:
-            self.report_signal_death_at(job, len(job.processes) - 1)
-
     def _sigpipe_suppressed(self, status: Optional[int]) -> bool:
         """True when bash would print NO notice for this completed bg job.
 
