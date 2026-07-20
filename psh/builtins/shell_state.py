@@ -107,12 +107,15 @@ class HistoryBuiltin(Builtin):
             # the current line's last (unverified) entry first — so the stored
             # line REPLACES the invocation — and the first `-s` CONSUMES the
             # line's strip flag, blocking later strips on the same line (CV3).
-            # `-s`'s delete has NO single-physical-line restriction (R4). If the
-            # strip is needed but the history is EMPTY (delete-failure, M3),
-            # bash stores NOTHING and does NOT consume the flag.
+            # `-s`'s delete has NO single-physical-line restriction (R4) but IS
+            # gated on a RECORDING context (H1 — never strips inside eval/source/
+            # `-c`, though its store still consumes the line flag). If the strip
+            # is needed but the history is EMPTY (delete-failure, M3), bash
+            # stores NOTHING and does NOT consume the flag.
             if rest:
                 if self._strip_own_invocation(shell, consume=True,
-                                              require_single_physical=False):
+                                              require_single_physical=False,
+                                              gate_on_recording=True):
                     hist_mgr.store_entry(' '.join(rest))
             return 0
 
@@ -123,31 +126,48 @@ class HistoryBuiltin(Builtin):
 
     @staticmethod
     def _strip_own_invocation(shell: 'Shell', consume: bool = False,
-                              require_single_physical: bool = False) -> bool:
-        """bash's line-scoped history strip (CV3 B4/B5/R4/M3). While the current
-        input LINE's strip flag is set, `history -p`/`-s` WITH operands delete
-        the LAST history entry (UNVERIFIED — bash does not identity-check), so a
-        `!!` operand refers to the command BEFORE this call and the invocation
-        does not linger. Each `-p` deletes and KEEPS the flag (so
+                              require_single_physical: bool = False,
+                              gate_on_recording: bool = False) -> bool:
+        """bash's line-scoped history strip (CV3 B4/B5/R4/M3/H1). While the
+        current input LINE's strip flag is set, `history -p`/`-s` WITH operands
+        delete the LAST history entry (UNVERIFIED — bash does not identity-check),
+        so a `!!` operand refers to the command BEFORE this call and the
+        invocation does not linger. Each `-p` deletes and KEEPS the flag (so
         `history -p a; history -p b` deletes through); the first `-s` deletes and
-        CONSUMES it (``consume=True``). `-p`'s delete fires ONLY for a
-        single-physical-line command (``require_single_physical=True``; R4 — a
-        `\\`-continued/multi-line command keeps its invocation), while `-s`'s has
-        no such restriction.
+        CONSUMES it (``consume=True``).
 
-        Returns True when the caller should PROCEED (no strip needed, `-p` on a
-        multi-physical-line, or the strip succeeded); False on a DELETE-FAILURE
-        (the strip is due but the history is EMPTY — M3): the caller then aborts
-        (`-p` prints nothing, rc 1; `-s` stores nothing and does not consume).
-        The flag is False when the line was NOT recorded (HISTCONTROL/HISTIGNORE,
-        non-interactive), so no prior entry is stripped by mistake. In-place
-        mutation preserves the editor list-alias contract."""
+        Three bash gates:
+        - ``require_single_physical`` (R4): `-p`'s delete fires ONLY for a
+          single-physical-line command (a `\\`-continued/multi-line command keeps
+          its invocation); `-s`'s has no such restriction.
+        - ``gate_on_recording`` (H1): `-s`'s delete fires ONLY in a RECORDING
+          context (a top-level input line) — NEVER inside eval/source/`-c` string
+          contexts (bash gates the `-s` delete on `remember_on_history`; `-p` has
+          NO such gate, so a sourced/eval'd `-p` still strips). But `-s`'s store
+          still CONSUMES the line flag even when its delete did not fire (bash
+          sets `hist_last_line_pushed` regardless), blocking later strips on the
+          same line.
+
+        Returns True when the caller should PROCEED (no strip needed, gated out,
+        or the strip succeeded); False on a DELETE-FAILURE (the strip is due but
+        the history is EMPTY — M3): the caller then aborts (`-p` prints nothing,
+        rc 1; `-s` stores nothing and does not consume). The flag is False when
+        the line was NOT recorded (HISTCONTROL/HISTIGNORE, non-interactive), so no
+        prior entry is stripped by mistake. In-place mutation preserves the
+        editor list-alias contract."""
         state = shell.state
         if not getattr(state, '_history_line_pending_strip', False):
             return True                              # no strip needed → proceed
         if (require_single_physical
                 and not getattr(state, '_history_line_single_physical', True)):
             return True                              # -p multi-physical: no strip
+        if (gate_on_recording
+                and not getattr(state, '_history_recording_active', True)):
+            # -s in a non-recording (eval/source/-c) context: NO delete, but the
+            # store still CONSUMES the line flag (H1(b)).
+            if consume:
+                state._history_line_pending_strip = False
+            return True
         if not state.history:
             return False                             # delete-failure (M3)
         del state.history[-1]

@@ -206,3 +206,39 @@ class TestHistoryStripDeleteFailureM3:
     def test_p_literal_delete_failure_prints_nothing(self):
         _assert_same_interactive(
             ['echo seed', 'history -c; history -p a; history'])
+
+
+class TestHistorySInStringContextH1:
+    r"""CV3 H1: `history -s`'s DELETE is gated on a RECORDING context — bash
+    NEVER strips inside eval/source/`-c` string contexts (parse_and_execute
+    clears remember_on_history), though its store still CONSUMES the line flag.
+    `history -p` has NO such gate (a sourced/eval'd `-p` still strips). The
+    round-1 flag inheritance made `-s` delete inside eval/source — data loss.
+    RED at the fix tip. bash 5.2-verified."""
+
+    def test_eval_s_does_not_delete_but_stores(self):
+        # bash keeps the `eval "history -s SNEW"` invocation AND stores SNEW.
+        _assert_same_interactive(
+            ['echo seed', 'eval "history -s SNEW"', 'history'])
+
+    def test_source_s_does_not_delete_user_entry(self):
+        # The destructive row: a sourced `-s` must not delete a real entry.
+        _assert_same_interactive(
+            ['echo one', 'echo two',
+             "source /dev/stdin <<< 'history -s SNEW'", 'history'])
+
+    def test_eval_s_consumes_flag_blocking_later_p(self):
+        # In eval, `-s` doesn't delete but STILL consumes the flag, so a
+        # following `-p` on the same eval string strips nothing.
+        _assert_same_interactive(
+            ['echo seed', 'eval "history -s XXX; history -p \'!!\'"', 'history'])
+
+    def test_eval_p_still_strips_control(self):
+        # Control (kept-green): `-p` inside eval DOES strip (no recording gate).
+        _assert_same_interactive(
+            ['echo seed', 'eval "history -p \'!!\'"', 'history'])
+
+    def test_source_then_toplevel_s_restores_recording(self):
+        # After source returns, the top-level `-s` deletes again (restore).
+        _assert_same_interactive(
+            ['echo one', "source /dev/stdin <<< ':'; history -s XXX", 'history'])

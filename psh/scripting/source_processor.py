@@ -114,17 +114,28 @@ class SourceProcessor(ScriptComponent):
         # (the recursion headroom is an activation fact); nested runs (eval,
         # source, trap actions) count depth on the same owner.
         with self.shell.activation():
-            executor = getattr(self.shell, '_current_executor', None)
-            if executor is None:
-                return self._run_from_source(input_source, add_to_history,
-                                             base_line)
-            saved_floor = executor.context.special_exit_floor
-            executor.context.special_exit_floor = executor.context.errexit_suppress
+            # bash's remember_on_history (CV3 H1): this source's commands are a
+            # RECORDING context only at the top level (add_to_history); an
+            # eval/dot/`-c` string context is NOT (parse_and_execute clears it),
+            # so `history -s`'s delete does not fire inside it. Saved/restored so
+            # `source f; history -s x` deletes for the top-level `-s` again.
+            saved_recording = self.state._history_recording_active
+            self.state._history_recording_active = add_to_history
             try:
-                return self._run_from_source(input_source, add_to_history,
-                                             base_line)
+                executor = getattr(self.shell, '_current_executor', None)
+                if executor is None:
+                    return self._run_from_source(input_source, add_to_history,
+                                                 base_line)
+                saved_floor = executor.context.special_exit_floor
+                executor.context.special_exit_floor = \
+                    executor.context.errexit_suppress
+                try:
+                    return self._run_from_source(input_source, add_to_history,
+                                                 base_line)
+                finally:
+                    executor.context.special_exit_floor = saved_floor
             finally:
-                executor.context.special_exit_floor = saved_floor
+                self.state._history_recording_active = saved_recording
 
     def _run_from_source(self, input_source, add_to_history: bool = True,
                          base_line: int = 1) -> int:
