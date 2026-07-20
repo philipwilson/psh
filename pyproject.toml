@@ -163,6 +163,10 @@ module = "psh.ast_nodes.*"
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
+module = "psh.protocols.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
 module = "psh.parser.recursive_descent.*"
 check_untyped_defs = true
 
