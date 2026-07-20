@@ -23,7 +23,7 @@ is not generic): :func:`build_word_template` (parameter operand),
 (array subscript). All raise :class:`SubstitutionSyntaxError` (via the one
 chokepoint ``parse_nested_command``) on an invalid nested body.
 """
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Mapping, Optional, Protocol
 
 from ....ast_nodes import CommandSubstitution, ProcessSubstitution
 
@@ -39,13 +39,32 @@ from ....lexer.cmdsub_scanner import find_command_substitution_end
 from ....lexer.expansion_parser import ExpansionParser
 from .nested_parse import parse_nested_command
 
+
+class _TemplateCtx(Protocol):
+    """The narrow parse-context contract the builders read (Q2 nit-1).
+
+    ``line_offset`` and ``lexer_options`` are ALWAYS present — a ``ParserContext``
+    property (RD) or a frozen ``ParseInputs`` field (combinator) — so they are the
+    structural contract and are accessed DIRECTLY below. Read-only properties (not
+    bare data attributes) so a FROZEN ``ParseInputs`` field satisfies them.
+    ``nesting_depth`` / ``substitution_depth`` are deliberately NOT in this
+    Protocol: the combinator's ``ParseInputs`` does not carry them (they live on
+    ``ParserState``), so they are read absent-tolerantly via ``getattr(..., 0)``."""
+
+    @property
+    def line_offset(self) -> int: ...
+
+    @property
+    def lexer_options(self) -> "Optional[Mapping[str, object]]": ...
+
+
 # One stateless extent finder shared by every scan (config-independent for the
 # paren/brace constructs we care about; variable-name extraction never needs
 # validation, so posix_mode is irrelevant here).
 _EXPANSION = ExpansionParser(None)
 
 
-def _validate_body(body: str, ctx: "Optional[object]") -> 'Program':
+def _validate_body(body: str, ctx: "Optional[_TemplateCtx]") -> 'Program':
     """Parse a modern substitution body at read time (raises on invalid syntax).
 
     Routes through the ONE chokepoint (``parse_nested_command``), which re-types
@@ -55,10 +74,14 @@ def _validate_body(body: str, ctx: "Optional[object]") -> 'Program':
     ``WordBuilder._nested_program``.
     """
     if ctx is not None:
-        line_offset = getattr(ctx, 'line_offset', 0) or 0
+        # line_offset/lexer_options are Protocol-guaranteed → direct access
+        # (Q2: no defensive getattr on a declared member). nesting_depth/
+        # substitution_depth are NOT on the combinator's ParseInputs, so they
+        # stay absent-tolerant via getattr-with-default.
+        line_offset = ctx.line_offset or 0
         depth = getattr(ctx, 'nesting_depth', 0) or 0
         sub_depth = getattr(ctx, 'substitution_depth', 0) or 0
-        lexer_options = getattr(ctx, 'lexer_options', None)
+        lexer_options = ctx.lexer_options
     else:
         line_offset, depth, sub_depth, lexer_options = 0, 0, 0, None
     return parse_nested_command(body, line_offset=line_offset,
@@ -84,7 +107,7 @@ def _skip_ansi_c(text: str, i: int) -> int:
 
 
 def _scan(text: str, base: int, dq: bool, allow_procsub: bool,
-          ctx: "Optional[object]") -> List[NestedSub]:
+          ctx: "Optional[_TemplateCtx]") -> List[NestedSub]:
     """Scan ``text`` for nested modern substitutions, validating each.
 
     ``base`` is ``text``'s absolute offset in the enclosing region (so recorded
@@ -148,7 +171,7 @@ def _scan(text: str, base: int, dq: bool, allow_procsub: bool,
 
 
 def _handle_dollar(etype: Optional[str], value: str, text: str, i: int,
-                   nxt: int, base: int, dq: bool, ctx: "Optional[object]",
+                   nxt: int, base: int, dq: bool, ctx: "Optional[_TemplateCtx]",
                    subs: List[NestedSub]) -> None:
     """Dispatch a ``$``-expansion found by the lexer's extent scanner."""
     if etype == 'command':
@@ -173,7 +196,7 @@ def _handle_dollar(etype: Optional[str], value: str, text: str, i: int,
     # 'variable' and a bare literal '$' need no validation.
 
 
-def build_word_template(text: str, ctx: "Optional[object]" = None) -> WordTemplate:
+def build_word_template(text: str, ctx: "Optional[_TemplateCtx]" = None) -> WordTemplate:
     """Validate the nested shell grammar of a parameter-expansion operand.
 
     ``text`` is the raw operand (``${x:-<text>}``), quotes included. Process
@@ -183,7 +206,7 @@ def build_word_template(text: str, ctx: "Optional[object]" = None) -> WordTempla
     return WordTemplate(text=text, subs=tuple(_scan(text, 0, False, True, ctx)))
 
 
-def build_arithmetic_template(text: str, ctx: "Optional[object]" = None) -> ArithmeticTemplate:
+def build_arithmetic_template(text: str, ctx: "Optional[_TemplateCtx]" = None) -> ArithmeticTemplate:
     """Validate the nested shell grammar of an arithmetic region.
 
     ``text`` is the raw arithmetic expression (``$((<text>))`` / ``(( <text> ))``
@@ -194,7 +217,7 @@ def build_arithmetic_template(text: str, ctx: "Optional[object]" = None) -> Arit
     return ArithmeticTemplate(text=text, subs=tuple(_scan(text, 0, False, False, ctx)))
 
 
-def build_subscript_spec(text: str, ctx: "Optional[object]" = None) -> SubscriptSpec:
+def build_subscript_spec(text: str, ctx: "Optional[_TemplateCtx]" = None) -> SubscriptSpec:
     """Validate the nested shell grammar of an array subscript.
 
     ``text`` is the raw subscript (``arr[<text>]``). Nested modern ``$()`` are

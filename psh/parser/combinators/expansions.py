@@ -4,7 +4,7 @@ This module provides parsers for shell expansions (variable, command substitutio
 arithmetic, process substitution) and Word AST node construction.
 """
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ...ast_nodes import (
     ExpansionPart,
@@ -17,6 +17,9 @@ from ..recursive_descent.support.word_builder import (
     WordBuilder,
 )
 from .core import Parser, token
+
+if TYPE_CHECKING:
+    from ..parse_inputs import ParseInputs
 
 
 class ExpansionParsers:
@@ -44,7 +47,7 @@ class ExpansionParsers:
         # extglob-aware re-lexing of a nested substitution body). Set for the
         # duration of a parse by ParserCombinatorShellParser and cleared in its
         # finally; None (defaults 0/None) outside a parse and for standalone use.
-        self.parse_ctx: "Optional[object]" = None
+        self.parse_ctx: "Optional[ParseInputs]" = None
 
     def build_word_from_token(self, token: Token) -> Word:
         """Build a Word AST node from a token.
