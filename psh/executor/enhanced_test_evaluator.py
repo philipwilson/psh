@@ -211,8 +211,15 @@ class TestExpressionEvaluator:
         literal ``$`` is a syntax error, like bash. Evaluation failures
         (``ShellArithmeticError``) surface as status 1 with a message —
         see ``visit_EnhancedTestStatement``.
+
+        ``arith_source_quotes=False``: a ``[[`` numeric operand is a shell WORD
+        that was already quote-processed by the shell (exactly like a ``let``
+        arg), so an associative subscript inside it gets NO extra ``(( ))``
+        round-1 dquote pass — ``h[q]=7; [[ h[\"q\"] -eq 7 ]]`` keys ``"q"`` (bash
+        no), not ``q`` (CV1 B1 R1).
         """
-        return evaluate_arithmetic(value, self.shell, expand=False)
+        return evaluate_arithmetic(value, self.shell, expand=False,
+                                   arith_source_quotes=False)
 
     def _rhs_walk(self, word, *, escape, tilde: bool) -> str:
         """Build a ``==``/``!=`` glob pattern or a ``=~`` regex source from a

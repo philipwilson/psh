@@ -73,9 +73,9 @@ class ArithmeticEvaluator:
         self.shell = shell
         self._eval_depth = 0
         # True for `(( ))`/`$(( ))` (body not shell-processed → apply the extra
-        # dquote round to source-spelled associative subscripts); False for
-        # `let` (its arg was already shell-processed). See
-        # _arith_source_dquote_round (W2/CV1 B1).
+        # round-1 dquote pass to a SOURCE substitution-free associative
+        # subscript, in _arith_preexpand); False for `let`/`[[`/stored values
+        # (already shell-processed). See _arith_source_round1 (W2/CV1 B1/M1).
         self._arith_source_quotes = arith_source_quotes
 
     def get_variable(self, name: str) -> int:
@@ -141,8 +141,14 @@ class ArithmeticEvaluator:
             # names / expression text ("a+1", "0x10") contain no $ and are
             # unaffected; the name-chain fast path above (isidentifier) is a
             # separate ARITH-VALUE recursion, also unaffected.
+            #
+            # arith_source_quotes=False: a STORED value re-evaluated as
+            # arithmetic is let-like (its quotes/backslashes are literal data,
+            # already quote-processed when stored), so an associative subscript
+            # inside it gets NO extra (( )) round-1 dquote pass — `y='h[\"q\"]';
+            # $(( y ))` keys `"q"` (bash 0), not `q` (CV1 B1 R2).
             return evaluate_arithmetic(value, self.shell, expand=False,
-                                       arith_source_quotes=self._arith_source_quotes)
+                                       arith_source_quotes=False)
 
     def set_variable(self, name: str, value: int) -> None:
         """Set variable value"""
@@ -169,8 +175,10 @@ class ArithmeticEvaluator:
         # expand=False for the same reason as get_variable: an array element /
         # scalar value reached here is a STORED value, never re-$-expanded
         # (bash: `arr=('$y'); $((arr[0]))` is a syntax error, not $y's value).
+        # arith_source_quotes=False: a stored value is let-like, so a subscript
+        # inside it gets NO extra round-1 dquote pass (CV1 B1 R2).
         return evaluate_arithmetic(value, self.shell, expand=False,
-                                   arith_source_quotes=self._arith_source_quotes)
+                                   arith_source_quotes=False)
 
     def _nameref_target(self, name: str) -> str:
         """Resolve a nameref to its target name for array element ops.
@@ -199,10 +207,12 @@ class ArithmeticEvaluator:
         backslashes are removed, but characters arriving via ``$k`` stay
         LITERAL, matching bash (``k='"q"'; (( h[$k]=1 ))`` keys ``"q"``, and
         ``k='$x'; (( h[$k]=1 ))`` keys the literal ``$x`` — a substituted
-        ``$`` is never rescanned). For ``(( ))``/``$(( ))`` (not ``let``) the
-        source text ALSO gets bash's extra round-1 dquote pass first
-        (``_arith_source_dquote_round``; W2/CV1 B1). An indexed array, scalar, or
-        undeclared name expands then arithmetic-evaluates the raw text, so
+        ``$`` is never rescanned). bash's extra round-1 dquote pass for
+        ``(( ))``/``$(( ))`` was already applied to a SOURCE, substitution-free
+        subscript in the pre-pass (``_arith_preexpand`` / ``_arith_source_round1``;
+        W2/CV1 B1/M1), so ``index_text`` arrives round-1'd where applicable and
+        the associative key here is the single round-2. An indexed array, scalar,
+        or undeclared name expands then arithmetic-evaluates the raw text, so
         ``a[i++]`` side-effects fire exactly once per lvalue resolution. An empty
         subscript is bash's "bad array subscript" error.
         """
@@ -212,23 +222,18 @@ class ArithmeticEvaluator:
             self._nameref_target(name))
         subscript = self.shell.expansion_manager.subscript
         if var is not None and isinstance(var.value, AssociativeArray):
-            # Round 1: bash's extra dquote pass on source-spelled text for
-            # `(( ))`/`$(( ))` (a `let` arg was already shell-processed, so it
-            # skips this). Round 2 is the provenance-tracking associative key.
-            key_src = (_arith_source_dquote_round(index_text, self.shell)
-                       if self._arith_source_quotes else index_text)
-            key = subscript.associative_key(key_src)
+            key = subscript.associative_key(index_text)
             # bash's empty-subscript policy: an empty key from substitution or
             # literal-empty text is fatal; a source empty-quoted key (h[""]) is
             # a valid empty key (raw_has_source_quote only re-lexes, so the one
             # keying expansion above is not doubled).
-            if key == '' and not subscript.raw_has_source_quote(key_src):
+            if key == '' and not subscript.raw_has_source_quote(index_text):
                 raise ShellArithmeticError(f"{name}[]: bad array subscript")
             return key
         # Indexed / scalar / undeclared: the $-forms held out of the pre-pass
         # (_arith_preexpand) are substituted here ONCE, then arithmetic-evaluated
         # with expand=False. An empty expansion is bash's "bad array subscript".
-        flat = _arith_preexpand(index_text, self.shell)
+        flat = _arith_preexpand(index_text, self.shell, self._arith_source_quotes)
         if flat == '':
             raise ShellArithmeticError(f"{name}[]: bad array subscript")
         return evaluate_arithmetic(flat, self.shell, expand=False,
@@ -621,78 +626,45 @@ def _mask_arith_subscripts(expr: str) -> "Tuple[str, list]":
     return ''.join(out), regions
 
 
-def _arith_preexpand(expr: str, shell) -> str:
+def _arith_source_round1(region: str, shell) -> str:
+    """Round 1 of bash's TWO-round ``(( ))``/``$(( ))`` associative keying
+    (W2/CV1 B1/M1), applied to a SOURCE ``[...]`` subscript region ONLY when it
+    contains NO expansion (M1: a subscript with any ``$``/backtick gets round-2
+    ONLY — its round-1 output would be final, so the shared associative-key
+    engine handles it directly, keeping ``\\"`` literal beside a substituted
+    value). For a substitution-free source subscript with escapes, the arith
+    body was not shell-word-processed, so bash applies an extra dquote-context
+    escape pass first (``(( h[\\"q\\"] ))`` keys ``q`` — round 1 ``\\"``->``"``,
+    round 2 removes it), consistent with ``(( expr )) == let "expr"``."""
+    content = region[1:-1]
+    if '$' in content or '`' in content or '\\' not in content:
+        return region          # has expansion, or no escape → round-2 only
+    processed = shell.expansion_manager.expand_string_variables(
+        content, quote_ctx=DQ_STRING)
+    return '[' + processed + ']'
+
+
+def _arith_preexpand(expr: str, shell, arith_source_quotes: bool = True) -> str:
     """Run the arithmetic ``$``-substitution pre-pass, holding array-subscript
-    regions RAW (see :func:`_mask_arith_subscripts`). Subscript-free expressions
-    take the byte-identical fast path."""
+    regions RAW (see :func:`_mask_arith_subscripts`) so a subscript's ``$k``
+    reaches the keying authority with provenance. For a SOURCE subscript in a
+    ``(( ))``/``$(( ))`` context (``arith_source_quotes``), the extra round-1
+    dquote escape pass is applied here — to source regions only, so a subscript
+    that arrives via ``$``-expansion (``$(( $y ))``) is NEVER round-1'd (it is
+    let-like; W2/CV1 R2/M1). ``let``/``[[``/stored-value contexts pass
+    ``arith_source_quotes=False``. Subscript-free expressions take the
+    byte-identical fast path."""
     if '[' not in expr:
         return shell.expansion_manager.expand_string_variables(
             expr, quote_ctx=DQ_STRING)
     masked, regions = _mask_arith_subscripts(expr)
     expanded = shell.expansion_manager.expand_string_variables(
         masked, quote_ctx=DQ_STRING)
-    for idx, raw in enumerate(regions):
-        expanded = expanded.replace('\x00%d\x00' % idx, raw)
+    for idx, region in enumerate(regions):
+        if arith_source_quotes:
+            region = _arith_source_round1(region, shell)
+        expanded = expanded.replace('\x00%d\x00' % idx, region)
     return expanded
-
-
-def _mask_dollar_forms(raw: str) -> "Tuple[str, list]":
-    """Mask ``$``-forms, ``\\$`` escapes, and backticks in ``raw`` with NUL
-    placeholders; return ``(masked, [form, ...])``.
-
-    Used by the ``(( ))`` round-1 dquote pass (:func:`_arith_source_dquote_round`)
-    so a SUBSTITUTED value survives round 1 LITERAL (its provenance is
-    protected), and a source ``\\$x`` is NOT un-escaped into an expandable
-    ``$x`` — both are held out and interpreted by the round-2 associative-key
-    engine instead."""
-    out: 'list[str]' = []
-    forms: 'list[str]' = []
-    i = 0
-    n = len(raw)
-    while i < n:
-        ch = raw[i]
-        if ch == '\\' and i + 1 < n and raw[i + 1] == '$':
-            forms.append(raw[i:i + 2])
-            out.append('\x00%d\x00' % (len(forms) - 1))
-            i += 2
-        elif ch == '$':
-            j = _skip_dollar_form(raw, i)
-            forms.append(raw[i:j])
-            out.append('\x00%d\x00' % (len(forms) - 1))
-            i = j
-        elif ch == '`':
-            k = raw.find('`', i + 1)
-            j = n if k == -1 else k + 1
-            forms.append(raw[i:j])
-            out.append('\x00%d\x00' % (len(forms) - 1))
-            i = j
-        else:
-            out.append(ch)
-            i += 1
-    return ''.join(out), forms
-
-
-def _arith_source_dquote_round(raw: str, shell) -> str:
-    """Round 1 of bash's TWO-round ``(( ))``/``$(( ))`` associative-subscript
-    keying (W2/CV1 B1).
-
-    An arithmetic-command body is NOT shell-word-processed, so bash applies a
-    dquote-context pass to SOURCE-spelled subscript text before the associative
-    keying (round 2): ``(( h[\\"q\\"]=1 ))`` keys ``q`` (round 1 ``\\"``->``"``,
-    round 2 removes it), consistent with ``(( expr ))`` == ``let "expr"``.
-    ``let`` itself skips round 1 (its argument was already shell-processed).
-    ``$``-forms and ``\\$`` are held out (:func:`_mask_dollar_forms`) so a
-    substituted value stays LITERAL across both rounds and a source ``\\$x``
-    keys the literal ``$x``. Text with no escape/substitution is byte-identical.
-    """
-    if '\\' not in raw and '$' not in raw and '`' not in raw:
-        return raw
-    masked, forms = _mask_dollar_forms(raw)
-    processed = shell.expansion_manager.expand_string_variables(
-        masked, quote_ctx=DQ_STRING)
-    for idx, form in enumerate(forms):
-        processed = processed.replace('\x00%d\x00' % idx, form)
-    return processed
 
 
 def evaluate_arithmetic(expr: str, shell, expand: bool = True,
@@ -737,7 +709,8 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool,
         # regions are held RAW through this pass (_arith_preexpand) so an
         # associative key's $k is not substituted-then-quote-removed — the
         # subscript authority keys the raw text with provenance (W2/CV1).
-        expanded_expr = _arith_preexpand(expr, shell) if expand else expr
+        expanded_expr = (_arith_preexpand(expr, shell, arith_source_quotes)
+                         if expand else expr)
 
         # Tokenize the expanded expression
         tokenizer = ArithTokenizer(expanded_expr)

@@ -252,6 +252,60 @@ class TestArithExtraDquoteRound(ConformanceTest):
             r"""declare -A h; let 'h[\"q\"]=1'; declare -p h""")
 
 
+class TestArithSourceQuotesModelR1R2M1(ConformanceTest):
+    r"""CV1 B1 round-2 bounce fixes. The extra round-1 dquote pass is applied
+    ONLY to a SOURCE, substitution-free subscript in a `(( ))`/`$(( ))` context;
+    it is dropped for `[[` operands (R1) and re-evaluated STORED values (R2,
+    let-like), and round-2 quote removal runs ONLY for substitution-free
+    subscripts — a subscript with ANY expansion keeps its round-1 output final
+    (M1). All rows RED at the prior fix tip, bash 5.2-verified."""
+
+    def test_r1_double_bracket_operand_is_let_like(self):
+        # A [[ ]] numeric operand is a shell word (quote-processed), so no extra
+        # round: bash keys "q" -> unset -> 7 != -> NO.
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; [[ 'h[\"q\"]' -eq 7 ]] && echo Y || echo N""")
+
+    def test_r2_stored_value_bare_name(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; y='h[\"q\"]'; echo $(( y ))""")
+
+    def test_r2_stored_value_dollar_expanded(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; y='h[\"q\"]'; echo $(( $y ))""")
+
+    def test_r2_stored_value_name_chain(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; z=y; y='h[\"q\"]'; echo $(( z ))""")
+
+    def test_r2_stored_array_element(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; h[q]=7; a=('h[\"q\"]'); echo $(( a[0] ))""")
+
+    def test_m1_escaped_dquote_around_sub_no_round2(self):
+        # \"$k\" has an expansion, so round-1 output "Q" is FINAL (no round-2).
+        self.assert_identical_behavior(
+            r"""declare -A h; k=Q; (( h[\"$k\"]=1 )); declare -p h""")
+
+    def test_m1_sub_then_escaped_dquote(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; k=Q; (( h[$k\"z\"]=1 )); declare -p h""")
+
+    def test_m1_cmdsub_then_escaped_dquote(self):
+        self.assert_identical_behavior(
+            r"""declare -A h; (( h[$(echo a)\"z\"]=1 )); declare -p h""")
+
+    def test_m1_escaped_dquote_around_escaped_dollar(self):
+        # \"\$x\" has a $ (escaped), so round-1 output "$x" is FINAL.
+        self.assert_identical_behavior(
+            r"""declare -A h; (( h[\"\$x\"]=1 )); declare -p h""")
+
+    def test_m1_control_substitution_free_still_removes(self):
+        # \"q\" (no $) still gets round-1 + round-2 -> q (control, stays green).
+        self.assert_identical_behavior(
+            r"""declare -A h; (( h[\"q\"]=1 )); declare -p h""")
+
+
 def _arith_key(cmd):
     """(stdout, rc) of psh/bash for an arith-subscript write, for the carrier
     documented-divergence rows (they compare psh vs bash EXPLICITLY, since they
