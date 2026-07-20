@@ -71,6 +71,12 @@ def test_no_huponexit_bg_child_survives_exit(tmp_path):
 
 def test_huponexit_bg_child_is_hupped_on_exit(tmp_path):
     # huponexit on: SIGHUP kills the bg child before it marks the file.
+    #
+    # This records the PSH login-narrowing MODEL (boundary J1 ruling 1): PSH
+    # has no login-shell concept, so every interactive PSH shell is login-like
+    # for huponexit and HUPs its jobs on exit. It is NOT a claim of bash parity
+    # for the interactive non-login case (bash would not HUP a non-login shell's
+    # jobs) — see docs/user_guide/17_differences_from_bash.md.
     assert _run_and_check_survival(tmp_path, huponexit=True) is False
 
 
@@ -78,6 +84,37 @@ def test_disown_h_exempts_job_from_huponexit(tmp_path):
     # disown -h keeps the job in the table but exempt from the exit HUP, so the
     # child survives even with huponexit set (Job.no_hup honored).
     assert _run_and_check_survival(tmp_path, huponexit=True, disown_h=True) is True
+
+
+def test_kill_hup_to_interactive_shell_does_not_fan_out(tmp_path):
+    """Received-SIGHUP parity (boundary J1 ruling 3, corrected finding).
+
+    A programmatic ``kill -HUP`` to an interactive shell does NOT fan SIGHUP out
+    to its jobs — in EITHER shell. Probe-derived vs bash 5.2 (trap-based;
+    tmp/boundary-ledgers/J1-probes/sighup_definitive.txt): bash fans out only on
+    a genuine terminal DISCONNECT, which it distinguishes from an explicit
+    ``kill -HUP``. PSH matches the kill -HUP case (parity); the disconnect
+    fan-out is a documented residual (docs/missing_features.md). This pins the
+    parity so the corrected model can't silently regress into a spurious
+    kill -HUP fan-out.
+    """
+    import os
+    import signal
+
+    marker = tmp_path / "hupmark"
+    child = _spawn()
+    try:
+        # child traps HUP and marks a file; only the shell's fan-out could send
+        # HUP to a running bg child (a running orphaned pgroup gets no kernel HUP).
+        child.send("{ trap ': > %s' HUP; sleep 3; } &\r" % marker)
+        child.expect(PROMPT)
+        time.sleep(0.2)
+        os.kill(child.pid, signal.SIGHUP)      # explicit kill -HUP to the shell
+        time.sleep(0.8)
+        # The shell did not fan out, so the child never caught HUP.
+        assert not marker.exists()
+    finally:
+        child.close(force=True)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual smoke

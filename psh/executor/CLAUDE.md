@@ -321,7 +321,12 @@ Two typed invariants own the job/signal boundary:
 
 Exit-time job disposition (huponexit HUP/CONT honoring `Job.no_hup`, detached-
 child reaping via `JobManager.reap_registry`/`reap_detached`) lives on the one
-`Shell.shutdown` → `_dispose_jobs_at_exit` path (#20 H19).
+`Shell.shutdown` → `_dispose_jobs_at_exit` path (#20 H19, PARTIALLY closed:
+typed `no_hup`/`huponexit`/reap-separation shipped; the fan-out on a genuine
+terminal *disconnect* and prompt-time reaping of a disowned child while the
+shell lives are carried — see `docs/missing_features.md`). huponexit follows a
+login-narrowing model (psh has no login shells; every interactive shell is
+login-like) — a documented difference, NOT bash parity for the non-login case.
 
 ### Process Group Management
 
