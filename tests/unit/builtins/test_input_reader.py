@@ -23,7 +23,7 @@ import time
 
 import pytest
 
-from psh.builtins.input_reader import InputReader, Outcome, ReadResult
+from psh.builtins.input_reader import InputCursor, Outcome, ReadResult
 
 
 def _pipe(data: bytes) -> int:
@@ -56,7 +56,7 @@ class TestUtf8Decoding:
     def test_multibyte_record_decodes_whole(self):
         fd = _pipe("héllo wörld\n".encode("utf-8"))
         try:
-            result = InputReader(fd=fd).read_record(
+            result = InputCursor(fd=fd).read_record(
                 delimiter="\n", include_delimiter=True)
         finally:
             os.close(fd)
@@ -66,7 +66,7 @@ class TestUtf8Decoding:
     def test_N1_reads_one_character_two_bytes(self):
         fd = _pipe("éb\n".encode("utf-8"))
         try:
-            reader = InputReader(fd=fd)
+            reader = InputCursor(fd=fd)
             result = reader.read_limited(delimiter=None, max_chars=1)
             assert result.data == "é"
             # The orphaned byte must NOT have been consumed: the next reader
@@ -78,7 +78,7 @@ class TestUtf8Decoding:
     def test_emoji_counts_as_one_character(self):
         fd = _pipe("😀x\n".encode("utf-8"))
         try:
-            result = InputReader(fd=fd).read_limited(delimiter=None, max_chars=1)
+            result = InputCursor(fd=fd).read_limited(delimiter=None, max_chars=1)
         finally:
             os.close(fd)
         assert result.data == "😀"
@@ -91,7 +91,7 @@ class TestUtf8Decoding:
         # correct — NOT the U+FFFD this used to assert.
         fd = _pipe(b"\xc3")
         try:
-            result = InputReader(fd=fd).read_record(
+            result = InputCursor(fd=fd).read_record(
                 delimiter="\n", include_delimiter=True)
         finally:
             os.close(fd)
@@ -104,7 +104,7 @@ class TestOverReadAvoidance:
     def test_record_leaves_rest_for_next_consumer(self):
         fd = _pipe(b"a\nb\nc\n")
         try:
-            reader = InputReader(fd=fd)
+            reader = InputCursor(fd=fd)
             first = reader.read_record(delimiter="\n", include_delimiter=True)
             assert first.data == "a\n"
             # Everything after the first record is untouched in the stream.
@@ -115,7 +115,7 @@ class TestOverReadAvoidance:
     def test_limited_stops_early_at_delimiter(self):
         fd = _pipe(b"ab\ncd\n")
         try:
-            result = InputReader(fd=fd).read_limited(delimiter="\n", max_chars=10)
+            result = InputCursor(fd=fd).read_limited(delimiter="\n", max_chars=10)
         finally:
             os.close(fd)
         assert result.data == "ab"
@@ -124,12 +124,12 @@ class TestOverReadAvoidance:
 
 class TestTextStreamSource:
     def test_stringio_record(self):
-        result = InputReader(stream=io.StringIO("abc\ndef\n")).read_record(
+        result = InputCursor(stream=io.StringIO("abc\ndef\n")).read_record(
             delimiter="\n", include_delimiter=True)
         assert result.data == "abc\n"
 
     def test_stringio_eof_partial(self):
-        result = InputReader(stream=io.StringIO("tail")).read_record(
+        result = InputCursor(stream=io.StringIO("tail")).read_record(
             delimiter="\n", include_delimiter=True)
         assert result.data == "tail"
         assert result.outcome is Outcome.EOF
@@ -140,7 +140,7 @@ class TestDeadline:
         r, w = os.pipe()  # writer open, nothing written → read blocks
         try:
             start = time.monotonic()
-            result = InputReader(fd=r).read_record(
+            result = InputCursor(fd=r).read_record(
                 delimiter="\n", include_delimiter=True,
                 deadline=time.monotonic() + 0.3)
             elapsed = time.monotonic() - start
@@ -175,7 +175,7 @@ class TestTotalDeadline:
         monkeypatch.setattr(ir, "time", _FakeClock([0.0, 0.6, 1.2, 2.0]))
         fd = _pipe(b"abc")  # all present at once; timing is purely the clock
         try:
-            result = ir.InputReader(fd=fd).read_limited(
+            result = ir.InputCursor(fd=fd).read_limited(
                 delimiter=None, max_chars=10, deadline=1.0)
         finally:
             os.close(fd)
@@ -189,20 +189,20 @@ class TestReadAll:
     def test_drains_to_eof(self):
         fd = _pipe("one\ntwö\n".encode("utf-8"))
         try:
-            assert InputReader(fd=fd).read_all() == "one\ntwö\n"
+            assert InputCursor(fd=fd).read_all() == "one\ntwö\n"
         finally:
             os.close(fd)
 
     def test_read_all_from_stream(self):
-        assert InputReader(stream=io.StringIO("xyz")).read_all() == "xyz"
+        assert InputCursor(stream=io.StringIO("xyz")).read_all() == "xyz"
 
 
 class TestConstruction:
     def test_requires_exactly_one_source(self):
         with pytest.raises(ValueError):
-            InputReader()
+            InputCursor()
         with pytest.raises(ValueError):
-            InputReader(fd=0, stream=io.StringIO(""))
+            InputCursor(fd=0, stream=io.StringIO(""))
 
     def test_result_repr_is_safe(self):
         r = ReadResult("x", Outcome.DATA, hit_delimiter=True)

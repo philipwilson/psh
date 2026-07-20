@@ -397,12 +397,6 @@ class InputCursor:
         return chunk[0], Outcome.DATA, None
 
 
-#: Backwards-compatible alias. ``InputReader`` was renamed to the typed
-#: :class:`InputCursor` (campaign I1); the old name is retained so external
-#: references keep resolving during the migration window.
-InputReader = InputCursor
-
-
 def make_reader(io_ctx: 'IOContext', fd: int) -> InputCursor:
     """Build an :class:`InputCursor` for a builtin reading from ``fd``.
 
