@@ -382,8 +382,9 @@ description. The cursor decodes bytes through one incremental UTF-8
 (NOT U+FFFD; #20 H16) — and reads a non-seekable source one record at a time so
 it never consumes past what you asked for (leaving the rest of a pipe readable
 for the next consumer; a bulk read drains the pipe — the historical `mapfile
--n1` drain bug). `make_reader(shell, fd)` builds a one-off cursor; the registry
-persists fd-backed ones.
+-n1` drain bug). `make_reader(io_ctx, fd)` (its parameter is the narrow
+`psh.protocols.IOContext` — only `.stdin` is read; the `Shell` satisfies it,
+campaign Q1) builds a one-off cursor; the registry persists fd-backed ones.
 
 ### Working with Job Control
 

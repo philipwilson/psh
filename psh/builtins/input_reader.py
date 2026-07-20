@@ -61,7 +61,7 @@ from collections import deque
 from typing import TYPE_CHECKING, Callable, Deque, Optional, TextIO
 
 if TYPE_CHECKING:
-    from ..shell import Shell
+    from ..protocols import IOContext
 
 
 class Outcome(enum.Enum):
@@ -403,7 +403,7 @@ class InputCursor:
 InputReader = InputCursor
 
 
-def make_reader(shell: 'Shell', fd: int) -> InputCursor:
+def make_reader(io_ctx: 'IOContext', fd: int) -> InputCursor:
     """Build an :class:`InputCursor` for a builtin reading from ``fd``.
 
     The real OS descriptor is authoritative whenever it is valid — this covers
@@ -414,12 +414,14 @@ def make_reader(shell: 'Shell', fd: int) -> InputCursor:
     stdin with no real ``fileno``). pytest's ``DontReadFromInput`` capture object
     is treated as "use the real fd" so redirected reads work under capture.
 
-    Reading ``shell.stdin`` rather than the ``sys.stdin`` global keeps the source
-    injectable: a test can install ``shell.stdin = StringIO(...)`` and this
-    resolver honors it, while still falling through to the live ``sys.stdin``
-    when nothing is overridden.
+    ``io_ctx`` is the narrow :class:`~psh.protocols.IOContext` (in practice the
+    ``Shell``, which satisfies it — campaign Q1): only ``io_ctx.stdin`` is read,
+    not the whole shell. Reading it rather than the ``sys.stdin`` global keeps
+    the source injectable: a test can install ``shell.stdin = StringIO(...)``
+    and this resolver honors it, while still falling through to the live
+    ``sys.stdin`` when nothing is overridden.
     """
-    stream = shell.stdin
+    stream = io_ctx.stdin
     if 'DontReadFromInput' in stream.__class__.__name__:
         return InputCursor(fd=fd)
     try:

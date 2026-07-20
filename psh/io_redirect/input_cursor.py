@@ -39,7 +39,7 @@ from ..builtins.input_reader import make_reader
 
 if TYPE_CHECKING:
     from ..builtins.input_reader import InputCursor
-    from ..shell import Shell
+    from ..protocols import IOContext
 
 
 class OpenDescription:
@@ -79,8 +79,12 @@ class InputCursorRegistry:
         self._fd_to_desc: Dict[int, OpenDescription] = {}
         self._desc_to_cursor: Dict[OpenDescription, "InputCursor"] = {}
 
-    def cursor_for_fd(self, shell: "Shell", fd: int) -> "InputCursor":
+    def cursor_for_fd(self, io_ctx: "IOContext", fd: int) -> "InputCursor":
         """Return the persistent cursor reading ``fd``'s current description.
+
+        ``io_ctx`` is the narrow :class:`~psh.protocols.IOContext` (the ``Shell``
+        satisfies it — campaign Q1): only its ``.stdin`` is consulted, through
+        ``make_reader``, not the whole shell.
 
         The cursor persists across builtin invocations (same-fd carryover). A
         stream-backed source (an injected test ``StringIO`` with no real fd)
@@ -94,7 +98,7 @@ class InputCursorRegistry:
             if cursor is not None:
                 return cursor
 
-        cursor = make_reader(shell, fd)
+        cursor = make_reader(io_ctx, fd)
         if cursor.fd is None:
             # Stream-backed (test injection): do not persist.
             return cursor

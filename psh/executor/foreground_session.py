@@ -38,7 +38,8 @@ from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple
 from .job_control import JobState
 
 if TYPE_CHECKING:
-    from .job_control import Job, JobManager
+    from ..protocols import JobRuntime
+    from .job_control import Job
 
 
 class ForegroundJobSession:
@@ -47,7 +48,7 @@ class ForegroundJobSession:
     exception cleanup. Shared by external commands, pipelines, and foreground
     subshells (campaign J1)."""
 
-    def __init__(self, job_manager: "JobManager"):
+    def __init__(self, job_manager: "JobRuntime"):
         self._jm = job_manager
         #: The terminal's foreground pgid before the launch (None ⇒ this shell
         #: does not own the terminal, e.g. under pytest / non-interactive).
@@ -59,7 +60,7 @@ class ForegroundJobSession:
         self._finished: bool = False
 
     @classmethod
-    def open(cls, job_manager: "JobManager") -> "ForegroundJobSession":
+    def open(cls, job_manager: "JobRuntime") -> "ForegroundJobSession":
         """Open a session, capturing the terminal owner BEFORE the launch.
 
         Must be called while the shell still owns the terminal — i.e. before
