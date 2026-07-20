@@ -6,7 +6,6 @@ process isolation and environment management.
 """
 
 import os
-import signal
 import sys
 from typing import TYPE_CHECKING, List
 
@@ -227,27 +226,19 @@ class SubshellExecutor:
 
     @staticmethod
     def _reraise_child_signal_death(session) -> None:
-        """If the subshell's body died by a signal, re-raise it in this
+        """If the subshell's body died by a signal, re-raise it on this
         (forked-child) process so the enclosing pipeline sees a true signal
-        death. No-op for a normal exit / stop. See _execute_foreground_subshell."""
+        death. No-op for a normal exit / stop. The disposition mutation itself
+        lives with the child signal-policy owner (`child_policy.die_by_signal`,
+        F2 ratchet). See _execute_foreground_subshell."""
         job = session.job
         if job is None or not job.processes:
             return
         raw = job.processes[-1].status
         if raw is None or not os.WIFSIGNALED(raw):
             return
-        sig = os.WTERMSIG(raw)
-        # Flush before dying — os._exit/os.kill bypass Python buffer flushing.
-        for stream in (sys.stdout, sys.stderr):
-            try:
-                stream.flush()
-            except (OSError, ValueError, AttributeError):
-                pass
-        try:
-            signal.signal(sig, signal.SIG_DFL)
-            os.kill(os.getpid(), sig)
-        except (OSError, ValueError):
-            pass
+        from .child_policy import die_by_signal
+        die_by_signal(os.WTERMSIG(raw))
 
     def _execute_background_subshell(self, statements, redirects: List['Redirect']) -> int:
         """Execute subshell in background with job control tracking."""
