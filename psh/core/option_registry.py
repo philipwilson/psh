@@ -119,6 +119,12 @@ _SPECS = [
           notes="command-substitution children keep set -e instead of "
                 "clearing it (bash 4.4+; POSIX mode also keeps it)"),
     _spec("checkhash", False, OptionCategory.SHOPT),
+    _spec("huponexit", False, OptionCategory.SHOPT,
+          notes="send SIGHUP to running jobs when an interactive shell exits "
+                "(bash: interactive login shell). Honored by the one "
+                "Shell.shutdown HUP/CONT path; disown -h (Job.no_hup) exempts "
+                "a job. psh has no login-shell concept, so the gate is "
+                "interactive+huponexit — see the J1 ledger"),
     _spec("expand_aliases", True, OptionCategory.SHOPT,
           notes="gates alias expansion (Shell.expand_aliases). ON by default in "
                 "every mode (bash: OFF non-interactively); shopt -u disables it "

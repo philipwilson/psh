@@ -108,13 +108,17 @@ class DisownBuiltin(Builtin):
         """Disown a specific job.
 
         With ``-h`` (``mark_no_hup``) bash marks the job to not receive SIGHUP
-        when the shell exits but keeps it in the job table. psh has no
-        huponexit path (see docs/missing_features.md), so ``-h`` is accepted for
-        compatibility and simply leaves the job in the table; without ``-h`` the
-        job is removed.
+        when the shell exits but keeps it in the job table — psh records the
+        typed ``Job.no_hup`` flag the one ``Shell.shutdown`` HUP/CONT path
+        honors (#20 H19). Without ``-h`` the job is detached from the
+        user-visible table while KEEPING reap ownership of any still-running
+        member (:meth:`JobManager.detach_running_job`), so a disowned child
+        that later exits is reaped rather than orphaned as a zombie.
         """
-        if not mark_no_hup:
-            job_manager.remove_job(job.job_id)
+        if mark_no_hup:
+            job.no_hup = True
+        else:
+            job_manager.detach_running_job(job)
         return 0
 
     @property
@@ -124,7 +128,7 @@ class DisownBuiltin(Builtin):
 
     Options:
         -a      Remove all jobs from job table
-        -h      Accepted for compatibility; psh does not send SIGHUP on exit
+        -h      Keep the job in the table but exempt it from SIGHUP on exit
         -r      Remove only running jobs from job table
 
     Arguments:
@@ -134,9 +138,10 @@ class DisownBuiltin(Builtin):
     Without options or arguments, removes the current job from the
     active job table.
 
-    The -h option is accepted for compatibility but has no effect: psh does
-    not send SIGHUP to jobs when the shell exits, so -h simply leaves the job
-    in the table. Otherwise, jobs are completely removed.
+    With -h the job stays in the table but is marked to NOT receive SIGHUP
+    when an interactive shell with `shopt -s huponexit` exits. Otherwise the
+    job is removed from the table; psh keeps reap ownership of a still-running
+    disowned child so it is not orphaned as a zombie.
 
     Exit Status:
     Returns 0 unless an invalid option or job specification is given."""

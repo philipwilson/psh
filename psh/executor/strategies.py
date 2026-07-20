@@ -26,7 +26,6 @@ from ..core import (
     report_internal_defect,
     special_builtin_usage_exit,
 )
-from ..core.job_state import JobState
 from ..expansion.arithmetic import ShellArithmeticError
 from .child_policy import run_background_shell_child
 from .function import FunctionOperationExecutor

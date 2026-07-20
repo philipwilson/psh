@@ -478,8 +478,37 @@ class Shell:
                 interactive_manager = getattr(self, 'interactive_manager', None)
                 if interactive_manager is not None:
                     interactive_manager.history_manager.save_to_file()
+            self._dispose_jobs_at_exit()
         finally:
             self.close()
+
+    def _dispose_jobs_at_exit(self) -> None:
+        """Exit-time job disposition on THE shutdown path (campaign J1 / H19).
+
+        Two facts, both honored here and nowhere else:
+
+        * ``huponexit`` — send SIGHUP (SIGCONT first for a stopped job) to
+          every job not marked ``disown -h`` (``Job.no_hup``). bash gates this
+          on an interactive login shell; psh has no login-shell concept, so the
+          gate is interactive + ``huponexit`` — a non-interactive script never
+          reaches it, matching bash (which HUPs on exit only for a login
+          shell). See the J1 ledger for the login-gate narrowing.
+        * detached-child reaping — collect any disowned child psh still owns
+          (:meth:`JobManager.reap_detached`) so it is reaped rather than left
+          for init.
+
+        Both are independent of the history write in :meth:`shutdown` (they
+        signal / reap processes, not the histfile), so this order is not
+        observable and I4's history-write path is untouched.
+        """
+        job_manager = getattr(self, 'job_manager', None)
+        state = getattr(self, 'state', None)
+        if job_manager is None or state is None:
+            return
+        if (state.options.get('interactive')
+                and state.options.get('huponexit')):
+            job_manager.hangup_jobs()
+        job_manager.reap_detached()
 
     #: The shutdown routes that persist history (exactly the routes that
     #: saved it before shutdown() unified cleanup: an explicit `exit` and
