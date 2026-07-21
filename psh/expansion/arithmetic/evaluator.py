@@ -213,8 +213,14 @@ class ArithmeticEvaluator:
         W2/CV1 B1/M1), so ``index_text`` arrives round-1'd where applicable and
         the associative key here is the single round-2. An indexed array, scalar,
         or undeclared name expands then arithmetic-evaluates the raw text, so
-        ``a[i++]`` side-effects fire exactly once per lvalue resolution. An empty
-        subscript is bash's "bad array subscript" error.
+        ``a[i++]`` side-effects fire exactly once per lvalue resolution.
+
+        Empty-subscript policy is psh's OWN, a DELIBERATE divergence — live bash
+        5.2 rejects EVERY empty-key spelling as a "bad array subscript" (both
+        ``h[]``/``h[$e]`` AND the source empty-quoted ``h[""]``). psh instead
+        treats a literal-empty or substituted-empty subscript as fatal but
+        accepts a source empty-quoted key (``h[""]``) as a valid empty key
+        (register #3 carry). This is intentional and pinned, not a bash mirror.
         """
         if index_text == '':
             raise ShellArithmeticError(f"{name}[]: bad array subscript")
@@ -223,10 +229,11 @@ class ArithmeticEvaluator:
         subscript = self.shell.expansion_manager.subscript
         if var is not None and isinstance(var.value, AssociativeArray):
             key = subscript.associative_key(index_text)
-            # bash's empty-subscript policy: an empty key from substitution or
-            # literal-empty text is fatal; a source empty-quoted key (h[""]) is
-            # a valid empty key (raw_has_source_quote only re-lexes, so the one
-            # keying expansion above is not doubled).
+            # psh's deliberate empty-subscript policy (NOT bash's — see the
+            # docstring): an empty key from substitution or literal-empty text is
+            # fatal; a source empty-quoted key (h[""]) is accepted as a valid
+            # empty key (raw_has_source_quote only re-lexes, so the one keying
+            # expansion above is not doubled).
             if key == '' and not subscript.raw_has_source_quote(index_text):
                 raise ShellArithmeticError(f"{name}[]: bad array subscript")
             return key

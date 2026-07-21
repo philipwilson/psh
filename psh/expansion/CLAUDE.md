@@ -350,9 +350,10 @@ keys it with PROVENANCE, exactly like a non-arithmetic `h[$k]=v` (campaign
 W2/CV1): source-spelled quotes/backslashes are removed, but characters arriving
 via `$k` stay LITERAL and a substituted `$` is never rescanned
 (`k='"q"'; (( h[$k]=1 ))` keys `"q"`; `k='$x'; (( h[$k]=1 ))` keys the literal
-`$x`). Bash's empty-subscript policy is preserved by
-`arithmetic/evaluator.py#_array_key`: an empty key from substitution/literal-
-empty text is fatal, a source empty-quoted key (`h[""]`) is a valid empty key
+`$x`). The empty-subscript policy in `arithmetic/evaluator.py#_array_key` is psh's OWN,
+a DELIBERATE divergence (register #3) — live bash 5.2 rejects EVERY empty-key
+spelling (`h[]`/`h[$e]` AND `h[""]`), whereas psh makes a literal/substituted-
+empty subscript fatal but accepts a source empty-quoted key (`h[""]`) as valid
 (`SubscriptEvaluator.raw_has_source_quote`). `_eval_array_index()` remains as a
 thin adapter.
 
