@@ -196,3 +196,44 @@ class TestDoubleBracketArithProvenance:
         for cmd in (r"""declare -A h; h[q]=7; [[ 'h[\"q\"]' -eq 7 ]]; echo $?""",
                     r'declare -A h; h[q]=7; [[ h["q"] -eq 7 ]]; echo $?'):
             assert _run([BASH], cmd).stdout.strip() == _run(PSH, cmd).stdout.strip()
+
+
+class TestExecutableSpecialFileEarlier:
+    """Carry #30 (CV2 R3, DESIRABLE deviation): an EXECUTABLE-bit special file
+    (FIFO or SOCKET) earlier on PATH with a real executable later. bash's tier-1
+    is access(X_OK) on ANY type, so it takes the special file and execve's it —
+    a FIFO HANGS, a socket fails 126. psh's tier-1 requires a REGULAR FILE, so it
+    treats the special file as a stat-exists fallback and runs the later real
+    executable instead (no hang, no spurious 126). Pinned via the socket face
+    (the FIFO face would hang bash). bash 5.2-verified."""
+
+    def test_socket_earlier_bash_126_psh_runs_later(self):
+        import os
+        import shutil
+        import socket
+        import tempfile
+        # A SHORT temp dir — AF_UNIX socket paths are capped (~104 bytes), too
+        # short for a pytest tmp_path; bind relative from inside the dir.
+        work = tempfile.mkdtemp(prefix="cvs")
+        cwd0 = os.getcwd()
+        s = socket.socket(socket.AF_UNIX)
+        try:
+            os.makedirs(os.path.join(work, "sock"))
+            os.makedirs(os.path.join(work, "late"))
+            os.chdir(os.path.join(work, "sock"))
+            s.bind("cvs")                        # relative bind → short path
+            os.chmod("cvs", 0o755)
+            os.chdir(cwd0)
+            late = os.path.join(work, "late", "cvs")
+            with open(late, "w") as f:
+                f.write("#!/bin/sh\necho LATE\n")
+            os.chmod(late, 0o755)
+            cmd = (f"PATH={work}/sock:{work}/late; cvs 2>/dev/null; echo rc=$?")
+            b = _run([BASH], cmd)
+            p = _run(PSH, cmd)
+            assert "rc=126" in b.stdout          # bash takes the socket (tier-1)
+            assert "LATE" in p.stdout and "rc=0" in p.stdout   # psh runs later
+        finally:
+            os.chdir(cwd0)
+            s.close()
+            shutil.rmtree(work, ignore_errors=True)

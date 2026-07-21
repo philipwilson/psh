@@ -175,7 +175,7 @@ class CommandResolver:
         return results
 
     def search_path_two_tier(self, name: str, path_str: str) -> Optional[str]:
-        """bash's TWO-TIER PATH resolution for EXECUTION (CV2 B2/B3, R3): the
+        """psh's TWO-TIER PATH resolution for EXECUTION (CV2 B2/B3, R3): the
         first ``X_OK``-executable REGULAR-FILE match wins; failing that, the
         FIRST STAT-EXISTS candidate of ANY type is the LAST RESORT — kept if it
         is a FIFO / non-executable file / device (``execve`` then ``EACCES`` ->
@@ -183,11 +183,18 @@ class CommandResolver:
         directory "poisons" the slot: even a later non-executable does not
         rescue it -> "command not found", 127). ``None`` when the name is nowhere
         on PATH. A slash-name is taken as given if it exists (execve reports its
-        own EACCES/EISDIR). Mirrors bash's ``find_user_command_internal``
-        remembering the first ``FS_EXISTS`` candidate while it keeps looking for
-        an ``FS_EXECABLE`` one — so a non-executable earlier never shadows an
-        executable later, and a sole non-executable/FIFO candidate is still
-        tried (reported not-executable) rather than "not found"."""
+        own EACCES/EISDIR).
+
+        This APPROXIMATES bash's ``find_user_command_internal`` (remember the
+        first ``FS_EXISTS`` candidate while looking for an ``FS_EXECABLE`` one),
+        but the TIER-1 test is DELIBERATELY narrower than bash's: bash's tier-1 is
+        ``access(X_OK)`` on ANY type, so an executable-bit FIFO or SOCKET earlier
+        on PATH WINS tier-1 there (execve then HANGS on the FIFO / fails 126 on
+        the socket). psh requires a REGULAR FILE for tier-1, so such a special
+        file is treated as a mere stat-exists fallback and an executable later on
+        PATH runs instead — a documented, desirable deviation (carry register
+        #30: no hang, no spurious 126) at the cost of matching bash's tier-1 on
+        those exotic entries."""
         if '/' in name:
             return name if os.path.exists(name) else None
         fallback: Optional[str] = None
