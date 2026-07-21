@@ -59,9 +59,12 @@ rows were already green pre-fix — R3 was **3 red + 2 green** (not 5; the two
 directory-SOLE rows were already 127 under the isfile predicate), R1R2M1 was
 **9 red + 1 green** (the substitution-free control was already correct), R4M3 was
 **5 red + 2 green** (the `-s` continuation-replace and non-empty `-p`
-delete-failure rows already matched); M2 was accurate at 5 red-on-base. The added
-PIN COUNTS (gate arithmetic +29) were correct throughout; only the reds/greens
-split was mis-stated. *(The integrator fills the final frozen scorecard line —
+delete-failure rows already matched); M2 was accurate at 5 red-on-base. The same
+audit caught the round-3 H1 commit's own claim (`966b36fa` "5, red-at-tip") — H1
+is likewise **3 red + 2 green** (the ungated `-p`-still-strips and the top-level-
+`-s`-after-source-returns controls were already correct). The added PIN COUNTS
+(gate arithmetic) were correct throughout; only the reds/greens split was
+mis-stated. *(The integrator fills the final frozen scorecard line —
 updated slot/bounce totals — at ceremony.)*
 
 | Rel | PR | Pkg | Outcome (one line) |
