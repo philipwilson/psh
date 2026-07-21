@@ -169,7 +169,16 @@ class TestDoubleBracketArithProvenance:
     fix would thread W1-style protection runs through the entire string-based
     arithmetic input contract (tokenizer/parser/evaluator/subscript keying, ~10
     caller families) — disproportionate at campaign close. Deliberate, pinned.
-    bash 5.2-verified. Quoted spellings, real-dquote, and `[[ -v` all MATCH."""
+    bash 5.2-verified. Quoted spellings, real-dquote, and `[[ -v` all MATCH.
+
+    COMPOSED CONSEQUENCE (ruled WITHIN #31, round-4): because CV1 fixed the
+    `(( ))` WRITE-side provenance while `[[` READ-side is carried, a quote-bearing
+    key WRITTEN via `(( h[$k]=v ))` (keys `"q"`, bash-correct) and READ via
+    `[[ h[$k] -eq v ]]` (keys `q`) now key INCONSISTENTLY within psh — the read
+    misses (rc 1) where bash matches (rc 0). Base was wrong-but-CONSISTENT (the
+    write ALSO keyed `q` pre-CV1, so read/write agreed and accidentally printed
+    bash's match=yes). This is the transitional inconsistency inherent to a
+    PARTIAL fix; the full fix is the same registered contract reshape."""
 
     def test_unquoted_escaped_dquote_subscript_keys_quoted(self):
         # h[q]=7: bash keys "q" (unset) -> false (rc 1); psh keys q -> 7 (rc 0).
@@ -196,6 +205,16 @@ class TestDoubleBracketArithProvenance:
         for cmd in (r"""declare -A h; h[q]=7; [[ 'h[\"q\"]' -eq 7 ]]; echo $?""",
                     r'declare -A h; h[q]=7; [[ h["q"] -eq 7 ]]; echo $?'):
             assert _run([BASH], cmd).stdout.strip() == _run(PSH, cmd).stdout.strip()
+
+    def test_composed_arith_write_double_bracket_read_inconsistent(self):
+        # COMPOSED (ruled within #31): (( ))-write keys "q" (CV1-fixed) but
+        # [[-read keys q -> psh read MISSES (rc 1); bash keys "q" both -> rc 0.
+        # Both arrays end up holding the "q" key (the write side agrees).
+        cmd = (r"""declare -A h; k='"q"'; (( h[$k]=7 )); """
+               r"""[[ h[$k] -eq 7 ]]; echo "read-eq=$?"; """
+               r"""for K in "${!h[@]}"; do echo "key=[$K]"; done""")
+        assert _run([BASH], cmd).stdout.strip() == 'read-eq=0\nkey=["q"]'
+        assert _run(PSH, cmd).stdout.strip() == 'read-eq=1\nkey=["q"]'
 
 
 class TestExecutableSpecialFileEarlier:

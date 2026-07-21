@@ -242,3 +242,34 @@ class TestHistorySInStringContextH1:
         # After source returns, the top-level `-s` deletes again (restore).
         _assert_same_interactive(
             ['echo one', "source /dev/stdin <<< ':'; history -s XXX", 'history'])
+
+
+class TestHistoryEvalOuterSinglePExpansionH35:
+    r"""Carry #35 (CV3 H1-adjacent, integrator-ruled, base-identical): an
+    eval'd OUTER-SINGLE / inner-double `history -p` — `eval 'history -p "!!"'`
+    — expands `!!` to a LOSSY RECONSTRUCTION of the CURRENT line in psh
+    (`eval 'history -p !!'`, the inner double-quotes dropped) instead of the
+    PREVIOUS entry (bash: `echo seed`). The STRIP half is fixed and bash-correct
+    in BOTH (the eval invocation is stripped, leaving the prior entry + the
+    `history` line) — only the `-p` EXPANSION STRING diverges. Not caught by the
+    H1 suite's `test_eval_p_still_strips_control`: that pin uses the OUTER-DOUBLE
+    spelling (`eval "history -p '!!'"`) whose `!!` is consumed by INPUT-TIME
+    history expansion before eval runs, so no pin saw the outer-single face
+    (verifier V4/R09). Pre-existing on base, not a regression; the expansion
+    engine's reconstruction is the residual, not the strip. bash 5.2-verified."""
+
+    def test_eval_outer_single_p_reconstructs_current_line(self):
+        lines = ['echo seed', 'eval \'history -p "!!"\'', 'history']
+        psh = _run_i([sys.executable, '-m', 'psh'], ['--norc'], lines)
+        bash = _run_i([resolve_bash().path], ['--norc', '--noprofile'], lines)
+        # DIVERGENCE (this is the carry): the -p expansion line differs.
+        assert psh != bash
+        p_lines = psh.splitlines()
+        b_lines = bash.splitlines()
+        # bash resolves !! to the PREVIOUS entry; psh to a lossy CURRENT-line
+        # reconstruction (inner double-quotes lost).
+        assert b_lines[1] == 'echo seed'
+        assert p_lines[1] == "eval 'history -p !!'"
+        # The STRIP half (the trailing `history` listing) is IDENTICAL and
+        # bash-correct in both — only the expansion string is wrong.
+        assert p_lines[2:] == b_lines[2:]
