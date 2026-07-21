@@ -156,3 +156,43 @@ class TestStickyNonExecHash:
         cmd = f'PATH={hashtree}/dbin; cvd 2>/dev/null; hash 2>&1'
         assert "cvd" not in _run([BASH], cmd).stdout
         assert "cvd" not in _run(PSH, cmd).stdout
+
+
+class TestDoubleBracketArithProvenance:
+    """Carry #31 (CV1 H2, integrator-ruled): a `[[` UNQUOTED numeric operand
+    carries PER-CHARACTER quote provenance into the arithmetic in bash — a `\\"`
+    inside an associative subscript is a protected `"` that the key keeps
+    (`[[ h[\\"q\\"] -eq 7 ]]` keys `"q"`), while psh's `[[` path quote-removes the
+    operand string before arith, keying `q`. `let` (and psh) key `q` in BOTH, so
+    `[[` is NOT let-like for provenance (the R1 model was too coarse for the
+    UNQUOTED spelling). Base-identical (pre-existing, NOT a regression); a correct
+    fix would thread W1-style protection runs through the entire string-based
+    arithmetic input contract (tokenizer/parser/evaluator/subscript keying, ~10
+    caller families) — disproportionate at campaign close. Deliberate, pinned.
+    bash 5.2-verified. Quoted spellings, real-dquote, and `[[ -v` all MATCH."""
+
+    def test_unquoted_escaped_dquote_subscript_keys_quoted(self):
+        # h[q]=7: bash keys "q" (unset) -> false (rc 1); psh keys q -> 7 (rc 0).
+        cmd = r'declare -A h; h[q]=7; [[ h[\"q\"] -eq 7 ]]; echo $?'
+        assert _run([BASH], cmd).stdout.strip() == "1"
+        assert _run(PSH, cmd).stdout.strip() == "0"
+
+    def test_unquoted_escaped_dquote_hits_quoted_key(self):
+        # The quoted key "q" is set with single quotes; the [[ operand keys it in
+        # bash (true, rc 0) but psh keys q (unset, rc 1).
+        cmd = r"""declare -A h; h['"q"']=7; [[ h[\"q\"] -eq 7 ]]; echo $?"""
+        assert _run([BASH], cmd).stdout.strip() == "0"
+        assert _run(PSH, cmd).stdout.strip() == "1"
+
+    def test_let_keys_q_in_both_control(self):
+        # let is let-like in BOTH (keys q) — proves [[ diverges specifically.
+        # UNQUOTED: the shell processes \" -> " before let, then arith removes it.
+        cmd = r'declare -A h; h[q]=7; let r=h[\"q\"]; echo $r'
+        assert _run([BASH], cmd).stdout.strip() == "7"
+        assert _run(PSH, cmd).stdout.strip() == "7"
+
+    def test_single_quoted_and_real_dquote_match(self):
+        # Controls that already MATCH (kept green): single-quoted + real-dquote.
+        for cmd in (r"""declare -A h; h[q]=7; [[ 'h[\"q\"]' -eq 7 ]]; echo $?""",
+                    r'declare -A h; h[q]=7; [[ h["q"] -eq 7 ]]; echo $?'):
+            assert _run([BASH], cmd).stdout.strip() == _run(PSH, cmd).stdout.strip()
