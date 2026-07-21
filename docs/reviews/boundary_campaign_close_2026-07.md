@@ -45,8 +45,24 @@ corrections M1 (conditional round-2: any-expansion subscript keeps its round-1
 output), M2 (integer-attribute values are let-like), M3 (empty-history
 delete-failure). All 7 fix-items are now fixed and pinned (regressions
 red-at-tip, model corrections red-on-base/at-tip); the deep esoterica are carried
-(#27-30) with characterization pins. *(The integrator fills the final frozen
-scorecard line — updated slot/bounce totals — at ceremony.)*
+(#27-30) with characterization pins. A **round-3 re-verify BOUNCED a third time**
+— **2 blockers (convergence 10→2) + a nit sweep**: H1 (a self-introduced
+regression — `history -s` inside an eval/source string context wrongly deleted
+the just-recorded line; fixed by gating the `-s` delete on top-level recording
+being active, `-p`'s strip ungated) and H2 (the `[[` unquoted-operand arith
+provenance gap — attempt-fix STOP-and-reported as disproportionate, integrator-
+ruled CARRY as register #31). H1 is red-at-tip pinned; H2 is characterization-
+pinned. **Red-count correction-of-record (round-3 nit-2, re-audited by replaying
+each round-2 fix commit against its pre-fix production files):** the round-2
+commit-message "red-at-tip" characterizations overclaimed reds where some pinned
+rows were already green pre-fix — R3 was **3 red + 2 green** (not 5; the two
+directory-SOLE rows were already 127 under the isfile predicate), R1R2M1 was
+**9 red + 1 green** (the substitution-free control was already correct), R4M3 was
+**5 red + 2 green** (the `-s` continuation-replace and non-empty `-p`
+delete-failure rows already matched); M2 was accurate at 5 red-on-base. The added
+PIN COUNTS (gate arithmetic +29) were correct throughout; only the reds/greens
+split was mis-stated. *(The integrator fills the final frozen scorecard line —
+updated slot/bounce totals — at ceremony.)*
 
 | Rel | PR | Pkg | Outcome (one line) |
 |-----|----|-----|--------------------|
@@ -168,7 +184,16 @@ bounce, and #27-30 by its SECOND bounce (the round-2 re-verify found 10 blockers
 incl. 4 self-introduced regressions + 9 nits; all 7 fix-items landed, and #27 the
 sticky-hash of the non-exec lose-on — which corrects a `ab2fecba` design note —
 #28 the nested-subscript assignment extractor, #29 heredoc history newlines, #30
-the DESIRABLE executable-FIFO-earlier deviation, were carried).
+the DESIRABLE executable-FIFO-earlier deviation, were carried). The THIRD bounce
+(round-3 re-verify, 2 blockers — convergence 10→2) fixed **H1** (a self-introduced
+regression: `history -s` inside an eval/source string context wrongly deleted the
+just-recorded line — bash gates the `-s` delete on `remember_on_history`, which is
+0 in `parse_and_execute` string contexts; the fix gates psh's `-s` delete on
+top-level recording being active while the `-s` STORE still consumes the line flag
+and `-p`'s strip stays ungated) and CARRIED **H2** as register #31 (the `[[`
+unquoted-operand arith provenance gap, integrator-ruled fix-vs-carry after a
+STOP-and-report plumbing analysis). #30 additionally gained the executable-SOCKET
+face (an adjacent unregistered deviation).
 
 **Correction-of-record (R3 precedent — the git message stands, corrected here):**
 commit `f74ec47c`'s message says "bash's empty-subscript policy is preserved".
@@ -209,7 +234,8 @@ only the quote-provenance and two-round keying were touched.
 | 27 | sticky-hash of the non-exec lose-on | **CARRIED (dev-cv round-2, integrator-ruled).** bash IMPLICITLY HASHES the non-executable last-resort (126) candidate at exec time (`hash` lists it afterward; it can beat a later executable within the unchanged PATH); psh does NOT insert a 126 candidate into the command hash (a directory lose-on is hashed by neither). Implementing implicit insertion would risk the resolve-once/hash machinery at campaign close. **Corrects commit `ab2fecba`'s design note "bash hashes only executables" — bash ALSO hashes the non-exec lose-on** (correction-of-record, R3 precedent). Both-sides pin `test_cv_carry_characterization.py::TestStickyNonExecHash`. |
 | 28 | nested-subscript indexed ASSIGNMENT extractor split | **CARRIED (dev-cv round-2).** `a[h[q]]=Z` (an associative subscript nested inside an indexed-array element ASSIGNMENT target): bash writes `a[2]=Z`; psh's element-assignment subscript extractor splits at the inner `[` and errors "bad array subscript". The READ side `${a[h[q]]}` works in both — only the assignment-target extractor is affected. Documented divergence. |
 | 29 | heredoc history entries missing trailing newline | **CARRIED (dev-cv round-2).** A command whose logical line includes a heredoc body is recorded in interactive history without bash's trailing-newline detail — a cosmetic history-rendering difference, not a functional one. |
-| 30 | executable-FIFO-earlier: bash HANG vs psh skip | **CARRIED (dev-cv round-2, DESIRABLE deviation — recorded).** With an EXECUTABLE (mode 755) FIFO earlier on PATH and a real executable later, bash execve's the FIFO and HANGS (blocked on open); psh's X_OK gate requires a regular file, so it treats the FIFO as a non-X_OK candidate and runs the later executable. psh's behavior is preferable (no hang); recorded so it is not "fixed" back into a hang. Consistent with R3 (a FIFO is a valid last-resort only when it is the SOLE candidate). |
+| 30 | executable special-file (FIFO/SOCKET) earlier: bash HANG/126 vs psh skip | **CARRIED (dev-cv round-2, socket face round-3; DESIRABLE deviation — recorded).** With an EXECUTABLE (mode 755) FIFO earlier on PATH and a real executable later, bash execve's the FIFO and HANGS (blocked on open); psh's regular-file tier-1 treats the FIFO as a non-X_OK candidate and runs the later executable. **Round-3 added the SOCKET face**: an executable-bit AF_UNIX socket earlier on PATH — bash takes it in tier-1 and execve fails **126** (no hang, unlike the FIFO), while psh again skips to the later executable. psh's behavior is preferable (no hang, no spurious 126); recorded so it is not "fixed" back. The `search_path_two_tier` docstring was corrected to state bash's tier-1 is `access(X_OK)` on ANY type (psh's regular-file tier-1 is a deliberate, narrower approximation — NOT a faithful mirror). Socket face pin `test_cv_carry_characterization.py::TestExecutableSpecialFileEarlier` (the FIFO face would hang bash, so it is documented not pinned). |
+| 31 | `[[` unquoted-operand arith keys lose quote provenance | **CARRIED (dev-cv round-3, integrator-ruled after STOP-and-report).** A `[[` UNQUOTED numeric operand carries per-character quote provenance into the arithmetic in bash: `[[ h[\"q\"] -eq 7 ]]` keys the associative subscript `"q"` (the `\"` stays a protected `"`), while psh's `[[` path quote-removes the operand string before arith and keys `q`. `let r=h[\"q\"]` keys `q` in BOTH (the shell pre-processes `\"`→`"`, then arith removes it), so `[[` is NOT let-like for provenance — the round-2 R1 model was correct for the `arith_source_quotes` flag but too coarse for this unquoted spelling. Base-identical, pre-existing, NOT a regression. A correct fix would thread W1-style protection runs through the entire STRING-based arithmetic input contract (`_operand_string`→str, `evaluate_arithmetic(expr:str)`, the tokenizer/parser/evaluator/subscript keying used by ~10 caller families); the narrow "feed the raw operand" shortcut breaks non-subscript escaped operands (bash errors on `[[ \"5\" -eq 5 ]]`; the arith tokenizer can't lex a bare `\`). Disproportionate at campaign close. Deliberate, pinned: `test_cv_carry_characterization.py::TestDoubleBracketArithProvenance` (4 bash-5.2 rows incl. the `let` control + single-quoted/real-dquote controls that MATCH). |
 
 ---
 
