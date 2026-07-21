@@ -99,9 +99,14 @@ def _cleanup_shell(shell_instance):
 def _restore_os_environ():
     """Roll back os.environ mutations after each test.
 
-    In-process shells sync `export` into the test runner's own os.environ,
-    so exported names (FOO, A, B, ...) would otherwise leak into every
-    later test's shell and subprocess. This kills that pollution class.
+    A safety net, NOT a description of normal psh behavior: an in-process shell
+    does NOT sync `export` into the test runner's os.environ — `export` writes
+    only the shell.env overlay (`state.py#_materialize_env_name`), so children
+    get `state.env` explicitly and os.environ is never written after startup
+    (pinned by test_construction_purity_f2.py). What this fixture actually rolls
+    back is os.environ that a TEST mutated directly (setup helpers, monkeypatch,
+    an _EnvPatch, or any accidental future os.environ write) so it cannot leak
+    into a later test's shell/subprocess.
     """
     saved = os.environ.copy()
     yield

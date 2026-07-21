@@ -24,6 +24,57 @@ Verify scorecard at close (from campaign memory): **24 dev slots → 16 bounces 
 package landed attestation-gated per E4; compare-bash stayed 2,986/24 EXACT
 throughout; conformance grew monotonically to 2,539.
 
+**Closing-verification slot (dev-cv, v0.750.0):** a fresh closing verification
+(4,253 probes / 68 composed cases / 103 strength attacks) found and
+dispositioned **3 production blockers + 17 nits** — CV1 (W2 arith-context quote
+provenance), CV2 (R2/H13 PATH/CDPATH projection-vs-variable reads, converged
+across 6 consumer faces by integrator ruling), CV3 (I4 interactive `history -p`/
+`-s` invocation removal). A subsequent focused re-verify **BOUNCED** the slot,
+finding **5 more blockers + 12 nits**: two genuine regressions the first pass
+introduced (B2 non-executable last-resort PATH candidate lost; B3 exec's F_OK
+walk stopping early) plus three model refutations in the fixed families (B1
+`(( ))`'s extra source-dquote round dropped; B4 the history strip is a
+line-scoped PERSISTENT flag not a single-shot marker; B5 the flag inherits into
+`$()`). All 5 were fixed and pinned (carries #23-26). A **round-2 re-verify then
+BOUNCED again** — **10 blockers (incl. 4 regressions the first bounce
+introduced) + 9 nits**: R1 `[[` operands got the extra round (should be
+let-like), R2 stored-value recursion inherited the flag, R3 the two-tier
+fallback predicate (isfile → stat-exists, directories poison the slot), R4 the
+history strip over-applied to multi-physical-line commands; the model
+corrections M1 (conditional round-2: any-expansion subscript keeps its round-1
+output), M2 (integer-attribute values are let-like), M3 (empty-history
+delete-failure). All 7 fix-items are now fixed and pinned (regressions
+red-at-tip, model corrections red-on-base/at-tip); the deep esoterica are carried
+(#27-30) with characterization pins. A **round-3 re-verify BOUNCED a third time**
+— **2 blockers (convergence 10→2) + a nit sweep**: H1 (a self-introduced
+regression — `history -s` inside an eval/source string context wrongly deleted
+the just-recorded line; fixed by gating the `-s` delete on top-level recording
+being active, `-p`'s strip ungated) and H2 (the `[[` unquoted-operand arith
+provenance gap — attempt-fix STOP-and-reported as disproportionate, integrator-
+ruled CARRY as register #31). H1 is red-at-tip pinned; H2 is characterization-
+pinned. **Red-count correction-of-record (round-3 nit-2, re-audited by replaying
+each round-2 fix commit against its pre-fix production files):** the round-2
+commit-message "red-at-tip" characterizations overclaimed reds where some pinned
+rows were already green pre-fix — R3 was **3 red + 2 green** (not 5; the two
+directory-SOLE rows were already 127 under the isfile predicate), R1R2M1 was
+**9 red + 1 green** (the substitution-free control was already correct), R4M3 was
+**5 red + 2 green** (the `-s` continuation-replace and non-empty `-p`
+delete-failure rows already matched); M2 was accurate at 5 red-on-base. The same
+audit caught the round-3 H1 commit's own claim (`966b36fa` "5, red-at-tip") — H1
+is likewise **3 red + 2 green** (the ungated `-p`-still-strips and the top-level-
+`-s`-after-source-returns controls were already correct). The added PIN COUNTS
+(gate arithmetic) were correct throughout; only the reds/greens split was
+mis-stated. A **round-4 re-verify PASSED — zero blockers, all four scopes
+(CV1/CV2/CV3 + guards) CONFIRMED** (195 rows; full gate re-run, compare-bash
+EXACT, and the verifier independently re-derived the carry deltas). Its final
+DOCS+PINS-ONLY commit registers four more pre-existing base-identical divergence
+families (#32 `history -a`/`-c`/`-n` read-counter; #33 CRLF in piped `-i`; #34
+`PROMPT_COMMAND` piped-`-i`-only, PTY-proved to run under a real terminal; #35
+eval'd outer-single `history -p "!!"` current-line reconstruction) and pins #35 +
+the composed `((`-write / `[[`-read row within #31 (+2 pins). *(The integrator
+fills the final frozen scorecard line — updated slot/bounce totals — at
+ceremony.)*
+
 | Rel | PR | Pkg | Outcome (one line) |
 |-----|----|-----|--------------------|
 | 0.725.0 | #471 | E1+E4 | Structured phase-manifest gate (no nonzero exit → success; complexity/benchmark tiers split); SHA-attestation gating `release-tag.yml` (ancestor + attestation-only-diff checks). |
@@ -65,7 +116,7 @@ terminal adapter (§15.2).**
 
 | # | Type | Producer (`file.py#symbol`) | Production consumers (grep-derived) |
 |---|------|-----------------------------|-------------------------------------|
-| 1 | ShellRunResult | `tests/harness/shell_oracle.py#run_shell_case` (Union `Completed\|SpawnFailure\|Timeout\|DecodeFailure`) | TEST-tree type (the oracle-runner contract): 13 test files call `run_shell_case`; not a `psh/` production type by design. |
+| 1 | ShellRunResult | `tests/harness/shell_oracle.py#run_shell_case` (Union `Completed\|SpawnFailure\|Timeout\|DecodeFailure`) | TEST-tree type (the oracle-runner contract): 12 test files CALL `run_shell_case` (the census methodology subtracts the producer file `tests/harness/shell_oracle.py` itself from the 13 grep hits); not a `psh/` production type by design. |
 | 2 | InvocationConfig | `psh/invocation.py#parse_invocation` | `__main__.py`, `shell.py`. |
 | 3 | ActivationLease | `psh/core/process_lease.py#ProcessLeaseCoordinator.activate` | `core/state.py`, `shell.py`. |
 | 4 | LocaleContext | `psh/core/locale_service.py#LocaleContext` (frozen; on `LocaleService.profile`) | shell instance via `state.locale`; pattern engine/case/collation. **Name note:** a Q1 `psh/protocols#LocaleContext` *Protocol* reuses the name (interface, NOT a 2nd impl); `LocaleProfile` is a documented dead rename alias (0 consumers). |
@@ -121,12 +172,12 @@ accidentally.
 | F1 | Text-level invocation differences (usage wording, `--` handling) | F1.md §"Documented text-level differences"; invocation matrix rows. |
 | F2 | `cwd` (`cd` persistence) + recursion-limit are PROCESS-OWNED shell semantics, never restored on lease release (§16) | `ProcessBaselines` docstring; `test_process_lease.py`. |
 | F3 | `ProgramSource` line-origin NOT carried at parse time (threaded at execution); rc return-status discarded; D10 `bash` SEGFAULTs where psh fails clean at the recursion limit | F3.md ledger; `test_program_source_guard.py`; NUL channel matrix. |
-| I1 | SCOPED byte-cursor deliberate-loss registry: malformed multibyte count-boundary family (mbrtowc quirks) and inherited-fd 0/1/2 with unknowable aliases are documented losses, not chased | I1.md §"Deliberate-loss registry"; `I1-probes/deliberate-loss-probes.txt`. |
+| I1 | SCOPED byte-cursor deliberate-loss registry: (a) the malformed-multibyte count-boundary family — including the MIXED valid+malformed `read -N` case, whose count boundary matches NEITHER the UTF-8 nor the C-locale bash oracle (a HYBRID model, not merely "mbrtowc quirks"; carry #21) — and (b) inherited-fd 0/1/2 with unknowable aliases, are documented losses, not chased | I1.md §"Deliberate-loss registry"; `I1-probes/deliberate-loss-probes.txt`. |
 | I2 | Lazy source BLOCK SIZE is a documented deliberate loss (a mid-block edit before the block is read is not seen) | I2.md; `small_append`/`big_append` red-on-base pins + `truncate_self`/`rewrite_ahead` controls. |
 | I3 | Full linear completeness on a single open construct is O(k²) (bash's PTY-proven immediate mid-construct errors force per-feed parsing) — CHARACTERIZED, not eliminated; the full fix is a resumable lexer+parser (see carry register) | I3.md Option-A ruling; `test_session_linearity_i3.py` (doubling-ratio characterization). |
-| S3 | rc-127 channel split NOT chased — uniform rc 2 for substitution syntax errors (documented divergence, family-pinned) | S3.md §"documented divergences". |
+| S3→I3 | Substitution-body syntax error in a STRING channel (`-c`/`eval`/`source`): bash exits fatally with **rc 127 AND aborts the enclosing eval/source frame**; psh gives uniform **rc 2** and does NOT frame-abort. Both halves (the rc-127 channel split AND the eval/source frame-abort) travel together as ONE family. S3 shipped the typed producer contract (`SubstitutionSyntaxError` / `is_substitution_origin`, raised at the `parse_nested_command` chokepoint) and HANDED the consumption to I3; **I3 never consumed it**, so the contract is inert and this remains a LIVE documented divergence (see carry #22). | S3.md "Design + declared deviations (all ruled by integrator)" DEVIATION 1 + "New handoffs → To I3 (PRODUCER CONTRACT)"; 6-way green pin `tests/conformance/bash/test_nested_substitution_timing_conformance.py::test_divergence_c_mode_exit_code_is_127_in_bash` (parametrized: operand `$(if)`, procsub `<(if)`, param `${x:-$(if)}`, arith `$(($(if)+1))`, subscript-read `${a[$(if)]}`, subscript-write `a[$(if)]=v`). |
 | S4→I3 (**CLOSED — historical, not a live loss**) | The unclosed-expansion parser OUTCOME briefly differed (combinator=Invalid, rd=Incomplete) when disclosed in S4; **I3 CLOSED it** — the shared `detect_unclosed_expansion` producer now feeds BOTH parsers, so both classify an unclosed expansion at EOF as Incomplete. Listed only for provenance; there is no live divergence and no both-ways pin. | `tests/unit/parser/test_parse_outcome_s4.py::test_unclosed_expansion_outcome_parity` (both parsers Incomplete). |
-| W2 | ARITH-context associative-subscript keying doctrine: inside an arithmetic context the associative key receives quote/escape removal but NO `$`-re-expansion (the source spelling of a `$`-form is kept, not re-expanded) — a documented deliberate divergence | brief §9 amendment + W2.md; `tests/unit/expansion/test_subscript_evaluator.py` (`expand_dollar=False`: `test_dollar_stays_source_spelling` / `test_quote_removal_still_applies`) + `tests/conformance/bash/test_subscript_keying_conformance.py`. |
+| W2 | ARITH-context associative-subscript keying — BOTH halves, stated precisely (updated by CV1, v0.750.0): **(1) the `$`-half** — a substituted `$`-form's SOURCE SPELLING is kept and NEVER re-expanded (`k='$x'; (( h[$k]=1 ))` keys the literal `$x`; `$(echo hi)` in a value keys literally) — is **bash-EXACT doctrine, NOT a divergence**. **(2) the quote-provenance half** — quote/escape removal applies to SOURCE-spelled subscript characters only, never to characters that ARRIVED via substitution (`k='"q"'; (( h[$k]=1 ))` keys `"q"`, not `q`) — was a REAL divergence (psh quote-removed substituted text); **CLOSED by CV1**, so it is no longer a live loss. This row is retained for provenance; neither half is now a live divergence. | brief §9 amendment + W2.md; CV1 pins `tests/unit/expansion/test_subscript_evaluator.py::TestArithAssociativeKeyProvenance` + `tests/conformance/bash/test_subscript_keying_conformance.py::TestArithSubscriptProvenance` (9 live-bash rows); `psh/expansion/CLAUDE.md` arith-keying prose (both halves). |
 | R1 | Heredoc substrate: psh uses a temp file for the heredoc body's shared file description where bash may use a pipe — documented deliberate loss next to the H8 pins (lseek discriminator; BSD-probed) | R1.md §"Heredoc substrate"; `test_heredoc_shared_cursor_r1.py`. |
 | R2 | bash tempvar/nameref provenance model realized as psh's; `shell.env` structural realization sanctioned (env -i constraint) | R2.md; `test_variable_lookup.py`. |
 | J1 | huponexit LOGIN-narrowing: psh has no login-shell concept, so the exit-HUP gate is `interactive + huponexit` (not bash's `interactive login`) — SANCTIONED deliberate difference | J1.md §H19; `docs/user_guide/17_differences_from_bash.md` §17; `test_pty_huponexit_j1.py`. |
@@ -138,7 +189,38 @@ accidentally.
 ## (d) Post-campaign carry register — audit
 
 One row per registered carry with disposition (CLOSED-with-pointer, or
-CARRIED-with-description). Two items are CLOSED by this Q3 slot.
+CARRIED-with-description). Items #1-2 are CLOSED by the Q3 slot; rows #18-22 were
+added by the closing-verification slot (dev-cv, v0.750.0), #23-26 by its FIRST
+bounce, and #27-30 by its SECOND bounce (the round-2 re-verify found 10 blockers
+incl. 4 self-introduced regressions + 9 nits; all 7 fix-items landed, and #27 the
+sticky-hash of the non-exec lose-on — which corrects a `ab2fecba` design note —
+#28 the nested-subscript assignment extractor, #29 heredoc history newlines, #30
+the DESIRABLE executable-FIFO-earlier deviation, were carried). The THIRD bounce
+(round-3 re-verify, 2 blockers — convergence 10→2) fixed **H1** (a self-introduced
+regression: `history -s` inside an eval/source string context wrongly deleted the
+just-recorded line — bash gates the `-s` delete on `remember_on_history`, which is
+0 in `parse_and_execute` string contexts; the fix gates psh's `-s` delete on
+top-level recording being active while the `-s` STORE still consumes the line flag
+and `-p`'s strip stays ungated) and CARRIED **H2** as register #31 (the `[[`
+unquoted-operand arith provenance gap, integrator-ruled fix-vs-carry after a
+STOP-and-report plumbing analysis). #30 additionally gained the executable-SOCKET
+face (an adjacent unregistered deviation). The FOURTH re-verify **PASSED (zero
+blockers, all four scopes CONFIRMED)**; its final DOCS+PINS-ONLY commit registers
+four more pre-existing, base-identical divergence families the closing batteries
+surfaced — **#32** (`history -a`/`-c`/`-n` read-counter model), **#33** (CRLF
+line endings in piped `-i`), **#34** (`PROMPT_COMMAND` in piped `-i` — piped-mode
+ONLY; PTY-proved to RUN under a real terminal), and **#35** (eval'd outer-single
+`history -p "!!"` reconstructs the current line, characterization-pinned) — and
+records the composed `((`-write / `[[`-read inconsistency WITHIN #31 (the
+transitional cost of CV1 fixing the write while H2 carries the read).
+
+**Correction-of-record (R3 precedent — the git message stands, corrected here):**
+commit `f74ec47c`'s message says "bash's empty-subscript policy is preserved".
+That is imprecise: it preserves psh's PRE-EXISTING (OLD-PSH) empty-subscript
+policy (`h[]`/`h[$e]` fatal, `h[""]` a valid empty key), which itself DIVERGES
+from bash (bash treats an empty arith subscript as a rc-0 WARNING, not fatal —
+carry-adjacent to register #3). CV1/B1 deliberately left that behavior unchanged;
+only the quote-provenance and two-round keying were touched.
 
 | # | Carry | Disposition |
 |---|-------|-------------|
@@ -151,7 +233,7 @@ CARRIED-with-description). Two items are CLOSED by this Q3 slot.
 | 7 | RANDOM-in-prefix | CARRIED. `RANDOM` in a command prefix-assignment, documented edge. |
 | 8 | timeformat `%P` flake | CARRIED (to test-flake queue). W2-noted flaky `time` format `%P` case. |
 | 9 | plain-expansion echo stream | CARRIED. I4-noted plain-expansion echo stream edge. |
-| 10 | history `-p` failed-arg wording | CARRIED. I4-noted `history -p` failed-argument message wording. |
+| 10 | history `-p` failed-arg wording | CARRIED. `history -p '!nope'` (an event that does not exist): bash's message text is "history expansion failed", psh's is "event not found" — both rc 1, only the wording differs (I4-noted; confirmed by dev-cv). |
 | 11 | trailing-redirect-at-EOF | CARRIED. I3-noted new pre-existing divergence (trailing redirect at EOF). |
 | 12 | general async reaper (prompt-reap) | CARRIED. J1-noted — the general async-reaper/prompt-reap path (H19 residual). |
 | 13 | stopped-fg-subshell not recorded | CARRIED. J1-noted foreground-subshell stop-recording edge. |
@@ -159,6 +241,24 @@ CARRIED-with-description). Two items are CLOSED by this Q3 slot.
 | 15 | tcsetattr-drain probe note | CARRIED. J1 probe note (terminal-drain probe construction). |
 | 16 | RESUMABLE-PARSER CAMPAIGN (full #20 H15) | CARRIED as a future campaign. I3 ruling: full linear completeness needs a resumable lexer+parser (campaign-scale, Option B recorded); H15 is PARTIALLY closed + characterized (part (g)). |
 | 17 | J1 Linux-nightly watch (amended J1 ruling — a MUST) | **CARRIED — NOT yet discharged as of this report.** The first `nightly.yml` run after the J1 merge must be checked for the new monitor-mode rows in `tests/unit/executor/test_boundary_j1_job_lifecycle.py` and the promoted PTY signal fan-out tests — macOS (the local gate host) has a signal/pgroup coverage gap, so Linux-vs-bash for these is exercised only in the nightly. Recorded here because `tmp/` ledgers are scaffolding; this durable row keeps the obligation from being lost. |
+| 18 | R3 posix-mode special-builtin redirect-error fatality | **CARRIED (registered by dev-cv, v0.750.0).** In POSIX mode a redirection error on a POSIX SPECIAL builtin is FATAL in bash (the shell exits mid-line); psh reports the error and CONTINUES (both agree in default mode). Now BOTH-SIDES characterization-pinned: `tests/conformance/bash/test_cv_carry_characterization.py::TestPosixSpecialBuiltinRedirectFatality`. |
+| 19 | `$'\xNN'` (NN >= 0x80) escape byte model | **CARRIED (registered by dev-cv).** bash emits the RAW byte 0xNN; psh emits the UTF-8 ENCODING of codepoint U+00NN (`$'\xff'` → `c3 bf`, not `ff`) — a pre-existing byte-model divergence. Characterization-pinned both sides: `test_cv_carry_characterization.py::TestAnsiCHighEscapeByteModel`. |
+| 20 | interactive `key_decoder` replace-decode | **CARRIED (registered by dev-cv).** The interactive line editor's `KeyDecoder` decodes stdin bytes with `errors='replace'` (a malformed byte becomes U+FFFD on screen), unlike the I1 surrogateescape READ path — a criterion-4 residual scoped as a terminal-UI NON-GOAL (a keystroke that can't be decoded is not data to round-trip; the fix would degrade the interactive editor with no bash-parity gain). Registered so the residual is not re-discovered; no pin (terminal-UI, PTY-only). |
+| 21 | I1 mixed valid+malformed `read -N` count-boundary | **CARRIED (registered by dev-cv).** A `read -N` spanning a mix of VALID and MALFORMED multibyte bytes lands on a count boundary that matches NEITHER the UTF-8 nor the C-locale bash oracle — a HYBRID model, not "just mbrtowc quirks" (the part (c) I1 row is corrected accordingly). Documented loss, not chased; `I1-probes/deliberate-loss-probes.txt`. |
+| 22 | S3→I3 substitution-origin producer contract NOT consumed | **CARRIED (registered by dev-cv).** S3 shipped the typed `SubstitutionSyntaxError`/`is_substitution_origin` PRODUCER CONTRACT (at the `parse_nested_command` chokepoint) and handed the mapping to I3; **I3 never consumed it**, so it is inert and the rc-127 channel split + eval/source frame-abort remain a LIVE documented divergence family (part (c) S3→I3 row; 6-way green pin `test_nested_substitution_timing_conformance.py::test_divergence_c_mode_exit_code_is_127_in_bash`). |
+| 23 | CV1 B1 single-nested-quote arith-subscript carriers | **CARRIED (dev-cv bounce).** `(( h['"q"']=1 ))` / `(( h["'q'"]=1 ))` — a source quote nested inside another quote in an arithmetic subscript — is fully quote-removed by bash (key `q`) but psh's two-round model applies only ONE extra dquote round (round 1 does not treat `'`/`"` as delimiters), keying the inner quotes. Divergent on BASE too (pre-existing, NOT a regression); the B1 model's documented limit. Both-sides pin `test_subscript_keying_conformance.py::test_divergence_arith_nested_quote_carriers`. |
+| 24 | CV2 two-tier introspection + Permission-denied wording | **CARRIED (dev-cv bounce, B2/B3 N4).** `type`/`command -v`/`type -P` REPORT a non-executable file found on PATH (rc 0, bash) but psh's X_OK introspection says "not found" (rc 1) — pre-existing (base+branch); converging needs a two-tier flag in the resolver candidate model without loosening the X_OK exec/hash search. And the two-tier last-resort candidate reports rc 126 in both shells but bash names the ABS PATH while psh names the bare command word. Both-sides pins `test_cv_carry_characterization.py::TestTwoTierIntrospectionResidual` / `::TestPermissionDeniedWording`. |
+| 25 | `history -ps` clustered-flag rejection | **CARRIED (dev-cv bounce).** bash accepts the CLUSTERED `history -ps arg` (`-p`+`-s`); psh's hand-rolled history option scan rejects `-ps` as an invalid option (rc 2) — even though psh's OWN usage line advertises `history -ps arg [arg...]`. Documented divergence (the history builtin's justified hand-rolled parser, per the F5/Q2 allowlist). |
+| 26 | cmdsub-with-`;` in an arith subscript | **NOTE (dev-cv bounce, base-identical).** A command substitution containing `;` inside an arithmetic subscript (`$(( h[$(echo a; echo b)] ))`) is handled IDENTICALLY by bash, base, and the B1-patched branch (no parse error introduced by the round-1 dquote pass) — recorded so the B1 change's inertness on this shape is not re-litigated. No divergence, no pin needed beyond the CV1 regression battery. |
+| 27 | sticky-hash of the non-exec lose-on | **CARRIED (dev-cv round-2, integrator-ruled).** bash IMPLICITLY HASHES the non-executable last-resort (126) candidate at exec time (`hash` lists it afterward; it can beat a later executable within the unchanged PATH); psh does NOT insert a 126 candidate into the command hash (a directory lose-on is hashed by neither). Implementing implicit insertion would risk the resolve-once/hash machinery at campaign close. **Corrects commit `ab2fecba`'s design note "bash hashes only executables" — bash ALSO hashes the non-exec lose-on** (correction-of-record, R3 precedent). Both-sides pin `test_cv_carry_characterization.py::TestStickyNonExecHash`. |
+| 28 | nested-subscript indexed ASSIGNMENT extractor split | **CARRIED (dev-cv round-2).** `a[h[q]]=Z` (an associative subscript nested inside an indexed-array element ASSIGNMENT target): bash writes `a[2]=Z`; psh's element-assignment subscript extractor splits at the inner `[` and errors "bad array subscript". The READ side `${a[h[q]]}` works in both — only the assignment-target extractor is affected. Documented divergence. |
+| 29 | heredoc history entries missing trailing newline | **CARRIED (dev-cv round-2).** A command whose logical line includes a heredoc body is recorded in interactive history without bash's trailing-newline detail — a cosmetic history-rendering difference, not a functional one. |
+| 30 | executable special-file (FIFO/SOCKET) earlier: bash HANG/126 vs psh skip | **CARRIED (dev-cv round-2, socket face round-3; DESIRABLE deviation — recorded).** With an EXECUTABLE (mode 755) FIFO earlier on PATH and a real executable later, bash execve's the FIFO and HANGS (blocked on open); psh's regular-file tier-1 treats the FIFO as a non-X_OK candidate and runs the later executable. **Round-3 added the SOCKET face**: an executable-bit AF_UNIX socket earlier on PATH — bash takes it in tier-1 and execve fails **126** (no hang, unlike the FIFO), while psh again skips to the later executable. psh's behavior is preferable (no hang, no spurious 126); recorded so it is not "fixed" back. The `search_path_two_tier` docstring was corrected to state bash's tier-1 is `access(X_OK)` on ANY type (psh's regular-file tier-1 is a deliberate, narrower approximation — NOT a faithful mirror). Socket face pin `test_cv_carry_characterization.py::TestExecutableSpecialFileEarlier` (the FIFO face would hang bash, so it is documented not pinned). |
+| 31 | `[[` unquoted-operand arith keys lose quote provenance | **CARRIED (dev-cv round-3, integrator-ruled after STOP-and-report).** A `[[` UNQUOTED numeric operand carries per-character quote provenance into the arithmetic in bash: `[[ h[\"q\"] -eq 7 ]]` keys the associative subscript `"q"` (the `\"` stays a protected `"`), while psh's `[[` path quote-removes the operand string before arith and keys `q`. `let r=h[\"q\"]` keys `q` in BOTH (the shell pre-processes `\"`→`"`, then arith removes it), so `[[` is NOT let-like for provenance — the round-2 R1 model was correct for the `arith_source_quotes` flag but too coarse for this unquoted spelling. Base-identical, pre-existing, NOT a regression. **FULL-FIX SHAPE (for the future campaign that inherits this — see register #16 RESUMABLE-PARSER):** thread W1-style protection runs (`ExpandedField`/`FieldRun`) through the entire arithmetic input contract by replacing the STRING arith input TYPE with a provenance-carrying sequence — today `_operand_string(word)→str` destroys provenance BEFORE `evaluate_arithmetic(expr:str)`, and that `str` contract is shared by ~10 caller families (`(( ))`, `$(( ))`, `let`, `[[ -eq ]]`, array-index eval, integer-attribute eval, `${arr[expr]}`, for-arith, …), so the arith tokenizer/parser/evaluator/subscript-keying must all learn to carry per-char protection. This is a whole-contract reshape (campaign-scale), NOT a close-out nit. The narrow "feed the raw operand text" shortcut is REJECTED: it breaks non-subscript escaped operands (bash errors on `[[ \"5\" -eq 5 ]]`, and the arith tokenizer can't lex a bare `\`), so it trades this divergence for a worse one. **COMPOSED CONSEQUENCE (ruled WITHIN #31, round-4):** because CV1 fixed the `(( ))` WRITE-side provenance while `[[` READ-side is carried, a quote-bearing key WRITTEN via `(( h[$k]=v ))` (keys `"q"`, bash-correct) and READ via `[[ h[$k] -eq v ]]` (keys `q`) now key INCONSISTENTLY within psh — the read MISSES (rc 1) where bash matches (rc 0). Base was wrong-but-CONSISTENT (the pre-CV1 write also keyed `q`, so read/write agreed and accidentally printed bash's match=yes); this transitional inconsistency is inherent to the partial fix, closed by the same contract reshape. Deliberate, pinned: `test_cv_carry_characterization.py::TestDoubleBracketArithProvenance` (5 bash-5.2 rows incl. the `let` control, single-quoted/real-dquote controls that MATCH, and the composed `((`-write/`[[`-read row). |
+| 32 | `history -a`/`-c`/`-n` append/read-counter model | **CARRIED (dev-cv round-4, base-identical, verifier-probed).** bash tracks a per-file "lines already read" counter that `history -n` advances, so a second `-n` (and a `-n` after `-c`) reads NOTHING already consumed; psh's `-n` RE-READS entries bash considers already read, so an entry appended with `-a` then cleared with `-c` re-materializes in psh's in-memory list where bash's counter suppresses it (probed: final `history` retains the `-a`'d entry in psh, not in bash). A pre-existing counter-model divergence in the `-a`/`-c`/`-n` histfile-sync family; not a regression, no CV change touched it. Register-only (no pin — the exact bash `history_lines_in_file` counter semantics are subtle and orthogonal to the CV3 recording/removal work). |
+| 33 | CRLF line endings in piped `-i` | **CARRIED (dev-cv round-4, base-identical, verifier-probed).** With CRLF (`\r\n`) line endings fed to piped interactive mode, bash strips the trailing `\r` as part of the line ending; psh keeps it, so `history\r` is executed as an unknown command (`psh: history: command not found`) and any bare builtin/command similarly fails. A pre-existing input-layer divergence (the interactive line reader does not treat `\r` as end-of-line); register-only. |
+| 34 | `PROMPT_COMMAND` never fires in piped `-i` mode | **CARRIED (dev-cv round-4, base-identical, verifier-probed — piped-mode-ONLY).** In piped (non-PTY) interactive mode psh never executes `PROMPT_COMMAND` (probed: bash fired it once per prompt, 3×; psh 0×). **IMPORTANT — this is piped-mode-only:** under a REAL PTY psh RUNS `PROMPT_COMMAND` and the H1 recording gate holds (the verifier PTY-proved a byte-identical histfile sequence). So the divergence is an artifact of the piped-stdin harness path, not a general `PROMPT_COMMAND` gap; register-only, and the PTY caveat is recorded so it is not "fixed" against the wrong (piped) baseline. |
+| 35 | eval'd outer-single `history -p "!!"` reconstructs the current line | **CARRIED (dev-cv round-4, integrator-ruled, base-identical).** `eval 'history -p "!!"'` (OUTER-SINGLE / inner-double) expands `!!` to a LOSSY RECONSTRUCTION of the CURRENT line (`eval 'history -p !!'`, inner double-quotes dropped) instead of the PREVIOUS entry (bash: `echo seed`). The STRIP half is fixed and bash-correct in BOTH — only the `-p` EXPANSION STRING diverges (the history-expansion engine's reconstruction, not the CV3 removal). No existing pin saw it: `TestHistorySInStringContextH1::test_eval_p_still_strips_control` uses the OUTER-DOUBLE spelling (`eval "history -p '!!'"`) whose `!!` is consumed by INPUT-TIME expansion before eval runs (verifier V4/R09). Pre-existing on base, not a regression. Deliberate, pinned: `test_history_p_interactive_conformance.py::TestHistoryEvalOuterSinglePExpansionH35` (outer-single spelling, divergence pin). |
 
 ---
 
@@ -194,9 +294,15 @@ mypy                         → Success: no issues found in 274 source files
   adds one index row for this file at ceremony, which restores the gate to
   20,190. This is a coordination item, not a behavioral regression.
 
-Probe transcripts (this slot): `tmp/boundary-ledgers/Q3-probes/` —
+Probe transcripts (Q3 slot): `tmp/boundary-ledgers/Q3-probes/` —
 `census.sh` + `census-consumers.txt` (27-type census), `hpin-verification.txt`
-(H-pin existence/xfail check), `gate-devcomplete.txt` (the gate transcript).
+(H-pin existence/xfail check — reconciled by the closing-verification slot, see
+below), `gate-devcomplete.txt` (the gate transcript). Closing-verification slot
+(v0.750.0) probes: `tmp/boundary-ledgers/CV-probes/` — `cv1_matrix.sh`,
+`cv2_matrix.sh` + `cv2_hash_exec_source.sh`, `cv3_bash.sh` (three-way blocker
+matrices), `cv-hpin-verification.txt` (the reconciled H-pin re-run), and
+`w3-fixed/` (the six W3 harnesses patched to honor `$W3_PSH_ROOT` with a
+validated fallback — the integrator swaps them into the archive at ceremony).
 Archived per-slot ledgers and probes for E1..Q2 live beside them.
 
 ---
@@ -230,11 +336,20 @@ module-level symbols an out-of-tree consumer could import. Summarized from
 
 ## (g) #20 H1–H19 + C1 closure table
 
-Status verified at `59324a55`. Every named pin was collected AND run: **591 pin
-executions, 0 skipped, 0 xfailed** (see `Q3-probes/hpin-verification.txt`; the
-suite's 23 xfail markers are all in unrelated files — phase-manifest plugin,
-interactive history/completion, pty smoke, benchmarks, absent-features ledger).
-This table feeds the integrator's §15.1 closing verification.
+Every named pin was collected AND run. The closing-verification slot RE-RAN a
+reproducible selection — the 21 closure-table pin FILES below — at the final SHA:
+**604 passed, 0 skipped, 0 xfailed** (`CV-probes/cv-hpin-verification.txt`, exact
+command recorded). This reconciles the stale Q3 figure: `Q3-probes/hpin-
+verification.txt` claimed **591** at `59324a55`, but that "217 unit + 369
+conf/sys/int + 5 H7-diff" bucket selection was not preserved; running the 21
+closure-table FILES gives **603** for the pre-slot file contents, and this slot's
+construction-purity fix added ONE test to the H18 pin file
+(`test_construction_purity_f2.py::test_construction_writes_nothing_to_os_environ`),
+so the reconciled count is **603 + 1 = 604**. The suite's 23 xfail markers are all
+in unrelated files (phase-manifest plugin, interactive history/completion, pty
+smoke, benchmarks, absent-features ledger) — none an H-pin. H15/H19 remain PARTIAL
+by ruling (their pins pass; the partiality is scope, not a skip). This table feeds
+the integrator's §15.1 closing verification.
 
 | Finding | Status | Pinning test (`file::function`, verified present, not skip/xfail) |
 |---------|--------|-------------------------------------------------------------------|

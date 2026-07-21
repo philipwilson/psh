@@ -219,11 +219,19 @@ class ExecBuiltin(Builtin):
         # a command that lives on PATH.
         env = {} if opts['c'] else shell.env
         exec_file = command[0]
-        if opts['c'] and '/' not in exec_file:
-            found = shell.command_resolver.search_path(
-                exec_file, shell.env.get('PATH', ''))
-            if found:
-                exec_file = found[0]
+        if exec_file and '/' not in exec_file:
+            # Locate the program on the shell's PATH VARIABLE (tri-state), not
+            # the child-env projection — a declared-unset `local PATH` must not
+            # resurrect the outer export (#20 H13 / CV2). bash locates with the
+            # shell's PATH then hands the child the requested env, so this
+            # applies to `-c` (empty child env) too. Use bash's TWO-TIER search
+            # (CV2 B3): an X_OK match wins over a non-executable earlier on PATH,
+            # and a sole non-executable candidate is still exec'd and reported
+            # "Permission denied" (126); a bare-name MISS leaves exec_file empty
+            # and is reported "<name>: not found" below (never re-searching a
+            # resurrected env PATH via execvpe).
+            exec_file = shell.command_resolver.search_path_two_tier(
+                exec_file, shell.state.get_variable('PATH', '')) or ''
 
         argv0 = opts['a'] if opts['a'] is not None else command[0]
         if opts['l']:

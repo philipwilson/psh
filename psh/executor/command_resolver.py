@@ -174,6 +174,42 @@ class CommandResolver:
                 results.append(full_path)
         return results
 
+    def search_path_two_tier(self, name: str, path_str: str) -> Optional[str]:
+        """psh's TWO-TIER PATH resolution for EXECUTION (CV2 B2/B3, R3): the
+        first ``X_OK``-executable REGULAR-FILE match wins; failing that, the
+        FIRST STAT-EXISTS candidate of ANY type is the LAST RESORT — kept if it
+        is a FIFO / non-executable file / device (``execve`` then ``EACCES`` ->
+        "Permission denied", 126), but DISCARDED if it is a DIRECTORY (bash's
+        directory "poisons" the slot: even a later non-executable does not
+        rescue it -> "command not found", 127). ``None`` when the name is nowhere
+        on PATH. A slash-name is taken as given if it exists (execve reports its
+        own EACCES/EISDIR).
+
+        This APPROXIMATES bash's ``find_user_command_internal`` (remember the
+        first ``FS_EXISTS`` candidate while looking for an ``FS_EXECABLE`` one),
+        but the TIER-1 test is DELIBERATELY narrower than bash's: bash's tier-1 is
+        ``access(X_OK)`` on ANY type, so an executable-bit FIFO or SOCKET earlier
+        on PATH WINS tier-1 there (execve then HANGS on the FIFO / fails 126 on
+        the socket). psh requires a REGULAR FILE for tier-1, so such a special
+        file is treated as a mere stat-exists fallback and an executable later on
+        PATH runs instead — a documented, desirable deviation (carry register
+        #30: no hang, no spurious 126) at the cost of matching bash's tier-1 on
+        those exotic entries."""
+        if '/' in name:
+            return name if os.path.exists(name) else None
+        fallback: Optional[str] = None
+        for component in path_str.split(':'):
+            directory = component if component else '.'
+            full_path = os.path.join(directory, name)
+            if os.path.exists(full_path):
+                if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                    return full_path
+                if fallback is None:
+                    fallback = full_path      # first STAT-EXISTS (any type)
+        if fallback is not None and os.path.isdir(fallback):
+            return None                        # a directory poisons the slot
+        return fallback
+
     # -- ordered resolution ------------------------------------------------
 
     def resolve(self, name: str, query: ResolveQuery = DEFAULT_QUERY) -> Resolution:
@@ -213,8 +249,13 @@ class CommandResolver:
         PATH search (bash), counting a hit; ``populate_hash`` remembers a
         fresh find (executor only).
         """
+        # PATH comes from the VARIABLE (tri-state), not the child-env projection:
+        # a declared-unset `local PATH` shadows an outer export (bash searches an
+        # empty PATH), it must not resurrect it (#20 H13 / CV2). get_variable sees
+        # a command temp-env `PATH=... cmd` prefix, so the installed-prefix PATH is
+        # still what the deferred search reads.
         path_str = (query.path if query.path is not None
-                    else self.shell.env.get('PATH', ''))
+                    else self.shell.state.get_variable('PATH', ''))
 
         if query.all_matches:
             return [Candidate(CandidateKind.EXTERNAL, name, path=path)

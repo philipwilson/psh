@@ -343,9 +343,19 @@ use)` is the use-aware dispatch: `SubscriptUse.TEST_V`/`UNSET` return `None`
 for an (expanded-)empty indexed subscript (bash: silently-unset `-v`, no-op
 `unset`), while read/write address index 0. In ARITHMETIC context the
 subscript is a verbatim `SUBSCRIPT` token (`arithmetic/
-tokenizer.py#_read_subscript`) and the assoc rule runs with
-`expand_dollar=False` (the arith pre-pass already substituted `$`-constructs;
-bash never rescans). `_eval_array_index()` remains as a thin adapter.
+tokenizer.py#_read_subscript`) whose `$`-forms are held OUT of the arithmetic
+`$`-substitution pre-pass (`arithmetic/evaluator.py#_arith_preexpand` masks
+`IDENT[...]` regions), so it reaches the authority RAW. The assoc rule then
+keys it with PROVENANCE, exactly like a non-arithmetic `h[$k]=v` (campaign
+W2/CV1): source-spelled quotes/backslashes are removed, but characters arriving
+via `$k` stay LITERAL and a substituted `$` is never rescanned
+(`k='"q"'; (( h[$k]=1 ))` keys `"q"`; `k='$x'; (( h[$k]=1 ))` keys the literal
+`$x`). The empty-subscript policy in `arithmetic/evaluator.py#_array_key` is psh's OWN,
+a DELIBERATE divergence (register #3) — live bash 5.2 rejects EVERY empty-key
+spelling (`h[]`/`h[$e]` AND `h[""]`), whereas psh makes a literal/substituted-
+empty subscript fatal but accepts a source empty-quoted key (`h[""]`) as valid
+(`SubscriptEvaluator.raw_has_source_quote`). `_eval_array_index()` remains as a
+thin adapter.
 
 ### IFS Word Splitting and per-character protection
 

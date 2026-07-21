@@ -44,7 +44,11 @@ class LetBuiltin(Builtin):
         result = 0
         for expr in exprs:
             try:
-                result = evaluate_arithmetic(expr, shell)
+                # `let` args are already shell-word-processed (quotes removed by
+                # the shell), so a source-spelled associative subscript gets NO
+                # extra dquote round — unlike `(( ))`/`$(( ))` (W2/CV1 B1).
+                result = evaluate_arithmetic(expr, shell,
+                                             arith_source_quotes=False)
             except (ValueError, ArithmeticError) as e:
                 self.error(f"{expr}: {e}", shell)
                 return 1

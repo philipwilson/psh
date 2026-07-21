@@ -114,17 +114,28 @@ class SourceProcessor(ScriptComponent):
         # (the recursion headroom is an activation fact); nested runs (eval,
         # source, trap actions) count depth on the same owner.
         with self.shell.activation():
-            executor = getattr(self.shell, '_current_executor', None)
-            if executor is None:
-                return self._run_from_source(input_source, add_to_history,
-                                             base_line)
-            saved_floor = executor.context.special_exit_floor
-            executor.context.special_exit_floor = executor.context.errexit_suppress
+            # bash's remember_on_history (CV3 H1): this source's commands are a
+            # RECORDING context only at the top level (add_to_history); an
+            # eval/dot/`-c` string context is NOT (parse_and_execute clears it),
+            # so `history -s`'s delete does not fire inside it. Saved/restored so
+            # `source f; history -s x` deletes for the top-level `-s` again.
+            saved_recording = self.state._history_recording_active
+            self.state._history_recording_active = add_to_history
             try:
-                return self._run_from_source(input_source, add_to_history,
-                                             base_line)
+                executor = getattr(self.shell, '_current_executor', None)
+                if executor is None:
+                    return self._run_from_source(input_source, add_to_history,
+                                                 base_line)
+                saved_floor = executor.context.special_exit_floor
+                executor.context.special_exit_floor = \
+                    executor.context.errexit_suppress
+                try:
+                    return self._run_from_source(input_source, add_to_history,
+                                                 base_line)
+                finally:
+                    executor.context.special_exit_floor = saved_floor
             finally:
-                executor.context.special_exit_floor = saved_floor
+                self.state._history_recording_active = saved_recording
 
     def _run_from_source(self, input_source, add_to_history: bool = True,
                          base_line: int = 1) -> int:
@@ -418,6 +429,12 @@ class SourceProcessor(ScriptComponent):
         end with a joinable dangling continuation — mid-source, the
         accumulator keeps reading instead of completing such a buffer.
         """
+        # Whether this logical command was ONE physical input line — measured
+        # BEFORE line-continuation joining, so a `\`-continued or multi-line
+        # command has embedded newlines here (CV3 R4). bash's `history -p`
+        # unverified delete fires only for a single-physical-line command.
+        single_physical_line = '\n' not in command_string.rstrip('\n')
+
         # Process line continuations first
         from .input_preprocessing import process_line_continuations
         command_string = process_line_continuations(
@@ -473,8 +490,16 @@ class SourceProcessor(ScriptComponent):
         # here made ignorespace a silent no-op on the real entry path
         # (reappraisal #17 H7 privacy leak). Whitespace-only commands are still
         # skipped (deliberate divergence: bash records them).
-        if add_to_history and record_text.strip():
-            self.shell.add_history(record_text)
+        # bash's line-scoped history strip flag (CV3 B4/B5): a REAL input line
+        # sets it to whether it was recorded (so `history -p`/`-s` on the line
+        # can strip the invocation); a line dropped by HISTCONTROL/HISTIGNORE
+        # leaves it False (no misfire). Non-recording contexts (eval/source/
+        # cmdsub bodies — add_to_history=False) do NOT touch it, so a
+        # `history -p` inside them INHERITS the enclosing line's flag (bash).
+        if add_to_history:
+            self.state._history_line_pending_strip = bool(
+                record_text.strip() and self.shell.add_history(record_text))
+            self.state._history_line_single_physical = single_physical_line
 
         # Alias expansion is a token-stream transform applied at the
         # lex->parse seam (see the expand_aliases calls below and in

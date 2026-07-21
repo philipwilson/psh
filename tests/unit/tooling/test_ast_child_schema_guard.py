@@ -16,10 +16,11 @@ It also pins:
 - **campaign Q2 (§13, "visitor recursion outside walk_ast"):** no production
   module re-implements generic AST-tree descent by reflecting over a node's
   dataclass fields — the anti-pattern #20 named (the elif-skip class of bug). The
-  reflection primitives (``dataclasses.fields`` / ``dataclasses.is_dataclass`` /
-  ``__dataclass_fields__`` / ``vars`` / ``.__dict__``) used to walk a node's
-  fields are confined to a justified, shrink-only allowlist; a synthetic offender
-  proves the scan bites.
+  reflection primitives (``dataclasses.fields`` / ``.is_dataclass`` / ``.asdict``
+  / ``.astuple`` / ``__dataclass_fields__`` / ``vars`` / ``.__dict__`` /
+  ``.__annotations__`` / ``inspect.getmembers``) used to walk a node's fields are
+  confined to a justified, shrink-only allowlist; synthetic offenders (including
+  the ``asdict``/``astuple``/``getmembers`` widening) prove the scan bites.
 """
 import ast as _ast
 import dataclasses
@@ -294,8 +295,11 @@ def test_no_template_carrier_field_is_a_declared_child():
 # ``walk_ast`` (reading ``AstChildSchema``) is the SOLE structural AST traversal.
 # The anti-pattern is a SECOND traversal engine: code that descends an AST tree
 # by reflecting over a node's dataclass fields generically (``dataclasses.fields``
-# / ``__dataclass_fields__`` / ``vars`` / ``.__dict__``) and recursing — the exact
-# shape whose historical instance silently skipped ``IfConditional.elif_parts``.
+# / ``.asdict`` / ``.astuple`` / ``__dataclass_fields__`` / ``vars`` / ``.__dict__``
+# / ``.__annotations__`` / ``inspect.getmembers``) and recursing — the exact shape
+# whose historical instance silently skipped ``IfConditional.elif_parts``
+# (``asdict``/``astuple`` hide a whole-AST descent behind one recursive call; the
+# widened set is scanned by ``_find_reflection_primitives``, CV closing verify).
 # This scan flags those reflection primitives in production code (``psh/**``);
 # the allowlist is the small set of files that legitimately reflect, each with a
 # specific reason, and it may only SHRINK.
@@ -327,8 +331,14 @@ _REFLECTION_ALLOWLIST = {
 }
 
 # The reflection primitives that signal generic dataclass-field traversal.
-_REFLECT_ATTRS = {"fields", "is_dataclass"}          # <dataclasses-alias>.<attr>()
-_REFLECT_DUNDER = {"__dataclass_fields__", "__dict__"}
+# ``asdict``/``astuple`` RECURSE through nested dataclasses (a whole-AST descent
+# hidden behind one call), so they are the same evasion shape as a hand-rolled
+# fields() walk and are scanned alongside it (CV closing verification).
+_REFLECT_ATTRS = {"fields", "is_dataclass", "asdict", "astuple"}  # <dc-alias>.<attr>()
+# ``__annotations__`` enumerates a node's declared fields — a declared-SHAPE
+# reflection that could drive a generic descent, so it is scanned like the other
+# field dunders (none exist in psh/; this keeps a new one from sneaking in).
+_REFLECT_DUNDER = {"__dataclass_fields__", "__dict__", "__annotations__"}
 
 
 def _dataclasses_import_bindings(tree):
@@ -357,12 +367,17 @@ def _dataclasses_import_bindings(tree):
 def _find_reflection_primitives(src: str):
     """Return [(lineno, primitive)] generic field-reflection primitives in *src*.
 
-    Matches ``<dataclasses-alias>.fields``/``.is_dataclass`` (the module name OR
-    any ``import dataclasses as X`` alias), the bare imported name (``from
-    dataclasses import fields [as F]``), ``vars(...)``, and
-    ``<expr>.__dataclass_fields__`` / ``<expr>.__dict__`` (attribute OR the
-    getattr-string form). Comments and docstrings that merely name these do NOT
-    match (this is an AST scan)."""
+    Matches the ``dataclasses`` reflectors ``.fields``/``.is_dataclass``/
+    ``.asdict``/``.astuple`` (``_REFLECT_ATTRS`` — the module name OR any
+    ``import dataclasses as X`` alias) and the bare imported name of any of them
+    (``from dataclasses import fields [as F]``); ``vars(...)`` and
+    ``inspect.getmembers(...)`` calls; and the field dunders
+    ``<expr>.__dataclass_fields__`` / ``.__dict__`` / ``.__annotations__``
+    (``_REFLECT_DUNDER`` — attribute OR the getattr-string form). ``asdict``/
+    ``astuple`` recurse through nested dataclasses (a whole-AST descent behind
+    one call) and ``getmembers``/``__annotations__`` enumerate a node's declared
+    shape, so all are the same evasion class as a hand-rolled ``fields()`` walk.
+    Comments and docstrings that merely name these do NOT match (AST scan)."""
     tree = _ast.parse(src)
     module_aliases, bare_names = _dataclasses_import_bindings(tree)
     hits = []
@@ -370,6 +385,10 @@ def _find_reflection_primitives(src: str):
         if isinstance(node, _ast.Attribute):
             if node.attr in _REFLECT_DUNDER:
                 hits.append((node.lineno, node.attr))
+            elif node.attr == "getmembers":
+                # inspect.getmembers(node) enumerates every attribute — a generic
+                # reflection that could stand in for a schema-declared walk.
+                hits.append((node.lineno, "getmembers"))
             elif (node.attr in _REFLECT_ATTRS
                   and isinstance(node.value, _ast.Name)
                   and node.value.id in module_aliases):
@@ -447,13 +466,44 @@ def test_offender_generic_reflection_recursion_is_flagged():
 
 def test_offender_dunder_reflection_is_flagged():
     """SYNTHETIC OFFENDER: descending via __dataclass_fields__ / __dict__ / vars
-    is detected (evasion shapes that avoid the ``dataclasses`` module name)."""
+    / __annotations__ is detected (evasion shapes that avoid the ``dataclasses``
+    module name)."""
     off1 = "def w(n):\n    for k in n.__dataclass_fields__:\n        w(getattr(n, k))\n"
     off2 = "def w(n):\n    for k, v in n.__dict__.items():\n        w(v)\n"
     off3 = "def w(n):\n    for k, v in vars(n).items():\n        w(v)\n"
+    off4 = "def w(n):\n    for k in n.__annotations__:\n        w(getattr(n, k))\n"
     assert any(p == "__dataclass_fields__" for _, p in _find_reflection_primitives(off1))
     assert any(p == "__dict__" for _, p in _find_reflection_primitives(off2))
     assert any(p == "vars()" for _, p in _find_reflection_primitives(off3))
+    assert any(p == "__annotations__" for _, p in _find_reflection_primitives(off4))
+
+
+def test_offender_asdict_astuple_getmembers_is_flagged():
+    """SYNTHETIC OFFENDER (CV closing verification): a whole-AST descent hidden
+    behind ``dataclasses.asdict``/``astuple`` (which recurse through nested
+    dataclasses), the from-imported alias, and ``inspect.getmembers`` are all
+    detected — they are generic field reflection just like a hand-rolled
+    ``fields()`` walk."""
+    off_mod = (
+        "import dataclasses\n"
+        "def dump(n):\n"
+        "    return dataclasses.asdict(n), dataclasses.astuple(n)\n"
+    )
+    prims = {p for _, p in _find_reflection_primitives(off_mod)}
+    assert {"dataclasses.asdict", "dataclasses.astuple"} <= prims, prims
+
+    off_from = (
+        "from dataclasses import asdict as A\n"
+        "def dump(n):\n    return A(n)\n"
+    )
+    assert "A" in {p for _, p in _find_reflection_primitives(off_from)}
+
+    off_inspect = (
+        "import inspect\n"
+        "def dump(n):\n"
+        "    return [v for _, v in inspect.getmembers(n)]\n"
+    )
+    assert "getmembers" in {p for _, p in _find_reflection_primitives(off_inspect)}
 
 
 def test_offender_aliased_dataclasses_import_is_flagged():

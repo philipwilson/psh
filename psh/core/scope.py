@@ -977,7 +977,11 @@ class ScopeManager:
             # (An undefined variable like `n=abc` is NOT an error — the
             # evaluator resolves it to 0 — so this only raises on genuine
             # syntax/division errors, matching bash.)
-            return evaluate_arithmetic(expr, self._shell)
+            # arith_source_quotes=False: an integer-attribute value (declare -i /
+            # local -i) is a shell-processed value, so an associative subscript
+            # inside it gets NO extra (( )) round-1 dquote pass (W2/CV1 M2).
+            return evaluate_arithmetic(expr, self._shell,
+                                       arith_source_quotes=False)
 
         try:
             return int(expr)

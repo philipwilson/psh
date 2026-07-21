@@ -145,8 +145,11 @@ class HashBuiltin(Builtin):
                 continue
             if shell.builtin_registry.has(name):
                 continue
+            # PATH from the VARIABLE (tri-state), not the child-env projection
+            # (#20 H13 / CV2): a declared-unset `local PATH` must not resurrect
+            # the outer export.
             paths = shell.command_resolver.search_path(
-                name, shell.env.get('PATH', ''))
+                name, shell.state.get_variable('PATH', ''))
             if paths:
                 table.insert(name, paths[0])
             else:

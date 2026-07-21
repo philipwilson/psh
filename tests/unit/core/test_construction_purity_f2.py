@@ -186,6 +186,37 @@ def test_reactive_locale_write_outside_execution_installs_owner(locale_guard):
         s1.close()
 
 
+def test_construction_writes_nothing_to_os_environ():
+    """os.environ is READ once at construction (``state.env = os.environ.copy()``)
+    but never WRITTEN — and `export` mutates only the shell.env overlay, so an
+    in-process shell leaves no residue in the hosting process's environment
+    (the pre-v0.312 ``FOO=bar exec`` leak class).
+
+    The suite's autouse ``_restore_os_environ`` fixture rolls back any os.environ
+    pollution at teardown, which would MASK a construction/export leak from a
+    later test — so this pin fingerprints os.environ INSIDE the test, before that
+    rollback, and sees the pollution first.
+    """
+    before = dict(os.environ)
+    shell = Shell(norc=True)
+    try:
+        assert dict(os.environ) == before, (
+            "Shell construction mutated os.environ — added="
+            f"{set(os.environ) - set(before)}, removed="
+            f"{set(before) - set(os.environ)}, changed="
+            f"{{k for k in before if os.environ.get(k) != before[k]}}")
+        # An EXPORT during execution writes the shell.env OVERLAY, never the
+        # hosting process's os.environ (children get shell.env explicitly).
+        shell.run_command('export CV_PURITY_PROBE=leaked')
+        assert 'CV_PURITY_PROBE' not in os.environ, (
+            "export leaked into the hosting process's os.environ — it must "
+            "write only shell.state.env")
+        assert shell.state.env.get('CV_PURITY_PROBE') == 'leaked'  # overlay OK
+        assert dict(os.environ) == before
+    finally:
+        shell.close()
+
+
 def test_construction_installs_no_signal_handlers():
     """Control (green on base since F1): handler installs are entry-point
     and trap-time only, never construction."""
