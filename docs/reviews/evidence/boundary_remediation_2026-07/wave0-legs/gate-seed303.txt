@@ -1,0 +1,1537 @@
+Persisting full run transcript to: /Users/pwilson/src/psh-wave0-legs/tmp/last-test-run.txt
+
+================================================================================
+MODE: Smart test runner (recommended) [parser: recursive_descent, parallel=auto]
+  - Phase 1: Regular tests with normal capture
+             (parallelized with auto workers)
+================================================================================
+
+================================================================================
+Running: Phase 1: Regular tests (parallel, auto workers, -m 'not serial and not benchmark')
+Command: /Library/Frameworks/Python.framework/Versions/3.14/bin/python -m pytest -p tools.pytest_phase_manifest --shuffle-seed 303 tests/ -m not serial and not benchmark -n auto --phase-manifest /Users/pwilson/src/psh-wave0-legs/tmp/phase-manifests/phase-1.json
+(timeout: 1800s, own process group)
+================================================================================
+============================= test session starts ==============================
+platform darwin -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0
+rootdir: /Users/pwilson/src/psh-wave0-legs
+configfile: pytest.ini
+plugins: anyio-4.12.1, mock-3.15.1, xdist-3.8.0, timeout-2.4.0, cov-7.0.0
+created: 16/16 workers
+16 workers [21020 items]
+
+..s...s.................s.s.......s.....................s.s.......s....s [  0%]
+.......................s...s.........sss.......s........................ [  0%]
+.........s............s............s...s........................s....... [  1%]
+....s.....s.....s....s.......s........s...s.........s.............s.s... [  1%]
+........................s.......s.s.........s........................... [  1%]
+ss.......s.............s......ss..s..........................s.......... [  2%]
+............s.....................s...............s..................... [  2%]
+.......s.......s.......................s.......................ss..s.s.. [  2%]
+s..s.............s..................s..........sss..................s... [  3%]
+...s..................................ss.................s........s..... [  3%]
+s.s................s...........s...............s........s............... [  3%]
+...s................................s..................s.s............s. [  4%]
+.....s..........s............ss..............s.....................s.... [  4%]
+....s..................s.......x.........s.....................s........ [  4%]
+...ss.....s............................s................sss............. [  5%]
+.......s.s.......s...s......................s..............s.s...s...... [  5%]
+s...............s............s........s.s..........s.s...s..s........... [  5%]
+s................................................s........s............. [  6%]
+.............s.....................s.....s......s....................... [  6%]
+................s.........s...........................s.........s....... [  6%]
+....s................s..s............................ss.s.s........s...s [  7%]
+.....s....s.....ss..........................ss.s...........s...s........ [  7%]
+....s.............s.....s.s....................................s.s...... [  7%]
+.......s.......................................................s........ [  8%]
+..................s....................s.s...................s.......... [  8%]
+.............s...............................................ss...s..... [  8%]
+.s....................................s................................. [  9%]
+............................s.................ss........s............... [  9%]
+............s........s.s..s..........s...............ss................s [  9%]
+..s...s.......................s.......s.........s......s.......s........ [ 10%]
+s..........s.................s..........................s............... [ 10%]
+........s.................................................s............. [ 10%]
+......................................ss.....s..s.................s..... [ 11%]
+.....................s..s...s.s......s.....s............................ [ 11%]
+..............................................................ss........ [ 11%]
+............................s...s....................................... [ 12%]
+.......................s.s.......s.........ss..........s.......s........ [ 12%]
+....s................s.......s...............s.s.....................ss. [ 13%]
+..s......s.....s......s...........s.................s....s...s..s....... [ 13%]
+....s...........s.s...s....s...........................s..s.......s..... [ 13%]
+.....s.................s.....s.s.......s...s......s.....s.......s....s.. [ 14%]
+....s.......................s...............s........................... [ 14%]
+.....................s....s.........s................................... [ 14%]
+......................s...................................s.s........... [ 15%]
+...........s..................s...........s...s.....................s... [ 15%]
+............................s........................................... [ 15%]
+.......s..............s..............s.......................s.......... [ 16%]
+....s................s........s............s.........s......s........... [ 16%]
+......s..........s....s..............s.....s........................s... [ 16%]
+.......................s...........s.........s..............s........... [ 17%]
+...s.......s........ss........s.........s............................... [ 17%]
+.........s..........................................s.......s........... [ 17%]
+....s....s................s.....s..........s.........s.................. [ 18%]
+.......ss..........s.......s...s..s...................................s. [ 18%]
+........s...ss....s.....s........s....s.............s.........s......... [ 18%]
+..................................................................s..... [ 19%]
+.........................s..................................s.s......... [ 19%]
+...s....................................s.......s...................s... [ 19%]
+.................................s.s...............s........s........... [ 20%]
+..........s...........s.....................s........................... [ 20%]
+.....................ss.....s.........s.........sss................s.... [ 20%]
+..s........s....................................s.......s............s.. [ 21%]
+..............s............................ss.............s..s...s.s.... [ 21%]
+....s.......................................s..........s................ [ 21%]
+....s........s...s...........s..............................s........... [ 22%]
+..............................s...............................s..s...... [ 22%]
+......s..s.........ss...........................s....................... [ 22%]
+........s..........................ss.........s.s..............s........ [ 23%]
+...............................s............................s...s....... [ 23%]
+s................................s......s..........ss............ss..... [ 23%]
+......................s.......................................s.....s... [ 24%]
+......s........s..s..........s...............s.......ss.............s... [ 24%]
+..s.....s...........................s................................... [ 25%]
+s........s...............................s.............................. [ 25%]
+................s..............s..........................s........s.... [ 25%]
+...........s........s.........s........s............s................... [ 26%]
+.sss..s..s.........s.......s...s......s...ss.....s......s...........s... [ 26%]
+............s...s.....................ss....................s........... [ 26%]
+.................ss...................s.ss.......................s.....s [ 27%]
+.........s......................s.s...............s...s..........s.s.s.. [ 27%]
+.......s....s..s...ss.................s.........................s.s....s [ 27%]
+.......................s.....................s............s......s...... [ 28%]
+.......ss.................s.......................................s..... [ 28%]
+..............................s........s................................ [ 28%]
+..................s......ss.......s.....s............................... [ 29%]
+.....s................ss..s.....s................s................s...s. [ 29%]
+.s.s..........sss............s..s....................................... [ 29%]
+...........................s............s...s........................... [ 30%]
+......s......s..s..s.s.....................s...............s.....s...... [ 30%]
+........s............................s.s.s.....s............s...s.....ss [ 30%]
+s..s..s.............ss..s............................................... [ 31%]
+......s..........s........................................s....s......s. [ 31%]
+...............s...........................s....s..s.................... [ 31%]
+........................s.s....................s........................ [ 32%]
+............s...................ss..................s..............s.... [ 32%]
+.s.......s......s.....s......s.........s.s.............................. [ 32%]
+.s..s............s...................................s......s........... [ 33%]
+......................s..............s.......s.s.....s...........s...... [ 33%]
+........s..........................s......s.......s.s.s................. [ 33%]
+.............s......s...........ss...................................... [ 34%]
+...s.s...s.........................s.....s....................s.....s... [ 34%]
+......................................................s.........s..s.... [ 34%]
+s....s....s.......s..........................s..s....s...........s.s.... [ 35%]
+..s................s....s..............s........................s...ss.. [ 35%]
+........................ss.s.................................ss......... [ 35%]
+......ss......s.....ss.s.............s......................s..s........ [ 36%]
+.........s....s........................s...........................ss... [ 36%]
+.............s......................s..............s.................... [ 36%]
+................................s...s........s.......................... [ 37%]
+........s..s................s...............x........................... [ 37%]
+.....s.s..s.......s................s.s....s................s..........s. [ 38%]
+........s......ss..s.........s............ss.........s..........s...s... [ 38%]
+...........ss.......s..................................s.............s.. [ 38%]
+....s...s........s........s.....................s.s....s................ [ 39%]
+..........................s........s.....s.....s.........s......s....... [ 39%]
+s...........................................s................s.s...s.... [ 39%]
+..s..s..........................s....................................... [ 40%]
+...s............s.s........s......s..............................s...... [ 40%]
+..........s.s...........................s............................... [ 40%]
+........s.s........s.................................................... [ 41%]
+.s.s...........s..s....s...........s...........s......s.....s........... [ 41%]
+........s....s..........s....s...................s.......ss.....s....... [ 41%]
+.......s.........s........s.........................s...............s... [ 42%]
+........................s..............................s.......s........ [ 42%]
+.s.....s....s..s............................s........................... [ 42%]
+...............s...s................s...s...........s.......s...s.....ss [ 43%]
+....s....s......................s....s.s.................s.............. [ 43%]
+.s...s...s...s...........s.................s.................s.......... [ 43%]
+s....s......s..ss......s....................s.s.....................s... [ 44%]
+..s........s..........s...s..s........s........s..s.........s........... [ 44%]
+.................................s................s.........s..s........ [ 44%]
+......s...s...........s.....................................s........... [ 45%]
+.....s....s.s......s..s...................s...........s................. [ 45%]
+........s.......s......................................s.......s......s. [ 45%]
+..............................s......................s.................. [ 46%]
+........s..........s...........................s.....s..s............... [ 46%]
+..s...s...............s............s............................s...s.s. [ 46%]
+.....................................s.............s.........s.......... [ 47%]
+.........s.....s.......s.s.............s........s.................s..... [ 47%]
+...............s............s.......s........s....................s..... [ 47%]
+.......s....s......s.....s.............................................. [ 48%]
+...s............s...s....s................x..s.s......s................. [ 48%]
+s......s......s...................s.....s............................... [ 48%]
+...s.......ss.....s...s................s.......s...........s...........s [ 49%]
+..............................s.s............................s.......... [ 49%]
+................................s.................s.s................... [ 50%]
+...................s......................s.....s.............s.s...s... [ 50%]
+.s............s...s....................s...........s.................... [ 50%]
+......s...........s..........s................................s......s.. [ 51%]
+..........................s....s..s.....s....s.......s.................. [ 51%]
+.......................s............s........s............s............. [ 51%]
+....................s...................s.......................s.....s. [ 52%]
+......................s.s...................s........................... [ 52%]
+.....................s............................s..................... [ 52%]
+....................................s...s..................s............ [ 53%]
+...s.....s........ss........ss...........s................s............s [ 53%]
+..............................s.......s..............s...............s.. [ 53%]
+.s......s...s............................s.............................. [ 54%]
+..............s........ss........s.....s..........s....................s [ 54%]
+s.......s...x................s.............s.............s......s.s..... [ 54%]
+....................s.........s..........s.............................. [ 55%]
+........................s.....................s.......s................. [ 55%]
+.........................s................................s..s.......... [ 55%]
+.............ss......ss............ss...................s..s............ [ 56%]
+............s..............ss.......................ss.................. [ 56%]
+...................................s...ss............s..........s..s.... [ 56%]
+......s...........................................s...s................. [ 57%]
+.....s...........s........s..s..s...s................................... [ 57%]
+.........s..s..s..s....s..............s.....s........................... [ 57%]
+......s........................s......................................s. [ 58%]
+.............ss....ss...s................ss....................s........ [ 58%]
+...................s.................................................... [ 58%]
+..................s..........s........................s................s [ 59%]
+..................x.............ss..................s........s........s. [ 59%]
+...........................................ss........s..s............... [ 59%]
+s......................s...................s.........................s.. [ 60%]
+...s...........s...................s..............s..s.s................ [ 60%]
+...ss............ss...................................s...s...........s. [ 60%]
+s...s.....ss..................................s.............s........... [ 61%]
+s...............s..........................s.............s.............. [ 61%]
+s.....s....s.....................s.......s........s..................... [ 61%]
+.......s....s.......s........s.....ss..s...............s.........ss..... [ 62%]
+.........................s..................s....s.....s................ [ 62%]
+...........s...................................s........................ [ 63%]
+....................s.........s...............s.............s........... [ 63%]
+............s...s.s............s.......s........................s....s.. [ 63%]
+s........s....s...........s..........s......s.........s.s...s......ss... [ 64%]
+..sss.s......s......s.s........ss.......................s............... [ 64%]
+................................s.....................s................. [ 64%]
+........s.............s...s.........s.s..s.............................. [ 65%]
+s...s.s..........s...ss......ss....s..............................s....s [ 65%]
+s..........s...................................s...................ss... [ 65%]
+s...s.................s..........s...........s.....................s.... [ 66%]
+.......................s............s.s........s........s............... [ 66%]
+..................s...................s.....s........................... [ 66%]
+......s..................s..............s............................... [ 67%]
+...s...s.....................................s..................s....... [ 67%]
+.....s...............s..............s..................................s [ 67%]
+.....s...s..................s........s........s...........s............. [ 68%]
+..................ss.................s................s..............s.. [ 68%]
+..............s...s.s.....s..................................s........s. [ 68%]
+....s..........s.s................ss..........ss.s..........s........... [ 69%]
+...s...........s...........s..s...............ss............s..s........ [ 69%]
+s....s........s........s.s.......s.........................s............ [ 69%]
+...........................s........s................................... [ 70%]
+s...................................s.s....s........................ss.. [ 70%]
+.s.s.......................ss..s.......s....................s........... [ 70%]
+............s.....s........................s.....ss....s................ [ 71%]
+......................................s......................s.s........ [ 71%]
+...........................................s...s.s...................... [ 71%]
+.......s.........................s.................s............s...s... [ 72%]
+.................s..s..s.............ss...s...........s......s.......... [ 72%]
+..............s......................s.s.......................s......s. [ 72%]
+........s.......ss.......s..s................................s.......... [ 73%]
+....................................s.s..................s.............. [ 73%]
+.....s...........s..............s...s......s.....s...........s.......... [ 73%]
+...........s..........................s............sss.............s.... [ 74%]
+s.........s..........s.................ss............................... [ 74%]
+..............sss............s..s....................s.................. [ 75%]
+.........s................ss..s................s.....s............s..... [ 75%]
+...s..........s..s.ss........................s.s........................ [ 75%]
+........................s..................s.s...s...........s...s...... [ 76%]
+..................................s..............s............s...s..... [ 76%]
+.......s...............s..........................................s..... [ 76%]
+..ss.......s...s..............s.........s....................s.......... [ 77%]
+..s..s.............................s.....ss..............s.............. [ 77%]
+.......s.........s........s......s...........s.......................... [ 77%]
+..........s........................s.......s............................ [ 78%]
+.......s......s......s..s.s..s......s.s........s........................ [ 78%]
+...........s....................s..........................s...s.....s.. [ 78%]
+s...........s............s.......s.......s........s.s................... [ 79%]
+.s........s................s....s..........s..s......................... [ 79%]
+............s.......s....................s................s.....s....... [ 79%]
+.s.........s.............ss............................................. [ 80%]
+................s............s..................s..s....s...ss.......... [ 80%]
+..........s..........s............s.......................s...........s. [ 80%]
+.............s..............................s..........s................ [ 81%]
+............s..........s..s...............ss.........sss................ [ 81%]
+.........................................s......s...................s... [ 81%]
+.....s...s..ss.....................s....s..s......................s..s.. [ 82%]
+.....s....................................s....s......s......s.......... [ 82%]
+...s......................s..s.......................s...........s.s...s [ 82%]
+.........................................s................s............s [ 83%]
+....s...s....s...s...s............s.....s.....s.........s........s...... [ 83%]
+..............................s..s.....ss.......s.......s............... [ 83%]
+............s...............s..........s......s...........s.....s....... [ 84%]
+....................s................................................... [ 84%]
+s..................s..........x..s........s..........................s.. [ 84%]
+...s......s.....s.........s.ss...............s..........s........s...... [ 85%]
+.....................s..........................s.....................s. [ 85%]
+.................ss..........s........s.................s............... [ 85%]
+......s...............................................s....s............ [ 86%]
+s................................................s...................... [ 86%]
+..................s.................s........s.......................... [ 87%]
+.............................s.....s...s............................s... [ 87%]
+..s.................................s...s....s.......................s.. [ 87%]
+...........s....s..s.s.sss...s......s.........s..s...ss....s............ [ 88%]
+s..................................s......s.......................s..... [ 88%]
+ss..........s.....................s...............s...........s......... [ 88%]
+...............s............................................s.......s... [ 89%]
+...................s.................................s.s...s............ [ 89%]
+...............s...........s................s....s....s.............s... [ 89%]
+....................s.....s.........s.....s...s......s.........s..s....s [ 90%]
+..s.......s...s.......s............s...............s.....s.............. [ 90%]
+...................s.............s..................s................s.. [ 90%]
+..............s.......................................s.............s... [ 91%]
+........s...............s...s...............s..........s...............s [ 91%]
+..............s......s.............s.................................s.. [ 91%]
+...s..........................................s...............s......... [ 92%]
+..s.......s.....................s.....s..............s.....s......s..... [ 92%]
+.....s.............s......s..................s...........s.......s.....s [ 92%]
+.....ss...........s.........s....s...........ss.............s.....s...s. [ 93%]
+......................s..............s...........sss.....s........s...s. [ 93%]
+..........s..ss...s......s.................s............................ [ 93%]
+...............s.s........................s.......s..................ss. [ 94%]
+......................s...........s...........s......................s.. [ 94%]
+..s..s......s...............s..................s.........x..s.....s..s.. [ 94%]
+....................................sss................................. [ 95%]
+.s..s......s..............s..........s..........................s....... [ 95%]
+...............s........ss......s............s.......................... [ 95%]
+.s......s......s................s.....................s................. [ 96%]
+s.....s................s...................s......s.s.s................. [ 96%]
+......................s.....s..........................s.......s........ [ 96%]
+............s..............s....s.................s..................... [ 97%]
+...s.........s......s..s..........s.................s.......s........... [ 97%]
+........s...................s...............................s.......s... [ 97%]
+..........s................s..s.......................s..............s.. [ 98%]
+...............s..s........s.....................s......s...........s... [ 98%]
+.....s......s..s...s.........s.................................s........ [ 98%]
+..................s...............s.......s................s....ss...... [ 99%]
+.....ss.s...................s....s................s..s.................. [ 99%]
+................................................s...............x...     [100%]
+=============================== warnings summary ===============================
+tests/unit/expansion/test_pattern_operand_expansion.py: 1 warning
+tests/integration/test_brace_adjacency_idioms.py: 1 warning
+tests/integration/functions/test_declare_f_roundtrip.py: 2 warnings
+tests/unit/builtins/test_env_builtin.py: 3 warnings
+tests/unit/builtins/test_local_builtin.py: 1 warning
+tests/unit/expansion/test_glob_expansion.py: 3 warnings
+tests/integration/subshells/test_subshell_basics.py: 2 warnings
+tests/integration/pipeline/test_pipeline_execution.py: 7 warnings
+tests/integration/control_flow/test_for_select_item_expansion.py: 1 warning
+tests/unit/expansion/test_word_expander_characterization.py: 1 warning
+tests/integration/subshells/test_subshell_implementation.py: 2 warnings
+tests/unit/core/test_environ_policy.py: 1 warning
+tests/integration/command_resolution/test_command_resolution.py: 1 warning
+tests/integration/builtins/test_print_integration.py: 2 warnings
+tests/unit/expansion/test_arithmetic_bitshift_assignment.py: 1 warning
+tests/integration/variables/test_variable_assignment.py: 1 warning
+tests/unit/builtins/test_test_builtin.py: 5 warnings
+tests/unit/expansion/test_command_substitution.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96258) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/subshells/test_subshell_implementation.py: 3 warnings
+tests/integration/pipeline/test_pipeline_execution.py: 3 warnings
+tests/unit/expansion/test_command_substitution.py: 1 warning
+tests/unit/expansion/test_arithmetic_integration_essential.py: 1 warning
+tests/integration/functions/test_function_definitions.py: 1 warning
+tests/integration/control_flow/test_case_statements.py: 1 warning
+tests/unit/expansion/test_word_expander_characterization.py: 1 warning
+tests/unit/lexer/test_backtick_dquote_escapes.py: 2 warnings
+tests/unit/interactive/test_histcontrol_histignore.py: 1 warning
+tests/integration/control_flow/test_if_statements.py: 2 warnings
+tests/unit/interactive/test_prompt_dollar_expansion.py: 1 warning
+tests/regression/test_codex_review_findings.py: 1 warning
+tests/integration/redirection/test_noclobber_targets.py: 1 warning
+tests/unit/builtins/test_test_builtin.py: 1 warning
+tests/unit/expansion/test_arithmetic_integration.py: 2 warnings
+tests/integration/functions/test_function_advanced.py: 1 warning
+tests/unit/expansion/test_glob_expansion.py: 2 warnings
+tests/unit/expansion/test_value_operand_quoting.py: 1 warning
+tests/integration/subshells/test_subshell_basics.py: 3 warnings
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96267) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/arrays/test_array_element_word_values.py: 1 warning
+tests/unit/expansion/test_arithmetic_dollar_expansion.py: 1 warning
+tests/unit/multiline/test_multiline_handler.py: 1 warning
+tests/integration/control_flow/test_for_loops.py: 1 warning
+tests/integration/command_resolution/test_command_resolution.py: 1 warning
+tests/integration/test_prefix_array_append_env_safe.py: 1 warning
+tests/unit/expansion/test_brace_expansion.py: 2 warnings
+tests/integration/arrays/test_array_init_word_expansion.py: 1 warning
+tests/integration/subshells/test_subshell_implementation.py: 3 warnings
+tests/integration/variables/test_variable_assignment.py: 2 warnings
+tests/regression/test_bug_fixes_4f4d854.py: 2 warnings
+tests/integration/functions/test_declare_f_roundtrip.py: 1 warning
+tests/unit/expansion/test_glob_expansion.py: 2 warnings
+tests/integration/control_flow/test_for_select_item_expansion.py: 1 warning
+tests/unit/expansion/test_arithmetic_integration_core.py: 1 warning
+tests/unit/expansion/test_command_substitution.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96264) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/subshells/test_subshell_basics.py: 3 warnings
+tests/integration/subshells/test_subshell_implementation.py: 8 warnings
+tests/integration/control_flow/test_for_select_item_expansion.py: 1 warning
+tests/unit/expansion/test_arithmetic_integration_core.py: 1 warning
+tests/integration/control_flow/test_for_loops.py: 2 warnings
+tests/unit/expansion/test_array_case_modification.py: 1 warning
+tests/unit/expansion/test_brace_expansion.py: 2 warnings
+tests/unit/expansion/test_command_substitution.py: 3 warnings
+tests/unit/builtins/test_printf_q_b.py: 1 warning
+tests/unit/expansion/test_arithmetic_comprehensive.py: 1 warning
+tests/unit/expansion/test_value_operand_quoting.py: 1 warning
+tests/integration/command_resolution/test_command_resolution.py: 1 warning
+tests/integration/control_flow/test_while_loops.py: 8 warnings
+tests/unit/expansion/test_arithmetic_dollar_expansion.py: 1 warning
+tests/regression/test_codex_review_findings.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96239) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/unit/expansion/test_arithmetic_dollar_expansion.py: 1 warning
+tests/integration/pipeline/test_pipeline_execution.py: 10 warnings
+tests/integration/command_resolution/test_command_resolution.py: 2 warnings
+tests/integration/functions/test_declare_f_roundtrip.py: 6 warnings
+tests/integration/subshells/test_subshell_implementation.py: 1 warning
+tests/unit/builtins/test_misc_builtins.py: 3 warnings
+tests/unit/executor/test_fork_sigmask_restore.py: 1 warning
+tests/unit/expansion/test_posix_char_classes.py: 4 warnings
+tests/unit/expansion/test_command_substitution.py: 4 warnings
+tests/integration/subshells/test_subshell_basics.py: 1 warning
+tests/unit/builtins/test_local_builtin.py: 1 warning
+tests/regression/test_bug_fixes_4f4d854.py: 1 warning
+tests/unit/expansion/test_arithmetic_integration.py: 1 warning
+tests/integration/functions/test_function_definitions.py: 3 warnings
+tests/unit/expansion/test_brace_expansion.py: 2 warnings
+tests/integration/control_flow/test_for_select_item_expansion.py: 1 warning
+tests/unit/lexer/test_backtick_dquote_escapes.py: 1 warning
+tests/unit/executor/test_executor_visitor_basic.py: 1 warning
+tests/unit/builtins/test_test_builtin.py: 4 warnings
+tests/unit/expansion/test_arithmetic_integration_essential.py: 4 warnings
+tests/unit/expansion/test_arithmetic_special_variables.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96235) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/unit/interactive/test_histcontrol_histignore.py: 2 warnings
+tests/unit/builtins/test_test_builtin.py: 3 warnings
+tests/integration/functions/test_function_definitions.py: 1 warning
+tests/integration/command_resolution/test_command_resolution.py: 2 warnings
+tests/integration/control_flow/test_if_statements.py: 4 warnings
+tests/unit/executor/test_executor_error_guards.py: 1 warning
+tests/integration/shell_options/test_shell_options_comprehensive.py: 4 warnings
+tests/unit/expansion/test_brace_expansion.py: 2 warnings
+tests/integration/functions/test_declare_f_roundtrip.py: 5 warnings
+tests/integration/pipeline/test_pipeline_execution.py: 6 warnings
+tests/unit/builtins/test_env_builtin.py: 1 warning
+tests/unit/expansion/test_arithmetic_dollar_expansion.py: 1 warning
+tests/unit/expansion/test_arithmetic_integration_core.py: 2 warnings
+tests/unit/expansion/test_glob_expansion.py: 4 warnings
+tests/unit/expansion/test_braceexpand_option.py: 1 warning
+tests/integration/control_flow/test_nested_structures_basic.py: 3 warnings
+tests/unit/expansion/test_arithmetic_integration.py: 1 warning
+tests/integration/arrays/test_array_init_word_expansion.py: 1 warning
+tests/unit/lexer/test_backtick_dquote_escapes.py: 1 warning
+tests/integration/subshells/test_subshell_implementation.py: 1 warning
+tests/unit/expansion/test_word_ast_expansion.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96252) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/functions/test_function_advanced.py: 1 warning
+tests/integration/functions/test_functions_comprehensive.py: 2 warnings
+tests/integration/control_flow/test_if_statements.py: 1 warning
+tests/integration/command_resolution/test_command_resolution.py: 2 warnings
+tests/unit/interactive/test_histcontrol_histignore.py: 3 warnings
+tests/unit/expansion/test_command_substitution.py: 3 warnings
+tests/integration/variables/test_variable_assignment.py: 2 warnings
+tests/unit/expansion/test_arithmetic_integration.py: 2 warnings
+tests/unit/expansion/test_glob_expansion.py: 8 warnings
+tests/unit/builtins/test_echo_comprehensive.py: 8 warnings
+tests/integration/subshells/test_subshell_implementation.py: 1 warning
+tests/integration/functions/test_function_definitions.py: 1 warning
+tests/integration/functions/test_declare_f_roundtrip.py: 1 warning
+tests/integration/control_flow/test_loop_status_reset.py: 2 warnings
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96237) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/control_flow/test_c_style_for_loops.py: 1 warning
+tests/unit/expansion/test_command_substitution.py: 3 warnings
+tests/unit/builtins/test_misc_builtins.py: 1 warning
+tests/unit/expansion/test_assignment_word_splitting.py: 1 warning
+tests/unit/expansion/test_arithmetic_dollar_expansion.py: 1 warning
+tests/integration/subshells/test_subshell_basics.py: 1 warning
+tests/integration/functions/test_declare_f_roundtrip.py: 1 warning
+tests/integration/subshells/test_subshell_implementation.py: 1 warning
+tests/unit/expansion/test_arithmetic_integration.py: 1 warning
+tests/integration/functions/test_function_advanced.py: 2 warnings
+tests/integration/command_resolution/test_hash_execution.py: 3 warnings
+tests/unit/builtins/test_test_builtin.py: 2 warnings
+tests/integration/functions/test_functions_comprehensive.py: 1 warning
+tests/unit/expansion/test_brace_expansion.py: 3 warnings
+tests/unit/expansion/test_arithmetic_integration_essential.py: 1 warning
+tests/regression/test_codex_review_findings.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96272) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/unit/expansion/test_glob_expansion.py: 4 warnings
+tests/integration/command_resolution/test_hash_execution.py: 3 warnings
+tests/integration/control_flow/test_for_select_item_expansion.py: 2 warnings
+tests/unit/builtins/test_echo_comprehensive.py: 1 warning
+tests/unit/expansion/test_command_substitution.py: 3 warnings
+tests/integration/pipeline/test_pipeline_execution.py: 5 warnings
+tests/regression/test_bug_fixes_4f4d854.py: 1 warning
+tests/integration/subshells/test_subshell_implementation.py: 2 warnings
+tests/integration/subshells/test_subshell_basics.py: 3 warnings
+tests/integration/functions/test_declare_f_roundtrip.py: 4 warnings
+tests/integration/builtins/test_declare_comprehensive.py: 1 warning
+tests/integration/command_resolution/test_command_resolution.py: 2 warnings
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96249) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/unit/builtins/test_test_builtin.py: 3 warnings
+tests/integration/command_resolution/test_command_resolution.py: 2 warnings
+tests/integration/subshells/test_subshell_basics.py: 1 warning
+tests/unit/expansion/test_arithmetic_integration.py: 1 warning
+tests/unit/expansion/test_glob_expansion.py: 10 warnings
+tests/unit/expansion/test_arithmetic_integration_advanced_todo.py: 4 warnings
+tests/integration/variables/test_variable_assignment.py: 1 warning
+tests/unit/expansion/test_command_substitution.py: 1 warning
+tests/integration/pipeline/test_pipeline_execution.py: 4 warnings
+tests/unit/expansion/test_assignment_word_splitting.py: 1 warning
+tests/unit/builtins/test_alias_builtins.py: 1 warning
+tests/integration/control_flow/test_nested_structures_basic.py: 1 warning
+tests/unit/lexer/test_heredoc_transaction_s2.py: 1 warning
+tests/unit/builtins/test_r16t2_core_options.py: 1 warning
+tests/unit/executor/test_executor_visitor_basic.py: 2 warnings
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96246) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/command_resolution/test_command_resolution.py: 1 warning
+tests/unit/expansion/test_word_expander_characterization.py: 1 warning
+tests/unit/expansion/test_posix_char_classes.py: 4 warnings
+tests/integration/functions/test_function_advanced.py: 1 warning
+tests/unit/expansion/test_value_operand_quoting.py: 1 warning
+tests/integration/parser/test_combinator_parity_regressions.py: 1 warning
+tests/unit/builtins/test_env_builtin.py: 3 warnings
+tests/unit/executor/test_command_assignments.py: 1 warning
+tests/unit/expansion/test_expand_aliases_option.py: 1 warning
+tests/unit/interactive/test_histcontrol_histignore.py: 2 warnings
+tests/integration/subshells/test_subshell_basics.py: 1 warning
+tests/integration/subshells/test_subshell_implementation.py: 1 warning
+tests/unit/builtins/test_alias_builtins.py: 2 warnings
+tests/integration/builtins/test_declare_comprehensive.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96240) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/subshells/test_subshell_implementation.py: 9 warnings
+tests/integration/variables/test_variable_assignment.py: 2 warnings
+tests/unit/expansion/test_arithmetic_integration.py: 2 warnings
+tests/unit/expansion/test_command_substitution.py: 2 warnings
+tests/integration/control_flow/test_for_select_item_expansion.py: 1 warning
+tests/integration/functions/test_function_bodies_and_case_patterns.py: 1 warning
+tests/unit/builtins/test_test_builtin.py: 1 warning
+tests/unit/expansion/test_pattern_operand_expansion.py: 1 warning
+tests/unit/expansion/test_assignment_word_splitting.py: 1 warning
+tests/integration/parsing/test_potential_bugs.py: 1 warning
+tests/unit/builtins/test_env_builtin.py: 2 warnings
+tests/unit/expansion/test_arithmetic_integration_essential.py: 1 warning
+tests/integration/command_resolution/test_hash_execution.py: 2 warnings
+tests/integration/test_brace_adjacency_idioms.py: 1 warning
+tests/unit/expansion/test_glob_expansion.py: 2 warnings
+tests/integration/pipeline/test_pipeline_execution.py: 2 warnings
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96243) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/command_resolution/test_command_resolution.py: 3 warnings
+tests/integration/pipeline/test_pipeline_execution.py: 6 warnings
+tests/integration/arrays/test_array_element_word_values.py: 1 warning
+tests/unit/expansion/test_command_substitution.py: 4 warnings
+tests/unit/builtins/test_env_builtin.py: 3 warnings
+tests/integration/shell_options/test_shell_options_comprehensive.py: 6 warnings
+tests/unit/expansion/test_glob_expansion.py: 2 warnings
+tests/unit/lexer/test_backtick_dquote_escapes.py: 2 warnings
+tests/integration/functions/test_declare_f_roundtrip.py: 1 warning
+tests/unit/builtins/test_command_builtin.py: 1 warning
+tests/unit/executor/test_legacy_ast_fallbacks.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96261) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/functions/test_function_definitions.py: 1 warning
+tests/unit/lexer/test_backtick_dquote_escapes.py: 2 warnings
+tests/unit/interactive/test_prompt_dollar_expansion.py: 1 warning
+tests/integration/subshells/test_subshell_basics.py: 1 warning
+tests/integration/pipeline/test_pipeline_execution.py: 6 warnings
+tests/unit/builtins/test_command_builtin.py: 1 warning
+tests/integration/subshells/test_subshell_implementation.py: 1 warning
+tests/unit/expansion/test_arithmetic_integration_core.py: 4 warnings
+tests/unit/builtins/test_echo_standardized.py: 1 warning
+tests/integration/functions/test_declare_f_roundtrip.py: 4 warnings
+tests/integration/functions/test_function_advanced.py: 1 warning
+tests/unit/expansion/test_value_operand_quoting.py: 1 warning
+tests/unit/expansion/test_glob_expansion.py: 4 warnings
+tests/unit/expansion/test_command_substitution.py: 1 warning
+tests/integration/control_flow/test_case_subject_quoting.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96238) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/integration/test_brace_adjacency_idioms.py: 2 warnings
+tests/unit/expansion/test_arithmetic_comprehensive.py: 2 warnings
+tests/unit/executor/test_executor_visitor_functions.py: 1 warning
+tests/integration/control_flow/test_for_select_item_expansion.py: 1 warning
+tests/integration/functions/test_declare_f_roundtrip.py: 5 warnings
+tests/integration/command_resolution/test_command_resolution.py: 2 warnings
+tests/unit/builtins/test_env_builtin.py: 1 warning
+tests/unit/executor/test_executor_visitor_basic.py: 1 warning
+tests/integration/arrays/test_array_element_word_values.py: 2 warnings
+tests/unit/lexer/test_backtick_dquote_escapes.py: 1 warning
+tests/unit/builtins/test_test_builtin.py: 4 warnings
+tests/unit/expansion/test_glob_expansion.py: 2 warnings
+tests/integration/subshells/test_subshell_implementation.py: 1 warning
+tests/integration/arrays/test_array_init_word_expansion.py: 1 warning
+tests/regression/test_bug_fixes_4f4d854.py: 1 warning
+tests/integration/functions/test_function_bodies_and_case_patterns.py: 1 warning
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96255) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+tests/unit/expansion/test_glob_expansion.py: 3 warnings
+tests/regression/test_bug_fixes_4f4d854.py: 2 warnings
+tests/unit/expansion/test_command_substitution.py: 4 warnings
+tests/integration/command_resolution/test_command_resolution.py: 2 warnings
+tests/integration/variables/test_variable_assignment.py: 2 warnings
+tests/integration/command_resolution/test_hash_execution.py: 3 warnings
+tests/integration/arrays/test_array_element_word_values.py: 1 warning
+tests/unit/builtins/test_env_builtin.py: 4 warnings
+tests/unit/interactive/test_histcontrol_histignore.py: 3 warnings
+tests/integration/control_flow/test_for_select_item_expansion.py: 1 warning
+tests/unit/expansion/test_expand_aliases_option.py: 1 warning
+tests/integration/subshells/test_subshell_basics.py: 1 warning
+tests/unit/expansion/test_brace_expansion.py: 1 warning
+tests/integration/subshells/test_subshell_implementation.py: 2 warnings
+tests/unit/interactive/test_shell_fd_lifecycle.py: 100 warnings
+  /Users/pwilson/src/psh-wave0-legs/psh/executor/child_policy.py:125: DeprecationWarning: This process (pid=96236) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    pid = os.fork()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=== 19422 passed, 1590 skipped, 8 xfailed, 618 warnings in 113.36s (0:01:53) ===
+
+================================================================================
+Running: Phase 1b: serial tests (process/signal/forked-fd, no xdist)
+Command: /Library/Frameworks/Python.framework/Versions/3.14/bin/python -m pytest -p tools.pytest_phase_manifest --shuffle-seed 303 tests/ -m serial and not benchmark --phase-manifest /Users/pwilson/src/psh-wave0-legs/tmp/phase-manifests/phase-2.json
+(timeout: 1800s, own process group)
+================================================================================
+============================= test session starts ==============================
+platform darwin -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0
+rootdir: /Users/pwilson/src/psh-wave0-legs
+configfile: pytest.ini
+plugins: anyio-4.12.1, mock-3.15.1, xdist-3.8.0, timeout-2.4.0, cov-7.0.0
+collected 21932 items / 21037 deselected / 895 selected
+
+tests/system/interactive/test_pty_huponexit_j1.py .                      [  0%]
+tests/integration/job_control/test_jobs_completed_listing_modes.py .     [  0%]
+tests/integration/job_control/test_jobs_x_substitution.py .              [  0%]
+tests/unit/builtins/test_signal_builtins.py .                            [  0%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [  0%]
+tests/integration/job_control/test_background_jobs.py .                  [  0%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [  0%]
+tests/integration/job_control/test_trap_actions.py .                     [  0%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [  1%]
+tests/integration/job_control/test_signal_handling.py .                  [  1%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [  1%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [  1%]
+tests/unit/builtins/test_disown_builtin.py .                             [  1%]
+tests/integration/redirection/test_advanced_redirection.py .             [  1%]
+tests/unit/builtins/test_disown_builtin.py .                             [  1%]
+tests/integration/job_control/test_jobs_completed_listing_modes.py .     [  1%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [  1%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [  2%]
+                                                                         [  2%]
+tests/integration/job_control/test_job_notice_channel.py .               [  2%]
+tests/integration/job_control/test_trap_actions.py .                     [  2%]
+tests/integration/job_control/test_job_notice_channel.py .               [  2%]
+tests/integration/job_control/test_background_jobs.py .                  [  2%]
+tests/integration/job_control/test_kill_process_group.py .               [  2%]
+tests/integration/job_control/test_trap_actions.py .                     [  2%]
+tests/integration/job_control/test_signal_handling.py .                  [  2%]
+tests/integration/job_control/test_signal_killed_diagnostic.py .         [  2%]
+tests/system/interactive/test_pty_smoke.py .                             [  3%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [  3%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [  3%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [  3%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [  3%]
+                                                                         [  3%]
+tests/system/interactive/test_pty_smoke.py .                             [  3%]
+tests/integration/redirection/test_heredoc_shared_cursor_r1.py .         [  3%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [  3%]
+tests/unit/builtins/test_disown_builtin.py .                             [  3%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [  4%]
+tests/unit/builtins/test_disown_builtin.py .                             [  4%]
+tests/integration/job_control/test_background_jobs.py .                  [  4%]
+tests/integration/job_control/test_trap_actions.py .                     [  4%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [  4%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [  4%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [  4%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [  4%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [  4%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [  5%]
+tests/unit/builtins/test_signal_builtins.py .                            [  5%]
+tests/integration/redirection/test_advanced_redirection.py .             [  5%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [  5%]
+tests/unit/builtins/test_disown_builtin.py .                             [  5%]
+tests/integration/redirection/test_advanced_redirection.py ..            [  5%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [  5%]
+tests/system/interactive/test_pty_smoke.py .                             [  5%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [  6%]
+tests/system/interactive/test_pty_smoke.py .                             [  6%]
+tests/unit/core/test_signal_lease_coordination_f2.py .                   [  6%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [  6%]
+tests/integration/redirection/test_advanced_redirection.py .             [  6%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [  6%]
+tests/system/interactive/test_pty_smoke.py .                             [  6%]
+tests/integration/redirection/test_script_fd_ownership_i2.py .           [  6%]
+tests/integration/job_control/test_job_notice_channel.py .               [  6%]
+tests/integration/job_control/test_trap_actions.py .                     [  7%]
+tests/system/interactive/test_multiline_immediate_error_i3.py .          [  7%]
+tests/integration/redirection/test_heredoc_shared_cursor_r1.py .         [  7%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [  7%]
+tests/integration/parsing/test_error_recovery.py .                       [  7%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [  7%]
+                                                                         [  7%]
+tests/unit/builtins/test_job_control_builtins.py .                       [  7%]
+tests/integration/redirection/test_script_fd_ownership_i2.py .           [  7%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [  7%]
+tests/integration/redirection/test_simple_redirection.py .               [  8%]
+tests/system/interactive/test_pty_smoke.py ..                            [  8%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [  8%]
+tests/integration/job_control/test_debug_err_traps.py .                  [  8%]
+tests/integration/job_control/test_trap_actions.py .                     [  8%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [  8%]
+tests/integration/job_control/test_background_functions.py .             [  8%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [  8%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [  9%]
+tests/integration/redirection/test_heredoc.py .                          [  9%]
+tests/integration/job_control/test_job_notice_channel.py .               [  9%]
+tests/integration/pipeline/test_long_pipeline_fd_limit.py .              [  9%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [  9%]
+tests/integration/job_control/test_signal_handling.py .                  [  9%]
+tests/integration/redirection/test_heredoc_shared_cursor_r1.py .         [  9%]
+tests/integration/job_control/test_background_jobs.py .                  [  9%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [  9%]
+tests/unit/executor/test_fork_sigmask_restore.py .                       [ 10%]
+tests/system/interactive/test_pty_smoke.py .                             [ 10%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py ..   [ 10%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 10%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 10%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 10%]
+tests/integration/redirection/test_heredoc.py .                          [ 10%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 10%]
+tests/unit/interactive/test_signal_handler_lifecycle.py .                [ 11%]
+tests/integration/redirection/test_heredoc.py .                          [ 11%]
+tests/integration/job_control/test_signal_killed_exit_status.py .        [ 11%]
+tests/integration/job_control/test_background_functions.py .             [ 11%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 11%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 11%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 11%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 11%]
+tests/integration/redirection/test_heredoc_shared_cursor_r1.py .         [ 11%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 12%]
+tests/integration/job_control/test_background_jobs.py .                  [ 12%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 12%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 12%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 12%]
+                                                                         [ 12%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 12%]
+                                                                         [ 12%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 12%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 12%]
+tests/unit/builtins/test_job_control_builtins.py .                       [ 12%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 13%]
+tests/system/interactive/test_pty_smoke.py .                             [ 13%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 13%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 13%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 13%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 13%]
+tests/integration/redirection/test_read_forked_fd.py .                   [ 13%]
+tests/system/interactive/test_pty_smoke.py .                             [ 13%]
+tests/integration/control_flow/test_loop_status_reset.py .               [ 13%]
+tests/system/interactive/test_pty_smoke.py .                             [ 14%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 14%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 14%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 14%]
+tests/integration/job_control/test_signal_handling.py .                  [ 14%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 14%]
+tests/integration/job_control/test_kill_wait_race.py .                   [ 14%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 14%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 14%]
+tests/integration/job_control/test_signal_killed_diagnostic.py .         [ 15%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 15%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 15%]
+tests/system/interactive/test_pty_smoke.py .                             [ 15%]
+tests/integration/job_control/test_trap_actions.py ..                    [ 15%]
+tests/unit/core/test_signal_disposition_lease_p1.py .                    [ 15%]
+tests/integration/job_control/test_background_jobs.py .                  [ 15%]
+tests/integration/job_control/test_signal_handling.py .                  [ 15%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 16%]
+tests/integration/job_control/test_wait_reap_echild_reclaim.py .         [ 16%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 16%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 16%]
+                                                                         [ 16%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 16%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 16%]
+tests/integration/redirection/test_here_string_bareword.py .             [ 16%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 16%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 16%]
+                                                                         [ 16%]
+tests/system/interactive/test_pty_smoke.py .                             [ 17%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 17%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 17%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 17%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 17%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 17%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 17%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 17%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 17%]
+                                                                         [ 17%]
+tests/integration/job_control/test_trap_actions.py ..                    [ 18%]
+tests/system/interactive/test_pty_smoke.py .                             [ 18%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 18%]
+tests/system/test_fifo_script_i2.py .                                    [ 18%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 18%]
+tests/integration/job_control/test_trap_actions.py .                     [ 18%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 18%]
+tests/integration/redirection/test_simple_redirection.py .               [ 18%]
+tests/unit/builtins/test_job_control_builtins.py .                       [ 19%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 19%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [ 19%]
+tests/integration/job_control/test_trap_actions.py .                     [ 19%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 19%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [ 19%]
+tests/system/interactive/test_pty_smoke.py .                             [ 19%]
+tests/conformance/bash/test_reappraisal6_redirect_errors_conformance.py . [ 19%]
+                                                                         [ 19%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 20%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 20%]
+                                                                         [ 20%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .. [ 20%]
+                                                                         [ 20%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 20%]
+tests/system/interactive/test_pty_smoke.py .                             [ 20%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 20%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 20%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 20%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 21%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 21%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 21%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 21%]
+tests/integration/redirection/test_heredoc.py .                          [ 21%]
+tests/integration/job_control/test_trap_actions.py .                     [ 21%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 21%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 21%]
+tests/system/interactive/test_pty_smoke.py .                             [ 21%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 22%]
+tests/integration/job_control/test_signal_killed_diagnostic.py .         [ 22%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 22%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 22%]
+tests/integration/redirection/test_input_cursor_identity_i1.py .         [ 22%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 22%]
+tests/integration/job_control/test_pending_signal_trap_eof.py .          [ 22%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 22%]
+tests/integration/redirection/test_heredoc.py .                          [ 22%]
+tests/integration/job_control/test_pending_signal_trap_eof.py .          [ 23%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 23%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 23%]
+tests/integration/job_control/test_signal_handling.py .                  [ 23%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 23%]
+tests/system/interactive/test_pty_smoke.py .                             [ 23%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 23%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 23%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 23%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 24%]
+.                                                                        [ 24%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 24%]
+tests/integration/job_control/test_trap_actions.py .                     [ 24%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 24%]
+tests/system/interactive/test_pty_smoke.py ..                            [ 24%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 24%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 24%]
+tests/unit/interactive/test_signal_handler_lifecycle.py .                [ 25%]
+tests/integration/job_control/test_background_functions.py .             [ 25%]
+tests/integration/job_control/test_trap_actions.py .                     [ 25%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 25%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 25%]
+tests/unit/core/test_construction_purity_f2.py .                         [ 25%]
+tests/unit/interactive/test_signal_handler_lifecycle.py .                [ 25%]
+tests/integration/redirection/test_simple_redirection.py .               [ 25%]
+tests/system/interactive/test_pty_smoke.py ..                            [ 26%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 26%]
+tests/integration/job_control/test_trap_actions.py .                     [ 26%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 26%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 26%]
+                                                                         [ 26%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 26%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 26%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 26%]
+tests/unit/core/test_signal_lease_coordination_f2.py .                   [ 26%]
+tests/integration/job_control/test_wait_reap_echild_reclaim.py .         [ 27%]
+tests/system/interactive/test_pty_huponexit_j1.py .                      [ 27%]
+tests/integration/job_control/test_trap_actions.py .                     [ 27%]
+tests/system/interactive/test_pty_huponexit_j1.py .                      [ 27%]
+tests/system/interactive/test_pty_smoke.py ..                            [ 27%]
+tests/integration/job_control/test_exit_trap_paths.py ..                 [ 27%]
+tests/conformance/bash/test_reappraisal6_redirect_errors_conformance.py . [ 27%]
+                                                                         [ 27%]
+tests/integration/job_control/test_signal_killed_diagnostic.py .         [ 28%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 28%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 28%]
+tests/unit/tooling/test_run_tests_hardening.py .                         [ 28%]
+tests/integration/job_control/test_kill_wait_race.py .                   [ 28%]
+tests/integration/job_control/test_trap_actions.py .                     [ 28%]
+tests/integration/job_control/test_jobs_completed_listing_modes.py .     [ 28%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 28%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 28%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 29%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 29%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 29%]
+tests/integration/redirection/test_procsub_combinator_mode.py .          [ 29%]
+tests/system/interactive/test_pty_smoke.py .                             [ 29%]
+tests/system/interactive/test_multiline_immediate_error_i3.py .          [ 29%]
+tests/integration/job_control/test_trap_actions.py .                     [ 29%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 29%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [ 29%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 30%]
+tests/integration/redirection/test_heredoc.py .                          [ 30%]
+tests/system/interactive/test_multiline_immediate_error_i3.py .          [ 30%]
+tests/integration/job_control/test_signal_killed_diagnostic.py .         [ 30%]
+tests/integration/job_control/test_wait_reap_echild_reclaim.py .         [ 30%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 30%]
+                                                                         [ 30%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 30%]
+tests/integration/job_control/test_jobs_completed_listing_modes.py .     [ 30%]
+tests/integration/redirection/test_heredoc_shared_cursor_r1.py .         [ 30%]
+tests/system/interactive/test_pty_smoke.py .                             [ 31%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 31%]
+tests/system/interactive/test_pty_smoke.py .                             [ 31%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 31%]
+tests/integration/redirection/test_heredoc.py .                          [ 31%]
+tests/integration/redirection/test_here_string_bareword.py .             [ 31%]
+tests/integration/job_control/test_jobs_x_substitution.py .              [ 31%]
+tests/integration/job_control/test_jobspec_operands.py .                 [ 31%]
+tests/integration/job_control/test_trap_actions.py .                     [ 31%]
+tests/integration/job_control/test_jobs_x_substitution.py .              [ 32%]
+tests/unit/builtins/test_disown_builtin.py ..                            [ 32%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 32%]
+tests/integration/job_control/test_signal_handling.py .                  [ 32%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 32%]
+tests/system/interactive/test_pty_smoke.py .                             [ 32%]
+tests/integration/job_control/test_trap_actions.py .                     [ 32%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 32%]
+tests/integration/job_control/test_pending_signal_trap_eof.py .          [ 33%]
+tests/integration/job_control/test_trap_actions.py .                     [ 33%]
+tests/integration/redirection/test_high_fd_redirection.py .              [ 33%]
+tests/integration/redirection/test_script_fd_ownership_i2.py .           [ 33%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 33%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 33%]
+tests/integration/job_control/test_pending_signal_trap_eof.py .          [ 33%]
+tests/integration/job_control/test_background_functions.py .             [ 33%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 33%]
+tests/unit/builtins/test_job_control_builtins.py .                       [ 34%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 34%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 34%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 34%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 34%]
+tests/integration/redirection/test_simple_redirection.py .               [ 34%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 34%]
+tests/system/interactive/test_pty_smoke.py .                             [ 34%]
+tests/integration/redirection/test_simple_redirection.py .               [ 34%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 35%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 35%]
+tests/integration/redirection/test_simple_redirection.py .               [ 35%]
+tests/integration/redirection/test_heredoc.py .                          [ 35%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 35%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 35%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 35%]
+tests/unit/tooling/test_process_state_hermeticity.py .                   [ 35%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 35%]
+tests/integration/redirection/test_input_cursor_identity_i1.py .         [ 36%]
+tests/integration/redirection/test_heredoc.py ..                         [ 36%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 36%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 36%]
+tests/system/interactive/test_pty_smoke.py .                             [ 36%]
+tests/integration/job_control/test_jobspec_operands.py .                 [ 36%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 36%]
+tests/integration/redirection/test_advanced_redirection.py ...           [ 37%]
+tests/integration/job_control/test_wcontinued_state.py .                 [ 37%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 37%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 37%]
+                                                                         [ 37%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 37%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 37%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 37%]
+tests/integration/job_control/test_trap_actions.py ..                    [ 38%]
+tests/system/interactive/test_pty_smoke.py .                             [ 38%]
+tests/integration/job_control/test_signal_handling.py .                  [ 38%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 38%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 38%]
+tests/system/interactive/test_pty_smoke.py .                             [ 38%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 38%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 38%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 38%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 39%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 39%]
+tests/system/interactive/test_pty_smoke.py x                             [ 39%]
+tests/integration/redirection/test_here_string_bareword.py .             [ 39%]
+tests/integration/job_control/test_trap_actions.py .                     [ 39%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [ 39%]
+tests/unit/builtins/test_job_control_builtins.py .                       [ 39%]
+tests/system/test_fifo_script_i2.py .                                    [ 39%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 40%]
+tests/integration/job_control/test_signal_handling.py .                  [ 40%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 40%]
+                                                                         [ 40%]
+tests/integration/redirection/test_script_fd_ownership_i2.py .           [ 40%]
+tests/integration/job_control/test_fg_bg_check_order.py .                [ 40%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 40%]
+                                                                         [ 40%]
+tests/system/interactive/test_pty_smoke.py .                             [ 40%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 40%]
+tests/system/interactive/test_pty_huponexit_j1.py .                      [ 40%]
+tests/unit/expansion/test_expand_aliases_option.py .                     [ 41%]
+tests/integration/job_control/test_jobs_n_changed.py .                   [ 41%]
+tests/integration/job_control/test_signal_killed_exit_status.py .        [ 41%]
+tests/integration/job_control/test_pipeline_partial_launch.py .          [ 41%]
+tests/system/interactive/test_pty_smoke.py .                             [ 41%]
+tests/integration/redirection/test_high_fd_redirection.py .              [ 41%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 41%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [ 41%]
+tests/integration/subshells/test_env_isolation_p1.py .                   [ 41%]
+tests/integration/job_control/test_signal_handling.py .                  [ 42%]
+tests/integration/job_control/test_fg_bg_check_order.py .                [ 42%]
+tests/integration/job_control/test_trap_actions.py .                     [ 42%]
+tests/system/interactive/test_pty_smoke.py .                             [ 42%]
+tests/integration/redirection/test_heredoc.py .                          [ 42%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 42%]
+tests/unit/executor/test_fork_sigmask_restore.py .                       [ 42%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 42%]
+tests/system/interactive/test_pty_smoke.py .                             [ 42%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 43%]
+tests/integration/job_control/test_kill_wait_race.py .                   [ 43%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 43%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 43%]
+tests/integration/job_control/test_trap_actions.py .                     [ 43%]
+tests/integration/redirection/test_here_string_bareword.py .             [ 43%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [ 43%]
+tests/integration/job_control/test_background_jobs.py .                  [ 43%]
+tests/system/interactive/test_pty_smoke.py .                             [ 43%]
+tests/integration/job_control/test_jobs_x_substitution.py .              [ 44%]
+tests/integration/redirection/test_input_cursor_identity_i1.py .         [ 44%]
+tests/integration/redirection/test_heredoc.py .                          [ 44%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 44%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 44%]
+                                                                         [ 44%]
+tests/integration/job_control/test_background_jobs.py .                  [ 44%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 44%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 44%]
+                                                                         [ 44%]
+tests/integration/job_control/test_background_jobs.py .                  [ 44%]
+tests/system/interactive/test_pty_smoke.py .                             [ 45%]
+tests/system/test_fifo_script_i2.py .                                    [ 45%]
+tests/integration/job_control/test_bg_child_trap_discipline.py ..        [ 45%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 45%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 45%]
+                                                                         [ 45%]
+tests/integration/job_control/test_jobs_n_changed.py .                   [ 45%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 45%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 45%]
+tests/integration/job_control/test_trap_actions.py .                     [ 46%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [ 46%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 46%]
+tests/system/interactive/test_pty_smoke.py .                             [ 46%]
+tests/conformance/bash/test_dollar_zero_conformance.py .                 [ 46%]
+tests/system/interactive/test_pty_smoke.py ..                            [ 46%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 46%]
+tests/system/interactive/test_pty_smoke.py .                             [ 46%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 47%]
+tests/integration/redirection/test_simple_redirection.py .               [ 47%]
+tests/integration/job_control/test_exit_trap_paths.py ..                 [ 47%]
+tests/integration/job_control/test_jobspec_operands.py .                 [ 47%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 47%]
+tests/system/interactive/test_pty_smoke.py ..                            [ 47%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 47%]
+tests/integration/redirection/test_here_string_bareword.py .             [ 48%]
+tests/unit/core/test_construction_purity_f2.py .                         [ 48%]
+tests/integration/job_control/test_signal_handling.py .                  [ 48%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 48%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 48%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 48%]
+tests/integration/job_control/test_pending_signal_trap_eof.py .          [ 48%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 48%]
+tests/integration/redirection/test_procsub_combinator_mode.py .          [ 48%]
+tests/integration/subshells/test_env_isolation_p1.py .                   [ 49%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 49%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 49%]
+tests/integration/job_control/test_pipeline_partial_launch.py .          [ 49%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [ 49%]
+tests/conformance/bash/test_reappraisal6_redirect_errors_conformance.py . [ 49%]
+                                                                         [ 49%]
+tests/conformance/bash/test_dollar_zero_conformance.py .                 [ 49%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 49%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 49%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 50%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [ 50%]
+tests/system/test_script_shebang_is_comment.py .                         [ 50%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 50%]
+tests/integration/redirection/test_heredoc.py .                          [ 50%]
+tests/integration/job_control/test_fg_bg_check_order.py .                [ 50%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 50%]
+tests/integration/redirection/test_input_cursor_identity_i1.py .         [ 50%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 50%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 51%]
+tests/integration/job_control/test_signal_killed_diagnostic.py ..        [ 51%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 51%]
+tests/system/interactive/test_pty_huponexit_j1.py .                      [ 51%]
+tests/integration/job_control/test_signal_handling.py .                  [ 51%]
+tests/system/interactive/test_pty_smoke.py .                             [ 51%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 51%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 51%]
+tests/integration/job_control/test_trap_actions.py .                     [ 52%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 52%]
+tests/integration/job_control/test_trap_actions.py .                     [ 52%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 52%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 52%]
+tests/integration/job_control/test_signal_handling.py .                  [ 52%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 52%]
+tests/integration/job_control/test_trap_actions.py .                     [ 52%]
+tests/integration/job_control/test_jobs_n_changed.py .                   [ 52%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 53%]
+tests/system/interactive/test_pty_smoke.py .                             [ 53%]
+tests/integration/job_control/test_fg_bg_check_order.py .                [ 53%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 53%]
+tests/integration/job_control/test_jobs_x_substitution.py .              [ 53%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 53%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 53%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 53%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 53%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 54%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 54%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 54%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 54%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 54%]
+tests/integration/job_control/test_signal_killed_exit_status.py .        [ 54%]
+tests/integration/job_control/test_jobs_completed_listing_modes.py .     [ 54%]
+tests/system/interactive/test_pty_smoke.py .                             [ 54%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 54%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 55%]
+tests/system/interactive/test_pty_smoke.py .                             [ 55%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 55%]
+tests/integration/job_control/test_trap_actions.py ..                    [ 55%]
+tests/integration/redirection/test_heredoc.py .                          [ 55%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 55%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 55%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 55%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 56%]
+tests/system/interactive/test_pty_smoke.py ..                            [ 56%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 56%]
+tests/integration/job_control/test_background_jobs.py .                  [ 56%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 56%]
+tests/system/interactive/test_pty_smoke.py .                             [ 56%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 56%]
+tests/integration/job_control/test_trap_actions.py .                     [ 56%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 57%]
+tests/integration/job_control/test_background_jobs.py .                  [ 57%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [ 57%]
+tests/unit/tooling/test_process_state_hermeticity.py .                   [ 57%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 57%]
+tests/integration/job_control/test_trap_actions.py ..                    [ 57%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 57%]
+tests/conformance/bash/test_reappraisal6_redirect_errors_conformance.py . [ 57%]
+                                                                         [ 57%]
+tests/integration/job_control/test_trap_actions.py .                     [ 58%]
+tests/conformance/bash/test_dollar_zero_conformance.py .                 [ 58%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 58%]
+                                                                         [ 58%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 58%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 58%]
+tests/unit/tooling/test_process_state_hermeticity.py .                   [ 58%]
+tests/integration/job_control/test_jobs_completed_listing_modes.py .     [ 58%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 58%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 58%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 59%]
+tests/integration/redirection/test_heredoc.py .                          [ 59%]
+tests/integration/job_control/test_jobspec_operands.py .                 [ 59%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 59%]
+                                                                         [ 59%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 59%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 59%]
+tests/integration/job_control/test_trap_actions.py .                     [ 59%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 59%]
+tests/integration/redirection/test_here_string_bareword.py .             [ 60%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 60%]
+                                                                         [ 60%]
+tests/system/interactive/test_pty_smoke.py .                             [ 60%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 60%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 60%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 60%]
+tests/integration/job_control/test_trap_actions.py .                     [ 60%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 60%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 60%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 61%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 61%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 61%]
+                                                                         [ 61%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 61%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 61%]
+tests/unit/core/test_signal_disposition_lease_p1.py .                    [ 61%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 61%]
+tests/integration/job_control/test_jobs_x_substitution.py .              [ 61%]
+tests/integration/redirection/test_high_fd_redirection.py .              [ 61%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 62%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 62%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 62%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 62%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 62%]
+tests/integration/redirection/test_read_forked_fd.py .                   [ 62%]
+tests/system/interactive/test_pty_smoke.py .                             [ 62%]
+tests/integration/job_control/test_background_jobs.py .                  [ 62%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 62%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 63%]
+tests/integration/job_control/test_trap_actions.py .                     [ 63%]
+tests/integration/job_control/test_background_jobs.py .                  [ 63%]
+tests/unit/core/test_construction_purity_f2.py .                         [ 63%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 63%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [ 63%]
+tests/integration/job_control/test_pending_signal_trap_eof.py .          [ 63%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 63%]
+tests/unit/core/test_construction_purity_f2.py .                         [ 63%]
+tests/integration/redirection/test_input_cursor_identity_i1.py .         [ 64%]
+tests/unit/executor/test_fork_sigmask_restore.py .                       [ 64%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 64%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [ 64%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 64%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 64%]
+tests/integration/job_control/test_trap_actions.py .                     [ 64%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 64%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 64%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 65%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 65%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 65%]
+tests/integration/job_control/test_signal_handling.py .                  [ 65%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 65%]
+tests/integration/job_control/test_trap_actions.py .                     [ 65%]
+tests/unit/core/test_construction_purity_f2.py .                         [ 65%]
+tests/integration/job_control/test_signal_killed_diagnostic.py .         [ 65%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 65%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 66%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 66%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 66%]
+tests/integration/redirection/test_input_cursor_identity_i1.py .         [ 66%]
+tests/integration/job_control/test_trap_actions.py .                     [ 66%]
+tests/integration/job_control/test_jobs_x_substitution.py .              [ 66%]
+tests/unit/tooling/test_process_state_hermeticity.py .                   [ 66%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 66%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 66%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py ..           [ 67%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 67%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 67%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 67%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 67%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 67%]
+tests/integration/job_control/test_kill_process_group.py .               [ 67%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 67%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 68%]
+                                                                         [ 68%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 68%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 68%]
+                                                                         [ 68%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 68%]
+tests/integration/job_control/test_wait_reap_echild_reclaim.py .         [ 68%]
+tests/integration/job_control/test_trap_actions.py .                     [ 68%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 68%]
+tests/integration/job_control/test_fg_bg_check_order.py .                [ 68%]
+tests/system/test_fifo_script_i2.py .                                    [ 68%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 69%]
+tests/integration/job_control/test_jobspec_operands.py .                 [ 69%]
+tests/unit/core/test_construction_purity_f2.py .                         [ 69%]
+tests/integration/job_control/test_trap_actions.py .                     [ 69%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 69%]
+tests/integration/job_control/test_background_jobs.py .                  [ 69%]
+tests/system/interactive/test_pty_smoke.py .                             [ 69%]
+tests/integration/job_control/test_fg_bg_check_order.py .                [ 69%]
+tests/integration/job_control/test_background_jobs.py .                  [ 69%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 70%]
+tests/conformance/bash/test_dollar_zero_conformance.py .                 [ 70%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 70%]
+tests/integration/subshells/test_env_isolation_p1.py .                   [ 70%]
+tests/integration/redirection/test_heredoc_shared_cursor_r1.py .         [ 70%]
+tests/integration/job_control/test_signal_handling.py .                  [ 70%]
+tests/integration/job_control/test_trap_actions.py .                     [ 70%]
+tests/integration/job_control/test_background_functions.py ..            [ 70%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 71%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 71%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 71%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 71%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 71%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 71%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 71%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 71%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 71%]
+tests/integration/job_control/test_trap_actions.py .                     [ 72%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 72%]
+tests/unit/interactive/test_signal_handler_lifecycle.py .                [ 72%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 72%]
+tests/integration/job_control/test_jobs_n_changed.py .                   [ 72%]
+tests/integration/job_control/test_jobs_x_substitution.py .              [ 72%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 72%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 72%]
+tests/integration/job_control/test_trap_actions.py .                     [ 72%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 73%]
+tests/integration/redirection/test_heredoc.py .                          [ 73%]
+tests/system/interactive/test_pty_smoke.py .                             [ 73%]
+tests/integration/job_control/test_signal_handling.py .                  [ 73%]
+tests/integration/job_control/test_mixed_pipeline_job_state.py .         [ 73%]
+tests/system/interactive/test_pty_smoke.py .                             [ 73%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 73%]
+tests/conformance/bash/test_reappraisal7_ambiguous_redirect_conformance.py . [ 73%]
+                                                                         [ 73%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 73%]
+tests/system/interactive/test_pty_smoke.py .                             [ 74%]
+tests/integration/job_control/test_trap_actions.py .                     [ 74%]
+tests/integration/redirection/test_high_fd_redirection.py .              [ 74%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 74%]
+tests/integration/redirection/test_heredoc.py .                          [ 74%]
+tests/system/interactive/test_pty_smoke.py .                             [ 74%]
+tests/integration/job_control/test_trap_actions.py .                     [ 74%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 74%]
+tests/integration/job_control/test_signal_handling.py .                  [ 74%]
+tests/system/interactive/test_pty_smoke.py .                             [ 75%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 75%]
+tests/unit/core/test_signal_disposition_lease_p1.py .                    [ 75%]
+tests/unit/expansion/test_word_expander_characterization.py .            [ 75%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 75%]
+tests/unit/builtins/test_job_control_builtins.py .                       [ 75%]
+tests/integration/job_control/test_jobspec_operands.py .                 [ 75%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [ 75%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 75%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 76%]
+tests/integration/job_control/test_fg_bg_check_order.py .                [ 76%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 76%]
+tests/integration/job_control/test_jobs_completed_listing_modes.py .     [ 76%]
+tests/conformance/bash/test_reappraisal6_redirect_errors_conformance.py . [ 76%]
+                                                                         [ 76%]
+tests/unit/tooling/test_process_state_hermeticity.py .                   [ 76%]
+tests/integration/job_control/test_signal_killed_exit_status.py .        [ 76%]
+tests/integration/job_control/test_trap_actions.py .                     [ 76%]
+tests/system/interactive/test_pty_shutdown_route_f2.py .                 [ 76%]
+tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py .    [ 77%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 77%]
+tests/integration/redirection/test_simple_redirection.py .               [ 77%]
+tests/system/interactive/test_pty_smoke.py .                             [ 77%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 77%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 77%]
+tests/integration/redirection/test_simple_redirection.py .               [ 77%]
+tests/unit/builtins/test_signal_builtins.py ...                          [ 78%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 78%]
+tests/integration/job_control/test_signal_killed_exit_status.py .        [ 78%]
+tests/unit/core/test_construction_purity_f2.py .                         [ 78%]
+tests/integration/job_control/test_jobspec_operands.py .                 [ 78%]
+tests/system/interactive/test_multiline_immediate_error_i3.py .          [ 78%]
+tests/integration/redirection/test_heredoc.py .                          [ 78%]
+tests/system/interactive/test_pty_smoke.py .                             [ 78%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 78%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 79%]
+tests/system/interactive/test_pty_smoke.py .                             [ 79%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 79%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 79%]
+tests/system/interactive/test_pty_smoke.py .                             [ 79%]
+tests/integration/redirection/test_read_forked_fd.py .                   [ 79%]
+tests/conformance/bash/test_reappraisal6_redirect_errors_conformance.py . [ 79%]
+                                                                         [ 79%]
+tests/integration/job_control/test_fg_bg_check_order.py .                [ 79%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 80%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 80%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 80%]
+tests/system/interactive/test_pty_smoke.py ..                            [ 80%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 80%]
+tests/unit/builtins/test_signal_builtins.py ....                         [ 81%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 81%]
+tests/unit/core/test_signal_lease_coordination_f2.py ..                  [ 81%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 81%]
+tests/integration/redirection/test_script_fd_ownership_i2.py .           [ 81%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 81%]
+tests/system/interactive/test_pty_smoke.py .                             [ 81%]
+tests/integration/redirection/test_heredoc.py .                          [ 81%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 82%]
+tests/integration/job_control/test_jobspec_operands.py .                 [ 82%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 82%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 82%]
+tests/integration/job_control/test_trap_actions.py .                     [ 82%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 82%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 82%]
+tests/integration/job_control/test_trap_actions.py .                     [ 82%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [ 82%]
+tests/integration/job_control/test_jobs_completed_listing_modes.py .     [ 83%]
+tests/unit/core/test_signal_lease_coordination_f2.py .                   [ 83%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 83%]
+tests/system/interactive/test_pty_smoke.py .                             [ 83%]
+tests/integration/job_control/test_trap_ignore_inherit_exec.py .         [ 83%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 83%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 83%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 83%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 83%]
+tests/integration/job_control/test_trap_actions.py .                     [ 84%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 84%]
+tests/integration/job_control/test_pipeline_partial_launch.py .          [ 84%]
+tests/integration/subshells/test_env_isolation_p1.py .                   [ 84%]
+tests/integration/job_control/test_trap_actions.py .                     [ 84%]
+tests/unit/interactive/test_signal_handler_lifecycle.py .                [ 84%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 84%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 84%]
+tests/integration/job_control/test_trap_actions.py .                     [ 84%]
+tests/integration/job_control/test_wait_reap_echild_reclaim.py .         [ 85%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 85%]
+.                                                                        [ 85%]
+tests/system/interactive/test_pty_smoke.py .                             [ 85%]
+tests/integration/redirection/test_simple_redirection.py .               [ 85%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 85%]
+tests/integration/redirection/test_input_cursor_identity_i1.py .         [ 85%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 85%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 85%]
+tests/integration/pipeline/test_long_pipeline_fd_limit.py .              [ 86%]
+tests/conformance/bash/test_reappraisal6_redirect_errors_conformance.py . [ 86%]
+                                                                         [ 86%]
+tests/integration/job_control/test_signal_handling.py .                  [ 86%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 86%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 86%]
+tests/system/interactive/test_pty_smoke.py .                             [ 86%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 86%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 86%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 86%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 87%]
+                                                                         [ 87%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 87%]
+tests/system/interactive/test_pty_smoke.py .                             [ 87%]
+tests/integration/redirection/test_here_string_word_quoting.py .         [ 87%]
+tests/unit/tooling/test_process_state_hermeticity.py .                   [ 87%]
+tests/unit/core/test_construction_purity_f2.py .                         [ 87%]
+tests/integration/redirection/test_script_fd_ownership_i2.py .           [ 87%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 87%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 87%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 88%]
+tests/system/interactive/test_pty_shutdown_route_f2.py .                 [ 88%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 88%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 88%]
+tests/unit/builtins/test_signal_builtins.py ..                           [ 88%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 88%]
+tests/integration/job_control/test_kill_process_group.py .               [ 88%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 88%]
+tests/conformance/bash/test_dollar_zero_conformance.py .                 [ 89%]
+tests/integration/job_control/test_trap_actions.py .                     [ 89%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 89%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 89%]
+                                                                         [ 89%]
+tests/integration/redirection/test_script_fd_ownership_i2.py .           [ 89%]
+tests/system/interactive/test_pty_smoke.py .                             [ 89%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 89%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 89%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 89%]
+tests/integration/redirection/test_input_cursor_identity_i1.py .         [ 90%]
+tests/integration/job_control/test_kill_process_group.py .               [ 90%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 90%]
+tests/integration/job_control/test_signal_handling.py .                  [ 90%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 90%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 90%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 90%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 90%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 90%]
+tests/system/interactive/test_pty_smoke.py .                             [ 91%]
+tests/integration/redirection/test_std_fd_lease_f2.py .                  [ 91%]
+tests/integration/job_control/test_background_jobs.py .                  [ 91%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 91%]
+tests/integration/redirection/test_heredoc.py .                          [ 91%]
+tests/integration/job_control/test_fg_bg_check_order.py .                [ 91%]
+tests/integration/job_control/test_boundary_j1_lifecycle.py .            [ 91%]
+tests/integration/pipeline/test_long_pipeline_fd_limit.py .              [ 91%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 91%]
+tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py . [ 92%]
+                                                                         [ 92%]
+tests/integration/job_control/test_pipeline_signal_death.py .            [ 92%]
+tests/system/interactive/test_pty_smoke.py .                             [ 92%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 92%]
+tests/integration/job_control/test_background_jobs.py .                  [ 92%]
+tests/integration/redirection/test_self_dup_leniency_r1.py .             [ 92%]
+tests/system/interactive/test_pty_smoke.py .                             [ 92%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 92%]
+tests/system/interactive/test_pty_smoke.py .                             [ 92%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 93%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [ 93%]
+tests/system/interactive/test_pty_smoke.py .                             [ 93%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 93%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 93%]
+tests/integration/redirection/test_here_string_bareword.py .             [ 93%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 93%]
+tests/integration/redirection/test_simple_redirection.py .               [ 93%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 93%]
+tests/system/interactive/test_pty_smoke.py ..                            [ 94%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 94%]
+tests/system/interactive/test_pty_smoke.py .                             [ 94%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 94%]
+tests/unit/builtins/test_job_control_builtins.py .                       [ 94%]
+tests/integration/job_control/test_jobs_completed_listing_modes.py .     [ 94%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 94%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 94%]
+tests/integration/job_control/test_bg_child_trap_discipline.py ..        [ 95%]
+tests/integration/job_control/test_noninteractive_job_refresh.py .       [ 95%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 95%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 95%]
+tests/conformance/bash/test_reappraisal6_redirect_errors_conformance.py . [ 95%]
+                                                                         [ 95%]
+tests/system/interactive/test_pty_smoke.py .                             [ 95%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 95%]
+tests/integration/job_control/test_trap_actions.py .                     [ 95%]
+tests/system/interactive/test_multiline_immediate_error_i3.py .          [ 96%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 96%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 96%]
+tests/conformance/bash/test_dollar_zero_conformance.py .                 [ 96%]
+tests/integration/job_control/test_job_notice_channel.py .               [ 96%]
+tests/integration/parsing/test_error_recovery.py .                       [ 96%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 96%]
+tests/integration/job_control/test_signal_killed_exit_status.py .        [ 96%]
+tests/system/interactive/test_pty_smoke.py .                             [ 96%]
+tests/integration/job_control/test_background_jobs.py .                  [ 97%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 97%]
+tests/integration/redirection/test_redirect_close_stdin_alive_r1.py .    [ 97%]
+tests/unit/tooling/test_run_tests_hardening.py .                         [ 97%]
+tests/system/interactive/test_pty_smoke.py .                             [ 97%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 97%]
+tests/integration/redirection/test_heredoc.py .                          [ 97%]
+tests/integration/redirection/test_here_string_bareword.py .             [ 97%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 97%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 98%]
+tests/unit/builtins/test_signal_builtins.py .                            [ 98%]
+tests/integration/redirection/test_input_cursor_identity_i1.py .         [ 98%]
+tests/unit/builtins/test_disown_builtin.py .                             [ 98%]
+tests/integration/job_control/test_wait_disown_bg_fg.py .                [ 98%]
+tests/integration/job_control/test_trap_actions.py .                     [ 98%]
+tests/integration/job_control/test_bg_child_trap_discipline.py .         [ 98%]
+tests/integration/job_control/test_stopped_job_current_marker.py .       [ 98%]
+tests/integration/redirection/test_advanced_redirection.py .             [ 98%]
+tests/integration/redirection/test_heredoc_shared_cursor_r1.py .         [ 99%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 99%]
+tests/integration/redirection/test_redirect_order_r1.py .                [ 99%]
+tests/integration/redirection/test_heredoc_shared_cursor_r1.py .         [ 99%]
+tests/conformance/bash/test_trap_signal_spec_conformance.py .            [ 99%]
+tests/integration/job_control/test_debug_err_traps.py .                  [ 99%]
+tests/system/interactive/test_pty_smoke.py x                             [ 99%]
+tests/integration/job_control/test_exit_trap_paths.py .                  [ 99%]
+tests/conformance/bash/test_reappraisal6_builtin_state_conformance.py .  [100%]
+
+========= 893 passed, 21037 deselected, 2 xfailed in 218.33s (0:03:38) =========
+
+================================================================================
+TEST RUN SUMMARY
+================================================================================
+Combined across 2 phase(s) (from phase manifests): 20315 passed, 1590 skipped, 10 xfailed
+Full transcript saved to: /Users/pwilson/src/psh-wave0-legs/tmp/last-test-run.txt
+✅ All test phases PASSED
+leg-rc=0

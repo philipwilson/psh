@@ -1,0 +1,2 @@
+Success: no issues found in 274 source files
+leg-rc=0

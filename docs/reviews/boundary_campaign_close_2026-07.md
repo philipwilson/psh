@@ -4,7 +4,8 @@
 information loss at subsystem boundaries). Operating brief:
 `docs/reviews/boundary_campaign_briefs_2026-07-16.md`.
 **Span:** v0.725.0 – v0.748.0 (24 releases, PRs #471–#494), plus this closing
-slot Q3 (v0.749.0, PR TBD).
+slot Q3 (v0.749.0, PR #495) and the closing-verification fixup slot
+(v0.750.0, PR #496).
 **This report:** the §15 closing report — final boundary ledger, 27-type
 representation/consumer census, deliberate-loss registry, post-campaign carry
 audit, H1–H19+C1 closure table, exact commands, and public-API changes.
@@ -226,7 +227,7 @@ only the quote-provenance and two-round keying were touched.
 |---|-------|-------------|
 | 1 | Q2 retained oracles (extglob_to_regex/_convert_pattern; normalize_bracket_expressions/_POSIX_CLASSES_PATHNAME) | **CLOSED (Q3 WP3).** Integrator RULED permanent reference oracles; deferred-deletion stigma removed; documented as PERMANENT with test sites named. Both oracle tests verified live (105 passed / 16 param-skipped, 0 xfail). |
 | 2 | F9 git-range self-check silent skip on gitless checkouts | **CLOSED (Q3 WP5).** `test_migrated_modules_are_the_campaign_created_set` (and its Q1 twin `test_created_modules_match_enumeration`) now WARN loudly (naming the lost protection) before skipping; +2 self-tests; green-repo behavior unchanged. |
-| 3 | empty-arith-subscript (warn-continue) | CARRIED. Both-sides-pinned pre-existing divergence (psh warns and continues on an empty arithmetic subscript); W2 carry. |
+| 3 | empty-arith-subscript (warn-continue) | CARRIED. Both-sides-pinned pre-existing divergence — **bash warns (twice) and CONTINUES with rc 0; psh treats it as a fatal arithmetic error and DISCARDS the line** (pinned: `test_subscript_keying_conformance.py::test_divergence_empty_arith_subscript_fatality`); W2 carry. *(Direction corrected 2026-07-24 — this row originally stated the reverse, contradicting its own pin; caught by reappraisal #22 HIGH-10.7, verified against the pin and a live probe.)* |
 | 4 | operand-`$@` flatten | CARRIED. W1/W3 flip-pins record the pre-existing divergence. |
 | 5 | F6.6 definition-rejection | CARRIED. F-phase definition-rejection edge, documented. |
 | 6 | exec-builtin message | CARRIED. R3-noted message-wording divergence. |
@@ -259,6 +260,7 @@ only the quote-provenance and two-round keying were touched.
 | 33 | CRLF line endings in piped `-i` | **CARRIED (dev-cv round-4, base-identical, verifier-probed).** With CRLF (`\r\n`) line endings fed to piped interactive mode, bash strips the trailing `\r` as part of the line ending; psh keeps it, so `history\r` is executed as an unknown command (`psh: history: command not found`) and any bare builtin/command similarly fails. A pre-existing input-layer divergence (the interactive line reader does not treat `\r` as end-of-line); register-only. |
 | 34 | `PROMPT_COMMAND` never fires in piped `-i` mode | **CARRIED (dev-cv round-4, base-identical, verifier-probed — piped-mode-ONLY).** In piped (non-PTY) interactive mode psh never executes `PROMPT_COMMAND` (probed: bash fired it once per prompt, 3×; psh 0×). **IMPORTANT — this is piped-mode-only:** under a REAL PTY psh RUNS `PROMPT_COMMAND` and the H1 recording gate holds (the verifier PTY-proved a byte-identical histfile sequence). So the divergence is an artifact of the piped-stdin harness path, not a general `PROMPT_COMMAND` gap; register-only, and the PTY caveat is recorded so it is not "fixed" against the wrong (piped) baseline. |
 | 35 | eval'd outer-single `history -p "!!"` reconstructs the current line | **CARRIED (dev-cv round-4, integrator-ruled, base-identical).** `eval 'history -p "!!"'` (OUTER-SINGLE / inner-double) expands `!!` to a LOSSY RECONSTRUCTION of the CURRENT line (`eval 'history -p !!'`, inner double-quotes dropped) instead of the PREVIOUS entry (bash: `echo seed`). The STRIP half is fixed and bash-correct in BOTH — only the `-p` EXPANSION STRING diverges (the history-expansion engine's reconstruction, not the CV3 removal). No existing pin saw it: `TestHistorySInStringContextH1::test_eval_p_still_strips_control` uses the OUTER-DOUBLE spelling (`eval "history -p '!!'"`) whose `!!` is consumed by INPUT-TIME expansion before eval runs (verifier V4/R09). Pre-existing on base, not a regression. Deliberate, pinned: `test_history_p_interactive_conformance.py::TestHistoryEvalOuterSinglePExpansionH35` (outer-single spelling, divergence pin). |
+| 36 | assoc-subscript VALID-procsub key identity | **CARRIED (registered 2026-07-24 — omission caught by reappraisal #22 HIGH-4/HIGH-10.7).** A VALID process substitution spelled as an associative-array key is EXECUTED by psh instead of kept literal: `declare -A a; a[<(printf x)]=v` — bash stores the literal key `<(printf x)`; psh runs the procsub and stores `/dev/fd/N`. Distinct from the INVALID-spelling timing divergence (which IS pinned, `test_divergence_procsub_in_subscript_read_time`); this valid-key identity face had no register row and no pin. Verified live 2026-07-21/24 at `0215279c` vs bash 5.2.26. Owned for closure by the Boundary Remediation Campaign, slot 2.3 (see `docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md`). |
 
 ---
 
@@ -380,3 +382,40 @@ characterized; full fix scoped as the post-campaign RESUMABLE-PARSER campaign)
 and **H19** (J1 ruling 2 — substantially closed, one prompt-reap/general-reaper
 residual carried plus the Linux-nightly watch obligation). The remaining
 findings are closed.
+
+---
+
+## Addendum (2026-07-24): status reclassification, exit-leg discharge, and record corrections
+
+Written by the campaign integrator at the launch of the successor **Boundary
+Remediation Campaign** (operating plan:
+`docs/reviews/boundary_remediation_integrator_plan_2026-07-21.md`; unified
+ledger: `docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md`).
+
+1. **Reclassification.** Per reappraisal #22
+   (`ground_up_reappraisal_22_correctness_textbook_2026-07-20.md`, HIGH-10) and
+   the integrator's verification of its findings (every tested claim confirmed
+   at `0215279c`), this campaign (v0.725.0–v0.750.0) is recorded as the
+   boundary program's **implementation milestone, not its closure**. The
+   no-partials exit contract of the operating brief was not met (H15/H19
+   PARTIAL; live losses found by fresh probes). Campaign-closure obligations
+   transfer to the Boundary Remediation Campaign's final ceremony.
+2. **Exit legs discharged.** The pending criterion-7 exit legs were run
+   2026-07-24 at `0215279c` as the remediation campaign's Wave 0 baseline
+   (three seeded gates + conformance + compare-bash + benchmarks + ruff +
+   mypy + complexity counters); results in
+   `docs/reviews/evidence/boundary_remediation_2026-07/wave0-legs-summary.md`.
+3. **Corrections in this addendum's commit:** carry row #3's direction was
+   reversed (now corrected in place, marked); carry row #36 (valid-procsub
+   key identity) was missing and is now registered; the Q3 "PR TBD" now reads
+   PR #495, and the v0.750.0 closing-verification slot (PR #496) is named in
+   the span. The operating brief `boundary_campaign_briefs_2026-07-16.md` is
+   committed alongside this addendum (it previously existed only in a working
+   tree — #22 HIGH-10.4); its "implementation has not started" status line is
+   a historical artifact of its authoring date (#22 HIGH-10.6) and is
+   deliberately left as written.
+4. **Linux nightly.** The nightly backstop has been RED since 2026-07-02 —
+   through this campaign's entire final stretch and its appraisals. Record and
+   ownership: `docs/reviews/evidence/boundary_remediation_2026-07/nightly-status.md`
+   (remediation slot 1.4). Carry #17 (J1 nightly watch, a MUST) is therefore
+   NOT discharged by this report and is owned there.
