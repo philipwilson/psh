@@ -12,11 +12,41 @@ re-derive in ~40 places:
    through this resolver.
 
 2. **How a differential case is executed** — ``run_shell_case()`` returns a
-   *typed* :data:`ShellRunResult` (``Completed | SpawnFailure | Timeout |
-   DecodeFailure``), never a sentinel string or a fake exit code.  Harness
-   failures are therefore distinguishable from shell behavior, and a comparison
-   harness can refuse to classify two identical failures as conformance
-   (continuation finding G).
+   *typed* :data:`ShellRunResult`, never a sentinel string or a fake exit code.
+   Harness failures are therefore distinguishable from shell behavior, and a
+   comparison harness can refuse to classify two identical failures as
+   conformance (continuation finding G).
+
+The outcome algebra (remediation slot 1.1) — exactly one of these, and only
+the first is ever comparable:
+
+* :class:`Completed` — the case ran to genuine completion (any exit status,
+  including signal death), and its captured output is a **faithful, untruncated**
+  record.  **This is the ONLY outcome that may enter a stdout/status/stderr
+  comparison.**  The invariant "Completed means genuinely completed" is enforced
+  structurally: ``Completed`` carries no truncation flags, so a truncated or
+  harness-terminated run is *unrepresentable* as ``Completed``.  Every outcome
+  is ``@dataclass(frozen=True, slots=True)`` — no ``__dict__``, so the frozen
+  guarantee cannot be forged by ``__dict__`` injection, ``object.__setattr__``,
+  or ``__class__`` surgery (a truncated ``OutputLimitExceeded`` cannot be
+  re-typed into a ``Completed``).
+* :class:`OutputLimitExceeded` — a stream breached the byte cap.  When the
+  watchdog caught the overflow mid-run it SIGKILLed the whole process group
+  (``killpg=True``, ``signal=SIGKILL``); when the process had already exited on
+  its own by the time the capped readback saw the overflow, no kill was needed
+  (``killpg=False``, ``signal=None``).  Either way the capture is truncated at
+  ``byte_cap`` and therefore NOT comparable.  (This is the runaway-``yes`` /
+  self-feeding-``cat`` case that used to masquerade as ``Completed`` and let two
+  8 MiB cap-kills classify IDENTICAL — reappraisal #22 HIGH-1.)
+* :class:`Timeout` — the deadline was exceeded; the process group was SIGKILLed.
+  Partial output is preserved for diagnostics but is not comparable.
+* :class:`SpawnFailure` — the shell process could not be started.
+* :class:`DecodeFailure` — captured bytes could not be decoded under the policy
+  (unreachable with surrogateescape, kept for totality).
+
+:func:`is_comparable` is the SOLE AUTHORITY on that first-vs-rest split: every
+comparison path calls it BEFORE comparing, so a non-comparable observation
+yields a TEST_ERROR-class result, never IDENTICAL/DIFFERENT.
 
 The runner owns, structurally:
 
@@ -60,10 +90,12 @@ __all__ = [
     "BashOracle",
     "BashOracleUnavailable",
     "Completed",
+    "OutputLimitExceeded",
     "SpawnFailure",
     "Timeout",
     "DecodeFailure",
     "ShellRunResult",
+    "is_comparable",
     "resolve_bash",
     "try_resolve_bash",
     "hermetic_shell_env",
@@ -90,18 +122,54 @@ class BashOracle:
     version: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Completed:
-    """The case ran to completion (including nonzero exit / signal death)."""
+    """The case ran to genuine completion (including nonzero exit / signal death).
+
+    INVARIANT — "Completed means genuinely completed": a ``Completed``
+    observation is a faithful, UNTRUNCATED record of what the shell produced,
+    and it is the ONLY :data:`ShellRunResult` that may enter a behavioral
+    comparison.  There are deliberately NO truncation flags here: a run whose
+    capture was truncated at the byte cap is an :class:`OutputLimitExceeded`,
+    which makes "``Completed`` but truncated" structurally unrepresentable.
+    """
     stdout: str
     stderr: str
     returncode: int
     duration: float
-    stdout_truncated: bool = False
-    stderr_truncated: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
+class OutputLimitExceeded:
+    """A stream breached the byte cap; the capture is truncated, NOT comparable.
+
+    The captured ``stdout``/``stderr`` are bounded at ``byte_cap`` and are
+    therefore not a faithful record of what the shell would have produced, so
+    this observation must never enter a stdout/status/stderr comparison
+    (:func:`is_comparable` returns False for it).  Termination provenance:
+
+    * ``killpg`` — True when the watchdog SIGKILLed the whole process group
+      because it observed the overflow while the case was still running;
+      False when the case had already exited on its own by the time the capped
+      readback saw the overflow (no kill was needed, but the capture is still
+      truncated).
+    * ``signal`` — ``signal.SIGKILL`` when ``killpg`` is True, else ``None``.
+    * ``returncode`` — the leader's wait status if known (negative for the
+      cap-breach SIGKILL), kept for diagnostics only.
+    * ``stdout_truncated`` / ``stderr_truncated`` — which stream(s) overflowed.
+    """
+    stdout: str
+    stderr: str
+    byte_cap: int
+    duration: float
+    stdout_truncated: bool
+    stderr_truncated: bool
+    killpg: bool
+    signal: Optional[int] = None
+    returncode: Optional[int] = None
+
+
+@dataclass(frozen=True, slots=True)
 class SpawnFailure:
     """The shell process could not be started (missing/denied executable...).
 
@@ -111,7 +179,7 @@ class SpawnFailure:
     message: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Timeout:
     """The case exceeded its deadline; its process group was SIGKILLed.
 
@@ -123,13 +191,27 @@ class Timeout:
     stderr: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DecodeFailure:
     """Captured bytes could not be decoded under the declared policy."""
     message: str
 
 
-ShellRunResult = Union[Completed, SpawnFailure, Timeout, DecodeFailure]
+ShellRunResult = Union[
+    Completed, OutputLimitExceeded, SpawnFailure, Timeout, DecodeFailure]
+
+
+def is_comparable(result: ShellRunResult) -> bool:
+    """The SOLE AUTHORITY on whether ``result`` may enter a comparison.
+
+    Only :class:`Completed` is comparable, and (by construction) a ``Completed``
+    observation is never truncated or harness-terminated.  Every other outcome
+    — :class:`OutputLimitExceeded`, :class:`Timeout`, :class:`SpawnFailure`,
+    :class:`DecodeFailure` — is a non-comparable harness observation that must
+    yield a TEST_ERROR-class result, never IDENTICAL/DIFFERENT.  Comparison
+    paths call this BEFORE any stdout/status/stderr comparison.
+    """
+    return isinstance(result, Completed)
 
 
 _ORACLE_CACHE: Optional[BashOracle] = None
@@ -281,6 +363,7 @@ def run_shell_case(argv: Sequence[str], *,
         # Wait with a watchdog: poll for exit, deadline, and output-cap breach.
         deadline = start + timeout
         timed_out = False
+        capped = False
         while True:
             if proc.poll() is not None:
                 break
@@ -290,10 +373,11 @@ def run_shell_case(argv: Sequence[str], *,
             try:
                 if (os.path.getsize(out_path) > byte_cap
                         or os.path.getsize(err_path) > byte_cap):
-                    # Runaway output: kill the whole group NOW; report as a
-                    # completed-but-truncated run (the exit status below is
-                    # the SIGKILL delivered here).
+                    # Runaway output: kill the whole group NOW and report a
+                    # non-comparable OutputLimitExceeded (never Completed).
                     _killpg_sigkill(proc.pid)
+                    capped = True
+                    break
             except OSError:
                 pass
             time.sleep(_POLL_INTERVAL)
@@ -314,6 +398,28 @@ def run_shell_case(argv: Sequence[str], *,
                 stdout=out_bytes.decode("utf-8", "surrogateescape"),
                 stderr=err_bytes.decode("utf-8", "surrogateescape"))
 
+        if capped:
+            # Reap the SIGKILLed leader, then sweep the group once more for
+            # grandchildren that forked into the session before the kill landed.
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            _killpg_sigkill(proc.pid)
+            duration = time.monotonic() - start
+            out_bytes, out_trunc = _read_capped(out_path, byte_cap)
+            err_bytes, err_trunc = _read_capped(err_path, byte_cap)
+            return OutputLimitExceeded(
+                stdout=out_bytes.decode("utf-8", "surrogateescape"),
+                stderr=err_bytes.decode("utf-8", "surrogateescape"),
+                byte_cap=byte_cap,
+                duration=duration,
+                stdout_truncated=out_trunc,
+                stderr_truncated=err_trunc,
+                killpg=True,
+                signal=signal.SIGKILL,
+                returncode=proc.returncode)
+
         returncode = proc.returncode
         # The child exited, but grandchildren it spawned into the session may
         # linger and keep writing; sweep the group defensively.
@@ -333,6 +439,16 @@ def run_shell_case(argv: Sequence[str], *,
             # decode policy can never silently change into an exception.
             return DecodeFailure(f"{type(exc).__name__}: {exc}")
 
+        # A case that wrote past the cap and exited on its OWN between polls (so
+        # the watchdog never had to kill it) still produced a truncated capture.
+        # Surface it as OutputLimitExceeded, never Completed, so the "Completed
+        # is never truncated" invariant is airtight regardless of poll timing.
+        if out_trunc or err_trunc:
+            return OutputLimitExceeded(
+                stdout=stdout, stderr=stderr, byte_cap=byte_cap,
+                duration=duration, stdout_truncated=out_trunc,
+                stderr_truncated=err_trunc, killpg=False, signal=None,
+                returncode=returncode)
+
         return Completed(stdout=stdout, stderr=stderr, returncode=returncode,
-                         duration=duration, stdout_truncated=out_trunc,
-                         stderr_truncated=err_trunc)
+                         duration=duration)

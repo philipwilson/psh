@@ -7,9 +7,11 @@ standards, tracking differences, and documenting compatibility.
 Oracle resolution and case execution are OWNED by the shared harness module
 ``tests/harness/shell_oracle.py`` (campaign E2): ``resolve_bash()`` is the one
 bash-resolution ladder and ``run_shell_case()`` is the one typed runner.  A
-harness failure (spawn failure, timeout, decode failure) is rejected BEFORE
-any stdout/status/stderr comparison — two identical failures must never
-classify as conformance (continuation finding G).
+non-comparable observation (spawn failure, timeout, output-limit breach, or
+decode failure — anything ``is_comparable()`` rejects) is rejected BEFORE any
+stdout/status/stderr comparison — two identical failures, including two runaway
+commands both truncated at the output cap, must never classify as conformance
+(continuation finding G / reappraisal #22 HIGH-1).
 """
 
 import json
@@ -25,6 +27,7 @@ from shell_oracle import (  # noqa: E402
     Completed,
     ShellRunResult,
     hermetic_shell_env,
+    is_comparable,
     resolve_bash,
     run_shell_case,
 )
@@ -70,9 +73,10 @@ class ComparisonResult:
     """Result of comparing PSH and bash behavior.
 
     ``psh_result``/``bash_result`` are ``None`` for a side whose run was a
-    HARNESS failure (spawn/timeout/decode); ``conformance`` is then
-    ``TEST_ERROR`` and ``notes`` names the typed failure.  Harness failures
-    never reach the behavior comparison.
+    non-comparable observation (spawn failure, timeout, output-limit breach,
+    or decode failure — anything :func:`is_comparable` rejects); ``conformance``
+    is then ``TEST_ERROR`` and ``notes`` names the typed failure.  Non-comparable
+    observations never reach the behavior comparison.
     """
     command: str
     psh_result: Optional[CommandResult]
@@ -160,12 +164,13 @@ class ConformanceTestFramework:
                      env: Dict[str, str] = None, timeout: float = 10.0) -> CommandResult:
         """Run command in specified shell and return its completed result.
 
-        A harness failure (spawn failure, timeout, decode failure) raises
-        :class:`OracleHarnessFailure` — it is NOT rendered as a fake exit
-        code, so callers can never compare two failures as behavior.
+        A non-comparable observation (spawn failure, timeout, output-limit
+        breach, decode failure) raises :class:`OracleHarnessFailure` — it is
+        NOT rendered as a fake exit code, so callers can never compare two
+        failures as behavior.
         """
         run = self._run_typed(command, shell_cmd, env, timeout)
-        if not isinstance(run, Completed):
+        if not is_comparable(run):
             raise OracleHarnessFailure(" ".join(shell_cmd), run)
         return self._completed_to_result(run, shell_cmd, command)
 
@@ -194,27 +199,30 @@ class ConformanceTestFramework:
                         timeout: float = 10.0) -> ComparisonResult:
         """Compare PSH and bash behavior for a command.
 
-        Harness failures are rejected BEFORE the behavior comparison: a run
-        that did not complete makes the outcome ``TEST_ERROR`` with the typed
-        failure named in ``notes``.  In particular, two IDENTICAL harness
-        failures never classify as ``IDENTICAL`` (continuation finding G).
+        Non-comparable observations are rejected BEFORE the behavior comparison:
+        a run that :func:`is_comparable` rejects (spawn failure, timeout,
+        output-limit breach, decode failure) makes the outcome ``TEST_ERROR``
+        with the typed failure named in ``notes``.  In particular, two IDENTICAL
+        harness failures — including two runaway commands both truncated at the
+        output cap — never classify as ``IDENTICAL`` (continuation finding G /
+        reappraisal #22 HIGH-1).
         """
         psh_run = self._run_typed(command, self.psh_path,
                                   self._psh_env(env), timeout)
         bash_run = self._run_typed(command, self.bash_path, env, timeout)
 
         harness_notes = []
-        if not isinstance(psh_run, Completed):
+        if not is_comparable(psh_run):
             harness_notes.append(f"psh harness failure: {psh_run!r}")
-        if not isinstance(bash_run, Completed):
+        if not is_comparable(bash_run):
             harness_notes.append(f"bash harness failure: {bash_run!r}")
         if harness_notes:
             return ComparisonResult(
                 command=command,
                 psh_result=(self._completed_to_result(psh_run, self.psh_path, command)
-                            if isinstance(psh_run, Completed) else None),
+                            if is_comparable(psh_run) else None),
                 bash_result=(self._completed_to_result(bash_run, self.bash_path, command)
-                             if isinstance(bash_run, Completed) else None),
+                             if is_comparable(bash_run) else None),
                 conformance=ConformanceResult.TEST_ERROR,
                 notes="; ".join(harness_notes),
             )
