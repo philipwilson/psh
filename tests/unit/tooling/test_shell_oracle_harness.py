@@ -114,8 +114,11 @@ def test_output_cap_is_structural_not_advisory():
     assert r.stdout_truncated
     assert len(r.stdout.encode("utf-8", "surrogateescape")) <= 64 * 1024
     assert r.byte_cap == 64 * 1024
+    # Termination provenance is the load-bearing assertion (killpg + SIGKILL);
+    # returncode is diagnostic and may be None if the post-kill wait raced, so
+    # don't pin it strictly.
     assert r.killpg and r.signal == signal.SIGKILL
-    assert r.returncode is not None and r.returncode < 0  # cap-breach SIGKILL
+    assert r.returncode is None or r.returncode < 0  # cap-breach SIGKILL
     assert elapsed < 20, "cap breach must not wait for the timeout"
 
 
@@ -196,6 +199,43 @@ def test_completed_cannot_be_constructed_truncated():
     with pytest.raises(TypeError):
         Completed(stdout="x", stderr="", returncode=0, duration=0.0,
                   stdout_truncated=True)  # type: ignore[call-arg]
+
+
+def test_all_outcomes_are_slotted():
+    """Every outcome dataclass is slotted (frozen+slots): no __dict__ to forge."""
+    for cls in (Completed, OutputLimitExceeded, SpawnFailure, Timeout,
+                DecodeFailure):
+        assert hasattr(cls, "__slots__"), f"{cls.__name__} must be slotted"
+    c = Completed(stdout="x", stderr="", returncode=0, duration=0.0)
+    assert not hasattr(c, "__dict__")
+
+
+def test_completed_truncation_cannot_be_forged():
+    """Slots close the three forge paths a bare frozen dataclass leaves open —
+    a truncated observation can never be laundered into a Completed.
+    """
+    c = Completed(stdout="x", stderr="", returncode=0, duration=0.0)
+    ole = OutputLimitExceeded(
+        stdout="y\n", stderr="", byte_cap=1, duration=0.0,
+        stdout_truncated=True, stderr_truncated=False, killpg=True,
+        signal=signal.SIGKILL, returncode=-9)
+
+    # 1. __dict__ injection: no __dict__ exists on a slotted instance.
+    with pytest.raises(AttributeError):
+        c.__dict__["stdout_truncated"] = True  # type: ignore[attr-defined]
+
+    # 2. object.__setattr__ bypass: the slot layout admits no such attribute.
+    with pytest.raises(AttributeError):
+        object.__setattr__(c, "stdout_truncated", True)
+
+    # 3. __class__ surgery: differing slot layouts reject the re-type, so a
+    #    truncated OutputLimitExceeded can never masquerade as Completed.
+    with pytest.raises(TypeError):
+        object.__setattr__(ole, "__class__", Completed)
+
+    # dataclasses.replace on real fields still works (slots don't break it).
+    import dataclasses
+    assert dataclasses.replace(c, returncode=7).returncode == 7
 
 
 def test_is_comparable_only_accepts_completed():

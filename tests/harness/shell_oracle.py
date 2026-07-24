@@ -25,7 +25,11 @@ the first is ever comparable:
   record.  **This is the ONLY outcome that may enter a stdout/status/stderr
   comparison.**  The invariant "Completed means genuinely completed" is enforced
   structurally: ``Completed`` carries no truncation flags, so a truncated or
-  harness-terminated run is *unrepresentable* as ``Completed``.
+  harness-terminated run is *unrepresentable* as ``Completed``.  Every outcome
+  is ``@dataclass(frozen=True, slots=True)`` — no ``__dict__``, so the frozen
+  guarantee cannot be forged by ``__dict__`` injection, ``object.__setattr__``,
+  or ``__class__`` surgery (a truncated ``OutputLimitExceeded`` cannot be
+  re-typed into a ``Completed``).
 * :class:`OutputLimitExceeded` — a stream breached the byte cap.  When the
   watchdog caught the overflow mid-run it SIGKILLed the whole process group
   (``killpg=True``, ``signal=SIGKILL``); when the process had already exited on
@@ -118,7 +122,7 @@ class BashOracle:
     version: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Completed:
     """The case ran to genuine completion (including nonzero exit / signal death).
 
@@ -135,7 +139,7 @@ class Completed:
     duration: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class OutputLimitExceeded:
     """A stream breached the byte cap; the capture is truncated, NOT comparable.
 
@@ -165,7 +169,7 @@ class OutputLimitExceeded:
     returncode: Optional[int] = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SpawnFailure:
     """The shell process could not be started (missing/denied executable...).
 
@@ -175,7 +179,7 @@ class SpawnFailure:
     message: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Timeout:
     """The case exceeded its deadline; its process group was SIGKILLed.
 
@@ -187,7 +191,7 @@ class Timeout:
     stderr: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DecodeFailure:
     """Captured bytes could not be decoded under the declared policy."""
     message: str

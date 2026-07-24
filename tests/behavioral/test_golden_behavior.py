@@ -21,13 +21,13 @@ import yaml
 # machine whose PATH bash is macOS's stock /bin/bash 3.2 a bare ``bash`` made the
 # --compare-bash phase fail on environment rather than behavior (tests-infra
 # addendum #2). Execution goes through the typed run_shell_case runner: a
-# harness failure (spawn/timeout/decode) raises instead of masquerading as
-# case output, each case runs hermetically (all inherited LC_*/LANG stripped,
-# fresh temp cwd, own session, bounded file-backed capture).
+# harness failure (spawn/timeout/output-limit/decode) raises instead of
+# masquerading as case output, each case runs hermetically (all inherited
+# LC_*/LANG stripped, fresh temp cwd, own session, bounded file-backed capture).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "harness"))
 from shell_oracle import (  # noqa: E402
-    Completed,
     hermetic_shell_env,
+    is_comparable,
     resolve_bash,
     run_shell_case,
 )
@@ -69,7 +69,7 @@ _ALL_CASES = _load_cases()
 def _run_case(argv, *, env=None, timeout=10):
     """Run one golden case via the typed runner; harness failures raise."""
     run = run_shell_case(argv, env=_deterministic_env(env), timeout=timeout)
-    if not isinstance(run, Completed):
+    if not is_comparable(run):
         raise AssertionError(f"harness failure running {argv[0]}: {run!r}")
     return run.stdout, run.stderr, run.returncode
 

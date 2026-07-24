@@ -7,9 +7,11 @@ standards, tracking differences, and documenting compatibility.
 Oracle resolution and case execution are OWNED by the shared harness module
 ``tests/harness/shell_oracle.py`` (campaign E2): ``resolve_bash()`` is the one
 bash-resolution ladder and ``run_shell_case()`` is the one typed runner.  A
-harness failure (spawn failure, timeout, decode failure) is rejected BEFORE
-any stdout/status/stderr comparison — two identical failures must never
-classify as conformance (continuation finding G).
+non-comparable observation (spawn failure, timeout, output-limit breach, or
+decode failure — anything ``is_comparable()`` rejects) is rejected BEFORE any
+stdout/status/stderr comparison — two identical failures, including two runaway
+commands both truncated at the output cap, must never classify as conformance
+(continuation finding G / reappraisal #22 HIGH-1).
 """
 
 import json
