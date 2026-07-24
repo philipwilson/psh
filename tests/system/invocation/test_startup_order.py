@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from shell_oracle import Completed, hermetic_shell_env, run_shell_case, try_resolve_bash
+from shell_oracle import hermetic_shell_env, is_comparable, run_shell_case, try_resolve_bash
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 _ORACLE = try_resolve_bash()
@@ -31,7 +31,7 @@ def run_psh(args, *, stdin=None, cwd, extra_env=None):
                               **(extra_env or {})})
     result = run_shell_case([sys.executable, "-m", "psh", *args],
                             stdin_data=stdin, env=env, cwd=str(cwd), timeout=30)
-    assert isinstance(result, Completed), result
+    assert is_comparable(result), result
     return result
 
 
@@ -40,7 +40,7 @@ def run_bash(args, *, stdin=None, cwd):
     env = hermetic_shell_env({"HISTFILE": str(Path(cwd) / ".histfile")})
     result = run_shell_case([_ORACLE.path, *args], stdin_data=stdin, env=env,
                             cwd=str(cwd), timeout=30)
-    assert isinstance(result, Completed), result
+    assert is_comparable(result), result
     return result
 
 

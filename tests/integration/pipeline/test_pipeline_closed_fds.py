@@ -36,7 +36,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from shell_oracle import Completed, hermetic_shell_env, resolve_bash, run_shell_case
+from shell_oracle import hermetic_shell_env, is_comparable, resolve_bash, run_shell_case
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ENV = hermetic_shell_env({'LC_ALL': 'C', 'LANG': 'C',
@@ -85,7 +85,7 @@ def _observe(argv, closures, pipeline_expr):
                   f'printf "rc=%s ps=%s" "$?" "${{PIPESTATUS[*]}}" >&9')
         r = run_shell_case(argv + ["-c", script], stdin_data="",
                            env=ENV, timeout=20)
-        assert isinstance(r, Completed), f"harness failure: {r!r}"
+        assert is_comparable(r), f"harness failure: {r!r}"
         with open(path) as f:
             status = _normalize_status(f.read())
         return r.stdout, r.stderr, status

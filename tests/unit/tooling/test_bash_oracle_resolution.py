@@ -1,5 +1,17 @@
 """Ratchet: every bash subprocess oracle goes through resolve_bash() (E2).
 
+**Slot 1.2 update:** this ratchet governs HOW bash is resolved (the ladder, no
+hardcoded/bare path). It is now COMPLEMENTED by the anti-spawn guard
+(``tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py``), which
+governs WHETHER an oracle-bearing module may launch a process at all. After the
+1.2 migration the resolver is consumed only INSIDE the runner
+(``run_shell_case`` via ``run_psh``/``run_bash``) plus a few allowlisted
+harnesses; a raw ``subprocess.run([resolve_bash().path, ...])`` in a test — once
+the blessed pattern — is now rejected by that anti-spawn guard. This ratchet
+still passes such resolution as *correct resolution* (see
+``test_resolution_ratchet_is_orthogonal_to_the_anti_spawn_guard``); the two
+guards divide the labor.
+
 ``tests/harness/shell_oracle.py#resolve_bash`` is the ONE bash-resolution
 ladder (BASH_PATH -> Homebrew -> PATH, version-recorded). Before this guard,
 ~40 test files re-derived the oracle: some hardcoded ``/opt/homebrew/bin/bash``
@@ -225,14 +237,46 @@ def test_guard_flags_inline_ladder():
     assert kinds.count("inline-ladder-env") == 2
 
 
-def test_guard_accepts_resolver_usage():
+def test_resolution_ratchet_accepts_runner_usage():
+    """The BLESSED spawn form after slot 1.2: ``run_bash([...])`` (which resolves
+    the oracle inside ``run_shell_case``). This ratchet passes it clean.
+
+    SUPERSEDED (slot 1.2): the old accepted-use example was
+    ``subprocess.run([resolve_bash().path, '-c', ...])`` — a DIRECT spawn. That
+    pattern is no longer blessed: the resolver is now consumed only INSIDE the
+    runner (via run_psh/run_bash) plus a few allowlisted harnesses, and a raw
+    ``subprocess.run([resolve_bash().path, ...])`` in an oracle-bearing module
+    is rejected by the ANTI-SPAWN guard
+    (``tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py``). See
+    ``test_resolution_ratchet_is_orthogonal_to_the_anti_spawn_guard`` for how
+    the two guards divide the work.
+    """
     snippet = (
-        "from shell_oracle import resolve_bash\n"
-        "BASH = resolve_bash().path\n"
-        "import subprocess\n"
-        "subprocess.run([BASH, '-c', 'echo hi'])\n"
+        "from shell_oracle import run_bash\n"
+        "run_bash(['-c', 'echo hi'])\n"
     )
     assert find_oracle_offenses(snippet) == []
+
+
+def test_resolution_ratchet_is_orthogonal_to_the_anti_spawn_guard():
+    """This ratchet governs HOW bash is resolved (the ladder, no hardcoded/bare
+    path); the anti-spawn guard governs WHETHER a module may spawn at all. A
+    direct ``subprocess.run([resolve_bash().path, ...])`` therefore passes THIS
+    ratchet (it resolves correctly) while being rejected by the anti-spawn guard
+    (it is a direct spawn). Pinning that division of labor so a future edit does
+    not fold the now-superseded pattern back in as 'accepted'.
+    """
+    resolves_correctly = (
+        "from shell_oracle import resolve_bash\n"
+        "import subprocess\n"
+        "subprocess.run([resolve_bash().path, '-c', 'echo hi'])\n"
+    )
+    # THIS ratchet: clean (resolution uses the ladder, no hardcoded/bare path).
+    assert find_oracle_offenses(resolves_correctly) == []
+    # The anti-spawn guard: this is a direct spawn and would be flagged there.
+    from test_no_direct_spawn_in_oracle_modules import find_direct_spawns
+    assert any(k == "subprocess.run"
+               for _, k in find_direct_spawns(resolves_correctly))
 
 
 def test_guard_ignores_non_oracle_bash_strings():
