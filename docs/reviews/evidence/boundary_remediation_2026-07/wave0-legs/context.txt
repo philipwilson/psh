@@ -1,0 +1,11 @@
+campaign: boundary_remediation_2026-07 wave0 baseline
+sha: 0215279cdcf950dc6016522ff99b154d79dc5368
+date: 2026-07-24 17:51:17 BST
+host: Darwin mac.lan 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:26:15 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6031 arm64
+Python 3.14.2
+GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+PATH bash: /opt/homebrew/bin/bash
+ruff 0.15.16
+mypy 2.1.0 (compiled: yes)
+seeds: 101 202 303
+note: shared interactive host; light doc-authoring ran concurrently (benchmarks leg context)
