@@ -81,6 +81,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -100,7 +101,15 @@ __all__ = [
     "try_resolve_bash",
     "hermetic_shell_env",
     "run_shell_case",
+    "run_psh",
+    "run_bash",
 ]
+
+# The psh worktree root (this file lives at ``<root>/tests/harness/``).  Used by
+# :func:`run_psh` to pin ``PYTHONPATH`` so ``python -m psh`` always resolves the
+# tree under test, never an editable-installed psh elsewhere.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))
 
 # Default per-stream output cap (bytes).  Differential cases legitimately
 # produce at most a few KiB; 8 MiB leaves three orders of magnitude of slack
@@ -184,11 +193,18 @@ class Timeout:
     """The case exceeded its deadline; its process group was SIGKILLed.
 
     Partial output (bounded by the byte cap) is preserved for diagnostics but
-    must not be compared as if the case had completed.
+    must not be compared as if the case had completed.  ``stdout_truncated`` /
+    ``stderr_truncated`` record whether the preserved partial capture ALSO hit
+    the byte cap before the deadline — purely diagnostic provenance (a Timeout
+    is non-comparable regardless), threaded through so a slow runaway is
+    distinguishable from a slow-but-bounded hang.  They default to False so a
+    hand-built ``Timeout(timeout=, stdout=, stderr=)`` stays valid.
     """
     timeout: float
     stdout: str
     stderr: str
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -391,12 +407,14 @@ def run_shell_case(argv: Sequence[str], *,
             except subprocess.TimeoutExpired:
                 pass
             _killpg_sigkill(proc.pid)
-            out_bytes, _ = _read_capped(out_path, byte_cap)
-            err_bytes, _ = _read_capped(err_path, byte_cap)
+            out_bytes, out_trunc = _read_capped(out_path, byte_cap)
+            err_bytes, err_trunc = _read_capped(err_path, byte_cap)
             return Timeout(
                 timeout=timeout,
                 stdout=out_bytes.decode("utf-8", "surrogateescape"),
-                stderr=err_bytes.decode("utf-8", "surrogateescape"))
+                stderr=err_bytes.decode("utf-8", "surrogateescape"),
+                stdout_truncated=out_trunc,
+                stderr_truncated=err_trunc)
 
         if capped:
             # Reap the SIGKILLed leader, then sweep the group once more for
@@ -452,3 +470,49 @@ def run_shell_case(argv: Sequence[str], *,
 
         return Completed(stdout=stdout, stderr=stderr, returncode=returncode,
                          duration=duration)
+
+
+def run_psh(args: Sequence[str], *,
+            stdin_data: Union[str, bytes, None] = None,
+            env: Optional[Dict[str, str]] = None,
+            cwd: Optional[str] = None,
+            timeout: float = 10.0,
+            byte_cap: int = DEFAULT_BYTE_CAP) -> ShellRunResult:
+    """Run THIS worktree's psh (``python -m psh <args>``) through the runner.
+
+    The blessed way for a differential test to launch psh: ``PYTHONPATH`` is
+    pinned to the repo root so ``-m psh`` resolves the tree under test
+    regardless of the runner's temporary cwd (the editable-install-imports-MAIN
+    trap), and the child gets the same process-group / byte-cap / hermetic-env
+    hygiene as every other case.  ``args`` is everything AFTER ``python -m psh``
+    (e.g. ``['-c', cmd]`` or ``['--norc', script]``).  ``env`` is layered onto
+    the hermetic base (:func:`hermetic_shell_env`); put shell-visible variables
+    (``HISTFILE``, ``PS4``, ``LC_ALL`` …) there.  Returns the typed
+    :data:`ShellRunResult` — the caller asserts :func:`is_comparable` before
+    comparing, exactly as for a bash run.
+    """
+    case_env = hermetic_shell_env(env)
+    existing = case_env.get("PYTHONPATH")
+    case_env["PYTHONPATH"] = (
+        _REPO_ROOT if not existing else _REPO_ROOT + os.pathsep + existing)
+    return run_shell_case([sys.executable, "-m", "psh", *args],
+                          stdin_data=stdin_data, env=case_env, cwd=cwd,
+                          timeout=timeout, byte_cap=byte_cap)
+
+
+def run_bash(args: Sequence[str], *,
+             stdin_data: Union[str, bytes, None] = None,
+             env: Optional[Dict[str, str]] = None,
+             cwd: Optional[str] = None,
+             timeout: float = 10.0,
+             byte_cap: int = DEFAULT_BYTE_CAP) -> ShellRunResult:
+    """Run the resolved bash oracle (``bash <args>``) through the runner.
+
+    ``args`` is everything AFTER the bash path (e.g. ``['-c', cmd]``).  The
+    oracle binary comes from :func:`resolve_bash` (BASH_PATH -> Homebrew ->
+    PATH), never a bare ``bash`` or a hard-coded path.  ``env`` is layered onto
+    the hermetic base.  Returns the typed :data:`ShellRunResult`.
+    """
+    return run_shell_case([resolve_bash().path, *args],
+                          stdin_data=stdin_data, env=hermetic_shell_env(env),
+                          cwd=cwd, timeout=timeout, byte_cap=byte_cap)

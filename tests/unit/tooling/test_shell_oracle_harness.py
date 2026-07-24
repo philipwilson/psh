@@ -35,6 +35,8 @@ from shell_oracle import (  # noqa: E402
     hermetic_shell_env,
     is_comparable,
     resolve_bash,
+    run_bash,
+    run_psh,
     run_shell_case,
     try_resolve_bash,
 )
@@ -55,6 +57,47 @@ def test_resolve_bash_returns_executable_with_version():
 
 def test_try_resolve_bash_matches_resolve():
     assert try_resolve_bash() == resolve_bash()
+
+
+# ---------------------------------------------------------------------------
+# run_psh / run_bash: the blessed two-shell convenience wrappers (slot 1.2)
+# ---------------------------------------------------------------------------
+
+def test_run_psh_runs_the_worktree_psh():
+    """run_psh resolves THIS tree's psh regardless of the runner's temp cwd —
+    the PYTHONPATH pin defeats the editable-install-imports-MAIN trap."""
+    import psh.version
+    r = run_psh(["-c", "echo psh-ok"])
+    assert isinstance(r, Completed)
+    assert r.stdout == "psh-ok\n" and r.returncode == 0
+    # The version the child prints must be THIS worktree's, proving the pin.
+    ver = run_psh(["-V"])
+    assert isinstance(ver, Completed)
+    assert psh.version.__version__ in ver.stdout
+
+
+def test_run_psh_pins_pythonpath_even_with_temp_cwd():
+    """Default cwd is a throwaway temp dir with no psh on it; the wrapper still
+    imports psh because PYTHONPATH points at the repo root."""
+    r = run_psh(["-c", "import_marker() { :; }; echo $(( 2 + 3 ))"])
+    assert isinstance(r, Completed) and r.stdout == "5\n"
+
+
+def test_run_bash_runs_the_oracle():
+    r = run_bash(["-c", "echo bash-ok; echo $BASH_VERSION >&2"])
+    assert isinstance(r, Completed)
+    assert r.stdout == "bash-ok\n"
+    assert r.stderr.strip()  # bash printed its version -> it really is bash
+
+
+def test_run_psh_and_run_bash_layer_case_env_on_hermetic_base(monkeypatch):
+    """The case env is layered onto the hermetic base: an inherited LC_* is
+    stripped, an explicitly passed one is honored, on BOTH wrappers."""
+    monkeypatch.setenv("LC_CTYPE", "en_US.UTF-8")  # would otherwise leak in
+    p = run_psh(["-c", "echo ${MARKER-unset}"], env={"MARKER": "pval"})
+    b = run_bash(["-c", "echo ${MARKER-unset}"], env={"MARKER": "bval"})
+    assert isinstance(p, Completed) and p.stdout == "pval\n"
+    assert isinstance(b, Completed) and b.stdout == "bval\n"
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +139,34 @@ def test_timeout_kills_whole_process_group():
         os.kill(bg_pid, 9)  # cleanup before failing loudly
         raise AssertionError(
             f"grandchild {bg_pid} survived the timeout killpg sweep")
+
+
+def test_timeout_threads_truncation_provenance(monkeypatch):
+    """Slot 1.2 item 7: a Timeout whose partial capture ALSO breached the cap
+    records ``stdout_truncated`` (diagnostic only — a Timeout is non-comparable
+    regardless, so no false-green is possible either way).  A bounded hang
+    leaves the flags False.
+
+    A runaway writer would normally be CAP-killed (OutputLimitExceeded) before
+    the deadline, so — as in the natural-exit pin — neutralise the watchdog's
+    size poll for the capture files; the never-exiting writer then hits the
+    DEADLINE with a partial capture the timeout readback finds truncated.
+    """
+    import shell_oracle
+    real_getsize = os.path.getsize
+    monkeypatch.setattr(
+        shell_oracle.os.path, "getsize",
+        lambda p: 0 if str(p).endswith((".oracle-stdout", ".oracle-stderr"))
+        else real_getsize(p))
+    r = run_shell_case([SH, "-c", "yes runaway"], timeout=0.5, byte_cap=16 * 1024)
+    assert isinstance(r, Timeout)
+    assert r.stdout_truncated and not r.stderr_truncated
+    assert not is_comparable(r)
+
+    # A quiet hang (no output) times out with the flags left False.
+    r2 = run_shell_case([SH, "-c", "sleep 30"], timeout=0.5)
+    assert isinstance(r2, Timeout)
+    assert not r2.stdout_truncated and not r2.stderr_truncated
 
 
 def test_output_cap_is_structural_not_advisory():
@@ -159,6 +230,36 @@ def test_output_limit_records_termination_provenance():
     assert len(r.stderr.encode("utf-8", "surrogateescape")) <= 32 * 1024
     assert r.byte_cap == 32 * 1024
     assert r.killpg is True and r.signal == signal.SIGKILL
+
+
+def test_natural_exit_past_cap_is_output_limit_without_killpg(monkeypatch):
+    """Round-2 coverage debt (slot 1.2 item 6): a writer that exceeds the cap
+    but EXITS ON ITS OWN — the watchdog never had to kill it — is still a
+    NON-comparable OutputLimitExceeded, but with ``killpg=False`` /
+    ``signal=None`` and the process's own exit status preserved.  This is the
+    second OutputLimitExceeded branch (run_shell_case:446), which only the
+    poll-timing race exercised before.
+
+    Determinism: neutralise ONLY the watchdog's size poll (return 0 for the two
+    capture files) so the finite writer reaches natural completion; the readback
+    path — independent of the poll — then detects the truncation from the file
+    itself.  Everything else keeps its real size.
+    """
+    import shell_oracle
+    real_getsize = os.path.getsize
+    monkeypatch.setattr(
+        shell_oracle.os.path, "getsize",
+        lambda p: 0 if str(p).endswith((".oracle-stdout", ".oracle-stderr"))
+        else real_getsize(p))
+    # printf writes 2048 bytes in one burst then exits 0; cap is 1024.
+    r = run_shell_case([SH, "-c", "printf '%2048d' 0"],
+                       timeout=10, byte_cap=1024)
+    assert isinstance(r, OutputLimitExceeded)
+    assert not is_comparable(r)
+    assert r.stdout_truncated and not r.stderr_truncated
+    assert r.killpg is False and r.signal is None
+    assert r.returncode == 0  # exited on its OWN — success status preserved
+    assert len(r.stdout.encode("utf-8", "surrogateescape")) <= 1024
 
 
 def test_stdin_data_is_delivered_and_default_is_devnull():
