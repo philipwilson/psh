@@ -74,29 +74,68 @@ Within the guard-bearing set every differential run needs BOTH sides typed
 (HIGH-1: a runaway psh is as dangerous as a runaway bash), so the migration
 routes **bash, psh, and python-helper spawns alike** through `run_shell_case`.
 
-### Classification
+### PRIMARY CLASSIFICATION — differential vs psh-only (integrator ruling)
 
-| Class | Meaning | Disposition |
-|---|---|---|
-| **BASH-DIFFERENTIAL** | spawns bash (directly or via a var-argv helper parameterised over psh+bash) to compare against psh | **migrate both sides** to `run_shell_case` |
-| **PSH-ONLY-SITE** | an otherwise-framework conformance module with one psh-only raw spawn (a byte/mode check bash cannot mirror) | **migrate** the site to `run_shell_case` (uniform; satisfies the guard) |
-| **INFRA / ALLOWLIST-CANDIDATE** | a spawn the runner genuinely cannot serve | named allowlist entry (owner + reason + removal condition) |
+The migration set is the **BASH-DIFFERENTIAL** class ONLY (tree-wide, not
+conformance-only): a module that spawns bash — directly, via a var-argv helper
+parameterised over psh+bash, or via the `ConformanceTest` framework — to COMPARE
+behavior. A **PSH-ONLY** module (launches only psh, no bash comparison — the
+`subprocess.run([sys.executable, '-m', 'psh', ...])` lifecycle/fd/exec pattern
+sanctioned by CLAUDE.md) is NOT this slot's defect (it cannot produce a false
+IDENTICAL) and is NOT migrated; a psh-only raw spawner in scope would instead be
+frozen in the anti-spawn guard's shrink-only PSH-ONLY registry.
 
-**Allowlist candidates found:** exactly **one** — `tests/harness/shell_oracle.py`,
-which owns the single real `subprocess.Popen` (it IS the runner). Every other
-target is runner-capable, including:
+**The split of the 95 spawner modules (verified per-module, not assumed):**
+
+| Class | Count | Breakdown | Disposition |
+|---|---|---|---|
+| **BASH-DIFFERENTIAL** | **95 (all)** | 36 conformance + 59 shell_oracle importers | migrate (both sides) to the runner |
+| **PSH-ONLY** | **0** | — | (would be registered, not migrated) |
+
+Every one of the 59 non-conformance importers references bash (`run_bash` /
+`resolve_bash` / a `[BASH …]` argv) — none is psh-only. So the bearing set is
+**100% differential**, and the guard's PSH-ONLY registry is **empty**. The
+CLAUDE.md psh-only lifecycle pattern DOES exist tree-wide (**70 modules**), but
+every one is OUTSIDE the bearing set (does not import `shell_oracle`, not under
+conformance) and so was never in the guard's scope, never a migration or
+registry candidate.
+
+**Reconciliation of the "~30" vs 95 framing** (kept here per the ruling so the
+next reader need not re-derive it): the v0.749 audit's "~30" is the
+`tests/conformance/` bash-differential subset (36 direct-spawn conformance
+modules here, ~30 excluding meta/psh-only-site). The full guard-bearing
+migration set is ~3× that because the other 59 differential callers live in
+`tests/integration|system|unit` as `shell_oracle` importers — a differential
+caller in `tests/system` carries the same HIGH-1 false-green risk as one in
+`tests/conformance`. A10's "thousands of cases" (95 modules × ~30 cases) fits
+the tree-wide set.
+
+### Allowlist (anti-spawn guard) — two parts
+
+**(a) NAMED (harness + genuinely un-runnerable), 5 entries:** the harness
+(`shell_oracle.py`, owns the one real `Popen`) plus four DIFFERENTIAL harnesses
+the run-to-completion runner cannot express — `test_exit_trap_paths.py`
+(mid-run signal to a running psh AND bash), `test_script_input_sources.py`
+(concurrent bash fifo writer), `test_stdin_startup_robustness.py`
+(`preexec_fn=os.close(0)` / live file object), `test_stdin_script_lazy_read.py`
+(pipe vs seekable-file stdin distinction). Each carries owner + reason + removal.
+
+**(b) FROZEN PSH-ONLY REGISTRY: empty** — no psh-only raw spawner exists in the
+bearing set (see split above). The structure is kept for future debt.
+
+**Two "special case" modules RULED runner-capable and fully migrated (not
+allowlisted):**
 
 - `tests/system/test_read_malformed_bytes_i1.py` (brief's known special case):
-  raw-byte comparison. **Runner-capable** — `run_shell_case` captures bytes
-  losslessly (UTF-8 + `surrogateescape`); `Completed.stdout.encode("utf-8",
-  "surrogateescape")` recovers the exact bytes. The module's "decoded-text
-  policy would hide byte-level facts" comment predates the surrogateescape
-  capture and is corrected at migration.
-- `tests/integration/redirection/test_std_fd_lease_f2.py`: spawns a `python -c`
-  fd-manipulation harness (not a shell). Re-evaluated at migration time — if the
-  runner's file-backed/`start_new_session` fd setup perturbs the fd-numbering
-  under test, it becomes a named allowlist entry; otherwise it routes through
-  the runner like the rest. (Resolved in the migration batch; see slot ledger.)
+  raw-byte comparison. `run_shell_case` captures bytes losslessly (UTF-8 +
+  `surrogateescape`); `Completed.stdout.encode("utf-8", "surrogateescape")`
+  recovers the exact bytes. Its "decoded-text policy would hide byte-level
+  facts" comment predated the surrogateescape capture and is corrected.
+- `tests/integration/redirection/test_std_fd_lease_f2.py`: its `python -c`
+  fd-harness runs its fd operations in its OWN process; with `close_fds` the
+  child sees only fds 0/1/2 exactly as under raw subprocess, so the fd-lease
+  facts survive the runner. **Branch taken: migrated** (not allowlisted); the
+  exec/CLOEXEC differential also routes through `run_psh`/`run_bash`.
 
 ### Migration targets (95 modules, 243 spawn sites)
 

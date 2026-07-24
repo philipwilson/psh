@@ -28,11 +28,20 @@ subprocess spawns in the scope, so the attribute form is the whole live
 surface; if a bare-name form appears, extend ``find_direct_spawns`` rather than
 allowlisting it.
 
-**Allowlist:** the census's justified entries ONLY, each with owner + reason +
-removal condition below. It is GROWTH-REFUSING: an entry may leave (it must, if
-the file stops needing it — enforced by ``test_allowlist_entries_still_spawn``),
-but adding one requires a recorded justification here AND that the module
-genuinely cannot use the runner.
+**Allowlist (two parts, integrator ruling):**
+(a) ``NAMED_ALLOWLIST`` — the harness itself plus spawns that genuinely CANNOT
+    use the run-to-completion runner (mid-run signal, concurrent writer,
+    ``preexec_fn``, non-seekable stdin), each with owner + reason + removal.
+(b) ``PSH_ONLY_REGISTRY`` — a FROZEN, SHRINK-ONLY registry of PSH-ONLY raw
+    spawners (launch only psh, no bash comparison → no HIGH-1 false IDENTICAL),
+    approved to stay raw with a one-line class reason.
+Both are GROWTH-REFUSING: an entry may leave (it must, once the file stops
+spawning — ``test_allowlist_entries_still_spawn``), but adding one requires a
+recorded justification here. The bearing set is 95/95 DIFFERENTIAL modules, so
+(b) is INTENTIONALLY EMPTY (no psh-only raw spawner in scope) and every residual
+raw spawn is a differential comparison the runner cannot express (all in (a)).
+The CLAUDE.md-sanctioned psh-only lifecycle modules are OUTSIDE this scope
+entirely (they do not import shell_oracle and are not under conformance).
 """
 import ast
 import os
@@ -51,18 +60,27 @@ _OS_SPAWNS = frozenset({"system", "popen"})
 # which is a deliberate spawn used to prove the guard fires.
 _FIXTURE_DIR = "oracle_spawn_fixtures"
 
-# Allowlist: rel-path -> owner + reason + removal condition. GROWTH-REFUSING.
-ALLOWLIST = {
+# The allowlist has TWO parts (integrator ruling, slot 1.2). The census finding
+# it rests on: the bearing set is 95/95 differential MODULES (36 conformance +
+# 59 shell_oracle importers, every one comparing against bash) — there are NO
+# psh-only-only spawner modules in scope (the ~70 CLAUDE.md exec/fd/lifecycle
+# psh-only modules do not import shell_oracle and are not under conformance, so
+# they are OUTSIDE this guard entirely). So (b) holds only the single psh-only
+# RESIDUAL spawn-site left after migration.
+
+# (a) NAMED allowlist: the harness itself + spawns that genuinely CANNOT go
+# through the run-to-completion runner. owner + reason + removal condition each.
+NAMED_ALLOWLIST = {
     "harness/shell_oracle.py":
         "owner=slot1.1. It IS the runner — owns the single real "
         "subprocess.Popen (and the _bash_version probe). Removal: never.",
     "integration/job_control/test_exit_trap_paths.py":
-        "owner=slot1.2. Live-signal harness: spawns psh, waits on a readiness "
-        "sentinel, then delivers a mid-run signal (os.kill) to test the EXIT "
-        "trap on a fatal signal. The run-to-completion runner cannot signal a "
-        "running child. Its run-to-completion bash-differential helpers ARE "
-        "migrated. Removal: run_shell_case gains a mid-run-signal hook, or "
-        "these move to a PTY/pexpect harness.",
+        "owner=slot1.2. DIFFERENTIAL mid-run-signal harness: delivers a signal "
+        "to a running psh AND to a running bash (_spawn_and_signal at :228 for "
+        "psh, :284 for [BASH,...]) to COMPARE the EXIT trap on a fatal signal; "
+        "the run-to-completion runner cannot signal a running child. Its "
+        "run-to-completion bash-differential helpers ARE migrated. Removal: "
+        "run_shell_case gains a mid-run-signal hook, or a PTY/pexpect harness.",
     "system/test_script_input_sources.py":
         "owner=slot1.2. Concurrent FIFO writer: a bash writer Popen must run "
         "CONCURRENTLY with the blocking psh fifo reader (a fifo open blocks "
@@ -80,6 +98,25 @@ ALLOWLIST = {
         "file, which would collapse the very distinction under test. Removal: "
         "the runner gains a non-seekable/pipe stdin mode.",
 }
+
+# (b) FROZEN, SHRINK-ONLY registry of PSH-ONLY raw spawners: a spawn that only
+# ever launches psh with NO bash comparison — so it cannot produce a HIGH-1
+# false IDENTICAL and is NOT this slot's defect (approved to stay raw, one-line
+# class reason). GROWTH-REFUSING: a NEW psh-only raw spawner appearing in the
+# bearing set fails the guard; this registry only loses entries.
+#
+# INTENTIONALLY EMPTY: the census found the bearing set is 95/95 DIFFERENTIAL
+# modules, and after migration every residual raw spawn is a differential
+# comparison the runner cannot express (all NAMED above) — there is no psh-only
+# raw spawner in scope. The structure is kept so a future psh-only debt would
+# be registered here rather than silently allowlisted. (The ~70 CLAUDE.md
+# psh-only lifecycle modules are OUTSIDE the bearing set and never reach this
+# guard.)
+PSH_ONLY_REGISTRY: dict = {}
+
+# The guard treats both parts identically (any listed module may spawn); the
+# split is documentation of WHY each is approved.
+ALLOWLIST = {**NAMED_ALLOWLIST, **PSH_ONLY_REGISTRY}
 
 
 def _imports_shell_oracle(tree):
@@ -174,6 +211,26 @@ def test_allowlist_entries_still_spawn(rel):
         "entry (the guard is shrinking).")
 
 
+def test_allowlist_parts_are_disjoint_and_complete():
+    """The two documented parts partition the allowlist (no module in both,
+    nothing outside them). Part (a) = NAMED un-runnerable + the harness; part
+    (b) = the frozen psh-only registry."""
+    assert not (set(NAMED_ALLOWLIST) & set(PSH_ONLY_REGISTRY)), (
+        "a module may not be in BOTH allowlist parts")
+    assert set(ALLOWLIST) == set(NAMED_ALLOWLIST) | set(PSH_ONLY_REGISTRY)
+
+
+def test_psh_only_registry_entries_launch_only_psh():
+    """A registry (b) entry must be genuinely PSH-ONLY — its direct spawns
+    launch psh (or a python child), never the bash oracle. A residual bash spawn
+    means it belongs in the NAMED part (a), not the frozen psh-only registry."""
+    for rel in PSH_ONLY_REGISTRY:
+        with open(os.path.join(TESTS_ROOT, rel), encoding="utf-8") as f:
+            src = f.read()
+        assert "resolve_bash().path" not in src and "[BASH" not in src, (
+            f"{rel} has a residual bash spawn — move it to NAMED_ALLOWLIST")
+
+
 # ---------------------------------------------------------------------------
 # Mutation check: the SYNTHETIC OFFENDER must be caught (sequence-doc §5.6).
 # The guard is NEW in this slot, so on base there was no guard and the offender
@@ -227,6 +284,23 @@ def test_detector_catches_each_spawn_form():
     kinds = {k for _, k in find_direct_spawns(snippet)}
     assert kinds == {"subprocess.run", "subprocess.Popen",
                      "subprocess.check_output", "os.system", "os.popen"}
+
+
+def test_detector_catches_both_offender_faces():
+    """Both faces the ruling asks for: a DIRECT BASH oracle spawn (the HIGH-1
+    defect) AND an unregistered PSH-ONLY spawn (approved only via the registry).
+    The guard rejects ANY direct spawn, so both faces are caught."""
+    bash_face = (
+        "from shell_oracle import resolve_bash\n"
+        "import subprocess\n"
+        "subprocess.run([resolve_bash().path, '-c', 'echo hi'])\n"
+    )
+    psh_face = (
+        "import subprocess, sys\n"
+        "subprocess.run([sys.executable, '-m', 'psh', '-c', 'echo hi'])\n"
+    )
+    assert any(k == "subprocess.run" for _, k in find_direct_spawns(bash_face))
+    assert any(k == "subprocess.run" for _, k in find_direct_spawns(psh_face))
 
 
 def test_detector_ignores_runner_calls():
