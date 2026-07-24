@@ -9,21 +9,17 @@ psh previously enforced nounset only on the plain ${x} form, so every operator
 form silently treated unset as empty — this pins the fix.
 """
 
-import subprocess
-import sys
-
 import pytest
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _exit(cmd):
     """(psh_rc, bash_rc) for `cmd` under a non-interactive shell."""
-    psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                         capture_output=True, text=True)
-    bash = subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
+    psh = run_psh(['-c', cmd])
+    bash = run_bash(['-c', cmd])
+    assert is_comparable(psh), psh
+    assert is_comparable(bash), bash
     return psh.returncode, bash.returncode
 
 

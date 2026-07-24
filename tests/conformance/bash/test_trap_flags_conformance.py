@@ -13,11 +13,8 @@ exit code + stderr substring, because bash prefixes the message with
 `bash: line N:` and psh does not (a separate systemic divergence, task #35).
 """
 
-import subprocess
-import sys
-
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 class TestTrapFlagClustersConformance(ConformanceTest):
@@ -50,10 +47,10 @@ class TestTrapBadOptionConformance(ConformanceTest):
     """A bad flag char reports the CHAR (not the cluster), rc 2."""
 
     def _run(self, cmd):
-        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                             capture_output=True, text=True)
-        bash = subprocess.run([resolve_bash().path, '-c', cmd],
-                              capture_output=True, text=True)
+        psh = run_psh(['-c', cmd])
+        bash = run_bash(['-c', cmd])
+        assert is_comparable(psh), psh
+        assert is_comparable(bash), bash
         return psh, bash
 
     def test_lx_reports_x_not_l(self):

@@ -21,26 +21,22 @@ L2 — empty subshell `()` / brace group `{ }`.
 All driven through subprocesses so psh and bash are directly comparable.
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
 
-BASH = resolve_bash().path
+_ORACLE = try_resolve_bash()
 
 
 def _psh(cmd):
-    return subprocess.run(
-        [sys.executable, "-m", "psh", "-c", cmd],
-        capture_output=True, text=True, timeout=30,
-    )
+    r = run_psh(["-c", cmd], timeout=30)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
-    return subprocess.run(
-        [BASH, "-c", cmd], capture_output=True, text=True, timeout=30,
-    )
+    r = run_bash(["-c", cmd], timeout=30)
+    assert is_comparable(r), r
+    return r
 
 
 # --------------------------------------------------------------------------
@@ -54,7 +50,7 @@ _UNTERMINATED_QUOTE = [
 ]
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd", _UNTERMINATED_QUOTE)
 def test_unterminated_quote_is_syntax_error(cmd):
     p = _psh(cmd)
@@ -76,7 +72,7 @@ _UNTERMINATED_OTHER = [
 ]
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd", _UNTERMINATED_OTHER)
 def test_other_unterminated_constructs_unchanged(cmd):
     p = _psh(cmd)
@@ -87,7 +83,7 @@ def test_other_unterminated_constructs_unchanged(cmd):
     assert "syntax error" in p.stderr.lower(), p.stderr
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_quote_closed_across_lines_still_works():
     """A quote opened on one line and closed on the next is NOT an error."""
     cmd = "echo 'abc\ndef'"
@@ -114,7 +110,7 @@ _EMPTY_GROUPS = [
 ]
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd", _EMPTY_GROUPS)
 def test_empty_group_is_syntax_error(cmd):
     p = _psh(cmd)
@@ -125,7 +121,7 @@ def test_empty_group_is_syntax_error(cmd):
 
 
 # Regression guards: non-empty groups still parse and run.
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd,out", [
     ("(echo hi)", "hi\n"),
     ("{ echo hi; }", "hi\n"),
@@ -142,7 +138,7 @@ def test_nonempty_groups_unchanged(cmd, out):
 
 # Regression guards: command substitution and arithmetic are SEPARATE forms
 # and must keep their own (different) behavior.
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_empty_command_substitution_unchanged():
     """Empty `$()` is valid (expands to nothing), exit 0 — NOT a subshell."""
     p = _psh("echo $()")
@@ -151,7 +147,7 @@ def test_empty_command_substitution_unchanged():
     assert p.stdout == "\n" == b.stdout
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd", ["(())", "(( ))"])
 def test_empty_arithmetic_unchanged(cmd):
     """Empty arithmetic `(())` is exit 1 in bash (value 0 is false), NOT the
