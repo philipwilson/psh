@@ -27,6 +27,7 @@ from conformance_framework import (  # noqa: E402
     OracleHarnessFailure,
 )
 from shell_oracle import (  # noqa: E402
+    _REPO_ROOT,  # noqa: E402
     Completed,
     DecodeFailure,
     OutputLimitExceeded,
@@ -65,15 +66,26 @@ def test_try_resolve_bash_matches_resolve():
 
 def test_run_psh_runs_the_worktree_psh():
     """run_psh resolves THIS tree's psh regardless of the runner's temp cwd —
-    the PYTHONPATH pin defeats the editable-install-imports-MAIN trap."""
-    import psh.version
+    the PYTHONPATH pin defeats the editable-install-imports-MAIN trap.
+
+    The discriminator is the resolved MODULE PATH, not the version string
+    (round-3 finding): an editable install and this worktree normally carry the
+    SAME version, so a version assertion passes whichever psh the child
+    imported — it cannot discriminate, which is the entire point of the
+    campaign's ``psh.__file__``-under-the-tree-under-test rule.
+    """
     r = run_psh(["-c", "echo psh-ok"])
     assert isinstance(r, Completed)
     assert r.stdout == "psh-ok\n" and r.returncode == 0
-    # The version the child prints must be THIS worktree's, proving the pin.
-    ver = run_psh(["-V"])
-    assert isinstance(ver, Completed)
-    assert psh.version.__version__ in ver.stdout
+
+    # Ask the CHILD where it imported psh from; it must be under THIS worktree.
+    where = run_psh(["-c", "python -c 'import psh; print(psh.__file__)'"],
+                    env={"PYTHONPATH": _REPO_ROOT})
+    assert isinstance(where, Completed), where
+    child_psh = where.stdout.strip()
+    assert child_psh.startswith(_REPO_ROOT + os.sep), (
+        f"child imported psh from {child_psh!r}, which is NOT under the tree "
+        f"under test ({_REPO_ROOT!r}) — the PYTHONPATH pin is not holding")
 
 
 def test_run_psh_pins_pythonpath_even_with_temp_cwd():
@@ -220,6 +232,38 @@ def test_output_cap_kills_whole_process_group():
         os.kill(bg_pid, 9)  # cleanup before failing loudly
         raise AssertionError(
             f"grandchild {bg_pid} survived the output-cap killpg sweep")
+
+
+def test_child_pwd_is_truthful_and_agrees_across_shells(tmp_path):
+    """The child's ``$PWD`` names the directory it actually runs in.
+
+    Round-3 finding: ``hermetic_shell_env`` copied ``os.environ`` while the
+    runner runs each case in a FRESH temporary cwd, so the child inherited a
+    STALE ``PWD``.  bash revalidates it against the real cwd, psh trusts the
+    environment — so ``echo $PWD`` reported different directories for the two
+    shells purely as a harness artifact: a manufactured divergence of exactly
+    the HIGH-1 shape (the harness, not the shell, decides the verdict), waiting
+    for the first ``$PWD``-touching row among the migrated modules.
+    """
+    # 1. Dir-agnostic invariant: in EACH shell, $PWD == $(pwd).
+    same = 'if [ "$PWD" = "$(pwd)" ]; then echo MATCH; else echo "STALE:$PWD"; fi'
+    for run in (run_psh, run_bash):
+        r = run(["-c", same])
+        assert isinstance(r, Completed), r
+        assert r.stdout == "MATCH\n", f"{run.__name__}: {r.stdout!r}"
+
+    # 2. Pinned to a SHARED cwd, both shells report the identical $PWD.
+    shared = str(tmp_path)
+    p = run_psh(["-c", "echo $PWD"], cwd=shared)
+    b = run_bash(["-c", "echo $PWD"], cwd=shared)
+    assert isinstance(p, Completed) and isinstance(b, Completed)
+    assert p.stdout == b.stdout, f"psh {p.stdout!r} != bash {b.stdout!r}"
+    assert p.stdout.strip() == os.path.abspath(shared)
+
+    # 3. A case-supplied PWD still wins (a caller may fabricate one on purpose).
+    forced = run_psh(["-c", "echo $PWD"], env={"PWD": "/fabricated/by/caller"})
+    assert isinstance(forced, Completed)
+    assert forced.stdout == "/fabricated/by/caller\n"
 
 
 def test_stdin_mode_pipe_gives_a_real_non_seekable_pipe():

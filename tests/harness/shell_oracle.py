@@ -306,6 +306,15 @@ def hermetic_shell_env(case_env: Optional[Dict[str, str]] = None,
     explicitly; nothing leaks in from the developer's terminal or CI host.
     (Inherited ``LC_CTYPE`` was the root cause of the three host-sensitive
     conformance failures — continuation finding H.)
+
+    ``PWD``/``OLDPWD`` are dropped for the same reason, and it is not
+    hypothetical: the runner runs each case in a fresh temporary cwd, so an
+    inherited ``PWD`` is STALE.  bash revalidates it against the real cwd and
+    silently corrects, while psh trusts the environment — so ``echo $PWD``
+    manufactured a psh-vs-bash divergence that is an artifact of the harness,
+    not of either shell.  :func:`run_shell_case` sets ``PWD`` to the actual run
+    directory instead (a caller that deliberately wants a stale or fabricated
+    ``PWD`` still just passes one in ``case_env``, which wins).
     """
     env = dict(os.environ if base is None else base)
     for name in list(env):
@@ -313,6 +322,8 @@ def hermetic_shell_env(case_env: Optional[Dict[str, str]] = None,
             del env[name]
     env.pop("DISPLAY", None)
     env.pop("XAUTHORITY", None)
+    env.pop("PWD", None)
+    env.pop("OLDPWD", None)
     if case_env:
         env.update(case_env)
     return env
@@ -397,6 +408,14 @@ def run_shell_case(argv: Sequence[str], *,
         out_path = os.path.join(workdir, ".oracle-stdout")
         err_path = os.path.join(workdir, ".oracle-stderr")
         in_path = os.path.join(workdir, ".oracle-stdin")
+
+        # Give the child a TRUTHFUL $PWD for the directory it actually runs in.
+        # hermetic_shell_env drops the (stale) inherited one; without this the
+        # shells diverge on `echo $PWD` purely as a harness artifact — bash
+        # revalidates PWD against the real cwd, psh trusts the environment.
+        # An explicit caller-supplied PWD still wins (it is already in `env`).
+        if "PWD" not in env:
+            env = dict(env, PWD=os.path.abspath(run_cwd))
 
         writer: Optional[threading.Thread] = None
         pipe_write_fd: Optional[int] = None

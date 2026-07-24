@@ -30,15 +30,52 @@ git grep -l 'shell_oracle' e52957d4 -- tests/ | wc -l              # -> 108 file
 python tests/harness/census_replay.py <tree>/tests   # -> 181 / 182 / 96 / 245 (see below)
 
 # per-module + per-spawn-site classification (bash / psh / python / var-argv):
-#   tmp/gen_census.py  (AST walk: resolves each module's bash-path variable,
-#   labels every subprocess argv[0] by what it launches)
+python tests/harness/gen_census.py   # AST walk: resolves each module's
+#   bash-path variable, labels every subprocess argv[0] by what it launches
 ```
 
 `os.system` / `os.popen`: **zero** occurrences in the guard-bearing set (the
-E2 resolution ratchet already forbade them). PTY / `os.fork` / `pexpect`:
-**zero** in the migration set — the interactive-family rows (`bash -i`,
-`test_history_p_interactive`) drive the shell with a **stdin pipe + `TERM=dumb`**,
-which `run_shell_case(..., stdin_data=...)` serves directly.
+E2 resolution ratchet already forbade them).
+
+**CORRECTION (round 3).** This section previously claimed "PTY / `os.fork` /
+`pexpect`: **zero** in the migration set" — that claim was FALSE and rested on
+no enumeration command. Verification found a PTY bash-differential sitting
+inside the bearing set. The corrected, ENUMERATED position:
+
+```
+# non-subprocess process creation (pexpect / pty / os.fork|posix_spawn|exec*)
+# across the BEARING SET — the family a subprocess-only scan cannot see:
+python tests/harness/census_replay.py <tree>/tests     # census + pty_audit
+```
+
+At base `e52957d4` that audit prints exactly **2 sites in 1 module**:
+
+```
+system/interactive/test_multiline_immediate_error_i3.py:78: pexpect.spawn
+system/interactive/test_multiline_immediate_error_i3.py:92: pexpect.spawn
+TOTAL non-subprocess spawn sites in the BEARING SET: 2
+```
+
+confirming that module is the **SOLE** instance. (At tip the audit additionally
+lists the two deliberate offender FIXTURES under `oracle_spawn_fixtures/`, which
+exist to prove each guard face fires.)
+
+**PTY-INFRA class** — `tests/system/interactive/test_multiline_immediate_error_i3.py`:
+oracle-bearing (`from shell_oracle import try_resolve_bash`), it drives psh AND
+the resolved bash oracle through `pexpect.spawn` over a pseudo-terminal
+(`TERM=xterm`) and compares the LINE INDEX at which each reports a mid-construct
+syntax error. It is a genuine bash differential but is **NOT migrated**: PTY
+interactivity IS its subject, and the run-to-completion runner has no terminal.
+It is CLASSIFIED and REGISTERED in the guard's `PTY_REGISTRY` (owner + reason +
+removal condition, frozen membership pin, and its own hygiene test keyed on the
+PTY detector rather than the subprocess one) — registration is what keeps it
+visible. Its `try_resolve_bash()` + in-test `pytest.skip` silent-skip is left
+as-is and carried to slot 1.3 with the other pre-existing silent-skip modules.
+
+The interactive-family rows that ARE migrated (`bash -i`,
+`test_history_p_interactive`) never needed a PTY: they drive the shell with a
+**stdin pipe + `TERM=dumb`**, which `run_shell_case(..., stdin_data=...,
+stdin_mode='pipe')` serves directly.
 
 ## Census (a) — direct spawns tree-wide
 
@@ -340,7 +377,12 @@ one place):
 8. tests/system/source_service/test_source_service_matrix.py:46
 9. tests/system/source_service/test_nul_channel_matrix.py:77
 
-(The three `isinstance(_, Completed)` in
+(The `isinstance(_, Completed)` occurrences in
 `tests/unit/tooling/test_shell_oracle_harness.py` deliberately assert the
-runner's return TYPE — they stay isinstance. `shell_oracle.py:214` is the
-`is_comparable` definition itself.)
+runner's return TYPE — they stay isinstance. Count corrected in round 3: **6 at
+base `e52957d4`**, **21 at this tip** (the slot's new runner pins — stdin_mode,
+$PWD, natural-exit cap, Timeout provenance — assert the returned type directly);
+the earlier "three" was simply wrong. Replay:
+`grep -o 'isinstance([a-zA-Z_0-9]*, *Completed)' <file> | wc -l`.
+The `is_comparable` definition itself lives in `shell_oracle.py` — cite it by
+symbol, not by a line number that moves with every edit.)

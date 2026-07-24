@@ -31,7 +31,13 @@ BASH = resolve_bash().path
 
 
 def _run(argv, stdin=None):
-    r = run_psh(list(argv), stdin_data=stdin)
+    # fd 0 KIND is load-bearing here: the pre-migration helper used
+    # subprocess.run(input=...) — a real PIPE — and
+    # TestExitTrapStdin::test_fires_from_piped_stdin is specifically about the
+    # PIPED-stdin channel. Data-bearing calls therefore take pipe mode; calls
+    # without stdin keep the default (/dev/null through file mode).
+    r = run_psh(list(argv), stdin_data=stdin,
+                stdin_mode='pipe' if stdin is not None else 'file')
     assert is_comparable(r), r
     return r
 

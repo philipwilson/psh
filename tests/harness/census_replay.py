@@ -29,35 +29,91 @@ def spawn_sites(tree):
                 n_sites += 1
     return n_sites
 
-root = sys.argv[1] if len(sys.argv) > 1 else "tests"
-imports_conf = set(); guard_scope = set(); spawners = {}
-for dp, dn, fn in os.walk(root):
-    dn[:] = [d for d in dn if d != "__pycache__"]
-    for f in sorted(fn):
-        if not f.endswith(".py"):
+def census(root="tests"):
+    """Print the bearing-set counts for the tree rooted at *root*."""
+    imports_conf = set()
+    guard_scope = set()
+    spawners = {}
+    for dp, dn, fn in os.walk(root):
+        dn[:] = [d for d in dn if d != "__pycache__"]
+        for f in sorted(fn):
+            if not f.endswith(".py"):
+                continue
+            p = os.path.join(dp, f)
+            rel = os.path.relpath(p, root).replace(os.sep, "/")
+            try:
+                tree = ast.parse(open(p, encoding="utf-8").read())
+            except SyntaxError:
+                continue
+            in_conf = rel.startswith("conformance/")
+            in_harness = rel.startswith("harness/")
+            imp = imports_shell_oracle(tree)
+            if in_conf or imp:
+                imports_conf.add(rel)
+            if in_conf or imp or in_harness:
+                guard_scope.add(rel)
+                s = spawn_sites(tree)
+                if s:
+                    spawners[rel] = s
+    sp = {k: v for k, v in spawners.items() if k in guard_scope}
+    print(f"imports_shell_oracle UNION conformance      : {len(imports_conf)}")
+    print(f"guard scope (that UNION harness/)           : {len(guard_scope)}")
+    print(f"  ...of which SPAWN directly (modules)      : {len(sp)}")
+    print(f"  ...total direct spawn SITES               : {sum(sp.values())}")
+    print(f"  ...spawners excluding harness/shell_oracle.py: "
+          f"{len([k for k in sp if k != 'harness/shell_oracle.py'])}")
+    print(f"  ...non-spawners in the imports∪conformance set: "
+          f"{len(imports_conf) - len([k for k in sp if k in imports_conf])}")
+
+
+# --- non-subprocess (PTY/fork/exec) spawn family -------------------------
+_PEXPECT = {"spawn", "spawnu", "run", "runu"}
+_PTY = {"spawn", "fork", "openpty"}
+_OSPROC = {"fork", "forkpty", "posix_spawn", "posix_spawnp",
+           "execv", "execve", "execvp", "execvpe",
+           "execl", "execle", "execlp", "execlpe"}
+
+
+def non_subprocess_spawns(tree):
+    """[(lineno, kind)] for pexpect/pty/os fork-exec process creation."""
+    out = []
+    for n in ast.walk(tree):
+        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and isinstance(n.func.value, ast.Name)):
             continue
-        p = os.path.join(dp, f)
-        rel = os.path.relpath(p, root).replace(os.sep, "/")
-        try:
-            tree = ast.parse(open(p, encoding="utf-8").read())
-        except SyntaxError:
-            continue
-        in_conf = rel.startswith("conformance/")
-        in_harness = rel.startswith("harness/")
-        imp = imports_shell_oracle(tree)
-        if in_conf or imp:
-            imports_conf.add(rel)
-        if in_conf or imp or in_harness:
-            guard_scope.add(rel)
-            s = spawn_sites(tree)
-            if s:
-                spawners[rel] = s
-print(f"imports_shell_oracle UNION conformance      : {len(imports_conf)}")
-print(f"guard scope (that UNION harness/)           : {len(guard_scope)}")
-sp_in_scope = {k: v for k, v in spawners.items() if k in guard_scope}
-print(f"  ...of which SPAWN directly (modules)      : {len(sp_in_scope)}")
-print(f"  ...total direct spawn SITES               : {sum(sp_in_scope.values())}")
-print(f"  ...spawners excluding harness/shell_oracle.py: "
-      f"{len([k for k in sp_in_scope if k != 'harness/shell_oracle.py'])}")
-print(f"  ...non-spawners in the imports∪conformance set: "
-      f"{len(imports_conf) - len([k for k in sp_in_scope if k in imports_conf])}")
+        b, a = n.func.value.id, n.func.attr
+        if (b == "pexpect" and a in _PEXPECT) or (b == "pty" and a in _PTY) \
+                or (b == "os" and a in _OSPROC):
+            out.append((n.lineno, f"{b}.{a}"))
+    return out
+
+
+def pty_audit(root="tests"):
+    """Print every bearing-set module creating a process outside subprocess."""
+    found = 0
+    for dp, dn, fn in os.walk(root):
+        dn[:] = [d for d in dn if d != "__pycache__"]
+        for f in sorted(fn):
+            if not f.endswith(".py"):
+                continue
+            p = os.path.join(dp, f)
+            rel = os.path.relpath(p, root).replace(os.sep, "/")
+            try:
+                tree = ast.parse(open(p, encoding="utf-8").read())
+            except SyntaxError:
+                continue
+            bearing = (rel.startswith("conformance/") or rel.startswith("harness/")
+                       or imports_shell_oracle(tree))
+            if not bearing:
+                continue
+            for lineno, kind in non_subprocess_spawns(tree):
+                print(f"{rel}:{lineno}: {kind}")
+                found += 1
+    print(f"TOTAL non-subprocess spawn sites in the BEARING SET: {found}")
+
+
+if __name__ == "__main__":
+    _root = sys.argv[1] if len(sys.argv) > 1 else "tests"
+    census(_root)
+    print()
+    pty_audit(_root)

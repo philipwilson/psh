@@ -31,7 +31,15 @@ def _env_override(env):
     """The shell-visible overrides the caller set relative to the ambient
     environment. PYTHONPATH is pinned by the harness (run_psh), so it is
     dropped; everything else the caller did not change is already in the
-    harness's hermetic base and need not be re-passed."""
+    harness's hermetic base and need not be re-passed.
+
+    LIMIT — this carries ADDITIONS and CHANGES only, never REMOVALS: it is a
+    dict diff, and a case env can only ADD keys to the hermetic base anyway. A
+    row needing a variable to be ABSENT from the child cannot be expressed here
+    (the shape that made ``POSIXLY_CORRECT`` a live bug in
+    test_posix_invocation, where bash treats present-but-empty as ON) — build
+    the env explicitly with ``hermetic_shell_env()`` and ``pop()`` the name, as
+    that module does."""
     if env is None:
         return None
     overrides = {k: v for k, v in env.items()

@@ -22,13 +22,26 @@ spawn directly at all (they go through ``ConformanceTest``/``run_shell_case``),
 so the census's "95/95 differential" describes the SPAWNER SUBSET — not this
 182-module scope.
 
-**What is rejected:** ``subprocess.run/Popen/call/check_output/check_call`` and
-``os.system``/``os.popen`` — detected by attribute access on a ``subprocess``
-or ``os`` name.
+**What is rejected — TWO faces:**
 
-**Honest limits (documented, not defects):** the guard matches the STATIC,
-attribute-access form on a module named exactly ``subprocess``/``os``. It does
-NOT catch:
+1. *subprocess family* (``find_direct_spawns``):
+   ``subprocess.run/Popen/call/check_output/check_call/getoutput/
+   getstatusoutput`` and ``os.system``/``os.popen``.
+2. *non-subprocess family* (``find_non_subprocess_spawns``):
+   ``pexpect.spawn``/``spawnu``/``run``, ``pty.spawn``/``fork``/``openpty``,
+   ``os.fork``/``forkpty``/``posix_spawn*``/``exec*``.
+
+Face 2 exists because a PTY differential is still a differential: round-3
+verification found a module driving BOTH psh and the resolved bash oracle
+through ``pexpect.spawn`` — a genuine bash comparison whose verdict rested on
+an unowned harness, invisible to a subprocess-only guard.  **PTY interactivity
+is out of the run-to-completion runner's reach** (it has no terminal), so such
+a module is not migrated; it is classified and registered (``PTY_REGISTRY``),
+which is what keeps it visible.
+
+**Honest limits (documented, not defects):** both faces match the STATIC,
+attribute-access form on a module named exactly ``subprocess``/``os``/
+``pexpect``/``pty``. Neither catches:
 
 * a bare-name import — ``from subprocess import run; run(...)``;
 * an ALIASED import — ``import subprocess as sp; sp.run(...)`` (or
@@ -69,9 +82,24 @@ TESTS_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
 
 # subprocess.<attr>(...) spawn methods and os.<attr>(...) shell launchers.
+# getoutput/getstatusoutput are spawn-capable too (each runs a command through a
+# shell); zero uses today — listed so the surface is complete rather than lucky.
 _SUBPROCESS_SPAWNS = frozenset({"run", "Popen", "call", "check_output",
-                                "check_call"})
+                                "check_call", "getoutput", "getstatusoutput"})
 _OS_SPAWNS = frozenset({"system", "popen"})
+
+# The NON-subprocess process-creation family.  These never reach
+# ``find_direct_spawns`` (different module, different call shape), yet such a
+# module can be every bit as much a bash differential: round-3 verification
+# found exactly that — a PTY parity test driving BOTH psh and the resolved bash
+# oracle through ``pexpect.spawn``, sitting invisibly inside the bearing set.
+_PEXPECT_SPAWNS = frozenset({"spawn", "spawnu", "run", "runu"})
+_PTY_SPAWNS = frozenset({"spawn", "fork", "openpty"})
+_OS_PROCESS_SPAWNS = frozenset({
+    "fork", "forkpty", "posix_spawn", "posix_spawnp",
+    "execv", "execve", "execvp", "execvpe",
+    "execl", "execle", "execlp", "execlpe",
+})
 
 # The ONE exact directory the scan skips: it holds the SYNTHETIC OFFENDER
 # fixture, a deliberate spawn used to prove the guard fires.  The skip is
@@ -156,18 +184,74 @@ _EXPECTED_NAMED_ALLOWLIST = frozenset({
 })
 _EXPECTED_PSH_ONLY_REGISTRY: frozenset = frozenset()
 
+# (c) PTY / NON-SUBPROCESS registry — its OWN list, deliberately separate from
+# NAMED_ALLOWLIST.  Reason it cannot simply join (a): the allowlist hygiene test
+# ``test_allowlist_entries_still_spawn`` keys on ``find_direct_spawns``, which by
+# construction never sees a pexpect/pty spawn — a PTY module parked in (a) would
+# make that hygiene test fail (or, worse, be loosened until it proved nothing).
+# This registry is policed by ``find_non_subprocess_spawns`` instead, so every
+# hygiene test stays meaningful.  Same growth-refusing discipline: owner +
+# reason + removal condition, plus a frozen membership pin.
+PTY_REGISTRY = {
+    "system/interactive/test_multiline_immediate_error_i3.py":
+        "owner=slot1.2 (module pre-exists this slot; classified here in round "
+        "3). PTY bash-DIFFERENTIAL: drives psh AND the resolved bash oracle "
+        "through pexpect.spawn over a pseudo-terminal (TERM=xterm) and compares "
+        "the LINE INDEX at which each reports a mid-construct syntax error. "
+        "Interactive PTY behavior IS the subject — the run-to-completion runner "
+        "has no terminal and cannot serve it. Removal: run_shell_case grows a "
+        "PTY mode, or the parity rows move to a shared PTY differential harness "
+        "that owns oracle resolution and typed outcomes.",
+}
+_EXPECTED_PTY_REGISTRY = frozenset(PTY_REGISTRY)
+
 
 def _imports_shell_oracle(tree):
-    """True iff *tree* really imports shell_oracle (not just mentions it)."""
+    """True iff *tree* really imports shell_oracle (not just mentions it).
+
+    Covers BOTH ``ImportFrom`` shapes: ``from shell_oracle import x`` (the name
+    is in ``node.module``) and ``from tests.harness import shell_oracle`` (the
+    name is an ALIAS, with ``node.module`` = the package) — the second form used
+    to read as non-bearing, which would have let a module opt out of the guard
+    by changing its import style (round-3 finding).
+    """
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module \
-                and "shell_oracle" in node.module:
-            return True
+        if isinstance(node, ast.ImportFrom):
+            if node.module and "shell_oracle" in node.module:
+                return True
+            for alias in node.names:
+                if "shell_oracle" in alias.name:
+                    return True
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if "shell_oracle" in alias.name:
                     return True
     return False
+
+
+def find_non_subprocess_spawns(src):
+    """Return [(lineno, kind)] for PTY / fork / exec process creation.
+
+    The family ``find_direct_spawns`` cannot see: ``pexpect.spawn`` (and
+    friends), ``pty.spawn``/``pty.fork``, and ``os.fork``/``os.forkpty``/
+    ``os.posix_spawn*``/``os.exec*``.  Same static, attribute-access limits as
+    the subprocess detector (an aliased import or a getattr call is not caught).
+    """
+    tree = ast.parse(src)
+    hits = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)):
+            continue
+        base, attr = node.func.value.id, node.func.attr
+        if base == "pexpect" and attr in _PEXPECT_SPAWNS:
+            hits.append((node.lineno, f"pexpect.{attr}"))
+        elif base == "pty" and attr in _PTY_SPAWNS:
+            hits.append((node.lineno, f"pty.{attr}"))
+        elif base == "os" and attr in _OS_PROCESS_SPAWNS:
+            hits.append((node.lineno, f"os.{attr}"))
+    return hits
 
 
 def find_direct_spawns(src):
@@ -252,6 +336,70 @@ def test_allowlist_entries_still_spawn(rel):
     assert find_direct_spawns(src), (
         f"{rel} no longer creates a process directly — remove its ALLOWLIST "
         "entry (the guard is shrinking).")
+
+
+def test_no_non_subprocess_spawn_in_oracle_bearing_modules():
+    """PTY-aware face: no oracle-bearing module creates a process by
+    pexpect/pty/fork/exec either, unless it is in the PTY registry.
+
+    Round-3 finding: a PTY parity test driving BOTH psh and the resolved bash
+    oracle sat inside the bearing set, invisible to the subprocess-only guard
+    and absent from the census. This closes that blind spot.
+    """
+    problems = []
+    for rel, _path, src in iter_oracle_bearing_modules():
+        if rel in PTY_REGISTRY:
+            continue
+        for lineno, kind in find_non_subprocess_spawns(src):
+            problems.append(f"tests/{rel}:{lineno}: {kind}")
+    assert not problems, (
+        "oracle-bearing modules must not create processes via pexpect/pty/"
+        "fork/exec outside the typed runner. A PTY differential is still a "
+        "differential: its verdict must not rest on an unowned harness. "
+        "Offenders:\n  " + "\n  ".join(problems)
+        + "\n(If PTY interactivity is genuinely the subject, add a justified "
+        "PTY_REGISTRY entry with owner + reason + removal condition.)")
+
+
+@pytest.mark.parametrize("rel", sorted(PTY_REGISTRY))
+def test_pty_registry_entries_exist(rel):
+    assert os.path.isfile(os.path.join(TESTS_ROOT, rel)), (
+        f"PTY_REGISTRY entry {rel!r} does not exist — prune it")
+
+
+@pytest.mark.parametrize("rel", sorted(PTY_REGISTRY))
+def test_pty_registry_entries_still_pty_spawn(rel):
+    """Shrink discipline, policed by the RIGHT detector.
+
+    Keyed on ``find_non_subprocess_spawns`` — NOT ``find_direct_spawns``, which
+    by construction can never see a pexpect/pty spawn. Using the subprocess
+    detector here would make this hygiene test vacuous (it would fail for every
+    genuine PTY entry, inviting someone to delete or loosen it).
+    """
+    with open(os.path.join(TESTS_ROOT, rel), encoding="utf-8") as f:
+        src = f.read()
+    assert find_non_subprocess_spawns(src), (
+        f"{rel} no longer creates a PTY/fork/exec process — remove its "
+        "PTY_REGISTRY entry (the registry is shrinking).")
+
+
+def test_pty_registry_membership_is_frozen():
+    """Mechanical growth refusal for the PTY registry (same contract as the
+    allowlist): adding an entry is a visible two-place change."""
+    assert set(PTY_REGISTRY) == set(_EXPECTED_PTY_REGISTRY), (
+        "PTY_REGISTRY membership changed. Unexpected additions: "
+        f"{sorted(set(PTY_REGISTRY) - _EXPECTED_PTY_REGISTRY)}; missing: "
+        f"{sorted(_EXPECTED_PTY_REGISTRY - set(PTY_REGISTRY))}. An addition "
+        "needs owner + reason + removal condition AND an edit to "
+        "_EXPECTED_PTY_REGISTRY.")
+
+
+def test_pty_registry_is_disjoint_from_the_subprocess_allowlists():
+    """The three lists govern different detectors; a module in two of them
+    would be approved for a spawn family nobody checked."""
+    assert not (set(PTY_REGISTRY) & set(ALLOWLIST)), (
+        "a module may not sit in both the subprocess allowlist and the PTY "
+        "registry — split it or justify each face explicitly")
 
 
 def test_allowlist_membership_is_frozen():
@@ -365,9 +513,26 @@ def test_fixture_dir_holds_only_the_known_offender():
     fixture_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                _FIXTURE_DIR)
     py = sorted(f for f in os.listdir(fixture_dir) if f.endswith(".py"))
-    assert py == ["offender_module.py"], (
-        f"the guard skips {_FIXTURE_DIR}/; it may hold ONLY offender_module.py, "
-        f"found {py}")
+    assert py == ["offender_module.py", "pty_offender_module.py"], (
+        f"the guard skips {_FIXTURE_DIR}/; it may hold ONLY the two known "
+        f"offender fixtures, found {py}")
+
+
+def test_pty_face_fires_on_synthetic_pty_offender_fixture():
+    """Mutation check for the PTY face: the fixture is oracle-bearing AND
+    spawns a PTY process, so — were it not in the skipped fixtures dir — the
+    PTY guard would flag it. The subprocess detector, by contrast, must NOT
+    see it: that asymmetry is exactly why the PTY face had to exist.
+    """
+    fixture = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           _FIXTURE_DIR, "pty_offender_module.py")
+    with open(fixture, encoding="utf-8") as f:
+        src = f.read()
+    assert _imports_shell_oracle(ast.parse(src)), "fixture must be oracle-bearing"
+    hits = find_non_subprocess_spawns(src)
+    assert any(k == "pexpect.spawn" for _, k in hits), hits
+    # The blind spot the PTY face closes: the subprocess detector sees nothing.
+    assert find_direct_spawns(src) == []
 
 
 # ---------------------------------------------------------------------------
