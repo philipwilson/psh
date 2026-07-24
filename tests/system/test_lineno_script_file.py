@@ -6,23 +6,16 @@ stamp to its absolute file line. Compares psh against bash on the same temp
 script files (matching exact stdout). See CHANGELOG v0.485.0.
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
-
-
-def _run(shell_cmd, path):
-    return subprocess.run(shell_cmd + [path], capture_output=True, text=True)
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _assert_matches_bash(tmp_path, body):
     path = tmp_path / 's.sh'
     path.write_text(body)
-    psh = _run([sys.executable, '-m', 'psh'], str(path))
-    bash = _run([BASH], str(path))
+    psh = run_psh([str(path)])
+    assert is_comparable(psh), psh
+    bash = run_bash([str(path)])
+    assert is_comparable(bash), bash
     assert psh.returncode == bash.returncode
     assert psh.stdout == bash.stdout, (
         f"\nscript:\n{body}\npsh : {psh.stdout!r}\nbash: {bash.stdout!r}")

@@ -30,28 +30,24 @@ All driven through subprocesses so psh and bash are directly comparable and so
 closing fd 1 happens in a real process (never the test runner's own fds).
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
 
 pytestmark = pytest.mark.serial  # spawns subprocesses; closes fds
 
-BASH = resolve_bash().path
+_ORACLE = try_resolve_bash()
 
 
 def _psh(cmd):
-    return subprocess.run(
-        [sys.executable, "-m", "psh", "-c", cmd],
-        capture_output=True, text=True, timeout=30,
-    )
+    r = run_psh(["-c", cmd], timeout=30)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
-    return subprocess.run(
-        [BASH, "-c", cmd], capture_output=True, text=True, timeout=30,
-    )
+    r = run_bash(["-c", cmd], timeout=30)
+    assert is_comparable(r), r
+    return r
 
 
 # --------------------------------------------------------------------------
@@ -68,7 +64,7 @@ _CLOSE_OUTPUT_CASES = [
 ]
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd,name", _CLOSE_OUTPUT_CASES)
 def test_close_output_fd_no_leak(cmd, name):
     p = _psh(cmd)
@@ -88,7 +84,7 @@ def test_close_output_fd_no_leak(cmd, name):
 # Compound in-process paths: brace group + function
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd", [
     "{ echo a; echo b; } 1>&-",
     "f(){ echo hi;}; f 1>&-",
@@ -108,7 +104,7 @@ def test_compound_close_output_no_leak(cmd):
 # Restore after the command is clean (no leaked closed-stream state)
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_restore_after_close_output_fd():
     cmd = "echo hi 1>&-; echo back"
     p = _psh(cmd)
@@ -117,7 +113,7 @@ def test_restore_after_close_output_fd():
     assert p.returncode == b.returncode == 0
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_close_output_fd_plus_other_redirect_no_fd_reuse():
     """`cmd 1>&- 2>FILE` must not let the freed fd 1 be reused by the 2>FILE
     open and then closed on restore (which would corrupt the shell's stdout).
@@ -130,7 +126,7 @@ def test_close_output_fd_plus_other_redirect_no_fd_reuse():
     assert p.returncode == b.returncode == 0
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_declare_close_output_fd_combo():
     """declare -p output goes through the central builtin write-error guard."""
     cmd = "declare -p PATH 1>&- 2>/dev/null; echo rc=$?"
@@ -144,7 +140,7 @@ def test_declare_close_output_fd_combo():
 # Unaffected paths: 2>&- (stderr only), <&- (input), normal write
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd,expect_out", [
     ("echo hi 2>&-", "hi\n"),               # stdout still works
     ("echo hi 2>&-; echo back2", "hi\nback2\n"),
@@ -161,7 +157,7 @@ def test_close_stderr_or_normal_unaffected(cmd, expect_out):
     assert p.stderr == "", p.stderr
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_input_close_unaffected():
     """`<&-` closes stdin; a builtin that does not read stdin is unaffected."""
     cmd = "echo hi 0<&-"

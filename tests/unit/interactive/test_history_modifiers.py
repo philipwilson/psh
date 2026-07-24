@@ -7,24 +7,19 @@ a preceding backslash suppress it). Verified against bash's `history -p`
 to it directly (history expansion is interactive-only; there's no `-c` vehicle).
 """
 
-import subprocess
-
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash
 
 from psh.shell import Shell
-
-BASH = resolve_bash().path
 
 SEED = 'echo prev cmd'
 
 
 def _bash_history_p(seed, ref):
     """bash's history expansion of `ref` with `seed` as the previous command."""
-    out = subprocess.run(
-        [BASH, '-c', "set -H; history -s \"$1\"; history -p \"$2\"",
-         '_', seed, ref],
-        capture_output=True, text=True)
+    out = run_bash(['-c', "set -H; history -s \"$1\"; history -p \"$2\"",
+                    '_', seed, ref])
+    assert is_comparable(out), out
     return out.stdout.rstrip('\n')
 
 

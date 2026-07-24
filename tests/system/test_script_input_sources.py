@@ -16,29 +16,32 @@ import subprocess
 import sys
 from pathlib import Path
 
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 BASH = resolve_bash().path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
 
 
 def run_psh(*args, stdin_input=None, stdin_file=None, cwd=None):
-    kwargs = dict(capture_output=True, text=True, timeout=10, cwd=cwd, env=ENV)
-    argv = [sys.executable, '-m', 'psh', *args]
     if stdin_file is not None:
-        with open(stdin_file) as f:
-            return subprocess.run(argv, stdin=f, **kwargs)
-    return subprocess.run(argv, input=stdin_input or '', **kwargs)
+        with open(stdin_file, 'rb') as f:
+            data = f.read()
+    else:
+        data = stdin_input or ''
+    r = _oracle_run_psh(list(args), stdin_data=data, cwd=cwd)
+    assert is_comparable(r), r
+    return r
 
 
 class TestNonSeekableSources:
     def test_process_substitution_script_operand(self):
         # The <(...) fd comes from an OUTER shell; psh must not pre-read it.
-        result = subprocess.run(
-            [BASH, '-c', f'{sys.executable} -m psh <(echo "echo hello")'],
-            capture_output=True, text=True, timeout=10, env=ENV)
+        result = run_bash(
+            ['-c', f'{sys.executable} -m psh <(echo "echo hello")'],
+            env={'PYTHONPATH': str(REPO_ROOT)}, timeout=10)
+        assert is_comparable(result), result
         assert result.returncode == 0
         assert result.stdout == 'hello\n'
         assert result.stderr == ''

@@ -10,33 +10,28 @@ diverges from C-locale bash so the divergence is visible, not silent.
 `exec` permanent redirects rewrite fds, so every case runs psh in a subprocess.
 """
 import os
-import subprocess
-import sys
 
 import pytest
-from shell_oracle import resolve_bash
-
-# Oracle binary from the sanctioned resolver (E2 ratchet); raw-bytes run mode
-# stays local because these cases compare RAW stdout bytes.
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 PSH_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-ENV = {**os.environ, "PYTHONPATH": PSH_ROOT, "PSH_STRICT_ERRORS": "1"}
 
 
 def _psh(script: bytes, stdin: bytes) -> bytes:
-    return subprocess.run(
-        [sys.executable, "-m", "psh", "-c", script.decode()],
-        input=stdin, capture_output=True, cwd=PSH_ROOT, timeout=15, env=ENV,
-    ).stdout
+    # raw-bytes comparison: recover the exact stdout bytes from the runner's
+    # lossless surrogateescape capture.
+    r = run_psh(["-c", script.decode()], stdin_data=stdin, cwd=PSH_ROOT,
+                timeout=15, env={"PSH_STRICT_ERRORS": "1"})
+    assert is_comparable(r), r
+    return r.stdout.encode("utf-8", "surrogateescape")
 
 
 def _bash_c(script: bytes, stdin: bytes) -> bytes:
-    return subprocess.run(
-        [BASH, "-c", script.decode()], input=stdin, capture_output=True,
-        timeout=15, env={**os.environ, "LC_ALL": "C", "LANG": "C"},
-    ).stdout
+    r = run_bash(["-c", script.decode()], stdin_data=stdin, timeout=15,
+                 env={"LC_ALL": "C", "LANG": "C"})
+    assert is_comparable(r), r
+    return r.stdout.encode("utf-8", "surrogateescape")
 
 
 class TestSameFdPersistence:
@@ -72,8 +67,10 @@ class TestTempRedirectComposition:
         script = (b"read a; read b < " + str(f).encode()
                   + b"; read c; printf '%s|%s|%s\\n' \"$a\" \"$b\" \"$c\"")
         out = _psh(script, b"S1\nS2\nS3\n")
-        bash = subprocess.run([BASH, "-c", script.decode()], input=b"S1\nS2\nS3\n",
-                              capture_output=True, timeout=15).stdout
+        b = run_bash(["-c", script.decode()], stdin_data=b"S1\nS2\nS3\n",
+                     timeout=15)
+        assert is_comparable(b), b
+        bash = b.stdout.encode("utf-8", "surrogateescape")
         assert out == bash == b"S1|F1|S2\n"
 
 
@@ -88,9 +85,10 @@ class TestDeliberateLossDupAlias:
         script = (b"exec 3<&0; read -u 0 a; read -u 3 b; read -u 0 c; "
                   b"printf '%s|%s|%s\\n' \"$a\" \"$b\" \"$c\"")
         out = _psh(script, b"one\ntwo\nthree\n")
-        bash = subprocess.run([BASH, "-c", script.decode()],
-                              input=b"one\ntwo\nthree\n",
-                              capture_output=True, timeout=15).stdout
+        b = run_bash(["-c", script.decode()], stdin_data=b"one\ntwo\nthree\n",
+                     timeout=15)
+        assert is_comparable(b), b
+        bash = b.stdout.encode("utf-8", "surrogateescape")
         assert out == bash == b"one|two|three\n"
 
     def test_malformed_dup_alias_documented_divergence(self):

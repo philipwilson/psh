@@ -16,13 +16,11 @@ parity pins. Documented divergences live at the bottom as explicit both-sides
 tests (house style of test_nested_substitution_timing_conformance.py).
 """
 import re
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh
 
 PSH_ROOT = Path(__file__).resolve().parents[3]
 
@@ -36,17 +34,16 @@ def _strip_prefix(stderr: str) -> str:
     return _PREFIX_RE.sub('', stderr)
 
 
-def _run(shell_argv, cmd):
-    return subprocess.run(shell_argv + ['-c', cmd], capture_output=True,
-                          text=True, cwd=PSH_ROOT, timeout=15)
-
-
 def _psh(cmd):
-    return _run([sys.executable, '-m', 'psh'], cmd)
+    r = run_psh(['-c', cmd], cwd=PSH_ROOT, timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
-    return _run([resolve_bash().path], cmd)
+    r = run_bash(['-c', cmd], cwd=PSH_ROOT, timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 class TestAssocBareNameIsLiteral(ConformanceTest):

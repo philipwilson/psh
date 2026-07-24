@@ -11,13 +11,9 @@ too to show it is independent of this change.
 """
 
 import os
-import subprocess
-import sys
 
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _write(tmp_path, name, content):
@@ -28,12 +24,15 @@ def _write(tmp_path, name, content):
 
 
 def run_psh_file(path):
-    return subprocess.run([sys.executable, '-m', 'psh', path],
-                          capture_output=True, text=True)
+    r = run_psh([path])
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash_file(path):
-    return subprocess.run([BASH, path], capture_output=True, text=True)
+    r = run_bash([path])
+    assert is_comparable(r), r
+    return r
 
 
 class TestShebangIsCommentForExplicitFile:
@@ -83,9 +82,8 @@ class TestExecPathStillRespectsKernelShebang:
     @pytest.mark.serial
     def test_exec_path_honors_cat_shebang(self, tmp_path):
         _write(tmp_path, 'y.sh', '#!/bin/cat\necho catshebang\n')
-        result = subprocess.run(
-            [sys.executable, '-m', 'psh', '-c', './y.sh'],
-            cwd=str(tmp_path), capture_output=True, text=True)
+        result = run_psh(['-c', './y.sh'], cwd=str(tmp_path))
+        assert is_comparable(result), result
         # The kernel runs /bin/cat on the file, so the file CONTENTS are
         # echoed (shebang line included) — proving the exec path still
         # dispatches via the shebang, unlike the explicit-FILE path.

@@ -12,13 +12,12 @@ runs a DOS-line-ending script as if dos2unix'd where bash keeps the CR
 bytes — see TestScriptFileCRLFLineEndings in test_r16_scripting.py.
 """
 
-import subprocess
-import sys
+from collections import namedtuple
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh
 
-BASH = resolve_bash().path
+_Result = namedtuple("_Result", "returncode stdout stderr")
 
 NBSP = b'\xc2\xa0'          # U+00A0
 EN_SPACE = b'\xe2\x80\x82'  # U+2002
@@ -28,10 +27,14 @@ IDEO_SPACE = b'\xe3\x80\x80'  # U+3000
 def _run_both_bytes(tmp_path, script_bytes, name='sep.sh'):
     script = tmp_path / name
     script.write_bytes(script_bytes)
-    psh = subprocess.run([sys.executable, '-m', 'psh', str(script)],
-                         capture_output=True, timeout=15)
-    bash = subprocess.run([BASH, str(script)], capture_output=True,
-                          timeout=15)
+    p = run_psh([str(script)], timeout=15)
+    assert is_comparable(p), p
+    b = run_bash([str(script)], timeout=15)
+    assert is_comparable(b), b
+    psh = _Result(p.returncode, p.stdout.encode('utf-8', 'surrogateescape'),
+                  p.stderr.encode('utf-8', 'surrogateescape'))
+    bash = _Result(b.returncode, b.stdout.encode('utf-8', 'surrogateescape'),
+                   b.stderr.encode('utf-8', 'surrogateescape'))
     return psh, bash
 
 

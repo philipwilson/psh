@@ -4,19 +4,22 @@ alongside bash's so a future accidental change to EITHER is caught. They are
 carried (carry register #18-24 in docs/reviews/boundary_campaign_close_2026-07),
 not fixed, per the closing-verification dispositions.
 """
-import subprocess
 import sys
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 BASH = resolve_bash().path
 PSH = [sys.executable, "-m", "psh"]
 
 
 def _run(argv, cmd, cwd=None):
-    return subprocess.run(argv + ["-c", cmd], capture_output=True, text=True,
-                          timeout=20, cwd=cwd)
+    if argv[0] == sys.executable:
+        r = run_psh(["-c", cmd], cwd=cwd, timeout=20)
+    else:
+        r = run_bash(["-c", cmd], cwd=cwd, timeout=20)
+    assert is_comparable(r), r
+    return r
 
 
 class TestPosixSpecialBuiltinRedirectFatality:
@@ -52,17 +55,21 @@ class TestAnsiCHighEscapeByteModel:
 
     def test_xff_bash_raw_byte_psh_utf8(self):
         cmd = r"printf '%s' $'\xff'"
-        bash = subprocess.run([BASH, "-c", cmd], capture_output=True, timeout=20)
-        psh = subprocess.run(PSH + ["-c", cmd], capture_output=True, timeout=20)
-        assert bash.stdout == b"\xff", bash.stdout            # raw byte
-        assert psh.stdout == b"\xc3\xbf", psh.stdout          # UTF-8 of U+00FF
+        bash = run_bash(["-c", cmd], timeout=20)
+        assert is_comparable(bash), bash
+        psh = run_psh(["-c", cmd], timeout=20)
+        assert is_comparable(psh), psh
+        assert bash.stdout.encode("utf-8", "surrogateescape") == b"\xff", bash.stdout
+        assert psh.stdout.encode("utf-8", "surrogateescape") == b"\xc3\xbf", psh.stdout
 
     def test_x80_boundary(self):
         cmd = r"printf '%s' $'\x80'"
-        bash = subprocess.run([BASH, "-c", cmd], capture_output=True, timeout=20)
-        psh = subprocess.run(PSH + ["-c", cmd], capture_output=True, timeout=20)
-        assert bash.stdout == b"\x80"
-        assert psh.stdout == b"\xc2\x80"                      # UTF-8 of U+0080
+        bash = run_bash(["-c", cmd], timeout=20)
+        assert is_comparable(bash), bash
+        psh = run_psh(["-c", cmd], timeout=20)
+        assert is_comparable(psh), psh
+        assert bash.stdout.encode("utf-8", "surrogateescape") == b"\x80"
+        assert psh.stdout.encode("utf-8", "surrogateescape") == b"\xc2\x80"
 
 
 @pytest.fixture

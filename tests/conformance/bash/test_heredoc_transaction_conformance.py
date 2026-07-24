@@ -23,12 +23,11 @@ script-file and stdin input modes (the completeness oracle drives all
 three modes through the same head-of-queue policy).
 """
 
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 from conformance_framework import ConformanceTest
+from shell_oracle import is_comparable, run_bash, run_psh
 
 _REPO = Path(__file__).resolve().parents[3]
 
@@ -228,33 +227,25 @@ class TestHeredocInputModeConformance(_HeredocTransactionBase):
     QUEUE_SCRIPT = "cat <<A; cat <<B\nB\nA\ntail\nB\necho after"
     EXPECT_OUT = "B\ntail\nafter\n"
 
-    def _bash(self):
-        from harness.shell_oracle import resolve_bash
-        return resolve_bash().path
-
     def test_script_file_mode(self):
         with tempfile.NamedTemporaryFile('w', suffix='.sh', delete=False) as f:
             f.write(self.QUEUE_SCRIPT + "\n")
             path = f.name
         try:
-            psh = subprocess.run(
-                [sys.executable, '-m', 'psh', path],
-                capture_output=True, text=True, cwd=_REPO, timeout=15)
-            bash = subprocess.run(
-                [self._bash(), path],
-                capture_output=True, text=True, timeout=15)
+            psh = run_psh([path], cwd=str(_REPO), timeout=15)
+            bash = run_bash([path], timeout=15)
+            assert is_comparable(psh), psh
+            assert is_comparable(bash), bash
             assert psh.stdout == bash.stdout == self.EXPECT_OUT
             assert psh.returncode == bash.returncode == 0
         finally:
             Path(path).unlink()
 
     def test_stdin_mode(self):
-        psh = subprocess.run(
-            [sys.executable, '-m', 'psh'],
-            input=self.QUEUE_SCRIPT + "\n",
-            capture_output=True, text=True, cwd=_REPO, timeout=15)
-        bash = subprocess.run(
-            [self._bash()], input=self.QUEUE_SCRIPT + "\n",
-            capture_output=True, text=True, timeout=15)
+        psh = run_psh([], stdin_data=self.QUEUE_SCRIPT + "\n",
+                      cwd=str(_REPO), timeout=15)
+        bash = run_bash([], stdin_data=self.QUEUE_SCRIPT + "\n", timeout=15)
+        assert is_comparable(psh), psh
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == self.EXPECT_OUT
         assert psh.returncode == bash.returncode == 0

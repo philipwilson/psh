@@ -11,28 +11,46 @@ options → test_cli_argument_parsing.py):
 * a script file preserves embedded CR bytes (no universal-newline CR→LF).
 """
 import os
-import subprocess
 import sys
+from collections import namedtuple
 from pathlib import Path
 
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable
+from shell_oracle import run_bash as _run_bash
+from shell_oracle import run_psh as _run_psh
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
 
+# Raw-byte capture carrier for the CRLF tests below (the harness decodes with
+# surrogateescape; these tests compare against exact bytes).
+_BytesResult = namedtuple('_BytesResult', 'stdout returncode')
+
+
+def _env_override(env):
+    """The shell-visible overrides the caller set relative to the ambient
+    environment. PYTHONPATH is pinned by the harness (run_psh), so it is
+    dropped; everything else the caller did not change is already in the
+    harness's hermetic base and need not be re-passed."""
+    if env is None:
+        return None
+    overrides = {k: v for k, v in env.items()
+                 if k != 'PYTHONPATH' and os.environ.get(k) != v}
+    return overrides or None
+
 
 def run_psh(*args, cwd=None, env=None, stdin_input=None):
-    return subprocess.run([sys.executable, '-m', 'psh', *args],
-                          capture_output=True, text=True, timeout=10,
-                          cwd=cwd, env=env or ENV, input=stdin_input)
+    r = _run_psh(list(args), cwd=cwd, env=_env_override(env),
+                 stdin_data=stdin_input, timeout=10)
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash(*args, cwd=None, env=None, stdin_input=None):
-    return subprocess.run([BASH, *args], capture_output=True, text=True,
-                          timeout=10, cwd=cwd, env=env or os.environ.copy(),
-                          input=stdin_input)
+    r = _run_bash(list(args), cwd=cwd, env=_env_override(env),
+                  stdin_data=stdin_input, timeout=10)
+    assert is_comparable(r), r
+    return r
 
 
 class TestSourceDollarZero:
@@ -102,8 +120,11 @@ class TestScriptFileCarriageReturn:
     # test.
     @staticmethod
     def _bytes(argv, cwd=None):
-        return subprocess.run(argv, capture_output=True, timeout=10,
-                              cwd=cwd, env=ENV).stdout
+        # argv is [sys.executable, '-m', 'psh', <script...>]; recover the exact
+        # bytes psh emitted (the harness decodes with surrogateescape).
+        r = _run_psh(argv[3:], cwd=cwd, timeout=10)
+        assert is_comparable(r), r
+        return r.stdout.encode('utf-8', 'surrogateescape')
 
     def test_embedded_cr_in_double_quotes_preserved(self, tmp_path):
         # bash keeps the raw CR byte in the value; psh used to translate it to
@@ -111,16 +132,18 @@ class TestScriptFileCarriageReturn:
         script = tmp_path / 'cr.sh'
         script.write_bytes(b'x="a\rb"\nprintf %s "$x"\n')
         psh = self._bytes([sys.executable, '-m', 'psh', str(script)])
-        bash = subprocess.run([BASH, str(script)], capture_output=True,
-                              timeout=10).stdout
+        br = _run_bash([str(script)], timeout=10)
+        assert is_comparable(br), br
+        bash = br.stdout.encode('utf-8', 'surrogateescape')
         assert psh == bash == b'a\rb'
 
     def test_embedded_cr_in_single_quotes_preserved(self, tmp_path):
         script = tmp_path / 'cr2.sh'
         script.write_bytes(b"x='a\rb'\nprintf %s \"$x\"\n")
         psh = self._bytes([sys.executable, '-m', 'psh', str(script)])
-        bash = subprocess.run([BASH, str(script)], capture_output=True,
-                              timeout=10).stdout
+        br = _run_bash([str(script)], timeout=10)
+        assert is_comparable(br), br
+        bash = br.stdout.encode('utf-8', 'surrogateescape')
         assert psh == bash == b'a\rb'
 
     def test_plain_lf_script_unaffected(self, tmp_path):
@@ -152,10 +175,14 @@ class TestScriptFileCRLFLineEndings:
     def _run(script_bytes, tmp_path, name='crlf.sh'):
         script = tmp_path / name
         script.write_bytes(script_bytes)
-        psh = subprocess.run([sys.executable, '-m', 'psh', str(script)],
-                             capture_output=True, timeout=10, env=ENV)
-        bash = subprocess.run([BASH, str(script)], capture_output=True,
-                              timeout=10)
+        p = _run_psh([str(script)], timeout=10)
+        b = _run_bash([str(script)], timeout=10)
+        assert is_comparable(p), p
+        assert is_comparable(b), b
+        psh = _BytesResult(p.stdout.encode('utf-8', 'surrogateescape'),
+                           p.returncode)
+        bash = _BytesResult(b.stdout.encode('utf-8', 'surrogateescape'),
+                            b.returncode)
         return psh, bash
 
     def test_crlf_heredoc_terminates_and_runs_trailing_command(self, tmp_path):

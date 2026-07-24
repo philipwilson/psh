@@ -18,22 +18,16 @@ cases compare stdout/exit and the warning suffix.
 Truth-tabled against bash 5.2 (tmp/probes-r17t2-input/probe_unterm*.sh).
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _run_both(tmp_path, script_text, name="case.sh"):
     (tmp_path / name).write_text(script_text)
-    psh = subprocess.run([sys.executable, '-m', 'psh', name],
-                         capture_output=True, text=True, cwd=tmp_path,
-                         timeout=15)
-    bash = subprocess.run([BASH, name], capture_output=True, text=True,
-                          cwd=tmp_path, timeout=15)
+    psh = run_psh([name], cwd=str(tmp_path), timeout=15)
+    bash = run_bash([name], cwd=str(tmp_path), timeout=15)
+    assert is_comparable(psh), psh
+    assert is_comparable(bash), bash
     return psh, bash
 
 
@@ -116,15 +110,13 @@ class TestUnterminatedHeredocOtherModes:
     def test_warning_and_content(self, mode):
         cmd = 'cat <<EOF\nhello'
         if mode == "dash_c":
-            psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                                 capture_output=True, text=True, timeout=15)
-            bash = subprocess.run([BASH, '-c', cmd],
-                                  capture_output=True, text=True, timeout=15)
+            psh = run_psh(['-c', cmd], timeout=15)
+            bash = run_bash(['-c', cmd], timeout=15)
         else:
-            psh = subprocess.run([sys.executable, '-m', 'psh'], input=cmd,
-                                 capture_output=True, text=True, timeout=15)
-            bash = subprocess.run([BASH], input=cmd,
-                                  capture_output=True, text=True, timeout=15)
+            psh = run_psh([], stdin_data=cmd, timeout=15)
+            bash = run_bash([], stdin_data=cmd, timeout=15)
+        assert is_comparable(psh), psh
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == 'hello\n'
         assert psh.returncode == bash.returncode == 0
         # bash prefixes "bash:", psh "psh:" — compare the suffix.
@@ -138,8 +130,7 @@ class TestUnterminatedHeredocOtherModes:
         # mirrors it.
         script = tmp_path / 'v.sh'
         script.write_text('cat <<EOF\nhello\n')
-        psh = subprocess.run(
-            [sys.executable, '-m', 'psh', '--validate', str(script)],
-            capture_output=True, text=True, timeout=15)
+        psh = run_psh(['--validate', str(script)], timeout=15)
+        assert is_comparable(psh), psh
         assert psh.returncode == 0
         assert 'delimited by end-of-file' in psh.stderr

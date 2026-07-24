@@ -33,7 +33,7 @@ import os
 import subprocess
 import sys
 
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 PSH = [sys.executable, "-m", "psh"]
 BASH = [resolve_bash().path]
@@ -41,24 +41,39 @@ TRACEBACK = b"Traceback (most recent call last)"
 
 
 def _run(argv, *, stdin_bytes=None, stdin=None, close_fd0=False, timeout=10):
-    """Run *argv* as a subprocess and capture bytes.
+    """Run *argv* and capture bytes.
 
     ``close_fd0`` closes fd 0 in the child before exec (portable stand-in for
-    ``exec 0<&-``); ``stdin_bytes`` pipes raw bytes; ``stdin`` passes an open
-    file object (for a real ``< file`` redirect).
+    ``exec 0<&-``); ``stdin_bytes`` supplies raw bytes on stdin; ``stdin``
+    passes an open file object (for a real ``< file`` redirect).
+
+    Raw-byte-stdin runs route through the typed oracle runner
+    (``run_psh``/``run_bash``) so a non-comparable outcome fails loudly. A run
+    that must close fd 0 (needs a ``preexec_fn``) or hand psh a live file object
+    is not expressible through the runner and stays a direct spawn.
     """
-    preexec = (lambda: os.close(0)) if close_fd0 else None
-    kwargs = {}
-    if stdin is not None:
-        kwargs["stdin"] = stdin
-    return subprocess.run(
-        argv,
-        input=stdin_bytes,
-        capture_output=True,
-        timeout=timeout,
-        preexec_fn=preexec,
-        **kwargs,
-    )
+    if close_fd0 or stdin is not None:
+        preexec = (lambda: os.close(0)) if close_fd0 else None
+        kwargs = {}
+        if stdin is not None:
+            kwargs["stdin"] = stdin
+        return subprocess.run(
+            argv,
+            input=stdin_bytes,
+            capture_output=True,
+            timeout=timeout,
+            preexec_fn=preexec,
+            **kwargs,
+        )
+    if argv[0] == sys.executable:
+        r = run_psh(argv[3:], stdin_data=stdin_bytes, timeout=timeout)
+    else:
+        r = run_bash(argv[1:], stdin_data=stdin_bytes, timeout=timeout)
+    assert is_comparable(r), r
+    return subprocess.CompletedProcess(
+        argv, r.returncode,
+        stdout=r.stdout.encode("utf-8", "surrogateescape"),
+        stderr=r.stderr.encode("utf-8", "surrogateescape"))
 
 
 # ---------------------------------------------------------------------------
