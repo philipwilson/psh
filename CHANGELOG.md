@@ -4,6 +4,22 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.751.0 (2026-07-24) - Remediation Wave 1 slot 1.1: typed harness outcomes
+- **Boundary Remediation Campaign, first code slot** (reappraisal #22 HIGH-1 first half;
+  ledger row in `docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md`).
+  The differential test harness can no longer certify two runaway commands as
+  behaviorally identical: an output-cap breach now yields a distinct
+  `OutputLimitExceeded` outcome (capped output, configured limit, duration,
+  kill provenance) instead of a truncated `Completed`, and the conformance
+  comparison layer rejects every non-`Completed` outcome BEFORE comparison
+  (`is_comparable` is the sole authority) - `compare_behavior('yes')` is now a
+  TEST_ERROR, not IDENTICAL. All five harness outcome dataclasses are
+  frozen+slotted, so a truncated `Completed` cannot be constructed or forged
+  (`__dict__` injection, `object.__setattr__`, `__class__` surgery all closed
+  and pinned). Tests-tree only - zero production `psh/` changes; verified by a
+  two-round adversarial verification (round 1 bounce: slots forgery; round 2
+  PASS, zero blockers).
+
 ## 0.750.0 (2026-07-21) - Boundary campaign closing-verification fixes
 - **Closing-verification fixes** (Boundary Integrity Campaign, final fixup slot; three blockers from the campaign's fresh closing verification, hardened across FOUR adversarial re-verify rounds): (1) arithmetic-context associative keys now track QUOTE PROVENANCE - quote/escape removal applies to source-spelled characters per bash's conditional two-round model (`(( expr )) == let "expr"`; the extra round is skipped when the subscript contains any expansion; `let`/`[[`/stored values/integer attributes are single-round); (2) PATH/CDPATH command search consults the VARIABLE (tri-state), never the child-env projection - six consumer faces converged (cd, external search, the 127-message, hash, exec, source) with bash's two-tier candidate rule (executable preferred, first stat-existing non-directory kept as the 126 last resort; directories poison the slot); (3) interactive `history -p`/`-s` strip their own invocation per bash's line-scoped persistent flag - unverified delete, gated on single-physical-line invocations and on string-context recording (`eval`/`source` `-s` no longer deletes), with command-substitution inheritance.
 - Guard hardening: reflection detector covers `asdict`/`astuple`/`getmembers`/`__annotations__`; option-walker detector catches name-bound tuple constants; consumer env-read guard keyed on (file, line); construction-purity test detects `os.environ` writes the autouse fixture previously masked.
