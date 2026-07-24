@@ -49,7 +49,21 @@ which `run_shell_case(..., stdin_data=...)` serves directly.
 
 ## Census (b) — shell_oracle import surface
 
-107 import sites reference `shell_oracle`; by imported symbol:
+Three DIFFERENT measures, each stated explicitly (round-1 verification flagged
+the original bare "107" as ambiguous). All at base `e52957d4`:
+
+| Measure | Count | How |
+|---|---|---|
+| Files MENTIONING `shell_oracle` (textual, incl. docstrings) | **108** | `git grep -l 'shell_oracle' e52957d4 -- 'tests/**/*.py'` |
+| Files with a REAL import (AST `Import`/`ImportFrom`) — the runtime surface | **105** | AST walk (the guard's `_imports_shell_oracle`) |
+| Import-STATEMENT lines | **102** | `git grep -hE '^\s*(from .*shell_oracle import\|import .*shell_oracle)'` |
+
+The 3-file gap (108 − 105) is docstring/comment/string mentions only. The
+earlier single figure **107** was a grep of import-*like* lines: it matched
+in-string references while missing other mentions, so it equals neither the file
+set (108) nor the runtime surface (105) — superseded by this table.
+
+By imported symbol (import statements):
 
 | Import | Count |
 |---|---|
@@ -87,10 +101,26 @@ frozen in the anti-spawn guard's shrink-only PSH-ONLY registry.
 
 **The split of the 95 spawner modules (verified per-module, not assumed):**
 
-| Class | Count | Breakdown | Disposition |
+**MODULE class vs SPAWN-SITE class — read the two tables with this distinction**
+(round-1 verification flagged the apparent contradiction): the classification
+that governs scope is per MODULE. A module is BASH-DIFFERENTIAL if it compares
+psh against bash *anywhere* (directly, via a var-argv helper, or via the
+`ConformanceTest` framework). Two such modules additionally contained ONE
+psh-only SPAWN SITE each — a byte/mode check bash cannot mirror inside an
+otherwise bash-comparing module. The per-module table below therefore tags them
+`PSH-ONLY-SITE`, meaning "differential module, psh-only site", NOT "psh-only
+module". Neither is a PSH-ONLY MODULE, so the module-level count of psh-only
+modules is 0.
+
+| Class (per MODULE) | Count | Breakdown | Disposition |
 |---|---|---|---|
 | **BASH-DIFFERENTIAL** | **95 (all)** | 36 conformance + 59 shell_oracle importers | migrate (both sides) to the runner |
 | **PSH-ONLY** | **0** | — | (would be registered, not migrated) |
+
+(of which **2** differential modules carry a psh-only *spawn site*:
+`test_ansi_c_control_escape_conformance.py`, `test_keyword_word_boundary_conformance.py`
+— both otherwise drive `ConformanceTest` bash comparisons; their psh-only sites
+were migrated too, for uniformity and to satisfy the guard.)
 
 Every one of the 59 non-conformance importers references bash (`run_bash` /
 `resolve_bash` / a `[BASH …]` argv) — none is psh-only. So the bearing set is
@@ -119,6 +149,13 @@ the run-to-completion runner cannot express — `test_exit_trap_paths.py`
 (concurrent bash fifo writer), `test_stdin_startup_robustness.py`
 (`preexec_fn=os.close(0)` / live file object), `test_stdin_script_lazy_read.py`
 (pipe vs seekable-file stdin distinction). Each carries owner + reason + removal.
+Membership is pinned literally in the guard
+(`_EXPECTED_NAMED_ALLOWLIST`), so growth is a visible two-place change.
+
+**Outcome arithmetic (95 migration targets):** **91 migrated + 4 allowlisted**.
+`shell_oracle.py` is the 5th ALLOWLIST entry but was never a migration target
+(it is the runner, and has no `shell_oracle` import of its own) — so
+allowlist entries (5) ≠ allowlisted targets (4).
 
 **(b) FROZEN PSH-ONLY REGISTRY: empty** — no psh-only raw spawner exists in the
 bearing set (see split above). The structure is kept for future debt.

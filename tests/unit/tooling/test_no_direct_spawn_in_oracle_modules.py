@@ -20,13 +20,22 @@ differential-comparison bypass.
 or ``os`` name.
 
 **Honest limits (documented, not defects):** the guard matches the STATIC,
-attribute-access form. It does NOT catch a bare-name import
-(``from subprocess import run; run(...)``), ``getattr(subprocess, 'run')(...)``,
-a spawn assembled/`eval`-ed from strings, or one hidden behind a helper in a
-module outside the scanned set. A tree audit at adoption found zero bare-name
-subprocess spawns in the scope, so the attribute form is the whole live
-surface; if a bare-name form appears, extend ``find_direct_spawns`` rather than
-allowlisting it.
+attribute-access form on a module named exactly ``subprocess``/``os``. It does
+NOT catch:
+
+* a bare-name import — ``from subprocess import run; run(...)``;
+* an ALIASED import — ``import subprocess as sp; sp.run(...)`` (or
+  ``import os as _os; _os.system(...)``): the detector keys on the base NAME,
+  so an alias reads as an ordinary attribute call;
+* ``getattr(subprocess, 'run')(...)`` or a spawn assembled/``eval``-ed from
+  strings;
+* a spawn hidden behind a helper in a module OUTSIDE the scanned set.
+
+A tree audit at adoption found ZERO bare-name and ZERO aliased subprocess/os
+imports in the bearing set (``from subprocess import`` / ``import subprocess as``
+/ ``import os as`` all return no hits), so the attribute form is the whole live
+surface. If any of these appears, extend ``find_direct_spawns`` (resolve import
+aliases) rather than allowlisting it.
 
 **Allowlist (two parts, integrator ruling):**
 (a) ``NAMED_ALLOWLIST`` — the harness itself plus spawns that genuinely CANNOT
@@ -45,6 +54,7 @@ entirely (they do not import shell_oracle and are not under conformance).
 """
 import ast
 import os
+import sys
 
 import pytest
 
@@ -56,17 +66,22 @@ _SUBPROCESS_SPAWNS = frozenset({"run", "Popen", "call", "check_output",
                                 "check_call"})
 _OS_SPAWNS = frozenset({"system", "popen"})
 
-# The one directory the scan skips: it holds the SYNTHETIC OFFENDER fixture,
-# which is a deliberate spawn used to prove the guard fires.
+# The ONE exact directory the scan skips: it holds the SYNTHETIC OFFENDER
+# fixture, a deliberate spawn used to prove the guard fires.  The skip is
+# EXACT-PATH, not name-based: a directory merely NAMED oracle_spawn_fixtures
+# elsewhere in the tree (e.g. tests/conformance/oracle_spawn_fixtures/) is
+# scanned normally, so an offender cannot hide by borrowing the name (round-1
+# verification planted exactly that and it went undetected under the old
+# name-based skip).
 _FIXTURE_DIR = "oracle_spawn_fixtures"
+_FIXTURE_REL = f"unit/tooling/{_FIXTURE_DIR}"
 
 # The allowlist has TWO parts (integrator ruling, slot 1.2). The census finding
 # it rests on: the bearing set is 95/95 differential MODULES (36 conformance +
 # 59 shell_oracle importers, every one comparing against bash) — there are NO
 # psh-only-only spawner modules in scope (the ~70 CLAUDE.md exec/fd/lifecycle
 # psh-only modules do not import shell_oracle and are not under conformance, so
-# they are OUTSIDE this guard entirely). So (b) holds only the single psh-only
-# RESIDUAL spawn-site left after migration.
+# they are OUTSIDE this guard entirely). So (b) is empty.
 
 # (a) NAMED allowlist: the harness itself + spawns that genuinely CANNOT go
 # through the run-to-completion runner. owner + reason + removal condition each.
@@ -118,6 +133,21 @@ PSH_ONLY_REGISTRY: dict = {}
 # split is documentation of WHY each is approved.
 ALLOWLIST = {**NAMED_ALLOWLIST, **PSH_ONLY_REGISTRY}
 
+# FROZEN MEMBERSHIP — the census-justified set, pinned literally.  Growth
+# refusal must be MECHANICAL, not prose: round-1 verification proved that a
+# bogus ALLOWLIST entry plus an injected real spawn passed the guard silently,
+# because "growth-refusing" lived only in a comment.  With this pin, adding an
+# entry fails ``test_allowlist_membership_is_frozen`` until the author ALSO
+# edits this expected set — a visible two-place change the reviewer sees.
+_EXPECTED_NAMED_ALLOWLIST = frozenset({
+    "harness/shell_oracle.py",
+    "integration/job_control/test_exit_trap_paths.py",
+    "system/test_script_input_sources.py",
+    "system/test_stdin_startup_robustness.py",
+    "system/test_stdin_script_lazy_read.py",
+})
+_EXPECTED_PSH_ONLY_REGISTRY: frozenset = frozenset()
+
 
 def _imports_shell_oracle(tree):
     """True iff *tree* really imports shell_oracle (not just mentions it)."""
@@ -152,11 +182,16 @@ def find_direct_spawns(src):
 def iter_oracle_bearing_modules():
     """Yield (rel, path, src) for every oracle-bearing module in scope.
 
-    Skips the fixtures dir (the synthetic offender lives there by design).
+    Skips ONLY the exact tooling fixture directory (``_FIXTURE_REL``), where the
+    synthetic offender lives by design. A same-named directory anywhere else is
+    scanned normally — see ``test_only_the_exact_fixture_path_is_skipped``.
     """
     for dirpath, dirnames, filenames in os.walk(TESTS_ROOT):
-        dirnames[:] = [d for d in dirnames
-                       if d not in ("__pycache__", _FIXTURE_DIR)]
+        rel_dir = os.path.relpath(dirpath, TESTS_ROOT).replace(os.sep, "/")
+        dirnames[:] = [
+            d for d in dirnames
+            if d != "__pycache__"
+            and f"{rel_dir}/{d}".lstrip("./") != _FIXTURE_REL]
         for fn in sorted(filenames):
             if not fn.endswith(".py"):
                 continue
@@ -211,6 +246,27 @@ def test_allowlist_entries_still_spawn(rel):
         "entry (the guard is shrinking).")
 
 
+def test_allowlist_membership_is_frozen():
+    """MECHANICAL growth refusal: the allowlist is EXACTLY the census-justified
+    set. Adding (or silently swapping) an entry fails here until the expected
+    set is edited too — so allowlist growth is a visible, reviewable two-place
+    change instead of a one-line slip. Shrinking is equally pinned: removing a
+    genuine entry must be accompanied by removing it here (and
+    ``test_allowlist_entries_still_spawn`` forces removal once a file stops
+    spawning).
+    """
+    assert set(NAMED_ALLOWLIST) == set(_EXPECTED_NAMED_ALLOWLIST), (
+        "NAMED_ALLOWLIST membership changed. Unexpected additions: "
+        f"{sorted(set(NAMED_ALLOWLIST) - _EXPECTED_NAMED_ALLOWLIST)}; "
+        f"missing: {sorted(_EXPECTED_NAMED_ALLOWLIST - set(NAMED_ALLOWLIST))}. "
+        "An addition needs a recorded justification (owner + reason + removal "
+        "condition) AND an edit to _EXPECTED_NAMED_ALLOWLIST.")
+    assert set(PSH_ONLY_REGISTRY) == set(_EXPECTED_PSH_ONLY_REGISTRY), (
+        "PSH_ONLY_REGISTRY membership changed (it is INTENTIONALLY EMPTY — the "
+        "bearing set is 95/95 differential). A new psh-only raw spawner must be "
+        "justified here AND added to _EXPECTED_PSH_ONLY_REGISTRY.")
+
+
 def test_allowlist_parts_are_disjoint_and_complete():
     """The two documented parts partition the allowlist (no module in both,
     nothing outside them). Part (a) = NAMED un-runnerable + the harness; part
@@ -250,6 +306,38 @@ def test_guard_fires_on_synthetic_offender_fixture():
     assert any(k == "subprocess.run" for _, k in hits)
 
 
+def test_only_the_exact_fixture_path_is_skipped(tmp_path, monkeypatch):
+    """A directory that merely BORROWS the fixture name elsewhere in the tree is
+    still scanned — an offender cannot hide by naming its folder
+    ``oracle_spawn_fixtures``.
+
+    Round-1 verification planted an offender in
+    ``tests/conformance/oracle_spawn_fixtures/`` and the old NAME-based skip let
+    it through. This replays that attack against the exact-path skip, in a
+    throwaway tree so the real suite is untouched.
+    """
+    fake_root = tmp_path / "tests"
+    # The legitimate skipped location (must stay skipped)...
+    legit = fake_root / "unit" / "tooling" / _FIXTURE_DIR
+    legit.mkdir(parents=True)
+    (legit / "offender_module.py").write_text(
+        "import subprocess\nfrom shell_oracle import is_comparable\n"
+        "subprocess.run(['x'])\n")
+    # ...and the IMPOSTOR borrowing the name elsewhere (must be scanned).
+    impostor = fake_root / "conformance" / _FIXTURE_DIR
+    impostor.mkdir(parents=True)
+    (impostor / "sneaky.py").write_text(
+        "import subprocess\nsubprocess.run(['x'])\n")
+
+    monkeypatch.setattr(sys.modules[__name__], "TESTS_ROOT", str(fake_root))
+    scanned = {rel for rel, _, _ in iter_oracle_bearing_modules()}
+    assert f"unit/tooling/{_FIXTURE_DIR}/offender_module.py" not in scanned, (
+        "the exact tooling fixture path must stay skipped")
+    assert f"conformance/{_FIXTURE_DIR}/sneaky.py" in scanned, (
+        "a same-named directory elsewhere must NOT be skipped — an offender "
+        "could hide there (round-1 verification finding)")
+
+
 def test_fixture_dir_is_excluded_from_the_scan():
     """The offender fixture must NOT appear in the scanned set (else it would
     fail the real guard)."""
@@ -284,6 +372,33 @@ def test_detector_catches_each_spawn_form():
     kinds = {k for _, k in find_direct_spawns(snippet)}
     assert kinds == {"subprocess.run", "subprocess.Popen",
                      "subprocess.check_output", "os.system", "os.popen"}
+
+
+def test_growth_face_a_bogus_allowlist_entry_is_refused(monkeypatch):
+    """THIRD offender face (round-1 blocker): allowlist GROWTH itself.
+
+    The attack the verifier ran: add a bogus ALLOWLIST entry for a module and
+    inject a real spawn into it — under prose-only growth refusal the guard
+    stayed green. Replayed here: mutating NAMED_ALLOWLIST now trips the frozen
+    membership pin, so the growth is refused mechanically.
+    """
+    mod = sys.modules[__name__]
+    real_named, real_registry = dict(NAMED_ALLOWLIST), dict(PSH_ONLY_REGISTRY)
+
+    # Face 1: an added NAMED entry (the verifier's exact attack).
+    grown = dict(real_named)
+    grown["conformance/bash/test_nounset_operators_conformance.py"] = "bogus"
+    monkeypatch.setattr(mod, "NAMED_ALLOWLIST", grown)
+    monkeypatch.setattr(mod, "PSH_ONLY_REGISTRY", real_registry)
+    with pytest.raises(AssertionError, match="membership changed"):
+        test_allowlist_membership_is_frozen()
+
+    # Face 2: growth of the psh-only registry half.
+    monkeypatch.setattr(mod, "NAMED_ALLOWLIST", real_named)
+    monkeypatch.setattr(mod, "PSH_ONLY_REGISTRY",
+                        {"unit/builtins/test_let.py": "bogus"})
+    with pytest.raises(AssertionError, match="membership changed"):
+        test_allowlist_membership_is_frozen()
 
 
 def test_detector_catches_both_offender_faces():

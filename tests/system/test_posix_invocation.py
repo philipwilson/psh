@@ -9,20 +9,57 @@ Cross-release check (v0.673): the ``--posix`` flag and POSIXLY_CORRECT must
 reach the SAME posix option the special-builtin exit-on-error policy reads, so
 a special-builtin usage error exits a non-interactive shell under either.
 """
+import os
+import sys
+
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import (
+    hermetic_shell_env,
+    is_comparable,
+    resolve_bash,
+    run_shell_case,
+    try_resolve_bash,
+)
 
 _ORACLE = try_resolve_bash()
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))
+
+
+def _case_env(env_extra, *, pythonpath):
+    """Hermetic child env with POSIXLY_CORRECT REMOVED unless the case sets it.
+
+    Load-bearing, and why these helpers build the env themselves instead of
+    using ``run_psh``/``run_bash``: bash treats POSIXLY_CORRECT as posix-ON when
+    it is merely PRESENT — even set to the empty string — so an inherited
+    ``POSIXLY_CORRECT`` from the developer's shell would silently flip the
+    "posix off when absent" rows. ``hermetic_shell_env`` strips locale and
+    DISPLAY but not this, and a case env can only ADD keys, so the variable is
+    deleted explicitly here (matching the pre-migration ``_BASE_ENV``, which
+    filtered it out alongside DISPLAY/XAUTHORITY).
+    """
+    env = hermetic_shell_env()
+    env.pop("POSIXLY_CORRECT", None)
+    env.pop("PYTHONPATH", None)
+    if pythonpath:
+        env["PYTHONPATH"] = str(REPO_ROOT)
+    if env_extra:
+        env.update(env_extra)
+    return env
 
 
 def _psh(*args, env_extra=None, cwd=None):
-    r = run_psh(list(args), env=env_extra, cwd=cwd, timeout=15)
+    r = run_shell_case([sys.executable, "-m", "psh", *args],
+                       env=_case_env(env_extra, pythonpath=True),
+                       cwd=cwd, timeout=15)
     assert is_comparable(r), r
     return r
 
 
 def _bash(*args, env_extra=None, cwd=None):
-    r = run_bash(list(args), env=env_extra, cwd=cwd, timeout=15)
+    r = run_shell_case([resolve_bash().path, *args],
+                       env=_case_env(env_extra, pythonpath=False),
+                       cwd=cwd, timeout=15)
     assert is_comparable(r), r
     return r
 
