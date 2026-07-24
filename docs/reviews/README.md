@@ -23,6 +23,9 @@ The few documents worth reading as current truth:
 
 | Document | Why it's live |
 |----------|---------------|
+| [ground_up_reappraisal_22_correctness_textbook_2026-07-20](ground_up_reappraisal_22_correctness_textbook_2026-07-20.md) | The **latest** whole-repo audit (@ v0.749.0, correctness + textbook) — 10 HIGH / 16 MEDIUM findings; every claim tested by the integrator reproduced at v0.750.0. Drives the active Boundary Remediation Campaign. |
+| [boundary_remediation_integrator_plan_2026-07-21](boundary_remediation_integrator_plan_2026-07-21.md) | The **active campaign's operating plan** (launched 2026-07-24): authority order, amendments A1–A12 + AM-1, roles, verification standard. Evidence: [evidence/boundary_remediation_2026-07/](evidence/boundary_remediation_2026-07/LEDGER.md). |
+| [boundary_remediation_campaign_sequence_2026-07-21](boundary_remediation_campaign_sequence_2026-07-21.md) | The active campaign's wave structure, standing rules 1–10, and finding-ownership map (adopted by the integrator plan, which governs where they differ). |
 | [ground_up_reappraisal_19_textbook_2026-07-10](ground_up_reappraisal_19_textbook_2026-07-10.md) | The **latest** whole-repo audit (@ v0.687.0) — textbook-quality edition grading elegance/clarity/efficiency (not bash compatibility); 16 auditors + 16 adversarial verifiers, 362 findings, cross-package twin ledger. |
 | [reappraisal_19_campaign_briefs_2026-07-11](reappraisal_19_campaign_briefs_2026-07-11.md) | The **active campaign plan** for the #19 findings: dev briefs for every HIGH/MED cluster (dead-code sweep first, then twin convergence), standing dev rules, wave sequencing, ledger template. |
 | [ground_up_reappraisal_18_2026-07-04](ground_up_reappraisal_18_2026-07-04.md) | The latest **correctness-focused** ground-up audit (@ v0.617.0) — canonical for bash-compatibility standing; #19 covers code health. |
@@ -42,6 +45,7 @@ Design notes whose work has shipped; kept to record the decision.
 
 | Document | Outcome |
 |----------|---------|
+| [boundary_campaign_briefs_2026-07-16](boundary_campaign_briefs_2026-07-16.md) | Operating brief of the Boundary Integrity campaign (v0.725.0–v0.750.0, PRs #471–#496); reclassified an implementation milestone — see the 2026-07-24 addendum in [boundary_campaign_close_2026-07](boundary_campaign_close_2026-07.md). |
 | [rd_parser_root_shape_compatibility_analysis_2026-07-04](rd_parser_root_shape_compatibility_analysis_2026-07-04.md) | Canonical `Program` AST root; shipped v0.647.0. |
 | [tests_documentation_appraisal_2026-07-06](tests_documentation_appraisal_2026-07-06.md) | Tests/docs truth-alignment; shipped v0.664.0 (claims requalified, no-assert probes converted, real `--quick` tier, generated stats); runtime items continue via the 2026-07-07 performance appraisal. |
 | [builtins_subsystem_appraisal_2026-07-06](builtins_subsystem_appraisal_2026-07-06.md) | Findings shipped across v0.657–v0.663 (VariableStore, resolver, input service, contracts cluster); POSIX exit-matrix follow-up tracked with its own live matrix doc. |
