@@ -11,22 +11,21 @@ tests pin psh's exact message and cross-check that bash on the same host
 produces the same reason phrase and exit code.
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable
+from shell_oracle import run_bash as _run_bash
+from shell_oracle import run_psh as _run_psh
 
 
 def run_psh(cmd, timeout=15):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True, timeout=timeout)
+    r = _run_psh(['-c', cmd], timeout=timeout)
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash(cmd, timeout=15):
-    return subprocess.run([BASH, '-c', cmd],
-                          capture_output=True, text=True, timeout=timeout)
+    r = _run_bash(['-c', cmd], timeout=timeout)
+    assert is_comparable(r), r
+    return r
 
 
 class TestExecFailureWording:

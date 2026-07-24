@@ -13,24 +13,21 @@ These tests run the same scripts under bash, psh --parser rd, and
 psh --parser combinator and require all three to agree.
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
-
-PSH = [sys.executable, '-m', 'psh']
+from shell_oracle import is_comparable
+from shell_oracle import run_bash as _run_bash
+from shell_oracle import run_psh as _run_psh
 
 
 def run_bash(cmd, cwd=None):
-    return subprocess.run([BASH, '-c', cmd], capture_output=True,
-                          text=True, cwd=cwd)
+    r = _run_bash(['-c', cmd], cwd=cwd)
+    assert is_comparable(r), r
+    return r
 
 
 def run_psh(cmd, parser, cwd=None):
-    return subprocess.run(PSH + ['--parser', parser, '-c', cmd],
-                          capture_output=True, text=True, cwd=cwd)
+    r = _run_psh(['--parser', parser, '-c', cmd], cwd=cwd)
+    assert is_comparable(r), r
+    return r
 
 
 def assert_three_way(cmd, cwd=None):

@@ -25,54 +25,46 @@ pinned as a divergence at the bottom, not in the match matrix.
 """
 
 import os
-import subprocess
-import sys
 import tempfile
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
 
-BASH = resolve_bash().path
+_ORACLE = try_resolve_bash()
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
-_ENV = dict(os.environ, PYTHONPATH=_ROOT)
-_PSH = [sys.executable, "-m", "psh"]
 
 
-def _run(argv, stdin=None):
-    return subprocess.run(argv, capture_output=True, text=True, timeout=30,
-                          cwd=_ROOT, env=_ENV,
-                          input=stdin,
-                          stdin=None if stdin is not None else subprocess.DEVNULL)
-
-
-def _run_channel(base, script, channel):
-    """base is the psh/bash argv prefix; run `script` through `channel`."""
+def _run_channel(runner, script, channel, *, is_psh):
+    """runner is run_psh/run_bash; run `script` through `channel`."""
     if channel == "c":
-        return _run(base + ["-c", script])
-    if channel == "stdin":
-        return _run(base, stdin=script + "\n")
-    if channel == "validate":
-        flag = "--validate" if base is _PSH else "-n"
-        return _run(base + [flag, "-c", script])
-    if channel == "file":
+        r = runner(["-c", script], cwd=_ROOT, timeout=30)
+    elif channel == "stdin":
+        r = runner([], stdin_data=script + "\n", cwd=_ROOT, timeout=30)
+    elif channel == "validate":
+        flag = "--validate" if is_psh else "-n"
+        r = runner([flag, "-c", script], cwd=_ROOT, timeout=30)
+    elif channel == "file":
         with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False,
                                          dir=os.path.join(_ROOT, "tmp")) as f:
             f.write(script + "\n")
             path = f.name
         try:
-            return _run(base + [path])
+            r = runner([path], cwd=_ROOT, timeout=30)
         finally:
             os.unlink(path)
-    raise ValueError(channel)
+    else:
+        raise ValueError(channel)
+    assert is_comparable(r), r
+    return r
 
 
 def _psh(script, channel):
-    return _run_channel(_PSH, script, channel)
+    return _run_channel(run_psh, script, channel, is_psh=True)
 
 
 def _bash(script, channel):
-    return _run_channel([BASH], script, channel)
+    return _run_channel(run_bash, script, channel, is_psh=False)
 
 
 _CHANNELS = ["c", "file", "stdin", "validate"]
@@ -107,7 +99,7 @@ _REJECT = {
 }
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("channel", _CHANNELS)
 @pytest.mark.parametrize("cid", list(_REJECT), ids=list(_REJECT))
 def test_reject_matches_bash_timing(cid, channel):
@@ -148,7 +140,7 @@ _ACCEPT = {
 }
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("channel", ["c", "file", "stdin"])
 @pytest.mark.parametrize("cid", list(_ACCEPT), ids=list(_ACCEPT))
 def test_accept_matches_bash(cid, channel):
@@ -160,7 +152,7 @@ def test_accept_matches_bash(cid, channel):
 
 
 # ---- Backtick timing tuple (Ruling 2c): non-fatal, empty, command runs, rc 0.
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_backtick_inner_error_is_nonfatal_and_continues():
     """`echo x`if`y` runs echo (prints "xy"), the backtick yields empty, exit 0,
     and a diagnostic goes to stderr — bash's deferred-backtick policy, matched."""
@@ -172,7 +164,7 @@ def test_backtick_inner_error_is_nonfatal_and_continues():
 
 
 # ---- Documented divergence: eval/source frame fatality (carried to I3).
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_divergence_eval_source_fatality_is_i3():
     """A substitution-body syntax error inside an eval BODY ABORTS the enclosing
     -c script in bash (rc 127, AFTER absent); psh continues (AFTER prints — its

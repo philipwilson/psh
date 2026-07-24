@@ -21,25 +21,10 @@ files (no bare-sleep races); the job_control path is auto-marked serial by
 conftest.
 """
 
-import os
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-# psh is an editable install pointing at the MAIN tree; a subprocess
-# `python -m psh` launched with a foreign cwd would import MAIN, not this
-# worktree. Prepend the worktree root so the subprocess always exercises the
-# code under test (campaign env gotcha).
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-
-
-def _env_with_worktree():
-    env = os.environ.copy()
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = _REPO_ROOT + (os.pathsep + existing if existing else "")
-    return env
+from shell_oracle import is_comparable
+from shell_oracle import run_bash as _run_bash
+from shell_oracle import run_psh as _run_psh
 
 # A busy-wait-with-cap helper injected into every script: poll for a marker
 # file so nothing spins forever and no bare sleep races a fork.
@@ -53,23 +38,23 @@ waitfor() {  # waitfor FILE  -- poll up to ~6s for FILE to exist
 '''
 
 
-def _run(shell_argv, script, tmp_path, stdin=None):
+def _run(runner, script, tmp_path, stdin=None):
     d = tmp_path / "sync"
     d.mkdir(exist_ok=True)
     full = f'D="{d}"\n' + PRELUDE + script
     path = tmp_path / "case.sh"
     path.write_text(full)
-    return subprocess.run(shell_argv + [str(path)], capture_output=True,
-                          text=True, timeout=30, input=stdin,
-                          env=_env_with_worktree())
+    r = runner([str(path)], stdin_data=stdin, timeout=30)
+    assert is_comparable(r), r
+    return r
 
 
 def run_psh(script, tmp_path, stdin=None):
-    return _run([sys.executable, '-m', 'psh'], script, tmp_path, stdin)
+    return _run(_run_psh, script, tmp_path, stdin)
 
 
 def run_bash(script, tmp_path, stdin=None):
-    return _run([resolve_bash().path], script, tmp_path, stdin)
+    return _run(_run_bash, script, tmp_path, stdin)
 
 
 # Body templates: install a SIG trap that records a marker to break a capped

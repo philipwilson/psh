@@ -11,17 +11,16 @@ same full delimiter.
 Heredocs need real fds, so these run psh in a subprocess and compare to bash.
 """
 
-import subprocess
-import sys
-
-
 def run(script):
-    return subprocess.run([sys.executable, '-m', 'psh'], input=script,
-                          capture_output=True, text=True)
+    r = run_psh([], stdin_data=script)
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash(script):
-    return subprocess.run([BASH], input=script, capture_output=True, text=True)
+    r = _run_bash([], stdin_data=script)
+    assert is_comparable(r), r
+    return r
 
 
 CASES = [
@@ -39,9 +38,8 @@ CASES = [
 
 
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_psh
+from shell_oracle import run_bash as _run_bash
 
 
 @pytest.mark.parametrize('script,expected',

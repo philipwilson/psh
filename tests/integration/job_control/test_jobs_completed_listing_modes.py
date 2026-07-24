@@ -17,49 +17,49 @@ pin the exact mode-dependent text, including that an argument-less builtin lists
 as `false` with no trailing space. Subprocess + timeout; serial-by-path.
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 TIMEOUT = 15
 
 
 def _bash_c(s):
-    return subprocess.run([BASH, '-c', s], capture_output=True, text=True,
-                          timeout=TIMEOUT).stdout
+    r = run_bash(['-c', s], timeout=TIMEOUT)
+    assert is_comparable(r), r
+    return r.stdout
 
 
 def _psh_c(s):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', s],
-                          capture_output=True, text=True, timeout=TIMEOUT).stdout
+    r = run_psh(['-c', s], timeout=TIMEOUT)
+    assert is_comparable(r), r
+    return r.stdout
 
 
-def _script(exe, s, tmp_path):
+def _script(runner, s, tmp_path):
     f = tmp_path / "job.sh"
     f.write_text(s + "\n")
-    return subprocess.run(exe + [str(f)], capture_output=True, text=True,
-                          timeout=TIMEOUT).stdout
+    r = runner([str(f)], timeout=TIMEOUT)
+    assert is_comparable(r), r
+    return r.stdout
 
 
 def _bash_script(s, tmp_path):
-    return _script([BASH], s, tmp_path)
+    return _script(run_bash, s, tmp_path)
 
 
 def _psh_script(s, tmp_path):
-    return _script([sys.executable, '-m', 'psh'], s, tmp_path)
+    return _script(run_psh, s, tmp_path)
 
 
 def _bash_stdin(s):
-    return subprocess.run([BASH], input=s + "\n", capture_output=True,
-                          text=True, timeout=TIMEOUT).stdout
+    r = run_bash([], stdin_data=s + "\n", timeout=TIMEOUT)
+    assert is_comparable(r), r
+    return r.stdout
 
 
 def _psh_stdin(s):
-    return subprocess.run([sys.executable, '-m', 'psh'], input=s + "\n",
-                          capture_output=True, text=True, timeout=TIMEOUT).stdout
+    r = run_psh([], stdin_data=s + "\n", timeout=TIMEOUT)
+    assert is_comparable(r), r
+    return r.stdout
 
 
 # A finished BUILTIN (false/true) and a finished EXTERNAL, framed by markers.

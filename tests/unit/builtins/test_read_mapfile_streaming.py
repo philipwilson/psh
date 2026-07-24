@@ -16,41 +16,29 @@ expiry timeout. Subprocess is required: the drain/leftover cases need a real
 descriptor shared between two consumers.
 """
 
-import os
-import signal
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-PSH = [sys.executable, "-m", "psh"]
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
-def _run(argv, script, stdin_bytes, timeout=10):
-    """Run ``argv -c script`` feeding stdin_bytes; kill the group on expiry."""
-    p = subprocess.Popen(
-        argv + ["-c", script],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        start_new_session=True)
-    try:
-        out, err = p.communicate(input=stdin_bytes, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        os.killpg(os.getpgid(p.pid), signal.SIGKILL)
-        p.communicate()
-        raise
-    return p.returncode, out, err
+def _run(runner, script, stdin_bytes, timeout=10):
+    """Run ``runner -c script`` feeding stdin_bytes; return (rc, out, err) bytes."""
+    r = runner(["-c", script], stdin_data=stdin_bytes, timeout=timeout)
+    assert is_comparable(r), r
+    # The runner decodes captures as UTF-8 + surrogateescape (lossless); recover
+    # the exact bytes for the byte-level assertions below.
+    return (r.returncode,
+            r.stdout.encode("utf-8", "surrogateescape"),
+            r.stderr.encode("utf-8", "surrogateescape"))
 
 
 def _psh(script, stdin_bytes, timeout=10):
-    return _run(PSH, script, stdin_bytes, timeout)
+    return _run(run_psh, script, stdin_bytes, timeout)
 
 
 def _both_match(script, stdin_bytes):
     """Assert psh and bash agree on (returncode, stdout)."""
-    pr, po, _ = _run(PSH, script, stdin_bytes)
-    br, bo, _ = _run([BASH], script, stdin_bytes)
+    pr, po, _ = _run(run_psh, script, stdin_bytes)
+    br, bo, _ = _run(run_bash, script, stdin_bytes)
     assert (pr, po) == (br, bo), (
         f"script={script!r} stdin={stdin_bytes!r}\n"
         f"  psh : rc={pr} out={po!r}\n  bash: rc={br} out={bo!r}")

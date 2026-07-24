@@ -25,12 +25,11 @@ behavior. Both parsers are exercised for representative rows via
 exercised for two representative rows (same grammar path, different drivers).
 """
 
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 from conformance_framework import ConformanceTest
+from shell_oracle import is_comparable, run_psh
 
 _REPO = Path(__file__).resolve().parents[3]
 
@@ -182,9 +181,9 @@ class TestKeywordBoundaryModesAndParsers(_KeywordBoundaryBase):
     """Mode variation (-c/script/stdin) and combinator-parser representatives."""
 
     def _psh(self, argv_extra, stdin_data=None):
-        return subprocess.run(
-            [sys.executable, "-m", "psh", *argv_extra],
-            input=stdin_data, capture_output=True, text=True, cwd=_REPO)
+        r = run_psh([*argv_extra], stdin_data=stdin_data, cwd=_REPO)
+        assert is_comparable(r), r
+        return r
 
     def test_bare_in_all_input_modes(self):
         # -c mode is covered above; script and stdin drive the same grammar.

@@ -14,18 +14,13 @@ The rows are batched into ONE script per bucket and each shell is spawned once
 per bucket (fast, truly differential). It is designed to pass UNCHANGED before
 and after the engine flip — proving the reroute is behaviour-preserving.
 """
-import os
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import try_resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
 
 _ORACLE = try_resolve_bash()
-BASH = _ORACLE.path if _ORACLE else None
-PSH = [sys.executable, "-m", "psh"]
 
-pytestmark = pytest.mark.skipif(BASH is None, reason="bash oracle not available")
+pytestmark = pytest.mark.skipif(_ORACLE is None,
+                                reason="bash oracle not available")
 
 
 # (id, subject, pattern, quoted). quoted=True wraps the pattern in double quotes
@@ -136,13 +131,10 @@ def _render(rid, subj, pat, quoted):
     ]
 
 
-def _run(shell, script, env_extra=None, cwd=None):
-    env = dict(os.environ)
-    if env_extra:
-        env.update(env_extra)
-    sh = shell if isinstance(shell, list) else [shell]
-    return subprocess.run(sh + ["-c", script], capture_output=True, text=True,
-                          env=env, cwd=cwd, stdin=subprocess.DEVNULL, timeout=90)
+def _run(runner, script, env_extra=None, cwd=None):
+    r = runner(["-c", script], env=env_extra, cwd=cwd, timeout=90)
+    assert is_comparable(r), r
+    return r
 
 
 def _tags(out):
@@ -151,8 +143,8 @@ def _tags(out):
 
 def _compare(script, env_extra=None, cwd=None):
     """Run script in bash and psh; return (bash_tags, psh_tags, unexpected)."""
-    b = _run(BASH, script, env_extra, cwd)
-    p = _run(PSH, script, env_extra, cwd)
+    b = _run(run_bash, script, env_extra, cwd)
+    p = _run(run_psh, script, env_extra, cwd)
     bt, pt = _tags(b.stdout), _tags(p.stdout)
     unexpected = [(k, bt.get(k), pt.get(k)) for k in bt
                   if bt.get(k) != pt.get(k) and k not in KNOWN_DIVERGENCES]
@@ -188,8 +180,8 @@ def test_known_divergences_are_still_divergent():
               "s=''; printf 'neg7_sub3=%s\\n' \"${s/#!(x)/Z}\"\n"
               # The SUFFIX form is NOT part of the quirk: bash and psh agree.
               "s=''; printf 'q4_sub4=%s\\n' \"${s/%?(x)/Z}\"\n")
-    bt = _tags(_run(BASH, script, {"LC_ALL": "C"}).stdout)
-    pt = _tags(_run(PSH, script, {"LC_ALL": "C"}).stdout)
+    bt = _tags(_run(run_bash, script, {"LC_ALL": "C"}).stdout)
+    pt = _tags(_run(run_psh, script, {"LC_ALL": "C"}).stdout)
     for k in ("q4_sub1", "q4_sub2", "q4_sub3", "neg7_sub3"):
         assert bt.get(k) == "" and pt.get(k) == "Z", k
     assert bt.get("q4_sub4") == "Z" and pt.get("q4_sub4") == "Z"

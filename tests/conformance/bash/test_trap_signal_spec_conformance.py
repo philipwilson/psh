@@ -15,11 +15,8 @@ All three spellings now normalize to one canonical key, so they set, fire,
 and query interchangeably. Verified against bash 5.2.
 """
 
-import subprocess
-import sys
-
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 class TestTrapSignalSpecConformance(ConformanceTest):
@@ -37,10 +34,10 @@ class TestTrapSignalSpecConformance(ConformanceTest):
         # diagnostic — compared by exit code + stderr substring because the
         # bash `line N:` prefix differs from psh's by design.
         cmd = "trap 'echo x' NOTASIGNAL; echo rc=$?"
-        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                             capture_output=True, text=True)
-        bash = subprocess.run([resolve_bash().path, '-c', cmd],
-                              capture_output=True, text=True)
+        psh = run_psh(['-c', cmd])
+        assert is_comparable(psh), psh
+        bash = run_bash(['-c', cmd])
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == "rc=1\n"
         assert 'invalid signal specification' in psh.stderr
         assert 'invalid signal specification' in bash.stderr
@@ -160,10 +157,10 @@ class TestTrapDisplayConformance(ConformanceTest):
         # stderr prefixes differ (`bash: line N:`), so compare stdout/exit
         # plus the diagnostic substring.
         cmd = "trap -p NOSUCHSIG; echo rc=$?"
-        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                             capture_output=True, text=True)
-        bash = subprocess.run([resolve_bash().path, '-c', cmd],
-                              capture_output=True, text=True)
+        psh = run_psh(['-c', cmd])
+        assert is_comparable(psh), psh
+        bash = run_bash(['-c', cmd])
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == "rc=1\n"
         assert 'NOSUCHSIG: invalid signal specification' in psh.stderr
         assert 'NOSUCHSIG: invalid signal specification' in bash.stderr

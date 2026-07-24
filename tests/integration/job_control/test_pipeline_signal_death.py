@@ -21,22 +21,22 @@ Determinism over realism: the child signals itself. This path is auto-marked
 """
 
 import signal
-import subprocess
-import sys
 
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable
+from shell_oracle import run_bash as _oracle_run_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 
 def run_psh(cmd, timeout=15):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True, timeout=timeout)
+    r = _oracle_run_psh(['-c', cmd], timeout=timeout)
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash(cmd, timeout=15):
-    return subprocess.run([BASH, '-c', cmd],
-                          capture_output=True, text=True, timeout=timeout)
+    r = _oracle_run_bash(['-c', cmd], timeout=timeout)
+    assert is_comparable(r), r
+    return r
 
 
 class TestPipelineLastMemberSignalDeath:

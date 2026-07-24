@@ -9,44 +9,22 @@ Cross-release check (v0.673): the ``--posix`` flag and POSIXLY_CORRECT must
 reach the SAME posix option the special-builtin exit-on-error policy reads, so
 a special-builtin usage error exits a non-interactive shell under either.
 """
-import os
-import subprocess
-import sys
-from pathlib import Path
-
 import pytest
-from shell_oracle import try_resolve_bash
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-# A clean-ish environment: full env for PATH/python, PYTHONPATH to import the
-# worktree's psh, DISPLAY/XAUTHORITY stripped (they can auto-start XQuartz on
-# macOS), and POSIXLY_CORRECT removed so a test controls it explicitly.
-_BASE_ENV = {k: v for k, v in os.environ.items()
-             if k not in ('DISPLAY', 'XAUTHORITY', 'POSIXLY_CORRECT')}
-_BASE_ENV['PYTHONPATH'] = str(REPO_ROOT)
+from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
 
 _ORACLE = try_resolve_bash()
-BASH = _ORACLE.path if _ORACLE else 'bash-oracle-unavailable'
 
 
 def _psh(*args, env_extra=None, cwd=None):
-    env = dict(_BASE_ENV)
-    if env_extra:
-        env.update(env_extra)
-    return subprocess.run([sys.executable, '-m', 'psh', *args],
-                          capture_output=True, text=True, timeout=15,
-                          cwd=cwd, env=env)
+    r = run_psh(list(args), env=env_extra, cwd=cwd, timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(*args, env_extra=None, cwd=None):
-    env = dict(_BASE_ENV)
-    env.pop('PYTHONPATH', None)
-    if env_extra:
-        env.update(env_extra)
-    return subprocess.run([BASH, *args],
-                          capture_output=True, text=True, timeout=15,
-                          cwd=cwd, env=env)
+    r = run_bash(list(args), env=env_extra, cwd=cwd, timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 @pytest.mark.skipif(_ORACLE is None, reason="bash not available")

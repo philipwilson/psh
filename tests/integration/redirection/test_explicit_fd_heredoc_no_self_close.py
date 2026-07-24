@@ -14,21 +14,21 @@ first, so closing the temp object can never reclaim the target fd).
 Heredocs need real OS fds, so these run psh in a subprocess.
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable
+from shell_oracle import run_bash as _oracle_run_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 
 def run(script):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', script],
-                          capture_output=True, text=True)
+    r = _oracle_run_psh(['-c', script])
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash(script):
-    return subprocess.run([BASH, '-c', script], capture_output=True, text=True)
+    r = _oracle_run_bash(['-c', script])
+    assert is_comparable(r), r
+    return r
 
 
 def test_fd3_heredoc_body_delivered():

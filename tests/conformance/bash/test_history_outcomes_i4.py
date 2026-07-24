@@ -16,38 +16,32 @@ F1 banked trap). Bash oracle via resolve_bash() (E2 ratchet). Bounded timeout.
 """
 
 import os
-import subprocess
-import sys
 import tempfile
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
 
-_BASH = resolve_bash()
+_BASH = try_resolve_bash()
 
 pytestmark = pytest.mark.skipif(_BASH is None, reason="no bash oracle")
 
-_PSH_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-
-def _run(argv, lines, env_extra):
+def _run(runner, lines, env_extra):
     with tempfile.TemporaryDirectory() as d:
-        env = {**os.environ, "PS1": "", "PS2": "", "HISTFILE": os.path.join(d, "hf")}
+        env = {"PS1": "", "PS2": "", "HISTFILE": os.path.join(d, "hf")}
         env.update(env_extra)
         script = "".join(line + "\n" for line in lines)
-        p = subprocess.run(argv, input=script, capture_output=True, text=True,
-                           env=env, cwd=d, timeout=30)
-        return p.stdout
+        r = runner(["-i"], stdin_data=script, env=env, cwd=d, timeout=30)
+        assert is_comparable(r), r
+        return r.stdout
 
 
 def _psh(lines):
-    return _run([sys.executable, "-m", "psh", "-i"], lines,
-                {"PYTHONPATH": _PSH_ROOT, "PSH_STRICT_ERRORS": "1"})
+    return _run(run_psh, lines, {"PSH_STRICT_ERRORS": "1"})
 
 
 def _bash(lines):
-    return _run([_BASH.path, "-i"], lines, {})
+    return _run(run_bash, lines, {})
 
 
 # label -> input lines (history dumped last so recording is observable)
@@ -122,10 +116,9 @@ def test_heredoc_body_not_expanded():
 def test_non_interactive_c_never_expands():
     # -c is not the interactive family: bash never bang-expands it (nor does psh).
     script = 'echo one; !!'
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", script],
-                       capture_output=True, text=True,
-                       env={**os.environ, "PYTHONPATH": _PSH_ROOT}, timeout=20)
-    b = subprocess.run([_BASH.path, "-c", script],
-                       capture_output=True, text=True, timeout=20)
+    p = run_psh(["-c", script], timeout=20)
+    b = run_bash(["-c", script], timeout=20)
+    assert is_comparable(p), p
+    assert is_comparable(b), b
     # both run `echo one` then fail on the literal `!!` command.
     assert p.stdout == b.stdout == "one\n"

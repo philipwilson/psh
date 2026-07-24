@@ -8,34 +8,35 @@ script-file case too. The exit code is now command-mode-dependent.
 rather than continue — is tracked separately; this pins the exit code.)
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def run_c(cmd):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True)
+    r = run_psh(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash_c(cmd):
-    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
+    r = run_bash(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 def run_script(tmp_path, body):
     script = tmp_path / "s.sh"
     script.write_text(body)
-    return subprocess.run([sys.executable, '-m', 'psh', str(script)],
-                          capture_output=True, text=True)
+    r = run_psh([str(script)])
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash_script(tmp_path, body):
     script = tmp_path / "b.sh"
     script.write_text(body)
-    return subprocess.run([BASH, str(script)], capture_output=True, text=True)
+    r = run_bash([str(script)])
+    assert is_comparable(r), r
+    return r
 
 
 def test_dash_c_exits_127():

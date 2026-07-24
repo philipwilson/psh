@@ -25,14 +25,15 @@ import subprocess
 import sys
 import time
 
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 BASH = resolve_bash().path
 
 
 def _run(argv, stdin=None):
-    return subprocess.run([sys.executable, '-m', 'psh', *argv],
-                          capture_output=True, text=True, input=stdin)
+    r = run_psh(list(argv), stdin_data=stdin)
+    assert is_comparable(r), r
+    return r
 
 
 def run_psh_c(cmd):
@@ -48,7 +49,9 @@ def run_psh_script(tmp_path, script):
 def run_bash_script(tmp_path, script):
     path = tmp_path / "case_bash.sh"
     path.write_text(script)
-    return subprocess.run([BASH, str(path)], capture_output=True, text=True)
+    r = run_bash([str(path)])
+    assert is_comparable(r), r
+    return r
 
 
 class TestExitTrapScriptFile:

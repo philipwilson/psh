@@ -8,12 +8,7 @@ are bash-compared.
 
 Permanent-fd / exec redirection -> subprocess (this dir is auto-marked serial).
 """
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _cmp(tmp_path, script, stdin=None):
@@ -23,11 +18,10 @@ def _cmp(tmp_path, script, stdin=None):
     pp.write_text(script)
     bp = tmp_path / "bash" / "s.sh"
     bp.write_text(script)
-    psh = subprocess.run([sys.executable, "-m", "psh", str(pp)],
-                         cwd=str(tmp_path / "psh"), input=stdin,
-                         capture_output=True, text=True)
-    bash = subprocess.run([BASH, str(bp)], cwd=str(tmp_path / "bash"),
-                          input=stdin, capture_output=True, text=True)
+    psh = run_psh([str(pp)], cwd=str(tmp_path / "psh"), stdin_data=stdin)
+    assert is_comparable(psh), psh
+    bash = run_bash([str(bp)], cwd=str(tmp_path / "bash"), stdin_data=stdin)
+    assert is_comparable(bash), bash
     return psh, bash
 
 

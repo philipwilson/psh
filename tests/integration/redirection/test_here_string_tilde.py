@@ -7,17 +7,13 @@ literal. psh expanded variables/command-sub/arithmetic in here-strings but
 skipped tilde entirely. Verified against bash 5.2.
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
-def _out(cmd, exe):
-    r = subprocess.run([*exe, cmd], capture_output=True, text=True)
+def _out(cmd, runner):
+    r = runner(['-c', cmd])
+    assert is_comparable(r), r
     return (r.stdout, r.returncode)
 
 
@@ -38,6 +34,6 @@ def _out(cmd, exe):
     'cat <<<$(echo sub)',          # command sub still works (regression)
 ])
 def test_here_string_tilde_matches_bash(cmd):
-    psh = _out(cmd, [sys.executable, '-m', 'psh', '-c'])
-    bash = _out(cmd, [BASH, '-c'])
+    psh = _out(cmd, run_psh)
+    bash = _out(cmd, run_bash)
     assert psh == bash, cmd

@@ -8,17 +8,14 @@ so `g=glob; f(){ declare g; g=x; }; f` leaked `g=x` to the global. bash treats
 (`declare g=val` and `local g` were already correct). Verified vs bash 5.2.
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 
 def run_psh(cmd):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True)
+    r = _oracle_run_psh(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 def test_bare_declare_shadows_outer():
@@ -73,8 +70,8 @@ def test_attribute_accumulation_in_function():
     # declare -u then -l on a declared-but-unset local must accumulate/flip,
     # not reset (bash: -l wins -> lowercase).
     r = run_psh('f(){ declare -u y; declare -l y; y=AbC; echo "$y"; }; f')
-    bash = subprocess.run([BASH, '-c', 'f(){ declare -u y; declare -l y; y=AbC; echo "$y"; }; f'],
-                          capture_output=True, text=True)
+    bash = run_bash(['-c', 'f(){ declare -u y; declare -l y; y=AbC; echo "$y"; }; f'])
+    assert is_comparable(bash), bash
     assert r.stdout == bash.stdout
 
 

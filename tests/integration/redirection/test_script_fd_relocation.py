@@ -23,25 +23,23 @@ below stays bash-verified under the lazy reader.
 Permanent-fd / exec redirection in scripts -> always run psh in a subprocess.
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def run_psh_script(tmp_path, script, name="case.sh"):
     path = tmp_path / name
     path.write_text(script)
-    return subprocess.run([sys.executable, '-m', 'psh', str(path)],
-                          capture_output=True, text=True)
+    r = run_psh([str(path)])
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash_script(tmp_path, script):
     path = tmp_path / "case_bash.sh"
     path.write_text(script)
-    return subprocess.run([BASH, str(path)], capture_output=True, text=True)
+    r = run_bash([str(path)])
+    assert is_comparable(r), r
+    return r
 
 
 def test_exec_close_fd3_in_script(tmp_path):

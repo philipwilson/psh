@@ -10,9 +10,7 @@ Not implemented: @K / @k (associative key/value display).
 """
 
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 class TestQuoteTransform:
@@ -166,11 +164,9 @@ class TestBashParity:
         r"""x='\001a\002'; printf '%s' "${x@P}" """,
     ])
     def test_matches_bash(self, script):
-        import subprocess
-        import sys
-        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', script],
-                             capture_output=True, text=True)
-        bash = subprocess.run([BASH, '-c', script],
-                              capture_output=True, text=True)
+        psh = run_psh(['-c', script])
+        assert is_comparable(psh), psh
+        bash = run_bash(['-c', script])
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode

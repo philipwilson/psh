@@ -7,29 +7,23 @@ bash performs parameter, command, and arithmetic expansion on PS4 on each use
 forever). All five xtrace emission sites now route through
 `ExpansionManager.expand_ps4()`. Pinned against bash 5.2.
 """
-import os
-import subprocess
-import sys
-from pathlib import Path
-
 import pytest
-from shell_oracle import resolve_bash
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
+from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
 
 # The campaign oracle is real bash 5.2; fall back to PATH `bash` otherwise.
-BASH = resolve_bash().path
+_ORACLE = try_resolve_bash()
 
 
 def _psh(cmd):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True, timeout=10, env=ENV)
+    r = run_psh(['-c', cmd], timeout=10)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
-    return subprocess.run([BASH, '-c', cmd],
-                          capture_output=True, text=True, timeout=10)
+    r = run_bash(['-c', cmd], timeout=10)
+    assert is_comparable(r), r
+    return r
 
 
 def test_ps4_expands_lineno():
@@ -62,7 +56,7 @@ def test_ps4_static_value_unchanged():
     assert 'DEBUG: echo a' in r.stderr
 
 
-@pytest.mark.skipif(not BASH, reason="no bash available")
+@pytest.mark.skipif(_ORACLE is None, reason="no bash available")
 @pytest.mark.parametrize("cmd", [
     "PS4='+ ${LINENO}: '\nset -x\necho a\necho b",
     "PS4='[$(echo TAG)] '\nset -x\necho a",

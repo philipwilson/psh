@@ -20,13 +20,10 @@ runner's own fds — which keeps it xdist-safe, so it runs in the parallel
 phase (vetted in campaign #21).
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable
+from shell_oracle import run_bash as _run_bash
+from shell_oracle import run_psh as _run_psh
 
 BAD = '/nonexistent_zz_dir/x'
 
@@ -45,13 +42,15 @@ COMPOUNDS = [
 
 
 def run_psh(cmd, cwd=None):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True, cwd=cwd, timeout=15)
+    r = _run_psh(['-c', cmd], cwd=cwd, timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash(cmd, cwd=None):
-    return subprocess.run([BASH, '-c', cmd], capture_output=True,
-                          text=True, cwd=cwd, timeout=15)
+    r = _run_bash(['-c', cmd], cwd=cwd, timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 @pytest.mark.parametrize('label,compound', COMPOUNDS,

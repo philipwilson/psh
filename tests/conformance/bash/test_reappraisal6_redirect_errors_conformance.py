@@ -18,28 +18,25 @@ so closing fd 1 happens in a real process (never the test runner's own fds).
 """
 
 import os
-import subprocess
-import sys
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
 
 pytestmark = pytest.mark.serial  # spawns subprocesses; closes fds
 
-BASH = resolve_bash().path
+_ORACLE = try_resolve_bash()
 
 
 def _psh(cmd):
-    return subprocess.run(
-        [sys.executable, "-m", "psh", "-c", cmd],
-        capture_output=True, text=True, timeout=30,
-    )
+    r = run_psh(["-c", cmd], timeout=30)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
-    return subprocess.run(
-        [BASH, "-c", cmd], capture_output=True, text=True, timeout=30,
-    )
+    r = run_bash(["-c", cmd], timeout=30)
+    assert is_comparable(r), r
+    return r
 
 
 # --------------------------------------------------------------------------
@@ -59,7 +56,7 @@ _L2_CASES = [
 ]
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd,target,errkey,_external", _L2_CASES)
 def test_redirect_open_failure_message_and_exit(cmd, target, errkey, _external):
     strerror = os.strerror(getattr(__import__("errno"), errkey))
@@ -93,7 +90,7 @@ def test_noclobber_message_not_regressed(tmp_path):
 # L4: exec 1>&- then write -> write error + exit 1, no shutdown leak
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
+@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("writer", ["echo after", 'printf "after\\n"'])
 def test_write_after_closing_stdout(writer):
     cmd = f"echo before; exec 1>&-; {writer}"

@@ -17,12 +17,8 @@ so they self-adjust to the platform (signal numbers like SIGINFO=29, SIGEMT=7
 are BSD-specific on macOS; Linux differs).
 """
 
-import sys
-
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 class TestSignalListing(ConformanceTest):
@@ -84,13 +80,11 @@ class TestSignalListing(ConformanceTest):
     # and the shared message tail rather than full stderr.
 
     def _assert_invalid_spec(self, spec: str):
-        import subprocess
         cmd = f"kill -l {spec}"
-        psh = subprocess.run(
-            [sys.executable, "-m", "psh", "-c", cmd],
-            capture_output=True, text=True)
-        bash = subprocess.run(
-            [BASH, "-c", cmd], capture_output=True, text=True)
+        psh = run_psh(["-c", cmd])
+        assert is_comparable(psh), psh
+        bash = run_bash(["-c", cmd])
+        assert is_comparable(bash), bash
         assert psh.returncode == bash.returncode == 1
         assert psh.stdout == bash.stdout == ""
         msg = f"{spec}: invalid signal specification"

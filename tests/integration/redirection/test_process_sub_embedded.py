@@ -22,13 +22,11 @@ shell), matching test_process_sub_cleanup.py.
 
 import functools
 import re
-import subprocess
 import sys
 
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 
 @functools.lru_cache(maxsize=1)
@@ -41,30 +39,25 @@ def _os_supports_affixed_write_side() -> bool:
     "Operation not permitted" — the behavior under test is then OS-level
     untestable, so the dependent test skips instead of failing.
     """
-    try:
-        probe = subprocess.run(
-            [BASH, '-c',
-             'echo data | tee /.>(cat >/dev/null) >/dev/null'],
-            capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.TimeoutExpired):
+    probe = run_bash(['-c', 'echo data | tee /.>(cat >/dev/null) >/dev/null'],
+                     timeout=10)
+    if not is_comparable(probe):
         return False
     return probe.returncode == 0 and not probe.stderr.strip()
 
 
-def run_psh(cmd: str, timeout: float = 15.0) -> subprocess.CompletedProcess:
+def run_psh(cmd, timeout=15.0):
     """Run a command in a fresh psh process."""
-    return subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', cmd],
-        capture_output=True, text=True, timeout=timeout,
-    )
+    r = _oracle_run_psh(['-c', cmd], timeout=timeout)
+    assert is_comparable(r), r
+    return r
 
 
-def run_psh_combinator(cmd: str, timeout: float = 15.0) -> subprocess.CompletedProcess:
+def run_psh_combinator(cmd, timeout=15.0):
     """Run a command in a fresh psh process using the combinator parser."""
-    return subprocess.run(
-        [sys.executable, '-m', 'psh', '--parser', 'combinator', '-c', cmd],
-        capture_output=True, text=True, timeout=timeout,
-    )
+    r = _oracle_run_psh(['--parser', 'combinator', '-c', cmd], timeout=timeout)
+    assert is_comparable(r), r
+    return r
 
 
 class TestEmbeddedProcessSubstitution:

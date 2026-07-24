@@ -16,18 +16,21 @@ verified against bash 5.2.
 """
 
 import re
-import subprocess
-import sys
 
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
-
-PSH = [sys.executable, '-m', 'psh', '-c']
-BASH = [resolve_bash().path, '-c']
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
-def _run(argv, command):
-    return subprocess.run(argv + [command], capture_output=True, text=True)
+def _run_psh(command):
+    r = run_psh(['-c', command])
+    assert is_comparable(r), r
+    return r
+
+
+def _run_bash(command):
+    r = run_bash(['-c', command])
+    assert is_comparable(r), r
+    return r
 
 
 def _error_tail(stderr):
@@ -103,8 +106,8 @@ class TestBadSubstitutionRejected:
 
     def test_rejected_cases_match_bash(self):
         for command in self.BAD_CASES:
-            bash = _run(BASH, command)
-            psh = _run(PSH, command)
+            bash = _run_bash(command)
+            psh = _run_psh(command)
             assert bash.returncode == 1, f"bash unexpected for {command!r}: {bash.stderr}"
             assert psh.returncode == bash.returncode, (
                 f"exit mismatch for {command!r}: bash={bash.returncode} psh={psh.returncode}")
@@ -121,14 +124,14 @@ class TestBadSubstitutionRejected:
     def test_reported_at_runtime_not_parse(self):
         # bash reports bad substitution at runtime: an earlier command runs.
         command = "echo before; echo ${}; echo after"
-        bash = _run(BASH, command)
-        psh = _run(PSH, command)
+        bash = _run_bash(command)
+        psh = _run_psh(command)
         assert psh.stdout == bash.stdout == "before\n"
         assert psh.returncode == bash.returncode == 1
 
     def test_not_taken_branch_does_not_error(self):
         command = "if false; then echo ${}; fi; echo reached"
-        bash = _run(BASH, command)
-        psh = _run(PSH, command)
+        bash = _run_bash(command)
+        psh = _run_psh(command)
         assert psh.stdout == bash.stdout == "reached\n"
         assert psh.returncode == bash.returncode == 0
