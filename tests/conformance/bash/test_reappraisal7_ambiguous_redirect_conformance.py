@@ -17,11 +17,11 @@ the external-command (forked child) path is exercised as a real process.
 """
 
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 pytestmark = pytest.mark.serial  # spawns subprocesses
 
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 
 
 def _psh(cmd):
@@ -60,7 +60,6 @@ _AMBIGUOUS_CASES = [
 ]
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd,word", _AMBIGUOUS_CASES)
 def test_ambiguous_redirect_exit_and_message(cmd, word):
     p = _psh(cmd)
@@ -79,7 +78,6 @@ def test_ambiguous_redirect_exit_and_message(cmd, word):
     assert "[Errno" not in p.stderr, p.stderr
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_glob_multi_match_is_ambiguous(tmp_path):
     """A glob target matching >= 2 files is ambiguous (exit 1, nothing opened)."""
     (tmp_path / "a.txt").write_text("")

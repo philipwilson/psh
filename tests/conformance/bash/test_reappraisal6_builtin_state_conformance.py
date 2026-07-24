@@ -11,11 +11,11 @@ All driven through subprocesses so psh and bash are directly comparable.
 """
 
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 pytestmark = pytest.mark.serial  # spawns subprocesses
 
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 
 
 def _psh(cmd):
@@ -41,7 +41,6 @@ def _both_identical(cmd):
 # M5: unset -f on a missing function is a silent no-op (exit 0)
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd", [
     "unset -f nope; echo $?",
     "unset nope; echo $?",
@@ -62,7 +61,6 @@ def test_unset_f_missing_no_stderr():
 # M6: test/[ string comparison with < and > (ASCII order)
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd", [
     r"[ a \< b ]; echo $?",
     r"[ b \< a ]; echo $?",
@@ -81,7 +79,6 @@ def test_bracket_string_comparison(cmd):
 # L7: trap -p prints SIG-prefixed names for real signals, bare for pseudo
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("sig", ["TERM", "INT", "HUP", "ERR"])
 def test_trap_p_signal_name_canonicalization(sig):
     # Compare just the `trap --` line (these traps don't fire on their own).
@@ -89,7 +86,6 @@ def test_trap_p_signal_name_canonicalization(sig):
     _both_identical(cmd)
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("sig", ["EXIT", "DEBUG"])
 def test_trap_p_pseudo_name_matches_bash(sig):
     # EXIT/DEBUG fire (possibly a differing number of times across shells),
@@ -144,7 +140,6 @@ def test_dash_var_errexit_order():
     assert p.stdout == "ehBc\n"
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd", [
     "echo $-",
     "set -e; echo $-",
@@ -158,7 +153,7 @@ def test_dash_var_matches_bash(cmd):
 
 def test_dash_var_stdin_mode_has_s():
     # Piped stdin: bash -> hBs. The 'c' becomes 's', still no 'H'.
-    p = run_psh([], stdin_data="echo $-\n", timeout=30)
+    p = run_psh([], stdin_data="echo $-\n", stdin_mode="pipe", timeout=30)
     assert is_comparable(p), p
     assert p.stdout == "hBs\n"
 

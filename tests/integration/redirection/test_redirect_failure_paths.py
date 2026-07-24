@@ -91,7 +91,7 @@ class TestInputRedirectFromMissingFile:
         # Feed stdin via a heredoc-free pipe through subprocess input.
         result = _run_psh(
             ['-c', 'cat < /nonexistent_file_zz; read v; echo "got=$v"'],
-            stdin_data='hello\n', cwd=tmp_path, timeout=15)
+            stdin_data='hello\n', stdin_mode='pipe', cwd=tmp_path, timeout=15)
         assert is_comparable(result), result
         assert result.stdout == 'got=hello\n'
 

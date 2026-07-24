@@ -33,7 +33,7 @@ class TestCompoundInPipeline(ConformanceTest):
 
 
 def _run(runner, cmd, stdin=''):
-    r = runner(['-c', cmd], stdin_data=stdin)
+    r = runner(['-c', cmd], stdin_data=stdin, stdin_mode='pipe')
     assert is_comparable(r), r
     return r.stdout, r.returncode
 

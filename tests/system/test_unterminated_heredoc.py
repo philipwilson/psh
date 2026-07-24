@@ -113,8 +113,8 @@ class TestUnterminatedHeredocOtherModes:
             psh = run_psh(['-c', cmd], timeout=15)
             bash = run_bash(['-c', cmd], timeout=15)
         else:
-            psh = run_psh([], stdin_data=cmd, timeout=15)
-            bash = run_bash([], stdin_data=cmd, timeout=15)
+            psh = run_psh([], stdin_data=cmd, stdin_mode='pipe', timeout=15)
+            bash = run_bash([], stdin_data=cmd, stdin_mode='pipe', timeout=15)
         assert is_comparable(psh), psh
         assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == 'hello\n'

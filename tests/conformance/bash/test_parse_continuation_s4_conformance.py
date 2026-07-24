@@ -60,6 +60,9 @@ class TestParseContinuationConformance(ConformanceTest):
     """Multiline continuation is identical to bash across -c/file/stdin."""
 
     def _run(self, argv, script, mode, cwd):
+        # The stdin mode feeds the script over a real PIPE on fd 0 (the
+        # pre-runner `input=` kind); -c/file supply no stdin data at all.
+        stdin_mode = "file"
         if mode == "-c":
             rest, stdin_data = ["-c", script], None
         elif mode == "file":
@@ -68,10 +71,13 @@ class TestParseContinuationConformance(ConformanceTest):
             rest, stdin_data = [str(p)], None
         else:
             rest, stdin_data = [], script
+            stdin_mode = "pipe"
         if argv[0] == sys.executable:
-            r = run_psh(rest, stdin_data=stdin_data, timeout=30, cwd=cwd)
+            r = run_psh(rest, stdin_data=stdin_data, stdin_mode=stdin_mode,
+                        timeout=30, cwd=cwd)
         else:
-            r = run_bash(rest, stdin_data=stdin_data, timeout=30, cwd=cwd)
+            r = run_bash(rest, stdin_data=stdin_data, stdin_mode=stdin_mode,
+                         timeout=30, cwd=cwd)
         assert is_comparable(r), r
         return r
 

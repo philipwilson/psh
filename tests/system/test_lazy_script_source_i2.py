@@ -30,7 +30,7 @@ from shell_oracle import (
 def _run(runner, script_text, tmp_path, stdin=None, name="s.sh"):
     p = tmp_path / name
     p.write_text(script_text)
-    r = runner([str(p)], cwd=str(tmp_path), stdin_data=stdin)
+    r = runner([str(p)], cwd=str(tmp_path), stdin_data=stdin, stdin_mode="pipe")
     assert is_comparable(r), r
     return r
 
@@ -89,8 +89,10 @@ def test_dev_stdin_as_script_arg(tmp_path):
     # script drains — psh agrees.
     _mk(tmp_path)
     body = "echo scr1\nread x\necho \"got=[$x]\"\necho scr3\n"
-    psh = run_psh(["/dev/stdin"], cwd=str(tmp_path), stdin_data=body)
-    bash = run_bash(["/dev/stdin"], cwd=str(tmp_path), stdin_data=body)
+    psh = run_psh(["/dev/stdin"], cwd=str(tmp_path), stdin_data=body,
+                  stdin_mode="pipe")
+    bash = run_bash(["/dev/stdin"], cwd=str(tmp_path), stdin_data=body,
+                    stdin_mode="pipe")
     assert is_comparable(psh), psh
     assert is_comparable(bash), bash
     assert psh.stdout == bash.stdout

@@ -243,8 +243,9 @@ class TestHeredocInputModeConformance(_HeredocTransactionBase):
 
     def test_stdin_mode(self):
         psh = run_psh([], stdin_data=self.QUEUE_SCRIPT + "\n",
-                      cwd=str(_REPO), timeout=15)
-        bash = run_bash([], stdin_data=self.QUEUE_SCRIPT + "\n", timeout=15)
+                      stdin_mode="pipe", cwd=str(_REPO), timeout=15)
+        bash = run_bash([], stdin_data=self.QUEUE_SCRIPT + "\n",
+                        stdin_mode="pipe", timeout=15)
         assert is_comparable(psh), psh
         assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == self.EXPECT_OUT

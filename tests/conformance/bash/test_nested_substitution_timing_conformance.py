@@ -37,10 +37,10 @@ import sys
 import tempfile
 
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
-_ORACLE = try_resolve_bash()
-BASH = _ORACLE.path if _ORACLE else None
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
+BASH = _ORACLE.path
 
 # Run the worktree's psh, not any editable-installed copy in site-packages.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -60,13 +60,13 @@ def _bash_c(cmd):
 
 
 def _psh_stdin(script):
-    r = run_psh([], stdin_data=script, cwd=_ROOT, timeout=30)
+    r = run_psh([], stdin_data=script, stdin_mode="pipe", cwd=_ROOT, timeout=30)
     assert is_comparable(r), r
     return r
 
 
 def _bash_stdin(script):
-    r = run_bash([], stdin_data=script, cwd=_ROOT, timeout=30)
+    r = run_bash([], stdin_data=script, stdin_mode="pipe", cwd=_ROOT, timeout=30)
     assert is_comparable(r), r
     return r
 
@@ -153,7 +153,6 @@ _ERROR_TIMING_C = [
 ]
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cid,cmd", _ERROR_TIMING_C, ids=[c[0] for c in _ERROR_TIMING_C])
 def test_invalid_modern_substitution_rejects_whole_buffer(cid, cmd):
     p = _psh_c(cmd)
@@ -167,7 +166,6 @@ def test_invalid_modern_substitution_rejects_whole_buffer(cid, cmd):
     assert p.returncode != 0, (cid, "rc", p.returncode)
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_invalid_cmdsub_rejects_in_stdin_script():
     # stdin is read command-by-command, so "echo before" runs, then the next
     # command's cmdsub syntax error aborts — bash and psh agree here.
@@ -180,7 +178,6 @@ def test_invalid_cmdsub_rejects_in_stdin_script():
     assert "after" not in p.stdout
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_invalid_cmdsub_rejects_in_script_file():
     script = "echo before\necho $(if)\necho after\n"
     p = _run_file([sys.executable, "-m", "psh"], script)
@@ -220,7 +217,6 @@ _VALID_MATCH = [
 ]
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cid,cmd", _VALID_MATCH, ids=[c[0] for c in _VALID_MATCH])
 def test_substitution_behavior_matches_bash(cid, cmd):
     p = _psh_c(cmd)
@@ -243,7 +239,6 @@ _ALIAS_MATCH = [
 ]
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cid,cmd", _ALIAS_MATCH, ids=[c[0] for c in _ALIAS_MATCH])
 def test_alias_timing_in_cmdsub_matches_bash(cid, cmd):
     p = _psh_c(cmd)
@@ -262,7 +257,6 @@ _STATUS_MATCH = [
 ]
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cid,cmd", _STATUS_MATCH, ids=[c[0] for c in _STATUS_MATCH])
 def test_cmdsub_status_matches_bash(cid, cmd):
     p = _psh_c(cmd)
@@ -280,7 +274,6 @@ _MISC_MATCH = [
 ]
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cid,cmd", _MISC_MATCH, ids=[c[0] for c in _MISC_MATCH])
 def test_cmdsub_misc_matches_bash(cid, cmd):
     p = _psh_c(cmd)
@@ -304,7 +297,6 @@ def test_cmdsub_nonutf8_byte_roundtrips():
 # both shells and must stay so (PS2 path via the CommandAccumulator).
 # ==========================================================================
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_unterminated_cmdsub_is_error_not_silent():
     p = _psh_stdin("echo $(\n")
     b = _bash_stdin("echo $(\n")
@@ -312,7 +304,6 @@ def test_unterminated_cmdsub_is_error_not_silent():
     assert p.stdout == "" == b.stdout
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_unterminated_cmdsub_c_mode_is_error():
     for cmd in ("echo $(", "echo $(foo", "cat <(echo"):
         p = _psh_c(cmd)
@@ -351,7 +342,6 @@ def test_over_deep_cmdsub_nesting_is_clean_error():
 # the Word AST). Pin the boundary so it stays explicit.
 # ==========================================================================
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd", [
     "echo $(if)",                       # top-level command sub
     "cat <(if)",                        # process sub
@@ -388,7 +378,6 @@ _EXTGLOB_VALID = (
     "echo $(case a in @(a|b)) echo m;; *) echo n;; esac)")
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_extglob_pattern_in_cmdsub_relexes_via_c():
     p = _psh_c(_EXTGLOB_VALID)
     b = _bash_c(_EXTGLOB_VALID)
@@ -396,7 +385,6 @@ def test_extglob_pattern_in_cmdsub_relexes_via_c():
     assert p.returncode == b.returncode == 0, (p.returncode, b.returncode)
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_extglob_pattern_in_cmdsub_relexes_via_script_file():
     # The script-file path re-parses through the source processor rather than
     # reusing the accumulator's trial AST, so this pins the create_parser
@@ -407,7 +395,6 @@ def test_extglob_pattern_in_cmdsub_relexes_via_script_file():
     assert p.returncode == b.returncode == 0, (p.returncode, b.returncode)
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_extglob_cmdsub_body_syntax_error_still_rejects():
     # extglob is enabled for the body, but a genuine syntax error inside the
     # (properly closed) substitution must still reject at parse — the re-lex
@@ -423,7 +410,6 @@ def test_extglob_cmdsub_body_syntax_error_still_rejects():
     assert "Traceback (most recent call last)" not in p.stderr, p.stderr[-300:]
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_param_expansion_word_cmdsub_now_rejects_at_read_time():
     """CLOSED S3 divergence: `${x:-$(if)}` now rejects at read time like bash.
 
@@ -441,7 +427,6 @@ def test_param_expansion_word_cmdsub_now_rejects_at_read_time():
     assert "before" not in p.stdout and "after" not in p.stdout
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_arith_embedded_cmdsub_now_rejects_at_read_time():
     """CLOSED S3 divergence: `$(( $(if) ))` now rejects at read time like bash.
 
@@ -457,7 +442,6 @@ def test_arith_embedded_cmdsub_now_rejects_at_read_time():
     assert "before" not in p.stdout
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_divergence_alias_local_to_cmdsub_body():
     """`$(alias h=...; h)`: bash does not activate an alias defined in the SAME
     read unit (h -> command not found), while psh expands aliases over the whole
@@ -471,7 +455,6 @@ def test_divergence_alias_local_to_cmdsub_body():
     assert p.stdout == "H\n"          # psh: whole-unit alias expansion (today)
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_divergence_heredoc_body_cmdsub_stays_runtime():
     """A `$(if)` inside a heredoc BODY is expanded by the raw-string engine at
     execution time in both shells (rc=0, execution continues). Only the exact

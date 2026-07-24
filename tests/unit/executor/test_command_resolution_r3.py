@@ -289,12 +289,17 @@ class TestPosixlyPrefixInputModes:
     SCRIPT = 'unset X; X=kept POSIXLY_CORRECT=1 :; echo "${X-unset}"'
 
     def _psh(self, argv, stdin=None):
-        r = run_psh(list(argv), stdin_data=stdin)
+        # Data-bearing runs get a real PIPE on fd 0 (the pre-runner `input=`
+        # kind); the -c/script-file rows supply no data and keep the default.
+        mode = 'pipe' if stdin is not None else 'file'
+        r = run_psh(list(argv), stdin_data=stdin, stdin_mode=mode)
         assert is_comparable(r), r
         return r
 
     def _bash(self, argv, stdin=None):
-        r = run_bash(['--norc', '--noprofile', *argv], stdin_data=stdin)
+        mode = 'pipe' if stdin is not None else 'file'
+        r = run_bash(['--norc', '--noprofile', *argv], stdin_data=stdin,
+                     stdin_mode=mode)
         assert is_comparable(r), r
         return r
 

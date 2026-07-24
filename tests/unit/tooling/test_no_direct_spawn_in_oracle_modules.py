@@ -13,7 +13,14 @@ may not create a process directly.
 **Scope (oracle-bearing set):** a module under ``tests/conformance/`` or
 ``tests/harness/``, or one whose source IMPORTS ``shell_oracle`` (a real
 import, not a docstring mention). Those are the modules where a raw spawn is a
-differential-comparison bypass.
+differential-comparison bypass.  At base ``e52957d4`` this scope is **182
+modules**, of which **96 spawn directly** (245 sites): the runner itself plus
+the **95 migration targets** (243 sites).  Replay with
+``python tests/harness/census_replay.py <tree>/tests``; derivation in
+``tests/harness/oracle_migration_census.md``.  Most bearing-set modules never
+spawn directly at all (they go through ``ConformanceTest``/``run_shell_case``),
+so the census's "95/95 differential" describes the SPAWNER SUBSET — not this
+182-module scope.
 
 **What is rejected:** ``subprocess.run/Popen/call/check_output/check_call`` and
 ``os.system``/``os.popen`` — detected by attribute access on a ``subprocess``
@@ -77,11 +84,12 @@ _FIXTURE_DIR = "oracle_spawn_fixtures"
 _FIXTURE_REL = f"unit/tooling/{_FIXTURE_DIR}"
 
 # The allowlist has TWO parts (integrator ruling, slot 1.2). The census finding
-# it rests on: the bearing set is 95/95 differential MODULES (36 conformance +
-# 59 shell_oracle importers, every one comparing against bash) — there are NO
-# psh-only-only spawner modules in scope (the ~70 CLAUDE.md exec/fd/lifecycle
-# psh-only modules do not import shell_oracle and are not under conformance, so
-# they are OUTSIDE this guard entirely). So (b) is empty.
+# it rests on concerns the SPAWNER SUBSET of the bearing set (95 of the 182
+# scanned modules): all 95 are DIFFERENTIAL (36 conformance + 59 shell_oracle
+# importers, every one comparing against bash) — there is NO psh-only spawner
+# module in scope. (The ~70 CLAUDE.md exec/fd/lifecycle psh-only modules neither
+# import shell_oracle nor live under conformance, so they are OUTSIDE this guard
+# entirely.) So part (b) is empty.
 
 # (a) NAMED allowlist: the harness itself + spawns that genuinely CANNOT go
 # through the run-to-completion runner. owner + reason + removal condition each.
@@ -107,11 +115,12 @@ NAMED_ALLOWLIST = {
         "a live file object on stdin — neither expressible through the runner. "
         "The raw-byte-stdin cases DO route through the runner. Removal: the "
         "runner gains a close-fd0 / file-object stdin option.",
-    "system/test_stdin_script_lazy_read.py":
-        "owner=slot1.2. Pins the PIPE (non-seekable) vs seekable-file stdin "
-        "distinction; the runner always feeds stdin from a seekable regular "
-        "file, which would collapse the very distinction under test. Removal: "
-        "the runner gains a non-seekable/pipe stdin mode.",
+    # REMOVED (allowlist shrank): system/test_stdin_script_lazy_read.py. Its
+    # removal condition — "the runner gains a non-seekable/pipe stdin mode" —
+    # is MET: run_shell_case's stdin_mode='pipe'/'file' gives the child a real
+    # non-seekable pipe or a regular seekable file, so the module's pipe-vs-
+    # seekable subject survives the migration and it now routes 100% through
+    # the runner.
 }
 
 # (b) FROZEN, SHRINK-ONLY registry of PSH-ONLY raw spawners: a spawn that only
@@ -144,7 +153,6 @@ _EXPECTED_NAMED_ALLOWLIST = frozenset({
     "integration/job_control/test_exit_trap_paths.py",
     "system/test_script_input_sources.py",
     "system/test_stdin_startup_robustness.py",
-    "system/test_stdin_script_lazy_read.py",
 })
 _EXPECTED_PSH_ONLY_REGISTRY: frozenset = frozenset()
 
@@ -340,9 +348,15 @@ def test_only_the_exact_fixture_path_is_skipped(tmp_path, monkeypatch):
 
 def test_fixture_dir_is_excluded_from_the_scan():
     """The offender fixture must NOT appear in the scanned set (else it would
-    fail the real guard)."""
+    fail the real guard).
+
+    Matches the EXACT fixture path, not the bare directory NAME: a substring
+    test would ALSO be satisfied by a same-named directory elsewhere in the tree
+    and would report the wrong thing (a misattributed diagnostic) — the very
+    hole ``test_only_the_exact_fixture_path_is_skipped`` closes.
+    """
     scanned = {rel for rel, _, _ in iter_oracle_bearing_modules()}
-    assert not any(_FIXTURE_DIR in rel for rel in scanned)
+    assert f"{_FIXTURE_REL}/offender_module.py" not in scanned
 
 
 def test_fixture_dir_holds_only_the_known_offender():

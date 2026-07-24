@@ -21,15 +21,15 @@ PSH_ROOT = os.path.dirname(
 def _psh(script: bytes, stdin: bytes) -> bytes:
     # raw-bytes comparison: recover the exact stdout bytes from the runner's
     # lossless surrogateescape capture.
-    r = run_psh(["-c", script.decode()], stdin_data=stdin, cwd=PSH_ROOT,
-                timeout=15, env={"PSH_STRICT_ERRORS": "1"})
+    r = run_psh(["-c", script.decode()], stdin_data=stdin, stdin_mode="pipe",
+                cwd=PSH_ROOT, timeout=15, env={"PSH_STRICT_ERRORS": "1"})
     assert is_comparable(r), r
     return r.stdout.encode("utf-8", "surrogateescape")
 
 
 def _bash_c(script: bytes, stdin: bytes) -> bytes:
-    r = run_bash(["-c", script.decode()], stdin_data=stdin, timeout=15,
-                 env={"LC_ALL": "C", "LANG": "C"})
+    r = run_bash(["-c", script.decode()], stdin_data=stdin, stdin_mode="pipe",
+                 timeout=15, env={"LC_ALL": "C", "LANG": "C"})
     assert is_comparable(r), r
     return r.stdout.encode("utf-8", "surrogateescape")
 
@@ -68,7 +68,7 @@ class TestTempRedirectComposition:
                   + b"; read c; printf '%s|%s|%s\\n' \"$a\" \"$b\" \"$c\"")
         out = _psh(script, b"S1\nS2\nS3\n")
         b = run_bash(["-c", script.decode()], stdin_data=b"S1\nS2\nS3\n",
-                     timeout=15)
+                     stdin_mode="pipe", timeout=15)
         assert is_comparable(b), b
         bash = b.stdout.encode("utf-8", "surrogateescape")
         assert out == bash == b"S1|F1|S2\n"
@@ -86,7 +86,7 @@ class TestDeliberateLossDupAlias:
                   b"printf '%s|%s|%s\\n' \"$a\" \"$b\" \"$c\"")
         out = _psh(script, b"one\ntwo\nthree\n")
         b = run_bash(["-c", script.decode()], stdin_data=b"one\ntwo\nthree\n",
-                     timeout=15)
+                     stdin_mode="pipe", timeout=15)
         assert is_comparable(b), b
         bash = b.stdout.encode("utf-8", "surrogateescape")
         assert out == bash == b"one|two|three\n"

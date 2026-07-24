@@ -25,12 +25,24 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def run_psh(*args, stdin_input=None, stdin_file=None, cwd=None):
+    """Run psh with fd 0 of the KIND this module is about.
+
+    The SEEKABILITY of fd 0 is this file's SUBJECT (#15 I2: only regular files
+    may be sniffed), so the two regimes must stay distinct — collapsing them
+    silently retargets the non-seekable rows at the sniffed branch:
+
+    * ``stdin_input=`` -> a real PIPE (``stdin_mode='pipe'``), reproducing the
+      pre-migration ``subprocess.run(..., input=...)``;
+    * ``stdin_file=``  -> the regular, SEEKABLE file itself.
+    """
     if stdin_file is not None:
         with open(stdin_file, 'rb') as f:
             data = f.read()
+        mode = 'file'
     else:
         data = stdin_input or ''
-    r = _oracle_run_psh(list(args), stdin_data=data, cwd=cwd)
+        mode = 'pipe'
+    r = _oracle_run_psh(list(args), stdin_data=data, stdin_mode=mode, cwd=cwd)
     assert is_comparable(r), r
     return r
 

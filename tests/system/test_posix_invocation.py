@@ -35,8 +35,9 @@ def _case_env(env_extra, *, pythonpath):
     ``POSIXLY_CORRECT`` from the developer's shell would silently flip the
     "posix off when absent" rows. ``hermetic_shell_env`` strips locale and
     DISPLAY but not this, and a case env can only ADD keys, so the variable is
-    deleted explicitly here (matching the pre-migration ``_BASE_ENV``, which
-    filtered it out alongside DISPLAY/XAUTHORITY).
+    deleted explicitly here.  (Historically this module filtered it out in its
+    own module-scope env builder, alongside DISPLAY/XAUTHORITY; that builder is
+    gone — the filtering requirement is not.)
     """
     env = hermetic_shell_env()
     env.pop("POSIXLY_CORRECT", None)

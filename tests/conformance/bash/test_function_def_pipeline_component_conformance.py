@@ -57,7 +57,8 @@ def _run(argv0_is_bash, script, mode, cwd):
     if mode == "-c":
         r = runner(["-c", script], timeout=30, cwd=cwd)
     elif mode == "stdin":
-        r = runner([], stdin_data=script + "\n", timeout=30, cwd=cwd)
+        r = runner([], stdin_data=script + "\n", stdin_mode="pipe",
+                   timeout=30, cwd=cwd)
     else:  # file
         with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False,
                                          dir=cwd) as f:

@@ -19,11 +19,10 @@ import os
 import tempfile
 
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
-_BASH = try_resolve_bash()
+_BASH = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 
-pytestmark = pytest.mark.skipif(_BASH is None, reason="no bash oracle")
 
 
 def _run(runner, lines, env_extra):
@@ -31,7 +30,8 @@ def _run(runner, lines, env_extra):
         env = {"PS1": "", "PS2": "", "HISTFILE": os.path.join(d, "hf")}
         env.update(env_extra)
         script = "".join(line + "\n" for line in lines)
-        r = runner(["-i"], stdin_data=script, env=env, cwd=d, timeout=30)
+        r = runner(["-i"], stdin_data=script, stdin_mode="pipe", env=env,
+                   cwd=d, timeout=30)
         assert is_comparable(r), r
         return r.stdout
 

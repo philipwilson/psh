@@ -43,7 +43,7 @@ def _run_i(argv, rc_flags, lines):
         if argv[0] == sys.executable:
             env['PYTHONPATH'] = _REPO_ROOT
         r = run_shell_case(argv + rc_flags + ['-i'], stdin_data=script,
-                           env=env, timeout=20)
+                           stdin_mode='pipe', env=env, timeout=20)
     Path(histfile).unlink(missing_ok=True)
     assert is_comparable(r), r
     return _PREFIX_RE.sub('', r.stdout)

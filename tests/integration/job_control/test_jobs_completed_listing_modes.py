@@ -51,13 +51,13 @@ def _psh_script(s, tmp_path):
 
 
 def _bash_stdin(s):
-    r = run_bash([], stdin_data=s + "\n", timeout=TIMEOUT)
+    r = run_bash([], stdin_data=s + "\n", stdin_mode='pipe', timeout=TIMEOUT)
     assert is_comparable(r), r
     return r.stdout
 
 
 def _psh_stdin(s):
-    r = run_psh([], stdin_data=s + "\n", timeout=TIMEOUT)
+    r = run_psh([], stdin_data=s + "\n", stdin_mode='pipe', timeout=TIMEOUT)
     assert is_comparable(r), r
     return r.stdout
 

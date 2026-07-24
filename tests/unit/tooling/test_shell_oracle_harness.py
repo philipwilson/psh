@@ -151,6 +151,11 @@ def test_timeout_threads_truncation_provenance(monkeypatch):
     the deadline, so — as in the natural-exit pin — neutralise the watchdog's
     size poll for the capture files; the never-exiting writer then hits the
     DEADLINE with a partial capture the timeout readback finds truncated.
+
+    SCOPE OF THE MONKEYPATCH (integrator ruling, round 2 — accepted; do not
+    re-litigate): it disables ONLY the watchdog's mid-flight cap KILL, so the
+    case reaches the TIMEOUT path instead.  The child, the deadline, the killpg,
+    the real partial capture and its truncation flags are all REAL.
     """
     import shell_oracle
     real_getsize = os.path.getsize
@@ -217,6 +222,56 @@ def test_output_cap_kills_whole_process_group():
             f"grandchild {bg_pid} survived the output-cap killpg sweep")
 
 
+def test_stdin_mode_pipe_gives_a_real_non_seekable_pipe():
+    """Typed-case pin for ``stdin_mode='pipe'`` (round-2 blocker 1).
+
+    The DEFAULT file mode makes fd 0 a regular, SEEKABLE file — right for almost
+    every case, but it silently retargets any case whose SUBJECT is
+    non-seekability (``/dev/stdin`` as a script operand, the #15 I2 binary
+    sniff, ``read``/``mapfile`` over-read). Pipe mode restores a real FIFO on
+    fd 0 while still delivering the data and EOF.
+    """
+    probe = ('if [ -p /dev/stdin ]; then echo FD0=PIPE; else echo FD0=REGFILE;'
+             ' fi; cat')
+    piped = run_shell_case([SH, "-c", probe], stdin_data="payload\n",
+                           stdin_mode="pipe")
+    assert isinstance(piped, Completed), piped
+    assert piped.stdout == "FD0=PIPE\npayload\n"
+
+    # Default (and explicit "file") stay seekable-regular — unchanged behavior.
+    filed = run_shell_case([SH, "-c", probe], stdin_data="payload\n")
+    assert isinstance(filed, Completed), filed
+    assert filed.stdout == "FD0=REGFILE\npayload\n"
+    explicit = run_shell_case([SH, "-c", probe], stdin_data="payload\n",
+                              stdin_mode="file")
+    assert isinstance(explicit, Completed) and explicit.stdout == filed.stdout
+
+
+def test_stdin_mode_pipe_delivers_eof_with_no_data():
+    """No ``stdin_data`` in pipe mode still closes the write end, so a reader
+    sees EOF instead of hanging (the deadlock the file default exists to avoid).
+    """
+    r = run_shell_case([SH, "-c", "cat; echo done"], stdin_mode="pipe",
+                       timeout=5)
+    assert isinstance(r, Completed), r
+    assert r.stdout == "done\n"
+
+
+def test_stdin_mode_pipe_survives_a_child_that_never_reads():
+    """A child that ignores stdin leaves the writer parked on the pipe; the case
+    must still complete normally (daemon thread, EPIPE swallowed on close).
+    """
+    r = run_shell_case([SH, "-c", "echo ignored-stdin"], stdin_data="x" * 4096,
+                       stdin_mode="pipe", timeout=10)
+    assert isinstance(r, Completed), r
+    assert r.stdout == "ignored-stdin\n"
+
+
+def test_stdin_mode_rejects_unknown_value():
+    with pytest.raises(ValueError, match="stdin_mode"):
+        run_shell_case([SH, "-c", "true"], stdin_mode="socket")
+
+
 def test_output_limit_records_termination_provenance():
     """OutputLimitExceeded records which stream overflowed + the kill details.
 
@@ -244,6 +299,13 @@ def test_natural_exit_past_cap_is_output_limit_without_killpg(monkeypatch):
     capture files) so the finite writer reaches natural completion; the readback
     path — independent of the poll — then detects the truncation from the file
     itself.  Everything else keeps its real size.
+
+    SCOPE OF THE MONKEYPATCH (integrator ruling, round 2 — accepted; do not
+    re-litigate): it disables ONLY the watchdog's mid-flight cap KILL, which is
+    what makes the natural-exit branch reachable deterministically instead of by
+    poll-timing luck.  The child, its real output, the capture files, the capped
+    readback, and the truncation classification are all REAL — nothing about the
+    asserted outcome is simulated.
     """
     import shell_oracle
     real_getsize = os.path.getsize

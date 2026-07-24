@@ -181,7 +181,11 @@ class TestKeywordBoundaryModesAndParsers(_KeywordBoundaryBase):
     """Mode variation (-c/script/stdin) and combinator-parser representatives."""
 
     def _psh(self, argv_extra, stdin_data=None):
-        r = run_psh([*argv_extra], stdin_data=stdin_data, cwd=_REPO)
+        # Data-bearing runs get a real PIPE on fd 0 (the pre-runner `input=`
+        # kind); the -c/script rows supply no data and keep the default.
+        stdin_mode = "pipe" if stdin_data is not None else "file"
+        r = run_psh([*argv_extra], stdin_data=stdin_data,
+                    stdin_mode=stdin_mode, cwd=_REPO)
         assert is_comparable(r), r
         return r
 

@@ -28,9 +28,9 @@ import os
 import tempfile
 
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
@@ -40,7 +40,8 @@ def _run_channel(runner, script, channel, *, is_psh):
     if channel == "c":
         r = runner(["-c", script], cwd=_ROOT, timeout=30)
     elif channel == "stdin":
-        r = runner([], stdin_data=script + "\n", cwd=_ROOT, timeout=30)
+        r = runner([], stdin_data=script + "\n", stdin_mode="pipe",
+                   cwd=_ROOT, timeout=30)
     elif channel == "validate":
         flag = "--validate" if is_psh else "-n"
         r = runner([flag, "-c", script], cwd=_ROOT, timeout=30)
@@ -99,7 +100,6 @@ _REJECT = {
 }
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("channel", _CHANNELS)
 @pytest.mark.parametrize("cid", list(_REJECT), ids=list(_REJECT))
 def test_reject_matches_bash_timing(cid, channel):
@@ -140,7 +140,6 @@ _ACCEPT = {
 }
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("channel", ["c", "file", "stdin"])
 @pytest.mark.parametrize("cid", list(_ACCEPT), ids=list(_ACCEPT))
 def test_accept_matches_bash(cid, channel):
@@ -152,7 +151,6 @@ def test_accept_matches_bash(cid, channel):
 
 
 # ---- Backtick timing tuple (Ruling 2c): non-fatal, empty, command runs, rc 0.
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_backtick_inner_error_is_nonfatal_and_continues():
     """`echo x`if`y` runs echo (prints "xy"), the backtick yields empty, exit 0,
     and a diagnostic goes to stderr — bash's deferred-backtick policy, matched."""
@@ -164,7 +162,6 @@ def test_backtick_inner_error_is_nonfatal_and_continues():
 
 
 # ---- Documented divergence: eval/source frame fatality (carried to I3).
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_divergence_eval_source_fatality_is_i3():
     """A substitution-body syntax error inside an eval BODY ABORTS the enclosing
     -c script in bash (rc 127, AFTER absent); psh continues (AFTER prints — its

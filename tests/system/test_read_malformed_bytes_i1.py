@@ -45,7 +45,7 @@ def _psh(script: bytes, stdin: bytes) -> bytes:
     # losslessly (surrogateescape); recover the exact bytes on the way out.
     r = run_shell_case(
         [sys.executable, "-m", "psh", "-c", script.decode()],
-        stdin_data=stdin, cwd=PSH_ROOT, timeout=15,
+        stdin_data=stdin, stdin_mode="pipe", cwd=PSH_ROOT, timeout=15,
         env=hermetic_shell_env({"PYTHONPATH": PSH_ROOT,
                                 "PSH_STRICT_ERRORS": "1"}),
     )
@@ -57,7 +57,7 @@ def _bash_c_locale(script: bytes, stdin: bytes) -> bytes:
     # C-locale bash oracle. run_shell_case captures bytes losslessly (UTF-8 +
     # surrogateescape), so the raw byte-level facts are preserved after all —
     # recover them with the inverse encode.
-    r = run_bash(["-c", script.decode()], stdin_data=stdin,
+    r = run_bash(["-c", script.decode()], stdin_data=stdin, stdin_mode="pipe",
                  env={"LC_ALL": "C", "LANG": "C"}, timeout=15)
     assert is_comparable(r), r
     return r.stdout.encode("utf-8", "surrogateescape")

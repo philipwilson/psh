@@ -13,9 +13,9 @@ Pinned against bash 5.2.
 import os
 
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 
 
 def _source_rc_psh(path):
@@ -68,7 +68,6 @@ def test_source_nonexistent_returns_1(tmp_path):
     assert _source_rc_psh(str(tmp_path / 'nope.sh')) == 1
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="no bash available")
 @pytest.mark.skipif(not os.path.exists('/bin/ls'), reason="no /bin/ls")
 def test_source_rcs_match_bash(tmp_path):
     # Directory and unreadable file → 1; a real binary → 126; missing → 1.

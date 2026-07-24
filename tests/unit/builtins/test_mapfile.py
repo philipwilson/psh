@@ -12,7 +12,7 @@ from shell_oracle import is_comparable, run_bash, run_psh
 
 def _run(script, stdin=""):
     """Run a psh script in a subprocess with the given stdin."""
-    r = run_psh(['-c', script], stdin_data=stdin)
+    r = run_psh(['-c', script], stdin_data=stdin, stdin_mode='pipe')
     assert is_comparable(r), r
     return r
 
@@ -142,7 +142,7 @@ class TestMapfileBashParity:
     ])
     def test_matches_bash(self, script, stdin):
         psh = _run(script, stdin)
-        bash = run_bash(['-c', script], stdin_data=stdin)
+        bash = run_bash(['-c', script], stdin_data=stdin, stdin_mode='pipe')
         assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode

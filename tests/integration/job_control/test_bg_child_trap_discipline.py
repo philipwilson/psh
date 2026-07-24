@@ -44,7 +44,7 @@ def _run(runner, script, tmp_path, stdin=None):
     full = f'D="{d}"\n' + PRELUDE + script
     path = tmp_path / "case.sh"
     path.write_text(full)
-    r = runner([str(path)], stdin_data=stdin, timeout=30)
+    r = runner([str(path)], stdin_data=stdin, stdin_mode="pipe", timeout=30)
     assert is_comparable(r), r
     return r
 

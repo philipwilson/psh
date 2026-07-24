@@ -41,14 +41,14 @@ def _env_override(env):
 
 def run_psh(*args, cwd=None, env=None, stdin_input=None):
     r = _run_psh(list(args), cwd=cwd, env=_env_override(env),
-                 stdin_data=stdin_input, timeout=10)
+                 stdin_data=stdin_input, stdin_mode='pipe', timeout=10)
     assert is_comparable(r), r
     return r
 
 
 def run_bash(*args, cwd=None, env=None, stdin_input=None):
     r = _run_bash(list(args), cwd=cwd, env=_env_override(env),
-                  stdin_data=stdin_input, timeout=10)
+                  stdin_data=stdin_input, stdin_mode='pipe', timeout=10)
     assert is_comparable(r), r
     return r
 

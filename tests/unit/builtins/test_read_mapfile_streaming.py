@@ -22,7 +22,8 @@ from shell_oracle import is_comparable, run_bash, run_psh
 
 def _run(runner, script, stdin_bytes, timeout=10):
     """Run ``runner -c script`` feeding stdin_bytes; return (rc, out, err) bytes."""
-    r = runner(["-c", script], stdin_data=stdin_bytes, timeout=timeout)
+    r = runner(["-c", script], stdin_data=stdin_bytes, stdin_mode="pipe",
+               timeout=timeout)
     assert is_comparable(r), r
     # The runner decodes captures as UTF-8 + surrogateescape (lossless); recover
     # the exact bytes for the byte-level assertions below.

@@ -12,13 +12,13 @@ Heredocs need real fds, so these run psh in a subprocess and compare to bash.
 """
 
 def run(script):
-    r = run_psh([], stdin_data=script)
+    r = run_psh([], stdin_data=script, stdin_mode='pipe')
     assert is_comparable(r), r
     return r
 
 
 def run_bash(script):
-    r = _run_bash([], stdin_data=script)
+    r = _run_bash([], stdin_data=script, stdin_mode='pipe')
     assert is_comparable(r), r
     return r
 

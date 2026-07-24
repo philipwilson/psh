@@ -11,12 +11,12 @@ directly comparable, so these tests use real files.
 import sys
 
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 pytestmark = pytest.mark.serial  # spawns subprocesses
 
-_ORACLE = try_resolve_bash()
-BASH = _ORACLE.path if _ORACLE else None
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
+BASH = _ORACLE.path
 
 
 def _run(shell_argv, script_path):
@@ -58,7 +58,6 @@ def test_funcname_still_reports_function(script):
     assert _psh(s).strip() == "f"
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_matches_bash(script):
     body = ('echo "top=$0"\n'
             'f(){ echo "fn=$0"; }\n'
@@ -69,7 +68,6 @@ def test_matches_bash(script):
     assert _psh(s) == _run([BASH], s)
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_dash_c_name_is_dollar_zero():
     """R14.B: `sh -c CMD name a b` sets $0=name, $1=a, $#=2 (POSIX) — psh used
     to make name $1. Comparable across shells because $0 is the operand here."""
@@ -83,7 +81,6 @@ def test_dash_c_name_is_dollar_zero():
     assert psh == bash == '0=myname 1=a 2=b #=2\n'
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 def test_non_utf8_script_does_not_crash(tmp_path):
     """R14.B: a stray non-UTF-8 byte in a script must not crash psh with an
     uncaught traceback — bash treats it as a (not-found) command and continues.

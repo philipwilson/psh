@@ -47,6 +47,15 @@ def _run(argv, *, stdin_bytes=None, stdin=None, close_fd0=False, timeout=10):
     ``exec 0<&-``); ``stdin_bytes`` supplies raw bytes on stdin; ``stdin``
     passes an open file object (for a real ``< file`` redirect).
 
+    TWO ENVIRONMENT REGIMES LIVE IN THIS HELPER — know which branch a new row
+    lands on: the runner branch gets the HERMETIC env (every inherited
+    ``LC_*``/``LANG`` and ``DISPLAY`` stripped), while the direct-spawn branch
+    below inherits the ambient ``os.environ`` unchanged.  A locale- or
+    env-sensitive row added to the direct branch would be host-sensitive in a
+    way its runner-routed siblings are not (exactly the failure mode
+    continuation-finding H records).  Put such rows on the runner branch, or
+    build the child env explicitly.
+
     Raw-byte-stdin runs route through the typed oracle runner
     (``run_psh``/``run_bash``) so a non-comparable outcome fails loudly. A run
     that must close fd 0 (needs a ``preexec_fn``) or hand psh a live file object
@@ -66,9 +75,11 @@ def _run(argv, *, stdin_bytes=None, stdin=None, close_fd0=False, timeout=10):
             **kwargs,
         )
     if argv[0] == sys.executable:
-        r = run_psh(argv[3:], stdin_data=stdin_bytes, timeout=timeout)
+        r = run_psh(argv[3:], stdin_data=stdin_bytes, stdin_mode="pipe",
+                    timeout=timeout)
     else:
-        r = run_bash(argv[1:], stdin_data=stdin_bytes, timeout=timeout)
+        r = run_bash(argv[1:], stdin_data=stdin_bytes, stdin_mode="pipe",
+                     timeout=timeout)
     assert is_comparable(r), r
     return subprocess.CompletedProcess(
         argv, r.returncode,

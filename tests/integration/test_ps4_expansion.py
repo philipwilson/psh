@@ -8,10 +8,10 @@ forever). All five xtrace emission sites now route through
 `ExpansionManager.expand_ps4()`. Pinned against bash 5.2.
 """
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 # The campaign oracle is real bash 5.2; fall back to PATH `bash` otherwise.
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 
 
 def _psh(cmd):
@@ -56,7 +56,6 @@ def test_ps4_static_value_unchanged():
     assert 'DEBUG: echo a' in r.stderr
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="no bash available")
 @pytest.mark.parametrize("cmd", [
     "PS4='+ ${LINENO}: '\nset -x\necho a\necho b",
     "PS4='[$(echo TAG)] '\nset -x\necho a",

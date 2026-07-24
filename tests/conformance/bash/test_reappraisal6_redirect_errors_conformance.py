@@ -20,11 +20,11 @@ so closing fd 1 happens in a real process (never the test runner's own fds).
 import os
 
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 pytestmark = pytest.mark.serial  # spawns subprocesses; closes fds
 
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 
 
 def _psh(cmd):
@@ -56,7 +56,6 @@ _L2_CASES = [
 ]
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("cmd,target,errkey,_external", _L2_CASES)
 def test_redirect_open_failure_message_and_exit(cmd, target, errkey, _external):
     strerror = os.strerror(getattr(__import__("errno"), errkey))
@@ -90,7 +89,6 @@ def test_noclobber_message_not_regressed(tmp_path):
 # L4: exec 1>&- then write -> write error + exit 1, no shutdown leak
 # --------------------------------------------------------------------------
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 @pytest.mark.parametrize("writer", ["echo after", 'printf "after\\n"'])
 def test_write_after_closing_stdout(writer):
     cmd = f"echo before; exec 1>&-; {writer}"

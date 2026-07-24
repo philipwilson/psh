@@ -22,8 +22,12 @@ static guard.
 grep -rlE 'subprocess\.(run|Popen|call|check_output|check_call)|os\.system|os\.popen' \
      tests/ --include='*.py' | sort | wc -l        # -> 294
 
-# (b) the shell_oracle import surface
-grep -rlE 'shell_oracle' tests/ --include='*.py' | sort | wc -l   # -> 107 (import sites)
+# (b) the shell_oracle import surface — see the three-measure table below;
+#     the authoritative form is the SHA-pinned pathspec, NOT a cwd grep:
+git grep -l 'shell_oracle' e52957d4 -- tests/ | wc -l              # -> 108 files
+
+# (c) the guard-bearing set + spawner subset, by the guard's OWN AST predicates:
+python tests/harness/census_replay.py <tree>/tests   # -> 181 / 182 / 96 / 245 (see below)
 
 # per-module + per-spawn-site classification (bash / psh / python / var-argv):
 #   tmp/gen_census.py  (AST walk: resolves each module's bash-path variable,
@@ -54,9 +58,9 @@ the original bare "107" as ambiguous). All at base `e52957d4`:
 
 | Measure | Count | How |
 |---|---|---|
-| Files MENTIONING `shell_oracle` (textual, incl. docstrings) | **108** | `git grep -l 'shell_oracle' e52957d4 -- 'tests/**/*.py'` |
+| Files MENTIONING `shell_oracle` (textual, incl. docstrings) | **108** | `git grep -l 'shell_oracle' e52957d4 -- tests/` |
 | Files with a REAL import (AST `Import`/`ImportFrom`) — the runtime surface | **105** | AST walk (the guard's `_imports_shell_oracle`) |
-| Import-STATEMENT lines | **102** | `git grep -hE '^\s*(from .*shell_oracle import\|import .*shell_oracle)'` |
+| Import-STATEMENT lines | **102** | `git grep -hE '^\s*(from .*shell_oracle import\|import .*shell_oracle)' e52957d4 -- tests/` |
 
 The 3-file gap (108 − 105) is docstring/comment/string mentions only. The
 earlier single figure **107** was a grep of import-*like* lines: it matched
@@ -76,17 +80,48 @@ By imported symbol (import statements):
 | relative/absolute-path variants (`tests.harness.`, `harness.`) | 2 |
 | in-string / comment references (not runtime imports) | 4 |
 
-## Guard-bearing set (the anti-spawn guard's scope)
+## Guard-bearing set (the anti-spawn guard's scope) — AST measures, replayable
 
-**Structural definition:** a module is *oracle-bearing* iff it **imports
-`shell_oracle`** OR lives **under `tests/conformance/`**. 183 modules match.
-Of those, **88 have no direct spawn** (they run through `ConformanceTest` /
-`run_shell_case`, or import `try_resolve_bash` only for a `skipif`), and **95
-still spawn directly** — the migration targets below.
+**Structural definition (what the guard actually implements):** a module is
+*oracle-bearing* iff it really IMPORTS `shell_oracle` (AST `Import`/`ImportFrom`
+— not a docstring mention) **or** lives under `tests/conformance/` **or** under
+`tests/harness/`.
+
+**Replay command** (this is the authority; it re-derives every number below at
+any SHA):
+
+```
+rm -rf tmp/basetree && mkdir -p tmp/basetree \
+  && git archive e52957d4 tests | tar -x -C tmp/basetree \
+  && python tests/harness/census_replay.py tmp/basetree/tests
+```
+
+Output at base `e52957d4`:
+
+| Set | Modules | Spawners | Non-spawners | Spawn sites |
+|---|---|---|---|---|
+| imports ∪ conformance | **181** | 95 | 86 | — |
+| **guard scope** (that ∪ `harness/`) | **182** | **96** | 86 | **245** |
+
+The guard's scope is the **182**-module set. Its 96 spawners are
+`harness/shell_oracle.py` (the runner itself, 2 sites: the `Popen` plus the
+`_bash_version` probe) **plus the 95 migration targets with 243 sites** — the
+per-module table below. Containment is exact: census-95 == guard-scope spawners
+− `shell_oracle.py`, and 245 − 2 == 243.
+
+**Superseded measure (kept only to explain an earlier figure):** an earlier
+draft counted *textual mentions* ∪ conformance and reported **183 / 88 / 95**.
+That set is not what the guard scans (it counts docstring mentions and omits
+`harness/`), and 183 was moreover a TIP-time count printed against the frozen
+base. The AST numbers above supersede it; the spawner subset (95) is unchanged
+either way, which is why the target list never moved.
 
 Within the guard-bearing set every differential run needs BOTH sides typed
 (HIGH-1: a runaway psh is as dangerous as a runaway bash), so the migration
 routes **bash, psh, and python-helper spawns alike** through `run_shell_case`.
+Note the scoping distinction used throughout this file: **"95/95 differential"
+describes the SPAWNER SUBSET**, not the 182-module bearing set (most bearing-set
+modules never spawn directly at all — they go through the framework).
 
 ### PRIMARY CLASSIFICATION — differential vs psh-only (integrator ruling)
 
@@ -142,20 +177,26 @@ the tree-wide set.
 
 ### Allowlist (anti-spawn guard) — two parts
 
-**(a) NAMED (harness + genuinely un-runnerable), 5 entries:** the harness
-(`shell_oracle.py`, owns the one real `Popen`) plus four DIFFERENTIAL harnesses
+**(a) NAMED (harness + genuinely un-runnerable), 4 entries:** the harness
+(`shell_oracle.py`, owns the one real `Popen`) plus three DIFFERENTIAL harnesses
 the run-to-completion runner cannot express — `test_exit_trap_paths.py`
 (mid-run signal to a running psh AND bash), `test_script_input_sources.py`
 (concurrent bash fifo writer), `test_stdin_startup_robustness.py`
-(`preexec_fn=os.close(0)` / live file object), `test_stdin_script_lazy_read.py`
-(pipe vs seekable-file stdin distinction). Each carries owner + reason + removal.
-Membership is pinned literally in the guard
+(`preexec_fn=os.close(0)` / live file object). Each carries owner + reason +
+removal. Membership is pinned literally in the guard
 (`_EXPECTED_NAMED_ALLOWLIST`), so growth is a visible two-place change.
 
-**Outcome arithmetic (95 migration targets):** **91 migrated + 4 allowlisted**.
-`shell_oracle.py` is the 5th ALLOWLIST entry but was never a migration target
+`test_stdin_script_lazy_read.py` (pipe vs seekable-file stdin) WAS a fifth
+entry and has since **left the allowlist**: its recorded removal condition —
+"the runner gains a non-seekable/pipe stdin mode" — was met by
+`run_shell_case(..., stdin_mode='pipe'|'file')`, so the module migrated fully
+and the guard shrank. That is exactly the lifecycle
+`test_allowlist_entries_still_spawn` forces.
+
+**Outcome arithmetic (95 migration targets):** **92 migrated + 3 allowlisted**.
+`shell_oracle.py` is the 4th ALLOWLIST entry but was never a migration target
 (it is the runner, and has no `shell_oracle` import of its own) — so
-allowlist entries (5) ≠ allowlisted targets (4).
+allowlist entries (4) ≠ allowlisted targets (3).
 
 **(b) FROZEN PSH-ONLY REGISTRY: empty** — no psh-only raw spawner exists in the
 bearing set (see split above). The structure is kept for future debt.
