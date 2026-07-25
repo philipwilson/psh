@@ -138,6 +138,71 @@ def test_restore_drains_nested_frames_innermost_first(shell, tmp_path):
     assert f_outer is not None and f_inner is not None
 
 
+def test_frame_leaves_the_stack_only_after_its_streams_are_restored(
+        shell, tmp_path):
+    """The (B) invariant: no instant where the stack and the streams disagree.
+
+    Popping the frame FIRST left a sliver in which the stack said "nothing is
+    redirected" while ``sys.stdout`` was still the command's file — the signal
+    path had nothing to find, and an EXIT trap firing in that sliver wrote
+    into the file. The frame must stay listed until its restore completes.
+    """
+    target = tmp_path / 'ordering.txt'
+    frame = shell.io_manager.setup_builtin_redirections(
+        _redirected_command(': > %s' % target))
+
+    assert frame in shell.io_manager._builtin_frame_stack
+    assert frame.streams_restored is False
+
+    shell.io_manager.restore_builtin_redirections(frame)
+
+    assert frame.streams_restored is True
+    assert frame not in shell.io_manager._builtin_frame_stack
+
+
+def test_drain_skips_a_frame_whose_restore_is_past_its_streams(
+        shell, tmp_path):
+    """Condition (b): the hazard the (B) reorder creates, closed and pinned.
+
+    With the pop moved last, a signal landing mid-teardown finds the frame
+    still on the stack. Re-running that restore would repeat the fd-0 step,
+    which is NOT idempotent — it clears ``snapshot.stdin_fd``, so a second
+    pass takes the else-branch and closes fd 0 out from under the shell.
+
+    The drain skips frames already marked ``streams_restored``; that is safe
+    precisely because the marker means the streams are correct, which is all
+    the signal path needs. The mid-restore state is reproduced here by marking
+    the frame while leaving it on the stack.
+    """
+    target = tmp_path / 'midrestore.txt'
+    frame = shell.io_manager.setup_builtin_redirections(
+        _redirected_command(': > %s' % target))
+    try:
+        frame.streams_restored = True
+        assert shell.io_manager.restore_active_builtin_redirections() == 0, (
+            "the drain re-entered a mid-restore frame; the fd-0 step would "
+            "run twice and close fd 0")
+        assert frame in shell.io_manager._builtin_frame_stack
+    finally:
+        frame.streams_restored = False
+        shell.io_manager.restore_builtin_redirections(frame)
+
+
+def test_fd0_survives_a_drain_over_a_mid_restore_frame(shell, tmp_path):
+    """The consequence the skip prevents, asserted on fd 0 itself."""
+    import os
+    target = tmp_path / 'fd0.txt'
+    frame = shell.io_manager.setup_builtin_redirections(
+        _redirected_command(': > %s' % target))
+    try:
+        frame.streams_restored = True
+        shell.io_manager.restore_active_builtin_redirections()
+        os.fstat(0)  # OSError(EBADF) if fd 0 had been closed
+    finally:
+        frame.streams_restored = False
+        shell.io_manager.restore_builtin_redirections(frame)
+
+
 def test_restoring_an_already_restored_frame_is_not_attempted(shell, tmp_path):
     """Ruling condition (c) — the no-double-restore invariant, pinned.
 

@@ -275,6 +275,12 @@ class BuiltinRedirectFrame:
         # File objects this setup opened; restore closes exactly these
         # (never whatever happens to be in sys.stdout/stderr).
         self.opened_streams: List[TextIO] = []
+        # True once restore has put sys.stdout/stderr/stdin back. The frame
+        # stays on the manager's stack until its restore FINISHES (so a fatal
+        # signal can always find an unrestored frame), and this marker is what
+        # stops the signal path re-running a restore that is already past its
+        # stream work — see IOManager.restore_active_builtin_redirections.
+        self.streams_restored: bool = False
 
 
 class IOManager:
@@ -866,9 +872,20 @@ class IOManager:
         Iterating a SNAPSHOT in reverse is what keeps this LIFO and
         terminating: each per-frame restore pops its own frame off the live
         stack.
+
+        A frame whose restore is already past its stream work is SKIPPED
+        (``frame.streams_restored``). Since a frame now leaves the stack only
+        when its restore FINISHES, a signal arriving mid-teardown finds the
+        frame still listed — and re-running that restore would repeat the
+        fd-0 step, which is not idempotent (it clears ``snapshot.stdin_fd``,
+        so a second pass takes the else-branch and closes fd 0). Skipping is
+        safe precisely because the marker means the shell's streams are
+        already correct, which is all the signal path needs.
         """
         restored = 0
         for frame in reversed(list(self._builtin_frame_stack)):
+            if frame.streams_restored:
+                continue
             self.restore_builtin_redirections(frame)
             restored += 1
         return restored
@@ -886,13 +903,6 @@ class IOManager:
         owns its own state) but the stack bookkeeping below keeps the
         invariant observable.
         """
-        if self._builtin_frame_stack and self._builtin_frame_stack[-1] is frame:
-            self._builtin_frame_stack.pop()
-        elif frame in self._builtin_frame_stack:
-            # Caller bug (see docstring); still restore this frame's own
-            # state rather than leak fds/streams.
-            self._builtin_frame_stack.remove(frame)
-
         # Restore the original stream objects first, then close exactly the
         # files setup opened. Never close whatever happens to be in
         # sys.stdout/sys.stderr: after `cmd 2>&1`, sys.stderr IS the shell's
@@ -905,6 +915,11 @@ class IOManager:
             sys.stdout = snapshot.stdout
         if snapshot.stdin is not None:
             sys.stdin = snapshot.stdin
+        # Past this point the shell's streams are correct again, so the
+        # fatal-signal drain must NOT re-enter this frame: the fd-0 step below
+        # is not idempotent (it clears snapshot.stdin_fd, and a second pass
+        # would take the else-branch and close fd 0). Slot 1.3b.
+        frame.streams_restored = True
 
         # Close this frame's opened streams BEFORE re-installing the saved
         # fds (each stream owns its own fd — an opened file or a CLOEXEC dup —
@@ -942,6 +957,22 @@ class IOManager:
                     os.close(0)
                 except OSError:
                     pass
+
+        # The frame leaves the stack LAST, not first (slot 1.3b). While a
+        # restore is in flight the frame is still ON the stack, so a fatal
+        # signal arriving mid-teardown can always see that a redirect is in
+        # play; popping first left a sliver in which the stack said "nothing
+        # redirected" while sys.stdout was still the command's file, and the
+        # EXIT trap fired in that sliver wrote into it. Nothing between the
+        # stream restore and here was reordered — in particular the
+        # load-bearing close-opened-streams-BEFORE-restore-saved-fds sequence
+        # above is untouched.
+        if self._builtin_frame_stack and self._builtin_frame_stack[-1] is frame:
+            self._builtin_frame_stack.pop()
+        elif frame in self._builtin_frame_stack:
+            # Caller bug (see docstring); still restore this frame's own
+            # state rather than leak fds/streams.
+            self._builtin_frame_stack.remove(frame)
 
         # Process substitution resources are NOT cleaned up here: they are
         # owned by the enclosing process_sub_scope() (see CommandExecutor),
