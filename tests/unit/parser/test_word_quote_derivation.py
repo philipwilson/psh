@@ -225,11 +225,17 @@ def test_rd_derived_equals_reported(src):
 
 @pytest.mark.parametrize("src", CORPUS)
 def test_comb_derived_equals_reported(src):
-    """Same derived==reported invariant for the combinator parser."""
-    try:
-        words = _comb_words(src)
-    except Exception:  # noqa: BLE001 - documented gaps
-        pytest.skip("combinator does not parse this corpus entry")
+    """Same derived==reported invariant for the combinator parser.
+
+    The parse is deliberately NOT wrapped in a skipping handler. It used to be
+    ``except Exception: pytest.skip("combinator does not parse this corpus
+    entry")``, justified as "documented gaps" — but the combinator parses ALL
+    32 corpus entries (verified: 0 failures; 0 skips across the 128 rows), so
+    there was no live gap to cover and the handler could only ever fire on a
+    REGRESSION, reporting it as a skip. If the combinator stops parsing an
+    entry, that is a failure worth seeing.
+    """
+    words = _comb_words(src)
     for w in words:
         assert _derived_quote_type(w) == w.quote_type, (
             f"{src!r}: derived {_derived_quote_type(w)!r} != reported "

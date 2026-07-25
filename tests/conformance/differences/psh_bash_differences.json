@@ -59,6 +59,26 @@
         },
         "note": "Deliberate psh divergence (expand_aliases always on). If psh ever stopped expanding, this shape stops matching and the case is no longer documented."
       }
+    },
+    "disown --help": {
+      "id": "BUILTIN_LONG_HELP_OPTION",
+      "description": "bash builtins accept --help and print their full help text to STDOUT (exit 2, empty stderr). psh has no --help for builtins: it treats -- as an unrecognised option and writes an invalid-option diagnostic plus the usage line to STDERR (exit 2, empty stdout). Both reject the invocation with status 2; the difference is WHICH STREAM carries the text and whether full help exists at all. Discovered in slot 1.3 while correcting a test whose docstring asserted the opposite.",
+      "psh_behavior": "stderr: 'psh: line 1: disown: --: invalid option' + 'disown: usage: disown [-h] [-ar] [jobspec ... | pid ...]'; stdout empty; exit 2",
+      "bash_behavior": "stdout: the full 523-byte help block beginning 'disown: disown [-h] [-ar] [jobspec ... | pid ...]'; stderr empty; exit 2",
+      "category": "builtin_differences",
+      "expected": {
+        "psh": {
+          "exit_code": 2,
+          "stdout_pattern": "^$",
+          "stderr_pattern": "disown: --: invalid option"
+        },
+        "bash": {
+          "exit_code": 2,
+          "stdout_pattern": "disown: disown \\[-h\\]",
+          "stderr_pattern": "^$"
+        },
+        "note": "Stream-swapped: bash's text is on stdout, psh's on stderr. If psh ever grows --help the bash-side shape stays and the psh-side one stops matching, so this stops classifying as documented \u2014 which is the intended alarm."
+      }
     }
   },
   "psh_extensions": {

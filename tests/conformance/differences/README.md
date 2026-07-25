@@ -15,7 +15,12 @@ Features that PSH provides but bash doesn't (or implements differently).
 
 #### Enhanced Builtins
 - `version`: Show PSH version information
-- `help`: Context-aware help system
+- `help`: Context-aware help system. NOTE: psh has no `--help` OPTION on
+  builtins — `--` reads as an invalid option (stderr, exit 2) where bash
+  prints full help to stdout. That divergence is catalogued as
+  `BUILTIN_LONG_HELP_OPTION`. (A `HELP_BUILTIN` entry describing the help
+  builtin's output format was deleted in slot 1.3: real, but claimed nowhere
+  in the user guide and referenced by no test.)
 
 ### 2. Major Bash Features PSH Supports
 This doc formerly listed the features below as "not implemented." That was
@@ -93,8 +98,16 @@ Areas where PSH and bash both support a feature but with different behavior.
   internal hash order (a PSH-wide associative property, not an absent feature).
 
 #### Directory Stack (pushd/popd/dirs)
-- Implemented; output format and some error messages may differ in wording
-  from bash.
+- Implemented, and **behaviorally identical to bash** — asserted by
+  `test_bash_compatibility.py::TestDocumentedDifferences::test_directory_stack` and claimed as "Full
+  support" in user guide ch17. Verified byte-for-byte from a shared working
+  directory for `pushd`, `popd`, and `pushd /tmp`.
+- The catalog formerly held three entries asserting a difference here
+  (`PUSHD_BEHAVIOR`, `POPD_BEHAVIOR`, `PUSHD_CWD_DIFFERENCE`). All three were
+  referenced by ZERO tests and were CONTRADICTED by the passing conformance
+  test above; `PUSHD_CWD_DIFFERENCE` documented a harness artifact (psh and
+  bash having been run from different working directories) as a shell
+  difference. All three were deleted in slot 1.3.
 
 #### Signal Handling
 - Some signal behavior is platform-specific: real-time signals
@@ -134,10 +147,45 @@ result = self.check_behavior('complex_command')
 
 When adding new tests or discovering differences:
 
-1. **Update the JSON catalog** (`psh_bash_differences.json`)
+1. **Update the JSON catalog** (`psh_bash_differences.json`) — every entry
+   under `documented` MUST carry an `expected` block (see below)
 2. **Document the difference** in this README
-3. **Add conformance tests** to verify the behavior
+3. **Add conformance tests** to verify the behavior — every entry must be
+   referenced by at least one test
 4. **Categorize appropriately** (extension, limitation, etc.)
+
+### The mandatory `expected` block
+
+Classification is BEHAVIOR-AWARE. `_is_documented_difference` validates the
+OBSERVED divergence against the entry's expected shape before returning
+`DOCUMENTED_DIFFERENCE`; catalog membership is necessary but **not
+sufficient**, and an entry with no `expected` block cannot classify at all.
+
+Before this existed, matching was `command in catalog` with both results
+unused, so a forged psh stdout for a catalogued command still classified as
+documented — those pins could not fail for the right reason.
+
+```json
+"echo $$": {
+  "id": "PROCESS_ID_DIFFERENCE",
+  "description": "...",
+  "expected": {
+    "psh":  {"exit_code": 0, "stdout_pattern": "^\\d+\\n$", "stderr_pattern": "^$"},
+    "bash": {"exit_code": 0, "stdout_pattern": "^\\d+\\n$", "stderr_pattern": "^$"},
+    "note": "Both print their OWN pid: same shape, different value."
+  }
+}
+```
+
+`exit_code` is exact; `stdout_pattern`/`stderr_pattern` are regex SEARCHES, so
+pin a whole stream with `^...$` or just the identifying fragment. An omitted
+key is not checked. Write the shape so that a REGRESSION stops matching — that
+is the alarm the block exists to raise.
+
+Both invariants are enforced by
+[`../test_documented_difference_shape.py`](../test_documented_difference_shape.py):
+`test_every_documented_entry_carries_an_expected_shape` and
+`test_no_documented_entry_is_dead_inventory`.
 
 ## Compliance Goals
 

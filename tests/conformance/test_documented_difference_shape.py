@@ -134,6 +134,14 @@ def test_no_documented_entry_is_dead_inventory(framework):
     | Full support"), and PUSHD_CWD_DIFFERENCE documented a HARNESS artifact,
     two different working directories, as a shell difference. All four are
     deleted; this keeps the catalog from re-growing dead rows.
+
+    HONEST LIMIT: this is a TEXTUAL search for the difference ID across the
+    conformance test sources, so a mere MENTION — an ID appearing only in a
+    comment or a docstring — satisfies it. It catches the failure mode that
+    actually occurred (entries nothing in the tree referred to at all); it
+    does NOT verify that the referencing test exercises the entry. Tightening
+    it would mean statically resolving `assert_documented_difference` call
+    arguments, worth doing only if a mention-without-exercise case appears.
     """
     conformance_root = Path(__file__).parent
     sources = [

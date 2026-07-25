@@ -32,8 +32,14 @@ def _worktree_env():
     repo root, and without this an editable install would silently resolve
     ``psh`` from whichever checkout it points at instead of the tree under
     test. Pinned by ``test_subprocess_runs_this_worktrees_psh`` below.
+
+    PREPENDS rather than overwrites: an inherited ``PYTHONPATH`` may carry
+    entries the caller needs, and dropping them would be an unrelated change
+    in the child's import environment. This tree goes first so it still wins.
     """
-    return {**os.environ, 'PYTHONPATH': str(PSH_ROOT)}
+    inherited = os.environ.get('PYTHONPATH')
+    parts = [str(PSH_ROOT)] + ([inherited] if inherited else [])
+    return {**os.environ, 'PYTHONPATH': os.pathsep.join(parts)}
 
 
 # Shell fixture imported automatically from conftest.py
@@ -349,6 +355,11 @@ def test_subprocess_runs_this_worktrees_psh(tmp_path):
     target, so every case below would silently test a different tree — and
     still pass. Version strings cannot discriminate (checkouts share them);
     the resolved path can.
+
+    Containment is checked with ``commonpath``, not ``startswith``: sibling
+    worktrees share a prefix, so a plain prefix test would accept
+    ``/Users/.../psh-r1-3`` as living under ``/Users/.../psh`` — passing for
+    exactly the tree confusion this test exists to catch.
     """
     result = subprocess.run(
         [sys.executable, '-c', 'import psh; print(psh.__file__)'],
@@ -356,9 +367,10 @@ def test_subprocess_runs_this_worktrees_psh(tmp_path):
     assert result.returncode == 0, result.stderr
     resolved = result.stdout.strip()
     assert resolved, f"probe produced no path (stderr: {result.stderr!r})"
-    assert resolved.startswith(str(PSH_ROOT)), (
+    root = os.path.realpath(str(PSH_ROOT))
+    assert os.path.commonpath([os.path.realpath(resolved), root]) == root, (
         f"child imported psh from {resolved!r}, outside the tree under test "
-        f"({str(PSH_ROOT)!r})")
+        f"({root!r})")
 
 
 class TestReadWriteRedirect:

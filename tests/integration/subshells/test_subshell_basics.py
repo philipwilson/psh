@@ -199,6 +199,60 @@ def test_subshell_with_background_jobs(tmp_path):
     assert result.stdout == ""
 
 
+@pytest.mark.timeout(60)
+def test_background_subshell_redirect_inprocess_characterization(
+        isolated_shell_with_temp_dir):
+    """CHARACTERIZATION of a known anomaly — asserts what psh does TODAY.
+
+    This is not a statement that the behavior is correct. It pins the
+    in-process/under-capture behavior of a backgrounded subshell's redirect
+    so the anomaly cannot drift silently in EITHER direction: if it is fixed,
+    this test fails and should be deleted; if it worsens, this test fails too.
+
+    The anomaly (campaign LEDGER Part D, owner: successor queue; discharge
+    trigger: any slot touching ``psh/executor/subshell.py``
+    ``#_execute_background_subshell`` / ``child_policy.run_background_shell_child``):
+    a backgrounded subshell shares the parent's PYTHON-level stream objects,
+    so when those are not bound to fd 1 — which is exactly the case under
+    pytest's fd capture — a dup2-based redirect on fd 1 is bypassed. The file
+    is created and left EMPTY while the output reaches the captured stream.
+
+    Not reachable from the CLI, where ``sys.stdout`` is always fd 1: the
+    subprocess test above pins the correct behavior. The foreground twin and
+    a backgrounded SIMPLE command are both correct under the same capture,
+    and that asymmetry is the load-bearing fact for the Part D row.
+    """
+    shell = isolated_shell_with_temp_dir
+
+    # The anomaly's PRECONDITION, measured rather than assumed: is the shell's
+    # Python-level stdout bound to fd 1? Under pytest's fd capture it is not
+    # (fileno() reads 6); under `-s` / --all-nocapture it is (fileno() reads
+    # 1) and the redirect behaves correctly. Both regimes are asserted, so
+    # this test characterizes rather than skipping itself in either one.
+    stdout_is_fd1 = shell.stdout.fileno() == 1
+
+    assert shell.run_command('(echo A; echo B) > anomaly.txt &') == 0
+    assert shell.run_command('wait') == 0
+    assert os.path.exists('anomaly.txt')
+
+    if stdout_is_fd1:
+        # No decoupling -> no anomaly; the redirect lands as it should.
+        assert open('anomaly.txt').read() == 'A\nB\n'
+    else:
+        # THE ANOMALY, as it stands today: file created, left EMPTY, and the
+        # output went to the captured stream instead.
+        assert open('anomaly.txt').read() == ''
+
+    # The two paths that are NOT affected in EITHER regime, pinned alongside
+    # so the asymmetry is visible here and not only in the ledger.
+    assert shell.run_command('(echo A; echo B) > fg.txt') == 0
+    assert open('fg.txt').read() == 'A\nB\n'
+
+    assert shell.run_command('echo A > bgsimple.txt &') == 0
+    assert shell.run_command('wait') == 0
+    assert open('bgsimple.txt').read() == 'A\n'
+
+
 def test_subshell_environment_inheritance(isolated_shell_with_temp_dir):
     """Test that subshell inherits parent environment."""
     shell = isolated_shell_with_temp_dir

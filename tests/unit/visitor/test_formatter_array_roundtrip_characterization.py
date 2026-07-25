@@ -15,16 +15,22 @@ assignments (quoted / unquoted / mixed / indexed / append / empty). The
 expected strings below were captured on the ORIGINAL (stored-field) code;
 after the derive-to-property refactor they must still match byte for byte.
 
-Both parsers are exercised. A known combinator-only divergence is pinned
-explicitly (see ``COMBINATOR_VALIDATOR_DIVERGENCE``): the educational
-combinator parser splits the composite word ``p$x`` into three tokens, so
-its STORED ``element_types`` were ``['WORD','VARIABLE','WORD']`` (mixed),
-emitting a spurious "mixed element types" info. Deriving from the
-(already-split) Words yields all ``'WORD'`` -- matching the production
-recursive-descent parser. That single case is the only place the derived
-value cannot reproduce the combinator's stored value, and the change is a
-strict improvement (it removes a tokenization-artifact warning). The
-production RD parser is byte-identical throughout.
+Both parsers are exercised, and they now AGREE on every case.
+
+Historically they did not. The educational combinator parser splits the
+composite word ``p$x`` into three tokens where the recursive-descent parser
+merges them, so ``a=(p$x q)`` was excluded from the combinator validator
+test by a ``COMBINATOR_VALIDATOR_DIVERGENCE`` set plus a ``pytest.skip``, on
+the stated grounds that the divergence was "pinned separately".
+
+Both halves of that justification were checked and neither held: nothing
+else in the tree referenced the case, so the skip was its ONLY record, and
+the divergence itself is gone — both parsers now report "mixed element
+types" for ``a=(p$x q)``, which is exactly what ``VALIDATOR_MIXED_CASES``
+asserts for both. The set and the skip are deleted and the row is asserted
+like every other one: the skip had outlived what it hid and was costing
+coverage of a case that works. The production RD parser is byte-identical
+throughout.
 """
 
 import pytest
