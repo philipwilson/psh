@@ -7,20 +7,24 @@ dangerous patterns in shell scripts.
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..ast_nodes import (
     ArithmeticEvaluation,
     ASTNode,
+    BinaryTestExpression,
     CaseConditional,
     CommandSubstitution,
     ForLoop,
     FunctionDef,
     IfConditional,
+    LiteralPart,
     Pipeline,
     Redirect,
     SimpleCommand,
+    UnaryTestExpression,
     WhileLoop,
+    Word,
 )
 from .analysis_helpers import RedirectTraversalMixin
 from .constants import (
@@ -51,6 +55,35 @@ def _arithmetic_injection_shape(expr: str) -> bool:
     )
 
 
+def _has_live_substitution_text(text: str) -> bool:
+    """True if *text* contains an UNESCAPED ``$(`` command substitution or
+    backtick — i.e. a substitution that RUNS when the text is expanded.
+
+    Escape-aware: ``\\$(...)`` and ``\\``` are literal (the parser keeps the
+    backslash in the flattened literal text, so the two spellings are
+    distinguishable here — verified against bash 5.2.26: the quoted form
+    executes, the escaped form does not). A ``$((`` opener is arithmetic, not
+    a command substitution, and is skipped as such — but a ``$(cmd)`` nested
+    INSIDE the arithmetic text is still found by the continuing scan.
+    """
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c == '\\':
+            i += 2
+            continue
+        if c == '`':
+            return True
+        if c == '$' and text[i + 1:i + 2] == '(':
+            if text[i + 2:i + 3] == '(':
+                i += 3  # $(( — arithmetic opener, keep scanning inside
+                continue
+            return True
+        i += 1
+    return False
+
+
 @dataclass
 class SecurityIssue:
     """Represents a security issue found in the AST."""
@@ -74,8 +107,9 @@ class SecurityVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
     - Unquoted variable expansions that could be exploited
     - Dangerous commands and patterns
     - Executable regions the analysis cannot see into (unparsed backtick
-      bodies, expanding here-document bodies) — flagged rather than silently
-      skipped, so an all-clear summary is never claimed over unanalyzed code
+      bodies, expanding here-document bodies, flat-text ``[[ ]]`` operand
+      substitutions) — flagged rather than silently skipped, so an all-clear
+      summary is never claimed over unanalyzed code
 
     Traversal is framework-owned (``TotalTraversalVisitor``): every declared
     child edge — redirect targets, for/case subject words, substitution
@@ -241,6 +275,45 @@ class SecurityVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
                 '(deferred parse); prefer $(...) for analyzable code',
                 node
             ))
+
+    def visit_BinaryTestExpression(self, node: BinaryTestExpression) -> None:
+        """Flag unparsed substitutions in ``[[ ]]`` binary operands."""
+        self._flag_unparsed_operand_substitution(node.left_word, node)
+        self._flag_unparsed_operand_substitution(node.right_word, node)
+
+    def visit_UnaryTestExpression(self, node: UnaryTestExpression) -> None:
+        """Flag unparsed substitutions in ``[[ ]]`` unary operands."""
+        self._flag_unparsed_operand_substitution(node.operand_word, node)
+
+    def _flag_unparsed_operand_substitution(self, word: Optional[Word],
+                                            node: ASTNode) -> None:
+        """Report a live substitution the parser left as flat operand TEXT.
+
+        A double-quoted ``[[ ]]`` operand parses to a Word whose quoted
+        segment is a bare LiteralPart — no ExpansionPart, so the substitution
+        body exists nowhere in the tree for the sweep to reach, yet
+        ``[[ "$(cmd)" == x ]]`` RUNS the command at evaluation (bash 5.2.26
+        and psh both, probed 2026-07-26). Until the parser builds real
+        expansion parts for these operands, the region is executable-but-
+        opaque: flag it rather than staying silent (the same no-clean-claim
+        policy as backtick bodies and expanding heredocs). Escaped spellings
+        (``\\$(``, ``\\```) keep their backslash in the literal text and are
+        correctly NOT flagged.
+        """
+        if word is None:
+            return
+        for part in word.parts:
+            if (isinstance(part, LiteralPart)
+                    and part.quote_char not in ("'", "$'")
+                    and _has_live_substitution_text(part.text)):
+                self.issues.append(SecurityIssue(
+                    'LOW',
+                    'UNANALYZED_REGION',
+                    'Test-expression operand embeds a substitution that '
+                    'executes but cannot be statically analyzed',
+                    node
+                ))
+                return
 
     def visit_FunctionDef(self, node: FunctionDef) -> None:
         """Analyze function definitions."""

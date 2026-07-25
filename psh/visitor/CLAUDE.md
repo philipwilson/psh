@@ -32,53 +32,19 @@ AST → ASTVisitor.visit(node) → visit_NodeType(node) → Result
 
 ## Core Patterns
 
-### 1. ASTVisitor Base Class (Generic)
+### ASTVisitor Base Class (`base.py#ASTVisitor`)
 
-```python
-class ASTVisitor(ABC, Generic[T]):
-    """Read-only visitor with double dispatch."""
+Generic (`ASTVisitor[T]`) read-only visitor with double dispatch: `visit()`
+resolves `visit_<NodeClassName>` by name (memoized per node class in
+`_method_cache`) and falls back to `generic_visit`, whose base behavior is to
+raise `NotImplementedError` — subclasses choose their own fallback.
 
-    def __init__(self):
-        # Cache for method lookups
-        self._method_cache = {}
+### The ExecutorVisitor (`psh/executor/core.py#ExecutorVisitor`)
 
-    def visit(self, node: ASTNode) -> T:
-        """Dispatch to visit_NodeType method."""
-        node_class = node.__class__
-        if node_class not in self._method_cache:
-            method_name = f'visit_{node_class.__name__}'
-            self._method_cache[node_class] = getattr(
-                self, method_name, self.generic_visit
-            )
-        return self._method_cache[node_class](node)
-
-    def generic_visit(self, node: ASTNode) -> T:
-        """Called for unhandled node types."""
-        raise NotImplementedError(
-            f"No visit_{node.__class__.__name__} method"
-        )
-```
-
-## The ExecutorVisitor
-
-The main executor in `psh/executor/core.py` is an `ASTVisitor[int]` that returns exit codes:
-
-```python
-class ExecutorVisitor(ASTVisitor[int]):
-    """Executes AST nodes and returns exit codes."""
-
-    def visit_SimpleCommand(self, node: SimpleCommand) -> int:
-        # Execute command
-        return exit_code
-
-    def visit_Pipeline(self, node: Pipeline) -> int:
-        # Execute pipeline
-        return exit_code
-
-    def visit_IfConditional(self, node: IfConditional) -> int:
-        # Execute if statement
-        return exit_code
-```
+The main executor is an `ASTVisitor[int]` returning exit codes; its
+`visit_X` methods ARE shell evaluation (which children run, and in what
+order, is semantics — an `if` visits one branch), which is why it is a named
+exemption from the analysis-traversal framework below.
 
 ## Creating a New Visitor
 
@@ -105,12 +71,8 @@ When adding a new AST node type:
 
 1. Define the node in the `psh/ast_nodes/` package
 
-2. Add visit method to `ExecutorVisitor`:
-```python
-def visit_MyNewNode(self, node: MyNewNode) -> int:
-    # Execute the new node type
-    return exit_code
-```
+2. Add a `visit_MyNewNode` execution method to `ExecutorVisitor`
+   (`psh/executor/core.py`) returning the node's exit code
 
 3. Add to other relevant visitors (validator, formatter, etc.)
 
@@ -134,18 +96,9 @@ def visit_MyNewNode(self, node: MyNewNode) -> int:
 
 ### Method Caching
 
-Visitor uses a cache for method lookups to improve performance:
-
-```python
-def visit(self, node):
-    node_class = node.__class__
-    if node_class not in self._method_cache:
-        method_name = f'visit_{node_class.__name__}'
-        self._method_cache[node_class] = getattr(
-            self, method_name, self.generic_visit
-        )
-    return self._method_cache[node_class](node)
-```
+`ASTVisitor.visit` memoizes the `visit_X`-or-`generic_visit` lookup per node
+class in `_method_cache` (`base.py#ASTVisitor.visit`); a visitor whose method
+set changes at runtime must clear that cache.
 
 ### Recursive Traversal (framework-owned for analysis visitors)
 
@@ -197,32 +150,24 @@ child-bearing field, a new template carrier, or a wrong shape fails there),
 and the visualization walker `parser/visualization/node_fields.py` is guarded
 to agree with it.
 
-Opaque executable regions that are NOT node edges are flagged, not skipped:
+Opaque executable regions that are NOT node edges are flagged, not skipped —
+the security mode never makes a clean claim over code it could not analyze:
 `security_visitor.py#SecurityVisitor.visit_CommandSubstitution` reports an
-unparsed backtick body, and
+unparsed backtick body,
 `security_visitor.py#SecurityVisitor.visit_Redirect` reports an unquoted
-here-document body embedding a substitution — the security mode never makes a
-clean claim over code it could not analyze.
+here-document body embedding a substitution, and
+`security_visitor.py#SecurityVisitor._flag_unparsed_operand_substitution`
+reports a double-quoted `[[ ]]` operand whose substitution the parser left as
+flat text (it still executes at evaluation; escape-aware, so `\$(` stays
+silent).
 
 ### Collecting Results
 
-For analysis visitors, store results in instance variables:
-
-```python
-class CountingVisitor(ASTVisitor[None]):
-    def __init__(self):
-        super().__init__()
-        self.command_count = 0
-        self.pipeline_count = 0
-
-    def visit_SimpleCommand(self, node) -> None:
-        self.command_count += 1
-
-    def visit_Pipeline(self, node) -> None:
-        self.pipeline_count += 1
-        for cmd in node.commands:
-            self.visit(cmd)
-```
+Analysis visitors accumulate results in instance state and expose them after
+the traversal — `.issues` on the validators/security/linter, `.metrics` on
+the metrics visitor — so one instance = one analysis run. Handlers only
+record; they never print (the CLI drivers in
+`psh/scripting/visitor_modes.py` render summaries).
 
 ## Totality Over the AST (enforced)
 

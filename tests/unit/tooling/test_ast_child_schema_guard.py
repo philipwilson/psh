@@ -195,6 +195,60 @@ def test_offender_stale_declaration_is_detected():
     )
 
 
+# --- Annotation resolvability (closes the unresolvable-forward-ref hole) -----
+#
+# The reflection oracle resolves string/ForwardRef annotations through the
+# psh.ast_nodes namespace; a name that does NOT resolve came back None and was
+# silently treated as "not a child" — so a child-bearing field annotated with
+# an out-of-namespace forward ref could slip past the whole drift-lock
+# (fix-round n16). This guard makes an unresolvable leaf itself a failure.
+
+def _unresolvable_annotation_leaves(ftype):
+    """Every string/ForwardRef leaf in *ftype* that does not resolve."""
+    leaves = []
+    if isinstance(ftype, (str, typing.ForwardRef)):
+        if _resolve(ftype) is None:
+            name = ftype if isinstance(ftype, str) else ftype.__forward_arg__
+            leaves.append(name)
+        return leaves
+    for arg in typing.get_args(ftype):
+        leaves.extend(_unresolvable_annotation_leaves(arg))
+    return leaves
+
+
+@pytest.mark.parametrize("cls", CONCRETE, ids=lambda c: c.__name__)
+def test_every_field_annotation_resolves(cls):
+    """No concrete node field carries an annotation the reflection oracle
+    cannot resolve — an unresolvable name can hide a child edge."""
+    bad = {}
+    for f in dataclasses.fields(cls):
+        leaves = _unresolvable_annotation_leaves(f.type)
+        if leaves:
+            bad[f.name] = leaves
+    assert not bad, (
+        f"{cls.__name__} has field annotations the ast_nodes namespace cannot "
+        f"resolve (the drift-lock would silently treat them as non-children): "
+        f"{bad}"
+    )
+
+
+def test_offender_unresolvable_forward_ref_is_detected():
+    """SYNTHETIC OFFENDER (n16): a child-bearing field annotated with an
+    out-of-namespace forward ref evades reflect_child_shape (returns None) —
+    the resolvability guard is what catches it."""
+    @dataclasses.dataclass
+    class _OffenderUnresolvableRef(ASTNode):
+        child: typing.Optional['_NotInAstNodesNamespace'] = None  # noqa: F821
+
+    # The hole, demonstrated: shape reflection sees no child here.
+    assert reflect_child_shape(
+        dataclasses.fields(_OffenderUnresolvableRef)[0].type) is None
+    # The guard closes it: the unresolvable leaf is flagged.
+    leaves = _unresolvable_annotation_leaves(
+        dataclasses.fields(_OffenderUnresolvableRef)[0].type)
+    assert leaves == ['_NotInAstNodesNamespace']
+
+
 # --- node_fields agreement (no drifting second authority) --------------------
 
 def test_node_fields_agrees_with_schema_on_ast_children():
@@ -376,8 +430,8 @@ _PSH_ROOT = pathlib.Path(__file__).resolve().parents[3] / "psh"
 # (test_reflection_allowlist_entries_still_reflect).
 _REFLECTION_ALLOWLIST = {
     "visitor/traversal.py":
-        "_reflect_children is walk_ast's OWN fallback, reached only by "
-        "UNREGISTERED synthetic node classes (tests); the drift-lock above "
+        "_reflect_child_edges is walk_ast_edges's OWN fallback, reached only "
+        "by UNREGISTERED synthetic node classes (tests); the drift-lock above "
         "proves every production node is in the schema, so production traversal "
         "never uses it — it is inside the one engine, not a second one",
     "parser/visualization/node_fields.py":

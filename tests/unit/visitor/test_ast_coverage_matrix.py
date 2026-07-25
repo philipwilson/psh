@@ -8,13 +8,13 @@ via the mechanism that visitor actually uses:
   so every concrete node class must have an explicit ``visit_X`` method.
 - **ExecutorVisitor** raises from ``generic_visit`` (base class), so every
   *executable* node must have an explicit ``visit_X`` method.
-- **ValidatorVisitor** (and EnhancedValidatorVisitor, which inherits from
-  it) has a non-traversing ``generic_visit`` (``pass``): any executable node
-  without an explicit method is silently skipped, children and all. So every
-  executable node must have an explicit ``visit_X`` method.
-- **SecurityVisitor / MetricsVisitor / LinterVisitor** use the shared
-  ``visit_children`` walk as ``generic_visit``, so nodes without explicit
-  methods are still traversed; the tests verify that traversal behaviorally.
+- **The analysis visitors** (Validator/EnhancedValidator/Security/Metrics/
+  Linter) subclass ``TotalTraversalVisitor`` (remediation 2.1): TRAVERSAL is
+  framework-owned and total — an unhandled node's children are still swept —
+  but per-node ANALYSIS runs only from an explicit ``visit_X``. The
+  validators therefore still require an explicit method for every executable
+  node (else the node contributes no validation of its own), and the
+  unhandled-node tests verify the framework sweep behaviorally.
 
 A second matrix covers the ``redirects`` field: for every node class that
 carries one, parsing real source with a sensitive-path redirect must make
@@ -23,7 +23,8 @@ visitor count it.
 
 When a new AST node class is added these tests fail loudly until the node
 is either supported by the relevant visitors or added to an exemption list
-below with a justification.
+below with a justification. (Reach and multiplicity of every declared child
+edge are the generated battery's job — test_traversal_totality_battery.py.)
 """
 
 import dataclasses
@@ -141,8 +142,9 @@ FORMATTER_EXEMPT = set()
 # Executor: must cover every executable node. Helper/word nodes are data.
 EXECUTOR_EXEMPT = set()
 
-# Validator: generic_visit is non-traversing, so every executable node needs
-# an explicit method or its subtree is silently skipped.
+# Validator: traversal is framework-owned (never skipped), but an executable
+# node without an explicit method contributes no validation of its own — the
+# analysis default is a no-op. Keep a method per executable node.
 VALIDATOR_EXEMPT = set()
 
 
@@ -176,47 +178,48 @@ def test_validator_has_visit_method_for_every_executable_node(visitor_cls):
                and not hasattr(visitor_cls, f'visit_{c.__name__}')]
     assert not missing, (
         f"{visitor_cls.__name__} lacks visit_ methods for: {missing}. "
-        "Its generic_visit is a non-traversing pass, so these nodes (and "
-        "their entire subtrees) would be silently skipped during validation."
+        "Traversal is framework-owned, but an executable node without an "
+        "explicit method contributes no validation of its own."
     )
 
 
 # ---------------------------------------------------------------------------
-# Traversing generic_visit (security / metrics / linter design)
+# Unhandled node types are still fully traversed (framework sweep)
 # ---------------------------------------------------------------------------
 
 @dataclasses.dataclass
 class _UnknownCarrier(ASTNode):
-    """A node type no visitor knows, to force the generic_visit path."""
+    """A node type no visitor knows — exercises the framework sweep (and its
+    reflection fallback for unregistered synthetic classes)."""
     child: ASTNode = None
     redirects: list = dataclasses.field(default_factory=list)
 
 
-def test_security_generic_visit_traverses_children():
+def test_security_sweep_traverses_unhandled_node_children():
     v = SecurityVisitor()
     v.visit(_UnknownCarrier(redirects=[Redirect(type='>', target='/etc/passwd')]))
     assert any(i.issue_type == 'SENSITIVE_FILE_WRITE' for i in v.issues), (
-        "SecurityVisitor.generic_visit must descend into children "
-        "(including redirects) of unhandled node types"
+        "the framework sweep must descend into children (including "
+        "redirects) of node types SecurityVisitor has no handler for"
     )
 
 
-def test_metrics_generic_visit_traverses_children():
+def test_metrics_sweep_traverses_unhandled_node_children():
     v = MetricsVisitor()
     v.visit(_UnknownCarrier(child=SimpleCommand(words=[Word.from_string('echo')])))
     assert v.metrics.total_commands == 1, (
-        "MetricsVisitor.generic_visit must descend into children of "
-        "unhandled node types"
+        "the framework sweep must descend into children of node types "
+        "MetricsVisitor has no handler for"
     )
 
 
-def test_linter_generic_visit_traverses_children():
+def test_linter_sweep_traverses_unhandled_node_children():
     v = LinterVisitor()
     v.visit(_UnknownCarrier(child=SimpleCommand(
         words=[Word.from_string('eval'), Word.from_string('x')])))
     assert any('eval' in i.message for i in v.issues), (
-        "LinterVisitor.generic_visit must descend into children of "
-        "unhandled node types"
+        "the framework sweep must descend into children of node types "
+        "LinterVisitor has no handler for"
     )
 
 

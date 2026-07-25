@@ -61,13 +61,14 @@ from .control import (
 from .redirects import Redirect
 
 # Syntax templates (campaign S3) — plain frozen carriers, NOT ASTNode
-# subclasses. Because they are not ASTNodes, the S5 walk_ast schema
-# (psh/visitor/traversal.py#AstChildSchema) never declares them as children and
-# walk_ast never descends into them (the template-descent decision, enforced by
-# construction and pinned in test_ast_child_schema_guard.py); the AST
-# coverage-matrix meta-test likewise skips them. They are carried BY nodes, not
-# traversed as nodes. Imported after .words because they reference
-# Expansion/CommandSubstitution.
+# subclasses. The template objects themselves are never tree nodes, but the
+# parsed substitutions they hold (subs[*].expansion) ARE structural children:
+# every template-carrier field is declared ChildShape.TEMPLATE_SUBS in the
+# walk_ast schema (psh/visitor/traversal.py#AstChildSchema), and walk_ast
+# yields those nested expansion nodes (remediation 2.1 / reappraisal #22
+# HIGH-2 overturned the earlier never-descend exception; pinned in
+# test_ast_child_schema_guard.py#test_every_template_carrier_field_is_declared).
+# Imported after .words because they reference Expansion/CommandSubstitution.
 from .syntax_templates import (
     ArithmeticTemplate,
     NestedSub,

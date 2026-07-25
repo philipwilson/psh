@@ -1,9 +1,11 @@
 """Analysis visitors descend into modern command/process substitution bodies.
 
-Now that ``$(...)``/``<(...)``/``>(...)`` carry a parsed ``Program`` (nested-
-program campaign), the security and lint analyses run on the commands *inside*
-substitutions, not just the outer command. Backtick bodies carry no program and
-are not descended into.
+``$(...)``/``<(...)``/``>(...)`` carry a parsed ``Program``, and the framework
+sweep (``TotalTraversalVisitor``, remediation 2.1) walks it, so security and
+lint analyses run on the commands *inside* substitutions, not just the outer
+command. Backtick bodies carry no program (bash defers backtick parsing);
+their body still cannot be descended into, and the security mode reports the
+opaque region instead of making a clean claim over it.
 """
 
 from psh.lexer import tokenize

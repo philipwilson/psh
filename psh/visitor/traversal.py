@@ -199,8 +199,9 @@ def iter_child_nodes(node: ASTNode) -> Iterator[ASTNode]:
 def visit_children(visitor, node: ASTNode) -> None:
     """Visit every direct ``ASTNode`` child of *node* with *visitor*.
 
-    The callback protocol over :func:`walk_ast`: a visitor's ``generic_visit``
-    delegates here to descend into an unhandled node's children.
+    Convenience callback over :func:`walk_ast` for ad-hoc/test visitors built
+    on plain ``ASTVisitor``. The production analysis visitors no longer call
+    it — their descent is ``TotalTraversalVisitor``'s framework sweep.
     """
     for child in walk_ast(node):
         visitor.visit(child)

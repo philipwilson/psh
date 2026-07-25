@@ -81,6 +81,60 @@ def test_backtick_body_is_flagged_opaque():
     assert 'UNANALYZED_REGION' in types
 
 
+# A double-quoted [[ ]] operand parses to a bare LiteralPart (no
+# ExpansionPart), yet `[[ "$(cmd)" == x ]]` RUNS the command — bash 5.2.26
+# and psh both (probed 2026-07-26; fix-round B4). The parser fix is out of
+# scope for 2.1; until then the region is executable-but-opaque and the
+# security mode flags it instead of making a clean claim. The 2.1 census
+# found the flattening confined to [[ ]] operands: case patterns, command
+# args, and redirect targets all parse to real ExpansionParts.
+
+def test_quoted_test_operand_substitution_is_flagged_opaque():
+    types = _issue_types('[[ "$(rm -rf /tmp/psh-never-created)" == x ]]')
+    assert 'UNANALYZED_REGION' in types
+
+
+def test_quoted_unary_test_operand_substitution_is_flagged_opaque():
+    types = _issue_types('[[ -n "$(rm -rf /tmp/psh-never-created)" ]]')
+    assert 'UNANALYZED_REGION' in types
+
+
+def test_quoted_regex_test_operand_substitution_is_flagged_opaque():
+    types = _issue_types('[[ y =~ "$(rm -rf /tmp/psh-never-created)" ]]')
+    assert 'UNANALYZED_REGION' in types
+
+
+def test_unquoted_test_operand_substitution_is_analyzed_not_opaque():
+    """NEGATIVE CONTROL: the unquoted operand parses to a real ExpansionPart,
+    so its body IS analyzed — the finding is the rm itself, not opacity."""
+    types = _issue_types('[[ $(rm -rf /tmp/psh-never-created) == x ]]')
+    assert 'SENSITIVE_COMMAND' in types
+    assert 'UNANALYZED_REGION' not in types
+
+
+def test_escaped_dollar_test_operand_is_not_flagged():
+    """NEGATIVE CONTROL: `[[ "\\$(cmd)" == x ]]` does NOT run the command
+    (bash 5.2.26 and psh both, probed); the backslash survives into the
+    literal text, so the escape-aware scan stays silent."""
+    types = _issue_types('[[ "\\$(rm -rf /tmp/psh-never-created)" == x ]]')
+    assert 'UNANALYZED_REGION' not in types
+
+
+def test_arithmetic_only_quoted_test_operand_is_not_flagged():
+    """NEGATIVE CONTROL: a pure arithmetic expansion in a quoted operand
+    embeds no command substitution — not an opaque executable region."""
+    types = _issue_types('[[ "$((1 + 2))" == 3 ]]')
+    assert 'UNANALYZED_REGION' not in types
+
+
+def test_quoted_case_pattern_substitution_is_analyzed_not_opaque():
+    """NEGATIVE CONTROL from the census: a quoted case PATTERN keeps its
+    ExpansionPart, so its body is analyzed through the sweep."""
+    types = _issue_types('case y in "$(rm -rf /tmp/psh-never-created)") :;; esac')
+    assert 'SENSITIVE_COMMAND' in types
+    assert 'UNANALYZED_REGION' not in types
+
+
 def _security_cli(tmp_path, src):
     script = tmp_path / 'probe.sh'
     script.write_text(src)
