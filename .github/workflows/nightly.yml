@@ -53,11 +53,10 @@ jobs:
           # huge number of entries can itself return ENOSPC) so the next
           # occurrence is diagnosable instead of guessable.
           nohup bash -c 'while :; do
-            printf "[sample %s] " "$(date -u +%H:%M:%S)"
-            df --output=avail,pcent / | tail -1 | tr "\n" " "
-            df -i --output=iavail / | tail -1 | tr "\n" " "
-            printf "tmp_entries=%s\n" "$(ls -U /tmp | wc -l)"
-            sleep 15
+            set -- $(df --output=avail,iavail / | tail -1)
+            printf "%s avail_kb=%s ifree=%s tmp_entries=%s\n" \
+              "$(date -u +%H:%M:%S)" "$1" "$2" "$(ls -U /tmp | wc -l)"
+            sleep 5
           done' > /tmp/disk-samples.log 2>&1 &
           echo "sampler started"
 
@@ -97,11 +96,10 @@ jobs:
           echo "--- disk after suite ---"; df -h / /tmp; df -i / /tmp
           echo "--- largest /tmp entries ---"
           sudo du -xm /tmp 2>/dev/null | sort -rn | head -20 || true
-          echo "--- during-suite samples: lowest 15 by free space ---"
-          sort -k3 -n /tmp/disk-samples.log 2>/dev/null | head -15 || true
-          echo "--- during-suite samples: highest 10 by /tmp entry count ---"
-          sed 's/.*tmp_entries=//' /tmp/disk-samples.log 2>/dev/null \
-            | sort -rn | head -10 || true
+          echo "--- during-suite samples: 15 LOWEST free space ---"
+          sort -t= -k2 -n /tmp/disk-samples.log 2>/dev/null | head -15 || true
+          echo "--- during-suite samples: 5 most recent ---"
+          tail -5 /tmp/disk-samples.log 2>/dev/null || true
           echo "--- sample count ---"; wc -l < /tmp/disk-samples.log 2>/dev/null || true
 
       - name: Upload Benchmark Transcript
@@ -167,11 +165,10 @@ jobs:
           # huge number of entries can itself return ENOSPC) so the next
           # occurrence is diagnosable instead of guessable.
           nohup bash -c 'while :; do
-            printf "[sample %s] " "$(date -u +%H:%M:%S)"
-            df --output=avail,pcent / | tail -1 | tr "\n" " "
-            df -i --output=iavail / | tail -1 | tr "\n" " "
-            printf "tmp_entries=%s\n" "$(ls -U /tmp | wc -l)"
-            sleep 15
+            set -- $(df --output=avail,iavail / | tail -1)
+            printf "%s avail_kb=%s ifree=%s tmp_entries=%s\n" \
+              "$(date -u +%H:%M:%S)" "$1" "$2" "$(ls -U /tmp | wc -l)"
+            sleep 5
           done' > /tmp/disk-samples.log 2>&1 &
           echo "sampler started"
 
