@@ -31,24 +31,27 @@ class TestBackgroundJobCreation:
         assert jobs_result == 0
         # Should show at least one job
 
-    def test_background_job_with_output(self, shell):
-        """Test background job that produces output."""
+    def test_background_job_with_output(self, isolated_shell_with_temp_dir):
+        """Test background job that produces output.
+
+        Runs in the per-test temp dir rather than a fixed system /tmp path
+        shared with every other process on the host, and verifies the file's
+        CONTENT — the old body asserted only that `cat` succeeded.
+        """
+        shell = isolated_shell_with_temp_dir
+
         # Create a background job that outputs to a file
-        result = shell.run_command('echo "background output" > /tmp/bg_test &')
+        result = shell.run_command('echo "background output" > bg_test &')
         assert result == 0
 
         # The backgrounded builtin creates the redirect file in the forked
         # child (bash; F3), so wait for the job before reading the file rather
         # than racing it.
-        shell.run_command('wait')
+        assert shell.run_command('wait') == 0
 
         # Check the output was written
-        cat_result = shell.run_command('cat /tmp/bg_test')
-        assert cat_result == 0
-        # Output verification would need shell output capture
-
-        # Clean up
-        shell.run_command('rm -f /tmp/bg_test')
+        with open('bg_test') as f:
+            assert f.read() == "background output\n"
 
     def test_multiple_background_jobs(self, shell):
         """Test creating multiple background jobs."""
@@ -209,40 +212,62 @@ class TestJobCompletion:
 class TestJobControlWithPipelines:
     """Test job control with pipeline commands."""
 
-    def test_pipeline_background_job(self, shell):
-        """Test running an entire pipeline in background."""
+    def test_pipeline_background_job(self, isolated_shell_with_temp_dir):
+        """Test running an entire pipeline in background.
+
+        Same two fixes as test_complex_pipeline_background: the "Wait for
+        completion" section was EMPTY, so the read raced the background
+        pipeline, and the fixed system /tmp path is now the per-test temp
+        dir. The content is verified rather than just `cat`'s exit status.
+        """
+        shell = isolated_shell_with_temp_dir
+
         # Run a pipeline in background
-        result = shell.run_command('echo "test" | cat > /tmp/pipe_bg_test &')
+        result = shell.run_command('echo "test" | cat > pipe_bg_test &')
         assert result == 0
 
-        # Wait for completion
-
+        # Deterministic hand-off through the job API — no sleeps.
+        assert shell.run_command('wait') == 0
 
         # Check result
-        cat_result = shell.run_command('cat /tmp/pipe_bg_test')
-        assert cat_result == 0
-        # Output verification would need shell output capture
+        with open('pipe_bg_test') as f:
+            assert f.read() == "test\n"
 
-        # Clean up
-        shell.run_command('rm -f /tmp/pipe_bg_test')
+    def test_complex_pipeline_background(self, isolated_shell_with_temp_dir):
+        """Test complex pipeline in background.
 
-    def test_complex_pipeline_background(self, shell):
-        """Test complex pipeline in background."""
+        Two fixes to a test that flaked under load (1.2's final gate):
+
+        * It read ``pipe_result`` with nothing between the launch and the
+          read but an empty "Wait and check result" comment, so it passed
+          only when the background pipeline won the race. Proven by slowing
+          the pipeline: the read then fails because the file is not there
+          yet. ``wait`` — the shell's own job API — is the hand-off now.
+        * It used FIXED paths in the system /tmp, shared with every other
+          process on the host and against this project's use-the-temp-dir
+          rule. It now runs in the per-test temp dir.
+
+        The result is also actually verified: the old body asserted only
+        that ``cat`` succeeded, with a comment saying output verification
+        would need capture. The file's content is the point, so it is read
+        directly and pinned to bash 5.2's output for this pipeline.
+        """
+        shell = isolated_shell_with_temp_dir
+
         # Create test file
-        shell.run_command('echo -e "line1\\nline2\\nline3" > /tmp/test_input')
+        shell.run_command('echo -e "line1\\nline2\\nline3" > test_input')
 
         # Run complex pipeline in background
-        result = shell.run_command('cat /tmp/test_input | grep "line" | wc -l > /tmp/pipe_result &')
+        result = shell.run_command('cat test_input | grep "line" | wc -l > pipe_result &')
         assert result == 0
 
-        # Wait and check result
+        # Deterministic hand-off through the job API — no sleeps.
+        assert shell.run_command('wait') == 0
+        assert shell.job_manager.count_active_jobs() == 0
 
-        cat_result = shell.run_command('cat /tmp/pipe_result')
-        assert cat_result == 0
-        # Output verification would need shell output capture
-
-        # Clean up
-        shell.run_command('rm -f /tmp/test_input /tmp/pipe_result')
+        # Unconditional, and about the RESULT: `wc -l` counted all 3 lines.
+        with open('pipe_result') as f:
+            assert f.read().strip() == '3'
 
 
 class TestJobControlErrorHandling:
