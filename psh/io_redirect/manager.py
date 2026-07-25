@@ -847,6 +847,32 @@ class IOManager:
         saved_fds = self.file_redirector.apply_redirections([redirect])
         frame.saved_fds.extend(saved_fds)
 
+    def restore_active_builtin_redirections(self) -> int:
+        """Restore every per-command redirect frame still in effect (LIFO).
+
+        A loop over :meth:`restore_builtin_redirections` — the same per-frame
+        restore the executor runs after each redirected builtin — so that
+        teardown's load-bearing ordering and internals are untouched here.
+        Returns the number of frames restored (0 when none is active, the
+        common case).
+
+        The caller is the fatal-signal death path
+        (``SignalManager._restore_active_redirections``): a signal delivered
+        mid-command otherwise leaves the EXIT trap writing into the
+        interrupted command's redirect target instead of the shell's own
+        stdout (slot 1.3b). The normal execution paths never need this — they
+        are already paired setup/restore in ``try/finally``.
+
+        Iterating a SNAPSHOT in reverse is what keeps this LIFO and
+        terminating: each per-frame restore pops its own frame off the live
+        stack.
+        """
+        restored = 0
+        for frame in reversed(list(self._builtin_frame_stack)):
+            self.restore_builtin_redirections(frame)
+            restored += 1
+        return restored
+
     def restore_builtin_redirections(self, frame: BuiltinRedirectFrame):
         """Undo exactly what ``setup_builtin_redirections`` did for *frame*.
 
