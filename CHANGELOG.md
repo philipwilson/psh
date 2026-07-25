@@ -4,6 +4,41 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.752.0 (2026-07-25) - Remediation Wave 1 slot 1.2: one runner for every bash-differential spawn
+- **Boundary Remediation Campaign** (reappraisal #22 HIGH-1 second half; ledger row
+  CLOSED in `docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md`).
+  Every bash-differential process launch in the test tree now goes through the
+  shell-oracle runner (`run_shell_case` / new thin `run_psh`/`run_bash` helpers):
+  92 modules migrated off direct `subprocess` use; 3 un-runnerable modules +
+  the harness itself allowlisted with owner/reason/removal condition.
+- **AST anti-spawn guard** (`tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py`):
+  rejects direct process creation across the 182-module oracle-bearing set.
+  Frozen membership pins + per-module spawn-SITE budgets (growth anywhere is a
+  visible two-place change), a separate PTY registry for the pexpect family the
+  subprocess detector cannot see, synthetic offenders proving every face fires,
+  and an honest-limits docstring naming every known blind spot.
+- **Runner `stdin_mode='pipe'`**: typed non-seekable-stdin mode (real FIFO,
+  EPIPE-safe) so cases whose subject is fd-0 seekability (`/dev/stdin` scripts,
+  the binary sniff, `read`/`mapfile` over-read) keep their meaning under the
+  runner; a 25-module fd-0-kind audit restored base semantics at every site.
+- **Hermetic-env correctness**: stale `$PWD`/`$OLDPWD` no longer leak into the
+  runner's fresh temp cwd (a manufactured-divergence hazard); four-leg runner
+  pin. The worktree discriminator pin asserts the child's resolved
+  `psh.__file__` and is portable to python3-only hosts.
+- **Oracle absence stays loud**: differential modules fail collection when no
+  bash oracle resolves (a silent-skip regression introduced mid-slot was
+  reverted; 9 pre-existing silent-skip modules queued for slot 1.3).
+- **Replayable audits committed**: `tests/harness/census_replay.py` (imports the
+  guard's own detectors), `tests/harness/stdin_kind_audit.py`,
+  `tests/harness/gen_census.py`, `tests/harness/oracle_migration_census.md`.
+  Superseded resolution-only "accepted use" blessing reworked; natural-exit
+  output-cap path pinned (`killpg=False`); timeout truncation provenance kept.
+- Tests-tree only - zero production `psh/` changes. Verified by a FIVE-round
+  adversarial verification (3 bounces, then PASS + a nit-fix round); every
+  bounce finding was real, including two caught in the dev's own committed
+  audit tooling. Root `CLAUDE.md` conformance example rewritten to the runner
+  API (the old example taught the pattern the guard now rejects).
+
 ## 0.751.0 (2026-07-24) - Remediation Wave 1 slot 1.1: typed harness outcomes
 - **Boundary Remediation Campaign, first code slot** (reappraisal #22 HIGH-1 first half;
   ledger row in `docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md`).

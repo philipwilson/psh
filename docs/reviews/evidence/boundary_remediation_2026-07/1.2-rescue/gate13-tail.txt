@@ -1,0 +1,30 @@
+tests/integration/subshells/test_env_isolation_p1.py ....                [ 76%]
+tests/system/interactive/test_multiline_immediate_error_i3.py .....      [ 77%]
+tests/system/interactive/test_pty_huponexit_j1.py .....                  [ 77%]
+tests/system/interactive/test_pty_shutdown_route_f2.py ..                [ 78%]
+tests/system/interactive/test_pty_smoke.py ............................. [ 81%]
+............................xx.........................                  [ 87%]
+tests/system/test_fifo_script_i2.py ....                                 [ 88%]
+tests/system/test_script_shebang_is_comment.py .                         [ 88%]
+tests/unit/builtins/test_disown_builtin.py ......................        [ 90%]
+tests/unit/builtins/test_job_control_builtins.py .......                 [ 91%]
+tests/unit/builtins/test_signal_builtins.py ............................ [ 94%]
+...............                                                          [ 96%]
+tests/unit/core/test_construction_purity_f2.py ........                  [ 97%]
+tests/unit/core/test_signal_disposition_lease_p1.py ...                  [ 97%]
+tests/unit/core/test_signal_lease_coordination_f2.py .....               [ 97%]
+tests/unit/executor/test_fork_sigmask_restore.py ...                     [ 98%]
+tests/unit/expansion/test_expand_aliases_option.py .                     [ 98%]
+tests/unit/expansion/test_word_expander_characterization.py .            [ 98%]
+tests/unit/interactive/test_signal_handler_lifecycle.py .....            [ 99%]
+tests/unit/tooling/test_process_state_hermeticity.py ......              [ 99%]
+tests/unit/tooling/test_run_tests_hardening.py ..                        [100%]
+
+========= 893 passed, 21086 deselected, 2 xfailed in 236.14s (0:03:56) =========
+
+================================================================================
+TEST RUN SUMMARY
+================================================================================
+Combined across 2 phase(s) (from phase manifests): 20364 passed, 1590 skipped, 10 xfailed
+Full transcript saved to: /Users/pwilson/src/psh-r1-2/tmp/last-test-run.txt
+✅ All test phases PASSED
