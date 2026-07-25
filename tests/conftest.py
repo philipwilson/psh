@@ -33,22 +33,23 @@ sys.path.insert(0, str(PSH_ROOT / "tests" / "harness"))
 os.environ.pop("DISPLAY", None)
 os.environ.pop("XAUTHORITY", None)
 
-# The RLIMIT_CORE soft default is 0 on macOS but UNLIMITED on Linux, and that
-# one difference is the whole reason several signal-death tests were red on the
-# Linux nightly while green on the macOS gate:
-#   * a core-dumping death makes the kernel set WCOREDUMP, so psh (correctly,
-#     like bash) appends " (core dumped)" to the signal description — breaking
-#     every assertion written as `stderr == signal.strsignal(sig)`;
-#   * SIGQUITing a forked psh subshell dumps a ~20 MB CPython core, and on a
-#     hosted runner (core_pattern routed through apport) that dump outran the
-#     test's 12s budget.
-# Lower the SOFT limit here, at import time, so every test process and every
-# shell it spawns inherits it. Only the soft limit moves: the hard limit is
-# untouched, so `ulimit -c unlimited` still raises it back and the ulimit
-# conformance rows (which compare psh and bash as siblings inheriting the SAME
-# limit) are unaffected. The " (core dumped)" formatting keeps its coverage
-# from test_job_notice_channel.py::test_core_dumped_suffix, which builds a
-# synthetic wait status rather than dumping a real core.
+# The RLIMIT_CORE soft default is 0 on macOS but UNLIMITED on Linux, so the
+# suite's signal-death tests dump real cores there: SIGQUITing a forked psh
+# subshell writes a ~20 MB CPython core, and enough of those fill a CI disk.
+# Lower the SOFT limit at import time so every test process, and every shell it
+# spawns, inherits it. Only the soft limit moves — the hard limit is untouched,
+# so `ulimit -c unlimited` still raises it back and the ulimit conformance rows
+# (which compare psh and bash as siblings inheriting the SAME limit) are
+# unaffected.
+#
+# This does NOT make core dumps impossible, and tests must not assume it does.
+# When /proc/sys/kernel/core_pattern names a PIPE the kernel ignores
+# RLIMIT_CORE and dumps anyway (it forces the limit to infinity for piped
+# dumps), which is exactly what hosted CI runners configure via apport /
+# systemd-coredump. Verified on one kernel, changing only the pattern, with the
+# soft limit at 0: `core` -> WCOREDUMP False, `|/bin/cat` -> WCOREDUMP True.
+# A test that pins a signal-death diagnostic therefore asks the host whether to
+# expect bash's " (core dumped)" suffix — see tests/harness/core_dump_env.py.
 try:
     _core_soft, _core_hard = resource.getrlimit(resource.RLIMIT_CORE)
     if _core_soft != 0:
