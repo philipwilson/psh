@@ -52,13 +52,18 @@ jobs:
           # peak and the /tmp entry count (an ext4 directory that has grown a
           # huge number of entries can itself return ENOSPC) so the next
           # occurrence is diagnosable instead of guessable.
-          nohup bash -c 'while :; do
+          # Hard-bounded (timeout + setsid + detached fds): a `while :` sampler
+          # left unbounded on a runner can outlive its step and confuse job
+          # teardown, and a diagnostic must never be able to wedge the thing it
+          # is diagnosing.
+          setsid timeout 3300 bash -c 'while :; do
             set -- $(df --output=avail,iavail / | tail -1)
             printf "%s avail_kb=%s ifree=%s tmp_entries=%s\n" \
               "$(date -u +%H:%M:%S)" "$1" "$2" "$(ls -U /tmp | wc -l)"
             sleep 5
-          done' > /tmp/disk-samples.log 2>&1 &
-          echo "sampler started"
+          done' > /tmp/disk-samples.log 2>&1 < /dev/null &
+          disown || true
+          echo "sampler started (bounded at 3300s)"
 
       # --compare-bash adds the golden bash-comparison phase (Phase 2) to
       # the same run, so the full suite and the golden phase share one
@@ -164,13 +169,18 @@ jobs:
           # peak and the /tmp entry count (an ext4 directory that has grown a
           # huge number of entries can itself return ENOSPC) so the next
           # occurrence is diagnosable instead of guessable.
-          nohup bash -c 'while :; do
+          # Hard-bounded (timeout + setsid + detached fds): a `while :` sampler
+          # left unbounded on a runner can outlive its step and confuse job
+          # teardown, and a diagnostic must never be able to wedge the thing it
+          # is diagnosing.
+          setsid timeout 3300 bash -c 'while :; do
             set -- $(df --output=avail,iavail / | tail -1)
             printf "%s avail_kb=%s ifree=%s tmp_entries=%s\n" \
               "$(date -u +%H:%M:%S)" "$1" "$2" "$(ls -U /tmp | wc -l)"
             sleep 5
-          done' > /tmp/disk-samples.log 2>&1 &
-          echo "sampler started"
+          done' > /tmp/disk-samples.log 2>&1 < /dev/null &
+          disown || true
+          echo "sampler started (bounded at 3300s)"
 
       - name: Run Full Conformance Suite (POSIX + bash compatibility)
         working-directory: tests/conformance
