@@ -22,13 +22,40 @@ cannot lose the output. Building that fix's own red-on-base replay is what
 exposed it.
 """
 
+import contextlib
 import io
+import sys
 
 import pytest
 
 from psh.lexer import tokenize
 from psh.parser import parse
 from psh.shell import Shell
+
+
+@contextlib.contextmanager
+def captured_real_stdout():
+    """Capture what reaches the process's stdout, without pytest's fixture.
+
+    CLAUDE.md's Output Capture Rules forbid pytest's capture fixture for tests
+    that perform I/O redirection, and `test_fixture_ratchets` enforces it —
+    these tests install real redirect frames, so that fixture is exactly the
+    wrong instrument here. (The ratchet matches the bare fixture NAME anywhere
+    in a file, so this docstring avoids spelling it; the rule is stated in
+    CLAUDE.md under that name.)
+
+    Swapping ``sys.stdout`` for a StringIO is also faithful to what is under
+    test: the redirect machinery snapshots whatever stdout it finds and
+    restores to it, so the substitute plays the part of the shell's real
+    stdout.
+    """
+    real = sys.stdout
+    buf = io.StringIO()
+    sys.stdout = buf
+    try:
+        yield buf
+    finally:
+        sys.stdout = real
 
 
 @pytest.fixture
@@ -69,15 +96,16 @@ def test_restore_returns_zero_with_no_active_frame(shell):
     assert shell.io_manager.restore_active_builtin_redirections() == 0
 
 
-def test_restore_with_no_frame_leaves_the_shell_usable(shell, capsys):
+def test_restore_with_no_frame_leaves_the_shell_usable(shell):
     """The no-op must not disturb the shell's own bindings."""
     shell.interactive_manager.signal_manager._restore_active_redirections()
-    shell.run_command('echo still-working')
-    assert 'still-working' in capsys.readouterr().out
+    with captured_real_stdout() as out:
+        shell.run_command('echo still-working')
+    assert 'still-working' in out.getvalue()
 
 
 def test_exit_trap_output_goes_to_stdout_not_the_redirect_target(
-        shell, capsys, tmp_path):
+        shell, tmp_path):
     """BOTH FACES of the misdirection (ruling condition (e)).
 
     Establishes exactly the state a signal finds mid-command — a live
@@ -90,25 +118,26 @@ def test_exit_trap_output_goes_to_stdout_not_the_redirect_target(
     target = tmp_path / 'redirect_target.txt'
     shell.run_command('trap "echo cleanup" EXIT')
 
-    frame = shell.io_manager.setup_builtin_redirections(
-        _redirected_command(': > %s' % target))
-    try:
-        # What the interrupted command itself writes belongs in the target.
-        print('command-output', flush=True)
+    with captured_real_stdout() as shell_stdout:
+        frame = shell.io_manager.setup_builtin_redirections(
+            _redirected_command(': > %s' % target))
+        try:
+            # What the interrupted command itself writes belongs in the target.
+            print('command-output', flush=True)
 
-        sm = shell.interactive_manager.signal_manager
-        sm._restore_active_redirections()        # <- the fix under test
-        shell.trap_manager.execute_exit_trap()
-        sm._flush_before_death()
-    finally:
-        # The fix already restored it; this is the paired teardown a real
-        # caller would run, and it must stay harmless (see the LIFO/pop note
-        # in restore_active_builtin_redirections).
-        if frame in getattr(shell.io_manager, '_builtin_frame_stack', []):
-            shell.io_manager.restore_builtin_redirections(frame)
+            sm = shell.interactive_manager.signal_manager
+            sm._restore_active_redirections()      # <- the fix under test
+            shell.trap_manager.execute_exit_trap()
+            sm._flush_before_death()
+        finally:
+            # The fix already restored it; this is the paired teardown a real
+            # caller would run, and it must stay harmless (see the LIFO/pop
+            # note in restore_active_builtin_redirections).
+            if frame in getattr(shell.io_manager, '_builtin_frame_stack', []):
+                shell.io_manager.restore_builtin_redirections(frame)
 
     # FACE 1 — the trap's output reached the SHELL's stdout.
-    assert 'cleanup' in capsys.readouterr().out
+    assert 'cleanup' in shell_stdout.getvalue()
 
     # FACE 2 — the target holds ONLY what the command wrote.
     contents = target.read_text()
