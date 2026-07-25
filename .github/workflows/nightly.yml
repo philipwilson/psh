@@ -122,7 +122,18 @@ jobs:
       # `benchmark`-marked timing microbenchmarks, serial, excluded from the
       # standard gate. Nightly records the transcript as a build artifact
       # ONLY — baseline-delta tracking is deferred to campaign exit.
+      # continue-on-error matches what this tier already says it is: the
+      # transcript is uploaded as an artifact and baseline-delta tracking is
+      # deferred, so a timing wobble on shared CI hardware must not fail the
+      # nightly. It was gating by accident, and nobody could see it: every run
+      # since 2026-07-02 failed at the suite step, which SKIPPED this one. The
+      # first run to reach it (30168712840) found three thresholds that are
+      # absolute wall-clock numbers tuned on a dev machine — 0.0124s against a
+      # 0.01s budget, ~24% over — and all three pass locally. Those are
+      # pre-existing and want real baselines, not a fudged constant; that is the
+      # deferred work, not this slot's.
       - name: Benchmark Tier (serial; artifact-only, no baseline deltas)
+        continue-on-error: true
         run: python run_tests.py --benchmarks --results-file tmp/benchmarks-nightly.txt
 
       - name: Report disk after suite
