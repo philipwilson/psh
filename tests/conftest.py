@@ -603,3 +603,52 @@ def pytest_addoption(parser):
         default=False,
         help="Also run each golden test against bash and compare output",
     )
+
+
+# --- opt-in per-test disk accounting (PSH_DISK_WATCH=1) ----------------------
+#
+# The Linux nightly repeatedly died with [Errno 28] while df reported ~88 GB
+# free both before and after the suite. A 5s sampler in the workflow showed why
+# a before/after pair could never see it: free space drains MONOTONICALLY at
+# ~400 MB/s -- 24 GB in 66 seconds -- with free inodes and the /tmp entry count
+# both flat, then fully recovers. That is one runaway WRITER, and the flat entry
+# count plus the full recovery point at a file that is already unlinked (its
+# space comes back when the last fd closes), which is why nothing is left to
+# find afterwards.
+#
+# The sampler can say WHEN but not WHICH TEST. This records free space either
+# side of every test and prints the biggest consumers at session end, so the
+# next occurrence arrives with a name attached. Off unless PSH_DISK_WATCH=1, so
+# it costs a normal run nothing.
+
+_DISK_WATCH = os.environ.get("PSH_DISK_WATCH") == "1"
+_disk_deltas: "list[tuple[int, str]]" = []
+
+
+def _free_bytes() -> int:
+    st = os.statvfs(os.environ.get("TMPDIR", "/tmp"))
+    return st.f_bavail * st.f_frsize
+
+
+if _DISK_WATCH:
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_protocol(item, nextitem):
+        before = _free_bytes()
+        yield
+        try:
+            consumed = before - _free_bytes()
+        except OSError:
+            return
+        # Only meaningful drops; churn of a few MB is normal temp-file traffic.
+        if consumed > 64 * 1024 * 1024:
+            _disk_deltas.append((consumed, item.nodeid))
+
+    def pytest_sessionfinish(session, exitstatus):
+        if not _disk_deltas:
+            return
+        tr = session.config.pluginmanager.get_plugin("terminalreporter")
+        if tr is None:
+            return
+        tr.write_sep("=", "disk consumers (PSH_DISK_WATCH)")
+        for consumed, nodeid in sorted(_disk_deltas, reverse=True)[:20]:
+            tr.write_line(f"{consumed / (1024 * 1024):10.1f} MB  {nodeid}")

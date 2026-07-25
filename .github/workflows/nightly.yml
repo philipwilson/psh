@@ -72,6 +72,12 @@ jobs:
       # coverage.xml. Coverage is non-gating reporting (no --cov-fail-under);
       # it moved here from the per-PR gate (v0.330.0) to keep that gate fast.
       - name: Run Full Parallel Suite (with bash golden phase + coverage)
+        # PSH_DISK_WATCH prints the tests that consumed the most free space.
+        # The workflow sampler proved the nightly's [Errno 28] deaths are one
+        # runaway writer draining ~400 MB/s with inodes flat, but it cannot say
+        # WHICH test; this names it. See tests/conftest.py.
+        env:
+          PSH_DISK_WATCH: "1"
         run: python run_tests.py --parallel --compare-bash --census --coverage
 
       # Extended RD-vs-combinator parser differential. The full suite above
