@@ -158,9 +158,14 @@ class TestBackgroundScopesWholeList:
         # startup -- which on a loaded CI runner is a large fraction of a
         # second and says nothing about foreground-vs-background. With a 0.3s
         # sleep the budget and the interpreter were the same size, and the row
-        # failed on the nightly at 0.301s. A 1.0s sleep keeps the two outcomes
-        # far apart: backgrounded costs startup only, foreground costs startup
-        # plus a whole second.
+        # failed on the nightly at 0.301s.
+        #
+        # The 1.0s sleep and the 0.6s budget are deliberately DIFFERENT numbers.
+        # A budget equal to the sleep it races is the same mistake at a larger
+        # scale -- it still fails the moment startup eats the slack. Here
+        # backgrounded costs startup alone (~0.1-0.3s even loaded) while
+        # foreground costs startup PLUS a whole second, so 0.6s sits in the gap
+        # with headroom on both sides instead of on the boundary.
         start = time.monotonic()
         p = subprocess.Popen(
             [sys.executable, '-m', 'psh', '-c',
@@ -171,7 +176,7 @@ class TestBackgroundScopesWholeList:
         rest = p.stdout.read()
         assert p.wait() == 0
         assert first == 'fg\n' and rest == 'a\nb\n'
-        assert elapsed < 1.0, f'fg took {elapsed:.3f}s — first group ran in foreground'
+        assert elapsed < 0.6, f'fg took {elapsed:.3f}s — first group ran in foreground'
 
     def test_single_subshell_background(self):
         r = run_psh('( sleep 0.1 ) & wait; echo done')

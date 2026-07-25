@@ -1,6 +1,6 @@
 """Does a fatal signal produce a core dump in THIS environment?
 
-A shell that reports a signal death appends bash's ``ate (core dumped)`` suffix
+A shell that reports a signal death appends bash's ``" (core dumped)"`` suffix
 exactly when the kernel set ``WCOREDUMP`` in the wait status — psh does this in
 ``psh/executor/job_control.py``. Whether the kernel sets it is a property of the
 host, not of the shell, so a test that pins the diagnostic text has to ask the

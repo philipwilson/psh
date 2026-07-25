@@ -366,14 +366,14 @@ def _descendant_pids(root: int) -> List[int]:
     return found
 
 
-def _killpg_sigkill(pid: int) -> None:
-    """SIGKILL the group led by ``pid``, then sweep the rest of its SESSION.
+def _killpg_sigkill(pid: int, *, sweep_descendants: bool = False) -> None:
+    """SIGKILL the group led by ``pid``; optionally sweep escaped descendants.
 
-    The group alone is not enough, and the gap was expensive.
-    :func:`run_shell_case` starts the shell with ``start_new_session=True``, so
-    ``pid`` leads both a group and a session — but a JOB-CONTROL shell then
-    ``setpgid``s the commands it launches into groups of their OWN, and those
-    are NOT reached by ``killpg(pid)``:
+    The group alone is not enough on the breach paths, and the gap was
+    expensive. :func:`run_shell_case` starts the shell with
+    ``start_new_session=True``, so ``pid`` leads both a group and a session —
+    but a JOB-CONTROL shell then ``setpgid``s the commands it launches into
+    groups of their OWN, and those are NOT reached by ``killpg(pid)``:
 
         psh   pid 40915  pgid 40910
         yes   pid 40919  pgid 40919   <-- its own group; killpg misses it
@@ -386,10 +386,18 @@ def _killpg_sigkill(pid: int) -> None:
     what repeatedly killed the Linux nightly with ``[Errno 28]``, and it does
     the same on the macOS gate host, where one escaped ``yes`` reached 127 GB.
 
-    So the descendants are enumerated FIRST — while the parent links still
-    exist — and any that survive the group kill are SIGKILLed individually.
+    ``sweep_descendants`` is OPT-IN, and only the two breach sites that kill a
+    LIVE leader pass it. The enumeration walks pid/ppid from ``pid``, so it is
+    meaningful only while those parent links still exist; once the leader has
+    been reaped the children are reparented to init and the walk returns
+    nothing. Running it anyway on the post-``wait`` and normal-completion paths
+    would be three things, all bad: a provable no-op, a real cost (a ``ps``
+    spawn per case, measured at +33-39% on a warm oracle case and multiplied by
+    thousands of cases suite-wide), and a hazard — a reaped pid can be recycled,
+    and sweeping a recycled pid's tree would SIGKILL an unrelated process's
+    descendants.
     """
-    strays = _descendant_pids(pid)     # snapshot BEFORE orphaning them
+    strays = _descendant_pids(pid) if sweep_descendants else []
     try:
         os.killpg(pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError, OSError):
@@ -536,7 +544,9 @@ def run_shell_case(argv: Sequence[str], *,
                         or os.path.getsize(err_path) > byte_cap):
                     # Runaway output: kill the whole group NOW and report a
                     # non-comparable OutputLimitExceeded (never Completed).
-                    _killpg_sigkill(proc.pid)
+                    # Leader still LIVE, so its escaped children are still
+                    # reachable through pid/ppid -- sweep them.
+                    _killpg_sigkill(proc.pid, sweep_descendants=True)
                     capped = True
                     break
             except OSError:
@@ -546,7 +556,10 @@ def run_shell_case(argv: Sequence[str], *,
         if timed_out:
             # Kill the whole session (killpg), reap, then sweep once more for
             # stragglers that forked into the group during the first kill.
-            _killpg_sigkill(proc.pid)
+            # Only THIS call sweeps descendants: the leader is still live here,
+            # so the pid/ppid walk can still see them. The second call below
+            # runs after the reap, when they have been reparented to init.
+            _killpg_sigkill(proc.pid, sweep_descendants=True)
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:

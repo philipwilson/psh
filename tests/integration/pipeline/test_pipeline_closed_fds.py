@@ -31,6 +31,7 @@ file-backed capture, bounded output).
 """
 import itertools
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -129,10 +130,12 @@ def test_d2_closed_stdout_upstream_keeps_write_end():
                                 "printf x | cat")
     assert "printf" not in err  # upstream keeps its pipe write end
     # cat's noun for fd 1 is a coreutils-flavour detail, not a psh behaviour:
-    # GNU cat says "standard output" where BSD cat says "stdout". What this row
-    # pins is that the ONLY diagnostic comes from cat and names a bad
-    # descriptor; the vendor's wording is not psh's to fix.
-    assert err.startswith("cat: ") and err.endswith("Bad file descriptor\n")
+    # GNU cat says "standard output" where BSD cat says "stdout". Anchored to
+    # exactly ONE line naming one of those two nouns: a startswith/endswith pair
+    # would accept arbitrary text in between, and a stray extra diagnostic
+    # there is precisely what this row exists to catch.
+    assert re.fullmatch(
+        r"cat: (stdout|standard output): Bad file descriptor\n", err), err
     assert status == "rc=1 ps=0 1"
 
 

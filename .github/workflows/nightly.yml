@@ -29,6 +29,16 @@ jobs:
       - name: Show bash version
         run: bash --version
 
+      # EXPIRY — this whole instrumentation block (core_pattern normalisation,
+      # the disk sampler, the open-fd snapshots, and PSH_DISK_WATCH on the suite
+      # step) is RELAPSE WATCH for the escaped-writer bug fixed in slot 1.4, not
+      # permanent workflow furniture. Removal criterion: once several
+      # consecutive SCHEDULED nightlies are green with zero ENOSPC and no
+      # sampler trip, delete it — the fix itself is pinned by
+      # test_cap_kill_reaches_a_writer_that_left_the_process_group, so nothing
+      # here is load-bearing for correctness. Removal is on the wave-close carry
+      # list.
+      #
       # Runner hygiene for a suite that kills processes with core-dumping
       # signals. The runner image routes core_pattern through a PIPE
       # (apport/systemd-coredump), and for piped dumps the kernel IGNORES
@@ -209,6 +219,16 @@ jobs:
       - name: Show bash version
         run: bash --version
 
+      # EXPIRY — this whole instrumentation block (core_pattern normalisation,
+      # the disk sampler, the open-fd snapshots, and PSH_DISK_WATCH on the suite
+      # step) is RELAPSE WATCH for the escaped-writer bug fixed in slot 1.4, not
+      # permanent workflow furniture. Removal criterion: once several
+      # consecutive SCHEDULED nightlies are green with zero ENOSPC and no
+      # sampler trip, delete it — the fix itself is pinned by
+      # test_cap_kill_reaches_a_writer_that_left_the_process_group, so nothing
+      # here is load-bearing for correctness. Removal is on the wave-close carry
+      # list.
+      #
       # Runner hygiene for a suite that kills processes with core-dumping
       # signals. The runner image routes core_pattern through a PIPE
       # (apport/systemd-coredump), and for piped dumps the kernel IGNORES
@@ -272,3 +292,19 @@ jobs:
       - name: Run Full Conformance Suite (POSIX + bash compatibility)
         working-directory: tests/conformance
         run: python run_conformance_tests.py
+
+      # This job starts the sampler too (shared hygiene step above), so it must
+      # also REPORT it — an unreported sampler is collected and discarded, which
+      # is pure cost. This job runs oracle cases as well, so it is not immune to
+      # the escaped-writer class; leaving it without disk visibility would be a
+      # blind spot in exactly the job that has to stay green.
+      - name: Report disk after conformance
+        if: always()
+        run: |
+          echo "--- disk after conformance ---"; df -h / /tmp; df -i / /tmp
+          echo "--- OPEN-FD SNAPSHOTS taken while space was draining ---"
+          sed -n '/=== TRIP/,/=== end TRIP/p' /tmp/disk-samples.log 2>/dev/null \
+            | head -60 || true
+          echo "--- during-job samples: 10 LOWEST free space ---"
+          grep avail_kb= /tmp/disk-samples.log 2>/dev/null \
+            | sort -t= -k2 -n | head -10 || true

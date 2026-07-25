@@ -12,8 +12,17 @@ invalid on BOTH platforms -- the two versions agree row for row:
 Assigning a bad LC_ALL is a direct setlocale bash reports. Emptying or unsetting
 it puts bash on its RESET path, which re-applies every category from the
 remaining variables WITHOUT warning -- even when what becomes effective is
-invalid. So the discriminator is the TRIGGER, not assignment-versus-unset:
-``LC_ALL=`` is textually an assignment and is still silent.
+invalid. So ACROSS THE LC_ALL / LC_CTYPE / LC_COLLATE COLUMNS PROBED ABOVE, the
+discriminator is the TRIGGER, not assignment-versus-unset: ``LC_ALL=`` is
+textually an assignment and is still silent.
+
+That scoping is deliberate, not hedging. LANG is NOT covered by this module and
+does NOT follow the same rule: bash never warns for a LANG change in any form,
+where psh does. psh also warns at startup for a bad LC_COLLATE or LANG where
+bash is silent, and is silent on ``unset`` of an already-bogus LC_CTYPE where
+bash warns (naming an empty locale). Those rows are a real, still-open
+divergence carried in the slot-1.4 ledger (carry #1) rather than pinned here,
+because this fix deliberately changed ONE path.
 
 psh warned on every re-application, which made ``unset LC_ALL`` noisy on any
 host where the inherited LC_CTYPE names a locale libc does not have. That is
