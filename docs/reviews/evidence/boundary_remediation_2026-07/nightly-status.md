@@ -55,3 +55,28 @@
   (J1 watch, a MUST) is discharged inside 1.4, not before.
 - **Standing rule going forward:** the integrator checks the latest nightly
   result at every wave close (added to the wave-close checklist in RESUME).
+
+## RECOVERY (2026-07-25, slot 1.4, shipped v0.755.0)
+
+- **GREEN.** Three consecutive green `workflow_dispatch` runs on
+  `fix/remediation-1-4`: 30171120171 (`a768f497`), 30172534890 (`d3783922`),
+  30175067149 (`cdff0704`, the merged tip). Both jobs SUCCESS each time:
+  conformance 2,671 passed; parallel+golden 21,873 passed / 0 failed; real
+  ENOSPC 0; runner free-space floor 91.26 GB (was 0 pre-fix).
+- **The red record ends at 23+ nights** (2026-07-02 → 2026-07-24 census;
+  first green dispatch 2026-07-25). Census: 30 parallel rows + 54
+  conformance rows classified (i)/(ii)/(iii)/(iv)/(v) — full per-row table
+  in `1.4-rescue/slot-ledger.md` Part 10.
+- **Three real defects found and fixed** (the rest was platform honesty +
+  env): psh `bg` stale-state SIGCONT gap; psh locale reactive over-warning
+  (LC_ALL reset path); harness cap/timeout kill missing escaped process
+  groups — the runaway `yes` on unlinked capture files (~480 MB/s) that
+  caused the `[Errno 28]` deaths HERE and the "external consumer" disk
+  collapses on the macOS gate host. One bug, both platforms.
+- **OWED (Wave 1 exit checklist): the first SCHEDULED run after the merge
+  must be verified green** — dispatch runs do not prove the schedule.
+  Check: `gh run list --workflow=nightly.yml --limit 3`.
+- **Instrumentation expiry**: the disk sampler / fd snapshots /
+  PSH_DISK_WATCH / core_pattern normalization remain as relapse watch;
+  removal criterion recorded in the workflow comment (several consecutive
+  green scheduled nightlies, zero ENOSPC, no trips).
