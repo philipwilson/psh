@@ -124,16 +124,22 @@ def test_linter_dedup_stays_benign():
 
 
 def test_manually_aliased_node_is_analyzed_once():
-    """Legitimate re-entry, pinned: the parsers never alias (an AST is a
-    tree), but a MANUALLY-built AST can place one node object under two
-    edges. The documented behavior (TotalTraversalVisitor docstring): re-entry
-    is a NO-OP at the visit() seam itself, so the node is ANALYZED exactly
-    once whether the second edge arrives via the sweep or via a handler's own
-    self.visit (the security Pipeline handler dispatches its members
-    directly, which is exactly the second shape). Asserted at the analysis
-    level — one rm object yields one issue, one echo object counts once —
-    because the dispatch-count instrument tallies visit() CALLS, and the
-    handler's second call legitimately happens before the no-op returns."""
+    """Pin of a DOCUMENTED CHOICE, valid only under the tree invariant.
+
+    The parsers never alias (an AST is a tree), so this shape is reachable
+    only from a MANUALLY-built graph placing one node object under two
+    edges. For that case TotalTraversalVisitor CHOOSES once-per-OBJECT:
+    re-entry is a no-op at the visit() seam, so the node is analyzed once,
+    at its first reached edge, whether the second edge arrives via the sweep
+    or via a handler's own self.visit (the security Pipeline handler
+    dispatches members directly — exactly the second shape). Per-context
+    re-analysis would be a defensible alternative; anyone introducing a
+    DAG-shaped node or subtree-sharing transform must revisit the choice at
+    that seam, and this pin is where their change will surface. Asserted at
+    the analysis level — one rm object yields one issue, one echo object
+    counts once — because the dispatch-count instrument tallies visit()
+    CALLS, and the handler's second call legitimately happens before the
+    no-op returns."""
     from psh.ast_nodes import Pipeline, SimpleCommand, StatementList, Word
 
     def aliased_tree(cmd_words):

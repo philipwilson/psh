@@ -236,14 +236,23 @@ class TotalTraversalVisitor(ASTVisitor[None]):
     own sweep re-dispatched it — 2^N re-analysis under nested cases. Pinned
     by ``tests/unit/visitor/test_traversal_multiplicity.py``.) An AST is a
     tree (no node object under two parents — the parsers never alias), so
-    re-entry never occurs on a parsed tree. If a MANUALLY-built AST does
-    alias one node object under two edges, re-entry is a NO-OP at the
-    ``visit()`` seam itself: the first dispatch analyzes the node, every
-    later dispatch — whether from the sweep or from a handler's own
-    ``self.visit`` — returns immediately. Analyzed exactly once, never twice
-    and never zero times, unconditionally. The set clears when the outermost
-    visit returns, so a reused visitor instance can traverse a later tree
-    whose node ids happen to collide with a collected earlier one.
+    re-entry never occurs on a parsed tree.
+
+    For a MANUALLY-built aliased graph this seam makes a documented CHOICE:
+    re-entry is a no-op at ``visit()`` itself — the node is analyzed once, at
+    its first reached edge, whether a later edge arrives from the sweep or
+    from a handler's own ``self.visit``. Once-per-OBJECT is not the only
+    defensible semantics (a node occupying two positions could warrant
+    analysis in each context, since a finding's meaning can depend on where
+    the node sits); it is chosen because parsers never alias — so no parsed
+    tree can reach the alternative — and because it is what makes the
+    exponential re-analysis class structurally impossible. A future
+    DAG-shaped node, or a transform that shares subtrees, invalidates that
+    premise: this guard is the seam that decides such nodes' behavior, and
+    the choice must be revisited here, not silently inherited. The set
+    clears when the outermost visit returns, so a reused visitor instance
+    can traverse a later tree whose node ids happen to collide with a
+    collected earlier one.
 
     Subclasses must not override ``visit()`` — the totality guarantee lives
     there (enforced by the battery's no-override check).
