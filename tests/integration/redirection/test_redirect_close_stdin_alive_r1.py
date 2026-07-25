@@ -29,6 +29,7 @@ import sys
 import tempfile
 
 import pytest
+from shell_oracle import resolve_bash
 
 TREE = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
@@ -144,8 +145,13 @@ def test_child_sees_closed_fd_and_shell_survives(infile_dir):
     # While the builtin runs with `1>&- <infile`, a child it spawns sees fd 1
     # CLOSED (bash; `cat <&1` fails, never reads infile through fd 1), and the
     # shell's stdout survives the frame restore (`echo rc=$?` prints).
+    # The child is the resolved bash oracle, not `/bin/sh`: what a closed fd 1
+    # COSTS the child is the child shell's own choice, and /bin/sh is bash on
+    # macOS but dash on Linux, where the failed redirect exits 2 rather than 1.
+    # Naming the shell keeps the status an exact pin.
+    sh = resolve_bash().path
     out, err, rc = run_psh(
-        "eval 'read x; /bin/sh -c \"cat <&1\"' 1>&- <infile; echo rc=$?",
+        f"eval 'read x; {sh} -c \"cat <&1\"' 1>&- <infile; echo rc=$?",
         cwd=infile_dir)
     assert out == "rc=1\n", (out, err)
     assert "AAA" not in (out + err) and "BBB" not in (out + err), (

@@ -27,6 +27,8 @@ import subprocess
 import sys
 import tempfile
 
+from shell_oracle import resolve_bash
+
 TREE = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
@@ -98,8 +100,14 @@ def test_move_self_dup_closed():
 
 def test_self_dup_closed_stays_closed_for_child():
     # bash: the no-op does NOT open fd 3; the child still sees it closed.
+    # The child is the resolved bash oracle, not `/bin/sh`: what fd 3 being
+    # closed COSTS the child is the child shell's own choice, and /bin/sh is
+    # bash on macOS but dash on Linux, where a bad-fd redirect exits 2 rather
+    # than 1. Naming the shell keeps the status an exact pin instead of a
+    # property of whatever /bin/sh happens to be.
+    sh = resolve_bash().path
     out, err, rc = run_psh(
-        "exec 3>&-; /bin/sh -c 'echo x >&3' 3>&3; echo rc=$?")
+        f"exec 3>&-; {sh} -c 'echo x >&3' 3>&3; echo rc=$?")
     assert out == "rc=1\n", (out, err)
     assert "3" in err and "Bad file descriptor" in err, err
 

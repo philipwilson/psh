@@ -119,6 +119,13 @@ def test_argument_less_builtin_has_no_trailing_space_script(tmp_path):
     """`false &` lists as `...false`, never `...false ` (bg builtin command
     string was joined with a trailing space when arg-less)."""
     out = _psh_script(FALSE, tmp_path)
-    line = next(ln for ln in out.splitlines() if 'false' in ln and 'Exit' in ln)
+    # Report the whole listing when the line is missing. This row failed once
+    # on the Linux nightly (run 30143337081) with a bare StopIteration, which
+    # said nothing about what psh had actually printed; it did not recur at
+    # base (run 30154694015) and psh matches bash locally, so the cause is
+    # still open and the next occurrence needs to arrive carrying its evidence.
+    matches = [ln for ln in out.splitlines() if 'false' in ln and 'Exit' in ln]
+    assert matches, f"no completed-job line for `false` in listing: {out!r}"
+    line = matches[0]
     assert line == line.rstrip(), repr(line)
     assert line.endswith('false'), repr(line)

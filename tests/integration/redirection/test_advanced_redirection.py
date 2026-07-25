@@ -387,10 +387,18 @@ def test_subprocess_runs_this_worktrees_psh(tmp_path, monkeypatch):
     # (an editable install's target). Without this the positive leg could be
     # passing on an import that would have succeeded anyway.
     bare = _resolve_psh_in_child(tmp_path, {**os.environ})
-    assert os.path.commonpath([bare, root]) != root, (
-        "probe is not discriminating: with no PYTHONPATH the child STILL "
-        f"resolved psh inside the tree under test ({bare!r}); this test "
-        "cannot detect the tree confusion it exists to catch")
+    if os.path.commonpath([bare, root]) == root:
+        # There is no OTHER tree here to be confused with: the ambient editable
+        # install's target IS the tree under test, so a PYTHONPATH-less child
+        # legitimately lands back on it and the negative leg cannot discriminate
+        # by construction. That is precisely CI's shape (`pip install -e .` on
+        # the checkout itself); a developer box has a separate main checkout as
+        # the install target, which is where this leg earns its keep. Skip
+        # rather than fail: the probe is not broken, it is unobservable here.
+        pytest.skip(
+            f"editable install targets the tree under test ({bare!r}); the "
+            "discrimination leg is vacuous in this environment (CI installs "
+            "the checkout itself)")
 
     # POSITIVE LEG: the helper's own value puts the child back on this tree.
     resolved = _resolve_psh_in_child(tmp_path, _worktree_env())

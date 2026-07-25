@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from shell_oracle import resolve_bash
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -78,7 +80,13 @@ class TestNamedFdStillWorks:
     """The `{var}>` (F_DUPFD) path never hit the shortcut — pin it stays sound."""
 
     def test_named_output_fd_child_inherits(self, temp_dir):
-        result = run_psh('exec {v}>o; sh -c "echo kid >&$v"; cat o', temp_dir)
+        # The child is the resolved bash oracle, not `sh`: `{v}` allocates fd
+        # 10, and on Linux `sh` is dash, which rejects a multi-digit fd at
+        # parse time ("Bad fd number"). The sibling row above can stay on `sh`
+        # because fd 3 is single-digit and POSIX-portable.
+        result = run_psh(
+            'exec {v}>o; ' + resolve_bash().path + ' -c "echo kid >&$v"; cat o',
+            temp_dir)
         assert result.returncode == 0
         assert result.stdout == 'kid\n'
         assert read(temp_dir, 'o') == 'kid\n'

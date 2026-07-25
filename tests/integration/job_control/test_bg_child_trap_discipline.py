@@ -21,6 +21,8 @@ files (no bare-sleep races); the job_control path is auto-marked serial by
 conftest.
 """
 
+import signal
+
 import pytest
 from shell_oracle import is_comparable
 from shell_oracle import run_bash as _run_bash
@@ -156,7 +158,8 @@ class TestInheritedTrapNotFired:
     """Must-not-regress: a PARENT trap is reset (not inherited) in the bg child.
 
     The child ignores the PARENT trap; an untrapped USR1 takes its default
-    action and kills the child (128+30 = 158).
+    action and kills the child (128+SIGUSR1). SIGUSR1 is 30 on macOS but 10 on
+    Linux, so the expected status is computed, not hard-coded.
     """
 
     @pytest.mark.parametrize("body", ["subshell", "brace"])
@@ -180,7 +183,7 @@ echo "exit=$?"
 '''
         r = run_psh(script, tmp_path)
         assert "PARENT-USR1" not in r.stdout, r.stdout
-        assert r.stdout == "exit=158\n", r.stderr
+        assert r.stdout == f"exit={128 + int(signal.SIGUSR1)}\n", r.stderr
 
 
 class TestAsyncStdinFromDevNull:

@@ -1305,8 +1305,11 @@
   stderr: ""
   exit_code: 0
 
+# `cat`, not `ls`: this row is about eval + stderr suppression, but a missing
+# operand makes GNU ls exit 2 where BSD ls exits 1, which turned a redirection
+# pin into a coreutils-flavour pin. `cat` exits 1 on both.
 - name: redirect_eval_external_stderr_suppressed
-  command: 'eval "ls /nonexistent_zz" 2>/dev/null; echo rc=$?'
+  command: 'eval "cat /nonexistent_zz" 2>/dev/null; echo rc=$?'
   stdout: "rc=1\n"
   stderr: ""
   exit_code: 0
@@ -2948,9 +2951,14 @@
   stderr: ""
   exit_code: 0
 
+# The ignored trap is HUP, not USR2: `trap` lists in signal-NUMBER order, and
+# SIGUSR2 is 31 on macOS but 12 on Linux -- either side of SIGTERM's 15, so the
+# recorded line order flipped by platform. SIGHUP is 1 everywhere, so the order
+# is stable and the row keeps pinning what it means to (which traps survive a
+# child's first modification).
 - name: subshell_trap_modification_drops_inherited_keeps_ignored
-  command: 'trap "echo A" USR1; trap "" USR2; (trap "echo C" TERM; trap)'
-  stdout: "trap -- 'echo C' SIGTERM\ntrap -- '' SIGUSR2\n"
+  command: 'trap "echo A" USR1; trap "" HUP; (trap "echo C" TERM; trap)'
+  stdout: "trap -- '' SIGHUP\ntrap -- 'echo C' SIGTERM\n"
   stderr: ""
   exit_code: 0
 

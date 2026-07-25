@@ -122,13 +122,17 @@ def test_d1_closed_stdin_pipeline():
 def test_d2_closed_stdout_upstream_keeps_write_end():
     """exec 1>&-: upstream printf no longer errors; only the last member fails.
 
-    bash emits just `cat: stdout: Bad file descriptor` (cat's own closed
-    stdout), never a `printf: write error`.
+    bash emits just cat's own closed-stdout complaint, never a
+    `printf: write error`.
     """
     out, err, status = _observe([sys.executable, "-m", "psh"], "exec 1>&-; ",
                                 "printf x | cat")
     assert "printf" not in err  # upstream keeps its pipe write end
-    assert err == "cat: stdout: Bad file descriptor\n"
+    # cat's noun for fd 1 is a coreutils-flavour detail, not a psh behaviour:
+    # GNU cat says "standard output" where BSD cat says "stdout". What this row
+    # pins is that the ONLY diagnostic comes from cat and names a bad
+    # descriptor; the vendor's wording is not psh's to fix.
+    assert err.startswith("cat: ") and err.endswith("Bad file descriptor\n")
     assert status == "rc=1 ps=0 1"
 
 

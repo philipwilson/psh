@@ -84,8 +84,10 @@ class TestCwdReadConvergence:
 
     def test_pushd_swap_after_plain_cd_uses_real_cwd(self):
         # Red-on-base: the swap exchanged the STALE top; bash swaps the cwd.
-        r = _run('cd /tmp; pushd /var >/dev/null; cd /private; pushd; pwd')
-        assert r.stdout.splitlines() == ['/tmp /private', '/tmp']
+        # Third directory is /usr, not /private: /private is macOS-only, and
+        # this row is about the swap, not about the path.
+        r = _run('cd /tmp; pushd /var >/dev/null; cd /usr; pushd; pwd')
+        assert r.stdout.splitlines() == ['/tmp /usr', '/tmp']
 
     def test_dirs_ignores_pwd_variable_override(self):
         # bash's dirs shows its internal cwd, NOT a manually assigned $PWD

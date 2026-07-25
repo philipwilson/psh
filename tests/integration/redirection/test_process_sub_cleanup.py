@@ -123,12 +123,26 @@ class TestProcessSubRepeatedUse:
             f"{result.stdout.strip()}")
 
     def test_no_zombie_accumulation_across_loop(self):
-        """20 read-substitution iterations leave no defunct children."""
+        """20 read-substitution iterations leave no defunct children.
+
+        The `sleep` before the probe is load-bearing, not padding. psh never
+        BLOCKS on a substitution child -- by design, and bash does the same,
+        because a `>(cmd)` child may outlive the command that spawned it --
+        so pending children are polled WNOHANG at each scope exit, and one
+        that has not exited yet stays pending until the next poll. Sampling
+        `ps` the instant the loop ends therefore races that poll, and on a
+        loaded Linux box it caught a still-unreaped child (nightly run
+        30154694015). The sleep gives every `echo` child time to exit AND
+        supplies the scope exit that reaps it, so this row pins the property
+        it is named for -- children do not ACCUMULATE across iterations --
+        rather than an instantaneous emptiness the design never promised.
+        """
         cmd = (
             'i=0; while [ $i -lt 20 ]; do '
             '  cat <(echo $i) >/dev/null; '
             '  i=$((i+1)); '
             'done; '
+            'sleep 0.2; '
             'ps -axo pid,ppid,stat | awk -v me=$$ \'$2==me {print $3}\''
         )
         result = run_psh(cmd)

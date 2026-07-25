@@ -20,9 +20,34 @@ from pathlib import Path
 
 import pytest
 from conformance_framework import ConformanceTest
-from shell_oracle import is_comparable, run_bash, run_psh
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 PSH_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _oracle_patch_level():
+    """The oracle bash's 5.2 patch level, or None if it is not a bash 5.2."""
+    m = re.match(r'(\d+)\.(\d+)\.(\d+)', resolve_bash().version)
+    if not m:
+        return None
+    major, minor, patch = (int(g) for g in m.groups())
+    return patch if (major, minor) == (5, 2) else None
+
+
+# bash 5.2 PATCH 24 began expanding a tilde inside an associative-array
+# subscript: `HOME=/probe-home; declare -A a; a[~]=v; echo "${!a[@]}"` prints
+# the literal `~` up to 5.2.23 and `/probe-home` from 5.2.24 on. Bisected by
+# building each patch level from the GNU tarball + official patches on ONE
+# Linux box, so the flip is the bash VERSION and not the platform:
+#     5.2.22 -> ~     5.2.23 -> ~     5.2.24 -> /probe-home    5.2.25 -> /probe-home
+# psh implements the current (>=5.2.24) behaviour. The Linux nightly's distro
+# bash is 5.2.21, where the oracle itself predates the change -- so the row is
+# skipped there rather than being "widened" to accept both answers, which would
+# stop it proving anything on the hosts that CAN check it.
+_TILDE_IN_SUBSCRIPT_PATCH = 24
+_OLD_BASH_NO_SUBSCRIPT_TILDE = (
+    _oracle_patch_level() is not None
+    and _oracle_patch_level() < _TILDE_IN_SUBSCRIPT_PATCH)
 
 # Shell-name diagnostic prefix (`psh: line 1: ` / `bash: line 1: `): stripped
 # where a row compares MESSAGE BODIES (the framework compares raw stderr, and
@@ -423,6 +448,11 @@ class TestCompositeQuoting(ConformanceTest):
         self.assert_identical_behavior(
             'declare -A h; h["a b"]=v; echo "${h[a b]}"')
 
+    @pytest.mark.skipif(
+        _OLD_BASH_NO_SUBSCRIPT_TILDE,
+        reason="oracle bash predates 5.2.24, which introduced tilde expansion "
+               "in associative-array subscripts; psh implements the current "
+               "behaviour (see _TILDE_IN_SUBSCRIPT_PATCH)")
     def test_tilde_expands_in_key(self):
         self.assert_identical_behavior(
             'HOME=/probe-home; declare -A a; a[~]=v; echo "${!a[@]}"')

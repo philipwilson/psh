@@ -154,17 +154,24 @@ class TestBackgroundScopesWholeList:
 
     def test_andor_list_of_groups_backgrounds_whole_list(self):
         """bash order: fg first (well before the sleep), then a, then b."""
+        # `elapsed` starts before Popen, so it also carries Python interpreter
+        # startup -- which on a loaded CI runner is a large fraction of a
+        # second and says nothing about foreground-vs-background. With a 0.3s
+        # sleep the budget and the interpreter were the same size, and the row
+        # failed on the nightly at 0.301s. A 1.0s sleep keeps the two outcomes
+        # far apart: backgrounded costs startup only, foreground costs startup
+        # plus a whole second.
         start = time.monotonic()
         p = subprocess.Popen(
             [sys.executable, '-m', 'psh', '-c',
-             '(sleep 0.3; echo a) && (echo b) & echo fg; wait'],
+             '(sleep 1.0; echo a) && (echo b) & echo fg; wait'],
             stdout=subprocess.PIPE, text=True)
         first = p.stdout.readline()
         elapsed = time.monotonic() - start
         rest = p.stdout.read()
         assert p.wait() == 0
         assert first == 'fg\n' and rest == 'a\nb\n'
-        assert elapsed < 0.3, f'fg took {elapsed:.3f}s — first group ran in foreground'
+        assert elapsed < 1.0, f'fg took {elapsed:.3f}s — first group ran in foreground'
 
     def test_single_subshell_background(self):
         r = run_psh('( sleep 0.1 ) & wait; echo done')
