@@ -46,6 +46,26 @@ BASH = _ORACLE.path
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
+# Scratch directory for the script-file cases. Supplied by the autouse fixture
+# below rather than <repo>/tmp, which exists only once someone has created it
+# by hand — a fresh worktree failed every script-file case with
+# FileNotFoundError.
+_SCRIPT_DIR: str = ""
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _script_dir(tmp_path_factory):
+    """Per-module, pytest-managed scratch dir for the script-file cases.
+
+    Module-scoped so those cases share one directory, and per-worker under
+    xdist (each worker imports its own copy of this module), so parallel runs
+    cannot collide.
+    """
+    global _SCRIPT_DIR
+    _SCRIPT_DIR = str(tmp_path_factory.mktemp("nested-substitution-scripts"))
+    yield
+    _SCRIPT_DIR = ""
+
 
 def _psh_c(cmd):
     r = run_psh(["-c", cmd], cwd=_ROOT, timeout=30)
@@ -73,7 +93,7 @@ def _bash_stdin(script):
 
 def _run_file(argv_prefix, script):
     with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False,
-                                     dir=os.path.join(_ROOT, "tmp")) as f:
+                                     dir=_SCRIPT_DIR) as f:
         f.write(script)
         path = f.name
     try:
