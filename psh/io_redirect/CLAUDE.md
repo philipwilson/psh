@@ -525,9 +525,10 @@ reached from all FOUR redirect-application paths:
 
 - `manager.py#IOManager.setup_builtin_redirections` (in-process builtin);
 - `manager.py#IOManager.setup_child_redirections` (forked child);
-- `file_redirect.py:554` — `FileRedirector._apply_redirections` (fd-level
-  save/restore window, via `IOManager.apply_redirections` / `with_redirections`);
-- `file_redirect.py:699` — `FileRedirector.apply_permanent_redirections` (`exec`).
+- `file_redirect.py#FileRedirector._apply_redirections` (fd-level
+  save/restore window, via `IOManager.apply_redirections` /
+  `with_redirections`);
+- `file_redirect.py#FileRedirector.apply_permanent_redirections` (`exec`).
 
 It owns all the redirect shapes of the form:
 

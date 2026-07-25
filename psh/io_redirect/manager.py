@@ -229,6 +229,12 @@ class _BuiltinStreamSnapshot:
         self.stdout: Optional[TextIO] = None
         self.stderr: Optional[TextIO] = None
         self.stdin_fd: Optional[int] = None  # os.dup(0), restored by dup2
+        # Whether fd 0 was ALREADY CLOSED when this frame first touched it.
+        # `stdin_fd is None` cannot answer that on its own: it ALSO means "the
+        # backup has not been taken yet", and a fatal signal can land between
+        # the two statements of note_stdin(). Restore must close fd 0 only for
+        # the first meaning, so it is recorded explicitly (slot 1.3b round-2).
+        self.fd0_was_closed: bool = False
 
     def note_stdin(self):
         if self.stdin is None:
@@ -237,13 +243,18 @@ class _BuiltinStreamSnapshot:
             # FileRedirector._save_fd_high. A plain os.dup(0) crashes EBADF when
             # fd 0 is closed (`exec 0<&-; read x < f`), and even when it
             # succeeds it takes the lowest free slot — fd 0 itself right after
-            # such a close — which a stale sys.stdin still names. None records
-            # "fd 0 was closed"; restore then closes fd 0 again rather than
-            # dup2'ing a backup onto it.
+            # such a close — which a stale sys.stdin still names. A failed dup
+            # sets fd0_was_closed and restore then closes fd 0 again rather
+            # than dup2'ing a backup onto it. The FLAG carries that fact, not
+            # `stdin_fd is None`: a fatal signal can land between the two
+            # statements below, and the death-path drain would otherwise read
+            # the not-yet-taken backup as "fd 0 was closed" and close a LIVE
+            # fd 0 (slot 1.3b round-2).
             try:
                 self.stdin_fd = fcntl.fcntl(0, fcntl.F_DUPFD, 10)
             except OSError:
                 self.stdin_fd = None
+                self.fd0_was_closed = True
 
     def note_stdout(self):
         if self.stdout is None:
@@ -966,7 +977,12 @@ class IOManager:
                     os.dup2(snapshot.stdin_fd, 0)
                     os.close(snapshot.stdin_fd)
                     snapshot.stdin_fd = None
-                else:
+                elif snapshot.fd0_was_closed:
+                    # fd 0 really WAS closed when this frame started; put it
+                    # back that way. Reached only via the explicit flag — a
+                    # frame interrupted between note_stdin's two statements
+                    # has no backup AND no flag, and must be left alone
+                    # rather than have its live fd 0 closed.
                     try:
                         os.close(0)
                     except OSError:

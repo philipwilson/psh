@@ -64,21 +64,41 @@ def captured_real_stdout():
 
 
 @contextlib.contextmanager
-def kill_stubbed():
+def kill_stubbed(signum=signal.SIGTERM):
     """Stub ``os.kill`` inside the signal manager so the process survives.
 
     Everything else on the death path — the drain, the trap, the flush, the
     SIG_DFL registration, and the ORDER between them — stays production code.
-    Yields the list of ``(pid, signum)`` the code tried to kill with, so a
-    test can assert the signal death still happens.
+    Yields a list of ``(pid, signum, disposition_at_kill_time)``.
+
+    A NON-default handler is installed for ``signum`` first, and that is what
+    makes the disposition assertion mean anything: a bare test process already
+    sits at ``SIG_DFL``, so asserting ``SIG_DFL`` at kill time would hold even
+    if the production code never restored it. (Verified: with a bare process,
+    deleting the SIG_DFL registration left every pin green.) Starting from a
+    real handler makes the restore observable.
     """
     kills = []
     real_kill = signal_manager_module.os.kill
-    signal_manager_module.os.kill = lambda pid, sig: kills.append((pid, sig))
+    sentinel = signal.getsignal(signum)
+
+    def _never_called(_signum, _frame):  # pragma: no cover - disposition only
+        raise AssertionError('sentinel handler must never run')
+
+    def fake_kill(pid, sig):
+        try:
+            disposition = signal.getsignal(sig)
+        except (OSError, ValueError):  # pragma: no cover - platform guard
+            disposition = None
+        kills.append((pid, sig, disposition))
+
+    signal.signal(signum, _never_called)
+    signal_manager_module.os.kill = fake_kill
     try:
         yield kills
     finally:
         signal_manager_module.os.kill = real_kill
+        signal.signal(signum, sentinel)
 
 
 @pytest.fixture
@@ -173,8 +193,9 @@ def test_terminate_from_signal_does_not_misdirect_the_exit_trap(
     assert 'cleanup' not in contents, (
         "EXIT-trap output was misdirected into the interrupted command's "
         "redirect target: %r" % contents)
-    # And the shell still dies BY the signal.
-    assert kills == [(os.getpid(), signal.SIGTERM)]
+    # And the shell still dies BY the signal, with the default disposition
+    # restored first (a mutant deleting the SIG_DFL line goes red here).
+    assert kills == [(os.getpid(), signal.SIGTERM, signal.SIG_DFL)]
 
 
 def test_terminate_from_signal_still_dies_by_signal_when_trap_exits_zero(shell):
@@ -191,7 +212,7 @@ def test_terminate_from_signal_still_dies_by_signal_when_trap_exits_zero(shell):
         sm._terminate_from_signal(signal.SIGTERM)
 
     assert 'bye' in out.getvalue()
-    assert kills == [(os.getpid(), signal.SIGTERM)]
+    assert kills == [(os.getpid(), signal.SIGTERM, signal.SIG_DFL)]
 
 
 def test_terminate_from_signal_dies_by_signal_even_if_a_binding_is_dead(shell):
@@ -209,7 +230,7 @@ def test_terminate_from_signal_dies_by_signal_even_if_a_binding_is_dead(shell):
     with kill_stubbed() as kills:
         sm._terminate_from_signal(signal.SIGTERM)
 
-    assert kills == [(os.getpid(), signal.SIGTERM)], (
+    assert kills == [(os.getpid(), signal.SIGTERM, signal.SIG_DFL)], (
         "the shell stopped dying by the signal when an internal defect was "
         "reported on the death path")
 
@@ -296,13 +317,22 @@ def test_frame_leaves_the_stack_even_if_its_restore_raises(shell, tmp_path):
         def __getattr__(self, name):
             raise RuntimeError('synthetic failure inside restore')
 
+    saved_stdout = sys.stdout
+    saved_fd1 = os.dup(1)
     frame.snapshot = Boom()
     try:
         with pytest.raises(RuntimeError):
             shell.io_manager.restore_builtin_redirections(frame)
         stranded = frame in shell.io_manager._builtin_frame_stack
     finally:
+        # The raising restore left fd 1 and sys.stdout pointing at the
+        # redirect target. Repair them HERE rather than relying on fixture
+        # teardown: under xdist fd 1 is the worker channel, and leaving it on
+        # a temp file would take the whole run down.
         frame.snapshot = real_snapshot
+        os.dup2(saved_fd1, 1)
+        os.close(saved_fd1)
+        sys.stdout = saved_stdout
         _drop(shell.io_manager, frame)
 
     assert stranded is False, (
@@ -471,3 +501,98 @@ def test_drain_reports_an_internal_defect_under_strict_errors(
     shell.interactive_manager.signal_manager._restore_active_redirections()
 
     assert 'internal defect during redirect restore' in capfd.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# THE DRAIN'S OWN HAZARD — a frame interrupted MID-SETUP (round-2 item 1).
+# --------------------------------------------------------------------------
+
+def test_drain_does_not_close_fd0_for_a_frame_interrupted_mid_setup(
+        shell, tmp_path):
+    """A fatal signal can land INSIDE ``note_stdin``, between its two steps.
+
+    ``note_stdin`` sets ``snapshot.stdin`` and only then takes the fd-0
+    backup. A signal arriving between them leaves a frame whose fd-0 state was
+    AMBIGUOUS: restore read ``stdin_fd is None`` as "fd 0 was closed" and
+    answered ``os.close(0)`` — closing a perfectly live fd 0.
+
+    The ambiguity is gone: "fd 0 was already closed" is now its own flag, set
+    only when the backup dup actually fails. A frame caught mid-setup has
+    neither backup nor flag, so restore leaves fd 0 alone.
+
+    This is the mid-SETUP window; the earlier guard covered mid-RESTORE. The
+    drain is what weaponizes both, by re-entering a frame the interrupted
+    caller was still working on.
+    """
+    frame = shell.io_manager.setup_builtin_redirections(
+        _redirected_command(': > %s' % (tmp_path / 'midsetup.txt')))
+    try:
+        # Reproduce the intermediate state exactly: stdin noted, backup not
+        # yet taken, and the "was closed" fact not established either.
+        frame.snapshot.stdin = sys.stdin
+        frame.snapshot.stdin_fd = None
+        frame.snapshot.fd0_was_closed = False
+
+        shell.io_manager.restore_active_builtin_redirections()
+
+        fd0_alive = True
+        try:
+            os.fstat(0)
+        except OSError:
+            fd0_alive = False
+    finally:
+        _drop(shell.io_manager, frame)
+
+    assert fd0_alive, (
+        "the drain closed a LIVE fd 0 for a frame interrupted between "
+        "note_stdin's two statements")
+
+
+def test_restore_still_recloses_fd0_when_it_really_was_closed(shell, tmp_path):
+    """The other side: a genuinely-closed fd 0 must still be put back.
+
+    Removing the ambiguity must not lose the real case — when the backup dup
+    fails because fd 0 was closed, the flag records it and restore closes fd 0
+    again.
+    """
+    frame = shell.io_manager.setup_builtin_redirections(
+        _redirected_command(': > %s' % (tmp_path / 'reclose.txt')))
+    saved_fd0 = os.dup(0)
+    try:
+        frame.snapshot.stdin = sys.stdin
+        frame.snapshot.stdin_fd = None
+        frame.snapshot.fd0_was_closed = True   # as a failed dup would record
+
+        shell.io_manager.restore_builtin_redirections(frame)
+
+        fd0_closed = False
+        try:
+            os.fstat(0)
+        except OSError:
+            fd0_closed = True
+    finally:
+        os.dup2(saved_fd0, 0)
+        os.close(saved_fd0)
+        _drop(shell.io_manager, frame)
+
+    assert fd0_closed, "a genuinely-closed fd 0 was not restored to closed"
+
+
+def test_a_second_signal_is_not_labelled_an_internal_defect(shell, capfd):
+    """KeyboardInterrupt on the death path is a second signal, not a psh bug.
+
+    Everything is caught here (nothing may raise before os.kill), but only
+    genuine defect classes are DIAGNOSED — labelling ordinary shell life an
+    "internal defect" would be a false accusation in the gate's face.
+    """
+    shell.state.options['strict-errors'] = True
+
+    class Interrupting(io.StringIO):
+        def flush(self):
+            raise KeyboardInterrupt()
+
+    shell.state.stdout = Interrupting()
+
+    shell.interactive_manager.signal_manager._flush_before_death()
+
+    assert 'internal defect' not in capfd.readouterr().err

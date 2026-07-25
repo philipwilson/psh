@@ -346,8 +346,10 @@ class SignalManager(InteractiveComponent):
         original caller's to finish.
 
         Failure handling follows the expected-error taxonomy
-        (``psh/core/CLAUDE.md``), not a blanket swallow — the same standard
-        applied to the flush below.
+        (``psh/core/CLAUDE.md``): EVERYTHING is caught, because nothing here
+        may raise before ``SIG_DFL``/``os.kill``, but only genuine
+        internal-defect classes are DIAGNOSED — see
+        :meth:`_note_internal_defect_at_death`.
         """
         io_manager = getattr(self.shell, 'io_manager', None)
         if io_manager is None:
@@ -381,6 +383,10 @@ class SignalManager(InteractiveComponent):
         would escape before ``SIG_DFL``/``os.kill`` and convert a signal death
         into an ordinary exit, silently changing the very semantics this path
         exists to preserve.
+
+        Catching is broad for that reason; DIAGNOSING is narrow. A second
+        signal or an ``exit`` in the EXIT trap is swallowed without being
+        called a defect — see :meth:`_note_internal_defect_at_death`.
         """
         for stream in (self.state.stdout, self.state.stderr):
             try:
@@ -390,17 +396,36 @@ class SignalManager(InteractiveComponent):
             except BaseException as exc:  # noqa: BLE001 - taxonomy'd below
                 self._note_internal_defect_at_death('stream flush', exc)
 
-    def _note_internal_defect_at_death(self, what: str, exc: BaseException) -> None:
-        """Report an internal defect on the death path WITHOUT altering it.
+    #: Exceptions that are NOT internal defects when they surface on the
+    #: death path. ``KeyboardInterrupt`` is a second signal arriving while we
+    #: die; ``SystemExit`` is an ``exit`` inside the EXIT trap. Both are
+    #: swallowed like everything else here — nothing may raise before
+    #: ``os.kill`` — but neither is a psh bug, so neither is LABELLED one.
+    _NOT_A_DEFECT_AT_DEATH = (KeyboardInterrupt, SystemExit)
 
-        Writes to fd 2 with ``os.write`` (no Python-level stream, which may be
-        exactly what just failed) and only under ``strict-errors`` — the suite
-        runs it, so the gate can see this class, while a production shell dying
-        from a signal prints what bash prints. Never raises and never returns
-        an error: the caller must proceed to ``SIG_DFL`` + ``os.kill`` so the
-        wait status stays death by the same signal.
+    def _note_internal_defect_at_death(self, what: str, exc: BaseException) -> None:
+        """Report an INTERNAL DEFECT on the death path without altering it.
+
+        Two separate decisions, kept separate on purpose:
+
+        * **What is caught** is deliberately everything (``BaseException``),
+          because an exception escaping this path would reach the caller
+          before ``SIG_DFL``/``os.kill`` and convert a signal death into an
+          ordinary exit.
+        * **What is DIAGNOSED** is only the genuine internal-defect classes.
+          A second signal (``KeyboardInterrupt``) or an ``exit`` in the EXIT
+          trap (``SystemExit``) is ordinary shell life, not a psh bug, and
+          labelling it "internal defect" would be a false accusation in the
+          gate's face.
+
+        The diagnostic goes to fd 2 with ``os.write`` (no Python-level stream —
+        that may be exactly what failed) and only under ``strict-errors``: the
+        suite runs it, so the gate sees the class, while a production shell
+        dying from a signal prints what bash prints. Never raises.
         """
         try:
+            if isinstance(exc, self._NOT_A_DEFECT_AT_DEATH):
+                return
             if not self.state.options.get('strict-errors'):
                 return
             os.write(2, ("psh: internal defect during %s at signal death: "
