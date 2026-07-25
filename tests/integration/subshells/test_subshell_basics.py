@@ -6,6 +6,10 @@ command execution, redirections, and proper process management.
 """
 
 import os
+import subprocess
+import sys
+
+import pytest
 
 
 def test_subshell_basic_execution(isolated_shell_with_temp_dir):
@@ -158,22 +162,41 @@ def test_nested_subshells(isolated_shell_with_temp_dir):
     assert "inner" in output
 
 
-def test_subshell_with_background_jobs(isolated_shell_with_temp_dir):
-    """Test subshell with background job execution."""
-    shell = isolated_shell_with_temp_dir
+@pytest.mark.timeout(60)
+def test_subshell_with_background_jobs(tmp_path):
+    """Test subshell with background job execution.
 
-    # Run subshell in background
-    result = shell.run_command('(echo "background subshell"; echo "done") > bg_output.txt &')
-    assert result == 0
+    Runs psh in a SUBPROCESS: a backgrounded subshell writing through a
+    redirect is process-lifecycle behavior, which this project's test
+    guidelines put in a subprocess rather than the in-process fixture. The
+    in-process fixture additionally cannot observe it — under pytest's fd
+    capture the backgrounded subshell's output reaches the captured stream
+    instead of the redirect target, leaving the file empty. The shipped shell
+    redirects correctly, which is exactly what this test now pins.
 
-    # Give it time to complete
+    ``wait`` is the deterministic hand-off: the shell's own job API blocks
+    until every background job has been reaped, so no sleep is involved and
+    the assertions below run on every execution. The marker bounds the wait,
+    turning a hung job into a loud failure instead of a stalled suite.
 
-    # Check output file was created and contains expected content
-    if os.path.exists('bg_output.txt'):
-        with open('bg_output.txt', 'r') as f:
-            content = f.read()
-        assert "background subshell" in content
-        assert "done" in content
+    Regression pin (MEDIUM-13): this test used to read the output file only
+    ``if os.path.exists(...)`` after an empty "give it time" comment, so losing
+    the race made it pass having asserted nothing about the output.
+    """
+    result = subprocess.run(
+        [sys.executable, '-m', 'psh', '-c',
+         '(echo "background subshell"; echo "done") > bg_output.txt & wait'],
+        cwd=tmp_path, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+    # Unconditional: the file must exist, holding exactly bash's bytes
+    # (pinned against bash 5.2 — 'background subshell\ndone\n'), and the
+    # redirect must have taken that output OFF stdout.
+    out_file = tmp_path / 'bg_output.txt'
+    assert out_file.exists()
+    assert out_file.read_text() == "background subshell\ndone\n"
+    assert result.stdout == ""
 
 
 def test_subshell_environment_inheritance(isolated_shell_with_temp_dir):
