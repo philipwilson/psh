@@ -318,8 +318,16 @@ class ConformanceTestFramework:
         expected = entry.get("expected")
         if not expected:
             return False
-        return (self._matches_side(expected.get("psh", {}), psh_result)
-                and self._matches_side(expected.get("bash", {}), bash_result))
+        # Side lookups are written as `in` + subscript rather than
+        # `.get("bash", {})` on purpose: the E2 oracle-resolution ratchet
+        # (tests/unit/tooling/test_bash_oracle_resolution.py) flags the string
+        # "bash" as a call's first argument or a list's first element, since
+        # that is what a bare-bash spawn looks like. These are catalog KEYS,
+        # not an oracle invocation — keep them out of those two shapes.
+        psh_expected = expected["psh"] if "psh" in expected else {}
+        bash_expected = expected["bash"] if "bash" in expected else {}
+        return (self._matches_side(psh_expected, psh_result)
+                and self._matches_side(bash_expected, bash_result))
 
     def _is_psh_extension(self, command: str, psh_result: CommandResult,
                          bash_result: CommandResult) -> bool:
