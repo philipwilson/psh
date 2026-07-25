@@ -26,6 +26,7 @@ Two divergences from bash are deliberate and documented (not tested here):
 
 import signal
 
+from core_dump_env import signal_death_text
 from shell_oracle import is_comparable
 from shell_oracle import run_bash as _run_bash
 from shell_oracle import run_psh as _run_psh
@@ -67,7 +68,13 @@ class TestAbnormalTerminationDiagnostic:
         cmd = 'sh -c "kill -SEGV \\$\\$"; echo next'
         psh = run_psh(cmd)
         assert psh.stdout == 'next\n'
-        assert psh.stderr.strip() == signal.strsignal(signal.SIGSEGV)
+        # SIGSEGV dumps core wherever the host allows it, and psh then appends
+        # bash's " (core dumped)" from WCOREDUMP. Whether that happens is the
+        # HOST's call, not psh's, so build the expected text with the same rule
+        # the kernel uses (tests/harness/core_dump_env.py). That keeps this an
+        # EXACT pin in both environments instead of one accepting either answer.
+        assert psh.stderr.strip() == signal_death_text(
+            signal.strsignal(signal.SIGSEGV))
         bash = run_bash(cmd)
         assert signal.strsignal(signal.SIGSEGV) in bash.stderr
 

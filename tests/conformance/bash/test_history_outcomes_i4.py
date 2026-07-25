@@ -30,8 +30,17 @@ def _run(runner, lines, env_extra):
         env = {"PS1": "", "PS2": "", "HISTFILE": os.path.join(d, "hf")}
         env.update(env_extra)
         script = "".join(line + "\n" for line in lines)
-        r = runner(["-i"], stdin_data=script, stdin_mode="pipe", env=env,
-                   cwd=d, timeout=30)
+        # --norc on BOTH shells. This is the only module that runs the oracle
+        # INTERACTIVELY, and an interactive bash reads the host's ~/.bashrc --
+        # which hermetic_shell_env() does not neutralize, because it strips
+        # LC_*/LANG/DISPLAY/PWD but deliberately keeps HOME. Ubuntu's default
+        # skeleton .bashrc sets HISTCONTROL=ignoreboth, whose `ignoredups` drops
+        # the second of two identical entries -- so on any host whose ~/.bashrc
+        # sets it (every GitHub Linux runner) bash recorded one entry where psh
+        # recorded two, and six rows here compared a shell against a startup
+        # file rather than against a shell.
+        r = runner(["--norc", "-i"], stdin_data=script, stdin_mode="pipe",
+                   env=env, cwd=d, timeout=30)
         assert is_comparable(r), r
         return r.stdout
 

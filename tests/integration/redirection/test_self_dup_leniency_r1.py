@@ -23,22 +23,25 @@ implement bash's leniency at the shared dup path, converging the whole class.
 All psh runs are ``-m psh -c`` subprocesses (fresh fds, parallel-safe).
 """
 import os
-import subprocess
-import sys
 import tempfile
+
+from shell_oracle import is_comparable, resolve_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 TREE = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
 
 def run_psh(script, cwd=None):
-    env = dict(os.environ)
-    env["PYTHONPATH"] = TREE
-    env["PSH_STRICT_ERRORS"] = "0"
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", script],
-                       cwd=cwd or TREE, env=env, capture_output=True,
-                       text=True, timeout=60)
-    return p.stdout, p.stderr, p.returncode
+    # Routed through the typed runner, not raw subprocess: naming the bash
+    # oracle below makes this module oracle-bearing, and an oracle-bearing
+    # module must launch through the runner so is_comparable() can reject a
+    # truncated or timed-out observation before it is compared
+    # (test_no_direct_spawn_in_oracle_modules).
+    r = _oracle_run_psh(["-c", script], cwd=cwd or TREE, timeout=60,
+                        env={"PSH_STRICT_ERRORS": "0"})
+    assert is_comparable(r), r
+    return r.stdout, r.stderr, r.returncode
 
 
 # ---- the un-masked composite row (red on the H4 tip) ----
@@ -98,8 +101,14 @@ def test_move_self_dup_closed():
 
 def test_self_dup_closed_stays_closed_for_child():
     # bash: the no-op does NOT open fd 3; the child still sees it closed.
+    # The child is the resolved bash oracle, not `/bin/sh`: what fd 3 being
+    # closed COSTS the child is the child shell's own choice, and /bin/sh is
+    # bash on macOS but dash on Linux, where a bad-fd redirect exits 2 rather
+    # than 1. Naming the shell keeps the status an exact pin instead of a
+    # property of whatever /bin/sh happens to be.
+    sh = resolve_bash().path
     out, err, rc = run_psh(
-        "exec 3>&-; /bin/sh -c 'echo x >&3' 3>&3; echo rc=$?")
+        f"exec 3>&-; {sh} -c 'echo x >&3' 3>&3; echo rc=$?")
     assert out == "rc=1\n", (out, err)
     assert "3" in err and "Bad file descriptor" in err, err
 

@@ -386,17 +386,35 @@ def test_subprocess_runs_this_worktrees_psh(tmp_path, monkeypatch):
     # NEGATIVE LEG: no ambient PYTHONPATH and no helper -> some OTHER tree
     # (an editable install's target). Without this the positive leg could be
     # passing on an import that would have succeeded anyway.
+    # The negative leg is skipped WITHOUT skipping the test: an early
+    # pytest.skip() would abort before the positive leg, so on CI -- where the
+    # negative leg is always vacuous -- this row would contribute NO coverage at
+    # all, which is worse than the gap it was papering over.
     bare = _resolve_psh_in_child(tmp_path, {**os.environ})
-    assert os.path.commonpath([bare, root]) != root, (
-        "probe is not discriminating: with no PYTHONPATH the child STILL "
-        f"resolved psh inside the tree under test ({bare!r}); this test "
-        "cannot detect the tree confusion it exists to catch")
+    if os.path.commonpath([bare, root]) != root:
+        negative_leg_observable = True
+    else:
+        # There is no OTHER tree here to be confused with: the ambient editable
+        # install's target IS the tree under test, so a PYTHONPATH-less child
+        # legitimately lands back on it and the negative leg cannot discriminate
+        # by construction. That is precisely CI's shape (`pip install -e .` on
+        # the checkout itself); a developer box has a separate main checkout as
+        # the install target, which is where this leg earns its keep. The probe
+        # is not broken here, it is unobservable.
+        negative_leg_observable = False
 
     # POSITIVE LEG: the helper's own value puts the child back on this tree.
+    # Runs in EVERY environment -- this is the part CI can still check.
     resolved = _resolve_psh_in_child(tmp_path, _worktree_env())
     assert os.path.commonpath([resolved, root]) == root, (
         f"child imported psh from {resolved!r}, outside the tree under test "
         f"({root!r})")
+
+    if not negative_leg_observable:
+        pytest.skip(
+            f"positive leg verified; discrimination leg is vacuous here -- the "
+            f"editable install targets the tree under test ({bare!r}), which is "
+            "how CI installs it")
 
 
 class TestReadWriteRedirect:

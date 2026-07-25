@@ -96,10 +96,17 @@ class TestTrapListingInheritance:
         assert result.stdout == "done\n"
 
     def test_first_modification_drops_inherited_but_not_ignored(self):
+        # `trap` lists in signal-NUMBER order (bash does the same), and SIGUSR2
+        # is 31 on macOS but 12 on Linux -- either side of SIGTERM's 15. So the
+        # two lines are built and ordered from the live numbers rather than
+        # frozen in the macOS order; what this row pins is WHICH traps survive,
+        # not how the platform numbers them.
         result = run_psh('trap "echo A" USR1; trap "" USR2; '
                          '(trap "echo C" TERM; trap)')
-        assert result.stdout == ("trap -- 'echo C' SIGTERM\n"
-                                 "trap -- '' SIGUSR2\n")
+        lines = [(int(signal.SIGTERM), "trap -- 'echo C' SIGTERM"),
+                 (int(signal.SIGUSR2), "trap -- '' SIGUSR2")]
+        expected = "".join(t + "\n" for _, t in sorted(lines))
+        assert result.stdout == expected
 
 
 class TestTrapFiringInChildren:

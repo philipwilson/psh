@@ -2,6 +2,16 @@
 
 **Frozen at:** base `e52957d4` (v0.751.0), the tip of slot 1.1's merge.
 **Oracle:** PATH bash `/opt/homebrew/bin/bash` `5.2.26(1)-release` (never `/bin/bash`).
+
+> **Superseding change, recorded so the counts below are not read as current.**
+> This census is a FROZEN snapshot and is deliberately not updated as the tree
+> moves. Since it was taken, `harness/shell_oracle.py`'s spawn-site budget went
+> **2 → 3** in commit `59d3536e` (slot 1.4): `_killpg_sigkill` gained a `ps` call
+> that enumerates descendants a job-control shell had `setpgid` out of the
+> leader's process group, so the cap/timeout kill can reach them. The LIVE
+> authority for site counts is `_EXPECTED_SPAWN_SITES` in
+> `tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py`, which carries
+> the justification inline.
 **Purpose:** freeze the offender list BEFORE any migration so the batches are
 mechanical and auditable. This file is the authority the anti-spawn guard
 (`tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py`) and its

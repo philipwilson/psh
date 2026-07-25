@@ -52,10 +52,24 @@ EXPECTED_MEMBERS = {
 }
 
 
+def _protocol_members(proto):
+    """The member-name set of *proto*, on every Python this project supports.
+
+    ``typing.get_protocol_members`` is 3.13+, but ``requires-python`` is
+    ">=3.12" and CI runs 3.12 -- where this freeze died with AttributeError
+    instead of guarding anything. The fallback is the private helper the
+    public API wraps; both return the same sets for these five protocols.
+    """
+    getter = getattr(typing, "get_protocol_members", None)
+    if getter is not None:
+        return set(getter(proto))
+    return set(typing._get_protocol_attrs(proto))
+
+
 def test_protocol_member_sets_are_frozen():
     assert set(EXPECTED_MEMBERS) == set(P.__all__)
     for name, expected in EXPECTED_MEMBERS.items():
-        actual = typing.get_protocol_members(getattr(P, name))
+        actual = _protocol_members(getattr(P, name))
         assert actual == expected, (
             f"{name} member set changed: added {sorted(actual - expected)}, "
             f"removed {sorted(expected - actual)}. Update EXPECTED_MEMBERS only "

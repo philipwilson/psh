@@ -13,18 +13,23 @@ the same script. PYTHONPATH pins THIS checkout (see run_psh).
 """
 
 import os
-import subprocess
-import sys
 from pathlib import Path
+
+from shell_oracle import is_comparable, resolve_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def run_psh(script, cwd):
-    env = {**os.environ, 'PYTHONPATH': str(_REPO_ROOT)}
-    return subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', script],
-        capture_output=True, text=True, cwd=cwd, timeout=10, env=env)
+    # Routed through the typed runner, not raw subprocess: naming the bash
+    # oracle below makes this module oracle-bearing, and an oracle-bearing
+    # module must launch through the runner so is_comparable() can reject a
+    # truncated or timed-out observation before it is compared
+    # (test_no_direct_spawn_in_oracle_modules).
+    r = _oracle_run_psh(['-c', script], cwd=cwd, timeout=10)
+    assert is_comparable(r), r
+    return r
 
 
 def write(cwd, name, content):
@@ -78,7 +83,13 @@ class TestNamedFdStillWorks:
     """The `{var}>` (F_DUPFD) path never hit the shortcut — pin it stays sound."""
 
     def test_named_output_fd_child_inherits(self, temp_dir):
-        result = run_psh('exec {v}>o; sh -c "echo kid >&$v"; cat o', temp_dir)
+        # The child is the resolved bash oracle, not `sh`: `{v}` allocates fd
+        # 10, and on Linux `sh` is dash, which rejects a multi-digit fd at
+        # parse time ("Bad fd number"). The sibling row above can stay on `sh`
+        # because fd 3 is single-digit and POSIX-portable.
+        result = run_psh(
+            'exec {v}>o; ' + resolve_bash().path + ' -c "echo kid >&$v"; cat o',
+            temp_dir)
         assert result.returncode == 0
         assert result.stdout == 'kid\n'
         assert read(temp_dir, 'o') == 'kid\n'

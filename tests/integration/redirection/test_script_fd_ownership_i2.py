@@ -8,7 +8,15 @@ are bash-compared.
 
 Permanent-fd / exec redirection -> subprocess (this dir is auto-marked serial).
 """
-from shell_oracle import is_comparable, run_bash, run_psh
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
+
+# The probe child is the resolved bash oracle, NOT `/bin/sh`. On Linux
+# `/bin/sh` is dash, which rejects a multi-digit fd outright ("Bad fd number")
+# and aborts -- so the exec-image row lost its `echo AFTER`, and, worse, the
+# external-child row PASSED for the wrong reason: dash bailed before probing a
+# single descriptor. Naming the shell makes both rows genuinely exercise fd
+# inheritance on every platform.
+_SH = resolve_bash().path
 
 
 def _cmp(tmp_path, script, stdin=None):
@@ -37,7 +45,7 @@ def test_external_child_does_not_inherit_script_fd(tmp_path):
     # A forked+exec'd child (external sh) must not see the script descriptor
     # (CLOEXEC). Neither shell lists any open high fd.
     script = ('echo START\n'
-              '/bin/sh -c \'for fd in 250 255 256 260; do '
+              f'{_SH} -c \'for fd in 250 255 256 260; do '
               ': <&$fd 2>/dev/null && echo "open:$fd"; done\'\n'
               'echo END\n')
     psh, bash = _cmp(tmp_path, script)
@@ -47,7 +55,7 @@ def test_external_child_does_not_inherit_script_fd(tmp_path):
 def test_exec_image_does_not_inherit_script_fd(tmp_path):
     # `exec` replacing the image: the new image must not inherit the script fd.
     script = ('echo BEFORE\n'
-              'exec /bin/sh -c \'for fd in 250 255 256; do '
+              f'exec {_SH} -c \'for fd in 250 255 256; do '
               ': <&$fd 2>/dev/null && echo "open:$fd"; done; echo AFTER\'\n')
     psh, bash = _cmp(tmp_path, script)
     assert psh.stdout == bash.stdout == "BEFORE\nAFTER\n"

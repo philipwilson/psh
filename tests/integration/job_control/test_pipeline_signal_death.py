@@ -22,6 +22,7 @@ Determinism over realism: the child signals itself. This path is auto-marked
 
 import signal
 
+from core_dump_env import signal_death_text
 from shell_oracle import is_comparable
 from shell_oracle import run_bash as _oracle_run_bash
 from shell_oracle import run_psh as _oracle_run_psh
@@ -70,7 +71,12 @@ class TestPipelineLastMemberSignalDeath:
         psh = run_psh(cmd)
         bash = run_bash(cmd)
         assert psh.stdout == 'rc=139\n' == bash.stdout
-        assert psh.stderr.strip() == signal.strsignal(signal.SIGSEGV)
+        # SIGSEGV dumps core wherever the host allows it, and psh then appends
+        # bash's " (core dumped)" from WCOREDUMP -- a host property, not a psh
+        # one, so the expectation is built with the kernel's own rule (see
+        # tests/harness/core_dump_env.py) and stays exact on both platforms.
+        assert psh.stderr.strip() == signal_death_text(
+            signal.strsignal(signal.SIGSEGV))
         assert signal.strsignal(signal.SIGSEGV) in bash.stderr
 
     def test_sigint_last_member_silent(self):

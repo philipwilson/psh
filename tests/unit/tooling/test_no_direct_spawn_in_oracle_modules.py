@@ -224,7 +224,16 @@ _EXPECTED_PTY_REGISTRY = frozenset(PTY_REGISTRY)
 # per MODULE. Approval is now per SITE COUNT, so adding a spawn to an approved
 # module is the same visible two-place change as adding an entry.
 _EXPECTED_SPAWN_SITES = {
-    "harness/shell_oracle.py": 2,                          # Popen + version probe
+    # Popen + version probe + the `ps` descendant enumeration in
+    # _killpg_sigkill. The third CANNOT route through the runner: it is the
+    # cleanup that makes the runner's own kill authoritative, so going through
+    # the runner would be circular. It launches `ps` with a fixed argv, never a
+    # shell, and reads only a pid/ppid table — no shell behaviour is observed,
+    # so it cannot manufacture a false IDENTICAL. It exists because killpg on
+    # the session leader misses children a job-control shell has setpgid'd into
+    # groups of their own, which let a writer survive the cap kill and fill an
+    # already-unlinked capture file — the nightly's [Errno 28] deaths.
+    "harness/shell_oracle.py": 3,
     "integration/job_control/test_exit_trap_paths.py": 2,  # psh + bash signal harness
     "system/test_script_input_sources.py": 2,              # two fifo writers
     "system/test_stdin_startup_robustness.py": 1,          # close-fd0 / file-object branch

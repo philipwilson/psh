@@ -31,6 +31,7 @@ file-backed capture, bounded output).
 """
 import itertools
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -122,13 +123,19 @@ def test_d1_closed_stdin_pipeline():
 def test_d2_closed_stdout_upstream_keeps_write_end():
     """exec 1>&-: upstream printf no longer errors; only the last member fails.
 
-    bash emits just `cat: stdout: Bad file descriptor` (cat's own closed
-    stdout), never a `printf: write error`.
+    bash emits just cat's own closed-stdout complaint, never a
+    `printf: write error`.
     """
     out, err, status = _observe([sys.executable, "-m", "psh"], "exec 1>&-; ",
                                 "printf x | cat")
     assert "printf" not in err  # upstream keeps its pipe write end
-    assert err == "cat: stdout: Bad file descriptor\n"
+    # cat's noun for fd 1 is a coreutils-flavour detail, not a psh behaviour:
+    # GNU cat says "standard output" where BSD cat says "stdout". Anchored to
+    # exactly ONE line naming one of those two nouns: a startswith/endswith pair
+    # would accept arbitrary text in between, and a stray extra diagnostic
+    # there is precisely what this row exists to catch.
+    assert re.fullmatch(
+        r"cat: (stdout|standard output): Bad file descriptor\n", err), err
     assert status == "rc=1 ps=0 1"
 
 

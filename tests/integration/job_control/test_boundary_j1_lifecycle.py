@@ -20,7 +20,14 @@ import subprocess
 import sys
 
 
-def _psh(script: str, timeout: float = 12):
+def _psh(script: str, timeout: float = 60):
+    # 60s, not 12: the SIGQUIT row kills a forked psh subshell -- a whole
+    # CPython image -- and where the host dumps core that is ~20 MB. A hosted
+    # runner pipes core_pattern through apport and the kernel IGNORES
+    # RLIMIT_CORE for piped dumps, so the dump cannot be suppressed and it
+    # outran a 12s budget (nightly run 30154694015). The budget is a
+    # hang-catcher; every case returns in well under a second when nothing
+    # dumps.
     result = subprocess.run(
         [sys.executable, "-m", "psh", "-c", script],
         capture_output=True, text=True, timeout=timeout,

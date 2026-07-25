@@ -182,7 +182,19 @@ def test_timeout_threads_truncation_provenance(monkeypatch):
         shell_oracle.os.path, "getsize",
         lambda p: 0 if str(p).endswith((".oracle-stdout", ".oracle-stderr"))
         else real_getsize(p))
-    r = run_shell_case([SH, "-c", "yes runaway"], timeout=0.5, byte_cap=16 * 1024)
+    # The producer is BOUNDED (`head -c`), not open-ended. This row switches off
+    # the watchdog's cap kill, so it is the one place in the suite where nothing
+    # limits the writer's bytes -- and an unbounded writer here is precisely the
+    # shape that filled an unlinked capture file at device speed and killed the
+    # Linux nightly with [Errno 28]. The hardened _killpg_sigkill would now
+    # reach it, but a row that removes its own safety net should not depend on
+    # the kill being correct. `head -c` exits after 8 MiB while `sleep` keeps
+    # the shell alive past the 0.5s deadline, so the TIMEOUT path and the
+    # truncated partial capture this row exists to pin are both preserved
+    # (8 MiB written >> the 16 KiB readback cap). Portable: no GNU `timeout`,
+    # because this row also runs in the macOS gate.
+    r = run_shell_case([SH, "-c", "yes runaway | head -c 8388608; sleep 30"],
+                       timeout=0.5, byte_cap=16 * 1024)
     assert isinstance(r, Timeout)
     assert r.stdout_truncated and not r.stderr_truncated
     assert not is_comparable(r)
@@ -239,6 +251,44 @@ def test_output_cap_kills_whole_process_group():
         os.kill(bg_pid, 9)  # cleanup before failing loudly
         raise AssertionError(
             f"grandchild {bg_pid} survived the output-cap killpg sweep")
+
+
+def test_cap_kill_reaches_a_writer_that_left_the_process_group():
+    """The escaped-pgroup offender: killpg on the leader is NOT enough.
+
+    ``run_shell_case`` starts the shell with ``start_new_session=True``, so it
+    leads a group -- but a shell with JOB CONTROL ``setpgid``s the commands it
+    launches into groups of their OWN, which ``killpg`` on the leader never
+    reaches. Under ``set -m`` the writer below gets its own group, exactly as a
+    psh job does (measured: psh pgid 40910, its `yes` child pgid 40919).
+
+    Left alive it keeps writing to a capture file the harness has ALREADY
+    unlinked, so nothing is visible on disk while free space drains at hundreds
+    of MB/s and then fully recovers once it dies. That is what repeatedly killed
+    the Linux nightly with ``[Errno 28]`` while ``df`` looked healthy either
+    side, and it drained this suite's own gate host too: running THIS module
+    used to consume ~7.8 GB and leave a live `yes` behind; it now costs ~2 MB
+    and leaves nothing.
+
+    RED before the descendant sweep in ``_killpg_sigkill``, green after.
+    """
+    r = run_shell_case(
+        [SH, "-c", "set -m; yes escaped & echo pid=$! >&2; wait"],
+        timeout=30, byte_cap=64 * 1024)
+    assert isinstance(r, OutputLimitExceeded)
+    escaped_pid = int(r.stderr.split("pid=")[1].split()[0])
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(escaped_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(escaped_pid, 9)  # never leave it filling the disk
+        raise AssertionError(
+            f"writer {escaped_pid} left the shell's process group and survived "
+            "the cap kill; it is still filling an unlinked capture file")
 
 
 def test_child_pwd_is_truthful_and_agrees_across_shells(tmp_path):

@@ -20,9 +20,38 @@ from pathlib import Path
 
 import pytest
 from conformance_framework import ConformanceTest
-from shell_oracle import is_comparable, run_bash, run_psh
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 PSH_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _oracle_version_tuple():
+    """The oracle bash's ``(major, minor, patch)``, or None if unparseable."""
+    m = re.match(r'(\d+)\.(\d+)\.(\d+)', resolve_bash().version)
+    return tuple(int(g) for g in m.groups()) if m else None
+
+
+# bash 5.2 PATCH 24 began expanding a tilde inside an associative-array
+# subscript: `HOME=/probe-home; declare -A a; a[~]=v; echo "${!a[@]}"` prints
+# the literal `~` up to 5.2.23 and `/probe-home` from 5.2.24 on. Bisected by
+# building each patch level from the GNU tarball + official patches on ONE
+# Linux box, so the flip is the bash VERSION and not the platform:
+#     5.2.22 -> ~     5.2.23 -> ~     5.2.24 -> /probe-home    5.2.25 -> /probe-home
+# psh implements the current (>=5.2.24) behaviour. The Linux nightly's distro
+# bash is 5.2.21, where the oracle itself predates the change -- so the row is
+# skipped there rather than being "widened" to accept both answers, which would
+# stop it proving anything on the hosts that CAN check it.
+#
+# The gate FAILS CLOSED. A full version-tuple compare means an older series
+# (5.1, say) also skips instead of failing on a difference it cannot be
+# expected to show, and an UNPARSEABLE version skips too rather than running the
+# row against an oracle whose behaviour here is unknown. Earlier this compared
+# the patch field only when the version happened to be a 5.2, so anything else
+# fell through and ran.
+_TILDE_IN_SUBSCRIPT_VERSION = (5, 2, 24)
+_ORACLE_VERSION = _oracle_version_tuple()
+_OLD_BASH_NO_SUBSCRIPT_TILDE = (
+    _ORACLE_VERSION is None or _ORACLE_VERSION < _TILDE_IN_SUBSCRIPT_VERSION)
 
 # Shell-name diagnostic prefix (`psh: line 1: ` / `bash: line 1: `): stripped
 # where a row compares MESSAGE BODIES (the framework compares raw stderr, and
@@ -423,6 +452,12 @@ class TestCompositeQuoting(ConformanceTest):
         self.assert_identical_behavior(
             'declare -A h; h["a b"]=v; echo "${h[a b]}"')
 
+    @pytest.mark.skipif(
+        _OLD_BASH_NO_SUBSCRIPT_TILDE,
+        reason="oracle bash is older than 5.2.24 (or its version could not be "
+               "parsed); 5.2.24 introduced tilde expansion in associative-array "
+               "subscripts and psh implements the current behaviour "
+               "(see _TILDE_IN_SUBSCRIPT_VERSION)")
     def test_tilde_expands_in_key(self):
         self.assert_identical_behavior(
             'HOME=/probe-home; declare -A a; a[~]=v; echo "${!a[@]}"')

@@ -29,6 +29,76 @@ jobs:
       - name: Show bash version
         run: bash --version
 
+      # EXPIRY — this whole instrumentation block (core_pattern normalisation,
+      # the disk sampler, the open-fd snapshots, and PSH_DISK_WATCH on the suite
+      # step) is RELAPSE WATCH for the escaped-writer bug fixed in slot 1.4, not
+      # permanent workflow furniture. Removal criterion: once several
+      # consecutive SCHEDULED nightlies are green with zero ENOSPC and no
+      # sampler trip, delete it — the fix itself is pinned by
+      # test_cap_kill_reaches_a_writer_that_left_the_process_group, so nothing
+      # here is load-bearing for correctness. Removal is on the wave-close carry
+      # list.
+      #
+      # Runner hygiene for a suite that kills processes with core-dumping
+      # signals. The runner image routes core_pattern through a PIPE
+      # (apport/systemd-coredump), and for piped dumps the kernel IGNORES
+      # RLIMIT_CORE — so the suite's own soft-limit reset (tests/conftest.py)
+      # cannot suppress a dump here, and a SIGQUIT'd psh subshell dumps a whole
+      # ~20 MB CPython image. Pointing core_pattern at a plain file restores the
+      # limit's authority, so nothing is written at all. Best-effort: the suite
+      # asks the host what to expect (tests/harness/core_dump_env.py), so it is
+      # correct either way. Disk is reported because run 30157713743 died with
+      # ~26 ENOSPC on /tmp and the logs could not say what consumed it.
+      - name: Normalise core dumping and report disk
+        run: |
+          echo "core_pattern (before): $(cat /proc/sys/kernel/core_pattern)"
+          sudo sysctl -w kernel.core_pattern=core || echo "could not set core_pattern"
+          echo "core_pattern (after):  $(cat /proc/sys/kernel/core_pattern)"
+          echo "--- disk before suite ---"; df -h / /tmp; df -i / /tmp
+          # Sample DURING the suite. Runs 30157713743 and 30158789660 hit
+          # [Errno 28] on mkdir under /tmp while df reported 88G and 18.5M
+          # inodes free both before and after — so the cause is neither bytes
+          # nor inodes at rest, and a before/after pair cannot see it. Log the
+          # peak and the /tmp entry count (an ext4 directory that has grown a
+          # huge number of entries can itself return ENOSPC) so the next
+          # occurrence is diagnosable instead of guessable.
+          # Hard-bounded (timeout + setsid + detached fds): a `while :` sampler
+          # left unbounded on a runner can outlive its step and confuse job
+          # teardown, and a diagnostic must never be able to wedge the thing it
+          # is diagnosing.
+          # When free space falls below the trip point, snapshot the OPEN FILES
+          # that are consuming it. Per-test attribution cannot find this writer:
+          # under xdist a runaway in one worker is charged to whoever spans the
+          # window, and the top "consumer" (25.5 GB) turned out to be a
+          # long-running bystander that uses 22 MB when run alone. The file
+          # itself is the ground truth — and because it is almost certainly
+          # already UNLINKED (space returns when its fd closes, which is why
+          # nothing is ever left on disk), /proc/PID/fd is the only place it can
+          # still be seen.
+          setsid timeout 3300 bash -c '
+          tripped=0
+          while :; do
+            set -- $(df --output=avail,iavail / | tail -1)
+            printf "%s avail_kb=%s ifree=%s tmp_entries=%s\n" \
+              "$(date -u +%H:%M:%S)" "$1" "$2" "$(ls -U /tmp | wc -l)"
+            if [ "$1" -lt 40000000 ] && [ "$tripped" -lt 3 ]; then
+              tripped=$((tripped+1))
+              echo "=== TRIP $tripped: avail_kb=$1 — largest open fds ==="
+              for fd in /proc/[0-9]*/fd/*; do
+                sz=$(stat -Lc %s "$fd" 2>/dev/null) || continue
+                [ "${sz:-0}" -gt 104857600 ] || continue
+                pid=$(echo "$fd" | cut -d/ -f3)
+                printf "%12s bytes  pid=%s  target=%s\n  cmdline=%s\n" \
+                  "$sz" "$pid" "$(readlink "$fd" 2>/dev/null)" \
+                  "$(tr "\0" " " < /proc/$pid/cmdline 2>/dev/null | cut -c1-200)"
+              done | sort -rn | head -20
+              echo "=== end TRIP $tripped ==="
+            fi
+            sleep 5
+          done' > /tmp/disk-samples.log 2>&1 < /dev/null &
+          disown || true
+          echo "sampler started (bounded at 3300s, open-fd snapshot below 40GB)"
+
       # --compare-bash adds the golden bash-comparison phase (Phase 2) to
       # the same run, so the full suite and the golden phase share one
       # invocation; --census logs the skip/xfail breakdown nightly.
@@ -36,6 +106,12 @@ jobs:
       # coverage.xml. Coverage is non-gating reporting (no --cov-fail-under);
       # it moved here from the per-PR gate (v0.330.0) to keep that gate fast.
       - name: Run Full Parallel Suite (with bash golden phase + coverage)
+        # PSH_DISK_WATCH prints the tests that consumed the most free space.
+        # The workflow sampler proved the nightly's [Errno 28] deaths are one
+        # runaway writer draining ~400 MB/s with inodes flat, but it cannot say
+        # WHICH test; this names it. See tests/conftest.py.
+        env:
+          PSH_DISK_WATCH: "1"
         run: python run_tests.py --parallel --compare-bash --census --coverage
 
       # Extended RD-vs-combinator parser differential. The full suite above
@@ -56,8 +132,53 @@ jobs:
       # `benchmark`-marked timing microbenchmarks, serial, excluded from the
       # standard gate. Nightly records the transcript as a build artifact
       # ONLY — baseline-delta tracking is deferred to campaign exit.
+      # continue-on-error matches what this tier already says it is: the
+      # transcript is uploaded as an artifact and baseline-delta tracking is
+      # deferred, so a timing wobble on shared CI hardware must not fail the
+      # nightly. It was gating by accident, and nobody could see it: every run
+      # since 2026-07-02 failed at the suite step, which SKIPPED this one. The
+      # first run to reach it (30168712840) found three thresholds that are
+      # absolute wall-clock numbers tuned on a dev machine — 0.0124s against a
+      # 0.01s budget, ~24% over — and all three pass locally. Those are
+      # pre-existing and want real baselines, not a fudged constant; that is the
+      # deferred work, not this slot's.
       - name: Benchmark Tier (serial; artifact-only, no baseline deltas)
+        continue-on-error: true
         run: python run_tests.py --benchmarks --results-file tmp/benchmarks-nightly.txt
+
+      - name: Report disk after suite
+        if: always()
+        run: |
+          echo "--- disk after suite ---"; df -h / /tmp; df -i / /tmp
+          echo "--- largest /tmp entries ---"
+          sudo du -xm /tmp 2>/dev/null | sort -rn | head -20 || true
+          echo "--- OPEN-FD SNAPSHOTS taken while space was draining ---"
+          sed -n '/=== TRIP/,/=== end TRIP/p' /tmp/disk-samples.log 2>/dev/null \
+            | head -80 || true
+          echo "--- during-suite samples: 15 LOWEST free space ---"
+          grep avail_kb= /tmp/disk-samples.log 2>/dev/null \
+            | sort -t= -k2 -n | head -15 || true
+          echo "--- during-suite samples: 5 most recent ---"
+          tail -5 /tmp/disk-samples.log 2>/dev/null || true
+          echo "--- sample count ---"; wc -l < /tmp/disk-samples.log 2>/dev/null || true
+          # Cross-worker timeline. Per-test deltas alone cannot find the writer
+          # under xdist (a runaway in one worker is charged to whatever short
+          # test spans the window in another), so merge every worker's
+          # line-per-test log in time order and show the window around the
+          # lowest free-space reading. The test that spans the WHOLE drain is
+          # the candidate; the ones that merely straddle it are not.
+          echo "--- per-test timeline around the low-water mark ---"
+          cat tmp/disk-watch-*.log 2>/dev/null | sort -n > /tmp/timeline.txt || true
+          if [ -s /tmp/timeline.txt ]; then
+            low=$(awk '{print $5}' /tmp/timeline.txt | sort -n | head -1)
+            echo "lowest free bytes seen per-test: $low"
+            awk -v low="$low" '$5 <= low * 1.10' /tmp/timeline.txt | head -40
+            echo "--- 12 largest single-test drops (worker-tagged) ---"
+            awk '{printf "%.0f MB  %s  %s\n", ($4-$5)/1048576, $3, $6}' \
+              /tmp/timeline.txt | sort -rn | head -12
+          else
+            echo "(no per-test timeline; PSH_DISK_WATCH may be off)"
+          fi
 
       - name: Upload Benchmark Transcript
         if: always()
@@ -98,6 +219,92 @@ jobs:
       - name: Show bash version
         run: bash --version
 
+      # EXPIRY — this whole instrumentation block (core_pattern normalisation,
+      # the disk sampler, the open-fd snapshots, and PSH_DISK_WATCH on the suite
+      # step) is RELAPSE WATCH for the escaped-writer bug fixed in slot 1.4, not
+      # permanent workflow furniture. Removal criterion: once several
+      # consecutive SCHEDULED nightlies are green with zero ENOSPC and no
+      # sampler trip, delete it — the fix itself is pinned by
+      # test_cap_kill_reaches_a_writer_that_left_the_process_group, so nothing
+      # here is load-bearing for correctness. Removal is on the wave-close carry
+      # list.
+      #
+      # Runner hygiene for a suite that kills processes with core-dumping
+      # signals. The runner image routes core_pattern through a PIPE
+      # (apport/systemd-coredump), and for piped dumps the kernel IGNORES
+      # RLIMIT_CORE — so the suite's own soft-limit reset (tests/conftest.py)
+      # cannot suppress a dump here, and a SIGQUIT'd psh subshell dumps a whole
+      # ~20 MB CPython image. Pointing core_pattern at a plain file restores the
+      # limit's authority, so nothing is written at all. Best-effort: the suite
+      # asks the host what to expect (tests/harness/core_dump_env.py), so it is
+      # correct either way. Disk is reported because run 30157713743 died with
+      # ~26 ENOSPC on /tmp and the logs could not say what consumed it.
+      - name: Normalise core dumping and report disk
+        run: |
+          echo "core_pattern (before): $(cat /proc/sys/kernel/core_pattern)"
+          sudo sysctl -w kernel.core_pattern=core || echo "could not set core_pattern"
+          echo "core_pattern (after):  $(cat /proc/sys/kernel/core_pattern)"
+          echo "--- disk before suite ---"; df -h / /tmp; df -i / /tmp
+          # Sample DURING the suite. Runs 30157713743 and 30158789660 hit
+          # [Errno 28] on mkdir under /tmp while df reported 88G and 18.5M
+          # inodes free both before and after — so the cause is neither bytes
+          # nor inodes at rest, and a before/after pair cannot see it. Log the
+          # peak and the /tmp entry count (an ext4 directory that has grown a
+          # huge number of entries can itself return ENOSPC) so the next
+          # occurrence is diagnosable instead of guessable.
+          # Hard-bounded (timeout + setsid + detached fds): a `while :` sampler
+          # left unbounded on a runner can outlive its step and confuse job
+          # teardown, and a diagnostic must never be able to wedge the thing it
+          # is diagnosing.
+          # When free space falls below the trip point, snapshot the OPEN FILES
+          # that are consuming it. Per-test attribution cannot find this writer:
+          # under xdist a runaway in one worker is charged to whoever spans the
+          # window, and the top "consumer" (25.5 GB) turned out to be a
+          # long-running bystander that uses 22 MB when run alone. The file
+          # itself is the ground truth — and because it is almost certainly
+          # already UNLINKED (space returns when its fd closes, which is why
+          # nothing is ever left on disk), /proc/PID/fd is the only place it can
+          # still be seen.
+          setsid timeout 3300 bash -c '
+          tripped=0
+          while :; do
+            set -- $(df --output=avail,iavail / | tail -1)
+            printf "%s avail_kb=%s ifree=%s tmp_entries=%s\n" \
+              "$(date -u +%H:%M:%S)" "$1" "$2" "$(ls -U /tmp | wc -l)"
+            if [ "$1" -lt 40000000 ] && [ "$tripped" -lt 3 ]; then
+              tripped=$((tripped+1))
+              echo "=== TRIP $tripped: avail_kb=$1 — largest open fds ==="
+              for fd in /proc/[0-9]*/fd/*; do
+                sz=$(stat -Lc %s "$fd" 2>/dev/null) || continue
+                [ "${sz:-0}" -gt 104857600 ] || continue
+                pid=$(echo "$fd" | cut -d/ -f3)
+                printf "%12s bytes  pid=%s  target=%s\n  cmdline=%s\n" \
+                  "$sz" "$pid" "$(readlink "$fd" 2>/dev/null)" \
+                  "$(tr "\0" " " < /proc/$pid/cmdline 2>/dev/null | cut -c1-200)"
+              done | sort -rn | head -20
+              echo "=== end TRIP $tripped ==="
+            fi
+            sleep 5
+          done' > /tmp/disk-samples.log 2>&1 < /dev/null &
+          disown || true
+          echo "sampler started (bounded at 3300s, open-fd snapshot below 40GB)"
+
       - name: Run Full Conformance Suite (POSIX + bash compatibility)
         working-directory: tests/conformance
         run: python run_conformance_tests.py
+
+      # This job starts the sampler too (shared hygiene step above), so it must
+      # also REPORT it — an unreported sampler is collected and discarded, which
+      # is pure cost. This job runs oracle cases as well, so it is not immune to
+      # the escaped-writer class; leaving it without disk visibility would be a
+      # blind spot in exactly the job that has to stay green.
+      - name: Report disk after conformance
+        if: always()
+        run: |
+          echo "--- disk after conformance ---"; df -h / /tmp; df -i / /tmp
+          echo "--- OPEN-FD SNAPSHOTS taken while space was draining ---"
+          sed -n '/=== TRIP/,/=== end TRIP/p' /tmp/disk-samples.log 2>/dev/null \
+            | head -60 || true
+          echo "--- during-job samples: 10 LOWEST free space ---"
+          grep avail_kb= /tmp/disk-samples.log 2>/dev/null \
+            | sort -t= -k2 -n | head -10 || true

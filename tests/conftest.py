@@ -6,8 +6,10 @@ avoiding conflicts with the main test suite's conftest.py.
 """
 
 import os
+import resource
 import signal
 import sys
+import time
 from io import StringIO
 from pathlib import Path
 
@@ -31,6 +33,30 @@ sys.path.insert(0, str(PSH_ROOT / "tests" / "harness"))
 # with it. No psh or bash behavior under test depends on either.
 os.environ.pop("DISPLAY", None)
 os.environ.pop("XAUTHORITY", None)
+
+# The RLIMIT_CORE soft default is 0 on macOS but UNLIMITED on Linux, so the
+# suite's signal-death tests dump real cores there: SIGQUITing a forked psh
+# subshell writes a ~20 MB CPython core, and enough of those fill a CI disk.
+# Lower the SOFT limit at import time so every test process, and every shell it
+# spawns, inherits it. Only the soft limit moves — the hard limit is untouched,
+# so `ulimit -c unlimited` still raises it back and the ulimit conformance rows
+# (which compare psh and bash as siblings inheriting the SAME limit) are
+# unaffected.
+#
+# This does NOT make core dumps impossible, and tests must not assume it does.
+# When /proc/sys/kernel/core_pattern names a PIPE the kernel ignores
+# RLIMIT_CORE and dumps anyway (it forces the limit to infinity for piped
+# dumps), which is exactly what hosted CI runners configure via apport /
+# systemd-coredump. Verified on one kernel, changing only the pattern, with the
+# soft limit at 0: `core` -> WCOREDUMP False, `|/bin/cat` -> WCOREDUMP True.
+# A test that pins a signal-death diagnostic therefore asks the host whether to
+# expect bash's " (core dumped)" suffix — see tests/harness/core_dump_env.py.
+try:
+    _core_soft, _core_hard = resource.getrlimit(resource.RLIMIT_CORE)
+    if _core_soft != 0:
+        resource.setrlimit(resource.RLIMIT_CORE, (0, _core_hard))
+except (ValueError, OSError):  # pragma: no cover - platform guard
+    pass
 
 from psh.core import ReadonlyVariableError
 from psh.executor.job_control import JobState
@@ -578,3 +604,70 @@ def pytest_addoption(parser):
         default=False,
         help="Also run each golden test against bash and compare output",
     )
+
+
+# --- opt-in per-test disk accounting (PSH_DISK_WATCH=1) ----------------------
+#
+# The Linux nightly repeatedly died with [Errno 28] while df reported ~88 GB
+# free both before and after the suite. A 5s sampler in the workflow showed why
+# a before/after pair could never see it: free space drains MONOTONICALLY at
+# ~400 MB/s -- 24 GB in 66 seconds -- with free inodes and the /tmp entry count
+# both flat, then fully recovers. That is one runaway WRITER, and the flat entry
+# count plus the full recovery point at a file that is already unlinked (its
+# space comes back when the last fd closes), which is why nothing is left to
+# find afterwards.
+#
+# The sampler can say WHEN but not WHICH TEST. This records free space either
+# side of every test and prints the biggest consumers at session end, so the
+# next occurrence arrives with a name attached. Off unless PSH_DISK_WATCH=1, so
+# it costs a normal run nothing.
+
+_DISK_WATCH = os.environ.get("PSH_DISK_WATCH") == "1"
+_disk_deltas: "list[tuple[int, str]]" = []
+
+
+def _free_bytes() -> int:
+    st = os.statvfs(os.environ.get("TMPDIR", "/tmp"))
+    return st.f_bavail * st.f_frsize
+
+
+if _DISK_WATCH:
+    # Per-test deltas alone cannot find the writer under xdist: a runaway in
+    # one worker is charged to whatever short test spans the window in another,
+    # and ~400 MB/s x a ~0.4s test is ~160 MB — exactly the band the first
+    # attempt reported for ~20 unrelated tests. So record WHICH WORKER and the
+    # test's own time window as well, into one line-per-test log per worker.
+    # Reconstructing the timeline across workers then shows which test was
+    # actually running for the whole drain, rather than which happened to
+    # straddle it.
+    _WORKER = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    _WATCH_LOG = PSH_ROOT / "tmp" / f"disk-watch-{_WORKER}.log"
+
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_protocol(item, nextitem):
+        started = time.time()
+        before = _free_bytes()
+        yield
+        try:
+            after = _free_bytes()
+        except OSError:
+            return
+        consumed = before - after
+        try:
+            with open(_WATCH_LOG, "a", encoding="utf-8") as fh:
+                fh.write(f"{started:.3f} {time.time():.3f} {_WORKER} "
+                         f"{before} {after} {item.nodeid}\n")
+        except OSError:
+            pass
+        # Only meaningful drops; churn of a few MB is normal temp-file traffic.
+        if consumed > 64 * 1024 * 1024:
+            _disk_deltas.append((consumed, item.nodeid))
+
+    def pytest_sessionfinish(session, exitstatus):
+        tr = session.config.pluginmanager.get_plugin("terminalreporter")
+        if tr is None or not _disk_deltas:
+            return
+        tr.write_sep("=", f"disk consumers (PSH_DISK_WATCH, {_WORKER})")
+        for consumed, nodeid in sorted(_disk_deltas, reverse=True)[:20]:
+            tr.write_line(f"{consumed / (1024 * 1024):10.1f} MB  {nodeid}")
+        tr.write_line(f"per-test timeline: {_WATCH_LOG}")

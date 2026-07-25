@@ -24,24 +24,26 @@ fd 3 in the collision row) must still be alive after the redirected builtin.
 All expected values bash-5.2 verified (R1-probes/bounce-probes.txt).
 """
 import os
-import subprocess
-import sys
 import tempfile
 
 import pytest
+from shell_oracle import is_comparable, resolve_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 TREE = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
 
 def run_psh(script, cwd=None):
-    env = dict(os.environ)
-    env["PYTHONPATH"] = TREE
-    env["PSH_STRICT_ERRORS"] = "0"
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", script],
-                       cwd=cwd or TREE, env=env, capture_output=True,
-                       text=True, timeout=60)
-    return p.stdout, p.stderr, p.returncode
+    # Routed through the typed runner, not raw subprocess: naming the bash
+    # oracle below makes this module oracle-bearing, and an oracle-bearing
+    # module must launch through the runner so is_comparable() can reject a
+    # truncated or timed-out observation before it is compared
+    # (test_no_direct_spawn_in_oracle_modules).
+    r = _oracle_run_psh(["-c", script], cwd=cwd or TREE, timeout=60,
+                        env={"PSH_STRICT_ERRORS": "0"})
+    assert is_comparable(r), r
+    return r.stdout, r.stderr, r.returncode
 
 
 @pytest.fixture()
@@ -144,8 +146,13 @@ def test_child_sees_closed_fd_and_shell_survives(infile_dir):
     # While the builtin runs with `1>&- <infile`, a child it spawns sees fd 1
     # CLOSED (bash; `cat <&1` fails, never reads infile through fd 1), and the
     # shell's stdout survives the frame restore (`echo rc=$?` prints).
+    # The child is the resolved bash oracle, not `/bin/sh`: what a closed fd 1
+    # COSTS the child is the child shell's own choice, and /bin/sh is bash on
+    # macOS but dash on Linux, where the failed redirect exits 2 rather than 1.
+    # Naming the shell keeps the status an exact pin.
+    sh = resolve_bash().path
     out, err, rc = run_psh(
-        "eval 'read x; /bin/sh -c \"cat <&1\"' 1>&- <infile; echo rc=$?",
+        f"eval 'read x; {sh} -c \"cat <&1\"' 1>&- <infile; echo rc=$?",
         cwd=infile_dir)
     assert out == "rc=1\n", (out, err)
     assert "AAA" not in (out + err) and "BBB" not in (out + err), (

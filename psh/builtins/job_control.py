@@ -368,9 +368,19 @@ class BgBuiltin(Builtin):
 
         The resume line carries the job's real marker (`+` current, `-`
         previous, ` ` otherwise) at print time — bash's, not a hardcoded `+`.
+
+        The state is REFRESHED first, exactly as ``fg`` does and for the same
+        reason: a job stopped by an external ``kill -STOP`` is never reaped by a
+        shell with no SIGCHLD reaper, so ``job.state`` can still say RUNNING.
+        Without the refresh the gate below is skipped, **no SIGCONT is sent**,
+        and ``bg`` reports success while the job stays stopped — silently, which
+        is the worst shape for this bug. Tracking the stop is correct here for
+        the same reason it is in ``fg``: bash's ``bg`` requires job control, so
+        this path is only reached under monitor mode.
         """
+        jm = shell.job_manager
+        jm.refresh_one_job(job, track_stops=True)
         if job.state == JobState.STOPPED:
-            jm = shell.job_manager
             job.mark_running()
             job.state = JobState.RUNNING
             job.foreground = False

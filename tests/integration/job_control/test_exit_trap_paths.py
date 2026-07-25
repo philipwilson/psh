@@ -361,6 +361,11 @@ class TestExitTrapOnFatalSignal:
         proc.stdin.write(script)
         proc.stdin.flush()
         proc.stdin.close()
+        # Drop the handle once closed: communicate() below flushes proc.stdin
+        # whenever it is set, and flushing an already-closed pipe raises
+        # ValueError on Python 3.12 -- the nightly's interpreter. Newer CPython
+        # tolerates it, which is why this only ever failed on Linux CI.
+        proc.stdin = None
         assert _wait_for_ready(str(ready), proc), (
             "HARNESS failure: stdin-mode shell never reached its sentinel")
         os.kill(proc.pid, signal.SIGTERM)
