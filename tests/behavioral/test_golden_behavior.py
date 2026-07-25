@@ -67,10 +67,19 @@ _ALL_CASES = _load_cases()
 
 
 def _run_case(argv, *, env=None, timeout=10):
-    """Run one golden case via the typed runner; harness failures raise."""
+    """Run one golden case via the typed runner; harness failures raise.
+
+    The message names the FULL argv and the timeout, not just argv[0] (which
+    is only the interpreter path). A harness failure here is rare and tends to
+    be a one-off under gate load, so the single line it prints has to be
+    enough to classify it WITHOUT a reproduction: the typed outcome tells a
+    Timeout apart from a SpawnFailure, and the argv says which case hit it.
+    """
     run = run_shell_case(argv, env=_deterministic_env(env), timeout=timeout)
     if not is_comparable(run):
-        raise AssertionError(f"harness failure running {argv[0]}: {run!r}")
+        raise AssertionError(
+            f"harness failure (not a behavior mismatch) running {argv!r} "
+            f"with timeout={timeout}s: {run!r}")
     return run.stdout, run.stderr, run.returncode
 
 

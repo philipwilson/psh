@@ -308,9 +308,10 @@ class TestStringCaseModification:
         shell.run_command('echo "${TEXT^}"')
         captured = capsys.readouterr()
         expected = "Hello world"
-        # This might not be supported
-        if captured.out.strip() != "${TEXT^}":
-            assert captured.out.strip() == expected
+        # Supported; matches bash 5.2 exactly. This used to assert
+        # only when the output differed from the literal "${TEXT^}",
+        # i.e. it skipped itself precisely when the expansion broke.
+        assert captured.out.strip() == expected
 
     def test_uppercase_all(self, shell, capsys):
         """Test ${var^^} uppercase all characters."""
@@ -318,9 +319,10 @@ class TestStringCaseModification:
         shell.run_command('echo "${TEXT^^}"')
         captured = capsys.readouterr()
         expected = "HELLO WORLD"
-        # This might not be supported
-        if captured.out.strip() != "${TEXT^^}":
-            assert captured.out.strip() == expected
+        # Supported; matches bash 5.2 exactly. This used to assert
+        # only when the output differed from the literal "${TEXT^^}",
+        # i.e. it skipped itself precisely when the expansion broke.
+        assert captured.out.strip() == expected
 
     def test_lowercase_first(self, shell, capsys):
         """Test ${var,} lowercase first character."""
@@ -328,9 +330,10 @@ class TestStringCaseModification:
         shell.run_command('echo "${TEXT,}"')
         captured = capsys.readouterr()
         expected = "hELLO WORLD"
-        # This might not be supported
-        if captured.out.strip() != "${TEXT,}":
-            assert captured.out.strip() == expected
+        # Supported; matches bash 5.2 exactly. This used to assert
+        # only when the output differed from the literal "${TEXT,}",
+        # i.e. it skipped itself precisely when the expansion broke.
+        assert captured.out.strip() == expected
 
     def test_lowercase_all(self, shell, capsys):
         """Test ${var,,} lowercase all characters."""
@@ -338,9 +341,10 @@ class TestStringCaseModification:
         shell.run_command('echo "${TEXT,,}"')
         captured = capsys.readouterr()
         expected = "hello world"
-        # This might not be supported
-        if captured.out.strip() != "${TEXT,,}":
-            assert captured.out.strip() == expected
+        # Supported; matches bash 5.2 exactly. This used to assert
+        # only when the output differed from the literal "${TEXT,,}",
+        # i.e. it skipped itself precisely when the expansion broke.
+        assert captured.out.strip() == expected
 
 
 class TestComplexParameterExpansion:

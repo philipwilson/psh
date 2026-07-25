@@ -1,53 +1,84 @@
 {
   "documented": {
-    "help": {
-      "id": "HELP_BUILTIN",
-      "description": "PSH and bash both have help but with different output formats",
-      "psh_behavior": "help command shows PSH builtin help",
-      "bash_behavior": "help command shows bash builtin help",
-      "category": "builtin_differences"
-    },
-    "pushd": {
-      "id": "PUSHD_BEHAVIOR",
-      "description": "PSH pushd behavior may differ in directory stack handling",
-      "psh_behavior": "PSH directory stack implementation",
-      "bash_behavior": "Bash directory stack implementation",
-      "category": "navigation_differences"
-    },
-    "pushd /tmp": {
-      "id": "PUSHD_CWD_DIFFERENCE",
-      "description": "Both shells correctly push CWD and change to /tmp. Output differs because PSH and bash run from different working directories in the conformance test environment.",
-      "psh_behavior": "Shows /tmp followed by PSH's CWD on stack",
-      "bash_behavior": "Shows /tmp followed by bash's CWD (temp directory) on stack",
-      "category": "navigation_differences"
-    },
-    "popd": {
-      "id": "POPD_BEHAVIOR",
-      "description": "PSH popd behavior may differ in directory stack handling",
-      "psh_behavior": "PSH directory stack implementation",
-      "bash_behavior": "Bash directory stack implementation",
-      "category": "navigation_differences"
-    },
     "echo $$": {
       "id": "PROCESS_ID_DIFFERENCE",
       "description": "PSH and bash report different process IDs ($$) because they are distinct processes",
       "psh_behavior": "Reports PSH process ID",
       "bash_behavior": "Reports bash process ID",
-      "category": "special_parameters"
+      "category": "special_parameters",
+      "expected": {
+        "psh": {
+          "exit_code": 0,
+          "stdout_pattern": "^\\d+\\n$",
+          "stderr_pattern": "^$"
+        },
+        "bash": {
+          "exit_code": 0,
+          "stdout_pattern": "^\\d+\\n$",
+          "stderr_pattern": "^$"
+        },
+        "note": "Both print their OWN pid: same shape, different value."
+      }
     },
     "echo \\$(echo test)": {
       "id": "ERROR_MESSAGE_FORMAT",
       "description": "Both shells reject backslash-escaped $( as syntax error with exit code 2. Error message format differs.",
       "psh_behavior": "Syntax error with PSH error format",
       "bash_behavior": "Syntax error with bash error format",
-      "category": "error_format_differences"
+      "category": "error_format_differences",
+      "expected": {
+        "psh": {
+          "exit_code": 2,
+          "stdout_pattern": "^$",
+          "stderr_pattern": "syntax error near unexpected token"
+        },
+        "bash": {
+          "exit_code": 2,
+          "stdout_pattern": "^$",
+          "stderr_pattern": "syntax error near unexpected token"
+        },
+        "note": "Same rejection and same diagnostic text; only the surrounding message FORMAT differs (psh adds a caret/context block)."
+      }
     },
     "alias ll=\"echo ALIAS_EXPANDED\"; ll": {
       "id": "ALIAS_EXPANSION_NONINTERACTIVE",
       "description": "PSH deliberately keeps the expand_aliases shopt option ON in every mode (educational choice, single lex->parse alias gate in shell.py); bash defaults it OFF in non-interactive shells. Documented in user guide ch17 (17.3 Alias Expansion in Scripts) and ch04.",
       "psh_behavior": "Alias expands in scripts and -c strings; prints ALIAS_EXPANDED, exit 0",
       "bash_behavior": "expand_aliases is off non-interactively (and the line was read before the alias existed); ll: command not found, exit 127",
-      "category": "deliberate_divergences"
+      "category": "deliberate_divergences",
+      "expected": {
+        "psh": {
+          "exit_code": 0,
+          "stdout_pattern": "^ALIAS_EXPANDED\\n$",
+          "stderr_pattern": "^$"
+        },
+        "bash": {
+          "exit_code": 127,
+          "stdout_pattern": "^$",
+          "stderr_pattern": "command not found"
+        },
+        "note": "Deliberate psh divergence (expand_aliases always on). If psh ever stopped expanding, this shape stops matching and the case is no longer documented."
+      }
+    },
+    "disown --help": {
+      "id": "BUILTIN_LONG_HELP_OPTION",
+      "description": "bash builtins accept --help and print their full help text to STDOUT (exit 2, empty stderr). psh has no --help for builtins: it treats -- as an unrecognised option and writes an invalid-option diagnostic plus the usage line to STDERR (exit 2, empty stdout). Both reject the invocation with status 2; the difference is WHICH STREAM carries the text and whether full help exists at all. Discovered in slot 1.3 while correcting a test whose docstring asserted the opposite.",
+      "psh_behavior": "stderr: 'psh: line 1: disown: --: invalid option' + 'disown: usage: disown [-h] [-ar] [jobspec ... | pid ...]'; stdout empty; exit 2",
+      "bash_behavior": "stdout: the full 523-byte help block beginning 'disown: disown [-h] [-ar] [jobspec ... | pid ...]'; stderr empty; exit 2",
+      "category": "builtin_differences",
+      "expected": {
+        "psh": {
+          "exit_code": 2,
+          "stdout_pattern": "^$",
+          "stderr_pattern": "disown: --: invalid option"
+        },
+        "bash": {
+          "exit_code": 2,
+          "stdout_pattern": "disown: disown \\[-h\\]",
+          "stderr_pattern": "^$"
+        },
+        "note": "Stream-swapped: bash's text is on stdout, psh's on stderr. If psh ever grows --help the bash-side shape stays and the psh-side one stops matching, so this stops classifying as documented \u2014 which is the intended alarm."
+      }
     }
   },
   "psh_extensions": {

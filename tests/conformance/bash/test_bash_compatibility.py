@@ -18,6 +18,25 @@ from conformance_framework import ConformanceTest
 class TestBashBuiltins(ConformanceTest):
     """Test bash builtin compatibility."""
 
+    def test_builtin_long_help_option_documented_difference(self):
+        """``--help`` on a builtin: bash has it, psh does not.
+
+        bash builtins accept ``--help`` and print their full help to STDOUT
+        (exit 2, empty stderr). psh has no such option: it reads ``--`` as an
+        unrecognised option and writes an invalid-option diagnostic plus the
+        usage line to STDERR (exit 2, empty stdout). Both reject with status
+        2 — the difference is which stream carries the text, and whether full
+        help exists at all.
+
+        Registered in slot 1.3 after a unit test's docstring was found
+        claiming the opposite (that bash also rejects ``--help`` as an
+        invalid option). Refuted by replaying bash, which prints 523 bytes of
+        help on stdout with EMPTY stderr; the invalid-option shape appears
+        only for a genuinely unknown option such as ``disown -q``.
+        """
+        self.assert_documented_difference('disown --help',
+                                          'BUILTIN_LONG_HELP_OPTION')
+
     def test_echo_builtin_flags(self):
         """Test echo builtin with bash flags."""
         self.assert_identical_behavior('echo hello')

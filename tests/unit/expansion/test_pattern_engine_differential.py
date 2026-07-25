@@ -15,12 +15,10 @@ per bucket (fast, truly differential). It is designed to pass UNCHANGED before
 and after the engine flip — proving the reroute is behaviour-preserving.
 """
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()
 
-pytestmark = pytest.mark.skipif(_ORACLE is None,
-                                reason="bash oracle not available")
 
 
 # (id, subject, pattern, quoted). quoted=True wraps the pattern in double quotes

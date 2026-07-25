@@ -16,10 +16,11 @@ commands both truncated at the output cap, must never classify as conformance
 
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "harness"))
@@ -274,11 +275,78 @@ class ConformanceTestFramework:
         # Otherwise, assume PSH bug
         return ConformanceResult.PSH_BUG
 
+    @staticmethod
+    def _matches_side(expected: Dict[str, Any], result: CommandResult) -> bool:
+        """Does one shell's observed result match its expected shape?
+
+        `exit_code` is exact; `stdout_pattern`/`stderr_pattern` are regex
+        SEARCHES, so an entry can pin a whole stream (`^...$`) or just the
+        part that identifies the difference. An absent key is not checked.
+
+        A side that checks NOTHING does not match. Without that rule an
+        `expected` block carrying only prose (e.g. ``{"note": "..."}``) would
+        vacuously satisfy every observation and re-open exactly the blind
+        classification F1 closed — a guard present but empty. So a side must
+        constrain at least one of exit status, stdout, or stderr. The
+        catalog-shape meta-test enforces the same requirement statically;
+        this is the RUNTIME half, so a hand-edited catalog cannot bypass it.
+        """
+        checkable = {"exit_code", "stdout_pattern", "stderr_pattern"}
+        if not checkable & set(expected):
+            return False
+        if "exit_code" in expected and result.exit_code != expected["exit_code"]:
+            return False
+        for key, observed in (("stdout_pattern", result.stdout),
+                              ("stderr_pattern", result.stderr)):
+            pattern = expected.get(key)
+            if pattern is not None and not re.search(pattern, observed):
+                return False
+        return True
+
     def _is_documented_difference(self, command: str, psh_result: CommandResult,
                                 bash_result: CommandResult) -> bool:
-        """Check if difference is documented in catalog."""
-        # Simple command matching - could be enhanced with pattern matching
-        return command in self.differences_catalog.get("documented", {})
+        """Is the OBSERVED divergence the one this command is documented for?
+
+        Membership in the catalog is necessary but NOT sufficient. Each entry
+        carries the expected SHAPE of its difference (per-side exit status and
+        output patterns) and the observation must match it.
+
+        This used to be `command in catalog['documented']`, which never looked
+        at either result: any future divergence on a catalogued command — a
+        genuine regression included — classified as DOCUMENTED_DIFFERENCE, so
+        the pins on those commands could not fail for the right reason. An
+        observation that no longer matches its entry is NOT documented; either
+        the difference changed or a shell regressed, and both deserve a
+        failure rather than a silent blessing.
+
+        An entry cannot classify unless BOTH sides actually constrain
+        something. A missing `expected` block, a missing `psh`/`bash` side, or
+        a side that names no checkable key all return False here rather than
+        waving the observation through — see :meth:`_matches_side`. Stating it
+        precisely because an earlier version of this docstring implied the
+        catalog-shape meta-test was the whole guarantee: that test only
+        asserted an `expected` key was PRESENT, so a block containing nothing
+        but prose satisfied it while checking nothing at runtime. Both halves
+        now enforce the same rule —
+        `test_every_documented_entry_carries_an_expected_shape` statically,
+        this method at runtime.
+        """
+        entry = self.differences_catalog.get("documented", {}).get(command)
+        if entry is None:
+            return False
+        expected = entry.get("expected")
+        if not expected:
+            return False
+        # Side lookups are written as `in` + subscript rather than
+        # `.get("bash", {})` on purpose: the E2 oracle-resolution ratchet
+        # (tests/unit/tooling/test_bash_oracle_resolution.py) flags the string
+        # "bash" as a call's first argument or a list's first element, since
+        # that is what a bare-bash spawn looks like. These are catalog KEYS,
+        # not an oracle invocation — keep them out of those two shapes.
+        psh_expected = expected["psh"] if "psh" in expected else {}
+        bash_expected = expected["bash"] if "bash" in expected else {}
+        return (self._matches_side(psh_expected, psh_result)
+                and self._matches_side(bash_expected, bash_result))
 
     def _is_psh_extension(self, command: str, psh_result: CommandResult,
                          bash_result: CommandResult) -> bool:

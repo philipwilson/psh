@@ -39,13 +39,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "harness"))
 from shell_oracle import (  # noqa: E402
     is_comparable,
+    resolve_bash,
     run_bash,
     run_psh,
-    try_resolve_bash,
 )
 
-_ORACLE = try_resolve_bash()
-BASH = _ORACLE.path if _ORACLE else None
+_ORACLE = resolve_bash()
+BASH = _ORACLE.path
 
 
 def _strategies():
@@ -245,7 +245,6 @@ def _norm_prefix(text: str) -> str:
     return "\n".join(out)
 
 
-@pytest.mark.skipif(BASH is None, reason="bash oracle not available")
 class TestEmptyPathNotFoundMessage:
     """bash reports a bare-name miss under an EMPTY or UNSET PATH as
     'No such file or directory' (rc 127), not 'command not found'; a
@@ -281,7 +280,6 @@ class TestEmptyPathNotFoundMessage:
         assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
 
 
-@pytest.mark.skipif(BASH is None, reason="bash oracle not available")
 class TestPosixlyPrefixInputModes:
     """The POSIXLY_CORRECT-prefix persistence face across INPUT MODES
     (the mode-blind-pin lesson): -c, stdin, and script file."""

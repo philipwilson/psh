@@ -21,11 +21,9 @@ Derived from the 16-case visibility probe run 2026-07-08 (worktree-psh vs bash).
 """
 
 import pytest
-from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
-_ORACLE = try_resolve_bash()
-pytestmark = pytest.mark.skipif(
-    _ORACLE is None, reason="needs a live bash to compare against")
+_ORACLE = resolve_bash()
 
 
 def _bash(cmd):

@@ -27,12 +27,11 @@ import sys
 from pathlib import Path
 
 import pytest
-from shell_oracle import hermetic_shell_env, is_comparable, run_shell_case, try_resolve_bash
+from shell_oracle import hermetic_shell_env, is_comparable, resolve_bash, run_shell_case
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()
 
-pytestmark = pytest.mark.skipif(_ORACLE is None, reason="no bash oracle")
 
 
 def _run(argv, *, stdin, cwd, shell_tag):

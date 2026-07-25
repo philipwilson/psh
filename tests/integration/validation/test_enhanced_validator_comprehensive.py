@@ -522,40 +522,46 @@ class TestValidatorErrorHandling:
             assert "AST" in str(e) or "node" in str(e)
 
     def test_empty_command_validation(self, shell):
-        """Test validation of empty or minimal commands."""
+        """Test validation of empty or minimal commands.
+
+        Empty input parses to a Program, so the validation is asserted
+        unconditionally; behind `if ast:` a parser that returned nothing would
+        have skipped the check instead of reporting it.
+        """
         config = ValidatorConfig()
         validator = EnhancedValidatorVisitor(config)
 
-        # Parse empty command
         ast = parse(list(tokenize("")))
 
-        if ast:  # If parser returns something for empty input
-            validator.visit(ast)
-            issues = validator.issues
-            assert isinstance(issues, list)
+        assert ast is not None
+        validator.visit(ast)
+        assert isinstance(validator.issues, list)
 
     def test_malformed_constructs(self, shell):
-        """Test validator with potentially malformed constructs."""
+        """Test validator with potentially malformed constructs.
+
+        This test used to be entirely DEAD: the loop body read `result.ast`,
+        and `result` is not defined in this scope, so every iteration raised
+        NameError straight into `except Exception: pass`. The validator was
+        never invoked once. (ruff does not flag it — F821 is not enabled.)
+
+        All three inputs parse cleanly today, so each is asserted rather than
+        wrapped in a swallowing handler.
+        """
         config = ValidatorConfig()
         validator = EnhancedValidatorVisitor(config)
 
-        # Test with various edge cases that parser might handle
         test_cases = [
-            "echo",  # Command without arguments
-            "$",     # Bare dollar sign
-            "echo $", # Command with bare dollar
+            "echo",   # Command without arguments
+            "$",      # Bare dollar sign
+            "echo $",  # Command with bare dollar
         ]
 
         for test_case in test_cases:
-            try:
-                ast = parse(list(tokenize(test_case)))
-                if result.ast:
-                    validator.visit(ast)
-                    issues = validator.issues
-                    assert isinstance(issues, list)
-            except Exception:
-                # Parser might reject some cases, which is fine
-                pass
+            ast = parse(list(tokenize(test_case)))
+            assert ast is not None, test_case
+            validator.visit(ast)
+            assert isinstance(validator.issues, list), test_case
 
 
 class TestFalsePositiveRegressions:

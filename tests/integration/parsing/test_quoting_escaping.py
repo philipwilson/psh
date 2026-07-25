@@ -537,10 +537,12 @@ class TestComplexQuotingScenarios:
             'echo "${ARR[0]}" "${ARR[1]}"'
         ])
 
-        # This test depends on array support
-        if result['success']:
-            assert 'first element' in result['stdout']
-            assert 'second element' in result['stdout']
+        # Arrays are supported and this matches bash 5.2 exactly, so the
+        # assertions are unconditional. Behind `if result['success']:` a
+        # failure to run the array assignment at all passed silently.
+        assert result['success']
+        assert 'first element' in result['stdout']
+        assert 'second element' in result['stdout']
 
     def test_quotes_preserve_exit_status(self):
         """Test that quoting doesn't affect command exit status."""

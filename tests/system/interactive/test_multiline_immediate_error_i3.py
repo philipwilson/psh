@@ -26,7 +26,12 @@ pexpect = pytest.importorskip("pexpect")
 # The blessed bash oracle is resolved through the ONE resolver
 # (tests/harness/shell_oracle.py#resolve_bash), never a hardcoded path — the
 # E2 bash-oracle ratchet (test_bash_oracle_resolution) enforces this.
-from shell_oracle import try_resolve_bash  # noqa: E402
+from shell_oracle import resolve_bash  # noqa: E402
+
+# Module scope on purpose: a missing oracle must be LOUD at import, not a
+# silent per-test skip that reports green while the parity comparison never
+# runs (slot 1.2's oracle-loudness ruling, extended here to this module).
+_ORACLE = resolve_bash()
 
 PSH_ROOT = str(Path(__file__).resolve().parents[3])
 
@@ -98,10 +103,7 @@ def _spawn_bash(bash):
 @pytest.mark.parametrize("label,lines,offending", _ROWS,
                          ids=[r[0] for r in _ROWS])
 def test_mid_construct_error_line_matches_bash(label, lines, offending):
-    oracle = try_resolve_bash()
-    if oracle is None:
-        pytest.skip("no bash oracle available for the parity comparison")
-    bash = oracle.path
+    bash = _ORACLE.path
 
     psh_child = _spawn_psh()
     try:

@@ -179,13 +179,34 @@ class TestDisownBuiltin:
         assert 'no such' in captured.err.lower() or 'not found' in captured.err.lower()
 
     def test_disown_help(self, shell, capsys):
-        """Test disown help/usage message."""
+        """psh has no ``--help`` for builtins: ``--`` is an invalid option.
+
+        Pins PSH's OWN behavior — exit 2, an invalid-option diagnostic and the
+        usage line on STDERR, nothing on stdout.
+
+        This is a DIVERGENCE from bash, not parity, and the divergence is
+        registered rather than implied here: catalog entry
+        ``BUILTIN_LONG_HELP_OPTION`` with its expected-shape block, pinned by
+        ``test_bash_compatibility.py::test_builtin_long_help_option_
+        documented_difference``. bash accepts ``--help`` on builtins and
+        prints 523 bytes of full help to STDOUT with EMPTY stderr (also exit
+        2); its invalid-option shape appears only for a genuinely unknown
+        option such as ``disown -q``.
+
+        Two earlier versions of this test were wrong in different ways, both
+        worth remembering: it originally read ``if exit_code == 0:`` while the
+        real code is 2, so the guard never fired and it asserted NOTHING; the
+        fix for that then claimed in prose that bash rejects ``--help`` the
+        same way, which replaying bash refuted.
+        """
         exit_code = shell.run_command('disown --help')
-        # May or may not be implemented
+        assert exit_code == 2
 
         captured = capsys.readouterr()
-        if exit_code == 0:
-            assert 'disown' in captured.out.lower()
+        assert captured.out == ''
+        err = captured.err.lower()
+        assert 'invalid option' in err
+        assert 'usage: disown' in err
 
 
 class TestDisownOptions:

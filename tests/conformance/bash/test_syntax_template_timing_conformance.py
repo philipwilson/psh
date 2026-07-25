@@ -34,6 +34,26 @@ _ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
+# Scratch directory for the "file" channel's throwaway scripts. Supplied by
+# the autouse fixture below rather than <repo>/tmp, which exists only once
+# someone has created it by hand — a fresh worktree failed every file-channel
+# case with FileNotFoundError.
+_SCRIPT_DIR: str = ""
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _script_dir(tmp_path_factory):
+    """Per-module, pytest-managed scratch dir for the file channel.
+
+    Module-scoped so the file-channel cases share one directory, and
+    per-worker under xdist (each worker imports its own copy of this module),
+    so parallel runs cannot collide.
+    """
+    global _SCRIPT_DIR
+    _SCRIPT_DIR = str(tmp_path_factory.mktemp("syntax-template-scripts"))
+    yield
+    _SCRIPT_DIR = ""
+
 
 def _run_channel(runner, script, channel, *, is_psh):
     """runner is run_psh/run_bash; run `script` through `channel`."""
@@ -47,7 +67,7 @@ def _run_channel(runner, script, channel, *, is_psh):
         r = runner([flag, "-c", script], cwd=_ROOT, timeout=30)
     elif channel == "file":
         with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False,
-                                         dir=os.path.join(_ROOT, "tmp")) as f:
+                                         dir=_SCRIPT_DIR) as f:
             f.write(script + "\n")
             path = f.name
         try:

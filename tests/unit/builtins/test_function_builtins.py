@@ -44,14 +44,24 @@ class TestReturnBuiltin:
         assert "exit code: 1" in captured.out
 
     def test_return_outside_function(self, shell, capsys):
-        """Test return outside of function."""
-        # In a script context, return should work
-        # In interactive mode, it might error
+        """Test return outside of function.
+
+        Pinned against bash 5.2, which rejects this with rc 2 and the message
+        below. The checks used to hang off `if exit_code != 0:`, so a psh that
+        silently ACCEPTED `return 5` outside a function passed.
+
+        The assertion is a SUBSTRING on purpose. A three-channel re-probe
+        (stdout / stderr / rc compared separately) shows stdout and rc are
+        byte-identical to bash and the message TEXT is too, but the
+        shell-name prefix is not: bash emits
+        "/opt/homebrew/bin/bash: line 1: return: ..." where psh emits
+        "psh: line 1: return: ...". That prefix difference belongs to the
+        campaign's existing error-wording carry family, not to this test.
+        """
         exit_code = shell.run_command('return 5')
-        # Either succeeds (script mode) or fails (interactive)
+        assert exit_code == 2
         captured = capsys.readouterr()
-        if exit_code != 0:
-            assert 'not in function' in captured.err or 'only meaningful' in captured.err or 'can only' in captured.err
+        assert "can only `return' from a function or sourced script" in captured.err
 
     def test_return_invalid_number(self, shell, capsys):
         """Test return with invalid number."""
@@ -136,17 +146,35 @@ class TestReadonlyBuiltin:
         assert 'MYRO' in captured.out
 
     def test_readonly_function(self, shell, capsys):
-        """Test readonly -f for functions."""
+        """Test readonly -f for functions.
+
+        readonly -f IS supported: the redefinition is refused with rc 1 and a
+        'readonly function' diagnostic, and the ORIGINAL body survives. The
+        redefinition check used to hang off `if exit_code == 0:`, so a psh
+        where `readonly -f` itself failed skipped the real assertion and
+        passed.
+
+        stdout and rc are byte-identical to bash 5.2 (three-channel re-probe);
+        the stderr PREFIX differs — bash "…/bash: line 1: myfunc: readonly
+        function" vs psh "psh: myfunc: readonly function" (psh also omits the
+        line marker here) — so the diagnostic is asserted as a substring.
+        That prefix/marker difference is the existing error-wording carry
+        family, not this test's subject.
+        """
         cmd = '''
         myfunc() { echo "test"; }
         readonly -f myfunc
         '''
-        exit_code = shell.run_command(cmd)
-        # PSH might not support readonly functions
-        if exit_code == 0:
-            # Try to redefine
-            exit_code = shell.run_command('myfunc() { echo "new"; }')
-            assert exit_code != 0
+        assert shell.run_command(cmd) == 0
+        capsys.readouterr()
+
+        # Redefinition is refused...
+        assert shell.run_command('myfunc() { echo "new"; }') == 1
+        assert 'readonly function' in capsys.readouterr().err
+
+        # ...and the original definition is the one that survives.
+        assert shell.run_command('myfunc') == 0
+        assert capsys.readouterr().out.strip() == 'test'
 
     def test_readonly_invalid_name(self, shell, capsys):
         """Test readonly with invalid variable name."""
