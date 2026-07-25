@@ -2,32 +2,40 @@
 
 Usage:  git archive <SHA> tests | tar -x -C <dir>
         python tests/harness/census_replay.py <dir>/tests
+
+The predicates are IMPORTED FROM THE GUARD
+(``tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py``) rather than
+re-implemented here.  Round-4 verification caught this file carrying WEAKER
+private copies (no ImportFrom-alias branch, no getoutput/getstatusoutput) while
+the census billed it as "the guard's OWN predicates" — a replay tool that drifts
+from the thing it replays proves nothing.  Importing is what keeps the claim true.
 """
 import ast
 import os
 import sys
 
+_GUARD_DIR = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "unit", "tooling")
+if _GUARD_DIR not in sys.path:
+    sys.path.insert(0, _GUARD_DIR)
 
-def imports_shell_oracle(tree):
-    for n in ast.walk(tree):
-        if isinstance(n, ast.ImportFrom) and n.module and "shell_oracle" in n.module:
-            return True
-        if isinstance(n, ast.Import) and any("shell_oracle" in a.name for a in n.names):
-            return True
-    return False
+from test_no_direct_spawn_in_oracle_modules import (  # noqa: E402
+    _imports_shell_oracle as imports_shell_oracle,
+)
+from test_no_direct_spawn_in_oracle_modules import (
+    find_direct_spawns,
+    find_non_subprocess_spawns,
+)
 
-SPAWN = {"run", "Popen", "call", "check_output", "check_call"}
-OS_SPAWN = {"system", "popen"}
 
-def spawn_sites(tree):
-    n_sites = 0
-    for n in ast.walk(tree):
-        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                and isinstance(n.func.value, ast.Name)):
-            b, a = n.func.value.id, n.func.attr
-            if (b == "subprocess" and a in SPAWN) or (b == "os" and a in OS_SPAWN):
-                n_sites += 1
-    return n_sites
+def spawn_sites(src):
+    """Number of DIRECT (subprocess/os) spawn sites, via the guard's detector.
+
+    Takes SOURCE TEXT, not a parsed tree: the detectors report real line
+    numbers, and round-tripping through ``ast.unparse`` would renumber every
+    site (the census records e.g. ``:78``/``:92`` and must keep matching).
+    """
+    return len(find_direct_spawns(src))
 
 def census(root="tests"):
     """Print the bearing-set counts for the tree rooted at *root*."""
@@ -41,8 +49,9 @@ def census(root="tests"):
                 continue
             p = os.path.join(dp, f)
             rel = os.path.relpath(p, root).replace(os.sep, "/")
+            src = open(p, encoding="utf-8").read()
             try:
-                tree = ast.parse(open(p, encoding="utf-8").read())
+                tree = ast.parse(src)
             except SyntaxError:
                 continue
             in_conf = rel.startswith("conformance/")
@@ -52,9 +61,9 @@ def census(root="tests"):
                 imports_conf.add(rel)
             if in_conf or imp or in_harness:
                 guard_scope.add(rel)
-                s = spawn_sites(tree)
-                if s:
-                    spawners[rel] = s
+                n = spawn_sites(src)
+                if n:
+                    spawners[rel] = n
     sp = {k: v for k, v in spawners.items() if k in guard_scope}
     print(f"imports_shell_oracle UNION conformance      : {len(imports_conf)}")
     print(f"guard scope (that UNION harness/)           : {len(guard_scope)}")
@@ -66,26 +75,7 @@ def census(root="tests"):
           f"{len(imports_conf) - len([k for k in sp if k in imports_conf])}")
 
 
-# --- non-subprocess (PTY/fork/exec) spawn family -------------------------
-_PEXPECT = {"spawn", "spawnu", "run", "runu"}
-_PTY = {"spawn", "fork", "openpty"}
-_OSPROC = {"fork", "forkpty", "posix_spawn", "posix_spawnp",
-           "execv", "execve", "execvp", "execvpe",
-           "execl", "execle", "execlp", "execlpe"}
-
-
-def non_subprocess_spawns(tree):
-    """[(lineno, kind)] for pexpect/pty/os fork-exec process creation."""
-    out = []
-    for n in ast.walk(tree):
-        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                and isinstance(n.func.value, ast.Name)):
-            continue
-        b, a = n.func.value.id, n.func.attr
-        if (b == "pexpect" and a in _PEXPECT) or (b == "pty" and a in _PTY) \
-                or (b == "os" and a in _OSPROC):
-            out.append((n.lineno, f"{b}.{a}"))
-    return out
+# --- non-subprocess (PTY/fork/exec) family: guard's detector ---
 
 
 def pty_audit(root="tests"):
@@ -98,15 +88,16 @@ def pty_audit(root="tests"):
                 continue
             p = os.path.join(dp, f)
             rel = os.path.relpath(p, root).replace(os.sep, "/")
+            src = open(p, encoding="utf-8").read()
             try:
-                tree = ast.parse(open(p, encoding="utf-8").read())
+                tree = ast.parse(src)
             except SyntaxError:
                 continue
             bearing = (rel.startswith("conformance/") or rel.startswith("harness/")
                        or imports_shell_oracle(tree))
             if not bearing:
                 continue
-            for lineno, kind in non_subprocess_spawns(tree):
+            for lineno, kind in find_non_subprocess_spawns(src):
                 print(f"{rel}:{lineno}: {kind}")
                 found += 1
     print(f"TOTAL non-subprocess spawn sites in the BEARING SET: {found}")

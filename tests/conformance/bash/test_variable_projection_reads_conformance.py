@@ -19,12 +19,9 @@ Probed against bash 5.2 (tmp/boundary-ledgers/CV-probes/cv2_matrix.sh).
 """
 import os
 import re
-from pathlib import Path
 
 import pytest
 from shell_oracle import is_comparable, run_bash, run_psh
-
-PSH_ROOT = Path(__file__).resolve().parents[3]
 
 # Strip the argv0/location prefix (`psh: line 1: ` / `bash: line 1: ` /
 # bash's `environment: line 1: `) so only the message BODY is compared.

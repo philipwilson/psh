@@ -49,7 +49,13 @@ attribute-access form on a module named exactly ``subprocess``/``os``/
   so an alias reads as an ordinary attribute call;
 * ``getattr(subprocess, 'run')(...)`` or a spawn assembled/``eval``-ed from
   strings;
-* a spawn hidden behind a helper in a module OUTSIDE the scanned set.
+* a spawn hidden behind a helper in a module OUTSIDE the scanned set;
+* whole process-creation FAMILIES that are deliberately not detected because
+  nothing in the tree uses them and a detector would be speculative:
+  ``multiprocessing.Process`` (and the other multiprocessing start methods) and
+  ``asyncio.create_subprocess_exec``/``create_subprocess_shell``. If a
+  differential ever arrives through one of those, extend the detectors — do not
+  allowlist the module.
 
 A tree audit at adoption found ZERO bare-name and ZERO aliased subprocess/os
 imports in the bearing set (``from subprocess import`` / ``import subprocess as``
@@ -99,6 +105,10 @@ _OS_PROCESS_SPAWNS = frozenset({
     "fork", "forkpty", "posix_spawn", "posix_spawnp",
     "execv", "execve", "execvp", "execvpe",
     "execl", "execle", "execlp", "execlpe",
+    # os.spawn* — same static call shape, so trivially detectable; listed for
+    # completeness rather than because anything uses them today.
+    "spawnl", "spawnle", "spawnlp", "spawnlpe",
+    "spawnv", "spawnve", "spawnvp", "spawnvpe",
 })
 
 # The ONE exact directory the scan skips: it holds the SYNTHETIC OFFENDER
@@ -127,8 +137,9 @@ NAMED_ALLOWLIST = {
         "subprocess.Popen (and the _bash_version probe). Removal: never.",
     "integration/job_control/test_exit_trap_paths.py":
         "owner=slot1.2. DIFFERENTIAL mid-run-signal harness: delivers a signal "
-        "to a running psh AND to a running bash (_spawn_and_signal at :228 for "
-        "psh, :284 for [BASH,...]) to COMPARE the EXIT trap on a fatal signal; "
+        "to a running psh AND to a running bash (_spawn_and_signal, its "
+        "_bash_signal caller, and the stdin-mode Popen in "
+        "TestExitTrapStdin) to COMPARE the EXIT trap on a fatal signal; "
         "the run-to-completion runner cannot signal a running child. Its "
         "run-to-completion bash-differential helpers ARE migrated. Removal: "
         "run_shell_case gains a mid-run-signal hook, or a PTY/pexpect harness.",
@@ -204,6 +215,23 @@ PTY_REGISTRY = {
         "that owns oracle resolution and typed outcomes.",
 }
 _EXPECTED_PTY_REGISTRY = frozenset(PTY_REGISTRY)
+
+# Per-module EXPECTED SPAWN-SITE COUNTS.  The membership pins stop the LISTS
+# from growing; these stop an already-listed MODULE from growing new raw spawns.
+# Round-4 verification proved that gap had teeth: a brand-new raw
+# ``subprocess.run([resolve_bash().path, ...])`` bash-differential appended to an
+# allowlisted module left the entire guard suite GREEN, because approval was
+# per MODULE. Approval is now per SITE COUNT, so adding a spawn to an approved
+# module is the same visible two-place change as adding an entry.
+_EXPECTED_SPAWN_SITES = {
+    "harness/shell_oracle.py": 2,                          # Popen + version probe
+    "integration/job_control/test_exit_trap_paths.py": 2,  # psh + bash signal harness
+    "system/test_script_input_sources.py": 2,              # two fifo writers
+    "system/test_stdin_startup_robustness.py": 1,          # close-fd0 / file-object branch
+}
+_EXPECTED_PTY_SITES = {
+    "system/interactive/test_multiline_immediate_error_i3.py": 2,  # psh + bash spawn
+}
 
 
 def _imports_shell_oracle(tree):
@@ -421,6 +449,76 @@ def test_allowlist_membership_is_frozen():
         "PSH_ONLY_REGISTRY membership changed (it is INTENTIONALLY EMPTY — the "
         "bearing set is 95/95 differential). A new psh-only raw spawner must be "
         "justified here AND added to _EXPECTED_PSH_ONLY_REGISTRY.")
+
+
+def test_expected_site_counts_cover_exactly_the_approved_modules():
+    """Every approved module has a site budget, and no budget is orphaned."""
+    assert set(_EXPECTED_SPAWN_SITES) == set(ALLOWLIST), (
+        "each subprocess-allowlist entry needs exactly one site budget: "
+        f"missing {sorted(set(ALLOWLIST) - set(_EXPECTED_SPAWN_SITES))}, "
+        f"orphaned {sorted(set(_EXPECTED_SPAWN_SITES) - set(ALLOWLIST))}")
+    assert set(_EXPECTED_PTY_SITES) == set(PTY_REGISTRY), (
+        "each PTY-registry entry needs exactly one site budget: "
+        f"missing {sorted(set(PTY_REGISTRY) - set(_EXPECTED_PTY_SITES))}, "
+        f"orphaned {sorted(set(_EXPECTED_PTY_SITES) - set(PTY_REGISTRY))}")
+
+
+@pytest.mark.parametrize("rel", sorted(_EXPECTED_SPAWN_SITES))
+def test_allowlisted_module_has_exactly_its_budgeted_spawn_sites(rel):
+    """An APPROVED module may not grow NEW raw spawns (round-4 blocker).
+
+    Approval is per site count, not per module: the four entries were approved
+    for specific, justified launches, and a fifth appearing later is an
+    unreviewed HIGH-1 bypass regardless of which file it lands in.
+    """
+    with open(os.path.join(TESTS_ROOT, rel), encoding="utf-8") as f:
+        hits = find_direct_spawns(f.read())
+    assert len(hits) == _EXPECTED_SPAWN_SITES[rel], (
+        f"{rel} has {len(hits)} direct spawn site(s) at "
+        f"{[ln for ln, _ in hits]}, budgeted {_EXPECTED_SPAWN_SITES[rel]}. "
+        "A NEW raw spawn in an allowlisted module is still an unreviewed "
+        "bypass — route it through the runner, or justify it here AND update "
+        "_EXPECTED_SPAWN_SITES (a deliberate two-place change). A DROP means "
+        "the budget should shrink.")
+
+
+@pytest.mark.parametrize("rel", sorted(_EXPECTED_PTY_SITES))
+def test_pty_registry_module_has_exactly_its_budgeted_spawn_sites(rel):
+    with open(os.path.join(TESTS_ROOT, rel), encoding="utf-8") as f:
+        hits = find_non_subprocess_spawns(f.read())
+    assert len(hits) == _EXPECTED_PTY_SITES[rel], (
+        f"{rel} has {len(hits)} PTY/fork/exec site(s) at "
+        f"{[ln for ln, _ in hits]}, budgeted {_EXPECTED_PTY_SITES[rel]}.")
+
+
+def test_growth_face_new_spawn_inside_an_allowlisted_module_is_refused():
+    """THE round-4 attack, replayed: append a brand-new raw bash differential to
+    an ALLOWLISTED module. Under module-granular approval the guard stayed
+    green; the site budget now refuses it.
+
+    Operates on the module's SOURCE plus the appended offense — the real file is
+    never touched, so the attack is replayed without mutating the tree.
+    """
+    rel = "system/test_stdin_startup_robustness.py"
+    with open(os.path.join(TESTS_ROOT, rel), encoding="utf-8") as f:
+        clean = f.read()
+    assert len(find_direct_spawns(clean)) == _EXPECTED_SPAWN_SITES[rel]
+
+    attacked = clean + (
+        "\n\ndef _sneaky_new_differential(cmd):\n"
+        "    import subprocess\n"
+        "    from shell_oracle import resolve_bash\n"
+        "    return subprocess.run([resolve_bash().path, '-c', cmd],\n"
+        "                          capture_output=True, text=True)\n")
+    grown = find_direct_spawns(attacked)
+    assert len(grown) == _EXPECTED_SPAWN_SITES[rel] + 1, (
+        "the appended raw spawn must be detected at all")
+    # The budget assertion is what turns detection into refusal.
+    with pytest.raises(AssertionError, match="direct spawn site"):
+        assert len(grown) == _EXPECTED_SPAWN_SITES[rel], (
+            f"{rel} has {len(grown)} direct spawn site(s) at "
+            f"{[ln for ln, _ in grown]}, budgeted "
+            f"{_EXPECTED_SPAWN_SITES[rel]}.")
 
 
 def test_allowlist_parts_are_disjoint_and_complete():

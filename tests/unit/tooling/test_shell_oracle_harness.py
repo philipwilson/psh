@@ -79,10 +79,17 @@ def test_run_psh_runs_the_worktree_psh():
     assert r.stdout == "psh-ok\n" and r.returncode == 0
 
     # Ask the CHILD where it imported psh from; it must be under THIS worktree.
-    where = run_psh(["-c", "python -c 'import psh; print(psh.__file__)'"],
+    # Interpolate the PARENT's interpreter instead of a bare ``python``: on a
+    # python3-only host (the Linux nightly) a bare ``python`` is not on PATH, so
+    # the child would print nothing and this pin would fail as an empty-path
+    # assertion rather than testing what it claims to.
+    where = run_psh(["-c", f"{sys.executable} -c "
+                           "'import psh; print(psh.__file__)'"],
                     env={"PYTHONPATH": _REPO_ROOT})
     assert isinstance(where, Completed), where
     child_psh = where.stdout.strip()
+    assert child_psh, ("the child printed no path — the probe itself failed, "
+                       f"stderr={where.stderr!r}")
     assert child_psh.startswith(_REPO_ROOT + os.sep), (
         f"child imported psh from {child_psh!r}, which is NOT under the tree "
         f"under test ({_REPO_ROOT!r}) — the PYTHONPATH pin is not holding")
@@ -264,6 +271,15 @@ def test_child_pwd_is_truthful_and_agrees_across_shells(tmp_path):
     forced = run_psh(["-c", "echo $PWD"], env={"PWD": "/fabricated/by/caller"})
     assert isinstance(forced, Completed)
     assert forced.stdout == "/fabricated/by/caller\n"
+
+    # 4. OLDPWD is dropped too, and the shells AGREE about that: with no prior
+    #    directory, `cd -` fails identically in both rather than silently
+    #    jumping to a stale inherited path.
+    oldpwd = 'cd - 2>/dev/null || echo NO-OLDPWD'
+    po = run_psh(["-c", oldpwd])
+    bo = run_bash(["-c", oldpwd])
+    assert isinstance(po, Completed) and isinstance(bo, Completed)
+    assert po.stdout == bo.stdout == "NO-OLDPWD\n", (po.stdout, bo.stdout)
 
 
 def test_stdin_mode_pipe_gives_a_real_non_seekable_pipe():
