@@ -287,7 +287,12 @@ class SignalManager(InteractiveComponent):
         it must not bypass the restore-default + re-raise below. The EXIT
         trap still fires exactly once: TrapManager sets its idempotency flag
         before running the body, so an aborted body is not retried.
+
+        The redirection restore below runs FIRST because the trap would
+        otherwise write into the redirect target of whatever command the
+        signal interrupted — see :meth:`_restore_active_redirections`.
         """
+        self._restore_active_redirections()
         try:
             self.shell.trap_manager.execute_exit_trap()
         except SystemExit:
@@ -298,13 +303,136 @@ class SignalManager(InteractiveComponent):
             # Any other failure in the trap body must likewise not rob the
             # parent of the true signal-death wait status.
             pass
+        self._flush_before_death()
+        self._signal_registry.register(signum, signal.SIG_DFL, "SignalManager:default")
+        os.kill(os.getpid(), signum)
+
+    def _restore_active_redirections(self) -> None:
+        """Undo any per-command redirection still in effect, before the trap.
+
+        A per-command redirect (``echo x > f``, ``: > f``) points
+        ``sys.stdout``/``sys.stderr`` at that command's target for the duration
+        of the command. A fatal signal delivered inside that window runs the
+        EXIT trap with those bindings still installed, so the trap's output is
+        written into the INTERRUPTED COMMAND'S FILE instead of the shell's
+        stdout — the shell's stdout is simply empty.
+
+        Proven at v0.753.0 by capturing the redirect target's contents on
+        losing runs: three independent losses, and in each one the file the
+        command had redirected to contained the trap's ``cleanup\n`` while
+        stdout was empty (~1 run in 120; bash 0/120 — bash's EXIT trap on a
+        signal writes to the SHELL's stdout, never to a command redirect).
+
+        The restore goes through ``IOManager.restore_active_builtin_redirections``,
+        which is a loop over the SAME per-frame
+        ``restore_builtin_redirections`` the executor runs after every normal
+        command — no reimplementation, and no change to that teardown's
+        load-bearing ordering.
+
+        A frame stays ON the manager's stack until its restore FINISHES, so a
+        signal arriving mid-teardown still finds it — that visibility is
+        deliberate, and it is what closes the teardown window. The safety
+        mechanism is the frame's ``streams_restored`` marker, which the drain
+        skips on: re-running a restore that is already past its stream work
+        would repeat the fd-0 step, and that step is NOT idempotent (it clears
+        ``snapshot.stdin_fd``, so a second pass takes the else-branch and
+        closes fd 0).
+
+        The marker covers the STREAM bindings specifically. It is set as soon
+        as ``sys.stdout``/``stderr``/``stdin`` are back, which is BEFORE the
+        frame's fd-level work, so the drain's skip is a stream-level guarantee:
+        after the marker the shell's streams are correct — which is all this
+        path needs — while the frame's remaining fd restoration is still the
+        original caller's to finish.
+
+        Failure handling follows the expected-error taxonomy
+        (``psh/core/CLAUDE.md``): EVERYTHING is caught, because nothing here
+        may raise before ``SIG_DFL``/``os.kill``, but only genuine
+        internal-defect classes are DIAGNOSED — see
+        :meth:`_note_internal_defect_at_death`.
+        """
+        io_manager = getattr(self.shell, 'io_manager', None)
+        if io_manager is None:
+            return
+        try:
+            io_manager.restore_active_builtin_redirections()
+        except OSError:
+            # Expected world-state at death (a dead fd); bash is silent too.
+            pass
+        except BaseException as exc:  # noqa: BLE001 - taxonomy'd below
+            self._note_internal_defect_at_death('redirect restore', exc)
+
+    def _flush_before_death(self) -> None:
+        """Flush the shell's streams before ``os.kill`` bypasses atexit.
+
+        Failure handling follows the project's expected-error taxonomy
+        (``psh/core/CLAUDE.md``) rather than swallowing everything:
+
+        * ``OSError`` is an expected world-state at death (a broken pipe or a
+          closed fd 1 — ``exec >&-``). bash reports nothing there and neither
+          do we, in every mode.
+        * ``ValueError``/``AttributeError`` mean psh tried to flush its OWN
+          closed or non-stream binding. That is an INTERNAL DEFECT, and
+          swallowing it is what concealed the 1.3b race for as long as it hid:
+          the flush failed on a dead binding every time and said nothing.
+
+        The internal-defect case is made LOUD without changing what the shell
+        DIES as: under ``strict-errors`` it writes a diagnostic straight to
+        fd 2 and execution CONTINUES to the re-raise, so the wait status is
+        still death by the same signal. It must not raise — an exception here
+        would escape before ``SIG_DFL``/``os.kill`` and convert a signal death
+        into an ordinary exit, silently changing the very semantics this path
+        exists to preserve.
+
+        Catching is broad for that reason; DIAGNOSING is narrow. A second
+        signal or an ``exit`` in the EXIT trap is swallowed without being
+        called a defect — see :meth:`_note_internal_defect_at_death`.
+        """
         for stream in (self.state.stdout, self.state.stderr):
             try:
                 stream.flush()
-            except (OSError, ValueError, AttributeError):
+            except OSError:
                 pass
-        self._signal_registry.register(signum, signal.SIG_DFL, "SignalManager:default")
-        os.kill(os.getpid(), signum)
+            except BaseException as exc:  # noqa: BLE001 - taxonomy'd below
+                self._note_internal_defect_at_death('stream flush', exc)
+
+    #: Exceptions that are NOT internal defects when they surface on the
+    #: death path. ``KeyboardInterrupt`` is a second signal arriving while we
+    #: die; ``SystemExit`` is an ``exit`` inside the EXIT trap. Both are
+    #: swallowed like everything else here — nothing may raise before
+    #: ``os.kill`` — but neither is a psh bug, so neither is LABELLED one.
+    _NOT_A_DEFECT_AT_DEATH = (KeyboardInterrupt, SystemExit)
+
+    def _note_internal_defect_at_death(self, what: str, exc: BaseException) -> None:
+        """Report an INTERNAL DEFECT on the death path without altering it.
+
+        Two separate decisions, kept separate on purpose:
+
+        * **What is caught** is deliberately everything (``BaseException``),
+          because an exception escaping this path would reach the caller
+          before ``SIG_DFL``/``os.kill`` and convert a signal death into an
+          ordinary exit.
+        * **What is DIAGNOSED** is only the genuine internal-defect classes.
+          A second signal (``KeyboardInterrupt``) or an ``exit`` in the EXIT
+          trap (``SystemExit``) is ordinary shell life, not a psh bug, and
+          labelling it "internal defect" would be a false accusation in the
+          gate's face.
+
+        The diagnostic goes to fd 2 with ``os.write`` (no Python-level stream —
+        that may be exactly what failed) and only under ``strict-errors``: the
+        suite runs it, so the gate sees the class, while a production shell
+        dying from a signal prints what bash prints. Never raises.
+        """
+        try:
+            if isinstance(exc, self._NOT_A_DEFECT_AT_DEATH):
+                return
+            if not self.state.options.get('strict-errors'):
+                return
+            os.write(2, ("psh: internal defect during %s at signal death: "
+                         "%s: %s\n" % (what, type(exc).__name__, exc)
+                         ).encode('utf-8', 'replace'))
+        except BaseException:
+            pass
 
     def _handle_sigchld(self, signum, frame):
         """Minimal signal handler - just notify main loop.

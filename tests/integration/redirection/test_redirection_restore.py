@@ -45,8 +45,13 @@ class TestDupRestores:
         assert result.stderr == 'hi\nerr2\n'
         assert 'lost sys.stderr' not in result.stderr
 
-    def test_dup_into_file_for_builtin(self):
-        result = run_psh('echo hi >tmp/dup1.txt 2>&1; cat tmp/dup1.txt; rm -f tmp/dup1.txt')
+    def test_dup_into_file_for_builtin(self, tmp_path):
+        # Per-test temp dir, not repo-relative `tmp/`: that directory exists
+        # only once someone has created it by hand, so this failed
+        # deterministically in a fresh checkout. Same class slot 1.3 (2b)
+        # cleared elsewhere in the tree; this module escaped that census.
+        result = run_psh('echo hi >dup1.txt 2>&1; cat dup1.txt',
+                         cwd=tmp_path)
         assert result.stdout == 'hi\n'
 
 

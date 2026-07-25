@@ -4,6 +4,48 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.754.0 (2026-07-25) - Remediation Wave 1 rider 1.3b: signal-window hardening in redirect teardown
+- **Boundary Remediation Campaign, first production-change slot** (rider on
+  slot 1.3's root-caused EXIT-trap race; campaign LEDGER Part D). This release
+  is HARDENING - it does NOT claim to fix the EXIT-trap race (see below).
+- **Three real signal windows closed** on the top-level fatal-signal path:
+  (1) a fatal signal during a live per-command redirection frame no longer
+  lets the EXIT trap write into the command's redirect target - the signal
+  path restores active frames (via the existing per-frame restore API) before
+  firing the trap, so trap output reaches the SHELL's stdout (deterministic
+  wiring pins drive the real death path across three redirect shapes; at base
+  the trap's output landed INSIDE the redirect file);
+  (2) the frame-teardown window is gone - a frame leaves the stack only after
+  its stream restore completes (pop-in-finally so exceptions still clean up),
+  with a stream-level `streams_restored` marker preventing double-restore
+  from the signal path (per-frame restore is not idempotent; fd 0 survival
+  pinned; the ordering pin OBSERVES the mid-restore intermediate state);
+  (3) the drain's own mid-SETUP hazard, found in verification: an ambiguous
+  `stdin_fd is None` could read as "fd 0 was closed" and close a live fd 0 -
+  replaced by an explicit `fd0_was_closed` flag, pinned both directions.
+- **Death-path diagnostics without semantic change**: internal-defect-class
+  failures during the death flush/drain emit a stderr diagnostic under
+  PSH_STRICT_ERRORS and execution CONTINUES to die by the same signal
+  (rc -N preserved - a diagnostic never converts signal death into exit);
+  KeyboardInterrupt/SystemExit are contained but never mislabeled as psh
+  defects; OSError (e.g. broken-pipe stdout at death) stays silent.
+- **Four mutation replays pin the fixes**: deleting the drain, reverting the
+  pop order, restoring the fd-0 ambiguity, and deleting the SIG_DFL
+  registration each turn pins red (the round-1 verification proved the
+  original pin battery could not detect removal of either fix - the battery
+  was rebuilt to drive the REAL code paths).
+- **HONEST CARRY**: the underlying EXIT-trap misdirection race is NOT closed.
+  With every structurally-provable window shut, the defect persists (~0.6%
+  per run; fires in file/stdin input modes, not -c; three-state rates
+  statistically inseparable). The campaign LEDGER row remains OPEN with the
+  twice-misdiagnosed mechanism history and a hard entry requirement for the
+  successor: a non-perturbing observation technique (every fd-write trace
+  hides the window). The v0.753.0 sentinel test stays un-quarantined as the
+  live tripwire; the interactive SIGHUP death path deliberately retains
+  pre-1.3b behavior (recorded on the row).
+- io_redirect subsystem doc gains the new load-bearing invariants; a
+  repo-tmp-dependent test missed by v0.753.0's portability census fixed.
+
 ## 0.753.0 (2026-07-25) - Remediation Wave 1 slot 1.3: test hygiene - races, silent skips, flakes, documented-difference integrity
 - **Boundary Remediation Campaign** (reappraisal #22 MEDIUM-13 + LOW skip-on-failure
   CLOSED; predecessor carry #8 CLOSED; campaign rows F1/F2 CLOSED - see
