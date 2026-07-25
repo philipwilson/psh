@@ -132,35 +132,31 @@ class TestRecognizerRegistry:
 class TestLexerCompatibility:
     """Test compatibility between modular and traditional lexer."""
 
-    def test_equivalent_tokenization(self):
-        """Test that modular lexer produces equivalent results."""
-        test_commands = [
-            'echo hello',
-            'ls | grep test',
-            'echo hello > file',
-            'echo hello && echo world',
-        ]
+    @pytest.mark.parametrize("command,expected_tokens", [
+        ('echo hello', 3),
+        ('ls | grep test', 5),
+        ('echo hello > file', 5),
+        ('echo hello && echo world', 6),
+    ])
+    def test_equivalent_tokenization(self, command, expected_tokens):
+        """Test that modular lexer produces equivalent results.
 
-        for command in test_commands:
-            # Get tokens from main tokenize function
-            try:
-                tokens = list(tokenize(command))
-                # Test that we get reasonable tokenization
-                assert len(tokens) > 0, f"No tokens for '{command}'"
+        These are all core constructs the lexer fully supports. The body used
+        to sit inside `except Exception: pytest.skip(...)`, so a lexer that
+        started raising on `ls | grep test` reported a SKIP rather than a
+        failure. A raise now fails the test, and the token counts are pinned
+        so a silent change in tokenization is caught too.
+        """
+        tokens = list(tokenize(command))
+        assert len(tokens) == expected_tokens
 
-                # Verify basic structure
-                non_eof_tokens = [t for t in tokens if t.type != TokenType.EOF]
-                assert len(non_eof_tokens) > 0, f"Only EOF tokens for '{command}'"
+        non_eof_tokens = [t for t in tokens if t.type != TokenType.EOF]
+        assert len(non_eof_tokens) > 0, f"Only EOF tokens for '{command}'"
 
-                # Test basic token properties
-                for token in non_eof_tokens:
-                    assert hasattr(token, 'type'), f"Token missing type: {token}"
-                    assert hasattr(token, 'value'), f"Token missing value: {token}"
-                    assert isinstance(token.value, str), f"Token value not string: {token}"
-
-            except Exception as e:
-                # Some advanced features may not be implemented yet
-                pytest.skip(f"Skipping '{command}' due to implementation: {e}")
+        for token in non_eof_tokens:
+            assert hasattr(token, 'type'), f"Token missing type: {token}"
+            assert hasattr(token, 'value'), f"Token missing value: {token}"
+            assert isinstance(token.value, str), f"Token value not string: {token}"
 
 
 class TestLexerContext:

@@ -6,7 +6,6 @@ control structures, and other advanced integration scenarios.
 
 Part of Phase 3 of the arithmetic expansion testing plan.
 """
-import pytest
 
 
 class TestArithmeticIntegration:
@@ -15,56 +14,40 @@ class TestArithmeticIntegration:
     # Parameter expansion integration tests
 
     def test_arithmetic_in_parameter_expansion_substring(self, shell, capsys):
-        """Test arithmetic in parameter expansion substring operations."""
-        # Test basic substring first to see if parameter expansion is supported
+        """Test arithmetic in parameter expansion substring operations.
+
+        Both forms are supported and match bash 5.2 exactly, so both are hard
+        assertions. They used to skip themselves whenever the output was not
+        the expected one — precisely when a regression would need reporting.
+        """
+        # Literal offsets.
         result = shell.run_command('str="hello world"; echo "${str:3:4}"')
         assert result == 0
-        captured = capsys.readouterr()
-        basic_output = captured.out.strip()
+        assert capsys.readouterr().out.strip() == "lo w"
 
-        # Skip this complex test if parameter expansion isn't fully implemented
-        if basic_output == "lo w":
-            # Basic parameter expansion works, now test with arithmetic
-            result = shell.run_command('str="hello world"; echo "${str:$((2+1)):$((2*2))}" 2>/dev/null || echo "arithmetic expansion failed"')
-            assert result in [0, 1, 2]  # Allow failure
-            captured = capsys.readouterr()
-            arith_output = captured.out.strip()
-
-            if arith_output == "lo w":
-                # Success case
-                assert arith_output == "lo w"
-            else:
-                # Arithmetic in parameter expansion not supported yet
-                pytest.skip(f"Arithmetic in parameter expansion not supported - got: '{arith_output}'")
-        else:
-            # Parameter expansion substring not fully supported yet
-            pytest.skip(f"Parameter expansion substring not supported - got: '{basic_output}'")
+        # The same substring, with both operands computed arithmetically.
+        result = shell.run_command(
+            'str="hello world"; echo "${str:$((2+1)):$((2*2))}"')
+        assert result == 0
+        assert capsys.readouterr().out.strip() == "lo w"
 
     def test_arithmetic_in_parameter_expansion_offset_length(self, shell, capsys):
-        """Test arithmetic for both offset and length in parameter expansion."""
-        # Test basic parameter expansion first
+        """Test arithmetic for both offset and length in parameter expansion.
+
+        Hard assertions for the same reason as the test above: both forms
+        match bash 5.2, so a mismatch is a regression to report, not a skip.
+        """
+        # Literal offset and length.
         result = shell.run_command('text="abcdefghijk"; echo "${text:4:4}"')
         assert result == 0
-        captured = capsys.readouterr()
+        assert capsys.readouterr().out.strip() == "efgh"
 
-        if captured.out.strip() == "efgh":
-            # Basic parameter expansion works, test with arithmetic
-            result = shell.run_command('''
-            text="abcdefghijk"
-            start=2
-            len=3
-            echo "${text:$((start*2)):$((len+1))}" 2>/dev/null || echo "not supported"
-            ''')
-            assert result in [0, 1, 2]
-            captured = capsys.readouterr()
-            output = captured.out.strip()
-
-            if output == "efgh":
-                assert output == "efgh"  # text[4:8] = "efgh"
-            else:
-                pytest.skip(f"Arithmetic in parameter expansion not supported - got: '{output}'")
-        else:
-            pytest.skip("Parameter expansion substring not supported")
+        # Both operands arithmetic, over shell variables: text[4:8].
+        result = shell.run_command(
+            'text="abcdefghijk"; start=2; len=3; '
+            'echo "${text:$((start*2)):$((len+1))}"')
+        assert result == 0
+        assert capsys.readouterr().out.strip() == "efgh"
 
     def test_arithmetic_in_array_indices(self, shell, capsys):
         """Test arithmetic in array index expressions."""

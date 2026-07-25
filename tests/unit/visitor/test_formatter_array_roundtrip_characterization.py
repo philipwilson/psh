@@ -116,15 +116,15 @@ def test_validator_mixed_rd(src, mixed):
     assert _mixed_info(_rd_parse(src)) is mixed
 
 
-# -- Combinator validator verdict. Same as RD EXCEPT the one documented
-#    divergence below (combinator splits p$x -> p, $x, q). ------------------
-COMBINATOR_VALIDATOR_DIVERGENCE = {'a=(p$x q)'}
-
-
+# -- Combinator validator verdict. Now identical to RD on every case.
+#    'a=(p$x q)' used to be skipped here as a combinator composite-word split
+#    divergence "pinned separately" — but nothing else in the tree referenced
+#    the case, so this skip was its only record, and the divergence has since
+#    gone (both parsers now report mixed element types). The skip outlived
+#    what it was hiding and cost coverage of a case that works, so the row is
+#    asserted like every other one.
 @pytest.mark.parametrize("src,mixed", VALIDATOR_MIXED_CASES)
 def test_validator_mixed_combinator(src, mixed):
-    if src in COMBINATOR_VALIDATOR_DIVERGENCE:
-        pytest.skip("combinator composite-word split divergence (pinned separately)")
     assert _mixed_info(_comb_parse(src)) is mixed
 
 

@@ -390,12 +390,15 @@ class TestArrayInLoops:
         '''
         result = shell.run_command(script)
 
-        if result == 0:  # Only check if C-style for loops work
-            with open('output.txt', 'r') as f:
-                content = f.read()
-            assert 'Index 0: first' in content
-            assert 'Index 1: second' in content
-            assert 'Index 2: third' in content
+        # C-style for loops are supported and match bash 5.2, so this is
+        # asserted unconditionally. The checks used to sit behind
+        # `if result == 0:`, which let a broken C-style for loop pass.
+        assert result == 0
+        with open('output.txt', 'r') as f:
+            content = f.read()
+        assert 'Index 0: first' in content
+        assert 'Index 1: second' in content
+        assert 'Index 2: third' in content
 
 
 class TestArrayAppend:
