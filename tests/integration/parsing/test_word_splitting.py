@@ -329,11 +329,13 @@ class TestWordSplittingContexts:
             'echo "${ARR[0]}" "${ARR[1]}" "${ARR[2]}"'
         ])
 
-        # This test depends on array support
-        if result['success']:
-            assert 'one' in result['stdout']
-            assert 'two' in result['stdout']
-            assert 'three' in result['stdout']
+        # Arrays are supported and this matches bash 5.2 exactly, so the
+        # assertions are unconditional. Behind `if result['success']:` a
+        # failure to split into the array at all passed silently.
+        assert result['success']
+        assert 'one' in result['stdout']
+        assert 'two' in result['stdout']
+        assert 'three' in result['stdout']
 
     def test_splitting_in_case_patterns(self):
         """Test word splitting in case statement patterns."""

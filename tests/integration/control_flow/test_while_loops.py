@@ -178,12 +178,16 @@ class TestWhileLoops:
         '''
         exit_code = shell.run_command(cmd)
         captured = capsys.readouterr()
-        # May not support break with levels
-        if exit_code == 0 and "done" in captured.out:
-            # Check that we stopped at i=2 j=2
-            assert "i=2 j=2" not in captured.out
-            assert "i=2 j=3" not in captured.out
-            assert "i=3 j=0" not in captured.out
+        # `break 2` is supported and matches bash 5.2 (last output is
+        # "i=2 j=1", then "done"). The checks used to hang off
+        # `if exit_code == 0 and "done" in captured.out:`, so a psh that did
+        # not support multi-level break passed by skipping them.
+        assert exit_code == 0
+        assert "done" in captured.out
+        # Stopped at i=2 j=2 — nothing at or past that point ran.
+        assert "i=2 j=2" not in captured.out
+        assert "i=2 j=3" not in captured.out
+        assert "i=3 j=0" not in captured.out
 
     def test_while_with_function(self, shell, capsys):
         """Test while loop calling function."""

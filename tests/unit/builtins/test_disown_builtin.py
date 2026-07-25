@@ -179,13 +179,21 @@ class TestDisownBuiltin:
         assert 'no such' in captured.err.lower() or 'not found' in captured.err.lower()
 
     def test_disown_help(self, shell, capsys):
-        """Test disown help/usage message."""
+        """Test disown's usage message on an unrecognised option.
+
+        `disown` takes no --help (bash's does not either); it rejects `--` as
+        an invalid option with rc 2 and prints its usage line. Pinned to that.
+
+        This previously read `if exit_code == 0:`, and the real exit code is
+        2, so the guard never fired and the test asserted NOTHING at all.
+        """
         exit_code = shell.run_command('disown --help')
-        # May or may not be implemented
+        assert exit_code == 2
 
         captured = capsys.readouterr()
-        if exit_code == 0:
-            assert 'disown' in captured.out.lower()
+        combined = (captured.out + captured.err).lower()
+        assert 'invalid option' in combined
+        assert 'usage: disown' in combined
 
 
 class TestDisownOptions:

@@ -509,10 +509,13 @@ class TestArrayPerformance:
 
         result = shell.run_command(script)
 
-        if result == 0:  # Only check if C-style for loops work
-            with open('output.txt', 'r') as f:
-                content = f.read()
-            assert '100' in content
+        # Supported and matches bash 5.2 (100), so asserted unconditionally.
+        # The check used to sit behind `if result == 0:`, which let a broken
+        # C-style for loop pass.
+        assert result == 0
+        with open('output.txt', 'r') as f:
+            content = f.read()
+        assert content.strip() == '100'
 
     def test_sparse_array_efficiency(self, shell_with_temp_dir):
         """Test sparse array handling."""
