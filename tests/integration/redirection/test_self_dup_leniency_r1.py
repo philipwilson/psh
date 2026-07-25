@@ -23,24 +23,25 @@ implement bash's leniency at the shared dup path, converging the whole class.
 All psh runs are ``-m psh -c`` subprocesses (fresh fds, parallel-safe).
 """
 import os
-import subprocess
-import sys
 import tempfile
 
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, resolve_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 TREE = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
 
 def run_psh(script, cwd=None):
-    env = dict(os.environ)
-    env["PYTHONPATH"] = TREE
-    env["PSH_STRICT_ERRORS"] = "0"
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", script],
-                       cwd=cwd or TREE, env=env, capture_output=True,
-                       text=True, timeout=60)
-    return p.stdout, p.stderr, p.returncode
+    # Routed through the typed runner, not raw subprocess: naming the bash
+    # oracle below makes this module oracle-bearing, and an oracle-bearing
+    # module must launch through the runner so is_comparable() can reject a
+    # truncated or timed-out observation before it is compared
+    # (test_no_direct_spawn_in_oracle_modules).
+    r = _oracle_run_psh(["-c", script], cwd=cwd or TREE, timeout=60,
+                        env={"PSH_STRICT_ERRORS": "0"})
+    assert is_comparable(r), r
+    return r.stdout, r.stderr, r.returncode
 
 
 # ---- the un-masked composite row (red on the H4 tip) ----
