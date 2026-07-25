@@ -56,14 +56,38 @@ jobs:
           # left unbounded on a runner can outlive its step and confuse job
           # teardown, and a diagnostic must never be able to wedge the thing it
           # is diagnosing.
-          setsid timeout 3300 bash -c 'while :; do
+          # When free space falls below the trip point, snapshot the OPEN FILES
+          # that are consuming it. Per-test attribution cannot find this writer:
+          # under xdist a runaway in one worker is charged to whoever spans the
+          # window, and the top "consumer" (25.5 GB) turned out to be a
+          # long-running bystander that uses 22 MB when run alone. The file
+          # itself is the ground truth — and because it is almost certainly
+          # already UNLINKED (space returns when its fd closes, which is why
+          # nothing is ever left on disk), /proc/PID/fd is the only place it can
+          # still be seen.
+          setsid timeout 3300 bash -c '
+          tripped=0
+          while :; do
             set -- $(df --output=avail,iavail / | tail -1)
             printf "%s avail_kb=%s ifree=%s tmp_entries=%s\n" \
               "$(date -u +%H:%M:%S)" "$1" "$2" "$(ls -U /tmp | wc -l)"
+            if [ "$1" -lt 40000000 ] && [ "$tripped" -lt 3 ]; then
+              tripped=$((tripped+1))
+              echo "=== TRIP $tripped: avail_kb=$1 — largest open fds ==="
+              for fd in /proc/[0-9]*/fd/*; do
+                sz=$(stat -Lc %s "$fd" 2>/dev/null) || continue
+                [ "${sz:-0}" -gt 104857600 ] || continue
+                pid=$(echo "$fd" | cut -d/ -f3)
+                printf "%12s bytes  pid=%s  target=%s\n  cmdline=%s\n" \
+                  "$sz" "$pid" "$(readlink "$fd" 2>/dev/null)" \
+                  "$(tr "\0" " " < /proc/$pid/cmdline 2>/dev/null | cut -c1-200)"
+              done | sort -rn | head -20
+              echo "=== end TRIP $tripped ==="
+            fi
             sleep 5
           done' > /tmp/disk-samples.log 2>&1 < /dev/null &
           disown || true
-          echo "sampler started (bounded at 3300s)"
+          echo "sampler started (bounded at 3300s, open-fd snapshot below 40GB)"
 
       # --compare-bash adds the golden bash-comparison phase (Phase 2) to
       # the same run, so the full suite and the golden phase share one
@@ -107,8 +131,12 @@ jobs:
           echo "--- disk after suite ---"; df -h / /tmp; df -i / /tmp
           echo "--- largest /tmp entries ---"
           sudo du -xm /tmp 2>/dev/null | sort -rn | head -20 || true
+          echo "--- OPEN-FD SNAPSHOTS taken while space was draining ---"
+          sed -n '/=== TRIP/,/=== end TRIP/p' /tmp/disk-samples.log 2>/dev/null \
+            | head -80 || true
           echo "--- during-suite samples: 15 LOWEST free space ---"
-          sort -t= -k2 -n /tmp/disk-samples.log 2>/dev/null | head -15 || true
+          grep avail_kb= /tmp/disk-samples.log 2>/dev/null \
+            | sort -t= -k2 -n | head -15 || true
           echo "--- during-suite samples: 5 most recent ---"
           tail -5 /tmp/disk-samples.log 2>/dev/null || true
           echo "--- sample count ---"; wc -l < /tmp/disk-samples.log 2>/dev/null || true
@@ -197,14 +225,38 @@ jobs:
           # left unbounded on a runner can outlive its step and confuse job
           # teardown, and a diagnostic must never be able to wedge the thing it
           # is diagnosing.
-          setsid timeout 3300 bash -c 'while :; do
+          # When free space falls below the trip point, snapshot the OPEN FILES
+          # that are consuming it. Per-test attribution cannot find this writer:
+          # under xdist a runaway in one worker is charged to whoever spans the
+          # window, and the top "consumer" (25.5 GB) turned out to be a
+          # long-running bystander that uses 22 MB when run alone. The file
+          # itself is the ground truth — and because it is almost certainly
+          # already UNLINKED (space returns when its fd closes, which is why
+          # nothing is ever left on disk), /proc/PID/fd is the only place it can
+          # still be seen.
+          setsid timeout 3300 bash -c '
+          tripped=0
+          while :; do
             set -- $(df --output=avail,iavail / | tail -1)
             printf "%s avail_kb=%s ifree=%s tmp_entries=%s\n" \
               "$(date -u +%H:%M:%S)" "$1" "$2" "$(ls -U /tmp | wc -l)"
+            if [ "$1" -lt 40000000 ] && [ "$tripped" -lt 3 ]; then
+              tripped=$((tripped+1))
+              echo "=== TRIP $tripped: avail_kb=$1 — largest open fds ==="
+              for fd in /proc/[0-9]*/fd/*; do
+                sz=$(stat -Lc %s "$fd" 2>/dev/null) || continue
+                [ "${sz:-0}" -gt 104857600 ] || continue
+                pid=$(echo "$fd" | cut -d/ -f3)
+                printf "%12s bytes  pid=%s  target=%s\n  cmdline=%s\n" \
+                  "$sz" "$pid" "$(readlink "$fd" 2>/dev/null)" \
+                  "$(tr "\0" " " < /proc/$pid/cmdline 2>/dev/null | cut -c1-200)"
+              done | sort -rn | head -20
+              echo "=== end TRIP $tripped ==="
+            fi
             sleep 5
           done' > /tmp/disk-samples.log 2>&1 < /dev/null &
           disown || true
-          echo "sampler started (bounded at 3300s)"
+          echo "sampler started (bounded at 3300s, open-fd snapshot below 40GB)"
 
       - name: Run Full Conformance Suite (POSIX + bash compatibility)
         working-directory: tests/conformance
