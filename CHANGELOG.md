@@ -4,6 +4,55 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.753.0 (2026-07-25) - Remediation Wave 1 slot 1.3: test hygiene - races, silent skips, flakes, documented-difference integrity
+- **Boundary Remediation Campaign** (reappraisal #22 MEDIUM-13 + LOW skip-on-failure
+  CLOSED; predecessor carry #8 CLOSED; campaign rows F1/F2 CLOSED - see
+  `docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md`).
+- **MEDIUM-13**: the background-subshell test can no longer pass vacuously
+  (base body replayed passing with `file_existed=False`): subprocess route +
+  wait through the shell's job API + unconditional asserts on existence, exact
+  bash-pinned bytes, and clean stdout; 50 sequential + 25 shuffled runs green;
+  the state-guarded-assert shape is extinct tree-wide (census 1 -> 0).
+- **Silent skips eliminated**: the 9 remaining `try_resolve_bash`+skipif
+  modules fail collection without a bash oracle (base: exit-0 while silently
+  skipping 191 differential tests); 15 skip-on-failure conversions total
+  (census: 14 true instances fixed incl. a 100%-dead test whose loop raised
+  NameError into `except Exception: pass` - the validator was never invoked;
+  13 legitimate environment gates stay, classified per-hit).
+- **Fresh-checkout portability**: the `<repo>/tmp` dependency is gone (46
+  tests failed in any fresh worktree; one test's mkdir masked 8 more via run
+  order); per-test temp dirs + PYTHONPATH pin + child `psh.__file__`
+  discriminator (editable-install trap closed, made genuinely discriminating).
+- **Flake queue**: `timeformat %P` (carry #8) root-caused - the shape helper
+  pinned %P digit width against a 10 ms accounting tick (base 4/60 -> 0/60);
+  background-pipeline empty-wait family root-caused and swept (3 tests);
+  two non-reproducing flakes hardened, not quarantined (absolute expected-
+  bytes pins; self-classifying diagnostics). The exit-trap family flake was
+  root-caused to a REAL production race (registered below, fix = v0.754.0).
+- **F1 - documented differences are behavior-validated**: each catalog entry
+  carries the expected SHAPE of its difference per side (exit code + stream
+  patterns) and classification validates observations against it - a forged
+  psh stdout or exit status was accepted as DOCUMENTED_DIFFERENCE at base and
+  is a failure now; right-reason proven by mutation; vacuous expected blocks
+  refused at BOTH the meta-test and runtime halves, offender-proven.
+- **F2 - catalog rot closed**: 4 dead entries deleted after live re-probes
+  (the three pushd/popd entries were CONTRADICTED by a passing conformance
+  test asserting bash-identical behavior; one documented a harness artifact);
+  one REAL divergence registered properly: `BUILTIN_LONG_HELP_OPTION` (bash
+  builtins print full help on stdout for `--help`, psh treats it as an
+  invalid option) - found when the probe-method audit showed all 16 merged-
+  stream probes hid stderr/stream divergences; zero-dead-entries meta-test,
+  resurrection-proven.
+- **Lint**: F821 (undefined names) enabled in ruff - a 100%-dead test and a
+  broken manual-runner path were invisible without it; the one remaining
+  violation fixed (`ConformanceResult` import).
+- Tests-tree only - zero production `psh/` changes. THREE production defects
+  REGISTERED (not fixed) in LEDGER Part D: psh loses EXIT-trap output on
+  fatal-signal death of the top-level shell (~1/120, CLI-reachable - Wave-1
+  rider slot fixes it next as v0.754.0); TIMEFORMAT `%P` can report absurd
+  CPU percentages (11934% vs bash 2.02%); backgrounded-subshell redirects
+  bypass fd-1 dup2 when the embedding decouples sys.stdout from fd 1.
+
 ## 0.752.0 (2026-07-25) - Remediation Wave 1 slot 1.2: one runner for every bash-differential spawn
 - **Boundary Remediation Campaign** (reappraisal #22 HIGH-1 second half; ledger row
   CLOSED in `docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md`).

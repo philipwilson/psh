@@ -12,7 +12,7 @@ import sys
 # standalone entry point, and the conformance conftest's sys.path setup only runs
 # under pytest — direct `python <file>` execution needs this insert at module load.
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from conformance_framework import ConformanceTest
+from conformance_framework import ConformanceResult, ConformanceTest
 
 
 class TestPOSIXParameterExpansion(ConformanceTest):

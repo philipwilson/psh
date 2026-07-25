@@ -68,6 +68,9 @@ select = [
     "F401",   # unused imports
     "F811",   # redefined while unused
     "F841",   # unused variables
+    "F821",   # undefined names — catches 100%-dead code paths (a test whose
+              # loop raised NameError into `except Exception: pass` was
+              # invisible without this; enabled v0.753.0)
     "I",      # import sorting
     "W",      # pycodestyle warnings (whitespace, trailing, etc.)
     "B",      # flake8-bugbear (bug-prone patterns: unchained excepts, dead
