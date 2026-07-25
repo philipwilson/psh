@@ -4,6 +4,45 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.755.0 (2026-07-25) - Remediation Wave 1 slot 1.4: Linux nightly recovery
+- **The Linux nightly is GREEN — first time since 2026-07-02** (23+ red
+  nights). Three consecutive green dispatch runs; conformance 54 failures → 0
+  (2,671 passed), parallel job 26 → 0 (21,873 passed), real ENOSPC 0.
+- **`bg` no longer silently fails to resume a stopped job**: `bg` now
+  refreshes the job's state (mirroring `fg`'s existing guard) before deciding
+  whether to send SIGCONT, so an externally-stopped job whose stop
+  notification psh had not yet reaped is actually resumed instead of `bg`
+  reporting success while the job stays stopped. Deterministic red-on-base
+  pin (external `kill -STOP`, no SIGCHLD reaper, real process-state assert).
+- **Locale warnings now follow bash's per-trigger rule**: emptying or
+  unsetting `LC_ALL` re-applies the fallback locale SILENTLY (bash's reset
+  path) instead of warning per category; direct assignment of a bad locale
+  still warns. Probed as an 18-row trigger matrix against bash 5.2.26 and
+  5.2.21; both-direction mutation pins in
+  `tests/conformance/bash/test_locale_warn_trigger_conformance.py`.
+- **Test-harness kill now reaches escaped process groups**: the oracle's
+  cap/timeout kill enumerates descendants (pid/ppid, before the group kill
+  orphans them) and SIGKILLs survivors — closing the gap where a job-control
+  shell's `setpgid` children survived `killpg` and filled an already-unlinked
+  capture file at ~480 MB/s. This one bug caused BOTH the nightly's
+  `[Errno 28]` deaths AND the macOS gate host's months-old unexplained disk
+  collapses. Sweep is gated to live-leader kill sites (no per-case overhead);
+  synthetic escaped-writer contract pin; the one cap-disabled contract row
+  now bounds its producer independently of the kill.
+- **Linux-vs-macOS platform honesty across the test suite**: signal-number
+  splits (SIGUSR1/2), dash-as-`/bin/sh` limits (multi-digit fds), GNU-vs-BSD
+  tool output, runner `~/.bashrc` HISTCONTROL leakage (history oracles run
+  `--norc`), piped `core_pattern` ignoring RLIMIT_CORE (new
+  `tests/harness/core_dump_env.py` encodes the kernel's rule), and an
+  assoc-subscript tilde row version-gated on the exact bash 5.2.24 change
+  (bisected per patch level; gate fails closed on unknown versions).
+- Nightly workflow: disk/fd diagnostics with a recorded expiry criterion;
+  benchmark tier explicitly non-gating per its artifact-only design (measured
+  baselines carried as owed work).
+- Campaign records: carry #17 (J1 Linux-nightly watch) CLOSED in the
+  committed LEDGER; census, probes, and the slot's integrator-inbox archived
+  under `docs/reviews/evidence/boundary_remediation_2026-07/1.4-rescue/`.
+
 ## 0.754.0 (2026-07-25) - Remediation Wave 1 rider 1.3b: signal-window hardening in redirect teardown
 - **Boundary Remediation Campaign, first production-change slot** (rider on
   slot 1.3's root-caused EXIT-trap race; campaign LEDGER Part D). This release
