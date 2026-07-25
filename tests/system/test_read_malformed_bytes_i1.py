@@ -89,6 +89,27 @@ MALFORMED_ROWS = {
 }
 
 
+# The bytes each row must produce, captured from C-locale bash 5.2.26. The
+# differential below pins psh AGAINST BASH; these pin BOTH SIDES against a
+# fixed expectation, so a harness fault that truncated both streams the same
+# way (each row is driven through a pipe with a writer thread) fails loudly
+# instead of comparing equal and passing. `mapfile_read_all` — the row that
+# flaked 1-in-9 during slot 1.2's verification — is the reason this exists.
+EXPECTED_OUTPUT = {
+    "bare_invalid": b'x=<\xff\xfe>\n',
+    "lead_before_newline": b'x=<A\xc3>\n',
+    "mapfile_lines": b'<\xc3A><B>\n',
+    "mapfile_read_all": b'<\xc3A\n><B\n>\n',
+    "read_N_malformed": b'x=<\xc3A\xc3>\n',
+    "read_then_read": b'x=<\xc3A> y=<B>\n',
+}
+
+
+def test_expected_output_covers_every_row():
+    """No row may be added without its absolute expectation."""
+    assert set(EXPECTED_OUTPUT) == set(MALFORMED_ROWS)
+
+
 @pytest.mark.parametrize("name", sorted(MALFORMED_ROWS))
 def test_read_malformed_matches_c_locale_bash(name):
     script, stdin, _quirk = MALFORMED_ROWS[name]
@@ -96,6 +117,9 @@ def test_read_malformed_matches_c_locale_bash(name):
     bash_out = _bash_c_locale(script, stdin)
     assert psh_out == bash_out, (
         f"{name}: psh {psh_out!r} != C-locale bash {bash_out!r}")
+    # Absolute pin: catches a fault that degrades BOTH sides identically.
+    assert psh_out == EXPECTED_OUTPUT[name], (
+        f"{name}: {psh_out!r} != expected {EXPECTED_OUTPUT[name]!r}")
 
 
 def test_malformed_does_not_cascade_through_delimiters():
