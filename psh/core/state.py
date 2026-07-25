@@ -498,8 +498,13 @@ class ShellState:
             set_process_active_locale(previous)
             raise
 
-    def _acquire_locale_lease(self) -> None:
+    def _acquire_locale_lease(self, *, warn: bool = True) -> None:
         """Apply the locale profile to libc under the LOCALE component lease.
+
+        ``warn`` is threaded to :meth:`LocaleService.ensure_applied` so the
+        reactive caller can stay silent on bash's LC_ALL RESET path (see
+        :meth:`_sync_exported_variable`); every other caller announces a failed
+        setlocale as before.
 
         Captures the pre-application libc names as the restore baseline (so
         deactivation puts the hosting process back exactly where it was and
@@ -522,7 +527,7 @@ class ShellState:
                 self, ComponentKind.LOCALE, restore=_restore,
                 description='libc locale (LC_CTYPE/LC_COLLATE)',
                 on_grant=self._on_activation_grant)
-        service.ensure_applied()
+        service.ensure_applied(warn=warn)
 
     @staticmethod
     def _new_input_cursor_registry():
@@ -1137,9 +1142,28 @@ class ShellState:
             # resolves purely; a resulting non-C profile is applied to libc
             # HERE, under the coordinator's LOCALE lease (campaign F2), so the
             # reactivity is unchanged — merely lease-accounted.
-            self.locale.reinit(self._locale_env_snapshot())
+            # Whether a FAILED setlocale is ANNOUNCED depends on WHICH variable
+            # triggered the change, and bash is not symmetric about it. Probed
+            # against live bash 5.2.26 (macOS) and 5.2.21 (Linux) -- identical
+            # on both; full matrix in the slot-1.4 ledger:
+            #
+            #   LC_ALL=<bad>             warns      LC_CTYPE=<bad>    warns
+            #   LC_ALL=  / unset LC_ALL  SILENT     unset LC_CTYPE    warns
+            #
+            # Assigning a bad LC_ALL is a direct setlocale bash reports. But
+            # emptying or unsetting LC_ALL puts bash on its RESET path, which
+            # re-applies every category from the remaining variables WITHOUT
+            # warning -- even when what becomes effective is invalid. psh warned
+            # there, which made `unset LC_ALL` noisy on any host where the
+            # inherited LC_CTYPE names a locale libc lacks (all of Linux, and
+            # the macOS-only `UTF-8` alias behind the Terminal.app conformance
+            # row). The discriminator is the TRIGGER, not assign-vs-unset:
+            # `LC_ALL=` is textually an assignment and is still silent.
+            snapshot = self._locale_env_snapshot()
+            warn = not (name == 'LC_ALL' and not snapshot.get('LC_ALL'))
+            self.locale.reinit(snapshot, warn=warn)
             if self.locale.pending_libc:
-                self._acquire_locale_lease()
+                self._acquire_locale_lease(warn=warn)
 
     #: The four variables the effective locale is resolved from; a write/unset
     #: of any of them re-derives the locale profile (:meth:`_sync_exported_variable`).
