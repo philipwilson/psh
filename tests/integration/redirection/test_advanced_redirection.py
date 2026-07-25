@@ -23,6 +23,19 @@ import pytest
 TEST_ROOT = Path(__file__).parent.parent.parent
 PSH_ROOT = TEST_ROOT.parent
 
+
+def _worktree_env():
+    """Env that makes a child `python -m psh` import THIS tree's psh.
+
+    The redirection cases below run from a per-test temp dir so they neither
+    depend on nor pollute ``<repo>/tmp``. That moves the child's cwd off the
+    repo root, and without this an editable install would silently resolve
+    ``psh`` from whichever checkout it points at instead of the tree under
+    test. Pinned by ``test_subprocess_runs_this_worktrees_psh`` below.
+    """
+    return {**os.environ, 'PYTHONPATH': str(PSH_ROOT)}
+
+
 # Shell fixture imported automatically from conftest.py
 
 
@@ -328,41 +341,57 @@ def wait_for_file(path, timeout=5):
     return False
 
 
+def test_subprocess_runs_this_worktrees_psh(tmp_path):
+    """The temp-cwd cases must exercise THIS tree's psh, not an installed one.
+
+    Asserts the child's resolved ``psh.__file__`` lies under this checkout.
+    Without ``_worktree_env`` an editable install resolves ``psh`` from its own
+    target, so every case below would silently test a different tree — and
+    still pass. Version strings cannot discriminate (checkouts share them);
+    the resolved path can.
+    """
+    result = subprocess.run(
+        [sys.executable, '-c', 'import psh; print(psh.__file__)'],
+        capture_output=True, text=True, cwd=tmp_path, env=_worktree_env())
+    assert result.returncode == 0, result.stderr
+    resolved = result.stdout.strip()
+    assert resolved, f"probe produced no path (stderr: {result.stderr!r})"
+    assert resolved.startswith(str(PSH_ROOT)), (
+        f"child imported psh from {resolved!r}, outside the tree under test "
+        f"({str(PSH_ROOT)!r})")
+
+
 class TestReadWriteRedirect:
     """Test <> read-write redirection."""
 
-    def test_readwrite_opens_file_for_reading(self):
+    def test_readwrite_opens_file_for_reading(self, tmp_path):
         """<> opens file for reading."""
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c',
-             'echo existing > tmp/rw_test.txt; cat <> tmp/rw_test.txt'],
+             'echo existing > rw_test.txt; cat <> rw_test.txt'],
             capture_output=True, text=True,
-            cwd=PSH_ROOT)
+            cwd=tmp_path, env=_worktree_env())
         assert result.returncode == 0
         assert 'existing' in result.stdout
 
-    def test_readwrite_creates_file_if_missing(self):
+    def test_readwrite_creates_file_if_missing(self, tmp_path):
         """<> creates file if it doesn't exist."""
-        test_file = os.path.join(PSH_ROOT, 'tmp', 'rw_create_test.txt')
-        if os.path.exists(test_file):
-            os.unlink(test_file)
+        test_file = tmp_path / 'rw_create_test.txt'
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c',
-             'cat <> tmp/rw_create_test.txt; echo $?'],
+             'cat <> rw_create_test.txt; echo $?'],
             capture_output=True, text=True,
-            cwd=PSH_ROOT)
+            cwd=tmp_path, env=_worktree_env())
         assert result.returncode == 0
-        assert os.path.exists(test_file)
-        if os.path.exists(test_file):
-            os.unlink(test_file)
+        assert test_file.exists()
 
-    def test_readwrite_with_fd_prefix(self):
+    def test_readwrite_with_fd_prefix(self, tmp_path):
         """N<> opens file on specified fd."""
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c',
-             'echo content > tmp/rw_fd.txt; cat 0<> tmp/rw_fd.txt'],
+             'echo content > rw_fd.txt; cat 0<> rw_fd.txt'],
             capture_output=True, text=True,
-            cwd=PSH_ROOT)
+            cwd=tmp_path, env=_worktree_env())
         assert result.returncode == 0
         assert 'content' in result.stdout
 
@@ -370,34 +399,34 @@ class TestReadWriteRedirect:
 class TestClobberRedirect:
     """Test >| clobber redirection."""
 
-    def test_clobber_writes_to_file(self):
+    def test_clobber_writes_to_file(self, tmp_path):
         """Test >| writes to file normally."""
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c',
-             'echo hello >| tmp/clobber_test.txt; cat tmp/clobber_test.txt'],
+             'echo hello >| clobber_test.txt; cat clobber_test.txt'],
             capture_output=True, text=True,
-            cwd=PSH_ROOT)
+            cwd=tmp_path, env=_worktree_env())
         assert result.returncode == 0
         assert 'hello' in result.stdout
 
-    def test_clobber_overrides_noclobber(self):
+    def test_clobber_overrides_noclobber(self, tmp_path):
         """Test >| forces overwrite when noclobber is set."""
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c',
-             'echo first > tmp/clobber_nc.txt; set -C; echo second >| tmp/clobber_nc.txt; cat tmp/clobber_nc.txt'],
+             'echo first > clobber_nc.txt; set -C; echo second >| clobber_nc.txt; cat clobber_nc.txt'],
             capture_output=True, text=True,
-            cwd=PSH_ROOT)
+            cwd=tmp_path, env=_worktree_env())
         assert result.returncode == 0
         assert 'second' in result.stdout
         assert 'first' not in result.stdout
 
-    def test_noclobber_blocks_regular_redirect(self):
+    def test_noclobber_blocks_regular_redirect(self, tmp_path):
         """Test > fails when noclobber is set and file exists."""
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c',
-             'echo first > tmp/clobber_block.txt; set -C; echo second > tmp/clobber_block.txt; echo $?'],
+             'echo first > clobber_block.txt; set -C; echo second > clobber_block.txt; echo $?'],
             capture_output=True, text=True,
-            cwd=PSH_ROOT)
+            cwd=tmp_path, env=_worktree_env())
         # Should fail (nonzero exit status)
         assert '1' in result.stdout or result.returncode != 0
 
@@ -405,32 +434,32 @@ class TestClobberRedirect:
 class TestCombinedRedirect:
     """Test &> and &>> combined redirections."""
 
-    def test_ampersand_redirect_captures_stdout(self):
+    def test_ampersand_redirect_captures_stdout(self, tmp_path):
         """&> captures stdout."""
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c',
-             'echo hello &> tmp/combined_test.txt; cat tmp/combined_test.txt'],
+             'echo hello &> combined_test.txt; cat combined_test.txt'],
             capture_output=True, text=True,
-            cwd=PSH_ROOT)
+            cwd=tmp_path, env=_worktree_env())
         assert result.returncode == 0
         assert 'hello' in result.stdout
 
-    def test_ampersand_redirect_captures_stderr(self):
+    def test_ampersand_redirect_captures_stderr(self, tmp_path):
         """&> captures stderr."""
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c',
-             'echo err >&2 &> tmp/combined_err.txt; cat tmp/combined_err.txt'],
+             'echo err >&2 &> combined_err.txt; cat combined_err.txt'],
             capture_output=True, text=True,
-            cwd=PSH_ROOT)
+            cwd=tmp_path, env=_worktree_env())
         assert 'err' in result.stdout
 
-    def test_ampersand_append_redirect(self):
+    def test_ampersand_append_redirect(self, tmp_path):
         """&>> appends both stdout and stderr."""
         result = subprocess.run(
             [sys.executable, '-m', 'psh', '-c',
-             'echo first > tmp/combined_append.txt; echo second &>> tmp/combined_append.txt; cat tmp/combined_append.txt'],
+             'echo first > combined_append.txt; echo second &>> combined_append.txt; cat combined_append.txt'],
             capture_output=True, text=True,
-            cwd=PSH_ROOT)
+            cwd=tmp_path, env=_worktree_env())
         assert result.returncode == 0
         assert 'first' in result.stdout
         assert 'second' in result.stdout

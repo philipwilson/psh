@@ -414,15 +414,15 @@ class TestResourceErrorHandling:
         # Should handle recursion without crashing
         assert isinstance(result['returncode'], int)
 
-    def test_file_descriptor_exhaustion_handling(self):
+    def test_file_descriptor_exhaustion_handling(self, tmp_path):
         """Test handling when running out of file descriptors."""
         # This is difficult to test reliably across systems
-        # Just ensure basic file operations work
-        # Use a unique filename in project's tmp/ to avoid race conditions
-        psh_root = Path(__file__).parent.parent.parent.parent
-        tmp_dir = psh_root / 'tmp'
-        tmp_dir.mkdir(exist_ok=True)  # Ensure tmp directory exists
-        unique_file = tmp_dir / f'fd_test_{uuid.uuid4().hex[:8]}'
+        # Just ensure basic file operations work.
+        # pytest's per-test tmp dir, NOT <repo>/tmp: this test used to
+        # mkdir(exist_ok=True) that directory, which quietly created the
+        # dependency other modules were relying on — so whether THEY passed
+        # in a fresh checkout depended on whether this test had run first.
+        unique_file = tmp_path / f'fd_test_{uuid.uuid4().hex[:8]}'
         commands = [
             f'echo test > {unique_file}',
             f'cat {unique_file}',
