@@ -9,6 +9,7 @@ import os
 import resource
 import signal
 import sys
+import time
 from io import StringIO
 from pathlib import Path
 
@@ -631,24 +632,42 @@ def _free_bytes() -> int:
 
 
 if _DISK_WATCH:
+    # Per-test deltas alone cannot find the writer under xdist: a runaway in
+    # one worker is charged to whatever short test spans the window in another,
+    # and ~400 MB/s x a ~0.4s test is ~160 MB — exactly the band the first
+    # attempt reported for ~20 unrelated tests. So record WHICH WORKER and the
+    # test's own time window as well, into one line-per-test log per worker.
+    # Reconstructing the timeline across workers then shows which test was
+    # actually running for the whole drain, rather than which happened to
+    # straddle it.
+    _WORKER = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    _WATCH_LOG = PSH_ROOT / "tmp" / f"disk-watch-{_WORKER}.log"
+
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_protocol(item, nextitem):
+        started = time.time()
         before = _free_bytes()
         yield
         try:
-            consumed = before - _free_bytes()
+            after = _free_bytes()
         except OSError:
             return
+        consumed = before - after
+        try:
+            with open(_WATCH_LOG, "a", encoding="utf-8") as fh:
+                fh.write(f"{started:.3f} {time.time():.3f} {_WORKER} "
+                         f"{before} {after} {item.nodeid}\n")
+        except OSError:
+            pass
         # Only meaningful drops; churn of a few MB is normal temp-file traffic.
         if consumed > 64 * 1024 * 1024:
             _disk_deltas.append((consumed, item.nodeid))
 
     def pytest_sessionfinish(session, exitstatus):
-        if not _disk_deltas:
-            return
         tr = session.config.pluginmanager.get_plugin("terminalreporter")
-        if tr is None:
+        if tr is None or not _disk_deltas:
             return
-        tr.write_sep("=", "disk consumers (PSH_DISK_WATCH)")
+        tr.write_sep("=", f"disk consumers (PSH_DISK_WATCH, {_WORKER})")
         for consumed, nodeid in sorted(_disk_deltas, reverse=True)[:20]:
             tr.write_line(f"{consumed / (1024 * 1024):10.1f} MB  {nodeid}")
+        tr.write_line(f"per-test timeline: {_WATCH_LOG}")

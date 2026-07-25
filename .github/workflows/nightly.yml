@@ -112,6 +112,24 @@ jobs:
           echo "--- during-suite samples: 5 most recent ---"
           tail -5 /tmp/disk-samples.log 2>/dev/null || true
           echo "--- sample count ---"; wc -l < /tmp/disk-samples.log 2>/dev/null || true
+          # Cross-worker timeline. Per-test deltas alone cannot find the writer
+          # under xdist (a runaway in one worker is charged to whatever short
+          # test spans the window in another), so merge every worker's
+          # line-per-test log in time order and show the window around the
+          # lowest free-space reading. The test that spans the WHOLE drain is
+          # the candidate; the ones that merely straddle it are not.
+          echo "--- per-test timeline around the low-water mark ---"
+          cat tmp/disk-watch-*.log 2>/dev/null | sort -n > /tmp/timeline.txt || true
+          if [ -s /tmp/timeline.txt ]; then
+            low=$(awk '{print $5}' /tmp/timeline.txt | sort -n | head -1)
+            echo "lowest free bytes seen per-test: $low"
+            awk -v low="$low" '$5 <= low * 1.10' /tmp/timeline.txt | head -40
+            echo "--- 12 largest single-test drops (worker-tagged) ---"
+            awk '{printf "%.0f MB  %s  %s\n", ($4-$5)/1048576, $3, $6}' \
+              /tmp/timeline.txt | sort -rn | head -12
+          else
+            echo "(no per-test timeline; PSH_DISK_WATCH may be off)"
+          fi
 
       - name: Upload Benchmark Transcript
         if: always()
