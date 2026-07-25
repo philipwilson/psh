@@ -18,11 +18,10 @@ for class d (an invalid long option exits 2 without running the rc).
 import sys
 from pathlib import Path
 
-import pytest
-from shell_oracle import hermetic_shell_env, is_comparable, run_shell_case, try_resolve_bash
+from shell_oracle import hermetic_shell_env, is_comparable, resolve_bash, run_shell_case
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()
 
 
 def run_psh(args, *, stdin=None, cwd, extra_env=None):
@@ -36,7 +35,6 @@ def run_psh(args, *, stdin=None, cwd, extra_env=None):
 
 
 def run_bash(args, *, stdin=None, cwd):
-    assert _ORACLE is not None
     env = hermetic_shell_env({"HISTFILE": str(Path(cwd) / ".histfile")})
     result = run_shell_case([_ORACLE.path, *args], stdin_data=stdin, env=env,
                             cwd=str(cwd), timeout=30)
@@ -58,7 +56,6 @@ class TestRcSeesOptions:
         # rc and body observe the SAME flag set — no half-configured window.
         assert rc_line.removeprefix("rc:") == body_line.removeprefix("body:")
 
-    @pytest.mark.skipif(_ORACLE is None, reason="no bash oracle")
     def test_rc_sees_set_u_matches_bash(self, tmp_path):
         (tmp_path / "rc").write_text("echo rc:$-\n")
         psh = run_psh(["--rcfile", "rc", "-u", "-i", "-s"],
@@ -68,7 +65,6 @@ class TestRcSeesOptions:
         assert psh.stdout == bash.stdout  # rc:hiuBHs / body:hiuBHs
         assert psh.returncode == bash.returncode == 0
 
-    @pytest.mark.skipif(_ORACLE is None, reason="no bash oracle")
     def test_rc_sees_cluster_option_with_dash_c(self, tmp_path):
         # E11: `-uic 'cmd'` — the rc under -ic sees u AND i AND c.
         (tmp_path / "rc").write_text("echo rc:$-\n")
@@ -106,7 +102,6 @@ class TestRcSeesPositionals:
         assert result.returncode == 0
         assert result.stdout == "rc:2:A:B\nbody:2:A:B\n"
 
-    @pytest.mark.skipif(_ORACLE is None, reason="no bash oracle")
     def test_rc_sees_positionals_matches_bash(self, tmp_path):
         (tmp_path / "rc").write_text('echo rc:$#:${1-none}:${2-none}\n')
         args = ["--rcfile", "rc", "-i", "-s", "A", "B"]
@@ -130,7 +125,6 @@ class TestInvalidParserBeforeRc:
         assert not (tmp_path / "rc_marker").exists(), (
             "the rc file executed before the invalid-parser exit")
 
-    @pytest.mark.skipif(_ORACLE is None, reason="no bash oracle")
     def test_invalid_long_option_exits_2_without_rc_like_bash(self, tmp_path):
         (tmp_path / "rc").write_text("echo RCRAN\ntouch rc_marker\n")
         args = ["--rcfile", "rc", "--bogus-option", "-i", "-s"]
@@ -144,7 +138,6 @@ class TestInvalidParserBeforeRc:
 class TestRcOrderingCorollaries:
     """rc runs before the body, its $? is visible, and it never bang-expands."""
 
-    @pytest.mark.skipif(_ORACLE is None, reason="no bash oracle")
     def test_rc_output_precedes_command_body(self, tmp_path):
         (tmp_path / "rc").write_text("echo FIRST\n")
         args = ["--rcfile", "rc", "-ic", "echo body"]
@@ -152,7 +145,6 @@ class TestRcOrderingCorollaries:
         bash = run_bash(args, cwd=tmp_path)
         assert psh.stdout == bash.stdout == "FIRST\nbody\n"
 
-    @pytest.mark.skipif(_ORACLE is None, reason="no bash oracle")
     def test_rc_output_precedes_script_body(self, tmp_path):
         (tmp_path / "rc").write_text("echo FIRST\n")
         (tmp_path / "s.sh").write_text("echo SECOND\n")
@@ -161,7 +153,6 @@ class TestRcOrderingCorollaries:
         bash = run_bash(args, cwd=tmp_path)
         assert psh.stdout == bash.stdout == "FIRST\nSECOND\n"
 
-    @pytest.mark.skipif(_ORACLE is None, reason="no bash oracle")
     def test_rc_exit_status_visible_to_body(self, tmp_path):
         (tmp_path / "rc").write_text("false\n")
         args = ["--rcfile", "rc", "-ic", "echo rc=$?"]
@@ -170,7 +161,6 @@ class TestRcOrderingCorollaries:
         assert psh.stdout == bash.stdout == "rc=1\n"
         assert psh.returncode == bash.returncode == 0
 
-    @pytest.mark.skipif(_ORACLE is None, reason="no bash oracle")
     def test_rc_lines_are_never_bang_expanded(self, tmp_path):
         # bash keeps `!!` literal in rc files even for -i shells.
         (tmp_path / "rc").write_text("echo RCA\necho rc:!!\n")

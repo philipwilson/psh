@@ -12,16 +12,14 @@ a special-builtin usage error exits a non-interactive shell under either.
 import os
 import sys
 
-import pytest
 from shell_oracle import (
     hermetic_shell_env,
     is_comparable,
     resolve_bash,
     run_shell_case,
-    try_resolve_bash,
 )
 
-_ORACLE = try_resolve_bash()
+_ORACLE = resolve_bash()
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
 
@@ -65,7 +63,6 @@ def _bash(*args, env_extra=None, cwd=None):
     return r
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 class TestPosixFlag:
     """``--posix`` enables posix mode at startup, matching bash."""
 
@@ -88,7 +85,6 @@ class TestPosixFlag:
         assert '--posix' in p.stdout
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 class TestPosixlyCorrectStartupEnv:
     """POSIXLY_CORRECT in the startup environment enables posix mode."""
 
@@ -111,7 +107,6 @@ class TestPosixlyCorrectStartupEnv:
         assert 'off' in p.stdout
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 class TestPosixScriptFile:
     """``--posix`` governs a script file, not just -c."""
 
@@ -124,7 +119,6 @@ class TestPosixScriptFile:
         assert 'on' in p.stdout
 
 
-@pytest.mark.skipif(_ORACLE is None, reason="bash not available")
 class TestSpecialBuiltinExitCrossRelease:
     """v0.673: --posix / POSIXLY_CORRECT reach the special-builtin exit policy.
 
