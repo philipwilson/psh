@@ -17,10 +17,28 @@ import sys
 
 
 def _psh_shape(script: str) -> str:
-    """Run script in psh; return combined output with digits -> 'N'."""
+    """Run script in psh; return combined output with digits -> 'N'.
+
+    An integer part collapses to a SINGLE 'N' however many digits it has;
+    fractional digits stay one-for-one, so each directive's precision is
+    still pinned exactly.
+
+    The WIDTH of an integer part is not a property of the format — it is a
+    property of the machine. %P is (user+sys)/real*100, and psh's user time
+    is accounted in 10 ms ticks: when a tick lands inside a sub-millisecond
+    ``time true``, %P reads in the thousands (measured: R=0.000 U=0.010
+    S=0.000 P=11934.31, roughly 1 run in 20 even on an idle host).
+    Normalizing per digit turned that into a FAILURE — the flake carried as
+    #8 — while what the test exists to check, that %P is emitted with two
+    decimals, was never in doubt. (Recorded separately for the integrator:
+    bash reports ~2% for the same command and never explodes this way. That
+    divergence is a production question, not a test-shape one.)
+    """
     r = subprocess.run([sys.executable, "-m", "psh", "-c", script],
                        capture_output=True, text=True, timeout=15)
-    return re.sub(r"\d", "N", r.stdout + r.stderr)
+    text = r.stdout + r.stderr
+    text = re.sub(r"\d+(?=\.)", "N", text)   # integer part -> one N
+    return re.sub(r"\d", "N", text)          # remaining digits -> N each
 
 
 def test_default_format_when_unset():
