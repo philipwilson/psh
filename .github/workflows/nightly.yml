@@ -29,6 +29,23 @@ jobs:
       - name: Show bash version
         run: bash --version
 
+      # Runner hygiene for a suite that kills processes with core-dumping
+      # signals. The runner image routes core_pattern through a PIPE
+      # (apport/systemd-coredump), and for piped dumps the kernel IGNORES
+      # RLIMIT_CORE — so the suite's own soft-limit reset (tests/conftest.py)
+      # cannot suppress a dump here, and a SIGQUIT'd psh subshell dumps a whole
+      # ~20 MB CPython image. Pointing core_pattern at a plain file restores the
+      # limit's authority, so nothing is written at all. Best-effort: the suite
+      # asks the host what to expect (tests/harness/core_dump_env.py), so it is
+      # correct either way. Disk is reported because run 30157713743 died with
+      # ~26 ENOSPC on /tmp and the logs could not say what consumed it.
+      - name: Normalise core dumping and report disk
+        run: |
+          echo "core_pattern (before): $(cat /proc/sys/kernel/core_pattern)"
+          sudo sysctl -w kernel.core_pattern=core || echo "could not set core_pattern"
+          echo "core_pattern (after):  $(cat /proc/sys/kernel/core_pattern)"
+          echo "--- disk before suite ---"; df -h / /tmp; df -i / /tmp
+
       # --compare-bash adds the golden bash-comparison phase (Phase 2) to
       # the same run, so the full suite and the golden phase share one
       # invocation; --census logs the skip/xfail breakdown nightly.
@@ -58,6 +75,13 @@ jobs:
       # ONLY — baseline-delta tracking is deferred to campaign exit.
       - name: Benchmark Tier (serial; artifact-only, no baseline deltas)
         run: python run_tests.py --benchmarks --results-file tmp/benchmarks-nightly.txt
+
+      - name: Report disk after suite
+        if: always()
+        run: |
+          echo "--- disk after suite ---"; df -h / /tmp; df -i / /tmp
+          echo "--- largest /tmp entries ---"
+          sudo du -xm /tmp 2>/dev/null | sort -rn | head -20 || true
 
       - name: Upload Benchmark Transcript
         if: always()
@@ -97,6 +121,23 @@ jobs:
 
       - name: Show bash version
         run: bash --version
+
+      # Runner hygiene for a suite that kills processes with core-dumping
+      # signals. The runner image routes core_pattern through a PIPE
+      # (apport/systemd-coredump), and for piped dumps the kernel IGNORES
+      # RLIMIT_CORE — so the suite's own soft-limit reset (tests/conftest.py)
+      # cannot suppress a dump here, and a SIGQUIT'd psh subshell dumps a whole
+      # ~20 MB CPython image. Pointing core_pattern at a plain file restores the
+      # limit's authority, so nothing is written at all. Best-effort: the suite
+      # asks the host what to expect (tests/harness/core_dump_env.py), so it is
+      # correct either way. Disk is reported because run 30157713743 died with
+      # ~26 ENOSPC on /tmp and the logs could not say what consumed it.
+      - name: Normalise core dumping and report disk
+        run: |
+          echo "core_pattern (before): $(cat /proc/sys/kernel/core_pattern)"
+          sudo sysctl -w kernel.core_pattern=core || echo "could not set core_pattern"
+          echo "core_pattern (after):  $(cat /proc/sys/kernel/core_pattern)"
+          echo "--- disk before suite ---"; df -h / /tmp; df -i / /tmp
 
       - name: Run Full Conformance Suite (POSIX + bash compatibility)
         working-directory: tests/conformance
