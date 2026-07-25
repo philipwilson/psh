@@ -235,6 +235,24 @@ def _dispatched_ids(visitor, root):
     return seen
 
 
+def _dispatch_counts(visitor, root):
+    """id -> dispatch count through *visitor*.visit during a traversal of
+    *root*. Counts, not a set: the battery asserts EXACTLY-ONCE, not mere
+    reach — a reach-only assertion stayed green over the B1 double-traversal
+    bug (2^N re-analysis under nested cases)."""
+    from collections import Counter
+    counts: Counter = Counter()
+    orig = visitor.visit
+
+    def _recording_visit(n):
+        counts[id(n)] += 1
+        return orig(n)
+
+    visitor.visit = _recording_visit  # type: ignore[method-assign]
+    _recording_visit(root)
+    return counts
+
+
 # Every (node class, edge) pair, derived from the schema — which the drift-lock
 # proves equal to reflection over the real node annotations.
 EDGES = [(cls, name, shape)
@@ -264,17 +282,28 @@ def test_edge_inventory_is_alive():
 @pytest.mark.parametrize(
     "node_cls,field_name,shape", EDGES,
     ids=[f"{c.__name__}.{n}" for c, n, _ in EDGES])
-def test_every_visitor_reaches_every_child_edge(node_cls, field_name, shape):
+def test_every_visitor_reaches_every_child_edge_exactly_once(
+        node_cls, field_name, shape):
     """THE BATTERY: sentinels planted at this edge are dispatched by every
-    production analysis visitor."""
+    production analysis visitor EXACTLY ONCE — a miss (skipped subtree) and a
+    multiple (double analysis, the B1 exponential class) both fail."""
     for visitor_cls in ANALYSIS_VISITORS:
         parent, sentinels = _plant_sentinels(node_cls, field_name, shape)
         assert sentinels, f"builder planted nothing at {node_cls.__name__}.{field_name}"
-        seen = _dispatched_ids(visitor_cls(), parent)
-        missed = [s for s in sentinels if id(s) not in seen]
-        assert not missed, (
-            f"{visitor_cls.__name__} never dispatched the sentinel child at "
-            f"{node_cls.__name__}.{field_name} ({shape.name}): {missed!r}"
+        counts = _dispatch_counts(visitor_cls(), parent)
+        bad = {counts[id(s)] for s in sentinels if counts[id(s)] != 1}
+        assert not bad, (
+            f"{visitor_cls.__name__} dispatched the sentinel child at "
+            f"{node_cls.__name__}.{field_name} ({shape.name}) with "
+            f"multiplicities {sorted(bad)} (want exactly 1)"
+        )
+        # And NO node anywhere in the built tree is dispatched twice — this
+        # is what catches a grandchild-dispatch frame bug (B1), where the
+        # doubled node is a sentinel's OWN child rather than the sentinel.
+        dupes = sorted(c for c in counts.values() if c > 1)
+        assert not dupes, (
+            f"{visitor_cls.__name__} double-dispatched {len(dupes)} node(s) "
+            f"under {node_cls.__name__}.{field_name}: multiplicities {dupes[:5]}"
         )
 
 

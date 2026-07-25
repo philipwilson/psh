@@ -34,7 +34,7 @@ deliberate skip must be declared in ``PRUNED_EDGES``.
 """
 import dataclasses
 import enum
-from typing import Dict, FrozenSet, Iterator, List, Set, Tuple
+from typing import Dict, FrozenSet, Iterator, Set, Tuple
 
 from ..ast_nodes import ASTNode, SyntaxTemplate
 from .base import ASTVisitor
@@ -225,6 +225,21 @@ class TotalTraversalVisitor(ASTVisitor[None]):
     battery (``tests/unit/visitor/test_traversal_totality_battery.py``) fails
     on any undeclared skip and audits every declared one.
 
+    INVARIANT: within one traversal, every node OBJECT is analysis-dispatched
+    exactly once, regardless of which ancestor's handler dispatched it. The
+    dispatch record is therefore a single traversal-scoped set, visible to
+    every descendant's sweep — NOT a per-parent frame. (A per-parent record
+    shipped an exponential double-visit: a handler dispatching a GRANDCHILD,
+    like a case handler visiting ``item.commands`` past the ``CaseItem``,
+    recorded it only in the grandparent's frame, and the intermediate node's
+    own sweep re-dispatched it — 2^N re-analysis under nested cases. Pinned
+    by ``tests/unit/visitor/test_traversal_multiplicity.py``.) An AST is a
+    tree (no node object under two parents — the parsers never alias), so
+    once-per-traversal and once-per-parent-edge coincide; the set clears when
+    the outermost visit returns, so a reused visitor instance cannot skip
+    nodes of a later tree whose ids happen to collide with a collected
+    earlier one.
+
     Subclasses must not override ``visit()`` — the totality guarantee lives
     there (enforced by the battery's no-override check).
     """
@@ -235,25 +250,25 @@ class TotalTraversalVisitor(ASTVisitor[None]):
 
     def __init__(self) -> None:
         super().__init__()
-        # One frame per node currently being visited: the ids of the children
-        # dispatched (by the handler or the sweep) while that node's frame is
-        # on top of the stack.
-        self._frames: List[Set[int]] = []
+        # Ids of every node dispatched during the CURRENT traversal (cleared
+        # when the outermost visit returns), plus the current dispatch depth.
+        self._visited: Set[int] = set()
+        self._depth = 0
 
     def visit(self, node: ASTNode) -> None:
-        if self._frames:
-            self._frames[-1].add(id(node))
-        self._frames.append(set())
+        self._visited.add(id(node))
+        self._depth += 1
         try:
             super().visit(node)
-            frame = self._frames[-1]
             for field_name, child in walk_ast_edges(node):
                 if (type(node).__name__, field_name) in self.PRUNED_EDGES:
                     continue
-                if id(child) not in frame:
+                if id(child) not in self._visited:
                     self.visit(child)
         finally:
-            self._frames.pop()
+            self._depth -= 1
+            if self._depth == 0:
+                self._visited.clear()
 
     @property
     def at_traversal_root(self) -> bool:
@@ -263,7 +278,7 @@ class TotalTraversalVisitor(ASTVisitor[None]):
         end-of-program checks) to the outermost node, so a nested ``Program``
         reached inside a substitution body does not re-trigger it.
         """
-        return len(self._frames) == 1
+        return self._depth == 1
 
     def generic_visit(self, node: ASTNode) -> None:
         """No per-node analysis for unhandled types; the sweep still descends
