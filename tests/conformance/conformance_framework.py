@@ -282,7 +282,18 @@ class ConformanceTestFramework:
         `exit_code` is exact; `stdout_pattern`/`stderr_pattern` are regex
         SEARCHES, so an entry can pin a whole stream (`^...$`) or just the
         part that identifies the difference. An absent key is not checked.
+
+        A side that checks NOTHING does not match. Without that rule an
+        `expected` block carrying only prose (e.g. ``{"note": "..."}``) would
+        vacuously satisfy every observation and re-open exactly the blind
+        classification F1 closed — a guard present but empty. So a side must
+        constrain at least one of exit status, stdout, or stderr. The
+        catalog-shape meta-test enforces the same requirement statically;
+        this is the RUNTIME half, so a hand-edited catalog cannot bypass it.
         """
+        checkable = {"exit_code", "stdout_pattern", "stderr_pattern"}
+        if not checkable & set(expected):
+            return False
         if "exit_code" in expected and result.exit_code != expected["exit_code"]:
             return False
         for key, observed in (("stdout_pattern", result.stdout),
@@ -308,9 +319,17 @@ class ConformanceTestFramework:
         the difference changed or a shell regressed, and both deserve a
         failure rather than a silent blessing.
 
-        An entry with no `expected` block cannot be validated, so it does not
-        classify (`test_every_documented_entry_carries_an_expected_shape`
-        keeps the catalog from acquiring one).
+        An entry cannot classify unless BOTH sides actually constrain
+        something. A missing `expected` block, a missing `psh`/`bash` side, or
+        a side that names no checkable key all return False here rather than
+        waving the observation through — see :meth:`_matches_side`. Stating it
+        precisely because an earlier version of this docstring implied the
+        catalog-shape meta-test was the whole guarantee: that test only
+        asserted an `expected` key was PRESENT, so a block containing nothing
+        but prose satisfied it while checking nothing at runtime. Both halves
+        now enforce the same rule —
+        `test_every_documented_entry_carries_an_expected_shape` statically,
+        this method at runtime.
         """
         entry = self.differences_catalog.get("documented", {}).get(command)
         if entry is None:

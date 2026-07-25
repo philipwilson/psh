@@ -111,16 +111,85 @@ def test_real_alias_divergence_still_classifies(framework):
 # Catalog integrity (F2's invariant, enforced here so it cannot rot again).
 # --------------------------------------------------------------------------
 
+#: A side must constrain at least one of these, or it checks nothing.
+_CHECKABLE_KEYS = {'exit_code', 'stdout_pattern', 'stderr_pattern'}
+
+
+def _shape_defects(documented):
+    """Every way an `expected` block can fail to constrain the observation."""
+    defects = []
+    for cmd, entry in documented.items():
+        name = entry.get('id', cmd)
+        expected = entry.get('expected')
+        if not expected:
+            defects.append(f"{name}: no 'expected' block")
+            continue
+        for side in ('psh', 'bash'):
+            spec = expected.get(side)
+            if not spec:
+                defects.append(f"{name}: no '{side}' side")
+            elif not _CHECKABLE_KEYS & set(spec):
+                defects.append(
+                    f"{name}: '{side}' side constrains nothing "
+                    f"(needs one of {sorted(_CHECKABLE_KEYS)}, has "
+                    f"{sorted(spec)})")
+    return defects
+
+
 def test_every_documented_entry_carries_an_expected_shape(framework):
-    """A catalog entry without a shape would silently fall back to blind
-    membership matching — the exact defect this closes."""
+    """Every entry must actually CONSTRAIN both sides' observations.
+
+    Presence of an `expected` key is not enough. This test originally asserted
+    only `'expected' in entry`, which a block containing nothing but prose —
+    `{"note": "..."}` — satisfied while checking nothing at runtime, so such an
+    entry re-opened the blind classification F1 closed. Both sides must exist
+    and each must pin at least an exit status or one output pattern.
+    """
     documented = framework.differences_catalog.get('documented', {})
     assert documented, "catalog is empty — the fixture is not loading it"
-    missing = [
-        entry.get('id', cmd) for cmd, entry in documented.items()
-        if 'expected' not in entry
-    ]
-    assert not missing, f"catalog entries with no expected shape: {missing}"
+    defects = _shape_defects(documented)
+    assert not defects, "catalog entries that do not constrain behavior: " + \
+        "; ".join(defects)
+
+
+def test_a_vacuous_expected_block_is_refused(framework):
+    """OFFENDER REPLAY for the anti-bypass hole (round-2 blocker A).
+
+    Injects an entry whose `expected` block names no checkable key. Before the
+    fix, `_matches_side({}, ...)` returned True (nothing to check), so this
+    entry classified TOTAL NONSENSE on both sides as DOCUMENTED_DIFFERENCE
+    while the meta-test stayed green — a guard present but empty.
+
+    Both halves must now refuse it: the meta-test statically, and the
+    classifier at runtime, so a hand-edited catalog cannot bypass either.
+    """
+    documented = framework.differences_catalog['documented']
+    documented['zzz vacuous offender'] = {
+        'id': 'VACUOUS_OFFENDER',
+        'description': 'synthetic: expected block that checks nothing',
+        'expected': {'note': 'prose only — constrains neither side'},
+    }
+
+    # (a) static half: the meta-test's own predicate flags it.
+    defects = _shape_defects(documented)
+    assert any('VACUOUS_OFFENDER' in d for d in defects), (
+        "the catalog-shape check accepted an entry that constrains nothing")
+
+    # (b) runtime half: it must not classify, however absurd the observation.
+    psh = _result('zzz vacuous offender', stdout='total nonsense',
+                  exit_code=99, shell='psh')
+    bash = _result('zzz vacuous offender', stdout='other nonsense',
+                   exit_code=7, shell='bash')
+    assert not framework._is_documented_difference(
+        'zzz vacuous offender', psh, bash), (
+        "a vacuous expected block classified nonsense as a documented "
+        "difference — blind classification is back")
+
+    # A side present but empty is the same hole by another route.
+    documented['zzz vacuous offender']['expected'] = {'psh': {}, 'bash': {}}
+    assert not framework._is_documented_difference(
+        'zzz vacuous offender', psh, bash)
+    assert any('VACUOUS_OFFENDER' in d for d in _shape_defects(documented))
 
 
 def test_no_documented_entry_is_dead_inventory(framework):

@@ -27,7 +27,11 @@ def _psh_shape(script: str) -> str:
     property of the machine. %P is (user+sys)/real*100, and psh's user time
     is accounted in 10 ms ticks: when a tick lands inside a sub-millisecond
     ``time true``, %P reads in the thousands (measured: R=0.000 U=0.010
-    S=0.000 P=11934.31, roughly 1 run in 20 even on an idle host).
+    S=0.000 P=11934.31). RARE and load-sensitive: my sampling saw it a
+    couple of times in 30 idle runs, an independent 120-run replay saw
+    0/120 idle and 1/120 under load. The RATE is not pinned here — the
+    mechanism is what matters, and one occurrence is enough to fail a
+    digit-width assertion.
     Normalizing per digit turned that into a FAILURE — the flake carried as
     #8 — while what the test exists to check, that %P is emitted with two
     decimals, was never in doubt. (Recorded separately for the integrator:

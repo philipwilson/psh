@@ -347,7 +347,18 @@ def wait_for_file(path, timeout=5):
     return False
 
 
-def test_subprocess_runs_this_worktrees_psh(tmp_path):
+def _resolve_psh_in_child(tmp_path, env):
+    """Resolved ``psh.__file__`` for a child run from ``tmp_path`` under ``env``."""
+    result = subprocess.run(
+        [sys.executable, '-c', 'import psh; print(psh.__file__)'],
+        capture_output=True, text=True, cwd=tmp_path, env=env)
+    assert result.returncode == 0, result.stderr
+    resolved = result.stdout.strip()
+    assert resolved, f"probe produced no path (stderr: {result.stderr!r})"
+    return os.path.realpath(resolved)
+
+
+def test_subprocess_runs_this_worktrees_psh(tmp_path, monkeypatch):
     """The temp-cwd cases must exercise THIS tree's psh, not an installed one.
 
     Asserts the child's resolved ``psh.__file__`` lies under this checkout.
@@ -360,15 +371,30 @@ def test_subprocess_runs_this_worktrees_psh(tmp_path):
     worktrees share a prefix, so a plain prefix test would accept
     ``/Users/.../psh-r1-3`` as living under ``/Users/.../psh`` — passing for
     exactly the tree confusion this test exists to catch.
+
+    The AMBIENT ``PYTHONPATH`` is removed first, and that is the whole point.
+    The repo-root ``conftest.pytest_configure`` pins the repo root into
+    ``os.environ['PYTHONPATH']`` for the entire session, so a child inherits
+    the right tree whether or not ``_worktree_env`` contributes anything —
+    this test passed for a reason unrelated to the helper it claims to pin.
+    Stripping the ambient value makes the helper's OWN contribution the only
+    thing under test, and the negative leg proves the probe can fail at all.
     """
-    result = subprocess.run(
-        [sys.executable, '-c', 'import psh; print(psh.__file__)'],
-        capture_output=True, text=True, cwd=tmp_path, env=_worktree_env())
-    assert result.returncode == 0, result.stderr
-    resolved = result.stdout.strip()
-    assert resolved, f"probe produced no path (stderr: {result.stderr!r})"
     root = os.path.realpath(str(PSH_ROOT))
-    assert os.path.commonpath([os.path.realpath(resolved), root]) == root, (
+    monkeypatch.delenv('PYTHONPATH', raising=False)
+
+    # NEGATIVE LEG: no ambient PYTHONPATH and no helper -> some OTHER tree
+    # (an editable install's target). Without this the positive leg could be
+    # passing on an import that would have succeeded anyway.
+    bare = _resolve_psh_in_child(tmp_path, {**os.environ})
+    assert os.path.commonpath([bare, root]) != root, (
+        "probe is not discriminating: with no PYTHONPATH the child STILL "
+        f"resolved psh inside the tree under test ({bare!r}); this test "
+        "cannot detect the tree confusion it exists to catch")
+
+    # POSITIVE LEG: the helper's own value puts the child back on this tree.
+    resolved = _resolve_psh_in_child(tmp_path, _worktree_env())
+    assert os.path.commonpath([resolved, root]) == root, (
         f"child imported psh from {resolved!r}, outside the tree under test "
         f"({root!r})")
 

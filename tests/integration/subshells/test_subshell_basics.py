@@ -5,6 +5,7 @@ Tests for subshell group (...) syntax support including variable isolation,
 command execution, redirections, and proper process management.
 """
 
+import io
 import os
 import subprocess
 import sys
@@ -229,7 +230,15 @@ def test_background_subshell_redirect_inprocess_characterization(
     # (fileno() reads 6); under `-s` / --all-nocapture it is (fileno() reads
     # 1) and the redirect behaves correctly. Both regimes are asserted, so
     # this test characterizes rather than skipping itself in either one.
-    stdout_is_fd1 = shell.stdout.fileno() == 1
+    try:
+        stdout_is_fd1 = shell.stdout.fileno() == 1
+    except io.UnsupportedOperation:
+        # `--capture=sys` swaps sys.stdout for an object with NO underlying
+        # fd, so the precondition is genuinely UNMEASURABLE rather than false.
+        # That is an environment gate — the one legitimate reason to skip —
+        # not a supported feature skipping itself.
+        pytest.skip("--capture=sys: stdout has no fileno(), so the "
+                    "bound-to-fd-1 precondition cannot be measured")
 
     assert shell.run_command('(echo A; echo B) > anomaly.txt &') == 0
     assert shell.run_command('wait') == 0

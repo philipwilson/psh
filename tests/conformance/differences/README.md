@@ -98,10 +98,18 @@ Areas where PSH and bash both support a feature but with different behavior.
   internal hash order (a PSH-wide associative property, not an absent feature).
 
 #### Directory Stack (pushd/popd/dirs)
-- Implemented, and **behaviorally identical to bash** — asserted by
-  `test_bash_compatibility.py::TestDocumentedDifferences::test_directory_stack` and claimed as "Full
-  support" in user guide ch17. Verified byte-for-byte from a shared working
-  directory for `pushd`, `popd`, and `pushd /tmp`.
+- Implemented, and **stack behavior is identical to bash** — asserted by
+  `test_bash_compatibility.py::TestDocumentedDifferences::test_directory_stack`
+  and claimed as "Full support" in user guide ch17. Verified per channel from a
+  SHARED working directory: for the successful operations (`pushd DIR`, `popd`,
+  `dirs`) stdout, stderr and exit status are all byte-identical.
+- One qualification, stated precisely because an earlier revision of this
+  section over-claimed "byte-for-byte" across the board: the BARE-ERROR rows
+  (`pushd` with nothing on the stack, `popd` on an empty stack) match on stdout
+  and exit status (both 1) but differ on STDERR by the shell-name prefix —
+  `bash: line 1: pushd: no other directory` vs `psh: line 1: pushd: no other
+  directory`. That prefix belongs to the cross-cutting error-wording carry
+  family, not to the directory-stack feature.
 - The catalog formerly held three entries asserting a difference here
   (`PUSHD_BEHAVIOR`, `POPD_BEHAVIOR`, `PUSHD_CWD_DIFFERENCE`). All three were
   referenced by ZERO tests and were CONTRADICTED by the passing conformance

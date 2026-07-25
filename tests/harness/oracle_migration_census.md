@@ -61,7 +61,8 @@ lists the two deliberate offender FIXTURES under `oracle_spawn_fixtures/`, which
 exist to prove each guard face fires.)
 
 **PTY-INFRA class** — `tests/system/interactive/test_multiline_immediate_error_i3.py`:
-oracle-bearing (`from shell_oracle import try_resolve_bash`), it drives psh AND
+oracle-bearing (`from shell_oracle import resolve_bash` — see the truth-up
+below; it was `try_resolve_bash` when this census was taken), it drives psh AND
 the resolved bash oracle through `pexpect.spawn` over a pseudo-terminal
 (`TERM=xterm`) and compares the LINE INDEX at which each reports a mid-construct
 syntax error. It is a genuine bash differential but is **NOT migrated**: PTY
@@ -69,8 +70,18 @@ interactivity IS its subject, and the run-to-completion runner has no terminal.
 It is CLASSIFIED and REGISTERED in the guard's `PTY_REGISTRY` (owner + reason +
 removal condition, frozen membership pin, and its own hygiene test keyed on the
 PTY detector rather than the subprocess one) — registration is what keeps it
-visible. Its `try_resolve_bash()` + in-test `pytest.skip` silent-skip is left
-as-is and carried to slot 1.3 with the other pre-existing silent-skip modules.
+visible.
+
+**TRUTH-UP (slot 1.3, v0.753.0):** the sentence that stood here said its
+`try_resolve_bash()` + in-test `pytest.skip` silent-skip was "left as-is and
+carried to slot 1.3 with the other pre-existing silent-skip modules". That
+carry has since been DISCHARGED. The module now resolves the oracle at MODULE
+SCOPE (`_ORACLE = resolve_bash()`), so a host without bash fails its import
+loudly instead of skipping the parity comparison in silence — replayed with
+the resolver ladder stubbed: 9 modules raise `BashOracleUnavailable` at
+collection where the same run previously reported exit 0 with 191 tests
+skipped. Its PTY-INFRA classification and `PTY_REGISTRY` membership are
+unchanged; only the oracle-absence behavior moved.
 
 The interactive-family rows that ARE migrated (`bash -i`,
 `test_history_p_interactive`) never needed a PTY: they drive the shell with a
