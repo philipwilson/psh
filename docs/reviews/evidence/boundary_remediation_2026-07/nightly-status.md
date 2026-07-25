@@ -32,8 +32,19 @@
       TestCompositeQuoting.test_tilde_expands_in_key,
       TestCwdReadConvergence.test_pushd_swap_after_plain_cd_uses_real_cwd,
       test_golden[redirect_eval_external_stderr_suppressed], PTY
-      tab-completion (command/variable name), and the two git-range
+      tab-completion (command/variable name)†, and the two git-range
       self-check rows skip loudly (expected on CI checkouts).
+
+      † **CORRECTION (2026-07-25, slot 1.4):** the PTY tab-completion rows
+      were NOT failures in this census — run 30065826566's own log records
+      both as XFAIL (w0-clean.txt:3133-3134), under `strict=True` markers
+      dating to `8dde4fdb` (v0.313.0, 2026-06-12, ~6 weeks before Wave 0).
+      They are active pins on the documented path-only CompletionEngine
+      limitation, unchanged from Wave 0 through the 1.4 green runs; no
+      campaign slot touched them. Provenance in `1.4-rescue/slot-ledger.md`
+      Part 10. (Lesson: the census grep pattern matched the module path,
+      not the test names — the same instrument error 1.4 later made and
+      corrected.)
   - Job "Full Conformance Suite": **54 failed / 2,600 passed / 1 skipped /
     8 xfailed**. Visible failure census (log tail; complete list requires the
     run artifact): `test_syntax_template_timing_conformance.py` — 15+

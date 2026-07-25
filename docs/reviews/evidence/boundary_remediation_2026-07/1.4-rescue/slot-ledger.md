@@ -1017,6 +1017,46 @@ Present in all four logs (`clean-30143337081.txt`, `baseline-clean.txt`, `v11-cl
 `test_pty_smoke.py:834` and `:842` — **strict**, so an unexpected PASS would FAIL the suite. That
 matters: this is an ACTIVE pin on a known gap, not a quarantine, which is why no action is owed.
 
+### PROVENANCE of the xfail marking (integrator item 2)
+
+`git log -S "psh tab completion is path-only" -- tests/system/interactive/test_pty_smoke.py`
+returns exactly one commit:
+
+```
+8dde4fdb  chore: textbook Tier A2 — test/CI honesty (v0.313.0)   2026-06-12
+```
+
+- ancestor of Wave 0's base `0215279c`? **YES**
+- ancestor of my base `21d6c5b4`? **YES**
+
+So the marker **predates Wave 0's census by roughly six weeks** and by hundreds of releases
+(v0.313.0 against a campaign working at v0.751+). **No Wave 1 slot converted anything**: these
+were never hard failures that got quarantined, they have been documented-limitation xfails since
+long before this campaign existed.
+
+Because the marker is `strict=True`, an unexpected PASS would be reported as a FAILURE — so
+"listed in the Wave 0 census" could in principle have meant XPASS rather than plain failure. It
+did not. Checked directly in Wave 0's own run:
+
+```
+run 30065826566 (0215279c), w0-clean.txt:3133-3134:
+XFAIL ...::test_tab_completes_command_name  - psh tab completion is path-only (...)
+XFAIL ...::test_tab_completes_variable_name - psh tab completion is path-only (...)
+```
+
+**XFAIL in the Wave 0 run itself.** Not failures, not XPASS.
+
+**Consequence for a committed governing doc, flagged for the integrator (NOT edited by me):**
+`docs/reviews/evidence/boundary_remediation_2026-07/nightly-status.md` lists "PTY tab-completion
+(command/variable name)" among the failing families of run 30065826566. That listing is
+**inaccurate** — that same run's log records both rows as XFAIL. The doc needs a footnote saying
+so. I have not touched it: it is the integrator's Wave 0 record, and this fix round is ledger-only
+by ruling. Recorded here so the correction is not lost.
+
+**Classification, final:** these rows are NOT class (i) and NOT any failure class. They are
+pre-existing `strict=True` XFAILs for a documented psh limitation (path-only `CompletionEngine`),
+present and unchanged in every run from Wave 0 through both green runs, requiring no slot action.
+
 ### What I originally wrote, and why it was wrong
 
 I claimed: *"class (i), cleared by Wave 1, absent from every run I censused — the only
@@ -1045,6 +1085,10 @@ Rules taken from it:
 3. **Never label a claim "checked" without stating what the check WAS.** Had I written "grep for
    `tab_completion` finds only coverage lines", the wrong pattern would have been visible on the
    face of the claim and caught in review instead of by the verifier.
+4. **A re-check that reuses the broken instrument is not a re-check.** I asserted this claim as
+   "checked not assumed" TWICE, and both times ran the same wrong pattern. The second pass felt
+   like verification and added nothing but confidence. When re-checking a challenged claim, change
+   the INSTRUMENT, not just the intent.
 
 Caught by the integrator's verifier, not by me. Recorded in full because the near-miss is more
 instructive than the fact.
