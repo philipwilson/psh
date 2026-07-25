@@ -236,10 +236,14 @@ class TotalTraversalVisitor(ASTVisitor[None]):
     own sweep re-dispatched it — 2^N re-analysis under nested cases. Pinned
     by ``tests/unit/visitor/test_traversal_multiplicity.py``.) An AST is a
     tree (no node object under two parents — the parsers never alias), so
-    once-per-traversal and once-per-parent-edge coincide; the set clears when
-    the outermost visit returns, so a reused visitor instance cannot skip
-    nodes of a later tree whose ids happen to collide with a collected
-    earlier one.
+    re-entry never occurs on a parsed tree. If a MANUALLY-built AST does
+    alias one node object under two edges, re-entry is a NO-OP at the
+    ``visit()`` seam itself: the first dispatch analyzes the node, every
+    later dispatch — whether from the sweep or from a handler's own
+    ``self.visit`` — returns immediately. Analyzed exactly once, never twice
+    and never zero times, unconditionally. The set clears when the outermost
+    visit returns, so a reused visitor instance can traverse a later tree
+    whose node ids happen to collide with a collected earlier one.
 
     Subclasses must not override ``visit()`` — the totality guarantee lives
     there (enforced by the battery's no-override check).
@@ -257,6 +261,8 @@ class TotalTraversalVisitor(ASTVisitor[None]):
         self._depth = 0
 
     def visit(self, node: ASTNode) -> None:
+        if id(node) in self._visited:
+            return  # re-entry (aliased manual AST) is a no-op — exactly once
         self._visited.add(id(node))
         self._depth += 1
         try:

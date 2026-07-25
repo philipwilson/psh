@@ -121,3 +121,32 @@ def test_linter_dedup_stays_benign():
     dangerous = [i for i in lv.issues
                  if i.message == "Use of potentially dangerous command 'eval'"]
     assert len(dangerous) == 1, [i.message for i in lv.issues]
+
+
+def test_manually_aliased_node_is_analyzed_once():
+    """Legitimate re-entry, pinned: the parsers never alias (an AST is a
+    tree), but a MANUALLY-built AST can place one node object under two
+    edges. The documented behavior (TotalTraversalVisitor docstring): re-entry
+    is a NO-OP at the visit() seam itself, so the node is ANALYZED exactly
+    once whether the second edge arrives via the sweep or via a handler's own
+    self.visit (the security Pipeline handler dispatches its members
+    directly, which is exactly the second shape). Asserted at the analysis
+    level — one rm object yields one issue, one echo object counts once —
+    because the dispatch-count instrument tallies visit() CALLS, and the
+    handler's second call legitimately happens before the no-op returns."""
+    from psh.ast_nodes import Pipeline, SimpleCommand, StatementList, Word
+
+    def aliased_tree(cmd_words):
+        shared = SimpleCommand(words=[Word.from_string(w) for w in cmd_words])
+        return StatementList(statements=[
+            Pipeline(commands=[shared]),
+            Pipeline(commands=[shared]),  # the SAME object, second edge
+        ])
+
+    v = SecurityVisitor()
+    v.visit(aliased_tree(['rm', 'x']))
+    assert len(v.issues) == 1, [str(i) for i in v.issues]
+
+    m = MetricsVisitor()
+    m.visit(aliased_tree(['echo', 'x']))
+    assert m.metrics.total_commands == 1

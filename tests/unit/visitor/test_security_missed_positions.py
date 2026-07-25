@@ -120,6 +120,15 @@ def test_escaped_dollar_test_operand_is_not_flagged():
     assert 'UNANALYZED_REGION' not in types
 
 
+def test_single_quoted_test_operand_is_not_flagged():
+    """NEGATIVE CONTROL (false-positive budget): a literal `$(` inside a
+    SINGLE-QUOTED operand is inert data — `[[ '$(cmd)' == x ]]` runs nothing
+    (bash 5.2.26 and psh both, marker-probed 2026-07-26) — and must produce
+    no finding: a security mode that cries wolf gets ignored."""
+    types = _issue_types("[[ '$(rm -rf /tmp/psh-never-created)' == x ]]")
+    assert types == [], types
+
+
 def test_arithmetic_only_quoted_test_operand_is_not_flagged():
     """NEGATIVE CONTROL: a pure arithmetic expansion in a quoted operand
     embeds no command substitution — not an opaque executable region."""
