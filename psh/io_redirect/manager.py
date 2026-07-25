@@ -873,14 +873,19 @@ class IOManager:
         terminating: each per-frame restore pops its own frame off the live
         stack.
 
-        A frame whose restore is already past its stream work is SKIPPED
+        A frame whose restore is already past its STREAM work is SKIPPED
         (``frame.streams_restored``). Since a frame now leaves the stack only
         when its restore FINISHES, a signal arriving mid-teardown finds the
         frame still listed — and re-running that restore would repeat the
         fd-0 step, which is not idempotent (it clears ``snapshot.stdin_fd``,
-        so a second pass takes the else-branch and closes fd 0). Skipping is
-        safe precisely because the marker means the shell's streams are
-        already correct, which is all the signal path needs.
+        so a second pass takes the else-branch and closes fd 0).
+
+        The marker's guarantee is STREAM-LEVEL, and saying so precisely
+        matters: it is set as soon as ``sys.stdout``/``stderr``/``stdin`` are
+        restored, which happens BEFORE the frame's fd-level work. So a skipped
+        frame means "the shell's streams are correct" — all the fatal-signal
+        path needs — NOT "this frame is fully torn down". The remaining fd
+        restoration still belongs to the original caller.
         """
         restored = 0
         for frame in reversed(list(self._builtin_frame_stack)):
@@ -903,76 +908,77 @@ class IOManager:
         owns its own state) but the stack bookkeeping below keeps the
         invariant observable.
         """
-        # Restore the original stream objects first, then close exactly the
-        # files setup opened. Never close whatever happens to be in
-        # sys.stdout/sys.stderr: after `cmd 2>&1`, sys.stderr IS the shell's
-        # real stdout, and closing it used to kill all builtin output for the
-        # rest of the session.
-        snapshot = frame.snapshot
-        if snapshot.stderr is not None:
-            sys.stderr = snapshot.stderr
-        if snapshot.stdout is not None:
-            sys.stdout = snapshot.stdout
-        if snapshot.stdin is not None:
-            sys.stdin = snapshot.stdin
-        # Past this point the shell's streams are correct again, so the
-        # fatal-signal drain must NOT re-enter this frame: the fd-0 step below
-        # is not idempotent (it clears snapshot.stdin_fd, and a second pass
-        # would take the else-branch and close fd 0). Slot 1.3b.
-        frame.streams_restored = True
+        # The frame leaves the stack LAST (slot 1.3b), and does so in a
+        # `finally` so BOTH paths are covered:
+        #   * success  -> popped after its restore completes, which is what
+        #     keeps it visible to the fatal-signal drain for the whole window;
+        #   * exception -> still popped, matching the pre-1.3b behavior where
+        #     the pop happened up front. Without this, a restore that raised
+        #     part-way would strand the frame on the stack forever, and every
+        #     later drain would retry a half-restored frame.
+        try:
+            # Restore the original stream objects first, then close exactly the
+            # files setup opened. Never close whatever happens to be in
+            # sys.stdout/sys.stderr: after `cmd 2>&1`, sys.stderr IS the shell's
+            # real stdout, and closing it used to kill all builtin output for the
+            # rest of the session.
+            snapshot = frame.snapshot
+            if snapshot.stderr is not None:
+                sys.stderr = snapshot.stderr
+            if snapshot.stdout is not None:
+                sys.stdout = snapshot.stdout
+            if snapshot.stdin is not None:
+                sys.stdin = snapshot.stdin
+            # Past this point the shell's streams are correct again, so the
+            # fatal-signal drain must NOT re-enter this frame: the fd-0 step below
+            # is not idempotent (it clears snapshot.stdin_fd, and a second pass
+            # would take the else-branch and close fd 0). Slot 1.3b.
+            frame.streams_restored = True
 
-        # Close this frame's opened streams BEFORE re-installing the saved
-        # fds (each stream owns its own fd — an opened file or a CLOEXEC dup —
-        # so its close flushes through that fd regardless of the std fds).
-        # Order is load-bearing (R1 bounce blocker): when a source-ordered
-        # close freed an fd NUMBER that a later stream dup then reused (`read
-        # x 3>&- <f` — the stdin dup lands on the freed fd 3), restoring
-        # saved fds first would dup2 the original BACK onto that number and
-        # the stream close here would then destroy the just-restored
-        # descriptor. Closing our own dups first makes the collision inert.
-        for f in frame.opened_streams:
-            try:
-                f.close()
-            except OSError:
-                pass
-        frame.opened_streams = []
-
-        # Now restore the file descriptors this frame saved (fd >= 3 etc.)
-        if frame.saved_fds:
-            self.file_redirector.restore_redirections(frame.saved_fds)
-            frame.saved_fds = []
-
-        # Restore fd 0. note_stdin backed it up to a HIGH slot, or recorded
-        # None when fd 0 was already closed (`exec 0<&-`). Mirror _save_fd_high
-        # / restore_redirections: dup2 a real backup back, else close fd 0 so it
-        # returns to the closed state the redirect found (`snapshot.stdin is not
-        # None` marks that stdin was redirected in this frame at all).
-        if snapshot.stdin is not None:
-            if snapshot.stdin_fd is not None:
-                os.dup2(snapshot.stdin_fd, 0)
-                os.close(snapshot.stdin_fd)
-                snapshot.stdin_fd = None
-            else:
+            # Close this frame's opened streams BEFORE re-installing the saved
+            # fds (each stream owns its own fd — an opened file or a CLOEXEC dup —
+            # so its close flushes through that fd regardless of the std fds).
+            # Order is load-bearing (R1 bounce blocker): when a source-ordered
+            # close freed an fd NUMBER that a later stream dup then reused (`read
+            # x 3>&- <f` — the stdin dup lands on the freed fd 3), restoring
+            # saved fds first would dup2 the original BACK onto that number and
+            # the stream close here would then destroy the just-restored
+            # descriptor. Closing our own dups first makes the collision inert.
+            for f in frame.opened_streams:
                 try:
-                    os.close(0)
+                    f.close()
                 except OSError:
                     pass
+            frame.opened_streams = []
 
-        # The frame leaves the stack LAST, not first (slot 1.3b). While a
-        # restore is in flight the frame is still ON the stack, so a fatal
-        # signal arriving mid-teardown can always see that a redirect is in
-        # play; popping first left a sliver in which the stack said "nothing
-        # redirected" while sys.stdout was still the command's file, and the
-        # EXIT trap fired in that sliver wrote into it. Nothing between the
-        # stream restore and here was reordered — in particular the
-        # load-bearing close-opened-streams-BEFORE-restore-saved-fds sequence
-        # above is untouched.
-        if self._builtin_frame_stack and self._builtin_frame_stack[-1] is frame:
-            self._builtin_frame_stack.pop()
-        elif frame in self._builtin_frame_stack:
-            # Caller bug (see docstring); still restore this frame's own
-            # state rather than leak fds/streams.
-            self._builtin_frame_stack.remove(frame)
+            # Now restore the file descriptors this frame saved (fd >= 3 etc.)
+            if frame.saved_fds:
+                self.file_redirector.restore_redirections(frame.saved_fds)
+                frame.saved_fds = []
+
+            # Restore fd 0. note_stdin backed it up to a HIGH slot, or recorded
+            # None when fd 0 was already closed (`exec 0<&-`). Mirror _save_fd_high
+            # / restore_redirections: dup2 a real backup back, else close fd 0 so it
+            # returns to the closed state the redirect found (`snapshot.stdin is not
+            # None` marks that stdin was redirected in this frame at all).
+            if snapshot.stdin is not None:
+                if snapshot.stdin_fd is not None:
+                    os.dup2(snapshot.stdin_fd, 0)
+                    os.close(snapshot.stdin_fd)
+                    snapshot.stdin_fd = None
+                else:
+                    try:
+                        os.close(0)
+                    except OSError:
+                        pass
+        finally:
+            if (self._builtin_frame_stack
+                    and self._builtin_frame_stack[-1] is frame):
+                self._builtin_frame_stack.pop()
+            elif frame in self._builtin_frame_stack:
+                # Caller bug (see docstring); still restore this frame's own
+                # state rather than leak fds/streams.
+                self._builtin_frame_stack.remove(frame)
 
         # Process substitution resources are NOT cleaned up here: they are
         # owned by the enclosing process_sub_scope() (see CommandExecutor),

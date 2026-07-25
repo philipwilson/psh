@@ -448,39 +448,6 @@ class TestExitTrapOnFatalSignal:
         assert (p[0], p[2]) == (b[0], b[2])
         assert p[2] == -signal.SIGTERM
 
-    def test_exit_trap_output_is_not_misdirected_into_a_live_redirect(
-            self, tmp_path):
-        """The EXIT trap's output belongs to the SHELL's stdout (slot 1.3b).
-
-        The readiness sentinel is itself a per-command redirect, so the signal
-        lands while that redirect is live — exactly the window where psh used
-        to run the EXIT trap with the command's binding still installed,
-        sending ``cleanup`` into the sentinel FILE and leaving stdout empty
-        (~1 run in 120 at v0.753.0; bash never).
-
-        Differential and both-faced: psh must match bash on stdout AND wait
-        status, and the sentinel file must not have collected the trap output.
-
-        Lives here rather than under tests/conformance/ because the comparison
-        needs a signal delivered to a RUNNING shell, which the
-        run-to-completion oracle runner cannot do — the same reason this
-        module is on the anti-spawn allowlist.
-        """
-        script = 'trap "echo cleanup" EXIT\nsleep 0.5\n'
-        p = _psh_script_signal(tmp_path, script, signal.SIGTERM)
-        b = _bash_script_signal(tmp_path, script, signal.SIGTERM)
-
-        assert (p[0], p[2]) == (b[0], b[2])
-        assert p[2] == -signal.SIGTERM
-        assert p[0] == "cleanup\n"
-
-        for name in ("psh.ready", "bash.ready"):
-            sentinel = tmp_path / name
-            if sentinel.exists():
-                assert "cleanup" not in sentinel.read_text(), (
-                    f"{name}: EXIT-trap output was misdirected into the "
-                    "interrupted command's redirect target")
-
     def test_exit0_in_exit_trap_command_mode_dies_by_signal(self, tmp_path):
         # -c mode shares the same signal path; the SystemExit must not escape.
         ready = tmp_path / "cmode0.ready"

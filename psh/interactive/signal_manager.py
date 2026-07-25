@@ -329,23 +329,36 @@ class SignalManager(InteractiveComponent):
         command — no reimplementation, and no change to that teardown's
         load-bearing ordering.
 
-        Only frames still ON the manager's stack are restored, which is also
-        what makes a mid-teardown signal safe: a frame being torn down is
-        popped from the stack BEFORE any of its stream/fd work, so it can
-        never be restored twice. That matters — per-frame restore is not
-        idempotent (its fd-0 branch clears ``snapshot.stdin_fd`` and a second
-        call would take the else-branch and close fd 0).
+        A frame stays ON the manager's stack until its restore FINISHES, so a
+        signal arriving mid-teardown still finds it — that visibility is
+        deliberate, and it is what closes the teardown window. The safety
+        mechanism is the frame's ``streams_restored`` marker, which the drain
+        skips on: re-running a restore that is already past its stream work
+        would repeat the fd-0 step, and that step is NOT idempotent (it clears
+        ``snapshot.stdin_fd``, so a second pass takes the else-branch and
+        closes fd 0).
 
-        Best-effort by construction: nothing here may rob the parent of the
-        true signal-death wait status.
+        The marker covers the STREAM bindings specifically. It is set as soon
+        as ``sys.stdout``/``stderr``/``stdin`` are back, which is BEFORE the
+        frame's fd-level work, so the drain's skip is a stream-level guarantee:
+        after the marker the shell's streams are correct — which is all this
+        path needs — while the frame's remaining fd restoration is still the
+        original caller's to finish.
+
+        Failure handling follows the expected-error taxonomy
+        (``psh/core/CLAUDE.md``), not a blanket swallow — the same standard
+        applied to the flush below.
         """
         io_manager = getattr(self.shell, 'io_manager', None)
         if io_manager is None:
             return
         try:
             io_manager.restore_active_builtin_redirections()
-        except Exception:
+        except OSError:
+            # Expected world-state at death (a dead fd); bash is silent too.
             pass
+        except BaseException as exc:  # noqa: BLE001 - taxonomy'd below
+            self._note_internal_defect_at_death('redirect restore', exc)
 
     def _flush_before_death(self) -> None:
         """Flush the shell's streams before ``os.kill`` bypasses atexit.
@@ -360,20 +373,41 @@ class SignalManager(InteractiveComponent):
           closed or non-stream binding. That is an INTERNAL DEFECT, and
           swallowing it is what concealed the 1.3b race for as long as it hid:
           the flush failed on a dead binding every time and said nothing.
-          Under ``strict-errors`` (the suite runs it) these RAISE, so the gate
-          can see the class. Without it they stay swallowed, because a
-          diagnostic on the death path must not change what a signalled shell
-          prints in production.
+
+        The internal-defect case is made LOUD without changing what the shell
+        DIES as: under ``strict-errors`` it writes a diagnostic straight to
+        fd 2 and execution CONTINUES to the re-raise, so the wait status is
+        still death by the same signal. It must not raise — an exception here
+        would escape before ``SIG_DFL``/``os.kill`` and convert a signal death
+        into an ordinary exit, silently changing the very semantics this path
+        exists to preserve.
         """
-        strict = bool(self.state.options.get('strict-errors'))
         for stream in (self.state.stdout, self.state.stderr):
             try:
                 stream.flush()
             except OSError:
                 pass
-            except (ValueError, AttributeError):
-                if strict:
-                    raise
+            except BaseException as exc:  # noqa: BLE001 - taxonomy'd below
+                self._note_internal_defect_at_death('stream flush', exc)
+
+    def _note_internal_defect_at_death(self, what: str, exc: BaseException) -> None:
+        """Report an internal defect on the death path WITHOUT altering it.
+
+        Writes to fd 2 with ``os.write`` (no Python-level stream, which may be
+        exactly what just failed) and only under ``strict-errors`` — the suite
+        runs it, so the gate can see this class, while a production shell dying
+        from a signal prints what bash prints. Never raises and never returns
+        an error: the caller must proceed to ``SIG_DFL`` + ``os.kill`` so the
+        wait status stays death by the same signal.
+        """
+        try:
+            if not self.state.options.get('strict-errors'):
+                return
+            os.write(2, ("psh: internal defect during %s at signal death: "
+                         "%s: %s\n" % (what, type(exc).__name__, exc)
+                         ).encode('utf-8', 'replace'))
+        except BaseException:
+            pass
 
     def _handle_sigchld(self, signum, frame):
         """Minimal signal handler - just notify main loop.

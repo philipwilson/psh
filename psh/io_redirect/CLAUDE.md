@@ -282,7 +282,8 @@ Python-stream writes (appraisal #15 C1).
    - Transactional: a failure part-way through rolls back THIS frame only
 2. Execute builtin
 3. restore_builtin_redirections(frame)
-   - Restore the snapshot's original stream objects
+   - Restore the snapshot's original stream objects, then set
+     frame.streams_restored
    - Close exactly the files setup opened (never whatever happens to be
      in sys.stdout — after `cmd 2>&1` that IS the shell's real stdout).
      Streams close BEFORE the fd-level restore — each stream owns its own
@@ -291,7 +292,36 @@ Python-stream writes (appraisal #15 C1).
      destroy the just-restored descriptor (R1 bounce blocker)
    - Restore that frame's fd-level saves
    - dup2 the saved fd 0 back
+   - The frame leaves the stack LAST, in a `finally`
 ```
+
+**Three invariants the fatal-signal path depends on** (slot 1.3b — a signal
+delivered mid-command otherwise runs the EXIT trap with the interrupted
+command's bindings still installed, sending the trap's output into that
+command's file):
+
+- **The frame leaves the stack only AFTER its restore, and always.** The pop
+  is the LAST thing `restore_builtin_redirections` does, inside a `finally`.
+  Popping first left a sliver in which the stack said "nothing is redirected"
+  while `sys.stdout` was still the command's file; the `finally` keeps the
+  pre-1.3b guarantee that a restore which RAISES still removes the frame
+  rather than stranding it.
+- **`frame.streams_restored` is a STREAM-level marker.** It is set as soon as
+  the stream objects are back — BEFORE the frame's fd-level work — so it means
+  "the shell's streams are correct", NOT "this frame is fully torn down". The
+  remaining fd restoration still belongs to the original caller.
+- **`restore_active_builtin_redirections` is for the death path only.** It
+  drains frames still on the stack, innermost-first, skipping any already
+  marked `streams_restored` — re-running a restore past its stream work would
+  repeat the fd-0 step, which is NOT idempotent (it clears
+  `snapshot.stdin_fd`, so a second pass takes the else-branch and closes
+  fd 0). Normal execution never needs it: those paths are paired
+  setup/restore in `try/finally`.
+
+Enforced by `tests/unit/interactive/test_exit_trap_redirect_misdirection_r13b.py`
+(`manager.py#restore_builtin_redirections`,
+`manager.py#restore_active_builtin_redirections`,
+`signal_manager.py#SignalManager._terminate_from_signal`).
 
 **Frames nest.** `eval "echo one >&3" 3>&1`, `source file 3>&1`, and trap
 handlers all run further redirected builtins while an outer frame is
@@ -493,8 +523,8 @@ number in the shell variable `varname` — bash's named-fd form.
 (`file_redirect.py#FileRedirector.apply_var_fd_redirect`) owns the form; it is
 reached from all FOUR redirect-application paths:
 
-- `manager.py:501` — `IOManager.setup_builtin_redirections` (in-process builtin);
-- `manager.py:895` — `IOManager.setup_child_redirections` (forked child);
+- `manager.py#IOManager.setup_builtin_redirections` (in-process builtin);
+- `manager.py#IOManager.setup_child_redirections` (forked child);
 - `file_redirect.py:554` — `FileRedirector._apply_redirections` (fd-level
   save/restore window, via `IOManager.apply_redirections` / `with_redirections`);
 - `file_redirect.py:699` — `FileRedirector.apply_permanent_redirections` (`exec`).
