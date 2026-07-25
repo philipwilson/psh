@@ -16,10 +16,11 @@ commands both truncated at the output cap, must never classify as conformance
 
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "harness"))
@@ -274,11 +275,51 @@ class ConformanceTestFramework:
         # Otherwise, assume PSH bug
         return ConformanceResult.PSH_BUG
 
+    @staticmethod
+    def _matches_side(expected: Dict[str, Any], result: CommandResult) -> bool:
+        """Does one shell's observed result match its expected shape?
+
+        `exit_code` is exact; `stdout_pattern`/`stderr_pattern` are regex
+        SEARCHES, so an entry can pin a whole stream (`^...$`) or just the
+        part that identifies the difference. An absent key is not checked.
+        """
+        if "exit_code" in expected and result.exit_code != expected["exit_code"]:
+            return False
+        for key, observed in (("stdout_pattern", result.stdout),
+                              ("stderr_pattern", result.stderr)):
+            pattern = expected.get(key)
+            if pattern is not None and not re.search(pattern, observed):
+                return False
+        return True
+
     def _is_documented_difference(self, command: str, psh_result: CommandResult,
                                 bash_result: CommandResult) -> bool:
-        """Check if difference is documented in catalog."""
-        # Simple command matching - could be enhanced with pattern matching
-        return command in self.differences_catalog.get("documented", {})
+        """Is the OBSERVED divergence the one this command is documented for?
+
+        Membership in the catalog is necessary but NOT sufficient. Each entry
+        carries the expected SHAPE of its difference (per-side exit status and
+        output patterns) and the observation must match it.
+
+        This used to be `command in catalog['documented']`, which never looked
+        at either result: any future divergence on a catalogued command — a
+        genuine regression included — classified as DOCUMENTED_DIFFERENCE, so
+        the pins on those commands could not fail for the right reason. An
+        observation that no longer matches its entry is NOT documented; either
+        the difference changed or a shell regressed, and both deserve a
+        failure rather than a silent blessing.
+
+        An entry with no `expected` block cannot be validated, so it does not
+        classify (`test_every_documented_entry_carries_an_expected_shape`
+        keeps the catalog from acquiring one).
+        """
+        entry = self.differences_catalog.get("documented", {}).get(command)
+        if entry is None:
+            return False
+        expected = entry.get("expected")
+        if not expected:
+            return False
+        return (self._matches_side(expected.get("psh", {}), psh_result)
+                and self._matches_side(expected.get("bash", {}), bash_result))
 
     def _is_psh_extension(self, command: str, psh_result: CommandResult,
                          bash_result: CommandResult) -> bool:
