@@ -22,38 +22,45 @@ Run RED-ON-BASE by pointing PSH_ROOT at a pre-I1 tree:
     PSH_ROOT=/path/to/base python -m pytest tests/system/test_read_malformed_bytes_i1.py
 """
 import os
-import subprocess
 import sys
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import (
+    hermetic_shell_env,
+    is_comparable,
+    run_bash,
+    run_shell_case,
+)
 
 PSH_ROOT = os.environ.get(
     "PSH_ROOT",
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
 )
-BASH = resolve_bash().path
 
 
 def _psh(script: bytes, stdin: bytes) -> bytes:
-    p = subprocess.run(
+    # PSH_ROOT may point at a pre-I1 base tree for the red-on-base replay, so
+    # this pins PYTHONPATH/cwd to PSH_ROOT explicitly rather than via run_psh
+    # (which always resolves THIS worktree). run_shell_case captures bytes
+    # losslessly (surrogateescape); recover the exact bytes on the way out.
+    r = run_shell_case(
         [sys.executable, "-m", "psh", "-c", script.decode()],
-        input=stdin, capture_output=True, cwd=PSH_ROOT, timeout=15,
-        env={**os.environ, "PYTHONPATH": PSH_ROOT, "PSH_STRICT_ERRORS": "1"},
+        stdin_data=stdin, stdin_mode="pipe", cwd=PSH_ROOT, timeout=15,
+        env=hermetic_shell_env({"PYTHONPATH": PSH_ROOT,
+                                "PSH_STRICT_ERRORS": "1"}),
     )
-    return p.stdout
+    assert is_comparable(r), r
+    return r.stdout.encode("utf-8", "surrogateescape")
 
 
 def _bash_c_locale(script: bytes, stdin: bytes) -> bytes:
-    # The oracle BINARY comes from the sanctioned resolver (E2 ratchet); the
-    # run mode stays local because these cases compare RAW stdout bytes and
-    # run_shell_case's decoded-text policy would hide the byte-level facts.
-    p = subprocess.run(
-        [BASH, "-c", script.decode()],
-        input=stdin, capture_output=True, timeout=15,
-        env={**os.environ, "LC_ALL": "C", "LANG": "C"},
-    )
-    return p.stdout
+    # C-locale bash oracle. run_shell_case captures bytes losslessly (UTF-8 +
+    # surrogateescape), so the raw byte-level facts are preserved after all —
+    # recover them with the inverse encode.
+    r = run_bash(["-c", script.decode()], stdin_data=stdin, stdin_mode="pipe",
+                 env={"LC_ALL": "C", "LANG": "C"}, timeout=15)
+    assert is_comparable(r), r
+    return r.stdout.encode("utf-8", "surrogateescape")
 
 
 # name -> (script, stdin, note about ambient UTF-8-bash quirk if any)

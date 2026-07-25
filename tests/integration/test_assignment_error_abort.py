@@ -13,30 +13,29 @@ top-level command. Verified against bash 5.2.
 follow-up — H6b in the reappraisal report.)
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _psh_c(cmd):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True)
+    r = run_psh(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 def _psh_script(tmp_path, script):
     p = tmp_path / "case.sh"
     p.write_text(script)
-    return subprocess.run([sys.executable, '-m', 'psh', str(p)],
-                          capture_output=True, text=True)
+    r = run_psh([str(p)])
+    assert is_comparable(r), r
+    return r
 
 
 def _bash_script(tmp_path, script):
     p = tmp_path / "case_bash.sh"
     p.write_text(script)
-    return subprocess.run([BASH, str(p)], capture_output=True, text=True)
+    r = run_bash([str(p)])
+    assert is_comparable(r), r
+    return r
 
 
 def _assert_matches_bash_script(tmp_path, script):

@@ -8,22 +8,21 @@
 Counts/values were probe-verified against bash 5.2.
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_psh
+from shell_oracle import run_bash as _run_bash
 
 
 def run(cmd):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True)
+    r = run_psh(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash(cmd):
-    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
+    r = _run_bash(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 class TestBackgroundedAssignmentInSubshell:

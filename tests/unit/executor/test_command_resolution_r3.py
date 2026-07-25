@@ -14,7 +14,6 @@ row against live bash, prefix-normalized).
 
 import os
 import re
-import subprocess
 import sys
 
 import pytest
@@ -38,7 +37,12 @@ from psh.executor.strategies import (
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "harness"))
-from shell_oracle import try_resolve_bash  # noqa: E402
+from shell_oracle import (  # noqa: E402
+    is_comparable,
+    run_bash,
+    run_psh,
+    try_resolve_bash,
+)
 
 _ORACLE = try_resolve_bash()
 BASH = _ORACLE.path if _ORACLE else None
@@ -249,10 +253,10 @@ class TestEmptyPathNotFoundMessage:
     the message BODY + rc are compared (the psh:/argv0 prefix differs)."""
 
     def _both(self, script):
-        p = subprocess.run([sys.executable, '-m', 'psh', '-c', script],
-                           capture_output=True, text=True)
-        b = subprocess.run([BASH, '--norc', '--noprofile', '-c', script],
-                           capture_output=True, text=True)
+        p = run_psh(['-c', script])
+        assert is_comparable(p), p
+        b = run_bash(['--norc', '--noprofile', '-c', script])
+        assert is_comparable(b), b
         return p, b
 
     def test_empty_path_says_no_such_file(self):
@@ -285,12 +289,19 @@ class TestPosixlyPrefixInputModes:
     SCRIPT = 'unset X; X=kept POSIXLY_CORRECT=1 :; echo "${X-unset}"'
 
     def _psh(self, argv, stdin=None):
-        return subprocess.run([sys.executable, '-m', 'psh', *argv],
-                              input=stdin, capture_output=True, text=True)
+        # Data-bearing runs get a real PIPE on fd 0 (the pre-runner `input=`
+        # kind); the -c/script-file rows supply no data and keep the default.
+        mode = 'pipe' if stdin is not None else 'file'
+        r = run_psh(list(argv), stdin_data=stdin, stdin_mode=mode)
+        assert is_comparable(r), r
+        return r
 
     def _bash(self, argv, stdin=None):
-        return subprocess.run([BASH, '--norc', '--noprofile', *argv],
-                              input=stdin, capture_output=True, text=True)
+        mode = 'pipe' if stdin is not None else 'file'
+        r = run_bash(['--norc', '--noprofile', *argv], stdin_data=stdin,
+                     stdin_mode=mode)
+        assert is_comparable(r), r
+        return r
 
     def test_dash_c(self):
         p, b = self._psh(['-c', self.SCRIPT]), self._bash(['-c', self.SCRIPT])

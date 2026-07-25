@@ -29,8 +29,6 @@ gap* — so stale-negative rows (reappraisal #16 H7, #17 M1) cannot recur.
 import ast
 import os
 import re
-import subprocess
-import sys
 
 import pytest
 from _assert_analysis import (
@@ -38,12 +36,11 @@ from _assert_analysis import (
     called_names,
     has_bare_assert,
 )
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh
 
 GUIDE = os.path.join(os.path.dirname(__file__), '..', '..',
                      'docs', 'user_guide', '17_differences_from_bash.md')
 CONF_DIR = os.path.dirname(__file__)
-PSH = [sys.executable, '-m', 'psh']
 
 # Feature (exactly as in the table's first column) → (conformance file
 # relative to tests/conformance/, marker string). The marker must be a
@@ -312,19 +309,16 @@ def test_every_no_row_has_a_probe():
         "*because psh lacks the feature*, so the row cannot silently rot.")
 
 
-def _run(argv, script):
-    return subprocess.run(argv + ['-c', script], capture_output=True,
-                          text=True, timeout=15)
-
-
 def _runs_identically(script):
     """True when psh and bash agree on stdout and exit code for *script*.
 
     Shared predicate of the No-row and Partial-row staleness guards: a
     stale row is one whose divergence probe has started running identically.
     """
-    psh = _run(PSH, script)
-    bash = _run([resolve_bash().path], script)
+    psh = run_psh(['-c', script], timeout=15)
+    assert is_comparable(psh), psh
+    bash = run_bash(['-c', script], timeout=15)
+    assert is_comparable(bash), bash
     return psh.stdout == bash.stdout and psh.returncode == bash.returncode
 
 

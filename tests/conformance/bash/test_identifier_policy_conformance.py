@@ -28,16 +28,13 @@ REJECT the name; only the posix abort-vs-continue flow differs. The posix cases
 are pinned as "psh rejects, bash rejects" rather than identical.
 """
 
-import os
 import re
-import subprocess
-import sys
 
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh
 
-PSH = [sys.executable, '-m', 'psh', '-c']
-BASH = [resolve_bash().path, '-c']
+PSH = 'psh'
+BASH = 'bash'
 
 
 # These tests compare how bash and psh RENDER Unicode identifier names (é,
@@ -47,14 +44,14 @@ BASH = [resolve_bash().path, '-c']
 # fail. Pin an explicit UTF-8 locale for these subprocesses (overrides the
 # suite pin for these children only). C.UTF-8 is portable across the macOS gate
 # and the Linux nightly.
-_UTF8_ENV = {**os.environ, 'LC_ALL': 'C.UTF-8', 'LANG': 'C.UTF-8'}
+_UTF8_ENV = {'LC_ALL': 'C.UTF-8', 'LANG': 'C.UTF-8'}
 
 
-def _run(argv, command):
-    # errors='replace': bash expanding an invalid ``$é`` can emit non-UTF-8
-    # bytes; we only assert on exit codes and ASCII substrings for those cases.
-    return subprocess.run(argv + [command], capture_output=True, text=True,
-                          errors='replace', timeout=30, env=_UTF8_ENV)
+def _run(shell, command):
+    runner = run_psh if shell == PSH else run_bash
+    r = runner(['-c', command], timeout=30, env=_UTF8_ENV)
+    assert is_comparable(r), r
+    return r
 
 
 def _tail(stderr):

@@ -4,12 +4,7 @@ Here document (heredoc) integration tests.
 Tests for heredoc (<<) and here string (<<<) redirection functionality.
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def test_tokenize_heredoc():
@@ -149,36 +144,26 @@ def test_here_string_with_variable(shell_with_temp_dir):
 
 def test_heredoc_with_builtin():
     """Test here document with cat command."""
-    import subprocess
-    import sys
     # Use subprocess since cat is an external command
-    result = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', '''cat << EOF
+    result = run_psh(['-c', '''cat << EOF
 Hello from heredoc
 Line 2
 EOF
-'''],
-        capture_output=True,
-        text=True
-    )
+'''])
+    assert is_comparable(result), result
     assert result.returncode == 0
     assert result.stdout == "Hello from heredoc\nLine 2\n"
 
 
 def test_heredoc_strip_tabs():
     """Test here document with tab stripping."""
-    import subprocess
-    import sys
-    result = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', """cat <<- EOF
+    result = run_psh(['-c', """cat <<- EOF
 \tIndented line
 \t\tDouble indented
 Not indented
 EOF
-"""],
-        capture_output=True,
-        text=True
-    )
+"""])
+    assert is_comparable(result), result
     assert result.returncode == 0
     assert result.stdout == "Indented line\nDouble indented\nNot indented\n"
 
@@ -192,11 +177,10 @@ def test_heredoc_strip_tabs_indented_delimiter():
     stripping its leading tabs.
     """
     script = "cat <<-EOF\n\tindented\n\tEOF\n"
-    psh = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', script],
-        capture_output=True, text=True,
-    )
-    bash = subprocess.run([BASH, '-c', script], capture_output=True, text=True)
+    psh = run_psh(['-c', script])
+    bash = run_bash(['-c', script])
+    assert is_comparable(psh), psh
+    assert is_comparable(bash), bash
 
     assert psh.returncode == 0
     assert bash.stdout == "indented\n"   # documents the correct behavior
@@ -205,28 +189,18 @@ def test_heredoc_strip_tabs_indented_delimiter():
 
 def test_heredoc_empty():
     """Test empty here document."""
-    import subprocess
-    import sys
-    result = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', """cat << EOF
+    result = run_psh(['-c', """cat << EOF
 EOF
-"""],
-        capture_output=True,
-        text=True
-    )
+"""])
+    assert is_comparable(result), result
     assert result.returncode == 0
     assert result.stdout == ""
 
 
 def test_heredoc_with_variable_expansion():
     """Test variable expansion in heredocs."""
-    import subprocess
-    import sys
-    result = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', 'NAME="World"; cat << EOF\nHello $NAME\nPath: $PWD\nEOF\n'],
-        capture_output=True,
-        text=True
-    )
+    result = run_psh(['-c', 'NAME="World"; cat << EOF\nHello $NAME\nPath: $PWD\nEOF\n'])
+    assert is_comparable(result), result
     assert result.returncode == 0
     assert "Hello World" in result.stdout
     assert "Path: " in result.stdout
@@ -234,14 +208,9 @@ def test_heredoc_with_variable_expansion():
 
 def test_heredoc_with_external_command():
     """Test here document with external command."""
-    import subprocess
-    import sys
     # Use subprocess to test external command
-    result = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', 'cat << EOF\nExternal test\nEOF'],
-        capture_output=True,
-        text=True
-    )
+    result = run_psh(['-c', 'cat << EOF\nExternal test\nEOF'])
+    assert is_comparable(result), result
     assert result.returncode == 0
     assert result.stdout == "External test\n"
 
@@ -266,18 +235,13 @@ EOF
 
 def test_heredoc_in_pipeline():
     """Test here document in pipeline."""
-    import subprocess
-    import sys
-    result = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c', """cat << EOF | wc -l
+    result = run_psh(['-c', """cat << EOF | wc -l
 Line 1
 Line 2
 Line 3
 EOF
-"""],
-        capture_output=True,
-        text=True
-    )
+"""])
+    assert is_comparable(result), result
     assert result.returncode == 0
     assert result.stdout.strip() == "3"
 

@@ -13,43 +13,54 @@ invocation forms (pipe, seekable file, ``-s``), plus the byte model and the
 controls that must stay correct (script-file and ``-c`` share the real pipe,
 not a drained buffer). fd-level claims demand a real subprocess with raw-byte
 pipes — an in-process text-layer probe is structurally blind to the fd sharing.
+
+Every launch goes through the typed oracle runner
+(``tests/harness/shell_oracle.py``), which spawns a real child and offers BOTH
+kinds of fd 0 the subject needs: ``stdin_mode='pipe'`` (a real, NON-seekable
+pipe) and ``stdin_mode='file'`` (a regular SEEKABLE file). The runner captures
+with UTF-8 + ``surrogateescape``, so the raw-byte rows recover their exact bytes
+with the inverse ``encode``.
 """
 
-import os
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
-from shell_oracle import try_resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 REPO_ROOT = str(Path(__file__).resolve().parents[2])
 PSH = [sys.executable, "-m", "psh"]
-_ORACLE = try_resolve_bash()
-BASH = _ORACLE.path if _ORACLE else "bash-oracle-unavailable"
+# LOUD resolution: a missing bash oracle is a harness failure, never a silent
+# skip — every claim in this module is differential against live bash.
+_ORACLE = resolve_bash()
+BASH = _ORACLE.path
+TIMEOUT = 20
 
-pytestmark = pytest.mark.skipif(
-    _ORACLE is None, reason="bash oracle unavailable")
 
+def _run_case(argv, script: bytes, *, seekable: bool):
+    """The typed runner result for *argv* with *script* on fd 0.
 
-def _env():
-    return dict(os.environ, PYTHONPATH=REPO_ROOT)
+    ``seekable=True`` -> ``stdin_mode='file'`` (a regular SEEKABLE file);
+    ``seekable=False`` -> ``stdin_mode='pipe'`` (a real non-seekable pipe).
+    That distinction is the whole subject of this module.
+    """
+    mode = "file" if seekable else "pipe"
+    argv = list(argv)
+    if argv[:len(PSH)] == PSH:
+        r = run_psh(argv[len(PSH):], stdin_data=script, stdin_mode=mode,
+                    cwd=REPO_ROOT, timeout=TIMEOUT)
+    else:
+        assert argv[0] == BASH, argv
+        r = run_bash(argv[1:], stdin_data=script, stdin_mode=mode,
+                     cwd=REPO_ROOT, timeout=TIMEOUT)
+    assert is_comparable(r), r
+    return r
 
 
 def _run(argv, script: bytes, *, seekable: bool):
     """Run argv with *script* on fd 0, as a pipe or a seekable file."""
-    if seekable:
-        with tempfile.NamedTemporaryFile() as tf:
-            tf.write(script)
-            tf.flush()
-            tf.seek(0)
-            r = subprocess.run(argv, stdin=tf, capture_output=True,
-                               cwd=REPO_ROOT, env=_env(), timeout=20)
-    else:
-        r = subprocess.run(argv, input=script, capture_output=True,
-                           cwd=REPO_ROOT, env=_env(), timeout=20)
-    return r.returncode, r.stdout
+    r = _run_case(argv, script, seekable=seekable)
+    return r.returncode, r.stdout.encode("utf-8", "surrogateescape")
 
 
 def _both(script: bytes, *, seekable=False, psh_args=(), bash_args=()):
@@ -146,9 +157,9 @@ class TestStdinByteModel:
 
     def test_binary_garbage_no_traceback(self):
         prc, pout = _run(PSH, b"\xff\xfe\n", seekable=False)
-        r = subprocess.run(PSH, input=b"\xff\xfe\n", capture_output=True,
-                           cwd=REPO_ROOT, env=_env(), timeout=20)
-        assert b"Traceback" not in r.stderr
+        r = _run_case(PSH, b"\xff\xfe\n", seekable=False)
+        rstderr = r.stderr.encode("utf-8", "surrogateescape")
+        assert b"Traceback" not in rstderr
         assert r.returncode == 127
 
 
@@ -161,22 +172,16 @@ class TestStdinControlsStayCorrect:
         script = tmp_path / "s.sh"
         script.write_text("read a\necho a=$a\ncat\n")
         piped = b"LINE1\nLINE2\nLINE3\n"
-        p = subprocess.run(PSH + [str(script)], input=piped,
-                           capture_output=True, cwd=REPO_ROOT, env=_env(),
-                           timeout=20)
-        b = subprocess.run([BASH, str(script)], input=piped,
-                           capture_output=True, cwd=REPO_ROOT, env=_env(),
-                           timeout=20)
+        p = _run_case(PSH + [str(script)], piped, seekable=False)
+        b = _run_case([BASH, str(script)], piped, seekable=False)
         assert (p.returncode, p.stdout) == (b.returncode, b.stdout)
 
     def test_dash_c_reads_pipe(self):
         """`psh -c 'read a; echo $a; cat'` reads the separate piped stdin."""
         piped = b"FIRST\nrest of the data\n"
         cmd = "read a; echo a=$a; cat"
-        p = subprocess.run(PSH + ["-c", cmd], input=piped, capture_output=True,
-                           cwd=REPO_ROOT, env=_env(), timeout=20)
-        b = subprocess.run([BASH, "-c", cmd], input=piped, capture_output=True,
-                           cwd=REPO_ROOT, env=_env(), timeout=20)
+        p = _run_case(PSH + ["-c", cmd], piped, seekable=False)
+        b = _run_case([BASH, "-c", cmd], piped, seekable=False)
         assert (p.returncode, p.stdout) == (b.returncode, b.stdout)
 
     def test_stdin_script_can_redirect_fd0_midway(self, tmp_path):

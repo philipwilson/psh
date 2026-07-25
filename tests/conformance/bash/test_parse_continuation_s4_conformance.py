@@ -15,13 +15,13 @@ stdout across all input modes (the only residual is psh's diagnostic wording).
 All rows probed against bash 5.2.26; see tmp/boundary-ledgers/S4-probes/.
 """
 
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 from conformance_framework import ConformanceTest
+from shell_oracle import is_comparable, run_bash, run_psh
 
 # Multiline scripts: each exercises a continuation construct. Chosen so the
 # whole-string parse (-c) and the line-by-line accumulator (file/stdin) both
@@ -60,16 +60,26 @@ class TestParseContinuationConformance(ConformanceTest):
     """Multiline continuation is identical to bash across -c/file/stdin."""
 
     def _run(self, argv, script, mode, cwd):
+        # The stdin mode feeds the script over a real PIPE on fd 0 (the
+        # pre-runner `input=` kind); -c/file supply no stdin data at all.
+        stdin_mode = "file"
         if mode == "-c":
-            return subprocess.run(argv + ["-c", script], capture_output=True,
-                                  text=True, timeout=30, cwd=cwd)
-        if mode == "file":
+            rest, stdin_data = ["-c", script], None
+        elif mode == "file":
             p = Path(cwd) / "script.sh"
             p.write_text(script)
-            return subprocess.run(argv + [str(p)], capture_output=True,
-                                  text=True, timeout=30, cwd=cwd)
-        return subprocess.run(argv, input=script, capture_output=True,
-                              text=True, timeout=30, cwd=cwd)
+            rest, stdin_data = [str(p)], None
+        else:
+            rest, stdin_data = [], script
+            stdin_mode = "pipe"
+        if argv[0] == sys.executable:
+            r = run_psh(rest, stdin_data=stdin_data, stdin_mode=stdin_mode,
+                        timeout=30, cwd=cwd)
+        else:
+            r = run_bash(rest, stdin_data=stdin_data, stdin_mode=stdin_mode,
+                         timeout=30, cwd=cwd)
+        assert is_comparable(r), r
+        return r
 
     @pytest.mark.parametrize("mode", ["-c", "file", "stdin"])
     @pytest.mark.parametrize("name", list(CONTINUATION_SCRIPTS))

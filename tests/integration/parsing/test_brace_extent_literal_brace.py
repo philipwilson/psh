@@ -8,13 +8,8 @@ Nested `${...}`/`$(...)`/`$((...))` are still skipped (their `}` doesn't end
 the outer one). Verified against bash 5.2.
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _out(cmd, runner):
@@ -23,12 +18,15 @@ def _out(cmd, runner):
 
 
 def _psh(cmd):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True)
+    r = run_psh(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
-    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
+    r = run_bash(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 @pytest.mark.parametrize("cmd", [

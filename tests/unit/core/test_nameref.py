@@ -1,17 +1,13 @@
 """Tests for name references (declare -n / local -n) — Phase 1 (scalar targets)."""
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _run(script):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', script],
-                          capture_output=True, text=True)
+    r = run_psh(['-c', script])
+    assert is_comparable(r), r
+    return r
 
 
 class TestNamerefRead:
@@ -165,7 +161,8 @@ class TestNamerefBashParity:
     ])
     def test_matches_bash(self, script):
         psh = _run(script)
-        bash = subprocess.run([BASH, '-c', script], capture_output=True, text=True)
+        bash = run_bash(['-c', script])
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode
 
@@ -233,6 +230,7 @@ class TestNamerefTargetValidation:
     ])
     def test_matches_bash(self, script):
         psh = _run(script)
-        bash = subprocess.run([BASH, '-c', script], capture_output=True, text=True)
+        bash = run_bash(['-c', script])
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode

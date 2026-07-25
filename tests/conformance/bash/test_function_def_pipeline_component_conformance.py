@@ -17,18 +17,10 @@ Full probe transcripts (all 16 rows x 5 modes, incl. eval/source): base RED and
 fixed GREEN in tmp/boundary-ledgers/S5-probes/h9_{base,fixed}_<sha>.txt.
 """
 import os
-import subprocess
-import sys
 import tempfile
 
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
-
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))))
-_ENV = dict(os.environ, PYTHONPATH=_ROOT)
+from shell_oracle import is_comparable, run_bash, run_psh
 
 # Appended to each fragment: capture the construct's own rc, then whether `f`
 # leaked into the parent shell. Bash and psh must agree on all three signals.
@@ -61,25 +53,23 @@ _MODES = ["-c", "file", "stdin"]
 
 
 def _run(argv0_is_bash, script, mode, cwd):
-    argv = [BASH] if argv0_is_bash else [sys.executable, "-m", "psh"]
-    env = None if argv0_is_bash else _ENV
+    runner = run_bash if argv0_is_bash else run_psh
     if mode == "-c":
-        return subprocess.run(argv + ["-c", script], capture_output=True,
-                              text=True, timeout=30, cwd=cwd, env=env,
-                              stdin=subprocess.DEVNULL)
-    if mode == "stdin":
-        return subprocess.run(argv, input=script + "\n", capture_output=True,
-                              text=True, timeout=30, cwd=cwd, env=env)
-    # file
-    with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False, dir=cwd) as f:
-        f.write(script + "\n")
-        path = f.name
-    try:
-        return subprocess.run(argv + [path], capture_output=True, text=True,
-                              timeout=30, cwd=cwd, env=env,
-                              stdin=subprocess.DEVNULL)
-    finally:
-        os.unlink(path)
+        r = runner(["-c", script], timeout=30, cwd=cwd)
+    elif mode == "stdin":
+        r = runner([], stdin_data=script + "\n", stdin_mode="pipe",
+                   timeout=30, cwd=cwd)
+    else:  # file
+        with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False,
+                                         dir=cwd) as f:
+            f.write(script + "\n")
+            path = f.name
+        try:
+            r = runner([path], timeout=30, cwd=cwd)
+        finally:
+            os.unlink(path)
+    assert is_comparable(r), r
+    return r
 
 
 def _signals(out):
@@ -111,10 +101,10 @@ def test_function_def_pipeline_component_matches_bash(case_id, fragment, mode):
 # --- Explicit discriminator pins (the diagnostic core of H9) ----------------
 
 def _c(shell_is_bash, cmd, cwd):
-    argv = [BASH] if shell_is_bash else [sys.executable, "-m", "psh"]
-    env = None if shell_is_bash else _ENV
-    return subprocess.run(argv + ["-c", cmd], capture_output=True, text=True,
-                          timeout=30, cwd=cwd, env=env, stdin=subprocess.DEVNULL)
+    runner = run_bash if shell_is_bash else run_psh
+    r = runner(["-c", cmd], timeout=30, cwd=cwd)
+    assert is_comparable(r), r
+    return r
 
 
 def test_single_member_pipeline_def_leaks_like_bash(tmp_path):

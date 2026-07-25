@@ -8,14 +8,8 @@ and ``select`` did not (Tier R8.1), so they iterated only once when piped.
 These pin bash-identical full iteration.
 """
 
-import subprocess
-import sys
-
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
-
-PSH = [sys.executable, '-m', 'psh', '-c']
-BASH = [resolve_bash().path, '-c']
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 class TestCompoundInPipeline(ConformanceTest):
@@ -38,9 +32,9 @@ class TestCompoundInPipeline(ConformanceTest):
             'for ((i=0;i<3;i++)); do /bin/echo n$i; done')
 
 
-def _run(argv, cmd, stdin=''):
-    r = subprocess.run(argv + [cmd], capture_output=True, text=True,
-                       input=stdin)
+def _run(runner, cmd, stdin=''):
+    r = runner(['-c', cmd], stdin_data=stdin, stdin_mode='pipe')
+    assert is_comparable(r), r
     return r.stdout, r.returncode
 
 
@@ -50,7 +44,7 @@ def test_select_in_pipeline_iterates_fully():
     # remains). Before R8.1 select omitted the in_pipeline reset, so an
     # external-command body exec-replaced the forked child after one pick.
     script = 'select x in a b; do /bin/echo got=$x; done 2>/dev/null | cat'
-    bash_out, _ = _run(BASH, script, stdin='1\n2\n')
-    psh_out, _ = _run(PSH, script, stdin='1\n2\n')
+    bash_out, _ = _run(run_bash, script, stdin='1\n2\n')
+    psh_out, _ = _run(run_psh, script, stdin='1\n2\n')
     assert psh_out == bash_out, f"bash={bash_out!r} psh={psh_out!r}"
     assert 'got=a' in psh_out and 'got=b' in psh_out, psh_out

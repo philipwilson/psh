@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from shell_oracle import Completed, hermetic_shell_env, run_shell_case, try_resolve_bash
+from shell_oracle import hermetic_shell_env, is_comparable, run_shell_case, try_resolve_bash
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 _ORACLE = try_resolve_bash()
@@ -39,7 +39,7 @@ def _run(argv, *, stdin, cwd, histfile):
         extra["PYTHONPATH"] = str(REPO_ROOT)
     result = run_shell_case(argv, stdin_data=stdin,
                             env=hermetic_shell_env(extra), cwd=cwd, timeout=30)
-    assert isinstance(result, Completed), result
+    assert is_comparable(result), result
     return result
 
 

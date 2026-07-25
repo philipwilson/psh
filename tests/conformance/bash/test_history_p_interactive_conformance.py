@@ -14,16 +14,17 @@ history in both shells) against live bash 5.2, each with an isolated HISTFILE
 """
 import os
 import re
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_shell_case
 
 # Strip the argv0/location prefix a diagnostic line may carry.
 _PREFIX_RE = re.compile(r'^[^:\n]*: (line \d+: )?', re.MULTILINE)
 _PATH = os.environ.get('PATH', '/usr/bin:/bin')
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
 
 
 def _run_i(argv, rc_flags, lines):
@@ -33,14 +34,18 @@ def _run_i(argv, rc_flags, lines):
     # Isolated HOME + rc-skip flags so the ORACLE (bash) never sources the
     # user's real ~/.bashrc / ~/.bash_profile (HISTCONTROL, aliases, prompts
     # would make it a fragile oracle) — the harness controls the whole
-    # environment (CV3 nit-6).
+    # environment (CV3 nit-6).  This uses run_shell_case with an EXPLICIT
+    # minimal env (not run_psh/run_bash, which layer onto os.environ) precisely
+    # to keep that isolation; psh gets PYTHONPATH so `-m psh` resolves this tree.
     with tempfile.TemporaryDirectory(prefix='cv3home') as home:
-        r = subprocess.run(
-            argv + rc_flags + ['-i'], input=script, capture_output=True,
-            text=True, timeout=20,
-            env={'HISTFILE': histfile, 'PATH': _PATH, 'TERM': 'dumb',
-                 'HOME': home})
+        env = {'HISTFILE': histfile, 'PATH': _PATH, 'TERM': 'dumb',
+               'HOME': home}
+        if argv[0] == sys.executable:
+            env['PYTHONPATH'] = _REPO_ROOT
+        r = run_shell_case(argv + rc_flags + ['-i'], stdin_data=script,
+                           stdin_mode='pipe', env=env, timeout=20)
     Path(histfile).unlink(missing_ok=True)
+    assert is_comparable(r), r
     return _PREFIX_RE.sub('', r.stdout)
 
 

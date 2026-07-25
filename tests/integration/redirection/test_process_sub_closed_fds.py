@@ -39,7 +39,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from shell_oracle import Completed, hermetic_shell_env, resolve_bash, run_shell_case
+from shell_oracle import hermetic_shell_env, is_comparable, resolve_bash, run_shell_case
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ENV = hermetic_shell_env({'LC_ALL': 'C', 'LANG': 'C',
@@ -51,7 +51,7 @@ def _bash_procsub_sane():
     """True when the bash oracle can procsub in THIS execution environment."""
     r = run_shell_case([BASH, "-c", "echo probe > >(cat > /dev/null); wait"],
                        stdin_data="", env=ENV, timeout=20)
-    return isinstance(r, Completed) and r.returncode == 0 and not r.stderr
+    return is_comparable(r) and r.returncode == 0 and not r.stderr
 
 
 _require_sane_bash_oracle = pytest.mark.skipif(
@@ -69,7 +69,7 @@ def _observe(argv, closures, body):
         script = f'{closures}exec 9>{path}; {body}'
         r = run_shell_case(argv + ["-c", script], stdin_data="",
                            env=ENV, timeout=20)
-        assert isinstance(r, Completed), f"harness failure: {r!r}"
+        assert is_comparable(r), f"harness failure: {r!r}"
         with open(path) as f:
             return r.stdout, r.stderr, f.read()
     finally:

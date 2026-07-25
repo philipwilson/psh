@@ -7,21 +7,19 @@ ignored FUNCNEST and recursed to Python's limit. FUNCNEST unset or <= 0 means
 no limit. Verified against bash 5.2 (error-message prefix differs by design).
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _psh_c(cmd):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True)
+    r = run_psh(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 def _bash_c(cmd):
-    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
+    r = run_bash(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 def test_limit_caps_recursion_depth():

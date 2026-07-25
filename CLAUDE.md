@@ -381,17 +381,19 @@ def test_file_redirection(isolated_shell_with_temp_dir):
     with open(os.path.join(shell.state.variables['PWD'], 'file.txt')) as f:
         assert f.read() == "test\n"
 
-# Conformance test with subprocess
+# Conformance test through the shell-oracle runner. Direct subprocess
+# spawns in oracle-bearing test modules are REJECTED by the anti-spawn guard
+# (tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py); the runner
+# provides hermetic env, temp cwd, timeout, byte caps, and typed outcomes.
 def test_posix_compliance():
-    import subprocess
+    from shell_oracle import run_psh, run_bash, is_comparable
     cmd = "echo $((1 + 1))"
-    
-    psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd], 
-                        capture_output=True, text=True)
-    bash = subprocess.run(['bash', '-c', cmd], 
-                         capture_output=True, text=True)
-    
-    assert psh.stdout == bash.stdout
+
+    psh = run_psh(['-c', cmd])
+    bash = run_bash(['-c', cmd])
+
+    assert is_comparable(psh) and is_comparable(bash)
+    assert (psh.stdout, psh.returncode) == (bash.stdout, bash.returncode)
 
 # Permanent fd redirection (exec) — MUST be a subprocess, never in-process.
 # An in-process `exec >file` would clobber the test runner's own fds.

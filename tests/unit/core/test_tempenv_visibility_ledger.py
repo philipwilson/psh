@@ -20,36 +20,24 @@ This battery pins both halves against live bash:
 Derived from the 16-case visibility probe run 2026-07-08 (worktree-psh vs bash).
 """
 
-import os
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import try_resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh, try_resolve_bash
 
 _ORACLE = try_resolve_bash()
 pytestmark = pytest.mark.skipif(
     _ORACLE is None, reason="needs a live bash to compare against")
 
 
-def _clean_env():
-    env = dict(os.environ)
-    for k in ("DISPLAY", "XAUTHORITY"):
-        env.pop(k, None)
-    return env
-
-
-def _run(argv, cmd):
-    return subprocess.run(argv + [cmd], capture_output=True, text=True,
-                          env=_clean_env(), cwd="/")
-
-
 def _bash(cmd):
-    return _run([_ORACLE.path, "--noprofile", "--norc", "-c"], cmd)
+    r = run_bash(["--noprofile", "--norc", "-c", cmd], cwd="/")
+    assert is_comparable(r), r
+    return r
 
 
 def _psh(cmd):
-    return _run([sys.executable, "-m", "psh", "--norc", "-c"], cmd)
+    r = run_psh(["--norc", "-c", cmd], cwd="/")
+    assert is_comparable(r), r
+    return r
 
 
 # (label, command) — the name-lookup behaviors PSH matches bash on.

@@ -15,23 +15,20 @@ signal-disposition lease still matters for OTHER in-process shells; see
 tests/unit/core/test_signal_disposition_lease_p1.py.)
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-PSH = [sys.executable, "-m", "psh", "--norc", "-c"]
-BASH = [resolve_bash().path, "--noprofile", "--norc", "-c"]
-
-
-def _run(argv, cmd):
-    return subprocess.run(argv + [cmd], capture_output=True, text=True,
-                          timeout=20, stdin=subprocess.DEVNULL)
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _psh(cmd):
-    return _run(PSH, cmd)
+    r = run_psh(["--norc", "-c", cmd], timeout=20)
+    assert is_comparable(r), r
+    return r
+
+
+def _bash(cmd):
+    r = run_bash(["--noprofile", "--norc", "-c", cmd], timeout=20)
+    assert is_comparable(r), r
+    return r
 
 
 # --------------------------------------------------------------------------
@@ -115,12 +112,12 @@ class TestEnvOutputParityRegression:
     def test_env_assignment_overlay_prints(self):
         # `env FOO=bar printenv FOO` prints the overlaid value (both shells).
         cmd = "env FOO=bar printenv FOO"
-        assert _psh(cmd).stdout == _run(BASH, cmd).stdout == "bar\n"
+        assert _psh(cmd).stdout == _bash(cmd).stdout == "bar\n"
 
     def test_env_unset_removes_from_child_env(self):
         cmd = "export FOO=parent; env -u FOO sh -c 'echo ${FOO-gone}'"
-        assert _psh(cmd).stdout == _run(BASH, cmd).stdout
+        assert _psh(cmd).stdout == _bash(cmd).stdout
 
     def test_env_i_clears_environment(self):
         cmd = "export FOO=x; env -i sh -c 'echo ${FOO-empty}'"
-        assert _psh(cmd).stdout == _run(BASH, cmd).stdout == "empty\n"
+        assert _psh(cmd).stdout == _bash(cmd).stdout == "empty\n"

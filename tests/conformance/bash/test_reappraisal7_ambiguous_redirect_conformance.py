@@ -16,28 +16,24 @@ Driven through subprocesses so psh and bash are directly comparable and so
 the external-command (forked child) path is exercised as a real process.
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 pytestmark = pytest.mark.serial  # spawns subprocesses
 
-BASH = resolve_bash().path
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 
 
 def _psh(cmd):
-    return subprocess.run(
-        [sys.executable, "-m", "psh", "-c", cmd],
-        capture_output=True, text=True, timeout=30,
-    )
+    r = run_psh(["-c", cmd], timeout=30)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
-    return subprocess.run(
-        [BASH, "-c", cmd], capture_output=True, text=True, timeout=30,
-    )
+    r = run_bash(["-c", cmd], timeout=30)
+    assert is_comparable(r), r
+    return r
 
 
 # (command, expected pre-expansion target word that names the error)
@@ -64,7 +60,6 @@ _AMBIGUOUS_CASES = [
 ]
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
 @pytest.mark.parametrize("cmd,word", _AMBIGUOUS_CASES)
 def test_ambiguous_redirect_exit_and_message(cmd, word):
     p = _psh(cmd)
@@ -83,16 +78,15 @@ def test_ambiguous_redirect_exit_and_message(cmd, word):
     assert "[Errno" not in p.stderr, p.stderr
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
 def test_glob_multi_match_is_ambiguous(tmp_path):
     """A glob target matching >= 2 files is ambiguous (exit 1, nothing opened)."""
     (tmp_path / "a.txt").write_text("")
     (tmp_path / "b.txt").write_text("")
     cmd = "echo hi > *.txt"
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", cmd],
-                       cwd=tmp_path, capture_output=True, text=True, timeout=30)
-    b = subprocess.run([BASH, "-c", cmd],
-                       cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    p = run_psh(["-c", cmd], cwd=tmp_path, timeout=30)
+    assert is_comparable(p), p
+    b = run_bash(["-c", cmd], cwd=tmp_path, timeout=30)
+    assert is_comparable(b), b
     assert p.returncode == b.returncode == 1
     assert "*.txt: ambiguous redirect" in p.stderr, p.stderr
 
@@ -104,8 +98,8 @@ def test_glob_multi_match_is_ambiguous(tmp_path):
 def test_quoted_multiword_target_writes_literal_file(tmp_path):
     """`> "$v"` with v="a b" writes the literal file `a b` (not ambiguous)."""
     cmd = 'v="a b"; echo hi > "$v"; cat "a b"'
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", cmd],
-                       cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    p = run_psh(["-c", cmd], cwd=tmp_path, timeout=30)
+    assert is_comparable(p), p
     assert p.returncode == 0, p.stderr
     assert p.stdout == "hi\n"
     assert (tmp_path / "a b").read_text() == "hi\n"
@@ -113,8 +107,8 @@ def test_quoted_multiword_target_writes_literal_file(tmp_path):
 
 def test_single_word_target_is_fine(tmp_path):
     cmd = 'v=onefile; echo hi > $v; cat onefile'
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", cmd],
-                       cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    p = run_psh(["-c", cmd], cwd=tmp_path, timeout=30)
+    assert is_comparable(p), p
     assert p.returncode == 0, p.stderr
     assert p.stdout == "hi\n"
 
@@ -122,8 +116,8 @@ def test_single_word_target_is_fine(tmp_path):
 def test_glob_no_match_uses_literal_pattern(tmp_path):
     """A glob matching nothing (nullglob off) is the literal pattern -> 1 word."""
     cmd = "echo hi > out.nomatch; cat out.nomatch"
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", cmd],
-                       cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    p = run_psh(["-c", cmd], cwd=tmp_path, timeout=30)
+    assert is_comparable(p), p
     assert p.returncode == 0, p.stderr
     assert p.stdout == "hi\n"
     assert (tmp_path / "out.nomatch").exists()
@@ -132,8 +126,8 @@ def test_glob_no_match_uses_literal_pattern(tmp_path):
 def test_single_glob_match_is_fine(tmp_path):
     (tmp_path / "single.log").write_text("")
     cmd = "echo hi > single*.log; cat single.log"
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", cmd],
-                       cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    p = run_psh(["-c", cmd], cwd=tmp_path, timeout=30)
+    assert is_comparable(p), p
     assert p.returncode == 0, p.stderr
     assert p.stdout == "hi\n"
 
@@ -142,8 +136,8 @@ def test_plain_redirects_unaffected(tmp_path):
     """Normal `>`, `>>`, `2>` to a literal name still work, builtin + external."""
     cmd = ("echo a > f1; echo b >> f1; printf 'x' > f2 2>err; "
            "printf 'hello\\n' | cat > f3; cat f1")
-    p = subprocess.run([sys.executable, "-m", "psh", "-c", cmd],
-                       cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    p = run_psh(["-c", cmd], cwd=tmp_path, timeout=30)
+    assert is_comparable(p), p
     assert p.returncode == 0, p.stderr
     assert p.stdout == "a\nb\n"
     assert (tmp_path / "f3").read_text() == "hello\n"

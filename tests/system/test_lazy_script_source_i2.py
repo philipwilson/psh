@@ -16,27 +16,30 @@ the read frontier are seen. The block SIZE (which mid-buffer edits are
 invisible) is a documented deliberate loss.
 """
 import os
-import subprocess
 import sys
 
-from shell_oracle import resolve_bash
+from shell_oracle import (
+    hermetic_shell_env,
+    is_comparable,
+    run_bash,
+    run_psh,
+    run_shell_case,
+)
 
-BASH = resolve_bash().path
 
-
-def _run(shell_argv, script_text, tmp_path, stdin=None, name="s.sh"):
+def _run(runner, script_text, tmp_path, stdin=None, name="s.sh"):
     p = tmp_path / name
     p.write_text(script_text)
-    return subprocess.run(shell_argv + [str(p)], cwd=tmp_path,
-                          input=stdin, capture_output=True, text=True)
+    r = runner([str(p)], cwd=str(tmp_path), stdin_data=stdin, stdin_mode="pipe")
+    assert is_comparable(r), r
+    return r
 
 
 def _both(script_text, tmp_path, stdin=None):
     """(psh, bash) results on a FRESH copy of the script each (self-modifying
     scripts mutate the file, so bash and psh must not share it)."""
-    psh = _run([sys.executable, "-m", "psh"], script_text, tmp_path / "psh",
-               stdin=stdin)
-    bash = _run([BASH], script_text, tmp_path / "bash", stdin=stdin)
+    psh = _run(run_psh, script_text, tmp_path / "psh", stdin=stdin)
+    bash = _run(run_bash, script_text, tmp_path / "bash", stdin=stdin)
     return psh, bash
 
 
@@ -86,10 +89,12 @@ def test_dev_stdin_as_script_arg(tmp_path):
     # script drains — psh agrees.
     _mk(tmp_path)
     body = "echo scr1\nread x\necho \"got=[$x]\"\necho scr3\n"
-    psh = subprocess.run([sys.executable, "-m", "psh", "/dev/stdin"],
-                         cwd=tmp_path, input=body, capture_output=True, text=True)
-    bash = subprocess.run([BASH, "/dev/stdin"], cwd=tmp_path, input=body,
-                          capture_output=True, text=True)
+    psh = run_psh(["/dev/stdin"], cwd=str(tmp_path), stdin_data=body,
+                  stdin_mode="pipe")
+    bash = run_bash(["/dev/stdin"], cwd=str(tmp_path), stdin_data=body,
+                    stdin_mode="pipe")
+    assert is_comparable(psh), psh
+    assert is_comparable(bash), bash
     assert psh.stdout == bash.stdout
     assert psh.returncode == bash.returncode
 
@@ -99,9 +104,9 @@ def test_in_script_read_uses_stdin_not_script(tmp_path):
     # consumes STDIN, not the following script lines (bash-parity, D4).
     _mk(tmp_path)
     script = 'echo scriptline\nread x\necho "got=[$x]"\necho done\n'
-    psh = _run([sys.executable, "-m", "psh"], script, tmp_path / "psh",
+    psh = _run(run_psh, script, tmp_path / "psh",
                stdin="from_stdin\nMORE\n")
-    bash = _run([BASH], script, tmp_path / "bash", stdin="from_stdin\nMORE\n")
+    bash = _run(run_bash, script, tmp_path / "bash", stdin="from_stdin\nMORE\n")
     assert psh.stdout == bash.stdout == "scriptline\ngot=[from_stdin]\ndone\n"
 
 
@@ -113,8 +118,14 @@ def _peak_rss_bytes(root, script_path):
         f"capture_output=True,env=dict(os.environ,PYTHONPATH={root!r}));"
         "print(resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)"
     )
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True,
-                       text=True, env=dict(os.environ, PYTHONPATH=root))
+    # The python child measures ITS OWN children's peak RSS (getrusage), so the
+    # runner only needs to run it and capture the printed number — routed
+    # through run_shell_case for the same process-group / cap hygiene as every
+    # other spawn (not a differential, so no is_comparable gate is load-bearing,
+    # but we still refuse a non-comparable observation).
+    r = run_shell_case([sys.executable, "-c", code],
+                       env=hermetic_shell_env({"PYTHONPATH": root}))
+    assert is_comparable(r), r
     return int(r.stdout.strip())
 
 

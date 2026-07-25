@@ -8,26 +8,16 @@ EXIT trap to force one. bash runs the pending trap before exit.
 `SourceProcessor.execute_as_main` now flushes pending traps before the EXIT
 trap. Pinned against bash 5.2.
 """
-import os
-import subprocess
-import sys
-from pathlib import Path
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _run(script, tmp_path, name):
     path = tmp_path / name
     path.write_text(script)
-    psh = subprocess.run([sys.executable, '-m', 'psh', str(path)],
-                         capture_output=True, text=True, timeout=10, env=ENV)
-    bash = subprocess.run([BASH, str(path)],
-                          capture_output=True, text=True, timeout=10)
+    psh = run_psh([str(path)], timeout=10)
+    assert is_comparable(psh), psh
+    bash = run_bash([str(path)], timeout=10)
+    assert is_comparable(bash), bash
     return psh, bash
 
 
@@ -78,9 +68,9 @@ def test_hup_trap_last_statement(tmp_path):
 
 def test_dash_c_pending_trap(tmp_path):
     # Same fix on the -c path (StringInput also routes through execute_as_main).
-    psh = subprocess.run(
-        [sys.executable, '-m', 'psh', '-c',
-         'trap "echo GOT_TERM" TERM; echo before; kill -TERM $$'],
-        capture_output=True, text=True, timeout=10, env=ENV)
+    psh = run_psh(
+        ['-c', 'trap "echo GOT_TERM" TERM; echo before; kill -TERM $$'],
+        timeout=10)
+    assert is_comparable(psh), psh
     assert psh.stdout == 'before\nGOT_TERM\n'
     assert psh.returncode == 0

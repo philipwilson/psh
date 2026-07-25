@@ -10,25 +10,20 @@ Run in a subprocess (an external `bash` child is forked+exec'd; capturing its
 fd-level output needs a real process, not the in-process capture fixture).
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
-
-PSH = [sys.executable, "-m", "psh", "-c"]
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _run(cmd):
-    return subprocess.run(
-        PSH + [cmd], capture_output=True, text=True, timeout=15)
+    r = run_psh(['-c', cmd], timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
-    return subprocess.run(
-        [BASH, "-c", cmd], capture_output=True, text=True, timeout=15)
+    r = run_bash(['-c', cmd], timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 @pytest.mark.serial

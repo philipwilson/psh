@@ -16,21 +16,21 @@ was probe-verified against bash 5.2 (the error-MESSAGE wording differs by shell
 — a separate finding — so we assert behavior/exit code, not stderr text).
 """
 
-import subprocess
-import sys
-
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable
+from shell_oracle import run_bash as _oracle_run_bash
+from shell_oracle import run_psh as _oracle_run_psh
 
 
 def run(cmd):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True)
+    r = _oracle_run_psh(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 def run_bash(cmd):
-    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
+    r = _oracle_run_bash(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 class TestBreakContinueAcrossFunction:

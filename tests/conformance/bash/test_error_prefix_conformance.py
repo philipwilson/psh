@@ -11,27 +11,21 @@ Message-BODY divergences (kill signal wording, arithmetic error phrasing) are a
 SEPARATE concern tracked by task #40 and are deliberately excluded here.
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
-
-
-def _run(argv, cmd, dollar0=None):
-    full = list(argv) + ["-c", cmd] + ([dollar0] if dollar0 else [])
-    return subprocess.run(full, capture_output=True, text=True, timeout=15)
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _psh(cmd):
-    return _run([sys.executable, "-m", "psh"], cmd)
+    r = run_psh(["-c", cmd], timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
     # Pass $0="psh" so bash's error prefix names "psh" exactly like our shell.
-    return _run([BASH], cmd, dollar0="psh")
+    r = run_bash(["-c", cmd, "psh"], timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 # Representative cell per error class — each is prefix-only (body already

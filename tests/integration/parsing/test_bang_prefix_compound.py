@@ -9,25 +9,24 @@ shared lexer command-position machinery, so BOTH parsers are covered. Verified
 against bash 5.2.
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _run(cmd, parser=None):
-    args = [sys.executable, '-m', 'psh']
+    args = []
     if parser:
         args += ['--parser', parser]
     args += ['-c', cmd]
-    return subprocess.run(args, capture_output=True, text=True)
+    r = run_psh(args)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(cmd):
-    return subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
+    r = run_bash(['-c', cmd])
+    assert is_comparable(r), r
+    return r
 
 
 # (command, ...) — each negates a compound; output+rc must match bash.

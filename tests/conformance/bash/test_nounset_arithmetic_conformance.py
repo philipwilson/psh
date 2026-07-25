@@ -14,21 +14,18 @@ prefix differs from psh's by design); non-error behavior is compared exactly.
 Verified against bash 5.2.
 """
 
-import subprocess
-import sys
-
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 class TestNounsetArithmeticErrors(ConformanceTest):
     """An unset variable in arithmetic under set -u errors like a bare $undef."""
 
     def _assert_unbound(self, cmd, name):
-        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                             capture_output=True, text=True)
-        bash = subprocess.run([resolve_bash().path, '-c', cmd],
-                              capture_output=True, text=True)
+        psh = run_psh(['-c', cmd])
+        bash = run_bash(['-c', cmd])
+        assert is_comparable(psh), psh
+        assert is_comparable(bash), bash
         assert bash.returncode != 0, f"expected bash to fail: {cmd}"
         assert psh.returncode == bash.returncode, (
             f"{cmd}: psh rc={psh.returncode} bash rc={bash.returncode}")

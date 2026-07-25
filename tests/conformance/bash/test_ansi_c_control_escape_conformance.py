@@ -12,9 +12,8 @@ bytes (control characters are otherwise invisible). All expectations verified
 against bash 5.2.
 """
 
-import sys
-
 from conformance_framework import ConformanceTest
+from shell_oracle import is_comparable, run_psh
 
 
 class TestAnsiCControlEscape(ConformanceTest):
@@ -57,11 +56,9 @@ class TestAnsiCControlEscape(ConformanceTest):
         mask the escape. So this checks psh directly: the escape must
         produce the byte 0x00 between 'a' and 'b'.
         """
-        import subprocess
-        result = subprocess.run(
-            [sys.executable, '-m', 'psh', '-c', r"""printf '%s' $'a\c@b'"""],
-            capture_output=True)
-        assert result.stdout == b'a\x00b'
+        result = run_psh(['-c', r"""printf '%s' $'a\c@b'"""])
+        assert is_comparable(result), result
+        assert result.stdout.encode('utf-8', 'surrogateescape') == b'a\x00b'
 
     def test_ctrl_backslash(self):
         r"""``\c\`` -> 0x1c (control-backslash, consumes the backslash)."""

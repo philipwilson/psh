@@ -24,24 +24,22 @@ inherited, so every case here also proves the no-traceback guarantee under
 strict mode.
 """
 
-import os
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _psh_c(cmd, strict=None):
-    env = dict(os.environ)
+    env = {}
     if strict is True:
         env['PSH_STRICT_ERRORS'] = '1'
     elif strict is False:
-        env.pop('PSH_STRICT_ERRORS', None)
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True, env=env, timeout=120)
+        # Override the suite-wide inherited PSH_STRICT_ERRORS=1 with an empty
+        # value, which psh reads as OFF (state._seed_strict_errors) — the
+        # equivalent of the old code's env.pop().
+        env['PSH_STRICT_ERRORS'] = ''
+    r = run_psh(['-c', cmd], env=env, timeout=120)
+    assert is_comparable(r), r
+    return r
 
 
 RECURSE_N = 'f(){ [ $1 -le 0 ] && return 0; f $(($1-1)); }; f %d; echo rc=$?'
@@ -59,8 +57,8 @@ def test_deep_recursion_succeeds(depth):
 def test_deep_recursion_matches_bash():
     cmd = RECURSE_N % 500
     psh = _psh_c(cmd)
-    bash = subprocess.run([BASH, '-c', cmd], capture_output=True, text=True,
-                          timeout=120)
+    bash = run_bash(['-c', cmd], timeout=120)
+    assert is_comparable(bash), bash
     assert psh.stdout == bash.stdout == 'rc=0\n'
     assert psh.returncode == bash.returncode == 0
 

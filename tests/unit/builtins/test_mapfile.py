@@ -6,19 +6,15 @@ feed input via a here-string / file redirection into the in-process shell, or
 group the consumer with mapfile inside the same subshell.
 """
 
-import subprocess
-import sys
-
 import pytest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _run(script, stdin=""):
     """Run a psh script in a subprocess with the given stdin."""
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', script],
-                          input=stdin, capture_output=True, text=True)
+    r = run_psh(['-c', script], stdin_data=stdin, stdin_mode='pipe')
+    assert is_comparable(r), r
+    return r
 
 
 class TestMapfileBasic:
@@ -146,7 +142,7 @@ class TestMapfileBashParity:
     ])
     def test_matches_bash(self, script, stdin):
         psh = _run(script, stdin)
-        bash = subprocess.run([BASH, '-c', script], input=stdin,
-                              capture_output=True, text=True)
+        bash = run_bash(['-c', script], stdin_data=stdin, stdin_mode='pipe')
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout
         assert psh.returncode == bash.returncode

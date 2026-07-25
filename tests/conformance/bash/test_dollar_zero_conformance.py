@@ -8,22 +8,24 @@ report each shell's own name ($0 = "psh" vs "bash"), which is correct but not
 directly comparable, so these tests use real files.
 """
 
-import subprocess
 import sys
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 pytestmark = pytest.mark.serial  # spawns subprocesses
 
-BASH = resolve_bash().path
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
+BASH = _ORACLE.path
 
 
 def _run(shell_argv, script_path):
-    return subprocess.run(
-        shell_argv + [script_path],
-        capture_output=True, text=True, timeout=30,
-    ).stdout
+    if shell_argv[0] == sys.executable:
+        r = run_psh([script_path], timeout=30)
+    else:
+        r = run_bash([script_path], timeout=30)
+    assert is_comparable(r), r
+    return r.stdout
 
 
 def _psh(script_path):
@@ -56,7 +58,6 @@ def test_funcname_still_reports_function(script):
     assert _psh(s).strip() == "f"
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
 def test_matches_bash(script):
     body = ('echo "top=$0"\n'
             'f(){ echo "fn=$0"; }\n'
@@ -67,31 +68,29 @@ def test_matches_bash(script):
     assert _psh(s) == _run([BASH], s)
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
 def test_dash_c_name_is_dollar_zero():
     """R14.B: `sh -c CMD name a b` sets $0=name, $1=a, $#=2 (POSIX) — psh used
     to make name $1. Comparable across shells because $0 is the operand here."""
     cmd = 'echo "0=$0 1=$1 2=$2 #=$#"'
-    psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd, 'myname', 'a', 'b'],
-                         capture_output=True, text=True).stdout
-    bash = subprocess.run([BASH, '-c', cmd, 'myname', 'a', 'b'],
-                          capture_output=True, text=True).stdout
+    pr = run_psh(['-c', cmd, 'myname', 'a', 'b'])
+    br = run_bash(['-c', cmd, 'myname', 'a', 'b'])
+    assert is_comparable(pr), pr
+    assert is_comparable(br), br
+    psh = pr.stdout
+    bash = br.stdout
     assert psh == bash == '0=myname 1=a 2=b #=2\n'
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not available")
 def test_non_utf8_script_does_not_crash(tmp_path):
     """R14.B: a stray non-UTF-8 byte in a script must not crash psh with an
     uncaught traceback — bash treats it as a (not-found) command and continues.
     Both shells run the surrounding commands and exit 0."""
     s = tmp_path / "badenc.sh"
     s.write_bytes(b'echo before\n\xe9\necho after\n')
-    # errors='replace' on the capture: the diagnostic legitimately contains the
-    # raw non-UTF-8 byte (round-tripped), which a strict text decode can't read.
-    psh = subprocess.run([sys.executable, '-m', 'psh', str(s)],
-                         capture_output=True, text=True, errors='replace')
-    bash = subprocess.run([BASH, str(s)], capture_output=True, text=True,
-                          errors='replace')
+    psh = run_psh([str(s)])
+    bash = run_bash([str(s)])
+    assert is_comparable(psh), psh
+    assert is_comparable(bash), bash
     assert psh.stdout == bash.stdout == 'before\nafter\n'
     assert psh.returncode == bash.returncode == 0
     assert 'Traceback' not in psh.stderr

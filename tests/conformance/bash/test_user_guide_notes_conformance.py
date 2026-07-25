@@ -25,12 +25,10 @@ Covered claims (chapter: feature):
 """
 
 import os
-import subprocess
-import sys
 import tempfile
 
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 class TestPipelineNotes(ConformanceTest):
@@ -240,11 +238,10 @@ class TestFuncnameNotes(ConformanceTest):
         try:
             root = os.path.abspath(os.path.join(
                 os.path.dirname(__file__), '..', '..', '..'))
-            psh = subprocess.run([sys.executable, '-m', 'psh', path],
-                                 capture_output=True, text=True,
-                                 cwd=root, timeout=15)
-            bash = subprocess.run([resolve_bash().path, path], capture_output=True,
-                                  text=True, timeout=15)
+            psh = run_psh([path], cwd=root, timeout=15)
+            assert is_comparable(psh), psh
+            bash = run_bash([path], timeout=15)
+            assert is_comparable(bash), bash
             assert psh.stdout == 'c b a\n', psh.stdout
             assert bash.stdout == 'c b a main\n', bash.stdout
         finally:

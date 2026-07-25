@@ -19,14 +19,9 @@ Probed against bash 5.2 (tmp/boundary-ledgers/CV-probes/cv2_matrix.sh).
 """
 import os
 import re
-import subprocess
-import sys
-from pathlib import Path
 
 import pytest
-from shell_oracle import resolve_bash
-
-PSH_ROOT = Path(__file__).resolve().parents[3]
+from shell_oracle import is_comparable, run_bash, run_psh
 
 # Strip the argv0/location prefix (`psh: line 1: ` / `bash: line 1: ` /
 # bash's `environment: line 1: `) so only the message BODY is compared.
@@ -37,21 +32,21 @@ def _strip_prefix(text: str) -> str:
     return _PREFIX_RE.sub('', text)
 
 
-def _run(shell_argv, cmd, cwd):
+def _run(runner, cmd, cwd):
     # These rows merge the diagnostic into stdout with 2>&1, so strip the
     # argv0/location prefix on BOTH streams. The regex needs a ``: `` (colon
     # space), so ordinary output lines (AT:target, RAN:hi, rc=127) are untouched.
-    r = subprocess.run(shell_argv + ['-c', cmd], capture_output=True,
-                       text=True, cwd=cwd, timeout=20)
+    r = runner(['-c', cmd], cwd=cwd, timeout=20)
+    assert is_comparable(r), r
     return (_strip_prefix(r.stdout), _strip_prefix(r.stderr), r.returncode)
 
 
 def _psh(cmd, cwd):
-    return _run([sys.executable, '-m', 'psh'], cmd, cwd)
+    return _run(run_psh, cmd, cwd)
 
 
 def _bash(cmd, cwd):
-    return _run([resolve_bash().path], cmd, cwd)
+    return _run(run_bash, cmd, cwd)
 
 
 def _assert_same(cmd, cwd):

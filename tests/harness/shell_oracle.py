@@ -63,8 +63,11 @@ The runner owns, structurally:
   *pipe* descriptors can fail with EPERM in some execution environments (the
   v0.724-era gate failures around ``history -w /dev/stdout`` and bash's own
   ``/dev/fd/63`` process substitution), while re-opening a regular file is
-  always an ordinary vnode open.  stdin is ``/dev/null`` unless case data is
-  supplied (also via a file — no writer threads, no pipe deadlocks).
+  always an ordinary vnode open.  stdin defaults to ``/dev/null`` (or, with
+  case data, a regular SEEKABLE file — no writer threads, no pipe deadlocks).
+  A case whose SUBJECT is non-seekability (``/dev/stdin`` as a script operand,
+  the binary sniff, ``read``/``mapfile`` over-read) opts into a real pipe with
+  ``stdin_mode="pipe"``; the default is unchanged.
 * **A temporary cwd per case** unless the caller pins one.
 * **Explicit decode policy** — UTF-8 + ``surrogateescape`` on both streams,
   lossless for byte-comparison; a decode error (impossible with
@@ -81,7 +84,9 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Union
@@ -100,7 +105,15 @@ __all__ = [
     "try_resolve_bash",
     "hermetic_shell_env",
     "run_shell_case",
+    "run_psh",
+    "run_bash",
 ]
+
+# The psh worktree root (this file lives at ``<root>/tests/harness/``).  Used by
+# :func:`run_psh` to pin ``PYTHONPATH`` so ``python -m psh`` always resolves the
+# tree under test, never an editable-installed psh elsewhere.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))
 
 # Default per-stream output cap (bytes).  Differential cases legitimately
 # produce at most a few KiB; 8 MiB leaves three orders of magnitude of slack
@@ -184,11 +197,18 @@ class Timeout:
     """The case exceeded its deadline; its process group was SIGKILLed.
 
     Partial output (bounded by the byte cap) is preserved for diagnostics but
-    must not be compared as if the case had completed.
+    must not be compared as if the case had completed.  ``stdout_truncated`` /
+    ``stderr_truncated`` record whether the preserved partial capture ALSO hit
+    the byte cap before the deadline — purely diagnostic provenance (a Timeout
+    is non-comparable regardless), threaded through so a slow runaway is
+    distinguishable from a slow-but-bounded hang.  They default to False so a
+    hand-built ``Timeout(timeout=, stdout=, stderr=)`` stays valid.
     """
     timeout: float
     stdout: str
     stderr: str
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,6 +306,15 @@ def hermetic_shell_env(case_env: Optional[Dict[str, str]] = None,
     explicitly; nothing leaks in from the developer's terminal or CI host.
     (Inherited ``LC_CTYPE`` was the root cause of the three host-sensitive
     conformance failures — continuation finding H.)
+
+    ``PWD``/``OLDPWD`` are dropped for the same reason, and it is not
+    hypothetical: the runner runs each case in a fresh temporary cwd, so an
+    inherited ``PWD`` is STALE.  bash revalidates it against the real cwd and
+    silently corrects, while psh trusts the environment — so ``echo $PWD``
+    manufactured a psh-vs-bash divergence that is an artifact of the harness,
+    not of either shell.  :func:`run_shell_case` sets ``PWD`` to the actual run
+    directory instead (a caller that deliberately wants a stale or fabricated
+    ``PWD`` still just passes one in ``case_env``, which wins).
     """
     env = dict(os.environ if base is None else base)
     for name in list(env):
@@ -293,6 +322,8 @@ def hermetic_shell_env(case_env: Optional[Dict[str, str]] = None,
             del env[name]
     env.pop("DISPLAY", None)
     env.pop("XAUTHORITY", None)
+    env.pop("PWD", None)
+    env.pop("OLDPWD", None)
     if case_env:
         env.update(case_env)
     return env
@@ -306,6 +337,26 @@ def _killpg_sigkill(pid: int) -> None:
         pass
 
 
+def _feed_pipe(write_fd: int, payload: bytes) -> None:
+    """Write ``payload`` to ``write_fd`` and close it (delivering EOF).
+
+    Runs on a daemon thread for ``stdin_mode='pipe'``.  A child that never
+    reads leaves this parked on a full pipe — harmless: the thread is a daemon,
+    the write end is closed here on every exit path, and a child that dies
+    (timeout/cap killpg) makes the write fail with EPIPE, which is swallowed.
+    """
+    try:
+        if payload:
+            os.write(write_fd, payload)
+    except OSError:
+        pass                      # EPIPE: the child exited/was killed first
+    finally:
+        try:
+            os.close(write_fd)    # EOF for the reader
+        except OSError:
+            pass
+
+
 def _read_capped(path: str, byte_cap: int):
     """Return (bytes up to cap, truncated?) for a capture file."""
     with open(path, "rb") as f:
@@ -316,6 +367,7 @@ def _read_capped(path: str, byte_cap: int):
 
 def run_shell_case(argv: Sequence[str], *,
                    stdin_data: Union[str, bytes, None] = None,
+                   stdin_mode: str = "file",
                    env: Optional[Dict[str, str]] = None,
                    cwd: Optional[str] = None,
                    timeout: float = 10.0,
@@ -326,9 +378,30 @@ def run_shell_case(argv: Sequence[str], *,
     ``env`` is used AS GIVEN — build it with :func:`hermetic_shell_env` unless
     the case deliberately needs the ambient environment.  ``cwd=None`` runs
     the case in a fresh temporary directory (removed afterwards).
+
+    ``stdin_mode`` selects the KIND of descriptor the child gets on fd 0 — a
+    load-bearing distinction for any case whose SUBJECT is seekability
+    (``/dev/stdin`` as a script, the binary sniff, ``read``/``mapfile``
+    over-read):
+
+    * ``"file"`` (default, unchanged): fd 0 is a regular, SEEKABLE file
+      (``/dev/null`` when no data). No writer threads, no pipe deadlocks —
+      the reason this is the default.
+    * ``"pipe"``: fd 0 is a real PIPE (``S_ISFIFO``), so ``/dev/stdin`` is
+      non-seekable exactly as under ``subprocess.run(..., input=...)``.  The
+      data is written by a daemon thread and the write end closed to deliver
+      EOF; if the child never reads, the thread parks harmlessly on a full
+      pipe and the normal timeout/killpg path still applies.
     """
     if env is None:
         env = hermetic_shell_env()
+    if stdin_mode not in ("file", "pipe"):
+        raise ValueError(f"stdin_mode must be 'file' or 'pipe', got {stdin_mode!r}")
+
+    payload: Optional[bytes] = None
+    if stdin_data is not None:
+        payload = (stdin_data.encode("utf-8", "surrogateescape")
+                   if isinstance(stdin_data, str) else stdin_data)
 
     with tempfile.TemporaryDirectory(prefix="psh-oracle-") as workdir:
         run_cwd = cwd if cwd is not None else workdir
@@ -336,10 +409,22 @@ def run_shell_case(argv: Sequence[str], *,
         err_path = os.path.join(workdir, ".oracle-stderr")
         in_path = os.path.join(workdir, ".oracle-stdin")
 
-        if stdin_data is not None:
+        # Give the child a TRUTHFUL $PWD for the directory it actually runs in.
+        # hermetic_shell_env drops the (stale) inherited one; without this the
+        # shells diverge on `echo $PWD` purely as a harness artifact — bash
+        # revalidates PWD against the real cwd, psh trusts the environment.
+        # An explicit caller-supplied PWD still wins (it is already in `env`).
+        if "PWD" not in env:
+            env = dict(env, PWD=os.path.abspath(run_cwd))
+
+        writer: Optional[threading.Thread] = None
+        pipe_write_fd: Optional[int] = None
+        if stdin_mode == "pipe":
+            pipe_read_fd, pipe_write_fd = os.pipe()
+            stdin_file = None
+        elif payload is not None:
             with open(in_path, "wb") as f:
-                f.write(stdin_data.encode("utf-8", "surrogateescape")
-                        if isinstance(stdin_data, str) else stdin_data)
+                f.write(payload)
             stdin_file = open(in_path, "rb")
         else:
             stdin_file = open(os.devnull, "rb")
@@ -350,15 +435,27 @@ def run_shell_case(argv: Sequence[str], *,
         try:
             try:
                 proc = subprocess.Popen(
-                    list(argv), stdin=stdin_file, stdout=out_file,
-                    stderr=err_file, env=env, cwd=run_cwd,
+                    list(argv),
+                    stdin=(pipe_read_fd if stdin_mode == "pipe" else stdin_file),
+                    stdout=out_file, stderr=err_file, env=env, cwd=run_cwd,
                     start_new_session=True)
             except (OSError, ValueError) as exc:
+                if pipe_write_fd is not None:
+                    os.close(pipe_write_fd)
                 return SpawnFailure(f"{type(exc).__name__}: {exc}")
         finally:
-            stdin_file.close()
+            if stdin_file is not None:
+                stdin_file.close()
+            if stdin_mode == "pipe":
+                os.close(pipe_read_fd)   # the child owns it now
             out_file.close()
             err_file.close()
+
+        if pipe_write_fd is not None:
+            writer = threading.Thread(
+                target=_feed_pipe, args=(pipe_write_fd, payload or b""),
+                daemon=True)
+            writer.start()
 
         # Wait with a watchdog: poll for exit, deadline, and output-cap breach.
         deadline = start + timeout
@@ -391,12 +488,14 @@ def run_shell_case(argv: Sequence[str], *,
             except subprocess.TimeoutExpired:
                 pass
             _killpg_sigkill(proc.pid)
-            out_bytes, _ = _read_capped(out_path, byte_cap)
-            err_bytes, _ = _read_capped(err_path, byte_cap)
+            out_bytes, out_trunc = _read_capped(out_path, byte_cap)
+            err_bytes, err_trunc = _read_capped(err_path, byte_cap)
             return Timeout(
                 timeout=timeout,
                 stdout=out_bytes.decode("utf-8", "surrogateescape"),
-                stderr=err_bytes.decode("utf-8", "surrogateescape"))
+                stderr=err_bytes.decode("utf-8", "surrogateescape"),
+                stdout_truncated=out_trunc,
+                stderr_truncated=err_trunc)
 
         if capped:
             # Reap the SIGKILLed leader, then sweep the group once more for
@@ -452,3 +551,53 @@ def run_shell_case(argv: Sequence[str], *,
 
         return Completed(stdout=stdout, stderr=stderr, returncode=returncode,
                          duration=duration)
+
+
+def run_psh(args: Sequence[str], *,
+            stdin_data: Union[str, bytes, None] = None,
+            stdin_mode: str = "file",
+            env: Optional[Dict[str, str]] = None,
+            cwd: Optional[str] = None,
+            timeout: float = 10.0,
+            byte_cap: int = DEFAULT_BYTE_CAP) -> ShellRunResult:
+    """Run THIS worktree's psh (``python -m psh <args>``) through the runner.
+
+    The blessed way for a differential test to launch psh: ``PYTHONPATH`` is
+    pinned to the repo root so ``-m psh`` resolves the tree under test
+    regardless of the runner's temporary cwd (the editable-install-imports-MAIN
+    trap), and the child gets the same process-group / byte-cap / hermetic-env
+    hygiene as every other case.  ``args`` is everything AFTER ``python -m psh``
+    (e.g. ``['-c', cmd]`` or ``['--norc', script]``).  ``env`` is layered onto
+    the hermetic base (:func:`hermetic_shell_env`); put shell-visible variables
+    (``HISTFILE``, ``PS4``, ``LC_ALL`` …) there.  Returns the typed
+    :data:`ShellRunResult` — the caller asserts :func:`is_comparable` before
+    comparing, exactly as for a bash run.
+    """
+    case_env = hermetic_shell_env(env)
+    existing = case_env.get("PYTHONPATH")
+    case_env["PYTHONPATH"] = (
+        _REPO_ROOT if not existing else _REPO_ROOT + os.pathsep + existing)
+    return run_shell_case([sys.executable, "-m", "psh", *args],
+                          stdin_data=stdin_data, stdin_mode=stdin_mode,
+                          env=case_env, cwd=cwd,
+                          timeout=timeout, byte_cap=byte_cap)
+
+
+def run_bash(args: Sequence[str], *,
+             stdin_data: Union[str, bytes, None] = None,
+             stdin_mode: str = "file",
+             env: Optional[Dict[str, str]] = None,
+             cwd: Optional[str] = None,
+             timeout: float = 10.0,
+             byte_cap: int = DEFAULT_BYTE_CAP) -> ShellRunResult:
+    """Run the resolved bash oracle (``bash <args>``) through the runner.
+
+    ``args`` is everything AFTER the bash path (e.g. ``['-c', cmd]``).  The
+    oracle binary comes from :func:`resolve_bash` (BASH_PATH -> Homebrew ->
+    PATH), never a bare ``bash`` or a hard-coded path.  ``env`` is layered onto
+    the hermetic base.  Returns the typed :data:`ShellRunResult`.
+    """
+    return run_shell_case([resolve_bash().path, *args],
+                          stdin_data=stdin_data, stdin_mode=stdin_mode,
+                          env=hermetic_shell_env(env),
+                          cwd=cwd, timeout=timeout, byte_cap=byte_cap)

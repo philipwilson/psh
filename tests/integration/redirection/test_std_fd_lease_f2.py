@@ -18,18 +18,31 @@ pin compares against live bash where the behavior is observable.
 """
 
 import os
-import subprocess
 import sys
+
+from shell_oracle import (
+    Completed,
+    hermetic_shell_env,
+    is_comparable,
+    run_bash,
+    run_psh,
+    run_shell_case,
+)
 
 TREE = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
 
-def _run_embedded(code: str) -> subprocess.CompletedProcess:
-    env = dict(os.environ)
-    env['PYTHONPATH'] = TREE
-    return subprocess.run([sys.executable, '-c', code], cwd=TREE, env=env,
-                          capture_output=True, text=True, timeout=90)
+def _run_embedded(code: str) -> Completed:
+    # The embedded python child does permanent fd redirection IN ITS OWN
+    # process (the in-process ban) and prints observations; the runner just
+    # launches it and captures stdout — with close_fds the child sees only
+    # 0/1/2, exactly as under raw subprocess, so the fd-lease facts are intact.
+    r = run_shell_case([sys.executable, '-c', code], cwd=TREE,
+                       env=hermetic_shell_env({'PYTHONPATH': TREE}),
+                       timeout=90)
+    assert is_comparable(r), r
+    return r
 
 
 PRELUDE = """
@@ -298,19 +311,19 @@ def test_exec_image_sees_no_backup_descriptors_matches_bash(tmp_path):
     particular not the STD_FDS lease's high backups, which are created
     with ``F_DUPFD_CLOEXEC``.
     """
-    from tests.harness.shell_oracle import resolve_bash
-    bash = resolve_bash()
     helper = _fd_lister(tmp_path)
     out = tmp_path / "out.txt"
     script = f"exec 5>/dev/null; exec > {out}; exec {sys.executable} {helper}"
     results = {}
-    for name, argv in (('oracle', [bash.path]),
-                       ('psh', [sys.executable, '-m', 'psh', '--norc'])):
+    for name in ('oracle', 'psh'):
         out.write_text('')
-        env = dict(os.environ)
-        env['PYTHONPATH'] = TREE
-        proc = subprocess.run(argv + ['-c', script], cwd=TREE, env=env,
-                              capture_output=True, text=True, timeout=90)
+        if name == 'psh':
+            proc = run_psh(['--norc', '-c', script], cwd=TREE,
+                           env={'PYTHONPATH': TREE}, timeout=90)
+        else:
+            proc = run_bash(['-c', script], cwd=TREE,
+                            env={'PYTHONPATH': TREE}, timeout=90)
+        assert is_comparable(proc), proc
         assert proc.returncode == 0, (name, proc.stderr)
         results[name] = out.read_text().strip()
     assert results['psh'] == results['oracle'], results

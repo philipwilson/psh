@@ -18,12 +18,8 @@ Pins four bash-divergence fixes in the declare/typeset attribute area:
 All output verified identical to bash 5.2.
 """
 
-import sys
-
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 class TestDeclareIntegerCaseCombo(ConformanceTest):
@@ -165,10 +161,10 @@ class TestIntegerAttributeArithmeticErrors(ConformanceTest):
     def _assert_arith_error(self, cmd):
         # exit 1 + something on stderr in both; the message WORDING differs
         # (bash "division by 0" vs psh "Division by zero"), so not compared.
-        import subprocess
-        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                             capture_output=True, text=True)
-        bash = subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
+        psh = run_psh(['-c', cmd])
+        assert is_comparable(psh), psh
+        bash = run_bash(['-c', cmd])
+        assert is_comparable(bash), bash
         assert psh.returncode == bash.returncode == 1
         assert psh.stderr and bash.stderr
 

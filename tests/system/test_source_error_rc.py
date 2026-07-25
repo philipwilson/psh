@@ -11,29 +11,24 @@ deleted NUL bytes — a small NUL-carrying file is NUL-filtered and executed.
 Pinned against bash 5.2.
 """
 import os
-import subprocess
-import sys
-from pathlib import Path
 
 import pytest
-from shell_oracle import resolve_bash
+from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-ENV = {**os.environ, 'PYTHONPATH': str(REPO_ROOT)}
-
-BASH = resolve_bash().path
+_ORACLE = resolve_bash()   # loud: raises BashOracleUnavailable if absent
 
 
 def _source_rc_psh(path):
     # `-c 'source <path>'` exit status IS source's own status.
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', f'source {path}'],
-                          capture_output=True, text=True, timeout=10,
-                          env=ENV).returncode
+    r = run_psh(['-c', f'source {path}'], timeout=10)
+    assert is_comparable(r), r
+    return r.returncode
 
 
 def _source_rc_bash(path):
-    return subprocess.run([BASH, '-c', f'source {path}'],
-                          capture_output=True, text=True, timeout=10).returncode
+    r = run_bash(['-c', f'source {path}'], timeout=10)
+    assert is_comparable(r), r
+    return r.returncode
 
 
 def test_source_directory_returns_1(tmp_path):
@@ -73,7 +68,6 @@ def test_source_nonexistent_returns_1(tmp_path):
     assert _source_rc_psh(str(tmp_path / 'nope.sh')) == 1
 
 
-@pytest.mark.skipif(not BASH, reason="no bash available")
 @pytest.mark.skipif(not os.path.exists('/bin/ls'), reason="no /bin/ls")
 def test_source_rcs_match_bash(tmp_path):
     # Directory and unreadable file → 1; a real binary → 126; missing → 1.

@@ -10,43 +10,59 @@ reach the SAME posix option the special-builtin exit-on-error policy reads, so
 a special-builtin usage error exits a non-interactive shell under either.
 """
 import os
-import subprocess
 import sys
-from pathlib import Path
 
 import pytest
-from shell_oracle import try_resolve_bash
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-# A clean-ish environment: full env for PATH/python, PYTHONPATH to import the
-# worktree's psh, DISPLAY/XAUTHORITY stripped (they can auto-start XQuartz on
-# macOS), and POSIXLY_CORRECT removed so a test controls it explicitly.
-_BASE_ENV = {k: v for k, v in os.environ.items()
-             if k not in ('DISPLAY', 'XAUTHORITY', 'POSIXLY_CORRECT')}
-_BASE_ENV['PYTHONPATH'] = str(REPO_ROOT)
+from shell_oracle import (
+    hermetic_shell_env,
+    is_comparable,
+    resolve_bash,
+    run_shell_case,
+    try_resolve_bash,
+)
 
 _ORACLE = try_resolve_bash()
-BASH = _ORACLE.path if _ORACLE else 'bash-oracle-unavailable'
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))
+
+
+def _case_env(env_extra, *, pythonpath):
+    """Hermetic child env with POSIXLY_CORRECT REMOVED unless the case sets it.
+
+    Load-bearing, and why these helpers build the env themselves instead of
+    using ``run_psh``/``run_bash``: bash treats POSIXLY_CORRECT as posix-ON when
+    it is merely PRESENT — even set to the empty string — so an inherited
+    ``POSIXLY_CORRECT`` from the developer's shell would silently flip the
+    "posix off when absent" rows. ``hermetic_shell_env`` strips locale and
+    DISPLAY but not this, and a case env can only ADD keys, so the variable is
+    deleted explicitly here.  (Historically this module filtered it out in its
+    own module-scope env builder, alongside DISPLAY/XAUTHORITY; that builder is
+    gone — the filtering requirement is not.)
+    """
+    env = hermetic_shell_env()
+    env.pop("POSIXLY_CORRECT", None)
+    env.pop("PYTHONPATH", None)
+    if pythonpath:
+        env["PYTHONPATH"] = str(REPO_ROOT)
+    if env_extra:
+        env.update(env_extra)
+    return env
 
 
 def _psh(*args, env_extra=None, cwd=None):
-    env = dict(_BASE_ENV)
-    if env_extra:
-        env.update(env_extra)
-    return subprocess.run([sys.executable, '-m', 'psh', *args],
-                          capture_output=True, text=True, timeout=15,
-                          cwd=cwd, env=env)
+    r = run_shell_case([sys.executable, "-m", "psh", *args],
+                       env=_case_env(env_extra, pythonpath=True),
+                       cwd=cwd, timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 def _bash(*args, env_extra=None, cwd=None):
-    env = dict(_BASE_ENV)
-    env.pop('PYTHONPATH', None)
-    if env_extra:
-        env.update(env_extra)
-    return subprocess.run([BASH, *args],
-                          capture_output=True, text=True, timeout=15,
-                          cwd=cwd, env=env)
+    r = run_shell_case([resolve_bash().path, *args],
+                       env=_case_env(env_extra, pythonpath=False),
+                       cwd=cwd, timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 @pytest.mark.skipif(_ORACLE is None, reason="bash not available")

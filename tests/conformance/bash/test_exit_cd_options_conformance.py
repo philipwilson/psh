@@ -15,12 +15,8 @@ These run in a subprocess (assert_identical_behavior), so the real process
 exit code is what's compared.
 """
 
-import sys
-
 from conformance_framework import ConformanceTest
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable, run_bash, run_psh
 
 
 class TestExitStatus(ConformanceTest):
@@ -50,12 +46,12 @@ class TestExitStatus(ConformanceTest):
         # the following command executes. Use a SCRIPT FILE (newline-separated):
         # bash's `-c 'a; b'` form has a separate quirk where the error abandons
         # the rest of the line, which is not the "exit doesn't terminate" point.
-        import subprocess
         script = tmp_path / "exit_toomany.sh"
         script.write_text('exit 1 2 3\necho after=$?\n')
-        psh = subprocess.run([sys.executable, '-m', 'psh', str(script)],
-                             capture_output=True, text=True)
-        bash = subprocess.run([BASH, str(script)], capture_output=True, text=True)
+        psh = run_psh([str(script)])
+        assert is_comparable(psh), psh
+        bash = run_bash([str(script)])
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == 'after=1\n'
         assert psh.returncode == bash.returncode == 0
         assert 'too many arguments' in psh.stderr
@@ -65,11 +61,11 @@ class TestExitStatus(ConformanceTest):
 class TestCdOptions(ConformanceTest):
     def test_cd_too_many_arguments(self):
         # stdout/exit match; stderr banner prefix differs, so compare the tail.
-        import subprocess
         cmd = 'cd a b; echo rc=$?'
-        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                             capture_output=True, text=True)
-        bash = subprocess.run([BASH, '-c', cmd], capture_output=True, text=True)
+        psh = run_psh(['-c', cmd])
+        assert is_comparable(psh), psh
+        bash = run_bash(['-c', cmd])
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == 'rc=1\n'
         assert 'too many arguments' in psh.stderr
         assert 'too many arguments' in bash.stderr
@@ -85,9 +81,8 @@ class TestCdOptions(ConformanceTest):
 
     def test_cd_invalid_option(self):
         # Exit code parity (2); stderr prefix differs so not compared here.
-        import subprocess
-        psh = subprocess.run([sys.executable, '-m', 'psh', '-c', 'cd -Z'],
-                             capture_output=True, text=True)
-        bash = subprocess.run([BASH, '-c', 'cd -Z'],
-                              capture_output=True, text=True)
+        psh = run_psh(['-c', 'cd -Z'])
+        assert is_comparable(psh), psh
+        bash = run_bash(['-c', 'cd -Z'])
+        assert is_comparable(bash), bash
         assert psh.returncode == bash.returncode == 2

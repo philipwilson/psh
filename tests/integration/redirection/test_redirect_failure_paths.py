@@ -22,17 +22,16 @@ this file runs in the parallel phase (campaign #21).
 """
 
 import os
-import subprocess
-import sys
 
-from shell_oracle import resolve_bash
-
-BASH = resolve_bash().path
+from shell_oracle import is_comparable
+from shell_oracle import run_bash as _run_bash
+from shell_oracle import run_psh as _run_psh
 
 
 def run_psh(cmd, cwd=None):
-    return subprocess.run([sys.executable, '-m', 'psh', '-c', cmd],
-                          capture_output=True, text=True, cwd=cwd, timeout=15)
+    r = _run_psh(['-c', cmd], cwd=cwd, timeout=15)
+    assert is_comparable(r), r
+    return r
 
 
 class TestOutputRedirectToMissingDir:
@@ -58,8 +57,8 @@ class TestOutputRedirectToMissingDir:
         """Status for a failed output-redirect open is 1, like bash 5.2."""
         cmd = 'echo hi > /nonexistent_zz/x; echo rc=$?'
         psh = run_psh(cmd, cwd=tmp_path)
-        bash = subprocess.run([BASH, '-c', cmd], cwd=tmp_path,
-                              capture_output=True, text=True)
+        bash = _run_bash(['-c', cmd], cwd=tmp_path)
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == 'rc=1\n'
 
     def test_fds_restored_following_command_writes(self, tmp_path):
@@ -82,19 +81,18 @@ class TestInputRedirectFromMissingFile:
     def test_exit_status_matches_bash(self, tmp_path):
         cmd = 'cat < /nonexistent_file_zz; echo rc=$?'
         psh = run_psh(cmd, cwd=tmp_path)
-        bash = subprocess.run([BASH, '-c', cmd], cwd=tmp_path,
-                              capture_output=True, text=True)
+        bash = _run_bash(['-c', cmd], cwd=tmp_path)
+        assert is_comparable(bash), bash
         assert psh.stdout == bash.stdout == 'rc=1\n'
 
     def test_stdin_restored_following_read(self, tmp_path):
         """After a failed input redirect, the shell's stdin is restored:
         a following `read` from the (here-doc) stdin still works."""
         # Feed stdin via a heredoc-free pipe through subprocess input.
-        result = subprocess.run(
-            [sys.executable, '-m', 'psh', '-c',
-             'cat < /nonexistent_file_zz; read v; echo "got=$v"'],
-            input='hello\n', capture_output=True, text=True,
-            cwd=tmp_path, timeout=15)
+        result = _run_psh(
+            ['-c', 'cat < /nonexistent_file_zz; read v; echo "got=$v"'],
+            stdin_data='hello\n', stdin_mode='pipe', cwd=tmp_path, timeout=15)
+        assert is_comparable(result), result
         assert result.stdout == 'got=hello\n'
 
 
@@ -126,8 +124,8 @@ class TestPermissionDeniedRedirect:
         try:
             cmd = 'echo hi > ro/x; echo rc=$?'
             psh = run_psh(cmd, cwd=tmp_path)
-            bash = subprocess.run([BASH, '-c', cmd], cwd=tmp_path,
-                                  capture_output=True, text=True)
+            bash = _run_bash(['-c', cmd], cwd=tmp_path)
+            assert is_comparable(bash), bash
             assert psh.stdout == bash.stdout == 'rc=1\n'
         finally:
             os.chmod(ro, 0o755)
