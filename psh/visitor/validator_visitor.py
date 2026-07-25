@@ -39,7 +39,7 @@ from ..ast_nodes import (
     WhileLoop,
 )
 from .analysis_helpers import RedirectTraversalMixin
-from .base import ASTVisitor
+from .traversal import TotalTraversalVisitor
 
 
 class Severity(Enum):
@@ -58,7 +58,7 @@ class ValidationIssue:
     context: Optional[str] = None
 
 
-class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
+class ValidatorVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
     """
     Visitor that validates AST correctness and collects issues.
 
@@ -67,6 +67,12 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     - Common mistakes and anti-patterns
     - Potential bugs or suspicious constructs
     - Style issues and best practices
+
+    Traversal is framework-owned (``TotalTraversalVisitor``): a node type
+    without an explicit handler — and any child edge a handler does not
+    dispatch (redirect targets, for/case subject words, substitution bodies)
+    — is still fully traversed by the framework sweep instead of being
+    silently skipped.
     """
 
     def __init__(self):
@@ -132,7 +138,12 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
 
     def visit_SimpleCommand(self, node: SimpleCommand) -> None:
         """Validate a simple command."""
-        if not node.args and not node.array_assignments:
+        # A redirect-only command (`>file`, `>$(cmd)`) is legal shell (bash -n
+        # accepts it; it opens/truncates the target), so it is NOT an empty
+        # command — only a node with no args, no assignments, AND no redirects
+        # is malformed. The early return is safe: the framework sweep still
+        # traverses the node's redirects (and their targets) after it.
+        if not node.args and not node.array_assignments and not node.redirects:
             self._add_error("Empty command with no arguments or assignments", node)
             return
 
@@ -451,11 +462,6 @@ class ValidatorVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         # The test expression itself is not validated here (operands are
         # plain strings); only the attached redirects are checked.
         self._visit_redirects(node)
-
-    def generic_visit(self, node: ASTNode) -> None:
-        """Default handling for unknown nodes."""
-        # For nodes we don't specifically handle, do nothing
-        pass
 
     def get_summary(self) -> str:
         """Get a summary of validation results."""

@@ -10,7 +10,6 @@ from enum import Enum
 from typing import Dict, List, Optional, Set
 
 from ..ast_nodes import (
-    ASTNode,
     FunctionDef,
     IfConditional,
     Pipeline,
@@ -20,7 +19,6 @@ from ..ast_nodes import (
     Word,
 )
 from .analysis_helpers import RedirectTraversalMixin
-from .base import ASTVisitor
 from .constants import (
     COMMON_COMMANDS,
     LINTER_CAUTION_COMMANDS,
@@ -28,7 +26,7 @@ from .constants import (
     SHELL_BUILTINS,
     is_assignment,
 )
-from .traversal import visit_children, visit_word_substitution_bodies
+from .traversal import TotalTraversalVisitor
 from .word_analysis import (
     has_unquoted_variable_expansion,
     iter_variable_references,
@@ -81,7 +79,7 @@ class LinterConfig:
     prefer_double_brackets: bool = True
 
 
-class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
+class LinterVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
     """
     Visitor that performs linting checks on shell scripts.
 
@@ -92,6 +90,10 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     - Missing error handling
     - Style issues
     - Security concerns
+
+    Traversal is framework-owned (``TotalTraversalVisitor``): substitution
+    bodies, redirect targets, and every other declared child edge are linted
+    whether or not a handler dispatches them.
     """
 
     def __init__(self, config: Optional[LinterConfig] = None):
@@ -166,10 +168,16 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     # Visitor methods
 
     def visit_Program(self, node: Program) -> None:
-        """Visit a program (the canonical root)."""
+        """Visit a program; run whole-program checks at the traversal root.
+
+        A nested ``Program`` (a substitution body reached by the framework
+        sweep) contributes its per-command lint but must not re-run the
+        end-of-program checks, which summarize the WHOLE script exactly once.
+        """
         for statement in node.statements:
             self.visit(statement)
-        self._check_program_level_issues()
+        if self.at_traversal_root:
+            self._check_program_level_issues()
 
     def _check_program_level_issues(self) -> None:
         """Root-level lint checks run after the whole program is traversed."""
@@ -263,13 +271,9 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
             self._check_word_variable_usage(word)
 
         # Apply the same checks to redirect targets (e.g. `cmd > $undefined.log`).
+        # Commands inside $(...)/<(...)/>(...) arguments are linted via the
+        # framework sweep (Word -> ExpansionPart -> substitution -> program).
         self._visit_redirects(node)
-
-        # Lint the commands inside any $(...)/<(...)/>(...) argument. Visits the
-        # substitution body's statements (not its Program), so per-command
-        # checks fire on the inner commands without re-running the root-level
-        # (unused-var / error-handling) checks for each substitution.
-        visit_word_substitution_bodies(self, node)
 
     def visit_FunctionDef(self, node: FunctionDef) -> None:
         """Visit function definition."""
@@ -465,7 +469,3 @@ class LinterVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                         f"Unquoted variable '{arg}' in {cmd} command",
                         suggestion=f'Use "{arg}" to handle filenames with spaces'
                     )
-
-    def generic_visit(self, node: ASTNode) -> None:
-        """Descend into child nodes for unhandled node types."""
-        visit_children(self, node)

@@ -1,9 +1,10 @@
-"""walk_ast behavior + traversal totality (campaign S5).
+"""walk_ast behavior + traversal totality (campaign S5; totality remediation 2.1).
 
 Pins that walk_ast is the schema-driven sole structural traversal: it yields the
-declared children of each container shape (NODE / NODE_LIST / NODE_TUPLE_LIST) in
-declaration order, descends into elif_parts (the shape the old reflection walker
-missed), never descends into the non-ASTNode S3 templates, skips None-valued
+declared children of each container shape (NODE / NODE_LIST / NODE_TUPLE_LIST /
+TEMPLATE_SUBS) in declaration order, descends into elif_parts (the shape the old
+reflection walker missed), yields the parsed substitutions inside S3 template
+carriers (the exception reappraisal #22 HIGH-2 overturned), skips None-valued
 optional children, and falls back to reflection only for unregistered synthetic
 nodes. ``iter_child_nodes`` is proven equal to ``walk_ast``.
 """
@@ -121,27 +122,36 @@ def test_walk_ast_yields_in_declaration_order():
 
 
 def test_walk_ast_declares_command_substitution_program_as_child():
-    """CommandSubstitution.program IS a declared structural child (walk yields it
-    when a CommandSubstitution is walked directly), matching the historical
-    iter_child_nodes behavior — even though analysis visitors reach it only via
-    the opt-in visit_word_substitution_bodies helper."""
+    """CommandSubstitution.program IS a declared structural child; analysis
+    visitors now reach it through the framework sweep (TotalTraversalVisitor),
+    not an opt-in helper."""
     sub = _find(_ast('echo $(true)'), CommandSubstitution)[0]
     assert sub.program is not None
     assert sub.program in list(walk_ast(sub))
 
 
-def test_walk_ast_does_not_descend_into_syntax_templates():
-    """A C-style for loop carries ArithmeticTemplates (non-ASTNode); walk_ast
-    never yields them — the S5 template-descent decision."""
-    node = _find(_ast('for ((i=0; i<3; i++)); do echo x; done'), CStyleForLoop)[0]
-    # It DOES carry the templates...
-    assert node.init_template is not None
-    # ...but walk_ast yields only the body StatementList and (no) redirects.
+def test_walk_ast_yields_template_subs_not_template_carriers():
+    """A template carrier field yields the parsed substitution NODES the
+    template holds — never the (non-ASTNode) template object itself.
+
+    The `$(echo 2)` inside an arithmetic region lives only in the
+    ArithmeticTemplate's subs; walk_ast enumerating it is what lets every
+    analysis pass see the executable program a raw-text region embeds
+    (reappraisal #22 HIGH-2 overturned the old never-descend exception).
+    """
+    node = _find(_ast('for ((i=0; i<$(echo 2); i++)); do echo x; done'),
+                 CStyleForLoop)[0]
+    assert node.condition_template is not None
+    assert node.condition_template.subs, "condition template should carry the $()"
     children = list(walk_ast(node))
     assert node.body in children
     for c in children:
         assert isinstance(c, ASTNode)  # every yielded child is a real node
-    # None of the yielded children is a template carrier.
+    # The nested substitution node itself is yielded...
+    sub_nodes = [s.expansion for s in node.condition_template.subs]
+    for sub in sub_nodes:
+        assert sub in children
+    # ...but never the template carrier objects.
     template_types = {'ArithmeticTemplate', 'WordTemplate', 'SubscriptSpec',
                       'SyntaxTemplate', 'NestedSub'}
     assert not any(type(c).__name__ in template_types for c in children)

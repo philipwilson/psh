@@ -89,8 +89,11 @@ def test_metrics_match_readme():
     result = _run("--metrics", "examples/fibonacci.sh")
     assert result.returncode == 0, result.stderr
     m = _parse_metrics(result.stdout)
-    assert m.get("Total Commands") == 18
-    assert m.get("Unique Commands") == 8
+    # Counts include the commands inside $(...) substitution bodies —
+    # including the two inside $(( ... )) arithmetic (template subs) — since
+    # analysis traversal became total (remediation 2.1 / HIGH-2).
+    assert m.get("Total Commands") == 22
+    assert m.get("Unique Commands") == 10
     assert m.get("Functions Defined") == 2
     assert m.get("Loops") == 3
     assert m.get("Conditionals") == 1

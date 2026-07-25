@@ -13,6 +13,7 @@ from ..ast_nodes import (
     ArithmeticEvaluation,
     ASTNode,
     CaseConditional,
+    CommandSubstitution,
     ForLoop,
     FunctionDef,
     IfConditional,
@@ -22,13 +23,12 @@ from ..ast_nodes import (
     WhileLoop,
 )
 from .analysis_helpers import RedirectTraversalMixin
-from .base import ASTVisitor
 from .constants import (
     DANGEROUS_COMMANDS,
     SENSITIVE_COMMANDS,
     is_world_writable_permission,
 )
-from .traversal import visit_children, visit_word_substitution_bodies
+from .traversal import TotalTraversalVisitor
 from .word_analysis import has_command_substitution
 
 # Arithmetic-injection shapes: a command substitution (``$(...)`` / backticks) or
@@ -63,7 +63,7 @@ class SecurityIssue:
         return f"[{self.severity}] {self.issue_type}: {self.message}"
 
 
-class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
+class SecurityVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
     """
     Analyze AST for security vulnerabilities.
 
@@ -73,6 +73,14 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     - World-writable file permissions
     - Unquoted variable expansions that could be exploited
     - Dangerous commands and patterns
+    - Executable regions the analysis cannot see into (unparsed backtick
+      bodies, expanding here-document bodies) — flagged rather than silently
+      skipped, so an all-clear summary is never claimed over unanalyzed code
+
+    Traversal is framework-owned (``TotalTraversalVisitor``): every declared
+    child edge — redirect targets, for/case subject words, substitution
+    bodies, syntax-template subs — is reached whether or not a handler
+    dispatches it.
     """
 
     def __init__(self):
@@ -163,12 +171,10 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                         node
                     ))
 
-        # Also check redirects on the command
+        # Also check redirects on the command (substitutions inside argument
+        # words are reached by the framework sweep — Word -> ExpansionPart ->
+        # CommandSubstitution -> program).
         self._visit_redirects(node)
-
-        # Descend into any command/process substitutions in the arguments,
-        # so `$(eval "$x")` and friends are analysed inside substitutions too.
-        visit_word_substitution_bodies(self, node)
 
     def visit_Pipeline(self, node: Pipeline) -> None:
         """Analyze pipelines for security issues."""
@@ -198,6 +204,41 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                 'HIGH',
                 'SENSITIVE_FILE_WRITE',
                 f"Writing to sensitive file: {node.target}",
+                node
+            ))
+
+        # An UNQUOTED here-document body expands at execution time, so an
+        # embedded `$(...)`/backtick in it RUNS — but the body is a raw string
+        # (no parsed AST until the typed heredoc body lands), so its commands
+        # cannot be analyzed here. Flag the opaque executable region rather
+        # than silently passing it (no clean claim over unanalyzed code).
+        body = node.heredoc_content
+        if (node.type in ('<<', '<<-') and body and not node.heredoc_quoted
+                and ('$(' in body or '`' in body)):
+            self.issues.append(SecurityIssue(
+                'LOW',
+                'UNANALYZED_REGION',
+                'Unquoted here-document embeds a substitution that executes '
+                'but cannot be statically analyzed',
+                node
+            ))
+
+    def visit_CommandSubstitution(self, node: CommandSubstitution) -> None:
+        """Flag a backtick substitution's body as an unanalyzed region.
+
+        A legacy backtick carries ``program=None`` BY DESIGN (bash defers
+        backtick parsing, so psh must not read-time-parse it either — see
+        ``ast_nodes.words.CommandSubstitution``). Its body is therefore
+        executable source this analysis cannot see into; report that instead
+        of making a clean claim over it. Modern ``$(...)`` needs nothing here:
+        its parsed ``program`` is a declared child the framework sweep visits.
+        """
+        if node.backtick_style and node.program is None:
+            self.issues.append(SecurityIssue(
+                'LOW',
+                'UNANALYZED_REGION',
+                'Backtick substitution body is not statically analyzed '
+                '(deferred parse); prefer $(...) for analyzable code',
                 node
             ))
 
@@ -241,9 +282,9 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self._visit_redirects(node)
 
     # Program / StatementList / AndOrList need no explicit handler: the
-    # generic_visit -> visit_children default descends into exactly their
-    # ASTNode children (statements / pipelines). Only nodes that add
-    # per-node analysis or carry redirects keep an explicit method below.
+    # framework sweep descends into exactly their ASTNode children
+    # (statements / pipelines). Only nodes that add per-node analysis or
+    # carry redirects keep an explicit method below.
     def visit_IfConditional(self, node: IfConditional) -> None:
         self.visit(node.condition)
         self.visit(node.then_part)
@@ -335,7 +376,3 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                 lines.append("")
 
         return "\n".join(lines)
-
-    def generic_visit(self, node: ASTNode) -> None:
-        """Descend into child nodes for unhandled node types."""
-        visit_children(self, node)
