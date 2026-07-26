@@ -39,9 +39,12 @@ target array's kind (indexed vs associative) is known.
 """
 
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from .words import CommandSubstitution, Expansion
+
+if TYPE_CHECKING:
+    from ..lexer.token_types import SourceSpan  # noqa: F401
 
 
 @dataclass(frozen=True)
@@ -144,4 +147,35 @@ class SubscriptSpec(SyntaxTemplate):
     the raw subscript; the indexed-vs-associative interpretation (arithmetic for
     indexed, string key for associative — the r21 six-implementations
     consolidation) is W2's ``SubscriptEvaluator`` and is NOT decided here.
+
+    A procsub SPELLING in ``subs`` is read-time VALIDATED but never executable
+    at keying time (remediation 2.3/HIGH-4): ``text`` preserves the spelling
+    and the target-kind authority keys it literally (associative) or as
+    arithmetic operators (indexed).
+
+    ``origin``, when known, is the absolute offset of ``text[0]`` in the
+    source string the enclosing parse consumed (``Token.position``
+    coordinates) — set by both parsers' array-element-assignment paths, where
+    the producing token is at hand. :meth:`absolute_spans` then projects each
+    nested substitution's span to ABSOLUTE source coordinates. ``None`` where
+    no source anchor exists by nature (a builtin's argument-expanded text, the
+    ``${...}`` string paths).
     """
+
+    origin: Optional[int] = None
+
+    def absolute_spans(self) -> 'Tuple[SourceSpan, ...]':
+        """Each nested sub's span as an absolute ``SourceSpan``.
+
+        ``source[span.start:span.end]`` is the substitution's exact source
+        spelling (guard-pinned). Requires ``origin``; raises ``ValueError``
+        when the spec carries no anchor.
+        """
+        if self.origin is None:
+            raise ValueError("SubscriptSpec has no source anchor (origin)")
+        # cycle-break: lexer imports ast_nodes at module level (word_fusion),
+        # so the SourceSpan value type must be imported lazily here. Ratchet
+        # cap 1 in tests/unit/tooling/test_import_layering.py.
+        from ..lexer.token_types import SourceSpan
+        return tuple(SourceSpan(self.origin + s.start, self.origin + s.end)
+                     for s in self.subs)

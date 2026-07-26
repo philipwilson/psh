@@ -264,8 +264,13 @@ class ArrayParsers:
                 # ctx-independent, and every ${...}-operand / reference / arith
                 # template (the common case) IS threaded via the shared
                 # ExpansionParsers; this residual is documented, not chased,
-                # for the educational combinator.
-                index_spec=build_subscript_spec(subscript),
+                # for the educational combinator. The absolute anchor (origin)
+                # is a token-position fact, not ParseInputs threading: set for
+                # the fused-head shape, None for hand-built streams.
+                index_spec=build_subscript_spec(
+                    subscript,
+                    origin=(head.position + len(name) + 1
+                            if head_scan is not None else None)),
             ),
             position=pos,
         )

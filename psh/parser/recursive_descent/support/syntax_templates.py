@@ -217,7 +217,8 @@ def build_arithmetic_template(text: str, ctx: "Optional[_TemplateCtx]" = None) -
     return ArithmeticTemplate(text=text, subs=tuple(_scan(text, 0, False, False, ctx)))
 
 
-def build_subscript_spec(text: str, ctx: "Optional[_TemplateCtx]" = None) -> SubscriptSpec:
+def build_subscript_spec(text: str, ctx: "Optional[_TemplateCtx]" = None,
+                         *, origin: "Optional[int]" = None) -> SubscriptSpec:
     """Validate the nested shell grammar of an array subscript.
 
     ``text`` is the raw subscript (``arr[<text>]``). Nested modern ``$()``
@@ -233,5 +234,9 @@ def build_subscript_spec(text: str, ctx: "Optional[_TemplateCtx]" = None) -> Sub
     VALID spelling like ``a[<(echo hi)]`` still fails as arithmetic at
     RUNTIME, exactly bash). Arithmetic regions keep procsub scanning off
     (bash defers ``$((a[<(if)]))`` — see ``build_arithmetic_template``).
+
+    ``origin`` (when the caller holds the producing token) anchors the spec
+    absolutely — see :meth:`SubscriptSpec.absolute_spans`.
     """
-    return SubscriptSpec(text=text, subs=tuple(_scan(text, 0, False, True, ctx)))
+    return SubscriptSpec(text=text, subs=tuple(_scan(text, 0, False, True, ctx)),
+                         origin=origin)

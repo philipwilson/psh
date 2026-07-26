@@ -288,15 +288,20 @@ class ArrayParser(ParserSubcomponent):
         value, value_word = self._element_value_from_head(
             head_token, candidate.head_len)
         subscript = candidate.subscript if candidate.subscript is not None else ''
-        # Read-time validate a nested $() in the subscript (a[$(if)]=v). The
-        # indexed/associative keying stays W2's SubscriptEvaluator.
+        # Read-time validate a nested $() / <() in the subscript (a[$(if)]=v,
+        # a[<(if)]=v). The indexed/associative keying stays W2's
+        # SubscriptEvaluator. The head token anchors the spec absolutely:
+        # the `name[` prefix is a verbatim prefix of the token's lexeme, so
+        # the subscript starts at position + len(name) + 1.
         return ArrayElementAssignment(
             name=candidate.name,
             index=subscript,
             value=value,
             is_append=is_append,
             value_word=value_word,
-            index_spec=build_subscript_spec(subscript, self.parser.ctx),
+            index_spec=build_subscript_spec(
+                subscript, self.parser.ctx,
+                origin=head_token.position + len(candidate.name) + 1),
         )
 
     def _element_value_from_head(self, head_token: Token,

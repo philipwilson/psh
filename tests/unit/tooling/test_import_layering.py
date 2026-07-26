@@ -223,6 +223,10 @@ def find_cycles(pkg_edges):
 #     python tests/unit/tooling/test_import_layering.py
 FUNC_IMPORT_CAPS = {
     'psh.__main__': 3,
+    # cycle-break: lexer imports ast_nodes at module level (word_fusion), so
+    # SubscriptSpec.absolute_spans defers its SourceSpan value-type import
+    # (remediation 2.3 D5).
+    'psh.ast_nodes.syntax_templates': 1,
     'psh.builtins.command_builtin': 6,
     'psh.builtins.core': 2,
     'psh.builtins.declaration_engine': 2,
