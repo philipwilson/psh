@@ -36,15 +36,20 @@ its corpus):
   * STRUCTURE parity is asserted over the WHOLE canonical AST.
   * LOCATION parity is asserted over NESTED-substitution bodies — the ``.line``
     stamps both parsers set via the shared ``WordBuilder``/``_nested_program``.
-    Top-level statement ``.line`` is recursive-descent-only (a pre-existing,
-    documented combinator limitation) and is deliberately OUT of scope here.
-  * Array-INITIALIZATION elements are OUT of scope (a CARRY, remediation
-    RULING 2): ``ArrayParsers`` builds element words through the static
+    Top-level statement ``.line`` is recursive-descent-only — a pre-existing
+    combinator gap (newly documented by this slot, not previously written down) —
+    and is deliberately OUT of scope here.
+  * The ``arrays.py#parse_word_as_word`` seam is OUT of scope (a CARRY,
+    remediation RULING 2 + N8): it builds element/target words through the static
     ``WordBuilder`` without the per-call ctx (a separate, pre-existing combinator
-    residual — see ``psh/parser/combinators/arrays.py``), so ``a=($(echo
-    @(a|b)))`` still diverges there. That seam is NOT the HIGH-5 entry facade and
-    is unchanged by this slot's fix; it is flip-pinned by
-    ``test_CARRY_array_init_nested_substitution_still_diverges_on_combinator``.
+    residual). Its blast radius is the FULL ``parse_word_as_word`` reach — array
+    INITIALIZATION elements (``a=($(echo @(a|b)))``), array ELEMENT assignments
+    (``a[0]=$(echo @(a|b))``), AND REDIRECT TARGETS via ``RedirectionMixin``
+    (``echo hi > $(echo @(a|b))``) all still diverge on the combinator. Not the
+    HIGH-5 entry facade, unchanged by this slot; flip-pinned by
+    ``test_CARRY_array_init_nested_substitution_still_diverges_on_combinator`` and
+    ``test_CARRY_redirect_target_nested_substitution_still_diverges_on_combinator``
+    (both co-flip only when the whole seam is threaded at once).
 """
 
 import dataclasses
@@ -304,5 +309,27 @@ def test_CARRY_array_init_nested_substitution_still_diverges_on_combinator():
     rd = parse_with_inputs(list(tokens), inputs, 'recursive_descent')
     assert len(rd.statements) == 1
     # The combinator still rejects it — the documented ArrayParsers residual.
+    with pytest.raises(ParseError):
+        parse_with_inputs(list(tokens), inputs, 'combinator')
+
+
+def test_CARRY_redirect_target_nested_substitution_still_diverges_on_combinator():
+    """CARRY divergence-pin #2 (remediation N8): the SAME ArrayParsers seam
+    (arrays.py#parse_word_as_word, static WordBuilder, no ctx) also serves
+    REDIRECT TARGETS via RedirectionMixin — so the residual's blast radius is
+    wider than array initialization. ``echo hi > $(echo @(a|b))`` diverges for
+    the same reason: the redirect-target word re-lexes its ``$()`` body without
+    extglob on the combinator, so it rejects while recursive descent (and bash)
+    accept.
+
+    FLIP-PIN, same as the array-init pin: closing the seam (threading ctx through
+    parse_word_as_word) flips BOTH — this test and the array-init one co-flip
+    only if the whole seam is threaded at once. Goes RED when the carry closes.
+    """
+    source = 'echo hi > $(echo @(a|b))'
+    inputs = ParseInputs(source_text=source, lexer_options=_EXTGLOB)
+    tokens = list(tokenize(source, shell_options=_EXTGLOB))
+    rd = parse_with_inputs(list(tokens), inputs, 'recursive_descent')
+    assert len(rd.statements) == 1
     with pytest.raises(ParseError):
         parse_with_inputs(list(tokens), inputs, 'combinator')

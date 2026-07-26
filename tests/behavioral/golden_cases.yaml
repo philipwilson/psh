@@ -1654,6 +1654,24 @@
   stderr: ""
   exit_code: 0
 
+# remediation B1: a parse error in a nested $() of a heredoc-bearing command now
+# reports the ABSOLUTE source line (the heredoc parse path threads line_offset
+# since the one-entry reroute). The erroring command is on line 3, so psh pins
+# `line 3` in BOTH the `-c:3:` prefix and the caret coordinate. psh_only: bash
+# reports the same absolute line ("line 3") but in a different format and exits
+# 127 (a bash heredoc quirk) vs psh's 2, so the psh-side text is pinned here.
+- name: heredoc_nested_error_reports_absolute_line
+  command: |
+    : p1
+    : p2
+    echo $(if) <<EOF
+    body
+    EOF
+  stdout: ""
+  stderr: "-c:3: Parse error (line 3, column 3)"
+  exit_code: 2
+  psh_only: true
+
 - name: heredoc_with_expansion
   command: |
     x=world; cat <<EOF
