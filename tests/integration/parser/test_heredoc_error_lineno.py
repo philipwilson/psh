@@ -1,13 +1,18 @@
 """Absolute line numbers for parse errors on heredoc-bearing commands.
 
 Remediation B1 pins. Rerouting the heredoc branch through the one
-``parse_with_inputs`` entry threads ``line_offset``/``source_text`` into the RD
+``parse_with_inputs`` entry threads ``line_offset``/``source_text`` into the
 parser for the FIRST time (the deleted ``utils.parse_with_heredocs`` hard-coded
 line_offset=0 / source_text=None). So a parse error in a nested substitution of
 a heredoc-bearing command now reports the ABSOLUTE source line — matching bash —
-instead of the fragment-relative line 1.
+instead of the fragment-relative line 1. This manifests on BOTH parsers
+(remediation R3-4): the nested-substitution error is parsed by the recursive
+descent parser via the shared nested-parse path even under ``--parser
+combinator``, so the threaded offset reaches it on either active parser (the
+subprocess pins run both).
 
-RED AT BASE (genuine db6dfb13 probes, throwaway base worktree, all three modes):
+RED AT BASE (genuine db6dfb13 probes, throwaway base worktree, all three modes;
+both parsers behave identically here):
   * pad + heredoc (erroring command on line 3): base ``line 1`` → tip ``line 3``
     = bash 5.2.26 ``line 3``.
   * function defined after a pad (heredoc body command on line 4): base
@@ -65,36 +70,47 @@ def test_old_no_offset_path_reported_line_1():
     assert _err_line(0, None) == 1
 
 
-def _run(mode, script, tmp_path):
-    """Run *script* through psh in file / -c / stdin mode; return stderr."""
+def _run(mode, script, tmp_path, parser="rd"):
+    """Run *script* through psh in file / -c / stdin mode; return stderr.
+
+    ``parser`` selects the active parser. The improvement manifests on BOTH
+    parsers (remediation R3-4): the nested-substitution error whose line this
+    pins is parsed by the recursive-descent parser via the shared nested-parse
+    path even under ``--parser combinator``, so the threaded line_offset reaches
+    it either way.
+    """
+    base = [sys.executable, "-m", "psh"]
+    if parser == "combinator":
+        base += ["--parser", "combinator"]
     if mode == "file":
         p = tmp_path / "probe.sh"
         p.write_text(script)
-        r = subprocess.run([sys.executable, "-m", "psh", str(p)],
-                           capture_output=True, text=True)
+        r = subprocess.run(base + [str(p)], capture_output=True, text=True)
     elif mode == "-c":
-        r = subprocess.run([sys.executable, "-m", "psh", "-c", script],
-                           capture_output=True, text=True)
+        r = subprocess.run(base + ["-c", script], capture_output=True, text=True)
     else:  # stdin
-        r = subprocess.run([sys.executable, "-m", "psh"], input=script,
-                           capture_output=True, text=True)
+        r = subprocess.run(base, input=script, capture_output=True, text=True)
     return r.stderr
 
 
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
 @pytest.mark.parametrize("mode", ["file", "-c", "stdin"])
-def test_pad_heredoc_absolute_line_all_modes(mode, tmp_path):
+def test_pad_heredoc_absolute_line_all_modes(mode, parser, tmp_path):
     # The rendered diagnostic pins the absolute line in BOTH coordinates: the
-    # `psh: <source>:3:` prefix and the `(line 3, ...)` caret coordinate.
-    stderr = _run(mode, _PAD_HEREDOC_SCRIPT, tmp_path)
+    # `psh: <source>:3:` prefix and the `(line 3, ...)` caret coordinate. Both
+    # parsers report line 3 (verifier-confirmed: base 1 → tip 3 on each).
+    stderr = _run(mode, _PAD_HEREDOC_SCRIPT, tmp_path, parser)
     assert ":3:" in stderr
     assert "line 3" in stderr
 
 
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
 @pytest.mark.parametrize("mode", ["file", "-c", "stdin"])
-def test_function_body_heredoc_absolute_line_all_modes(mode, tmp_path):
+def test_function_body_heredoc_absolute_line_all_modes(mode, parser, tmp_path):
     # Function defined at line 3, heredoc body command errors on line 4.
-    # Red at base: base reported line 2 (genuine base-worktree probe), tip line 4.
-    stderr = _run(mode, _FUNC_HEREDOC_SCRIPT, tmp_path)
+    # Red at base: base reported line 2 (genuine base-worktree probe), tip line 4
+    # — on BOTH parsers.
+    stderr = _run(mode, _FUNC_HEREDOC_SCRIPT, tmp_path, parser)
     assert ":4:" in stderr
     assert "line 4" in stderr
 
