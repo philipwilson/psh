@@ -357,6 +357,56 @@ empty subscript fatal but accepts a source empty-quoted key (`h[""]`) as valid
 (`SubscriptEvaluator.raw_has_source_quote`). `_eval_array_index()` remains as a
 thin adapter.
 
+Three remediation-2.3 invariants on the re-lex bridge
+(`SubscriptEvaluator.word_from_text`):
+
+- **Procsub spellings are literal key text and are NEVER PARSED at keying
+  time** (HIGH-4, round-3 B1): an unquoted `<(...)`/`>(...)` in subscript
+  text never launches and its body's VALIDITY is irrelevant — the keying
+  bridge splits the spelling structurally (`subscript.py#_procsub_segments`
+  + `word_from_text`): frame chars become literal parts, the body re-enters
+  the bridge (so `$`-forms expand even inside an INVALID frame — `a[<(if
+  $y)]` with `y=Q` addresses `<(if Q)` — quotes remove, nested frames
+  recurse, an unclosed frame keeps its raw tail). Cmdsubs and backticks
+  still EXECUTE in associative keys; an INVALID modern `$()` body becomes a
+  DEFERRED executable part (the backtick model) so every route ATTEMPTS the
+  substitution like bash — the frame-fatality residual is the declared
+  I3/s2 family (slot 2.4's consumer).
+- **THREE RENDER TIERS** (bash, probe matrix B1R3-matrix-FINAL): the parse
+  RE-RENDER of covered procsub spellings (whitespace collapse, trailing-`;`
+  drop, canonical redirect spacing, recursive inner frames) applies ONLY on
+  SOURCE paths — psh implements it where bash does, AT PARSE TIME
+  (`parser/recursive_descent/support/syntax_templates.py#
+  rewrite_rendered_subscript`, spliced into `ArrayElementAssignment.index`
+  and the `${a[...]}` parameter); ARITH-held subscripts and RUNTIME strings
+  keep the spelling RAW (the keying engine never renders).
+  `procsub_render.py#render_procsub_body` is the covered-subset rule behind
+  ONE structural render-vs-raw predicate; uncovered constructs (compounds,
+  subshells — bash's own handling is bimodal there) keep the RAW spelling:
+  the DECLARED compound-render normalization residual (both-sides pins in
+  `tests/conformance/bash/test_subscript_keying_conformance.py`). The
+  renderer is keying-seam-owned; `declare -f` must NEVER migrate to it
+  (bash renders the two surfaces differently).
+  Read-time REJECTION of an invalid spelling is the parser's job
+  (`parser/recursive_descent/support/syntax_templates.py#build_subscript_spec`).
+- **Un-lexable raw raises the typed `SubscriptSyntaxError`** (MEDIUM-12a; class
+  narrowed in round 3): EXACTLY the unclosed-QUOTE junk family (`a["]`) —
+  the arguments bash's builtins call "not a valid identifier". The former
+  broad `except Exception` fallbacks are deleted; anything outside the
+  typed class propagates as an internal defect (strict-errors). The keying
+  funnel prints the location-prefixed message except for the builtin uses
+  (`SubscriptUse.TEST_V`/`UNSET`, `_QUIET_SYNTAX_USES`), whose callers own
+  bash's wording; the per-route audit (four routes match bash, four are
+  declared+pinned) is `test_unlexable_subscript_route_audit`.
+
+The `NAME[...]` extent itself — where a subscript ENDS — has ONE quote-aware
+scanner: `param_parser.py#find_subscript_end` (skips `'...'`/`"..."`/
+`$'...'`/backslash escapes/`$(...)`/`${...}`/backticks; unquoted brackets
+nest). It backs the `${...}` classifier (`param_parser.py#_is_param_spec`,
+`#_scan_operator`), the parser word builder, and both parsers' element-head
+scans — `a["]"]=ok` and `${a["]"]}` span to the real close on every surface
+(remediation 2.3, MEDIUM-4).
+
 ### IFS Word Splitting and per-character protection
 
 The field IR carries two facts per run through splitting and globbing:

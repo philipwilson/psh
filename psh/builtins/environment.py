@@ -21,7 +21,7 @@ from ..core.option_registry import (
     SHORT_TO_LONG,
     OptionCategory,
 )
-from ..expansion.subscript import SubscriptUse, TargetKind
+from ..expansion.subscript import SubscriptSyntaxError, SubscriptUse, TargetKind
 from ..lexer.unicode_support import is_valid_name
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import escape_value
@@ -675,9 +675,14 @@ class UnsetBuiltin(Builtin):
         Returns True on success, False on error (caller sets status 1).
         """
 
-        bracket_pos = var.find('[')
-        array_name = var[:bracket_pos]
-        index_expr = var[bracket_pos+1:-1]
+        expander_split = shell.expansion_manager.variable_expander.split_subscript(var)
+        if expander_split is None:
+            # R4-2: the whole-string extent rule failed (`a[]]` — the extent
+            # closes before the final `]`, so the arg must not alias the `]`
+            # key). bash: loud invalid identifier, rc 1, key untouched.
+            self.error(f"`{var}': not a valid identifier", shell)
+            return False
+        array_name, index_expr = expander_split
         # Resolve a nameref target: `declare -n r=a; unset "r[1]"` unsets a[1]
         # (bash). The main loop skips its nameref resolution for a subscripted
         # name (`'[' in var`), so it happens here on the array-name part.
@@ -737,7 +742,18 @@ class UnsetBuiltin(Builtin):
             kind = (TargetKind.ASSOCIATIVE
                     if isinstance(var_obj.value, AssociativeArray)
                     else TargetKind.INDEXED)
-            key = subscript.evaluate(index_expr, kind, SubscriptUse.UNSET)
+            try:
+                key = subscript.evaluate(index_expr, kind, SubscriptUse.UNSET)
+            except SubscriptSyntaxError:
+                # bash 5.2: `unset 'a["]'` -> loud "not a valid identifier",
+                # rc 1, the line CONTINUES (probe m12, remediation 2.3). The
+                # UNSET use keeps the keying funnel quiet; this caller owns
+                # the wording. Reconstruction is exact: split_subscript
+                # requires the trailing `]`.
+                self.error(
+                    f"`{array_name}[{index_expr}]': not a valid identifier",
+                    shell)
+                return False
             if key is None:
                 # bash 5.2: `unset 'a[]'` / `unset "a[$e]"` with an
                 # (expanded-)empty INDEXED subscript is a silent no-op

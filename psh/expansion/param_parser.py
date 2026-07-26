@@ -82,7 +82,10 @@ Known representational choices (pinned by the differential corpus):
       appended (('v', '/', 'p') for ``${v/p}``); the evaluator's
       pattern/replacement splitter treats both spellings identically.
 """
+from typing import Optional
+
 from ..ast_nodes import ParameterExpansion
+from ..lexer.cmdsub_scanner import find_command_substitution_end
 from ..lexer.unicode_support import is_valid_name
 
 # One transform letter may follow '@' in final position: ${v@Q} etc.
@@ -117,16 +120,223 @@ def _is_identifier(name: str) -> bool:
     return is_valid_name(name, posix_mode=False)
 
 
-def _subscript_end(content: str, start: int) -> int:
-    """Index of the ']' closing the '[' at *start*, or -1 (nesting-aware)."""
+def _skip_single_quote(text: str, i: int) -> int:
+    """Index just past the ``'`` closing the one at *i*, or -1 (no escapes)."""
+    j = text.find("'", i + 1)
+    return j + 1 if j >= 0 else -1
+
+
+def _skip_double_quote(text: str, i: int) -> int:
+    """Index just past the ``"`` closing the one at *i*, or -1.
+
+    A backslash escapes the next character (``\\"`` does not close); embedded
+    ``$(...)``/``${...}``/backtick extents are skipped so their ``"`` do not
+    close the outer string (``"$(echo "x")"`` and ``"`echo "x"`"`` are each
+    ONE double-quoted region in bash — backticks stay ACTIVE inside dq and
+    may contain quotes; round-1 R1-8).
+    """
+    n = len(text)
+    j = i + 1
+    while j < n:
+        c = text[j]
+        if c == '\\' and j + 1 < n:
+            j += 2
+            continue
+        if c == '"':
+            return j + 1
+        if c == '`':
+            j = _skip_backtick(text, j)
+            if j == -1:
+                return -1
+            continue
+        if c == '$' and j + 1 < n and text[j + 1] == '(':
+            j, found = find_command_substitution_end(text, j + 2)
+            if not found:
+                # Unclosed $( inside the dq: no closing quote can follow
+                # (R2-4 — checked like find_subscript_end, not by accident
+                # of the scanner's end-of-text return value).
+                return -1
+            continue
+        if c == '$' and j + 1 < n and text[j + 1] == '{':
+            j = _skip_braces(text, j + 1)
+            if j == -1:
+                return -1
+            continue
+        j += 1
+    return -1
+
+
+def _skip_ansi_c_quote(text: str, i: int) -> int:
+    """Index just past the ``$'...'`` span whose ``$`` is at *i*, or -1.
+
+    A backslash escapes the next character (``\\'`` does not close)."""
+    n = len(text)
+    j = i + 2
+    while j < n:
+        if text[j] == '\\' and j + 1 < n:
+            j += 2
+            continue
+        if text[j] == "'":
+            return j + 1
+        j += 1
+    return -1
+
+
+def _skip_backtick(text: str, i: int) -> int:
+    """Index just past the `` ` `` closing the one at *i*, or -1 (backslash
+    escapes)."""
+    n = len(text)
+    j = i + 1
+    while j < n:
+        if text[j] == '\\' and j + 1 < n:
+            j += 2
+            continue
+        if text[j] == '`':
+            return j + 1
+        j += 1
+    return -1
+
+
+def _skip_braces(text: str, i: int) -> int:
+    """Index just past the ``}`` matching the ``{`` at *i*, or -1.
+
+    Quote- and escape-aware (a ``}`` inside ``'...'``/``"..."``/``$'...'`` or
+    after ``\\`` does not close), so ``${h["}"]}`` spans correctly."""
+    n = len(text)
     depth = 0
-    for i in range(start, len(content)):
-        if content[i] == '[':
+    j = i
+    while j < n:
+        c = text[j]
+        if c == '\\' and j + 1 < n:
+            j += 2
+            continue
+        if c == "'":
+            j = _skip_single_quote(text, j)
+            if j == -1:
+                return -1
+            continue
+        if c == '"':
+            j = _skip_double_quote(text, j)
+            if j == -1:
+                return -1
+            continue
+        if c == '$' and j + 1 < n and text[j + 1] == "'":
+            j = _skip_ansi_c_quote(text, j)
+            if j == -1:
+                return -1
+            continue
+        if c == '{':
             depth += 1
-        elif content[i] == ']':
+        elif c == '}':
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        j += 1
+    return -1
+
+
+def skip_quoted_run(text: str, i: int) -> "Optional[int]":
+    """Index past the quoted/extent construct starting at ``i``, or None.
+
+    THE one public skip-run dispatch (R4-6 consolidation): ``\\x``,
+    ``'...'``, ``"..."``, ``$'...'``, ``$(...)``, ``${...}``, backticks —
+    the same quote model `find_subscript_end` walks with. An unclosed
+    construct consumes to end-of-text (degradation, never an exception).
+    """
+    n = len(text)
+    c = text[i]
+    if c == '\\' and i + 1 < n:
+        return i + 2
+    if c == "'":
+        j = _skip_single_quote(text, i)
+        return j if j != -1 else n
+    if c == '"':
+        j = _skip_double_quote(text, i)
+        return j if j != -1 else n
+    if c == '`':
+        j = _skip_backtick(text, i)
+        return j if j != -1 else n
+    if c == '$' and i + 1 < n:
+        nxt = text[i + 1]
+        if nxt == "'":
+            j = _skip_ansi_c_quote(text, i)
+            return j if j != -1 else n
+        if nxt == '(':
+            j, _found = find_command_substitution_end(text, i + 2)
+            return j
+        if nxt == '{':
+            j = _skip_braces(text, i + 1)
+            return j if j != -1 else n
+    return None
+
+
+def find_subscript_end(text: str, open_idx: int) -> int:
+    """Index of the ``]`` closing the ``[`` at *open_idx*, or -1. THE
+    quote-aware subscript extent scanner (remediation 2.3, MEDIUM-4).
+
+    bash's assignment-word and ``${arr[...]}`` scans respect quoting when
+    finding a subscript's closing bracket (probe-verified, bash 5.2):
+    ``a["]"]=ok`` keys ``]``; ``${a["]"]}`` reads it back. This is the ONE
+    extent rule shared by the runtime ``${...}`` classifier (this module),
+    the parser word builder, and both parsers' array-assignment heads —
+    replacing four quote-blind ``index(']')``/depth-count copies.
+
+    Skips (a ``]`` inside none of these closes): ``'...'``, ``"..."`` (with
+    ``\\`` escapes and embedded expansion extents), ``$'...'``, ``\\x``
+    escapes, ``$(...)`` via the lexer's grammar-aware scanner (a quoted or
+    case-pattern ``]``/``)`` inside a command substitution is not an extent
+    boundary), ``${...}`` brace spans, and `` `...` `` backticks. Unquoted
+    ``[``/``]`` nest (``c[b[i]]=N`` addresses ``c[b[i]]``). An unclosed
+    construct yields -1 (no extent — callers treat the text as not a
+    subscripted form, exactly as before for an unclosed bare bracket).
+    """
+    n = len(text)
+    depth = 0
+    i = open_idx
+    while i < n:
+        c = text[i]
+        if c == '\\' and i + 1 < n:
+            i += 2
+            continue
+        if c == "'":
+            i = _skip_single_quote(text, i)
+            if i == -1:
+                return -1
+            continue
+        if c == '"':
+            i = _skip_double_quote(text, i)
+            if i == -1:
+                return -1
+            continue
+        if c == '`':
+            i = _skip_backtick(text, i)
+            if i == -1:
+                return -1
+            continue
+        if c == '$' and i + 1 < n:
+            nxt = text[i + 1]
+            if nxt == "'":
+                i = _skip_ansi_c_quote(text, i)
+                if i == -1:
+                    return -1
+                continue
+            if nxt == '(':
+                i, found = find_command_substitution_end(text, i + 2)
+                if not found:
+                    return -1
+                continue
+            if nxt == '{':
+                i = _skip_braces(text, i + 1)
+                if i == -1:
+                    return -1
+                continue
+        if c == '[':
+            depth += 1
+        elif c == ']':
             depth -= 1
             if depth == 0:
                 return i
+        i += 1
     return -1
 
 
@@ -148,7 +358,7 @@ def _is_param_spec(text: str) -> bool:
     if bracket == -1:
         return _is_identifier(text)
     return (_is_identifier(text[:bracket])
-            and _subscript_end(text, bracket) == len(text) - 1)
+            and find_subscript_end(text, bracket) == len(text) - 1)
 
 
 def _scan_operator(content: str):
@@ -159,17 +369,22 @@ def _scan_operator(content: str):
     inside bracket subscripts.
     """
     n = len(content)
-    depth = 0
-    for i in range(n):
+    i = 0
+    while i < n:
         c = content[i]
         if c == '[':
-            depth += 1
+            # Jump past the whole (quote-aware) subscript extent: operator
+            # characters inside it never match (${a[x,y]^^} case-mods the
+            # element a[x,y]; ${a["]"]:-d} finds ':-' AFTER the quoted ']').
+            # An unclosed bracket suppresses the scan entirely (${a[x:-d is a
+            # plain — unset — name, as before).
+            end = find_subscript_end(content, i)
+            if end == -1:
+                return None, -1
+            i = end + 1
             continue
-        if c == ']':
-            if depth > 0:
-                depth -= 1
-            continue
-        if depth > 0 or i == 0:
+        if i == 0:
+            i += 1
             continue
         # ${param@...}: '@' + everything to the end is a transform operand.
         # bash accepts ANY operand here — empty, multi-char, punctuation
@@ -190,6 +405,7 @@ def _scan_operator(content: str):
             return '/', i
         if c in _ONE_CHAR_OPS:
             return c, i
+        i += 1
     return None, -1
 
 
@@ -274,7 +490,7 @@ def parse_parameter_expansion(content: str) -> ParameterExpansion:
         if '[' in rest and rest.endswith(']'):
             bracket = rest.find('[')
             if (_is_identifier(rest[:bracket])
-                    and _subscript_end(rest, bracket) == len(rest) - 1):
+                    and find_subscript_end(rest, bracket) == len(rest) - 1):
                 # ${!arr[@]} keys, or ${!arr[idx]} element indirection —
                 # the evaluator dispatches on the subscript.
                 return ParameterExpansion(rest, '!', None)

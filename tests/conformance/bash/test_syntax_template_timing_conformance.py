@@ -207,3 +207,35 @@ def test_divergence_eval_source_fatality_is_i3():
     # (structural identity with the top-level $() case — both go to I3).
     p3 = _psh('x=set; eval "echo \\${x:-\\$(if)}"; echo AFTER', "c")
     assert p3.returncode == 0 and "AFTER" in p3.stdout
+
+
+def test_divergence_eval_source_procsub_joined_i3(tmp_path):
+    """Remediation 2.3 B1 (verifier find; ruled declare+pin+carry): 2.3's D3
+    routed the procsub SPELLING onto the same typed SubstitutionSyntaxError
+    path as ``$()`` — so at an eval/source frame the procsub shape now JOINS
+    the pre-existing I3 family (frame does not consume the typed error; psh
+    continues rc 2-in-$?, bash aborts the frame's enclosing script rc 1 in
+    file mode). At base psh happened to MATCH bash here by accident: the
+    un-validated spelling reached the runtime indexed-arith path, whose
+    fatal discard also suppressed the rest (different mechanism, same
+    observables). 2.4 owns the flip — these rows are structured to flip
+    TOGETHER with test_divergence_eval_source_fatality_is_i3 above (same
+    consumer mechanism; the cmdsub control row documents the family).
+    OWNERSHIP: flips in slot 2.4, not here."""
+    src_file = tmp_path / 'z4src.sh'
+    src_file.write_text('a[<(if)]=1\n')
+    rows = [
+        ("eval 'a[<(if)]=1'; echo ran rc=$?", 'eval+procsub'),
+        ("eval 'a[$(if)]=1'; echo ran rc=$?", 'eval+cmdsub (pre-existing control)'),
+        (f"source {src_file}; echo ran rc=$?", 'source+procsub'),
+    ]
+    for script, label in rows:
+        b = _bash(script, "file")
+        pr = _psh(script, "file")
+        assert b.returncode == 1 and 'ran' not in b.stdout, (label, b)
+        assert pr.returncode == 0 and 'ran rc=2' in pr.stdout, (label, pr)
+    # Dead-branch control: the frame never runs -> parity (nothing eager).
+    dead = "true || eval 'a[<(if)]=1'; echo ran"
+    bd, pd = _bash(dead, "file"), _psh(dead, "file")
+    assert bd.stdout == pd.stdout == 'ran\n'
+    assert bd.returncode == pd.returncode == 0

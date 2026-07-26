@@ -20,12 +20,12 @@ from ....ast_nodes import (
     WordPart,
 )
 from ....core.assignment_utils import SHELL_NAME
-from ....expansion.param_parser import parse_parameter_expansion
+from ....expansion.param_parser import find_subscript_end, parse_parameter_expansion
 from ....lexer.token_types import Token, TokenType
 from .syntax_templates import (
     build_arithmetic_template,
-    build_subscript_spec,
     build_word_template,
+    rewrite_rendered_subscript,
 )
 
 # Token types that represent standalone expansion tokens
@@ -202,28 +202,32 @@ class WordBuilder:
 
     @staticmethod
     def _attach_param_templates(node: ParameterExpansion, ctx) -> None:
-        """Validate and attach the operand + subscript templates of a ${...}."""
+        """Validate and attach the operand + subscript templates of a ${...}.
+
+        The subscript is a SOURCE path, so covered procsub spellings are
+        render-spliced into the parameter itself (round-3 plan A — bash
+        renders on source reads too; probe matrix)."""
         if node.word:
             node.word_template = build_word_template(node.word, ctx)
         subscript = WordBuilder._extract_subscript(node.parameter)
         if subscript is not None:
-            node.subscript_spec = build_subscript_spec(subscript, ctx)
+            new_sub, spec = rewrite_rendered_subscript(subscript, ctx)
+            if new_sub != subscript:
+                node.parameter = node.parameter.replace(
+                    f'[{subscript}]', f'[{new_sub}]', 1)
+            node.subscript_spec = spec
 
     @staticmethod
     def _extract_subscript(parameter: str) -> Optional[str]:
-        """The subscript text of a ``name[...]`` parameter, or None (nesting-aware)."""
+        """The subscript text of a ``name[...]`` parameter, or None.
+
+        Extent via the ONE quote-aware scanner (``${a["]"]}`` spans to the
+        real close, not the quoted ``]`` — remediation 2.3/MEDIUM-4)."""
         bracket = parameter.find('[')
         if bracket == -1:
             return None
-        depth = 0
-        for i in range(bracket, len(parameter)):
-            if parameter[i] == '[':
-                depth += 1
-            elif parameter[i] == ']':
-                depth -= 1
-                if depth == 0:
-                    return parameter[bracket + 1:i]
-        return None
+        end = find_subscript_end(parameter, bracket)
+        return parameter[bracket + 1:end] if end != -1 else None
 
     @staticmethod
     def _variable_name_to_expansion(name: str, ctx=None) -> Expansion:
@@ -245,12 +249,20 @@ class WordBuilder:
             if _SIMPLE_VAR_RE.match(inner) or _SPECIAL_VAR_RE.match(inner):
                 # Brace-DELIMITED ${name}: does not fuse with a following
                 # name-char run under brace expansion (see braced field).
-                var = VariableExpansion(inner, braced=True)
                 # A subscripted reference (${arr[SUB]}) keeps SUB in the name;
-                # read-time validate a nested $() in it (${a[$(if)]}).
+                # read-time validate a nested $() in it (${a[$(if)]}) and
+                # render-splice covered procsub spellings (source path,
+                # round-3 plan A).
                 subscript = WordBuilder._extract_subscript(inner)
+                spec = None
                 if subscript is not None:
-                    var.subscript_spec = build_subscript_spec(subscript, ctx)
+                    new_sub, spec = rewrite_rendered_subscript(subscript, ctx)
+                    if new_sub != subscript:
+                        inner = inner.replace(f'[{subscript}]',
+                                              f'[{new_sub}]', 1)
+                var = VariableExpansion(inner, braced=True)
+                if spec is not None:
+                    var.subscript_spec = spec
                 return var
             # Contains operators — delegate to the parameter expansion parser.
             return WordBuilder._parse_parameter_expansion(f"${{{inner}}}", ctx)

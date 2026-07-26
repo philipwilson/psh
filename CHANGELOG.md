@@ -4,6 +4,43 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.758.0 (2026-07-26) - Remediation Wave 2 slot 2.3: subscript syntax identity (HIGH-4 + MEDIUM-4 + MEDIUM-12a)
+- **Process substitutions in subscripts are now keys, not commands.** bash keys
+  `a[<(printf x)]=v` by the literal spelling `<(printf x)`; psh executed the
+  procsub at keying time and keyed `/dev/fd/N` (reappraisal #22 HIGH-4). psh
+  now implements bash's actual THREE-TIER model, discovered by probe: source
+  writes and reads RE-RENDER the spelling from the parse (whitespace
+  normalizes, inner frames render, backgrounded bodies keep their `&`);
+  arithmetic contexts hold the spelling RAW; runtime strings (`test -v`,
+  `unset`, `${!x}`, `printf -v`, `read`, `let`) never parse or render at all.
+  Invalid bodies degrade to literal frames with `$`-expansion live. Unquoted
+  `<(`/`>(` spellings are rejected at read time in word contexts exactly like
+  bash; arithmetic and quoted spellings defer. Zero-side-effect proven.
+- **Quoted brackets work in subscripts everywhere (MEDIUM-4).** `a["]"]=ok`,
+  `a["a]b"]`, `${a["]"]}`, `a[$(echo "]")]=c`, nested `c[b[i]]=N`, and ANSI-C
+  `$']'` now parse and key correctly on BOTH parsers via ONE quote-aware
+  extent scanner (`find_subscript_end`), which also validates runtime-string
+  arguments whole-string — fixing a destructive alias where
+  `unset -v 'a[]]'` deleted the `]` key bash refuses to touch. The lexer's
+  own element-word extent blindness is carried with suite-visible pins.
+- **Typed subscript errors replace broad catches (MEDIUM-12a).** The two
+  `except Exception` sites that silently converted unparseable subscripts
+  into wrong literal keys are gone; a typed `SubscriptSyntaxError` now fires
+  only for the tokenize-level unclosed-quote class (8-route audit: 6/8 routes
+  match bash; 2 builtin-wording faces declared+pinned). `unset` reports
+  invalid identifiers loudly like bash; `test -v` stays quiet. A shrink-only
+  no-broad-except ratchet guards the module.
+- Base defects fixed en route: `a[2>x]` mis-keyed as `>x` (redirect fd
+  dropped); empty assoc keys (`${a[]:=xx}`, `printf -v 'a[]'`) were silently
+  stored where bash rejects; bracket-shaped invalid names could recurse
+  infinitely through the scope layer.
+- Pins: per-route × validity matrix (70 cells), generated 570-cell render
+  matrix, generated head-scan battery, route-audit and render-tier suites —
+  21 divergence pins now document every declared residual (14 added by this
+  slot, registered in the campaign FLIP-PINS inventory). LEDGER: HIGH-4 +
+  MEDIUM-4 (parser/expansion) + MEDIUM-12a CLOSED; carries include the lexer
+  extent family and a priority lexer no-progress crash.
+
 ## 0.757.0 (2026-07-26) - Remediation Wave 2 slot 2.2: parser input contract (HIGH-5 + MEDIUM-11)
 - **One parse entry for both parsers.** `parser/__init__.py#parse_with_inputs(tokens, inputs)`
   now threads the whole `ParseInputs` (source text, line offset, lexer options,

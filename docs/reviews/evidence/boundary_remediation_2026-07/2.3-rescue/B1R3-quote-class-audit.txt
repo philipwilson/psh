@@ -1,0 +1,26 @@
+tip discriminator: /Users/pwilson/src/psh-r2-3/psh/__init__.py
+AUDIT: the surviving SubscriptSyntaxError class (unclosed-quote junk) per route vs bash
+MATCH testv
+   bash: rc=0 out=b'rc=1\n' err=b''
+   tip : rc=0 out=b'rc=1\n' err=b''
+MATCH unset
+   bash: rc=0 out=b'rc=1\ndeclare -A a=([x]="1" )\n' err=b'/opt/homebrew/bin/bash: line 1: unset: `a["]\': not a valid identifier\n'
+   tip : rc=0 out=b'rc=1\ndeclare -A a=([x]="1" )\n' err=b'psh: line 1: unset: `a["]\': not a valid identifier\n'
+DIFF  printf_v
+   bash: rc=0 out=b'rc=2\ndeclare -A a\n' err=b'/opt/homebrew/bin/bash: line 1: printf: `a["]\': not a valid identifier\n'
+   tip : rc=1 out=b'' err=b'psh: line 1: ["]: bad array subscript\n'
+DIFF  read_into
+   bash: rc=0 out=b'rc=1\ndeclare -A a\n' err=b'/opt/homebrew/bin/bash: line 1: read: `a["]\': not a valid identifier\n'
+   tip : rc=1 out=b'' err=b'psh: line 1: ["]: bad array subscript\n'
+DIFF  let_arith
+   bash: rc=0 out=b'rc=1\ndeclare -A a\n' err=b'/opt/homebrew/bin/bash: line 1: let: a["]=7: bad array subscript (error token is "a["]=7")'
+   tip : rc=1 out=b'' err=b'psh: line 1: ["]: bad array subscript\n'
+MATCH dparen
+   bash: rc=2 out=b'' err=b'/opt/homebrew/bin/bash: -c: line 1: unexpected EOF while looking for matching `"\'\n'
+   tip : rc=2 out=b'' err=b'psh: -c:1: syntax error: Unclosed " quote at position line 1, column 20\n'
+MATCH indirection
+   bash: rc=1 out=b'' err=b'/opt/homebrew/bin/bash: line 1: a["]: invalid variable name\n'
+   tip : rc=1 out=b'' err=b'psh: line 1: ${a["]}: bad substitution\n'
+DIFF  nameref
+   bash: rc=0 out=b'read=\nrc=0\n' err=b'/opt/homebrew/bin/bash: line 1: declare: `a["]\': invalid variable name for name reference\n'
+   tip : rc=1 out=b'' err=b'psh: line 1: ["]: bad array subscript\n'

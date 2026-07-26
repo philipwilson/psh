@@ -1,0 +1,262 @@
+tip discriminator: /Users/pwilson/src/psh-r2-3/psh/__init__.py
+base discriminator: /Users/pwilson/src/psh-r23-baseprobe/psh/__init__.py
+bash: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+DOMAIN: routes {testv_present, testv_absent, unset_present, unset_absent,
+indirection, nameref, printf_v, read_into, let_arith, dparen} x bodies
+{<(if) invalid-kw, >(if) out-twin, <(while) invalid-kw2, <(cat q) valid,
+<(if $y) invalid+var y=Q, <( unclosed-frame, $(if) cmdsub-invalid boundary};
+plus spacing rows. INDIVIDUAL runs, per-cell probe files, 4 shells
+(bash / tip-rd / tip-comb / base-rd).
+REGR  [testv_present x psub_if] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\n', b'')
+    tip : (0, b'rc=1\n', b'')
+    base: (0, b'rc=0\n', b'')
+OK    [testv_absent x psub_if] tip=bash:True base=bash:True rd==comb:True
+REGR  [unset_present x psub_if] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=(["<(if)"]="v" [x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_present__psub_if.sh: line 3: unset: `a[<(if)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+REGR  [unset_absent x psub_if] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=([x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_absent__psub_if.sh: line 2: unset: `a[<(if)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+REGR  [indirection x psub_if] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'read=v\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/indirection__psub_if.sh: line 4: [<(if)]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+REGR  [nameref x psub_if] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'read=v\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/nameref__psub_if.sh: line 4: [<(if)]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+REGR  [printf_v x psub_if] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(if)"]="pv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/printf_v__psub_if.sh: line 2: [<(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(if)"]="pv" )\n', b'')
+REGR  [read_into x psub_if] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(if)"]="rv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/read_into__psub_if.sh: line 2: [<(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(if)"]="rv" )\n', b'')
+REGR  [let_arith x psub_if] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(if)"]="7" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/let_arith__psub_if.sh: line 2: [<(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(if)"]="7" )\n', b'')
+REGR  [dparen x psub_if] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(if)"]="8" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/dparen__psub_if.sh: line 2: [<(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(if)"]="8" )\n', b'')
+REGR  [testv_present x psub_out] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\n', b'')
+    tip : (0, b'rc=1\n', b'')
+    base: (0, b'rc=0\n', b'')
+OK    [testv_absent x psub_out] tip=bash:True base=bash:True rd==comb:True
+REGR  [unset_present x psub_out] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=([">(if)"]="v" [x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_present__psub_out.sh: line 3: unset: `a[>(if)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+REGR  [unset_absent x psub_out] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=([x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_absent__psub_out.sh: line 2: unset: `a[>(if)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+REGR  [indirection x psub_out] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'read=v\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/indirection__psub_out.sh: line 4: [>(if)]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+REGR  [nameref x psub_out] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'read=v\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/nameref__psub_out.sh: line 4: [>(if)]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+REGR  [printf_v x psub_out] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([">(if)"]="pv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/printf_v__psub_out.sh: line 2: [>(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=([">(if)"]="pv" )\n', b'')
+REGR  [read_into x psub_out] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([">(if)"]="rv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/read_into__psub_out.sh: line 2: [>(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=([">(if)"]="rv" )\n', b'')
+REGR  [let_arith x psub_out] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([">(if)"]="7" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/let_arith__psub_out.sh: line 2: [>(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=([">(if)"]="7" )\n', b'')
+REGR  [dparen x psub_out] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([">(if)"]="8" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/dparen__psub_out.sh: line 2: [>(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=([">(if)"]="8" )\n', b'')
+REGR  [testv_present x psub_while] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\n', b'')
+    tip : (0, b'rc=1\n', b'')
+    base: (0, b'rc=0\n', b'')
+OK    [testv_absent x psub_while] tip=bash:True base=bash:True rd==comb:True
+REGR  [unset_present x psub_while] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=(["<(while)"]="v" [x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_present__psub_while.sh: line 3: unset: `a[<(while)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+REGR  [unset_absent x psub_while] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=([x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_absent__psub_while.sh: line 2: unset: `a[<(while)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+REGR  [indirection x psub_while] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'read=v\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/indirection__psub_while.sh: line 4: [<(while)]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+REGR  [nameref x psub_while] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'read=v\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/nameref__psub_while.sh: line 4: [<(while)]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+REGR  [printf_v x psub_while] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(while)"]="pv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/printf_v__psub_while.sh: line 2: [<(while)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(while)"]="pv" )\n', b'')
+REGR  [read_into x psub_while] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(while)"]="rv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/read_into__psub_while.sh: line 2: [<(while)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(while)"]="rv" )\n', b'')
+REGR  [let_arith x psub_while] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(while)"]="7" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/let_arith__psub_while.sh: line 2: [<(while)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(while)"]="7" )\n', b'')
+REGR  [dparen x psub_while] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(while)"]="8" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/dparen__psub_while.sh: line 2: [<(while)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(while)"]="8" )\n', b'')
+OK    [testv_present x psub_valid] tip=bash:True base=bash:False rd==comb:True
+OK    [testv_absent x psub_valid] tip=bash:True base=bash:True rd==comb:True
+OK    [unset_present x psub_valid] tip=bash:True base=bash:False rd==comb:True
+OK    [unset_absent x psub_valid] tip=bash:True base=bash:True rd==comb:True
+OK    [indirection x psub_valid] tip=bash:True base=bash:False rd==comb:True
+OK    [nameref x psub_valid] tip=bash:True base=bash:False rd==comb:True
+OK    [printf_v x psub_valid] tip=bash:True base=bash:False rd==comb:True
+OK    [read_into x psub_valid] tip=bash:True base=bash:False rd==comb:True
+OK    [let_arith x psub_valid] tip=bash:True base=bash:False rd==comb:True
+OK    [dparen x psub_valid] tip=bash:True base=bash:False rd==comb:True
+OK    [testv_present x psub_var] tip=bash:True base=bash:False rd==comb:True
+OK    [testv_absent x psub_var] tip=bash:True base=bash:True rd==comb:True
+DIV   [unset_present x psub_var] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(if \\$y)"]="v" [x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=(["<(if \\$y)"]="v" [x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_present__psub_var.sh: line 3: unset: `a[<(if $y)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+REGR  [unset_absent x psub_var] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=([x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_absent__psub_var.sh: line 2: unset: `a[<(if $y)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+DIV   [indirection x psub_var] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'read=\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/indirection__psub_var.sh: line 4: [<(if $y)]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+DIV   [nameref x psub_var] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'read=\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/nameref__psub_var.sh: line 4: [<(if $y)]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+DIV   [printf_v x psub_var] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(if Q)"]="pv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/printf_v__psub_var.sh: line 2: [<(if $y)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(if \\$y)"]="pv" )\n', b'')
+DIV   [read_into x psub_var] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(if Q)"]="rv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/read_into__psub_var.sh: line 2: [<(if $y)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(if \\$y)"]="rv" )\n', b'')
+DIV   [let_arith x psub_var] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(if Q)"]="7" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/let_arith__psub_var.sh: line 2: [<(if $y)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<(if \\$y)"]="7" )\n', b'')
+DIV   [dparen x psub_var] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<(if Q)"]="8" )\n', b'')
+    tip : (2, b'', b"psh: tmp/probes-2.3/b1r2/dparen__psub_var.sh:2: Parse error (line 2, column 14): Expected ')', got ']'\n\n(( a[<(if $y)]=8 )); echo rc=$?\n             ^\n\nSuggestions:\n  \xe2\x80\xa2 Add ')' to close parentheses\n\nContext: a[<(if  y ) -> HERE <- =8 )) ;\n")
+    base: (2, b'', b"psh: tmp/probes-2.3/b1r2/dparen__psub_var.sh:2: Parse error (line 2, column 14): Expected ')', got ']'\n\n(( a[<(if $y)]=8 )); echo rc=$?\n             ^\n\nSuggestions:\n  \xe2\x80\xa2 Add ')' to close parentheses\n\nContext: a[<(if  y ) -> HERE <- =8 )) ;\n")
+REGR  [testv_present x psub_unclosed] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\n', b'')
+    tip : (0, b'rc=1\n', b'')
+    base: (0, b'rc=0\n', b'')
+OK    [testv_absent x psub_unclosed] tip=bash:True base=bash:True rd==comb:True
+REGR  [unset_present x psub_unclosed] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=(["<("]="v" [x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_present__psub_unclosed.sh: line 3: unset: `a[<(]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+REGR  [unset_absent x psub_unclosed] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+    tip : (0, b'rc=1\ndeclare -A a=([x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_absent__psub_unclosed.sh: line 2: unset: `a[<(]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+REGR  [indirection x psub_unclosed] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'read=v\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/indirection__psub_unclosed.sh: line 4: [<(]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+REGR  [nameref x psub_unclosed] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'read=v\nrc=0\n', b'')
+    tip : (1, b'', b'tmp/probes-2.3/b1r2/nameref__psub_unclosed.sh: line 4: [<(]: bad array subscript\n')
+    base: (0, b'read=v\nrc=0\n', b'')
+REGR  [printf_v x psub_unclosed] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<("]="pv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/printf_v__psub_unclosed.sh: line 2: [<(]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<("]="pv" )\n', b'')
+REGR  [read_into x psub_unclosed] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<("]="rv" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/read_into__psub_unclosed.sh: line 2: [<(]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<("]="rv" )\n', b'')
+REGR  [let_arith x psub_unclosed] tip=bash:False base=bash:True rd==comb:True
+    bash: (0, b'rc=0\ndeclare -A a=(["<("]="7" )\n', b'')
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/let_arith__psub_unclosed.sh: line 2: [<(]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<("]="7" )\n', b'')
+DIV   [dparen x psub_unclosed] tip=bash:False base=bash:False rd==comb:True
+    bash: (2, b'', b"tmp/probes-2.3/b1r2/dparen__psub_unclosed.sh: line 2: unexpected EOF while looking for matching `]'\n")
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/dparen__psub_unclosed.sh: line 2: [<(]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["<("]="8" )\n', b'')
+DIV   [testv_present x cmdsub_if] tip=bash:False base=bash:False rd==comb:True
+    bash: (1, b'', b"tmp/probes-2.3/b1r2/testv_present__cmdsub_if.sh: command substitution: line 4: syntax error near unexpected token `)'\ntmp/probes-2.3/b1r2/testv_present__cmdsub_if.sh: command substitution: line 4: `if)'\n")
+    tip : (0, b'rc=1\n', b'')
+    base: (0, b'rc=0\n', b'')
+DIV   [testv_absent x cmdsub_if] tip=bash:False base=bash:False rd==comb:True
+    bash: (1, b'', b"tmp/probes-2.3/b1r2/testv_absent__cmdsub_if.sh: command substitution: line 3: syntax error near unexpected token `)'\ntmp/probes-2.3/b1r2/testv_absent__cmdsub_if.sh: command substitution: line 3: `if)'\n")
+    tip : (0, b'rc=1\n', b'')
+    base: (0, b'rc=1\n', b'')
+DIV   [unset_present x cmdsub_if] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'declare -A a=([x]="2" ["\\$(if)"]="v" )\n', b"tmp/probes-2.3/b1r2/unset_present__cmdsub_if.sh: command substitution: line 4: syntax error near unexpected token `)'\ntmp/probes-2.3/b1r2/unset_present__cmdsub_if.sh: command substitution: line 4: `if)'\n")
+    tip : (0, b'rc=1\ndeclare -A a=(["\\$(if)"]="v" [x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_present__cmdsub_if.sh: line 3: unset: `a[$(if)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+DIV   [unset_absent x cmdsub_if] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'declare -A a=([x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_absent__cmdsub_if.sh: command substitution: line 3: syntax error near unexpected token `)'\ntmp/probes-2.3/b1r2/unset_absent__cmdsub_if.sh: command substitution: line 3: `if)'\n")
+    tip : (0, b'rc=1\ndeclare -A a=([x]="2" )\n', b"tmp/probes-2.3/b1r2/unset_absent__cmdsub_if.sh: line 2: unset: `a[$(if)]': not a valid identifier\n")
+    base: (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+OK    [indirection x cmdsub_if] tip=bash:True base=bash:False rd==comb:True
+OK    [nameref x cmdsub_if] tip=bash:True base=bash:False rd==comb:True
+DIV   [printf_v x cmdsub_if] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'declare -A a\n', b"tmp/probes-2.3/b1r2/printf_v__cmdsub_if.sh: command substitution: line 3: syntax error near unexpected token `)'\ntmp/probes-2.3/b1r2/printf_v__cmdsub_if.sh: command substitution: line 3: `if)'\n")
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/printf_v__cmdsub_if.sh: line 2: [$(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["\\$(if)"]="pv" )\n', b'')
+DIV   [read_into x cmdsub_if] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'declare -A a\n', b"tmp/probes-2.3/b1r2/read_into__cmdsub_if.sh: command substitution: line 3: syntax error near unexpected token `)'\ntmp/probes-2.3/b1r2/read_into__cmdsub_if.sh: command substitution: line 3: `if)'\n")
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/read_into__cmdsub_if.sh: line 2: [$(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["\\$(if)"]="rv" )\n', b'')
+DIV   [let_arith x cmdsub_if] tip=bash:False base=bash:False rd==comb:True
+    bash: (0, b'declare -A a\n', b"tmp/probes-2.3/b1r2/let_arith__cmdsub_if.sh: command substitution: line 3: syntax error near unexpected token `)'\ntmp/probes-2.3/b1r2/let_arith__cmdsub_if.sh: command substitution: line 3: `if)'\n")
+    tip : (0, b'declare -A a=()\n', b'tmp/probes-2.3/b1r2/let_arith__cmdsub_if.sh: line 2: [$(if)]: bad array subscript\n')
+    base: (0, b'rc=0\ndeclare -A a=(["\\$(if)"]="7" )\n', b'')
+OK    [dparen x cmdsub_if] tip=bash:True base=bash:True rd==comb:True
+
+--- SPACING rows (does bash normalize RUNTIME strings?) ---
+  runtime_spaced_vs_tidy [bash]: rc=0 out=b'rc=1\n'
+  runtime_spaced_vs_tidy [tip-rd]: rc=0 out=b'rc=0\n'
+  runtime_spaced_vs_tidy [base-rd]: rc=0 out=b'rc=1\n'
+  runtime_tidy_vs_spaced [bash]: rc=0 out=b'rc=1\n'
+  runtime_tidy_vs_spaced [tip-rd]: rc=0 out=b'rc=1\n'
+  runtime_tidy_vs_spaced [base-rd]: rc=0 out=b'rc=1\n'
+
+--- SUPPLEMENTARY spacing rows: which SOURCE routes re-render? ---
+== srcread_spaced: 'declare -A a\na[<(cat q)]=v\necho "read=${a[<( cat  q )]}"\n'
+  bash: rc=0 out=b'read=v\n' err=b''
+  tip-rd: rc=0 out=b'read=v\n' err=b''
+  base-rd: rc=0 out=b'read=v\n' err=b'cat: q: No such file or directory\ncat: q: No such file or directory\n'
+== srcread_tidy_after_spaced_write: 'declare -A a\na[<( cat  q )]=v\necho "read=${a[<(cat q)]}"\n'
+  bash: rc=0 out=b'read=v\n' err=b''
+  tip-rd: rc=0 out=b'read=v\n' err=b''
+  base-rd: rc=0 out=b'read=v\n' err=b'cat: q: No such file or directory\ncat: q: No such file or directory\n'
+== arith_write_spaced: 'declare -A a\n(( a[<( cat  q )]=8 ))\ndeclare -p a\n'
+  bash: rc=0 out=b'declare -A a=(["<( cat  q )"]="8" )\n' err=b''
+  tip-rd: rc=0 out=b'declare -A a=(["<(cat q)"]="8" )\n' err=b''
+  base-rd: rc=0 out=b'declare -A a=([/dev/fd/3]="8" )\n' err=b'cat: q: No such file or directory\n'
+== let_write_spaced: "declare -A a\nlet 'a[<( cat  q )]=9'\ndeclare -p a\n"
+  bash: rc=0 out=b'declare -A a=(["<( cat  q )"]="9" )\n' err=b''
+  tip-rd: rc=0 out=b'declare -A a=(["<(cat q)"]="9" )\n' err=b''
+  base-rd: rc=0 out=b'declare -A a=([/dev/fd/3]="9" )\n' err=b'cat: q: No such file or directory\n'
+== unset_runtime_spaced: "declare -A a\na[<(cat q)]=v\nunset -v 'a[<( cat  q )]'\ndeclare -p a\n"
+  bash: rc=0 out=b'declare -A a=(["<(cat q)"]="v" )\n' err=b''
+  tip-rd: rc=0 out=b'declare -A a=()\n' err=b''
+  base-rd: rc=0 out=b'declare -A a=()\n' err=b'cat: q: No such file or directory\ncat: q: No such file or directory\n'

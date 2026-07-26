@@ -8,7 +8,7 @@ service surface directly plus the routed behavior of every consumer site
 """
 import pytest
 
-from psh.expansion.subscript import SubscriptUse, TargetKind
+from psh.expansion.subscript import SubscriptSyntaxError, SubscriptUse, TargetKind
 
 
 @pytest.fixture
@@ -77,6 +77,181 @@ class TestAssociativeKey:
         # A glob metachar key stays literal; a spaced key stays one key.
         assert subscript.associative_key('*') == '*'
         assert subscript.associative_key('a *') == 'a *'
+
+
+class TestProcsubSpellingIsLiteral:
+    """HIGH-4 (remediation 2.3): a procsub SPELLING in a subscript is literal
+    key text — never executed at keying time — while its BODY still expands
+    like word text (bash: frame literal, contents live). Cmdsub/backticks
+    still run."""
+
+    def test_word_from_text_procsub_becomes_literal_part(self, subscript):
+        from psh.ast_nodes.words import ExpansionPart
+        word = subscript.word_from_text('<(printf x)')
+        assert not any(isinstance(p, ExpansionPart) for p in word.parts)
+        assert ''.join(p.text for p in word.parts) == '<(printf x)'
+
+    @pytest.mark.parametrize('raw,key', [
+        ('<(printf x)', '<(printf x)'),
+        ('>(printf x)', '>(printf x)'),
+        ('x<(y)', 'x<(y)'),                    # mixed literal + spelling
+        ('<(echo hi)', '<(echo hi)'),
+    ])
+    def test_associative_key_is_the_spelling(self, subscript, raw, key):
+        assert subscript.associative_key(raw) == key
+
+    def test_procsub_body_never_launches(self, subscript, tmp_path):
+        marker = tmp_path / 'ran.out'
+        key = subscript.associative_key(f'<(echo RAN > {marker})')
+        assert key.startswith('<(') and not key.startswith('/dev/fd')
+        import time
+        time.sleep(0.2)
+        assert not marker.exists()
+
+    def test_cmdsub_and_backtick_still_execute(self, subscript):
+        assert subscript.associative_key('$(printf k)') == 'k'
+        assert subscript.associative_key('`printf k`') == 'k'
+
+    def test_body_expands_inside_literal_frame(self, captured_shell, subscript):
+        # bash: the frame never runs, but $-forms/quotes INSIDE it behave as
+        # in any word — a['<(cat Q)'] and a[<(cat $y)] address the SAME key.
+        captured_shell.run_command('y=Q')
+        assert subscript.associative_key('<(cat $y)') == '<(cat Q)'
+        assert subscript.associative_key('<(x $(printf q))') == '<(x q)'
+        assert subscript.associative_key("<(cat 'q')") == '<(cat q)'
+
+    def test_unset_dollar_in_body_expands_empty(self, subscript):
+        assert subscript.associative_key('<(cat $unsetvar)') == '<(cat )'
+
+    @pytest.mark.parametrize('raw', [
+        # RUNTIME strings are NEVER re-rendered (three render tiers, round-3
+        # B1R2 probe matrix): bash keys `unset -v 'a[<( cat  q )]'` etc. with
+        # the spelling RAW — the render belongs to the SOURCE parse paths
+        # only (test_source_path_render below).
+        '<( echo  hi ; )',
+        '<(\techo\thi\t)',
+        '<(echo hi >/dev/null)',
+        '<(echo x 2>e)',
+        '<( echo a ;  echo b )',
+        '<(if true; then echo x; fi)',
+        '<((echo  s))',
+        '<((echo s);)',
+    ])
+    def test_runtime_string_keeps_raw_spelling(self, subscript, raw):
+        assert subscript.associative_key(raw) == raw
+
+    @pytest.mark.parametrize('src_sub,key', [
+        # SOURCE-path render (parse-time splice, bash's own tier; expected
+        # bytes oracle-verified in B2-STAGE2-matrix-2 + B1R2 supplementary):
+        (' echo  hi ; ', '<(echo hi)'),
+        ('echo hi >/dev/null', '<(echo hi > /dev/null)'),
+        ('echo x 2>e', '<(echo x 2> e)'),
+        ('echo y >&2', '<(echo y 1>&2)'),
+        ('cat >>log;', '<(cat >> log)'),
+        (' echo a ;  echo b ', '<(echo a; echo b)'),
+        (' true &&  echo b ', '<(true && echo b)'),
+        (' echo a |  wc -l ', '<(echo a | wc -l)'),
+        (' { echo g ; } ', '<({ echo g; })'),
+        # uncovered constructs keep the raw spelling even on source paths:
+        ('if true; then echo x; fi', '<(if true; then echo x; fi)'),
+        ('(echo  s)', '<((echo  s))'),
+    ])
+    def test_source_path_render(self, captured_shell, src_sub, key):
+        captured_shell.clear_output()
+        rc = captured_shell.run_command(
+            'declare -A a; a[<(%s)]=v; '
+            'for k in "${!a[@]}"; do printf "%%s" "$k"; done' % src_sub)
+        assert rc == 0
+        assert captured_shell.get_stdout() == key
+
+    def test_render_predicate_is_structural(self):
+        from psh.expansion.procsub_render import render_procsub_body
+        from psh.parser.recursive_descent.support.nested_parse import parse_nested_command
+        def parse(b):
+            return parse_nested_command(b, line_offset=0, initial_depth=0,
+                                        substitution_depth=1, lexer_options=None)
+        assert render_procsub_body(parse(' echo  hi ; ')) == 'echo hi'
+        assert render_procsub_body(parse('if true; then echo x; fi')) is None
+        assert render_procsub_body(parse('(echo s)')) is None
+        assert render_procsub_body(parse('echo a | wc -l')) == 'echo a | wc -l'
+
+    def test_redirect_token_slice_preserved(self, subscript):
+        # REDIRECT_OUT's .value drops the fd (`2>` -> `>`); word_from_text
+        # reproduces the exact source slice, so `2>x` keys as spelled (B2;
+        # bash parity pinned in conformance).
+        assert subscript.associative_key('2>x') == '2>x'
+        word = subscript.word_from_text('2>x')
+        assert ''.join(p.text for p in word.parts) == '2>x'
+
+
+class TestSubscriptSyntaxErrorTyped:
+    """MEDIUM-12a (remediation 2.3): the broad-except literal degradation is
+    gone — un-lexable raw raises the typed SubscriptSyntaxError."""
+
+    @pytest.mark.parametrize('raw', ['"', "'", '"]', "$'"])
+    def test_unclosed_quote_raises_typed(self, subscript, raw):
+        # The typed error class is EXACTLY the unclosed-QUOTE family (bash's
+        # builtins report those arguments as "not a valid identifier").
+        with pytest.raises(SubscriptSyntaxError):
+            subscript.word_from_text(raw)
+
+    def test_unclosed_procsub_frame_degrades_literal(self, subscript):
+        # Round-3 B1: bash never parses a procsub body at keying time, so an
+        # unclosed frame is literal key text, not an error.
+        assert subscript.associative_key('<(') == '<('
+        assert subscript.associative_key('a<(') == 'a<('
+
+    def test_invalid_procsub_body_is_literal_with_live_dollars(
+            self, captured_shell, subscript):
+        # bash keys invalid bodies literally AND still expands $-forms
+        # inside the frame (B1R2 psub_var rows).
+        assert subscript.associative_key('<(if)') == '<(if)'
+        captured_shell.run_command('y=Q')
+        assert subscript.associative_key('<(if $y)') == '<(if Q)'
+
+    def test_invalid_cmdsub_defers_to_execution(self, subscript):
+        # An invalid modern $() body becomes a DEFERRED executable part
+        # (backtick model) — the keying engine itself never raises for it.
+        from psh.ast_nodes.words import CommandSubstitution, ExpansionPart
+        word = subscript.word_from_text('$(if)')
+        exps = [p for p in word.parts if isinstance(p, ExpansionPart)]
+        assert len(exps) == 1
+        cs = exps[0].expansion
+        assert isinstance(cs, CommandSubstitution)
+        assert cs.program is None and cs.source == 'if'
+
+    def test_typed_error_is_expected_shell_error(self):
+        from psh.core.exceptions import ExpansionError, PshError
+        assert issubclass(SubscriptSyntaxError, ExpansionError)
+        assert issubclass(SubscriptSyntaxError, PshError)
+
+    def test_associative_key_loud_by_default(self, captured_shell, subscript):
+        # Direct call: raises (the print goes to the live state.stderr, which
+        # the captured fixture only redirects during run_command — the
+        # command-driven loud path is asserted next).
+        with pytest.raises(SubscriptSyntaxError):
+            subscript.associative_key('"')
+
+    def test_command_path_is_loud(self, captured_shell):
+        # The arith path holds the subscript raw, so an un-lexable subscript
+        # reaches the keying funnel at RUNTIME: loud typed error, line
+        # discarded (unit twin of conformance probe e2).
+        rc = captured_shell.run_command("declare -A h; echo $((h['x])); echo after")
+        assert rc == 1
+        assert "['x]: bad array subscript" in captured_shell.get_stderr()
+        assert 'after' not in captured_shell.get_stdout()
+
+    def test_evaluate_quiet_for_builtin_uses(self, captured_shell, subscript):
+        for use in (SubscriptUse.TEST_V, SubscriptUse.UNSET):
+            captured_shell.clear_output()
+            with pytest.raises(SubscriptSyntaxError):
+                subscript.evaluate('"', TargetKind.ASSOCIATIVE, use)
+            assert captured_shell.get_stderr() == ''
+
+    def test_error_carries_raw(self, subscript):
+        with pytest.raises(SubscriptSyntaxError) as exc:
+            subscript.word_from_text('"]')
+        assert exc.value.raw == '"]'
 
 
 class TestArithAssociativeKeyProvenance:

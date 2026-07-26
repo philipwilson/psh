@@ -182,7 +182,10 @@ _INVALID_IN_EACH_REGION = [
     "(( $(if) ))",                      # arithmetic command
     "for ((i=$(if); i<2; i++)); do :; done",  # C-style clause
     "a[$(if)]=v",                       # element-assignment subscript
+    "a[<(if)]=v",                       # procsub spelling in subscript (2.3)
+    "true || a[1<(if)]=x",              # mid-subscript spelling, dead branch
     "a=(1 2); echo ${a[$(if)]}",        # subscript reference
+    "a=(1 2); echo ${a[<(if)]}",        # procsub in subscript reference (2.3)
     "echo $( $(if) )",                  # nested
 ]
 

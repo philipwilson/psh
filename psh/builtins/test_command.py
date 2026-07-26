@@ -4,7 +4,7 @@ import stat
 from typing import TYPE_CHECKING, List
 
 from ..core import AssociativeArray, IndexedArray
-from ..expansion.subscript import SubscriptUse, TargetKind
+from ..expansion.subscript import SubscriptSyntaxError, SubscriptUse, TargetKind
 from ..utils.file_tests import file_newer_than, file_older_than, files_same
 from .base import Builtin
 from .registry import builtin
@@ -20,9 +20,13 @@ def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
     the ``test``/``[`` builtin's ``-v`` operator and the ``[[ -v ... ]]`` test
     evaluator so both answer identically.
     """
-    if '[' in var_ref and var_ref.endswith(']'):
-        var_name = var_ref[:var_ref.index('[')]
-        key_expr = var_ref[var_ref.index('[') + 1:-1]
+    _split = shell.expansion_manager.variable_expander.split_subscript(var_ref)
+    if _split is not None:
+        # R4-2: the whole-string extent rule (split_subscript) decides
+        # element-ness — a malformed arg (`a[]]`) is NOT an element
+        # reference and must not alias the `]` key; it falls through to the
+        # bare-name lookup below (unset name -> quietly rc 1, like bash).
+        var_name, key_expr = _split
         # The ONE subscript authority keys by target kind (campaign W2), the
         # same routing as unset (environment.py#_unset_array_element): an
         # associative target keys on one word/quote expansion; everything else
@@ -36,7 +40,13 @@ def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
         subscript = shell.expansion_manager.subscript
         var_obj = shell.state.scope_manager.get_variable_object(var_name)
         if var_obj is not None and isinstance(var_obj.value, AssociativeArray):
-            return subscript.associative_key(key_expr) in var_obj.value
+            try:
+                return subscript.associative_key(
+                    key_expr, quiet=True) in var_obj.value
+            except SubscriptSyntaxError:
+                # bash 5.2: `test -v 'a["]'` / `[[ -v 'a["]' ]]` are QUIETLY
+                # unset — rc 1, no diagnostic (probe m12, remediation 2.3).
+                return False
         idx = subscript.evaluate(key_expr, TargetKind.INDEXED,
                                  SubscriptUse.TEST_V)  # fatal on bad arith
         if idx is None or var_obj is None:

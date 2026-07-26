@@ -41,16 +41,48 @@ normal simple-command execution, matching bash.
 """
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, LiteralPart, Word
+from ....expansion.param_parser import find_subscript_end
 from ....lexer.token_types import Token, TokenType
-from ..support.syntax_templates import build_subscript_spec
+from ..support.syntax_templates import rewrite_rendered_subscript
 from .base import ParserSubcomponent
 
 # A valid assignment name is a portable identifier at the very start of the
 # word's UNQUOTED LEADING LITERAL.
 _NAME_START_RE = re.compile(r'[A-Za-z_][A-Za-z_0-9]*')
+
+
+def _scan_element_head(value: str) -> Optional[Tuple[str, str, str, int]]:
+    """``(name, subscript, operator, head_len)`` of an ``arr[SUB]=`` /
+    ``arr[SUB]+=`` head at the start of *value*, or None.
+
+    THE element-head rule shared by BOTH parsers (the combinator imports it).
+    The subscript extent comes from the ONE quote-aware scanner
+    (``find_subscript_end`` — remediation 2.3/MEDIUM-4), so a quoted/escaped
+    ``]`` (``a["]"]=ok``, ``a[']']=x``, ``a[\\]]=x``, ``a[$']']=x``), an
+    embedded substitution (``a[$(echo "]")]=c``), and unquoted nesting
+    (``c[b[i]]=N``) all span to the REAL close — the old ``index(']')`` scans
+    truncated at the first ``]`` and mis-keyed. The ``=``/``+=`` must sit
+    IMMEDIATELY after the closing bracket (bash: ``a[k]x=v`` is a command
+    word, not an assignment; probe e1), which also ends the old
+    ``'+=' in value`` mis-detection for quoted operators (``a["+="]=v``).
+    """
+    m = _NAME_START_RE.match(value)
+    if not m or m.end() >= len(value) or value[m.end()] != '[':
+        return None
+    close = find_subscript_end(value, m.end())
+    if close == -1:
+        return None
+    if value.startswith('+=', close + 1):
+        operator = '+='
+    elif value.startswith('=', close + 1):
+        operator = '='
+    else:
+        return None
+    return (value[:m.end()], value[m.end() + 1:close], operator,
+            close + 1 + len(operator))
 
 
 def _unquoted_leading_literal(token: Token) -> str:
@@ -137,11 +169,9 @@ class ArrayParser(ParserSubcomponent):
             return None
 
         # --- Element assignment with subscript inside the name token ---
-        if '[' in value and ']' in value:
-            # Single token: arr[i]=value / arr[i]+=value
-            cand = self._candidate_single_token_element(value)
-            if cand is not None:
-                return cand
+        cand = self._candidate_single_token_element(value)
+        if cand is not None:
+            return cand
 
         # --- Array initialization: name=( / name+=( / name + =/+= + ( ---
         cand = self._candidate_initializer()
@@ -151,21 +181,16 @@ class ArrayParser(ParserSubcomponent):
         return None
 
     def _candidate_single_token_element(self, value: str) -> Optional[AssignmentCandidate]:
-        """``arr[i]=v`` / ``arr[i]+=v`` carried in a single WORD token."""
-        if '=' not in value:
+        """``arr[i]=v`` / ``arr[i]+=v`` carried in a single WORD token.
+
+        Head shape from the shared quote-aware scan (``_scan_element_head``)."""
+        head = _scan_element_head(value)
+        if head is None:
             return None
-        is_append = '+=' in value
-        equals_pos = value.index('+=') if is_append else value.index('=')
-        bracket_pos = value.index('[')
-        # The '=' must come after the '[' (otherwise it's not a subscript).
-        if bracket_pos >= equals_pos:
-            return None
-        close_bracket_pos = value.index(']')
-        subscript = value[bracket_pos + 1:close_bracket_pos]
-        head_len = equals_pos + (2 if is_append else 1)
+        name, subscript, operator, head_len = head
         return AssignmentCandidate(
-            name=value[:bracket_pos],
-            operator='+=' if is_append else '=',
+            name=name,
+            operator=operator,
             is_initializer=False,
             is_element=True,
             subscript=subscript,
@@ -263,15 +288,23 @@ class ArrayParser(ParserSubcomponent):
         value, value_word = self._element_value_from_head(
             head_token, candidate.head_len)
         subscript = candidate.subscript if candidate.subscript is not None else ''
-        # Read-time validate a nested $() in the subscript (a[$(if)]=v). The
-        # indexed/associative keying stays W2's SubscriptEvaluator.
+        # Read-time validate a nested $() / <() in the subscript (a[$(if)]=v,
+        # a[<(if)]=v) AND splice bash's key-render of covered procsub
+        # spellings (bash renders on the SOURCE paths only — round-3 plan A).
+        # The indexed/associative keying stays W2's SubscriptEvaluator. The
+        # head token anchors an UN-rewritten spec absolutely (the `name[`
+        # prefix is a verbatim prefix of the token's lexeme); a rewritten
+        # spec drops the anchor.
+        subscript, spec = rewrite_rendered_subscript(
+            subscript, self.parser.ctx,
+            origin=head_token.position + len(candidate.name) + 1)
         return ArrayElementAssignment(
             name=candidate.name,
             index=subscript,
             value=value,
             is_append=is_append,
             value_word=value_word,
-            index_spec=build_subscript_spec(subscript, self.parser.ctx),
+            index_spec=spec,
         )
 
     def _element_value_from_head(self, head_token: Token,

@@ -1,0 +1,129 @@
+discriminator psh: /Users/pwilson/src/psh-r2-3/psh/__init__.py
+tip: 09c00ace
+bash: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+MATRIX: 13 atoms x 5 spacings x 3 trailings x 2 dirs
+bash-rejected cells: 0
+comparable cells: 390; psh-formatter matches bash re-render: 162 (41.5%)
+
+MISMATCHES (first 40):
+  [quoted_sq/tidy/none/<] body="echo 'a b'"
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/tidy/none/>] body="echo 'a b'"
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/tidy/semi/<] body="echo 'a b';"
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/tidy/semi/>] body="echo 'a b';"
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/tidy/semi_sp/<] body="echo 'a b' ; "
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/tidy/semi_sp/>] body="echo 'a b' ; "
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/pad/none/<] body=" echo 'a b' "
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/pad/none/>] body=" echo 'a b' "
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/pad/semi/<] body=" echo 'a b' ;"
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/pad/semi/>] body=" echo 'a b' ;"
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/pad/semi_sp/<] body=" echo 'a b'  ; "
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/pad/semi_sp/>] body=" echo 'a b'  ; "
+     bash : 'echo a b'
+     psh  : ('OK', "echo 'a b'")
+  [quoted_sq/runs/none/<] body="echo  'a  b'"
+     bash : 'echo a  b'
+     psh  : ('OK', "echo 'a  b'")
+  [quoted_sq/runs/none/>] body="echo  'a  b'"
+     bash : 'echo a  b'
+     psh  : ('OK', "echo 'a  b'")
+  [quoted_sq/runs/semi/<] body="echo  'a  b';"
+     bash : 'echo a  b'
+     psh  : ('OK', "echo 'a  b'")
+  [quoted_sq/runs/semi/>] body="echo  'a  b';"
+     bash : 'echo a  b'
+     psh  : ('OK', "echo 'a  b'")
+  [quoted_sq/runs/semi_sp/<] body="echo  'a  b' ; "
+     bash : 'echo a  b'
+     psh  : ('OK', "echo 'a  b'")
+  [quoted_sq/runs/semi_sp/>] body="echo  'a  b' ; "
+     bash : 'echo a  b'
+     psh  : ('OK', "echo 'a  b'")
+  [quoted_sq/tabs/none/<] body="echo\t'a\tb'"
+     bash : 'echo a\tb'
+     psh  : ('OK', "echo 'a\tb'")
+  [quoted_sq/tabs/none/>] body="echo\t'a\tb'"
+     bash : 'echo a\tb'
+     psh  : ('OK', "echo 'a\tb'")
+  [quoted_sq/tabs/semi/<] body="echo\t'a\tb';"
+     bash : 'echo a\tb'
+     psh  : ('OK', "echo 'a\tb'")
+  [quoted_sq/tabs/semi/>] body="echo\t'a\tb';"
+     bash : 'echo a\tb'
+     psh  : ('OK', "echo 'a\tb'")
+  [quoted_sq/tabs/semi_sp/<] body="echo\t'a\tb' ; "
+     bash : 'echo a\tb'
+     psh  : ('OK', "echo 'a\tb'")
+  [quoted_sq/tabs/semi_sp/>] body="echo\t'a\tb' ; "
+     bash : 'echo a\tb'
+     psh  : ('OK', "echo 'a\tb'")
+  [quoted_sq/pad_runs/none/<] body="  echo   'a   b'  "
+     bash : 'echo a   b'
+     psh  : ('OK', "echo 'a   b'")
+  [quoted_sq/pad_runs/none/>] body="  echo   'a   b'  "
+     bash : 'echo a   b'
+     psh  : ('OK', "echo 'a   b'")
+  [quoted_sq/pad_runs/semi/<] body="  echo   'a   b'  ;"
+     bash : 'echo a   b'
+     psh  : ('OK', "echo 'a   b'")
+  [quoted_sq/pad_runs/semi/>] body="  echo   'a   b'  ;"
+     bash : 'echo a   b'
+     psh  : ('OK', "echo 'a   b'")
+  [quoted_sq/pad_runs/semi_sp/<] body="  echo   'a   b'   ; "
+     bash : 'echo a   b'
+     psh  : ('OK', "echo 'a   b'")
+  [quoted_sq/pad_runs/semi_sp/>] body="  echo   'a   b'   ; "
+     bash : 'echo a   b'
+     psh  : ('OK', "echo 'a   b'")
+  [quoted_dq/tidy/none/<] body='echo "x  y"'
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
+  [quoted_dq/tidy/none/>] body='echo "x  y"'
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
+  [quoted_dq/tidy/semi/<] body='echo "x  y";'
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
+  [quoted_dq/tidy/semi/>] body='echo "x  y";'
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
+  [quoted_dq/tidy/semi_sp/<] body='echo "x  y" ; '
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
+  [quoted_dq/tidy/semi_sp/>] body='echo "x  y" ; '
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
+  [quoted_dq/pad/none/<] body=' echo "x  y" '
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
+  [quoted_dq/pad/none/>] body=' echo "x  y" '
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
+  [quoted_dq/pad/semi/<] body=' echo "x  y" ;'
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
+  [quoted_dq/pad/semi/>] body=' echo "x  y" ;'
+     bash : 'echo x  y'
+     psh  : ('OK', 'echo "x  y"')
