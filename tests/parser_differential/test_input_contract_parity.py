@@ -17,23 +17,34 @@ the one entry flips every such case to parity.
 DOMAIN (instrument discipline — a "no divergence" result is only as strong as
 its corpus):
 
-  * Space: {command substitution, nested command substitution, process
-    substitution, ``${...}`` operand with a nested substitution, composite word,
-    double-quoted} x {@, !, *, +, ?} extglob operators, all threaded with
-    ``lexer_options={'extglob': True}`` through the one entry. Every case is
-    accepted by recursive descent and bash (the corpus is validated green
-    against both before it can pin parity).
+  * Space (parser x construct x nesting x context-flag): the RE-LEX constructs
+    {command substitution ($()), nested command substitution (depth 2), process
+    substitution (<()), ``${...}`` operand, composite/fused word, double-quoted,
+    arithmetic ($(()) with a nested $()), heredoc-bearing command} x
+    {@, !, *, +, ?} extglob operators, threaded with ``lexer_options={'extglob':
+    True}`` through the one entry. Every case is accepted by recursive descent
+    and bash 5.2.26 (validated green against both before it can pin parity).
+  * CONTEXT-FLAG dimension is exercised explicitly: an ordinary nested $()
+    (no extglob pattern) agrees on both parsers whether or not extglob is
+    threaded (``test_nested_substitution_parity_independent_of_extglob``).
+  * BACKTICKS are a CONTROL, not a re-lex path: `...` command substitution is
+    DEFERRED (``program=None``, raw source; execution re-parses), so an extglob
+    pattern in a backtick body is never re-lexed at parse time — both parsers
+    agree regardless of the flag
+    (``test_backtick_body_is_deferred_not_relexed``). Outside the HIGH-5 domain
+    by design.
   * STRUCTURE parity is asserted over the WHOLE canonical AST.
   * LOCATION parity is asserted over NESTED-substitution bodies — the ``.line``
     stamps both parsers set via the shared ``WordBuilder``/``_nested_program``.
     Top-level statement ``.line`` is recursive-descent-only (a pre-existing,
     documented combinator limitation) and is deliberately OUT of scope here.
-  * Array-INITIALIZATION elements are OUT of scope: ``ArrayParsers`` builds
-    element words through the static ``WordBuilder`` without the per-call ctx (a
-    separate, pre-existing combinator residual — see
-    ``psh/parser/combinators/arrays.py``), so ``a=($(echo @(a|b)))`` still
-    diverges there. That seam is NOT the HIGH-5 entry facade and is unchanged
-    by this slot's fix.
+  * Array-INITIALIZATION elements are OUT of scope (a CARRY, remediation
+    RULING 2): ``ArrayParsers`` builds element words through the static
+    ``WordBuilder`` without the per-call ctx (a separate, pre-existing combinator
+    residual — see ``psh/parser/combinators/arrays.py``), so ``a=($(echo
+    @(a|b)))`` still diverges there. That seam is NOT the HIGH-5 entry facade and
+    is unchanged by this slot's fix; it is flip-pinned by
+    ``test_CARRY_array_init_nested_substitution_still_diverges_on_combinator``.
 """
 
 import dataclasses
@@ -42,7 +53,7 @@ from enum import Enum
 import pytest
 
 from psh.ast_nodes import CommandSubstitution, ProcessSubstitution
-from psh.lexer import tokenize
+from psh.lexer import tokenize, tokenize_with_heredocs
 from psh.parser import ParseError, ParseInputs, parse_with_inputs
 
 _EXTGLOB = {'extglob': True}
@@ -55,12 +66,13 @@ _OPERATORS = ('@', '!', '*', '+', '?')
 # ``{pat}`` slot is filled with an extglob pattern; the resulting body is what
 # the combinator used to re-lex WITHOUT extglob when the entry dropped options.
 _SHAPES = (
-    ('cmd-sub', 'echo $(echo {pat})'),
-    ('cmd-sub-nested', 'echo $(echo $(echo {pat}))'),
-    ('process-sub', 'cat <(echo {pat})'),
-    ('param-operand-cmd-sub', 'echo ${{x:-$(echo {pat})}}'),
-    ('composite-word', 'echo pre$(echo {pat})post'),
-    ('double-quoted-cmd-sub', 'echo "$(echo {pat})"'),
+    ('cmd-sub', 'echo $(echo {pat})'),                       # $() depth 1
+    ('cmd-sub-nested', 'echo $(echo $(echo {pat}))'),        # $() depth 2
+    ('process-sub', 'cat <(echo {pat})'),                    # <(...)
+    ('param-operand-cmd-sub', 'echo ${{x:-$(echo {pat})}}'),  # ${...} operand
+    ('composite-word', 'echo pre$(echo {pat})post'),         # fused word part
+    ('double-quoted-cmd-sub', 'echo "$(echo {pat})"'),       # quoting context
+    ('arith-nested-cmd-sub', 'echo $(( $(echo {pat}) ))'),   # $() inside $(())
 )
 
 
@@ -149,6 +161,16 @@ def _parse_both(source, *, lexer_options=None, line_offset=0):
     return rd, pc
 
 
+def _parse_both_heredoc(source, *, lexer_options=None):
+    """Parse a heredoc-bearing *source* through the entry (heredoc path)."""
+    tokens, heredocs = tokenize_with_heredocs(source, shell_options=lexer_options)
+    inputs = ParseInputs(source_text=source, lexer_options=lexer_options,
+                         heredocs=heredocs)
+    rd = parse_with_inputs(list(tokens), inputs, 'recursive_descent')
+    pc = parse_with_inputs(list(tokens), inputs, 'combinator')
+    return rd, pc
+
+
 @pytest.mark.parametrize('source', EXTGLOB_CORPUS)
 def test_extglob_nested_structure_parity(source):
     """With extglob threaded through the entry, both parsers agree structurally.
@@ -189,3 +211,98 @@ def test_high5_signature_case_flips_to_parity():
     # With extglob threaded through the one entry, both accept and agree.
     rd, pc = _parse_both(source, lexer_options=_EXTGLOB)
     assert _canonical_ast(pc) == _canonical_ast(rd)
+
+
+@pytest.mark.parametrize('op', _OPERATORS)
+def test_extglob_nested_in_heredoc_command_parity(op):
+    """Heredoc PATH: a command carrying a heredoc AND a nested extglob $().
+
+    Exercises the heredoc parse path (tokenize_with_heredocs → the entry with a
+    heredocs map) with the same nested-substitution re-lex — parity confirms the
+    entry threads options on the heredoc path too, not just the plain path.
+    """
+    source = f'echo $(echo {op}(a|b)) <<END\nbody\nEND'
+    rd, pc = _parse_both_heredoc(source, lexer_options=_EXTGLOB)
+    assert _canonical_ast(pc) == _canonical_ast(rd)
+
+
+@pytest.mark.parametrize('flag', [None, _EXTGLOB], ids=['extglob-off', 'extglob-on'])
+def test_nested_substitution_parity_independent_of_extglob(flag):
+    """Context-flag dimension: an ordinary nested $() (no extglob pattern) agrees
+    on both parsers whether or not extglob is threaded — the fix does not perturb
+    the no-extglob case.
+    """
+    rd, pc = _parse_both('echo $(echo hi) $(( 1 + $(echo 2) ))', lexer_options=flag)
+    assert _canonical_ast(pc) == _canonical_ast(rd)
+
+
+@pytest.mark.parametrize('flag', [None, _EXTGLOB], ids=['extglob-off', 'extglob-on'])
+def test_backtick_body_is_deferred_not_relexed(flag):
+    """Control: legacy backticks are NOT a parse-time re-lex path.
+
+    `...` command substitution is deferred — the parser keeps the raw source and
+    leaves ``program=None`` (execution re-parses it), so an extglob pattern in a
+    backtick body is never re-lexed at parse time. Both parsers agree regardless
+    of the extglob flag, and BOTH leave the body unparsed (program is None) — so
+    this construct is outside the HIGH-5 re-lex domain by design.
+    """
+    source = 'echo `echo @(a|b)`'
+    rd, pc = _parse_both(source, lexer_options=flag)
+    assert _canonical_ast(pc) == _canonical_ast(rd)
+
+    def backtick_programs(root):
+        found = []
+        seen: set = set()
+
+        def walk(node):
+            if id(node) in seen:
+                return
+            seen.add(id(node))
+            if isinstance(node, CommandSubstitution) and node.backtick_style:
+                found.append(node.program)
+            for name in getattr(node, '__dataclass_fields__', {}):
+                child = getattr(node, name)
+                if isinstance(child, (list, tuple)):
+                    for item in child:
+                        if hasattr(item, '__dataclass_fields__'):
+                            walk(item)
+                elif hasattr(child, '__dataclass_fields__'):
+                    walk(child)
+            for stmt in getattr(node, 'statements', []):
+                walk(stmt)
+
+        walk(root)
+        return found
+
+    for ast in (rd, pc):
+        programs = backtick_programs(ast)
+        assert programs == [None]      # deferred: not eagerly parsed
+
+
+def test_CARRY_array_init_nested_substitution_still_diverges_on_combinator():
+    """CARRY divergence-pin (remediation RULING 2): the ArrayParsers ctx=None
+    residual is a SEPARATE, pre-existing combinator seam the HIGH-5 entry fix
+    does NOT reach, left in place by ruling.
+
+    ``psh/parser/combinators/arrays.py`` builds array-INITIALIZATION element
+    words through the STATIC ``WordBuilder.build_word_from_token`` (bypassing the
+    shared ``ExpansionParsers`` that carries the per-call ctx), so an extglob
+    pattern in a ``$()`` array element re-lexes WITHOUT extglob and the combinator
+    rejects it — while recursive descent (and bash) accept it. Documented at
+    ``arrays.py`` as the "ctx=None residual, not chased, for the educational
+    combinator".
+
+    This pin FIXES the current divergence: recursive descent parses, the
+    combinator raises. It is a FLIP-PIN — if a successor threads ctx into
+    ArrayParsers and closes the residual, the combinator will start ACCEPTING and
+    THIS TEST GOES RED, signalling the carry is closed (update/retire it then).
+    """
+    source = 'a=($(echo @(a|b)))'
+    inputs = ParseInputs(source_text=source, lexer_options=_EXTGLOB)
+    tokens = list(tokenize(source, shell_options=_EXTGLOB))
+    # Recursive descent accepts it (matches bash).
+    rd = parse_with_inputs(list(tokens), inputs, 'recursive_descent')
+    assert len(rd.statements) == 1
+    # The combinator still rejects it — the documented ArrayParsers residual.
+    with pytest.raises(ParseError):
+        parse_with_inputs(list(tokens), inputs, 'combinator')

@@ -55,6 +55,13 @@ class Parser(ContextBaseParser):
         )
         super().__init__(ctx)
 
+        # Single-use guard (remediation MEDIUM-11): this Parser binds its token
+        # cursor at construction and parse() consumes it, so a second parse()
+        # would silently return an empty Program. parse() enforces single-use
+        # instead. Flips True on the first parse() (success OR failure — a failed
+        # parse leaves the cursor mid-stream, so re-parsing is equally invalid).
+        self._parsed = False
+
         # Initialize specialized parsers
         self.statements = StatementParser(self)
         self.commands = CommandParser(self)
@@ -104,7 +111,24 @@ class Parser(ContextBaseParser):
         (appraisal finding 6). This does not lower ``MAX_NESTING_DEPTH`` or
         touch the process recursion limit, so shell-context behavior (1000-deep
         nesting works under ``Shell``'s raised limit) is unchanged.
+
+        SINGLE-USE (remediation MEDIUM-11): a Parser instance parses the tokens
+        it was built with exactly once. The token cursor advances during the
+        parse and is never reset, so a second call would silently yield an empty
+        ``Program`` — a "silent wrong". Calling parse() (or parse_outcome(),
+        which routes through parse()) twice on one instance instead raises a
+        ``RuntimeError``: a programming-contract violation, DISTINCT from a
+        user-facing ``ParseError`` and loud under ``strict-errors``. Build a new
+        Parser (or use the module-level ``parse()``) to parse again. The
+        combinator parser stays reusable — it takes tokens per ``parse(tokens)``
+        call, a genuinely different lifecycle.
         """
+        if self._parsed:
+            raise RuntimeError(
+                "Parser is single-use: its token cursor is consumed by the "
+                "first parse(); construct a new Parser (or call the "
+                "module-level parse()) to parse again.")
+        self._parsed = True
         try:
             return self._parse_program()
         except RecursionError:

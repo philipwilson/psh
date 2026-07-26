@@ -185,13 +185,29 @@ neither: it is the parse SUBJECT (`ctx.tokens`), a private list the parser owns
 and mutates only for the observationally-pure non-leading `time`→WORD slot
 rewrite. The historical flat surface (`ctx.current`, `ctx.tokens`,
 `ctx.source_text`, `ctx.nesting_depth`, ...) is preserved as properties
-delegating to `inputs`/`state`. `ParseInputs`/`ParserState` are built only in
-`ParserContext.__init__` (the funnel behind `create_context`) and the combinator
-(`combinators/parser.py`); both facts are guarded by
-`tests/unit/tooling/test_parser_contract_guards_s4.py`. Because inputs and state
-are per-context objects dropped with a single-use context, a parser instance
-retains no per-call state after `parse()` returns — the only `finally` in the RD
-parser is the balanced compound-nesting counter, not a post-return scrub.
+delegating to `inputs`/`state`. The one entry that carries this context is
+`parser/__init__.py#parse_with_inputs(tokens, inputs, active_parser)`: it threads
+a whole `ParseInputs` into BOTH parsers (the combinator's
+`combinators/parser.py#ParserCombinatorShellParser.parse` takes an optional
+`inputs`; the RD `Parser` unpacks it into `create_context`), so neither path
+drops the caller's option-sensitive lexing on a nested-substitution re-lex
+(remediation HIGH-5 — the old combinator-only `create_parser` facade wrapper
+discarded source/options). `ParseInputs` is constructed only at the sanctioned
+funnels — `ParserContext.__init__` (behind `create_context`), the combinator
+parser (`combinators/parser.py`), the public parse-API adapters
+(`parser/__init__.py`: `create_parser` / `parse_with_heredocs`), and the shell
+parse dispatch (`scripting/lex_parse.py`) — guarded by
+`tests/unit/tooling/test_parser_contract_guards_s4.py`. Nothing is transiently
+installed and cleared, so the only `finally` in the RD parser is the balanced
+compound-nesting counter, not a post-return scrub. This does NOT make the RD
+`Parser` reusable: its `ParserContext` cursor is bound at construction and
+`parse()` consumes it, so the RD `Parser` is SINGLE-USE (remediation MEDIUM-11) —
+a second `parse()`/`parse_outcome()` raises `RuntimeError` (a programming-contract
+error, loud under `strict-errors`, distinct from a user-facing `ParseError`)
+instead of silently returning an empty `Program`
+(`recursive_descent/parser.py#Parser.parse`). The combinator stays reusable (it
+takes tokens per `parse(tokens)` call). Guarded by
+`tests/unit/parser/test_parse_inputs_state_s4.py`.
 
 **Total parse outcome (campaign S4).** Both parser implementations expose
 `parse_outcome()` returning the typed `Complete | Incomplete | Invalid` sum

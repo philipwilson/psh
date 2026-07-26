@@ -19,10 +19,17 @@ its private token-list copy (the non-leading ``time`` → WORD substitution in
 ``CommandParser._parse_compound_component``), an observationally-pure edit of a
 copy the caller never sees.
 
-Because inputs and state are distinct objects built once per parse and dropped
-with the ``ParserContext``, a parser instance retains neither after ``parse()``
-returns: there is nothing to clear in a ``finally``. This is guarded by
-``tests/unit/parser/test_parse_inputs_state_s4.py``.
+Because inputs and state are distinct objects built once with the
+``ParserContext`` and never transiently installed elsewhere, there is nothing
+for ``parse()`` to clear in a ``finally``. This does NOT make the RD ``Parser``
+reusable: its ``ParserContext`` (and its ``ParserState`` cursor) is bound at
+construction to the tokens given there, and ``parse()`` CONSUMES the cursor
+without resetting it. The RD ``Parser`` is therefore SINGLE-USE (remediation
+MEDIUM-11) — a second ``parse()``/``parse_outcome()`` raises a ``RuntimeError``
+rather than silently returning an empty ``Program``; construct a new ``Parser``
+(or use the module-level ``parse()``) to parse again. The combinator parser is
+reusable by contrast: it takes tokens per ``parse(tokens)`` call. Both facts are
+guarded by ``tests/unit/parser/test_parse_inputs_state_s4.py``.
 """
 
 from dataclasses import dataclass, field
