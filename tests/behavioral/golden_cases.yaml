@@ -6082,11 +6082,21 @@
   stderr: "not a child of this shell"
   exit_code: 0
 
+# psh_only: the LIVE bash oracle is nondeterministic on this command — `wait;
+# wait $p` is a double-reap race, and bash (which has no task-#37 reclaim fix)
+# can return 5 (remembered status) or 127 (not a child) depending on runner
+# timing. The first scheduled nightly after v0.755.0 (run 30187441750,
+# 2026-07-26) recorded exactly that: psh gave the correct rc=127, live bash
+# raced to rc=5. psh's behavior is deterministic (rc=127) and stays pinned
+# by the psh-golden assertion below AND by the deterministic fault-injection
+# seam in tests/integration/job_control/test_wait_reap_echild_reclaim.py.
+# Comparing a reap race against a racy live oracle is not a valid gate.
 - name: r18t1_bgtrap_wait_bare_then_explicit_127
   command: "( exit 5 ) & p=$!; wait; wait $p; echo rc=$?"
   stdout: "rc=127\n"
   stderr: "not a child of this shell"
   exit_code: 0
+  psh_only: true
 
 - name: r18t1_bgtrap_wait_bare_clears_explicit_retention
   command: "( exit 5 ) & p=$!; wait $p; echo $?; wait; echo $?; wait $p; echo $?"
