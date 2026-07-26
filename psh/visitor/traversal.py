@@ -141,7 +141,8 @@ def walk_ast_edges(node: ASTNode) -> Iterator[Tuple[str, ASTNode]]:
         elif shape is ChildShape.TEMPLATE_SUBS:
             if isinstance(value, SyntaxTemplate):
                 for sub in value.subs:
-                    yield name, sub.expansion
+                    if isinstance(sub.expansion, ASTNode):
+                        yield name, sub.expansion
         else:  # NODE_TUPLE_LIST
             for item in value:
                 if isinstance(item, tuple):

@@ -56,15 +56,28 @@ def _arithmetic_injection_shape(expr: str) -> bool:
 
 
 def _has_live_substitution_text(text: str) -> bool:
-    """True if *text* contains an UNESCAPED ``$(`` command substitution or
-    backtick — i.e. a substitution that RUNS when the text is expanded.
+    """True if *text* contains a ``$(`` command substitution or backtick that
+    PSH will execute when the operand is expanded.
 
-    Escape-aware: ``\\$(...)`` and ``\\``` are literal (the parser keeps the
-    backslash in the flattened literal text, so the two spellings are
-    distinguishable here — verified against bash 5.2.26: the quoted form
-    executes, the escaped form does not). A ``$((`` opener is arithmetic, not
-    a command substitution, and is skipped as such — but a ``$(cmd)`` nested
-    INSIDE the arithmetic text is still found by the continuing scan.
+    *text* is POST-PARSE literal text, and the scan tracks what psh's own
+    evaluator does with it (each row marker-probed, psh @ this tree vs bash
+    5.2.26; ledger 2.1 §10):
+
+    - ``\\$(...)``: the parser KEEPS this backslash, neither shell runs it —
+      scanned as escaped, silent.
+    - backticks: the parser DROPS a preceding backslash, so an escaped and a
+      live backtick are textually indistinguishable here — and psh's
+      evaluator RUNS the backticks in that operand either way, so any bare
+      backtick is treated as live. (bash treats the escaped spelling as
+      literal — a pre-existing psh-vs-bash execution divergence, carried;
+      the flag errs with psh's actual behavior.)
+    - ``\\\\$(...)``: the parser collapses it to ``\\$(``, scanned as
+      escaped, and psh indeed does not run it — but bash DOES (the second
+      carried divergence; relative to bash this is a known false negative).
+
+    A ``$((`` opener is arithmetic, not a command substitution, and is
+    skipped as such — but a ``$(cmd)`` nested INSIDE the arithmetic text is
+    still found by the continuing scan.
     """
     i = 0
     n = len(text)
@@ -296,9 +309,11 @@ class SecurityVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
         and psh both, probed 2026-07-26). Until the parser builds real
         expansion parts for these operands, the region is executable-but-
         opaque: flag it rather than staying silent (the same no-clean-claim
-        policy as backtick bodies and expanding heredocs). Escaped spellings
-        (``\\$(``, ``\\```) keep their backslash in the literal text and are
-        correctly NOT flagged.
+        policy as backtick bodies and expanding heredocs). The escape rules
+        the scan applies — which spellings the parser keeps distinguishable
+        and where psh's execution diverges from bash's — are documented on
+        :func:`_has_live_substitution_text`; the flag follows psh's own
+        execution behavior on every probed row.
         """
         if word is None:
             return

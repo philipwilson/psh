@@ -129,6 +129,34 @@ def test_single_quoted_test_operand_is_not_flagged():
     assert types == [], types
 
 
+def test_escaped_backtick_test_operand_is_flagged():
+    """`[[ "\\`cmd\\`" == x ]]`: FLAGGED, tracking psh's own execution.
+
+    The parser DROPS the backslash before a backtick (the operand's
+    LiteralPart text is `` `cmd` `` — escaped and live spellings textually
+    identical), and psh's evaluator RUNS the backticks in that operand
+    (marker-probed 2026-07-26: psh executes; bash 5.2.26 treats the escaped
+    spelling as a literal string — a pre-existing psh-vs-bash execution
+    divergence, CARRIED in ledger 2.1 §10, out of 2.1's scope). Since psh
+    runs it, the region is executable-and-opaque in psh and the flag is
+    correct for psh; it is conservative relative to bash."""
+    types = _issue_types('[[ "\\`rm -rf /tmp/psh-never-created\\`" == x ]]')
+    assert 'UNANALYZED_REGION' in types, types
+
+
+def test_double_backslash_dollar_test_operand_is_silent():
+    """`[[ "\\\\$(cmd)" == x ]]`: SILENT, tracking psh's own execution.
+
+    The parser collapses `\\\\$(` to `\\$(` in the literal text, the scan
+    reads that as escaped, and psh indeed does NOT run it — but bash DOES
+    (marker-probed: `\\\\` is a literal backslash in bash, then a live
+    substitution). Relative to bash this is a known false negative caused by
+    the same pre-existing lexing divergence, CARRIED in ledger 2.1 §10; the
+    analyzer stays consistent with what psh itself executes."""
+    types = _issue_types('[[ "\\\\$(rm -rf /tmp/psh-never-created)" == x ]]')
+    assert 'UNANALYZED_REGION' not in types, types
+
+
 def test_arithmetic_only_quoted_test_operand_is_not_flagged():
     """NEGATIVE CONTROL: a pure arithmetic expansion in a quoted operand
     embeds no command substitution — not an opaque executable region."""

@@ -199,3 +199,28 @@ def test_metrics_counts_commands_in_elif_function_body():
     m.visit(_ast(src))
     # commands: a, b, c, d, e, g = 6 (base's reflection walker returned 2).
     assert m.get_report()['function_metrics']['ef']['commands'] == 6
+
+
+# --- Line offsetting over template-sub programs (round-3 B8 disclosure pin) --
+
+def test_offset_line_numbers_reaches_stamped_template_sub_nodes():
+    """TEMPLATE_SUBS descent is a REAL (if today invisible) change for
+    source_processor._offset_line_numbers: some nodes inside a template-sub
+    program DO carry buffer-relative line stamps (AndOrList/Pipeline; the
+    inner SimpleCommand/Word are unstamped by the word builder), and they are
+    now offset with the rest of the buffer — at base they were never touched.
+    No user-visible delta exists today: execution re-parses the template TEXT
+    at runtime, so $LINENO inside the substitution comes from the fresh
+    runtime parse, and nothing consumes these read-time nodes' .line. Pinned
+    so the behavior is a documented fact rather than an accident."""
+    from psh.ast_nodes import ParameterExpansion
+    from psh.scripting.source_processor import _offset_line_numbers
+
+    ast = _ast('echo "${x:-$(inner)}"')
+    pe = _find(ast, ParameterExpansion)[0]
+    program = pe.word_template.subs[0].expansion.program
+    stamped = [n for n in _find(program, ASTNode) if n.line is not None]
+    assert stamped, "expected stamped nodes (AndOrList/Pipeline) in the sub program"
+    before = [n.line for n in stamped]
+    _offset_line_numbers(ast, 100)
+    assert [n.line for n in stamped] == [line + 100 for line in before]
