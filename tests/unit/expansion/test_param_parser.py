@@ -7,7 +7,7 @@ bash-adjudicated fix families from the B5 migration.
 
 import pytest
 
-from psh.expansion.param_parser import parse_parameter_expansion
+from psh.expansion.param_parser import parse_parameter_expansion, validate_parameter_expansion
 
 
 def triple(content):
@@ -284,3 +284,50 @@ class TestStrRoundTrip:
     ])
     def test_round_trip(self, content):
         assert str(parse_parameter_expansion(content)) == '${' + content + '}'
+
+
+class TestQuoteAwareSubscriptExtent:
+    """Remediation 2.3 (MEDIUM-4): the ONE quote-aware extent scanner —
+    a quoted/escaped/substitution-carried `]` never closes the subscript."""
+
+    @pytest.mark.parametrize('text,open_idx,close_idx', [
+        ('a["]"]', 1, 5),          # dq ]
+        ("a[']']", 1, 5),          # sq ]
+        ('a[\\]]', 1, 4),          # backslash ]
+        ("a[$']']", 1, 6),         # ANSI-C ]
+        ('a[$(echo "]")]', 1, 13),  # ] inside cmdsub (grammar-aware extent)
+        ('a[${h["]"]}]', 1, 11),   # ] inside ${...}
+        ('a[`echo ]`]', 1, 10),    # ] inside backticks
+        ('a[b[i]]', 1, 6),         # unquoted nesting
+        ('a[k]', 1, 3),            # plain
+    ])
+    def test_find_subscript_end(self, text, open_idx, close_idx):
+        from psh.expansion.param_parser import find_subscript_end
+        assert find_subscript_end(text, open_idx) == close_idx
+
+    @pytest.mark.parametrize('text', ['a["]', "a[']", 'a[$(echo ]', 'a[b[i]'])
+    def test_unclosed_returns_minus_one(self, text):
+        from psh.expansion.param_parser import find_subscript_end
+        assert find_subscript_end(text, 1) == -1
+
+    def test_quoted_bracket_parameter_is_plain(self):
+        # ${a["]"]}: the whole name[sub] is the parameter — no operator, valid.
+        node = parse_parameter_expansion('a["]"]')
+        assert (node.parameter, node.operator, node.word) == ('a["]"]', None, None)
+        assert validate_parameter_expansion(node)
+
+    def test_operator_after_quoted_subscript(self):
+        # ${a["]"]:-d}: the ':-' AFTER the quoted ']' is found.
+        node = parse_parameter_expansion('a["]"]:-d')
+        assert (node.parameter, node.operator, node.word) == ('a["]"]', ':-', 'd')
+        assert validate_parameter_expansion(node)
+
+    def test_length_of_quoted_subscript(self):
+        node = parse_parameter_expansion('#a["]"]')
+        assert (node.parameter, node.operator) == ('a["]"]', '#')
+        assert validate_parameter_expansion(node)
+
+    def test_unclosed_bracket_still_suppresses_scan(self):
+        # ${a[x:-d — unclosed bracket: plain (unset) name, as before.
+        node = parse_parameter_expansion('a[x:-d')
+        assert node.operator is None

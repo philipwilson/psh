@@ -8,7 +8,7 @@ service surface directly plus the routed behavior of every consumer site
 """
 import pytest
 
-from psh.expansion.subscript import SubscriptUse, TargetKind
+from psh.expansion.subscript import SubscriptSyntaxError, SubscriptUse, TargetKind
 
 
 @pytest.fixture
@@ -77,6 +77,70 @@ class TestAssociativeKey:
         # A glob metachar key stays literal; a spaced key stays one key.
         assert subscript.associative_key('*') == '*'
         assert subscript.associative_key('a *') == 'a *'
+
+
+class TestProcsubSpellingIsLiteral:
+    """HIGH-4 (remediation 2.3): a procsub SPELLING in a subscript is literal
+    key text — never executed at keying time. Cmdsub/backticks still run."""
+
+    def test_word_from_text_procsub_becomes_literal_part(self, subscript):
+        from psh.ast_nodes.words import ExpansionPart
+        word = subscript.word_from_text('<(printf x)')
+        assert not any(isinstance(p, ExpansionPart) for p in word.parts)
+        assert ''.join(p.text for p in word.parts) == '<(printf x)'
+
+    @pytest.mark.parametrize('raw,key', [
+        ('<(printf x)', '<(printf x)'),
+        ('>(printf x)', '>(printf x)'),
+        ('x<(y)', 'x<(y)'),                    # mixed literal + spelling
+        ('<(echo hi)', '<(echo hi)'),
+    ])
+    def test_associative_key_is_the_spelling(self, subscript, raw, key):
+        assert subscript.associative_key(raw) == key
+
+    def test_procsub_body_never_launches(self, subscript, tmp_path):
+        marker = tmp_path / 'ran.out'
+        key = subscript.associative_key(f'<(echo RAN > {marker})')
+        assert key.startswith('<(') and not key.startswith('/dev/fd')
+        import time
+        time.sleep(0.2)
+        assert not marker.exists()
+
+    def test_cmdsub_and_backtick_still_execute(self, subscript):
+        assert subscript.associative_key('$(printf k)') == 'k'
+        assert subscript.associative_key('`printf k`') == 'k'
+
+
+class TestSubscriptSyntaxErrorTyped:
+    """MEDIUM-12a (remediation 2.3): the broad-except literal degradation is
+    gone — un-lexable raw raises the typed SubscriptSyntaxError."""
+
+    @pytest.mark.parametrize('raw', ['"', "'", '"]', "$'", '$(', '<(', 'a<('])
+    def test_unlexable_raw_raises_typed(self, subscript, raw):
+        with pytest.raises(SubscriptSyntaxError):
+            subscript.word_from_text(raw)
+
+    def test_typed_error_is_expected_shell_error(self):
+        from psh.core.exceptions import ExpansionError, PshError
+        assert issubclass(SubscriptSyntaxError, ExpansionError)
+        assert issubclass(SubscriptSyntaxError, PshError)
+
+    def test_associative_key_loud_by_default(self, captured_shell, subscript):
+        with pytest.raises(SubscriptSyntaxError):
+            subscript.associative_key('"')
+        assert 'bad array subscript' in captured_shell.get_stderr()
+
+    def test_evaluate_quiet_for_builtin_uses(self, captured_shell, subscript):
+        for use in (SubscriptUse.TEST_V, SubscriptUse.UNSET):
+            captured_shell.clear_output()
+            with pytest.raises(SubscriptSyntaxError):
+                subscript.evaluate('"', TargetKind.ASSOCIATIVE, use)
+            assert captured_shell.get_stderr() == ''
+
+    def test_error_carries_raw(self, subscript):
+        with pytest.raises(SubscriptSyntaxError) as exc:
+            subscript.word_from_text('"]')
+        assert exc.value.raw == '"]'
 
 
 class TestArithAssociativeKeyProvenance:

@@ -91,6 +91,11 @@ _REJECT = [
     ("arith", build_arithmetic_template, " $(if) + 1 "),
     ("arith_param", build_arithmetic_template, " ${x:-$(if)} "),
     ("subscript", build_subscript_spec, "$(if)"),
+    # Remediation 2.3 (HIGH-4): unquoted procsub SPELLINGS in a subscript are
+    # read-time validated wherever they sit (bash rejects the buffer).
+    ("subscript_procsub", build_subscript_spec, "<(if)"),
+    ("subscript_outsub", build_subscript_spec, ">(if)"),
+    ("subscript_mid_procsub", build_subscript_spec, "1<(if)"),
 ]
 
 
@@ -113,6 +118,14 @@ _ACCEPT = [
     ("arith_dynamic", build_arithmetic_template, " 1 $op 2 "),
     ("subscript_arith", build_subscript_spec, "k+1"),
     ("subscript_cmdsub", build_subscript_spec, "$(echo 1)"),
+    # 2.3: a VALID procsub body passes read-time validation (its indexed/
+    # associative meaning is the evaluator's, later); QUOTED spellings defer
+    # entirely (bash: `a["<(if)"]` / `a['<(if)']` are never validated); and
+    # arith regions never scan `<(` at all (`$((a[<(if)]))` defers in bash).
+    ("subscript_procsub_valid", build_subscript_spec, "<(echo hi)"),
+    ("subscript_dq_procsub", build_subscript_spec, '"<(if)"'),
+    ("subscript_sq_procsub", build_subscript_spec, "'<(if)'"),
+    ("arith_subscript_procsub", build_arithmetic_template, "a[<(if)]"),
 ]
 
 
@@ -180,6 +193,75 @@ def test_element_assignment_index_spec_attached(parser):
     assert node is not None
     assert isinstance(node.index_spec, SubscriptSpec)
     assert node.index_spec.text == node.index
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_element_assignment_procsub_spelling_carried_not_run(parser):
+    """2.3 (HIGH-4): a valid procsub spelling in an element subscript is
+    read-time validated and CARRIED (a NestedSub with a parsed program), but
+    the raw text preserves the spelling — the keying authority decides its
+    meaning later, so nothing here is executable at keying time."""
+    node = _first(_parse("declare -A a; a[<(echo hi)]=v", parser),
+                  ArrayElementAssignment)
+    assert node is not None
+    assert node.index == "<(echo hi)"
+    spec = node.index_spec
+    assert isinstance(spec, SubscriptSpec) and spec.text == "<(echo hi)"
+    assert len(spec.validated) == 1
+    sub = spec.validated[0]
+    assert isinstance(sub.expansion, ProcessSubstitution)
+    assert sub.expansion.program is not None
+    assert spec.spans_reconstruct()
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_element_assignment_quote_aware_extent(parser):
+    """2.3 (MEDIUM-4): the element-head subscript extent is quote-aware — a
+    quoted `]` does not close it, on BOTH parsers."""
+    for src, subscript in (
+        ('a["]"]=ok', '"]"'),
+        ("a[']']=x", "']'"),
+        ('a[\\]]=x', '\\]'),
+        ('h[a[0]]=n', 'a[0]'),
+    ):
+        node = _first(_parse(src, parser), ArrayElementAssignment)
+        assert node is not None, (src, parser)
+        assert node.index == subscript, (src, node.index)
+        assert node.index_spec is not None and node.index_spec.text == subscript
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_element_assignment_requires_adjacent_operator(parser):
+    """2.3 (probe e1): `a[k]x=v` / `a[x=1]` are COMMAND words in bash — the
+    `=`/`+=` must sit immediately after the closing `]`."""
+    from psh.ast_nodes import SimpleCommand
+    for src in ("a[k]x=v", "a[x=1]"):
+        root = _parse(src, parser)
+        assert _first(root, ArrayElementAssignment) is None, (src, parser)
+        cmd = _first(root, SimpleCommand)
+        assert cmd is not None, (src, parser)
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_element_assignment_absolute_spans(parser):
+    """2.3 (D5): the element path anchors its SubscriptSpec absolutely —
+    projected spans slice the ORIGINAL SOURCE to the exact spelling."""
+    src = 'declare -A x; x[p$(echo k)q]=v'
+    node = _first(_parse(src, parser), ArrayElementAssignment)
+    assert node is not None
+    spec = node.index_spec
+    assert spec is not None and spec.origin is not None
+    spans = spec.absolute_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert src[span.start:span.end] == '$(echo k)'
+
+
+def test_absolute_spans_without_anchor_raises():
+    spec = build_subscript_spec("$(echo k)")
+    assert spec.origin is None
+    with pytest.raises(ValueError):
+        spec.absolute_spans()
 
 
 @pytest.mark.parametrize("parser", ["rd", "combinator"])

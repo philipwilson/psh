@@ -357,6 +357,34 @@ empty subscript fatal but accepts a source empty-quoted key (`h[""]`) as valid
 (`SubscriptEvaluator.raw_has_source_quote`). `_eval_array_index()` remains as a
 thin adapter.
 
+Two remediation-2.3 invariants on the re-lex bridge
+(`SubscriptEvaluator.word_from_text`):
+
+- **Procsub spellings are literal key text** (HIGH-4): an unquoted `<(...)`/
+  `>(...)` re-lexed from a subscript becomes a LITERAL part carrying its exact
+  source spelling (`subscript.py#_procsub_spellings_literal`) — bash keys the
+  spelling and never launches the process (`a[<(printf x)]=v` keys
+  `<(printf x)`; `unset`/`test -v` address that literal key). Command
+  substitutions and backticks still EXECUTE in associative keys (bash).
+  Read-time REJECTION of an invalid spelling is the parser's job
+  (`parser/recursive_descent/support/syntax_templates.py#build_subscript_spec`).
+- **Un-lexable raw raises the typed `SubscriptSyntaxError`** (MEDIUM-12a): the
+  former broad `except Exception` fallbacks that degraded junk to a literal
+  key are deleted; only the lexer/word-builder's own `PshError` failures
+  translate, anything else propagates as an internal defect (strict-errors).
+  The keying funnel prints the location-prefixed message except for the
+  builtin uses (`SubscriptUse.TEST_V`/`UNSET`, `_QUIET_SYNTAX_USES`), whose
+  callers own bash's wording (`test -v` quietly unset; `unset` loud
+  "not a valid identifier").
+
+The `NAME[...]` extent itself — where a subscript ENDS — has ONE quote-aware
+scanner: `param_parser.py#find_subscript_end` (skips `'...'`/`"..."`/
+`$'...'`/backslash escapes/`$(...)`/`${...}`/backticks; unquoted brackets
+nest). It backs the `${...}` classifier (`param_parser.py#_subscript_end`,
+`#_scan_operator`), the parser word builder, and both parsers' element-head
+scans — `a["]"]=ok` and `${a["]"]}` span to the real close on every surface
+(remediation 2.3, MEDIUM-4).
+
 ### IFS Word Splitting and per-character protection
 
 The field IR carries two facts per run through splitting and globbing:

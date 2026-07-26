@@ -567,6 +567,26 @@ matching bash, while `1 << 2` and `op='+'; $((1 $op 2))` stay valid. The invaria
 (template ↔ raw field consistency, no un-validated modern sub, backtick never
 carries a program) is guarded by `tests/unit/tooling/test_syntax_template_guards.py`.
 
+Subscript-specific invariants (remediation 2.3, HIGH-4 + MEDIUM-4):
+
+- `build_subscript_spec` ALSO validates unquoted procsub spellings — bash
+  rejects `a[<(if)]=1`, `a[1<(if)]=x`, `${a[<(if)]}` at read time (dead
+  branches included) — while quoted spellings (`a["<(if)"]`) and arithmetic
+  regions (`$((a[<(if)]))`) defer. Validation never makes the spelling
+  executable at keying time: the spec's `text` preserves it, and the keying
+  authority (`expansion/subscript.py`) treats it as literal key text
+  (associative) or arithmetic operators (indexed).
+- The subscript EXTENT is quote-aware everywhere via the ONE scanner
+  `expansion/param_parser.py#find_subscript_end`: the word builder's
+  `_extract_subscript`, and both parsers' element-head scans
+  (`recursive_descent/parsers/arrays.py#_scan_element_head`, shared by
+  `combinators/arrays.py`) — `a["]"]=ok` keys `]`, and the `=`/`+=` must sit
+  immediately after the closing `]` (`a[k]x=v` is a command word, as in bash).
+- `SubscriptSpec.origin` (set by both parsers' element paths from the head
+  token's position) anchors the spec absolutely;
+  `SubscriptSpec.absolute_spans()` projects nested-sub spans to source
+  coordinates (pinned in `tests/unit/parser/test_syntax_templates.py`).
+
 A substitution-body syntax error is raised as `SubstitutionSyntaxError` (an inert
 `ParseError` subclass; `is_substitution_origin`) at the one chokepoint
 `support/nested_parse.py#parse_nested_command`. It is the typed producer contract

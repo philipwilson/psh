@@ -755,46 +755,220 @@ def test_divergence_arith_subscript_adjacency_required():
     assert '9' not in p.stdout and '9' not in b.stdout
 
 
-def test_divergence_quote_blind_extent_in_assignment_word():
-    """K1 (routed residual, lexer extent — NOT keying): `a["a]b"]=1` — bash's
-    assignment-word scan respects quotes around `]`; psh's tracker stops at
-    the first `]`. Keying itself is consistent: both shells store ONE
-    element."""
+# --- Remediation 2.3 flips: the K1 extent, procsub-identity, and sq-in-dq ---
+# rows below were divergence pins until slot 2.3 (quote-aware extent scanner,
+# procsub keying identity + read-time rejection). Now equality/parity pins.
+
+def _both(cmd):
+    """(psh, bash) results for identical `-c` runs, rd parser."""
+    return _psh(cmd), _bash(cmd)
+
+
+def _psh_comb(cmd):
+    r = run_psh(['--parser', 'combinator', '-c', cmd], cwd=PSH_ROOT, timeout=15)
+    assert is_comparable(r), r
+    return r
+
+
+def test_quote_aware_extent_in_assignment_word():
+    """K1 FLIPPED (2.3): the assignment-word subscript extent is quote-aware —
+    `a["a]b"]=1` keys `a]b` in both shells (psh formerly truncated at the
+    first `]` and mis-keyed `"a` through the broad-catch literal fallback)."""
     cmd = 'declare -A a; a["a]b"]=1; declare -p a'
-    p, b = _psh(cmd), _bash(cmd)
+    p, b = _both(cmd)
     assert '["a]b"]="1"' in b.stdout
-    assert p.stdout != b.stdout  # flips when the lexer extent fix lands
+    assert p.stdout == b.stdout
+    assert _psh_comb(cmd).stdout == b.stdout
 
 
-def test_divergence_procsub_in_subscript_read_time():
-    """S3-carry (routed residual, parser scan — NOT keying): bash validates a
-    `<(...)`-spelled procsub inside a subscript at READ time (`a[<(if)]=1`
-    rejects the whole buffer, dead branches included) while treating
-    `1<(2)` as arithmetic; a VALID `<(echo hi)` carries to a RUNTIME arith
-    error. psh currently defers the invalid spelling to runtime."""
-    dead = 'true || a[<(if)]=1; echo ran'
-    b = _bash(dead)
-    assert 'ran' not in b.stdout and b.returncode != 0  # bash: read-time
-    p = _psh(dead)
-    assert 'ran' in p.stdout  # psh: deferred (routed to the S3/S4 scan family)
-    # Both shells treat `1<(2)` as arithmetic, not a procsub:
-    arith = 'a[1<(2)]=x; declare -p a'
-    pb, bb = _psh(arith), _bash(arith)
-    assert '[1]="x"' in bb.stdout and '[1]="x"' in pb.stdout
+@pytest.mark.parametrize('cmd', [
+    'declare -A a; a["]"]=ok; declare -p a; echo ok',      # dq ]
+    "declare -A a; a[']']=x; declare -p a",                # sq ]
+    'declare -A a; a[\\]]=x; declare -p a',                # backslash ]
+    "declare -A a; a[$']']=x; declare -p a",               # ANSI-C ]
+    'declare -A a; a["+="]=v; declare -p a',               # quoted += not the operator
+    "declare -A a; a[']'x]=v; declare -p a",               # quote then text
+    'declare -A a; a["["]=L; declare -p a',                # dq [ (parity kept)
+    'i=1; b=(9 8 7); c[b[i]]=N; declare -p c',             # unquoted nesting
+    'declare -A a; a[$(echo "]")]=c; declare -p a',        # ] inside cmdsub
+    'declare -A a; a["]"]=1; a["]"]+=2; declare -p a',     # append via quoted ]
+    'declare -A a=(["]"]=I); declare -p a',                # init path (parity kept)
+])
+def test_quote_aware_extent_family(cmd):
+    """The full K1 write-side family: every quote/escape/substitution carrier
+    of `]` spans to the REAL close on BOTH parsers (bash-identical bytes)."""
+    p, b = _both(cmd)
+    assert p.stdout == b.stdout and p.returncode == b.returncode
+    assert _psh_comb(cmd).stdout == b.stdout
 
 
-def test_divergence_sq_inside_dq_subscript():
-    """S3-verify carry (routed residual, parser dq-context scan): single
-    quotes inside a DOUBLE-QUOTED `${h['...']}` — with a cmdsub spelling
-    bash defers to runtime (arith error on the undeclared name) while psh
-    rejects at parse time. The plain spelling works identically."""
+@pytest.mark.parametrize('cmd', [
+    'declare -A a; a["]"]=ok; echo "read=${a["]"]}"',      # dq read-back
+    "declare -A a; a[']']=ok; echo read=${a[']']}",        # sq read-back
+    'declare -A a; a["]"]=V; echo "${a["]"]:-d}"',         # operator after subscript
+    'declare -A a; a["]"]=hello; echo "${#a["]"]}"',       # length form
+    'declare -A a; a["]"]=R; echo "read=${a[$(echo "]")]}"',  # cmdsub ] read
+    'declare -A a; a["]"]=1; a[x]=2; unset -v \'a["]"]\'; echo rc=$?; declare -p a',
+    'declare -A a; a["]"]=1; test -v \'a["]"]\'; echo rc=$?',
+])
+def test_quote_aware_extent_read_side(cmd):
+    """K1 read-side family: `${a["]"]}` and friends (the `${...}` classifier's
+    subscript extent + operator scan are quote-aware), plus the builtin
+    surfaces addressing the same key."""
+    p, b = _both(cmd)
+    assert p.stdout == b.stdout and p.returncode == b.returncode
+    assert _psh_comb(cmd).stdout == b.stdout
+
+
+def test_element_head_requires_adjacent_operator():
+    """2.3 rider (probe e1): `a[k]x=v` is a COMMAND word in bash (`command
+    not found`), not an element assignment — psh formerly parsed it as
+    `a[k]=v`-with-junk. The `=` must sit immediately after the closing `]`."""
+    cmd = 'a[k]x=v; echo rc=$?'
+    p, b = _both(cmd)
+    assert b.stdout == p.stdout == 'rc=127\n'
+    assert 'command not found' in p.stderr and 'command not found' in b.stderr
+    assert _psh_comb(cmd).stdout == b.stdout
+
+
+def test_procsub_in_subscript_keys_literal_spelling():
+    """HIGH-4 FLIPPED (2.3), identity half: an unquoted `<(...)` spelling in
+    an associative subscript is the LITERAL key — bash never runs it (psh
+    formerly executed it at keying time and keyed /dev/fd/N)."""
+    for cmd in (
+        'declare -A a; a[<(printf x)]=v; declare -p a',
+        'declare -A a; a[x<(y)]=v; declare -p a',            # mixed spelling
+        "declare -A a; a['<(printf k)']=v; echo \"read=${a[<(printf k)]}\"",
+        "declare -A a; a['<(printf x)']=v; unset -v 'a[<(printf x)]'; declare -p a",
+        "declare -A a; a['<(printf x)']=v; test -v 'a[<(printf x)]'; echo rc=$?",
+        'declare -A a; a["<(printf x)"]=v; declare -p a',    # quoted spelling
+    ):
+        p, b = _both(cmd)
+        assert p.stdout == b.stdout and p.returncode == b.returncode, (cmd, p, b)
+        assert '/dev/fd' not in p.stdout, cmd
+        assert _psh_comb(cmd).stdout == b.stdout, cmd
+
+
+def test_procsub_in_subscript_never_launches(tmp_path):
+    """HIGH-4 identity: the procsub BODY never runs at keying time (no side
+    effects) — probed via a would-be side-effect file."""
+    marker = tmp_path / 'side.out'
+    script = tmp_path / 'probe.sh'
+    script.write_text(
+        f'declare -A a; a[<(echo RAN > {marker})]=v; sleep 0.2; '
+        f'test -f {marker} && echo SIDE_EFFECT || echo NO_SIDE_EFFECT\n')
+    for r in (run_psh([str(script)], cwd=PSH_ROOT, timeout=15),
+              run_psh(['--parser', 'combinator', str(script)],
+                      cwd=PSH_ROOT, timeout=15),
+              run_bash([str(script)], cwd=PSH_ROOT, timeout=15)):
+        assert is_comparable(r), r
+        assert r.stdout == 'NO_SIDE_EFFECT\n', r
+
+
+def test_procsub_in_subscript_read_time_rejection(tmp_path):
+    """HIGH-4 FLIPPED (2.3), timing half: an INVALID `<(...)` body anywhere in
+    a word-context subscript rejects the whole buffer at READ time — dead
+    branches included — in both shells (file mode rc 2; the `-c` 2-vs-127
+    residual is slot 2.4's pin). Arith context and quoted spellings defer in
+    both."""
+    rejected = [
+        'true || a[<(if)]=1; echo ran\n',        # dead branch, in-procsub
+        'true || a[>(if)]=1; echo ran\n',        # out-procsub
+        'true || a[1<(if)]=x; echo ran\n',       # mid-subscript spelling
+        'true || echo "${a[<(if)]}"; echo ran\n',  # reference subscript
+    ]
+    deferred = [
+        'true || : $((a[<(if)])); echo ran\n',   # arith context: no validation
+        'true || echo "${a["<(if)"]}"\necho ran\n',   # quoted spelling defers
+        "true || echo \"${a['<(if)']}\"\necho ran\n",
+    ]
+    for body in rejected + deferred:
+        script = tmp_path / 'probe.sh'
+        script.write_text(body)
+        bash_r = run_bash([str(script)], cwd=PSH_ROOT, timeout=15)
+        rd_r = run_psh([str(script)], cwd=PSH_ROOT, timeout=15)
+        comb_r = run_psh(['--parser', 'combinator', str(script)],
+                         cwd=PSH_ROOT, timeout=15)
+        assert is_comparable(bash_r) and is_comparable(rd_r), (body, bash_r, rd_r)
+        assert is_comparable(comb_r), (body, comb_r)
+        if body in rejected:
+            assert bash_r.returncode == 2 and 'ran' not in bash_r.stdout, body
+        else:
+            assert bash_r.returncode == 0 and 'ran' in bash_r.stdout, body
+        for r in (rd_r, comb_r):
+            assert r.returncode == bash_r.returncode, (body, r)
+            assert r.stdout == bash_r.stdout, (body, r)
+
+
+def test_procsub_arith_control_rows():
+    """`1<(2)` stays arithmetic (`<` operator) and a VALID `<(echo hi)` on an
+    INDEXED target still fails as arithmetic at RUNTIME — identical outcomes
+    (rc + stdout; the arith error WORDING is the recorded general family)."""
+    cmd = 'a[1<(2)]=x; declare -p a'
+    p, b = _both(cmd)
+    assert p.stdout == b.stdout and '[1]="x"' in b.stdout
+    assert _psh_comb(cmd).stdout == b.stdout
+    runtime = 'a[<(echo hi)]=1; echo rc=$?'
+    p, b = _both(runtime)
+    assert p.returncode == b.returncode == 1
+    assert p.stdout == b.stdout == ''
+    assert p.stderr.strip() and b.stderr.strip()
+
+
+def test_sq_inside_dq_subscript_runtime_stage_parity():
+    """S3-verify carry FLIPPED to a parity row (2.3): `"${h['$(if)']}"` is a
+    RUNTIME failure in BOTH shells. The pin's old psh-side claim ("rejects at
+    parse time") was already stale at the campaign launch base 0215279c
+    (slot-2.3 ledger, RESULTS-0215279c-drift.txt): both shells defer — the
+    dead-branch and next-line probes prove stage parity; only the runtime
+    error WORDING differs (psh: nested parse error + arith error; bash: its
+    runtime cmdsub's syntax error), which stays documented here."""
     ok = "declare -A h; h[\"k\"]=v; echo \"${h['k']}\""
-    p, b = _psh(ok), _bash(ok)
+    p, b = _both(ok)
     assert p.stdout == b.stdout == 'v\n'
     bad = 'echo "${h[\'$(if)\']}"'
-    pb, bb = _psh(bad), _bash(bad)
-    assert bb.returncode == 1 and 'syntax error' in bb.stderr  # runtime arith
-    assert pb.returncode != 0  # psh: parse-time (earlier stage; declared)
+    pb, bb = _both(bad)
+    assert pb.returncode == bb.returncode == 1
+    assert pb.stdout == bb.stdout == ''
+    assert 'syntax error' in bb.stderr and pb.stderr.strip()  # wording differs
+    # Stage parity, dead branch: NEITHER shell validates at read time.
+    dead = "true || echo \"${h['$(if)']}\"; echo ran"
+    pd, bd = _both(dead)
+    assert pd.stdout == bd.stdout == 'ran\n'
+    assert pd.returncode == bd.returncode == 0
+    assert bd.stderr == '' and pd.stderr == ''
+    # Stage parity, continuation: the NEXT line still runs in both.
+    nxt = 'echo "${h[\'$(if)\']}"\necho nextline'
+    pn = run_psh([], stdin_data=nxt + '\n', cwd=PSH_ROOT, timeout=15)
+    bn = run_bash([], stdin_data=nxt + '\n', cwd=PSH_ROOT, timeout=15)
+    assert is_comparable(pn) and is_comparable(bn)
+    assert pn.stdout == bn.stdout == 'nextline\n'
+    # The dq-nested assignment-word control (s5): sq inside dq inside an
+    # ASSIGNMENT subscript IS read-time validated in both shells.
+    s5 = 'declare -A h; h["\'$(if)\'"]=X\necho set rc=$?'
+    ps = run_psh([], stdin_data=s5 + '\n', cwd=PSH_ROOT, timeout=15)
+    bs = run_bash([], stdin_data=s5 + '\n', cwd=PSH_ROOT, timeout=15)
+    assert is_comparable(ps) and is_comparable(bs)
+    assert ps.returncode == bs.returncode == 2
+    assert ps.stdout == bs.stdout == ''
+
+
+def test_divergence_unlexable_subscript_typed_error():
+    """2.3 rider (probe e2) — documented divergence, both sides pinned: an
+    un-lexable subscript held RAW by the arithmetic path (`$((h['x]))`) is a
+    LEXER-level rc-2 reject of the whole buffer in bash (the quote spans the
+    rest of the source), while psh's arith tokenizer captures the subscript
+    verbatim and the keying engine raises its typed rc-1
+    `['x]: bad array subscript` (SubscriptSyntaxError, discard-line) — the
+    former broad-catch silently keyed the junk literally and printed 0."""
+    cmd = "declare -A h; h[x]=1; echo $((h['x])); echo after"
+    p, b = _both(cmd)
+    assert b.returncode == 2 and 'EOF' in b.stderr        # bash: lexer reject
+    assert p.returncode == 1                              # psh: typed keying error
+    assert "['x]: bad array subscript" in p.stderr
+    assert p.stdout == b.stdout == ''                     # neither prints 0/after
+    pc = _psh_comb(cmd)
+    assert pc.returncode == 1 and "['x]: bad array subscript" in pc.stderr
 
 
 @pytest.mark.parametrize('cmd,bash_out', [
