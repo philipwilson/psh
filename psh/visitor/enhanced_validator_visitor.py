@@ -348,9 +348,20 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                     )
                 )
 
-                # Check the value for undefined variables
+                # Check the value for undefined variables. Read the
+                # assignment WORD structurally when it exists: the structural
+                # iterator skips substitution interiors, whose commands the
+                # traversal sweep analyzes as nodes — re-scanning the raw
+                # value text reported `FOO=$(echo $y)`'s $y twice (round-3
+                # B6: a textual fallback must not re-read regions that have
+                # a structural representation). The raw-text scan survives
+                # only for word-less manually built nodes.
                 if self.config.check_undefined_vars:
-                    self._check_string_for_undefined_vars(value, node)
+                    word = node.words[i] if i < len(node.words) else None
+                    if word is not None:
+                        self._check_word_for_undefined_vars(word, node)
+                    else:
+                        self._check_string_for_undefined_vars(value, node)
 
         # Handle special builtins that affect variables
         if node.args:
@@ -462,12 +473,37 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
             for p in word.parts
         )
 
+    def _check_word_for_undefined_vars(self, word, node: ASTNode):
+        """Check an assignment-value WORD for undefined variable references.
+
+        Structural counterpart of :meth:`_check_string_for_undefined_vars`:
+        references come from the Word's parts via
+        :func:`iter_variable_references`, which skips substitution interiors
+        (the traversal sweep analyzes those commands as nodes) and masks
+        template-covered operand regions — so each reference is reported by
+        exactly one authority.
+        """
+        rendered = word.display_text()
+        for ref in iter_variable_references(word):
+            if ref.has_default:
+                continue
+            if self.var_tracker.is_defined(ref.name):
+                continue
+            if self._should_warn_undefined(ref.name, rendered, node):
+                self._add_warning(
+                    f"Possible use of undefined variable '${ref.name}'",
+                    node
+                )
+
     def _check_string_for_undefined_vars(self, text: str, node: ASTNode):
         """Check a raw STRING for undefined variable references.
 
-        Used for contexts the Word part model does not cover: assignment
-        values (``FOO=$BAR``) and for-loop item strings. Variable references
-        are recovered with the documented string fallback
+        Fallback for word-less (manually built) assignment nodes ONLY — a
+        real parsed assignment goes through the structural
+        :meth:`_check_word_for_undefined_vars`, because this raw scan reads
+        substitution interiors that the traversal sweep already analyzes
+        (the round-3 B6 duplicate-findings shape). References are recovered
+        with the documented string fallback
         (:func:`iter_variable_references_in_text`); ``${VAR:-default}`` is
         suppressed via the parsed ``has_default`` flag.
         """

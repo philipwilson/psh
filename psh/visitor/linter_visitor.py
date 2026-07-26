@@ -347,8 +347,17 @@ class LinterVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
         """
         # Target word: only meaningful for non-dup redirects (a dup like 2>&1
         # has dup_fd set and a synthetic "&1" target, not an expandable word).
-        if node.dup_fd is None and node.target and '$' in node.target:
-            self._check_variable_usage(node.target)
+        # Read the parsed target_word STRUCTURALLY when the parser built one:
+        # the structural iterator skips substitution interiors, whose commands
+        # the traversal sweep analyzes as nodes — re-scanning the raw target
+        # text reported `> $(echo $y).log`'s $y twice (round-3 B6: a textual
+        # fallback must not re-read regions that have a structural
+        # representation). The raw scan survives for word-less manual nodes.
+        if node.dup_fd is None:
+            if node.target_word is not None:
+                self._check_word_variable_usage(node.target_word)
+            elif node.target and '$' in node.target:
+                self._check_variable_usage(node.target)
 
         # Heredoc / here-string body: expanded unless quoted.
         body = node.heredoc_content

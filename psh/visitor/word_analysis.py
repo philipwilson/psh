@@ -144,7 +144,8 @@ def iter_variable_references(word: Word) -> Iterator[VariableReference]:
             # Nested references inside the operator word (${FOO:-$BAR}) are raw
             # text in the part model; recover them with the string fallback.
             if exp.word:
-                for ref in iter_variable_references_in_text(exp.word):
+                for ref in iter_variable_references_in_text(
+                        _operand_text_without_structural_regions(exp)):
                     yield VariableReference(
                         name=ref.name,
                         quoted=part.quoted,
@@ -153,6 +154,34 @@ def iter_variable_references(word: Word) -> Iterator[VariableReference]:
                         has_default=ref.has_default,
                         part=part,
                     )
+
+
+def _operand_text_without_structural_regions(exp: ParameterExpansion) -> str:
+    """The operand text with structurally-represented regions blanked out.
+
+    AUTHORITY RULE: a textual fallback must not re-read regions that have a
+    structural representation — the structural visit is the authority for
+    them. The operand's read-time-parsed modern substitutions
+    (``word_template.validated`` — each a ``NestedSub`` whose ``program`` the
+    traversal sweep analyzes as nodes) are therefore MASKED out of the text
+    before the reference scan; without this, ``${x:-$(echo $y)}`` reported
+    the ``$y`` twice (once from this fallback reading the raw operand text,
+    once from the structural analysis of the inner command — round-3 B6).
+    Deferred BACKTICK subs are deliberately NOT masked: their bodies carry
+    ``program=None`` (bash defers backtick parsing), so the textual read is
+    their ONLY coverage and masking would lose findings. A template-less
+    node (runtime path / manually built) has no structural coverage at all,
+    so its full text is scanned unchanged.
+    """
+    text = exp.word or ""
+    template = exp.word_template
+    if template is None or template.text != text:
+        return text
+    chars = list(text)
+    for sub in template.validated:
+        for i in range(sub.start, min(sub.end, len(chars))):
+            chars[i] = " "
+    return "".join(chars)
 
 
 def iter_variable_references_in_text(text: str) -> Iterator[VariableReference]:
