@@ -47,7 +47,7 @@ Statements Commands  Control   Functions  Tests
 | `context_factory.py` | Factory functions for creating configured contexts |
 | `word_builder.py` | Build Word AST nodes from tokens |
 | `nested_parse.py` | `parse_nested_command` - syntax-validation parse of `$(...)`/`<(...)`/`>(...)` bodies at outer-parse time (no alias expansion) |
-| `utils.py` | Parser utilities |
+| `syntax_templates.py` | `build_*` region validators for `${...}`/`$((...))`/subscript operand templates |
 
 ### Parser Combinators (`combinators/`) -- Educational Only
 
@@ -210,10 +210,11 @@ instead of silently returning an empty `Program`
 token list, so a second `.parse()` raises, uniform for both `active_parser`
 choices. The combinator GRAMMAR instance, by contrast, stays reusable (it takes
 tokens per `parse(tokens)` call — the handle is not the grammar). Guarded by
-`tests/unit/parser/test_parse_inputs_state_s4.py`. (The old RD-only
-`support/utils.py#parse_with_heredocs` — which threaded neither source_text nor
-line_offset — was DELETED in the same slot; the shell's heredoc path and the
-public `parse_with_heredocs`/`create_parser` adapters all go through
+`tests/unit/parser/test_parse_inputs_state_s4.py`. (Historical note, not a live
+pointer: the old RD-only parse_with_heredocs helper in support/utils.py — which
+threaded neither source_text nor line_offset — was DELETED in this slot, and the
+file with it. The shell's heredoc path and the public
+`parse_with_heredocs`/`create_parser` adapters all go through
 `parse_with_inputs` now, so no entry drops the heredoc-path context.)
 
 **Total parse outcome (campaign S4).** Both parser implementations expose

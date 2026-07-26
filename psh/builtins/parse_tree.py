@@ -3,7 +3,7 @@
 from typing import List
 
 from ..lexer import tokenize
-from ..parser import ParseError, Parser
+from ..parser import ParseError, create_parser
 from .base import Builtin
 from .registry import builtin
 
@@ -83,10 +83,14 @@ class ParseTreeBuiltin(Builtin):
         try:
             # Parse the command, honoring the live shell options (extglob,
             # posix) so the displayed AST matches what the executor would
-            # tokenize — e.g. `shopt -s extglob; parse-tree '@(a|b)'`.
+            # tokenize — e.g. `shopt -s extglob; parse-tree '@(a|b)'`. Thread the
+            # options as lexer_options too (via the public create_parser adapter
+            # over the one entry), so a NESTED substitution body re-lexes with the
+            # same extglob budget (remediation R3-6b: the old direct Parser(...)
+            # tokenized with the options but dropped them for the nested re-lex).
             tokens = tokenize(command, shell_options=shell.state.options)
-            parser = Parser(tokens, source_text=command)
-            ast = parser.parse()
+            ast = create_parser(tokens, source_text=command,
+                                lexer_options=shell.state.options).parse()
 
             # Generate output based on format
             if format_type == "pretty":

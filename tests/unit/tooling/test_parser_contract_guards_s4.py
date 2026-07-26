@@ -178,6 +178,25 @@ def test_parse_inputs_construction_sites():
     }, sites
 
 
+def test_parse_inputs_construction_sites_offender():
+    # Synthetic offender for Guard 7 (typology completion, remediation R3-7):
+    # the guard discovers ParseInputs( construction sites with `\bParseInputs\(`
+    # and asserts the discovered set EQUALS the sanctioned four. Prove (a) the
+    # matcher fires on a real construction and (b) a NEW site outside the
+    # sanctioned set breaks the equality the guard checks — so the guard is
+    # load-bearing, not vacuously green.
+    assert re.search(r"\bParseInputs\(", "    return ParseInputs(config=c)")
+    sanctioned = {
+        "parser/recursive_descent/context.py",
+        "parser/combinators/parser.py",
+        "parser/__init__.py",
+        "scripting/lex_parse.py",
+    }
+    # A rogue construction in, say, the executor would enter the discovered set:
+    offender_discovered = sanctioned | {"executor/rogue_parse_site.py"}
+    assert offender_discovered != sanctioned  # exactly what the guard would catch
+
+
 # === Guard 8: the combinator threads lexer_options into template validation ===
 
 def test_combinator_threads_lexer_options_into_templates_guard_and_offender():

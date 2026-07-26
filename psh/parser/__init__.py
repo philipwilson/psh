@@ -45,24 +45,26 @@ __all__ = [
 ]
 
 
-def parse(tokens, config=None):
+def parse(tokens, config=None) -> Program:
     """Parse tokens into AST using the unified parser implementation.
 
-    This function provides comprehensive parsing with metadata utilization,
-    context-aware analysis, and enhanced error handling - all features built
-    into the standard parser.
+    Thin adapter over :func:`parse_with_inputs` (THE entry) — the recursive
+    descent path with only a config (no source_text/heredocs/lexer_options), so
+    it builds a Parser through the one entry rather than reaching for it directly
+    (remediation R3-6a).
 
     Args:
         tokens: List of tokens to parse
         config: Optional ParserConfig for custom parsing behavior
 
     Returns:
-        Parsed AST with full feature support
+        Parsed ``Program`` with full feature support
     """
     if config is None:
         config = ParserConfig()
 
-    return Parser(tokens, config=config).parse()
+    return parse_with_inputs(tokens, ParseInputs(config=config),
+                             "recursive_descent")
 
 
 # Accepted parser-selection names. The shell only ever passes the canonical
