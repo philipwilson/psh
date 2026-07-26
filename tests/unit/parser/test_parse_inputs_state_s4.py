@@ -191,6 +191,22 @@ def test_parse_outcome_shares_the_single_use_budget():
         q.parse_outcome()                      # RuntimeError propagates uncaught
 
 
+def test_outcome_from_parse_does_not_swallow_the_single_use_runtimeerror():
+    # Explicit classifier pin (remediation MEDIUM-11): outcome_from_parse catches
+    # ONLY ParseError (-> Incomplete/Invalid). The single-use RuntimeError — like
+    # any internal defect — PROPAGATES; it is NOT converted into an Invalid
+    # outcome. This is what makes the second parse_outcome() above RAISE rather
+    # than silently return Invalid; if the except clause were ever broadened to
+    # Exception, THIS test (and that one) would go red.
+    from psh.parser.parse_outcome import outcome_from_parse
+
+    def raise_single_use():
+        raise RuntimeError("Parser is single-use: ...")
+
+    with pytest.raises(RuntimeError, match="single-use"):
+        outcome_from_parse(raise_single_use, lambda: ())
+
+
 def test_failed_parse_still_consumes_the_single_use():
     # A parse that RAISED still counts as used — the cursor is left mid-stream,
     # so re-parsing would resume from a broken position.
