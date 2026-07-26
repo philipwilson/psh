@@ -4,6 +4,39 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.756.0 (2026-07-26) - Remediation Wave 2 slot 2.1: traversal totality (HIGH-2)
+- **AST analysis now reaches executable syntax it previously skipped.** psh's
+  visitor traversal was hand-maintained per node type and missed dangerous code
+  in redirect-only commands, redirect targets, for/case subjects, and inside
+  parsed substitution templates (`${x:-$(...)}`, `$((...))`). Reappraisal #22
+  HIGH-2: the four security probes reported "No security issues found!" for
+  scripts whose `rm`/redirect sat in those positions. All four now report.
+- **Framework-owned total child enumeration**: `TotalTraversalVisitor` derives
+  child edges mechanically from the AST node schema (one authority, every edge,
+  exactly once per node), and all five analysis visitors (Security, Linter,
+  Metrics, Validator, EnhancedValidator) walk through it. A generated
+  sentinel-child battery over every node type × child edge × visitor, plus an
+  anti-bypass guard proven against synthetic offenders, keeps a future node or
+  field from being added without coverage.
+- **Security: no false clean claim over opaque executable regions.** Backtick
+  bodies, unquoted heredoc bodies, and flat-text `[[ ]]` operand substitutions
+  that execute but cannot be statically analyzed now report an
+  `UNANALYZED_REGION` finding instead of a silent pass, keyed to psh's own
+  execution behavior. Three psh-vs-bash execution divergences in `[[ ]]`
+  operand quoting were found and are carried (see the campaign ledger).
+- **Analysis-count fixes surfaced along the way**: duplicate findings for
+  commands inside parameter-expansion operands are de-duplicated (one authority
+  per source region); a pre-existing double-warning for prefixed assignments
+  (`export FOO=$y`) is collapsed to one while the unquoted-`$@` advisory is
+  preserved; `--metrics` now counts commands inside substitution bodies (the
+  fibonacci example moves to 22 total / 10 unique / 6 external).
+- Executable coverage guarantee: a 99-cell frozen reference-coverage suite
+  makes the base⊆tip "no lost analysis" contract a standing regression test
+  rather than a one-time probe.
+- Campaign records: HIGH-2 CLOSED in the committed LEDGER; slot evidence
+  (ledger, coverage-space suite, probe matrices) under
+  `docs/reviews/evidence/boundary_remediation_2026-07/2.1-rescue/`.
+
 ## 0.755.0 (2026-07-25) - Remediation Wave 1 slot 1.4: Linux nightly recovery
 - **The Linux nightly is GREEN — first time since 2026-07-02** (23+ red
   nights). Three consecutive green dispatch runs; conformance 54 failures → 0
