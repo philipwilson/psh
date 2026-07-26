@@ -9,12 +9,12 @@ assessment: 390-cell generated matrix).
 
 :func:`render_procsub_body` is that rule for the COVERED construct subset —
 simple-command bodies (words as spelled, redirects with bash's spacing),
-pipelines, and/or lists, ``;``-joined statements, and brace groups.
+pipelines, and/or lists, ``;``-joined statements (with bash's
+``stmt &`` background rendering — R4-1), and brace groups.
 It returns None for ANY other construct: that single structural predicate is
 the render-vs-raw boundary. Uncovered bodies (``if``/``for``/``while``/
 ``case``, SUBSHELLS (bash treats glued/separated forms bimodally — see
-_render_command), heredocs, ``|&``, negation, ``time``, backgrounding,
-fd-moves, ``&>``) keep their RAW source spelling — the DECLARED NORMALIZATION RESIDUAL:
+_render_command), heredocs, ``|&``, negation, ``time``, fd-moves, ``&>``) keep their RAW source spelling — the DECLARED NORMALIZATION RESIDUAL:
 bash embeds its printer's multiline byte-layout for compounds (4-space
 indents, per-construct breaks), which psh does not replicate (ruled carry;
 both-sides pins in test_subscript_keying_conformance.py).
@@ -54,17 +54,41 @@ def render_procsub_body(program: 'Program') -> Optional[str]:
 
 
 def _render_statements(statements) -> Optional[str]:
-    parts: List[str] = []
+    parts: 'List[tuple[str, bool]]' = []
     for st in statements:
-        if not isinstance(st, AndOrList) or st.background:
+        if not isinstance(st, AndOrList):
             return None
         rendered = _render_and_or(st)
         if rendered is None:
             return None
-        parts.append(rendered)
+        parts.append((rendered, _statement_background(st)))
     if not parts:
         return None
-    return '; '.join(parts)
+    # R4-1: bash renders a backgrounded statement as `<stmt> &`; the `&`
+    # itself separates statements (`echo a & echo b`), while foreground
+    # statements join with `; ` (probe-verified render rule).
+    out: List[str] = []
+    for i, (rendered, bg) in enumerate(parts):
+        out.append(rendered)
+        if bg:
+            out.append(' &')
+            if i + 1 < len(parts):
+                out.append(' ')
+        elif i + 1 < len(parts):
+            out.append('; ')
+    return ''.join(out)
+
+
+def _statement_background(st: AndOrList) -> bool:
+    """Whether *st* is backgrounded: psh hangs the `&` on the statement's
+    FINAL command node (SimpleCommand/SubshellGroup/BraceGroup), with
+    AndOrList.background as the POSIX whole-list spelling (R4-1; verified
+    against live parses of `sleep 0 &` et al.)."""
+    if st.background:
+        return True
+    if st.pipelines and st.pipelines[-1].commands:
+        return bool(getattr(st.pipelines[-1].commands[-1], 'background', False))
+    return False
 
 
 def _render_and_or(node: AndOrList) -> Optional[str]:

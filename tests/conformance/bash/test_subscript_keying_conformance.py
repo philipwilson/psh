@@ -1133,6 +1133,8 @@ _B2_ATOMS = {
     'fd2_red': 'echo x 2> e', 'dup_to_2': 'echo y >&2',
     'in_red_var': 'read n < $f', 'brace_grp': '{ echo g; }',
     'dup_explicit': 'echo z 1>&2',
+    # R4-1: backgrounded bodies render with bash's `stmt &` rule.
+    'bg_simple': 'sleep 0 &', 'bg_two': 'echo a & echo b',
 }
 _B2_SPACINGS = {
     'tidy': lambda b: b,
@@ -1153,7 +1155,11 @@ def _b2_cells():
         for sname, sp in _B2_SPACINGS.items():
             if aname == 'subshell' and sname in ('pad', 'pad_runs'):
                 continue
-            for tr in _B2_TRAILING.values():
+            for tname, tr in _B2_TRAILING.items():
+                if aname.startswith('bg_') and tname != 'none':
+                    # `... & ;` is a bash syntax error — the trailing-;
+                    # dimension does not compose with backgrounded atoms.
+                    continue
                 for d in '<>':
                     yield d + '(' + sp(atom) + tr + ')'
 
@@ -1407,7 +1413,11 @@ def test_unlexable_subscript_route_audit(route, cmd, matches):
 
 
 def test_empty_assoc_key_set_route_rejected():
-    """Round-3 plan-C-radius fix (base-verified pre-existing gap): the
+    """(R4-3 note: the FULL route x spelling family now lives in
+    test_empty_assoc_key_route_matrix below; these two original legs stay
+    as the red-on-base anchor rows.)
+
+    Round-3 plan-C-radius fix (base-verified pre-existing gap): the
     set-var route (printf -v / read) rejected nothing for an
     (expanded-)EMPTY assoc key and stored [""] where bash reports
     "NAME[RAW]: bad array subscript" (rc 1, line continues). Now rejected
@@ -1488,6 +1498,125 @@ def test_generated_head_scan_battery(tmp_path):
                 unexpected.append((cell, b.returncode, b.stdout, rd.returncode,
                                    rd.stdout, rd.stderr[-120:]))
     assert not unexpected, (len(unexpected), unexpected[:5])
+
+
+@pytest.mark.parametrize('cmd', [
+    # R4-1 family: bash renders a backgrounded statement `<stmt> &`; the `&`
+    # separates statements; runtime strings stay raw (tidy spelling = raw).
+    'declare -A a; a[<( sleep 0  & )]=v; for k in "${!a[@]}"; do printf "%s" "$k"; done',
+    'declare -A a; a[<( echo a &  echo b )]=v; for k in "${!a[@]}"; do printf "%s" "$k"; done',
+    'declare -A a; a[<(echo a & echo b &)]=v; for k in "${!a[@]}"; do printf "%s" "$k"; done',
+    'declare -A a; a[<(true && echo b &)]=v; for k in "${!a[@]}"; do printf "%s" "$k"; done',
+    "declare -A a; a[<(sleep 0 &)]=v; test -v 'a[<(sleep 0 &)]'; echo rc=$?",
+    "declare -A a; a[<(sleep 0 &)]=v; unset -v 'a[<(sleep 0 &)]'; declare -p a",
+    'declare -A a; a[<((echo s) &)]=v; for k in "${!a[@]}"; do printf "%s" "$k"; done',
+])
+def test_background_body_family(cmd):
+    p, b = _both(cmd)
+    assert p.stdout == b.stdout and p.returncode == b.returncode, (cmd, p, b)
+    assert _psh_comb(cmd).stdout == b.stdout
+
+
+def test_headscan_k_close_x_is_command_word():
+    """R4-5(c): `a[k]]x=v` — base MIS-KEYED ([k]="]x=v"); tip = bash command
+    word (rc-in-$? 127; nothing stored; rendering-residual-aware asserts)."""
+    cmd = 'declare -A a; a[k]]x=v; echo rc=$?; declare -p a'
+    p, b = _both(cmd)
+    assert 'rc=127' in b.stdout and 'command not found' in b.stderr
+    assert 'rc=127' in p.stdout and 'command not found' in p.stderr
+    assert '[k]' not in p.stdout and '[k]' not in b.stdout
+    assert 'rc=127' in _psh_comb(cmd).stdout
+
+
+def test_divergence_A1_doubled_open_unclosed_family():
+    """R4-5(c): `A_1[[k]=v` (underscore name + unclosed inner bracket) — base
+    MIS-KEYED ["[k"]; tip refuses as a command word (rc-in-$? 127); bash
+    treats the word as INCOMPLETE INPUT rc 2 (the lexer-continuation family,
+    same as test_divergence_doubled_open_unclosed_family)."""
+    cmd = 'declare -A A_1; A_1[[k]=v; echo rc=$?; declare -p A_1'
+    p, b = _both(cmd)
+    assert b.returncode == 2 and 'EOF' in b.stderr
+    assert 'rc=127' in p.stdout and 'command not found' in p.stderr
+    assert '"[k"' not in p.stdout
+    assert 'rc=127' in _psh_comb(cmd).stdout
+
+
+def test_divergence_pipe_amp_body_render():
+    """R4-5(d): bash CANONICALIZES `|&` to its expansion `2>&1 |` in the
+    key-render; psh keeps the raw spelling (|& is outside the covered
+    subset — the declared normalization residual). Both sides pinned."""
+    cmd = ('declare -A a; a[<( echo a |&  wc -l )]=v; '
+           'for k in "${!a[@]}"; do printf "%s" "$k"; done')
+    p, b = _both(cmd)
+    assert b.stdout == '<(echo a 2>&1 | wc -l)'
+    assert p.stdout == '<( echo a |&  wc -l )'
+    assert _psh_comb(cmd).stdout == p.stdout
+
+
+def test_divergence_comment_in_body():
+    """R4-5(d): a `#` comment inside a procsub body comments out the closing
+    `)` for bash (rc 2, wants more input — its extent honors comments); psh's
+    scanner treats `#` literally and keys the spelling (lexer/extent family;
+    base ran the procsub, worse). Both sides pinned."""
+    cmd = 'declare -A a; a[<(echo hi # c)]=v; echo rc=$?; declare -p a'
+    p, b = _both(cmd)
+    assert b.returncode == 2 and 'EOF' in b.stderr
+    assert p.returncode == 0 and '"<(echo hi # c)"' in p.stdout
+    assert _psh_comb(cmd).stdout == p.stdout
+
+
+_R43_ROWS = [
+    # (id, cmd, disposition) — R4-3 route x spelling matrix
+    # (R43-emptykey-matrix.txt; the earlier printf/read x a[$e] pin is
+    # superseded by this full family).
+    ('printf_raw', "declare -A a; printf -v 'a[]' pv; echo rc=$?; declare -p a", 'declared'),
+    ('printf_expanded', "declare -A a; e=''; printf -v 'a[$e]' pv; echo rc=$?; declare -p a", 'declared'),
+    ('read_raw', "declare -A a; read -r 'a[]' <<< rv; echo rc=$?; declare -p a", 'declared'),
+    ('read_expanded', "declare -A a; e=''; read -r 'a[$e]' <<< rv; echo rc=$?; declare -p a", 'declared'),
+    ('assign_default_raw', 'declare -A a; : "${a[]:=xx}"; echo rc=$?; declare -p a', 'match'),
+    ('assign_default_expanded', 'declare -A a; e=\'\'; : "${a[$e]:=xx}"; echo rc=$?; declare -p a', 'match'),
+    ('nameref_raw', "declare -A a; declare -n r='a[]'; r=nv; echo rc=$?; declare -p a", 'rendering_only'),
+    ('nameref_expanded', "declare -A a; e=''; declare -n r='a[$e]'; r=nv; echo rc=$?; declare -p a", 'declared_fatality'),
+    ('let_raw', "declare -A a; let 'a[]=5'; echo rc=$?; declare -p a", 'arith_family'),
+    ('dparen_expanded', "declare -A a; e=''; (( a[$e]=6 )); echo rc=$?; declare -p a", 'arith_family'),
+]
+
+
+@pytest.mark.parametrize('rid,cmd,disposition', _R43_ROWS,
+                         ids=[r[0] for r in _R43_ROWS])
+def test_empty_assoc_key_route_matrix(rid, cmd, disposition):
+    """R4-3: the empty-assoc-key faces, per route x spelling. MATCH rows
+    (the `:=` expansion faces — bash's discard-line bad-substitution /
+    bad-array-subscript classes, now implemented); DECLARED rows: builtin
+    wording/rc faces (bash per-builtin: printf raw rc-in-$? 2
+    not-valid-identifier, expanded rc 1; psh uniform rc 1 bad-array-
+    subscript — joins the declared builtin-route family) and the nameref
+    expanded FATALITY face (bash aborts rc 1; psh continues rc-in-$? 1);
+    rendering_only = equal modulo the documented empty-assoc declare -p
+    residual; arith_family = the PRE-EXISTING declared empty-arith
+    divergence (bash warns + continues rc-in-$? 0; psh rc 1). In EVERY row
+    psh stores NOTHING (the companion fix) and rd == comb."""
+    p, b = _both(cmd)
+    pc = _psh_comb(cmd)
+    assert (p.returncode, p.stdout) == (pc.returncode, pc.stdout)
+    assert '[""]' not in p.stdout          # never a silent empty-key store
+    assert '[""]' not in b.stdout
+    if disposition == 'match':
+        assert (p.returncode, p.stdout) == (b.returncode, b.stdout), (rid, p, b)
+    elif disposition == 'rendering_only':
+        assert p.returncode == b.returncode
+        assert p.stdout.replace('declare -A a=()', 'declare -A a') == b.stdout
+        assert p.stderr.strip() and b.stderr.strip()
+    elif disposition == 'declared_fatality':
+        assert b.returncode == 1 and b.stdout == ''
+        assert 'rc=1' in p.stdout and 'bad array subscript' in p.stderr
+    elif disposition == 'arith_family':
+        assert 'rc=0' in b.stdout and b.stderr.strip()   # bash warns, continues
+        assert 'rc=1' in p.stdout                        # psh: B#3 family
+    else:  # declared builtin faces
+        assert b.stderr.strip() and p.stderr.strip()
+        assert 'rc=1' in p.stdout
+        assert b.stdout.startswith('rc=')
 
 
 def test_divergence_unlexable_subscript_typed_error():

@@ -10,12 +10,14 @@ import sys
 from typing import TYPE_CHECKING, NoReturn, Optional
 
 from ..core import (
+    ArraySubscriptError,
     AssociativeArray,
     ExpansionError,
     FatalExpansionError,
     IndexedArray,
     VarAttributes,
 )
+from ..core.exceptions import BadSubstitutionError
 from ..lexer.pure_helpers import handle_ansi_c_escape
 from ..utils.escapes import quote_at_q
 from .arithmetic import ArithmeticError, evaluate_arithmetic
@@ -399,7 +401,28 @@ class OperatorOpsMixin(_Base):
         self._reject_nonassignable(var_name)
         expanded_default = str(self._expand_operand(operand, quote_ctx))
         if var_name:
-            self.set_var_or_array_element(var_name, expanded_default)
+            try:
+                self.set_var_or_array_element(var_name, expanded_default)
+            except ArraySubscriptError as e:
+                # R4-3 (probe matrix R43-emptykey-matrix.txt): an EMPTY assoc
+                # key on the `:=`/`=` assignment face is LINE-DISCARDING in
+                # bash — `${a[]:=xx}` reports "bad substitution" (the raw
+                # spelling face), `${a[$e]:=xx}` reports the bad-array-
+                # subscript wording (the expanded face); both drop the rest
+                # of the line and continue at the next. Re-raise on the
+                # discard-line channel with bash's per-face wording.
+                sub = self.split_subscript(var_name)
+                if sub is not None and sub[1] == '':
+                    print(f"{self.state.error_location_prefix()}"
+                          f"${{{var_name}:={operand or ''}}}: bad substitution",
+                          file=self.state.stderr)
+                    self.state.last_exit_code = 1
+                    raise BadSubstitutionError(
+                        f'{var_name}:={operand or ""}') from e
+                print(f"{self.state.error_location_prefix()}{e}",
+                      file=self.state.stderr)
+                self.state.last_exit_code = 1
+                raise ExpansionError(str(e)) from e
         return expanded_default
 
     def _qmark_error(self, var_name: str, operand: Optional[str],

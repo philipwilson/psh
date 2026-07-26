@@ -357,7 +357,7 @@ empty subscript fatal but accepts a source empty-quoted key (`h[""]`) as valid
 (`SubscriptEvaluator.raw_has_source_quote`). `_eval_array_index()` remains as a
 thin adapter.
 
-Two remediation-2.3 invariants on the re-lex bridge
+Three remediation-2.3 invariants on the re-lex bridge
 (`SubscriptEvaluator.word_from_text`):
 
 - **Procsub spellings are literal key text and are NEVER PARSED at keying
@@ -402,7 +402,7 @@ Two remediation-2.3 invariants on the re-lex bridge
 The `NAME[...]` extent itself — where a subscript ENDS — has ONE quote-aware
 scanner: `param_parser.py#find_subscript_end` (skips `'...'`/`"..."`/
 `$'...'`/backslash escapes/`$(...)`/`${...}`/backticks; unquoted brackets
-nest). It backs the `${...}` classifier (`param_parser.py#_subscript_end`,
+nest). It backs the `${...}` classifier (`param_parser.py#_is_param_spec`,
 `#_scan_operator`), the parser word builder, and both parsers' element-head
 scans — `a["]"]=ok` and `${a["]"]}` span to the real close on every surface
 (remediation 2.3, MEDIUM-4).

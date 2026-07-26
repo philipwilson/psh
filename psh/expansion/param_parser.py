@@ -82,6 +82,8 @@ Known representational choices (pinned by the differential corpus):
       appended (('v', '/', 'p') for ``${v/p}``); the evaluator's
       pattern/replacement splitter treats both spellings identically.
 """
+from typing import Optional
+
 from ..ast_nodes import ParameterExpansion
 from ..lexer.cmdsub_scanner import find_command_substitution_end
 from ..lexer.unicode_support import is_valid_name
@@ -231,6 +233,41 @@ def _skip_braces(text: str, i: int) -> int:
                 return j + 1
         j += 1
     return -1
+
+
+def skip_quoted_run(text: str, i: int) -> "Optional[int]":
+    """Index past the quoted/extent construct starting at ``i``, or None.
+
+    THE one public skip-run dispatch (R4-6 consolidation): ``\\x``,
+    ``'...'``, ``"..."``, ``$'...'``, ``$(...)``, ``${...}``, backticks —
+    the same quote model `find_subscript_end` walks with. An unclosed
+    construct consumes to end-of-text (degradation, never an exception).
+    """
+    n = len(text)
+    c = text[i]
+    if c == '\\' and i + 1 < n:
+        return i + 2
+    if c == "'":
+        j = _skip_single_quote(text, i)
+        return j if j != -1 else n
+    if c == '"':
+        j = _skip_double_quote(text, i)
+        return j if j != -1 else n
+    if c == '`':
+        j = _skip_backtick(text, i)
+        return j if j != -1 else n
+    if c == '$' and i + 1 < n:
+        nxt = text[i + 1]
+        if nxt == "'":
+            j = _skip_ansi_c_quote(text, i)
+            return j if j != -1 else n
+        if nxt == '(':
+            j, _found = find_command_substitution_end(text, i + 2)
+            return j
+        if nxt == '{':
+            j = _skip_braces(text, i + 1)
+            return j if j != -1 else n
+    return None
 
 
 def find_subscript_end(text: str, open_idx: int) -> int:

@@ -40,13 +40,7 @@ from ..lexer import tokenize
 from ..lexer.cmdsub_scanner import find_command_substitution_end
 from ..lexer.token_types import TokenType
 from .arithmetic import ArithmeticError, evaluate_arithmetic
-from .param_parser import (
-    _skip_ansi_c_quote,
-    _skip_backtick,
-    _skip_braces,
-    _skip_double_quote,
-    _skip_single_quote,
-)
+from .param_parser import skip_quoted_run
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -121,41 +115,6 @@ _EMPTY_IS_NO_TARGET = frozenset({SubscriptUse.TEST_V, SubscriptUse.UNSET})
 _QUIET_SYNTAX_USES = frozenset({SubscriptUse.TEST_V, SubscriptUse.UNSET})
 
 
-def _skip_quoted_run(text: str, i: int) -> 'int | None':
-    """Index past the quoted/extent construct starting at ``i``, or None.
-
-    The shared quote model of the extent scanner (param_parser): ``\\x``,
-    ``'...'``, ``"..."``, ``$'...'``, ``$(...)``, ``${...}``, backticks. An
-    unclosed construct consumes to end-of-text (callers treat the tail as
-    consumed — degradation, never an exception here).
-    """
-    n = len(text)
-    c = text[i]
-    if c == '\\' and i + 1 < n:
-        return i + 2
-    if c == "'":
-        j = _skip_single_quote(text, i)
-        return j if j != -1 else n
-    if c == '"':
-        j = _skip_double_quote(text, i)
-        return j if j != -1 else n
-    if c == '`':
-        j = _skip_backtick(text, i)
-        return j if j != -1 else n
-    if c == '$' and i + 1 < n:
-        nxt = text[i + 1]
-        if nxt == "'":
-            j = _skip_ansi_c_quote(text, i)
-            return j if j != -1 else n
-        if nxt == '(':
-            j, _found = find_command_substitution_end(text, i + 2)
-            return j
-        if nxt == '{':
-            j = _skip_braces(text, i + 1)
-            return j if j != -1 else n
-    return None
-
-
 def _procsub_segments(raw: str) -> 'Iterator[tuple[str, int, int]]':
     """Yield ``(kind, start, end)`` runs of ``raw``: ``'procsub'`` for each
     UNQUOTED ``<(``/``>(`` spelling (extent via the lexer's grammar-aware
@@ -165,7 +124,7 @@ def _procsub_segments(raw: str) -> 'Iterator[tuple[str, int, int]]':
     i, n = 0, len(raw)
     seg_start = 0
     while i < n:
-        nxt = _skip_quoted_run(raw, i)
+        nxt = skip_quoted_run(raw, i)
         if nxt is not None:
             i = nxt
             continue
@@ -344,7 +303,7 @@ class SubscriptEvaluator:
                 i = end
                 seg_start = end
                 continue
-            nxt = _skip_quoted_run(text, i)
+            nxt = skip_quoted_run(text, i)
             if nxt is not None:
                 i = nxt
                 continue
