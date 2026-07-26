@@ -139,9 +139,20 @@ class TestSubscriptSyntaxErrorTyped:
         assert issubclass(SubscriptSyntaxError, PshError)
 
     def test_associative_key_loud_by_default(self, captured_shell, subscript):
+        # Direct call: raises (the print goes to the live state.stderr, which
+        # the captured fixture only redirects during run_command — the
+        # command-driven loud path is asserted next).
         with pytest.raises(SubscriptSyntaxError):
             subscript.associative_key('"')
-        assert 'bad array subscript' in captured_shell.get_stderr()
+
+    def test_command_path_is_loud(self, captured_shell):
+        # The arith path holds the subscript raw, so an un-lexable subscript
+        # reaches the keying funnel at RUNTIME: loud typed error, line
+        # discarded (unit twin of conformance probe e2).
+        rc = captured_shell.run_command("declare -A h; echo $((h['x])); echo after")
+        assert rc == 1
+        assert "['x]: bad array subscript" in captured_shell.get_stderr()
+        assert 'after' not in captured_shell.get_stdout()
 
     def test_evaluate_quiet_for_builtin_uses(self, captured_shell, subscript):
         for use in (SubscriptUse.TEST_V, SubscriptUse.UNSET):
