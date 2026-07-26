@@ -122,7 +122,7 @@ def _render_statement_list(node: 'StatementList') -> Optional[str]:
 def _render_simple(node: SimpleCommand) -> Optional[str]:
     if node.array_assignments:
         return None
-    words = [str(w) for w in node.words]
+    words = [_render_word(w) for w in node.words]
     if not words:
         return None
     for redirect in node.redirects:
@@ -147,3 +147,25 @@ def _render_redirect(node: 'Redirect') -> Optional[str]:
         # fd duplication attaches without spaces (`2>&1`).
         return f'{prefix}{node.type}{node.dup_fd}'
     return None
+
+def _render_word(word) -> str:
+    """A word's spelling with NESTED procsub parts key-rendered recursively.
+
+    bash renders inner spellings too: ``a[<(cat  <(echo  z))]=v`` keys
+    ``<(cat <(echo z))`` (matrix nested_ps cells). An inner body outside the
+    covered subset keeps its raw spelling — same residual rule as the outer.
+    """
+    from ..ast_nodes.words import ExpansionPart, ProcessSubstitution
+    out = []
+    for part in word.parts:
+        if (isinstance(part, ExpansionPart)
+                and isinstance(part.expansion, ProcessSubstitution)
+                and part.expansion.program is not None):
+            rendered = render_procsub_body(part.expansion.program)
+            if rendered is not None:
+                frame = '<' if part.expansion.direction == 'in' else '>'
+                out.append(f'{frame}({rendered})')
+                continue
+        out.append(str(part))
+    return ''.join(out)
+

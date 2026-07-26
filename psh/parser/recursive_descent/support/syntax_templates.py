@@ -35,6 +35,7 @@ from ....ast_nodes.syntax_templates import (
     SubscriptSpec,
     WordTemplate,
 )
+from ....expansion.procsub_render import render_procsub_body
 from ....lexer.cmdsub_scanner import find_command_substitution_end
 from ....lexer.expansion_parser import ExpansionParser
 from .nested_parse import parse_nested_command
@@ -240,3 +241,54 @@ def build_subscript_spec(text: str, ctx: "Optional[_TemplateCtx]" = None,
     """
     return SubscriptSpec(text=text, subs=tuple(_scan(text, 0, False, True, ctx)),
                          origin=origin)
+
+def rewrite_rendered_subscript(
+        text: str, ctx: "Optional[_TemplateCtx]" = None,
+        *, origin: "Optional[int]" = None) -> "tuple[str, SubscriptSpec]":
+    """Validate a WORD-CONTEXT subscript and splice bash's key-render of each
+    covered procsub spelling into the text (round-3 plan A).
+
+    bash re-renders procsub spellings from its parse ONLY on the SOURCE
+    paths — assignment-word subscripts and ``${a[...]}`` references — while
+    arith-held subscripts and runtime strings stay raw (three render tiers;
+    slot-2.3 ledger, B1R2 probe matrix). psh therefore renders WHERE BASH
+    DOES: here, at parse time. Each validated
+    :class:`~psh.ast_nodes.words.ProcessSubstitution` sub whose body the
+    covered-subset renderer accepts is spliced as ``frame(rendered)`` over
+    its span; uncovered bodies keep their raw spelling (the declared
+    normalization residual). The keying engine never renders.
+
+    Returns ``(text, spec)`` — the (possibly rewritten) subscript text and
+    its spec built on THAT text. A REWRITTEN spec carries ``origin=None``:
+    the rewritten text has no absolute source anchor (documented on
+    ``SubscriptSpec.origin``; the D5 projection pins cover non-rewritten
+    specs, whose anchors are unchanged).
+
+    ARITHMETIC regions never route here (C1): ``build_arithmetic_template``
+    carries its raw text untouched and the arith evaluator holds subscripts
+    verbatim — the raw-preservation tier is structural.
+    """
+    spec = build_subscript_spec(text, ctx, origin=origin)
+    pieces = []
+    last = 0
+    changed = False
+    for sub in spec.validated:
+        exp = sub.expansion
+        if not isinstance(exp, ProcessSubstitution) or exp.program is None:
+            continue
+        rendered = render_procsub_body(exp.program)
+        if rendered is None:
+            continue
+        frame = '<' if exp.direction == 'in' else '>'
+        spelling = f'{frame}({rendered})'
+        if spelling == text[sub.start:sub.end]:
+            continue
+        pieces.append(text[last:sub.start])
+        pieces.append(spelling)
+        last = sub.end
+        changed = True
+    if not changed:
+        return text, spec
+    pieces.append(text[last:])
+    new_text = ''.join(pieces)
+    return new_text, build_subscript_spec(new_text, ctx, origin=None)

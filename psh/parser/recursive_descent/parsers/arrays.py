@@ -46,7 +46,7 @@ from typing import List, Optional, Tuple
 from ....ast_nodes import ArrayAssignment, ArrayElementAssignment, ArrayInitialization, LiteralPart, Word
 from ....expansion.param_parser import find_subscript_end
 from ....lexer.token_types import Token, TokenType
-from ..support.syntax_templates import build_subscript_spec
+from ..support.syntax_templates import rewrite_rendered_subscript
 from .base import ParserSubcomponent
 
 # A valid assignment name is a portable identifier at the very start of the
@@ -289,19 +289,22 @@ class ArrayParser(ParserSubcomponent):
             head_token, candidate.head_len)
         subscript = candidate.subscript if candidate.subscript is not None else ''
         # Read-time validate a nested $() / <() in the subscript (a[$(if)]=v,
-        # a[<(if)]=v). The indexed/associative keying stays W2's
-        # SubscriptEvaluator. The head token anchors the spec absolutely:
-        # the `name[` prefix is a verbatim prefix of the token's lexeme, so
-        # the subscript starts at position + len(name) + 1.
+        # a[<(if)]=v) AND splice bash's key-render of covered procsub
+        # spellings (bash renders on the SOURCE paths only — round-3 plan A).
+        # The indexed/associative keying stays W2's SubscriptEvaluator. The
+        # head token anchors an UN-rewritten spec absolutely (the `name[`
+        # prefix is a verbatim prefix of the token's lexeme); a rewritten
+        # spec drops the anchor.
+        subscript, spec = rewrite_rendered_subscript(
+            subscript, self.parser.ctx,
+            origin=head_token.position + len(candidate.name) + 1)
         return ArrayElementAssignment(
             name=candidate.name,
             index=subscript,
             value=value,
             is_append=is_append,
             value_word=value_word,
-            index_spec=build_subscript_spec(
-                subscript, self.parser.ctx,
-                origin=head_token.position + len(candidate.name) + 1),
+            index_spec=spec,
         )
 
     def _element_value_from_head(self, head_token: Token,

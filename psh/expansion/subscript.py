@@ -33,13 +33,20 @@ Callers resolve the target's kind and pass it in; the service never re-decides.
 import enum
 from typing import TYPE_CHECKING, List, Union
 
-from ..ast_nodes.words import ExpansionPart, LiteralPart, ProcessSubstitution, Word, WordPart
+from ..ast_nodes.words import CommandSubstitution, ExpansionPart, LiteralPart, Word, WordPart
 from ..core import arith_assignment_discard
 from ..core.exceptions import ExpansionError, PshError
 from ..lexer import tokenize
+from ..lexer.cmdsub_scanner import find_command_substitution_end
 from ..lexer.token_types import TokenType
 from .arithmetic import ArithmeticError, evaluate_arithmetic
-from .procsub_render import render_procsub_body
+from .param_parser import (
+    _skip_ansi_c_quote,
+    _skip_backtick,
+    _skip_braces,
+    _skip_double_quote,
+    _skip_single_quote,
+)
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -114,6 +121,75 @@ _EMPTY_IS_NO_TARGET = frozenset({SubscriptUse.TEST_V, SubscriptUse.UNSET})
 _QUIET_SYNTAX_USES = frozenset({SubscriptUse.TEST_V, SubscriptUse.UNSET})
 
 
+def _skip_quoted_run(text: str, i: int) -> 'int | None':
+    """Index past the quoted/extent construct starting at ``i``, or None.
+
+    The shared quote model of the extent scanner (param_parser): ``\\x``,
+    ``'...'``, ``"..."``, ``$'...'``, ``$(...)``, ``${...}``, backticks. An
+    unclosed construct consumes to end-of-text (callers treat the tail as
+    consumed — degradation, never an exception here).
+    """
+    n = len(text)
+    c = text[i]
+    if c == '\\' and i + 1 < n:
+        return i + 2
+    if c == "'":
+        j = _skip_single_quote(text, i)
+        return j if j != -1 else n
+    if c == '"':
+        j = _skip_double_quote(text, i)
+        return j if j != -1 else n
+    if c == '`':
+        j = _skip_backtick(text, i)
+        return j if j != -1 else n
+    if c == '$' and i + 1 < n:
+        nxt = text[i + 1]
+        if nxt == "'":
+            j = _skip_ansi_c_quote(text, i)
+            return j if j != -1 else n
+        if nxt == '(':
+            j, _found = find_command_substitution_end(text, i + 2)
+            return j
+        if nxt == '{':
+            j = _skip_braces(text, i + 1)
+            return j if j != -1 else n
+    return None
+
+
+def _procsub_segments(raw: str):
+    """Yield ``(kind, start, end)`` runs of ``raw``: ``'procsub'`` for each
+    UNQUOTED ``<(``/``>(`` spelling (extent via the lexer's grammar-aware
+    scanner; an unclosed frame runs to end-of-text), ``'text'`` between.
+    Quoted spellings and ones inside ``$(...)``/``${...}``/backticks belong
+    to their enclosing construct and stay in text runs."""
+    i, n = 0, len(raw)
+    seg_start = 0
+    while i < n:
+        nxt = _skip_quoted_run(raw, i)
+        if nxt is not None:
+            i = nxt
+            continue
+        if raw[i] in '<>' and i + 1 < n and raw[i + 1] == '(':
+            if seg_start < i:
+                yield ('text', seg_start, i)
+            end, found = find_command_substitution_end(raw, i + 2)
+            yield ('procsub', i, end if found else n)
+            i = end if found else n
+            seg_start = i
+            continue
+        i += 1
+    if seg_start < n:
+        yield ('text', seg_start, n)
+
+
+def _is_substitution_syntax_error(e: PshError) -> bool:
+    """Whether ``e`` is the read-time substitution-body parse error class
+    (checked by NAME through the deferred parser import — the class lives in
+    the parser package, which this module must not import at module level)."""
+    return any(c.__name__ == 'SubstitutionSyntaxError'
+               for c in type(e).__mro__)
+
+
 class SubscriptEvaluator:
     """One interpreter for array subscripts (indexed arithmetic / associative key).
 
@@ -137,31 +213,64 @@ class SubscriptEvaluator:
 
         The subscript is captured as raw source text by the parser (or arrives
         already argument-expanded from a builtin), so this rebuilds the per-part
-        quote context the associative-key engine needs. Two fidelity points make
-        it faithful to the parser's own word building:
+        quote context the associative-key engine needs.
 
-        - **Unquoted whitespace is preserved.** Re-tokenizing ``a b`` yields two
-          WORD tokens; an associative key keeps the literal space (bash does not
-          word-split a subscript). The gap between consecutive tokens' source
-          spans is re-inserted as an unquoted literal run, which the no-split
-          associative policy never breaks.
-        - **A lone double-quoted STRING expands.** ``"$k"`` tokenizes to one
-          STRING token whose expansion parts need ``token.quote_type`` to
-          decompose — passed exactly as :meth:`parse_argument_as_word` does.
+        **Procsub spellings are never parsed here** (round-3 B1; bash never
+        parses a procsub body at keying time, and body VALIDITY is irrelevant
+        to it): an unquoted ``<(...)``/``>(...)`` is split off structurally —
+        frame chars become literal parts, the body text re-enters this bridge
+        (so ``$``-forms inside expand, quotes remove, nested frames recurse;
+        an unclosed frame keeps its raw tail). NO re-render happens here:
+        bash renders spellings only on the SOURCE parse paths, which psh now
+        mirrors at parse time (parser support ``rewrite_rendered_subscript``);
+        runtime strings and arith-held subscripts stay raw (probe matrix
+        B1R2-route-matrix.txt, three render tiers).
 
-        A process-substitution SPELLING never becomes an executable
-        expansion — its frame turns literal while its body keeps expanding
-        (:meth:`_literalize_procsub_frames`): ``a[<(printf x)]=v`` keys
-        ``<(printf x)`` and never launches anything, while ``a[<(cat $y)]``
-        keys ``<(cat Q)`` when ``y=Q`` (HIGH-4, bash). Command substitutions
-        and backticks DO stay executable (bash runs them in an associative
-        key).
-
-        Un-lexable raw raises :class:`SubscriptSyntaxError` — the typed
-        variant of the former broad-``except`` literal degradation (only the
-        lexer/word-builder's own PshError failures translate; anything else
-        is an internal defect and propagates).
+        The remaining text segments re-lex through the ordinary token
+        pipeline. Two fidelity points: unquoted whitespace is preserved via
+        source-span gap fill, and a lone double-quoted STRING expands with its
+        ``token.quote_type``. An INVALID modern ``$(...)`` body becomes a
+        DEFERRED executable part (the backtick model — execution re-parses at
+        expansion time, so every keying route ATTEMPTS the substitution like
+        bash). Un-lexable raw (an unclosed QUOTE — the class bash's builtins
+        report as "not a valid identifier") raises the typed
+        :class:`SubscriptSyntaxError`; anything else is an internal defect
+        and propagates (strict-errors).
         """
+        try:
+            parts = self._raw_parts(raw)
+        except SubscriptSyntaxError as e:
+            # Rewrap so the carried text is the caller's FULL raw (a segment
+            # or recursion may have raised with its local slice).
+            if e.raw != raw:
+                raise SubscriptSyntaxError(raw) from e
+            raise
+        return Word(parts=parts)
+
+    def _raw_parts(self, raw: str) -> 'List[WordPart]':
+        """Parts for ``raw``: procsub spellings split structurally, the rest
+        through the token pipeline."""
+        parts: 'List[WordPart]' = []
+        for kind, start, end in _procsub_segments(raw):
+            if kind == 'procsub':
+                parts.append(LiteralPart(raw[start:start + 2], quoted=False,
+                                         quote_char=None))
+                closed = raw[end - 1] == ')' and end - 1 >= start + 2
+                body_end = end - 1 if closed else end
+                body = raw[start + 2:body_end]
+                if body:
+                    parts.extend(self._raw_parts(body))
+                if closed:
+                    parts.append(LiteralPart(')', quoted=False,
+                                             quote_char=None))
+            else:
+                parts.extend(self._segment_parts(raw[start:end]))
+        if not parts:
+            parts.append(LiteralPart(raw, quoted=False, quote_char=None))
+        return parts
+
+    def _segment_parts(self, raw: str) -> 'List[WordPart]':
+        """The token pipeline for a procsub-free segment of subscript text."""
         # cycle-break: expansion -> parser.word_builder would form a package
         # cycle (word_builder imports expansion.param_parser). Deferred import;
         # ratchet cap 1 in tests/unit/tooling/test_import_layering.py.
@@ -170,22 +279,20 @@ class SubscriptEvaluator:
             tokens = [t for t in tokenize(raw) if t.type != TokenType.EOF]
         except PshError as e:
             raise SubscriptSyntaxError(raw) from e
-        if not tokens:
-            return Word(parts=[LiteralPart(raw, quoted=False, quote_char=None)])
-        parts: 'list[WordPart]' = []
+        parts: 'List[WordPart]' = []
         pos = 0
         for token in tokens:
             start = getattr(token, 'position', pos) or 0
             if start > pos:
                 parts.append(LiteralPart(raw[pos:start], quoted=False,
                                          quote_char=None))
+            end = getattr(token, 'end_position', start) or start
             if token.type.name.startswith('REDIRECT'):
                 # Redirect-family tokens don't round-trip through .value
                 # (REDIRECT_OUT for `2>` carries value `>`, the fd only in
                 # the span) — and in subscript TEXT a redirect operator is
                 # literal key characters, so reproduce the exact source
                 # slice (2.3 B2: `a[<(echo x 2> e)]` must keep the `2`).
-                end = getattr(token, 'end_position', start) or start
                 parts.append(LiteralPart(raw[start:end], quoted=False,
                                          quote_char=None))
                 pos = end
@@ -195,52 +302,56 @@ class SubscriptEvaluator:
             try:
                 word = WordBuilder.build_word_from_token(token, quote_type)
             except PshError as e:
-                # An unclosed substitution spelling (``$(``, ``<(``) fails the
-                # builder's own nested validation — same typed user error.
+                if _is_substitution_syntax_error(e):
+                    # An INVALID modern $(...) body: bash ATTEMPTS the
+                    # substitution at keying time (probe matrix, cmdsub
+                    # rows) — defer it like a backtick; execution re-parses
+                    # the source at expansion and errors THERE.
+                    parts.extend(self._deferred_cmdsub_parts(raw[start:end]))
+                    pos = end
+                    continue
+                # The unclosed-QUOTE class: bash's builtins treat the whole
+                # argument as invalid (m12) — the typed user error.
                 raise SubscriptSyntaxError(raw) from e
-            parts.extend(self._literalize_procsub_frames(word.parts))
-            pos = getattr(token, 'end_position', start) or start
+            parts.extend(word.parts)
+            pos = end
         if pos < len(raw):
             parts.append(LiteralPart(raw[pos:], quoted=False, quote_char=None))
-        return Word(parts=parts)
+        return parts
 
-    def _literalize_procsub_frames(
-            self, parts: 'List[WordPart]') -> 'List[WordPart]':
-        """Keep procsub FRAMES literal while their bodies expand normally.
-
-        The subscript-keying identity rule (HIGH-4, bash 5.2 probe-verified):
-        an unquoted ``<(...)`` / ``>(...)`` in a subscript never RUNS (no
-        /dev/fd path, no side effects) — the spelling is key text — but the
-        BODY still undergoes the one keying expansion like any other word
-        text: ``a[<(cat $y)]`` with ``y=Q`` keys ``<(cat Q)``, ``$()`` inside
-        the body executes, quotes remove, and a NESTED frame stays literal
-        (``<(a <(b))`` keys itself). So the direction char and parens become
-        unquoted literal parts and the body re-enters the re-lex bridge
-        (recursion literalizes nested frames the same way). Quoted spellings
-        never re-lex to procsub parts, so this touches exactly the unquoted
-        case."""
-        out: 'List[WordPart]' = []
-        for p in parts:
-            if (isinstance(p, ExpansionPart)
-                    and isinstance(p.expansion, ProcessSubstitution)):
-                ps = p.expansion
-                frame = '<' if ps.direction == 'in' else '>'
-                # bash reconstructs the spelling FROM ITS PARSE for the
-                # covered construct subset (whitespace collapse, trailing-;
-                # drop, canonical redirect spacing); anything uncovered keeps
-                # the RAW spelling — the declared normalization residual
-                # (2.3 B2; see procsub_render module docstring).
-                body = (render_procsub_body(ps.program)
-                        if ps.program is not None else None)
-                if body is None:
-                    body = ps.source
-                out.append(LiteralPart(frame + '(', quoted=False,
-                                       quote_char=None))
-                out.extend(self.word_from_text(body).parts)
-                out.append(LiteralPart(')', quoted=False, quote_char=None))
-            else:
-                out.append(p)
-        return out
+    def _deferred_cmdsub_parts(self, text: str) -> 'List[WordPart]':
+        """Parts for a token slice whose modern ``$(...)`` body failed its
+        eager parse: each unquoted ``$(``-extent becomes a DEFERRED executable
+        :class:`CommandSubstitution` (program=None — the execution path
+        re-parses ``source``, exactly the backtick model); the gap segments
+        re-enter the bridge for full fidelity."""
+        parts: 'List[WordPart]' = []
+        i, n = 0, len(text)
+        seg_start = 0
+        while i < n:
+            # The $( check must run BEFORE the quoted-run skip: the skip
+            # helper consumes $(...) extents wholesale, which would starve
+            # this extraction and recurse the pipeline (round-3 trace).
+            if text[i] == '$' and i + 1 < n and text[i + 1] == '(':
+                if seg_start < i:
+                    parts.extend(self._raw_parts(text[seg_start:i]))
+                end, found = find_command_substitution_end(text, i + 2)
+                body = text[i + 2:end - 1] if found else text[i + 2:]
+                parts.append(ExpansionPart(
+                    CommandSubstitution(program=None, source=body,
+                                        backtick_style=False),
+                    quoted=False, quote_char=None))
+                i = end
+                seg_start = end
+                continue
+            nxt = _skip_quoted_run(text, i)
+            if nxt is not None:
+                i = nxt
+                continue
+            i += 1
+        if seg_start < n:
+            parts.extend(self._raw_parts(text[seg_start:n]))
+        return parts
 
     # -- The two interpretations ---------------------------------------------
     def associative_key(self, raw: str, *, quiet: bool = False) -> str:

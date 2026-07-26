@@ -17,7 +17,7 @@ from ..recursive_descent.parsers.arrays import (
     _scan_element_head,
     _unquoted_leading_literal,
 )
-from ..recursive_descent.support.syntax_templates import build_subscript_spec
+from ..recursive_descent.support.syntax_templates import rewrite_rendered_subscript
 from ..recursive_descent.support.word_builder import WordBuilder
 from .core import ParseResult
 from .diagnostics import raise_committed_error
@@ -249,6 +249,11 @@ class ArrayParsers:
             value_word, value_text = self._element_value_from_parts(head, head_len)
         else:
             value_word, value_text, pos = self._collect_element_value(tokens, pos, tail)
+        # Source-path render splice (round-3 plan A; mirrors the RD parser).
+        subscript, subscript_spec = rewrite_rendered_subscript(
+            subscript,
+            origin=(head.position + len(name) + 1
+                    if head_scan is not None else None))
         return ParseResult(
             success=True,
             value=ArrayElementAssignment(
@@ -267,10 +272,7 @@ class ArrayParsers:
                 # for the educational combinator. The absolute anchor (origin)
                 # is a token-position fact, not ParseInputs threading: set for
                 # the fused-head shape, None for hand-built streams.
-                index_spec=build_subscript_spec(
-                    subscript,
-                    origin=(head.position + len(name) + 1
-                            if head_scan is not None else None)),
+                index_spec=subscript_spec,
             ),
             position=pos,
         )

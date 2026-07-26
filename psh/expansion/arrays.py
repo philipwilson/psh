@@ -6,7 +6,7 @@ methods use ``self.shell`` / ``self.state`` from the host class.
 """
 from typing import TYPE_CHECKING, Optional, Tuple
 
-from ..core import AssociativeArray, IndexedArray, NamerefCycleError, UnboundVariableError
+from ..core import ArraySubscriptError, AssociativeArray, IndexedArray, NamerefCycleError, UnboundVariableError
 from ..utils.escapes import format_assoc_key
 
 if TYPE_CHECKING:
@@ -207,6 +207,18 @@ class ArrayOpsMixin(_Base):
             subscript = self.shell.expansion_manager.subscript
             if var is not None and isinstance(var.value, AssociativeArray):
                 key = subscript.associative_key(index_expr)
+                if key == "":
+                    # bash rejects EVERY empty associative key on a write
+                    # (`printf -v 'a[$e]'`, `read 'a[$e]'`, `${a[$e]:=d}`) —
+                    # "NAME[RAW]: bad array subscript", rc 1, line continues.
+                    # Same policy as the source-write path
+                    # (executor/array.py#execute_array_element_assignment);
+                    # raising the typed error uses the established
+                    # set-failure channel (the builtin dispatch reports it
+                    # like a readonly failure). Round-3 plan-C radius fix,
+                    # base-verified pre-existing gap (slot-2.3 ledger).
+                    raise ArraySubscriptError(
+                        0, f"{array_name}[{index_expr}]: bad array subscript")
             else:
                 key = subscript.indexed_index(index_expr)
             self.state.scope_manager.store.set_element(array_name, key, value)
