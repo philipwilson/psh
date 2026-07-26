@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 
 from ..core import ArraySubscriptError, AssociativeArray, IndexedArray, NamerefCycleError, UnboundVariableError
 from ..utils.escapes import format_assoc_key
+from .param_parser import find_subscript_end
 
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
@@ -33,12 +34,21 @@ class ArrayOpsMixin(_Base):
         empty base (``[i]``) returns ``('', 'i')`` — callers that reject an
         empty base test ``base`` truthiness.
 
+        R4-2 (round 4): the shape rule is WHOLE-STRING — the quote-aware
+        extent of the first ``[`` must close EXACTLY at the final ``]``
+        (bash: a runtime-string arg like ``a[]]`` is not an element
+        reference at all — its extent closes early — and must never ALIAS
+        the stored ``]`` key; bash rejects it loudly on unset and treats it
+        as unset on ``-v``, key untouched). ``a["]"]``/``a[b[i]]`` consume
+        to the end and stay valid.
+
         The parser's own subscript scanning (param_parser.py) stays separate:
         it is the grammar producer, not a read-time consumer.
         """
         if '[' in name and name.endswith(']'):
             bracket = name.find('[')
-            return name[:bracket], name[bracket + 1:-1]
+            if find_subscript_end(name, bracket) == len(name) - 1:
+                return name[:bracket], name[bracket + 1:-1]
         return None
 
     def _resolve_array_name(self, array_name: str) -> str:
@@ -222,6 +232,15 @@ class ArrayOpsMixin(_Base):
             else:
                 key = subscript.indexed_index(index_expr)
             self.state.scope_manager.store.set_element(array_name, key, value)
+        elif '[' in var_name and var_name.endswith(']'):
+            # R4-2: bracket-shaped but the whole-string extent rule failed
+            # (`a["]`, `a[]]`) — a malformed element arg, NOT a plain name.
+            # Raising here both reports bash's identifier wording through the
+            # builtin dispatch AND breaks the scope-layer bounce (scope.py
+            # routes bracketed names back to this setter — a None-split name
+            # reaching set_variable would loop).
+            raise ArraySubscriptError(
+                0, f"`{var_name}': not a valid identifier")
         else:
             self.state.set_variable(var_name, value)
 

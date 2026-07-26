@@ -20,9 +20,13 @@ def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
     the ``test``/``[`` builtin's ``-v`` operator and the ``[[ -v ... ]]`` test
     evaluator so both answer identically.
     """
-    if '[' in var_ref and var_ref.endswith(']'):
-        var_name = var_ref[:var_ref.index('[')]
-        key_expr = var_ref[var_ref.index('[') + 1:-1]
+    _split = shell.expansion_manager.variable_expander.split_subscript(var_ref)
+    if _split is not None:
+        # R4-2: the whole-string extent rule (split_subscript) decides
+        # element-ness — a malformed arg (`a[]]`) is NOT an element
+        # reference and must not alias the `]` key; it falls through to the
+        # bare-name lookup below (unset name -> quietly rc 1, like bash).
+        var_name, key_expr = _split
         # The ONE subscript authority keys by target kind (campaign W2), the
         # same routing as unset (environment.py#_unset_array_element): an
         # associative target keys on one word/quote expansion; everything else

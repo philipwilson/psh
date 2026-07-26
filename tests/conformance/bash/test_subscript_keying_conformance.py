@@ -1378,38 +1378,47 @@ def test_render_tiers():
 
 
 _UNLEXABLE_ROUTE_ROWS = [
-    # (route, script, matches_bash) — the surviving typed-error class
-    # (unclosed-QUOTE junk `a["]`) per route; probed audit
-    # B1R3-quote-class-audit.txt. MATCH rows equal bash on rc+stdout;
-    # declared rows: bash reports per-BUILTIN wording and CONTINUES, psh
-    # uses its uniform typed discard-line (rc 1) — declared + pinned per
-    # the round-2 ruling ("matches or declared+pinned").
-    ('testv', 'declare -A a; a[x]=1; test -v \'a["]\'; echo rc=$?', True),
-    ('unset', 'declare -A a; a[x]=1; unset -v \'a["]\'; echo rc=$?; declare -p a', True),
-    ('indirection', 'declare -A a; a[x]=1; k=\'a["]\'; echo "read=${!k}"; echo rc=$?', True),
-    ('dparen', 'declare -A a; (( a["]=8 )); echo rc=$?; declare -p a', True),
-    ('printf_v', 'declare -A a; printf -v \'a["]\' pv; echo rc=$?; declare -p a', False),
-    ('read_into', 'declare -A a; read -r \'a["]\' <<< rv; echo rc=$?; declare -p a', False),
-    ('let_arith', 'declare -A a; let \'a["]=7\'; echo rc=$?; declare -p a', False),
-    ('nameref', 'declare -A a; a[x]=1; declare -n r=\'a["]\'; echo "read=$r"; echo rc=$?', False),
+    # (route, script, disposition) — the unclosed-QUOTE junk arg `a["]` per
+    # route, MEASURED post-R4-2 (the whole-string extent rule reclassified
+    # several routes toward bash; probe battery in the slot ledger).
+    # match = rc+stdout equal bash; rendering_only = equal modulo the
+    # documented empty-assoc declare -p residual; declared = pinned
+    # divergence (bash per-builtin rc/wording vs psh's uniform classes).
+    ('testv', 'declare -A a; a[x]=1; test -v \'a["]\'; echo rc=$?', 'match'),
+    ('unset', 'declare -A a; a[x]=1; unset -v \'a["]\'; echo rc=$?; declare -p a', 'match'),
+    ('indirection', 'declare -A a; a[x]=1; k=\'a["]\'; echo "read=${!k}"; echo rc=$?', 'match'),
+    ('dparen', 'declare -A a; (( a["]=8 )); echo rc=$?; declare -p a', 'match'),
+    ('nameref', 'declare -A a; a[x]=1; declare -n r=\'a["]\'; echo "read=$r"; echo rc=$?', 'match_quiet_stderr'),
+    ('read_into', 'declare -A a; read -r \'a["]\' <<< rv; echo rc=$?; declare -p a', 'rendering_only'),
+    ('printf_v', 'declare -A a; printf -v \'a["]\' pv; echo rc=$?; declare -p a', 'declared_rc'),
+    ('let_arith', 'declare -A a; let \'a["]=7\'; echo rc=$?; declare -p a', 'declared_typed'),
 ]
 
 
-@pytest.mark.parametrize('route,cmd,matches', _UNLEXABLE_ROUTE_ROWS,
+@pytest.mark.parametrize('route,cmd,disposition', _UNLEXABLE_ROUTE_ROWS,
                          ids=[r[0] for r in _UNLEXABLE_ROUTE_ROWS])
-def test_unlexable_subscript_route_audit(route, cmd, matches):
+def test_unlexable_subscript_route_audit(route, cmd, disposition):
     p, b = _both(cmd)
     pc = _psh_comb(cmd)
     assert (p.returncode, p.stdout) == (pc.returncode, pc.stdout)
-    if matches:
+    if disposition in ('match', 'match_quiet_stderr'):
         assert (p.returncode, p.stdout) == (b.returncode, b.stdout), (route, p, b)
-    else:
-        # Declared: psh typed discard-line rc 1; bash builtin-reports and
-        # continues (its rc=N line prints).
+        # match_quiet_stderr: psh's declare -n path is silent where bash
+        # warns (wording-family footnote; observables equal).
+    elif disposition == 'rendering_only':
+        assert p.returncode == b.returncode
+        assert p.stdout.replace('declare -A a=()', 'declare -A a') == b.stdout
+        assert 'not a valid identifier' in p.stderr
+    elif disposition == 'declared_rc':
+        # bash: printf rc-in-$? 2 (usage); psh: 1 via the dispatch channel —
+        # same identifier wording, line continues in both.
+        assert 'rc=2' in b.stdout and 'rc=1' in p.stdout
+        assert 'not a valid identifier' in b.stderr
+        assert 'not a valid identifier' in p.stderr
+    else:  # declared_typed — the arith route still surfaces the typed class
+        assert b.returncode == 0 and 'rc=1' in b.stdout
         assert p.returncode == 1 and p.stdout == ''
         assert 'bad array subscript' in p.stderr
-        assert b.returncode == 0 and 'rc=' in b.stdout
-        assert b.stderr.strip()
 
 
 def test_empty_assoc_key_set_route_rejected():
@@ -1617,6 +1626,31 @@ def test_empty_assoc_key_route_matrix(rid, cmd, disposition):
         assert b.stderr.strip() and p.stderr.strip()
         assert 'rc=1' in p.stdout
         assert b.stdout.startswith('rc=')
+
+
+@pytest.mark.parametrize('cmd', [
+    # R4-2: the whole-string extent rule — a malformed runtime-string arg
+    # (`a[]]`, extent closes early) must NEVER alias the stored `]` key.
+    # THE DESTRUCTIVE ROW: unset refuses loudly, key preserved (bash).
+    'declare -A a; a["]"]=1; a[x]=2; unset -v \'a[]]\'; echo rc=$?; declare -p a',
+    # Sibling interplay: -v reports unset while `]` IS set.
+    'declare -A a; a["]"]=1; test -v \'a[]]\'; echo rc=$?',
+    'declare -A a; a["]"]=1; [[ -v \'a[]]\' ]]; echo rc=$?',
+    # Valid-arg control: the well-formed spelling still addresses the key.
+    'declare -A a; a["]"]=1; a[x]=2; unset -v \'a["]"]\'; echo rc=$?; declare -p a',
+    # Probe-first indirection/nameref legs (both matched bash outright —
+    # `invalid variable name` classes; no new divergence to declare).
+    'declare -A a; a["]"]=1; k=\'a[]]\'; echo "read=${!k}"; echo rc=$?',
+    'declare -A a; a["]"]=1; declare -n r=\'a[]]\'; echo "read=$r"; echo rc=$?',
+])
+def test_runtime_arg_whole_string_extent_rule(cmd):
+    """R4-2 (round 4): split_subscript's shape rule is WHOLE-STRING — the
+    quote-aware extent of the first `[` must close exactly at the final `]`.
+    All six legs equal bash on rc+stdout (both parsers)."""
+    p, b = _both(cmd)
+    assert (p.returncode, p.stdout) == (b.returncode, b.stdout), (cmd, p, b)
+    pc = _psh_comb(cmd)
+    assert (pc.returncode, pc.stdout) == (p.returncode, p.stdout)
 
 
 def test_divergence_unlexable_subscript_typed_error():
