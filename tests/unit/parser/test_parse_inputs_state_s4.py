@@ -2,8 +2,10 @@
 
 Pins the typed separation of immutable caller context (frozen ``ParseInputs``)
 from mutable per-call state (``ParserState``), the delegating accessor surface on
-``ParserContext``, and the "a parser instance retains no per-call state after
-return" invariant.
+``ParserContext``, and the RD ``Parser`` SINGLE-USE contract (remediation
+MEDIUM-11): the cursor is bound at construction and consumed by the first
+``parse()``, so a second ``parse()``/``parse_outcome()`` raises rather than
+silently returning an empty ``Program``.
 """
 
 import dataclasses
@@ -144,6 +146,99 @@ def test_open_constructs_balanced_to_empty_on_success():
     assert p.ctx.state.open_constructs == []
 
 
+# === RD Parser is SINGLE-USE (remediation MEDIUM-11) ===
+#
+# Red-on-base: at db6dfb13 a second `.parse()` on one instance returned an EMPTY
+# Program (the cursor is consumed by the first parse and never reset) — a silent
+# wrong. The contract now raises a loud programming-error instead. The error is
+# a plain RuntimeError (an INTERNAL-DEFECT class under strict-errors), DISTINCT
+# from the user-facing ParseError (a PshError). The combinator stays reusable.
+
+def test_second_parse_raises_single_use_error():
+    p = Parser(list(tokenize("echo hi")))
+    first = p.parse()
+    assert len(first.statements) == 1          # first parse is normal
+    with pytest.raises(RuntimeError, match="single-use"):
+        p.parse()                              # was: empty Program, now raises
+
+
+def test_single_use_error_is_not_a_parse_error():
+    # It must NOT be a ParseError/PshError (those are swallowed to exit 1 /
+    # pass through strict-errors); a reuse is an internal defect, so it is a
+    # bare RuntimeError that strict-errors re-raises loudly.
+    from psh.core.exceptions import PshError
+    from psh.parser import ParseError
+    p = Parser(list(tokenize("echo hi")))
+    p.parse()
+    with pytest.raises(RuntimeError) as excinfo:
+        p.parse()
+    assert not isinstance(excinfo.value, ParseError)
+    assert not isinstance(excinfo.value, PshError)
+
+
+def test_parse_outcome_shares_the_single_use_budget():
+    # parse_outcome() routes through parse() once, so it consumes the single use:
+    # a subsequent parse() OR parse_outcome() on the same instance raises.
+    p = Parser(list(tokenize("echo hi")))
+    from psh.parser import Complete
+    assert isinstance(p.parse_outcome(), Complete)
+    with pytest.raises(RuntimeError, match="single-use"):
+        p.parse()
+
+    q = Parser(list(tokenize("echo hi")))
+    q.parse_outcome()
+    with pytest.raises(RuntimeError, match="single-use"):
+        q.parse_outcome()                      # RuntimeError propagates uncaught
+
+
+def test_outcome_from_parse_does_not_swallow_the_single_use_runtimeerror():
+    # Explicit classifier pin (remediation MEDIUM-11): outcome_from_parse catches
+    # ONLY ParseError (-> Incomplete/Invalid). The single-use RuntimeError — like
+    # any internal defect — PROPAGATES; it is NOT converted into an Invalid
+    # outcome. This is what makes the second parse_outcome() above RAISE rather
+    # than silently return Invalid; if the except clause were ever broadened to
+    # Exception, THIS test (and that one) would go red.
+    from psh.parser.parse_outcome import outcome_from_parse
+
+    def raise_single_use():
+        raise RuntimeError("Parser is single-use: ...")
+
+    with pytest.raises(RuntimeError, match="single-use"):
+        outcome_from_parse(raise_single_use, lambda: ())
+
+
+def test_failed_parse_still_consumes_the_single_use():
+    # A parse that RAISED still counts as used — the cursor is left mid-stream,
+    # so re-parsing would resume from a broken position.
+    from psh.parser import ParseError
+    p = Parser(list(tokenize("if")))
+    with pytest.raises(ParseError):
+        p.parse()
+    with pytest.raises(RuntimeError, match="single-use"):
+        p.parse()
+
+
+def test_fresh_parser_over_same_tokens_parses_again():
+    # Single-use is per INSTANCE: a new Parser over the same source parses fine.
+    toks = list(tokenize("echo hi"))
+    assert len(Parser(list(toks)).parse().statements) == 1
+    assert len(Parser(list(toks)).parse().statements) == 1
+
+
+@pytest.mark.parametrize("active_parser", ["recursive_descent", "combinator"])
+def test_deferred_parse_handle_is_single_use(active_parser):
+    # remediation B3/MEDIUM-11: the create_parser handle binds one token list, so
+    # it is single-use too — its second parse() must RAISE (was: silently
+    # re-parsed while the RD Parser it fronts raised — an inconsistent lifecycle).
+    # Uniform for BOTH parser choices; the combinator GRAMMAR object stays
+    # reusable (the handle is not the grammar).
+    from psh.parser import create_parser
+    handle = create_parser(list(tokenize("echo hi")), active_parser=active_parser)
+    assert len(handle.parse().statements) == 1
+    with pytest.raises(RuntimeError, match="single-use"):
+        handle.parse()
+
+
 # === token subject stays a mutable list (the `time`-slot rewrite) ===
 
 def test_tokens_is_a_mutable_list_not_in_frozen_inputs():
@@ -154,3 +249,17 @@ def test_tokens_is_a_mutable_list_not_in_frozen_inputs():
     original = ctx.tokens[0]
     ctx.tokens[0] = original   # no error: it is a real list slot
     assert ctx.tokens[0] is original
+
+
+def test_parse_with_inputs_does_not_mutate_caller_token_list():
+    # remediation N4: the RD parser rewrites the non-leading `time` slot in place,
+    # so the one entry copies the caller's list before handing it over. A
+    # `time`-bearing stream is the trigger; the caller's list must be byte-
+    # identical (same objects, same values) after the parse.
+    from psh.parser import ParseInputs, parse_with_inputs
+    toks = list(tokenize("echo a | time cat"))
+    before_ids = [id(t) for t in toks]
+    before_vals = [(t.type.name, t.value) for t in toks]
+    parse_with_inputs(toks, ParseInputs(), "recursive_descent")
+    assert [id(t) for t in toks] == before_ids           # no slot reassigned
+    assert [(t.type.name, t.value) for t in toks] == before_vals

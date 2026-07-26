@@ -11,6 +11,7 @@ SAME SLOT and close the ledger row. Enumerated at `0215279c` via
 |---|---|
 | `tests/conformance/bash/test_subscript_keying_conformance.py::test_divergence_operand_at_flattens` (4 params) | 3.3 |
 | `tests/conformance/bash/test_nested_substitution_timing_conformance.py::test_divergence_c_mode_exit_code_is_127_in_bash` (6 params: `$(if)`, `<(if)`, `${x:-$(if)}`, `$(($(if)+1))`, `${a[$(if)]}`, `a[$(if)]=v`) | 2.4 |
+| **CO-FLIP (added v0.757.0):** golden `heredoc_nested_error_reports_absolute_line` in `tests/behavioral/golden_cases.yaml` pins psh `-c` exit_code 2 on a nested-substitution syntax error (`echo $(if) <<EOF`) — same family as the row above. When 2.4 makes psh `-c` return 127, this golden row goes RED; 2.4 must update its exit_code (and only that) in the same slot. | 2.4 |
 | `tests/conformance/bash/test_syntax_template_timing_conformance.py::test_divergence_eval_source_fatality_is_i3` | 2.4 |
 | `test_subscript_keying_conformance.py::test_divergence_procsub_in_subscript_read_time` (+ the adjacent procsub timing/dead-branch divergence tests around it) | 2.3 |
 | `test_subscript_keying_conformance.py::test_divergence_quote_blind_extent_in_assignment_word` (K1 extent) | 2.3 |
@@ -19,6 +20,12 @@ SAME SLOT and close the ledger row. Enumerated at `0215279c` via
 
 Plus (unit-level, same slots): any `tests/unit/**` twins of the above that
 assert the psh-divergent result — the owning slot sweeps its own files.
+
+## Successor-owned (carry pins added v0.757.0; no chartered wave slot yet)
+
+| Pin | Owner |
+|---|---|
+| `tests/parser_differential/test_input_contract_parity.py::test_CARRY_array_init_nested_substitution_still_diverges_on_combinator` + its redirect-target twin (combinator arrays.py word-builder seam — array init, element assignment, redirect targets) | successor (LEDGER "2.2 carry: arrays.py word-builder seam"); both co-flip ONLY when the whole seam is threaded at once |
 
 ## Must-NOT-flip (sanctioned divergences that stay; guard against accidental "fixes")
 

@@ -16,6 +16,20 @@ def test_parse_tree_respects_extglob(captured_shell):
     assert "parse error" not in captured_shell.get_stderr()
 
 
+def test_parse_tree_respects_extglob_in_nested_substitution(captured_shell):
+    # remediation R3-6b: the nested $() body must re-lex with the SAME extglob
+    # budget as the outer command. At base, parse-tree threaded shell options
+    # into tokenize() but built the parser WITHOUT lexer_options, so
+    # `$(echo @(a|b))` re-lexed WITHOUT extglob and rejected (the HIGH-5 defect
+    # class inside this builtin). Routing through the one entry threads it. Red
+    # at base: base printed a parse error near `(`.
+    captured_shell.run_command("shopt -s extglob")
+    rc = captured_shell.run_command("parse-tree 'echo $(echo @(a|b))'")
+    assert rc == 0
+    assert "Program" in captured_shell.get_stdout()
+    assert "parse error" not in captured_shell.get_stderr()
+
+
 def test_parse_tree_extglob_off_rejects(captured_shell):
     # With extglob OFF (default), `@(a|b)` is a syntax error — same as the
     # executor. This is the discriminator proving the option is actually read.

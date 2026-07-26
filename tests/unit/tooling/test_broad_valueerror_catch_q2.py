@@ -116,7 +116,7 @@ BROAD_MASKING = {
         "disown: intent is int(spec); get_job_by_pid/_disown_job are also "
         "guarded, so a defect there reads as a bad job specification.",
     ("psh/builtins/parse_tree.py", ("ValueError", "TypeError", "AttributeError"),
-     ("ASTDotGenerator", "ASTPrettyPrinter", "Parser", "parse", "render",
+     ("ASTDotGenerator", "ASTPrettyPrinter", "create_parser", "parse", "render",
       "to_dot", "tokenize", "visit", "write_line")):
         "debug builtin: wraps the whole tokenize->parse->format pipeline; a "
         "parser/visitor VT/AttributeError defect becomes a bland "

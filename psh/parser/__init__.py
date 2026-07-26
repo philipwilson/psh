@@ -6,6 +6,7 @@ The parser converts tokens into an Abstract Syntax Tree (AST) with metadata supp
 context-aware parsing, semantic analysis, and enhanced error recovery.
 """
 
+from ..ast_nodes import Program
 from .config import ParserConfig
 from .parse_inputs import ParseInputs, ParserState
 from .parse_outcome import (
@@ -24,12 +25,12 @@ from .recursive_descent.helpers import (
 
 # Import from final locations
 from .recursive_descent.parser import Parser
-from .recursive_descent.support.utils import parse_with_heredocs as utils_parse_with_heredocs
 
 # Public API
 __all__ = [
     # Main parsing interface
-    'parse', 'parse_with_heredocs', 'create_parser', 'Parser',
+    'parse', 'parse_with_inputs', 'parse_with_heredocs', 'create_parser',
+    'Parser',
     # Configuration
     'ParserConfig',
     # Immutable inputs / mutable state (campaign S4)
@@ -44,24 +45,26 @@ __all__ = [
 ]
 
 
-def parse(tokens, config=None):
+def parse(tokens, config=None) -> Program:
     """Parse tokens into AST using the unified parser implementation.
 
-    This function provides comprehensive parsing with metadata utilization,
-    context-aware analysis, and enhanced error handling - all features built
-    into the standard parser.
+    Thin adapter over :func:`parse_with_inputs` (THE entry) — the recursive
+    descent path with only a config (no source_text/heredocs/lexer_options), so
+    it builds a Parser through the one entry rather than reaching for it directly
+    (remediation R3-6a).
 
     Args:
         tokens: List of tokens to parse
         config: Optional ParserConfig for custom parsing behavior
 
     Returns:
-        Parsed AST with full feature support
+        Parsed ``Program`` with full feature support
     """
     if config is None:
         config = ParserConfig()
 
-    return Parser(tokens, config=config).parse()
+    return parse_with_inputs(tokens, ParseInputs(config=config),
+                             "recursive_descent")
 
 
 # Accepted parser-selection names. The shell only ever passes the canonical
@@ -87,9 +90,50 @@ def _use_combinator(active_parser: str) -> bool:
         "'recursive_descent'/'rd' or 'combinator'")
 
 
+def parse_with_inputs(tokens, inputs: ParseInputs,
+                      active_parser='rd') -> Program:
+    """THE one parse entry: dispatch *tokens* to the selected parser, threading
+    the whole ``ParseInputs`` through BOTH implementations.
+
+    ``inputs`` is the frozen caller context — ``source_text`` (error caret),
+    ``line_offset`` (absolute nested-fragment line numbers), ``lexer_options``
+    (so a nested substitution body re-lexes with the same option-sensitive
+    lexing, notably extglob), ``heredocs`` (the collected ``<<``/``<<-`` bodies),
+    and ``config``. Every field reaches whichever parser runs, so neither path
+    loses context on the nested-substitution re-lex or the depth budget
+    (remediation HIGH-5: the combinator no longer discards source/options).
+
+    ``active_parser`` selects ``'recursive_descent'``/``'rd'`` (default) or
+    ``'combinator'``; any other name raises ``ValueError``. Returns the
+    canonical ``Program``.
+    """
+    if _use_combinator(active_parser):
+        from .combinators.parser import ParserCombinatorShellParser
+
+        return ParserCombinatorShellParser(inputs.config).parse(tokens, inputs)
+    # Copy the token list before the RD parser takes it: the parser rewrites one
+    # slot in place (the non-leading `time`->WORD substitution), so the entry
+    # must not hand the caller's own list to be mutated. (create_context ALSO
+    # re-copies via normalize, so the caller list is protected today regardless;
+    # this keeps the one entry self-sufficient — the old heredoc path did the
+    # same `Parser(list(tokens))`. Pinned by test_parse_inputs_state_s4.)
+    return Parser(list(tokens), config=inputs.config,
+                  source_text=inputs.source_text,
+                  line_offset=inputs.line_offset,
+                  heredocs=inputs.heredocs,
+                  lexer_options=inputs.lexer_options).parse()
+
+
 def parse_with_heredocs(tokens, heredocs, active_parser='rd',
-                        lexer_options=None):
-    """Parse tokens with collected heredocs using the selected implementation.
+                        lexer_options=None) -> Program:
+    """Thin adapter over :func:`parse_with_inputs` (THE entry).
+
+    Public/educational compat surface with ZERO production callers (the shell's
+    heredoc path goes straight through :func:`parse_with_inputs`): the heredoc
+    map and ``lexer_options`` become a ``ParseInputs`` threaded into whichever
+    parser. Kept as documented public API, not a bypass — it constructs a
+    ``ParseInputs`` and delegates, so it cannot reintroduce the HIGH-5
+    context-drop.
 
     Args:
         tokens: Token stream (heredoc bodies absent; operator tokens carry
@@ -102,24 +146,55 @@ def parse_with_heredocs(tokens, heredocs, active_parser='rd',
             substitution body is re-lexed with the same option-sensitive
             lexing (extglob) as the outer command.
     """
-    if _use_combinator(active_parser):
-        from .combinators.parser import ParserCombinatorShellParser
+    inputs = ParseInputs(lexer_options=lexer_options, heredocs=heredocs)
+    return parse_with_inputs(tokens, inputs, active_parser)
 
-        # Thread lexer_options into the combinator too (campaign S4 handoff 3):
-        # its syntax templates build with the same option-sensitive budget as
-        # the recursive-descent path, rather than being dropped here.
-        return ParserCombinatorShellParser(ParserConfig()).parse_with_heredocs(
-            tokens, heredocs, lexer_options=lexer_options)
-    return utils_parse_with_heredocs(tokens, heredocs,
-                                     lexer_options=lexer_options)
+
+class _DeferredParse:
+    """A SINGLE-USE parser handle whose ``.parse()`` runs the selected parser once.
+
+    :func:`create_parser` returns this so a caller can build a parser now and
+    parse later (matching the recursive-descent ``Parser`` object shape). It is
+    uniform for both implementations and defers to :func:`parse_with_inputs`, so
+    the combinator path carries the SAME bound ``ParseInputs`` as recursive
+    descent — no caller context is dropped (remediation HIGH-5, which the old
+    combinator-only facade wrapper caused).
+
+    Like the RD ``Parser``, the handle is SINGLE-USE (remediation MEDIUM-11): it
+    binds one token list, so a second ``parse()`` could only re-parse the
+    identical input — no use case — and the handle must not present a lifecycle
+    (silently re-parses) different from the RD ``Parser`` it fronts (raises). A
+    second ``parse()`` therefore raises the same ``RuntimeError``, for BOTH
+    ``active_parser`` choices. (The combinator GRAMMAR object stays reusable —
+    the handle is not the grammar.)
+    """
+
+    def __init__(self, tokens, inputs: ParseInputs, active_parser: str):
+        self.tokens = tokens
+        self._inputs = inputs
+        self._active_parser = active_parser
+        self._parsed = False
+
+    def parse(self) -> Program:
+        if self._parsed:
+            raise RuntimeError(
+                "parser handle is single-use: it binds one token list; build a "
+                "new handle (create_parser) or call parse_with_inputs to parse "
+                "again.")
+        self._parsed = True
+        return parse_with_inputs(self.tokens, self._inputs, self._active_parser)
 
 
 def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0,
-                  lexer_options=None):
-    """Create a parser configured for the selected implementation.
+                  lexer_options=None) -> "_DeferredParse":
+    """Thin adapter over :func:`parse_with_inputs` returning a deferred handle.
 
-    Chooses between the recursive descent parser and the combinator parser
-    based on the ``active_parser`` argument.
+    Public/educational compat surface with ZERO production callers (the shell
+    parses through :func:`parse_with_inputs` directly). Chooses between the
+    recursive descent and combinator parsers by ``active_parser`` and returns a
+    SINGLE-USE :class:`_DeferredParse` handle whose ``.parse()`` threads the full
+    caller context (``source_text`` / ``line_offset`` / ``lexer_options``) into
+    whichever parser runs.
 
     Args:
         tokens: List of tokens to parse.
@@ -133,24 +208,11 @@ def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0,
             lexing (extglob) as the outer command.
 
     Returns:
-        Object with a ``.parse()`` method that returns an AST.
+        A single-use handle with a ``.parse()`` method that returns a ``Program``.
     """
-    config = ParserConfig()
-
-    if _use_combinator(active_parser):
-        from .combinators.parser import ParserCombinatorShellParser
-
-        pc = ParserCombinatorShellParser(config)
-
-        class _ParserWrapper:
-            def __init__(self, parser, tokens):
-                self._parser = parser
-                self.tokens = tokens
-
-            def parse(self):
-                return self._parser.parse(self.tokens)
-
-        return _ParserWrapper(pc, tokens)
-
-    return Parser(tokens, config=config, source_text=source_text,
-                  line_offset=line_offset, lexer_options=lexer_options)
+    # Validate the parser name eagerly (create-time), matching the old
+    # behavior where an unknown name raised before .parse() was called.
+    _use_combinator(active_parser)
+    inputs = ParseInputs(source_text=source_text, line_offset=line_offset,
+                         lexer_options=lexer_options)
+    return _DeferredParse(tokens, inputs, active_parser)

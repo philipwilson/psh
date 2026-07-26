@@ -18,11 +18,15 @@ from pathlib import Path
 import psh.ast_nodes as ast_mod
 from psh.ast_nodes import Program
 from psh.lexer import tokenize
-from psh.parser import Parser, create_parser, parse, parse_with_heredocs
-from psh.parser.combinators.parser import ParserCombinatorShellParser
-from psh.parser.recursive_descent.support.utils import (
-    parse_with_heredocs as rd_parse_with_heredocs,
+from psh.parser import (
+    Parser,
+    _DeferredParse,
+    create_parser,
+    parse,
+    parse_with_heredocs,
+    parse_with_inputs,
 )
+from psh.parser.combinators.parser import ParserCombinatorShellParser
 
 PSH = Path(__file__).resolve().parents[3] / "psh"
 
@@ -71,7 +75,11 @@ class TestEntryPointsReturnProgram:
 
     def test_annotations_are_program(self):
         assert Parser.parse.__annotations__.get("return") is Program
-        assert rd_parse_with_heredocs.__annotations__.get("return") is Program
+        # parse_with_inputs is THE entry (remediation HIGH-5); it and the public
+        # thin adapters/handle it fronts are all annotated -> Program.
+        assert parse_with_inputs.__annotations__.get("return") is Program
+        assert parse_with_heredocs.__annotations__.get("return") is Program
+        assert _DeferredParse.parse.__annotations__.get("return") is Program
         assert ParserCombinatorShellParser.parse.__annotations__.get("return") is Program
         assert (ParserCombinatorShellParser.parse_with_heredocs
                 .__annotations__.get("return") is Program)
@@ -79,8 +87,8 @@ class TestEntryPointsReturnProgram:
     def test_no_union_root_annotations(self):
         # No parser entry-point signature declares a Union return (the old
         # `Union[CommandList, TopLevel]` root).
-        for rel in ("parser/recursive_descent/parser.py",
-                    "parser/recursive_descent/support/utils.py",
+        for rel in ("parser/__init__.py",
+                    "parser/recursive_descent/parser.py",
                     "parser/combinators/parser.py"):
             src = (PSH / rel).read_text()
             assert "-> Union[" not in src, f"Union return annotation in {rel}"

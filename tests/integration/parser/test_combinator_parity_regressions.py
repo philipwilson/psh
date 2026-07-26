@@ -566,23 +566,35 @@ class TestHeredocRoutingSpy:
     (reappraisal-#15 L2): under --parser combinator, heredoc input was parsed
     by the RD parser and nobody noticed. This spy proves heredoc input
     genuinely reaches the combinator entry point.
+
+    Since remediation HIGH-5 the shell routes ALL parsing (heredoc or not)
+    through the one ``parse_with_inputs`` entry, which reaches the combinator via
+    ``ParserCombinatorShellParser.parse(tokens, inputs)`` carrying the collected
+    heredoc map in ``inputs.heredocs`` (the old dedicated ``parse_with_heredocs``
+    method is no longer the shell's heredoc entry point). The spy therefore
+    targets ``parse`` and asserts the heredoc map arrived — a strictly stronger
+    check than "some method was called".
     """
 
     def test_heredoc_input_reaches_combinator_parser(self, monkeypatch):
         import psh.parser.combinators.parser as comb_mod
         from psh.shell import Shell
 
-        calls = []
-        real = comb_mod.ParserCombinatorShellParser.parse_with_heredocs
+        heredoc_maps = []
+        real = comb_mod.ParserCombinatorShellParser.parse
 
-        def spy(self, tokens, heredocs, **kw):
-            calls.append(len(tokens))
-            return real(self, tokens, heredocs, **kw)
+        def spy(self, tokens, inputs=None):
+            heredoc_maps.append(inputs.heredocs if inputs is not None else None)
+            return real(self, tokens, inputs)
 
         monkeypatch.setattr(
-            comb_mod.ParserCombinatorShellParser, "parse_with_heredocs", spy)
+            comb_mod.ParserCombinatorShellParser, "parse", spy)
         monkeypatch.setenv("PSH_TEST_PARSER", "combinator")
         shell = Shell()
         assert shell._active_parser == "combinator"
         shell.run_command("cat <<EOF\nspy-body\nEOF")
-        assert calls, "heredoc input bypassed the active combinator parser"
+        # The combinator's one parse entry was reached (not silently RD)...
+        assert heredoc_maps, "heredoc input bypassed the active combinator parser"
+        # ...AND it carried the collected heredoc bodies via ParseInputs.
+        assert any(hd for hd in heredoc_maps), \
+            "combinator parse() reached without the collected heredoc map"

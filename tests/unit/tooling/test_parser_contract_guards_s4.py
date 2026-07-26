@@ -152,7 +152,7 @@ def test_only_rd_finally_is_the_balanced_nesting_counter():
     assert "nesting_depth" in snippet
 
 
-# === Guard 7: ParseInputs has exactly two sanctioned construction sites ===
+# === Guard 7: ParseInputs has a fixed set of sanctioned construction sites ===
 
 def test_parse_inputs_construction_sites():
     sites = []
@@ -162,12 +162,39 @@ def test_parse_inputs_construction_sites():
             continue  # the definition module (its docstring names the type)
         for _ in re.finditer(r"\bParseInputs\(", py.read_text()):
             sites.append(rel)
-    # Sole constructors: the RD ParserContext (funnel for the RD parser) and the
-    # combinator shell parser's per-call inputs. Any third site is drift.
+    # ParseInputs is the caller context threaded through the ONE parse entry
+    # (parser/__init__.py#parse_with_inputs, remediation HIGH-5). The sanctioned
+    # constructors are: the RD ParserContext (the RD parser's internal funnel);
+    # the combinator shell parser's per-call inputs (its parse_with_heredocs
+    # adapter); the public parse-API adapters (create_parser / parse_with_heredocs
+    # bundle their caller args into a ParseInputs for the one entry); and the
+    # shell's parse dispatch (scripting/lex_parse.py bundles the live parse
+    # context into a ParseInputs). Any OTHER site is drift.
     assert set(sites) == {
         "parser/recursive_descent/context.py",
         "parser/combinators/parser.py",
+        "parser/__init__.py",
+        "scripting/lex_parse.py",
     }, sites
+
+
+def test_parse_inputs_construction_sites_offender():
+    # Synthetic offender for Guard 7 (typology completion, remediation R3-7):
+    # the guard discovers ParseInputs( construction sites with `\bParseInputs\(`
+    # and asserts the discovered set EQUALS the sanctioned four. Prove (a) the
+    # matcher fires on a real construction and (b) a NEW site outside the
+    # sanctioned set breaks the equality the guard checks — so the guard is
+    # load-bearing, not vacuously green.
+    assert re.search(r"\bParseInputs\(", "    return ParseInputs(config=c)")
+    sanctioned = {
+        "parser/recursive_descent/context.py",
+        "parser/combinators/parser.py",
+        "parser/__init__.py",
+        "scripting/lex_parse.py",
+    }
+    # A rogue construction in, say, the executor would enter the discovered set:
+    offender_discovered = sanctioned | {"executor/rogue_parse_site.py"}
+    assert offender_discovered != sanctioned  # exactly what the guard would catch
 
 
 # === Guard 8: the combinator threads lexer_options into template validation ===
@@ -194,3 +221,44 @@ def test_combinator_threads_lexer_options_into_templates_guard_and_offender():
         assert seen[0] is not None
     finally:
         st._validate_body = orig
+
+
+# === Guard 9: parse(tokens, inputs) never NONE-clobbers an __init__ heredoc map ===
+
+def test_combinator_inputs_without_heredocs_keeps_init_map():
+    # remediation N5: parse(tokens, inputs) overrides self.heredocs from inputs
+    # ONLY when inputs.heredocs is not None — an inputs carrying no heredocs must
+    # not erase a map supplied via __init__ (the context-clobber class this slot
+    # exists to kill). Build with the map via __init__, parse with a heredoc-free
+    # ParseInputs, and prove the heredoc body still attached.
+    from psh.ast_nodes import Redirect
+    from psh.lexer import tokenize_with_heredocs
+
+    lu = tokenize_with_heredocs("cat <<EOF\nbody-line\nEOF\n")
+    p = ParserCombinatorShellParser(ParserConfig(), heredocs=lu.heredocs)
+    prog = p.parse(list(lu.tokens), ParseInputs())  # ParseInputs.heredocs is None
+
+    heredoc_bodies = []
+    seen: set = set()
+
+    def walk(node):
+        if id(node) in seen:
+            return
+        seen.add(id(node))
+        if isinstance(node, Redirect) and node.type == "<<":
+            heredoc_bodies.append(node.heredoc_content)
+        for name in getattr(node, "__dataclass_fields__", {}):
+            child = getattr(node, name)
+            if isinstance(child, (list, tuple)):
+                for item in child:
+                    if hasattr(item, "__dataclass_fields__"):
+                        walk(item)
+            elif hasattr(child, "__dataclass_fields__"):
+                walk(child)
+        for stmt in getattr(node, "statements", []):
+            walk(stmt)
+
+    walk(prog)
+    # Guard: the __init__ map still drove the parse (unconditional override would
+    # have set self.heredocs=None here and lost the body).
+    assert heredoc_bodies == ["body-line\n"]

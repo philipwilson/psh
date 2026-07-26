@@ -62,9 +62,11 @@ class ParserCombinatorShellParser:
         self.heredocs = heredocs
         # Per-call immutable inputs (campaign S4 handoff 3): the ParseInputs
         # budget (lexer_options/line_offset) threaded into template building.
-        # Set transiently by parse_with_heredocs; a bare parse() uses None
-        # (defaults), and parse() clears the per-module working copies in its
-        # finally so the instance retains NO per-call state after return
+        # Set transiently by parse() when it is given an ``inputs`` argument
+        # (the one entry point that carries caller context, remediation HIGH-5);
+        # a bare parse() with no inputs uses None (defaults). parse() restores
+        # the prior value and clears the per-module working copies in its
+        # finally, so the instance retains NO per-call state after return
         # (handoff 1). None by default.
         self._parse_inputs: "Optional[ParseInputs]" = None
 
@@ -162,11 +164,20 @@ class ParserCombinatorShellParser:
             start_pos += 1
         return tokens, start_pos
 
-    def parse(self, tokens: List[Token]) -> Program:
+    def parse(self, tokens: List[Token],
+              inputs: "Optional[ParseInputs]" = None) -> Program:
         """Parse a list of tokens into an AST.
 
         Args:
             tokens: List of tokens from the lexer
+            inputs: The frozen caller context for this parse (campaign S4 /
+                remediation HIGH-5). When given, its heredoc map and budget —
+                ``lexer_options`` (extglob-aware re-lexing of a nested
+                substitution body) and ``line_offset`` (nested-fragment
+                diagnostics) — are threaded through this parse, so the
+                combinator loses no caller context that the recursive-descent
+                path carries. ``None`` uses the instance defaults (the
+                ``__init__`` heredoc map, no budget).
 
         Returns:
             The canonical Program root (same as the recursive descent parser).
@@ -177,10 +188,23 @@ class ParserCombinatorShellParser:
         # Install the per-call working state on the shared long-lived modules —
         # the collected-heredoc map (the redirection mixin builds each heredoc
         # Redirect with its spec truth and body AT CONSTRUCTION) and the
-        # ParseInputs budget (template building) — and CLEAR both in the finally
-        # so this build-once grammar instance retains NO per-call state after
-        # return (campaign S4 handoff 1/3, guarded by the retains-nothing
-        # snapshot pin in test_parser_contract_guards_s4).
+        # ParseInputs budget (template building) — and RESTORE the prior values
+        # in the finally so this build-once grammar instance retains NO per-call
+        # state after return (campaign S4 handoff 1/3, guarded by the
+        # retains-nothing snapshot pin in test_parser_contract_guards_s4). When
+        # ``inputs`` is given it supplies both for the duration of this parse.
+        saved_heredocs = self.heredocs
+        saved_inputs = self._parse_inputs
+        if inputs is not None:
+            # Conditional override (remediation N5): a caller context that
+            # carries no heredocs must NOT erase an __init__-supplied map —
+            # heredocs come from whichever source actually has them, never a
+            # None-clobber of an existing map. (No live caller supplies both
+            # today; this keeps the merge in the context-preserving direction
+            # this slot exists to enforce.)
+            if inputs.heredocs is not None:
+                self.heredocs = inputs.heredocs
+            self._parse_inputs = inputs
         self.commands.heredocs = self.heredocs
         self.expansions.parse_ctx = self._parse_inputs
         try:
@@ -188,6 +212,8 @@ class ParserCombinatorShellParser:
         finally:
             self.commands.heredocs = None
             self.expansions.parse_ctx = None
+            self.heredocs = saved_heredocs
+            self._parse_inputs = saved_inputs
 
     def _parse_body(self, tokens: List[Token]) -> Program:
         """The parse proper, run with per-call working state installed."""
@@ -264,16 +290,9 @@ class ParserCombinatorShellParser:
         parse and RESTORED to their prior values afterwards, so the instance
         retains no per-call state after return.
         """
-        saved_heredocs = self.heredocs
-        saved_inputs = self._parse_inputs
-        self.heredocs = heredocs
-        self._parse_inputs = ParseInputs(
-            lexer_options=lexer_options, line_offset=line_offset)
-        try:
-            return self.parse(tokens)
-        finally:
-            self.heredocs = saved_heredocs
-            self._parse_inputs = saved_inputs
+        return self.parse(tokens, ParseInputs(
+            lexer_options=lexer_options, line_offset=line_offset,
+            heredocs=heredocs))
 
     def parse_outcome(self, tokens: List[Token]) -> ParseOutcome:
         """Parse into the typed ``Complete | Incomplete | Invalid`` outcome sum.

@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence
 
 from ..lexer import tokenize, tokenize_with_heredocs
 from ..lexer.heredoc_lexer import LexedUnit
-from ..parser import create_parser, parse_with_heredocs
+from ..parser import ParseInputs, parse_with_inputs
 from ..utils import contains_heredoc
 
 if TYPE_CHECKING:
@@ -134,27 +134,24 @@ def parse_tokens(
 ) -> 'Program':
     """Parse a token stream with the shell's ACTIVE parser, heredoc-aware.
 
-    When ``heredocs`` is present the ``<<``/``<<-`` bodies are attached as the
-    redirects are constructed (``parse_with_heredocs``); otherwise a plain parser
-    is built. Either way the recursive-descent or combinator implementation is
-    chosen by ``shell.active_parser``. ``source_text`` / ``line_offset`` improve
-    error reporting (source-line caret; absolute line numbers) on the plain path;
-    ``lexer_options`` threads the shell option set so a nested substitution body
-    re-lexes with the same option-sensitive lexing (extglob) as the outer
-    command. Raises ``ParseError`` / ``UnclosedQuoteError`` unchanged.
+    The whole caller context is bundled into one ``ParseInputs`` and threaded
+    through the single ``parse_with_inputs`` entry, so the recursive-descent and
+    combinator paths receive identical context on every path. ``heredocs`` (when
+    present) attaches the ``<<``/``<<-`` bodies as the redirects are
+    constructed; ``source_text`` / ``line_offset`` improve error reporting
+    (source-line caret; absolute line numbers); ``lexer_options`` threads the
+    shell option set so a nested substitution body re-lexes with the same
+    option-sensitive lexing (extglob) as the outer command. The implementation
+    is chosen by ``shell.active_parser``. Raises ``ParseError`` /
+    ``UnclosedQuoteError`` unchanged.
     """
-    if heredocs is not None:
-        return parse_with_heredocs(
-            tokens, heredocs,
-            active_parser=shell.active_parser,
-            lexer_options=lexer_options)
-    parser = create_parser(
-        tokens,
-        active_parser=shell.active_parser,
+    inputs = ParseInputs(
         source_text=source_text,
         line_offset=line_offset,
-        lexer_options=lexer_options)
-    return parser.parse()
+        lexer_options=lexer_options,
+        heredocs=heredocs,
+    )
+    return parse_with_inputs(tokens, inputs, active_parser=shell.active_parser)
 
 
 def lex_and_parse(

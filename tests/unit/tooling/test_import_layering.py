@@ -280,7 +280,7 @@ FUNC_IMPORT_CAPS = {
     'psh.lexer.pure_helpers': 3,
     'psh.lexer.recognizers.process_sub': 1,
     'psh.lexer.recognizers.word_scanners': 4,
-    'psh.parser': 2,
+    'psh.parser': 1,
     'psh.parser.array_flat_text': 1,
     # cycle-break (campaign S4): parse_outcome catches ParseError, defined in
     # recursive_descent.helpers; importing it eagerly re-enters this module via
@@ -288,7 +288,6 @@ FUNC_IMPORT_CAPS = {
     'psh.parser.parse_outcome': 1,
     'psh.parser.recursive_descent.parsers.arrays': 1,
     'psh.parser.recursive_descent.support.nested_parse': 2,
-    'psh.parser.recursive_descent.support.utils': 1,
     'psh.parser.recursive_descent.support.word_builder': 1,
     'psh.scripting.base': 3,
     'psh.scripting.command_accumulator': 2,
