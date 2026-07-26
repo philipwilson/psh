@@ -310,6 +310,22 @@ class TestQuoteAwareSubscriptExtent:
         from psh.expansion.param_parser import find_subscript_end
         assert find_subscript_end(text, 1) == -1
 
+    def test_backtick_inside_dq_does_not_close_dq(self):
+        # R1-8 (round-1 verifier): backticks stay ACTIVE inside double quotes
+        # and may CONTAIN quotes — a `"` inside a backtick inside a dq run
+        # must not close the dq, and a `]` there must not close the
+        # subscript. Scanner-level pin (pure function): end-to-end shapes are
+        # currently blocked upstream by a PRE-EXISTING lexer no-progress
+        # defect (slot-2.3 ledger, r18 probe; psh/lexer is out of slot
+        # scope), so the extent math is pinned here directly.
+        from psh.expansion.param_parser import find_subscript_end
+        #        0123456789...
+        text = 'a["x`echo "]"`"]=v'
+        assert find_subscript_end(text, 1) == 15
+        assert text[15] == ']' and text[16] == '='
+        # Unclosed backtick inside dq -> no extent.
+        assert find_subscript_end('a["`x]', 1) == -1
+
     def test_quoted_bracket_parameter_is_plain(self):
         # ${a["]"]}: the whole name[sub] is the parameter — no operator, valid.
         node = parse_parameter_expansion('a["]"]')

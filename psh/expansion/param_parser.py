@@ -128,8 +128,10 @@ def _skip_double_quote(text: str, i: int) -> int:
     """Index just past the ``"`` closing the one at *i*, or -1.
 
     A backslash escapes the next character (``\\"`` does not close); embedded
-    ``$(...)``/``${...}`` extents are skipped so their ``"`` do not close the
-    outer string (``"$(echo "x")"`` is ONE double-quoted region in bash).
+    ``$(...)``/``${...}``/backtick extents are skipped so their ``"`` do not
+    close the outer string (``"$(echo "x")"`` and ``"`echo "x"`"`` are each
+    ONE double-quoted region in bash — backticks stay ACTIVE inside dq and
+    may contain quotes; round-1 R1-8).
     """
     n = len(text)
     j = i + 1
@@ -140,6 +142,11 @@ def _skip_double_quote(text: str, i: int) -> int:
             continue
         if c == '"':
             return j + 1
+        if c == '`':
+            j = _skip_backtick(text, j)
+            if j == -1:
+                return -1
+            continue
         if c == '$' and j + 1 < n and text[j + 1] == '(':
             j, _found = find_command_substitution_end(text, j + 2)
             continue

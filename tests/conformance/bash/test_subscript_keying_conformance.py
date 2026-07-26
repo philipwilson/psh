@@ -820,6 +820,53 @@ def test_quote_aware_extent_read_side(cmd):
     assert _psh_comb(cmd).stdout == b.stdout
 
 
+@pytest.mark.parametrize('cmd', [
+    'declare -A a; a[[k]]=v; declare -p a',      # unquoted nesting keys [k]
+    'a]x[0]=v; echo rc=$?',                      # ] before [ -> command word
+    'declare -A a; a[]]=v; echo rc=$?',          # empty-then-] -> command word
+    'declare -A a; a[x=1]=v; declare -p a',      # = INSIDE subscript keys x=1
+    'declare -A a; a[x+=y]=v; declare -p a',     # += inside subscript is key text
+])
+def test_head_scan_family_deltas_toward_bash(cmd):
+    """R1-7 (round-1 verifier): base->tip head-scan deltas BEYOND the two
+    declared riders, enumerated by the r17 battery — every one lands ON bash
+    (base mis-keyed or mis-classified each). Both parsers."""
+    p, b = _both(cmd)
+    assert p.stdout == b.stdout and p.returncode == b.returncode, (cmd, p, b)
+    assert _psh_comb(cmd).stdout == b.stdout, cmd
+
+
+def test_head_scan_doubled_close_is_command_word():
+    """R1-7: `a[k]]=v` — base MIS-KEYED it ([k]="]=v"); tip classifies it a
+    command word like bash (rc-in-$? 127, nothing stored). Asserted on rc +
+    diagnostics + no-key rather than raw declare -p bytes because bash
+    renders a declared-but-empty assoc as `declare -A a` while psh renders
+    `declare -A a=()` — a PRE-EXISTING declare -p formatting residual
+    (out of slot scope, noted in the slot ledger), not a keying fact."""
+    cmd = 'declare -A a; a[k]]=v; echo rc=$?; declare -p a'
+    p, b = _both(cmd)
+    assert 'rc=127' in b.stdout and 'command not found' in b.stderr
+    assert 'rc=127' in p.stdout and 'command not found' in p.stderr
+    assert '[k]' not in p.stdout and '[k]' not in b.stdout  # nothing stored
+    assert 'rc=127' in _psh_comb(cmd).stdout
+
+
+def test_divergence_doubled_open_unclosed_family():
+    """R1-7: `a[[k]=v` (unclosed inner bracket) — base MIS-KEYED `[k`; tip
+    refuses the malformed head and runs it as a command (rc-in-$? 127,
+    nothing stored); bash instead treats the word as INCOMPLETE INPUT and
+    fails rc 2 wanting the matching `]` (lexer-continuation family, same
+    ceremony carry area as the other lexer word-extent rows). Both sides
+    pinned; psh's half improves on base (no silent mis-key) without
+    reaching bash's continuation model."""
+    cmd = 'declare -A a; a[[k]=v; echo rc=$?; declare -p a'
+    p, b = _both(cmd)
+    assert b.returncode == 2 and 'EOF' in b.stderr        # bash: wants more input
+    assert 'rc=127' in p.stdout and 'command not found' in p.stderr
+    assert '[k' not in p.stdout.replace('a[[k]=v', '')     # nothing mis-keyed
+    assert 'rc=127' in _psh_comb(cmd).stdout
+
+
 def test_element_head_requires_adjacent_operator():
     """2.3 rider (probe e1): `a[k]x=v` is a COMMAND word in bash (`command
     not found`), not an element assignment — psh formerly parsed it as
@@ -1002,6 +1049,27 @@ def test_divergence_dq_ansi_bracket_read():
         assert 'bad substitution' in b.stderr or 'no closing' in b.stderr
         assert p.returncode == 0 and p.stdout == key_probe  # psh: round-trips
         assert _psh_comb(cmd).stdout == key_probe
+
+
+def test_divergence_sq_in_dq_readback_outcome():
+    """Round-1 verifier find (R1-6), base-verified PRE-EXISTING (base = tip,
+    both parsers; probe r16): with the assoc target DECLARED and the
+    sq-spelling key PRE-WRITTEN, `"${h[\'$(if)\']}"` is an OUTCOME
+    divergence, not wording-only: psh keys the single-quoted spelling
+    literally (key `$(if)`, reads back v rc 0 — consistent with its write
+    side), while bash treats the dq-context subscript as expansion-bearing
+    text at READ time, attempts the `$(if)` command substitution, and fails
+    rc 1 — bash cannot read back the key its own write stored (its write
+    keys `$(if)` literally too). The UNDECLARED-target half of this family
+    (runtime stage parity, wording-only residual) is
+    test_sq_inside_dq_subscript_runtime_stage_parity above. Disposition
+    pending integrator ruling (expected keep-with-pin carry)."""
+    cmd = 'declare -A h; h[\'$(if)\']=v; echo "read=${h[\'$(if)\']}"; echo rc=$?'
+    p, b = _both(cmd)
+    assert b.returncode == 1 and b.stdout == ''
+    assert 'syntax error' in b.stderr          # bash: runtime cmdsub attempt
+    assert p.returncode == 0 and p.stdout == 'read=v\nrc=0\n'
+    assert _psh_comb(cmd).stdout == p.stdout
 
 
 def test_divergence_lexer_splits_quoted_space_subscript():
