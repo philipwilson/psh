@@ -953,6 +953,46 @@ def test_sq_inside_dq_subscript_runtime_stage_parity():
     assert ps.stdout == bs.stdout == ''
 
 
+@pytest.mark.parametrize('cmd', [
+    "declare -A a; a[']']=v; echo read=${a[']']}",       # sq, unquoted outer
+    "declare -A a; a[']']=v; echo \"read=${a[']']}\"",   # sq, dq outer
+    'declare -A a; a["]"]=v; echo read=${a["]"]}',       # dq, unquoted outer
+    'declare -A a; a["]"]=v; echo "read=${a["]"]}"',     # dq, dq outer
+    "declare -A a; a[$'[']=v; echo read=${a[$'[']}",     # ansi-c [, unq outer
+    "declare -A a; a[$']'x]=v; echo read=${a[$']'x]}",   # ansi-c ], unq outer
+    "declare -A a; a[$'k']=v; echo \"read=${a[$'k']}\"",  # ansi-c plain, dq outer
+])
+def test_bracket_carrier_read_matrix_parity(cmd):
+    """2.3 g-matrix, parity cells: every sq/dq bracket carrier reads back in
+    BOTH outer contexts, and ANSI-C carriers in the UNQUOTED outer context —
+    identical bytes (18 of the 20 probed cells; the 2 divergent cells are the
+    next test)."""
+    p, b = _both(cmd)
+    assert p.stdout == b.stdout == 'read=v\n' and p.returncode == b.returncode
+    assert _psh_comb(cmd).stdout == b.stdout
+
+
+def test_divergence_dq_ansi_bracket_read():
+    """2.3 DECLARED divergence (g-matrix cells g6/g8, ruling requested in the
+    slot ledger): a DOUBLE-QUOTED `"${a[...]}"` read whose subscript carries
+    an ANSI-C-quoted BRACKET — bash textually decodes the `$'...'` early
+    inside its dq-`${...}` scan (its own error shows `${a[[]}`) and then
+    FAILS rc 1 on the bracket it just materialised, unable to read back the
+    very key its write path stored. psh's ONE quote-aware extent reads the
+    key (self-consistent write/read round-trip). At base 4c319a04 psh
+    happened to reject too (quote-blind extent -> bad substitution rc 1);
+    the tip behavior is the deliberate one."""
+    for cmd, key_probe in [
+        ('declare -A a; a[$\'[\']=v; echo "read=${a[$\'[\']}"', 'read=v\n'),
+        ('declare -A a; a[$\']\'x]=v; echo "read=${a[$\']\'x]}"', 'read=v\n'),
+    ]:
+        p, b = _both(cmd)
+        assert b.returncode == 1 and b.stdout == ''       # bash: cannot read back
+        assert 'bad substitution' in b.stderr or 'no closing' in b.stderr
+        assert p.returncode == 0 and p.stdout == key_probe  # psh: round-trips
+        assert _psh_comb(cmd).stdout == key_probe
+
+
 def test_divergence_unlexable_subscript_typed_error():
     """2.3 rider (probe e2) — documented divergence, both sides pinned: an
     un-lexable subscript held RAW by the arithmetic path (`$((h['x]))`) is a
