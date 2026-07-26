@@ -1026,6 +1026,25 @@ def test_divergence_lexer_splits_quoted_space_subscript():
     assert po.stdout == bo.stdout == 'declare -A a=(["key with space"]="v" )\n'
 
 
+def test_divergence_unset_nonbracket_arg_silent():
+    """2.3-discovered CARRY (unset ARG-CLASSIFICATION, outside the slot-2.3
+    builtins grant, ruled a ceremony carry row): an unset argument that
+    contains `[` but does NOT end with `]` — `unset -v 'a["]"'` — never
+    reaches the element-keying sites (split_subscript requires the trailing
+    `]`), so psh falls through to a SILENT rc-0 no-op, while bash reports
+    `unset: a["]"': not a valid identifier` (rc 1, loud) and continues.
+    Neither shell unsets anything (keys intact in both). Pre-existing and
+    base-identical at 4c319a04 (slot-2.3 ledger, m12/m13 probes); flips when
+    the unset arg-classification carry is closed."""
+    cmd = 'declare -A a; a["]"]=1; unset -v \'a["]"\'; echo rc=$?; declare -p a'
+    p, b = _both(cmd)
+    assert b.stdout == 'rc=1\ndeclare -A a=(["]"]="1" )\n'   # bash: rc 1, loud
+    assert 'not a valid identifier' in b.stderr
+    assert p.stdout == 'rc=0\ndeclare -A a=(["]"]="1" )\n'   # psh: silent no-op
+    assert p.stderr == ''
+    assert _psh_comb(cmd).stdout == p.stdout
+
+
 def test_divergence_unlexable_subscript_typed_error():
     """2.3 rider (probe e2) — documented divergence, both sides pinned: an
     un-lexable subscript held RAW by the arithmetic path (`$((h['x]))`) is a
