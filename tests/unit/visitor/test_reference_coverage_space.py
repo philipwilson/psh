@@ -200,8 +200,11 @@ def test_table_is_total_over_the_generated_space():
     assert set(EXPECTED) == {(f, p) for f in FAMILIES for p in POSITIONS}
 
 
-def test_exactly_once_is_table_wide():
-    """No cell anywhere in the space expects (or may produce) a duplicate."""
+def test_at_most_once_is_table_wide():
+    """The frozen table's AT-MOST-ONCE bound: no cell anywhere in the space
+    expects a duplicate (a 2 in the table would mean a second authority).
+    Exactness per cell — the actual count equals the frozen value, 0 or 1 —
+    is enforced by test_reference_coverage_cell."""
     assert all(v <= 1 for row in EXPECTED.values() for v in row)
 
 

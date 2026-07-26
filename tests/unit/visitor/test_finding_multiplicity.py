@@ -171,7 +171,8 @@ def test_export_at_advisory_survives_the_assignment_skip():
     'fn() { local FOO=$y; }; fn',
     'readonly FOO=$y',
     'declare FOO=$y',
-], ids=['export', 'local', 'readonly', 'declare'])
+    'typeset FOO=$y',
+], ids=['export', 'local', 'readonly', 'declare', 'typeset'])
 def test_prefixed_assignment_value_reported_once(src):
     """NAMED DE-DUP (like at_traversal_root): a PREFIXED assignment's value
     sits at args[1], where BOTH the assignment authority and the command-args
