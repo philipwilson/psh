@@ -20,7 +20,7 @@ from ....ast_nodes import (
     WordPart,
 )
 from ....core.assignment_utils import SHELL_NAME
-from ....expansion.param_parser import parse_parameter_expansion
+from ....expansion.param_parser import find_subscript_end, parse_parameter_expansion
 from ....lexer.token_types import Token, TokenType
 from .syntax_templates import (
     build_arithmetic_template,
@@ -211,19 +211,15 @@ class WordBuilder:
 
     @staticmethod
     def _extract_subscript(parameter: str) -> Optional[str]:
-        """The subscript text of a ``name[...]`` parameter, or None (nesting-aware)."""
+        """The subscript text of a ``name[...]`` parameter, or None.
+
+        Extent via the ONE quote-aware scanner (``${a["]"]}`` spans to the
+        real close, not the quoted ``]`` — remediation 2.3/MEDIUM-4)."""
         bracket = parameter.find('[')
         if bracket == -1:
             return None
-        depth = 0
-        for i in range(bracket, len(parameter)):
-            if parameter[i] == '[':
-                depth += 1
-            elif parameter[i] == ']':
-                depth -= 1
-                if depth == 0:
-                    return parameter[bracket + 1:i]
-        return None
+        end = find_subscript_end(parameter, bracket)
+        return parameter[bracket + 1:end] if end != -1 else None
 
     @staticmethod
     def _variable_name_to_expansion(name: str, ctx=None) -> Expansion:

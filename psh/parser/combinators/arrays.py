@@ -10,9 +10,11 @@ from ...ast_nodes import (
     Word,
     WordPart,
 )
+from ...expansion.param_parser import find_subscript_end
 from ...lexer.token_types import Token
 from ..recursive_descent.parsers.arrays import (
     _NAME_START_RE,
+    _scan_element_head,
     _unquoted_leading_literal,
 )
 from ..recursive_descent.support.syntax_templates import build_subscript_spec
@@ -95,10 +97,14 @@ class ArrayParsers:
         value = _unquoted_leading_literal(tokens[pos])
         if not _NAME_START_RE.match(value):
             return False
+        # Fused head: name[SUB]=/+= classified by the shared quote-aware scan
+        # (mirrors _candidate_single_token_element). A malformed fused head
+        # (`a[k]x=v`, `a[x=1]`) is a COMMAND word in bash, never an assignment.
+        if _scan_element_head(value) is not None:
+            return True
         if '[' in value and ']' in value:
             if '=' in value:
-                equals_pos = value.index('+=') if '+=' in value else value.index('=')
-                return value.index('[') < equals_pos
+                return False
             # Split head `a[i]` + `=value` requires the operator token ADJACENT
             # to `a[i]`; a space (`a[0] =v`) makes `a[0]` a command word, not an
             # element assignment (finding 5c). Mirrors the recursive descent parser.
@@ -189,26 +195,29 @@ class ArrayParsers:
         use_parts = False
         head_len = 0
 
-        if '[' in value and ']' in value:
+        head_scan = _scan_element_head(value)
+        if head_scan is not None:
+            # Fused head: shared quote-aware scan (same rule as the RD parser).
+            name, subscript, operator, head_len = head_scan
+            is_append = operator == '+='
+            tail = value[head_len:]
+            use_parts = bool(head.parts)
+        elif '[' in value and ']' in value and '=' not in value:
+            # Split head `a[i]` + `=value` (hand-built streams): the head token
+            # carries only name[SUB] — extent via the same quote-aware scanner.
             lbracket_pos = value.index('[')
-            rbracket_pos = value.index(']')
+            rbracket_pos = find_subscript_end(value, lbracket_pos)
+            if rbracket_pos == -1:
+                return ParseResult(success=False, error="Expected ']' to close array index", position=pos)
             name = value[:lbracket_pos]
             subscript = value[lbracket_pos + 1:rbracket_pos]
-
-            if '=' in value:
-                is_append = '+=' in value
-                equals_pos = value.index('+=') if is_append else value.index('=')
-                head_len = equals_pos + (2 if is_append else 1)
-                tail = value[head_len:]
-                use_parts = bool(head.parts)
-            else:
-                if pos >= len(tokens) or tokens[pos].type.name != 'WORD':
-                    return ParseResult(success=False, error="Expected '=' after array index", position=pos)
-                op_token = tokens[pos]
-                is_append = op_token.value.startswith('+=')
-                tail = '' if op_token.value in ('=', '+=') else op_token.value[2 if is_append else 1:]
-                pos += 1
-        else:
+            if pos >= len(tokens) or tokens[pos].type.name != 'WORD':
+                return ParseResult(success=False, error="Expected '=' after array index", position=pos)
+            op_token = tokens[pos]
+            is_append = op_token.value.startswith('+=')
+            tail = '' if op_token.value in ('=', '+=') else op_token.value[2 if is_append else 1:]
+            pos += 1
+        elif '[' not in value:
             name = value
             if pos >= len(tokens) or tokens[pos].type.name != 'LBRACKET':
                 return ParseResult(success=False, error="Expected '[' for array index", position=pos)
@@ -230,6 +239,11 @@ class ArrayParsers:
             is_append = tokens[pos].value == '+='
             pos += 1
             tail = ''
+        else:
+            # '[' present but no well-formed head (malformed fused shape such
+            # as `a[k]x=v`): a command word in bash, never an assignment.
+            return ParseResult(success=False, error="No array element assignment",
+                               position=pos)
 
         if use_parts:
             value_word, value_text = self._element_value_from_parts(head, head_len)
