@@ -12,9 +12,14 @@ the token stream that sits between them:
 
 The historical flat accessor surface (``ctx.current``, ``ctx.tokens``,
 ``ctx.source_text``, ``ctx.nesting_depth``, ...) is preserved as properties that
-delegate to ``inputs``/``state``, so no sub-parser changed. Because ``inputs``
-and ``state`` are built once per context and dropped with it, a parser instance
-retains no per-call state after ``parse()`` returns.
+delegate to ``inputs``/``state``, so no sub-parser changed. ``inputs`` and
+``state`` are built once per context and never transiently installed elsewhere,
+so ``parse()`` has nothing to scrub in a ``finally``. This does NOT make the
+parser reusable: the ``ParserState`` cursor is bound at construction and
+consumed by ``parse()`` (which never resets it), so the RD ``Parser`` is
+SINGLE-USE (remediation MEDIUM-11) — a second ``parse()`` raises rather than
+silently re-parsing an exhausted stream (see
+``recursive_descent/parser.py#Parser.parse``).
 """
 from typing import TYPE_CHECKING, List, Mapping, Optional
 

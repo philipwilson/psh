@@ -205,9 +205,16 @@ compound-nesting counter, not a post-return scrub. This does NOT make the RD
 a second `parse()`/`parse_outcome()` raises `RuntimeError` (a programming-contract
 error, loud under `strict-errors`, distinct from a user-facing `ParseError`)
 instead of silently returning an empty `Program`
-(`recursive_descent/parser.py#Parser.parse`). The combinator stays reusable (it
-takes tokens per `parse(tokens)` call). Guarded by
-`tests/unit/parser/test_parse_inputs_state_s4.py`.
+(`recursive_descent/parser.py#Parser.parse`). The deferred `create_parser` handle
+(`parser/__init__.py#_DeferredParse`) is single-use the same way — it binds one
+token list, so a second `.parse()` raises, uniform for both `active_parser`
+choices. The combinator GRAMMAR instance, by contrast, stays reusable (it takes
+tokens per `parse(tokens)` call — the handle is not the grammar). Guarded by
+`tests/unit/parser/test_parse_inputs_state_s4.py`. (The old RD-only
+`support/utils.py#parse_with_heredocs` — which threaded neither source_text nor
+line_offset — was DELETED in the same slot; the shell's heredoc path and the
+public `parse_with_heredocs`/`create_parser` adapters all go through
+`parse_with_inputs` now, so no entry drops the heredoc-path context.)
 
 **Total parse outcome (campaign S4).** Both parser implementations expose
 `parse_outcome()` returning the typed `Complete | Incomplete | Invalid` sum

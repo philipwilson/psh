@@ -225,6 +225,20 @@ def test_fresh_parser_over_same_tokens_parses_again():
     assert len(Parser(list(toks)).parse().statements) == 1
 
 
+@pytest.mark.parametrize("active_parser", ["recursive_descent", "combinator"])
+def test_deferred_parse_handle_is_single_use(active_parser):
+    # remediation B3/MEDIUM-11: the create_parser handle binds one token list, so
+    # it is single-use too — its second parse() must RAISE (was: silently
+    # re-parsed while the RD Parser it fronts raised — an inconsistent lifecycle).
+    # Uniform for BOTH parser choices; the combinator GRAMMAR object stays
+    # reusable (the handle is not the grammar).
+    from psh.parser import create_parser
+    handle = create_parser(list(tokenize("echo hi")), active_parser=active_parser)
+    assert len(handle.parse().statements) == 1
+    with pytest.raises(RuntimeError, match="single-use"):
+        handle.parse()
+
+
 # === token subject stays a mutable list (the `time`-slot rewrite) ===
 
 def test_tokens_is_a_mutable_list_not_in_frozen_inputs():
@@ -235,3 +249,17 @@ def test_tokens_is_a_mutable_list_not_in_frozen_inputs():
     original = ctx.tokens[0]
     ctx.tokens[0] = original   # no error: it is a real list slot
     assert ctx.tokens[0] is original
+
+
+def test_parse_with_inputs_does_not_mutate_caller_token_list():
+    # remediation N4: the RD parser rewrites the non-leading `time` slot in place,
+    # so the one entry copies the caller's list before handing it over. A
+    # `time`-bearing stream is the trigger; the caller's list must be byte-
+    # identical (same objects, same values) after the parse.
+    from psh.parser import ParseInputs, parse_with_inputs
+    toks = list(tokenize("echo a | time cat"))
+    before_ids = [id(t) for t in toks]
+    before_vals = [(t.type.name, t.value) for t in toks]
+    parse_with_inputs(toks, ParseInputs(), "recursive_descent")
+    assert [id(t) for t in toks] == before_ids           # no slot reassigned
+    assert [(t.type.name, t.value) for t in toks] == before_vals

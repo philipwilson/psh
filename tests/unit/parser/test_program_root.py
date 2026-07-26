@@ -23,10 +23,8 @@ from psh.ast_nodes import (
     WhileLoop,
 )
 from psh.lexer import tokenize
-from psh.parser import create_parser, parse, parse_with_heredocs
-from psh.parser.recursive_descent.support.utils import (
-    parse_with_heredocs as rd_parse_with_heredocs,
-)
+from psh.parser import create_parser, parse, parse_with_heredocs, parse_with_inputs
+from psh.parser.parse_inputs import ParseInputs
 
 
 def _statements(src):
@@ -163,10 +161,13 @@ class TestEveryParseReturnsProgram:
         src = "cat <<EOF\nhi\nEOF"
         assert isinstance(parse(tokenize(src)), Program)
 
-    def test_rd_parse_with_heredocs_returns_program(self):
+    def test_parse_with_inputs_heredoc_returns_program(self):
+        # The one entry with a heredoc map returns the canonical Program root
+        # (the RD-specific utils.parse_with_heredocs it replaced was deleted).
         from psh.lexer import tokenize_with_heredocs
         tokens, hmap = tokenize_with_heredocs("cat <<EOF\nhi\nEOF")
-        assert isinstance(rd_parse_with_heredocs(tokens, hmap), Program)
+        inputs = ParseInputs(heredocs=hmap)
+        assert isinstance(parse_with_inputs(list(tokens), inputs), Program)
 
     def test_public_parse_with_heredocs_returns_program(self):
         from psh.lexer import tokenize_with_heredocs

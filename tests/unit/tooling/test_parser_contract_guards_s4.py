@@ -202,3 +202,44 @@ def test_combinator_threads_lexer_options_into_templates_guard_and_offender():
         assert seen[0] is not None
     finally:
         st._validate_body = orig
+
+
+# === Guard 9: parse(tokens, inputs) never NONE-clobbers an __init__ heredoc map ===
+
+def test_combinator_inputs_without_heredocs_keeps_init_map():
+    # remediation N5: parse(tokens, inputs) overrides self.heredocs from inputs
+    # ONLY when inputs.heredocs is not None — an inputs carrying no heredocs must
+    # not erase a map supplied via __init__ (the context-clobber class this slot
+    # exists to kill). Build with the map via __init__, parse with a heredoc-free
+    # ParseInputs, and prove the heredoc body still attached.
+    from psh.ast_nodes import Redirect
+    from psh.lexer import tokenize_with_heredocs
+
+    lu = tokenize_with_heredocs("cat <<EOF\nbody-line\nEOF\n")
+    p = ParserCombinatorShellParser(ParserConfig(), heredocs=lu.heredocs)
+    prog = p.parse(list(lu.tokens), ParseInputs())  # ParseInputs.heredocs is None
+
+    heredoc_bodies = []
+    seen: set = set()
+
+    def walk(node):
+        if id(node) in seen:
+            return
+        seen.add(id(node))
+        if isinstance(node, Redirect) and node.type == "<<":
+            heredoc_bodies.append(node.heredoc_content)
+        for name in getattr(node, "__dataclass_fields__", {}):
+            child = getattr(node, name)
+            if isinstance(child, (list, tuple)):
+                for item in child:
+                    if hasattr(item, "__dataclass_fields__"):
+                        walk(item)
+            elif hasattr(child, "__dataclass_fields__"):
+                walk(child)
+        for stmt in getattr(node, "statements", []):
+            walk(stmt)
+
+    walk(prog)
+    # Guard: the __init__ map still drove the parse (unconditional override would
+    # have set self.heredocs=None here and lost the body).
+    assert heredoc_bodies == ["body-line\n"]

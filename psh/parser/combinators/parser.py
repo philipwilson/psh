@@ -196,7 +196,14 @@ class ParserCombinatorShellParser:
         saved_heredocs = self.heredocs
         saved_inputs = self._parse_inputs
         if inputs is not None:
-            self.heredocs = inputs.heredocs
+            # Conditional override (remediation N5): a caller context that
+            # carries no heredocs must NOT erase an __init__-supplied map —
+            # heredocs come from whichever source actually has them, never a
+            # None-clobber of an existing map. (No live caller supplies both
+            # today; this keeps the merge in the context-preserving direction
+            # this slot exists to enforce.)
+            if inputs.heredocs is not None:
+                self.heredocs = inputs.heredocs
             self._parse_inputs = inputs
         self.commands.heredocs = self.heredocs
         self.expansions.parse_ctx = self._parse_inputs
