@@ -81,7 +81,9 @@ class TestAssociativeKey:
 
 class TestProcsubSpellingIsLiteral:
     """HIGH-4 (remediation 2.3): a procsub SPELLING in a subscript is literal
-    key text — never executed at keying time. Cmdsub/backticks still run."""
+    key text — never executed at keying time — while its BODY still expands
+    like word text (bash: frame literal, contents live). Cmdsub/backticks
+    still run."""
 
     def test_word_from_text_procsub_becomes_literal_part(self, subscript):
         from psh.ast_nodes.words import ExpansionPart
@@ -109,6 +111,17 @@ class TestProcsubSpellingIsLiteral:
     def test_cmdsub_and_backtick_still_execute(self, subscript):
         assert subscript.associative_key('$(printf k)') == 'k'
         assert subscript.associative_key('`printf k`') == 'k'
+
+    def test_body_expands_inside_literal_frame(self, captured_shell, subscript):
+        # bash: the frame never runs, but $-forms/quotes INSIDE it behave as
+        # in any word — a['<(cat Q)'] and a[<(cat $y)] address the SAME key.
+        captured_shell.run_command('y=Q')
+        assert subscript.associative_key('<(cat $y)') == '<(cat Q)'
+        assert subscript.associative_key('<(x $(printf q))') == '<(x q)'
+        assert subscript.associative_key("<(cat 'q')") == '<(cat q)'
+
+    def test_unset_dollar_in_body_expands_empty(self, subscript):
+        assert subscript.associative_key('<(cat $unsetvar)') == '<(cat )'
 
 
 class TestSubscriptSyntaxErrorTyped:

@@ -4,7 +4,7 @@ import stat
 from typing import TYPE_CHECKING, List
 
 from ..core import AssociativeArray, IndexedArray
-from ..expansion.subscript import SubscriptUse, TargetKind
+from ..expansion.subscript import SubscriptSyntaxError, SubscriptUse, TargetKind
 from ..utils.file_tests import file_newer_than, file_older_than, files_same
 from .base import Builtin
 from .registry import builtin
@@ -36,7 +36,13 @@ def variable_is_set(shell: 'Shell', var_ref: str) -> bool:
         subscript = shell.expansion_manager.subscript
         var_obj = shell.state.scope_manager.get_variable_object(var_name)
         if var_obj is not None and isinstance(var_obj.value, AssociativeArray):
-            return subscript.associative_key(key_expr) in var_obj.value
+            try:
+                return subscript.associative_key(
+                    key_expr, quiet=True) in var_obj.value
+            except SubscriptSyntaxError:
+                # bash 5.2: `test -v 'a["]'` / `[[ -v 'a["]' ]]` are QUIETLY
+                # unset — rc 1, no diagnostic (probe m12, remediation 2.3).
+                return False
         idx = subscript.evaluate(key_expr, TargetKind.INDEXED,
                                  SubscriptUse.TEST_V)  # fatal on bad arith
         if idx is None or var_obj is None:

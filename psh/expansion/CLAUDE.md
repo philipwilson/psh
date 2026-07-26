@@ -361,10 +361,11 @@ Two remediation-2.3 invariants on the re-lex bridge
 (`SubscriptEvaluator.word_from_text`):
 
 - **Procsub spellings are literal key text** (HIGH-4): an unquoted `<(...)`/
-  `>(...)` re-lexed from a subscript becomes a LITERAL part carrying its exact
-  source spelling (`subscript.py#_procsub_spellings_literal`) — bash keys the
-  spelling and never launches the process (`a[<(printf x)]=v` keys
-  `<(printf x)`; `unset`/`test -v` address that literal key). Command
+  `>(...)` re-lexed from a subscript never launches — its FRAME becomes
+  literal while its BODY re-enters the same one keying expansion
+  (`subscript.py#SubscriptEvaluator._literalize_procsub_frames`): bash keys
+  `a[<(printf x)]=v` as `<(printf x)`, keys `a[<(cat $y)]` with `y=Q` as
+  `<(cat Q)`, and `unset`/`test -v` address those keys. Command
   substitutions and backticks still EXECUTE in associative keys (bash).
   Read-time REJECTION of an invalid spelling is the parser's job
   (`parser/recursive_descent/support/syntax_templates.py#build_subscript_spec`).

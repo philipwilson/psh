@@ -833,8 +833,10 @@ def test_element_head_requires_adjacent_operator():
 
 def test_procsub_in_subscript_keys_literal_spelling():
     """HIGH-4 FLIPPED (2.3), identity half: an unquoted `<(...)` spelling in
-    an associative subscript is the LITERAL key — bash never runs it (psh
-    formerly executed it at keying time and keyed /dev/fd/N)."""
+    an associative subscript never RUNS — its frame is literal key text while
+    its body expands like any word ($-forms/cmdsubs/quote removal; nested
+    frames stay literal). psh formerly executed the procsub at keying time
+    and keyed /dev/fd/N."""
     for cmd in (
         'declare -A a; a[<(printf x)]=v; declare -p a',
         'declare -A a; a[x<(y)]=v; declare -p a',            # mixed spelling
@@ -842,6 +844,15 @@ def test_procsub_in_subscript_keys_literal_spelling():
         "declare -A a; a['<(printf x)']=v; unset -v 'a[<(printf x)]'; declare -p a",
         "declare -A a; a['<(printf x)']=v; test -v 'a[<(printf x)]'; echo rc=$?",
         'declare -A a; a["<(printf x)"]=v; declare -p a',    # quoted spelling
+        # Frame literal, BODY expands (bash): $-forms/cmdsubs/quotes inside
+        # the spelling behave as in any word; nested frames stay literal.
+        'declare -A a; a[\'<(cat )\']=v; echo "read=${a[<(cat $y)]}"',
+        'declare -A a; y=Q; a[\'<(cat Q)\']=v; echo "read=${a[<(cat $y)]}"',
+        "declare -A a; a['<(cat )']=v; test -v 'a[<(cat $y)]'; echo rc=$?",
+        "declare -A a; a['<(cat )']=v; unset -v 'a[<(cat $y)]'; declare -p a",
+        'declare -A a; a[\'<(x q)\']=v; echo "read=${a[<(x $(echo q))]}"',
+        'declare -A a; a[\'<(cat q)\']=v; echo "read=${a[<(cat \'q\')]}"',
+        'declare -A a; a[\'<(a <(b))\']=v; echo "read=${a[<(a <(b))]}"',
     ):
         p, b = _both(cmd)
         assert p.stdout == b.stdout and p.returncode == b.returncode, (cmd, p, b)
@@ -991,6 +1002,28 @@ def test_divergence_dq_ansi_bracket_read():
         assert 'bad substitution' in b.stderr or 'no closing' in b.stderr
         assert p.returncode == 0 and p.stdout == key_probe  # psh: round-trips
         assert _psh_comb(cmd).stdout == key_probe
+
+
+def test_divergence_lexer_splits_quoted_space_subscript():
+    """2.3-discovered CARRY (MEDIUM-4's LEXER half — out of slot 2.3's
+    boundary, ruled a ceremony carry row): psh's LEXER splits an element
+    word at a SPACE that follows a QUOTED section inside the brackets —
+    `a['x=1'a b+=]=v` tokenizes as TWO words, so psh runs a command
+    (`a['x=1'a: command not found`, rc 127) where bash keeps ONE word and
+    keys `x=1a b+=`. The unquoted form (`arr[key with space]=v`) stays one
+    word and works in both. Pre-existing and base-identical at 4c319a04
+    (slot-2.3 ledger, RESULTS-tip-genfuzz.txt family 3); flips when the
+    lexer-extent carry is closed."""
+    cmd = "declare -A a; a['x=1'a b+=]=v; echo rc=$?; declare -p a"
+    p, b = _both(cmd)
+    assert b.stdout == 'rc=0\ndeclare -A a=(["x=1a b+="]="v" )\n'  # bash keys it
+    assert p.stdout == 'rc=127\ndeclare -A a=()\n'    # psh: split -> command
+    assert 'command not found' in p.stderr
+    assert _psh_comb(cmd).stdout == p.stdout            # both parsers (lexer-level)
+    # Control: unquoted spaces inside brackets stay ONE word in both shells.
+    ok = 'declare -A a; a[key with space]=v; declare -p a'
+    po, bo = _both(ok)
+    assert po.stdout == bo.stdout == 'declare -A a=(["key with space"]="v" )\n'
 
 
 def test_divergence_unlexable_subscript_typed_error():

@@ -113,25 +113,6 @@ _EMPTY_IS_NO_TARGET = frozenset({SubscriptUse.TEST_V, SubscriptUse.UNSET})
 _QUIET_SYNTAX_USES = frozenset({SubscriptUse.TEST_V, SubscriptUse.UNSET})
 
 
-def _procsub_spellings_literal(parts: 'List[WordPart]') -> 'List[WordPart]':
-    """Replace process-substitution parts with their literal source spelling.
-
-    The subscript-keying identity rule (HIGH-4): bash treats ``<(...)`` /
-    ``>(...)`` inside a subscript as literal KEY TEXT — the substitution
-    never runs (no /dev/fd path, no side effects) and the spelling itself is
-    the key (``str()`` of the node reconstructs it exactly: direction char +
-    ``(`` + the verbatim body + ``)``). Quoted spellings never re-lex to
-    procsub parts, so this touches exactly the unquoted case bash keys
-    literally."""
-    return [
-        LiteralPart(str(p.expansion), quoted=False, quote_char=None)
-        if isinstance(p, ExpansionPart) and isinstance(p.expansion,
-                                                       ProcessSubstitution)
-        else p
-        for p in parts
-    ]
-
-
 class SubscriptEvaluator:
     """One interpreter for array subscripts (indexed arithmetic / associative key).
 
@@ -167,12 +148,13 @@ class SubscriptEvaluator:
           STRING token whose expansion parts need ``token.quote_type`` to
           decompose — passed exactly as :meth:`parse_argument_as_word` does.
 
-        A process-substitution SPELLING becomes a LITERAL part carrying its
-        exact source (``<(printf x)``), never an executable expansion — bash
-        keys the spelling and runs nothing (HIGH-4; ``a[<(printf x)]=v`` keys
-        ``<(printf x)``, and ``a[<(x)]`` never launches ``x``). Command
-        substitutions and backticks DO stay executable (bash runs them in an
-        associative key).
+        A process-substitution SPELLING never becomes an executable
+        expansion — its frame turns literal while its body keeps expanding
+        (:meth:`_literalize_procsub_frames`): ``a[<(printf x)]=v`` keys
+        ``<(printf x)`` and never launches anything, while ``a[<(cat $y)]``
+        keys ``<(cat Q)`` when ``y=Q`` (HIGH-4, bash). Command substitutions
+        and backticks DO stay executable (bash runs them in an associative
+        key).
 
         Un-lexable raw raises :class:`SubscriptSyntaxError` — the typed
         variant of the former broad-``except`` literal degradation (only the
@@ -204,11 +186,40 @@ class SubscriptEvaluator:
                 # An unclosed substitution spelling (``$(``, ``<(``) fails the
                 # builder's own nested validation — same typed user error.
                 raise SubscriptSyntaxError(raw) from e
-            parts.extend(_procsub_spellings_literal(word.parts))
+            parts.extend(self._literalize_procsub_frames(word.parts))
             pos = getattr(token, 'end_position', start) or start
         if pos < len(raw):
             parts.append(LiteralPart(raw[pos:], quoted=False, quote_char=None))
         return Word(parts=parts)
+
+    def _literalize_procsub_frames(
+            self, parts: 'List[WordPart]') -> 'List[WordPart]':
+        """Keep procsub FRAMES literal while their bodies expand normally.
+
+        The subscript-keying identity rule (HIGH-4, bash 5.2 probe-verified):
+        an unquoted ``<(...)`` / ``>(...)`` in a subscript never RUNS (no
+        /dev/fd path, no side effects) — the spelling is key text — but the
+        BODY still undergoes the one keying expansion like any other word
+        text: ``a[<(cat $y)]`` with ``y=Q`` keys ``<(cat Q)``, ``$()`` inside
+        the body executes, quotes remove, and a NESTED frame stays literal
+        (``<(a <(b))`` keys itself). So the direction char and parens become
+        unquoted literal parts and the body re-enters the re-lex bridge
+        (recursion literalizes nested frames the same way). Quoted spellings
+        never re-lex to procsub parts, so this touches exactly the unquoted
+        case."""
+        out: 'List[WordPart]' = []
+        for p in parts:
+            if (isinstance(p, ExpansionPart)
+                    and isinstance(p.expansion, ProcessSubstitution)):
+                ps = p.expansion
+                frame = '<' if ps.direction == 'in' else '>'
+                out.append(LiteralPart(frame + '(', quoted=False,
+                                       quote_char=None))
+                out.extend(self.word_from_text(ps.source).parts)
+                out.append(LiteralPart(')', quoted=False, quote_char=None))
+            else:
+                out.append(p)
+        return out
 
     # -- The two interpretations ---------------------------------------------
     def associative_key(self, raw: str, *, quiet: bool = False) -> str:
