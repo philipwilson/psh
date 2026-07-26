@@ -31,7 +31,7 @@ interpretations are:
 Callers resolve the target's kind and pass it in; the service never re-decides.
 """
 import enum
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, Iterator, List, Union
 
 from ..ast_nodes.words import CommandSubstitution, ExpansionPart, LiteralPart, Word, WordPart
 from ..core import arith_assignment_discard
@@ -156,7 +156,7 @@ def _skip_quoted_run(text: str, i: int) -> 'int | None':
     return None
 
 
-def _procsub_segments(raw: str):
+def _procsub_segments(raw: str) -> 'Iterator[tuple[str, int, int]]':
     """Yield ``(kind, start, end)`` runs of ``raw``: ``'procsub'`` for each
     UNQUOTED ``<(``/``>(`` spelling (extent via the lexer's grammar-aware
     scanner; an unclosed frame runs to end-of-text), ``'text'`` between.
