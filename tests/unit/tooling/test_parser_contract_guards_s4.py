@@ -152,7 +152,7 @@ def test_only_rd_finally_is_the_balanced_nesting_counter():
     assert "nesting_depth" in snippet
 
 
-# === Guard 7: ParseInputs has exactly two sanctioned construction sites ===
+# === Guard 7: ParseInputs has a fixed set of sanctioned construction sites ===
 
 def test_parse_inputs_construction_sites():
     sites = []
@@ -162,11 +162,19 @@ def test_parse_inputs_construction_sites():
             continue  # the definition module (its docstring names the type)
         for _ in re.finditer(r"\bParseInputs\(", py.read_text()):
             sites.append(rel)
-    # Sole constructors: the RD ParserContext (funnel for the RD parser) and the
-    # combinator shell parser's per-call inputs. Any third site is drift.
+    # ParseInputs is the caller context threaded through the ONE parse entry
+    # (parser/__init__.py#parse_with_inputs, remediation HIGH-5). The sanctioned
+    # constructors are: the RD ParserContext (the RD parser's internal funnel);
+    # the combinator shell parser's per-call inputs (its parse_with_heredocs
+    # adapter); the public parse-API adapters (create_parser / parse_with_heredocs
+    # bundle their caller args into a ParseInputs for the one entry); and the
+    # shell's parse dispatch (scripting/lex_parse.py bundles the live parse
+    # context into a ParseInputs). Any OTHER site is drift.
     assert set(sites) == {
         "parser/recursive_descent/context.py",
         "parser/combinators/parser.py",
+        "parser/__init__.py",
+        "scripting/lex_parse.py",
     }, sites
 
 

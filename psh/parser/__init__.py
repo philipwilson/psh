@@ -24,12 +24,12 @@ from .recursive_descent.helpers import (
 
 # Import from final locations
 from .recursive_descent.parser import Parser
-from .recursive_descent.support.utils import parse_with_heredocs as utils_parse_with_heredocs
 
 # Public API
 __all__ = [
     # Main parsing interface
-    'parse', 'parse_with_heredocs', 'create_parser', 'Parser',
+    'parse', 'parse_with_inputs', 'parse_with_heredocs', 'create_parser',
+    'Parser',
     # Configuration
     'ParserConfig',
     # Immutable inputs / mutable state (campaign S4)
@@ -87,9 +87,39 @@ def _use_combinator(active_parser: str) -> bool:
         "'recursive_descent'/'rd' or 'combinator'")
 
 
+def parse_with_inputs(tokens, inputs: ParseInputs, active_parser='rd'):
+    """THE one parse entry: dispatch *tokens* to the selected parser, threading
+    the whole ``ParseInputs`` through BOTH implementations.
+
+    ``inputs`` is the frozen caller context — ``source_text`` (error caret),
+    ``line_offset`` (absolute nested-fragment line numbers), ``lexer_options``
+    (so a nested substitution body re-lexes with the same option-sensitive
+    lexing, notably extglob), ``heredocs`` (the collected ``<<``/``<<-`` bodies),
+    and ``config``. Every field reaches whichever parser runs, so neither path
+    loses context on the nested-substitution re-lex or the depth budget
+    (remediation HIGH-5: the combinator no longer discards source/options).
+
+    ``active_parser`` selects ``'recursive_descent'``/``'rd'`` (default) or
+    ``'combinator'``; any other name raises ``ValueError``. Returns the
+    canonical ``Program``.
+    """
+    if _use_combinator(active_parser):
+        from .combinators.parser import ParserCombinatorShellParser
+
+        return ParserCombinatorShellParser(inputs.config).parse(tokens, inputs)
+    return Parser(tokens, config=inputs.config,
+                  source_text=inputs.source_text,
+                  line_offset=inputs.line_offset,
+                  heredocs=inputs.heredocs,
+                  lexer_options=inputs.lexer_options).parse()
+
+
 def parse_with_heredocs(tokens, heredocs, active_parser='rd',
                         lexer_options=None):
     """Parse tokens with collected heredocs using the selected implementation.
+
+    A thin adapter over :func:`parse_with_inputs`: the heredoc map and
+    ``lexer_options`` become a ``ParseInputs`` threaded into whichever parser.
 
     Args:
         tokens: Token stream (heredoc bodies absent; operator tokens carry
@@ -102,16 +132,28 @@ def parse_with_heredocs(tokens, heredocs, active_parser='rd',
             substitution body is re-lexed with the same option-sensitive
             lexing (extglob) as the outer command.
     """
-    if _use_combinator(active_parser):
-        from .combinators.parser import ParserCombinatorShellParser
+    inputs = ParseInputs(lexer_options=lexer_options, heredocs=heredocs)
+    return parse_with_inputs(tokens, inputs, active_parser)
 
-        # Thread lexer_options into the combinator too (campaign S4 handoff 3):
-        # its syntax templates build with the same option-sensitive budget as
-        # the recursive-descent path, rather than being dropped here.
-        return ParserCombinatorShellParser(ParserConfig()).parse_with_heredocs(
-            tokens, heredocs, lexer_options=lexer_options)
-    return utils_parse_with_heredocs(tokens, heredocs,
-                                     lexer_options=lexer_options)
+
+class _DeferredParse:
+    """A parser handle whose ``.parse()`` runs the selected parser once.
+
+    :func:`create_parser` returns this so a caller can build a parser now and
+    parse later (matching the recursive-descent ``Parser`` object shape). It is
+    uniform for both implementations and defers to :func:`parse_with_inputs`, so
+    the combinator path carries the SAME bound ``ParseInputs`` as recursive
+    descent — no caller context is dropped (remediation HIGH-5, which the old
+    combinator-only facade wrapper caused).
+    """
+
+    def __init__(self, tokens, inputs: ParseInputs, active_parser: str):
+        self.tokens = tokens
+        self._inputs = inputs
+        self._active_parser = active_parser
+
+    def parse(self):
+        return parse_with_inputs(self.tokens, self._inputs, self._active_parser)
 
 
 def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0,
@@ -119,7 +161,9 @@ def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0,
     """Create a parser configured for the selected implementation.
 
     Chooses between the recursive descent parser and the combinator parser
-    based on the ``active_parser`` argument.
+    based on the ``active_parser`` argument. Returns a deferred handle whose
+    ``.parse()`` threads the full caller context (``source_text`` /
+    ``line_offset`` / ``lexer_options``) into whichever parser runs.
 
     Args:
         tokens: List of tokens to parse.
@@ -135,22 +179,9 @@ def create_parser(tokens, active_parser='rd', source_text=None, line_offset=0,
     Returns:
         Object with a ``.parse()`` method that returns an AST.
     """
-    config = ParserConfig()
-
-    if _use_combinator(active_parser):
-        from .combinators.parser import ParserCombinatorShellParser
-
-        pc = ParserCombinatorShellParser(config)
-
-        class _ParserWrapper:
-            def __init__(self, parser, tokens):
-                self._parser = parser
-                self.tokens = tokens
-
-            def parse(self):
-                return self._parser.parse(self.tokens)
-
-        return _ParserWrapper(pc, tokens)
-
-    return Parser(tokens, config=config, source_text=source_text,
-                  line_offset=line_offset, lexer_options=lexer_options)
+    # Validate the parser name eagerly (create-time), matching the old
+    # behavior where an unknown name raised before .parse() was called.
+    _use_combinator(active_parser)
+    inputs = ParseInputs(source_text=source_text, line_offset=line_offset,
+                         lexer_options=lexer_options)
+    return _DeferredParse(tokens, inputs, active_parser)
