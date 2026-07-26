@@ -7,12 +7,17 @@ line_offset=0 / source_text=None). So a parse error in a nested substitution of
 a heredoc-bearing command now reports the ABSOLUTE source line — matching bash —
 instead of the fragment-relative line 1.
 
-RED AT BASE: at db6dfb13 the probe below reported ``line 1``; at tip it reports
-``line 3`` (= bash 5.2.26). The base number was independently replayed by
-verification round-1 (T1) and is re-derived here in process by
-``test_old_no_offset_path_reported_line_1`` (calling the entry with the old
-line_offset=0 budget still yields line 1), so these pins encode the NEW correct
-numbers and would fail against the old behavior.
+RED AT BASE (genuine db6dfb13 probes, throwaway base worktree, all three modes):
+  * pad + heredoc (erroring command on line 3): base ``line 1`` → tip ``line 3``
+    = bash 5.2.26 ``line 3``.
+  * function defined after a pad (heredoc body command on line 4): base
+    ``line 2`` → tip ``line 4`` = bash ``line 4``.
+  * no-pad control (command on line 1): base ``line 1`` = tip ``line 1`` (no
+    offset to apply, no delta).
+So these pins encode the NEW (correct, bash-matching) numbers and were RED at
+base. Corroborated by verification round-1 T1's independent replay and by the
+in-process ``test_old_no_offset_path_reported_line_1`` witness (the old
+line_offset=0 budget still yields the fragment-relative line 1).
 """
 
 import subprocess
@@ -30,8 +35,12 @@ _HEREDOC_FRAGMENT = "echo $(if) <<EOF\nbody\nEOF\n"
 # Two-line pad in front, so the erroring command sits on absolute line 3.
 _PAD_HEREDOC_SCRIPT = ": p1\n: p2\n" + _HEREDOC_FRAGMENT
 
-# Function body: the heredoc-bearing command with the nested error on line 3.
-_FUNC_HEREDOC_SCRIPT = "f() {\n  : pad\n  echo $(if) <<EOF\nbody\nEOF\n}\n"
+# Function DEFINED after a two-line pad: the function is command 3 (start line 3),
+# its heredoc-bearing body command errors on absolute line 4. This is the shape
+# that carries the delta — at base it reported line 2, at tip line 4 (= bash). (A
+# function defined at line 1 does NOT show the delta: its whole body is one
+# command buffer, so the error line is already absolute at base.)
+_FUNC_HEREDOC_SCRIPT = ": p1\n: p2\nf() {\n  echo $(if) <<EOF\nbody\nEOF\n}\n"
 
 
 def _err_line(line_offset, source_text):
@@ -83,9 +92,11 @@ def test_pad_heredoc_absolute_line_all_modes(mode, tmp_path):
 
 @pytest.mark.parametrize("mode", ["file", "-c", "stdin"])
 def test_function_body_heredoc_absolute_line_all_modes(mode, tmp_path):
+    # Function defined at line 3, heredoc body command errors on line 4.
+    # Red at base: base reported line 2 (genuine base-worktree probe), tip line 4.
     stderr = _run(mode, _FUNC_HEREDOC_SCRIPT, tmp_path)
-    assert ":3:" in stderr
-    assert "line 3" in stderr
+    assert ":4:" in stderr
+    assert "line 4" in stderr
 
 
 def test_no_pad_control_is_line_1(tmp_path):
