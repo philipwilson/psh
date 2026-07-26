@@ -120,7 +120,7 @@ def _render_statement_list(node: 'StatementList') -> Optional[str]:
 
 
 def _render_simple(node: SimpleCommand) -> Optional[str]:
-    if getattr(node, 'array_assignments', None):
+    if node.array_assignments:
         return None
     words = [str(w) for w in node.words]
     if not words:
