@@ -32,9 +32,8 @@ from ..ast_nodes import (
     Word,
 )
 from .analysis_helpers import RedirectTraversalMixin
-from .base import ASTVisitor
 from .constants import SHELL_BUILTINS, is_assignment
-from .traversal import iter_child_nodes, visit_children
+from .traversal import TotalTraversalVisitor, iter_child_nodes
 from .word_analysis import iter_variable_references
 
 
@@ -127,7 +126,7 @@ class CodeMetrics:
         }
 
 
-class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
+class MetricsVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
     """
     Collect code metrics from shell script AST.
 
@@ -137,6 +136,9 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     - Complexity metrics (cyclomatic, nesting depth)
     - Variable and function usage
     - Advanced feature usage
+
+    Traversal is framework-owned (``TotalTraversalVisitor``), so commands
+    inside substitution bodies (including template subs) are counted too.
     """
 
     def __init__(self):
@@ -146,8 +148,8 @@ class MetricsVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self.current_nesting_depth = 0
         self.current_function = None
 
-    # Program / StatementList carry no metrics of their own; the
-    # generic_visit -> visit_children default descends into their children.
+    # Program / StatementList carry no metrics of their own; the framework
+    # sweep descends into their children.
 
     def visit_Redirect(self, node: Redirect) -> None:
         """Count a redirection (and here-documents)."""
@@ -577,7 +579,3 @@ Top Commands:
         for cmd, count in top_cmds:
             lines.append(f"  {cmd:<20} {count:>6}")
         return '\n'.join(lines) if lines else "  (none)"
-
-    def generic_visit(self, node: ASTNode) -> None:
-        """Descend into child nodes for unhandled node types."""
-        visit_children(self, node)

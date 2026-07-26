@@ -1,0 +1,1 @@
+>/tmp/some-file

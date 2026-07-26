@@ -1,9 +1,11 @@
 """Analysis visitors descend into modern command/process substitution bodies.
 
-Now that ``$(...)``/``<(...)``/``>(...)`` carry a parsed ``Program`` (nested-
-program campaign), the security and lint analyses run on the commands *inside*
-substitutions, not just the outer command. Backtick bodies carry no program and
-are not descended into.
+``$(...)``/``<(...)``/``>(...)`` carry a parsed ``Program``, and the framework
+sweep (``TotalTraversalVisitor``, remediation 2.1) walks it, so security and
+lint analyses run on the commands *inside* substitutions, not just the outer
+command. Backtick bodies carry no program (bash defers backtick parsing);
+their body still cannot be descended into, and the security mode reports the
+opaque region instead of making a clean claim over it.
 """
 
 from psh.lexer import tokenize
@@ -35,10 +37,14 @@ class TestSecurityDescendsIntoSubstitutions:
         nested = _security_issue_types('cat <(eval "$x")')
         assert nested, "eval inside <(...) should be analysed"
 
-    def test_backtick_body_not_descended(self):
-        # Backticks carry program=None, so their body is not analysed here.
+    def test_backtick_body_flagged_as_unanalyzed_region(self):
+        # Backticks carry program=None BY DESIGN (bash defers backtick
+        # parsing), so their body is still not analysed — but the security
+        # mode must not make a clean claim over that opaque executable
+        # region (remediation 2.1 / HIGH-2): it reports UNANALYZED_REGION,
+        # and no danger-class issue for the unseen inner eval.
         nested = _security_issue_types('echo `eval "$x"`')
-        assert nested == set()
+        assert nested == {'UNANALYZED_REGION'}
 
 
 class TestLinterDescendsIntoSubstitutions:

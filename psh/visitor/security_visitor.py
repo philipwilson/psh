@@ -7,28 +7,32 @@ dangerous patterns in shell scripts.
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..ast_nodes import (
     ArithmeticEvaluation,
     ASTNode,
+    BinaryTestExpression,
     CaseConditional,
+    CommandSubstitution,
     ForLoop,
     FunctionDef,
     IfConditional,
+    LiteralPart,
     Pipeline,
     Redirect,
     SimpleCommand,
+    UnaryTestExpression,
     WhileLoop,
+    Word,
 )
 from .analysis_helpers import RedirectTraversalMixin
-from .base import ASTVisitor
 from .constants import (
     DANGEROUS_COMMANDS,
     SENSITIVE_COMMANDS,
     is_world_writable_permission,
 )
-from .traversal import visit_children, visit_word_substitution_bodies
+from .traversal import TotalTraversalVisitor
 from .word_analysis import has_command_substitution
 
 # Arithmetic-injection shapes: a command substitution (``$(...)`` / backticks) or
@@ -51,6 +55,50 @@ def _arithmetic_injection_shape(expr: str) -> bool:
     )
 
 
+def _has_live_substitution_text(text: str) -> bool:
+    """True if *text* contains a ``$(`` command substitution or backtick that
+    PSH will execute when the operand is expanded.
+
+    *text* is POST-PARSE literal text, and the rule is psh's own: an opener
+    is LIVE unless the character immediately before it is a backslash. Every
+    row below is marker-probed (psh @ this tree vs bash 5.2.26, run from
+    byte-exact script files — ledger 2.1 §10/§14):
+
+    - bare ``$(...)`` / bare backtick: psh runs them — live.
+    - ``\\$(...)`` (one backslash survives the parse): psh does not run it —
+      escaped.
+    - ``\\\\$(...)`` (TWO backslashes survive, from a four-backslash source):
+      psh does not run it either — psh treats any immediately-preceding
+      backslash as escaping, so it is escaped here too. A pairwise
+      "skip two characters per backslash" scan got this wrong and FLAGGED it
+      (round-3 B11 over-flag: a false positive in a security mode, i.e.
+      cry-wolf). bash DOES run this spelling — carried divergence.
+    - escaped backtick: the parser DROPS the backslash, so the text holds a
+      bare backtick and psh runs it — live, matching psh (bash treats the
+      escaped spelling as literal — carried divergence).
+
+    A ``$((`` opener is arithmetic, not a command substitution, and is
+    skipped as such — but a ``$(cmd)`` nested INSIDE the arithmetic text is
+    still found by the continuing scan.
+    """
+    def escaped(index: int) -> bool:
+        return index > 0 and text[index - 1] == '\\'
+
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c == '`' and not escaped(i):
+            return True
+        if c == '$' and text[i + 1:i + 2] == '(' and not escaped(i):
+            if text[i + 2:i + 3] == '(':
+                i += 3  # $(( — arithmetic opener, keep scanning inside
+                continue
+            return True
+        i += 1
+    return False
+
+
 @dataclass
 class SecurityIssue:
     """Represents a security issue found in the AST."""
@@ -63,7 +111,7 @@ class SecurityIssue:
         return f"[{self.severity}] {self.issue_type}: {self.message}"
 
 
-class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
+class SecurityVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
     """
     Analyze AST for security vulnerabilities.
 
@@ -73,6 +121,15 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
     - World-writable file permissions
     - Unquoted variable expansions that could be exploited
     - Dangerous commands and patterns
+    - Executable regions the analysis cannot see into (unparsed backtick
+      bodies, expanding here-document bodies, flat-text ``[[ ]]`` operand
+      substitutions) — flagged rather than silently skipped, so an all-clear
+      summary is never claimed over unanalyzed code
+
+    Traversal is framework-owned (``TotalTraversalVisitor``): every declared
+    child edge — redirect targets, for/case subject words, substitution
+    bodies, syntax-template subs — is reached whether or not a handler
+    dispatches it.
     """
 
     def __init__(self):
@@ -163,12 +220,10 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                         node
                     ))
 
-        # Also check redirects on the command
+        # Also check redirects on the command (substitutions inside argument
+        # words are reached by the framework sweep — Word -> ExpansionPart ->
+        # CommandSubstitution -> program).
         self._visit_redirects(node)
-
-        # Descend into any command/process substitutions in the arguments,
-        # so `$(eval "$x")` and friends are analysed inside substitutions too.
-        visit_word_substitution_bodies(self, node)
 
     def visit_Pipeline(self, node: Pipeline) -> None:
         """Analyze pipelines for security issues."""
@@ -200,6 +255,96 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                 f"Writing to sensitive file: {node.target}",
                 node
             ))
+
+        # An UNQUOTED here-document body expands at execution time, so an
+        # embedded `$(...)`/backtick in it RUNS — but the body is a raw string
+        # (no parsed AST until the typed heredoc body lands), so its commands
+        # cannot be analyzed here. Flag the opaque executable region rather
+        # than silently passing it (no clean claim over unanalyzed code).
+        body = node.heredoc_content
+        if (node.type in ('<<', '<<-') and body and not node.heredoc_quoted
+                and ('$(' in body or '`' in body)):
+            self.issues.append(SecurityIssue(
+                'LOW',
+                'UNANALYZED_REGION',
+                'Unquoted here-document embeds a substitution that executes '
+                'but cannot be statically analyzed',
+                node
+            ))
+
+    def visit_CommandSubstitution(self, node: CommandSubstitution) -> None:
+        """Flag a backtick substitution's body as an unanalyzed region.
+
+        A legacy backtick carries ``program=None`` BY DESIGN (bash defers
+        backtick parsing, so psh must not read-time-parse it either — see
+        ``ast_nodes.words.CommandSubstitution``). Its body is therefore
+        executable source this analysis cannot see into; report that instead
+        of making a clean claim over it. Modern ``$(...)`` needs nothing here:
+        its parsed ``program`` is a declared child the framework sweep visits.
+        """
+        if node.backtick_style and node.program is None:
+            self.issues.append(SecurityIssue(
+                'LOW',
+                'UNANALYZED_REGION',
+                'Backtick substitution body is not statically analyzed '
+                '(deferred parse); prefer $(...) for analyzable code',
+                node
+            ))
+
+    def visit_BinaryTestExpression(self, node: BinaryTestExpression) -> None:
+        """Flag unparsed substitutions in ``[[ ]]`` binary operands."""
+        self._flag_unparsed_operand_substitution(node.left_word, node)
+        self._flag_unparsed_operand_substitution(node.right_word, node)
+
+    def visit_UnaryTestExpression(self, node: UnaryTestExpression) -> None:
+        """Flag unparsed substitutions in ``[[ ]]`` unary operands."""
+        self._flag_unparsed_operand_substitution(node.operand_word, node)
+
+    def _flag_unparsed_operand_substitution(self, word: Optional[Word],
+                                            node: ASTNode) -> None:
+        """Report a live substitution the parser left as flat operand TEXT.
+
+        A double-quoted ``[[ ]]`` operand parses to a Word whose quoted
+        segment is a bare LiteralPart — no ExpansionPart, so the substitution
+        body exists nowhere in the tree for the sweep to reach, yet
+        ``[[ "$(cmd)" == x ]]`` RUNS the command at evaluation (bash 5.2.26
+        and psh both, probed 2026-07-26). Until the parser builds real
+        expansion parts for these operands, the region is executable-but-
+        opaque: flag it rather than staying silent (the same no-clean-claim
+        policy as backtick bodies and expanding heredocs).
+
+        DOMAIN (what this guard guarantees, not what any probe set covered):
+        it inspects the flat ``LiteralPart`` segments of a ``[[ ]]`` operand
+        word. Within that domain the flag tracks whether PSH executes the
+        region — decided per part from the quote context plus the escape
+        rules in :func:`_has_live_substitution_text`:
+
+        * unquoted and double-quoted parts — psh expands them: live
+          substitutions flag.
+        * ``$'...'`` (ANSI-C) parts — psh ALSO expands substitutions inside
+          them (bash does not; carried divergence), so they are IN the
+          domain and flag. Excluding them silently was a false clean claim
+          over code psh runs (round-3 B11).
+        * ``'...'`` (single-quoted) parts — no shell expands them; inert
+          data, never flagged.
+
+        Regions outside the domain (an operand that parses to real expansion
+        parts) are analyzed structurally by the traversal sweep instead.
+        """
+        if word is None:
+            return
+        for part in word.parts:
+            if (isinstance(part, LiteralPart)
+                    and part.quote_char != "'"
+                    and _has_live_substitution_text(part.text)):
+                self.issues.append(SecurityIssue(
+                    'LOW',
+                    'UNANALYZED_REGION',
+                    'Test-expression operand embeds a substitution that '
+                    'executes but cannot be statically analyzed',
+                    node
+                ))
+                return
 
     def visit_FunctionDef(self, node: FunctionDef) -> None:
         """Analyze function definitions."""
@@ -241,9 +386,9 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
         self._visit_redirects(node)
 
     # Program / StatementList / AndOrList need no explicit handler: the
-    # generic_visit -> visit_children default descends into exactly their
-    # ASTNode children (statements / pipelines). Only nodes that add
-    # per-node analysis or carry redirects keep an explicit method below.
+    # framework sweep descends into exactly their ASTNode children
+    # (statements / pipelines). Only nodes that add per-node analysis or
+    # carry redirects keep an explicit method below.
     def visit_IfConditional(self, node: IfConditional) -> None:
         self.visit(node.condition)
         self.visit(node.then_part)
@@ -335,7 +480,3 @@ class SecurityVisitor(RedirectTraversalMixin, ASTVisitor[None]):
                 lines.append("")
 
         return "\n".join(lines)
-
-    def generic_visit(self, node: ASTNode) -> None:
-        """Descend into child nodes for unhandled node types."""
-        visit_children(self, node)

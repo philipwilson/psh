@@ -83,19 +83,40 @@ def _parse_metrics(text):
 def test_metrics_match_readme():
     """`--metrics examples/fibonacci.sh` must match the numbers in README.md.
 
-    These are the values printed in the README's "Example Output" block; if
-    fibonacci.sh changes, update both the README block and this test.
+    These are the values printed in the README's "Example Output" block; the
+    test's job is to police that block, so the two must move TOGETHER: if
+    this test's numbers change (fibonacci.sh edited, or metrics semantics
+    deliberately changed), the README block must be updated to match in the
+    SAME release. KNOWN-STALE window (remediation 2.1): traversal totality
+    made metrics count substitution-body commands (18 -> 22 etc.); README is
+    integrator-owned during the campaign and gets the matching edit at the
+    v0.756.0 ceremony — if you are reading this after that release and the
+    README still says 18, that reconciliation was missed: fix the README,
+    not this test.
     """
     result = _run("--metrics", "examples/fibonacci.sh")
     assert result.returncode == 0, result.stderr
     m = _parse_metrics(result.stdout)
-    assert m.get("Total Commands") == 18
-    assert m.get("Unique Commands") == 8
-    assert m.get("Functions Defined") == 2
-    assert m.get("Loops") == 3
-    assert m.get("Conditionals") == 1
-    assert m.get("Cyclomatic Complexity") == 5
-    assert m.get("Max Nesting Depth") == 2
+    # Counts include the commands inside $(...) substitution bodies —
+    # including the two inside $(( ... )) arithmetic (template subs) — since
+    # analysis traversal became total (remediation 2.1 / HIGH-2).
+    expected = {
+        "Total Commands": 22,
+        "Unique Commands": 10,
+        "Functions Defined": 2,
+        "Loops": 3,
+        "Conditionals": 1,
+        "Cyclomatic Complexity": 5,
+        "Max Nesting Depth": 2,
+    }
+    mismatched = {k: (m.get(k), want) for k, want in expected.items()
+                  if m.get(k) != want}
+    assert not mismatched, (
+        f"--metrics fibonacci.sh drifted from the pinned values: "
+        f"{mismatched} (got, want). If the new numbers are intended, update "
+        "BOTH this table and the README 'Example Output' block in the same "
+        "change — this test exists to keep them in lockstep."
+    )
 
 
 def test_security_demo_is_flagged():

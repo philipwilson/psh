@@ -41,8 +41,14 @@ def _offset_line_numbers(node: ASTNode, delta: int) -> None:
     (``visitor.traversal.walk_ast``) rather than a private field-reflection
     walk, so it reaches exactly the child-bearing fields every other pass
     reaches — including ``IfConditional.elif_parts`` (a list of StatementList
-    tuples) and substitution bodies — and never descends into a non-``ASTNode``
-    carrier (the S3 syntax templates). ``.line`` is a bare class attribute, not
+    tuples), substitution bodies, and the parsed substitutions inside S3
+    template carriers (declared ``TEMPLATE_SUBS`` since remediation 2.1).
+    Inside a template-sub program only SOME nodes carry line stamps
+    (AndOrList/Pipeline; the word builder leaves the rest unstamped) — the
+    stamped ones are offset with the rest of the buffer, and nothing consumes
+    the unstamped Nones (execution re-parses template text at runtime, so
+    ``$LINENO`` there comes from the fresh runtime parse; pinned in
+    tests/unit/visitor/test_walk_ast_schema.py). ``.line`` is a bare class attribute, not
     a schema field, so this wrapper mutates it explicitly per node before
     descending; the per-node write is order-independent. See ``ASTNode.line``.
     """

@@ -11,8 +11,12 @@ offenders prove the mechanism fires.
 It also pins:
 - the second structural walker (``parser.visualization.node_fields``) agrees with
   the schema on which fields are AST children (no drifting second authority);
-- the S3 syntax templates remain non-``ASTNode`` carriers, so ``walk_ast`` never
-  descends into them (the S5 template-descent decision, enforced by construction);
+- the S3 syntax templates remain non-``ASTNode`` carriers, and every
+  template-carrier field is declared with ``ChildShape.TEMPLATE_SUBS`` so
+  ``walk_ast`` enumerates the parsed substitutions the template holds
+  (``subs[*].expansion``) — reappraisal #22 HIGH-2 overturned the earlier
+  never-descend exception, and the reflection oracle derives the shape from the
+  field's annotation so a new template carrier cannot escape the schema;
 - **campaign Q2 (§13, "visitor recursion outside walk_ast"):** no production
   module re-implements generic AST-tree descent by reflecting over a node's
   dataclass fields — the anti-pattern #20 named (the elif-skip class of bug). The
@@ -32,7 +36,7 @@ import typing
 import pytest
 
 import psh.ast_nodes as ast_mod
-from psh.ast_nodes import ASTNode
+from psh.ast_nodes import ASTNode, SyntaxTemplate
 from psh.visitor.traversal import AstChildSchema, ChildShape
 
 # The flat psh.ast_nodes namespace, for resolving ForwardRef('Word') etc.
@@ -53,13 +57,20 @@ def _is_astnode_type(t) -> bool:
     return isinstance(t, type) and issubclass(t, ASTNode)
 
 
+def _is_template_type(t) -> bool:
+    t = _resolve(t)
+    return isinstance(t, type) and issubclass(t, SyntaxTemplate)
+
+
 def reflect_child_shape(ftype):
     """The child container shape a field's resolved annotation implies, or None.
 
     NODE for an (optional) ASTNode, NODE_LIST for List[ASTNode], NODE_TUPLE_LIST
-    for List[Tuple[..., ASTNode, ...]]; None for everything else — crucially,
-    the S3 template carriers resolve to non-ASTNode classes and therefore return
-    None (they are never children).
+    for List[Tuple[..., ASTNode, ...]], TEMPLATE_SUBS for an (optional) S3
+    syntax template — a non-ASTNode carrier whose ``subs[*].expansion`` nodes
+    ARE structural children (the read-time-parsed substitutions inside
+    parameter-operand, arithmetic, and subscript regions); None for everything
+    else.
     """
     origin = typing.get_origin(ftype)
     if origin is typing.Union or isinstance(ftype, types.UnionType):
@@ -81,6 +92,8 @@ def reflect_child_shape(ftype):
         return None
     if _is_astnode_type(ftype):
         return ChildShape.NODE
+    if _is_template_type(ftype):
+        return ChildShape.TEMPLATE_SUBS
     return None
 
 
@@ -182,14 +195,76 @@ def test_offender_stale_declaration_is_detected():
     )
 
 
+# --- Annotation resolvability (closes the unresolvable-forward-ref hole) -----
+#
+# The reflection oracle resolves string/ForwardRef annotations through the
+# psh.ast_nodes namespace; a name that does NOT resolve came back None and was
+# silently treated as "not a child" — so a child-bearing field annotated with
+# an out-of-namespace forward ref could slip past the whole drift-lock
+# (fix-round n16). This guard makes an unresolvable leaf itself a failure.
+
+def _unresolvable_annotation_leaves(ftype):
+    """Every string/ForwardRef leaf in *ftype* that does not resolve."""
+    leaves = []
+    if isinstance(ftype, (str, typing.ForwardRef)):
+        if _resolve(ftype) is None:
+            name = ftype if isinstance(ftype, str) else ftype.__forward_arg__
+            leaves.append(name)
+        return leaves
+    for arg in typing.get_args(ftype):
+        leaves.extend(_unresolvable_annotation_leaves(arg))
+    return leaves
+
+
+@pytest.mark.parametrize("cls", CONCRETE, ids=lambda c: c.__name__)
+def test_every_field_annotation_resolves(cls):
+    """No concrete node field carries an annotation the reflection oracle
+    cannot resolve — an unresolvable name can hide a child edge."""
+    bad = {}
+    for f in dataclasses.fields(cls):
+        leaves = _unresolvable_annotation_leaves(f.type)
+        if leaves:
+            bad[f.name] = leaves
+    assert not bad, (
+        f"{cls.__name__} has field annotations the ast_nodes namespace cannot "
+        f"resolve (the drift-lock would silently treat them as non-children): "
+        f"{bad}"
+    )
+
+
+def test_offender_unresolvable_forward_ref_is_detected():
+    """SYNTHETIC OFFENDER (n16): a child-bearing field annotated with an
+    out-of-namespace forward ref evades reflect_child_shape (returns None) —
+    the resolvability guard is what catches it."""
+    @dataclasses.dataclass
+    class _OffenderUnresolvableRef(ASTNode):
+        child: typing.Optional['_NotInAstNodesNamespace'] = None  # noqa: F821
+
+    # The hole, demonstrated: shape reflection sees no child here.
+    assert reflect_child_shape(
+        dataclasses.fields(_OffenderUnresolvableRef)[0].type) is None
+    # The guard closes it: the unresolvable leaf is flagged.
+    leaves = _unresolvable_annotation_leaves(
+        dataclasses.fields(_OffenderUnresolvableRef)[0].type)
+    assert leaves == ['_NotInAstNodesNamespace']
+
+
 # --- node_fields agreement (no drifting second authority) --------------------
 
 def test_node_fields_agrees_with_schema_on_ast_children():
     """The visualization walker (node_fields) must agree with the schema on which
-    fields are structural AST children — it is not a second authority."""
+    fields are structural AST children — it is not a second authority.
+
+    TEMPLATE_SUBS fields are excluded from this comparison: their VALUE is a
+    non-``ASTNode`` template carrier (node_fields rightly surfaces it as a
+    scalar), while the schema declares it because the template's ``subs``
+    hold structural children. The template-carrier completeness is guarded
+    separately (test_every_template_carrier_field_is_declared).
+    """
     from psh.parser.visualization.node_fields import node_fields
     for cls in CONCRETE:
-        declared_names = {name for name, _ in AstChildSchema[cls.__name__]}
+        declared_names = {name for name, shape in AstChildSchema[cls.__name__]
+                          if shape is not ChildShape.TEMPLATE_SUBS}
         # Build a representative instance whose every declared child field holds
         # a real ASTNode (scalar), an ASTNode list, or an ASTNode tuple-list, so
         # node_fields (which drops empty/None) surfaces exactly the child fields.
@@ -230,6 +305,8 @@ def _build_populated(cls):
         if f.name in decl:
             shape = decl[f.name]
             child = sentinel_redirect if f.name == 'redirects' else sentinel_word
+            if shape is ChildShape.TEMPLATE_SUBS:
+                continue  # non-ASTNode carrier; left at its None default
             if shape is ChildShape.NODE:
                 kwargs[f.name] = child
             elif shape is ChildShape.NODE_LIST:
@@ -256,13 +333,14 @@ def _benign_value(f):
     return ''
 
 
-# --- S5 template-descent decision (templates non-ASTNode, never walked) ------
+# --- Template subs are enumerated children (2.1 overturned the S5 exception) -
 
 def test_syntax_templates_are_not_astnodes():
-    """S3 syntax templates are NON-ASTNode carriers, so walk_ast never descends
-    into them (the S5 template-descent decision, enforced by construction). If a
-    template were made an ASTNode, the schema-vs-reflection drift-lock above
-    would immediately require its carrier fields to be declared children."""
+    """S3 syntax templates stay NON-ASTNode carriers (they are frozen value
+    types, not tree nodes) — but their parsed substitutions ARE structural
+    children, reached through the carrier field's TEMPLATE_SUBS declaration.
+    If a template were made an ASTNode, the schema-vs-reflection drift-lock
+    above would flag its carrier fields under the NODE shape instead."""
     from psh.ast_nodes import (
         ArithmeticTemplate,
         NestedSub,
@@ -273,21 +351,57 @@ def test_syntax_templates_are_not_astnodes():
     for tmpl in (SyntaxTemplate, WordTemplate, ArithmeticTemplate,
                  SubscriptSpec, NestedSub):
         assert not (isinstance(tmpl, type) and issubclass(tmpl, ASTNode)), (
-            f"{tmpl.__name__} must not be an ASTNode subclass (S5 decision)"
+            f"{tmpl.__name__} must not be an ASTNode subclass"
         )
 
 
-def test_no_template_carrier_field_is_a_declared_child():
-    """No node's template carrier (word_template / arith_template / *_template /
-    subscript_spec) is declared as a structural child."""
-    template_fields = {
-        'word_template', 'subscript_spec', 'arith_template',
-        'init_template', 'condition_template', 'update_template',
-    }
-    for name, fields in AstChildSchema.items():
-        declared = {fname for fname, _ in fields}
-        leaked = declared & template_fields
-        assert not leaked, f"{name} declares template field(s) as children: {leaked}"
+def test_every_template_carrier_field_is_declared():
+    """Every field whose annotation resolves to a SyntaxTemplate subclass must
+    be declared in the schema with the TEMPLATE_SUBS shape — the substitutions
+    a template carries (``subs[*].expansion``, e.g. the ``$()`` inside
+    ``${x:-...}`` / ``$((...))`` / ``a[...]``) are executable children no
+    analysis traversal may skip (reappraisal #22 HIGH-2)."""
+    for cls in CONCRETE:
+        declared = dict(AstChildSchema[cls.__name__])
+        for f in dataclasses.fields(cls):
+            if reflect_child_shape(f.type) is ChildShape.TEMPLATE_SUBS:
+                assert declared.get(f.name) is ChildShape.TEMPLATE_SUBS, (
+                    f"{cls.__name__}.{f.name} is a syntax-template carrier but "
+                    "is not declared TEMPLATE_SUBS in AstChildSchema"
+                )
+
+
+def test_walk_ast_yields_template_subs():
+    """walk_ast enumerates the parsed substitution nodes inside a template
+    carrier (the executable ``$()`` in a parameter-operand region)."""
+    from psh.ast_nodes import (
+        CommandSubstitution,
+        NestedSub,
+        ParameterExpansion,
+        Program,
+        WordTemplate,
+    )
+    from psh.visitor.traversal import walk_ast
+    sub = CommandSubstitution(program=Program(), source='rm x')
+    node = ParameterExpansion(
+        parameter='x', operator=':-', word='$(rm x)',
+        word_template=WordTemplate(text='$(rm x)',
+                                   subs=(NestedSub(sub, 0, 7),)))
+    assert sub in list(walk_ast(node))
+
+
+def test_offender_undeclared_template_carrier_is_detected():
+    """SYNTHETIC OFFENDER: a node with a template-carrier field the schema does
+    not declare is caught by the reflection oracle (shape TEMPLATE_SUBS)."""
+    from psh.ast_nodes import WordTemplate
+
+    @dataclasses.dataclass
+    class _OffenderWithTemplateCarrier(ASTNode):
+        tmpl: typing.Optional[WordTemplate] = None
+
+    reflected = reflect_child_fields(_OffenderWithTemplateCarrier)
+    assert ('tmpl', ChildShape.TEMPLATE_SUBS) in reflected
+    assert AstChildSchema.get('_OffenderWithTemplateCarrier', ()) != reflected
 
 
 # === Q2 family 8: no generic AST-reflection traversal outside walk_ast ========
@@ -316,8 +430,8 @@ _PSH_ROOT = pathlib.Path(__file__).resolve().parents[3] / "psh"
 # (test_reflection_allowlist_entries_still_reflect).
 _REFLECTION_ALLOWLIST = {
     "visitor/traversal.py":
-        "_reflect_children is walk_ast's OWN fallback, reached only by "
-        "UNREGISTERED synthetic node classes (tests); the drift-lock above "
+        "_reflect_child_edges is walk_ast_edges's OWN fallback, reached only "
+        "by UNREGISTERED synthetic node classes (tests); the drift-lock above "
         "proves every production node is in the schema, so production traversal "
         "never uses it — it is inside the one engine, not a second one",
     "parser/visualization/node_fields.py":

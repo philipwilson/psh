@@ -348,9 +348,20 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
                     )
                 )
 
-                # Check the value for undefined variables
+                # Check the value for undefined variables. Read the
+                # assignment WORD structurally when it exists: the structural
+                # iterator skips substitution interiors, whose commands the
+                # traversal sweep analyzes as nodes — re-scanning the raw
+                # value text reported `FOO=$(echo $y)`'s $y twice (round-3
+                # B6: a textual fallback must not re-read regions that have
+                # a structural representation). The raw-text scan survives
+                # only for word-less manually built nodes.
                 if self.config.check_undefined_vars:
-                    self._check_string_for_undefined_vars(value, node)
+                    word = node.words[i] if i < len(node.words) else None
+                    if word is not None:
+                        self._check_word_for_undefined_vars(word, node)
+                    else:
+                        self._check_string_for_undefined_vars(value, node)
 
         # Handle special builtins that affect variables
         if node.args:
@@ -413,6 +424,23 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         rendered argument string. This drops index/operator debris from the
         name (``${a[0]}`` → ``a``), honors ``:-``/``:=`` defaults via the
         parsed operator, and reports each reference exactly once.
+
+        ONE-AUTHORITY RULE for assignment words: an argument that IS an
+        assignment (``export FOO=$y``, ``local``/``readonly``/``declare``)
+        has its VALUE read by the assignment authority
+        (:meth:`_process_variable_assignments` ->
+        :meth:`_check_word_for_undefined_vars`), so the reference loop skips
+        it here — otherwise both authorities report the same reference and
+        the user sees it twice. This was a PRE-EXISTING duplicate for
+        prefixed assignments (a bare ``FOO=$y`` is args[0] and was skipped by
+        the ``i == 0`` guard, but ``export FOO=$y`` sits at args[1] and was
+        read by both); it stayed invisible for backtick/arithmetic values
+        only because both readers were blind to those regions until traversal
+        totality gave them sight. The ``$@`` advisory below deliberately
+        still runs for assignment words: the assignment authority has no
+        such check (see :meth:`_check_string_for_undefined_vars`), so
+        skipping it wholesale would DROP the ``export FOO=$@`` advisory —
+        verified by per-path attribution before this change.
         """
         words = node.words if node.words else []
         for i, (arg, word) in enumerate(zip(node.args, words, strict=False)):
@@ -426,20 +454,21 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
             # (existence tests, etc.). This mirrors the historical two-branch
             # split, now driven by structured references rather than regex.
             single_var = word.is_variable_expansion
-            seen: Set[str] = set()
-            for ref in iter_variable_references(word):
-                if ref.has_default:
-                    continue
-                if ref.name in seen:
-                    continue
-                seen.add(ref.name)
-                if self.var_tracker.is_defined(ref.name):
-                    continue
-                if single_var or self._should_warn_undefined(ref.name, arg, node):
-                    self._add_warning(
-                        f"Possible use of undefined variable '${ref.name}'",
-                        node
-                    )
+            if not is_assignment(arg):
+                seen: Set[str] = set()
+                for ref in iter_variable_references(word):
+                    if ref.has_default:
+                        continue
+                    if ref.name in seen:
+                        continue
+                    seen.add(ref.name)
+                    if self.var_tracker.is_defined(ref.name):
+                        continue
+                    if single_var or self._should_warn_undefined(ref.name, arg, node):
+                        self._add_warning(
+                            f"Possible use of undefined variable '${ref.name}'",
+                            node
+                        )
 
             # "Unquoted $@" advisory. Historically only multi-part words (the
             # old string-scan branch) were checked; preserve that scope but
@@ -462,12 +491,37 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
             for p in word.parts
         )
 
+    def _check_word_for_undefined_vars(self, word, node: ASTNode):
+        """Check an assignment-value WORD for undefined variable references.
+
+        Structural counterpart of :meth:`_check_string_for_undefined_vars`:
+        references come from the Word's parts via
+        :func:`iter_variable_references`, which skips substitution interiors
+        (the traversal sweep analyzes those commands as nodes) and masks
+        template-covered operand regions — so each reference is reported by
+        exactly one authority.
+        """
+        rendered = word.display_text()
+        for ref in iter_variable_references(word):
+            if ref.has_default:
+                continue
+            if self.var_tracker.is_defined(ref.name):
+                continue
+            if self._should_warn_undefined(ref.name, rendered, node):
+                self._add_warning(
+                    f"Possible use of undefined variable '${ref.name}'",
+                    node
+                )
+
     def _check_string_for_undefined_vars(self, text: str, node: ASTNode):
         """Check a raw STRING for undefined variable references.
 
-        Used for contexts the Word part model does not cover: assignment
-        values (``FOO=$BAR``) and for-loop item strings. Variable references
-        are recovered with the documented string fallback
+        Fallback for word-less (manually built) assignment nodes ONLY — a
+        real parsed assignment goes through the structural
+        :meth:`_check_word_for_undefined_vars`, because this raw scan reads
+        substitution interiors that the traversal sweep already analyzes
+        (the round-3 B6 duplicate-findings shape). References are recovered
+        with the documented string fallback
         (:func:`iter_variable_references_in_text`); ``${VAR:-default}`` is
         suppressed via the parsed ``has_default`` flag.
         """
