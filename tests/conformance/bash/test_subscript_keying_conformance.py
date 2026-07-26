@@ -1197,8 +1197,12 @@ def test_procsub_key_render_matrix(tmp_path):
     split family is the pinned lexer carry) and asserts that subset stays
     large enough to keep the pin meaningful."""
     cells, excluded = _b2_lexer_survivors(list(_b2_cells()))
-    assert len(cells) >= 250, (len(cells), 'lexer-survivor floor')
-    assert len(excluded) <= 308, (len(excluded), 'carry family grew?')
+    # R2-5: floors at the LIVE partition (408 survivors / 150 excluded at
+    # round 3) with small headroom — a survivor drop below 400 or an
+    # excluded growth past 160 means the lexer carry family GREW (or the
+    # partition broke); both must be looked at, not absorbed.
+    assert len(cells) >= 400, (len(cells), 'lexer-survivor floor (live 408)')
+    assert len(excluded) <= 160, (len(excluded), 'carry family grew? (live 150)')
     script = tmp_path / 'matrix.sh'
     script.write_text(_b2_key_script(cells))
     b = run_bash([str(script)], cwd=PSH_ROOT, timeout=120)
