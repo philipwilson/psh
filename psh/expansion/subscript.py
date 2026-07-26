@@ -31,10 +31,11 @@ interpretations are:
 Callers resolve the target's kind and pass it in; the service never re-decides.
 """
 import enum
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, List, Union
 
-from ..ast_nodes.words import LiteralPart, Word, WordPart
+from ..ast_nodes.words import ExpansionPart, LiteralPart, ProcessSubstitution, Word, WordPart
 from ..core import arith_assignment_discard
+from ..core.exceptions import ExpansionError, PshError
 from ..lexer import tokenize
 from ..lexer.token_types import TokenType
 from .arithmetic import ArithmeticError, evaluate_arithmetic
@@ -43,6 +44,31 @@ if TYPE_CHECKING:
     from ..core.state import ShellState
     from ..shell import Shell
     from .manager import ExpansionManager
+
+
+class SubscriptSyntaxError(ExpansionError):
+    """Raw subscript TEXT that cannot be re-lexed into a word (campaign 2.3).
+
+    Raised by :meth:`SubscriptEvaluator.word_from_text` when re-lexing raw
+    subscript source fails — an unclosed quote (``a["]``) or an unclosed
+    substitution spelling (``a[$(]``). Replaces the former broad
+    ``except Exception`` fallbacks that silently degraded the un-lexable text
+    to a LITERAL key (MEDIUM-12a: that swallow masked extent bugs as
+    wrong-key writes, and a genuine internal defect as a key). Only the
+    lexer's own typed failures (``PshError``: ``UnclosedQuoteError``,
+    ``SubstitutionSyntaxError`` — the census in the slot ledger found no
+    other live raiser) are translated; any other exception is an internal
+    defect and now propagates loudly (strict-errors).
+
+    An ``ExpansionError``, so an expansion-path caller gets bash's
+    discard-line model; the BUILTIN keying surfaces translate it instead
+    (bash 5.2, probe-verified): ``unset`` reports "not a valid identifier"
+    (rc 1, loud) and ``test -v`` / ``[[ -v`` report quietly unset (rc 1).
+    Carries ``raw`` (the offending subscript text)."""
+
+    def __init__(self, raw: str):
+        self.raw = raw
+        super().__init__(f"[{raw}]: bad array subscript", exit_code=1)
 
 
 class TargetKind(enum.Enum):
@@ -80,6 +106,31 @@ class SubscriptUse(enum.Enum):
 #: Uses whose EMPTY indexed subscript means "no target" (None), not index 0.
 _EMPTY_IS_NO_TARGET = frozenset({SubscriptUse.TEST_V, SubscriptUse.UNSET})
 
+#: Builtin-surface uses whose SubscriptSyntaxError is reported by the CALLER
+#: (bash: `test -v` is quietly unset, `unset` says "not a valid identifier"),
+#: so the keying funnel must not print for them. The same two uses as the
+#: empty-is-no-target policy today, but a distinct policy — kept separate.
+_QUIET_SYNTAX_USES = frozenset({SubscriptUse.TEST_V, SubscriptUse.UNSET})
+
+
+def _procsub_spellings_literal(parts: 'List[WordPart]') -> 'List[WordPart]':
+    """Replace process-substitution parts with their literal source spelling.
+
+    The subscript-keying identity rule (HIGH-4): bash treats ``<(...)`` /
+    ``>(...)`` inside a subscript as literal KEY TEXT — the substitution
+    never runs (no /dev/fd path, no side effects) and the spelling itself is
+    the key (``str()`` of the node reconstructs it exactly: direction char +
+    ``(`` + the verbatim body + ``)``). Quoted spellings never re-lex to
+    procsub parts, so this touches exactly the unquoted case bash keys
+    literally."""
+    return [
+        LiteralPart(str(p.expansion), quoted=False, quote_char=None)
+        if isinstance(p, ExpansionPart) and isinstance(p.expansion,
+                                                       ProcessSubstitution)
+        else p
+        for p in parts
+    ]
+
 
 class SubscriptEvaluator:
     """One interpreter for array subscripts (indexed arithmetic / associative key).
@@ -116,9 +167,17 @@ class SubscriptEvaluator:
           STRING token whose expansion parts need ``token.quote_type`` to
           decompose — passed exactly as :meth:`parse_argument_as_word` does.
 
-        On any tokenization failure the raw text is returned as one unquoted
-        literal part (robust degradation; strict-errors never sees a stray
-        Python exception from re-lexing an already-parsed subscript).
+        A process-substitution SPELLING becomes a LITERAL part carrying its
+        exact source (``<(printf x)``), never an executable expansion — bash
+        keys the spelling and runs nothing (HIGH-4; ``a[<(printf x)]=v`` keys
+        ``<(printf x)``, and ``a[<(x)]`` never launches ``x``). Command
+        substitutions and backticks DO stay executable (bash runs them in an
+        associative key).
+
+        Un-lexable raw raises :class:`SubscriptSyntaxError` — the typed
+        variant of the former broad-``except`` literal degradation (only the
+        lexer/word-builder's own PshError failures translate; anything else
+        is an internal defect and propagates).
         """
         # cycle-break: expansion -> parser.word_builder would form a package
         # cycle (word_builder imports expansion.param_parser). Deferred import;
@@ -126,8 +185,8 @@ class SubscriptEvaluator:
         from ..parser.recursive_descent.support.word_builder import WordBuilder
         try:
             tokens = [t for t in tokenize(raw) if t.type != TokenType.EOF]
-        except Exception:
-            return Word(parts=[LiteralPart(raw, quoted=False, quote_char=None)])
+        except PshError as e:
+            raise SubscriptSyntaxError(raw) from e
         if not tokens:
             return Word(parts=[LiteralPart(raw, quoted=False, quote_char=None)])
         parts: 'list[WordPart]' = []
@@ -141,17 +200,18 @@ class SubscriptEvaluator:
                           if token.type == TokenType.STRING else None)
             try:
                 word = WordBuilder.build_word_from_token(token, quote_type)
-            except Exception:
-                word = Word(parts=[LiteralPart(getattr(token, 'value', ''),
-                                               quoted=False, quote_char=None)])
-            parts.extend(word.parts)
+            except PshError as e:
+                # An unclosed substitution spelling (``$(``, ``<(``) fails the
+                # builder's own nested validation — same typed user error.
+                raise SubscriptSyntaxError(raw) from e
+            parts.extend(_procsub_spellings_literal(word.parts))
             pos = getattr(token, 'end_position', start) or start
         if pos < len(raw):
             parts.append(LiteralPart(raw[pos:], quoted=False, quote_char=None))
         return Word(parts=parts)
 
     # -- The two interpretations ---------------------------------------------
-    def associative_key(self, raw: str) -> str:
+    def associative_key(self, raw: str, *, quiet: bool = False) -> str:
         """The literal string key of an associative-array subscript.
 
         One word/quote expansion under assignment-value semantics: composite
@@ -165,8 +225,20 @@ class SubscriptEvaluator:
         is inserted LITERALLY (never quote-removed, never rescanned for a nested
         ``$``), while source-spelled quotes/backslashes are removed — exactly
         bash's provenance rule (W2/CV1).
+
+        Un-lexable raw raises :class:`SubscriptSyntaxError`. The message is
+        printed here (location-prefixed, like the indexed twin
+        ``_evaluate_expanded_index``) unless ``quiet`` — the BUILTIN surfaces
+        (``unset``, ``test -v``: :class:`SubscriptUse` UNSET/TEST_V via
+        :meth:`evaluate`) report in their own bash wording instead.
         """
-        word = self.word_from_text(raw)
+        try:
+            word = self.word_from_text(raw)
+        except SubscriptSyntaxError as e:
+            if not quiet:
+                print(f"{self.state.error_location_prefix()}{e}",
+                      file=self.state.stderr)
+            raise
         return self._manager.expand_assignment_value_word(word)
 
     def raw_has_source_quote(self, raw: str) -> bool:
@@ -216,9 +288,16 @@ class SubscriptEvaluator:
         expands to EMPTY — bash's "no target" surfaces (silently-unset ``-v``,
         no-op ``unset``; see :class:`SubscriptUse`). The one shared expansion
         pass means a command substitution in the subscript runs exactly once.
+
+        An un-lexable ASSOCIATIVE subscript raises
+        :class:`SubscriptSyntaxError` — printed here for the shell's own
+        keying surfaces, quiet for the builtin uses (``TEST_V``/``UNSET``),
+        whose callers translate it (bash: ``test -v`` quietly unset,
+        ``unset`` a loud "not a valid identifier").
         """
         if kind is TargetKind.ASSOCIATIVE:
-            return self.associative_key(raw)
+            return self.associative_key(
+                raw, quiet=use in _QUIET_SYNTAX_USES)
         expanded = self._manager.variable_expander.expand_string_variables(raw)
         if expanded == '' and use in _EMPTY_IS_NO_TARGET:
             return None

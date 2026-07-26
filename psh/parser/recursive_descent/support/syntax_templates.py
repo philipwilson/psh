@@ -220,9 +220,18 @@ def build_arithmetic_template(text: str, ctx: "Optional[_TemplateCtx]" = None) -
 def build_subscript_spec(text: str, ctx: "Optional[_TemplateCtx]" = None) -> SubscriptSpec:
     """Validate the nested shell grammar of an array subscript.
 
-    ``text`` is the raw subscript (``arr[<text>]``). Nested modern ``$()`` are
-    validated at read time; the indexed-vs-associative interpretation is W2's
-    ``SubscriptEvaluator`` (not decided here). Process substitution is disabled
-    (an indexed subscript is arithmetic context).
+    ``text`` is the raw subscript (``arr[<text>]``). Nested modern ``$()``
+    AND unquoted procsub SPELLINGS ``<(`` / ``>(`` are validated at read time
+    — bash rejects ``a[<(if)]=1`` and ``${a[<(if)]}`` when the command is
+    read, dead branches included, wherever the spelling sits in the subscript
+    (``a[1<(if)]``), while a quoted spelling (``a["<(if)"]``) defers
+    (probe-verified, bash 5.2 — remediation 2.3/HIGH-4). Validation does NOT
+    make the spelling executable at keying time: the SubscriptSpec preserves
+    it in ``text`` and the target-kind authority (W2's ``SubscriptEvaluator``,
+    not decided here) treats it as literal key text (associative) or
+    arithmetic operators (indexed — ``a[1<(2)]`` is the ``<`` operator, and a
+    VALID spelling like ``a[<(echo hi)]`` still fails as arithmetic at
+    RUNTIME, exactly bash). Arithmetic regions keep procsub scanning off
+    (bash defers ``$((a[<(if)]))`` — see ``build_arithmetic_template``).
     """
-    return SubscriptSpec(text=text, subs=tuple(_scan(text, 0, False, False, ctx)))
+    return SubscriptSpec(text=text, subs=tuple(_scan(text, 0, False, True, ctx)))
