@@ -240,3 +240,43 @@ def test_validator_still_rejects_truly_empty_command():
     v.visit(SimpleCommand())
     assert any(i.severity is Severity.ERROR and 'Empty command' in i.message
                for i in v.issues)
+
+
+# --- Round-4 B11: the guard's domain includes $'...'; escape rule is psh's --
+
+def test_ansi_c_quoted_operand_substitution_is_flagged():
+    """`[[ $'$(cmd)' == x ]]`: FLAGGED — psh EXPANDS command substitutions
+    inside a $'...' operand (marker-probed 2026-07-26: psh executes, bash
+    5.2.26 does not — the THIRD carried psh-vs-bash execution divergence,
+    ledger 2.1 §11). Excluding $' from the guard's domain was a silent clean
+    claim over code psh runs (round-3 B11): the flag follows psh."""
+    types = _issue_types("[[ $'$(rm -rf /tmp/psh-never-created)' == x ]]")
+    assert 'UNANALYZED_REGION' in types, types
+
+
+def test_ansi_c_quoted_operand_backtick_is_flagged():
+    """Backtick spelling of the same $'...' divergence family: psh runs it,
+    bash does not (marker-probed); flagged, following psh."""
+    types = _issue_types("[[ $'`rm -rf /tmp/psh-never-created`' == x ]]")
+    assert 'UNANALYZED_REGION' in types, types
+
+
+def test_ansi_c_quoted_escaped_dollar_is_silent():
+    """NEGATIVE CONTROL: `[[ $'\\$(cmd)' == x ]]` runs in NEITHER shell
+    (marker-probed) — the surviving backslash escapes it; silent."""
+    types = _issue_types("[[ $'\\$(rm -rf /tmp/psh-never-created)' == x ]]")
+    assert 'UNANALYZED_REGION' not in types, types
+
+
+def test_quadruple_backslash_dollar_operand_is_silent():
+    """Round-3 B11's OVER-FLAG row, fixed: a four-backslash source leaves
+    TWO backslashes in the post-parse text, and psh does NOT run that
+    spelling (marker-probed from a byte-exact od-verified file) — but the
+    old pairwise skip-two scan consumed the backslash pair and FLAGGED the
+    `$(` as live: a false positive in a security mode (cry-wolf). The scan
+    now applies psh's actual rule — an opener is live unless immediately
+    preceded by a backslash — so this row is silent. bash DOES run this
+    spelling (literal backslash + live substitution): another spelling of
+    carried divergence family #2, ledger 2.1 §11."""
+    types = _issue_types('[[ "\\\\\\\\$(rm -rf /tmp/psh-never-created)" == x ]]')
+    assert 'UNANALYZED_REGION' not in types, types

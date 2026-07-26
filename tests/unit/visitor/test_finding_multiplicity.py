@@ -142,3 +142,64 @@ def test_lint_whole_program_checks_emitted_once_for_subject_substitution():
         noerr = [i for i in v.issues
                  if 'no explicit error handling' in i.message]
         assert len(noerr) == 1, (src, [i.message for i in v.issues])
+
+
+# --- Round-4: prefixed-assignment de-dup + the $@ carve-out ------------------
+
+def _enh_summary_counts(src, needle):
+    v = EnhancedValidatorVisitor()
+    v.visit(parse(tokenize(src)))
+    return sum(1 for i in v.issues if needle in i.message)
+
+
+def test_export_at_advisory_survives_the_assignment_skip():
+    """LOAD-BEARING PIN of the prefixed-assignment de-dup (integrator
+    condition 1): the command-args reader SKIPS an assignment word's
+    variable-reference loop (the assignment authority owns those), but its
+    unquoted-$@ advisory still runs for assignment words — because the
+    assignment authority deliberately has NO $@ advisory (the quote-removal
+    false-positive note in _check_string_for_undefined_vars), so a wholesale
+    skip would silently DROP this exact finding. Per-path attribution proved
+    it is the command-args reader's alone; the user-facing gate saved it. If
+    a future refactor re-broadens the skip, this pin goes red."""
+    assert _enh_summary_counts(
+        'export FOO=$@', 'Unquoted $@ should be "$@"') == 1
+
+
+@pytest.mark.parametrize("src", [
+    'export FOO=$y',
+    'fn() { local FOO=$y; }; fn',
+    'readonly FOO=$y',
+    'declare FOO=$y',
+], ids=['export', 'local', 'readonly', 'declare'])
+def test_prefixed_assignment_value_reported_once(src):
+    """NAMED DE-DUP (like at_traversal_root): a PREFIXED assignment's value
+    sits at args[1], where BOTH the assignment authority and the command-args
+    reader historically read it — base a765f1a0 reported the undefined $y
+    TWICE for each of these (replayed; a bare FOO=$y read once only because
+    the i==0 guard skipped it). One authority now owns assignment values;
+    exactly one finding."""
+    assert _undef_y_count(EnhancedValidatorVisitor, src) == 1
+
+
+@pytest.mark.parametrize("src", [
+    'export FOO=`echo $y`',
+    'export FOO=$(($y + 1))',
+], ids=['backtick-value', 'arith-value'])
+def test_prefixed_assignment_unstructured_value_reported_once(src):
+    """The six round-4 condition-1 cells, pinned per-name at 1: these read 1
+    at base only because BOTH duplicate readers were blind to backtick/
+    arithmetic regions; Design A gave them sight and briefly exposed the
+    pre-existing double (2) before the de-dup landed. Now: one reader, one
+    finding — never zero (the region kept its only reader), never two."""
+    assert _undef_y_count(EnhancedValidatorVisitor, src) == 1
+
+
+def test_brace_blind_redirect_target_gain_is_intentional():
+    r"""NAMED BASE-BUG GAIN: at base, `> ${x:-\`echo $y\`}.log` produced ZERO
+    $y findings — the raw-text regex swallowed everything inside ${...} as
+    the tail of one braced match, so base's own textual reader was blind
+    inside ${} in raw-text contexts. The structural operand fallback now
+    reads it (deferred-backtick span unmasked): exactly one finding. Pinned
+    as an intentional gain closing a base blindness, like at_traversal_root."""
+    assert _undef_y_count(LinterVisitor, 'echo hi > ${x:-`echo $y`}.log') == 1
