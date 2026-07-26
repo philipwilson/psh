@@ -4,6 +4,44 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.757.0 (2026-07-26) - Remediation Wave 2 slot 2.2: parser input contract (HIGH-5 + MEDIUM-11)
+- **One parse entry for both parsers.** `parser/__init__.py#parse_with_inputs(tokens, inputs)`
+  now threads the whole `ParseInputs` (source text, line offset, lexer options,
+  heredoc map, config) into BOTH the recursive-descent and combinator parsers.
+  The combinator's facade wrapper — which silently discarded that context — is
+  deleted. Reappraisal #22 HIGH-5: `shopt -s extglob; echo $(echo @(a|b))` was
+  rejected by the combinator (the nested `$()` body re-lexed without extglob);
+  it now parses identically on both parsers and matches bash. The `parse`,
+  `parse_with_heredocs`, and `create_parser` public APIs are documented thin
+  adapters over the one entry, and the `parse-tree` builtin threads shell
+  options the same way (it previously dropped them for nested substitutions).
+- **Parser lifecycle enforced (MEDIUM-11).** A second `.parse()` (or
+  `.parse_outcome()`) on the same recursive-descent `Parser` instance — or on
+  any `create_parser` handle — now raises a loud `RuntimeError` instead of
+  silently returning an empty program. The RD parser binds its token cursor at
+  construction, so instances are genuinely single-use; the docs said otherwise.
+  The combinator grammar object remains reusable. Contract tests pin every
+  face, including that the outcome classifier does not swallow the error.
+- **Heredoc parse errors now report correct line numbers.** Routing the heredoc
+  path through the one entry threads source text/line offsets the old path
+  hard-coded away, so parse errors after heredocs (and in sourced/eval'd
+  heredoc-bearing input) report the true line — matching bash — instead of
+  line 1. Pinned red-at-base across file/-c/stdin on both parsers, with a
+  golden case (psh-only: bash's `-c` mode exits 127 for this
+  nested-substitution error family — a pre-existing divergence owned by a
+  later remediation slot).
+- **82-param lockstep parity corpus** (`tests/parser_differential/
+  test_input_contract_parity.py`): structure + nested-body location parity
+  across extglob ON/OFF, `$()`/`<()`/`${..}`/arith/heredoc shapes, with
+  backticks as a deferred-parse control; plus divergence flip-pins documenting
+  the remaining combinator arrays-seam carry (array init, element assignment,
+  redirect targets) and contract guards (single-use, token-copy at the entry,
+  conditional heredoc override, ParseInputs construction sites + offender).
+- The orphaned RD `support/utils.py#parse_with_heredocs` (a context-dropping
+  bypass of the new entry) is deleted; parser CLAUDE.md documents the
+  one-entry invariant. Campaign LEDGER: HIGH-5 + MEDIUM-11 CLOSED; 2 carries
+  registered with flip-pins; compare-bash baseline corrected (2,985 at base).
+
 ## 0.756.0 (2026-07-26) - Remediation Wave 2 slot 2.1: traversal totality (HIGH-2)
 - **AST analysis now reaches executable syntax it previously skipped.** psh's
   visitor traversal was hand-maintained per node type and missed dangerous code
