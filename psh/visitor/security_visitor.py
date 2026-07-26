@@ -59,36 +59,38 @@ def _has_live_substitution_text(text: str) -> bool:
     """True if *text* contains a ``$(`` command substitution or backtick that
     PSH will execute when the operand is expanded.
 
-    *text* is POST-PARSE literal text, and the scan tracks what psh's own
-    evaluator does with it (each row marker-probed, psh @ this tree vs bash
-    5.2.26; ledger 2.1 §10):
+    *text* is POST-PARSE literal text, and the rule is psh's own: an opener
+    is LIVE unless the character immediately before it is a backslash. Every
+    row below is marker-probed (psh @ this tree vs bash 5.2.26, run from
+    byte-exact script files — ledger 2.1 §10/§14):
 
-    - ``\\$(...)``: the parser KEEPS this backslash, neither shell runs it —
-      scanned as escaped, silent.
-    - backticks: the parser DROPS a preceding backslash, so an escaped and a
-      live backtick are textually indistinguishable here — and psh's
-      evaluator RUNS the backticks in that operand either way, so any bare
-      backtick is treated as live. (bash treats the escaped spelling as
-      literal — a pre-existing psh-vs-bash execution divergence, carried;
-      the flag errs with psh's actual behavior.)
-    - ``\\\\$(...)``: the parser collapses it to ``\\$(``, scanned as
-      escaped, and psh indeed does not run it — but bash DOES (the second
-      carried divergence; relative to bash this is a known false negative).
+    - bare ``$(...)`` / bare backtick: psh runs them — live.
+    - ``\\$(...)`` (one backslash survives the parse): psh does not run it —
+      escaped.
+    - ``\\\\$(...)`` (TWO backslashes survive, from a four-backslash source):
+      psh does not run it either — psh treats any immediately-preceding
+      backslash as escaping, so it is escaped here too. A pairwise
+      "skip two characters per backslash" scan got this wrong and FLAGGED it
+      (round-3 B11 over-flag: a false positive in a security mode, i.e.
+      cry-wolf). bash DOES run this spelling — carried divergence.
+    - escaped backtick: the parser DROPS the backslash, so the text holds a
+      bare backtick and psh runs it — live, matching psh (bash treats the
+      escaped spelling as literal — carried divergence).
 
     A ``$((`` opener is arithmetic, not a command substitution, and is
     skipped as such — but a ``$(cmd)`` nested INSIDE the arithmetic text is
     still found by the continuing scan.
     """
+    def escaped(index: int) -> bool:
+        return index > 0 and text[index - 1] == '\\'
+
     i = 0
     n = len(text)
     while i < n:
         c = text[i]
-        if c == '\\':
-            i += 2
-            continue
-        if c == '`':
+        if c == '`' and not escaped(i):
             return True
-        if c == '$' and text[i + 1:i + 2] == '(':
+        if c == '$' and text[i + 1:i + 2] == '(' and not escaped(i):
             if text[i + 2:i + 3] == '(':
                 i += 3  # $(( — arithmetic opener, keep scanning inside
                 continue
@@ -309,17 +311,31 @@ class SecurityVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
         and psh both, probed 2026-07-26). Until the parser builds real
         expansion parts for these operands, the region is executable-but-
         opaque: flag it rather than staying silent (the same no-clean-claim
-        policy as backtick bodies and expanding heredocs). The escape rules
-        the scan applies — which spellings the parser keeps distinguishable
-        and where psh's execution diverges from bash's — are documented on
-        :func:`_has_live_substitution_text`; the flag follows psh's own
-        execution behavior on every probed row.
+        policy as backtick bodies and expanding heredocs).
+
+        DOMAIN (what this guard guarantees, not what any probe set covered):
+        it inspects the flat ``LiteralPart`` segments of a ``[[ ]]`` operand
+        word. Within that domain the flag tracks whether PSH executes the
+        region — decided per part from the quote context plus the escape
+        rules in :func:`_has_live_substitution_text`:
+
+        * unquoted and double-quoted parts — psh expands them: live
+          substitutions flag.
+        * ``$'...'`` (ANSI-C) parts — psh ALSO expands substitutions inside
+          them (bash does not; carried divergence), so they are IN the
+          domain and flag. Excluding them silently was a false clean claim
+          over code psh runs (round-3 B11).
+        * ``'...'`` (single-quoted) parts — no shell expands them; inert
+          data, never flagged.
+
+        Regions outside the domain (an operand that parses to real expansion
+        parts) are analyzed structurally by the traversal sweep instead.
         """
         if word is None:
             return
         for part in word.parts:
             if (isinstance(part, LiteralPart)
-                    and part.quote_char not in ("'", "$'")
+                    and part.quote_char != "'"
                     and _has_live_substitution_text(part.text)):
                 self.issues.append(SecurityIssue(
                     'LOW',

@@ -42,6 +42,7 @@ from ..ast_nodes import (
     ExpansionPart,
     LiteralPart,
     ParameterExpansion,
+    ProcessSubstitution,
     VariableExpansion,
     Word,
 )
@@ -107,19 +108,62 @@ def iter_variable_references(word: Word) -> Iterator[VariableReference]:
     """Yield the variable references in a Word, read from its parts.
 
     Covers ``$x`` (``VariableExpansion``) and ``${...}`` (``ParameterExpansion``)
-    expansion parts. Command/arithmetic/process substitutions are not variable
-    references and are skipped (their internal variables live in re-parseable
-    sub-command text, not in this word's reference surface).
+    expansion parts.
+
+    ONE-AUTHORITY RULE (remediation 2.1, rounds 3-4). Every region is read by
+    exactly one authority:
+
+    * A substitution WITH a structural representation — a modern ``$(...)`` /
+      ``<(...)`` whose body was parsed into a ``Program`` — is SKIPPED here.
+      The traversal sweep analyzes those commands as nodes; re-reading their
+      source text would double-report (round-3 B6).
+    * A region with NO structural representation is read TEXTUALLY here,
+      because this is its only reader (round-3 B10: the rule had been applied
+      at one seam only, silently dropping coverage everywhere else). A
+      deferred backtick (``program is None`` — bash defers backtick parsing)
+      contributes the references in its raw ``source``; an arithmetic
+      expansion contributes those in its ``expression``, with any read-time
+      parsed nested-substitution spans masked out (those ARE structural).
+
+    Applying this uniformly at the WORD level — rather than at the individual
+    analyzer seams — is what covers arbitrary nesting: each unstructured
+    region is read exactly once, at its own word's seam, including a backtick
+    inside a parsed ``$( )`` body (reached when the sweep visits that inner
+    command's words).
 
     The operator word of a parameter expansion (``${FOO:-$BAR}`` — ``$BAR`` is
-    raw text in ``.word``) is scanned with the string fallback so nested refs
-    are still reported.
+    raw text in ``.word``) is scanned with the string fallback under the same
+    rule (see :func:`_operand_text_without_structural_regions`).
     """
     for part in word.parts:
         if not isinstance(part, ExpansionPart):
             continue
         exp = part.expansion
-        if isinstance(exp, VariableExpansion):
+        if isinstance(exp, (CommandSubstitution, ProcessSubstitution)):
+            # Unstructured ONLY when no parsed body exists (deferred backtick).
+            if getattr(exp, 'program', None) is None:
+                for ref in iter_variable_references_in_text(
+                        getattr(exp, 'source', '') or ''):
+                    yield VariableReference(
+                        name=ref.name,
+                        quoted=part.quoted,
+                        braced=ref.braced,
+                        is_array_subscript=ref.is_array_subscript,
+                        has_default=ref.has_default,
+                        part=part,
+                    )
+        elif isinstance(exp, ArithmeticExpansion):
+            for ref in iter_variable_references_in_text(
+                    _arithmetic_text_without_structural_regions(exp)):
+                yield VariableReference(
+                    name=ref.name,
+                    quoted=part.quoted,
+                    braced=ref.braced,
+                    is_array_subscript=ref.is_array_subscript,
+                    has_default=ref.has_default,
+                    part=part,
+                )
+        elif isinstance(exp, VariableExpansion):
             name, had_sub = _split_name_and_subscript(exp.name)
             if name:
                 yield VariableReference(
@@ -156,6 +200,38 @@ def iter_variable_references(word: Word) -> Iterator[VariableReference]:
                     )
 
 
+def _mask_spans(text: str, template) -> str:
+    """*text* with each validated (structurally-parsed) sub span blanked out.
+
+    Shared masking step of the one-authority rule: the spans a
+    :class:`~psh.ast_nodes.syntax_templates.SyntaxTemplate` marks as
+    ``validated`` carry parsed programs the traversal analyzes as nodes, so
+    the textual reader must not see them. Deferred-backtick spans are NOT
+    masked — they have no structural representation, so this reader is their
+    only one. A template whose text has drifted from the raw string (runtime
+    or manually built nodes) is ignored: nothing is masked, which keeps the
+    textual reader's coverage rather than risking a silent hole.
+    """
+    if template is None or getattr(template, 'text', None) != text:
+        return text
+    chars = list(text)
+    for sub in template.validated:
+        for i in range(sub.start, min(sub.end, len(chars))):
+            chars[i] = " "
+    return "".join(chars)
+
+
+def _arithmetic_text_without_structural_regions(exp: ArithmeticExpansion) -> str:
+    """Arithmetic expression text with structurally-parsed subs masked out.
+
+    ``$(( $(echo $y) ))`` carries its nested ``$( )`` as a validated template
+    sub whose program the sweep analyzes, so that span is masked; a plain
+    ``$(($y + 1))`` has no template subs and is scanned whole (its ``$y`` has
+    no other reader).
+    """
+    return _mask_spans(exp.expression or "", exp.arith_template)
+
+
 def _operand_text_without_structural_regions(exp: ParameterExpansion) -> str:
     """The operand text with structurally-represented regions blanked out.
 
@@ -172,16 +248,14 @@ def _operand_text_without_structural_regions(exp: ParameterExpansion) -> str:
     their ONLY coverage and masking would lose findings. A template-less
     node (runtime path / manually built) has no structural coverage at all,
     so its full text is scanned unchanged.
+
+    A backtick nested INSIDE a masked span keeps its reader: the sweep
+    descends the masked sub's parsed program, and the inner command's own
+    word carries that backtick as an unstructured part, which
+    :func:`iter_variable_references` scans there (round-4 Design A — the
+    reason the mask can stay whole-span instead of span-precise).
     """
-    text = exp.word or ""
-    template = exp.word_template
-    if template is None or template.text != text:
-        return text
-    chars = list(text)
-    for sub in template.validated:
-        for i in range(sub.start, min(sub.end, len(chars))):
-            chars[i] = " "
-    return "".join(chars)
+    return _mask_spans(exp.word or "", exp.word_template)
 
 
 def iter_variable_references_in_text(text: str) -> Iterator[VariableReference]:

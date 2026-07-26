@@ -424,6 +424,23 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
         rendered argument string. This drops index/operator debris from the
         name (``${a[0]}`` → ``a``), honors ``:-``/``:=`` defaults via the
         parsed operator, and reports each reference exactly once.
+
+        ONE-AUTHORITY RULE for assignment words: an argument that IS an
+        assignment (``export FOO=$y``, ``local``/``readonly``/``declare``)
+        has its VALUE read by the assignment authority
+        (:meth:`_process_variable_assignments` ->
+        :meth:`_check_word_for_undefined_vars`), so the reference loop skips
+        it here — otherwise both authorities report the same reference and
+        the user sees it twice. This was a PRE-EXISTING duplicate for
+        prefixed assignments (a bare ``FOO=$y`` is args[0] and was skipped by
+        the ``i == 0`` guard, but ``export FOO=$y`` sits at args[1] and was
+        read by both); it stayed invisible for backtick/arithmetic values
+        only because both readers were blind to those regions until traversal
+        totality gave them sight. The ``$@`` advisory below deliberately
+        still runs for assignment words: the assignment authority has no
+        such check (see :meth:`_check_string_for_undefined_vars`), so
+        skipping it wholesale would DROP the ``export FOO=$@`` advisory —
+        verified by per-path attribution before this change.
         """
         words = node.words if node.words else []
         for i, (arg, word) in enumerate(zip(node.args, words, strict=False)):
@@ -437,20 +454,21 @@ class EnhancedValidatorVisitor(ValidatorVisitor):
             # (existence tests, etc.). This mirrors the historical two-branch
             # split, now driven by structured references rather than regex.
             single_var = word.is_variable_expansion
-            seen: Set[str] = set()
-            for ref in iter_variable_references(word):
-                if ref.has_default:
-                    continue
-                if ref.name in seen:
-                    continue
-                seen.add(ref.name)
-                if self.var_tracker.is_defined(ref.name):
-                    continue
-                if single_var or self._should_warn_undefined(ref.name, arg, node):
-                    self._add_warning(
-                        f"Possible use of undefined variable '${ref.name}'",
-                        node
-                    )
+            if not is_assignment(arg):
+                seen: Set[str] = set()
+                for ref in iter_variable_references(word):
+                    if ref.has_default:
+                        continue
+                    if ref.name in seen:
+                        continue
+                    seen.add(ref.name)
+                    if self.var_tracker.is_defined(ref.name):
+                        continue
+                    if single_var or self._should_warn_undefined(ref.name, arg, node):
+                        self._add_warning(
+                            f"Possible use of undefined variable '${ref.name}'",
+                            node
+                        )
 
             # "Unquoted $@" advisory. Historically only multi-part words (the
             # old string-scan branch) were checked; preserve that scope but
