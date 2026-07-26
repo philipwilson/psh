@@ -826,6 +826,7 @@ def test_quote_aware_extent_read_side(cmd):
     'declare -A a; a[]]=v; echo rc=$?',          # empty-then-] -> command word
     'declare -A a; a[x=1]=v; declare -p a',      # = INSIDE subscript keys x=1
     'declare -A a; a[x+=y]=v; declare -p a',     # += inside subscript is key text
+    'declare -A a; a[2>x]=v; declare -p a',      # redirect-token slice keeps the fd (B2)
 ])
 def test_head_scan_family_deltas_toward_bash(cmd):
     """R1-7 (round-1 verifier): base->tip head-scan deltas BEYOND the two
@@ -1111,6 +1112,161 @@ def test_divergence_unset_nonbracket_arg_silent():
     assert p.stdout == 'rc=0\ndeclare -A a=(["]"]="1" )\n'   # psh: silent no-op
     assert p.stderr == ''
     assert _psh_comb(cmd).stdout == p.stdout
+
+
+# --- B2 (round 2): bash re-renders procsub spellings from its parse ---------
+# The keying identity is spelling-level, and bash's stored spelling is its
+# print_command RE-RENDER for the covered construct subset (whitespace
+# collapse, trailing-; drop, canonical redirect spacing). psh implements that
+# rule in expansion/procsub_render.py with ONE structural render-vs-raw
+# predicate; uncovered constructs keep the RAW spelling (declared
+# normalization residual — pins below).
+
+_B2_ATOMS = {
+    'simple': 'echo hi', 'quoted_sq': "echo 'a b'", 'quoted_dq': 'echo "x  y"',
+    'var': 'cat $y', 'cmdsub': 'echo $(echo q)', 'nested_ps': 'cat <(echo z)',
+    'redirect': 'echo hi > /dev/null', 'redirect_in': 'wc -l < /etc/hosts',
+    'pipeline': 'echo a | wc -l', 'andlist': 'true && echo b',
+    'two_cmds': 'echo a; echo b', 'subshell': '(echo s)',
+    'fd_dup': 'echo e 2>&1', 'append_red': 'cat >> log',
+    'fd2_red': 'echo x 2> e', 'dup_to_2': 'echo y >&2',
+    'in_red_var': 'read n < $f', 'brace_grp': '{ echo g; }',
+    'dup_explicit': 'echo z 1>&2',
+}
+_B2_SPACINGS = {
+    'tidy': lambda b: b,
+    'pad': lambda b: ' ' + b + ' ',
+    'runs': lambda b: b.replace(' ', '  '),
+    'tabs': lambda b: b.replace(' ', '\t'),
+    'pad_runs': lambda b: '  ' + b.replace(' ', '   ') + '  ',
+}
+_B2_TRAILING = {'none': '', 'semi': ';', 'semi_sp': ' ; '}
+
+
+def _b2_cells():
+    """The GENERATED ruled space: 19 atoms x 5 spacings x 3 trailings x 2
+    directions = 570 cells, minus the 12 SEPARATED-SUBSHELL cells (subshell
+    atom under pad/pad_runs), which bash re-renders via its bimodal `((`
+    disambiguation — those are the residual divergence test below."""
+    for aname, atom in _B2_ATOMS.items():
+        for sname, sp in _B2_SPACINGS.items():
+            if aname == 'subshell' and sname in ('pad', 'pad_runs'):
+                continue
+            for tr in _B2_TRAILING.values():
+                for d in '<>':
+                    yield d + '(' + sp(atom) + tr + ')'
+
+
+def _b2_key_script(cells):
+    """One script printing each cell's stored key NUL-delimited, in order."""
+    out = []
+    for spelling in cells:
+        out.append('declare -A a=()')
+        out.append('a[%s]=v' % spelling)
+        out.append('for k in "${!a[@]}"; do printf \'%s\\0\' "$k"; done')
+    return '\n'.join(out) + '\n'
+
+
+def _b2_lexer_survivors(cells):
+    """Partition cells by the PRE-EXISTING lexer word-extent carry: a cell is
+    end-to-end testable only when psh's lexer keeps `a[SPELLING]=v` ONE word
+    (the split family — quoted-section/$-form boundaries inside brackets —
+    is test_divergence_lexer_splits_quoted_space_subscript's carry, NOT a
+    keying fact). Returns (survivors, excluded)."""
+    from psh.lexer import tokenize
+    from psh.lexer.token_types import TokenType
+    survivors, excluded = [], []
+    for spelling in cells:
+        try:
+            toks = [t for t in tokenize(f'a[{spelling}]=v')
+                    if t.type != TokenType.EOF]
+        except Exception:
+            excluded.append(spelling)
+            continue
+        (survivors if len(toks) == 1 else excluded).append(spelling)
+    return survivors, excluded
+
+
+def test_procsub_key_render_matrix(tmp_path):
+    """B2 condition-3 pin: the generated ruled space keys BYTE-IDENTICALLY
+    in psh (both parsers) and bash — batched into ONE run per shell. The
+    ENGINE-level instrument covered all 558 comparable cells (ledger,
+    B2-STAGE2-matrix-2.txt: 97.9% of 570 incl. the residual family); this
+    END-TO-END pin covers the subset deliverable through psh's lexer (the
+    split family is the pinned lexer carry) and asserts that subset stays
+    large enough to keep the pin meaningful."""
+    cells, excluded = _b2_lexer_survivors(list(_b2_cells()))
+    assert len(cells) >= 250, (len(cells), 'lexer-survivor floor')
+    assert len(excluded) <= 308, (len(excluded), 'carry family grew?')
+    script = tmp_path / 'matrix.sh'
+    script.write_text(_b2_key_script(cells))
+    b = run_bash([str(script)], cwd=PSH_ROOT, timeout=120)
+    rd = run_psh([str(script)], cwd=PSH_ROOT, timeout=240)
+    comb = run_psh(['--parser', 'combinator', str(script)], cwd=PSH_ROOT,
+                   timeout=240)
+    assert is_comparable(b) and is_comparable(rd) and is_comparable(comb)
+    bkeys = b.stdout.split('\0')
+    rdkeys = rd.stdout.split('\0')
+    combkeys = comb.stdout.split('\0')
+    assert len(bkeys) == len(cells) + 1, (len(bkeys), len(cells))
+    bad = [(cells[i], bkeys[i], rdkeys[i] if i < len(rdkeys) else None)
+           for i in range(len(cells))
+           if i >= len(rdkeys) or bkeys[i] != rdkeys[i]]
+    assert not bad, f"{len(bad)} rd cells diverge; first 5: {bad[:5]}"
+    badc = [(cells[i], bkeys[i], combkeys[i] if i < len(combkeys) else None)
+            for i in range(len(cells))
+            if i >= len(combkeys) or bkeys[i] != combkeys[i]]
+    assert not badc, f"{len(badc)} comb cells diverge; first 5: {badc[:5]}"
+
+
+def test_divergence_procsub_separated_subshell_residual():
+    """B2 residual, subfamily 1 (both sides): a SEPARATED subshell body —
+    `<( (echo s) )` — is re-rendered declare-f-style by bash's bimodal `((`
+    disambiguation (`( echo s )`, outer spacing partially kept), while psh
+    keeps the RAW spelling. GLUED subshells are raw-preserved by bash itself
+    (spacing runs and trailing `;` kept byte-for-byte) and psh matches them
+    — pinned in the matrix above."""
+    cmd = 'declare -A a; a[<( (echo s) )]=v; for k in "${!a[@]}"; do printf "%s" "$k"; done'
+    p, b = _both(cmd)
+    assert b.stdout == '<( ( echo s ))'          # bash: separated re-render
+    assert p.stdout == '<( (echo s) )'           # psh: raw spelling
+    assert _psh_comb(cmd).stdout == p.stdout
+
+
+@pytest.mark.parametrize('body,bash_key', [
+    ('if true; then echo x; fi', '<(if true; then\n    echo x;\nfi)'),
+    ('for i in 1 2; do echo x; done', '<(for i in 1 2;\ndo\n    echo x;\ndone)'),
+    ('while false; do :; done', '<(while false; do\n    :;\ndone)'),
+    ('case x in y) echo n;; esac', '<(case x in \n    y)\n        echo n\n    ;;\nesac)'),
+])
+def test_divergence_procsub_compound_render_residual(body, bash_key):
+    """B2 residual, subfamily 2 (condition-4 both-sides pins): COMPOUND
+    bodies — bash embeds its printer's MULTILINE byte-layout (4-space
+    indent, per-construct breaks, `case`'s trailing space, the expanded-
+    empty `$i` leaving `echo ;`); psh keeps the RAW spelling (the declared
+    normalization residual — HIGH-4 is closed WITH this residual)."""
+    cmd = ('declare -A a; a[<(%s)]=v; '
+           'for k in "${!a[@]}"; do printf "%%s" "$k"; done' % body)
+    p, b = _both(cmd)
+    assert b.stdout == bash_key, (body, b.stdout)
+    assert p.stdout == '<(' + body + ')', (body, p.stdout)   # psh: raw
+    assert _psh_comb(cmd).stdout == p.stdout
+
+
+def test_divergence_procsub_compound_dollar_body_lexer_blocked():
+    """B2 residual x lexer carry: the PROBED `for` shape carried `$i`, whose
+    `$i;` boundary inside the brackets trips the PRE-EXISTING lexer
+    word-split (test_divergence_lexer_splits_quoted_space_subscript family)
+    BEFORE the keying engine can apply the raw-spelling residual — psh
+    parse-errors and stores nothing, while bash keys its multiline render
+    with the expanded-empty `$i` leaving `echo ;`. Both sides pinned."""
+    cmd = ('declare -A a; a[<(for i in 1 2; do echo $i; done)]=v; '
+           'for k in "${!a[@]}"; do printf "%s" "$k"; done')
+    p, b = _both(cmd)
+    assert b.stdout == '<(for i in 1 2;\ndo\n    echo ;\ndone)'
+    assert p.returncode != 0 and p.stdout == ''
+    pc = _psh_comb(cmd)
+    assert pc.returncode != 0 and pc.stdout == ''
 
 
 def test_divergence_unlexable_subscript_typed_error():

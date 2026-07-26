@@ -39,6 +39,7 @@ from ..core.exceptions import ExpansionError, PshError
 from ..lexer import tokenize
 from ..lexer.token_types import TokenType
 from .arithmetic import ArithmeticError, evaluate_arithmetic
+from .procsub_render import render_procsub_body
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -178,6 +179,17 @@ class SubscriptEvaluator:
             if start > pos:
                 parts.append(LiteralPart(raw[pos:start], quoted=False,
                                          quote_char=None))
+            if token.type.name.startswith('REDIRECT'):
+                # Redirect-family tokens don't round-trip through .value
+                # (REDIRECT_OUT for `2>` carries value `>`, the fd only in
+                # the span) — and in subscript TEXT a redirect operator is
+                # literal key characters, so reproduce the exact source
+                # slice (2.3 B2: `a[<(echo x 2> e)]` must keep the `2`).
+                end = getattr(token, 'end_position', start) or start
+                parts.append(LiteralPart(raw[start:end], quoted=False,
+                                         quote_char=None))
+                pos = end
+                continue
             quote_type = (token.quote_type
                           if token.type == TokenType.STRING else None)
             try:
@@ -213,9 +225,18 @@ class SubscriptEvaluator:
                     and isinstance(p.expansion, ProcessSubstitution)):
                 ps = p.expansion
                 frame = '<' if ps.direction == 'in' else '>'
+                # bash reconstructs the spelling FROM ITS PARSE for the
+                # covered construct subset (whitespace collapse, trailing-;
+                # drop, canonical redirect spacing); anything uncovered keeps
+                # the RAW spelling — the declared normalization residual
+                # (2.3 B2; see procsub_render module docstring).
+                body = (render_procsub_body(ps.program)
+                        if ps.program is not None else None)
+                if body is None:
+                    body = ps.source
                 out.append(LiteralPart(frame + '(', quoted=False,
                                        quote_char=None))
-                out.extend(self.word_from_text(ps.source).parts)
+                out.extend(self.word_from_text(body).parts)
                 out.append(LiteralPart(')', quoted=False, quote_char=None))
             else:
                 out.append(p)

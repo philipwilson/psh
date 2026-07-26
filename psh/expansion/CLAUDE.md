@@ -367,6 +367,16 @@ Two remediation-2.3 invariants on the re-lex bridge
   `a[<(printf x)]=v` as `<(printf x)`, keys `a[<(cat $y)]` with `y=Q` as
   `<(cat Q)`, and `unset`/`test -v` address those keys. Command
   substitutions and backticks still EXECUTE in associative keys (bash).
+  The spelling bash stores is its PARSE RE-RENDER for simple-command
+  bodies (whitespace collapse, trailing-`;` drop, canonical redirect
+  spacing) — `procsub_render.py#render_procsub_body` implements that rule
+  with ONE structural render-vs-raw predicate; uncovered constructs
+  (compounds, subshells — bash's own handling is bimodal there) keep the
+  RAW spelling: the DECLARED compound-render normalization residual
+  (both-sides pins in `tests/conformance/bash/
+  test_subscript_keying_conformance.py`). The renderer is keying-seam-owned;
+  `declare -f` must NEVER migrate to it (bash renders the two surfaces
+  differently).
   Read-time REJECTION of an invalid spelling is the parser's job
   (`parser/recursive_descent/support/syntax_templates.py#build_subscript_spec`).
 - **Un-lexable raw raises the typed `SubscriptSyntaxError`** (MEDIUM-12a): the

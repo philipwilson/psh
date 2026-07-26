@@ -123,6 +123,48 @@ class TestProcsubSpellingIsLiteral:
     def test_unset_dollar_in_body_expands_empty(self, subscript):
         assert subscript.associative_key('<(cat $unsetvar)') == '<(cat )'
 
+    @pytest.mark.parametrize('raw,key', [
+        # bash re-renders covered bodies from the parse (B2; every expected
+        # byte oracle-verified in the slot ledger's B2-STAGE2-matrix-2 run):
+        ('<( echo  hi ; )', '<(echo hi)'),          # collapse + trailing-; drop
+        ('<(\techo\thi\t)', '<(echo hi)'),           # tabs collapse
+        ("<( echo  'a b' )", '<(echo a b)'),        # spelling kept, then quote removal
+        ('<(echo hi >/dev/null)', '<(echo hi > /dev/null)'),  # canonical spacing
+        ('<(echo x 2>e)', '<(echo x 2> e)'),        # fd kept + spacing
+        ('<(echo y >&2)', '<(echo y 1>&2)'),        # dup canonicalized like bash
+        ('<(cat >>log;)', '<(cat >> log)'),
+        ('<( echo a ;  echo b )', '<(echo a; echo b)'),
+        ('<( true &&  echo b )', '<(true && echo b)'),
+        ('<( echo a |  wc -l )', '<(echo a | wc -l)'),
+        ('<( { echo g ; } )', '<({ echo g; })'),
+        # UNCOVERED constructs keep the RAW spelling (the ONE structural
+        # predicate: render_procsub_body returns None -> raw fallback):
+        ('<(if true; then echo x; fi)', '<(if true; then echo x; fi)'),
+        ('<((echo  s))', '<((echo  s))'),            # glued subshell = raw (bash too)
+        ('<((echo s);)', '<((echo s);)'),
+    ])
+    def test_key_render_rules(self, subscript, raw, key):
+        assert subscript.associative_key(raw) == key
+
+    def test_render_predicate_is_structural(self):
+        from psh.expansion.procsub_render import render_procsub_body
+        from psh.parser.recursive_descent.support.nested_parse import parse_nested_command
+        def parse(b):
+            return parse_nested_command(b, line_offset=0, initial_depth=0,
+                                        substitution_depth=1, lexer_options=None)
+        assert render_procsub_body(parse(' echo  hi ; ')) == 'echo hi'
+        assert render_procsub_body(parse('if true; then echo x; fi')) is None
+        assert render_procsub_body(parse('(echo s)')) is None
+        assert render_procsub_body(parse('echo a | wc -l')) == 'echo a | wc -l'
+
+    def test_redirect_token_slice_preserved(self, subscript):
+        # REDIRECT_OUT's .value drops the fd (`2>` -> `>`); word_from_text
+        # reproduces the exact source slice, so `2>x` keys as spelled (B2;
+        # bash parity pinned in conformance).
+        assert subscript.associative_key('2>x') == '2>x'
+        word = subscript.word_from_text('2>x')
+        assert ''.join(p.text for p in word.parts) == '2>x'
+
 
 class TestSubscriptSyntaxErrorTyped:
     """MEDIUM-12a (remediation 2.3): the broad-except literal degradation is
