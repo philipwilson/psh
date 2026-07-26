@@ -1,0 +1,1032 @@
+discriminator tip: /Users/pwilson/src/psh-r2-3/psh/__init__.py
+discriminator base: /Users/pwilson/src/psh-r23-baseprobe/psh/__init__.py
+tip sha: af56e6a5
+DOMAIN: every probe file in tmp/probes-2.3 (*.sh) x {rd, combinator} x {file, -c, stdin} x {base 4c319a04, tip}; comparator = (rc, stdout, stderr) tuple equality tip-vs-base per (probe, parser, mode); every diff printed for classification.
+probe count: 97
+DELTA d10_cmdsub_rbracket.sh [rd/file]
+   base: (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d10_cmdsub_rbracket.sh:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'declare -A a=(["]"]="c" )\n', b'')
+DELTA d10_cmdsub_rbracket.sh [rd/-c]
+   base: (2, b'', b'psh: -c:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'declare -A a=(["]"]="c" )\n', b'')
+DELTA d10_cmdsub_rbracket.sh [rd/stdin]
+   base: (2, b'', b'psh: <stdin>:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'declare -A a=(["]"]="c" )\n', b'')
+DELTA d10_cmdsub_rbracket.sh [combinator/file]
+   base: (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d10_cmdsub_rbracket.sh:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'declare -A a=(["]"]="c" )\n', b'')
+DELTA d10_cmdsub_rbracket.sh [combinator/-c]
+   base: (2, b'', b'psh: -c:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'declare -A a=(["]"]="c" )\n', b'')
+DELTA d10_cmdsub_rbracket.sh [combinator/stdin]
+   base: (2, b'', b'psh: <stdin>:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'declare -A a=(["]"]="c" )\n', b'')
+DELTA d11_read_cmdsub_rbracket.sh [rd/file]
+   base: (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d11_read_cmdsub_rbracket.sh:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'read=R\n', b'')
+DELTA d11_read_cmdsub_rbracket.sh [rd/-c]
+   base: (2, b'', b'psh: -c:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'read=R\n', b'')
+DELTA d11_read_cmdsub_rbracket.sh [rd/stdin]
+   base: (2, b'', b'psh: <stdin>:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'read=R\n', b'')
+DELTA d11_read_cmdsub_rbracket.sh [combinator/file]
+   base: (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d11_read_cmdsub_rbracket.sh:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'read=R\n', b'')
+DELTA d11_read_cmdsub_rbracket.sh [combinator/-c]
+   base: (2, b'', b'psh: -c:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'read=R\n', b'')
+DELTA d11_read_cmdsub_rbracket.sh [combinator/stdin]
+   base: (2, b'', b'psh: <stdin>:1: syntax error: Unclosed " quote at position line 1, column 6\n')
+   tip : (0, b'read=R\n', b'')
+DELTA d13_quoted_plusequals.sh [rd/file]
+   base: (0, b'declare -A a=([+=]="\\"]=v" )\n', b'')
+   tip : (0, b'declare -A a=([+=]="v" )\n', b'')
+DELTA d13_quoted_plusequals.sh [rd/-c]
+   base: (0, b'declare -A a=([+=]="\\"]=v" )\n', b'')
+   tip : (0, b'declare -A a=([+=]="v" )\n', b'')
+DELTA d13_quoted_plusequals.sh [rd/stdin]
+   base: (0, b'declare -A a=([+=]="\\"]=v" )\n', b'')
+   tip : (0, b'declare -A a=([+=]="v" )\n', b'')
+DELTA d13_quoted_plusequals.sh [combinator/file]
+   base: (0, b'declare -A a=([+=]="\\"]=v" )\n', b'')
+   tip : (0, b'declare -A a=([+=]="v" )\n', b'')
+DELTA d13_quoted_plusequals.sh [combinator/-c]
+   base: (0, b'declare -A a=([+=]="\\"]=v" )\n', b'')
+   tip : (0, b'declare -A a=([+=]="v" )\n', b'')
+DELTA d13_quoted_plusequals.sh [combinator/stdin]
+   base: (0, b'declare -A a=([+=]="\\"]=v" )\n', b'')
+   tip : (0, b'declare -A a=([+=]="v" )\n', b'')
+DELTA d14_sq_then_text.sh [rd/file]
+   base: (0, b'declare -A a=(["\'"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["]x"]="v" )\n', b'')
+DELTA d14_sq_then_text.sh [rd/-c]
+   base: (0, b'declare -A a=(["\'"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["]x"]="v" )\n', b'')
+DELTA d14_sq_then_text.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\'"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["]x"]="v" )\n', b'')
+DELTA d14_sq_then_text.sh [combinator/file]
+   base: (0, b'declare -A a=(["\'"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["]x"]="v" )\n', b'')
+DELTA d14_sq_then_text.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\'"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["]x"]="v" )\n', b'')
+DELTA d14_sq_then_text.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\'"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["]x"]="v" )\n', b'')
+DELTA d16_nested_unq_brackets.sh [rd/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d16_nested_unq_brackets.sh: line 1: b[i: bad array subscript\n')
+   tip : (0, b'declare -a c=([8]="N")\n', b'')
+DELTA d16_nested_unq_brackets.sh [rd/-c]
+   base: (1, b'', b'psh: line 1: b[i: bad array subscript\n')
+   tip : (0, b'declare -a c=([8]="N")\n', b'')
+DELTA d16_nested_unq_brackets.sh [rd/stdin]
+   base: (1, b'', b'psh: line 1: b[i: bad array subscript\n')
+   tip : (0, b'declare -a c=([8]="N")\n', b'')
+DELTA d16_nested_unq_brackets.sh [combinator/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d16_nested_unq_brackets.sh: line 1: b[i: bad array subscript\n')
+   tip : (0, b'declare -a c=([8]="N")\n', b'')
+DELTA d16_nested_unq_brackets.sh [combinator/-c]
+   base: (1, b'', b'psh: line 1: b[i: bad array subscript\n')
+   tip : (0, b'declare -a c=([8]="N")\n', b'')
+DELTA d16_nested_unq_brackets.sh [combinator/stdin]
+   base: (1, b'', b'psh: line 1: b[i: bad array subscript\n')
+   tip : (0, b'declare -a c=([8]="N")\n', b'')
+DELTA d1_unset_qaware.sh [rd/file]
+   base: (0, b'rc=0\ndeclare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+DELTA d1_unset_qaware.sh [rd/-c]
+   base: (0, b'rc=0\ndeclare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+DELTA d1_unset_qaware.sh [rd/stdin]
+   base: (0, b'rc=0\ndeclare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+DELTA d1_unset_qaware.sh [combinator/file]
+   base: (0, b'rc=0\ndeclare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+DELTA d1_unset_qaware.sh [combinator/-c]
+   base: (0, b'rc=0\ndeclare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+DELTA d1_unset_qaware.sh [combinator/stdin]
+   base: (0, b'rc=0\ndeclare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'rc=0\ndeclare -A a=([x]="2" )\n', b'')
+DELTA d2_testv_qaware.sh [rd/file]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA d2_testv_qaware.sh [rd/-c]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA d2_testv_qaware.sh [rd/stdin]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA d2_testv_qaware.sh [combinator/file]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA d2_testv_qaware.sh [combinator/-c]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA d2_testv_qaware.sh [combinator/stdin]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA d3_op_after_quoted.sh [rd/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d3_op_after_quoted.sh: line 1: ${a["]"]:-d}: bad substitution\n')
+   tip : (0, b'V\nd\n', b'')
+DELTA d3_op_after_quoted.sh [rd/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]:-d}: bad substitution\n')
+   tip : (0, b'V\nd\n', b'')
+DELTA d3_op_after_quoted.sh [rd/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]:-d}: bad substitution\n')
+   tip : (0, b'V\nd\n', b'')
+DELTA d3_op_after_quoted.sh [combinator/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d3_op_after_quoted.sh: line 1: ${a["]"]:-d}: bad substitution\n')
+   tip : (0, b'V\nd\n', b'')
+DELTA d3_op_after_quoted.sh [combinator/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]:-d}: bad substitution\n')
+   tip : (0, b'V\nd\n', b'')
+DELTA d3_op_after_quoted.sh [combinator/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]:-d}: bad substitution\n')
+   tip : (0, b'V\nd\n', b'')
+DELTA d4_len_quoted.sh [rd/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d4_len_quoted.sh: line 1: ${#a["]"]}: bad substitution\n')
+   tip : (0, b'5\n', b'')
+DELTA d4_len_quoted.sh [rd/-c]
+   base: (1, b'', b'psh: line 1: ${#a["]"]}: bad substitution\n')
+   tip : (0, b'5\n', b'')
+DELTA d4_len_quoted.sh [rd/stdin]
+   base: (1, b'', b'psh: line 1: ${#a["]"]}: bad substitution\n')
+   tip : (0, b'5\n', b'')
+DELTA d4_len_quoted.sh [combinator/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d4_len_quoted.sh: line 1: ${#a["]"]}: bad substitution\n')
+   tip : (0, b'5\n', b'')
+DELTA d4_len_quoted.sh [combinator/-c]
+   base: (1, b'', b'psh: line 1: ${#a["]"]}: bad substitution\n')
+   tip : (0, b'5\n', b'')
+DELTA d4_len_quoted.sh [combinator/stdin]
+   base: (1, b'', b'psh: line 1: ${#a["]"]}: bad substitution\n')
+   tip : (0, b'5\n', b'')
+DELTA d5_procsub_mixed.sh [rd/file]
+   base: (0, b'declare -A a=([x/dev/fd/3]="v" )\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d5_procsub_mixed.sh: line 1: y: command not found\n')
+   tip : (0, b'declare -A a=(["x<(y)"]="v" )\n', b'')
+DELTA d5_procsub_mixed.sh [rd/-c]
+   base: (0, b'declare -A a=([x/dev/fd/3]="v" )\n', b'psh: line 1: y: command not found\n')
+   tip : (0, b'declare -A a=(["x<(y)"]="v" )\n', b'')
+DELTA d5_procsub_mixed.sh [rd/stdin]
+   base: (0, b'declare -A a=([x/dev/fd/3]="v" )\n', b'psh: line 1: y: command not found\n')
+   tip : (0, b'declare -A a=(["x<(y)"]="v" )\n', b'')
+DELTA d5_procsub_mixed.sh [combinator/file]
+   base: (0, b'declare -A a=([x/dev/fd/3]="v" )\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/d5_procsub_mixed.sh: line 1: y: command not found\n')
+   tip : (0, b'declare -A a=(["x<(y)"]="v" )\n', b'')
+DELTA d5_procsub_mixed.sh [combinator/-c]
+   base: (0, b'declare -A a=([x/dev/fd/3]="v" )\n', b'psh: line 1: y: command not found\n')
+   tip : (0, b'declare -A a=(["x<(y)"]="v" )\n', b'')
+DELTA d5_procsub_mixed.sh [combinator/stdin]
+   base: (0, b'declare -A a=([x/dev/fd/3]="v" )\n', b'psh: line 1: y: command not found\n')
+   tip : (0, b'declare -A a=(["x<(y)"]="v" )\n', b'')
+DELTA d9_ansic_rbracket.sh [rd/file]
+   base: (0, b'declare -A a=(["\\$\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA d9_ansic_rbracket.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\$\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA d9_ansic_rbracket.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\$\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA d9_ansic_rbracket.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\$\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA d9_ansic_rbracket.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\$\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA d9_ansic_rbracket.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\$\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA e1_adjacency_junk.sh [rd/file]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=127\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/e1_adjacency_junk.sh: line 1: a[k]x=v: command not found\n')
+DELTA e1_adjacency_junk.sh [rd/-c]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=127\n', b'psh: line 1: a[k]x=v: command not found\n')
+DELTA e1_adjacency_junk.sh [rd/stdin]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=127\n', b'psh: line 1: a[k]x=v: command not found\n')
+DELTA e1_adjacency_junk.sh [combinator/file]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=127\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/e1_adjacency_junk.sh: line 1: a[k]x=v: command not found\n')
+DELTA e1_adjacency_junk.sh [combinator/-c]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=127\n', b'psh: line 1: a[k]x=v: command not found\n')
+DELTA e1_adjacency_junk.sh [combinator/stdin]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=127\n', b'psh: line 1: a[k]x=v: command not found\n')
+DELTA e2_arith_junk_sub.sh [rd/file]
+   base: (0, b'0\nafter\n', b'')
+   tip : (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/e2_arith_junk_sub.sh: line 1: ['x]: bad array subscript\n")
+DELTA e2_arith_junk_sub.sh [rd/-c]
+   base: (0, b'0\nafter\n', b'')
+   tip : (1, b'', b"psh: line 1: ['x]: bad array subscript\n")
+DELTA e2_arith_junk_sub.sh [rd/stdin]
+   base: (0, b'0\nafter\n', b'')
+   tip : (1, b'', b"psh: line 1: ['x]: bad array subscript\n")
+DELTA e2_arith_junk_sub.sh [combinator/file]
+   base: (0, b'0\nafter\n', b'')
+   tip : (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/e2_arith_junk_sub.sh: line 1: ['x]: bad array subscript\n")
+DELTA e2_arith_junk_sub.sh [combinator/-c]
+   base: (0, b'0\nafter\n', b'')
+   tip : (1, b'', b"psh: line 1: ['x]: bad array subscript\n")
+DELTA e2_arith_junk_sub.sh [combinator/stdin]
+   base: (0, b'0\nafter\n', b'')
+   tip : (1, b'', b"psh: line 1: ['x]: bad array subscript\n")
+DELTA f10_procsub_key_roundtrip.sh [rd/file]
+   base: (0, b'key=</dev/fd/3>\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/f10_procsub_key_roundtrip.sh: line 1: x: command not found\n')
+   tip : (0, b'key=<<(x)>\n', b'')
+DELTA f10_procsub_key_roundtrip.sh [rd/-c]
+   base: (0, b'key=</dev/fd/3>\n', b'psh: line 1: x: command not found\n')
+   tip : (0, b'key=<<(x)>\n', b'')
+DELTA f10_procsub_key_roundtrip.sh [rd/stdin]
+   base: (0, b'key=</dev/fd/3>\n', b'psh: line 1: x: command not found\n')
+   tip : (0, b'key=<<(x)>\n', b'')
+DELTA f10_procsub_key_roundtrip.sh [combinator/file]
+   base: (0, b'key=</dev/fd/3>\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/f10_procsub_key_roundtrip.sh: line 1: x: command not found\n')
+   tip : (0, b'key=<<(x)>\n', b'')
+DELTA f10_procsub_key_roundtrip.sh [combinator/-c]
+   base: (0, b'key=</dev/fd/3>\n', b'psh: line 1: x: command not found\n')
+   tip : (0, b'key=<<(x)>\n', b'')
+DELTA f10_procsub_key_roundtrip.sh [combinator/stdin]
+   base: (0, b'key=</dev/fd/3>\n', b'psh: line 1: x: command not found\n')
+   tip : (0, b'key=<<(x)>\n', b'')
+DELTA f1_locale_dq.sh [rd/file]
+   base: (0, b'declare -A a=(["\\$\\"x"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["x]"]="v" )\n', b'')
+DELTA f1_locale_dq.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\$\\"x"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["x]"]="v" )\n', b'')
+DELTA f1_locale_dq.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\$\\"x"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["x]"]="v" )\n', b'')
+DELTA f1_locale_dq.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\$\\"x"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["x]"]="v" )\n', b'')
+DELTA f1_locale_dq.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\$\\"x"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["x]"]="v" )\n', b'')
+DELTA f1_locale_dq.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\$\\"x"]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["x]"]="v" )\n', b'')
+DELTA f2_double_quoted_rbrackets.sh [rd/file]
+   base: (0, b'declare -A a=(["\\""]="W" )\n', b'')
+   tip : (0, b'declare -A a=(["]x]"]="W" )\n', b'')
+DELTA f2_double_quoted_rbrackets.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\""]="W" )\n', b'')
+   tip : (0, b'declare -A a=(["]x]"]="W" )\n', b'')
+DELTA f2_double_quoted_rbrackets.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\""]="W" )\n', b'')
+   tip : (0, b'declare -A a=(["]x]"]="W" )\n', b'')
+DELTA f2_double_quoted_rbrackets.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\""]="W" )\n', b'')
+   tip : (0, b'declare -A a=(["]x]"]="W" )\n', b'')
+DELTA f2_double_quoted_rbrackets.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\""]="W" )\n', b'')
+   tip : (0, b'declare -A a=(["]x]"]="W" )\n', b'')
+DELTA f2_double_quoted_rbrackets.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\""]="W" )\n', b'')
+   tip : (0, b'declare -A a=(["]x]"]="W" )\n', b'')
+DELTA f4_quoted_sub_with_value_parts.sh [rd/file]
+   base: (0, b'declare -A a=(["\\""]="v w" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="v w" )\n', b'')
+DELTA f4_quoted_sub_with_value_parts.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\""]="v w" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="v w" )\n', b'')
+DELTA f4_quoted_sub_with_value_parts.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\""]="v w" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="v w" )\n', b'')
+DELTA f4_quoted_sub_with_value_parts.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\""]="v w" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="v w" )\n', b'')
+DELTA f4_quoted_sub_with_value_parts.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\""]="v w" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="v w" )\n', b'')
+DELTA f4_quoted_sub_with_value_parts.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\""]="v w" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="v w" )\n', b'')
+DELTA f5_read_sq_text.sh [rd/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/f5_read_sq_text.sh: line 1: ${a[']'x]}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA f5_read_sq_text.sh [rd/-c]
+   base: (1, b'', b"psh: line 1: ${a[']'x]}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA f5_read_sq_text.sh [rd/stdin]
+   base: (1, b'', b"psh: line 1: ${a[']'x]}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA f5_read_sq_text.sh [combinator/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/f5_read_sq_text.sh: line 1: ${a[']'x]}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA f5_read_sq_text.sh [combinator/-c]
+   base: (1, b'', b"psh: line 1: ${a[']'x]}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA f5_read_sq_text.sh [combinator/stdin]
+   base: (1, b'', b"psh: line 1: ${a[']'x]}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA f8_append_quoted_value.sh [rd/file]
+   base: (0, b'declare -A a=(["\\""]="tail" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="tail" )\n', b'')
+DELTA f8_append_quoted_value.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\""]="tail" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="tail" )\n', b'')
+DELTA f8_append_quoted_value.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\""]="tail" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="tail" )\n', b'')
+DELTA f8_append_quoted_value.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\""]="tail" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="tail" )\n', b'')
+DELTA f8_append_quoted_value.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\""]="tail" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="tail" )\n', b'')
+DELTA f8_append_quoted_value.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\""]="tail" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="tail" )\n', b'')
+DELTA g1_unq_sq.sh [rd/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g1_unq_sq.sh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g1_unq_sq.sh [rd/-c]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g1_unq_sq.sh [rd/stdin]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g1_unq_sq.sh [combinator/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g1_unq_sq.sh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g1_unq_sq.sh [combinator/-c]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g1_unq_sq.sh [combinator/stdin]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g2_dq_sq.sh [rd/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g2_dq_sq.sh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g2_dq_sq.sh [rd/-c]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g2_dq_sq.sh [rd/stdin]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g2_dq_sq.sh [combinator/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g2_dq_sq.sh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g2_dq_sq.sh [combinator/-c]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g2_dq_sq.sh [combinator/stdin]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g3_unq_dq.sh [rd/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g3_unq_dq.sh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g3_unq_dq.sh [rd/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g3_unq_dq.sh [rd/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g3_unq_dq.sh [combinator/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g3_unq_dq.sh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g3_unq_dq.sh [combinator/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g3_unq_dq.sh [combinator/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g4_dq_dq.sh [rd/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g4_dq_dq.sh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g4_dq_dq.sh [rd/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g4_dq_dq.sh [rd/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g4_dq_dq.sh [combinator/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g4_dq_dq.sh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g4_dq_dq.sh [combinator/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g4_dq_dq.sh [combinator/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=v\n', b'')
+DELTA g5_unq_ansi.sh [rd/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g5_unq_ansi.sh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g5_unq_ansi.sh [rd/-c]
+   base: (1, b'', b"psh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g5_unq_ansi.sh [rd/stdin]
+   base: (1, b'', b"psh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g5_unq_ansi.sh [combinator/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g5_unq_ansi.sh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g5_unq_ansi.sh [combinator/-c]
+   base: (1, b'', b"psh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g5_unq_ansi.sh [combinator/stdin]
+   base: (1, b'', b"psh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g6_dq_ansi.sh [rd/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g6_dq_ansi.sh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g6_dq_ansi.sh [rd/-c]
+   base: (1, b'', b"psh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g6_dq_ansi.sh [rd/stdin]
+   base: (1, b'', b"psh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g6_dq_ansi.sh [combinator/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g6_dq_ansi.sh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g6_dq_ansi.sh [combinator/-c]
+   base: (1, b'', b"psh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g6_dq_ansi.sh [combinator/stdin]
+   base: (1, b'', b"psh: line 1: ${a[$'[']}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g7_unq_ansi_rb.sh [rd/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g7_unq_ansi_rb.sh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g7_unq_ansi_rb.sh [rd/-c]
+   base: (1, b'', b"psh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g7_unq_ansi_rb.sh [rd/stdin]
+   base: (1, b'', b"psh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g7_unq_ansi_rb.sh [combinator/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g7_unq_ansi_rb.sh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g7_unq_ansi_rb.sh [combinator/-c]
+   base: (1, b'', b"psh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g7_unq_ansi_rb.sh [combinator/stdin]
+   base: (1, b'', b"psh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g8_dq_ansi_rb.sh [rd/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g8_dq_ansi_rb.sh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g8_dq_ansi_rb.sh [rd/-c]
+   base: (1, b'', b"psh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g8_dq_ansi_rb.sh [rd/stdin]
+   base: (1, b'', b"psh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g8_dq_ansi_rb.sh [combinator/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/g8_dq_ansi_rb.sh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g8_dq_ansi_rb.sh [combinator/-c]
+   base: (1, b'', b"psh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA g8_dq_ansi_rb.sh [combinator/stdin]
+   base: (1, b'', b"psh: line 1: ${a[$']'x]}: bad substitution\n")
+   tip : (0, b'read=v\n', b'')
+DELTA h4_assoc_procsub_key.sh [rd/file]
+   base: (0, b'declare -A a=([/dev/fd/3]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+DELTA h4_assoc_procsub_key.sh [rd/-c]
+   base: (0, b'declare -A a=([/dev/fd/3]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+DELTA h4_assoc_procsub_key.sh [rd/stdin]
+   base: (0, b'declare -A a=([/dev/fd/3]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+DELTA h4_assoc_procsub_key.sh [combinator/file]
+   base: (0, b'declare -A a=([/dev/fd/3]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+DELTA h4_assoc_procsub_key.sh [combinator/-c]
+   base: (0, b'declare -A a=([/dev/fd/3]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+DELTA h4_assoc_procsub_key.sh [combinator/stdin]
+   base: (0, b'declare -A a=([/dev/fd/3]="v" )\n', b'')
+   tip : (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+DELTA h4_assoc_valid_procsub.sh [rd/file]
+   base: (0, b'declare -A a=([/dev/fd/3]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["<(echo hi)"]="1" )\n', b'')
+DELTA h4_assoc_valid_procsub.sh [rd/-c]
+   base: (0, b'declare -A a=([/dev/fd/3]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["<(echo hi)"]="1" )\n', b'')
+DELTA h4_assoc_valid_procsub.sh [rd/stdin]
+   base: (0, b'declare -A a=([/dev/fd/3]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["<(echo hi)"]="1" )\n', b'')
+DELTA h4_assoc_valid_procsub.sh [combinator/file]
+   base: (0, b'declare -A a=([/dev/fd/3]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["<(echo hi)"]="1" )\n', b'')
+DELTA h4_assoc_valid_procsub.sh [combinator/-c]
+   base: (0, b'declare -A a=([/dev/fd/3]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["<(echo hi)"]="1" )\n', b'')
+DELTA h4_assoc_valid_procsub.sh [combinator/stdin]
+   base: (0, b'declare -A a=([/dev/fd/3]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["<(echo hi)"]="1" )\n', b'')
+DELTA h4_dead_branch_invalid.sh [rd/file]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4_dead_branch_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_dead_branch_invalid.sh [rd/-c]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_dead_branch_invalid.sh [rd/stdin]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_dead_branch_invalid.sh [combinator/file]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4_dead_branch_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_dead_branch_invalid.sh [combinator/-c]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_dead_branch_invalid.sh [combinator/stdin]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_outsub_invalid.sh [rd/file]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4_outsub_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_outsub_invalid.sh [rd/-c]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_outsub_invalid.sh [rd/stdin]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_outsub_invalid.sh [combinator/file]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4_outsub_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_outsub_invalid.sh [combinator/-c]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_outsub_invalid.sh [combinator/stdin]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_read_side_invalid.sh [rd/file]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4_read_side_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_read_side_invalid.sh [rd/-c]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_read_side_invalid.sh [rd/stdin]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_read_side_invalid.sh [combinator/file]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4_read_side_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_read_side_invalid.sh [combinator/-c]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4_read_side_invalid.sh [combinator/stdin]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_direct_invalid.sh [rd/file]
+   base: (0, b'after\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4b_direct_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_direct_invalid.sh [rd/-c]
+   base: (0, b'after\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_direct_invalid.sh [rd/stdin]
+   base: (0, b'after\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_direct_invalid.sh [combinator/file]
+   base: (0, b'after\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4b_direct_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_direct_invalid.sh [combinator/-c]
+   base: (0, b'after\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_direct_invalid.sh [combinator/stdin]
+   base: (0, b'after\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_literal_key_read.sh [rd/file]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h4b_literal_key_read.sh [rd/-c]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h4b_literal_key_read.sh [rd/stdin]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h4b_literal_key_read.sh [combinator/file]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h4b_literal_key_read.sh [combinator/-c]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h4b_literal_key_read.sh [combinator/stdin]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h4b_mid_invalid.sh [rd/file]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4b_mid_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_mid_invalid.sh [rd/-c]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_mid_invalid.sh [rd/stdin]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_mid_invalid.sh [combinator/file]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: /Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4b_mid_invalid.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_mid_invalid.sh [combinator/-c]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_mid_invalid.sh [combinator/stdin]
+   base: (0, b'ran\n', b'')
+   tip : (2, b'', b'psh: <stdin>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n')
+DELTA h4b_side_effect.sh [rd/file]
+   base: (0, b'NO_SIDE_EFFECT\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4b_side_effect.sh: line 1: tmp/probes-2.3/side.out: No such file or directory\n')
+   tip : (0, b'NO_SIDE_EFFECT\n', b'')
+DELTA h4b_side_effect.sh [rd/-c]
+   base: (0, b'NO_SIDE_EFFECT\n', b'psh: line 1: tmp/probes-2.3/side.out: No such file or directory\n')
+   tip : (0, b'NO_SIDE_EFFECT\n', b'')
+DELTA h4b_side_effect.sh [rd/stdin]
+   base: (0, b'NO_SIDE_EFFECT\n', b'psh: line 1: tmp/probes-2.3/side.out: No such file or directory\n')
+   tip : (0, b'NO_SIDE_EFFECT\n', b'')
+DELTA h4b_side_effect.sh [combinator/file]
+   base: (0, b'NO_SIDE_EFFECT\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h4b_side_effect.sh: line 1: tmp/probes-2.3/side.out: No such file or directory\n')
+   tip : (0, b'NO_SIDE_EFFECT\n', b'')
+DELTA h4b_side_effect.sh [combinator/-c]
+   base: (0, b'NO_SIDE_EFFECT\n', b'psh: line 1: tmp/probes-2.3/side.out: No such file or directory\n')
+   tip : (0, b'NO_SIDE_EFFECT\n', b'')
+DELTA h4b_side_effect.sh [combinator/stdin]
+   base: (0, b'NO_SIDE_EFFECT\n', b'psh: line 1: tmp/probes-2.3/side.out: No such file or directory\n')
+   tip : (0, b'NO_SIDE_EFFECT\n', b'')
+DELTA h4b_testv_literal.sh [rd/file]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h4b_testv_literal.sh [rd/-c]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h4b_testv_literal.sh [rd/stdin]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h4b_testv_literal.sh [combinator/file]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h4b_testv_literal.sh [combinator/-c]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h4b_testv_literal.sh [combinator/stdin]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h4b_unset_literal.sh [rd/file]
+   base: (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h4b_unset_literal.sh [rd/-c]
+   base: (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h4b_unset_literal.sh [rd/stdin]
+   base: (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h4b_unset_literal.sh [combinator/file]
+   base: (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h4b_unset_literal.sh [combinator/-c]
+   base: (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h4b_unset_literal.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["<(printf x)"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h5_read_dollar_in_spelling.sh [rd/file]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_dollar_in_spelling.sh [rd/-c]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_dollar_in_spelling.sh [rd/stdin]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_dollar_in_spelling.sh [combinator/file]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_dollar_in_spelling.sh [combinator/-c]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_dollar_in_spelling.sh [combinator/stdin]
+   base: (0, b'read=\n', b'')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_var_in_spelling.sh [rd/file]
+   base: (0, b'read=\n', b'cat: Q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_var_in_spelling.sh [rd/-c]
+   base: (0, b'read=\n', b'cat: Q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_var_in_spelling.sh [rd/stdin]
+   base: (0, b'read=\n', b'cat: Q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_var_in_spelling.sh [combinator/file]
+   base: (0, b'read=\n', b'cat: Q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_var_in_spelling.sh [combinator/-c]
+   base: (0, b'read=\n', b'cat: Q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_read_var_in_spelling.sh [combinator/stdin]
+   base: (0, b'read=\n', b'cat: Q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h5_testv_dollar_in_spelling.sh [rd/file]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h5_testv_dollar_in_spelling.sh [rd/-c]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h5_testv_dollar_in_spelling.sh [rd/stdin]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h5_testv_dollar_in_spelling.sh [combinator/file]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h5_testv_dollar_in_spelling.sh [combinator/-c]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h5_testv_dollar_in_spelling.sh [combinator/stdin]
+   base: (0, b'rc=1\n', b'')
+   tip : (0, b'rc=0\n', b'')
+DELTA h5_unset_dollar_in_spelling.sh [rd/file]
+   base: (0, b'declare -A a=(["<(cat )"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h5_unset_dollar_in_spelling.sh [rd/-c]
+   base: (0, b'declare -A a=(["<(cat )"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h5_unset_dollar_in_spelling.sh [rd/stdin]
+   base: (0, b'declare -A a=(["<(cat )"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h5_unset_dollar_in_spelling.sh [combinator/file]
+   base: (0, b'declare -A a=(["<(cat )"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h5_unset_dollar_in_spelling.sh [combinator/-c]
+   base: (0, b'declare -A a=(["<(cat )"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h5_unset_dollar_in_spelling.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["<(cat )"]="v" )\n', b'')
+   tip : (0, b'declare -A a=()\n', b'')
+DELTA h6_read_cmdsub_in_spelling.sh [rd/file]
+   base: (0, b'read=\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h6_read_cmdsub_in_spelling.sh: line 1: x: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_cmdsub_in_spelling.sh [rd/-c]
+   base: (0, b'read=\n', b'psh: line 1: x: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_cmdsub_in_spelling.sh [rd/stdin]
+   base: (0, b'read=\n', b'psh: line 1: x: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_cmdsub_in_spelling.sh [combinator/file]
+   base: (0, b'read=\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h6_read_cmdsub_in_spelling.sh: line 1: x: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_cmdsub_in_spelling.sh [combinator/-c]
+   base: (0, b'read=\n', b'psh: line 1: x: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_cmdsub_in_spelling.sh [combinator/stdin]
+   base: (0, b'read=\n', b'psh: line 1: x: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_nested_procsub.sh [rd/file]
+   base: (0, b'read=\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h6_read_nested_procsub.sh: line 1: a: command not found\n/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h6_read_nested_procsub.sh: line 1: b: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_nested_procsub.sh [rd/-c]
+   base: (0, b'read=\n', b'psh: line 1: a: command not found\npsh: line 1: b: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_nested_procsub.sh [rd/stdin]
+   base: (0, b'read=\n', b'psh: line 1: a: command not found\npsh: line 1: b: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_nested_procsub.sh [combinator/file]
+   base: (0, b'read=\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h6_read_nested_procsub.sh: line 1: a: command not found\n/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/h6_read_nested_procsub.sh: line 1: b: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_nested_procsub.sh [combinator/-c]
+   base: (0, b'read=\n', b'psh: line 1: a: command not found\npsh: line 1: b: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_nested_procsub.sh [combinator/stdin]
+   base: (0, b'read=\n', b'psh: line 1: a: command not found\npsh: line 1: b: command not found\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_sq_in_spelling.sh [rd/file]
+   base: (0, b'read=\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_sq_in_spelling.sh [rd/-c]
+   base: (0, b'read=\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_sq_in_spelling.sh [rd/stdin]
+   base: (0, b'read=\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_sq_in_spelling.sh [combinator/file]
+   base: (0, b'read=\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_sq_in_spelling.sh [combinator/-c]
+   base: (0, b'read=\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_read_sq_in_spelling.sh [combinator/stdin]
+   base: (0, b'read=\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'read=v\n', b'')
+DELTA h6_sq_in_spelling_testv.sh [rd/file]
+   base: (0, b'rc=1\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'rc=0\n', b'')
+DELTA h6_sq_in_spelling_testv.sh [rd/-c]
+   base: (0, b'rc=1\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'rc=0\n', b'')
+DELTA h6_sq_in_spelling_testv.sh [rd/stdin]
+   base: (0, b'rc=1\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'rc=0\n', b'')
+DELTA h6_sq_in_spelling_testv.sh [combinator/file]
+   base: (0, b'rc=1\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'rc=0\n', b'')
+DELTA h6_sq_in_spelling_testv.sh [combinator/-c]
+   base: (0, b'rc=1\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'rc=0\n', b'')
+DELTA h6_sq_in_spelling_testv.sh [combinator/stdin]
+   base: (0, b'rc=1\n', b'cat: q: No such file or directory\n')
+   tip : (0, b'rc=0\n', b'')
+DELTA k1_append_dq_rbracket.sh [rd/file]
+   base: (0, b'declare -A a=(["\\""]="12" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="12" )\n', b'')
+DELTA k1_append_dq_rbracket.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\""]="12" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="12" )\n', b'')
+DELTA k1_append_dq_rbracket.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\""]="12" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="12" )\n', b'')
+DELTA k1_append_dq_rbracket.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\""]="12" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="12" )\n', b'')
+DELTA k1_append_dq_rbracket.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\""]="12" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="12" )\n', b'')
+DELTA k1_append_dq_rbracket.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\""]="12" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="12" )\n', b'')
+DELTA k1_backslash_rbracket.sh [rd/file]
+   base: (0, b'declare -A a=(["\\\\"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_backslash_rbracket.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\\\"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_backslash_rbracket.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\\\"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_backslash_rbracket.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\\\"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_backslash_rbracket.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\\\"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_backslash_rbracket.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\\\"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_dq_embedded.sh [rd/file]
+   base: (0, b'declare -A a=(["\\"a"]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["a]b"]="1" )\n', b'')
+DELTA k1_dq_embedded.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\"a"]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["a]b"]="1" )\n', b'')
+DELTA k1_dq_embedded.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\"a"]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["a]b"]="1" )\n', b'')
+DELTA k1_dq_embedded.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\"a"]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["a]b"]="1" )\n', b'')
+DELTA k1_dq_embedded.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\"a"]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["a]b"]="1" )\n', b'')
+DELTA k1_dq_embedded.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\"a"]="1" )\n', b'')
+   tip : (0, b'declare -A a=(["a]b"]="1" )\n', b'')
+DELTA k1_dq_rbracket.sh [rd/file]
+   base: (0, b'declare -A a=(["\\""]="ok" )\nok\n', b'')
+   tip : (0, b'declare -A a=(["]"]="ok" )\nok\n', b'')
+DELTA k1_dq_rbracket.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\""]="ok" )\nok\n', b'')
+   tip : (0, b'declare -A a=(["]"]="ok" )\nok\n', b'')
+DELTA k1_dq_rbracket.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\""]="ok" )\nok\n', b'')
+   tip : (0, b'declare -A a=(["]"]="ok" )\nok\n', b'')
+DELTA k1_dq_rbracket.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\""]="ok" )\nok\n', b'')
+   tip : (0, b'declare -A a=(["]"]="ok" )\nok\n', b'')
+DELTA k1_dq_rbracket.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\""]="ok" )\nok\n', b'')
+   tip : (0, b'declare -A a=(["]"]="ok" )\nok\n', b'')
+DELTA k1_dq_rbracket.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\""]="ok" )\nok\n', b'')
+   tip : (0, b'declare -A a=(["]"]="ok" )\nok\n', b'')
+DELTA k1_sq_rbracket.sh [rd/file]
+   base: (0, b'declare -A a=(["\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_sq_rbracket.sh [rd/-c]
+   base: (0, b'declare -A a=(["\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_sq_rbracket.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_sq_rbracket.sh [combinator/file]
+   base: (0, b'declare -A a=(["\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_sq_rbracket.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k1_sq_rbracket.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\'"]="x" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="x" )\n', b'')
+DELTA k2_read_dq_rbracket.sh [rd/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/k2_read_dq_rbracket.sh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_dq_rbracket.sh [rd/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_dq_rbracket.sh [rd/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_dq_rbracket.sh [combinator/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/k2_read_dq_rbracket.sh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_dq_rbracket.sh [combinator/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_dq_rbracket.sh [combinator/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_sq.sh [rd/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/k2_read_sq.sh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_sq.sh [rd/-c]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_sq.sh [rd/stdin]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_sq.sh [combinator/file]
+   base: (1, b'', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/k2_read_sq.sh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_sq.sh [combinator/-c]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_sq.sh [combinator/stdin]
+   base: (1, b'', b"psh: line 1: ${a[']']}: bad substitution\n")
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_unq_outer.sh [rd/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/k2_read_unq_outer.sh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_unq_outer.sh [rd/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_unq_outer.sh [rd/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_unq_outer.sh [combinator/file]
+   base: (1, b'', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/k2_read_unq_outer.sh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_unq_outer.sh [combinator/-c]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_read_unq_outer.sh [combinator/stdin]
+   base: (1, b'', b'psh: line 1: ${a["]"]}: bad substitution\n')
+   tip : (0, b'read=ok\n', b'')
+DELTA k2_unset_dq_rbracket.sh [rd/file]
+   base: (0, b'declare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="1" [x]="2" )\n', b'')
+DELTA k2_unset_dq_rbracket.sh [rd/-c]
+   base: (0, b'declare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="1" [x]="2" )\n', b'')
+DELTA k2_unset_dq_rbracket.sh [rd/stdin]
+   base: (0, b'declare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="1" [x]="2" )\n', b'')
+DELTA k2_unset_dq_rbracket.sh [combinator/file]
+   base: (0, b'declare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="1" [x]="2" )\n', b'')
+DELTA k2_unset_dq_rbracket.sh [combinator/-c]
+   base: (0, b'declare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="1" [x]="2" )\n', b'')
+DELTA k2_unset_dq_rbracket.sh [combinator/stdin]
+   base: (0, b'declare -A a=(["\\""]="1" [x]="2" )\n', b'')
+   tip : (0, b'declare -A a=(["]"]="1" [x]="2" )\n', b'')
+DELTA m12_unset_unbalanced.sh [rd/file]
+   base: (0, b'rc=0\ndeclare -A a=([x]="1" )\n', b'')
+   tip : (0, b'rc=1\ndeclare -A a=([x]="1" )\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/m12_unset_unbalanced.sh: line 1: unset: `a["]\': not a valid identifier\n')
+DELTA m12_unset_unbalanced.sh [rd/-c]
+   base: (0, b'rc=0\ndeclare -A a=([x]="1" )\n', b'')
+   tip : (0, b'rc=1\ndeclare -A a=([x]="1" )\n', b'psh: line 1: unset: `a["]\': not a valid identifier\n')
+DELTA m12_unset_unbalanced.sh [rd/stdin]
+   base: (0, b'rc=0\ndeclare -A a=([x]="1" )\n', b'')
+   tip : (0, b'rc=1\ndeclare -A a=([x]="1" )\n', b'psh: line 1: unset: `a["]\': not a valid identifier\n')
+DELTA m12_unset_unbalanced.sh [combinator/file]
+   base: (0, b'rc=0\ndeclare -A a=([x]="1" )\n', b'')
+   tip : (0, b'rc=1\ndeclare -A a=([x]="1" )\n', b'/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/m12_unset_unbalanced.sh: line 1: unset: `a["]\': not a valid identifier\n')
+DELTA m12_unset_unbalanced.sh [combinator/-c]
+   base: (0, b'rc=0\ndeclare -A a=([x]="1" )\n', b'')
+   tip : (0, b'rc=1\ndeclare -A a=([x]="1" )\n', b'psh: line 1: unset: `a["]\': not a valid identifier\n')
+DELTA m12_unset_unbalanced.sh [combinator/stdin]
+   base: (0, b'rc=0\ndeclare -A a=([x]="1" )\n', b'')
+   tip : (0, b'rc=1\ndeclare -A a=([x]="1" )\n', b'psh: line 1: unset: `a["]\': not a valid identifier\n')
+DELTA m12_unset_unbalanced_sq.sh [rd/file]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=1\n', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/m12_unset_unbalanced_sq.sh: line 1: unset: `a[']': not a valid identifier\n")
+DELTA m12_unset_unbalanced_sq.sh [rd/-c]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=1\n', b"psh: line 1: unset: `a[']': not a valid identifier\n")
+DELTA m12_unset_unbalanced_sq.sh [rd/stdin]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=1\n', b"psh: line 1: unset: `a[']': not a valid identifier\n")
+DELTA m12_unset_unbalanced_sq.sh [combinator/file]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=1\n', b"/Users/pwilson/src/psh-r2-3/tmp/probes-2.3/m12_unset_unbalanced_sq.sh: line 1: unset: `a[']': not a valid identifier\n")
+DELTA m12_unset_unbalanced_sq.sh [combinator/-c]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=1\n', b"psh: line 1: unset: `a[']': not a valid identifier\n")
+DELTA m12_unset_unbalanced_sq.sh [combinator/stdin]
+   base: (0, b'rc=0\n', b'')
+   tip : (0, b'rc=1\n', b"psh: line 1: unset: `a[']': not a valid identifier\n")
+TOTAL cells: 582; deltas: 342

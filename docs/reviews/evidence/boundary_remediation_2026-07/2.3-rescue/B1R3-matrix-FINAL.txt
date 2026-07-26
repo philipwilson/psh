@@ -1,0 +1,15 @@
+tip discriminator: /Users/pwilson/src/psh-r2-3/psh/__init__.py (post all round-3 fixes)
+NEQ [dparen x psub_var] bash=(0, 'rc=0\ndeclare -A a=(["<(if Q)"]="8" )\n') psh=(2, '')
+NEQ [dparen x psub_unclosed] bash=(2, '') psh=(0, 'rc=0\ndeclare -A a=(["<("]="8" )\n')
+NEQ [testv_present x cmdsub_if] bash=(1, '') psh=(0, 'rc=1\n')
+NEQ [testv_absent x cmdsub_if] bash=(1, '') psh=(0, 'rc=1\n')
+NEQ [unset_present x cmdsub_if] bash=(0, 'declare -A a=([x]="2" ["\\$(if)"]="v" )\n') psh=(0, 'rc=0\ndeclare -A a=(["\\$(if)"]="v" [x]="2" )\n')
+NEQ [unset_absent x cmdsub_if] bash=(0, 'declare -A a=([x]="2" )\n') psh=(0, 'rc=0\ndeclare -A a=([x]="2" )\n')
+NEQ [indirection x cmdsub_if] bash=(1, '') psh=(0, 'read=\nrc=0\n')
+NEQ [nameref x cmdsub_if] bash=(1, '') psh=(0, 'read=\nrc=0\n')
+NEQ [printf_v x cmdsub_if] bash=(0, 'declare -A a\n') psh=(0, 'rc=1\ndeclare -A a=()\n')
+NEQ [read_into x cmdsub_if] bash=(0, 'declare -A a\n') psh=(0, 'rc=1\ndeclare -A a=()\n')
+NEQ [let_arith x cmdsub_if] bash=(0, 'declare -A a\n') psh=(0, 'rc=1\ndeclare -A a=()\n')
+
+NEQ set: [('dparen', 'psub_unclosed'), ('dparen', 'psub_var'), ('indirection', 'cmdsub_if'), ('let_arith', 'cmdsub_if'), ('nameref', 'cmdsub_if'), ('printf_v', 'cmdsub_if'), ('read_into', 'cmdsub_if'), ('testv_absent', 'cmdsub_if'), ('testv_present', 'cmdsub_if'), ('unset_absent', 'cmdsub_if'), ('unset_present', 'cmdsub_if')]
+count: 11 of 70

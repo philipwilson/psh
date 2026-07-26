@@ -13,25 +13,32 @@ SAME SLOT and close the ledger row. Enumerated at `0215279c` via
 | `tests/conformance/bash/test_nested_substitution_timing_conformance.py::test_divergence_c_mode_exit_code_is_127_in_bash` (6 params: `$(if)`, `<(if)`, `${x:-$(if)}`, `$(($(if)+1))`, `${a[$(if)]}`, `a[$(if)]=v`) | 2.4 |
 | **CO-FLIP (added v0.757.0):** golden `heredoc_nested_error_reports_absolute_line` in `tests/behavioral/golden_cases.yaml` pins psh `-c` exit_code 2 on a nested-substitution syntax error (`echo $(if) <<EOF`) — same family as the row above. When 2.4 makes psh `-c` return 127, this golden row goes RED; 2.4 must update its exit_code (and only that) in the same slot. | 2.4 |
 | `tests/conformance/bash/test_syntax_template_timing_conformance.py::test_divergence_eval_source_fatality_is_i3` | 2.4 |
-| `test_subscript_keying_conformance.py::test_divergence_procsub_in_subscript_read_time` (+ the adjacent procsub timing/dead-branch divergence tests around it) | 2.3 |
-| `test_subscript_keying_conformance.py::test_divergence_quote_blind_extent_in_assignment_word` (K1 extent) | 2.3 |
-| `test_subscript_keying_conformance.py::test_divergence_sq_inside_dq_subscript` (parse-time vs runtime rejection half) | 2.3 |
+| **CO-FLIP (added v0.758.0):** `test_subscript_keying_conformance.py::test_divergence_eval_source_procsub_joined_i3` — 2.3 joined the PROCSUB spelling to the I3 family (see LEDGER "2.3 carry: I3 family WIDENED"); flips together with the row above. | 2.4 |
+| ~~`test_subscript_keying_conformance.py::test_divergence_procsub_in_subscript_read_time` (+ adjacent family)~~ | **2.3 — FLIPPED v0.758.0** (equality/parity pins: literal keying + read-time rejection = bash; family superseded by the per-route matrix + render-tier pins) |
+| ~~`test_subscript_keying_conformance.py::test_divergence_quote_blind_extent_in_assignment_word` (K1 extent)~~ | **2.3 — FLIPPED v0.758.0** (`test_quote_aware_extent_in_assignment_word` + read-side + whole-string arg validation; = bash) |
+| ~~`test_subscript_keying_conformance.py::test_divergence_sq_inside_dq_subscript`~~ | **2.3 — CLOSED v0.758.0 as NEVER-A-LIVE-DIVERGENCE** (basis stale at 0215279c — both shells defer to runtime; replaced by `test_sq_inside_dq_subscript_runtime_stage_parity`, a full parity row; findings-integrity note in LEDGER) |
 | `tests/unit/expansion/test_pattern_engine_differential.py` `KNOWN_DIVERGENCES` = {q4_sub1, q4_sub2, q4_sub3, neg7_sub3} + `test_known_divergences_are_still_divergent` | 3.1 |
 
 Plus (unit-level, same slots): any `tests/unit/**` twins of the above that
 assert the psh-divergent result — the owning slot sweeps its own files.
 
-## Successor-owned (carry pins added v0.757.0; no chartered wave slot yet)
+## Successor-owned (carry pins added v0.757.0+; no chartered wave slot yet)
 
 | Pin | Owner |
 |---|---|
+| 2.3 lexer word-extent family: `test_divergence_lexer_splits_quoted_space_subscript`, `test_divergence_procsub_compound_dollar_body_lexer_blocked`, `test_divergence_doubled_open_unclosed_family`, `test_divergence_A1_doubled_open_unclosed_family` | successor lexer slot (LEDGER "2.3 carry: LEXER word-extent family"); the r18 NO-PROGRESS CRASH in the same area is UNPINNED by design — priority row |
+| 2.3 residual pins: `test_divergence_unset_nonbracket_arg_silent`, `test_divergence_assignment_prefix_element_split`, `test_divergence_procsub_separated_subshell_residual`, `test_divergence_procsub_compound_render_residual` (4 params), `test_divergence_pipe_amp_body_render`, `test_divergence_comment_in_body` | successor queue (LEDGER 2.3 carry rows; render residuals flip only with a faithful compound/`|&` re-render) |
 | `tests/parser_differential/test_input_contract_parity.py::test_CARRY_array_init_nested_substitution_still_diverges_on_combinator` + its redirect-target twin (combinator arrays.py word-builder seam — array init, element assignment, redirect targets) | successor (LEDGER "2.2 carry: arrays.py word-builder seam"); both co-flip ONLY when the whole seam is threaded at once |
 
 ## Must-NOT-flip (sanctioned divergences that stay; guard against accidental "fixes")
 
 | Pin | Status |
 |---|---|
-| `test_subscript_keying_conformance.py::test_divergence_empty_arith_subscript_fatality` | Re-carried (ledger B#3); 2.3 may deliberately flip WITH a ruling — never silently. |
+| `test_subscript_keying_conformance.py::test_divergence_empty_arith_subscript_fatality` | Re-carried (ledger B#3); 2.3 left it INTACT (verified rounds 1-4). Deliberate flip needs a ruling — never silently. |
+| `::test_divergence_dq_ansi_bracket_read` (+ 18-cell parity matrix) | **2.3 KEEP-ruled v0.758.0** (bash cannot read back its own `$'['`-keyed write; psh round-trips). Never "fix" toward bash's broken shape. |
+| `::test_divergence_sq_in_dq_readback_outcome` | **2.3 KEEP-ruled v0.758.0** (same bash-cannot-read-own-writes family). |
+| `::test_divergence_unlexable_subscript_typed_error` (route × carrier) | **2.3-declared v0.758.0** (e2 family: psh typed rc-1 vs bash rc-2 lexer-reject; base printed 0 on junk keys — never regress to that). |
+| 2.3 declared builtin-route faces (printf/read/let/nameref wording + printf-raw rc, in the route-audit pins) | **2.3-declared v0.758.0**; fixing = per-builtin surgery, needs its own grant. |
 | `::test_divergence_arith_nested_quote_carriers` | Re-carried (B#23, successor). |
 | `::test_divergence_arith_error_wording_not_keying`, `::test_divergence_assoc_enumeration_order`, `::test_divergence_arith_subscript_adjacency_required` | Wording/order/adjacency — both-shells facts, not campaign targets. |
 | `test_nested_substitution_timing_conformance.py::test_divergence_alias_local_to_cmdsub_body`, `::test_divergence_heredoc_body_cmdsub_stays_runtime` | Recorded semantics, not #22 targets — 2.3/2.4 must leave them green or re-rule explicitly. |
