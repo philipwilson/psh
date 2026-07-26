@@ -30,7 +30,9 @@ from typing import TYPE_CHECKING, List, Optional
 from ..ast_nodes import (
     AndOrList,
     BraceGroup,
+    ExpansionPart,
     Pipeline,
+    ProcessSubstitution,
     Program,
     SimpleCommand,
     StatementList,
@@ -155,7 +157,6 @@ def _render_word(word) -> str:
     ``<(cat <(echo z))`` (matrix nested_ps cells). An inner body outside the
     covered subset keeps its raw spelling — same residual rule as the outer.
     """
-    from ..ast_nodes.words import ExpansionPart, ProcessSubstitution
     out = []
     for part in word.parts:
         if (isinstance(part, ExpansionPart)
