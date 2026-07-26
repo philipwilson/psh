@@ -148,7 +148,12 @@ def _skip_double_quote(text: str, i: int) -> int:
                 return -1
             continue
         if c == '$' and j + 1 < n and text[j + 1] == '(':
-            j, _found = find_command_substitution_end(text, j + 2)
+            j, found = find_command_substitution_end(text, j + 2)
+            if not found:
+                # Unclosed $( inside the dq: no closing quote can follow
+                # (R2-4 — checked like find_subscript_end, not by accident
+                # of the scanner's end-of-text return value).
+                return -1
             continue
         if c == '$' and j + 1 < n and text[j + 1] == '{':
             j = _skip_braces(text, j + 1)
@@ -298,12 +303,6 @@ def find_subscript_end(text: str, open_idx: int) -> int:
     return -1
 
 
-def _subscript_end(content: str, start: int) -> int:
-    """Index of the ']' closing the '[' at *start*, or -1 (quote- and
-    nesting-aware — see :func:`find_subscript_end`)."""
-    return find_subscript_end(content, start)
-
-
 def _is_param_spec(text: str) -> bool:
     """Whether *text* is a complete parameter spec (and nothing more).
 
@@ -322,7 +321,7 @@ def _is_param_spec(text: str) -> bool:
     if bracket == -1:
         return _is_identifier(text)
     return (_is_identifier(text[:bracket])
-            and _subscript_end(text, bracket) == len(text) - 1)
+            and find_subscript_end(text, bracket) == len(text) - 1)
 
 
 def _scan_operator(content: str):
@@ -454,7 +453,7 @@ def parse_parameter_expansion(content: str) -> ParameterExpansion:
         if '[' in rest and rest.endswith(']'):
             bracket = rest.find('[')
             if (_is_identifier(rest[:bracket])
-                    and _subscript_end(rest, bracket) == len(rest) - 1):
+                    and find_subscript_end(rest, bracket) == len(rest) - 1):
                 # ${!arr[@]} keys, or ${!arr[idx]} element indirection —
                 # the evaluator dispatches on the subscript.
                 return ParameterExpansion(rest, '!', None)

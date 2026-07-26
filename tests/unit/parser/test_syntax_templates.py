@@ -257,6 +257,21 @@ def test_element_assignment_absolute_spans(parser):
     assert src[span.start:span.end] == '$(echo k)'
 
 
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_rewritten_spec_drops_origin(parser):
+    """C2 (round 3): a render-SPLICED subscript (source-path procsub whose
+    spelling was rewritten) carries origin=None — rewritten text has no
+    absolute source anchor. Non-rewritten specs keep the D5 projection
+    (test_element_assignment_absolute_spans above)."""
+    node = _first(_parse('declare -A a; a[<( echo  hi )]=v', parser),
+                  ArrayElementAssignment)
+    assert node is not None
+    assert node.index == '<(echo hi)'          # spliced spelling
+    assert node.index_spec is not None
+    assert node.index_spec.text == node.index
+    assert node.index_spec.origin is None
+
+
 def test_absolute_spans_without_anchor_raises():
     spec = build_subscript_spec("$(echo k)")
     assert spec.origin is None

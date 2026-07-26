@@ -326,6 +326,13 @@ class TestQuoteAwareSubscriptExtent:
         # Unclosed backtick inside dq -> no extent.
         assert find_subscript_end('a["`x]', 1) == -1
 
+    def test_unclosed_cmdsub_inside_dq_no_extent(self):
+        # R2-4: the dq skipper checks find_command_substitution_end's found
+        # flag — an unclosed $( inside a dq run yields NO extent (previously
+        # safe only by accident of the end-of-text return).
+        from psh.expansion.param_parser import find_subscript_end
+        assert find_subscript_end('a["$(x]', 1) == -1
+
     def test_quoted_bracket_parameter_is_plain(self):
         # ${a["]"]}: the whole name[sub] is the parameter — no operator, valid.
         node = parse_parameter_expansion('a["]"]')

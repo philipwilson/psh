@@ -123,28 +123,46 @@ class TestProcsubSpellingIsLiteral:
     def test_unset_dollar_in_body_expands_empty(self, subscript):
         assert subscript.associative_key('<(cat $unsetvar)') == '<(cat )'
 
-    @pytest.mark.parametrize('raw,key', [
-        # bash re-renders covered bodies from the parse (B2; every expected
-        # byte oracle-verified in the slot ledger's B2-STAGE2-matrix-2 run):
-        ('<( echo  hi ; )', '<(echo hi)'),          # collapse + trailing-; drop
-        ('<(\techo\thi\t)', '<(echo hi)'),           # tabs collapse
-        ("<( echo  'a b' )", '<(echo a b)'),        # spelling kept, then quote removal
-        ('<(echo hi >/dev/null)', '<(echo hi > /dev/null)'),  # canonical spacing
-        ('<(echo x 2>e)', '<(echo x 2> e)'),        # fd kept + spacing
-        ('<(echo y >&2)', '<(echo y 1>&2)'),        # dup canonicalized like bash
-        ('<(cat >>log;)', '<(cat >> log)'),
-        ('<( echo a ;  echo b )', '<(echo a; echo b)'),
-        ('<( true &&  echo b )', '<(true && echo b)'),
-        ('<( echo a |  wc -l )', '<(echo a | wc -l)'),
-        ('<( { echo g ; } )', '<({ echo g; })'),
-        # UNCOVERED constructs keep the RAW spelling (the ONE structural
-        # predicate: render_procsub_body returns None -> raw fallback):
-        ('<(if true; then echo x; fi)', '<(if true; then echo x; fi)'),
-        ('<((echo  s))', '<((echo  s))'),            # glued subshell = raw (bash too)
-        ('<((echo s);)', '<((echo s);)'),
+    @pytest.mark.parametrize('raw', [
+        # RUNTIME strings are NEVER re-rendered (three render tiers, round-3
+        # B1R2 probe matrix): bash keys `unset -v 'a[<( cat  q )]'` etc. with
+        # the spelling RAW — the render belongs to the SOURCE parse paths
+        # only (test_source_path_render below).
+        '<( echo  hi ; )',
+        '<(\techo\thi\t)',
+        '<(echo hi >/dev/null)',
+        '<(echo x 2>e)',
+        '<( echo a ;  echo b )',
+        '<(if true; then echo x; fi)',
+        '<((echo  s))',
+        '<((echo s);)',
     ])
-    def test_key_render_rules(self, subscript, raw, key):
-        assert subscript.associative_key(raw) == key
+    def test_runtime_string_keeps_raw_spelling(self, subscript, raw):
+        assert subscript.associative_key(raw) == raw
+
+    @pytest.mark.parametrize('src_sub,key', [
+        # SOURCE-path render (parse-time splice, bash's own tier; expected
+        # bytes oracle-verified in B2-STAGE2-matrix-2 + B1R2 supplementary):
+        (' echo  hi ; ', '<(echo hi)'),
+        ('echo hi >/dev/null', '<(echo hi > /dev/null)'),
+        ('echo x 2>e', '<(echo x 2> e)'),
+        ('echo y >&2', '<(echo y 1>&2)'),
+        ('cat >>log;', '<(cat >> log)'),
+        (' echo a ;  echo b ', '<(echo a; echo b)'),
+        (' true &&  echo b ', '<(true && echo b)'),
+        (' echo a |  wc -l ', '<(echo a | wc -l)'),
+        (' { echo g ; } ', '<({ echo g; })'),
+        # uncovered constructs keep the raw spelling even on source paths:
+        ('if true; then echo x; fi', '<(if true; then echo x; fi)'),
+        ('(echo  s)', '<((echo  s))'),
+    ])
+    def test_source_path_render(self, captured_shell, src_sub, key):
+        captured_shell.clear_output()
+        rc = captured_shell.run_command(
+            'declare -A a; a[<(%s)]=v; '
+            'for k in "${!a[@]}"; do printf "%%s" "$k"; done' % src_sub)
+        assert rc == 0
+        assert captured_shell.get_stdout() == key
 
     def test_render_predicate_is_structural(self):
         from psh.expansion.procsub_render import render_procsub_body
@@ -170,10 +188,37 @@ class TestSubscriptSyntaxErrorTyped:
     """MEDIUM-12a (remediation 2.3): the broad-except literal degradation is
     gone — un-lexable raw raises the typed SubscriptSyntaxError."""
 
-    @pytest.mark.parametrize('raw', ['"', "'", '"]', "$'", '$(', '<(', 'a<('])
-    def test_unlexable_raw_raises_typed(self, subscript, raw):
+    @pytest.mark.parametrize('raw', ['"', "'", '"]', "$'"])
+    def test_unclosed_quote_raises_typed(self, subscript, raw):
+        # The typed error class is EXACTLY the unclosed-QUOTE family (bash's
+        # builtins report those arguments as "not a valid identifier").
         with pytest.raises(SubscriptSyntaxError):
             subscript.word_from_text(raw)
+
+    def test_unclosed_procsub_frame_degrades_literal(self, subscript):
+        # Round-3 B1: bash never parses a procsub body at keying time, so an
+        # unclosed frame is literal key text, not an error.
+        assert subscript.associative_key('<(') == '<('
+        assert subscript.associative_key('a<(') == 'a<('
+
+    def test_invalid_procsub_body_is_literal_with_live_dollars(
+            self, captured_shell, subscript):
+        # bash keys invalid bodies literally AND still expands $-forms
+        # inside the frame (B1R2 psub_var rows).
+        assert subscript.associative_key('<(if)') == '<(if)'
+        captured_shell.run_command('y=Q')
+        assert subscript.associative_key('<(if $y)') == '<(if Q)'
+
+    def test_invalid_cmdsub_defers_to_execution(self, subscript):
+        # An invalid modern $() body becomes a DEFERRED executable part
+        # (backtick model) — the keying engine itself never raises for it.
+        from psh.ast_nodes.words import CommandSubstitution, ExpansionPart
+        word = subscript.word_from_text('$(if)')
+        exps = [p for p in word.parts if isinstance(p, ExpansionPart)]
+        assert len(exps) == 1
+        cs = exps[0].expansion
+        assert isinstance(cs, CommandSubstitution)
+        assert cs.program is None and cs.source == 'if'
 
     def test_typed_error_is_expected_shell_error(self):
         from psh.core.exceptions import ExpansionError, PshError

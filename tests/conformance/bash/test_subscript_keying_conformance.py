@@ -810,6 +810,7 @@ def test_quote_aware_extent_family(cmd):
     'declare -A a; a["]"]=R; echo "read=${a[$(echo "]")]}"',  # cmdsub ] read
     'declare -A a; a["]"]=1; a[x]=2; unset -v \'a["]"]\'; echo rc=$?; declare -p a',
     'declare -A a; a["]"]=1; test -v \'a["]"]\'; echo rc=$?',
+    'declare -A a; a["a]b"]=1; echo "read=${a["a]b"]}"',   # R2-3: quoted ] MID-key
 ])
 def test_quote_aware_extent_read_side(cmd):
     """K1 read-side family: `${a["]"]}` and friends (the `${...}` classifier's
@@ -1267,6 +1268,222 @@ def test_divergence_procsub_compound_dollar_body_lexer_blocked():
     assert p.returncode != 0 and p.stdout == ''
     pc = _psh_comb(cmd)
     assert pc.returncode != 0 and pc.stdout == ''
+
+
+# --- Round 3 (B1): three-tier procsub keying --------------------------------
+
+_B1_BODIES = {
+    'psub_if': '<(if)', 'psub_out': '>(if)', 'psub_while': '<(while)',
+    'psub_valid': '<(cat q)', 'psub_var': '<(if $y)', 'psub_unclosed': '<(',
+    'cmdsub_if': '$(if)',
+}
+_B1_ROUTES = {
+    'testv_present':  "declare -A a; y=Q\na['{q}']=v\ntest -v 'a[{q}]'; echo rc=$?\n",
+    'testv_absent':   "declare -A a; y=Q; a[x]=v\ntest -v 'a[{q}]'; echo rc=$?\n",
+    'unset_present':  "declare -A a; y=Q\na['{q}']=v; a[x]=2\nunset -v 'a[{q}]'; echo rc=$?\ndeclare -p a\n",
+    'unset_absent':   "declare -A a; y=Q; a[x]=2\nunset -v 'a[{q}]'; echo rc=$?\ndeclare -p a\n",
+    'indirection':    "declare -A a; y=Q\na['{q}']=v\nk='a[{q}]'\necho \"read=${{!k}}\"; echo rc=$?\n",
+    'nameref':        "declare -A a; y=Q\na['{q}']=v\ndeclare -n r='a[{q}]'\necho \"read=$r\"; echo rc=$?\n",
+    'printf_v':       "declare -A a; y=Q\nprintf -v 'a[{q}]' pv; echo rc=$?\ndeclare -p a\n",
+    'read_into':      "declare -A a; y=Q\nread -r 'a[{q}]' <<< rv; echo rc=$?\ndeclare -p a\n",
+    'let_arith':      "declare -A a; y=Q\nlet 'a[{q}]=7'; echo rc=$?\ndeclare -p a\n",
+    'dparen':         "declare -A a; y=Q\n(( a[{q}]=8 )); echo rc=$?\ndeclare -p a\n",
+}
+# Cells where psh deliberately differs — each attributed to a DECLARED family.
+_B1_DIVERGENT_CELLS = {
+    # The MEASURED non-equal cell set (artifact B1R3-matrix-FINAL.txt — the
+    # post-round-3 authority; two earlier table drafts were built from stale
+    # artifacts, recorded in the slot ledger). Every INVALID-cmdsub word
+    # route diverges the SAME way: psh ATTEMPTS the substitution (deferred
+    # execution — bash's mechanism) but keeps its continue-on-inner-error
+    # model where bash aborts the frame — the declared I3/s2 family that
+    # slot 2.4 owns. indirection/nameref moved INTO this family from an
+    # ACCIDENTAL pre-round-3 match (the old typed abort mimicked bash's
+    # abort observables by a different mechanism) — declared per C3.
+    ('testv_present', 'cmdsub_if'):  'I3/s2 frame fatality',
+    ('testv_absent', 'cmdsub_if'):   'I3/s2 frame fatality',
+    ('unset_present', 'cmdsub_if'):  'I3/s2 fatality + assoc enumeration order',
+    ('unset_absent', 'cmdsub_if'):   'I3/s2 fatality (rc-line presence)',
+    ('indirection', 'cmdsub_if'):    'I3/s2 frame fatality (was accidental match)',
+    ('nameref', 'cmdsub_if'):        'I3/s2 frame fatality (was accidental match)',
+    ('printf_v', 'cmdsub_if'):       'I3/s2 frame fatality',
+    ('read_into', 'cmdsub_if'):      'I3/s2 frame fatality',
+    ('let_arith', 'cmdsub_if'):      'I3/s2 frame fatality',
+    ('dparen', 'psub_unclosed'):     'bash arith-extent wants ] (rc 2); psh keys the literal frame',
+    ('dparen', 'psub_var'):          'PRE-EXISTING (( ))-extent parse failure on $var-before-) '
+                                     '(base==tip byte-identical rc 2; lexer-extent family)',
+}
+
+
+def test_procsub_runtime_route_matrix(tmp_path):
+    """B1 (round 3): the per-route x validity matrix, pinned. bash NEVER
+    parses a procsub body at keying time — invalid/unclosed spellings key
+    literally, $-forms expand inside even invalid frames, and runtime
+    strings are never re-rendered. Every cell runs INDIVIDUALLY (the 2.2
+    batching lesson); rc+stdout must equal bash except the declared cells
+    (each attributed to its family)."""
+    unexpected = []
+    for bname, body in _B1_BODIES.items():
+        for rname, template in _B1_ROUTES.items():
+            script = tmp_path / f'{rname}__{bname}.sh'
+            script.write_text(template.format(q=body))
+            b = run_bash([str(script)], cwd=PSH_ROOT, timeout=15)
+            rd = run_psh([str(script)], cwd=PSH_ROOT, timeout=15)
+            comb = run_psh(['--parser', 'combinator', str(script)],
+                           cwd=PSH_ROOT, timeout=15)
+            assert is_comparable(b) and is_comparable(rd) and is_comparable(comb)
+            assert (rd.returncode, rd.stdout) == (comb.returncode, comb.stdout), \
+                (rname, bname, rd, comb)
+            equal = (rd.returncode, rd.stdout) == (b.returncode, b.stdout)
+            declared = (rname, bname) in _B1_DIVERGENT_CELLS
+            if equal == declared:
+                unexpected.append((rname, bname, 'now-equal' if equal else 'diverged',
+                                   b, rd))
+    assert not unexpected, unexpected[:4]
+
+
+def test_render_tiers():
+    """C1/C2 (round 3): bash's THREE render tiers, pinned. Source write AND
+    source read re-render covered procsub spellings; ARITH-held subscripts
+    keep the spelling RAW (load-bearing: the parse-time splice must never
+    reach arithmetic regions); RUNTIME strings are never rendered."""
+    # tier a: source read finds a tidy-written key through a spaced spelling
+    # and vice versa (both parsers).
+    for cmd in ('declare -A a; a[<(cat q)]=v; echo "read=${a[<( cat  q )]}"',
+                'declare -A a; a[<( cat  q )]=v; echo "read=${a[<(cat q)]}"'):
+        p, b = _both(cmd)
+        assert p.stdout == b.stdout == 'read=v\n', (cmd, p, b)
+        assert _psh_comb(cmd).stdout == b.stdout
+    # tier b: arith keeps the spelling raw, spaces and all.
+    cmd = 'declare -A a; (( a[<( cat  q )]=8 )); declare -p a'
+    p, b = _both(cmd)
+    assert p.stdout == b.stdout and '"<( cat  q )"' in b.stdout
+    assert _psh_comb(cmd).stdout == b.stdout
+    # tier c: a runtime string is NOT rendered — the spaced spelling does not
+    # address the tidy-written key (bash no-ops; the key survives).
+    cmd = "declare -A a; a[<(cat q)]=v; unset -v 'a[<( cat  q )]'; declare -p a"
+    p, b = _both(cmd)
+    assert p.stdout == b.stdout and '"<(cat q)"' in b.stdout
+    assert _psh_comb(cmd).stdout == b.stdout
+
+
+_UNLEXABLE_ROUTE_ROWS = [
+    # (route, script, matches_bash) — the surviving typed-error class
+    # (unclosed-QUOTE junk `a["]`) per route; probed audit
+    # B1R3-quote-class-audit.txt. MATCH rows equal bash on rc+stdout;
+    # declared rows: bash reports per-BUILTIN wording and CONTINUES, psh
+    # uses its uniform typed discard-line (rc 1) — declared + pinned per
+    # the round-2 ruling ("matches or declared+pinned").
+    ('testv', 'declare -A a; a[x]=1; test -v \'a["]\'; echo rc=$?', True),
+    ('unset', 'declare -A a; a[x]=1; unset -v \'a["]\'; echo rc=$?; declare -p a', True),
+    ('indirection', 'declare -A a; a[x]=1; k=\'a["]\'; echo "read=${!k}"; echo rc=$?', True),
+    ('dparen', 'declare -A a; (( a["]=8 )); echo rc=$?; declare -p a', True),
+    ('printf_v', 'declare -A a; printf -v \'a["]\' pv; echo rc=$?; declare -p a', False),
+    ('read_into', 'declare -A a; read -r \'a["]\' <<< rv; echo rc=$?; declare -p a', False),
+    ('let_arith', 'declare -A a; let \'a["]=7\'; echo rc=$?; declare -p a', False),
+    ('nameref', 'declare -A a; a[x]=1; declare -n r=\'a["]\'; echo "read=$r"; echo rc=$?', False),
+]
+
+
+@pytest.mark.parametrize('route,cmd,matches', _UNLEXABLE_ROUTE_ROWS,
+                         ids=[r[0] for r in _UNLEXABLE_ROUTE_ROWS])
+def test_unlexable_subscript_route_audit(route, cmd, matches):
+    p, b = _both(cmd)
+    pc = _psh_comb(cmd)
+    assert (p.returncode, p.stdout) == (pc.returncode, pc.stdout)
+    if matches:
+        assert (p.returncode, p.stdout) == (b.returncode, b.stdout), (route, p, b)
+    else:
+        # Declared: psh typed discard-line rc 1; bash builtin-reports and
+        # continues (its rc=N line prints).
+        assert p.returncode == 1 and p.stdout == ''
+        assert 'bad array subscript' in p.stderr
+        assert b.returncode == 0 and 'rc=' in b.stdout
+        assert b.stderr.strip()
+
+
+def test_empty_assoc_key_set_route_rejected():
+    """Round-3 plan-C-radius fix (base-verified pre-existing gap): the
+    set-var route (printf -v / read) rejected nothing for an
+    (expanded-)EMPTY assoc key and stored [""] where bash reports
+    "NAME[RAW]: bad array subscript" (rc 1, line continues). Now rejected
+    like the source-write path; psh's stderr adds its builtin-name prefix
+    (wording family) and its empty-assoc declare -p renders `a=()`
+    (documented rendering residual) — rc and no-key-stored are pinned."""
+    for cmd in ("declare -A a; e=; printf -v 'a[$e]' pv; echo rc=$?; declare -p a",
+                "declare -A a; e=; read -r 'a[$e]' <<< rv; echo rc=$?; declare -p a"):
+        p, b = _both(cmd)
+        assert 'rc=1' in b.stdout and '[""]' not in b.stdout
+        assert 'bad array subscript' in b.stderr
+        assert 'rc=1' in p.stdout and '[""]' not in p.stdout, (cmd, p)
+        assert 'bad array subscript' in p.stderr
+        assert _psh_comb(cmd).stdout == p.stdout
+
+
+def test_divergence_assignment_prefix_element_split():
+    """R2-7 (round-2 verifier evidence, base-identical PRE-EXISTING carry):
+    an element assignment inside an ASSIGNMENT-PREFIX run — `foo=1
+    bar[0]=2` — is a pure prefix statement in bash (rc 0, bar created);
+    psh splits it and runs `bar[0]=2` as a command (rc-in-$? 127, no
+    array). Both parsers, stdin channel (the probed one)."""
+    script = 'foo=1 bar[0]=2; echo rc=$?; declare -p bar\n'
+    b = run_bash([], stdin_data=script, cwd=PSH_ROOT, timeout=15)
+    rd = run_psh([], stdin_data=script, cwd=PSH_ROOT, timeout=15)
+    comb = run_psh(['--parser', 'combinator'], stdin_data=script,
+                   cwd=PSH_ROOT, timeout=15)
+    assert is_comparable(b) and is_comparable(rd) and is_comparable(comb)
+    assert b.stdout == 'rc=0\ndeclare -a bar=([0]="2")\n'
+    assert 'rc=127' in rd.stdout and 'command not found' in rd.stderr
+    assert (rd.returncode, rd.stdout) == (comb.returncode, comb.stdout)
+
+
+_HEADSCAN_PRE = ['a', 'a\\', 'A_1']
+_HEADSCAN_SUB = ['k', '"]"', '\\]', 'b[i]', 'x=1', 'x+=y', ']]']
+_HEADSCAN_OPS = ['=v', '+=v', 'x=v', ']=v', '=""']
+
+
+def test_generated_head_scan_battery(tmp_path):
+    """B2 (round 3): the GENERATED head-scan space — every PRE x SUB x OPS
+    head compared rc+stdout+stderr-presence to bash, INDIVIDUAL runs (the
+    batching desync lesson), both parsers lockstep. This battery supersedes
+    the two hand enumerations that each came up short; the space includes
+    all seven round-2-verifier families (escaped-bracket heads, doubled
+    brackets, trailing junk after a well-formed head, underscore names).
+    Known-divergent cells are attributed by the SAME families already
+    pinned in this file (lexer word-split carry; empty-assoc declare -p
+    rendering residual is avoided by comparing stdout only when bash's
+    declare output is non-empty-array-form)."""
+    declared_familes_hit = []
+    unexpected = []
+    for pre in _HEADSCAN_PRE:
+        for sub in _HEADSCAN_SUB:
+            for ops in _HEADSCAN_OPS:
+                head = f'declare -A a; {pre}[{sub}]{ops}'
+                script = tmp_path / 'cell.sh'
+                script.write_text(head + '; echo rc=$?; declare -p a 2>&1\n')
+                b = run_bash([str(script)], cwd=PSH_ROOT, timeout=15)
+                rd = run_psh([str(script)], cwd=PSH_ROOT, timeout=15)
+                comb = run_psh(['--parser', 'combinator', str(script)],
+                               cwd=PSH_ROOT, timeout=15)
+                assert is_comparable(b) and is_comparable(rd)
+                assert is_comparable(comb)
+                assert (rd.returncode, rd.stdout) == (comb.returncode,
+                                                     comb.stdout), (head, rd, comb)
+                cell = (pre, sub, ops)
+                if (rd.returncode, rd.stdout) == (b.returncode, b.stdout):
+                    continue
+                # Attribute divergent cells to the declared families:
+                if 'declare -A a\n' in b.stdout and 'declare -A a=()' in rd.stdout \
+                        and rd.stdout.replace('declare -A a=()',
+                                              'declare -A a') == b.stdout:
+                    declared_familes_hit.append((cell, 'empty-assoc declare -p rendering'))
+                    continue
+                if b.returncode == 2 and 'EOF' in b.stderr:
+                    declared_familes_hit.append((cell, 'bash continuation (lexer-unclosed family)'))
+                    continue
+                unexpected.append((cell, b.returncode, b.stdout, rd.returncode,
+                                   rd.stdout, rd.stderr[-120:]))
+    assert not unexpected, (len(unexpected), unexpected[:5])
 
 
 def test_divergence_unlexable_subscript_typed_error():

@@ -586,6 +586,13 @@ Subscript-specific invariants (remediation 2.3, HIGH-4 + MEDIUM-4):
   token's position) anchors the spec absolutely;
   `SubscriptSpec.absolute_spans()` projects nested-sub spans to source
   coordinates (pinned in `tests/unit/parser/test_syntax_templates.py`).
+- Source-path RENDER SPLICE (round 3): `support/syntax_templates.py#
+  rewrite_rendered_subscript` rewrites covered procsub spellings into the
+  subscript text at parse time (bash renders only on source paths — the
+  three-tier rule; see expansion/CLAUDE.md). A REWRITTEN spec drops its
+  `origin` anchor (no absolute source for rewritten text); arithmetic
+  regions are structurally excluded (C1 — the arith tier's raw
+  preservation is load-bearing, pinned in `test_render_tiers`).
 
 A substitution-body syntax error is raised as `SubstitutionSyntaxError` (an inert
 `ParseError` subclass; `is_substitution_origin`) at the one chokepoint
