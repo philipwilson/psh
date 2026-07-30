@@ -189,9 +189,12 @@ bash, and both builtins simply let it pass: neither `eval_command.py` nor
 `source_command.py` catches it, because the outcome
 (`core/exceptions.py#SubstitutionSyntaxAbort`) derives from `BaseException`.
 An ORDINARY syntax error in the same position stays non-fatal and returns 2 as
-before — the difference is carried by the error's TYPE, not its status. This
-fatality is NOT suppressed by `command`/`builtin`, unlike the POSIX-mode
-`SpecialBuiltinUsageError` policy those two DO strip; pinned in
+before — the difference is carried by the error's TYPE, not its status. It does
+NOT depend on which syntax error the body has: an unterminated `$(if)` and a
+complete-but-ill-formed `$(fi)` reach the consumer by different routes inside
+`SourceProcessor` and both abort. This fatality is also NOT suppressed by
+`command`/`builtin`, unlike the POSIX-mode `SpecialBuiltinUsageError` policy
+those two DO strip; pinned in
 `tests/conformance/bash/test_syntax_template_timing_conformance.py`.
 
 ### 2. Registration with Decorator

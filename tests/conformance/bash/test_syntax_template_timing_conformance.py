@@ -191,6 +191,12 @@ def test_eval_source_frame_fatality_matches_bash():
     catches — so eval, source, functions, ``if`` conditions and ``&&`` lists
     all fail to contain it, matching bash's process-scoped abort.
 
+    SCOPE OF THIS ROW: the body here is the UNTERMINATED error kind. The
+    non-containment claim above holds for the other kind only because the
+    accumulator's trial-parse exit is wired too — pinned separately by
+    ``test_frame_fatality_for_complete_but_invalid_bodies``, which is the row
+    that fails if that second site regresses.
+
     NOTE the ESCAPED ``\\$(if)``: the error must occur when EVAL parses its
     argument, not at the outer read. An UNESCAPED ``$(if)`` inside the
     double-quoted eval argument is an outer-read command substitution that S3
@@ -212,6 +218,62 @@ def test_eval_source_frame_fatality_matches_bash():
     p3 = _psh('x=set; eval "echo \\${x:-\\$(if)}"; echo AFTER', "c")
     assert b3.returncode == p3.returncode == 127
     assert "AFTER" not in b3.stdout and "AFTER" not in p3.stdout
+
+
+def test_frame_fatality_for_complete_but_invalid_bodies(tmp_path):
+    """ERROR-KIND twin of the fatality pin above — the axis the round-1 corpus
+    held constant, which left half of HIGH-9 alive.
+
+    ``$(if)`` is UNTERMINATED (accumulator NeedMore -> flushed -> the
+    ``_execute_buffered_command`` exit). ``$(fi)`` is COMPLETE but ill-formed:
+    the trial parse completes carrying the same typed error and leaves by
+    ``_run_from_source``'s error branch. A fix wired to only one exit still
+    lets eval/source frames CONTINUE for this kind, so pin the frames for it
+    directly, in every channel."""
+    inner = tmp_path / "inner.sh"
+    inner.write_text("echo IB\necho $(fi)\necho IA\n")
+    rows = [
+        ("echo B; eval 'echo $(fi)'; echo AFTER", "B\n"),
+        ("echo B; eval 'cat <(fi)'; echo AFTER", "B\n"),
+        (f"echo B; source {inner}; echo AFTER", "B\nIB\n"),
+        ("f() { eval \"echo \\$(fi)\"; }; echo B; f; echo AFTER", "B\n"),
+        ("echo B; eval 'echo $(fi)' && echo AND; echo AFTER", "B\n"),
+        ("echo B; if eval 'echo $(fi)'; then echo T; fi; echo AFTER", "B\n"),
+    ]
+    for script, expect_out in rows:
+        for channel, status in (("c", 127), ("file", 1), ("stdin", 1)):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.returncode == p.returncode == status, (script, channel, b, p)
+            assert b.stdout == p.stdout == expect_out, (script, channel, b.stdout, p.stdout)
+
+
+def test_forked_child_exit_trap_sees_its_own_status():
+    """The forked child exits 1, and its OWN EXIT trap must observe that 1 —
+    not the ordinary syntax-error 2 the raise site left behind. Guards
+    ``executor/child_policy.py#sync_child_status_for_exit_trap``.
+
+    A command-substitution child matches bash EXACTLY here (both show 1). For
+    a SUBSHELL child bash instead prints its internal pre-truncation
+    ``EX_BADSYNTAX`` 257 while its process status is still 1 — the same
+    declared O4 choice as the main shell's EXIT trap: psh reports the true
+    status."""
+    for body in ("echo $(if)", "echo $(fi)"):     # BOTH error kinds
+        cmd = ("x=$( trap 'echo T rc=$? >&2' EXIT; eval '%s' ); echo RC=$?"
+               % body)
+        b, p = _bash(cmd, "c"), _psh(cmd, "c")
+        assert b.stdout == p.stdout == "RC=1\n", (body, b.stdout, p.stdout)
+        assert "T rc=1" in b.stderr and "T rc=1" in p.stderr, (body, b.stderr, p.stderr)
+        sub = ("( trap 'echo T rc=$? >&2' EXIT; eval '%s' ); echo RC=$?" % body)
+        bs, ps = _bash(sub, "c"), _psh(sub, "c")
+        assert bs.stdout == ps.stdout == "RC=1\n", (body, bs.stdout, ps.stdout)
+        assert "T rc=257" in bs.stderr, (body, bs.stderr)   # bash's internal
+        assert "T rc=1" in ps.stderr, (body, ps.stderr)     # psh: true status
+    # CONTROL: an explicit `exit 1` in the same position agrees in both shells,
+    # so the sync is about THIS outcome, not about traps generally.
+    ctl = "( trap 'echo T rc=$? >&2' EXIT; exit 1 ); echo RC=$?"
+    bc, pc = _bash(ctl, "c"), _psh(ctl, "c")
+    assert bc.stdout == pc.stdout == "RC=1\n"
+    assert "T rc=1" in bc.stderr and "T rc=1" in pc.stderr
 
 
 def test_eval_frame_fatality_status_is_channel_dependent():

@@ -107,6 +107,28 @@ def map_child_exception(exc: BaseException) -> int:
     raise exc
 
 
+def sync_child_status_for_exit_trap(shell: 'Shell', exc: BaseException,
+                                    exit_code: int) -> None:
+    """Publish a mapped child status into ``$?`` before the child's EXIT trap.
+
+    Every other member of the taxonomy already leaves ``$?`` correct when it
+    reaches a fork boundary — ``exit`` sets it at the raise site, and
+    ``TopLevelAbort`` carries its status. ``SubstitutionSyntaxAbort`` does not:
+    its status is decided AT the boundary (a child is always 1, whatever the
+    channel), while the raise site left the ordinary syntax-error 2 behind. So
+    the child's own EXIT trap would observe a stale 2 while the process exits
+    1 — an inconsistency bash does not have (probe: a command-substitution
+    child's EXIT trap sees 1, matching its exit status; the control
+    ``exit 1`` sees 1 in both shells).
+
+    For a SUBSHELL child bash instead shows its internal pre-truncation
+    ``EX_BADSYNTAX`` (257) here; psh reports the true status 1, the same
+    declared choice made for the main shell's EXIT trap.
+    """
+    if isinstance(exc, SubstitutionSyntaxAbort):
+        shell.state.last_exit_code = exit_code
+
+
 def fork_with_signal_window() -> int:
     """fork() with termination signals blocked across the fork window.
 
@@ -274,6 +296,7 @@ def run_background_shell_child(shell: 'Shell',
         # A control-flow/exit exception at the body's top: subshell boundary,
         # so break/return cannot cross the fork; map via the shared taxonomy.
         exit_code = map_child_exception(e)
+        sync_child_status_for_exit_trap(shell, e, exit_code)
     finally:
         # A managed-signal trap queued while the body ran (e.g. after the
         # last statement) still fires; then the EXIT trap runs on the way
@@ -364,6 +387,7 @@ def run_child_body(child_shell: 'Shell',
         exit_code = body(child_shell)
     except CHILD_EXIT_EXCEPTIONS as e:
         exit_code = map_child_exception(e)
+        sync_child_status_for_exit_trap(child_shell, e, exit_code)
 
     try:
         child_shell.trap_manager.execute_exit_trap()

@@ -379,11 +379,55 @@ def test_c_mode_exit_code_is_127_like_bash(cmd):
     channel-scoped rather than a blanket new status. The consumer is the typed
     ``SubstitutionSyntaxAbort`` that ``core/internal_errors.py#
     substitution_abort_status`` maps per channel — the I3 half of S3's
-    ``SubstitutionSyntaxError`` producer contract."""
+    ``SubstitutionSyntaxError`` producer contract.
+
+    NOTE the body is ``if`` — an UNTERMINATED construct, i.e. the at-EOF error
+    kind. The complete-but-ill-formed kind takes a DIFFERENT SourceProcessor
+    exit and is pinned by the ``$(fi)`` twin below; keep both, because a fix
+    wired to only one of the two sites passes this test and fails that one."""
     b = _bash_c(cmd)
     p = _psh_c(cmd)
     assert b.returncode == p.returncode == 127   # both: bash's -c status
     assert b.stdout == p.stdout == ""            # neither executes anything
+
+
+@pytest.mark.parametrize("cmd", [
+    "echo $(fi)",                       # top-level command sub
+    "cat <(fi)",                        # process sub
+    "x=set; echo ${x:-$(fi)}",          # S3: parameter-expansion operand
+    "echo $(( $(fi) + 1 ))",            # S3: arithmetic template
+    "a=(1 2); echo ${a[$(fi)]}",        # S3: array subscript
+    "a[$(fi)]=v",                       # S3: element-assignment subscript
+])
+def test_c_mode_127_for_complete_but_invalid_bodies(cmd):
+    """TWIN of the pin above on the ERROR-KIND axis, which the original
+    corpus held constant and therefore missed.
+
+    ``$(if)`` is UNTERMINATED: the accumulator returns NeedMore, the buffer is
+    flushed, and the error surfaces from ``_execute_buffered_command``.
+    ``$(fi)`` is COMPLETE but ill-formed: the accumulator's trial parse
+    completes carrying the same typed error, and it surfaces from the OTHER
+    exit (``_run_from_source``'s ``result.error is not None`` branch). Both are
+    equally fatal in bash, so both sites consume through the one policy —
+    varying only the spelling would leave half the defect alive."""
+    b = _bash_c(cmd)
+    p = _psh_c(cmd)
+    assert b.returncode == p.returncode == 127, (cmd, b, p)
+    assert b.stdout == p.stdout == "", (cmd, b.stdout, p.stdout)
+
+
+@pytest.mark.parametrize("body", ["$(;)", "$(x ;; y)", "$(done)", "$(esac)",
+                                  "$(then)", "$(| x)", "$(&& x)"])
+def test_c_mode_127_across_other_invalid_body_kinds(body):
+    """A sample ACROSS the complete-but-invalid space rather than one witness:
+    bare operator, misplaced ``;;``, several wrong keywords, and leading
+    ``|``/``&&``. Generating over the kind space is what the round-1 corpus
+    lacked (it varied spelling only)."""
+    cmd = "echo " + body
+    b = _bash_c(cmd)
+    p = _psh_c(cmd)
+    assert b.returncode == p.returncode == 127, (cmd, b, p)
+    assert b.stdout == p.stdout == "", (cmd, b.stdout, p.stdout)
 
 
 @pytest.mark.parametrize("cmd", [

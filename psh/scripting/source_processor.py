@@ -218,6 +218,17 @@ class SourceProcessor(ScriptComponent):
                 command_start_line = 0
                 exit_code = 2  # Bash uses exit code 2 for syntax errors
                 self.state.last_exit_code = 2
+                # SECOND of the two substitution-origin consumer sites, sharing
+                # ONE policy with the first (_execute_buffered_command). The
+                # split is by ERROR KIND, not by channel: the accumulator
+                # returns NeedMore for an UNTERMINATED body (`$(if)`) — which
+                # flushes into _execute_buffered_command — but a COMPLETE but
+                # ill-formed body (`$(fi)`, `$(;)`, `$(x ;; y)`, `<(fi)`, ...)
+                # completes HERE carrying the same typed error. Both kinds are
+                # equally fatal in bash, so both must reach the same abort.
+                self._substitution_syntax_abort(
+                    result.error,
+                    getattr(self.shell, '_current_executor', None) is not None)
                 # In non-interactive mode, exit immediately on parse errors
                 if not input_source.is_interactive():
                     self._posix_syntax_abort(input_source)

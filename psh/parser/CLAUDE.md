@@ -603,12 +603,29 @@ the shell where an ordinary one is not. The CONSUMER is
 `scripting/source_processor.py#SourceProcessor._substitution_syntax_abort`,
 which turns it into `core/exceptions.py#SubstitutionSyntaxAbort`.
 
-**Remaining documented divergence** (pinned in
-`tests/conformance/bash/test_nested_substitution_timing_conformance.py` and
-`test_syntax_template_timing_conformance.py`): `$(if)` inside a heredoc BODY is
-expanded at runtime by both shells (not a template region), so it stays
-non-fatal. The exit-code split and the eval/source frame fatality that used to
-be listed here were CLOSED by that consumer.
+The consumer must sit at BOTH of `SourceProcessor`'s syntax-error exits,
+because the two carry the same typed error by different routes: an
+UNTERMINATED body (`$(if)`) makes the accumulator ask for more input and
+surfaces as a flushed buffer, while a COMPLETE but ill-formed body (`$(fi)`,
+`$(;)`) completes the accumulator's trial parse and surfaces from its error
+branch. Wiring only one leaves the other kind behaving exactly as before —
+that shipped once and was caught in verification.
+
+**Remaining documented divergences** in this family:
+
+- `$(if)` inside a heredoc BODY is expanded at runtime by both shells (not a
+  template region), so it stays non-fatal — pinned in
+  `tests/conformance/bash/test_nested_substitution_timing_conformance.py`
+  (`test_divergence_heredoc_body_cmdsub_stays_runtime`).
+- A TRAP ACTION string whose own parse fails: both shells abort, but bash
+  exits 2 in the file/stdin channels where psh exits 1 (`-c` and all stdout
+  agree).
+- The status bash's EXIT trap observes for this abort in file/stdin is its
+  internal pre-truncation `EX_BADSYNTAX` (257); psh reports the true process
+  status. Both are pinned in `test_syntax_template_timing_conformance.py`.
+
+The `-c` exit-code split and the eval/source frame fatality that used to be
+listed here are CLOSED by the consumer above.
 
 ## Configuration
 

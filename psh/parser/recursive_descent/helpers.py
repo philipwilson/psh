@@ -226,11 +226,13 @@ class ParseError(PshError):
     #: process substitution ($(...), <(...), >(...)). False for every ordinary
     #: parse error; True only on :class:`SubstitutionSyntaxError`. It is the
     #: typed I3 PRODUCER CONTRACT: a substitution-body syntax error is fatal to
-    #: bash's string-execution frames (-c/eval/source, rc 127) while an ordinary
-    #: syntax error is not. Carrying that origin as a TYPE — not by re-parsing or
+    #: bash's string-execution frames (-c/eval/source) while an ordinary syntax
+    #: error is not. Carrying that origin as a TYPE — not by re-parsing or
     #: string-matching the message — is the semantic fact this boundary used to
-    #: lose. psh keeps its uniform exit code 2 today (the 127/frame-abort mapping
-    #: is I3's consumer job); this flag is behaviorally inert until then.
+    #: lose. The flag is LIVE: both of SourceProcessor's syntax-error exits read
+    #: it through ``parser.is_substitution_origin`` and raise
+    #: ``core/exceptions.py#SubstitutionSyntaxAbort``, whose per-channel status
+    #: is ``core/internal_errors.py#substitution_abort_status``.
     substitution_origin: bool = False
 
     def __init__(self, error_context: ErrorContext):
@@ -269,15 +271,22 @@ class ParseError(PshError):
 class SubstitutionSyntaxError(ParseError):
     """A read-time syntax error in a modern substitution body (``$(...)`` etc.).
 
-    A subclass of :class:`ParseError` and therefore BEHAVIORALLY INERT today:
-    every ``except ParseError`` / ``isinstance(e, ParseError)`` site treats it
-    identically, the rendered diagnostic is the same, and psh's uniform
-    syntax-error exit code (2) is unchanged. Its only added fact is
-    ``substitution_origin = True`` — the typed I3 producer contract (see the
-    base attribute). Raised at the ONE chokepoint that parses substitution
-    bodies (``support/nested_parse.parse_nested_command``) and re-raised from
-    the S3 region validator, so no substitution-body syntax error escapes
-    untagged.
+    A subclass of :class:`ParseError`, so the rendered diagnostic is unchanged
+    and every ordinary ``except ParseError`` site still catches it. Its added
+    fact is ``substitution_origin = True`` — the typed I3 producer contract
+    (see the base attribute) — and that fact is BEHAVIORALLY LIVE: it makes the
+    error fatal to a non-interactive shell, where an ordinary syntax error in
+    the same position is not. Raised at the ONE chokepoint that parses
+    substitution bodies (``support/nested_parse.parse_nested_command``) and
+    re-raised from the S3 region validator, so no substitution-body syntax
+    error escapes untagged.
+
+    The fatality does not depend on WHICH syntax error the body has. An
+    unterminated body (``$(if)``) reaches the consumer as a flushed buffer,
+    while a complete-but-ill-formed one (``$(fi)``, ``$(;)``) reaches it from
+    the accumulator's trial parse; both carry this type and both abort. A
+    consumer wired to only one of those paths silently keeps half the
+    divergence, which is how it shipped once.
 
     ``from_parse_error`` preserves the original error's structural signals
     (``at_eof``, ``unclosed_expansion``, ``missing_terminator``) so

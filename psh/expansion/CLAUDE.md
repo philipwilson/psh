@@ -370,8 +370,11 @@ Three remediation-2.3 invariants on the re-lex bridge
   recurse, an unclosed frame keeps its raw tail). Cmdsubs and backticks
   still EXECUTE in associative keys; an INVALID modern `$()` body becomes a
   DEFERRED executable part (the backtick model) so every route ATTEMPTS the
-  substitution like bash — the frame-fatality residual is the declared
-  I3/s2 family (slot 2.4's consumer).
+  substitution like bash. The frame-fatality that was the open I3/s2 residual
+  is now CLOSED: a substitution-body syntax error aborts the non-interactive
+  shell via `core/exceptions.py#SubstitutionSyntaxAbort`, consumed at BOTH of
+  `scripting/source_processor.py`'s syntax-error exits (the flushed-buffer one
+  and the accumulator trial-parse one).
 - **THREE RENDER TIERS** (bash, probe matrix B1R3-matrix-FINAL): the parse
   RE-RENDER of covered procsub spellings (whitespace collapse, trailing-`;`
   drop, canonical redirect spacing, recursive inner frames) applies ONLY on

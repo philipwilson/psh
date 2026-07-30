@@ -143,9 +143,11 @@ def substitution_abort_status(state: 'ShellState', nested: bool) -> int:
     * ``set -e`` active -> **2**, in every channel and for both the direct and
       the eval/source-nested shapes. errexit is checked FIRST because it wins
       over the ``-c`` rule (``set -e`` under ``-c`` gives 2, not 127).
-    * ``-c`` (``command_mode``) -> **127**, at any nesting depth: the direct
-      parse, or an ``eval``/``source``/function/trap frame inside the ``-c``
-      string, all give 127.
+    * ``-c`` (``command_mode``) -> **127**, at any nesting depth and for either
+      error kind: the direct parse, or an ``eval``/``source``/function/trap
+      frame inside the ``-c`` string, all give 127 — provided both of
+      ``SourceProcessor``'s syntax-error exits reach this policy (see
+      ``core/exceptions.py#SubstitutionSyntaxAbort``).
     * a script FILE or stdin -> **2** when the outermost source's own parse
       found it, **1** when it came from a nested ``eval``/``source`` string.
       The 1 is bash's ``EX_BADSYNTAX`` (257) truncated to 8 bits; psh reports

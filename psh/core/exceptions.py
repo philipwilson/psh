@@ -127,7 +127,11 @@ class SubstitutionSyntaxAbort(BaseException):
     * NO frame contains it — not a function, an ``if`` condition, an ``&&``
       list, ``eval``, ``source``, a trap action, nor any nesting of those;
       nothing on those paths catches ``BaseException``, so propagation is
-      automatic and no frame needs to know about it.
+      automatic and no frame needs to know about it. That holds only while
+      BOTH of ``SourceProcessor``'s syntax-error exits raise this: the
+      unterminated-body kind (``$(if)``) arrives via the flushed buffer, the
+      complete-but-ill-formed kind (``$(fi)``) via the accumulator's trial
+      parse. Wire one and the frames still contain the other.
     * FORK boundaries DO contain it, because they are separate processes: a
       subshell, command/process substitution, a pipeline member and a
       background job all die with status 1 while the parent continues. That
