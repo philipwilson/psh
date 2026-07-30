@@ -299,7 +299,11 @@ class SourceProcessor(ScriptComponent):
         ``parser.is_substitution_origin`` — never from its message or its exit
         code — and turned into the typed
         ``core/exceptions.py#SubstitutionSyntaxAbort``, which no non-fork frame
-        catches and which ``execute_as_main`` resolves into the process status.
+        catches. ``execute_as_main`` resolves it into the process status on the
+        ordinary path; the ONE exception is an EXIT trap firing at TEARDOWN,
+        where ``core/trap_manager.py#TrapManager.execute_exit_trap`` swallows it
+        instead — the shell is already exiting, so bash reports the diagnostic
+        and changes nothing.
 
         A no-op when the shell is INTERACTIVE: bash's interactive loop reports
         the diagnostic and carries on (a sourced file even resumes at its own

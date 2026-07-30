@@ -617,9 +617,12 @@ that shipped once and was caught in verification.
   template region), so it stays non-fatal — pinned in
   `tests/conformance/bash/test_nested_substitution_timing_conformance.py`
   (`test_divergence_heredoc_body_cmdsub_stays_runtime`).
-- A TRAP ACTION string whose own parse fails: both shells abort, but bash
-  exits 2 in the file/stdin channels where psh exits 1 (`-c` and all stdout
-  agree).
+- A MID-SCRIPT trap action string whose own parse fails (a signal trap, DEBUG,
+  ERR or RETURN — probed across all of them, the behaviour is uniform): both
+  shells abort, but bash exits 2 in the file/stdin channels where psh exits 1
+  (`-c` and all stdout agree). This EXCLUDES the EXIT trap at teardown, which
+  is a different shape and matches bash exactly: the error is reported and
+  changes nothing, because the shell is already exiting.
 - The status bash's EXIT trap observes for this abort in file/stdin is its
   internal pre-truncation `EX_BADSYNTAX` (257); psh reports the true process
   status. Both are pinned in `test_syntax_template_timing_conformance.py`.

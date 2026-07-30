@@ -13,15 +13,18 @@ Comparison is CHANNEL-AWARE and rc-value-agnostic:
 * REJECT cases: bash and psh must produce IDENTICAL stdout and BOTH a nonzero
   exit — the read-time-rejection TIMING match. (In -c the whole buffer is one
   parse unit so nothing runs; in file/stdin an earlier command on its own line
-  runs before the offending line rejects — bash and psh agree either way.) The
-  exact code differs (bash 127 in string channels, psh's uniform 2); that is a
-  documented divergence owned by I3, not asserted here.
+  runs before the offending line rejects — bash and psh agree either way.)
+  These rows assert the TIMING only, so they stay agnostic about the exact
+  status; the status itself is pinned at the bottom (it is channel-dependent —
+  127 under ``-c``, 2 for a script file and stdin — not a single number).
 * ACCEPT cases: identical stdout AND identical rc (valid, dynamic, lazy-dead,
   single-quoted-literal, and deferred-backtick cases must behave the same).
 
-eval/source FATALITY (bash aborts the enclosing frame on a substitution-body
-error; psh continues) is a separate pre-existing divergence carried to I3 and is
-pinned as a divergence at the bottom, not in the match matrix.
+eval/source FATALITY is CLOSED (slot 2.4): a substitution-body syntax error
+aborts the enclosing frame in psh as it does in bash, for both error kinds.
+It is pinned at the bottom as an equality, not as a divergence. What remains
+declared there is narrower: the mid-script trap-action status, and the status
+bash's own EXIT trap observes.
 """
 
 import os
@@ -388,21 +391,77 @@ def test_substitution_fatality_from_a_trap_action():
 
     DECLARED DIVERGENCE (slot 2.4, ruling O3): matching bash's 2 would need
     bespoke trap-action plumbing distinct from the eval/source branch, which
-    the ruling put out of scope; the ``-c`` channel and all stdout agree."""
+    the ruling put out of scope; the ``-c`` channel and all stdout agree.
+
+    DOMAIN — the declaration's universe, probed rather than assumed: the
+    divergence is UNIFORM across every action-bearing trap kind that fires
+    MID-SCRIPT (a signal trap, DEBUG, ERR, RETURN), which is why the corpus
+    below samples them rather than USR1 alone. It explicitly EXCLUDES the EXIT
+    trap at teardown, which is a different shape and MATCHES bash exactly —
+    see ``test_exit_trap_teardown_action_error_changes_nothing``."""
     nested = ("trap 'echo TA; eval \"echo \\$(if)\"; echo TA2' USR1\n"
               "echo B\nkill -USR1 $$\nsleep 0.2\necho AFTER")
     for channel, expected in (("c", 127), ("file", 1), ("stdin", 1)):
         b, p = _bash(nested, channel), _psh(nested, channel)
         assert b.returncode == p.returncode == expected, (channel, b, p)
         assert b.stdout == p.stdout == "B\nTA\n", (channel, b.stdout, p.stdout)
-    own = ("trap ' echo TA; echo $(if); echo TA2' USR1\n"
-           "echo B\nkill -USR1 $$\nsleep 0.2\necho AFTER")
-    bc, pc = _bash(own, "c"), _psh(own, "c")
-    assert bc.returncode == pc.returncode == 127, (bc, pc)   # -c agrees
-    for channel in ("file", "stdin"):
-        b, p = _bash(own, channel), _psh(own, channel)
-        assert b.stdout == p.stdout == "B\n", (channel, b.stdout, p.stdout)
-        assert b.returncode == 2 and p.returncode == 1, (channel, b, p)
+    # The action string's OWN parse failing, across the trap-kind universe.
+    kinds = [
+        ("trap ' echo TA; echo $(if); echo TA2' USR1\n"
+         "echo B\nkill -USR1 $$\nsleep 0.2\necho AFTER", "B\n"),
+        ("trap ' echo TA; echo $(fi); echo TA2' TERM\n"
+         "echo B\nkill -TERM $$\nsleep 0.2\necho AFTER", "B\n"),
+        ("trap ' echo $(fi)' DEBUG\necho B\necho AFTER", ""),
+        ("set -E\ntrap ' echo $(fi)' ERR\necho B\nfalse\necho AFTER", "B\n"),
+        ("set -T\ntrap ' echo $(fi)' RETURN\nf() { echo IN; }\n"
+         "echo B\nf\necho AFTER", "B\nIN\n"),
+    ]
+    for own, expect_out in kinds:
+        bc, pc = _bash(own, "c"), _psh(own, "c")
+        assert bc.returncode == pc.returncode == 127, (own, bc, pc)   # -c agrees
+        assert bc.stdout == pc.stdout == expect_out, (own, bc.stdout, pc.stdout)
+        for channel in ("file", "stdin"):
+            b, p = _bash(own, channel), _psh(own, channel)
+            assert b.stdout == p.stdout == expect_out, (own, channel, b.stdout, p.stdout)
+            assert b.returncode == 2 and p.returncode == 1, (own, channel, b, p)
+
+
+def test_exit_trap_teardown_action_error_changes_nothing():
+    """An EXIT trap whose ACTION TEXT carries a substitution-body error is
+    REPORTED AND SWALLOWED at teardown, changing nothing — matching bash.
+
+    This is the shape that shipped as a CLI-reachable Python traceback: the
+    teardown callers guard ``SystemExit``/``Exception``, and the abort derives
+    from ``BaseException``, so it escaped to the interpreter. It is consumed in
+    ``core/trap_manager.py#TrapManager.execute_exit_trap``, which is the one
+    method every teardown path calls, and deliberately NOT in ``execute_trap``
+    — so the mid-script trap shape above still aborts.
+
+    Distinct from ruling O3: at teardown there is nothing left to abort, and
+    bash exits with the status it already had. NONE of the action runs."""
+    rows = [
+        # (script, expected rc, expected stdout)
+        ("trap 'echo T; echo %s; echo T2' EXIT\necho B", 0, "B\n"),
+        ("trap 'echo T; echo %s' EXIT\necho B\nexit 3", 3, "B\n"),
+        ("trap 'echo %s' EXIT\necho B\nexit 0", 0, "B\n"),
+        ("( trap 'echo CT; echo %s' EXIT; echo IN )\necho AFTER rc=$?",
+         0, "IN\nAFTER rc=0\n"),
+        ("x=$( trap 'echo %s' EXIT; echo IN )\necho AFTER rc=$? x=$x",
+         0, "AFTER rc=0 x=IN\n"),
+    ]
+    for template, rc, out in rows:
+        for body in ("$(if)", "$(fi)"):          # BOTH error kinds
+            script = template % body
+            for channel in ("c", "file", "stdin"):
+                b, p = _bash(script, channel), _psh(script, channel)
+                assert b.returncode == p.returncode == rc, (script, channel, b, p)
+                assert b.stdout == p.stdout == out, (script, channel, b.stdout, p.stdout)
+                assert "Traceback (most recent call last)" not in p.stderr, p.stderr[-400:]
+    # CONTROL: a VALID EXIT action still runs and still leaves the status alone.
+    ctl = "trap 'echo VALID' EXIT\necho B"
+    bc, pc = _bash(ctl, "c"), _psh(ctl, "c")
+    assert bc.returncode == pc.returncode == 0
+    assert bc.stdout == pc.stdout == "B\nVALID\n"
 
 
 def test_posix_relative_source_divergence_and_its_abort_status(tmp_path):

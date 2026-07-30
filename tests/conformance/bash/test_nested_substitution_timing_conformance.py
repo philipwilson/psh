@@ -22,10 +22,11 @@ Two groups:
   continue-around-errors, heredoc bodies, byte content, deep nesting, and
   incomplete-input handling must stay identical to bash / to psh-today.
 
-The exit-CODE divergence (bash 127 vs psh's uniform 2 in string channels) and
-the heredoc-body case remain documented divergences at the bottom (the 127
-mapping is I3's job; the S3 timing match holds regardless). The broader S3
-timing matrix (quoting × channel × dead-branch × backtick-vs-$()) lives in
+The exit-CODE divergence is CLOSED (slot 2.4): psh matches bash's 127 in the
+``-c`` channel for BOTH substitution error kinds, while a script file and
+stdin keep 2 — the status is channel-dependent, never "uniform". The
+heredoc-BODY case remains a documented divergence at the bottom. The broader
+S3 timing matrix (quoting × channel × dead-branch × backtick-vs-$()) lives in
 ``test_syntax_template_timing_conformance.py``.
 
 All cases drive full-buffer execution through subprocesses so psh and bash are
@@ -507,8 +508,9 @@ def test_param_expansion_word_cmdsub_now_rejects_at_read_time():
     param_parser stored it as a raw string and the operand engine expanded it at
     runtime, so psh continued past it. S3's WordTemplate validates the nested
     modern substitution when the command is READ, so the whole buffer is
-    rejected before anything runs — matching bash. (rc differs: bash 127 in -c,
-    psh's uniform 2 — see the 127 family pin above.)"""
+    rejected before anything runs — matching bash. The rc matches too since
+    slot 2.4 (both 127 under ``-c``); this row asserts only the TIMING, so it
+    stays agnostic about the exact status — see the 127 family pin above."""
     cmd = "echo before; echo ${x:-$(if)}; echo after"
     b = _bash_c(cmd)
     p = _psh_c(cmd)

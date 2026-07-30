@@ -196,11 +196,12 @@ def test_every_substitution_body_error_is_tagged(src):
     with pytest.raises(SubstitutionSyntaxError) as exc:
         _parse(src)
     assert is_substitution_origin(exc.value) is True
-    assert isinstance(exc.value, ParseError)  # behaviorally inert: still a ParseError
+    assert isinstance(exc.value, ParseError)  # still a ParseError: same rendering
 
 
 def test_plain_syntax_error_is_not_tagged():
-    """A NON-substitution syntax error stays untagged (the flag is inert)."""
+    """A NON-substitution syntax error stays untagged — and untagged means
+    NOT fatal to the shell, which is the whole point of the flag."""
     with pytest.raises(ParseError) as exc:
         _parse("if")
     assert not isinstance(exc.value, SubstitutionSyntaxError)
