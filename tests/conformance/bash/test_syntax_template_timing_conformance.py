@@ -537,3 +537,141 @@ def test_eval_source_procsub_joined_family_matches_bash(tmp_path):
     bd, pd = _bash(dead, "file"), _psh(dead, "file")
     assert bd.stdout == pd.stdout == 'ran\n'
     assert bd.returncode == pd.returncode == 0
+
+
+# ==========================================================================
+# ROUND 4 (verification round 3 bounce): the AXIS INTERSECTIONS the earlier
+# corpora missed. Each earlier corpus varied ONE axis while holding the others
+# fixed, so every one of these rows was invisible to it.
+# ==========================================================================
+
+def test_fork_times_errexit_uses_effective_errexit():
+    """A forked child's abort status honours EFFECTIVE errexit — the flag MINUS
+    the suppression context — not the raw flag.
+
+    Guards ``core/internal_errors.py#substitution_child_abort_status``. The two
+    shapes are indistinguishable from the child's ShellState (both read
+    ``errexit=True``), which is why the fork sites pass their suppression depth
+    in; a fix that consults only the flag regresses the suppressed row, and one
+    that consults only the state cannot tell them apart at all."""
+    inner = "eval 'echo $(fi)'"
+    # UNSUPPRESSED, errexit set INSIDE the child -> child 2, parent continues.
+    script = "( set -e; %s )\necho AFTER rc=$?" % inner
+    for channel in ("c", "file"):
+        b, p = _bash(script, channel), _psh(script, channel)
+        assert b.stdout == p.stdout == "AFTER rc=2\n", (script, channel, b.stdout, p.stdout)
+    # errexit OUTSIDE and UNSUPPRESSED: the failing subshell trips the parent's
+    # errexit, so the parent exits and AFTER never runs — in both shells.
+    outer = "set -e\n( %s )\necho AFTER rc=$?" % inner
+    for channel in ("c", "file"):
+        b, p = _bash(outer, channel), _psh(outer, channel)
+        assert b.stdout == p.stdout == "", (outer, channel, b.stdout, p.stdout)
+    # SUPPRESSED contexts: errexit does NOT apply -> 1, in bash and psh alike.
+    # `||` and an `if` condition expose the child's own 1; `!` INVERTS it to 0.
+    # Each row pins the value both shells actually produce, not the child's
+    # internal status.
+    suppressed = [
+        ("set -e\n( %s ) || echo GOT rc=$?" % inner, "GOT rc=1\n"),
+        ("set -e\nif ( %s ); then echo T; else echo GOT rc=$?; fi" % inner,
+         "GOT rc=1\n"),
+        ("set -e\n! ( %s )\necho GOT rc=$?" % inner, "GOT rc=0\n"),
+    ]
+    for script, expected in suppressed:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == expected, (script, channel, b.stdout, p.stdout)
+    # NO errexit at all -> 1 (the row the flat-constant mapping got right).
+    plain = "( %s )\necho AFTER rc=$?" % inner
+    b, p = _bash(plain, "c"), _psh(plain, "c")
+    assert b.stdout == p.stdout == "AFTER rc=1\n", (b.stdout, p.stdout)
+
+
+def test_fork_times_midscript_trap_action_status():
+    """DECLARED DIVERGENCE (round-4 amendment to ruling O3): a MID-SCRIPT trap
+    action whose own text carries the error, inside a FORK.
+
+    The TIMING half matches bash (the child aborts — at base it did not abort
+    at all). The STATUS differs: bash's child is 2, psh's is 1, joining the
+    same declared family as the non-fork file/stdin 2-vs-1 row.
+
+    EXCEPT when EFFECTIVE errexit is active in the child, where both are 2 —
+    the composition row. Round 3's docstring claimed this domain was 'probed
+    rather than assumed'; the fork axis was NOT in that corpus and the claim
+    was false on it. Corrected here and in the O3 paragraph above."""
+    dbg = "set -T; trap 'echo $(fi)' DEBUG; echo IN"
+    err = "set -E; trap 'echo $(fi)' ERR; false"
+    for body in (dbg, err):
+        for channel in ("c", "file"):
+            script = "( %s )\necho AFTER rc=$?" % body
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == "AFTER rc=2\n", (body, channel, b.stdout)
+            assert p.stdout == "AFTER rc=1\n", (body, channel, p.stdout)
+    # COMPOSITION: fork x trap-action x EFFECTIVE errexit -> both 2.
+    comp = "( set -e; %s )\necho AFTER rc=$?" % dbg
+    for channel in ("c", "file"):
+        b, p = _bash(comp, channel), _psh(comp, channel)
+        assert b.stdout == p.stdout == "AFTER rc=2\n", (channel, b.stdout, p.stdout)
+    # ...and with errexit SUPPRESSED it returns to the declared 2-vs-1.
+    supp = "set -e\n( %s ) || echo GOT rc=$?" % dbg
+    b, p = _bash(supp, "c"), _psh(supp, "c")
+    assert b.stdout == "GOT rc=2\n" and p.stdout == "GOT rc=1\n", (b.stdout, p.stdout)
+
+
+def test_main_shell_suppressed_errexit_status_is_carried():
+    """DECLARED + CARRIED (round 4): in the MAIN shell, a suppressing context
+    (``||``, an ``if`` condition) leaves psh at 2 where bash uses its ordinary
+    channel status (127 under ``-c``, 1 for a file).
+
+    This diverges AT BASE too — it is not introduced by this slot — and fixing
+    it means applying the same effective-errexit question to the MAIN policy at
+    every frame, which is its own bounded piece of work. Carried to the
+    successor queue; the child-side plumbing added this round is the natural
+    starting point."""
+    for script in ("set -e\neval 'echo $(fi)' || echo GOT",
+                   "set -e\nif eval 'echo $(fi)'; then echo T; fi"):
+        b_c, p_c = _bash(script, "c"), _psh(script, "c")
+        assert b_c.returncode == 127 and p_c.returncode == 2, (script, b_c, p_c)
+        b_f, p_f = _bash(script, "file"), _psh(script, "file")
+        assert b_f.returncode == 1 and p_f.returncode == 2, (script, b_f, p_f)
+
+
+def test_unclosed_cmdsub_classified_bodies_are_carried(tmp_path):
+    """DECLARED + CARRIED (round 4, ruling R4-C): the THIRD route.
+
+    psh's cmdsub SCANNER classifies some bodies as an unclosed substitution
+    rather than handing them to the nested parser, so they raise a PLAIN
+    ParseError with ``substitution_origin`` False — neither the 2.3 producer
+    typing nor either 2.4 consumer fires, and the pre-2.4 behaviour survives.
+
+    THE DOMAIN is not "case bodies": it is the bodies that defeat the scanner's
+    PAREN/QUOTE BALANCING. Censused over every compound opener plus the
+    grouping and quote forms (23 forms x both spellings); exactly these six are
+    untyped in the ``$( )`` spelling — a `case` with a pattern-closing paren,
+    a bare ``case x in``, a nested ``(``, a nested ``$((``, and the two
+    unterminated-quote forms. Every other opener (for/while/until/if/select/
+    brace-group/function-body/``[[``) IS typed end-to-end. The ``<( )``
+    spelling of the SAME bodies is scanner-classified as well — an isolated
+    parse-API census reports it typed, but the end-to-end route disagrees
+    because the scanner runs first, and the end-to-end behaviour is what this
+    carry records. Base-identical, so not a regression — carried to the r18
+    lexer successor, which owns scanner classification."""
+    for body in ("case x in a) :;", "case x in"):
+        script = "echo B\necho $(%s)\necho AFTER" % body
+        b, p = _bash(script, "c"), _psh(script, "c")
+        assert b.returncode == 127 and p.returncode == 2, (body, b, p)
+        assert b.stdout == p.stdout == "B\n", (body, b.stdout, p.stdout)
+        # The frame fatality is likewise NOT consumed for this route.
+        ev = "echo B\neval 'echo $(%s)'\necho AFTER" % body
+        be, pe = _bash(ev, "c"), _psh(ev, "c")
+        assert be.returncode == 127 and "AFTER" not in be.stdout, (body, be)
+        assert pe.returncode == 0 and "AFTER" in pe.stdout, (body, pe)
+    # The `<( )` spelling of the SAME body is scanner-classified too, so it
+    # carries with the family. (An isolated parse-API census reports this shape
+    # as typed; the end-to-end route disagrees, because the scanner runs first.
+    # The end-to-end behaviour is what the carry records.)
+    proc = "echo B\ncat <(case x in a) :;)\necho AFTER"
+    bp, pp_ = _bash(proc, "c"), _psh(proc, "c")
+    assert bp.returncode == 127 and pp_.returncode == 2, (bp, pp_)
+    typed = "echo B\necho $(while true)\necho AFTER"
+    bt, pt = _bash(typed, "c"), _psh(typed, "c")
+    assert bt.returncode == pt.returncode == 127, (bt, pt)

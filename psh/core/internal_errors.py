@@ -154,15 +154,45 @@ def substitution_abort_status(state: 'ShellState', nested: bool) -> int:
       the real status rather than replicating the pre-truncation internal that
       bash leaks into ``$?`` inside an EXIT trap (declared divergence, pinned).
 
-    A FORKED child never comes here: it exits 1 in every channel via
-    ``executor/child_policy.py#map_child_exception``, matching bash (a
-    subshell/cmdsub/pipeline member inside a ``-c`` shell still exits 1).
+    A FORKED child does not come here: it goes through
+    :func:`substitution_child_abort_status` instead, which drops the CHANNEL
+    rule (a subshell/cmdsub/pipeline member inside a ``-c`` shell exits 1, not
+    127) but keeps the errexit branch above.
     """
     if state.options.get('errexit', False):
         return 2
     if state.options.get('command_mode'):
         return 127
     return 1 if nested else 2
+
+
+def substitution_child_abort_status(state: 'ShellState',
+                                    errexit_suppressed: bool = False) -> int:
+    """The FORKED-CHILD half of :func:`substitution_abort_status`.
+
+    A forked child does NOT use the channel rule — it exits 1 even inside a
+    ``-c`` shell, where the main shell uses 127 (probe-verified for subshell,
+    command substitution, backticks, pipeline members and background jobs).
+    But it DOES honour the errexit branch, for the same reason that branch is
+    FIRST in the main policy: with ``set -e`` active in the child, bash exits
+    **2** there too — ``( set -e; eval 'echo $(if)' )`` leaves ``$?``=2 where
+    the same subshell without errexit leaves 1.
+
+    The errexit test is EFFECTIVE errexit, not the raw flag: bash consults the
+    flag MINUS the suppression context. ``set -e`` with the fork inside a
+    suppressing context — ``( … ) || recover``, an ``if``/``while`` condition,
+    a ``!`` negation — leaves the child at **1**, because errexit does not
+    apply there; the same fork outside such a context is 2. The two shapes are
+    indistinguishable from ``state`` alone (both read ``errexit=True``), which
+    is why the suppression depth is passed IN from the fork site.
+
+    Kept beside the main policy rather than inlined at the fork sites so the
+    two halves cannot drift: it is the SAME mapping restricted to the axis a
+    child can see.
+    """
+    if state.options.get('errexit', False) and not errexit_suppressed:
+        return 2
+    return 1
 
 
 def arith_assignment_discard(state: 'ShellState') -> NoReturn:

@@ -47,6 +47,7 @@ from ..core.exceptions import (
     SubstitutionSyntaxAbort,
     TopLevelAbort,
 )
+from ..core.internal_errors import substitution_child_abort_status
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -63,7 +64,8 @@ CHILD_EXIT_EXCEPTIONS = (
 )
 
 
-def map_child_exception(exc: BaseException) -> int:
+def map_child_exception(exc: BaseException, state: 'ShellState',
+                        errexit_suppressed: bool = False) -> int:
     """Map a control-flow / exit exception at a forked child's top to the
     child's exit code — the ONE taxonomy every fork site shares.
 
@@ -82,13 +84,18 @@ def map_child_exception(exc: BaseException) -> int:
       argument, i.e. ``SystemExit(None)``, → 0 (Python's own convention for a
       bare ``sys.exit()``); a non-int, non-None code → 1.
     - SubstitutionSyntaxAbort (a substitution-body syntax error, fatal to the
-      shell process) → a FLAT 1. This is what makes a fork CONTAIN the
-      fatality: the child dies and the parent runs on, so ``( eval 'echo
-      $(if)' ); echo rc=$?`` prints rc=1 and continues. The status is 1 in
-      EVERY channel — a child inside a ``-c`` shell exits 1, not the 127 the
-      main shell would use — so it deliberately does NOT consult
-      ``substitution_abort_status`` (probe-verified for subshell, command
-      substitution, backticks, pipeline members and background jobs).
+      shell process) → ``substitution_child_abort_status(state)``. This is what
+      makes a fork CONTAIN the fatality: the child dies and the parent runs on,
+      so ``( eval 'echo $(if)' ); echo rc=$?`` prints rc=1 and continues. The
+      status is CHANNEL-independent — a child inside a ``-c`` shell exits 1,
+      not the main shell's 127 — but it is NOT a flat constant: with EFFECTIVE
+      errexit active in the child it is 2, exactly as in the main policy's
+      first branch. ``state`` carries the flag; ``errexit_suppressed`` carries
+      the other half, because a fork inside a suppressing context (``( … ) ||
+      recover``, an ``if``/``while`` condition, ``!``) is 1 even though the
+      flag reads True — the two shapes are identical from ``state`` alone.
+      Fork sites pass their own suppression depth; the launcher's leaf-child
+      path has no suppressing context of its own and passes the default.
 
     Only the six CHILD_EXIT_EXCEPTIONS are handled; anything else re-raises
     (callers catch exactly that group before calling this). KeyboardInterrupt
@@ -104,7 +111,7 @@ def map_child_exception(exc: BaseException) -> int:
         code = exc.code
         return code if isinstance(code, int) else (0 if code is None else 1)
     if isinstance(exc, SubstitutionSyntaxAbort):
-        return 1
+        return substitution_child_abort_status(state, errexit_suppressed)
     raise exc
 
 
@@ -300,7 +307,9 @@ def run_background_shell_child(shell: 'Shell',
     except CHILD_EXIT_EXCEPTIONS as e:
         # A control-flow/exit exception at the body's top: subshell boundary,
         # so break/return cannot cross the fork; map via the shared taxonomy.
-        exit_code = map_child_exception(e)
+        exit_code = map_child_exception(
+            e, shell.state,
+            errexit_suppressed=bool(getattr(shell, '_errexit_suppress_seed', 0)))
         sync_child_status_for_exit_trap(shell.state, e, exit_code)
     finally:
         # A managed-signal trap queued while the body ran (e.g. after the
@@ -391,13 +400,15 @@ def run_child_body(child_shell: 'Shell',
     try:
         exit_code = body(child_shell)
     except CHILD_EXIT_EXCEPTIONS as e:
-        exit_code = map_child_exception(e)
+        exit_code = map_child_exception(
+            e, child_shell.state,
+            errexit_suppressed=bool(errexit_suppress))
         sync_child_status_for_exit_trap(child_shell.state, e, exit_code)
 
     try:
         child_shell.trap_manager.execute_exit_trap()
     except SystemExit as e:
-        exit_code = map_child_exception(e)
+        exit_code = map_child_exception(e, child_shell.state)
     except Exception:
         pass
 

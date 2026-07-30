@@ -127,11 +127,15 @@ class SubstitutionSyntaxAbort(BaseException):
     * NO frame contains it — not a function, an ``if`` condition, an ``&&``
       list, ``eval``, ``source``, a trap action, nor any nesting of those;
       nothing on those paths catches ``BaseException``, so propagation is
-      automatic and no frame needs to know about it. That holds only while
-      BOTH of ``SourceProcessor``'s syntax-error exits raise this: the
-      unterminated-body kind (``$(if)``) arrives via the flushed buffer, the
-      complete-but-ill-formed kind (``$(fi)``) via the accumulator's trial
-      parse. Wire one and the frames still contain the other.
+      automatic and no frame needs to know about it. TWO qualifications:
+      (a) it holds only while BOTH of ``SourceProcessor``'s syntax-error exits
+      raise this — the unterminated-body kind (``$(if)``) arrives via the
+      flushed buffer, the complete-but-ill-formed kind (``$(fi)``) via the
+      accumulator's trial parse, and wiring one leaves the frames containing
+      the other; (b) there is exactly ONE deliberate catcher,
+      ``core/trap_manager.py#TrapManager.execute_exit_trap``, which swallows it
+      at teardown because a shell that is already exiting has nothing left to
+      abort.
     * FORK boundaries DO contain it, because they are separate processes: a
       subshell, command/process substitution, a pipeline member and a
       background job all die with status 1 while the parent continues. That

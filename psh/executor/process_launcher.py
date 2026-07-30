@@ -364,7 +364,7 @@ class ProcessLauncher:
             # (incl. bare `exit` → SystemExit(None) → 0) terminates only this
             # child. Silent — bash is; the message, if any, was printed at
             # the raise site. See map_child_exception for each arm's pin.
-            exit_code = map_child_exception(e)
+            exit_code = map_child_exception(e, self.state)
 
         except KeyboardInterrupt:
             # Ctrl-C — launcher-local (a leaf child may exec an external

@@ -596,7 +596,8 @@ Subscript-specific invariants (remediation 2.3, HIGH-4 + MEDIUM-4):
 
 A substitution-body syntax error is raised as `SubstitutionSyntaxError` (a
 `ParseError` subclass; `is_substitution_origin`) at the one chokepoint
-`support/nested_parse.py#parse_nested_command`. It is the typed PRODUCER
+`psh/parser/recursive_descent/support/nested_parse.py#parse_nested_command`.
+It is the typed PRODUCER
 contract, and it is no longer inert: the error's TYPE — never its message or
 its exit code — is what tells the consumer that this syntax error is fatal to
 the shell where an ordinary one is not. The CONSUMER is

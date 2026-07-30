@@ -78,10 +78,15 @@ def parse_nested_command(source: str, *, line_offset: int = 0,
     # THE chokepoint: any syntax error in a (closed) substitution body is
     # re-typed with substitution origin. This is the ONE site that parses
     # modern $()/<()/>() bodies (WordBuilder and the S3 region validator both
-    # route through it), so no substitution-body syntax error escapes untagged.
+    # route through it), so no body that REACHES HERE escapes untagged.
     # Genuinely-unterminated substitutions never reach here — the lexer marks
     # them *_unclosed and the parser raises an at_eof continuation error before
     # WordBuilder builds the word (commands.py#_check_for_unclosed_expansions).
+    # That exclusion is wider than it looks and bounds the tagged domain: a
+    # body that merely DEFEATS the scanner's paren/quote balancing (a `case`
+    # whose pattern closes a paren, a bare `case x in`, a nested `(` or `$((`,
+    # an unterminated quote) is marked unclosed too, so it stays an untagged
+    # plain ParseError and is NOT fatal to the shell — a carried divergence.
     try:
         return parser.parse()
     except ParseError as err:

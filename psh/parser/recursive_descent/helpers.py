@@ -281,12 +281,20 @@ class SubstitutionSyntaxError(ParseError):
     re-raised from the S3 region validator, so no substitution-body syntax
     error escapes untagged.
 
-    The fatality does not depend on WHICH syntax error the body has. An
-    unterminated body (``$(if)``) reaches the consumer as a flushed buffer,
-    while a complete-but-ill-formed one (``$(fi)``, ``$(;)``) reaches it from
-    the accumulator's trial parse; both carry this type and both abort. A
-    consumer wired to only one of those paths silently keeps half the
-    divergence, which is how it shipped once.
+    Within the TAGGED domain the fatality does not depend on WHICH syntax
+    error the body has: an unterminated body (``$(if)``) reaches the consumer
+    as a flushed buffer, a complete-but-ill-formed one (``$(fi)``, ``$(;)``)
+    reaches it from the accumulator's trial parse, and both abort. A consumer
+    wired to only one of those paths silently keeps half the divergence, which
+    is how it shipped once.
+
+    The domain is not universal. Bodies that defeat the cmdsub SCANNER's
+    paren/quote balancing — a ``case`` whose pattern closes a paren, a bare
+    ``case x in``, a nested ``(`` or ``$((``, an unterminated quote — are
+    classified as an UNCLOSED substitution before any of this runs, so they
+    raise a plain ``ParseError`` and stay untagged and non-fatal. That
+    classification is scanner scope; the divergence is carried, not fixed
+    here.
 
     ``from_parse_error`` preserves the original error's structural signals
     (``at_eof``, ``unclosed_expansion``, ``missing_terminator``) so
