@@ -12,6 +12,7 @@ from psh.core.exceptions import (
     FunctionReturn,
     LoopBreak,
     LoopContinue,
+    SubstitutionSyntaxAbort,
     TopLevelAbort,
 )
 from psh.executor.child_policy import (
@@ -59,9 +60,18 @@ class TestMapChildException:
         with pytest.raises(RuntimeError):
             map_child_exception(RuntimeError("x"))
 
-    def test_taxonomy_tuple_is_the_five_families(self):
+    def test_substitution_syntax_abort_maps_to_one(self):
+        # A substitution-body syntax error is fatal to the shell PROCESS, so a
+        # FORK is the only thing that contains it: the child dies with 1 and
+        # the parent runs on. Flat 1 in every channel — a child inside a `-c`
+        # shell exits 1, not the 127 the main shell maps to (slot 2.4).
+        assert map_child_exception(SubstitutionSyntaxAbort()) == 1
+        assert map_child_exception(SubstitutionSyntaxAbort(nested=True)) == 1
+
+    def test_taxonomy_tuple_is_the_six_families(self):
         assert set(CHILD_EXIT_EXCEPTIONS) == {
             TopLevelAbort, FunctionReturn, LoopBreak, LoopContinue, SystemExit,
+            SubstitutionSyntaxAbort,
         }
 
 
