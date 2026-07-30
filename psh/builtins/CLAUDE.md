@@ -183,6 +183,17 @@ The only intentionally hand-rolled walks are `print`/`kill`/`dirs`/`history`
 (zsh grammar, `-SIGNAL` operands, `+N`/`-N` index collision, and history's
 numeric-operand-vs-option conflation — each carries a justification comment).
 
+**`eval` and `source`/`.` do not contain a substitution-origin syntax error.**
+A syntax error inside a `$(...)`/`<(...)` BODY is fatal to the whole shell in
+bash, and both builtins simply let it pass: neither `eval_command.py` nor
+`source_command.py` catches it, because the outcome
+(`core/exceptions.py#SubstitutionSyntaxAbort`) derives from `BaseException`.
+An ORDINARY syntax error in the same position stays non-fatal and returns 2 as
+before — the difference is carried by the error's TYPE, not its status. This
+fatality is NOT suppressed by `command`/`builtin`, unlike the POSIX-mode
+`SpecialBuiltinUsageError` policy those two DO strip; pinned in
+`tests/conformance/bash/test_syntax_template_timing_conformance.py`.
+
 ### 2. Registration with Decorator
 
 ```python

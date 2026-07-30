@@ -109,6 +109,48 @@ class TopLevelAbort(BaseException):
         super().__init__()
 
 
+class SubstitutionSyntaxAbort(BaseException):
+    """A substitution-body syntax error TERMINATES the non-interactive shell.
+
+    The I3 CONSUMER of the typed producer contract
+    ``ParseError.substitution_origin`` (see
+    ``parser/recursive_descent/helpers.py#SubstitutionSyntaxError``): bash
+    treats a syntax error inside ``$(...)``/``<(...)``/``>(...)`` as fatal to
+    the shell PROCESS, while an ORDINARY syntax error in the same position is
+    not (``eval 'if'; echo A`` prints A; ``eval 'echo $(if)'; echo A`` does
+    not). Carrying that distinction as a TYPE — rather than by comparing exit
+    codes — is what this boundary used to lose.
+
+    Semantically an ``exit``, NOT a discard: unlike :class:`TopLevelAbort`
+    (which unwinds one command line and RESUMES) this ends the process. So:
+
+    * NO frame contains it — not a function, an ``if`` condition, an ``&&``
+      list, ``eval``, ``source``, a trap action, nor any nesting of those;
+      nothing on those paths catches ``BaseException``, so propagation is
+      automatic and no frame needs to know about it.
+    * FORK boundaries DO contain it, because they are separate processes: a
+      subshell, command/process substitution, a pipeline member and a
+      background job all die with status 1 while the parent continues. That
+      falls out of ``executor/child_policy.py#CHILD_EXIT_EXCEPTIONS``.
+    * The EXIT trap still runs and observes the abort status, because the one
+      consumption point is ``scripting/source_processor.py#execute_as_main``,
+      which fires the trap after recovering the status.
+
+    Raised only when the shell is NON-interactive: bash's interactive loop
+    reports the diagnostic and carries on (a sourced file even resumes at its
+    own next line).
+
+    ``nested`` records WHERE the error was found — inside an ``eval``/
+    ``source``/trap STRING (True) versus the outermost source's own parse
+    (False). It selects the status, which is otherwise channel-dependent; the
+    whole mapping lives in ``core/internal_errors.py#substitution_abort_status``
+    rather than at the raise site, which cannot know the outermost channel.
+    """
+    def __init__(self, nested: bool = False):
+        self.nested = nested
+        super().__init__()
+
+
 # --- Errors -------------------------------------------------------------
 
 class SpecialBuiltinUsageError(PshError):

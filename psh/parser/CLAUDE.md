@@ -594,19 +594,21 @@ Subscript-specific invariants (remediation 2.3, HIGH-4 + MEDIUM-4):
   regions are structurally excluded (C1 — the arith tier's raw
   preservation is load-bearing, pinned in `test_render_tiers`).
 
-A substitution-body syntax error is raised as `SubstitutionSyntaxError` (an inert
+A substitution-body syntax error is raised as `SubstitutionSyntaxError` (a
 `ParseError` subclass; `is_substitution_origin`) at the one chokepoint
-`support/nested_parse.py#parse_nested_command`. It is the typed producer contract
-for the exit-code / eval-source-fatality mapping (I3's consumer job); psh keeps
-its uniform syntax-error code 2 today.
+`support/nested_parse.py#parse_nested_command`. It is the typed PRODUCER
+contract, and it is no longer inert: the error's TYPE — never its message or
+its exit code — is what tells the consumer that this syntax error is fatal to
+the shell where an ordinary one is not. The CONSUMER is
+`scripting/source_processor.py#SourceProcessor._substitution_syntax_abort`,
+which turns it into `core/exceptions.py#SubstitutionSyntaxAbort`.
 
-**Remaining documented divergences** (pinned in
+**Remaining documented divergence** (pinned in
 `tests/conformance/bash/test_nested_substitution_timing_conformance.py` and
-`test_syntax_template_timing_conformance.py`): a substitution-body syntax error
-exits 127 in bash's string channels (`-c`/eval/source) and ABORTS the enclosing
-eval/source frame, while psh uses its uniform code 2 and continues past the frame
-(same mechanism, carried to campaign I3); and `$(if)` inside a heredoc BODY is
-expanded at runtime by both shells (not a template region).
+`test_syntax_template_timing_conformance.py`): `$(if)` inside a heredoc BODY is
+expanded at runtime by both shells (not a template region), so it stays
+non-fatal. The exit-code split and the eval/source frame fatality that used to
+be listed here were CLOSED by that consumer.
 
 ## Configuration
 

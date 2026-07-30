@@ -1658,17 +1658,15 @@
 # reports the ABSOLUTE source line (the heredoc parse path threads line_offset
 # since the one-entry reroute). The erroring command is on line 3, so psh pins
 # `line 3` in BOTH the `-c:3:` prefix and the caret coordinate.
-# psh_only because bash diverges from psh on this shape in ways PRE-EXISTING and
-# UNCHANGED by this branch: (1) format — bash has no "Parse error (line N,
-# column M)" caret; (2) exit code IN -c MODE — bash -c returns 127, psh returns 2.
-# The 127 is NOT a heredoc quirk: it is bash's nested-substitution -c error class
-# (`bash -c 'echo $(if)'` with no heredoc also exits 127) — the same family as
-# slot 2.4's FLIP-PINS test_divergence_c_mode_exit_code_is_127_in_bash. That
-# psh(2)/bash(127) -c divergence is pre-existing: psh -c returned exit 2 at BOTH
-# db6dfb13 and tip (only the LINE number changed, 1->3); bash file/stdin agree at
-# exit 2. This row pins the psh-side text; the exit-code divergence is recorded in
-# the ledger (§7). The integrator registers this row as a slot-2.4 co-flip (its
-# exit_code:2 flips when 2.4 makes psh -c return 127 for substitution-origin errors).
+# psh_only because the DIAGNOSTIC FORMAT still differs from bash (bash has no
+# "Parse error (line N, column M)" caret); that part is pre-existing and
+# unchanged. The EXIT CODE no longer differs: slot 2.4 landed the I3 consumer,
+# so psh -c now returns 127 for a substitution-origin error just like bash
+# (`bash -c 'echo $(if)'` with no heredoc also exits 127 — the 127 was never a
+# heredoc quirk but bash's nested-substitution -c error class). This row was
+# registered as the slot-2.4 co-flip of
+# test_c_mode_exit_code_is_127_like_bash and its exit_code flipped 2 -> 127
+# with that fix; the stdout/stderr fields are unchanged.
 - name: heredoc_nested_error_reports_absolute_line
   command: |
     : p1
@@ -1678,7 +1676,7 @@
     EOF
   stdout: ""
   stderr: "-c:3: Parse error (line 3, column 3)"
-  exit_code: 2
+  exit_code: 127
   psh_only: true
 
 - name: heredoc_with_expansion

@@ -420,6 +420,18 @@ shell-error path, give it a `PshError` subclass (e.g. `FunctionDefinitionError`)
 so it classifies as expected — do not let a bare Python exception stand in for
 a shell error.
 
+**Unwinding OUTCOMES derive from `BaseException`, not `Exception`.**
+`exceptions.py#TopLevelAbort` and `exceptions.py#SubstitutionSyntaxAbort` are
+outcomes rather than errors: their condition was already reported at the raise
+site, and they must cross the last-resort guards without being misread as
+internal defects — the same reason `SystemExit` does. The two differ in REACH,
+and that difference IS the semantics: `TopLevelAbort` discards one command line
+and RESUMES (contained at every buffered boundary, so `eval`/`source` keep
+going), while `SubstitutionSyntaxAbort` ends the shell PROCESS and is contained
+only by a fork (`executor/child_policy.py#map_child_exception`). Its status
+mapping lives in `internal_errors.py#substitution_abort_status` — never at the
+raise site, which cannot know the outermost channel.
+
 ### Computed Special Parameters (`special_registry.py`)
 
 The dynamically computed specials (`RANDOM`, `SECONDS`, `BASHPID`, `SRANDOM`,

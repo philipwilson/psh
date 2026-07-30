@@ -128,6 +128,41 @@ def fatal_expansion_status(state: 'ShellState', exc: BaseException, *,
     raise TopLevelAbort(1, errexit_immune=True)
 
 
+def substitution_abort_status(state: 'ShellState', nested: bool) -> int:
+    """The ONE status mapping for a substitution-origin shell abort.
+
+    Consumes ``SubstitutionSyntaxAbort`` at the outermost boundary
+    (``scripting/source_processor.py#execute_as_main``). bash 5.2.26's status
+    for this fatality is NOT a single number — it depends on the channel and
+    on where the error was found — so the whole mapping lives here rather than
+    as scattered exit-code comparisons at the frames.
+
+    Probe-verified (slot 2.4 batteries under ``tmp/r24-probes/``, PATH bash
+    5.2.26, every row run in the ``-c``, script-file and stdin channels):
+
+    * ``set -e`` active -> **2**, in every channel and for both the direct and
+      the eval/source-nested shapes. errexit is checked FIRST because it wins
+      over the ``-c`` rule (``set -e`` under ``-c`` gives 2, not 127).
+    * ``-c`` (``command_mode``) -> **127**, at any nesting depth: the direct
+      parse, or an ``eval``/``source``/function/trap frame inside the ``-c``
+      string, all give 127.
+    * a script FILE or stdin -> **2** when the outermost source's own parse
+      found it, **1** when it came from a nested ``eval``/``source`` string.
+      The 1 is bash's ``EX_BADSYNTAX`` (257) truncated to 8 bits; psh reports
+      the real status rather than replicating the pre-truncation internal that
+      bash leaks into ``$?`` inside an EXIT trap (declared divergence, pinned).
+
+    A FORKED child never comes here: it exits 1 in every channel via
+    ``executor/child_policy.py#map_child_exception``, matching bash (a
+    subshell/cmdsub/pipeline member inside a ``-c`` shell still exits 1).
+    """
+    if state.options.get('errexit', False):
+        return 2
+    if state.options.get('command_mode'):
+        return 127
+    return 1 if nested else 2
+
+
 def arith_assignment_discard(state: 'ShellState') -> NoReturn:
     """Discard for an arithmetic error in ASSIGNMENT or SUBSCRIPT position.
 

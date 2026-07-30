@@ -44,6 +44,7 @@ from ..core.exceptions import (
     FunctionReturn,
     LoopBreak,
     LoopContinue,
+    SubstitutionSyntaxAbort,
     TopLevelAbort,
 )
 
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
 # arms them (it may exec an external binary).
 CHILD_EXIT_EXCEPTIONS = (
     TopLevelAbort, FunctionReturn, LoopBreak, LoopContinue, SystemExit,
+    SubstitutionSyntaxAbort,
 )
 
 
@@ -78,8 +80,16 @@ def map_child_exception(exc: BaseException) -> int:
     - SystemExit (the ``exit`` builtin) → its integer code; ``exit`` with no
       argument, i.e. ``SystemExit(None)``, → 0 (Python's own convention for a
       bare ``sys.exit()``); a non-int, non-None code → 1.
+    - SubstitutionSyntaxAbort (a substitution-body syntax error, fatal to the
+      shell process) → a FLAT 1. This is what makes a fork CONTAIN the
+      fatality: the child dies and the parent runs on, so ``( eval 'echo
+      $(if)' ); echo rc=$?`` prints rc=1 and continues. The status is 1 in
+      EVERY channel — a child inside a ``-c`` shell exits 1, not the 127 the
+      main shell would use — so it deliberately does NOT consult
+      ``substitution_abort_status`` (probe-verified for subshell, command
+      substitution, backticks, pipeline members and background jobs).
 
-    Only the five CHILD_EXIT_EXCEPTIONS are handled; anything else re-raises
+    Only the six CHILD_EXIT_EXCEPTIONS are handled; anything else re-raises
     (callers catch exactly that group before calling this). KeyboardInterrupt
     (→130) and unexpected Exceptions stay caller-local — see the module note.
     """
@@ -92,6 +102,8 @@ def map_child_exception(exc: BaseException) -> int:
     if isinstance(exc, SystemExit):
         code = exc.code
         return code if isinstance(code, int) else (0 if code is None else 1)
+    if isinstance(exc, SubstitutionSyntaxAbort):
+        return 1
     raise exc
 
 

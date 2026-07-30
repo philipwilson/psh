@@ -370,18 +370,44 @@ def test_over_deep_cmdsub_nesting_is_clean_error():
     "a=(1 2); echo ${a[$(if)]}",        # S3: array subscript
     "a[$(if)]=v",                       # S3: element-assignment subscript
 ])
-def test_divergence_c_mode_exit_code_is_127_in_bash(cmd):
-    """A substitution-body syntax error in ``bash -c`` exits 127 (a quirk of
-    bash's string-execution channels: -c/eval/source; stdin/file exit 2). psh
-    uses its uniform syntax-error code 2 in every channel. The TIMING match
-    (nothing executes, whole buffer rejected at read time) holds across the
-    whole S3 family; only the exact code differs, and that 127/frame-abort
-    mapping is the I3 consumer of S3's typed SubstitutionSyntaxError."""
+def test_c_mode_exit_code_is_127_like_bash(cmd):
+    """CLOSED S3->I3 divergence: a substitution-body syntax error under ``-c``
+    now exits 127 in psh too, for every spelling in the family.
+
+    ``-c`` is the channel where bash uses 127; a script FILE and stdin use 2
+    for this same direct shape (pinned separately below), so the fix is
+    channel-scoped rather than a blanket new status. The consumer is the typed
+    ``SubstitutionSyntaxAbort`` that ``core/internal_errors.py#
+    substitution_abort_status`` maps per channel — the I3 half of S3's
+    ``SubstitutionSyntaxError`` producer contract."""
     b = _bash_c(cmd)
     p = _psh_c(cmd)
-    assert b.returncode == 127                  # bash -c quirk (all substitutions)
-    assert p.returncode == 2                     # psh: uniform syntax-error code
+    assert b.returncode == p.returncode == 127   # both: bash's -c status
     assert b.stdout == p.stdout == ""            # neither executes anything
+
+
+@pytest.mark.parametrize("cmd", [
+    "echo $(if)",
+    "cat <(if)",
+    "x=set; echo ${x:-$(if)}",
+    "echo $(( $(if) + 1 ))",
+    "a=(1 2); echo ${a[$(if)]}",
+    "a[$(if)]=v",
+])
+def test_file_and_stdin_direct_status_stays_2(cmd):
+    """MUST-NOT-REGRESS twin of the pin above: in the FILE and STDIN channels
+    the same six spellings exit **2**, not 127, in both shells.
+
+    psh already matched bash here before the I3 consumer landed, so this pins
+    the half of the direct shape that the 127 fix must leave alone — the status
+    is channel-dependent (see substitution_abort_status), and a blanket 127
+    would silently break these two channels."""
+    bf, pf = _run_file([BASH], cmd + "\n"), _run_file([sys.executable], cmd + "\n")
+    assert bf.returncode == pf.returncode == 2, (bf, pf)
+    assert bf.stdout == pf.stdout == "", (bf.stdout, pf.stdout)
+    bs, ps = _bash_stdin(cmd + "\n"), _psh_stdin(cmd + "\n")
+    assert bs.returncode == ps.returncode == 2, (bs, ps)
+    assert bs.stdout == ps.stdout == "", (bs.stdout, ps.stdout)
 
 
 # ==========================================================================

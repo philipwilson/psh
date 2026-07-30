@@ -181,47 +181,180 @@ def test_backtick_inner_error_is_nonfatal_and_continues():
         assert r.stderr != "", (shell, "expected a diagnostic on stderr")
 
 
-# ---- Documented divergence: eval/source frame fatality (carried to I3).
-def test_divergence_eval_source_fatality_is_i3():
-    """A substitution-body syntax error inside an eval BODY ABORTS the enclosing
-    -c script in bash (rc 127, AFTER absent); psh continues (AFTER prints — its
-    typed SubstitutionSyntaxError is not yet consumed by the eval/source frame).
-    Same bash mechanism as the 127 rc — carried to I3. Pin the boundary so it
-    stays explicit; S3's timing job is the DIRECT channels above.
+# ---- CLOSED (slot 2.4): eval/source frame fatality — the I3 consumer.
+def test_eval_source_frame_fatality_matches_bash():
+    """CLOSED I3 divergence: a substitution-body syntax error inside an eval
+    BODY now ABORTS the enclosing frame in psh too, exactly as in bash.
+
+    The typed ``SubstitutionSyntaxError`` is consumed by
+    ``core/exceptions.py#SubstitutionSyntaxAbort``, which no non-fork frame
+    catches — so eval, source, functions, ``if`` conditions and ``&&`` lists
+    all fail to contain it, matching bash's process-scoped abort.
 
     NOTE the ESCAPED ``\\$(if)``: the error must occur when EVAL parses its
     argument, not at the outer read. An UNESCAPED ``$(if)`` inside the
     double-quoted eval argument is an outer-read command substitution that S3
-    validates wholesale (both shells reject the whole buffer — a match, not this
-    divergence)."""
+    validates wholesale (a different path to the same observable)."""
     b = _bash('eval "echo \\$(if)"; echo AFTER', "c")
     p = _psh('eval "echo \\$(if)"; echo AFTER', "c")
-    assert b.returncode == 127 and "AFTER" not in b.stdout   # bash: fatal frame
-    assert p.returncode == 0 and "AFTER" in p.stdout          # psh: continues (I3)
-    # A PLAIN (non-substitution) syntax error in eval is non-fatal in BOTH — so
-    # the divergence is substitution-specific, exactly like the 127 rc.
+    assert b.returncode == p.returncode == 127       # both: fatal frame under -c
+    assert "AFTER" not in b.stdout and "AFTER" not in p.stdout
+    # A PLAIN (non-substitution) syntax error in eval stays non-fatal in BOTH —
+    # the fatality is substitution-ORIGIN-specific, which is exactly the fact
+    # the typed error carries. This control is what makes the pin meaningful.
     b2 = _bash('eval "if"; echo AFTER', "c")
     p2 = _psh('eval "if"; echo AFTER', "c")
     assert "AFTER" in b2.stdout and "AFTER" in p2.stdout
-    # An operand-family error inside the eval body is equally inert in psh
-    # (structural identity with the top-level $() case — both go to I3).
+    assert b2.returncode == p2.returncode == 0
+    # An operand-family error inside the eval body aborts identically
+    # (structural identity with the top-level $() case).
+    b3 = _bash('x=set; eval "echo \\${x:-\\$(if)}"; echo AFTER', "c")
     p3 = _psh('x=set; eval "echo \\${x:-\\$(if)}"; echo AFTER', "c")
-    assert p3.returncode == 0 and "AFTER" in p3.stdout
+    assert b3.returncode == p3.returncode == 127
+    assert "AFTER" not in b3.stdout and "AFTER" not in p3.stdout
 
 
-def test_divergence_eval_source_procsub_joined_i3(tmp_path):
-    """Remediation 2.3 B1 (verifier find; ruled declare+pin+carry): 2.3's D3
-    routed the procsub SPELLING onto the same typed SubstitutionSyntaxError
-    path as ``$()`` — so at an eval/source frame the procsub shape now JOINS
-    the pre-existing I3 family (frame does not consume the typed error; psh
-    continues rc 2-in-$?, bash aborts the frame's enclosing script rc 1 in
-    file mode). At base psh happened to MATCH bash here by accident: the
-    un-validated spelling reached the runtime indexed-arith path, whose
-    fatal discard also suppressed the rest (different mechanism, same
-    observables). 2.4 owns the flip — these rows are structured to flip
-    TOGETHER with test_divergence_eval_source_fatality_is_i3 above (same
-    consumer mechanism; the cmdsub control row documents the family).
-    OWNERSHIP: flips in slot 2.4, not here."""
+def test_eval_frame_fatality_status_is_channel_dependent():
+    """The frame abort's STATUS is not one number: bash uses 127 only in the
+    ``-c`` channel and 1 (its EX_BADSYNTAX truncated to 8 bits) for a script
+    FILE or stdin. Pins the per-channel mapping in
+    ``core/internal_errors.py#substitution_abort_status`` against live bash so
+    a future "simplification" to a single status is caught."""
+    script = 'eval "echo \\$(if)"; echo AFTER'
+    for channel, expected in (("c", 127), ("file", 1), ("stdin", 1)):
+        b, p = _bash(script, channel), _psh(script, channel)
+        assert b.returncode == p.returncode == expected, (channel, b, p)
+        assert "AFTER" not in b.stdout and "AFTER" not in p.stdout, channel
+
+
+def test_substitution_fatality_is_contained_by_forks():
+    """A FORK contains the fatality (it is an ``exit`` of that process): the
+    child dies with 1 and the parent runs on — in every channel, including
+    ``-c`` where the main shell itself would have used 127. Non-fork frames do
+    NOT contain it (pinned above), so this is the model's other half."""
+    for channel in ("c", "file", "stdin"):
+        for script in ("( eval 'echo $(if)' ); echo AFTER rc=$?",
+                       "x=$(eval 'echo $(if)'); echo AFTER rc=$?",
+                       "eval 'echo $(if)' | cat; echo AFTER rc=$?"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.returncode == p.returncode == 0, (channel, script, b, p)
+            assert b.stdout == p.stdout, (channel, script, b.stdout, p.stdout)
+
+
+def test_substitution_fatality_status_under_errexit_is_2():
+    """``set -e`` overrides the channel mapping: bash exits **2** for this
+    fatality in every channel, direct or eval-nested — which is why errexit is
+    checked FIRST in substitution_abort_status. psh matched this before the I3
+    consumer landed (its eval returned 2 and errexit exited with it); the pin
+    exists so the consumer did not silently break that accidental parity.
+
+    ``set -e`` must be on its OWN LINE: a one-liner ``set -e; echo $(if)`` is
+    parsed as a single buffer, so the read-time error happens BEFORE errexit is
+    in effect and the ordinary channel status applies (pinned below)."""
+    for script in ("set -e\necho B\necho $(if)\necho AFTER",
+                   "set -e\necho B\neval 'echo $(if)'\necho AFTER"):
+        for channel in ("c", "file", "stdin"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.returncode == p.returncode == 2, (channel, script, b, p)
+            assert "AFTER" not in b.stdout and "AFTER" not in p.stdout
+
+
+def test_same_line_set_e_does_not_reach_the_read_time_error():
+    """Control for the pin above: with ``set -e`` on the SAME line, the whole
+    buffer is parsed before ``set -e`` ever runs, so errexit is NOT yet active
+    when the substitution-body error is found — both shells fall back to the
+    ordinary channel status (127 under ``-c``). Pins the ordering so the
+    errexit branch cannot be "fixed" into applying to this shape."""
+    script = "set -e; echo B; echo $(if); echo AFTER"
+    b, p = _bash(script, "c"), _psh(script, "c")
+    assert b.returncode == p.returncode == 127, (b, p)
+    assert b.stdout == p.stdout == "", (b.stdout, p.stdout)
+
+
+def test_substitution_fatality_runs_exit_trap_not_err_trap():
+    """It is a real shell EXIT: the EXIT trap runs and observes the abort
+    status, while the ERR trap does NOT fire. Both verified against live bash.
+
+    DECLARED DIVERGENCE (slot 2.4, ruling O4): in the FILE/STDIN channels the
+    status bash's EXIT trap observes is **257** — its internal ``EX_BADSYNTAX``
+    before the 8-bit truncation that yields the process status 1. psh reports
+    the real status (1) rather than replicating a pre-truncation internal, so
+    the trap-visible ``$?`` differs while the PROCESS STATUS matches."""
+    trap_script = "trap 'echo T rc=$?' EXIT; echo B; eval 'echo $(if)'"
+    b, p = _bash(trap_script, "c"), _psh(trap_script, "c")
+    assert b.returncode == p.returncode == 127
+    assert b.stdout == p.stdout == "B\nT rc=127\n", (b.stdout, p.stdout)
+    bf, pf = _bash(trap_script, "file"), _psh(trap_script, "file")
+    assert bf.returncode == pf.returncode == 1          # process status matches
+    assert bf.stdout == "B\nT rc=257\n", bf.stdout      # bash leaks EX_BADSYNTAX
+    assert pf.stdout == "B\nT rc=1\n", pf.stdout        # psh: the real status
+    # ERR trap must NOT fire in either shell.
+    err_script = ("set -E; trap 'echo ERRTRAP' ERR; echo B; "
+                  "eval 'echo $(if)'; echo AFTER")
+    be, pe = _bash(err_script, "c"), _psh(err_script, "c")
+    assert be.returncode == pe.returncode == 127
+    assert be.stdout == pe.stdout == "B\n", (be.stdout, pe.stdout)
+
+
+def test_substitution_fatality_not_stripped_by_command_or_builtin():
+    """``command``/``builtin`` strip the POSIX special-builtin property, which
+    suppresses the POSIX-mode syntax-exit policy — but NOT this fatality: bash
+    still aborts. Pins that the consumer is deliberately NOT routed through
+    ``SpecialBuiltinUsageError`` (which ``command`` does strip)."""
+    for script in ("echo B; command eval 'echo $(if)'; echo AFTER",
+                   "echo B; builtin eval 'echo $(if)'; echo AFTER"):
+        for channel in ("c", "file", "stdin"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.returncode == p.returncode, (channel, script, b, p)
+            assert b.stdout == p.stdout == "B\n", (channel, script, p.stdout)
+    # CONTROL: a PLAIN syntax error under `command eval` stays non-fatal.
+    ctl = "echo B; command eval 'if'; echo AFTER"
+    bc, pc = _bash(ctl, "c"), _psh(ctl, "c")
+    assert bc.returncode == pc.returncode == 0
+    assert bc.stdout == pc.stdout == "B\nAFTER\n"
+
+
+def test_substitution_fatality_from_a_trap_action():
+    """A TRAP ACTION is not one of the chartered frames, but it rides the same
+    consumer, so its behavior is characterized here rather than left unpinned.
+
+    An ``eval`` nested INSIDE the action is a fresh input and aborts in both
+    shells, at the ordinary channel status. When the ACTION STRING'S OWN parse
+    is what fails, both shells still abort and both print the same stdout, but
+    the status differs in the FILE/STDIN channels — bash 2, psh 1 — because psh
+    reaches it through the same nested-string branch that eval/source use.
+
+    DECLARED DIVERGENCE (slot 2.4, ruling O3): matching bash's 2 would need
+    bespoke trap-action plumbing distinct from the eval/source branch, which
+    the ruling put out of scope; the ``-c`` channel and all stdout agree."""
+    nested = ("trap 'echo TA; eval \"echo \\$(if)\"; echo TA2' USR1\n"
+              "echo B\nkill -USR1 $$\nsleep 0.2\necho AFTER")
+    for channel, expected in (("c", 127), ("file", 1), ("stdin", 1)):
+        b, p = _bash(nested, channel), _psh(nested, channel)
+        assert b.returncode == p.returncode == expected, (channel, b, p)
+        assert b.stdout == p.stdout == "B\nTA\n", (channel, b.stdout, p.stdout)
+    own = ("trap ' echo TA; echo $(if); echo TA2' USR1\n"
+           "echo B\nkill -USR1 $$\nsleep 0.2\necho AFTER")
+    bc, pc = _bash(own, "c"), _psh(own, "c")
+    assert bc.returncode == pc.returncode == 127, (bc, pc)   # -c agrees
+    for channel in ("file", "stdin"):
+        b, p = _bash(own, channel), _psh(own, channel)
+        assert b.stdout == p.stdout == "B\n", (channel, b.stdout, p.stdout)
+        assert b.returncode == 2 and p.returncode == 1, (channel, b, p)
+
+
+def test_eval_source_procsub_joined_family_matches_bash(tmp_path):
+    """CLOSED (slot 2.4), co-flip of the fatality pin above: the PROCSUB
+    spelling at an eval/source frame now aborts like bash, as does the cmdsub
+    control — one consumer covers both spellings.
+
+    History: 2.3's D3 routed the procsub spelling onto the same typed
+    ``SubstitutionSyntaxError`` path as ``$()``, which JOINED it to the
+    pre-existing I3 family. Before 2.3, psh matched bash here only by
+    ACCIDENT — the un-validated spelling reached the runtime indexed-arith
+    path, whose fatal discard produced the same observables by a different
+    mechanism. Now both spellings abort through the one typed outcome, so the
+    match is structural rather than coincidental."""
     src_file = tmp_path / 'z4src.sh'
     src_file.write_text('a[<(if)]=1\n')
     rows = [
@@ -232,8 +365,8 @@ def test_divergence_eval_source_procsub_joined_i3(tmp_path):
     for script, label in rows:
         b = _bash(script, "file")
         pr = _psh(script, "file")
-        assert b.returncode == 1 and 'ran' not in b.stdout, (label, b)
-        assert pr.returncode == 0 and 'ran rc=2' in pr.stdout, (label, pr)
+        assert b.returncode == pr.returncode == 1, (label, b, pr)
+        assert 'ran' not in b.stdout and 'ran' not in pr.stdout, (label, b, pr)
     # Dead-branch control: the frame never runs -> parity (nothing eager).
     dead = "true || eval 'a[<(if)]=1'; echo ran"
     bd, pd = _bash(dead, "file"), _psh(dead, "file")
