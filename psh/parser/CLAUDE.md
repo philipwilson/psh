@@ -619,9 +619,11 @@ that shipped once and was caught in verification.
   `tests/conformance/bash/test_nested_substitution_timing_conformance.py`
   (`test_divergence_heredoc_body_cmdsub_stays_runtime`).
 - A MID-SCRIPT trap action string whose own parse fails (a signal trap, DEBUG,
-  ERR or RETURN — probed across all of them, the behaviour is uniform): both
-  shells abort, but bash exits 2 in the file/stdin channels where psh exits 1
-  (`-c` and all stdout agree). This EXCLUDES the EXIT trap at teardown, which
+  ERR or RETURN — probed across all of them, the behaviour is uniform WITHIN
+  the non-fork case): both shells abort, but bash exits 2 in the file/stdin
+  channels where psh exits 1 (`-c` and all stdout agree). Inside a FORK the
+  same family is bash 2 / psh 1 in every channel, unless effective errexit
+  applies in the child, where both are 2. This EXCLUDES the EXIT trap at teardown, which
   is a different shape and matches bash exactly: the error is reported and
   changes nothing, because the shell is already exiting.
 - The status bash's EXIT trap observes for this abort in file/stdin is its

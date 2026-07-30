@@ -122,8 +122,9 @@ def sync_child_status_for_exit_trap(state: 'ShellState', exc: BaseException,
     Every other member of the taxonomy already leaves ``$?`` correct when it
     reaches a fork boundary — ``exit`` sets it at the raise site, and
     ``TopLevelAbort`` carries its status. ``SubstitutionSyntaxAbort`` does not:
-    its status is decided AT the boundary (a child is always 1, whatever the
-    channel), while the raise site left the ordinary syntax-error 2 behind. So
+    its status is decided AT the boundary (channel-independent, and 1 unless
+    EFFECTIVE errexit applies in the child, in which case 2), while the raise
+    site left the ordinary syntax-error 2 behind. So
     the child's own EXIT trap would observe a stale 2 while the process exits
     1 — an inconsistency bash does not have (probe: a command-substitution
     child's EXIT trap sees 1, matching its exit status; the control
