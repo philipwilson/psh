@@ -4,6 +4,21 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.759.0 (2026-07-30) - Nightly hygiene: deterministic write-side procsub delivery
+- **Test-only.** The write-side process-substitution closed-fds differentials
+  (`test_process_sub_closed_fds.py`) raced the oracle harness's post-exit
+  orphan sweep: neither bash nor psh waits for a `>(...)` child at command
+  end, so fd 9 delivery at parent exit was nondeterministic (two Linux
+  nightly failures at v0.758.0; psh's side was shielded only by interpreter
+  teardown latency). The write bodies now carry a shell-neutral completion
+  barrier (flag file + bounded spin-wait), making delivery deterministic on
+  both shells before exit. Probed with a forced-slow child on bash 5.2.26 and
+  both psh parsers; 20/20 soak.
+- Nightly window 2026-07-26..07-30 classified in the campaign evidence
+  (`nightly-status.md`); by-catch divergence recorded for the successor
+  queue: bash 5.2's bare `wait` reaches the last procsub child, psh's does
+  not.
+
 ## 0.758.0 (2026-07-26) - Remediation Wave 2 slot 2.3: subscript syntax identity (HIGH-4 + MEDIUM-4 + MEDIUM-12a)
 - **Process substitutions in subscripts are now keys, not commands.** bash keys
   `a[<(printf x)]=v` by the literal spelling `<(printf x)`; psh executed the

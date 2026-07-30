@@ -84,11 +84,28 @@ READ_CASES = [
     ("exec 0<&- 1>&- 2>&-; ", 'cat <(printf x) >&9'),
 ]
 
+# Write-side delivery is ASYNCHRONOUS in both shells: neither bash 5.2 nor
+# psh waits for a >(...) child at command end (bash's bare `wait` does reach
+# it; psh's does not — recorded as a successor divergence, deliberately not
+# exercised here), so fd 9's content at parent exit is a race, and the
+# harness's post-exit orphan sweep SIGKILLs a child that has not written yet.
+# That race is what the 2026-07-27/-30 Linux nightlies lost: bash's `cat` was
+# swept before writing -> ('', '', '') against psh's ('', '', 'data\n'), psh
+# winning only by interpreter-teardown latency. The body therefore carries its
+# own shell-neutral completion barrier: the substitution touches a flag file
+# AFTER writing, and the parent spin-waits (bounded, so a genuine delivery
+# regression still fails as a comparison, not a harness timeout) until the
+# flag appears. Delivery is then deterministic on both sides before either
+# shell exits, and the sweep only ever kills an already-idle child.
+_WRITE_BODY = ('echo data > >(cat >&9; : > ps-done); '
+               'i=0; until [ -e ps-done ] || [ "$i" -ge 400 ]; '
+               'do sleep 0.01; i=$((i+1)); done')
+
 WRITE_CASES = [
-    ("", 'echo data > >(cat >&9)'),
-    ("exec 0<&-; ", 'echo data > >(cat >&9)'),
-    ("exec 1>&-; ", 'echo data > >(cat >&9)'),
-    ("exec 0<&- 1>&-; ", 'echo data > >(cat >&9)'),
+    ("", _WRITE_BODY),
+    ("exec 0<&-; ", _WRITE_BODY),
+    ("exec 1>&-; ", _WRITE_BODY),
+    ("exec 0<&- 1>&-; ", _WRITE_BODY),
 ]
 
 
@@ -118,5 +135,5 @@ def test_read_side_delivers_with_stdout_closed():
 def test_write_side_delivers_with_stdin_closed():
     """exec 0<&-; echo data > >(cat) delivers data (was Bad file descriptor)."""
     _out, _err, fd9 = _observe([sys.executable, "-m", "psh"],
-                               "exec 0<&-; ", 'echo data > >(cat >&9)')
+                               "exec 0<&-; ", _WRITE_BODY)
     assert fd9 == "data\n"
