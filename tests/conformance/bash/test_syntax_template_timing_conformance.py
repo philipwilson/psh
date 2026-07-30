@@ -343,6 +343,50 @@ def test_substitution_fatality_from_a_trap_action():
         assert b.returncode == 2 and p.returncode == 1, (channel, b, p)
 
 
+def test_posix_relative_source_divergence_and_its_abort_status(tmp_path):
+    """PRE-EXISTING divergence (NOT the substitution consumer's), pinned here
+    because the I3 consumer MOVED psh's value inside it.
+
+    ROOT CAUSE, established with the VALID-file control below: under
+    ``set -o posix`` bash resolves ``.``/``source`` against ``$PATH`` ONLY, so
+    a bare relative operand is refused outright (``source: sub.sh: file not
+    found``, rc 1) and the file never runs. psh searches the current directory
+    and sources it. That divergence is owned elsewhere (campaign successor
+    row), and this pin does NOT assert it away.
+
+    What the substitution consumer changed: because psh DOES source the file,
+    it reaches the substitution-body syntax error inside it and now applies the
+    per-channel abort status — so psh's ``-c`` value moved 2 -> 127 (bash stays
+    1, having never opened the file). Pinned both-sides so the value move is
+    recorded rather than merely narrated."""
+    sub = tmp_path / "sub.sh"
+    sub.write_text("echo IB\necho $(if)\necho IA\n")
+    script = "set -o posix\necho B\nsource sub.sh\necho A\n"
+    (tmp_path / "main.sh").write_text(script)
+
+    # VALID-file CONTROL: bash refuses the relative source even with no syntax
+    # error anywhere, which is what proves the root cause is `.`-lookup and not
+    # anything to do with substitutions.
+    ok = tmp_path / "ok.sh"
+    ok.write_text("echo IB\necho IA\n")
+    (tmp_path / "ctl.sh").write_text("set -o posix\necho B\nsource ok.sh\necho A\n")
+    bctl = run_bash(["ctl.sh"], cwd=str(tmp_path), timeout=30)
+    pctl = run_psh(["ctl.sh"], cwd=str(tmp_path), timeout=30)
+    assert bctl.returncode == 1 and bctl.stdout == "B\n", bctl   # never sourced
+    assert pctl.returncode == 0 and pctl.stdout == "B\nIB\nIA\nA\n", pctl
+
+    # The substitution-error shape: bash still never opens the file (rc 1);
+    # psh sources it, prints IB, then aborts with the per-channel status.
+    b_file = run_bash(["main.sh"], cwd=str(tmp_path), timeout=30)
+    p_file = run_psh(["main.sh"], cwd=str(tmp_path), timeout=30)
+    assert b_file.returncode == 1 and b_file.stdout == "B\n", b_file
+    assert p_file.returncode == 1 and p_file.stdout == "B\nIB\n", p_file
+    b_c = run_bash(["-c", script], cwd=str(tmp_path), timeout=30)
+    p_c = run_psh(["-c", script], cwd=str(tmp_path), timeout=30)
+    assert b_c.returncode == 1 and b_c.stdout == "B\n", b_c
+    assert p_c.returncode == 127 and p_c.stdout == "B\nIB\n", p_c  # moved 2->127
+
+
 def test_eval_source_procsub_joined_family_matches_bash(tmp_path):
     """CLOSED (slot 2.4), co-flip of the fatality pin above: the PROCSUB
     spelling at an eval/source frame now aborts like bash, as does the cmdsub
