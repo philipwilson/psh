@@ -1,0 +1,537 @@
+SHA: d934a3cae58f716319e8b329798d180ab3f628c6
+battery: r7a.py
+date: 2026-07-31T09:07:11Z
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+========================================================================
+b1_bg_bare_simple_suppressed
+0000000    s   e   t       -   e  \n   {       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '       &       }       |
+0000040    |       t   r   u   e  \n   p   =   $   !  \n   i   f       w
+0000060    a   i   t       $   p   ;       t   h   e   n       e   c   h
+0000100    o       c   h   i   l   d   =   0   ;       e   l   s   e    
+0000120    e   c   h   o       c   h   i   l   d   =   $   ?   ;       f
+0000140    i  \n                                                        
+0000142
+  [c] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+  [file] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+========================================================================
+b2_bg_bare_simple_unsuppressed
+0000000    s   e   t       -   e  \n   e   v   a   l       '   e   c   h
+0000020    o       $   (   i   f   )   '       &  \n   p   =   $   !  \n
+0000040    i   f       w   a   i   t       $   p   ;       t   h   e   n
+0000060        e   c   h   o       c   h   i   l   d   =   0   ;       e
+0000100    l   s   e       e   c   h   o       c   h   i   l   d   =   $
+0000120    ?   ;       f   i  \n                                        
+0000126
+  [c] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+  [file] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+========================================================================
+b3_bg_bare_simple_negated
+0000000    s   e   t       -   e  \n   !       {       e   v   a   l    
+0000020    '   e   c   h   o       $   (   i   f   )   '       &       t
+0000040    r   u   e   ;       }  \n   p   =   $   !  \n   i   f       w
+0000060    a   i   t       $   p   ;       t   h   e   n       e   c   h
+0000100    o       c   h   i   l   d   =   0   ;       e   l   s   e    
+0000120    e   c   h   o       c   h   i   l   d   =   $   ?   ;       f
+0000140    i  \n                                                        
+0000142
+  [c] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+  [file] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+========================================================================
+b4_bg_bare_simple_ifcond
+0000000    s   e   t       -   e  \n   i   f       {       e   v   a   l
+0000020        '   e   c   h   o       $   (   i   f   )   '       &    
+0000040    t   r   u   e   ;       }   ;       t   h   e   n       :   ;
+0000060        f   i  \n   p   =   $   !  \n   i   f       w   a   i   t
+0000100        $   p   ;       t   h   e   n       e   c   h   o       c
+0000120    h   i   l   d   =   0   ;       e   l   s   e       e   c   h
+0000140    o       c   h   i   l   d   =   $   ?   ;       f   i  \n    
+0000157
+  [c] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+  [file] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=2\n'
+    psh-rd rc=0 out='child=2\n'
+========================================================================
+b5_bg_subshell_suppressed
+0000000    s   e   t       -   e  \n   {       (       e   v   a   l    
+0000020    '   e   c   h   o       $   (   i   f   )   '       )       &
+0000040        }       |   |       t   r   u   e  \n   p   =   $   !  \n
+0000060    i   f       w   a   i   t       $   p   ;       t   h   e   n
+0000100        e   c   h   o       c   h   i   l   d   =   0   ;       e
+0000120    l   s   e       e   c   h   o       c   h   i   l   d   =   $
+0000140    ?   ;       f   i  \n                                        
+0000146
+  [c] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [file] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+========================================================================
+b6_bg_brace_suppressed
+0000000    s   e   t       -   e  \n   {       {       e   v   a   l    
+0000020    '   e   c   h   o       $   (   i   f   )   '   ;       }    
+0000040    &       }       |   |       t   r   u   e  \n   p   =   $   !
+0000060   \n   i   f       w   a   i   t       $   p   ;       t   h   e
+0000100    n       e   c   h   o       c   h   i   l   d   =   0   ;    
+0000120    e   l   s   e       e   c   h   o       c   h   i   l   d   =
+0000140    $   ?   ;       f   i  \n                                    
+0000147
+  [c] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [file] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+========================================================================
+b7_bg_function_suppressed
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   {       f       &       }       |   |       t   r   u
+0000060    e  \n   p   =   $   !  \n   i   f       w   a   i   t       $
+0000100    p   ;       t   h   e   n       e   c   h   o       c   h   i
+0000120    l   d   =   0   ;       e   l   s   e       e   c   h   o    
+0000140    c   h   i   l   d   =   $   ?   ;       f   i  \n            
+0000155
+  [c] DIVERGE
+    bash   rc=0 out='child=127\n'
+    psh-rd rc=0 out='child=1\n'
+  [file] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+========================================================================
+b8_bg_andor_list_suppressed
+0000000    s   e   t       -   e  \n   {       :       &   &       e   v
+0000020    a   l       '   e   c   h   o       $   (   i   f   )   '    
+0000040    &       }       |   |       t   r   u   e  \n   p   =   $   !
+0000060   \n   i   f       w   a   i   t       $   p   ;       t   h   e
+0000100    n       e   c   h   o       c   h   i   l   d   =   0   ;    
+0000120    e   l   s   e       e   c   h   o       c   h   i   l   d   =
+0000140    $   ?   ;       f   i  \n                                    
+0000147
+  [c] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [file] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+========================================================================
+b9_bg_for_loop_suppressed
+0000000    s   e   t       -   e  \n   {       f   o   r       i       i
+0000020    n       1   ;       d   o       e   v   a   l       '   e   c
+0000040    h   o       $   (   f   i   )   '   ;       d   o   n   e    
+0000060    &       }       |   |       t   r   u   e  \n   p   =   $   !
+0000100   \n   i   f       w   a   i   t       $   p   ;       t   h   e
+0000120    n       e   c   h   o       c   h   i   l   d   =   0   ;    
+0000140    e   l   s   e       e   c   h   o       c   h   i   l   d   =
+0000160    $   ?   ;       f   i  \n                                    
+0000167
+  [c] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [file] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+========================================================================
+c1_cmdsub_suppressed
+0000000    s   e   t       -   e  \n   {       x   =   $   (   e   v   a
+0000020    l       '   e   c   h   o       $   (   i   f   )   '   )   ;
+0000040        }       |   |       e   c   h   o       G   O   T       r
+0000060    c   =   $   ?  \n   e   c   h   o       E   N   D  \n        
+0000076
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+========================================================================
+c2_cmdsub_unsuppressed
+0000000    s   e   t       -   e  \n   x   =   $   (   e   v   a   l    
+0000020    '   e   c   h   o       $   (   i   f   )   '   )  \n   e   c
+0000040    h   o       A   F   T   E   R       r   c   =   $   ?  \n    
+0000057
+  [c] MATCH
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+  [file] MATCH
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+  [stdin] MATCH
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+========================================================================
+c3_cmdsub_ordinary_errexit
+0000000    s   e   t       -   e  \n   {       x   =   $   (   e   v   a
+0000020    l       '   f   a   l   s   e   ;       e   c   h   o       A
+0000040    '   )   ;       }       |   |       e   c   h   o       G   O
+0000060    T       r   c   =   $   ?  \n   e   c   h   o       x   =   [
+0000100    $   x   ]  \n                                                
+0000104
+  [c] MATCH
+    bash   rc=0 out='x=[A]\n'
+    psh-rd rc=0 out='x=[A]\n'
+  [file] MATCH
+    bash   rc=0 out='x=[A]\n'
+    psh-rd rc=0 out='x=[A]\n'
+  [stdin] MATCH
+    bash   rc=0 out='x=[A]\n'
+    psh-rd rc=0 out='x=[A]\n'
+========================================================================
+c4_procsub_suppressed
+0000000    s   e   t       -   e  \n   {       c   a   t       <   (   e
+0000020    v   a   l       '   e   c   h   o       $   (   i   f   )   '
+0000040    )   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n   e   c   h   o       E   N   D  \n
+0000100
+  [c] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+  [file] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+  [stdin] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+========================================================================
+c5_procsub_ordinary_errexit
+0000000    s   e   t       -   e  \n   {       c   a   t       <   (   e
+0000020    v   a   l       '   f   a   l   s   e   ;       e   c   h   o
+0000040        A   '   )   ;       }       |   |       e   c   h   o    
+0000060    G   O   T       r   c   =   $   ?  \n   e   c   h   o       E
+0000100    N   D  \n                                                    
+0000103
+  [c] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+========================================================================
+c6_backtick_suppressed
+0000000    s   e   t       -   e  \n   {       x   =   `   e   v   a   l
+0000020        '   e   c   h   o       $   (   i   f   )   '   `   ;    
+0000040    }       |   |       e   c   h   o       G   O   T       r   c
+0000060    =   $   ?  \n   e   c   h   o       E   N   D  \n            
+0000075
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+========================================================================
+e1_ordinary_member_eval_text
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   f   a   l   s   e   ;       e   c   h
+0000040    o       A   '   ;       }       |   |       e   c   h   o    
+0000060    G   O   T       r   c   =   $   ?  \n   e   c   h   o       E
+0000100    N   D  \n                                                    
+0000103
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+========================================================================
+e2_ordinary_member_source_text
+0000000    p   r   i   n   t   f       '   %   s   \   n   '       '   f
+0000020    a   l   s   e   '       '   e   c   h   o       A   '       >
+0000040        f   .   s   h  \n   s   e   t       -   e  \n   {       t
+0000060    r   u   e       |       .       .   /   f   .   s   h   ;    
+0000100    }       |   |       e   c   h   o       G   O   T       r   c
+0000120    =   $   ?  \n   e   c   h   o       E   N   D  \n            
+0000135
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+========================================================================
+e3_ordinary_member_ifcond
+0000000    s   e   t       -   e  \n   i   f       t   r   u   e       |
+0000020        e   v   a   l       '   f   a   l   s   e   ;       e   c
+0000040    h   o       A   '   ;       t   h   e   n       e   c   h   o
+0000060        T   ;       e   l   s   e       e   c   h   o       G   O
+0000100    T       r   c   =   $   ?   ;       f   i  \n   e   c   h   o
+0000120        E   N   D  \n                                            
+0000125
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+========================================================================
+e4_ordinary_member_compound_control
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       e   v   a   l       '   f   a   l   s   e   ;       e
+0000040    c   h   o       A   '   ;       }   ;       }       |   |    
+0000060    e   c   h   o       G   O   T       r   c   =   $   ?  \n   e
+0000100    c   h   o       E   N   D  \n                                
+0000110
+  [c] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+========================================================================
+e5_ordinary_bg_subshell_suppressed
+0000000    s   e   t       -   e  \n   {       (       f   a   l   s   e
+0000020    ;       e   c   h   o       A       )       &       w   a   i
+0000040    t       $   !   ;       }       |   |       e   c   h   o    
+0000060    G   O   T       r   c   =   $   ?  \n   e   c   h   o       E
+0000100    N   D  \n                                                    
+0000103
+  [c] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+========================================================================
+e6_ordinary_bg_subshell_ifcond
+0000000    s   e   t       -   e  \n   i   f       {       (       f   a
+0000020    l   s   e   ;       e   c   h   o       A       )       &    
+0000040    w   a   i   t       $   !   ;       }   ;       t   h   e   n
+0000060        e   c   h   o       T   ;       e   l   s   e       e   c
+0000100    h   o       G   O   T       r   c   =   $   ?   ;       f   i
+0000120   \n   e   c   h   o       E   N   D  \n                        
+0000132
+  [c] MATCH
+    bash   rc=0 out='A\nT\nEND\n'
+    psh-rd rc=0 out='A\nT\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nT\nEND\n'
+    psh-rd rc=0 out='A\nT\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='A\nT\nEND\n'
+    psh-rd rc=0 out='A\nT\nEND\n'
+========================================================================
+e7_ordinary_bg_subshell_unsuppressed
+0000000    s   e   t       -   e  \n   (       f   a   l   s   e   ;    
+0000020    e   c   h   o       A       )       &       w   a   i   t    
+0000040    $   !  \n   e   c   h   o       E   N   D  \n                
+0000054
+  [c] MATCH
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+  [file] MATCH
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+  [stdin] MATCH
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+========================================================================
+e8_ordinary_bg_bare_simple_suppressed
+0000000    s   e   t       -   e  \n   {       e   v   a   l       '   f
+0000020    a   l   s   e   ;       e   c   h   o       A   '       &    
+0000040    }       |   |       t   r   u   e  \n   p   =   $   !  \n   i
+0000060    f       w   a   i   t       $   p   ;       t   h   e   n    
+0000100    e   c   h   o       c   h   i   l   d   =   0   ;       e   l
+0000120    s   e       e   c   h   o       c   h   i   l   d   =   $   ?
+0000140    ;       f   i  \n                                            
+0000145
+  [c] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [file] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='child=1\n'
+    psh-rd rc=0 out='child=1\n'
+========================================================================
+o1_member_eval_reaches_function
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   {       t   r   u   e       |       e   v   a   l    
+0000060    '   f   '   ;       }       |   |       e   c   h   o       G
+0000100    O   T       r   c   =   $   ?  \n   e   c   h   o       E   N
+0000120    D  \n                                                        
+0000122
+  [c] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+========================================================================
+o2_member_eval_reaches_function_cbi
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   f   i   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   {       t   r   u   e       |       e   v   a   l    
+0000060    '   f   '   ;       }       |   |       e   c   h   o       G
+0000100    O   T       r   c   =   $   ?  \n   e   c   h   o       E   N
+0000120    D  \n                                                        
+0000122
+  [c] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+========================================================================
+o3_member_eval_reaches_function_ifcond
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   i   f       t   r   u   e       |       e   v   a   l
+0000060        '   f   '   ;       t   h   e   n       e   c   h   o    
+0000100    T   ;       e   l   s   e       e   c   h   o       G   O   T
+0000120        r   c   =   $   ?   ;       f   i  \n   e   c   h   o    
+0000140    E   N   D  \n                                                
+0000144
+  [c] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+========================================================================
+o4_member_source_reaches_function
+0000000    p   r   i   n   t   f       '   %   s   \   n   '       '   f
+0000020    '       >       c   a   l   l   .   s   h  \n   f   (   )    
+0000040    {       e   v   a   l       '   e   c   h   o       $   (   i
+0000060    f   )   '   ;       }  \n   s   e   t       -   e  \n   {    
+0000100    t   r   u   e       |       .       .   /   c   a   l   l   .
+0000120    s   h   ;       }       |   |       e   c   h   o       G   O
+0000140    T       r   c   =   $   ?  \n   e   c   h   o       E   N   D
+0000160   \n                                                            
+0000161
+  [c] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+========================================================================
+o5_member_eval_expansion_function
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   Q   =   f  \n   s
+0000040    e   t       -   e  \n   {       t   r   u   e       |       e
+0000060    v   a   l       '   $   Q   '   ;       }       |   |       e
+0000100    c   h   o       G   O   T       r   c   =   $   ?  \n   e   c
+0000120    h   o       E   N   D  \n                                    
+0000127
+  [c] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+========================================================================
+o6_member_is_the_function_control
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   {       t   r   u   e       |       f   ;       }    
+0000060    |   |       e   c   h   o       G   O   T       r   c   =   $
+0000100    ?  \n   e   c   h   o       E   N   D  \n                    
+0000113
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=127\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+========================================================================
+o7_member_eval_no_function_control
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n   e   c   h   o       E   N   D  \n
+0000100
+  [c] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'

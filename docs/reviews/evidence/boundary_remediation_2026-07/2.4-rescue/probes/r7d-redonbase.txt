@@ -1,0 +1,15 @@
+R7-D(1) INSTRUMENT: the R6-F red-on-base claim, re-run at 1b271d77
+worktree: /Users/pwilson/src/psh-r2-4/tmp/r7-base  HEAD: 1b271d776b7d9b4760ee01355b690f4350fcc804
+--- grep -c _errexit_suppressed psh/scripting/source_processor.py ---
+0
+--- pytest ---
+    assert _processor(_executor(depth))._errexit_suppressed() is expected
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'SourceProcessor' object has no attribute '_errexit_suppressed'
+=========================== short test summary info ============================
+FAILED tests/unit/scripting/test_errexit_suppressed_read.py::test_no_live_executor_reads_as_unsuppressed
+FAILED tests/unit/scripting/test_errexit_suppressed_read.py::test_missing_current_executor_attribute_reads_as_unsuppressed
+FAILED tests/unit/scripting/test_errexit_suppressed_read.py::test_live_executor_reports_the_total_depth[0-False]
+FAILED tests/unit/scripting/test_errexit_suppressed_read.py::test_live_executor_reports_the_total_depth[1-True]
+FAILED tests/unit/scripting/test_errexit_suppressed_read.py::test_live_executor_reports_the_total_depth[2-True]
+5 failed, 1 passed in 0.03s

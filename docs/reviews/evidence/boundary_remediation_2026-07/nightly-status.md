@@ -157,3 +157,15 @@ regression:
   `wait` does NOT (0.12 s, empty). Real divergence, deliberately NOT
   exercised by the fixed test (the barrier avoids `wait` precisely so the
   test doesn't depend on divergent semantics).
+
+## v0.760.0 note — new default-run PTY differential (slot 2.4)
+
+`tests/system/interactive/test_substitution_abort_interactive_pty.py` now runs
+in the DEFAULT suite (conftest allowlist; ~8 s, serial phase) — an opt-in pin
+for a PTY-only fact is an accidentally-green pin. Two things a nightly reader
+needs: it resolves the bash oracle AT IMPORT and fails LOUDLY (deliberate —
+a missing oracle must not silently skip a differential), and its BASH-side
+values ('1', '2') were measured against 5.2.26 on macOS while the Linux
+nightly runs a different bash build (plan A12) — a bash-version-dependent PTY
+value there fails the default suite and should be read as an ORACLE-VERSION
+question first, not a psh regression.

@@ -75,7 +75,9 @@ Known members (grow the list at Wave 0 by grepping `test_divergence_` and
   (`q4_sub1/2/3`, `neg7_sub3`) + `test_known_divergences_are_still_divergent`
   → Wave 3 slots 3.1/3.2.
 - `tests/conformance/bash/test_nested_substitution_timing_conformance.py::test_divergence_c_mode_exit_code_is_127_in_bash`
-  (6 params) → Wave 2 slot 2.4.
+  (6 params) → Wave 2 slot 2.4. **DISCHARGED v0.760.0** — flipped to the
+  equality pin `test_c_mode_exit_code_is_127_like_bash` (same file, same 6
+  params; complete-but-invalid and other-kinds twins added beside it).
 - `test_subscript_keying_conformance.py::test_divergence_procsub_*` (timing
   family) and `::test_divergence_empty_arith_subscript_fatality` → Wave 2
   slot 2.3 (fatality row only if 2.3's scope touches it; otherwise re-carry

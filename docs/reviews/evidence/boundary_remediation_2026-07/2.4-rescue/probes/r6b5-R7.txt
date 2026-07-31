@@ -1,0 +1,136 @@
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+========================================================================
+u1_until_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    u   n   t   i   l       e   v   a   l       '   e   c   h   o
+0000040        $   (   i   f   )   '   ;       d   o       b   r   e   a
+0000060    k   ;       d   o   n   e   ;       }       |   |       e   c
+0000100    h   o       G   O   T       r   c   =   $   ?  \n            
+0000115
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+u2_until_member_unsuppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    u   n   t   i   l       e   v   a   l       '   e   c   h   o
+0000040        $   (   i   f   )   '   ;       d   o       b   r   e   a
+0000060    k   ;       d   o   n   e   ;       }  \n   e   c   h   o    
+0000100    A   F   T   E   R       r   c   =   $   ?  \n                
+0000114
+  [c] MATCH
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+  [file] MATCH
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+  [stdin] MATCH
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+========================================================================
+u3_until_member_complete_but_invalid
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    u   n   t   i   l       e   v   a   l       '   e   c   h   o
+0000040        $   (   f   i   )   '   ;       d   o       b   r   e   a
+0000060    k   ;       d   o   n   e   ;       }       |   |       e   c
+0000100    h   o       G   O   T       r   c   =   $   ?  \n            
+0000115
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+u4_subshell_inside_brace_member
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       (       e   v   a   l       '   e   c   h   o       $
+0000040    (   i   f   )   '       )   ;       }   ;       }       |   |
+0000060        e   c   h   o       G   O   T       r   c   =   $   ?  \n
+0000100
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+u5_function_calling_function_member
+0000000    g   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   f   (   )       {
+0000040        g   ;       }  \n   s   e   t       -   e  \n   {       t
+0000060    r   u   e       |       f   ;       }       |   |       e   c
+0000100    h   o       G   O   T       r   c   =   $   ?  \n            
+0000115
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=127\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+u6_function_inside_brace_member
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   {       t   r   u   e       |       {       f   ;    
+0000060    }   ;       }       |   |       e   c   h   o       G   O   T
+0000100        r   c   =   $   ?  \n                                    
+0000107
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+u7_loop_inside_function_member
+0000000    f   (   )       {       f   o   r       x       i   n       1
+0000020    ;       d   o       e   v   a   l       '   e   c   h   o    
+0000040    $   (   i   f   )   '   ;       d   o   n   e   ;       }  \n
+0000060    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000100    f   ;       }       |   |       e   c   h   o       G   O   T
+0000120        r   c   =   $   ?  \n                                    
+0000127
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=127\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+u8_simple_inside_nothing_control
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n                                    
+0000067
+  [c] MATCH
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+  [stdin] MATCH
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=2\n'

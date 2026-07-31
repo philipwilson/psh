@@ -1,0 +1,8 @@
+PSH_ROOT: /Users/pwilson/src/psh-r2-4
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+script      'echo $(if)'   -> RAISED SubstitutionSyntaxAbort
+script      'echo $(fi)'   -> RAISED SubstitutionSyntaxAbort
+script      'cat <(if)'    -> RAISED SubstitutionSyntaxAbort
+script      'if'           -> RC 2
+interactive 'echo $(if)'   -> RC 2
+interactive 'echo $(fi)'   -> RC 2

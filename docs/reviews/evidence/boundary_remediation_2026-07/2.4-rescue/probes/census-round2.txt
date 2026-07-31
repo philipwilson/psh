@@ -1,0 +1,116 @@
+==========================================================================
+PARSER: rd
+  1_cmdsub            [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  1_cmdsub            [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  2_procsub           [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  2_procsub           [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  3_param_default     [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  3_param_default     [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  4_arith             [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  4_arith             [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  5_subscript_read    [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  5_subscript_read    [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  6_subscript_assign  [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  6_subscript_assign  [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  7_eval_cmdsub       [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  7_eval_cmdsub       [file] rc=1   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  8_eval_procsub      [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  8_eval_procsub      [file] rc=1   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  C_plain_control     [c   ] rc=2   type=ParseError sub_origin=False via=_execute_buffered_command
+  C_plain_control     [file] rc=2   type=ParseError sub_origin=False via=_execute_buffered_command
+  9_golden_heredoc    [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  9_golden_heredoc    [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  10_multiline_pre    [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  10_multiline_pre    [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  11_inside_ifblock   [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  11_inside_ifblock   [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  12_inside_loop      [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  12_inside_loop      [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  13_multiline_eval   [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  13_multiline_eval   [file] rc=1   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  14_cont_line        [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  14_cont_line        [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  K1_fi_cmdsub        [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K1_fi_cmdsub        [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K2_fi_procsub       [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K2_fi_procsub       [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K3_fi_param         [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K3_fi_param         [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K4_fi_arith         [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K4_fi_arith         [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K5_fi_subscr_read   [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K5_fi_subscr_read   [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K6_fi_subscr_asgn   [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K6_fi_subscr_asgn   [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K7_semi             [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K7_semi             [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K8_dsemi            [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K8_dsemi            [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K9_done             [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K9_done             [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K10_lead_pipe       [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K10_lead_pipe       [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K11_fi_eval         [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K11_fi_eval         [file] rc=1   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K12_fi_multiline    [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K12_fi_multiline    [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  KC_plain_fi_CONTROL [c   ] rc=2   type=ParseError sub_origin=False via=_run_from_source
+  KC_plain_fi_CONTROL [file] rc=2   type=ParseError sub_origin=False via=_run_from_source
+==========================================================================
+PARSER: combinator
+  1_cmdsub            [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  1_cmdsub            [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  2_procsub           [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  2_procsub           [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  3_param_default     [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  3_param_default     [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  4_arith             [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  4_arith             [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  5_subscript_read    [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  5_subscript_read    [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  6_subscript_assign  [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  6_subscript_assign  [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  7_eval_cmdsub       [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  7_eval_cmdsub       [file] rc=1   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  8_eval_procsub      [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  8_eval_procsub      [file] rc=1   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  C_plain_control     [c   ] rc=2   type=ParseError sub_origin=False via=_execute_buffered_command
+  C_plain_control     [file] rc=2   type=ParseError sub_origin=False via=_execute_buffered_command
+  9_golden_heredoc    [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  9_golden_heredoc    [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  10_multiline_pre    [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  10_multiline_pre    [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  11_inside_ifblock   [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  11_inside_ifblock   [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  12_inside_loop      [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  12_inside_loop      [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  13_multiline_eval   [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  13_multiline_eval   [file] rc=1   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  14_cont_line        [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  14_cont_line        [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_execute_buffered_command
+  K1_fi_cmdsub        [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K1_fi_cmdsub        [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K2_fi_procsub       [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K2_fi_procsub       [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K3_fi_param         [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K3_fi_param         [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K4_fi_arith         [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K4_fi_arith         [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K5_fi_subscr_read   [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K5_fi_subscr_read   [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K6_fi_subscr_asgn   [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K6_fi_subscr_asgn   [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K7_semi             [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K7_semi             [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K8_dsemi            [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K8_dsemi            [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K9_done             [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K9_done             [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K10_lead_pipe       [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K10_lead_pipe       [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K11_fi_eval         [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K11_fi_eval         [file] rc=1   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K12_fi_multiline    [c   ] rc=127 type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  K12_fi_multiline    [file] rc=2   type=SubstitutionSyntaxError sub_origin=True via=_run_from_source
+  KC_plain_fi_CONTROL [c   ] rc=2   type=ParseError sub_origin=False via=_run_from_source
+  KC_plain_fi_CONTROL [file] rc=2   type=ParseError sub_origin=False via=_run_from_source

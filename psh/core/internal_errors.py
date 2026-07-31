@@ -204,7 +204,12 @@ def substitution_child_abort_status(state: 'ShellState',
     FUNCTION carries it; a fork running a BARE SIMPLE command severs it and
     runs with errexit effective (``executor/context.py#errexit_suppress_deferred``
     quotes the manual sentence). It holds at the pipeline-member route and at
-    the background route alike.
+    the background route alike — but NOT at the substitution routes, where
+    bash's rule is spelling-split: an ARGUMENT-spelled substitution child
+    (``$( )``, backticks, ``<( )``) keeps the enclosing context's suppression,
+    while a REDIRECTION-spelled procsub (``< <( )``, ``> >( )``) runs with
+    errexit effective (the declared divergence is pinned by
+    ``test_redirect_procsub_suppression_is_a_declared_divergence``).
 
     Kept beside the main policy rather than inlined at the fork sites so the
     two halves cannot drift: it is the SAME mapping restricted to the axis a

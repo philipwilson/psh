@@ -1,0 +1,221 @@
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+========================================================================
+m3_member_cmdsub
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   c   h   o       "   x   =   $   (   f   a   l   s   e   ;
+0000040        e   c   h   o       A   )   "   ;       }       |   |    
+0000060    e   c   h   o       G   O   T       r   c   =   $   ?  \n   e
+0000100    c   h   o       E   N   D  \n                                
+0000110
+  [c] MATCH
+    bash   rc=0 out='x=A\nEND\n'
+    psh-rd rc=0 out='x=A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='x=A\nEND\n'
+    psh-rd rc=0 out='x=A\nEND\n'
+========================================================================
+m4_member_backtick
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   c   h   o       "   x   =   `   f   a   l   s   e   ;    
+0000040    e   c   h   o       A   `   "   ;       }       |   |       e
+0000060    c   h   o       G   O   T       r   c   =   $   ?  \n   e   c
+0000100    h   o       E   N   D  \n                                    
+0000107
+  [c] MATCH
+    bash   rc=0 out='x=A\nEND\n'
+    psh-rd rc=0 out='x=A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='x=A\nEND\n'
+    psh-rd rc=0 out='x=A\nEND\n'
+========================================================================
+m6_bg_argument_procsub
+0000000    s   e   t       -   e  \n   {       c   a   t       <   (   f
+0000020    a   l   s   e   ;       e   c   h   o       A   )       &    
+0000040    }       |   |       t   r   u   e  \n   p   =   $   !  \n   i
+0000060    f       w   a   i   t       $   p   ;       t   h   e   n    
+0000100    e   c   h   o       c   h   i   l   d   =   0   ;       e   l
+0000120    s   e       e   c   h   o       c   h   i   l   d   =   $   ?
+0000140    ;       f   i  \n   e   c   h   o       E   N   D  \n        
+0000156
+  [c] MATCH
+    bash   rc=0 out='A\nchild=0\nEND\n'
+    psh-rd rc=0 out='A\nchild=0\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nchild=0\nEND\n'
+    psh-rd rc=0 out='A\nchild=0\nEND\n'
+========================================================================
+m10_member_cmdsub_abort
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n   e   c   h   o       E   N   D  \n
+0000100
+  [c] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+========================================================================
+m1_member_argument_procsub
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    c   a   t       <   (   f   a   l   s   e   ;       e   c   h
+0000040    o       A   )   ;       }       |   |       e   c   h   o    
+0000060    G   O   T       r   c   =   $   ?  \n   e   c   h   o       E
+0000100    N   D  \n                                                    
+0000103
+  [c] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+========================================================================
+m2_member_redirect_procsub
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    h   e   a   d       -   1       <       <   (   f   a   l   s
+0000040    e   ;       e   c   h   o       A   )   ;       }       |   |
+0000060        e   c   h   o       G   O   T       r   c   =   $   ?  \n
+0000100    e   c   h   o       E   N   D  \n                            
+0000111
+  [c] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+  [file] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+========================================================================
+m7_toplevel_active_errexit
+0000000    s   e   t       -   e  \n   c   a   t       <   (   f   a   l
+0000020    s   e   ;       e   c   h   o       A   )  \n   e   c   h   o
+0000040        E   N   D  \n                                            
+0000045
+  [c] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+  [file] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+========================================================================
+m5_brace_member_argument_procsub
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       c   a   t       <   (   f   a   l   s   e   ;       e
+0000040    c   h   o       A   )   ;       }   ;       }       |   |    
+0000060    e   c   h   o       G   O   T       r   c   =   $   ?  \n   e
+0000100    c   h   o       E   N   D  \n                                
+0000110
+  [c] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+========================================================================
+m9_member_argument_procsub_abort
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   c   a   t       <   (   i   f   )   '
+0000040    ;       }       |   |       e   c   h   o       G   O   T    
+0000060    r   c   =   $   ?  \n   e   c   h   o       E   N   D  \n    
+0000077
+  [c] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=2\nEND\n'
+    psh-rd rc=0 out='GOT rc=2\nEND\n'
+========================================================================
+m8_member_argument_procsub_unsuppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    c   a   t       <   (   f   a   l   s   e   ;       e   c   h
+0000040    o       A   )   ;       }  \n   e   c   h   o       A   F   T
+0000060    E   R       r   c   =   $   ?  \n   e   c   h   o       E   N
+0000100    D  \n                                                        
+0000102
+  [c] MATCH
+    bash   rc=0 out='AFTER rc=0\nEND\n'
+    psh-rd rc=0 out='AFTER rc=0\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='AFTER rc=0\nEND\n'
+    psh-rd rc=0 out='AFTER rc=0\nEND\n'
+========================================================================
+x5_cmdsub_child_aborts
+0000000    s   e   t       -   e  \n   e   c   h   o       "   x   =   $
+0000020    (   f   a   l   s   e   ;       e   c   h   o       A   )   "
+0000040   \n   e   c   h   o       E   N   D  \n                        
+0000052
+  [c] MATCH
+    bash   rc=0 out='x=A\nEND\n'
+    psh-rd rc=0 out='x=A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='x=A\nEND\n'
+    psh-rd rc=0 out='x=A\nEND\n'
+========================================================================
+x6_procsub_child_aborts
+0000000    s   e   t       -   e  \n   c   a   t       <   (   f   a   l
+0000020    s   e   ;       e   c   h   o       A   )  \n   e   c   h   o
+0000040        E   N   D  \n                                            
+0000045
+  [c] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+  [file] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+========================================================================
+x3_cmdsub_child_toplevel
+0000000    s   e   t       -   e  \n   e   c   h   o       "   d   a   s
+0000020    h   =   $   (   c   a   s   e       $   -       i   n       *
+0000040    e   *   )       e   c   h   o       O   N   ;   ;       *   )
+0000060        e   c   h   o       O   F   F   ;   ;       e   s   a   c
+0000100    )   "  \n   e   c   h   o       E   N   D  \n                
+0000114
+  [c] MATCH
+    bash   rc=0 out='dash=OFF\nEND\n'
+    psh-rd rc=0 out='dash=OFF\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='dash=OFF\nEND\n'
+    psh-rd rc=0 out='dash=OFF\nEND\n'
+========================================================================
+x4_procsub_child_toplevel
+0000000    s   e   t       -   e  \n   c   a   t       <   (   c   a   s
+0000020    e       $   -       i   n       *   e   *   )       e   c   h
+0000040    o       O   N   ;   ;       *   )       e   c   h   o       O
+0000060    F   F   ;   ;       e   s   a   c   )  \n   e   c   h   o    
+0000100    E   N   D  \n                                                
+0000104
+  [c] MATCH
+    bash   rc=0 out='ON\nEND\n'
+    psh-rd rc=0 out='ON\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='ON\nEND\n'
+    psh-rd rc=0 out='ON\nEND\n'
+========================================================================
+x1_cmdsub_child_sees_errexit
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   c   h   o       "   d   a   s   h   =   $   (   c   a   s
+0000040    e       $   -       i   n       *   e   *   )       e   c   h
+0000060    o       O   N   ;   ;       *   )       e   c   h   o       O
+0000100    F   F   ;   ;       e   s   a   c   )   "   ;       }       |
+0000120    |       t   r   u   e  \n   e   c   h   o       E   N   D  \n
+0000140
+  [c] MATCH
+    bash   rc=0 out='dash=OFF\nEND\n'
+    psh-rd rc=0 out='dash=OFF\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='dash=OFF\nEND\n'
+    psh-rd rc=0 out='dash=OFF\nEND\n'
+========================================================================
+x2_procsub_child_sees_errexit
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    c   a   t       <   (   c   a   s   e       $   -       i   n
+0000040        *   e   *   )       e   c   h   o       O   N   ;   ;    
+0000060    *   )       e   c   h   o       O   F   F   ;   ;       e   s
+0000100    a   c   )   ;       }       |   |       t   r   u   e  \n   e
+0000120    c   h   o       E   N   D  \n                                
+0000130
+  [c] MATCH
+    bash   rc=0 out='ON\nEND\n'
+    psh-rd rc=0 out='ON\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='ON\nEND\n'
+    psh-rd rc=0 out='ON\nEND\n'

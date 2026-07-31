@@ -1,0 +1,254 @@
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+========================================================================
+k10_func_with_compound_body_member
+0000000    f   (   )       {       {       e   v   a   l       '   e   c
+0000020    h   o       $   (   i   f   )   '   ;       }   ;       }  \n
+0000040    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000060    f   ;       }       |   |       e   c   h   o       G   O   T
+0000100        r   c   =   $   ?  \n                                    
+0000107
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='GOT rc=127\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+k11_middle_of_three_pipestatus
+0000000    s   e   t       -   e  \n   t   r   u   e       |       e   v
+0000020    a   l       '   e   c   h   o       $   (   i   f   )   '    
+0000040    |       c   a   t       |   |       e   c   h   o       G   O
+0000060    T       r   c   =   $   ?  \n   e   c   h   o       P   S   =
+0000100    $   {   P   I   P   E   S   T   A   T   U   S   [   *   ]   }
+0000120   \n                                                            
+0000121
+  [c] MATCH  bash-err-lines=1
+    bash   rc=0 out='PS=0 2 0\n'
+    psh-rd rc=0 out='PS=0 2 0\n'
+    psh-cb rc=0 out='PS=0 2 0\n'
+  [file] MATCH  bash-err-lines=1
+    bash   rc=0 out='PS=0 2 0\n'
+    psh-rd rc=0 out='PS=0 2 0\n'
+    psh-cb rc=0 out='PS=0 2 0\n'
+========================================================================
+k12_posix_special_builtin_member_suppressed
+0000000    s   e   t       -   o       p   o   s   i   x  \n   s   e   t
+0000020        -   e  \n   {       t   r   u   e       |       s   e   t
+0000040        -   q   ;       }       |   |       e   c   h   o       G
+0000060    O   T       r   c   =   $   ?  \n   e   c   h   o       A   F
+0000100    T   E   R  \n                                                
+0000104
+  [c] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=2\nAFTER\n'
+    psh-rd rc=0 out='GOT rc=2\nAFTER\n'
+    psh-cb rc=0 out='GOT rc=2\nAFTER\n'
+  [file] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=2\nAFTER\n'
+    psh-rd rc=0 out='GOT rc=2\nAFTER\n'
+    psh-cb rc=0 out='GOT rc=2\nAFTER\n'
+========================================================================
+k13_posix_special_builtin_member_unsuppressed
+0000000    s   e   t       -   o       p   o   s   i   x  \n   s   e   t
+0000020        -   e  \n   {       t   r   u   e       |       s   e   t
+0000040        -   q   ;       }  \n   e   c   h   o       A   F   T   E
+0000060    R       r   c   =   $   ?  \n                                
+0000070
+  [c] MATCH  bash-err-lines=2
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+  [file] MATCH  bash-err-lines=2
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+========================================================================
+k14_failing_simple_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    f   a   l   s   e   ;       }       |   |       e   c   h   o
+0000040        G   O   T       r   c   =   $   ?  \n                    
+0000053
+  [c] MATCH  bash-err-lines=0
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH  bash-err-lines=0
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+k15_exit_trap_simple_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       t   r   a   p       '   e   c   h   o       B   Y   E
+0000040    '       E   X   I   T   ;       e   v   a   l       '   e   c
+0000060    h   o       $   (   i   f   )   '   ;       }   ;       }    
+0000100    |   |       e   c   h   o       G   O   T       r   c   =   $
+0000120    ?  \n                                                        
+0000122
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+k16_exit_trap_set_in_parent_simple_member
+0000000    s   e   t       -   e  \n   t   r   a   p       '   e   c   h
+0000020    o       B   Y   E   '       E   X   I   T  \n   {       t   r
+0000040    u   e       |       e   v   a   l       '   e   c   h   o    
+0000060    $   (   i   f   )   '   ;       }       |   |       e   c   h
+0000100    o       G   O   T       r   c   =   $   ?  \n                
+0000114
+  [c] MATCH  bash-err-lines=1
+    bash   rc=0 out='GOT rc=2\nBYE\n'
+    psh-rd rc=0 out='GOT rc=2\nBYE\n'
+    psh-cb rc=0 out='GOT rc=2\nBYE\n'
+  [file] MATCH  bash-err-lines=1
+    bash   rc=0 out='GOT rc=2\nBYE\n'
+    psh-rd rc=0 out='GOT rc=2\nBYE\n'
+    psh-cb rc=0 out='GOT rc=2\nBYE\n'
+========================================================================
+k1_if_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    i   f       t   r   u   e   ;       t   h   e   n       e   v
+0000040    a   l       '   e   c   h   o       $   (   i   f   )   '   ;
+0000060        f   i   ;       }       |   |       e   c   h   o       G
+0000100    O   T       r   c   =   $   ?  \n                            
+0000111
+  [c] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+k2_while_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    w   h   i   l   e       :   ;       d   o       e   v   a   l
+0000040        '   e   c   h   o       $   (   i   f   )   '   ;       b
+0000060    r   e   a   k   ;       d   o   n   e   ;       }       |   |
+0000100        e   c   h   o       G   O   T       r   c   =   $   ?  \n
+0000120
+  [c] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+k3_for_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    f   o   r       x       i   n       1   ;       d   o       e
+0000040    v   a   l       '   e   c   h   o       $   (   i   f   )   '
+0000060    ;       d   o   n   e   ;       }       |   |       e   c   h
+0000100    o       G   O   T       r   c   =   $   ?  \n                
+0000114
+  [c] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+k4_case_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    c   a   s   e       x       i   n       x   )       e   v   a
+0000040    l       '   e   c   h   o       $   (   i   f   )   '   ;   ;
+0000060        e   s   a   c   ;       }       |   |       e   c   h   o
+0000100        G   O   T       r   c   =   $   ?  \n                    
+0000113
+  [c] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+k5_func_via_expansion_member
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   Q   =   f  \n   s
+0000040    e   t       -   e  \n   {       t   r   u   e       |       $
+0000060    Q   ;       }       |   |       e   c   h   o       G   O   T
+0000100        r   c   =   $   ?  \n                                    
+0000107
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='GOT rc=127\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+k6_command_prefix_member
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    c   o   m   m   a   n   d       e   v   a   l       '   e   c
+0000040    h   o       $   (   i   f   )   '   ;       }       |   |    
+0000060    e   c   h   o       G   O   T       r   c   =   $   ?  \n    
+0000077
+  [c] MATCH  bash-err-lines=1
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] MATCH  bash-err-lines=1
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+k7_assignment_prefix_member
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    X   =   1       e   v   a   l       '   e   c   h   o       $
+0000040    (   i   f   )   '   ;       }       |   |       e   c   h   o
+0000060        G   O   T       r   c   =   $   ?  \n                    
+0000073
+  [c] MATCH  bash-err-lines=1
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] MATCH  bash-err-lines=1
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+k8_redirected_simple_member
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '       2   >   /   d   e   v   /   n   u   l   l   ;       }
+0000060        |   |       e   c   h   o       G   O   T       r   c   =
+0000100    $   ?  \n                                                    
+0000103
+  [c] MATCH  bash-err-lines=0
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] MATCH  bash-err-lines=0
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+k9_nested_brace_member
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       {       e   v   a   l       '   e   c   h   o       $
+0000040    (   i   f   )   '   ;       }   ;       }   ;       }       |
+0000060    |       e   c   h   o       G   O   T       r   c   =   $   ?
+0000100   \n                                                            
+0000101
+  [c] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'

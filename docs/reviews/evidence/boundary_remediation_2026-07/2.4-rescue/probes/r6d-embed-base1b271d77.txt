@@ -1,0 +1,8 @@
+PSH_ROOT: /Users/pwilson/src/psh-r2-4/tmp/r6b-base
+discriminator: /Users/pwilson/src/psh-r2-4/tmp/r6b-base/psh/__init__.py
+script      'echo $(if)'   -> RC 2
+script      'echo $(fi)'   -> RC 2
+script      'cat <(if)'    -> RC 2
+script      'if'           -> RC 2
+interactive 'echo $(if)'   -> RC 2
+interactive 'echo $(fi)'   -> RC 2
