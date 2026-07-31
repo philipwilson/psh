@@ -152,7 +152,7 @@ class CommandSubstitutionExecutor:
                     # With the default options the child has no errexit and
                     # this value cannot be observed either way.
                     errexit_suppress_override=expansion_child_suppression(
-                        self.shell),
+                        self.shell._current_executor),
                     error_label='command substitution',
                 )
             child_pid = pid

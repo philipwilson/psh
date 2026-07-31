@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from ..core.state import ShellState
     from ..shell import Shell
     from .context import ExecutionContext
+    from .core import ExecutorVisitor
 
 # The control-flow / exit exceptions a forked child's body may raise at its
 # top. Caught as a group at every fork site; the code mapping lives once in
@@ -430,7 +431,8 @@ def run_child_body(child_shell: 'Shell',
     return exit_code
 
 
-def expansion_child_suppression(shell: 'Shell') -> Optional[int]:
+def expansion_child_suppression(
+        executor: Optional['ExecutorVisitor']) -> Optional[int]:
     """The errexit-suppression depth an EXPANSION-TIME substitution child
     inherits: the depth its frame had BEFORE any severing.
 
@@ -445,6 +447,11 @@ def expansion_child_suppression(shell: 'Shell') -> Optional[int]:
     and ``io_redirect/process_sub.py``) on purpose: they were fixed one round
     apart, and a second copy of this arithmetic is how the two would drift.
 
+    Takes the LIVE EXECUTOR (or None), not the shell: the arithmetic needs one
+    context and nothing else, and a boundary module that accepts a whole
+    ``Shell`` is what the Q1 shell-consumer ratchet exists to prevent — it
+    caught this function's first draft, which took one.
+
     Returns None when there is no live executor (the outermost reader parse),
     leaving :func:`run_child_shell` on its ordinary path.
 
@@ -455,7 +462,6 @@ def expansion_child_suppression(shell: 'Shell') -> Optional[int]:
     the depth decides whether it survives. Process-substitution children always
     inherit errexit, so it always matters for them.
     """
-    executor = getattr(shell, '_current_executor', None)
     if executor is None:
         return None
     context = executor.context
