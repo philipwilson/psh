@@ -37,7 +37,6 @@ THE THREE DECLARED DELTAS, with their measured base values:
 import re
 
 import pytest
-
 from shell_oracle import Completed, is_comparable, run_bash, run_psh
 
 _SHAPES = [

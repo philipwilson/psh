@@ -28,7 +28,6 @@ Non-interactive half; the terminal half is the `named_fd_*` rows of
 tests/system/interactive/test_heredoc_detection_interactive_pty.py.
 """
 import pytest
-
 from shell_oracle import Completed, is_comparable, resolve_bash, run_bash, run_psh
 
 _ORACLE = resolve_bash()
