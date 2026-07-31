@@ -1196,7 +1196,12 @@ def test_ordinary_errexit_co_movements_are_declared():
     suppression sources} = 186 rows, each classified against bash AND against
     the wave base — and its output ``r8b-hunt-TIP.txt`` is the record:
     **60 MOVED-TO-BASH, 126 UNMOVED-MATCH, 0 MOVED-AWAY, 0 pre-existing
-    divergences**. (RECORDED, not committed: ``tmp/`` is gitignored, so that
+    divergences** — over ITS BODIES, which are four SHELL bodies (an eval'd
+    text, a sourced text, a plain `false`, a function call) and no EXTERNAL
+    command: a verifier found a base-identical divergence one step outside that
+    axis (`g(){ /usr/bin/false; echo A; }` under a severed member), so the
+    "0 pre-existing divergences" figure is a statement about the enumerated
+    space and not about the rule's whole domain. (RECORDED, not committed: ``tmp/`` is gitignored, so that
     file lives in the slot worktree and is rescued into
     ``docs/reviews/evidence/2.4-rescue/`` at ceremony. A clean checkout finds
     it there, not under ``tmp/``.) The rows below SAMPLE that, chosen to cover
@@ -1429,13 +1434,22 @@ def test_member_substitution_children_keep_the_pre_sever_context():
       ``test_redirect_procsub_suppression_is_a_declared_divergence`` — and psh
       now agrees, a movement TOWARD bash from the wave base (which printed A).
 
-    WHY THE CMDSUB TWIN NEVER MOVED, answered by observation rather than by
-    reading the code (rows below): a command-substitution child runs with the
-    errexit OPTION CLEARED — ``$-`` contains no ``e`` inside it, in bash and in
-    psh, at top level and inside a member — so the suppression DEPTH is not
-    observable there at all and severing it cannot change anything. A
-    process-substitution child INHERITS errexit (``$-`` contains ``e``), which
-    is precisely why the depth it inherits decides whether it survives.
+    WHY THE CMDSUB TWIN DOES NOT MOVE **ON THE DEFAULT-OPTIONS AXIS**,
+    answered by observation rather than by reading the code (rows below): with
+    default options a command-substitution child runs with the errexit OPTION
+    CLEARED — ``$-`` contains no ``e`` inside it, in bash and in psh — so the
+    suppression DEPTH is not observable there and severing it cannot change
+    anything. A process-substitution child INHERITS errexit (``$-`` contains
+    ``e``), which is precisely why the depth it inherits decides whether it
+    survives.
+
+    THE OPTION AXIS IS THE EXCEPTION, and the round-9 form of this paragraph
+    stated it as a universal without it. Under ``shopt -s inherit_errexit`` or
+    ``set -o posix`` a cmdsub child DOES inherit errexit — psh's own
+    ``expansion/command_sub.py`` passes exactly that condition as
+    ``reset_errexit`` — so the depth becomes observable and the pre-sever rule
+    applies there too. That is pinned in
+    ``test_member_cmdsub_keeps_pre_sever_context_under_inherit_errexit``.
 
     Evidence ``tmp/r24-probes/r9a.py`` → ``r9a-*.txt`` (32 rows, both channels,
     both parsers, at base 1b271d77 and at the tip)."""
@@ -1492,6 +1506,80 @@ def test_member_substitution_children_keep_the_pre_sever_context():
             b, p = _bash(script, channel), _psh(script, channel)
             assert b.stdout == p.stdout == "GOT rc=2\nEND\n", (script, channel,
                                                                 b.stdout, p.stdout)
+
+
+def test_member_cmdsub_keeps_pre_sever_context_under_inherit_errexit():
+    """When a cmdsub child INHERITS errexit, a severed member's cmdsub child
+    keeps the pre-sever suppression — both option spellings, both substitution
+    spellings.
+
+    THE OPTION AXIS. With default options a command-substitution child runs
+    with errexit CLEARED, so the suppression depth is invisible inside it and
+    the severing cannot be observed (pinned next door). Under
+    ``shopt -s inherit_errexit`` — and under ``set -o posix``, which implies it
+    — the child inherits errexit, the depth decides whether it survives, and
+    bash keeps the child SUPPRESSED: ``set -e; shopt -s inherit_errexit;
+    { true | echo "x=$(false; echo A)"; } || …`` prints ``x=A``.
+
+    RED-ON-71e83c35 for all four rows: the severing machinery reached the
+    cmdsub creator with no override, so the child died at the ``false`` and
+    printed ``x=``. Base 1b271d77 matched bash, so this was a regression that
+    arrived with the machinery and stood undeclared for two rounds — it was
+    invisible because every instrument until now held the OPTION axis at its
+    default.
+
+    THE BACKTICK SPELLING RIDES THE SAME CREATOR (``expansion/evaluator.py``
+    routes both spellings through ``command_sub.execute``), so it is pinned
+    beside the ``$( )`` rows rather than assumed to follow.
+
+    Evidence ``tmp/r24-probes/r10a.py`` → ``r10a-*.txt`` (16 cases × 3
+    channels × both parsers, at base and at the tip)."""
+    for prelude in ("shopt -s inherit_errexit", "set -o posix"):
+        for body in ('echo "x=$(false; echo A)"', 'echo "x=`false; echo A`"'):
+            script = ("set -e\n%s\n{ true | %s; } || echo GOT rc=$?\necho END"
+                      % (prelude, body))
+            for channel in ("c", "file"):
+                b, p = _bash(script, channel), _psh(script, channel)
+                assert b.stdout == "x=A\nEND\n", (script, channel, b.stdout)
+                assert p.stdout == "x=A\nEND\n", (script, channel, p.stdout)
+    # THE MECHANISM, pinned as an observation on BOTH sides of the axis: the
+    # cmdsub child's `$-` has no `e` by default and HAS it under the option.
+    for prelude, expected in [("", "dash=OFF\nEND\n"),
+                              ("shopt -s inherit_errexit\n", "dash=ON\nEND\n")]:
+        script = ('set -e\n%secho "dash=$(case $- in *e*) echo ON;; *) echo OFF;;'
+                  ' esac)"\necho END' % prelude)
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == expected, (script, channel,
+                                                      b.stdout, p.stdout)
+    # COMPOSITION: the cmdsub inside the member's EVAL'd text does NOT keep it
+    # — the deferral is one-shot and the member's own command was the eval, so
+    # by the time the text runs there is nothing parked. bash agrees (x=), and
+    # this row must not move when the rows above are fixed.
+    comp = ("set -e\nshopt -s inherit_errexit\n"
+            "{ true | eval 'echo \"x=$(false; echo A)\"'; } || echo GOT rc=$?\necho END")
+    for channel in ("c", "file"):
+        b, p = _bash(comp, channel), _psh(comp, channel)
+        assert b.stdout == p.stdout == "x=\nEND\n", (channel, b.stdout, p.stdout)
+    # CONTROLS: the procsub siblings under the same option (the round-9 fix
+    # holds on this axis too), a COMPOUND member (carries anyway), the
+    # UNSUPPRESSED member, and the top-level shape where bash kills the child
+    # in both shells.
+    for script, expected in [
+        ("set -e\nshopt -s inherit_errexit\n"
+         "{ true | cat <(false; echo A); } || echo GOT rc=$?\necho END", "A\nEND\n"),
+        ("set -e\nshopt -s inherit_errexit\n"
+         "{ true | head -1 < <(false; echo A); } || echo GOT rc=$?\necho END", "END\n"),
+        ("set -e\nshopt -s inherit_errexit\n"
+         '{ true | { echo "x=$(false; echo A)"; }; } || echo GOT rc=$?\necho END',
+         "x=A\nEND\n"),
+        ("set -e\nshopt -s inherit_errexit\n"
+         'echo "x=$(false; echo A)"\necho END', "x=\nEND\n"),
+    ]:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == expected, (script, channel,
+                                                      b.stdout, p.stdout)
 
 
 def test_static_check_spellings_dash_n_and_validate():

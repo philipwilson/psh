@@ -128,7 +128,7 @@ class CommandSubstitutionExecutor:
             # Fork with termination signals blocked across the fork window
             # (the v0.300 lost-signal race fix; the child unblocks them in
             # apply_child_signal_policy after resetting handlers to SIG_DFL).
-            from psh.executor import fork_with_signal_window, run_child_shell
+            from psh.executor import expansion_child_suppression, fork_with_signal_window, run_child_shell
             pid = fork_with_signal_window()
             if pid == 0:
                 # Child: run_child_shell owns the generic child-process work
@@ -145,6 +145,14 @@ class CommandSubstitutionExecutor:
                     io_setup=lambda: self._child_io_setup(read_fd, write_fd),
                     reset_errexit=not (opts.get('inherit_errexit')
                                        or opts.get('posix')),
+                    # When the child DOES inherit errexit (the two options
+                    # above), the suppression depth is observable inside it —
+                    # so a severed pipeline member's cmdsub child must keep the
+                    # PRE-SEVER depth, exactly as its procsub sibling does.
+                    # With the default options the child has no errexit and
+                    # this value cannot be observed either way.
+                    errexit_suppress_override=expansion_child_suppression(
+                        self.shell),
                     error_label='command substitution',
                 )
             child_pid = pid

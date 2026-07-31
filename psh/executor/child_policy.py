@@ -430,6 +430,38 @@ def run_child_body(child_shell: 'Shell',
     return exit_code
 
 
+def expansion_child_suppression(shell: 'Shell') -> Optional[int]:
+    """The errexit-suppression depth an EXPANSION-TIME substitution child
+    inherits: the depth its frame had BEFORE any severing.
+
+    A forked pipeline member whose own node is a simple command SEVERS the
+    enclosing list's suppression for its own execution and parks the depth in
+    ``executor/context.py#errexit_suppress_deferred``. bash does not extend
+    that severing to a substitution the member EXPANDS, so the child inherits
+    current + parked. Outside a severed member the parked half is 0 and this
+    is just the live depth — the value the child would have inherited anyway.
+
+    ONE function for BOTH expansion-time creators (``expansion/command_sub.py``
+    and ``io_redirect/process_sub.py``) on purpose: they were fixed one round
+    apart, and a second copy of this arithmetic is how the two would drift.
+
+    Returns None when there is no live executor (the outermost reader parse),
+    leaving :func:`run_child_shell` on its ordinary path.
+
+    NOTE ON WHEN IT MATTERS: a command-substitution child normally runs with
+    the errexit OPTION cleared, so the depth is not observable inside it. Under
+    ``shopt -s inherit_errexit`` or ``set -o posix`` the child DOES inherit
+    errexit (see ``expansion/command_sub.py``'s ``reset_errexit`` argument) and
+    the depth decides whether it survives. Process-substitution children always
+    inherit errexit, so it always matters for them.
+    """
+    executor = getattr(shell, '_current_executor', None)
+    if executor is None:
+        return None
+    context = executor.context
+    return context.errexit_suppress + context.errexit_suppress_deferred
+
+
 def run_child_shell(parent_shell: 'Shell',
                     body: Callable[['Shell'], int],
                     *,

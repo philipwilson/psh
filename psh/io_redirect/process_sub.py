@@ -279,31 +279,6 @@ class ProcessSubstitutionHandler:
         # behaves the same: the substitution may outlive its command).
         self.pending_pids: List[int] = []
 
-    def _pre_sever_suppression(self) -> Optional[int]:
-        """The errexit-suppression depth an EXPANSION-TIME substitution child
-        should inherit: the depth this frame had BEFORE any severing.
-
-        A forked pipeline member whose own node is a simple command SEVERS the
-        enclosing list's suppression for its own execution and parks the depth
-        in ``executor/context.py#errexit_suppress_deferred``. bash does not
-        extend that severing to a substitution the member expands: `set -e;
-        { true | cat <(false; echo A); } || …` prints A in bash, because the
-        `<(…)` child keeps the SUPPRESSED context even though the member
-        itself is running with errexit effective.
-
-        So the child inherits current + parked. Outside a severed member the
-        parked half is 0 and this is just the live depth, which is what the
-        child already inherited — the override changes nothing there.
-
-        Returns None when there is no live executor (the outermost reader
-        parse), leaving ``run_child_shell`` on its ordinary path.
-        """
-        executor = getattr(self.shell, '_current_executor', None)
-        if executor is None:
-            return None
-        context = executor.context
-        return context.errexit_suppress + context.errexit_suppress_deferred
-
     def create_for_expansion(self, direction: str, command: str) -> str:
         """Create one process substitution during word expansion.
 
@@ -320,9 +295,10 @@ class ProcessSubstitutionHandler:
         Returns:
             The /dev/fd/N path to splice into the word.
         """
+        from psh.executor import expansion_child_suppression
         fd, path, pid, cleanup_path = create_process_substitution(
             command, direction, self.shell,
-            errexit_suppress_override=self._pre_sever_suppression())
+            errexit_suppress_override=expansion_child_suppression(self.shell))
         resource = ProcessSubstitutionResource(path, fd, pid, cleanup_path)
         # The consuming command reads /dev/fd/N, so the parent fd must outlive
         # this expansion — hand it to the scope for deferred close.
