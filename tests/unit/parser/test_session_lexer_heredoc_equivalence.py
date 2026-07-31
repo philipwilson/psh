@@ -14,6 +14,25 @@ collector via the injected lex seam). These tests are the executable statement
 that there is only ONE grammar left: for every generated line, the session's
 heredoc decision equals the lexer's own registration.
 
+CORPUS SHAPE (declared coverage change, ruling R6-A). This corpus was a full
+5-axis cartesian of 1,944 rows. That was instrument OVERBUILD: axis-
+quantification requires every axis to be VARIED, not every combination to be
+ENUMERATED, and a 4x-overbuilt product buries the rows that carry signal. The
+shape is now:
+
+    full product   operator x delimiter x marker-quoting  (9 x 9 x 3 = 243)
+    orthogonal     command context, varied against every operator
+    orthogonal     option state, varied by parametrize over the whole corpus
+                                                        -> 551 tests
+
+The three product axes are the ones that INTERACT: whether a marker opens a
+here-document depends on the operator spelling, the delimiter spelling and
+whether the whole marker is quoted, TOGETHER. Command context and option state
+do not participate in that decision, so varying them against a baseline covers
+them without multiplying the rest. Every axis below is still varied, and every
+row class round-1 verification bounced on is still generated and asserted BY
+NAME (`test_every_bounced_row_class_survived_the_trim`).
+
 GENERATED DOMAIN -- every axis this corpus varies, named (ruling R1-E):
 
 * SPELLING of the operator: bare ``<<``, escaped ``\\<<``, escaped-second
@@ -74,17 +93,72 @@ _CONTEXTS = ["cat {marker}", "echo x | cat {marker}", "true && cat {marker}",
              "echo $(cat {marker})"]
 
 
+# The BASELINE context/quoting the orthogonal axes vary against.
+_BASE_CONTEXT = "cat {marker}"
+_BASE_QUOTING = "{op}{delim}"
+_BASE_DELIM = "EOF"
+
+# Rows that round 1 BOUNCED on, named individually and asserted present by
+# test_every_bounced_row_class_survived_the_trim. The generator below already
+# produces every one of them; this list exists so that a FUTURE change to the
+# generator cannot quietly drop a class that verification already paid for.
+_BOUNCED_ROW_CLASSES = {
+    "substitution-bearing delimiter (R4-B)": ["cat <<$(x)", "cat <<`x`",
+                                              "cat <<$V", "cat <<${V}"],
+    "`<&` adjacency (R4-E)": ["cat <&EOF", "cat 0<&EOF"],
+    "escaped spelling (the MEDIUM-3 defect)": [r"cat \<<EOF", r"cat <\<EOF"],
+    "nested context": ["echo $(cat <<EOF)"],
+    "quoted marker": ["cat '<<EOF'", 'cat "<<EOF"'],
+    "arithmetic shift": ["echo $((1<<2))"],
+}
+
+
 def _corpus():
+    """The generated lines.
+
+    SHAPE (declared coverage change, ruling R6-A): a full 5-axis cartesian was
+    1,944 rows — instrument overbuild. Axis-quantification requires every axis
+    VARIED, not every combination ENUMERATED, and a 4x-overbuilt product
+    obscures which rows carry signal. So:
+
+    * FULL PRODUCT over the three GRAMMAR-DECIDING axes — operator x delimiter
+      x marker-quoting (9 x 9 x 3 = 243). These interact: whether a marker is a
+      heredoc depends on the operator spelling, the delimiter spelling, and
+      whether the whole marker is quoted, together.
+    * ORTHOGONAL for the axes that do NOT interact with the grammar decision:
+      command CONTEXT is varied against every operator at the baseline
+      delimiter/quoting, and OPTION STATE is varied over the whole corpus by
+      the test's own parametrize.
+
+    Every axis is still varied, and every round-1 bounced row class is still
+    generated (asserted by name below).
+    """
     seen = set()
-    for op, delim, quoting, ctx in itertools.product(
-            _OPERATORS, _DELIMITERS, _MARKER_QUOTING, _CONTEXTS):
-        line = ctx.format(marker=quoting.format(op=op, delim=delim))
+
+    def emit(line):
         if line not in seen:
             seen.add(line)
+            return True
+        return False
+
+    # 1. the interacting core
+    for op, delim, quoting in itertools.product(
+            _OPERATORS, _DELIMITERS, _MARKER_QUOTING):
+        line = _BASE_CONTEXT.format(marker=quoting.format(op=op, delim=delim))
+        if emit(line):
             yield line
-    # Arithmetic `<<` is a shift, never a heredoc — its own axis point.
+
+    # 2. CONTEXT varied orthogonally, against every operator
+    for ctx, op in itertools.product(_CONTEXTS, _OPERATORS):
+        marker = _BASE_QUOTING.format(op=op, delim=_BASE_DELIM)
+        line = ctx.format(marker=marker)
+        if emit(line):
+            yield line
+
+    # 3. Arithmetic `<<` is a shift, never a heredoc — its own axis point.
     for extra in ["echo $((1<<2))", "echo $(( 1 << 2 ))", "(( x << 2 ))"]:
-        yield extra
+        if emit(extra):
+            yield extra
 
 
 CORPUS = sorted(_corpus())
@@ -147,3 +221,35 @@ def test_a_true_heredoc_still_opens_one():
     """The control: the fix must not work by never detecting heredocs."""
     assert _session_says_pending("cat <<EOF", False) == ("EOF",)
     assert _lexer_says_pending("cat <<EOF", False) == ("EOF",)
+
+
+def test_every_bounced_row_class_survived_the_trim():
+    """ADVERSARIAL AUDIT HOOK for the R6-A coverage trim.
+
+    The corpus was deliberately reduced from a 1,944-row cartesian to the
+    shape declared in `_corpus`. Ruling R6-A makes losing a bounced row class
+    an automatic round-2 blocker, so each class round 1 paid for is asserted
+    present BY NAME rather than trusted to fall out of the generator.
+    """
+    missing = {
+        name: [row for row in rows if row not in CORPUS]
+        for name, rows in _BOUNCED_ROW_CLASSES.items()
+    }
+    missing = {k: v for k, v in missing.items() if v}
+    assert not missing, f"the trim dropped bounced row classes: {missing}"
+
+
+def test_the_trim_kept_every_axis_varied():
+    """Each axis must still take more than one value across the corpus --
+    the property a trim could silently break."""
+    assert sum(1 for line in CORPUS if line.startswith("cat <<")) > 1
+    # operator axis
+    for op in _OPERATORS:
+        assert any(op in line for line in CORPUS), op
+    # delimiter axis
+    for delim in _DELIMITERS:
+        assert any(delim in line for line in CORPUS), delim
+    # context axis
+    for ctx in _CONTEXTS:
+        head = ctx.split("{")[0]
+        assert any(line.startswith(head) for line in CORPUS), ctx
