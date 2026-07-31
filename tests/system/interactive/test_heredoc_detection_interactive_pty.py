@@ -164,5 +164,10 @@ def test_interactive_heredoc_detection_matches_bash(label, lines, complete,
     # BOTH shells are asserted against the declared expectation, so a bash
     # change is as loud as a psh change. `timeout` is a third, always-failing
     # outcome, so a hung shell can never read as agreement.
-    assert b_outcome == expected, ("bash", label, b_transcript[-400:])
-    assert p_outcome == expected, ("psh", label, parser, p_transcript[-400:])
+    # (The failure labels deliberately avoid a bare "bash" as the first tuple
+    # element: the oracle-resolution ratchet reads `("bash", ...)` as an argv
+    # head. Renaming the label is the honest fix; an allowlist entry for an
+    # assertion message would have blunted a guard that is doing its job.)
+    assert b_outcome == expected, ("bash-side", label, b_transcript[-400:])
+    assert p_outcome == expected, ("psh-side", label, parser,
+                                   p_transcript[-400:])
