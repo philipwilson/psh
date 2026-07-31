@@ -231,7 +231,7 @@ def test_combinator_inputs_without_heredocs_keeps_init_map():
     # not erase a map supplied via __init__ (the context-clobber class this slot
     # exists to kill). Build with the map via __init__, parse with a heredoc-free
     # ParseInputs, and prove the heredoc body still attached.
-    from psh.ast_nodes import HeredocRedirect, Redirect
+    from psh.ast_nodes import HeredocRedirect
     from psh.lexer import tokenize_with_heredocs
 
     lu = tokenize_with_heredocs("cat <<EOF\nbody-line\nEOF\n")
