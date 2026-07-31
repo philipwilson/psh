@@ -265,17 +265,40 @@ def test_every_bounced_row_class_survived_the_trim():
     assert not missing, f"the trim dropped bounced row classes: {missing}"
 
 
+# EXPECTED axis values, written as LITERALS on purpose (round-2 nit 15). The
+# first version of the test below iterated the live `_OPERATORS` /
+# `_DELIMITERS` / `_CONTEXTS` lists, so deleting an entry deleted it from the
+# assertion too -- a self-referential universe that could never go red. These
+# literals are the independent statement of what the corpus must cover.
+_EXPECTED_OPERATORS = ("<<", "\\<<", "<\\<", "\\\\<<", "<<-", "<<<", "0<<",
+                       "<&", "0<&", "{v}<<", "{v}<<-", "{v}<")
+_EXPECTED_DELIMITERS = ("EOF", "'EOF'", '"EOF"', "\\EOF", 'E"O"F',
+                        "$(x)", "`x`", "$V", "${V}")
+_EXPECTED_CONTEXT_HEADS = ("cat ", "echo x | cat ", "true && cat ",
+                           "echo $(cat ")
+
+
 def test_the_trim_kept_every_axis_varied():
     """Each axis must still take more than one value across the corpus --
-    the property a trim could silently break."""
+    the property a trim could silently break.
+
+    Asserted against LITERAL expectations, not against the live axis lists:
+    deleting `{v}<<` from `_OPERATORS` must turn this RED, and it could not if
+    the test enumerated `_OPERATORS` to decide what to look for.
+    """
     assert sum(1 for line in CORPUS if line.startswith("cat <<")) > 1
-    # operator axis
-    for op in _OPERATORS:
-        assert any(op in line for line in CORPUS), op
-    # delimiter axis
-    for delim in _DELIMITERS:
-        assert any(delim in line for line in CORPUS), delim
-    # context axis
-    for ctx in _CONTEXTS:
-        head = ctx.split("{")[0]
-        assert any(line.startswith(head) for line in CORPUS), ctx
+    # EXACT lines, not substring membership. A substring test is insensitive
+    # here: `"{v}<<" in line` is satisfied by a line containing `{v}<<-`, so
+    # deleting `{v}<<` from the axis list left this green. The corpus is
+    # generated, so the exact baseline line each axis value must produce is
+    # known and can be demanded.
+    corpus = set(CORPUS)
+    for op in _EXPECTED_OPERATORS:
+        expected = f"cat {op}EOF"
+        assert expected in corpus, f"operator axis lost {op!r} ({expected!r})"
+    for delim in _EXPECTED_DELIMITERS:
+        expected = f"cat <<{delim}"
+        assert expected in corpus, f"delimiter axis lost {delim!r}"
+    for head in _EXPECTED_CONTEXT_HEADS:
+        assert any(line.startswith(head) for line in corpus), \
+            f"context axis lost {head!r}"
