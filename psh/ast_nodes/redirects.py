@@ -78,11 +78,17 @@ class HeredocRedirect(Redirect):
     ``heredoc_content=None``) is therefore unrepresentable rather than
     discovered at execution.
 
-    Every LIVE heredoc-aware parse path constructs this class, attaching the
-    body from the ``LexedUnit``'s collected entry as the node is built (an
-    empty body is ``''``, never ``None``). A bare token-level parse — bodies
-    still in the token stream — constructs a plain :class:`Redirect` instead:
-    structurally a heredoc, honestly not executable.
+    Every heredoc-aware parse path that COLLECTED the bodies constructs this
+    class, attaching the body from the ``LexedUnit``'s collected entry as the
+    node is built (an empty body is ``''``, never ``None``). A parse whose
+    bodies were NOT collected constructs a plain :class:`Redirect` instead —
+    structurally a heredoc, honestly not executable. Two such routes exist: a
+    bare token-level parse (bodies still in the token stream), and ALIAS
+    SUBSTITUTION, which happens after the lex, so an alias expanding to
+    ``cat <<EOF`` yields a heredoc operator whose body was never gathered.
+    The alias route is LIVE USER INPUT (``alias foo='cat <<EOF'; foo``), not a
+    theoretical case; execution reports it through
+    ``io_redirect/file_redirect.py#NonExecutableRedirectError``.
 
     Visitor dispatch is EXACT-CLASS (``visitor/base.py#ASTVisitor.visit``
     resolves ``visit_{class name}`` with no MRO walk), so every visitor that

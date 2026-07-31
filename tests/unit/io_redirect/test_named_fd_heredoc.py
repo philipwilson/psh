@@ -20,11 +20,20 @@ WHAT IS PINNED, and the honest status of each half:
   is the honest word for this half and only this half.
 * EXECUTION — an IMPROVEMENT BEYOND BASE, never a restoration. Base could not
   RUN any of these: it failed at parse time with `Expected file name`. psh now
-  matches bash end to end, allocating a descriptor and storing its number in
-  the variable. That covers `{v}<<`, `{v}<<-` AND `{v}<<<` — the here-string
-  spelling was missed in round 2 and closed in round 3; the structural guard
-  against another sibling-table gap is
+  matches bash for the COMMAND-BEARING spellings, allocating a descriptor and
+  storing its number in the variable. That covers `{v}<<`, `{v}<<-` AND
+  `{v}<<<` — the here-string spelling was missed in round 2 and closed in
+  round 3; the structural guard against another sibling-table gap is
   tests/unit/lexer/test_fd_prefix_table_parity.py.
+* THE NULL-COMMAND SPELLING IS A DECLARED DIVERGENCE (round-8 nit 7). The
+  wording above used to say "end to end", which every row in this file
+  satisfies only because every row HAS a command word — the axis was never
+  varied. With no command, bash performs the redirection and then undoes it,
+  leaving the variable unset (`v=[]`); psh keeps the descriptor (`v=[10]`).
+  PRE-EXISTING psh semantics rather than a regression: the untouched
+  `{v}</dev/null` form behaves identically at BOTH SHAs. What this slot changed
+  is that the heredoc spellings reach it at all (base parse-errored). Pinned as
+  a divergence below, with that control.
 
 ORACLE: bash, differential, same host, same bytes, via the typed runner.
 Non-interactive half; the terminal half is the `named_fd_*` rows of
@@ -94,3 +103,50 @@ def test_the_allocated_fd_obeys_bash_s_semantics(parser):
     psh, _ = _both("true {v}<<EOF\nbody\nEOF\necho FD=$v\n", parser)
     assert psh.stdout.startswith("FD="), psh.stdout
     assert int(psh.stdout.split("=", 1)[1].strip()) >= 10, psh.stdout
+
+
+# === THE NULL-COMMAND SPELLING: a declared divergence (round-8 nit 7) ========
+#
+# The axis every row above leaves unvaried: whether the redirection has a
+# COMMAND to attach to. bash treats a redirection with no command as performed
+# and then undone, so the variable is left unset; psh keeps the allocated
+# descriptor. Measured, script channel, stdin </dev/null, bash 5.2.26:
+#
+#   shape             bash    psh tip   psh base
+#   {v}<<EOF ...      v=[]    v=[10]    parse error   <- newly reachable
+#   {v}<<<hs          v=[]    v=[10]    parse error   <- newly reachable
+#   {v}</dev/null     v=[]    v=[10]    v=[10]        <- CONTROL: pre-existing
+#   true {v}<<EOF     v=[10]  v=[10]    parse error   <- command-bearing, agrees
+_NULL_COMMAND_ROWS = [
+    ("null_cmd_heredoc", '{v}<<EOF\nbody\nEOF\necho "v=[$v]"\n'),
+    ("null_cmd_herestring", '{v}<<<hs\necho "v=[$v]"\n'),
+]
+
+
+@pytest.mark.parametrize("label,script", _NULL_COMMAND_ROWS,
+                         ids=[r[0] for r in _NULL_COMMAND_ROWS])
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_divergence_null_command_named_fd_keeps_the_descriptor(label, script,
+                                                               parser):
+    """DECLARED DIVERGENCE, campaign convention: asserts the DISAGREEMENT so a
+    successor that fixes it flips a named test rather than surprising anyone.
+
+    Not a regression introduced here — see the control below — but newly
+    REACHABLE through the heredoc spellings this slot added, which is why it is
+    declared by this slot rather than left silent.
+    """
+    psh, bash = _both(script, parser)
+    assert bash.stdout.strip() == "v=[]", (label, bash.stdout)
+    assert psh.stdout.strip().startswith("v=["), (label, psh.stdout)
+    assert psh.stdout.strip() != "v=[]", (label, psh.stdout)
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_the_null_command_divergence_is_pre_existing(parser):
+    """THE CONTROL that makes the row above a DECLARATION rather than an
+    accusation: `{v}</dev/null` is a surface this branch never touched, and it
+    diverges from bash in exactly the same way. So the semantics are psh's,
+    not this slot's; only the reachability is new."""
+    psh, bash = _both('{v}</dev/null\necho "v=[$v]"\n', parser)
+    assert bash.stdout.strip() == "v=[]", bash.stdout
+    assert psh.stdout.strip() != "v=[]", psh.stdout

@@ -70,7 +70,11 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, List, NoReturn, Optional, TextIO, Tuple, cast
 
 from ..ast_nodes import Command, HeredocRedirect, Redirect
-from .file_redirect import FileRedirector, NonExecutableRedirectError
+from .file_redirect import (
+    _ALIAS_HEREDOC_HINT,
+    FileRedirector,
+    NonExecutableRedirectError,
+)
 from .process_sub import ProcessSubstitutionHandler
 from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
 
@@ -635,9 +639,9 @@ class IOManager:
                 # the fd backend (file_redirect.py#apply_fd_plan); never a
                 # silent empty document.
                 raise NonExecutableRedirectError(
-                    "non-executable heredoc parse state reached the builtin "
-                    f"stream backend: Redirect(type={redirect.type!r}, "
-                    f"target={redirect.target!r}) carries no collected body.")
+                    f"here-document `{redirect.type}{redirect.target}` was "
+                    f"never collected (builtin stream). "
+                    f"{_ALIAS_HEREDOC_HINT}")
             f = self.file_redirector.dup_sharing_stream(0, 'r')
             frame.opened_streams.append(f)
             sys.stdin = f

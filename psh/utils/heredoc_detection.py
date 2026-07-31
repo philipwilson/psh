@@ -32,8 +32,13 @@ This module also owns the campaign-S2 heredoc transaction contracts:
   ``tests/unit/tooling/test_heredoc_transaction_guards.py``).
 
 CONSUMERS, enumerated from a census (``second_grammar_census.py``, rescued to
-``docs/reviews/evidence/`` at ceremony) rather than gestured at. They divide by
-WHICH of this module's two jobs they use, and that division IS remediation 2.5:
+``docs/reviews/evidence/`` at ceremony) rather than gestured at, and GROUPED BY
+which of this module's two jobs each one needs it for. The grouping is NOT a
+partition: four of the scanner consumers below (``heredoc_collector``,
+``cmdsub_scanner``, ``input_preprocessing``, ``history_expansion``) also drive
+``PendingHeredocQueue.feed_line``, i.e. the algebra — gathering bodies needs
+both halves. What the grouping DOES record, and what remediation 2.5 changed,
+is which job each consumer comes here FOR:
 
 * the TEXT-LEVEL SCANNER (``scan_line_heredoc_markers``,
   ``open_heredoc_specs``, ``contains_heredoc``, ``HEREDOC_MARKER_RE``) — the

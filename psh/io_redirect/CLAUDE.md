@@ -632,7 +632,16 @@ DEBUG IOManager: redirected stdout to 'output.txt' (mode 'w'); sys.stdout is now
   — without that arm it would fall through the operator-string chain and open a
   file named after the delimiter. The error derives from `RuntimeError`, the
   strict-errors-LOUD class of the expected-error taxonomy
-  (`psh/core/CLAUDE.md`). Here-strings are NOT part of the split: `<<<` content
+  (`psh/core/CLAUDE.md`), so a genuinely INTERNAL arrival still fails the suite
+  loudly. **That arm is reachable from ORDINARY USER INPUT, and its message is
+  written for the user accordingly**: ALIAS SUBSTITUTION happens after the lex,
+  so `alias foo='cat <<EOF'; foo` hands the parser a heredoc operator whose
+  body heredoc collection never saw. psh cannot yet gather a body at
+  alias-expansion time (bash can), so the whole alias-heredoc family diverges
+  from bash — psh reports the limitation and reads the body lines as commands.
+  DECLARED DIVERGENCE with a successor row; pinned per spelling family, channel
+  and parser in `tests/unit/scripting/test_heredoc_alias_route.py`.
+  Here-strings are NOT part of the split: `<<<` content
   has always lived in `target`/`target_word`, so it stays a plain `Redirect`.
   Guard: `tests/unit/io_redirect/test_heredoc_executable_type.py`.
 - **Named-fd here-documents and here-strings** (`{v}<<`, `{v}<<-`, `{v}<<<`)

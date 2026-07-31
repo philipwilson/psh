@@ -21,20 +21,47 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+#: The ONE user-facing explanation for a here-document whose body was never
+#: collected. Every arm below appends it, so the diagnosis lives in one place.
+#:
+#: WHY IT NAMES ALIASES. Round-8 verification found the live route this module
+#: previously called impossible: alias substitution happens AFTER the line has
+#: been lexed, so an alias whose expansion introduces ``<<EOF`` puts a heredoc
+#: operator into the token stream that heredoc collection never saw. bash
+#: gathers such a body at expansion time; psh cannot yet, and the user who
+#: typed the alias deserves to be told which construct is unsupported rather
+#: than shown a Python repr plus an assurance that this cannot happen.
+_ALIAS_HEREDOC_HINT = (
+    "psh could not collect the here-document body. The usual cause is an "
+    "ALIAS whose expansion introduces the `<<` operator: aliases are "
+    "substituted after the line is lexed, so the body was never gathered and "
+    "its lines will be read as commands. Write the here-document directly "
+    "rather than through an alias.")
+
+
 class NonExecutableRedirectError(RuntimeError):
     """A non-executable redirect parse state reached execution.
 
     Raised when a plain :class:`~psh.ast_nodes.redirects.Redirect` carrying a
     heredoc operator type — the INCOMPLETE parse state a bare token-level
     parse produces, with the bodies still in the token stream — is handed to
-    the fd universe. Every live parse path builds a
-    :class:`~psh.ast_nodes.redirects.HeredocRedirect` instead, so reaching
-    here is an INTERNAL DEFECT, not a user error.
+    the fd universe.
 
-    Deriving from ``RuntimeError`` puts it in the strict-errors-LOUD class of
-    the expected-error taxonomy (``psh/core/CLAUDE.md``): it is re-raised
-    rather than masked as exit 1, so the suite fails loudly instead of
-    silently opening a file named after the delimiter.
+    REACHABILITY, corrected at round-8 verification. Every heredoc-aware parse
+    path that COLLECTED the bodies builds a
+    :class:`~psh.ast_nodes.redirects.HeredocRedirect` instead. The known live
+    route to THIS class is ALIAS SUBSTITUTION, which happens after the lex: an
+    alias expanding to ``cat <<EOF`` hands the parser a heredoc operator whose
+    body was never gathered. So this is a SUPPORTED-INPUT LIMITATION reachable
+    from ordinary user input, not an internal defect — the previous docstring
+    claimed the opposite and ``alias foo='cat <<EOF'; foo`` falsifies it.
+
+    Deriving from ``RuntimeError`` keeps it in the strict-errors-LOUD class of
+    the expected-error taxonomy (``psh/core/CLAUDE.md``), so a genuinely
+    INTERNAL arrival still fails the suite loudly instead of silently opening a
+    file named after the delimiter. On the alias route the redirect layer
+    catches and reports it, so the user sees the message and the script carries
+    on — measured with strict-errors both on and off, identically.
     """
 
 
@@ -403,9 +430,8 @@ class FileRedirector:
             # (round-4 nits 11/18, the R9-B class) rather than a raw
             # AttributeError from the missing body field.
             raise NonExecutableRedirectError(
-                "non-executable heredoc parse state reached redirect_heredoc: "
-                f"Redirect(type={redirect.type!r}, target={redirect.target!r}) "
-                "carries no collected body.")
+                f"here-document `{redirect.type}{redirect.target}` was never "
+                f"collected (redirect_heredoc). {_ALIAS_HEREDOC_HINT}")
         content = self._heredoc_expanded_content(redirect)
         self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
@@ -557,10 +583,8 @@ class FileRedirector:
         # fix, `cat {v}<<EOF` failed at parse time and no such value existed.
         if rtype in ('<<', '<<-') and not isinstance(redirect, HeredocRedirect):
             raise NonExecutableRedirectError(
-                "non-executable heredoc parse state reached the named-fd "
-                f"route: Redirect(type={rtype!r}, var_fd={name!r}) carries no "
-                "collected body. Every live parse path builds a "
-                "HeredocRedirect.")
+                f"here-document `{{{name}}}{rtype}` was never collected. "
+                f"{_ALIAS_HEREDOC_HINT}")
         if rtype in ('<<', '<<-', '<<<'):
             if rtype == '<<<' and redirect.target is None \
                     and getattr(redirect, 'target_word', None) is None:
@@ -568,9 +592,8 @@ class FileRedirector:
                 # `{v}<<<` reaching execution is the same non-executable parse
                 # state, and died on a raw AttributeError from the None target.
                 raise NonExecutableRedirectError(
-                    "non-executable here-string parse state reached the "
-                    f"named-fd route: Redirect(type={rtype!r}, "
-                    f"var_fd={name!r}) carries no content.")
+                    f"here-string `{{{name}}}{rtype}` has no operand, so there "
+                    "is nothing to redirect from.")
             content = (self._herestring_expanded_content(redirect)
                        if rtype == '<<<' else self._heredoc_expanded_content(redirect))
             newfd = self._content_to_free_fd(content)
@@ -760,13 +783,14 @@ class FileRedirector:
             # token-level parse, bodies still in the token stream) — never
             # executable. Explicit arm on purpose: without it this would fall
             # through the type-string chain and end up opening a file named
-            # after the delimiter. An internal defect, so a strict-errors-LOUD
-            # class (psh/core/CLAUDE.md's expected-error taxonomy).
+            # after the delimiter. Strict-errors-LOUD class so a genuinely
+            # INTERNAL arrival still fails the suite (psh/core/CLAUDE.md's
+            # expected-error taxonomy) -- but the message is written for the
+            # user, because the alias route makes this reachable from ordinary
+            # input (round-8 blockers 1+2).
             raise NonExecutableRedirectError(
-                "non-executable heredoc parse state reached execution: a "
-                f"plain Redirect(type={redirect.type!r}, "
-                f"target={redirect.target!r}) carries no collected body. "
-                "Every live parse path builds a HeredocRedirect.")
+                f"here-document `{redirect.type}{redirect.target}` was never "
+                f"collected. {_ALIAS_HEREDOC_HINT}")
         elif redirect.type == '<<<':
             self.redirect_herestring(redirect)
         elif redirect.type == '>|':

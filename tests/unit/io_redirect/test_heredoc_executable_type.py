@@ -87,7 +87,7 @@ def test_synthetic_offender_raises_the_typed_error_at_the_fd_backend(shell):
 
     offender = Redirect(type="<<", target="EOF")
     plan = RedirectPlan(redirect=offender, target=None)
-    with pytest.raises(NonExecutableRedirectError, match="no collected body"):
+    with pytest.raises(NonExecutableRedirectError, match="was never collected"):
         shell.io_manager.file_redirector.apply_fd_plan(plan)
 
 
@@ -174,6 +174,18 @@ def test_debug_ast_labels_the_executable_heredoc_by_its_type(fmt, tmp_path):
 # the named-fd heredoc fix, `cat {v}<<EOF` failed at parse time and no
 # bare-parse value with type='<<' AND var_fd could exist. When a fix creates a
 # new representable shape, every guard universe must grow with it.
+#
+# UNIVERSE CORRECTION (round-8 blocker 1). R9-B's premise -- and therefore the
+# framing of every row in this section -- was that the offender value is only
+# SYNTHETICALLY constructible. That is FALSE, and the rows below are hand-built
+# for convenience and speed, not because live input cannot produce the shape:
+# ALIAS SUBSTITUTION happens after the heredoc-aware lex, so
+# `alias foo='cat <<EOF'; foo` hands execution a plain Redirect with a heredoc
+# operator and no collected body. These rows therefore pin the ARMS; the LIVE
+# route is pinned end-to-end, per spelling family x channel x parser, in
+# tests/unit/scripting/test_heredoc_alias_route.py. Keeping both matters: a
+# hand-built value proves the arm fires, and only the alias rows prove a user
+# can reach it.
 _FD_KINDS = [
     ("none", {}),
     ("digit", {"fd": 3}),
@@ -188,7 +200,7 @@ def test_synthetic_offender_raises_typed_on_every_fd_kind(shell, kind, extra):
 
     offender = Redirect(type="<<", target="EOF", **extra)
     plan = RedirectPlan(redirect=offender, target=None)
-    with pytest.raises(NonExecutableRedirectError, match="no collected body"):
+    with pytest.raises(NonExecutableRedirectError, match="was never collected"):
         shell.io_manager.file_redirector.apply_fd_plan(plan)
 
 
@@ -206,7 +218,7 @@ def test_synthetic_offender_raises_typed_on_the_var_fd_route(shell, kind,
     """And through apply_var_fd_redirect directly -- the route that used to die
     on a raw AttributeError from the missing body field."""
     offender = Redirect(type="<<", target="EOF", **extra)
-    with pytest.raises(NonExecutableRedirectError, match="no collected body"):
+    with pytest.raises(NonExecutableRedirectError, match="was never collected"):
         shell.io_manager.file_redirector.apply_var_fd_redirect(offender)
 
 
@@ -227,7 +239,7 @@ def test_operand_less_here_string_offender_raises_typed_on_the_var_fd_route(
     on a raw AttributeError from the None target.
     """
     offender = Redirect(type="<<<", target=None, var_fd="v")
-    with pytest.raises(NonExecutableRedirectError, match="carries no content"):
+    with pytest.raises(NonExecutableRedirectError, match="has no operand"):
         shell.io_manager.file_redirector.apply_var_fd_redirect(offender)
 
 
@@ -264,7 +276,8 @@ def test_synthetic_offender_raises_at_the_BUILTIN_STREAM_backend(shell,
 
     offender = Redirect(type="<<", target="EOF")
     command = SimpleCommand(words=[Word(parts=[])], redirects=[offender])
-    with pytest.raises(NonExecutableRedirectError, match="no collected body"):
+    with pytest.raises(NonExecutableRedirectError,
+                       match=r"was never collected \(builtin stream\)"):
         shell.io_manager.setup_builtin_redirections(command)
 
 
@@ -307,6 +320,6 @@ def test_redirect_heredoc_leaves_a_quoted_body_literal(shell):
 
 def test_redirect_heredoc_rejects_the_non_executable_state(shell):
     """The direct-call boundary typed in round 4 (nit 11)."""
-    with pytest.raises(NonExecutableRedirectError, match="redirect_heredoc"):
+    with pytest.raises(NonExecutableRedirectError, match=r"was never collected \(redirect_heredoc\)"):
         shell.io_manager.file_redirector.redirect_heredoc(
             Redirect(type="<<", target="EOF"))
