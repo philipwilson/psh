@@ -275,9 +275,14 @@ what the lexer shares with it — is the delimiter/terminator ALGEBRA
 That split matters because the two grammars DISAGREED: on `echo \<<EOF` the
 regex reported a pending heredoc on `EOF` while the real lexer produced an
 escaped `<` plus an ordinary input redirection — so psh dropped to PS2 and
-swallowed the next physical line as a phantom body (#22 MEDIUM-3). The
-divergence was observable only at a terminal, hence a PTY pin
-(`tests/system/interactive/test_heredoc_detection_interactive_pty.py`); the
+swallowed the next physical line as a phantom body (#22 MEDIUM-3). Under
+`--parser rd` that divergence was observable only at a terminal, hence a PTY
+pin (`tests/system/interactive/test_heredoc_detection_interactive_pty.py`).
+Under `--parser combinator` it ALSO showed non-interactively: the phantom body
+merged the following lines into one buffer, and the combinator stamps
+top-level statements with their buffer's start line, so their diagnostics
+carried the wrong line number — pinned per channel in
+`tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py`. The
 one-grammar property itself is pinned over a generated corpus by
 `tests/unit/parser/test_session_lexer_heredoc_equivalence.py`. Deriving the
 answer from the lexer costs one extra lex on a heredoc-OPENING line — a

@@ -33,6 +33,28 @@ THE THREE DECLARED DELTAS, with their measured base values:
    unterminated-here-document warning on these shapes while the combinator did.
    At tip BOTH emit it, matching bash. Pinned per-parser, because a per-parser
    difference is invisible to any test that runs one parser.
+
+4. THE ESCAPED SPELLING ITSELF, under `--parser combinator` (round-6 blocker
+   1). This one is the correction of a correction. The slot's own charter claim
+   -- that `echo \\<<EOF` is observable only at a terminal, so a `-c` pin would
+   be green-on-base -- is true for `rd` and FALSE for the combinator:
+   base: 'line 1' / 'line 1' / 'line 1'
+   tip : 'line 1' / 'line 2' / 'line 3'   == bash
+   The cause is the chartered fix. At base the session's regex opened a phantom
+   heredoc, so the following physical lines joined ONE buffer, and the
+   combinator stamps every top-level statement with its buffer's start line
+   (the 2.2 carry). At tip each line is its own buffer, so the numbers come out
+   right. The 2.2 carry itself is UNTOUCHED -- a shape with no heredoc operator
+   (`if true; then` / `nosuchcmd` / `fi` / `nosuchcmd2`) still reports 'line 1'
+   under the combinator at BOTH SHAs where bash says 'line 2', which is exactly
+   how the cause was isolated.
+
+   Why the corpus missed it for six rounds: every identity case followed its
+   shape line with `echo MARK""ER`, which prints and says nothing about which
+   line it ran on. The exposing axis -- "does the swallowed line emit a
+   LINE-NUMBERED diagnostic?" -- was unvaried across all 132 rows, so the
+   instrument reported escaped_lt IDENTICAL while 12 combinator rows had moved.
+   The axis now lives in the corpus generator as DIAG_CASES.
 """
 import pathlib
 import re
@@ -129,6 +151,88 @@ def test_the_eof_warning_is_emitted_by_both_parsers(label, script, parser):
     psh = run_psh(["--norc", "--parser", parser, "-c", script])
     assert isinstance(psh, Completed), psh
     assert "delimited by end-of-file" in psh.stderr, (label, parser, psh.stderr)
+
+
+# DELTA 4 -- the escaped spelling's own non-interactive half (round-6 blocker
+# 1, ruling R12-E). Each shape's follow-up lines FAIL, so each is reported with
+# a line number; that is the whole point, and it is the axis the corpus never
+# varied.
+_ESCAPED_DIAG_SHAPES = [
+    ("escaped_lt", "echo \\<<E\nhello\nE\n"),
+    ("escaped_lt_quoted", "echo \\<<'E'\nhello\nE\n"),
+    ("escaped_lt_strip", "echo \\<<-E\nhello\nE\n"),
+    ("escaped_lt_digit", "echo 0\\<<E\nhello\nE\n"),
+]
+
+# The line numbers bash 5.2.26 reports for every shape above: the redirect
+# failure on line 1, then the two lines base swallowed into line 1's buffer.
+_ESCAPED_DIAG_LINES = [1, 2, 3]
+
+_LINE_RE = re.compile(r"line (\d+):")
+
+
+@pytest.mark.parametrize("label,script", _ESCAPED_DIAG_SHAPES,
+                         ids=[s[0] for s in _ESCAPED_DIAG_SHAPES])
+@pytest.mark.parametrize("channel", ["dash_c", "stdin", "script"])
+@pytest.mark.parametrize("parser", _PARSERS)
+def test_escaped_spelling_line_numbers_move_to_bash_under_combinator(
+        label, script, channel, parser, tmp_path):
+    """DIFFERENTIAL against the oracle, per channel AND per parser.
+
+    BASE STATUS, stated because a pin whose base status is unstated cannot be
+    read as evidence: the `combinator` rows are RED ON BASE (base reports every
+    line as 'line 1'); the `rd` rows are GREEN ON BASE -- rd already agreed
+    with bash at both SHAs. Both parsers are pinned anyway, because the claim
+    being protected is per-parser and a single-parser test cannot see which
+    half moved.
+    """
+    psh, bash = _run_pair(script, channel, parser, tmp_path)
+    assert is_comparable(psh) and is_comparable(bash), (psh, bash)
+    assert isinstance(psh, Completed) and isinstance(bash, Completed)
+    assert psh.returncode == bash.returncode, (label, channel, parser)
+    assert psh.stdout == bash.stdout, (label, channel, parser)
+    assert _normalise(psh.stderr) == _normalise(bash.stderr), (
+        label, channel, parser, psh.stderr, bash.stderr)
+
+
+@pytest.mark.parametrize("label,script", _ESCAPED_DIAG_SHAPES,
+                         ids=[s[0] for s in _ESCAPED_DIAG_SHAPES])
+@pytest.mark.parametrize("channel", ["dash_c", "stdin", "script"])
+@pytest.mark.parametrize("parser", _PARSERS)
+def test_escaped_spelling_reports_three_distinct_lines(label, script, channel,
+                                                       parser, tmp_path):
+    """The LINE NUMBERS asserted directly, as literals.
+
+    The differential row above would also pass if psh and bash BOTH regressed
+    to 'line 1' -- a differential can only ever pin agreement, never a value.
+    This row pins the value the ruling names, so the regression that hid for
+    six rounds is caught by an assertion that says what it means.
+    """
+    psh, _bash = _run_pair(script, channel, parser, tmp_path)
+    assert isinstance(psh, Completed), psh
+    lines = [int(n) for n in _LINE_RE.findall(psh.stderr)]
+    assert lines == _ESCAPED_DIAG_LINES, (label, channel, parser, psh.stderr)
+
+
+@pytest.mark.parametrize("channel", ["dash_c", "stdin", "script"])
+@pytest.mark.parametrize("parser", _PARSERS)
+def test_a_true_heredoc_body_is_still_swallowed_and_still_counted(channel,
+                                                                  parser,
+                                                                  tmp_path):
+    """NON-VACUITY CONTROL for the two rows above.
+
+    A fix that simply stopped treating anything as a heredoc body would make
+    them pass. Here the body IS a body: `hello` prints via cat and does NOT
+    become a command, and the failure after the terminator is reported at line
+    4 -- the count includes the swallowed body lines, as in bash.
+    """
+    psh, bash = _run_pair("cat <<E\nhello\nE\nnosuchcmd\n", channel, parser,
+                          tmp_path)
+    assert isinstance(psh, Completed) and isinstance(bash, Completed)
+    assert psh.stdout == bash.stdout == "hello\n", (channel, parser)
+    assert [int(n) for n in _LINE_RE.findall(psh.stderr)] == [4], psh.stderr
+    assert _normalise(psh.stderr) == _normalise(bash.stderr), (
+        channel, parser, psh.stderr, bash.stderr)
 
 
 @pytest.mark.parametrize("label,script", _CLASS_SHAPES,

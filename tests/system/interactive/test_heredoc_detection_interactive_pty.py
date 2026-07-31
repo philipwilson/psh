@@ -1,22 +1,34 @@
 """INTERACTIVE (real PTY) heredoc-vs-not detection (slot 2.5, #22 MEDIUM-3).
 
 WHY THE ESCAPED SPELLING NEEDS A PTY PIN. For `echo \\<<EOF` SPECIFICALLY, the
-defect is latent everywhere except a terminal: the session's completeness
-oracle used a second, REGEX heredoc grammar that read the escaped `<` as
-opening a heredoc on `EOF`, while the real lexer -- and bash -- see an escaped
-`<` plus an ordinary input redirection. Non-interactively the flush path
-re-lexes and that wrong answer never surfaces, so a `-c` pin for THAT SHAPE
-would have been green on base and proven nothing. Only at a terminal is the
-session's answer observable: psh dropped to PS2 and swallowed the next line as
-a phantom body.
+session's completeness oracle used a second, REGEX heredoc grammar that read
+the escaped `<` as opening a heredoc on `EOF`, while the real lexer -- and
+bash -- see an escaped `<` plus an ordinary input redirection. Only at a
+terminal is the session's ANSWER directly observable: psh dropped to PS2 and
+swallowed the next line as a phantom body. Under `--parser rd` the defect is
+otherwise LATENT -- the flush path re-lexes and the wrong answer never
+surfaces -- so a `-c` pin for that shape under that parser would have been
+green on base and proven nothing. That is why this module exists.
 
-SCOPE OF THAT CLAIM -- it is about the escaped spelling and nothing else. Round
-2 established that the slot's OTHER shapes do move non-interactively (exit
-status, stdout and stderr all change for the unclosed-quote and
-substitution-delimiter shapes, on both parsers and all three channels). Those
-are pinned in tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py.
-Do not read "latent non-interactively" as a slot-wide property; it was measured
-for one spelling.
+SCOPE OF THAT LATENCY CLAIM -- it covers the escaped spelling under `rd`, and
+nothing else. Each narrowing below is the product of a bounce, so the claim is
+recorded at the width that was actually measured:
+
+* Round 2: the slot's OTHER shapes move non-interactively too -- exit status,
+  stdout and stderr all change for the unclosed-quote and substitution-
+  delimiter shapes, on both parsers and all three channels.
+* Round 6: the escaped spelling ITSELF moves non-interactively under
+  `--parser combinator`. The phantom heredoc merged the swallowed lines into
+  ONE buffer, and the combinator stamps every top-level statement with its
+  buffer's start line, so a diagnostic emitted by those lines carried the
+  wrong line number at base and carries bash's at tip -- 12 rows, 4 spellings
+  x 3 channels. Latency was never a property of the spelling; it was a
+  property of the spelling ON ONE PARSER.
+
+Both are pinned in
+tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py. Do not
+read "latent non-interactively" as a slot-wide property, nor as a property of
+this spelling on both parsers.
 
 THE OBSERVABLE is the PROMPT the shell offers after the last shape line: PS1
 means it considered the input complete, PS2 means it wants more. Each line's
