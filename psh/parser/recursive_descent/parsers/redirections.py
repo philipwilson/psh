@@ -136,6 +136,10 @@ class RedirectionParser(ParserSubcomponent):
                 heredoc_quoted=entry.spec.quoted,
                 heredoc_id=heredoc_id,
                 fd=token.fd,
+                # `{v}<<EOF` carries its variable NAME here, exactly as the
+                # combinator already did; dropping it would open the body on
+                # stdin instead of a fresh fd.
+                var_fd=token.var_fd,
             )
 
         # Bare parse (bodies still in the token stream; unit-test path): build
@@ -160,6 +164,7 @@ class RedirectionParser(ParserSubcomponent):
             target=raw,
             heredoc_quoted=heredoc_quoted,
             fd=token.fd,
+            var_fd=token.var_fd,
         )
 
     def _parse_here_string(self, token: Token) -> Redirect:

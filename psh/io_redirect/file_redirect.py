@@ -363,6 +363,23 @@ class FileRedirector:
         tmp.close()
         _dup2_preserve_target(opened, target_fd)
 
+    def _content_to_free_fd(self, content: str) -> int:
+        """Materialize `content` on a FRESH fd >= 10 and return the number.
+
+        The `{v}<<EOF` twin of :meth:`_content_to_fd`: same unlinked-temp-file
+        reasoning, but the body lands on a shell-allocated descriptor instead
+        of a caller-named one, matching bash's named-fd allocation contract
+        (lowest free fd >= 10, permanent until the user closes it).
+        """
+        import tempfile
+        tmp = tempfile.TemporaryFile()
+        tmp.write(content.encode('utf-8', errors='surrogateescape'))
+        tmp.flush()
+        tmp.seek(0)
+        newfd = fcntl.fcntl(tmp.fileno(), fcntl.F_DUPFD, 10)
+        tmp.close()
+        return newfd
+
     @staticmethod
     def _heredoc_fd(redirect) -> int:
         """Target fd for a heredoc/here-string: explicit prefix or stdin (0)."""
@@ -379,6 +396,17 @@ class FileRedirector:
         a state this function can be handed (remediation 2.5). The old
         late-discovery ``RuntimeError`` here is replaced by that type plus the
         explicit non-executable arm in :meth:`apply_fd_plan`."""
+        content = self.heredoc_content(redirect)
+        self._content_to_fd(content, self._heredoc_fd(redirect))
+        return content
+
+    def heredoc_content(self, redirect: 'HeredocRedirect') -> str:
+        """The heredoc body after expansion — THE one place that decides it.
+
+        Shared by the stdin/explicit-fd path (:meth:`redirect_heredoc`) and the
+        named-fd path (:meth:`apply_var_fd_redirect`), so `{v}<<EOF` cannot
+        drift from `<<EOF` on quoting or expansion rules.
+        """
         content = redirect.heredoc_content
         if content and not redirect.heredoc_quoted:
             # Heredoc bodies are a dquote-like context for nested
@@ -387,7 +415,6 @@ class FileRedirector:
             from ..expansion.operands import DQ_STRING
             content = self.shell.expansion_manager.expand_string_variables(
                 content, quote_ctx=DQ_STRING)
-        self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
 
     def redirect_herestring(self, redirect):
@@ -395,6 +422,13 @@ class FileRedirector:
 
         Shared redirect primitive (fd backend and builtin stream backend).
         Returns the content."""
+        content = self.redirect_herestring_content(redirect)
+        self._content_to_fd(content, self._heredoc_fd(redirect))
+        return content
+
+    def redirect_herestring_content(self, redirect) -> str:
+        """The here-string content after expansion — THE one place that
+        decides it, shared with the named-fd path."""
         word = getattr(redirect, 'target_word', None)
         if word is not None:
             # bash expands a here-string word like an assignment value: all
@@ -416,9 +450,7 @@ class FileRedirector:
                 if not quote_type:
                     target = self.shell.expansion_manager.expand_string_tildes(target)
                 expanded = self.shell.expansion_manager.expand_string_variables(target)
-        content = expanded + '\n'
-        self._content_to_fd(content, self._heredoc_fd(redirect))
-        return content
+        return expanded + '\n'
 
     def _redirect_output_to_file(self, target, redirect):
         """Open file for output and dup2 to target fd. Returns target_fd."""
@@ -499,6 +531,17 @@ class FileRedirector:
             if dup_fd is None or not self.dup_fd_valid(dup_fd):
                 raise OSError(f"{dup_fd}: Bad file descriptor")
             newfd = fcntl.fcntl(dup_fd, fcntl.F_DUPFD, 10)
+            self.shell.state.set_variable(name, str(newfd))
+            return
+
+        # Here-document / here-string forms: `{v}<<EOF`, `{v}<<-EOF`, `{v}<<<w`.
+        # The content is materialized on a fresh fd >= 10 rather than on stdin,
+        # and the number lands in the variable — the same allocation contract as
+        # the open-a-file forms below, with the body as the source.
+        if rtype in ('<<', '<<-', '<<<'):
+            content = (self.redirect_herestring_content(redirect)
+                       if rtype == '<<<' else self.heredoc_content(redirect))
+            newfd = self._content_to_free_fd(content)
             self.shell.state.set_variable(name, str(newfd))
             return
 

@@ -96,6 +96,23 @@ _ROWS = [
     ("fd_dup_in", ["echo x <&0"], True),
     ("fd_dup_numbered", ["echo x 0<&0"], True),
 
+    # --- FD-KIND axis: NAMED fds (round-2 blocker R7-A) ---
+    # THE REGRESSION THIS SLOT CAUSED, now pinned. The retired regex scanner
+    # knew the `{v}<<` spelling; the LEXER did not, emitting `{v}<` plus a
+    # second `<`. Once the regex stopped being consulted, nothing registered
+    # the here-document, the session called the line COMPLETE, and the body
+    # lines EXECUTED AS COMMANDS (`body: command not found`) where base and
+    # bash both hold the line open. Neither corpus caught it because the
+    # FD-KIND axis had only ever been varied by DIGIT (`0<<`).
+    ("named_fd_heredoc", ["true {v}<<EOF"], False),
+    ("named_fd_heredoc_strip", ["true {v}<<-EOF"], False),
+    ("named_fd_heredoc_quoted", ["true {v}<<'EOF'"], False),
+    ("named_fd_exec", ["exec {v}<<EOF"], False),
+    # ... with the control that keeps those rows honest: a named fd with a
+    # SINGLE `<` is an ordinary redirect and must stay COMPLETE, so a fix that
+    # over-matched `{v}<` as a heredoc would fail here.
+    ("named_fd_plain_redirect", ["echo x {v}</dev/null"], True),
+
     # --- The two DECLARED interactive improvements (round-1 blocker R4-B) ---
     # Both were RED ON BASE and both now match bash; measured at base
     # e36116c3 in a discriminator-verified probe worktree (ledger B18).

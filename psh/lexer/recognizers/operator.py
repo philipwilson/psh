@@ -274,11 +274,22 @@ class OperatorRecognizer(ContextualRecognizer):
             tok, end = result
             return Token(tok.type, tok.value, pos, end, var_fd=name), end
 
-        # Standard / prefixed forms (longest first so >> beats >, <> beats <).
+        # Standard / prefixed forms (longest first so >> beats >, <> beats <,
+        # and <<- beats << beats <).
+        #
+        # The HEREDOC entries are not decoration: without them `{v}<<EOF` was
+        # lexed as `{v}<` plus a second `<`, so the heredoc lexer registered
+        # NOTHING and the body was never lifted out of the command text. That
+        # went unnoticed while a text-level regex scanner independently decided
+        # heredoc-ness for the completeness oracle; once that second grammar was
+        # retired (remediation 2.5) the lexer became the only decider, and this
+        # gap turned into executing a here-document body as commands.
         for op, tok_type in (
+            ('<<-', TokenType.HEREDOC_STRIP),
             ('>>', TokenType.REDIRECT_APPEND),
             ('<>', TokenType.REDIRECT_READWRITE),
             ('>|', TokenType.REDIRECT_CLOBBER),
+            ('<<', TokenType.HEREDOC),
             ('>', TokenType.REDIRECT_OUT),
             ('<', TokenType.REDIRECT_IN),
         ):

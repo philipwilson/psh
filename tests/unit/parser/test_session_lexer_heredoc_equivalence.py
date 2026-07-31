@@ -46,10 +46,27 @@ GENERATED DOMAIN -- every axis this corpus varies, named (ruling R1-E):
   stopped at ``(`` and cooked ``<<$(x)`` down to ``$``, and a quoting-only
   delimiter axis could never have surfaced that;
 * OPERATOR ADJACENCY: plain, tab-strip ``<<-``, here-string ``<<<``,
-  digit-prefixed fd ``0<<``, fd-dup ``<&``/``0<&``, arithmetic ``$((1<<2))``;
+  arithmetic ``$((1<<2))``, fd-dup ``<&``/``0<&``;
+* FD KIND -- none, DIGIT-prefixed (``0<<``) and NAMED (``{v}<<``,
+  ``{v}<<-``, ``{v}<``). The named spelling is here because round-2
+  verification found the fix had stopped detecting it entirely: the axis
+  had been varied by digit only;
 * COMMAND CONTEXT: bare command, after a pipe, inside ``$( )``, after ``&&``;
 * OPTION STATE: default and ``posix``, threaded into BOTH sides -- the session
   through the shell's live option dict and the lexer through ``LexerConfig``.
+
+WHAT THIS INSTRUMENT CANNOT DO -- stated because round-2 verification proved it
+matters. It compares the SESSION against the LEXER, so it can only ever catch
+those two DISAGREEING; it cannot catch the lexer being WRONG. Reverting the
+round-2 named-fd fix (`{v}<<` unregistered) leaves this entire corpus GREEN --
+session and lexer are then consistently wrong together -- while the
+bash-differential instruments go red (8 PTY rows, 12 non-interactive rows;
+mutation-measured, not assumed). The `{v}<<` entries below therefore earn their
+place by pinning session/lexer AGREEMENT on that spelling, nothing more. The
+ORACLE for lexer correctness is bash, via
+tests/system/interactive/test_heredoc_detection_interactive_pty.py and
+tests/unit/io_redirect/test_named_fd_heredoc.py. A green run HERE is not
+evidence that heredoc detection is correct.
 
 NOT in the domain, and each with the instrument that DOES cover it:
 
@@ -81,7 +98,14 @@ from psh.utils.heredoc_detection import HeredocTermination
 
 _OPERATORS = ["<<", r"\<<", r"<\<", "\\\\<<", "<<-", "<<<", "0<<",
               # `<&` adjacency (brief axis; round-1 blocker R4-E).
-              "<&", "0<&"]
+              "<&", "0<&",
+              # NAMED-FD spellings (round-2 blocker R7-A). The fd-kind axis had
+              # only ever been varied by DIGIT; `{v}<<` was the spelling the
+              # retired regex knew and the lexer did not, so the one-grammar
+              # fix silently stopped detecting it and executed bodies as
+              # commands. The lesson generalises: when a decider is deleted,
+              # ITS input space is the claim's universe.
+              "{v}<<", "{v}<<-", "{v}<"]
 _DELIMITERS = ["EOF", "'EOF'", '"EOF"', r"\EOF", 'E"O"F',
                # SUBSTITUTION-BEARING delimiters (round-1 blocker R4-B):
                # taken literally, so the terminator is the whole word. The
@@ -106,6 +130,8 @@ _BOUNCED_ROW_CLASSES = {
     "substitution-bearing delimiter (R4-B)": ["cat <<$(x)", "cat <<`x`",
                                               "cat <<$V", "cat <<${V}"],
     "`<&` adjacency (R4-E)": ["cat <&EOF", "cat 0<&EOF"],
+    "named-fd heredoc (R7-A regression)": ["cat {v}<<EOF",
+                                           "cat {v}<<-EOF"],
     "escaped spelling (the MEDIUM-3 defect)": [r"cat \<<EOF", r"cat <\<EOF"],
     "nested context": ["echo $(cat <<EOF)"],
     "quoted marker": ["cat '<<EOF'", 'cat "<<EOF"'],
