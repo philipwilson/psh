@@ -221,7 +221,7 @@ keyword recognizer either: keywords are normalized from WORD tokens by the
    `recognizers/__init__.py` only re-exports classes; adding one there does
    not activate it. Optionally add the re-export for discoverability.
 
-### Tokens are immutable
+### The lexical value graph is immutable — the WHOLE graph
 
 `Token` is `@dataclass(frozen=True)`: once the
 lexer emits a token it is never mutated. Stages that need a changed token build
@@ -231,6 +231,22 @@ do this. `position`/`end_position` are the canonical stored offsets; `span`
 (a `SourceSpan`) is a derived read-only view. `SourceMap` (`position.py`) is the
 one offset → (line, column) + line-text service (the lexer's `PositionTracker`
 and the parser's error context both read it).
+
+Freezing the token alone was not enough, and the gap was real rather than
+theoretical (reappraisal #22 MEDIUM-10): a frozen `Token` still handed out a
+mutable `parts` LIST of mutable `TokenPart` objects, so a caller could rewrite
+a lexed value after the lexer had returned it. **Every edge of the graph
+reachable from a `LexedUnit` is now immutable** — `LexedUnit.tokens` (tuple),
+`LexedUnit.heredocs` (read-only mapping), `Token`, `Token.parts` (tuple) and
+`token_parts.py#TokenPart` (frozen). Construction-time list building stays
+legal: `token_types.py#Token.__post_init__` coerces `parts` to a tuple, so a
+scanner may accumulate a list and hand it over.
+
+The guard is `tests/unit/lexer/test_lexical_value_graph_frozen.py`, and its
+universe is COMPUTED rather than listed: it enumerates
+`dataclasses.fields(TokenPart)` at runtime, so a newly added field is covered
+automatically and a mutable one fails without anybody remembering to update the
+test.
 
 ## Key Implementation Details
 

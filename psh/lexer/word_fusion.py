@@ -151,7 +151,7 @@ def _fuse_run(run: List[Token], source: str) -> Token:
         column=run[0].column,
         adjacent_to_previous=run[0].adjacent_to_previous,
         is_keyword=False,
-        parts=parts,
+        parts=tuple(parts),
     )
 
 

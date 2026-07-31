@@ -190,7 +190,8 @@ class ModularLexer:
         # A token carries its parts directly (the base Token has a parts field);
         # RichToken was retired with the WordToken refactor.
         token = Token(token_type, value, start_offset, end_offset, quote_type,
-                      line, column, adjacent, parts=self.current_parts)
+                      line, column, adjacent,
+                      parts=tuple(self.current_parts))
         self.current_parts = []  # Clear parts after use
         self.tokens.append(token)
 
