@@ -331,7 +331,16 @@ class TestFormatterRawEmission:
 
 
 class TestExecutableBodyPresence:
-    """A heredoc redirect with no collected body is a loud internal error."""
+    """A heredoc redirect whose body was never collected is reported, never
+    executed as a file open.
+
+    Not "a loud internal error", which is what this said until round-8
+    verification found the live route: ALIAS SUBSTITUTION happens after the
+    heredoc-aware lex, so `alias foo='cat <<EOF'; foo` reaches the arm from
+    ordinary user input. End-to-end coverage of that route lives in
+    tests/unit/scripting/test_heredoc_alias_route.py; the row below pins the
+    arm itself.
+    """
 
     def test_executor_raises_on_missing_body(self, captured_shell):
         """The missing-body value is now UNREPRESENTABLE, not detected late.
@@ -356,7 +365,7 @@ class TestExecutableBodyPresence:
         plan = RedirectPlan(redirect=Redirect(type='<<', target='EOF'),
                             target=None)
         with pytest.raises(NonExecutableRedirectError,
-                           match='no collected body'):
+                           match='was never collected'):
             captured_shell.io_manager.file_redirector.apply_fd_plan(plan)
 
     def test_empty_body_is_not_an_error(self, captured_shell):
