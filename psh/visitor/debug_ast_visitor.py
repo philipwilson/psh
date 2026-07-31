@@ -396,7 +396,9 @@ class DebugASTVisitor(ASTVisitor[str]):
         if isinstance(node, HeredocRedirect):
             parts.append(f"heredoc=<{len(node.heredoc_content)} chars>")
 
-        return self._format_header("Redirect", ', '.join(parts))
+        # The header names the node's ACTUAL class, so a debug dump does not
+        # call an executable here-document a plain Redirect (round-2 nit 2).
+        return self._format_header(type(node).__name__, ', '.join(parts))
 
     # Executable heredocs are a SUBCLASS and visitor dispatch is
     # EXACT-CLASS (visitor/base.py#ASTVisitor.visit resolves

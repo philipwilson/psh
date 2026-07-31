@@ -57,6 +57,7 @@ from psh.visitor import (
     SecurityVisitor,
     ValidatorVisitor,
 )
+from psh.visitor.debug_ast_visitor import DebugASTVisitor
 from psh.visitor.traversal import iter_child_nodes
 
 # ---------------------------------------------------------------------------
@@ -403,3 +404,74 @@ def test_validator_traverses_group_bodies():
         v = ValidatorVisitor()
         v.visit(_ast(src))
         assert any('cd: too many arguments' in i.message for i in v.issues), src
+
+
+# ---------------------------------------------------------------------------
+# HeredocRedirect dispatch, for EVERY visitor that handles Redirect (R7-C)
+# ---------------------------------------------------------------------------
+#
+# Round-2 verification found the comment "test_ast_coverage_matrix fails if a
+# visitor forgets it" was true for the FORMATTER ONLY: the matrix's
+# every-concrete-node check runs against FormatterVisitor, so the other five
+# visitors could silently lose their `visit_HeredocRedirect` alias and just
+# stop seeing here-documents (measured: MetricsVisitor reporting
+# here_documents=0). Executable heredocs are a SUBCLASS and dispatch is
+# exact-class with no MRO walk, so "handles Redirect" does not imply "handles
+# HeredocRedirect" for anyone.
+
+_REDIRECT_VISITORS = [
+    ("SecurityVisitor", SecurityVisitor),
+    ("ValidatorVisitor", ValidatorVisitor),
+    ("MetricsVisitor", MetricsVisitor),
+    ("DebugASTVisitor", DebugASTVisitor),
+    ("LinterVisitor", LinterVisitor),
+    ("FormatterVisitor", FormatterVisitor),
+]
+
+_HEREDOC_SRC = "cat <<EOF\nbody\nEOF\n"
+
+
+def _heredoc_ast():
+    """A REAL heredoc AST — bodies collected, so the redirect is a
+    HeredocRedirect rather than the bare-parse Redirect."""
+    from psh.parser import ParseInputs, parse_with_inputs
+    from psh.scripting.lex_parse import lex_and_expand
+    from psh.shell import Shell
+    unit = lex_and_expand(_HEREDOC_SRC, Shell(norc=True))
+    return parse_with_inputs(unit.tokens, ParseInputs(heredocs=unit.heredocs))
+
+
+@pytest.mark.parametrize("name,cls", _REDIRECT_VISITORS,
+                         ids=[v[0] for v in _REDIRECT_VISITORS])
+def test_every_redirect_visitor_dispatches_heredoc_redirect(name, cls):
+    """The guard that now BITES for all six, not just the formatter.
+
+    Asserted at the DISPATCH level rather than by `hasattr`: what matters is
+    that visiting a HeredocRedirect does not fall through to generic_visit.
+    """
+    assert hasattr(cls, 'visit_Redirect'), name
+    resolved = getattr(cls, 'visit_HeredocRedirect', None)
+    assert resolved is not None, (
+        f"{name} handles Redirect but not HeredocRedirect. Dispatch is "
+        "EXACT-CLASS (visitor/base.py#ASTVisitor.visit), so the executable "
+        "heredoc subclass needs its own entry or this visitor silently stops "
+        "seeing here-documents."
+    )
+    assert resolved is cls.visit_Redirect, (
+        f"{name}.visit_HeredocRedirect should be the same handler as "
+        "visit_Redirect unless it deliberately differs"
+    )
+
+
+def test_metrics_actually_counts_a_heredoc():
+    """The OBSERVABLE behind the dispatch assertion — this is the number the
+    verifier measured as 0 when the alias was removed."""
+    v = MetricsVisitor()
+    v.visit(_heredoc_ast())
+    assert v.metrics.here_documents >= 1, \
+        "MetricsVisitor did not count an executable here-document"
+
+
+def test_debug_visitor_labels_the_executable_heredoc_by_its_class():
+    out = DebugASTVisitor().visit(_heredoc_ast())
+    assert "HeredocRedirect" in out, out[:300]

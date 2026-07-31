@@ -155,3 +155,23 @@ def test_debug_ast_labels_the_executable_heredoc_by_its_type(fmt, tmp_path):
     # actually printed), so both streams are searched.
     dump = result.stdout + result.stderr
     assert "HeredocRedirect" in dump, (fmt, dump[:400])
+
+
+def test_synthetic_offender_raises_at_the_BUILTIN_STREAM_backend(shell,
+                                                                 tmp_path):
+    """The OTHER backend's explicit arm (round-2 nit 12).
+
+    C1 promised a guard that bites on BOTH backends, but only the fd backend
+    had a committed test — the builtin-stream arm in
+    `manager.py#IOManager.setup_builtin_redirections` was covered by a probe I
+    ran by hand, which is not a guard. A builtin reading a non-executable
+    heredoc parse state must hit the same typed error, not fall through to a
+    silent empty document.
+    """
+    from psh.ast_nodes import Redirect, SimpleCommand, Word
+    from psh.io_redirect.file_redirect import NonExecutableRedirectError
+
+    offender = Redirect(type="<<", target="EOF")
+    command = SimpleCommand(words=[Word(parts=[])], redirects=[offender])
+    with pytest.raises(NonExecutableRedirectError, match="no collected body"):
+        shell.io_manager.setup_builtin_redirections(command)
