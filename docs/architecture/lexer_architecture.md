@@ -228,6 +228,11 @@ The unified token system represents the culmination of the Enhanced Lexer Deprec
 ### Token Class Unification
 Tokens are **immutable** (`frozen=True`): once emitted they are never mutated —
 stages that need a changed token build a new one with `dataclasses.replace`.
+Immutability is TRANSITIVE as of remediation 2.5 (#22 MEDIUM-10b): `parts` is a
+tuple of frozen `TokenPart`s carrying frozen `Position`s, so no edge of the
+lexical value graph is writable. `Token.__post_init__` coerces `parts` to a
+tuple, which lets construction sites build a list while scanning a word and
+still leaves nothing mutable in the emitted value.
 
 ```python
 @dataclass(frozen=True)
@@ -242,7 +247,7 @@ class Token:
     column: Optional[int] = None
     adjacent_to_previous: bool = False
     is_keyword: bool = False
-    parts: List['TokenPart'] = field(default_factory=list)
+    parts: Tuple['TokenPart', ...] = ()   # frozen graph (see __post_init__)
     fd: Optional[int] = None
     var_fd: Optional[str] = None
     combined_redirect: bool = False

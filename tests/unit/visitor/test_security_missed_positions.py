@@ -181,8 +181,9 @@ def _security_cli(tmp_path, src):
 
 
 # Heredoc BODIES exist only on the heredoc-aware parse path (a bare
-# parse(tokenize(...)) leaves heredoc_content None and mis-lexes the body
-# lines as commands), so these pins run the real --security pipeline.
+# parse(tokenize(...)) yields a plain Redirect, which since remediation 2.5 has
+# no body field AT ALL, and mis-lexes the body lines as commands), so these
+# pins run the real --security pipeline.
 
 def test_unquoted_heredoc_with_substitution_is_flagged_opaque(tmp_path):
     result = _security_cli(

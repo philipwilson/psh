@@ -31,19 +31,30 @@ This module also owns the campaign-S2 heredoc transaction contracts:
   :func:`heredoc_terminator_matches` (guarded by
   ``tests/unit/tooling/test_heredoc_transaction_guards.py``).
 
-SURVIVING CONSUMERS of the text-level scanner, enumerated so this docstring
-matches the census
-(`docs/reviews/evidence/boundary_remediation_2026-07/2.5-rescue/second_grammar_census.py`)
-rather than
-gesturing at it: the lexer's ``HeredocCollector``; the ``$(...)`` extent
-scanner (``lexer/cmdsub_scanner.py``); the interactive line editor
-(``interactive/line_editor_helpers.py``); the continuation-join preprocessor
-(``scripting/input_preprocessing.py``); the script-entry boundary's
-``contains_heredoc`` gate (``scripting/lex_parse.py``); the history-expansion
-MIRROR (``interactive/history_expansion.py`` — a hand-written copy, recorded
-as a successor row); and the formatter. The COMPLETENESS ORACLE is no longer
-among them: since remediation 2.5 it asks the lexer
-(``parser/session.py#_lexer_pending_heredocs``).
+CONSUMERS, enumerated from a census (``second_grammar_census.py``, rescued to
+``docs/reviews/evidence/`` at ceremony) rather than gestured at. They divide by
+WHICH of this module's two jobs they use, and that division IS remediation 2.5:
+
+* the TEXT-LEVEL SCANNER (``scan_line_heredoc_markers``,
+  ``open_heredoc_specs``, ``contains_heredoc``, ``HEREDOC_MARKER_RE``) — the
+  lexer's ``HeredocCollector``; the ``$(...)`` extent scanner
+  (``lexer/cmdsub_scanner.py``); the interactive line editor
+  (``interactive/line_editor_helpers.py``); the continuation-join preprocessor
+  (``scripting/input_preprocessing.py``); the script-entry boundary's
+  ``contains_heredoc`` gate (``scripting/lex_parse.py``); and the
+  history-expansion MIRROR (``interactive/history_expansion.py`` — a
+  hand-written copy, recorded as a successor row).
+* the delimiter/terminator ALGEBRA (``unquote_heredoc_delimiter``,
+  ``heredoc_terminator_matches``, ``HeredocSpec``, ``PendingHeredocQueue``) —
+  the formatter (``visitor/formatter_visitor.py``), the keyword normalizer
+  (``lexer/keyword_normalizer.py``), both parsers' redirection builders, and
+  the COMPLETENESS ORACLE (``parser/session.py``), which feeds body lines to
+  ``PendingHeredocQueue.feed_line``.
+
+The completeness oracle appears in the SECOND list ONLY. Since remediation 2.5
+it no longer asks the scanner whether a line opens a here-document — it asks
+the lexer (``parser/session.py#_lexer_pending_heredocs``) — so there is ONE
+heredoc grammar and it is the real one.
 """
 
 import enum
@@ -632,11 +643,13 @@ def open_heredoc_specs(command: str) -> "Tuple[HeredocSpec, ...]":
     This is a TEXT-LEVEL re-scan of a whole buffer, and since remediation 2.5
     it is NOT the completeness oracle's scan: the oracle asks the LEXER
     (``parser/session.py#_lexer_pending_heredocs``), which is why the session
-    no longer opens a phantom heredoc on ``echo \\<<EOF``. The only production
-    consumers of THIS function are the cmdhist joiner's two calls in
+    no longer opens a phantom heredoc on ``echo \\<<EOF``. Its only production
+    CALL SITES are the cmdhist joiner's two in
     ``interactive/line_editor_helpers.py#convert_multiline_to_single``, which
     ask whether a newline falls inside an open heredoc body before joining a
-    multi-line history entry. Body/terminator routing delegates to the queue's
+    multi-line history entry. (``has_unclosed_heredoc`` just above also calls
+    it, but that helper has had no production caller of its own since before
+    this slot.) Body/terminator routing delegates to the queue's
     head-of-queue policy — a line equal to a LATER pending delimiter is body
     text (H1/G1).
     """

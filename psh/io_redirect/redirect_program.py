@@ -34,7 +34,11 @@ class RedirectOpKind(Enum):
     CLOSE_FD = "close_fd"      # >&-  <&-
     HERE_INPUT = "here_input"  # <<  <<-  <<<
     COMBINED = "combined"      # &>  &>>
-    VAR_FD = "var_fd"          # {v}>  {v}<  {v}>&N  {v}>&-
+    # var_fd is tested FIRST in classify_redirect, so it claims the named-fd
+    # spelling of every operator it supports -- including the here-document and
+    # here-string forms added in remediation 2.5, whose content is materialized
+    # on a fresh fd >= 10 instead of on stdin (file_redirect.py#apply_var_fd_redirect).
+    VAR_FD = "var_fd"          # {v}>  {v}<  {v}>&N  {v}>&-  {v}<<  {v}<<-  {v}<<<
 
 
 def classify_redirect(redirect: 'Redirect') -> RedirectOpKind:

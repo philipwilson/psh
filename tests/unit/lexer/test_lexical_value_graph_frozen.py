@@ -22,6 +22,10 @@ visits every reachable object, flagging (a) any dataclass that is not frozen and
 field, a new node type, or a new nesting level is covered automatically and
 fails here without anybody remembering to update this file.
 
+The walk runs over a CORPUS, not one line (see `_SOURCES`): runtime discovery
+only ever covers the shapes the source in hand actually produces, so the
+universe of the claim is the corpus times the walk, and the corpus is stated.
+
 SCOPE of the frozen claim: the value graph reachable from a `LexedUnit` --
 `tokens` (tuple) -> `Token` (frozen) -> `parts` (tuple) -> `TokenPart` (frozen)
 -> `Position` (frozen), plus `heredocs` (read-only mapping) and the
@@ -38,23 +42,59 @@ from psh.lexer.position import Position
 from psh.lexer.token_parts import TokenPart
 from psh.lexer.token_types import Token, TokenType
 
-# A source exercising every part-bearing shape: quoted composites, an expansion
-# part, a variable part, and a heredoc (so `heredocs` is populated too).
-_SOURCE = 'echo "a$b"c $(x) ${y:-d} <<E\nbody\nE\n'
+# THE CORPUS, and why it is a corpus rather than a line (round-7 nit 5). The
+# walk discovers its universe at runtime, but only over the shapes the source it
+# runs on actually PRODUCES -- so a one-line corpus makes "a new node type is
+# covered automatically" true of that line and no more. These sources are chosen
+# to span the PART-BEARING CLASS: composite quoting, every expansion form,
+# ANSI-C and backslash escapes, array and associative assignment, process
+# substitution, named-fd and multiple heredocs, here-strings, and nested quoting
+# inside a compound command.
+#
+# UNIVERSE, stated rather than implied: this covers the graph the LEXER builds.
+# `Token.array_init` is a parser-set field (the combinator stashes `name=(...)`
+# there), so no lexed unit reaches it today; if it ever became lexer-set, the
+# corpus would have to grow a case that produces it -- the walk alone would not
+# notice, because it cannot visit an edge no source creates.
+_SOURCES = (
+    ("composites_and_heredoc", 'echo "a$b"c $(x) ${y:-d} <<E\nbody\nE\n'),
+    ("arith_and_backticks", 'echo $((1<<2)) `date` ${#x} ${y//a/b}\n'),
+    ("ansi_c_and_escapes", "echo $'a\\tb' \\$literal 'sq' \"dq$v\"\n"),
+    ("arrays_and_assoc", 'a=(1 "two" $three); declare -A m; m[k$i]=v\n'),
+    ("process_substitution", 'diff <(echo a) >(cat) 2>&1\n'),
+    ("named_fd_and_herestring", 'cat {v}<<E\nbody\nE\ncat <<<"a $b"\n'),
+    ("two_heredocs_one_command", 'cat <<A <<B\n1\nA\n2\nB\n'),
+    ("case_and_nested_quotes", 'case "$x" in a|b) echo "y${z:-d}";; esac\n'),
+)
 
 _MUTABLE_CONTAINERS = (list, dict, set, bytearray)
 
 
-@pytest.fixture(scope="module")
-def unit():
-    return HeredocLexer(_SOURCE, warn_unterminated=False).tokenize_with_heredocs()
+@pytest.fixture(scope="module", params=[s[1] for s in _SOURCES],
+                ids=[s[0] for s in _SOURCES])
+def unit(request):
+    """ONE source per parametrization -- the freeze rows run against each."""
+    return HeredocLexer(request.param,
+                        warn_unterminated=False).tokenize_with_heredocs()
 
 
 @pytest.fixture(scope="module")
-def part(unit):
-    for token in unit.tokens:
-        if token.parts:
-            return token.parts[0]
+def units():
+    """ALL sources. Rows about the corpus's REACH aggregate over it: no single
+    source produces every node type (a heredoc-free line has no CollectedHeredoc
+    and a bare `cat <<A <<B` has no part-bearing token), so asserting per-source
+    coverage would only force the corpus back down to one all-in-one line --
+    the exact narrowness this widening exists to remove."""
+    return [HeredocLexer(src, warn_unterminated=False).tokenize_with_heredocs()
+            for _label, src in _SOURCES]
+
+
+@pytest.fixture(scope="module")
+def part(units):
+    for unit in units:
+        for token in unit.tokens:
+            if token.parts:
+                return token.parts[0]
     pytest.fail("no part-bearing token in the corpus -- the fixture is stale")
 
 
@@ -115,13 +155,24 @@ def test_no_mutable_container_is_reachable_from_a_lexed_unit(unit):
         f"mutable container reachable from a LexedUnit: {offenders}")
 
 
-def test_the_census_actually_reaches_the_interesting_nodes(unit):
-    """A guard on the guard: if the walk stopped early, the two tests above
-    would pass vacuously. Assert the graph really was traversed to its leaves."""
-    kinds = {type(obj).__name__ for _, obj in _walk(unit)}
+def test_the_census_actually_reaches_the_interesting_nodes(units):
+    """A guard on the guard: if the walk stopped early, the two rows above
+    would pass vacuously. Assert the graph really was traversed to its leaves.
+
+    Aggregated over the corpus -- see the `units` fixture for why per-source
+    would be the wrong assertion."""
+    kinds = {type(obj).__name__ for unit in units for _, obj in _walk(unit)}
     for expected in ("Token", "TokenPart", "Position", "LexedHeredoc",
                      "HeredocSpec", "CollectedHeredoc"):
         assert expected in kinds, (expected, sorted(kinds))
+
+
+def test_every_source_in_the_corpus_lexes_to_something(units):
+    """Non-vacuity for the WIDENING itself: a source that silently lexed to
+    nothing would add a green freeze row that walked an empty graph."""
+    for (label, _src), unit in zip(_SOURCES, units, strict=True):
+        assert unit.tokens, label
+        assert len(list(_walk(unit))) > 5, label
 
 
 # === Per-field/edge rows (kept: they name the specific regressions) ===
@@ -204,10 +255,10 @@ def test_every_container_edge_rejects_a_write(unit, edge, reach, mutate,
         mutate(reach(unit))
 
 
-def test_the_base_probe_rewrites_are_now_impossible(unit):
+def test_the_base_probe_rewrites_are_now_impossible(units):
     """Both base-SHA probe rewrites -- the original parts mutation and the
     round-1 nested-Position mutation -- asserted dead."""
-    token = next(t for t in unit.tokens if t.parts)
+    token = next(t for unit in units for t in unit.tokens if t.parts)
     before = [(p.value, p.quote_type, p.start_pos.offset) for p in token.parts]
     with pytest.raises(dataclasses.FrozenInstanceError):
         token.parts[0].value = "PWNED"

@@ -255,7 +255,7 @@ class TestLinterRedirectTargets:
         # A quoted delimiter disables expansion — no variable-usage finding.
         r = HeredocRedirect(type="<<", target="END",
                             heredoc_content="value is $missing\n",
-                     heredoc_quoted=True)
+                            heredoc_quoted=True)
         v = LinterVisitor()
         v.visit(r)
         assert not any("may be undefined" in i.message for i in v.issues)

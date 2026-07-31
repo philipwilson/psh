@@ -156,38 +156,91 @@ def test_the_eof_warning_is_emitted_by_both_parsers(label, script, parser):
     assert "delimited by end-of-file" in psh.stderr, (label, parser, psh.stderr)
 
 
-# DELTA 4 -- the escaped spelling's own non-interactive half (round-6 blocker
-# 1, ruling R12-E). Each shape's follow-up lines FAIL, so each is reported with
-# a line number; that is the whole point, and it is the axis the corpus never
-# varied.
-_ESCAPED_DIAG_SHAPES = [
-    ("escaped_lt", "echo \\<<E\nhello\nE\n"),
-    ("escaped_lt_quoted", "echo \\<<'E'\nhello\nE\n"),
-    ("escaped_lt_strip", "echo \\<<-E\nhello\nE\n"),
-    ("escaped_lt_digit", "echo 0\\<<E\nhello\nE\n"),
-]
+# DELTA 4 -- THE DIAGNOSTIC-LINE-NUMBER AXIS, SWEPT ACROSS EVERY SPELLING
+# FAMILY (round-6 blocker 1 / R12-E, then round-7 blocker 1 / R14-A).
+#
+# Each script's follow-up lines FAIL, so each is reported WITH A LINE NUMBER.
+# That is the axis, and it took two bounces to get its WIDTH right:
+#
+#   round 6 found the escaped `\<<` spelling moving; I added the axis for the
+#   four escaped spellings and no further, so round 7 found the identical delta
+#   on valid arithmetic-shift SUBSCRIPTS (`a[1<<2]=1`). Twice in a row the axis
+#   was closed for the shapes I had just been bounced on rather than for the
+#   SPACE the declaration's own prose quantifies over.
+#
+# So membership here is derived from the MECHANISM, not from the bug reports.
+# At base the text-level scanner reported a phantom pending heredoc for any
+# `<<WORD` it saw outside quotes and arithmetic; the session then merged the
+# following physical lines into ONE buffer, and the combinator stamps every
+# top-level statement with its buffer's start line. Therefore:
+#
+#   A FAMILY MOVES  <=>  base's regex mis-detected it AND the real lexer says
+#                        the line is complete.
+#
+# Swept and confirmed over 23 shapes x 3 channels x 2 parsers x 2 trees
+# (tmp/r2-5-probes/diag_axis_sweep.py, rescued at ceremony): exactly three
+# families move -- escaped, escaped-under-`set -o posix`, and subscript shift --
+# and seven do not. The non-moving families are CONTROL ROWS below rather than
+# omissions, because an axis is only closed if the rows that must NOT move are
+# named too; without them a fix that made everything report "line 1" would pass.
+_MOVED, _CONTROL = "moves", "control"
 
-# The line numbers bash 5.2.26 reports for every shape above: the redirect
-# failure on line 1, then the two lines base swallowed into line 1's buffer.
-_ESCAPED_DIAG_LINES = [1, 2, 3]
+# (family, label, script, expected psh line numbers)
+_DIAG_SHAPES = [
+    # --- escaped `\<<`: the MEDIUM-3 spelling (round 6) ------------------
+    (_MOVED, "escaped_lt", "echo \\<<E\nhello\nE\n", [1, 2, 3]),
+    (_MOVED, "escaped_lt_quoted", "echo \\<<'E'\nhello\nE\n", [1, 2, 3]),
+    (_MOVED, "escaped_lt_strip", "echo \\<<-E\nhello\nE\n", [1, 2, 3]),
+    (_MOVED, "escaped_lt_digit", "echo 0\\<<E\nhello\nE\n", [1, 2, 3]),
+    # --- the OPTION axis: same spelling under `set -o posix` -------------
+    (_MOVED, "posix_escaped_lt",
+     "set -o posix\necho \\<<E\nhello\nE\n", [2, 3, 4]),
+    # --- valid arithmetic-shift SUBSCRIPTS (round 7) ---------------------
+    # A `<<` the shell must read as a shift inside `[ ]`, which base's regex
+    # read as a heredoc opener on the digit after it.
+    (_MOVED, "subscript_shift_valid",
+     "a[1<<2]=1; echo ${a[4]}\nnosuchcmd_b\n", [2]),
+    (_MOVED, "subscript_shift_spaces",
+     "a[ 1 << 2 ]=1; echo ${a[4]}\nnosuchcmd_c\n", [2]),
+    (_MOVED, "subscript_shift_expand",
+     "n=2; a[1<<$n]=1; echo ${a[4]}\nnosuchcmd_d\n", [2]),
+    (_MOVED, "declare_subscript_shift",
+     "declare -a b; b[3<<1]=z; echo ${b[6]}\nnosuchcmd_e\n", [2]),
+    # --- CONTROLS: base's regex and the lexer AGREED, so nothing moves ---
+    (_CONTROL, "single_quoted", "echo '<<E'\nnosuchcmd_g\n", [2]),
+    (_CONTROL, "double_quoted", 'echo "<<E"\nnosuchcmd_h\n', [2]),
+    (_CONTROL, "arith_dollar", "echo $((1<<2))\nnosuchcmd_i\n", [2]),
+    (_CONTROL, "here_string", "cat <<<word\nnosuchcmd_l\n", [2]),
+    # `echo <\<E` is a redirect whose target word unquotes to `<E`, so line 1
+    # fails on the missing file and line 2 fails on its own -- two numbers, not
+    # one. It is a CONTROL because the `<<` is broken by the backslash, so
+    # base's regex never saw a heredoc opener here.
+    (_CONTROL, "escaped_second_lt", "echo <\\<E\nnosuchcmd_a\n", [1, 2]),
+    (_CONTROL, "true_heredoc", "cat <<E\nhello\nE\nnosuchcmd_n\n", [4]),
+]
 
 _LINE_RE = re.compile(r"line (\d+):")
 
 
-@pytest.mark.parametrize("label,script", _ESCAPED_DIAG_SHAPES,
-                         ids=[s[0] for s in _ESCAPED_DIAG_SHAPES])
+@pytest.mark.parametrize("family,label,script,lines", _DIAG_SHAPES,
+                         ids=[s[1] for s in _DIAG_SHAPES])
 @pytest.mark.parametrize("channel", ["dash_c", "stdin", "script"])
 @pytest.mark.parametrize("parser", _PARSERS)
-def test_escaped_spelling_line_numbers_move_to_bash_under_combinator(
-        label, script, channel, parser, tmp_path):
+def test_diagnostic_line_numbers_match_bash(family, label, script, lines,
+                                            parser, channel, tmp_path):
     """DIFFERENTIAL against the oracle, per channel AND per parser.
 
     BASE STATUS, stated because a pin whose base status is unstated cannot be
-    read as evidence: the `combinator` rows are RED ON BASE (base reports every
-    line as 'line 1'); the `rd` rows are GREEN ON BASE -- rd already agreed
-    with bash at both SHAs. Both parsers are pinned anyway, because the claim
-    being protected is per-parser and a single-parser test cannot see which
-    half moved.
+    read as evidence:
+
+    * `moves` rows under `combinator` are RED ON BASE (base reports the
+      swallowed lines at the buffer's start line);
+    * `moves` rows under `rd` are GREEN ON BASE -- rd already agreed with bash
+      at both SHAs. They are pinned anyway, because the claim being protected
+      is per-parser and a single-parser test cannot see which half moved;
+    * `control` rows are GREEN ON BASE on both parsers BY DESIGN. They are not
+      filler: without them, a regression that reported everything at the
+      buffer's start line would still satisfy every `moves` row.
     """
     psh, bash = _run_pair(script, channel, parser, tmp_path)
     assert is_comparable(psh) and is_comparable(bash), (psh, bash)
@@ -198,23 +251,41 @@ def test_escaped_spelling_line_numbers_move_to_bash_under_combinator(
         label, channel, parser, psh.stderr, bash.stderr)
 
 
-@pytest.mark.parametrize("label,script", _ESCAPED_DIAG_SHAPES,
-                         ids=[s[0] for s in _ESCAPED_DIAG_SHAPES])
+@pytest.mark.parametrize("family,label,script,lines", _DIAG_SHAPES,
+                         ids=[s[1] for s in _DIAG_SHAPES])
 @pytest.mark.parametrize("channel", ["dash_c", "stdin", "script"])
 @pytest.mark.parametrize("parser", _PARSERS)
-def test_escaped_spelling_reports_three_distinct_lines(label, script, channel,
-                                                       parser, tmp_path):
-    """The LINE NUMBERS asserted directly, as literals.
+def test_diagnostic_line_numbers_are_the_expected_literals(family, label,
+                                                           script, lines,
+                                                           parser, channel,
+                                                           tmp_path):
+    """The LINE NUMBERS asserted directly, as literals, per shape.
 
     The differential row above would also pass if psh and bash BOTH regressed
-    to 'line 1' -- a differential can only ever pin agreement, never a value.
-    This row pins the value the ruling names, so the regression that hid for
-    six rounds is caught by an assertion that says what it means.
+    to the buffer's start line -- a differential can only ever pin agreement,
+    never a value. This row pins the value, so a shape-scoped revert is caught
+    by an assertion that says what it means rather than by a comparison that
+    two shells could satisfy together.
     """
     psh, _bash = _run_pair(script, channel, parser, tmp_path)
     assert isinstance(psh, Completed), psh
-    lines = [int(n) for n in _LINE_RE.findall(psh.stderr)]
-    assert lines == _ESCAPED_DIAG_LINES, (label, channel, parser, psh.stderr)
+    got = [int(n) for n in _LINE_RE.findall(psh.stderr)]
+    assert got == lines, (family, label, channel, parser, psh.stderr)
+
+
+def test_the_diag_table_names_both_answers():
+    """NON-VACUITY for the table itself.
+
+    The table's value is that it contains families which MUST move and families
+    which must NOT. If a later edit trimmed it to one kind, the rows above would
+    still all pass while the axis quietly reopened -- so the table is required
+    to keep both answers, and enough of each to be a class rather than an
+    example.
+    """
+    families = {f for f, _l, _s, _n in _DIAG_SHAPES}
+    assert families == {_MOVED, _CONTROL}, families
+    assert sum(f == _MOVED for f, *_ in _DIAG_SHAPES) >= 8
+    assert sum(f == _CONTROL for f, *_ in _DIAG_SHAPES) >= 5
 
 
 @pytest.mark.parametrize("channel", ["dash_c", "stdin", "script"])
@@ -247,12 +318,21 @@ def test_class_shapes_report_an_error_and_carry_on_like_bash(label, script,
                                                              tmp_path):
     """OUTCOME-CLASS differential, per channel AND per parser.
 
-    What is asserted: both shells report a diagnostic, and both still run the
-    follow-up command. What is NOT asserted: identical wording -- psh names the
-    construct where bash quotes the line, at both SHAs, and pretending
-    otherwise would manufacture a failure that is not a defect.
+    What is asserted: both shells report a diagnostic, and both AGREE on
+    whether the follow-up command runs. The agreement direction matters and the
+    sentence used to overstate it -- `("AFTER" in psh.stdout) == ("AFTER" in
+    bash.stdout)` is equally satisfied when NEITHER runs it, which is the
+    expected outcome for `bash -c` on a syntax error. Agreement is the honest
+    claim here, because "the next line still runs" is an INTERACTIVE property
+    and is pinned at the PTY, where it belongs.
+
+    What is NOT asserted: identical wording -- psh names the construct where
+    bash quotes the line, at both SHAs, and pretending otherwise would
+    manufacture a failure that is not a defect.
     """
     psh, bash = _run_pair(script, channel, parser, tmp_path)
+    assert is_comparable(psh) and is_comparable(bash), (psh, bash)
+    assert isinstance(psh, Completed) and isinstance(bash, Completed)
     assert psh.stderr.strip(), (label, channel, parser, "psh reported nothing")
     assert bash.stderr.strip(), (label, channel, parser, "bash reported nothing")
     assert ("AFTER" in psh.stdout) == ("AFTER" in bash.stdout), (
