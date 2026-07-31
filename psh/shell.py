@@ -743,6 +743,21 @@ class Shell:
         fatal-syntax-error policy — only trap actions pass it (bash does not
         exit when the action string itself fails to parse; see
         ``InputSource.posix_syntax_exit``).
+
+        EMBEDDING CONTRACT — one exception CAN escape this method. A
+        substitution-body syntax error in SCRIPT MODE raises
+        ``core/exceptions.py#SubstitutionSyntaxAbort`` (a ``BaseException``)
+        past this return, because that fatality belongs to the shell PROCESS in
+        bash and its sole sanctioned consumer is the whole-shell entry point
+        ``scripting/source_processor.py#SourceProcessor.execute_as_main``,
+        which this method deliberately does not route through. It is the same
+        escape the ``eval`` builtin relies on to abort its own frame. An
+        embedder that wants a status instead should run through
+        ``execute_as_main``, or catch the abort and map it with
+        ``core/internal_errors.py#substitution_abort_status``. An embedder
+        whose shell has ``state.is_script_mode`` False — the interactive
+        family, which is what the test fixtures use — never sees it: the
+        consumer does not fire there at all.
         """
         from .scripting.program_source import ProgramSource
 
