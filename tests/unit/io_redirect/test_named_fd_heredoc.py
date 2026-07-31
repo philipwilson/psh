@@ -16,13 +16,14 @@ space is the claim's universe.
 
 WHAT IS PINNED HERE, and the honest status of each:
 
-* the REGRESSION FIX — a named-fd heredoc is detected, its body is not
-  executed. Base parity restored.
-* an IMPROVEMENT BEYOND BASE, declared: base could not RUN these at all (parse
-  error, "Expected file name"); psh now matches bash end to end — the body
-  lands on a shell-allocated fd >= 10, the number is stored in the variable,
-  and `exec {v}<<EOF` followed by `cat <&$v` reads the body. Measured against
-  bash 5.2.26, which allocates fd 10 for the same scripts.
+* DETECTION — restored to base behaviour: the line is held open and the body
+  is never executed as commands. Base did this too (via the regex scanner), so
+  "restored" is the honest word for this half and only this half.
+* EXECUTION — an IMPROVEMENT BEYOND BASE, never a restoration. Base could not
+  RUN any of these: it failed at parse time with `Expected file name`. psh now
+  matches bash end to end — the body lands on a shell-allocated descriptor,
+  the number is stored in the variable, and `exec {v}<<EOF` followed by
+  `cat <&$v` reads the body back.
 
 Non-interactive half of the pin; the terminal half is the `named_fd_*` rows of
 tests/system/interactive/test_heredoc_detection_interactive_pty.py.
@@ -64,10 +65,16 @@ _ROWS = [
     ("quoted", b"true {v}<<'EOF'\nbody $NOPE\nEOF\necho RC=$?\n", "RC=0\n"),
     ("exec_then_read", b"exec {v}<<EOF\nhello\nEOF\ncat <&$v\necho RC=$?\n",
      "hello\nRC=0\n"),
-    ("fd_number_allocated", b"true {v}<<EOF\nbody\nEOF\necho FD=$v\n",
-     "FD=10\n"),
     ("inline_read", b"{v}<<EOF cat <&$v\nhello\nEOF\n", "hello\n"),
 ]
+
+# NOTE what is deliberately NOT in the table above: an exact `FD=10` row. bash
+# allocates the LOWEST FREE fd >= 10, which depends on what descriptors the
+# shell happens to be holding, so a literal `FD=10` could red on the Linux
+# nightly and would be a false alarm of my own making (ruling R8-A). The fd is
+# pinned by SEMANTICS below (>= 10, and readable), plus a same-host
+# differential against bash's own number.
+_FD_SCRIPT = b"true {v}<<EOF\nbody\nEOF\necho FD=$v\n"
 
 
 @pytest.mark.parametrize("label,script,expected", _ROWS,
@@ -104,4 +111,40 @@ def test_a_named_fd_with_one_less_than_is_still_a_plain_redirect(tmp_path):
     over-matched would break ordinary named-fd input redirection."""
     result = _run_psh(b"exec {v}</dev/null\necho FD=$v\n", tmp_path, "rd")
     assert result.returncode == 0, result.stderr[:400]
-    assert result.stdout == "FD=10\n", (result.stdout, result.stderr[:300])
+    # Semantics, not a literal — same Linux-nightly reasoning as above.
+    assert result.stdout.startswith("FD="), result.stdout
+    assert int(result.stdout.split("=", 1)[1].strip()) >= 10, result.stdout
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_the_allocated_fd_obeys_bash_s_semantics(parser, tmp_path):
+    """SEMANTICS, not a magic number: the variable holds a descriptor >= 10.
+
+    Portable by construction — nothing here depends on which descriptors the
+    host shell happens to hold.
+    """
+    result = _run_psh(_FD_SCRIPT, tmp_path, parser)
+    assert result.returncode == 0, result.stderr[:400]
+    assert result.stdout.startswith("FD="), result.stdout
+    assert int(result.stdout.split("=", 1)[1].strip()) >= 10, result.stdout
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_the_allocated_fd_matches_the_oracle_on_this_host(parser, tmp_path):
+    """DIFFERENTIAL: psh's number equals BASH's number for the same script,
+    measured on the SAME host in the same run.
+
+    This is how the exact allocation is pinned without hard-coding it: if a
+    platform allocates 11, both shells report 11 and the comparison still
+    holds. A literal expectation would have made the Linux nightly red for a
+    difference that is not a psh defect.
+    """
+    if not Path(ORACLE).exists():                            # pragma: no cover
+        pytest.skip(f"oracle {ORACLE} not present")
+    script = tmp_path / "fd.sh"
+    script.write_bytes(_FD_SCRIPT)
+    oracle = subprocess.run([ORACLE, "--norc", str(script)],
+                            capture_output=True, text=True, cwd=str(tmp_path),
+                            stdin=subprocess.DEVNULL, timeout=30)
+    result = _run_psh(_FD_SCRIPT, tmp_path, parser)
+    assert result.stdout == oracle.stdout, (result.stdout, oracle.stdout)
