@@ -18,12 +18,20 @@ are pinned in tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.p
 Do not read "latent non-interactively" as a slot-wide property; it was measured
 for one spelling.
 
-THE OBSERVABLE, and why line 2 is spelled oddly: each case sends its shape line
-then `echo MARK""ER`. A terminal ECHOES the typed bytes, so a literal
-`echo MARKER` would put "MARKER" in the transcript even when nothing ran.
-Quote-splitting the word makes the typed echo (`MARK""ER`) and the executed
-output (`MARKER`) textually distinct, so `marker_ran` means the shell really
-executed the follow-up -- i.e. it considered the shape line COMPLETE.
+THE OBSERVABLE is the PROMPT the shell offers after the last shape line: PS1
+means it considered the input complete, PS2 means it wants more. Each line's
+prompt is consumed as it arrives (see `_drive`).
+
+Rows may ALSO assert a MARKER: a follow-up `echo MARK""ER` whose execution is
+checked. That matters because a prompt sequence alone cannot distinguish
+"complete with a syntax error, next line runs" from "complete, next line runs"
+-- and round-4 verification showed exactly that blind spot let a degenerate
+regression through. The `""` is load-bearing: a terminal echoes the typed
+bytes, so a literal `echo MARKER` would appear in the transcript even when
+nothing ran; quote-splitting makes the typed echo and the executed output
+textually distinct. Marker assertions are REQUIRED on the degenerate rows and
+optional elsewhere -- extending them to every row would roughly double this
+module's runtime for observables the prompt sequence already pins.
 
 AXES (ruling R1-E). The corpus varies: SPELLING (escaped `\\<<`, escaped second
 `<\\<`, escaped-escape `\\\\<<`), QUOTING (`'<<EOF'`, `"<<EOF"`, `<<'EOF'`),
@@ -64,34 +72,35 @@ pytestmark = pytest.mark.serial
 # (id, lines to send before `echo MARK""ER`, line-1-is-COMPLETE)
 # `complete=True`  -> the shell runs the follow-up: marker_ran, no PS2.
 # `complete=False` -> the shell waits for a here-document body: PS2, no marker.
+# (label, lines, line-1-is-COMPLETE, marker-ran or None)
 _ROWS = [
     # THE DEFECT: `\<` is an escaped literal '<'; what is left is `<EOF`, an
     # ordinary input redirection, so the line is COMPLETE.
-    ("escaped_lt", [r"echo \<<EOF"], True),
+    ("escaped_lt", [r"echo \<<EOF"], True, None),
     # The escaped SECOND '<': `<` redirect whose target word unquotes to `<EOF`.
-    ("escaped_second_lt", [r"echo <\<EOF"], True),
+    ("escaped_second_lt", [r"echo <\<EOF"], True, None),
     # An escaped BACKSLASH followed by a REAL heredoc — must stay incomplete.
-    ("double_backslash", ["echo \\\\<<EOF"], False),
+    ("double_backslash", ["echo \\\\<<EOF"], False, None),
     # QUOTING: text, not an operator.
-    ("single_quoted", ["echo '<<EOF'"], True),
-    ("double_quoted", ['echo "<<EOF"'], True),
+    ("single_quoted", ["echo '<<EOF'"], True, None),
+    ("double_quoted", ['echo "<<EOF"'], True, None),
     # OPERATOR ADJACENCY.
-    ("here_string", ["cat <<<EOF"], True),
-    ("arith_shift", ["echo $((1<<2))"], True),
+    ("here_string", ["cat <<<EOF"], True, None),
+    ("arith_shift", ["echo $((1<<2))"], True, None),
     # TRUE heredoc controls: these must REMAIN incomplete-detected. Without
     # them a fix that simply stopped detecting heredocs would pass.
-    ("true_heredoc", ["cat <<EOF"], False),
-    ("true_heredoc_strip", ["cat <<-EOF"], False),
-    ("true_heredoc_fd", ["cat 0<<EOF"], False),
-    ("true_heredoc_quoted", ["cat <<'EOF'"], False),
+    ("true_heredoc", ["cat <<EOF"], False, None),
+    ("true_heredoc_strip", ["cat <<-EOF"], False, None),
+    ("true_heredoc_fd", ["cat 0<<EOF"], False, None),
+    ("true_heredoc_quoted", ["cat <<'EOF'"], False, None),
     # NESTING: a heredoc inside an unclosed substitution stays incomplete...
-    ("nested_cmdsub_heredoc", ["echo $(cat <<EOF"], False),
+    ("nested_cmdsub_heredoc", ["echo $(cat <<EOF"], False, None),
     # ... and the defect's spelling one level down is complete.
-    ("nested_cmdsub_escaped", [r"echo $(echo \<<EOF)"], True),
+    ("nested_cmdsub_escaped", [r"echo $(echo \<<EOF)"], True, None),
     # OPTION STATE: the divergent spelling and two controls under POSIX mode.
-    ("posix_escaped_lt", ["set -o posix", r"echo \<<EOF"], True),
-    ("posix_true_heredoc", ["set -o posix", "cat <<EOF"], False),
-    ("posix_true_heredoc_strip", ["set -o posix", "cat <<-EOF"], False),
+    ("posix_escaped_lt", ["set -o posix", r"echo \<<EOF"], True, None),
+    ("posix_true_heredoc", ["set -o posix", "cat <<EOF"], False, None),
+    ("posix_true_heredoc_strip", ["set -o posix", "cat <<-EOF"], False, None),
     # OPERATOR ADJACENCY, `<&` family (the brief enumerates it; round-1
     # blocker R4-E caught its absence).
     # `echo` rather than `cat` IS DELIBERATE -- please do not "fix" it back.
@@ -100,8 +109,8 @@ _ROWS = [
     # like a completeness answer while actually measuring nothing. `echo`
     # ignores its stdin, so the redirect is still exercised and the prompt
     # still arrives.
-    ("fd_dup_in", ["echo x <&0"], True),
-    ("fd_dup_numbered", ["echo x 0<&0"], True),
+    ("fd_dup_in", ["echo x <&0"], True, None),
+    ("fd_dup_numbered", ["echo x 0<&0"], True, None),
 
     # --- FD-KIND axis: NAMED fds (round-2 blocker R7-A) ---
     # THE REGRESSION THIS SLOT CAUSED, now pinned. The retired regex scanner
@@ -111,17 +120,40 @@ _ROWS = [
     # lines EXECUTED AS COMMANDS (`body: command not found`) where base and
     # bash both hold the line open. Neither corpus caught it because the
     # FD-KIND axis had only ever been varied by DIGIT (`0<<`).
-    ("named_fd_heredoc", ["true {v}<<EOF"], False),
-    ("named_fd_heredoc_strip", ["true {v}<<-EOF"], False),
-    ("named_fd_heredoc_quoted", ["true {v}<<'EOF'"], False),
-    ("named_fd_exec", ["exec {v}<<EOF"], False),
+    ("named_fd_heredoc", ["true {v}<<EOF"], False, None),
+    ("named_fd_heredoc_strip", ["true {v}<<-EOF"], False, None),
+    ("named_fd_heredoc_quoted", ["true {v}<<'EOF'"], False, None),
+    ("named_fd_exec", ["exec {v}<<EOF"], False, None),
     # ... with the control that keeps those rows honest: a named fd with a
     # SINGLE `<` is an ordinary redirect and must stay COMPLETE, so a fix that
     # over-matched `{v}<` as a heredoc would fail here.
-    ("named_fd_plain_redirect", ["echo x {v}</dev/null"], True),
+    ("named_fd_plain_redirect", ["echo x {v}</dev/null"], True, None),
     # The here-string spelling on a named fd (round-3 blocker R9-A): complete,
     # like every other here-string, and it parse-errored at base.
-    ("named_fd_herestring", ["true {v}<<<hello"], True),
+    ("named_fd_herestring", ["true {v}<<<hello"], True, None),
+
+    # --- DEGENERATE axis: operator present, OPERAND ABSENT (blocker R10-A) ---
+    # The fourth ring of one pattern. Round 3 taught the lexer `{v}<<`; nobody
+    # sweept the corner where the operator has NO delimiter. More input can
+    # never complete one of these (a newline ends the redirect), so bash
+    # reports a syntax error and runs the next line -- and so did BASE. The
+    # round-3 tip instead dropped to PS2 and swallowed the next physical line:
+    # the exact MEDIUM-3 shape this slot exists to close, reintroduced on the
+    # surface the slot itself created.
+    #
+    # These rows carry MARKER assertions because the prompt sequence alone
+    # cannot tell "complete with a syntax error, follow-up runs" from
+    # "complete, follow-up runs" -- and that blind spot is why it stayed
+    # invisible through three rounds.
+    ("degenerate_named_heredoc", ["cat {v}<<"], True, True),
+    ("degenerate_named_strip", ["cat {v}<<-"], True, True),
+    ("degenerate_named_herestring", ["cat {v}<<<"], True, True),
+
+    # --- R10-B: `<<` inside an assignment subscript ---
+    # Base's regex read `]=1` as a here-document delimiter and went to PS2
+    # forever; tip reports the error and carries on, like bash. In-charter
+    # (it is the second grammar misfiring) and declared as an improvement.
+    ("subscript_shift_operator", ["a[<<]=1"], True, True),
 
     # --- The two DECLARED interactive improvements (round-1 blocker R4-B) ---
     # Both were RED ON BASE and both now match bash; measured at base
@@ -133,14 +165,14 @@ _ROWS = [
     # base terminated on a line `$` and did NOT terminate on `$(x)` — both
     # backwards. The lexer's spec has always had it right; the one-grammar fix
     # simply inherits that.
-    ("subst_delim_dollar", ["cat <<$(x)", "hi", "$"], False),
-    ("subst_delim_full", ["cat <<$(x)", "hi", "$(x)"], True),
+    ("subst_delim_dollar", ["cat <<$(x)", "hi", "$"], False, None),
+    ("subst_delim_full", ["cat <<$(x)", "hi", "$(x)"], True, None),
     # (2) HEREDOC + UNCLOSED QUOTE ON ONE LINE. `cat <<EOF "abc` leaves a
     # quote open, and bash keeps reading for the QUOTE, not the body. Deriving
     # the heredoc answer from the lex — which fails on the unclosed quote —
     # makes the quote outcome win, as in bash; base answered HEREDOC and
     # executed the buffer at line 3.
-    ("heredoc_unclosed_dq", ['cat <<EOF "abc', "EOF", 'def"'], False),
+    ("heredoc_unclosed_dq", ['cat <<EOF "abc', "EOF", 'def"'], False, None),
 ]
 
 
@@ -216,11 +248,22 @@ def _drive(child, lines):
     return outcome, prompts, transcript
 
 
-@pytest.mark.parametrize("label,lines,complete", _ROWS,
+def _drive_marker(child):
+    """Send `echo MARK""ER` and report whether it EXECUTED.
+
+    Distinguishes "complete with a syntax error, follow-up runs" from
+    "incomplete, follow-up swallowed" -- which the prompt sequence alone
+    cannot, and which is why the degenerate regression stayed invisible.
+    """
+    child.send('echo MARK""ER\r')
+    return child.expect(["MARKER", pexpect.TIMEOUT], timeout=8) == 0
+
+
+@pytest.mark.parametrize("label,lines,complete,marker", _ROWS,
                          ids=[r[0] for r in _ROWS])
 @pytest.mark.parametrize("parser", ["rd", "combinator"])
 def test_interactive_heredoc_detection_matches_bash(label, lines, complete,
-                                                    parser, tmp_path):
+                                                    marker, parser, tmp_path):
     cwd = str(tmp_path)
     expected = "complete" if complete else "incomplete"
 
@@ -255,3 +298,61 @@ def test_interactive_heredoc_detection_matches_bash(label, lines, complete,
     # shells can reach the same end state by different routes, and for the
     # multi-line rows that route is the behaviour under test.
     assert b_prompts == p_prompts, (label, parser, b_prompts, p_prompts)
+
+    if marker is not None:
+        # Re-drive both shells: the marker leg needs a live child, and the
+        # comparison shells above were closed to keep the fixture hygienic.
+        b2 = _spawn_bash(cwd)
+        try:
+            _drive(b2, lines)
+            b_marker = _drive_marker(b2)
+        finally:
+            b2.close(force=True)
+        p2 = _spawn_psh(parser, cwd)
+        try:
+            _drive(p2, lines)
+            p_marker = _drive_marker(p2)
+        finally:
+            p2.close(force=True)
+        assert b_marker is marker, ("bash-side marker", label, b_marker)
+        assert p_marker is marker, ("psh-side marker", label, parser, p_marker)
+
+
+# --- The FENCED pre-existing divergence (ruling R10-A(4)) ---------------------
+
+_PREEXISTING_DEGENERATE = ["cat <<", "cat 0<<", "cat <<<", "cat 0<<<"]
+
+
+@pytest.mark.parametrize("line", _PREEXISTING_DEGENERATE)
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+def test_plain_and_digit_degenerate_forms_diverge_from_bash(line, parser,
+                                                            tmp_path):
+    """A DIVERGENCE row, pinned as a divergence rather than hidden.
+
+    For the PLAIN and DIGIT spellings with no operand, bash reports a syntax
+    error and returns to PS1 while psh waits at PS2. This is PRE-EXISTING and
+    base-identical -- it predates slot 2.5 and the round-4 controls measured it
+    at both SHAs -- so ruling R10-A(4) fences it: it is a SUCCESSOR row, not
+    something to fix under cover of a regression repair. The named-fd spellings
+    ARE fixed (see the degenerate_named_* rows above) because the slot itself
+    broke those.
+
+    Pinned in the divergent direction so that closing it later is a DELIBERATE,
+    visible flip rather than a silent one. It cannot live in the table above,
+    whose rows assert both shells against ONE expectation.
+    """
+    cwd = str(tmp_path)
+    bash_child = _spawn_bash(cwd)
+    try:
+        b_outcome, _, _ = _drive(bash_child, [line])
+    finally:
+        bash_child.close(force=True)
+    psh_child = _spawn_psh(parser, cwd)
+    try:
+        p_outcome, _, p_transcript = _drive(psh_child, [line])
+    finally:
+        psh_child.close(force=True)
+
+    assert b_outcome == "complete", (line, b_outcome)
+    assert p_outcome == "incomplete", (line, parser, p_outcome,
+                                       p_transcript[-200:])
