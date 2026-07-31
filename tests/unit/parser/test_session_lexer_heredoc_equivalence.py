@@ -21,22 +21,35 @@ GENERATED DOMAIN -- every axis this corpus varies, named (ruling R1-E):
 * QUOTING of the whole marker: unquoted, ``'...'``, ``"..."``;
 * QUOTING of the DELIMITER: bare ``EOF``, ``'EOF'``, ``"EOF"``, ``\\EOF``,
   ``E"O"F``;
+* SUBSTITUTION-BEARING delimiters: ``$(x)``, ``` `x` ```, ``$V``, ``${V}`` --
+  taken LITERALLY, so the whole word is the terminator. This axis exists
+  because round-1 verification caught its absence: the retired regex scanner
+  stopped at ``(`` and cooked ``<<$(x)`` down to ``$``, and a quoting-only
+  delimiter axis could never have surfaced that;
 * OPERATOR ADJACENCY: plain, tab-strip ``<<-``, here-string ``<<<``,
-  digit-prefixed fd ``0<<``, arithmetic ``$((1<<2))``;
+  digit-prefixed fd ``0<<``, fd-dup ``<&``/``0<&``, arithmetic ``$((1<<2))``;
 * COMMAND CONTEXT: bare command, after a pipe, inside ``$( )``, after ``&&``;
-* OPTION STATE: default and ``posix`` (the session lexes with the shell's live
-  option dict, so the option axis is a real input to the grammar).
+* OPTION STATE: default and ``posix``, threaded into BOTH sides -- the session
+  through the shell's live option dict and the lexer through ``LexerConfig``.
 
-NOT in the domain, deliberately: multi-line bodies (the queue's head-of-queue
-close policy is pinned by tests/unit/lexer/test_heredoc_transaction_s2.py) and
-interactive PS2 rendering (pinned at a real terminal by
-tests/system/interactive/test_heredoc_detection_interactive_pty.py).
+NOT in the domain, and each with the instrument that DOES cover it:
+
+* multi-line bodies -- the queue's head-of-queue close policy is pinned by
+  tests/unit/lexer/test_heredoc_transaction_s2.py;
+* interactive PS2 rendering -- pinned at a real terminal by
+  tests/system/interactive/test_heredoc_detection_interactive_pty.py;
+* HEREDOC + UNCLOSED QUOTE on one line (``cat <<EOF "abc``) -- this corpus
+  structurally cannot express it, because ``_lexer_says_pending`` would raise
+  on text that does not tokenize. The behavior IS pinned, at a real terminal,
+  by the ``heredoc_unclosed_dq`` row of the PTY module named above. Declared
+  here rather than left to be discovered (round-1 blocker R4-B).
 """
 import itertools
 
 import pytest
 
 from psh.lexer.heredoc_lexer import HeredocLexer
+from psh.lexer.position import LexerConfig
 from psh.scripting.command_accumulator import (
     CommandAccumulator,
     HintKind,
@@ -47,8 +60,15 @@ from psh.utils.heredoc_detection import HeredocTermination
 
 # --- the generated corpus -------------------------------------------------
 
-_OPERATORS = ["<<", r"\<<", r"<\<", "\\\\<<", "<<-", "<<<", "0<<"]
-_DELIMITERS = ["EOF", "'EOF'", '"EOF"', r"\EOF", 'E"O"F']
+_OPERATORS = ["<<", r"\<<", r"<\<", "\\\\<<", "<<-", "<<<", "0<<",
+              # `<&` adjacency (brief axis; round-1 blocker R4-E).
+              "<&", "0<&"]
+_DELIMITERS = ["EOF", "'EOF'", '"EOF"', r"\EOF", 'E"O"F',
+               # SUBSTITUTION-BEARING delimiters (round-1 blocker R4-B):
+               # taken literally, so the terminator is the whole word. The
+               # retired regex scanner stopped at `(` and cooked `<<$(x)`
+               # to `$`; this axis is where that would have been caught.
+               "$(x)", "`x`", "$V", "${V}"]
 _MARKER_QUOTING = ["{op}{delim}", "'{op}{delim}'", '"{op}{delim}"']
 _CONTEXTS = ["cat {marker}", "echo x | cat {marker}", "true && cat {marker}",
              "echo $(cat {marker})"]
@@ -71,8 +91,15 @@ CORPUS = sorted(_corpus())
 
 
 def _lexer_says_pending(line, posix):
-    """The LEXER's own answer: heredocs still awaiting a terminator line."""
-    unit = HeredocLexer(line, config=None,
+    """The LEXER's own answer: heredocs still awaiting a terminator line.
+
+    The option state is threaded into the lexer config, so the axis the
+    domain statement quantifies over is actually varied on BOTH sides of
+    the comparison (round-1 nit 4: it used to be accepted and ignored
+    here, which made the oracle side option-blind).
+    """
+    config = LexerConfig(posix_mode=posix)
+    unit = HeredocLexer(line, config=config,
                         warn_unterminated=False).tokenize_with_heredocs()
     heredocs = unit.heredocs or {}
     return tuple(

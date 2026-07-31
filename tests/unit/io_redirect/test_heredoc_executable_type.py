@@ -95,8 +95,11 @@ def test_the_typed_error_is_the_strict_errors_loud_class():
     """RuntimeError == INTERNAL DEFECT in the taxonomy, so strict-errors
     re-raises it instead of masking it as exit 1."""
     assert issubclass(NonExecutableRedirectError, RuntimeError)
-    for expected_class in (Exception,):
-        assert issubclass(NonExecutableRedirectError, expected_class)
+    # NOT a PshError: the taxonomy classifies PshError/OSError/SyntaxError/
+    # RecursionError as EXPECTED shell errors (reported, exit 1). This is an
+    # internal defect and must stay in the re-raised class.
+    from psh.core.exceptions import PshError
+    assert not issubclass(NonExecutableRedirectError, PshError)
 
 
 # === Here-strings are NOT part of the split (ruling R2-A/C2) ===
@@ -109,3 +112,46 @@ def test_here_string_content_does_not_live_in_a_heredoc_body():
     assert node.type == "<<<"
     assert node.target == "hello"
     assert not isinstance(node, HeredocRedirect)
+
+
+# === The --debug-ast LABEL delta, declared and pinned (round-1 nit 8) ===
+
+@pytest.mark.parametrize("fmt", ["tree", "compact", "pretty", "sexp", "dot"])
+def test_debug_ast_labels_the_executable_heredoc_by_its_type(fmt, tmp_path):
+    """All five --debug-ast formats now print `HeredocRedirect` where base
+    printed `Redirect`.
+
+    This is an inherent consequence of the MEDIUM-10a type split, not a defect
+    — but it is a user-visible change to a DOCUMENTED debug flag, and round-1
+    verification found nothing in the suite asserting it (the visualization
+    goldens contain no heredoc). Pinned here so a future regression of the
+    label is caught rather than discovered.
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    # PYTHONPATH pinned to THIS tree, with a DISCRIMINATOR: `python -m psh`
+    # from an arbitrary cwd otherwise imports the INSTALLED psh, and the test
+    # would silently assert against a different codebase than the one under
+    # test (it did exactly that on first writing).
+    tree_root = str(Path(__file__).resolve().parents[3])
+    env = dict(os.environ, PYTHONPATH=tree_root)
+
+    which = subprocess.run(
+        [sys.executable, "-c", "import psh; print(psh.__file__)"],
+        capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=30)
+    assert which.stdout.startswith(tree_root), \
+        f"imported the wrong psh: {which.stdout!r}"
+
+    script = tmp_path / "probe.sh"
+    script.write_bytes(b"cat <<EOF\nbody\nEOF\n")
+    result = subprocess.run(
+        [sys.executable, "-m", "psh", "--norc", f"--debug-ast={fmt}",
+         str(script)],
+        capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=30)
+    # The AST dump goes to STDERR (stdout carries the heredoc body the script
+    # actually printed), so both streams are searched.
+    dump = result.stdout + result.stderr
+    assert "HeredocRedirect" in dump, (fmt, dump[:400])

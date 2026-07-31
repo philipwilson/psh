@@ -85,6 +85,31 @@ _ROWS = [
     ("posix_escaped_lt", ["set -o posix", r"echo \<<EOF"], True),
     ("posix_true_heredoc", ["set -o posix", "cat <<EOF"], False),
     ("posix_true_heredoc_strip", ["set -o posix", "cat <<-EOF"], False),
+    # OPERATOR ADJACENCY, `<&` family (the brief enumerates it; round-1
+    # blocker R4-E caught its absence). `echo` rather than `cat` on purpose:
+    # a stdin-reading command swallows the marker line, and the row would then
+    # report "incomplete" for entirely the wrong reason.
+    ("fd_dup_in", ["echo x <&0"], True),
+    ("fd_dup_numbered", ["echo x 0<&0"], True),
+
+    # --- The two DECLARED interactive improvements (round-1 blocker R4-B) ---
+    # Both were RED ON BASE and both now match bash; measured at base
+    # e36116c3 in a discriminator-verified probe worktree (ledger B18).
+    #
+    # (1) SUBSTITUTION-BEARING DELIMITER. A heredoc delimiter is taken
+    # LITERALLY, so `cat <<$(x)` terminates on a line reading `$(x)`. The
+    # retired regex scanner stopped at `(` and cooked the delimiter to `$`, so
+    # base terminated on a line `$` and did NOT terminate on `$(x)` — both
+    # backwards. The lexer's spec has always had it right; the one-grammar fix
+    # simply inherits that.
+    ("subst_delim_dollar", ["cat <<$(x)", "hi", "$"], False),
+    ("subst_delim_full", ["cat <<$(x)", "hi", "$(x)"], True),
+    # (2) HEREDOC + UNCLOSED QUOTE ON ONE LINE. `cat <<EOF "abc` leaves a
+    # quote open, and bash keeps reading for the QUOTE, not the body. Deriving
+    # the heredoc answer from the lex — which fails on the unclosed quote —
+    # makes the quote outcome win, as in bash; base answered HEREDOC and
+    # executed the buffer at line 3.
+    ("heredoc_unclosed_dq", ['cat <<EOF "abc', "EOF", 'def"'], False),
 ]
 
 
@@ -97,45 +122,67 @@ def _env():
     }
 
 
+def _sync(child):
+    """Leave the stream at a KNOWN point: just after a completed command.
+
+    Prompt counting is only meaningful from a known baseline, and the shells
+    do not offer one at spawn — psh's line editor redraws its prompt, so a
+    plain `expect(PS1)` can consume a redraw and leave a real prompt queued,
+    which shifts every later read by one and made `cat <<EOF` report PS1.
+    Running a sentinel command and consuming ITS output plus the prompt that
+    follows removes the ambiguity for both shells.
+    """
+    child.send('echo REA""DY\r')
+    child.expect("READY")
+    child.expect(r"P1> ")
+    return child
+
+
 def _spawn_psh(parser, cwd):
     child = pexpect.spawn(
         sys.executable,
         ["-u", "-m", "psh", "--norc", "--force-interactive",
          "--parser", parser],
         timeout=20, encoding="utf-8", env=_env(), cwd=cwd)
-    child.send("\r")
-    child.expect("P1> ")
-    return child
+    child.expect(r"P1> ")
+    return _sync(child)
 
 
 def _spawn_bash(cwd):
     child = pexpect.spawn(_ORACLE.path, ["--norc", "-i"], timeout=20,
                           encoding="utf-8", env=_env(), cwd=cwd)
-    child.expect("P1> ")
-    return child
+    child.expect(r"P1> ")
+    return _sync(child)
 
 
 def _drive(child, lines):
-    """Send the shape line(s) then the marker; report (outcome, transcript).
+    """Send the shape line(s) one at a time, reading the PROMPT after each.
 
-    RACES the two mutually exclusive observables rather than waiting out a
-    timeout: a shell that considered the shape line COMPLETE runs the follow-up
-    and MARKER appears; one that wants a here-document body prints PS2 and
-    MARKER never comes. Whichever reaches the stream first decides, so an
-    incomplete row costs a prompt round-trip instead of a full timeout — which
-    is what keeps this module fast enough to run by default (a timeout-based
-    version cost ~16s per incomplete row).
+    The observable is the prompt the shell offers after the LAST shape line:
+    PS1 means it considered the input complete, PS2 means it wants more. Each
+    line's prompt is consumed as it arrives, which is what makes multi-line
+    rows readable — during a 3-line heredoc the shell legitimately shows PS2
+    for lines 1 and 2, so a detector that merely raced "MARKER vs any PS2"
+    would call every multi-line row incomplete regardless of its outcome.
+
+    Consuming prompts also keeps the module fast: no row waits out a timeout,
+    because every line produces a prompt promptly. A TIMEOUT is a third,
+    always-failing outcome, so a hung shell can never read as agreement.
     """
+    prompts, transcript = [], ""
     try:
         for line in lines:
             child.send(line + "\r")
-        child.send('echo MARK""ER\r')
-        index = child.expect(["MARKER", r"P2> ", pexpect.TIMEOUT], timeout=15)
-        transcript = (child.before or "") + (child.after or ""
-                                             if index < 2 else "")
+            index = child.expect([r"P1> ", r"P2> ", pexpect.TIMEOUT],
+                                 timeout=15)
+            transcript += (child.before or "") + (child.after or "")
+            if index == 2:                                   # pragma: no cover
+                return "timeout", prompts, transcript
+            prompts.append("PS1" if index == 0 else "PS2")
     except pexpect.TIMEOUT:                                  # pragma: no cover
-        return "timeout", "<TIMEOUT>" + (child.before or "")
-    return {0: "complete", 1: "incomplete", 2: "timeout"}[index], transcript
+        return "timeout", prompts, transcript + (child.before or "")
+    outcome = "complete" if prompts[-1] == "PS1" else "incomplete"
+    return outcome, prompts, transcript
 
 
 @pytest.mark.parametrize("label,lines,complete", _ROWS,
@@ -148,13 +195,13 @@ def test_interactive_heredoc_detection_matches_bash(label, lines, complete,
 
     bash_child = _spawn_bash(cwd)
     try:
-        b_outcome, b_transcript = _drive(bash_child, lines)
+        b_outcome, b_prompts, b_transcript = _drive(bash_child, lines)
     finally:
         bash_child.close(force=True)
 
     psh_child = _spawn_psh(parser, cwd)
     try:
-        p_outcome, p_transcript = _drive(psh_child, lines)
+        p_outcome, p_prompts, p_transcript = _drive(psh_child, lines)
     finally:
         psh_child.close(force=True)
 
@@ -168,6 +215,12 @@ def test_interactive_heredoc_detection_matches_bash(label, lines, complete,
     # element: the oracle-resolution ratchet reads `("bash", ...)` as an argv
     # head. Renaming the label is the honest fix; an allowlist entry for an
     # assertion message would have blunted a guard that is doing its job.)
-    assert b_outcome == expected, ("bash-side", label, b_transcript[-400:])
-    assert p_outcome == expected, ("psh-side", label, parser,
+    assert b_outcome == expected, ("bash-side", label, b_prompts,
+                                   b_transcript[-400:])
+    assert p_outcome == expected, ("psh-side", label, parser, p_prompts,
                                    p_transcript[-400:])
+
+    # The full prompt SEQUENCE must agree too, not just the final answer: two
+    # shells can reach the same end state by different routes, and for the
+    # multi-line rows that route is the behaviour under test.
+    assert b_prompts == p_prompts, (label, parser, b_prompts, p_prompts)

@@ -113,7 +113,9 @@ class Token:
 
     The freeze reaches the WHOLE value graph, not merely this class's own
     attributes: ``parts`` is a TUPLE of frozen
-    :class:`~psh.lexer.token_parts.TokenPart` values. Until reappraisal #22
+    :class:`~psh.lexer.token_parts.TokenPart` values, whose own
+    :class:`~psh.lexer.position.Position` fields are frozen too (freezing
+    only the outer classes left those writable). Until reappraisal #22
     MEDIUM-10, ``frozen`` guarded the attributes while ``parts`` stayed a
     mutable list of mutable parts, so a lexed value could still be rewritten
     after the lexer had returned it. Construction accepts any iterable of parts

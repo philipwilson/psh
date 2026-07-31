@@ -92,9 +92,13 @@ def test_heredoc_body_line_costs_no_lex(n):
     below — not a per-body-line cost. This test is what stops the constant from
     silently becoming O(k): whatever the body size, the lex count is the same.
     """
+    # Baseline is the EMPTY body (n=0), never one of the parametrized sizes:
+    # comparing n=50 against a fresh n=50 run made that row assert a value
+    # against itself (round-1 nit 3a).
+    baseline = _feed_heredoc_body(Shell(), 0)
     ops = _feed_heredoc_body(Shell(), n)
-    assert ops.lex_calls == _feed_heredoc_body(Shell(), 50).lex_calls
-    assert ops.tokens_lexed == _feed_heredoc_body(Shell(), 50).tokens_lexed
+    assert ops.lex_calls == baseline.lex_calls
+    assert ops.tokens_lexed == baseline.tokens_lexed
 
 
 def test_heredoc_opening_line_costs_exactly_one_extra_lex():

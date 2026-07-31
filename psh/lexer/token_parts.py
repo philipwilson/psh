@@ -22,9 +22,11 @@ class TokenPart:
     immutable in its own attributes while still handing out a mutable ``parts``
     list of mutable parts, so the lexical value graph could be rewritten after
     the lexer had returned it (reappraisal #22 MEDIUM-10). Every edge of that
-    graph is now immutable, enforced over the CLASS — every field, every
-    container edge, discovered at runtime rather than hand-listed — by
-    ``tests/unit/lexer/test_lexical_value_graph_frozen.py``.
+    graph is now immutable, INCLUDING the ``Position`` values in
+    ``start_pos``/``end_pos`` — freezing this class alone left those
+    writable, which reproduced the same defect one level down. Enforced by a
+    census that WALKS the live graph from a ``LexedUnit`` (not a hand-listed
+    field set) in ``tests/unit/lexer/test_lexical_value_graph_frozen.py``.
     """
     value: str
     quote_type: Optional[str] = None  # None, "'" or '"'

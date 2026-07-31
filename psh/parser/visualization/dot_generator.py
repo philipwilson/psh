@@ -45,6 +45,10 @@ class ASTDotGenerator(ASTVisitor[str]):
             'Program': '#F5F5F5',            # Light gray
             'AndOrList': '#E1F5FE',          # Light cyan
             'Redirect': '#FFF8E1',           # Light yellow
+            # Exact-class-name registry, like AstChildSchema and the
+            # visitors: the executable heredoc subclass needs its own row
+            # or it renders with the unknown-node fallback grey.
+            'HeredocRedirect': '#FFF8E1',    # Light yellow (as Redirect)
         }
 
     def _make_node_id(self) -> str:

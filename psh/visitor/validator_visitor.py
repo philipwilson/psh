@@ -452,17 +452,17 @@ class ValidatorVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
                 node
             )
 
+        # NOTE: a "consider '>|' or '>>'" advisory used to fire on EVERY `>`
+        # whose target was not /dev/null. Truncating with `>` is normal,
+        # expected shell behaviour; nagging on every redirect (and recommending
+        # `>|` as a default) was noise, so it was dropped in reappraisal #19 T10.
+
     # Executable heredocs are a SUBCLASS and visitor dispatch is
     # EXACT-CLASS (visitor/base.py#ASTVisitor.visit resolves
     # visit_{class name} with no MRO walk), so the subclass needs its
     # own entry. tests/unit/visitor/test_ast_coverage_matrix.py fails
     # if a visitor forgets it.
     visit_HeredocRedirect = visit_Redirect
-
-        # NOTE: a "consider '>|' or '>>'" advisory used to fire on EVERY `>`
-        # whose target was not /dev/null. Truncating with `>` is normal,
-        # expected shell behaviour; nagging on every redirect (and recommending
-        # `>|` as a default) was noise, so it was dropped in reappraisal #19 T10.
 
     def visit_EnhancedTestStatement(self, node: EnhancedTestStatement) -> None:
         """Validate enhanced test statement."""

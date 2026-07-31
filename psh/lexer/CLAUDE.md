@@ -237,16 +237,27 @@ theoretical (reappraisal #22 MEDIUM-10): a frozen `Token` still handed out a
 mutable `parts` LIST of mutable `TokenPart` objects, so a caller could rewrite
 a lexed value after the lexer had returned it. **Every edge of the graph
 reachable from a `LexedUnit` is now immutable** — `LexedUnit.tokens` (tuple),
-`LexedUnit.heredocs` (read-only mapping), `Token`, `Token.parts` (tuple) and
-`token_parts.py#TokenPart` (frozen). Construction-time list building stays
-legal: `token_types.py#Token.__post_init__` coerces `parts` to a tuple, so a
-scanner may accumulate a list and hand it over.
+`LexedUnit.heredocs` (read-only mapping), `Token`, `Token.parts` (tuple),
+`token_parts.py#TokenPart` (frozen) and the `position.py#Position` values it
+holds (frozen). Construction-time list building stays legal:
+`token_types.py#Token.__post_init__` coerces `parts` to a tuple, so a scanner
+may accumulate a list and hand it over.
+
+The freeze had to go one level DEEPER than the first attempt, and that is the
+invariant's real teaching: **freezing a container proves nothing about its
+contents.** `TokenPart` was frozen while `start_pos`/`end_pos` still held plain
+`Position` dataclasses, so `part.start_pos.offset = 999` still rewrote a lexed
+value — the shape MEDIUM-10 named, reproduced one level down. Freezing
+`Position` cost no redesign, because `PositionTracker` already keeps its own
+line/column counters and builds a fresh `Position` at emission.
 
 The guard is `tests/unit/lexer/test_lexical_value_graph_frozen.py`, and its
-universe is COMPUTED rather than listed: it enumerates
-`dataclasses.fields(TokenPart)` at runtime, so a newly added field is covered
-automatically and a mutable one fails without anybody remembering to update the
-test.
+universe is WALKED rather than listed: it traverses every object reachable from
+a real `LexedUnit` and flags any non-frozen dataclass and any mutable
+container. A field-NAME enumeration cannot see this class of defect, because
+the offending object is not a field but a field's VALUE — so the census walks
+the live graph, and a new field, node type or nesting level is covered without
+anybody remembering to update the test.
 
 ## Key Implementation Details
 

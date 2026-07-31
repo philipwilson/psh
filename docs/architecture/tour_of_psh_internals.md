@@ -125,9 +125,10 @@ quote-open / text / variable / quote-close as separate tokens. When
 `UnifiedQuoteParser` (`psh/lexer/quote_parser.py`), which consumes it
 in a single step — so no cross-token quote state exists anywhere in
 the lexer. The `$USER` inside is recognized by `ExpansionParser`
-(`psh/lexer/expansion_parser.py`). The result is a `RichToken`
-(`psh/lexer/token_parts.py`): a token whose `parts` list records each
-literal/expansion segment with its own quote context. `--debug-tokens`
+(`psh/lexer/expansion_parser.py`). The result is a `Token` carrying
+`parts` (`psh/lexer/token_parts.py`): a tuple recording each
+literal/expansion segment with its own quote context. (The old
+`RichToken` subclass was retired — the base `Token` has the field.) `--debug-tokens`
 shows only type and value; to see the parts, ask the token directly:
 
 ```bash
@@ -237,21 +238,44 @@ cases, and the executor short-circuits single-command pipelines anyway
 (§7).
 
 Two details deserve a closer look, and for them
-`--debug-ast=pretty` prints every field. Its output is one long
-line per statement; trimmed to the two interesting fragments
+`--debug-ast=pretty` prints every field as an indented tree
 (`...` marks trims):
 
 ```bash
 $ python -m psh --debug-ast=pretty -c 'echo "Hello, $USER" | wc -c > out.txt'
-SimpleCommand(args=['echo', 'Hello, $USER'], ...,
-  words=[Word(parts=[LiteralPart(text='echo', quoted=False, quote_char=None)], quote_type=None),
-         Word(parts=[LiteralPart(text='Hello, ', quoted=True, quote_char='"'),
-                     ExpansionPart(expansion=VariableExpansion(name='USER'), quoted=True, quote_char='"')],
-              quote_type='"')])
+=== AST Debug Output (recursive_descent) ===
+Program:
+  statements: [
+    AndOrList @line1:
+      pipelines: [
+        Pipeline @line1:
+          commands: [
+            SimpleCommand:
+              words: [
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'echo'
+                  ]
+                Word:
+                  parts: [
+                    LiteralPart:
+                      text: 'Hello, '
+                      quoted: True
+                      quote_char: '"'
+                    ExpansionPart:
+                      expansion:
+                        VariableExpansion:
+                          name: 'USER'
+                      quoted: True
+                      quote_char: '"'
+                  ]
+              ]
+            SimpleCommand:
+              redirects: [
+                Redirect:
+                  type: '>'
 ...
-SimpleCommand(args=['wc', '-c'],
-  redirects=[Redirect(type='>', target='out.txt', fd=None, dup_fd=None, heredoc_content=None,
-                      quote_type=None, heredoc_quoted=False, combined=False)], ...)
 ```
 
 **The Word AST.** Each argument is a `Word` (`psh/ast_nodes/words.py`)
@@ -260,7 +284,7 @@ lexer's `TokenPart` list from §3. `WordBuilder`
 (`psh/parser/recursive_descent/support/word_builder.py`) does that
 translation: `CommandParser.parse_argument_as_word` hands it each
 argument token, and `WordBuilder.build_word_from_token` decomposes the
-RichToken's parts into `LiteralPart` / `ExpansionPart` nodes —
+token's parts into `LiteralPart` / `ExpansionPart` nodes —
 including parsing `$USER` into a structured
 `VariableExpansion(name='USER')` rather than leaving a `$USER` string
 for later re-scanning. Note `quoted=True, quote_char='"'` on the
@@ -516,7 +540,7 @@ why.
 | You want | Read |
 |---|---|
 | the full component map | ARCHITECTURE.md (Quick Map) |
-| lexer internals (recognizers, quotes, RichToken) | `psh/lexer/CLAUDE.md` |
+| lexer internals (recognizers, quotes, token parts) | `psh/lexer/CLAUDE.md` |
 | parser internals (sub-parsers, WordBuilder) | `psh/parser/CLAUDE.md` |
 | every expansion context and its policy | `docs/architecture/ast_data_flow.md`, `psh/expansion/CLAUDE.md` |
 | execution, processes, signals, job control | `psh/executor/CLAUDE.md`, `psh/executor/child_policy.py` |
