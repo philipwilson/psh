@@ -437,6 +437,7 @@ def run_child_shell(parent_shell: 'Shell',
                     io_setup: Optional[Callable[[], None]] = None,
                     inherit_traps: bool = True,
                     reset_errexit: bool = False,
+                    errexit_suppress_override: Optional[int] = None,
                     error_label: str = 'forked child') -> NoReturn:
     """Run the body of a forked substitution child; never returns.
 
@@ -491,8 +492,18 @@ def run_child_shell(parent_shell: 'Shell',
         parent_executor = parent_shell._current_executor
         loop_seed = (parent_executor.context.loop_depth
                      if parent_executor is not None else None)
+        # ``errexit_suppress_override`` is how an EXPANSION-TIME substitution
+        # child of a SEVERED pipeline member gets the depth its frame had
+        # BEFORE severing. bash keeps such a child suppressed (`set -e;
+        # { true | cat <(false; echo A); } || …` prints A), while the member's
+        # own execution runs with errexit effective — so the member's context
+        # is the wrong thing for this child to inherit. The REDIRECTION
+        # spelling is deliberately NOT overridden: bash does not carry the
+        # suppression there, and psh matches by taking the member's context.
         errexit_suppress = (parent_executor.context.errexit_suppress
                             if parent_executor is not None else 0)
+        if errexit_suppress_override is not None:
+            errexit_suppress = errexit_suppress_override
 
         exit_code = run_child_body(
             child_shell, body,

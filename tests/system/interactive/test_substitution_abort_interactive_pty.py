@@ -16,6 +16,17 @@ THE INVARIANT THAT MATTERS MOST is the guard rail: whatever the status, the
 REPL SURVIVES every row and never shows a traceback. A REPL that dies on
 `echo $(if)` is the failure this whole area is fenced against.
 
+SCOPE OF THAT INVARIANT — it is asserted over THIS module's corpus, which
+holds the ERROR-KIND axis constant on the direct row: the direct shape here is
+the COMPLETE-BUT-INVALID spelling (`echo $(fi)`), where both shells report and
+return to the prompt. The UNTERMINATED spelling (`echo $(if)`) at a real
+terminal diverges BASE-IDENTICALLY: bash reports a syntax error and returns to
+PS1 with the follow-up runnable, while psh swallows the line into
+continuation and the follow-up never runs. No crash, no traceback, session
+alive — so the guard rail itself holds — but "every row" means every row
+BELOW, not every spelling. That divergence is a successor row (it belongs to
+the multi-line continuation family, neighbouring S2/r18), not a 2.4 defect.
+
 THE DECLARED DIVERGENCE, and why it is not a bug in the gate: the gate is
 PER-SHELL, and a forked child of an interactive shell inherits
 `is_script_mode` False (`psh/shell.py#Shell.for_subshell`), so the consumer
@@ -27,6 +38,15 @@ semantics change — out of HIGH-9's charter (successor row).
 Measured identically at base 1b271d77 and at the slot tip, both parsers
 (`tmp/r24-probes/r6c_pty.py` -> `r6c-pty-*.txt`): the slot moved NOTHING here,
 which is exactly what the charter required.
+
+FOR A NIGHTLY READER (Linux): the BASH-side values below ('1', '2') were
+measured against bash 5.2.26 on macOS, and the nightly runner's bash build
+differs. A failure there that shows a different bash value is a bash-VERSION
+difference, not a psh regression — check the oracle's version before treating
+it as one. The module also resolves its oracle AT IMPORT and raises if bash is
+absent; that loudness is deliberate (ruling R6-C) and must not be converted
+into a skip to make a nightly green — bash is always present on that runner,
+so an import failure there means the oracle RESOLVER broke.
 """
 
 import os

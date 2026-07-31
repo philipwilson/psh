@@ -1194,9 +1194,12 @@ def test_ordinary_errexit_co_movements_are_declared():
     THE EXHAUSTIVE RECORD IS NOT THIS SAMPLE. ``tmp/r24-probes/r8b_hunt.py``
     enumerates the space — {4 failing-command bodies} x {8 routes} x {6
     suppression sources} = 186 rows, each classified against bash AND against
-    the wave base — and its committed output ``r8b-hunt-TIP.txt`` is the
-    record: **60 MOVED-TO-BASH, 126 UNMOVED-MATCH, 0 MOVED-AWAY, 0
-    pre-existing divergences**. The rows below SAMPLE that, chosen to cover
+    the wave base — and its output ``r8b-hunt-TIP.txt`` is the record:
+    **60 MOVED-TO-BASH, 126 UNMOVED-MATCH, 0 MOVED-AWAY, 0 pre-existing
+    divergences**. (RECORDED, not committed: ``tmp/`` is gitignored, so that
+    file lives in the slot worktree and is rescued into
+    ``docs/reviews/evidence/2.4-rescue/`` at ceremony. A clean checkout finds
+    it there, not under ``tmp/``.) The rows below SAMPLE that, chosen to cover
     each family plus the shapes a reviewer would ask about (a `command`
     prefix, an assignment prefix, a while-condition source) and one that does
     NOT move, kept beside them on purpose.
@@ -1279,6 +1282,12 @@ def test_redirect_procsub_suppression_is_a_declared_divergence():
 
     * ``cat <(false; echo A)`` — the ARGUMENT spelling — bash carries the
       suppression in, the child runs on, and psh matches. (Rows below.)
+      MEASURED AT THE SEVERED-MEMBER ROUTE TOO, this time: round 8 stated
+      this as a spelling universal from a corpus with no member rows, and a
+      verifier found it false exactly there (the member's severing leaked into
+      its expansion-time procsub child). The member route is now part of the
+      claim and is pinned in
+      ``test_member_substitution_children_keep_the_pre_sever_context``.
     * ``read -r line < <(false; echo A)`` and ``: > >(false; echo A > f)`` —
       the REDIRECTION spellings, read and write side — bash runs the child
       with errexit EFFECTIVE, so it dies at the ``false``; psh's child runs
@@ -1400,6 +1409,89 @@ def test_new_families_agree_across_parsers():
             assert rd.returncode == cb.returncode, (label, channel,
                                                     rd.returncode, cb.returncode)
             assert rd.stdout == cb.stdout, (label, channel, rd.stdout, cb.stdout)
+
+
+def test_member_substitution_children_keep_the_pre_sever_context():
+    """A severed pipeline member's EXPANSION-TIME substitution child keeps the
+    suppression the frame had BEFORE severing; its REDIRECTION-spelled sibling
+    does not. Both measured against bash at the member route.
+
+    THE INTERSECTION THIS PINS. A simple-command member severs the enclosing
+    list's errexit suppression for its OWN execution (round 7). bash does not
+    extend that severing to a substitution the member EXPANDS:
+
+    * ``set -e; { true | cat <(false; echo A); } || …`` → bash prints A. The
+      ``<(…)`` child keeps the suppressed context even though the member runs
+      with errexit effective. RED at 55edb24f, where the severed context
+      leaked into the child and killed it at the ``false``.
+    * ``set -e; { true | head -1 < <(false; echo A); } || …`` → bash prints
+      nothing. The REDIRECTION spelling does not carry — consistent with
+      ``test_redirect_procsub_suppression_is_a_declared_divergence`` — and psh
+      now agrees, a movement TOWARD bash from the wave base (which printed A).
+
+    WHY THE CMDSUB TWIN NEVER MOVED, answered by observation rather than by
+    reading the code (rows below): a command-substitution child runs with the
+    errexit OPTION CLEARED — ``$-`` contains no ``e`` inside it, in bash and in
+    psh, at top level and inside a member — so the suppression DEPTH is not
+    observable there at all and severing it cannot change anything. A
+    process-substitution child INHERITS errexit (``$-`` contains ``e``), which
+    is precisely why the depth it inherits decides whether it survives.
+
+    Evidence ``tmp/r24-probes/r9a.py`` → ``r9a-*.txt`` (32 rows, both channels,
+    both parsers, at base 1b271d77 and at the tip)."""
+    # The fixed row and its redirect-spelled sibling.
+    for script, bash_out in [
+        ("set -e\n{ true | cat <(false; echo A); } || echo GOT rc=$?\necho END",
+         "A\nEND\n"),
+        ("set -e\n{ true | head -1 < <(false; echo A); } || echo GOT rc=$?\necho END",
+         "END\n"),
+    ]:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == bash_out, (script, channel, b.stdout)
+            assert p.stdout == bash_out, (script, channel, p.stdout)
+    # The cmdsub and backtick twins of the SAME intersection: unmoved, because
+    # a substitution child that has no errexit cannot observe its depth.
+    for script in ['set -e\n{ true | echo "x=$(false; echo A)"; } || echo GOT rc=$?\necho END',
+                   'set -e\n{ true | echo "x=`false; echo A`"; } || echo GOT rc=$?\necho END']:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == "x=A\nEND\n", (script, channel,
+                                                           b.stdout, p.stdout)
+    # THE MECHANISM, pinned as an observation: what each child sees in `$-`.
+    for script, expected in [
+        ('set -e\necho "dash=$(case $- in *e*) echo ON;; *) echo OFF;; esac)"\necho END',
+         "dash=OFF\nEND\n"),
+        ("set -e\ncat <(case $- in *e*) echo ON;; *) echo OFF;; esac)\necho END",
+         "ON\nEND\n"),
+    ]:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == expected, (script, channel,
+                                                      b.stdout, p.stdout)
+    # CONTROLS. A COMPOUND member carries the suppression, so its procsub child
+    # survives; an UNSUPPRESSED member and a top-level active errexit both kill
+    # the child in BOTH shells — which is what proves the rows above are about
+    # WHICH context the child inherits, not about procsub plumbing.
+    for script, expected in [
+        ("set -e\n{ true | { cat <(false; echo A); }; } || echo GOT rc=$?\necho END",
+         "A\nEND\n"),
+        ("set -e\n{ true | cat <(false; echo A); }\necho AFTER rc=$?\necho END",
+         "AFTER rc=0\nEND\n"),
+        ("set -e\ncat <(false; echo A)\necho END", "END\n"),
+    ]:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == expected, (script, channel,
+                                                      b.stdout, p.stdout)
+    # CONTROL: this slot's own ABORT family at the same intersection, which
+    # never moved and must not.
+    for script in ["set -e\n{ true | eval 'cat <(if)'; } || echo GOT rc=$?\necho END",
+                   "set -e\n{ true | eval 'echo $(if)'; } || echo GOT rc=$?\necho END"]:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == "GOT rc=2\nEND\n", (script, channel,
+                                                                b.stdout, p.stdout)
 
 
 def test_static_check_spellings_dash_n_and_validate():
