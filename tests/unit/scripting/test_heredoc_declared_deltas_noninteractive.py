@@ -45,6 +45,24 @@ _SHAPES = [
     ("heredoc_unclosed_dq", 'cat <<EOF "abc\nEOF\ndef"\necho MARK""ER\n'),
     ("subst_delim_dollar", 'cat <<$(x)\nhi\n$\necho MARK""ER\n'),
 ]
+
+# CLASS-match shapes: psh and bash both report a syntax error and carry on, but
+# WORD it differently (they always have -- psh names the construct, bash quotes
+# the line). Comparing stderr byte-for-byte here would assert a wording parity
+# psh has never had and this slot never claimed, so these rows assert the
+# OUTCOME CLASS: an error is reported, and the follow-up command still runs.
+#
+# Ruling R10-A(6) asked for the degenerate diagnostics to be pinned per
+# channel/parser and round 4 dropped that half; R10-B/R11-B is `a[<<]=1`, which
+# round 4 framed as INTERACTIVE-ONLY -- the same mis-framing round 2 bounced me
+# for. The default assumption is now INVERTED: a delta is ALL-CHANNEL until the
+# identity instrument proves otherwise.
+_CLASS_SHAPES = [
+    ("degenerate_named_heredoc", 'cat {v}<<\necho AFT""ER\n'),
+    ("degenerate_named_strip", 'cat {v}<<-\necho AFT""ER\n'),
+    ("degenerate_named_herestring", 'cat {v}<<<\necho AFT""ER\n'),
+    ("subscript_shift_operator", 'a[<<]=1\necho AFT""ER\n'),
+]
 _PARSERS = ("rd", "combinator")
 
 
@@ -60,8 +78,21 @@ def _normalise(text):
 @pytest.mark.parametrize("channel", ["dash_c", "stdin", "script"])
 @pytest.mark.parametrize("parser", _PARSERS)
 def test_declared_delta_matches_bash_non_interactively(label, script, channel,
-                                                       parser):
+                                                       parser, tmp_path):
     """DIFFERENTIAL against the oracle, per channel AND per parser."""
+    psh, bash = _run_pair(script, channel, parser, tmp_path)
+    assert is_comparable(psh) and is_comparable(bash), (psh, bash)
+    assert isinstance(psh, Completed) and isinstance(bash, Completed)
+    assert psh.returncode == bash.returncode, (label, channel, parser,
+                                               psh.returncode, bash.returncode)
+    assert psh.stdout == bash.stdout, (label, channel, parser, psh.stdout,
+                                       bash.stdout)
+    assert _normalise(psh.stderr) == _normalise(bash.stderr), (
+        label, channel, parser, psh.stderr, bash.stderr)
+
+
+def _run_pair(script, channel, parser, tmp_path):
+    """Run the same bytes through psh and bash on one channel."""
     if channel == "dash_c":
         psh = run_psh(["--norc", "--parser", parser, "-c", script])
         bash = run_bash(["--norc", "-c", script])
@@ -80,14 +111,7 @@ def test_declared_delta_matches_bash_non_interactively(label, script, channel,
             bp.write_text(script)
             psh = run_psh(["--norc", "--parser", parser, str(pp)])
             bash = run_bash(["--norc", str(bp)])
-    assert is_comparable(psh) and is_comparable(bash), (psh, bash)
-    assert isinstance(psh, Completed) and isinstance(bash, Completed)
-    assert psh.returncode == bash.returncode, (label, channel, parser,
-                                               psh.returncode, bash.returncode)
-    assert psh.stdout == bash.stdout, (label, channel, parser, psh.stdout,
-                                       bash.stdout)
-    assert _normalise(psh.stderr) == _normalise(bash.stderr), (
-        label, channel, parser, psh.stderr, bash.stderr)
+    return psh, bash
 
 
 @pytest.mark.parametrize("label,script", _SHAPES, ids=[s[0] for s in _SHAPES])
@@ -98,7 +122,32 @@ def test_the_eof_warning_is_emitted_by_both_parsers(label, script, parser):
     At base, `rd` stayed silent on these shapes while `combinator` warned. A
     single-parser test cannot see that, which is why the parser axis is
     explicit here rather than folded into the row above.
+
+    Scoped to _SHAPES: the _CLASS_SHAPES are SYNTAX errors, not unterminated
+    here-documents, so no EOF warning is expected or asserted for them.
     """
     psh = run_psh(["--norc", "--parser", parser, "-c", script])
     assert isinstance(psh, Completed), psh
     assert "delimited by end-of-file" in psh.stderr, (label, parser, psh.stderr)
+
+
+@pytest.mark.parametrize("label,script", _CLASS_SHAPES,
+                         ids=[s[0] for s in _CLASS_SHAPES])
+@pytest.mark.parametrize("channel", ["dash_c", "stdin", "script"])
+@pytest.mark.parametrize("parser", _PARSERS)
+def test_class_shapes_report_an_error_and_carry_on_like_bash(label, script,
+                                                             channel, parser,
+                                                             tmp_path):
+    """OUTCOME-CLASS differential, per channel AND per parser.
+
+    What is asserted: both shells report a diagnostic, and both still run the
+    follow-up command. What is NOT asserted: identical wording -- psh names the
+    construct where bash quotes the line, at both SHAs, and pretending
+    otherwise would manufacture a failure that is not a defect.
+    """
+    psh, bash = _run_pair(script, channel, parser, tmp_path)
+    assert psh.stderr.strip(), (label, channel, parser, "psh reported nothing")
+    assert bash.stderr.strip(), (label, channel, parser, "bash reported nothing")
+    assert ("AFTER" in psh.stdout) == ("AFTER" in bash.stdout), (
+        label, channel, parser, psh.stdout, bash.stdout)
+

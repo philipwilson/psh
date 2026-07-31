@@ -211,3 +211,47 @@ def test_synthetic_offender_raises_at_the_BUILTIN_STREAM_backend(shell,
     command = SimpleCommand(words=[Word(parts=[])], redirects=[offender])
     with pytest.raises(NonExecutableRedirectError, match="no collected body"):
         shell.io_manager.setup_builtin_redirections(command)
+
+
+# === DIRECT coverage of redirect_heredoc (round-5 blocker R11-A) ============
+#
+# This primitive IS the MEDIUM-10 late-discovery site. After the type split it
+# ended up with no test touching it at all -- a coverage REGRESSION hidden by
+# the fact that everything around it got new tests. The dispatchers are pinned
+# elsewhere; these rows pin the primitive itself.
+
+def test_redirect_heredoc_materializes_the_body_on_the_default_fd(shell,
+                                                                  capfd):
+    """The happy path, called DIRECTLY rather than through a dispatcher."""
+    import os
+    node = HeredocRedirect(type="<<", target="EOF", heredoc_content="hello\n")
+    saved = os.dup(0)
+    try:
+        content = shell.io_manager.file_redirector.redirect_heredoc(node)
+        assert content == "hello\n"
+        assert os.read(0, 32) == b"hello\n"
+    finally:
+        os.dup2(saved, 0)
+        os.close(saved)
+
+
+def test_redirect_heredoc_expands_an_unquoted_body(shell):
+    """Expansion is the primitive's other job, and it keys on heredoc_quoted."""
+    shell.state.set_variable("WHO", "world")
+    node = HeredocRedirect(type="<<", target="EOF",
+                           heredoc_content="hi $WHO\n", heredoc_quoted=False)
+    assert shell.io_manager.file_redirector.redirect_heredoc(node) == "hi world\n"
+
+
+def test_redirect_heredoc_leaves_a_quoted_body_literal(shell):
+    shell.state.set_variable("WHO", "world")
+    node = HeredocRedirect(type="<<", target="'EOF'",
+                           heredoc_content="hi $WHO\n", heredoc_quoted=True)
+    assert shell.io_manager.file_redirector.redirect_heredoc(node) == "hi $WHO\n"
+
+
+def test_redirect_heredoc_rejects_the_non_executable_state(shell):
+    """The direct-call boundary typed in round 4 (nit 11)."""
+    with pytest.raises(NonExecutableRedirectError, match="redirect_heredoc"):
+        shell.io_manager.file_redirector.redirect_heredoc(
+            Redirect(type="<<", target="EOF"))

@@ -236,8 +236,16 @@ class OperatorRecognizer(ContextualRecognizer):
         pos: int,
         context: LexerContext
     ) -> Optional[Tuple[Token, int]]:
-        """Try to parse a named-fd redirect prefix: ``{NAME}>``, ``{NAME}<``,
-        ``{NAME}>>``, ``{NAME}<>``, ``{NAME}>|``, ``{NAME}>&...``, ``{NAME}<&...``.
+        """Try to parse a named-fd redirect prefix.
+
+        Recognized forms: ``{NAME}>``, ``{NAME}<``, ``{NAME}>>``, ``{NAME}<>``,
+        ``{NAME}>|``, ``{NAME}>&...``, ``{NAME}<&...`` and — since remediation
+        2.5 — the here-document/here-string family ``{NAME}<<``, ``{NAME}<<-``
+        and ``{NAME}<<<``. That family's absence was the slot's own regression:
+        with no ``<<`` entry, ``{v}<<EOF`` lexed as ``{v}<`` plus a second
+        ``<``, no here-document was registered, and the body ran as commands.
+        The operator set here is kept in step with the digit-fd table by
+        ``tests/unit/lexer/test_fd_prefix_table_parity.py``.
 
         Called when ``pos`` is at ``{``. Recognized ONLY when ``{`` is
         immediately followed by a valid identifier, a ``}``, and a redirect

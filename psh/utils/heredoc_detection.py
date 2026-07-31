@@ -26,12 +26,22 @@ This module also owns the campaign-S2 heredoc transaction contracts:
   heredoc bodies strictly in source order, so an input line is only ever
   compared with the FIRST open heredoc (a line equal to a LATER pending
   delimiter is plain body text — reappraisal #20 H1 / #21 G1). Every layer
-  that tracks open bodies (the lexer's HeredocCollector, the completeness
-  oracle here (:func:`open_heredoc_specs`) and in the CommandAccumulator,
-  and the line-continuation preprocessor) delegates its close decision to
+  that tracks open bodies delegates its close decision to
   :meth:`PendingHeredocQueue.feed_line` — the ONE production caller of
   :func:`heredoc_terminator_matches` (guarded by
   ``tests/unit/tooling/test_heredoc_transaction_guards.py``).
+
+SURVIVING CONSUMERS of the text-level scanner, enumerated so this docstring
+matches the census (`tmp/r2-5-probes/second_grammar_census.py`) rather than
+gesturing at it: the lexer's ``HeredocCollector``; the ``$(...)`` extent
+scanner (``lexer/cmdsub_scanner.py``); the interactive line editor
+(``interactive/line_editor_helpers.py``); the continuation-join preprocessor
+(``scripting/input_preprocessing.py``); the script-entry boundary's
+``contains_heredoc`` gate (``scripting/lex_parse.py``); the history-expansion
+MIRROR (``interactive/history_expansion.py`` — a hand-written copy, recorded
+as a successor row); and the formatter. The COMPLETENESS ORACLE is no longer
+among them: since remediation 2.5 it asks the lexer
+(``parser/session.py#_lexer_pending_heredocs``).
 """
 
 import enum

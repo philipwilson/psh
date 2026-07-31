@@ -51,6 +51,12 @@ _ROWS = [
     ("herestring", "true {v}<<<hello\necho RC=$?\n"),
     ("herestring_exec", "exec {v}<<<hello\ncat <&$v\necho RC=$?\n"),
     ("herestring_fd", "true {v}<<<hello\necho FD=$v\n"),
+    # DEGENERATE rows -- operator present, OPERAND ABSENT (ruling R10-A(3)
+    # asked for these in the BATTERY as well as the PTY module; round 5 caught
+    # that I had landed only the PTY half).
+    ("degenerate_heredoc", "cat {v}<<\necho AFTER\n"),
+    ("degenerate_strip", "cat {v}<<-\necho AFTER\n"),
+    ("degenerate_herestring", "cat {v}<<<\necho AFTER\n"),
     # The fd NUMBER is compared against bash's own rather than pinned to a
     # literal: bash allocates the LOWEST FREE fd >= 10, which depends on what
     # descriptors the shell holds, so a hard-coded 10 could red on the Linux
