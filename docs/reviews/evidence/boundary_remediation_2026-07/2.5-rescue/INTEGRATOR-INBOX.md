@@ -1133,3 +1133,35 @@ one stability row, record spot-check. The axis catalogue this slot
 left the campaign — spelling, channel, parser, option, fd-kind,
 operand-presence, observability, oracle, and now ALIAS — goes into
 the ceremony lessons as the durable inheritance.
+
+---
+
+## R16 (2026-08-01) — **TERMINAL VERDICT: ROUND 9 PASS — SLOT 2.5 CLOSED**
+
+Round 9 (wf_e1d20140-232) returned **PASS: 0 blockers, 11 nits**, all
+ceremony-record class — full report VERIFY-ROUND9-issues.md/.json in
+this directory and in the committed 2.5-rescue/. Slot totals: NINE
+verification rounds, TWO developers (handover after round 6), 29/29
+blockers real, 0 false; final tip 6965a079; gate 22,411/1,590/10;
+compare-bash 2,986/26 EXACT; certification 83/83. MEDIUM-3 and
+MEDIUM-10 are CLOSED v0.761.0 in the campaign LEDGER with the
+rd-scoping correction; three divergence pins registered
+successor-owned in FLIP-PINS. This entry exists because dev-2-5b
+correctly objected that a terminal verdict must not live only in a
+message channel — the objection was RIGHT, the ceremony gate was
+killed and re-run to carry this entry in the rescued snapshot.
+
+Post-PASS acknowledgments (from dev-2-5b's stand-by report, all
+ACCEPTED): (1) NIT-11 instrument fix — B92's sentence described the
+wrong probe; struck in place, instrument now asserts, and the FIRST
+fix failed its own mutation test (PATH-keyed expectation collapsed
+when both roles pointed at one tree — re-keyed by ROLE with a
+same-tree guard; MUT-A/MUT-B FATAL). Recorded as one more
+instance of mutation-testing-the-instrument earning its keep.
+(2) NITs 4 and 7 stay OPEN as successor tidy-ups (module-private
+import rename; redundant double-freeze with the census as sole
+authority) — the dev's refusal to slip post-freeze commits is the
+correct discipline and is on the record. (3) The line-wrapped
+rescued-path citation is noted for any future evidence-path guard
+(match across the wrap). (4) The duplicate census copy in the
+rescue is deliberate surplus, not an error.

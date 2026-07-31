@@ -108,10 +108,39 @@ def main():
     L.append("# THE ALIAS AXIS -- base vs tip vs bash (R15-A)")
     L.append(f"# base: {base_tree}  SHA: {sha(base_tree)}")
     L.append(f"# tip : {tip_tree}  SHA: {sha(tip_tree)}")
-    for tree in (base_tree, tip_tree):
+    # DISCRIMINATOR, now ASSERTED rather than merely recorded (round-9 nit 11).
+    # The first version printed these lines into the transcript and carried on,
+    # while the ledger described it as an instrument a mis-pointed PYTHONPATH
+    # "cannot pass silently". The recorded values were right and a mis-point
+    # would have collapsed the totals -- but the sentence described a guard the
+    # script did not have, which is the instrument-words-vs-instrument-behaviour
+    # class this slot spent nine rounds policing. So it asserts: the base tree
+    # must NOT have NonExecutableRedirectError and the tip tree must, and each
+    # must import its OWN psh.
+    # NB: keyed by ROLE, not by path. Keying by path meant that pointing both
+    # roles at the same tree collapsed the dict to one entry and sailed through
+    # -- my own mutation run reported a tidy "42 identical" instead of aborting,
+    # which is precisely the mis-point this guard exists to catch.
+    if pathlib.Path(base_tree).resolve() == pathlib.Path(tip_tree).resolve():
+        L.append("# FATAL: base and tip are the SAME TREE -- every row would "
+                 "read IDENTICAL and prove nothing. VOID.")
+        pathlib.Path(outfile).write_text("\n".join(L) + "\n")
+        print("\n".join(L))
+        return 2
+    expect = {"base": "False", "tip": "True"}
+    for role, tree in (("base", base_tree), ("tip", tip_tree)):
         d = subprocess.run([sys.executable, "-c", DISCRIM], cwd=sandbox,
                            env=env_for(tree), capture_output=True, text=True)
-        L.append(f"# discriminator: {d.stderr.strip()}")
+        line = d.stderr.strip()
+        L.append(f"# discriminator: {line}")
+        if not line.startswith(f"I {tree}/psh/") \
+                or not line.endswith(expect[role]):
+            L.append(f"# FATAL: {role} tree {tree} resolved wrong (wanted its "
+                     f"own psh with "
+                     f"NonExecutableRedirectError={expect[role]}) -- VOID.")
+            pathlib.Path(outfile).write_text("\n".join(L) + "\n")
+            print("\n".join(L))
+            return 2
 
     counts = {"delta": 0, "msg_only": 0, "identical": 0}
     for family, label, script in CASES:
