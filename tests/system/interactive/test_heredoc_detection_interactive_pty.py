@@ -86,9 +86,13 @@ _ROWS = [
     ("posix_true_heredoc", ["set -o posix", "cat <<EOF"], False),
     ("posix_true_heredoc_strip", ["set -o posix", "cat <<-EOF"], False),
     # OPERATOR ADJACENCY, `<&` family (the brief enumerates it; round-1
-    # blocker R4-E caught its absence). `echo` rather than `cat` on purpose:
-    # a stdin-reading command swallows the marker line, and the row would then
-    # report "incomplete" for entirely the wrong reason.
+    # blocker R4-E caught its absence).
+    # `echo` rather than `cat` IS DELIBERATE -- please do not "fix" it back.
+    # `cat` with stdin dup'd from the terminal blocks reading the terminal, so
+    # no prompt ever returns and the row TIMES OUT; that timeout would look
+    # like a completeness answer while actually measuring nothing. `echo`
+    # ignores its stdin, so the redirect is still exercised and the prompt
+    # still arrives.
     ("fd_dup_in", ["echo x <&0"], True),
     ("fd_dup_numbered", ["echo x 0<&0"], True),
 
