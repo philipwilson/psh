@@ -6,7 +6,12 @@ import stat
 import sys
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO, Tuple, cast
 
-from ..ast_nodes import ExpansionPart, ProcessSubstitution, Redirect
+from ..ast_nodes import (
+    ExpansionPart,
+    HeredocRedirect,
+    ProcessSubstitution,
+    Redirect,
+)
 from ..core.process_lease import ComponentKind, get_coordinator
 from .planner import RedirectPlan, RedirectPlanner
 from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
@@ -14,6 +19,50 @@ from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
 if TYPE_CHECKING:
     from ..core.state import ShellState
     from ..shell import Shell
+
+
+#: The ONE user-facing explanation for a here-document whose body was never
+#: collected. Every arm below appends it, so the diagnosis lives in one place.
+#:
+#: WHY IT NAMES ALIASES. Round-8 verification found the live route this module
+#: previously called impossible: alias substitution happens AFTER the line has
+#: been lexed, so an alias whose expansion introduces ``<<EOF`` puts a heredoc
+#: operator into the token stream that heredoc collection never saw. bash
+#: gathers such a body at expansion time; psh cannot yet, and the user who
+#: typed the alias deserves to be told which construct is unsupported rather
+#: than shown a Python repr plus an assurance that this cannot happen.
+_ALIAS_HEREDOC_HINT = (
+    "psh could not collect the here-document body. The usual cause is an "
+    "ALIAS whose expansion introduces the `<<` operator: aliases are "
+    "substituted after the line is lexed, so the body was never gathered and "
+    "its lines will be read as commands. Write the here-document directly "
+    "rather than through an alias.")
+
+
+class NonExecutableRedirectError(RuntimeError):
+    """A non-executable redirect parse state reached execution.
+
+    Raised when a plain :class:`~psh.ast_nodes.redirects.Redirect` carrying a
+    heredoc operator type — the INCOMPLETE parse state a bare token-level
+    parse produces, with the bodies still in the token stream — is handed to
+    the fd universe.
+
+    REACHABILITY, corrected at round-8 verification. Every heredoc-aware parse
+    path that COLLECTED the bodies builds a
+    :class:`~psh.ast_nodes.redirects.HeredocRedirect` instead. The known live
+    route to THIS class is ALIAS SUBSTITUTION, which happens after the lex: an
+    alias expanding to ``cat <<EOF`` hands the parser a heredoc operator whose
+    body was never gathered. So this is a SUPPORTED-INPUT LIMITATION reachable
+    from ordinary user input, not an internal defect — the previous docstring
+    claimed the opposite and ``alias foo='cat <<EOF'; foo`` falsifies it.
+
+    Deriving from ``RuntimeError`` keeps it in the strict-errors-LOUD class of
+    the expected-error taxonomy (``psh/core/CLAUDE.md``), so a genuinely
+    INTERNAL arrival still fails the suite loudly instead of silently opening a
+    file named after the delimiter. On the alias route the redirect layer
+    catches and reports it, so the user sees the message and the script carries
+    on — measured with strict-errors both on and off, identically.
+    """
 
 
 #: First fd slot for long-lived STD_FDS lease backups. Above the >=10
@@ -341,34 +390,67 @@ class FileRedirector:
         tmp.close()
         _dup2_preserve_target(opened, target_fd)
 
+    def _content_to_free_fd(self, content: str) -> int:
+        """Materialize `content` on a FRESH fd >= 10 and return the number.
+
+        The `{v}<<EOF` twin of :meth:`_content_to_fd`: same unlinked-temp-file
+        reasoning, but the body lands on a shell-allocated descriptor instead
+        of a caller-named one, matching bash's named-fd allocation contract
+        (lowest free fd >= 10, permanent until the user closes it).
+        """
+        import tempfile
+        tmp = tempfile.TemporaryFile()
+        tmp.write(content.encode('utf-8', errors='surrogateescape'))
+        tmp.flush()
+        tmp.seek(0)
+        newfd = fcntl.fcntl(tmp.fileno(), fcntl.F_DUPFD, 10)
+        tmp.close()
+        return newfd
+
     @staticmethod
     def _heredoc_fd(redirect) -> int:
         """Target fd for a heredoc/here-string: explicit prefix or stdin (0)."""
         return redirect.fd if redirect.fd is not None else 0
 
-    def redirect_heredoc(self, redirect):
+    def redirect_heredoc(self, redirect: 'HeredocRedirect'):
         """Point the redirect's fd (default stdin) at the heredoc content.
 
         Shared redirect primitive (fd backend and builtin stream backend).
         Returns the expanded content.
 
-        A heredoc redirect reaching execution with NO collected body is an
-        internal defect, never a silent empty document: every live parse
-        path attaches the body at Redirect construction (campaign S2 — an
-        empty body is '', not None)."""
+        Takes a :class:`~psh.ast_nodes.redirects.HeredocRedirect`, whose body
+        is non-optional — so "reached execution with no collected body" is not
+        a state this function can be handed (remediation 2.5). The old
+        late-discovery ``RuntimeError`` here is replaced by that type plus the
+        explicit non-executable arm in :meth:`apply_fd_plan`."""
+        if not isinstance(redirect, HeredocRedirect):
+            # DIRECT-CALL boundary: the dispatchers gate on the type, but this
+            # primitive is public and a caller can reach it with the
+            # non-executable parse state. Same typed error as every other seam
+            # (round-4 nits 11/18, the R9-B class) rather than a raw
+            # AttributeError from the missing body field.
+            raise NonExecutableRedirectError(
+                f"here-document `{redirect.type}{redirect.target}` was never "
+                f"collected (redirect_heredoc). {_ALIAS_HEREDOC_HINT}")
+        content = self._heredoc_expanded_content(redirect)
+        self._content_to_fd(content, self._heredoc_fd(redirect))
+        return content
+
+    def _heredoc_expanded_content(self, redirect: 'HeredocRedirect') -> str:
+        """The heredoc body after expansion — THE one place that decides it.
+
+        Shared by the stdin/explicit-fd path (:meth:`redirect_heredoc`) and the
+        named-fd path (:meth:`apply_var_fd_redirect`), so `{v}<<EOF` cannot
+        drift from `<<EOF` on quoting or expansion rules.
+        """
         content = redirect.heredoc_content
-        if content is None:
-            raise RuntimeError(
-                "heredoc redirect reached execution without a collected "
-                f"body (delimiter {redirect.target!r})")
-        if content and not getattr(redirect, 'heredoc_quoted', False):
+        if content and not redirect.heredoc_quoted:
             # Heredoc bodies are a dquote-like context for nested
             # ${x:-word} operands (bash keeps the quotes of ${x:-'q'});
             # $'...' stays literal there (DQ_STRING, not DQ_WORD).
             from ..expansion.operands import DQ_STRING
             content = self.shell.expansion_manager.expand_string_variables(
                 content, quote_ctx=DQ_STRING)
-        self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
 
     def redirect_herestring(self, redirect):
@@ -376,6 +458,13 @@ class FileRedirector:
 
         Shared redirect primitive (fd backend and builtin stream backend).
         Returns the content."""
+        content = self._herestring_expanded_content(redirect)
+        self._content_to_fd(content, self._heredoc_fd(redirect))
+        return content
+
+    def _herestring_expanded_content(self, redirect) -> str:
+        """The here-string content after expansion — THE one place that
+        decides it, shared with the named-fd path."""
         word = getattr(redirect, 'target_word', None)
         if word is not None:
             # bash expands a here-string word like an assignment value: all
@@ -397,9 +486,7 @@ class FileRedirector:
                 if not quote_type:
                     target = self.shell.expansion_manager.expand_string_tildes(target)
                 expanded = self.shell.expansion_manager.expand_string_variables(target)
-        content = expanded + '\n'
-        self._content_to_fd(content, self._heredoc_fd(redirect))
-        return content
+        return expanded + '\n'
 
     def _redirect_output_to_file(self, target, redirect):
         """Open file for output and dup2 to target fd. Returns target_fd."""
@@ -480,6 +567,36 @@ class FileRedirector:
             if dup_fd is None or not self.dup_fd_valid(dup_fd):
                 raise OSError(f"{dup_fd}: Bad file descriptor")
             newfd = fcntl.fcntl(dup_fd, fcntl.F_DUPFD, 10)
+            self.shell.state.set_variable(name, str(newfd))
+            return
+
+        # Here-document / here-string forms: `{v}<<EOF`, `{v}<<-EOF`, `{v}<<<w`.
+        # The content is materialized on a fresh fd >= 10 rather than on stdin,
+        # and the number lands in the variable — the same allocation contract as
+        # the open-a-file forms below, with the body as the source.
+        #
+        # The non-executable parse state gets the SAME typed error here as at
+        # the two operator-string arms. This route reaches the fd universe
+        # BEFORE either of those (var_fd is dispatched first), so without this
+        # the value died on a raw AttributeError from the missing body field —
+        # and it is a shape this slot CREATED: before the named-fd heredoc
+        # fix, `cat {v}<<EOF` failed at parse time and no such value existed.
+        if rtype in ('<<', '<<-') and not isinstance(redirect, HeredocRedirect):
+            raise NonExecutableRedirectError(
+                f"here-document `{{{name}}}{rtype}` was never collected. "
+                f"{_ALIAS_HEREDOC_HINT}")
+        if rtype in ('<<', '<<-', '<<<'):
+            if rtype == '<<<' and redirect.target is None \
+                    and getattr(redirect, 'target_word', None) is None:
+                # The here-string twin of the arm above: an operand-less
+                # `{v}<<<` reaching execution is the same non-executable parse
+                # state, and died on a raw AttributeError from the None target.
+                raise NonExecutableRedirectError(
+                    f"here-string `{{{name}}}{rtype}` has no operand, so there "
+                    "is nothing to redirect from.")
+            content = (self._herestring_expanded_content(redirect)
+                       if rtype == '<<<' else self._heredoc_expanded_content(redirect))
+            newfd = self._content_to_free_fd(content)
             self.shell.state.set_variable(name, str(newfd))
             return
 
@@ -659,8 +776,21 @@ class FileRedirector:
             self.redirect_input_from_file(target, redirect)
         elif redirect.type == '<>':
             self.redirect_readwrite(target, redirect)
-        elif redirect.type in ('<<', '<<-'):
+        elif isinstance(redirect, HeredocRedirect):
             self.redirect_heredoc(redirect)
+        elif redirect.type in ('<<', '<<-'):
+            # Structurally a heredoc, but the INCOMPLETE PARSE STATE (a bare
+            # token-level parse, bodies still in the token stream) — never
+            # executable. Explicit arm on purpose: without it this would fall
+            # through the type-string chain and end up opening a file named
+            # after the delimiter. Strict-errors-LOUD class so a genuinely
+            # INTERNAL arrival still fails the suite (psh/core/CLAUDE.md's
+            # expected-error taxonomy) -- but the message is written for the
+            # user, because the alias route makes this reachable from ordinary
+            # input (round-8 blockers 1+2).
+            raise NonExecutableRedirectError(
+                f"here-document `{redirect.type}{redirect.target}` was never "
+                f"collected. {_ALIAS_HEREDOC_HINT}")
         elif redirect.type == '<<<':
             self.redirect_herestring(redirect)
         elif redirect.type == '>|':

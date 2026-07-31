@@ -1,0 +1,94 @@
+# MEASURES BASE-VS-TIP IDENTITY (not agreement with bash)
+# base tree: /Users/pwilson/src/psh-r25-base  SHA: e36116c30d12d1305f163fd6d8eaada8d72b1116
+# tip  tree: /Users/pwilson/src/psh-r2-5  SHA: 6965a079cb0c8dc0b4fa2f027144bb68af77df50
+DELTA case=diag_escaped_lt chan=dash_c parser=combinator
+    base=(127, '', 'psh: line 1: E: No such file or directory\npsh: line 1: hello: command not found\npsh: line 1: E: command not found\n')
+    tip =(127, '', 'psh: line 1: E: No such file or directory\npsh: line 2: hello: command not found\npsh: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt chan=script parser=combinator
+    base=(127, '', '<SCRIPT>: line 1: E: No such file or directory\n<SCRIPT>: line 1: hello: command not found\n<SCRIPT>: line 1: E: command not found\n')
+    tip =(127, '', '<SCRIPT>: line 1: E: No such file or directory\n<SCRIPT>: line 2: hello: command not found\n<SCRIPT>: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt chan=stdin parser=combinator
+    base=(127, '', 'psh: line 1: E: No such file or directory\npsh: line 1: hello: command not found\npsh: line 1: E: command not found\n')
+    tip =(127, '', 'psh: line 1: E: No such file or directory\npsh: line 2: hello: command not found\npsh: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt_digit chan=dash_c parser=combinator
+    base=(127, '', 'psh: line 1: E: No such file or directory\npsh: line 1: hello: command not found\npsh: line 1: E: command not found\n')
+    tip =(127, '', 'psh: line 1: E: No such file or directory\npsh: line 2: hello: command not found\npsh: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt_digit chan=script parser=combinator
+    base=(127, '', '<SCRIPT>: line 1: E: No such file or directory\n<SCRIPT>: line 1: hello: command not found\n<SCRIPT>: line 1: E: command not found\n')
+    tip =(127, '', '<SCRIPT>: line 1: E: No such file or directory\n<SCRIPT>: line 2: hello: command not found\n<SCRIPT>: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt_digit chan=stdin parser=combinator
+    base=(127, '', 'psh: line 1: E: No such file or directory\npsh: line 1: hello: command not found\npsh: line 1: E: command not found\n')
+    tip =(127, '', 'psh: line 1: E: No such file or directory\npsh: line 2: hello: command not found\npsh: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt_quoted chan=dash_c parser=combinator
+    base=(127, '', 'psh: line 1: E: No such file or directory\npsh: line 1: hello: command not found\npsh: line 1: E: command not found\n')
+    tip =(127, '', 'psh: line 1: E: No such file or directory\npsh: line 2: hello: command not found\npsh: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt_quoted chan=script parser=combinator
+    base=(127, '', '<SCRIPT>: line 1: E: No such file or directory\n<SCRIPT>: line 1: hello: command not found\n<SCRIPT>: line 1: E: command not found\n')
+    tip =(127, '', '<SCRIPT>: line 1: E: No such file or directory\n<SCRIPT>: line 2: hello: command not found\n<SCRIPT>: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt_quoted chan=stdin parser=combinator
+    base=(127, '', 'psh: line 1: E: No such file or directory\npsh: line 1: hello: command not found\npsh: line 1: E: command not found\n')
+    tip =(127, '', 'psh: line 1: E: No such file or directory\npsh: line 2: hello: command not found\npsh: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt_strip chan=dash_c parser=combinator
+    base=(127, '', 'psh: line 1: -E: No such file or directory\npsh: line 1: hello: command not found\npsh: line 1: E: command not found\n')
+    tip =(127, '', 'psh: line 1: -E: No such file or directory\npsh: line 2: hello: command not found\npsh: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt_strip chan=script parser=combinator
+    base=(127, '', '<SCRIPT>: line 1: -E: No such file or directory\n<SCRIPT>: line 1: hello: command not found\n<SCRIPT>: line 1: E: command not found\n')
+    tip =(127, '', '<SCRIPT>: line 1: -E: No such file or directory\n<SCRIPT>: line 2: hello: command not found\n<SCRIPT>: line 3: E: command not found\n')
+DELTA case=diag_escaped_lt_strip chan=stdin parser=combinator
+    base=(127, '', 'psh: line 1: -E: No such file or directory\npsh: line 1: hello: command not found\npsh: line 1: E: command not found\n')
+    tip =(127, '', 'psh: line 1: -E: No such file or directory\npsh: line 2: hello: command not found\npsh: line 3: E: command not found\n')
+DELTA case=heredoc_unclosed_dq chan=dash_c parser=rd
+    base=(0, 'MARKER\n', 'cat: abc\nEOF\ndef: No such file or directory\n')
+    tip =(1, '', "psh: line 4: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n")
+DELTA case=heredoc_unclosed_dq chan=dash_c parser=combinator
+    base=(0, 'MARKER\n', "psh: line 3: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n")
+    tip =(1, '', "psh: line 4: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n")
+DELTA case=heredoc_unclosed_dq chan=script parser=rd
+    base=(0, 'MARKER\n', 'cat: abc\nEOF\ndef: No such file or directory\n')
+    tip =(1, '', "<SCRIPT>: line 4: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n")
+DELTA case=heredoc_unclosed_dq chan=script parser=combinator
+    base=(0, 'MARKER\n', "<SCRIPT>: line 3: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n")
+    tip =(1, '', "<SCRIPT>: line 4: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n")
+DELTA case=heredoc_unclosed_dq chan=stdin parser=rd
+    base=(0, 'MARKER\n', 'cat: abc\nEOF\ndef: No such file or directory\n')
+    tip =(1, '', "psh: line 4: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n")
+DELTA case=heredoc_unclosed_dq chan=stdin parser=combinator
+    base=(0, 'MARKER\n', "psh: line 3: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n")
+    tip =(1, '', "psh: line 4: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n")
+DELTA case=nested_cmdsub_heredoc chan=dash_c parser=rd
+    base=(2, '', 'psh: -c:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\n\'\n\necho $(cat <<EOF\n     ^\n\nContext: echo $(cat <<EOF\necho MARK""ER\n -> HERE <- \n')
+    tip =(2, '', 'psh: -c:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\'\n\necho $(cat <<EOF\n     ^\n\nContext: echo $(cat <<EOF\necho MARK""ER -> HERE <- \n')
+DELTA case=nested_cmdsub_heredoc chan=dash_c parser=combinator
+    base=(2, '', 'psh: -c:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\n\'\n\necho $(cat <<EOF\n     ^\n')
+    tip =(2, '', 'psh: -c:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\'\n\necho $(cat <<EOF\n     ^\n')
+DELTA case=nested_cmdsub_heredoc chan=script parser=rd
+    base=(2, '', 'psh: <SCRIPT>:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\n\'\n\necho $(cat <<EOF\n     ^\n\nContext: echo $(cat <<EOF\necho MARK""ER\n -> HERE <- \n')
+    tip =(2, '', 'psh: <SCRIPT>:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\'\n\necho $(cat <<EOF\n     ^\n\nContext: echo $(cat <<EOF\necho MARK""ER -> HERE <- \n')
+DELTA case=nested_cmdsub_heredoc chan=script parser=combinator
+    base=(2, '', 'psh: <SCRIPT>:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\n\'\n\necho $(cat <<EOF\n     ^\n')
+    tip =(2, '', 'psh: <SCRIPT>:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\'\n\necho $(cat <<EOF\n     ^\n')
+DELTA case=nested_cmdsub_heredoc chan=stdin parser=rd
+    base=(2, '', 'psh: <stdin>:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\n\'\n\necho $(cat <<EOF\n     ^\n\nContext: echo $(cat <<EOF\necho MARK""ER\n -> HERE <- \n')
+    tip =(2, '', 'psh: <stdin>:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\'\n\necho $(cat <<EOF\n     ^\n\nContext: echo $(cat <<EOF\necho MARK""ER -> HERE <- \n')
+DELTA case=nested_cmdsub_heredoc chan=stdin parser=combinator
+    base=(2, '', 'psh: <stdin>:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\n\'\n\necho $(cat <<EOF\n     ^\n')
+    tip =(2, '', 'psh: <stdin>:1: Parse error (line 1, column 6): syntax error: unclosed command substitution \'$(cat <<EOF\necho MARK""ER\'\n\necho $(cat <<EOF\n     ^\n')
+DELTA case=subst_delim_dollar chan=dash_c parser=rd
+    base=(0, 'hi\n$\nMARKER\n', '')
+    tip =(0, 'hi\n$\necho MARK""ER\n', "psh: line 4: warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')\n")
+DELTA case=subst_delim_dollar chan=dash_c parser=combinator
+    base=(0, 'hi\n$\nMARKER\n', "psh: line 3: warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')\n")
+    tip =(0, 'hi\n$\necho MARK""ER\n', "psh: line 4: warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')\n")
+DELTA case=subst_delim_dollar chan=script parser=rd
+    base=(0, 'hi\n$\nMARKER\n', '')
+    tip =(0, 'hi\n$\necho MARK""ER\n', "<SCRIPT>: line 4: warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')\n")
+DELTA case=subst_delim_dollar chan=script parser=combinator
+    base=(0, 'hi\n$\nMARKER\n', "<SCRIPT>: line 3: warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')\n")
+    tip =(0, 'hi\n$\necho MARK""ER\n', "<SCRIPT>: line 4: warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')\n")
+DELTA case=subst_delim_dollar chan=stdin parser=rd
+    base=(0, 'hi\n$\nMARKER\n', '')
+    tip =(0, 'hi\n$\necho MARK""ER\n', "psh: line 4: warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')\n")
+DELTA case=subst_delim_dollar chan=stdin parser=combinator
+    base=(0, 'hi\n$\nMARKER\n', "psh: line 3: warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')\n")
+    tip =(0, 'hi\n$\necho MARK""ER\n', "psh: line 4: warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')\n")
+# TOTALS rows=168 identical=138 differ=30

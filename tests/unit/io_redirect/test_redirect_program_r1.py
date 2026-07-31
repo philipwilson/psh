@@ -5,7 +5,7 @@ guard: expanded redirect text is NEVER reclassified as process-substitution
 syntax — the procsub decision comes from the Word AST, not from sniffing an
 expanded string.
 """
-from psh.ast_nodes import Redirect
+from psh.ast_nodes import HeredocRedirect, Redirect
 from psh.io_redirect.redirect_program import (
     RedirectOp,
     RedirectOpKind,
@@ -15,7 +15,11 @@ from psh.io_redirect.redirect_program import (
 
 
 def _r(type_, **kw):
-    return Redirect(type=type_, target=kw.pop("target", None), **kw)
+    # A heredoc body only exists on the EXECUTABLE type (remediation 2.5:
+    # a plain Redirect with a heredoc operator type is incomplete parse
+    # state and carries no body).
+    cls = HeredocRedirect if "heredoc_content" in kw else Redirect
+    return cls(type=type_, target=kw.pop("target", None), **kw)
 
 
 # ---- classify_redirect: one kind per operator, computed once ----

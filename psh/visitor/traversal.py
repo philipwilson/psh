@@ -87,6 +87,10 @@ AstChildSchema: Dict[str, Tuple[Tuple[str, ChildShape], ...]] = {
     'ExpansionPart': (('expansion', _N),),
     'ForLoop': (('body', _N), ('redirects', _L), ('item_words', _L)),
     'FunctionDef': (('body', _N), ('redirects', _L)),
+    # Subclass of Redirect; the schema is keyed by EXACT class name
+    # (walk_ast_edges reads type(node).__name__), so it needs its own
+    # row even though its child edges are the base's.
+    'HeredocRedirect': (('target_word', _N),),
     'IfConditional': (('condition', _N), ('then_part', _N),
                       ('elif_parts', _T), ('else_part', _N), ('redirects', _L)),
     'LiteralPart': (),

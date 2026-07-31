@@ -31,6 +31,7 @@ from ..ast_nodes import (
     AndOrList,
     BraceGroup,
     ExpansionPart,
+    HeredocRedirect,
     Pipeline,
     ProcessSubstitution,
     Program,
@@ -160,7 +161,7 @@ def _render_simple(node: SimpleCommand) -> Optional[str]:
 
 
 def _render_redirect(node: 'Redirect') -> Optional[str]:
-    if node.heredoc_content is not None or node.move or node.combined:
+    if isinstance(node, HeredocRedirect) or node.move or node.combined:
         return None
     prefix = '' if node.fd is None else str(node.fd)
     if node.type in _WORD_TARGET_REDIRECTS and node.target is not None:

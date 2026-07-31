@@ -4,8 +4,8 @@
 entries — ``HistoryManager.add_to_history`` applies it when recording and
 ``HistoryNavigator._editable`` when recalling. Like bash's cmdhist, each
 newline is replaced by whatever separator makes the joined text reparse to
-the same program, and the decision comes from the REAL lexer and parser
-(the same oracle ``CommandAccumulator`` uses), not string heuristics:
+the same program, and the SEPARATOR decision comes from the REAL lexer and
+parser rather than from string heuristics:
 
 - a newline inside quotes, a heredoc, or an unclosed expansion
   (``$(``/`` ` ``/``$((``/``${``) is content and stays verbatim;
@@ -19,6 +19,16 @@ the same program, and the decision comes from the REAL lexer and parser
 
 Every rule is pinned to interactive bash 5.2 recordings by
 tests/unit/test_line_editor_helpers.py.
+
+ONE EXCEPTION, and it is a KNOWN DIVERGENCE, not an oversight: the
+HEREDOC-ness half of the first rule is still decided by the TEXT-LEVEL scanner
+(``open_heredoc_specs`` below), not by the lexer. Since remediation 2.5 the
+completeness oracle decides heredoc-ness from lexer events instead, so the two
+disagree on exactly MEDIUM-3's spelling — this joiner keeps the newline after
+``echo \\<<EOF`` (treating the next line as body) where the session now
+correctly calls that line complete. It is display/history cosmetics rather
+than a completeness decision, which is why remediation 2.5 deliberately left
+this file alone (ruling R1-B); closing it is a successor's job.
 """
 
 from typing import List, Optional, Tuple

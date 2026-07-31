@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.760.0
+**Current Version**: 0.761.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -1045,16 +1045,7 @@ def apply_redirections(self, redirects: List[Redirect]) -> List[Tuple[int, int]]
 ### 6.2 Here Documents
 **File**: `io_redirect/file_redirect.py` (`FileRedirector`)
 
-Heredoc content is collected at parse time and attached to the redirect node; at execution time `FileRedirector.redirect_heredoc()` expands the content (unless the delimiter was quoted) and points stdin at it via an anonymous temporary file:
-```python
-def redirect_heredoc(self, redirect):
-    """Point stdin at the heredoc content. Returns the expanded content."""
-    content = redirect.heredoc_content or ''
-    if content and not getattr(redirect, 'heredoc_quoted', False):
-        content = self.shell.expansion_manager.expand_string_variables(content)
-    self._stdin_from_content(content)  # anonymous temp file dup2'd to fd 0
-    return content
-```
+Heredoc content is collected at parse time and carried by the executable `HeredocRedirect` node (`psh/ast_nodes/redirects.py#HeredocRedirect` — the body is a required field; a plain `Redirect` with a heredoc operator type is non-executable parse state, v0.761.0). At execution time `FileRedirector.redirect_heredoc()` (`psh/io_redirect/file_redirect.py`) expands the body unless the delimiter was quoted and points the target fd at it via an anonymous temporary file; non-executable values reaching any backend raise the typed `NonExecutableRedirectError`.
 
 A temporary file (rather than a pipe) is used so heredocs larger than the kernel pipe buffer cannot deadlock — the same approach bash takes.
 

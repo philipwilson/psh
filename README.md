@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-style, bash-compatible shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.760.0 | **Tests**: 21,000+ | **Compatibility**: POSIX + bash, verified against live bash
+**Current Version**: 0.761.0 | **Tests**: 24,000+ | **Compatibility**: POSIX + bash, verified against live bash
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -31,7 +31,7 @@ psh --format script.sh
 
 - 🔍 **CLI Analysis Tools**: Built-in script formatting, metrics, security analysis, and linting
 - 📚 **Educational Focus**: Clean, readable codebase designed for learning shell internals
-- 🧪 **Comprehensive Testing**: 21,000+ tests ensuring reliability and robustness
+- 🧪 **Comprehensive Testing**: 24,000+ tests ensuring reliability and robustness
 - 🏗️ **Modern Architecture**: Component-based design with unified lexer and visitor pattern integration
 - 🎓 **Dual Parser Implementation**: Production recursive descent parser, plus an educational parser-combinator alternative for comparing parsing paradigms
 - 📋 **POSIX + bash compatible**: behavior is conformance-tested against live bash (see the compatibility matrix in the user guide)
@@ -248,7 +248,7 @@ PSH includes two parser implementations with deliberately different statuses:
 
 ### Project Statistics
 - **Lines of Code**: ~79,500 lines of production code in `psh/` across 274 Python files, plus ~150,600 lines of tests in `tests/` (787 Python files)
-- **Test Coverage**: 22,723 tests in 768 test files
+- **Test Coverage**: 24,028 tests in 777 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations

@@ -1,0 +1,2 @@
+cat 0<<EOF
+echo MARK""ER

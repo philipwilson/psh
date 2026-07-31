@@ -231,7 +231,7 @@ def test_combinator_inputs_without_heredocs_keeps_init_map():
     # not erase a map supplied via __init__ (the context-clobber class this slot
     # exists to kill). Build with the map via __init__, parse with a heredoc-free
     # ParseInputs, and prove the heredoc body still attached.
-    from psh.ast_nodes import Redirect
+    from psh.ast_nodes import HeredocRedirect
     from psh.lexer import tokenize_with_heredocs
 
     lu = tokenize_with_heredocs("cat <<EOF\nbody-line\nEOF\n")
@@ -245,7 +245,11 @@ def test_combinator_inputs_without_heredocs_keeps_init_map():
         if id(node) in seen:
             return
         seen.add(id(node))
-        if isinstance(node, Redirect) and node.type == "<<":
+        # Keyed on the EXECUTABLE type, not on the operator string: since
+        # remediation 2.5 only HeredocRedirect carries a body, and a plain
+        # Redirect with type "<<" is the incomplete parse state (no body
+        # field at all), so the old `type == "<<"` test collected nothing.
+        if isinstance(node, HeredocRedirect):
             heredoc_bodies.append(node.heredoc_content)
         for name in getattr(node, "__dataclass_fields__", {}):
             child = getattr(node, name)

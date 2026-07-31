@@ -6,7 +6,7 @@ strings, and fd-duplication words for ``CommandParsers``.
 
 from typing import TYPE_CHECKING, List, Optional
 
-from ....ast_nodes import Redirect
+from ....ast_nodes import HeredocRedirect, Redirect
 from ....lexer.heredoc_lexer import (
     delimiter_token_acceptable,
     raw_delimiter_from_tokens,
@@ -100,16 +100,22 @@ class RedirectionMixin(_Base):
                         success=False,
                         error=f"here document body not collected (id {heredoc_id})",
                         position=pos)
-                redirect = Redirect(type=op_token.value,
-                                    target=entry.spec.raw,
-                                    heredoc_content=entry.collected.body,
-                                    heredoc_quoted=entry.spec.quoted,
-                                    heredoc_id=heredoc_id,
-                                    fd=fd, var_fd=var_fd)
+                redirect: Redirect = HeredocRedirect(
+                    type=op_token.value,
+                    target=entry.spec.raw,
+                    heredoc_content=entry.collected.body,
+                    heredoc_quoted=entry.spec.quoted,
+                    heredoc_id=heredoc_id,
+                    fd=fd, var_fd=var_fd)
                 return ParseResult(success=True, value=redirect, position=pos)
 
-            # Bare parse (no collected map — bodies still in the stream):
-            # reconstruct the raw spelling from token values (the combinator
+            # Bare parse (no collected map, or an operator token with no id —
+            # bodies still in the stream): build the INCOMPLETE PARSE STATE, a
+            # plain Redirect with a heredoc operator type. This arm used to
+            # manufacture an executable-shaped value with no body (#22
+            # MEDIUM-10); a plain Redirect cannot carry one.
+            #
+            # Reconstruct the raw spelling from token values (the combinator
             # has no source text) and derive quotedness through the one
             # quote-removal rule — never a private token-type heuristic.
             raw = raw_delimiter_from_tokens(delim_tokens)

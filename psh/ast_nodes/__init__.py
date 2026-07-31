@@ -7,7 +7,7 @@ it (``from psh.ast_nodes import SimpleCommand, Word, ...``). The submodules:
 
 - ``base``      — ASTNode/Statement/Command/CompoundCommand bases + the
                   UnifiedControlStructure mixin.
-- ``redirects`` — Redirect.
+- ``redirects`` — Redirect, HeredocRedirect.
 - ``words``     — Expansion nodes, WordPart/LiteralPart/ExpansionPart, Word.
 - ``arrays``    — ArrayAssignment / ArrayInitialization / ArrayElementAssignment
                   (depend on Word).
@@ -58,7 +58,7 @@ from .control import (
     UntilLoop,
     WhileLoop,
 )
-from .redirects import Redirect
+from .redirects import HeredocRedirect, Redirect
 
 # Syntax templates (campaign S3) — plain frozen carriers, NOT ASTNode
 # subclasses. The template objects themselves are never tree nodes, but the
@@ -155,6 +155,7 @@ __all__ = [
     'ASTNode',
     'Statement',
     # redirects
+    'HeredocRedirect',
     'Redirect',
     # expansions
     'Expansion',

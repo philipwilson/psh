@@ -1,0 +1,4 @@
+cat <<$(x)
+hi
+$(x)
+echo MARK""ER

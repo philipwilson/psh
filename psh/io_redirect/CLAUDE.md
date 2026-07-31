@@ -615,5 +615,46 @@ DEBUG IOManager: redirected stdout to 'output.txt' (mode 'w'); sys.stdout is now
 
 ### With Parser (`psh/parser/`)
 
-- `Redirect` AST nodes created with type, target, fd, heredoc_content
+- `Redirect` AST nodes created with type, target, fd
 - `heredoc_quoted` attribute indicates if delimiter was quoted
+- **Executable here-documents are a distinct TYPE, and execution dispatches on
+  it.** `ast_nodes/redirects.py#HeredocRedirect` is the only redirect that
+  carries a body, and that body is required at construction — so "an executable
+  heredoc with no collected body" is unrepresentable rather than discovered
+  late (reappraisal #22 MEDIUM-10; the old discovery point was a `RuntimeError`
+  inside `redirect_heredoc`). A plain `Redirect` whose `type` is `<<`/`<<-` is
+  the INCOMPLETE PARSE STATE a bare token-level parse produces with the bodies
+  still in the token stream: structurally a heredoc, honestly not executable.
+  Both backends route executable heredocs by `isinstance`
+  (`file_redirect.py#FileRedirector.apply_fd_plan`,
+  `manager.py#IOManager.setup_builtin_redirections`) and give the parse-state
+  value an EXPLICIT arm raising `file_redirect.py#NonExecutableRedirectError`
+  — without that arm it would fall through the operator-string chain and open a
+  file named after the delimiter. The error derives from `RuntimeError`, the
+  strict-errors-LOUD class of the expected-error taxonomy
+  (`psh/core/CLAUDE.md`), so a genuinely INTERNAL arrival still fails the suite
+  loudly. **That arm is reachable from ORDINARY USER INPUT, and its message is
+  written for the user accordingly**: ALIAS SUBSTITUTION happens after the lex,
+  so `alias foo='cat <<EOF'; foo` hands the parser a heredoc operator whose
+  body heredoc collection never saw. psh cannot yet gather a body at
+  alias-expansion time (bash can), so the whole alias-heredoc family diverges
+  from bash — psh reports the limitation and reads the body lines as commands.
+  DECLARED DIVERGENCE with a successor row; pinned per spelling family, channel
+  and parser in `tests/unit/scripting/test_heredoc_alias_route.py`.
+  Here-strings are NOT part of the split: `<<<` content
+  has always lived in `target`/`target_word`, so it stays a plain `Redirect`.
+  Guard: `tests/unit/io_redirect/test_heredoc_executable_type.py`.
+- **Named-fd here-documents and here-strings** (`{v}<<`, `{v}<<-`, `{v}<<<`)
+  are owned here: `apply_var_fd_redirect` materializes the body or word on a
+  freshly allocated descriptor >= 10 and stores the number in the variable,
+  the same allocation contract as `{v}>file`, with the content coming from
+  `_heredoc_expanded_content` / `_herestring_expanded_content` so a named-fd
+  form can never drift from its plain twin on quoting or expansion. Every
+  non-executable parse state reaching any of these seams raises the typed
+  `NonExecutableRedirectError` rather than a raw attribute failure — including
+  the direct-call boundaries (`redirect_heredoc` itself, and an operand-less
+  `{v}<<<`). Guards:
+  `tests/unit/io_redirect/test_named_fd_heredoc.py` and the fd-kind axis rows
+  in `test_heredoc_executable_type.py`; the lexer-side table parity that keeps
+  the named and digit fd prefixes in step is
+  `tests/unit/lexer/test_fd_prefix_table_parity.py`.

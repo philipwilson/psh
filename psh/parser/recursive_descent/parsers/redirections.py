@@ -7,7 +7,7 @@ This module handles parsing of I/O redirections, heredocs, and here-strings.
 import re
 from typing import List
 
-from ....ast_nodes import Redirect
+from ....ast_nodes import HeredocRedirect, Redirect
 from ....lexer.heredoc_lexer import (
     delimiter_token_acceptable,
     raw_delimiter_from_tokens,
@@ -108,7 +108,8 @@ class RedirectionParser(ParserSubcomponent):
         # delimiters HeredocLexer registered.
         if (self.parser.at_end()
                 or not delimiter_token_acceptable(self.parser.peek())):
-            raise self.parser.error("Expected delimiter after here document operator")
+            raise self._operand_less_redirect_error(
+                token, "Expected delimiter after here document operator")
 
         delim_tokens = [self.parser.advance()]
         # A composite delimiter spans several ADJACENT word-like tokens
@@ -129,19 +130,28 @@ class RedirectionParser(ParserSubcomponent):
             if entry is None:
                 raise self.parser.error(
                     f"here document body not collected (id {heredoc_id})")
-            return Redirect(
+            return HeredocRedirect(
                 type=token.value,
                 target=entry.spec.raw,
                 heredoc_content=entry.collected.body,
                 heredoc_quoted=entry.spec.quoted,
                 heredoc_id=heredoc_id,
                 fd=token.fd,
+                # `{v}<<EOF` carries its variable NAME here, exactly as the
+                # combinator already did; dropping it would open the body on
+                # stdin instead of a fresh fd.
+                var_fd=token.var_fd,
             )
 
-        # Bare parse (bodies still in the token stream; unit-test path):
-        # recover the raw spelling from the source span when available —
-        # token values drop a VARIABLE's `$` and a STRING's quotes — and
-        # derive quotedness through the one rule.
+        # Bare parse (bodies still in the token stream; unit-test path): build
+        # the INCOMPLETE PARSE STATE — a plain Redirect with a heredoc operator
+        # type, structurally a heredoc and honestly not executable. It carries
+        # no body, so an executable heredoc with a missing body cannot be
+        # manufactured here (#22 MEDIUM-10).
+        #
+        # Recover the raw spelling from the source span when available — token
+        # values drop a VARIABLE's `$` and a STRING's quotes — and derive
+        # quotedness through the one rule.
         source_text = self.parser.ctx.source_text
         start = delim_tokens[0].position
         end = delim_tokens[-1].end_position
@@ -153,15 +163,43 @@ class RedirectionParser(ParserSubcomponent):
         return Redirect(
             type=token.value,
             target=raw,
-            heredoc_content=None,
             heredoc_quoted=heredoc_quoted,
             fd=token.fd,
+            var_fd=token.var_fd,
         )
+
+    def _operand_less_redirect_error(self, token: Token, message: str):
+        """The error for a heredoc/here-string operator with NO operand.
+
+        More input can NEVER complete one of these: a newline terminates the
+        redirect, so the delimiter or word has to be on the same line, and bash
+        reports a syntax error immediately. The default classification would
+        call it ``at_eof`` — hence INCOMPLETE, hence a PS2 that swallows the
+        next physical line, which is the very shape this slot exists to close
+        (#22 MEDIUM-3, reintroduced in its degenerate corner and caught by
+        round-4 verification).
+
+        SCOPE, and it is a deliberate asymmetry fenced by ruling R10-A(4):
+        this forces the hard classification only for the NAMED-fd spelling
+        (`{v}<<`, `{v}<<-`, `{v}<<<`), which is the surface this slot changed
+        and where base already answered complete-with-error. The plain `cat <<`
+        and digit `cat 0<<` spellings answer INCOMPLETE at BOTH SHAs — a
+        PRE-EXISTING divergence from bash that predates this slot — and are
+        deliberately left alone rather than fixed under cover of a regression
+        repair. They are recorded as a successor row with the round-4 control
+        evidence; when that row is taken, this scoping goes away and the rule
+        applies to every spelling.
+        """
+        error = self.parser.error(message)
+        if token.var_fd:
+            error.at_eof = False
+        return error
 
     def _parse_here_string(self, token: Token) -> Redirect:
         """Parse here string redirect."""
         if not self.parser.match_any(TokenGroups.WORD_LIKE):
-            raise self.parser.error("Expected string after here string operator")
+            raise self._operand_less_redirect_error(
+                token, "Expected string after here string operator")
 
         # Use Word AST parsing to handle variables and quotes properly. Carry
         # the parsed Word (per-part quote context) so the executor expands it
@@ -177,6 +215,10 @@ class RedirectionParser(ParserSubcomponent):
             target=content_value,
             quote_type=quote_type,
             fd=token.fd,
+            # `{v}<<<word` carries its variable NAME, exactly as the heredoc
+            # arm does; dropping it would put the content on stdin instead of
+            # a freshly allocated fd.
+            var_fd=token.var_fd,
             target_word=word,
         )
 

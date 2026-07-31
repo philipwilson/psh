@@ -56,6 +56,7 @@ from .formatter_quoting import (
     format_word_list_item,
     quote_scalar,
 )
+from ..ast_nodes import HeredocRedirect
 
 
 class FormatterVisitor(ASTVisitor[str]):
@@ -678,7 +679,7 @@ class FormatterVisitor(ASTVisitor[str]):
         single seam every heredoc-bearing construct funnels through (J2).
         """
         for r in redirects:
-            if r.type in ('<<', '<<-') and r.heredoc_content is not None:
+            if isinstance(r, HeredocRedirect):
                 body = r.heredoc_content
                 if body and not body.endswith('\n'):
                     body += '\n'
@@ -773,6 +774,13 @@ class FormatterVisitor(ASTVisitor[str]):
             return op
         sep = ' ' if target[:2] in ('<(', '>(') else ''
         return f"{op}{sep}{target}"
+
+    # Executable heredocs are a SUBCLASS and visitor dispatch is
+    # EXACT-CLASS (visitor/base.py#ASTVisitor.visit resolves
+    # visit_{class name} with no MRO walk), so the subclass needs its
+    # own entry. tests/unit/visitor/test_ast_coverage_matrix.py fails
+    # if a visitor forgets it.
+    visit_HeredocRedirect = visit_Redirect
 
     def visit_ProcessSubstitution(self, node: ProcessSubstitution) -> str:
         """Format a process substitution."""

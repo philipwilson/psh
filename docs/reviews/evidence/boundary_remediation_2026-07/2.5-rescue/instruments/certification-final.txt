@@ -1,0 +1,89 @@
+CERTIFICATION at HEAD 6965a079
+  [PASS] D1 session from lexer events                             found; absent at e36116c3
+  [PASS] D1 regex no longer the session oracle                    removed; was present at e36116c3
+  [PASS] D2 executable heredoc type                               found; absent at e36116c3
+  [PASS] D2 body is required kw-only                              found; absent at e36116c3
+  [PASS] D2 plain Redirect lost the body field                    removed; was present at e36116c3
+  [PASS] D2 typed error replaces late discovery                   found; absent at e36116c3
+  [PASS] D2 late-discovery RuntimeError gone                      removed; was present at e36116c3
+  [PASS] D3 TokenPart frozen                                      found; absent at e36116c3
+  [PASS] D3 Position frozen (R4-A)                                found; absent at e36116c3
+  [PASS] D3 Token.parts coerced to tuple                          found; absent at e36116c3
+  [PASS] R7-A named-fd `<<`                                       found; absent at 575291a1
+  [PASS] R7-A named-fd `<<-`                                      found; absent at 575291a1
+  [PASS] R9-A named-fd `<<<`                                      found; absent at 6a70416e
+  [PASS] R9-A var_fd threaded (RD heredoc)                        found; absent at e36116c3
+  [PASS] R10-A operand-less hard error                            found; absent at 6a70416e
+  [PASS] R9-B var_fd route typed                                  found; absent at a801ad1a
+  [PASS] N11 redirect_heredoc direct-call typed                   found; absent at a801ad1a
+  [PASS] N18 operand-less `{v}<<<` ARM exists                     found; absent at a801ad1a
+  [PASS] N18 offender row for the `{v}<<<` arm (R12-C)            1 test collected in 0.01s; new since ec99b420
+  [PASS] N18 positive control (operand-BEARING `{v}<<<` still wor 1 test collected in 0.01s; new since ec99b420
+  [PASS] R11-A offender row for the redirect_heredoc arm          1 test collected in 0.01s; new since 6a70416e
+  [PASS] R11-A direct redirect_heredoc coverage restored          1 test collected in 0.01s; new since abd98d50
+  [PASS] C1 offender bites at the BUILTIN-STREAM backend too      1 test collected in 0.01s; new since 575291a1
+  [PASS] parity guard forward                                     1 test collected in 0.01s; new since 575291a1
+  [PASS] parity guard REVERSE (N3/N16)                            1 test collected in 0.01s; new since a767f476
+  [PASS] visitor census not a hand list (N12)                     found; absent at a767f476
+  [PASS] transitive frozen census                                 8 tests collected in 0.01s; new since e36116c3
+  [PASS] bounced-row preservation by name                         found; absent at 063815ad
+  [PASS] N9 consumers enumerated AND split by job                 found; absent at 30ffa09a
+  [PASS] N9 the oracle is listed under the ALGEBRA, not the scann found; absent at 30ffa09a
+  [PASS] N9(a) stale module-docstring oracle claim gone           removed; was present at 575291a1
+  [PASS] N9(b) open_heredoc_specs' OWN docstring fixed (R12-B)    removed; was present at ec99b420
+  [PASS] N9(b) its true role stated                               found; absent at 30ffa09a
+  [PASS] N13(a) session step numbers correct (R12-A)              found; absent at ec99b420
+  [PASS] N13(a) stale step-4 comment gone                         removed; was present at ec99b420
+  [PASS] N13(a) stale step-2 heredoc comment gone                 removed; was present at ec99b420
+  [PASS] N13(b) import split unified (R12-A / round-6 NIT 8)      found; absent at ec99b420
+  [PASS] N13(b) deep import gone                                  removed; was present at ec99b420
+  [PASS] N17 io_redirect/CLAUDE.md named-fd forms                 found; absent at 6a70416e
+  [PASS] N4 _try_var_fd_redirect docstring                        found; absent at abd98d50
+  [PASS] lexer/CLAUDE.md Position                                 found; absent at e36116c3
+  [PASS] parser/CLAUDE.md one grammar                             found; absent at e36116c3
+  [PASS] PTY pin module                                           70 tests collected in 0.02s
+  [PASS] named-fd battery                                         34 tests collected in 0.01s
+  [PASS] executable-type + fd-kind offenders                      26 tests collected in 0.01s
+  [PASS] declared non-interactive deltas                          233 tests collected in 0.02s
+  [PASS] equivalence corpus                                       731 tests collected in 0.03s
+  [PASS] frozen value graph                                       88 tests collected in 0.01s
+  [PASS] fd-prefix table parity                                   8 tests collected in 0.01s
+  [PASS] unclosed-$( EOF delta                                    4 tests collected in 0.01s
+  [PASS] MEDIUM-3 PTY pin (the red-on-base battery)               62 tests collected in 0.02s; new since e36116c3
+  [PASS] MEDIUM-3 escaped spelling IS a corpus row                found; absent at e36116c3
+  [PASS] R14-A diag differential, all families                    90 tests collected in 0.01s; new since 30ffa09a
+  [PASS] R14-A diag literal line numbers, all families            90 tests collected in 0.01s; new since 30ffa09a
+  [PASS] R14-A the diag table keeps both answers                  1 test collected in 0.01s; new since 30ffa09a
+  [PASS] R14-A subscript-shift family IS in the diag table        found; absent at 30ffa09a
+  [PASS] R14-A the diag table names its CONTROL families          found; absent at 30ffa09a
+  [PASS] POST-STATE: nothing claims the arm is unreachable (R15-B post-state holds across 4 files
+  [PASS] R15-A alias route outcome pinned                         30 tests collected in 0.01s; new since 30ffa09a
+  [PASS] R15-A alias limitation reported                          30 tests collected in 0.01s; new since 30ffa09a
+  [PASS] R15-B the alias message is written for a user            10 tests collected in 0.01s; new since 30ffa09a
+  [PASS] R15-A alias-vs-bash divergence declared                  10 tests collected in 0.01s; new since 30ffa09a
+  [PASS] R15-A alias controls (non-vacuity)                       12 tests collected in 0.01s; new since 30ffa09a
+  [PASS] R15-A R9-B's synthetic-only premise corrected in the gua found; absent at 30ffa09a
+  [PASS] NIT 7 null-command divergence declared                   4 tests collected in 0.01s; new since 30ffa09a
+  [PASS] NIT 7 its pre-existence control                          2 tests collected in 0.01s; new since 30ffa09a
+  [PASS] NIT 11 consumer grouping no longer asserts a partition   found; absent at 30ffa09a
+  [PASS] N5 frozen-graph corpus is a class, not a line            found; absent at 30ffa09a
+  [PASS] POST-STATE: no oracle-scans-the-text claim survives (N9) post-state holds; 4 algebra consumers verified
+  [PASS] POST-STATE: session step cross-refs match their markers  markers lex=2 heredoc=3 parse=5; all cross-refs agree
+  [PASS] POST-STATE: every latency claim is parser-scoped (R12-E) 2 occurrences, all parser-scoped
+  [PASS] PTY matrix anchor                                        self-stamps 6965a079
+  [PASS] base-vs-tip identity anchor                              self-stamps 6965a079
+  [PASS] degenerate sweep anchor                                  self-stamps 6965a079
+  [PASS] second-grammar census anchor                             self-stamps 6965a079
+  [PASS] `{v}<<<` arm mutation-proof transcript                   self-stamps 6965a079
+  [PASS] ruff anchor (self-stamped, NIT 11)                       self-stamps 6965a079
+  [PASS] mypy anchor (self-stamped, NIT 11)                       self-stamps 6965a079
+  [PASS] full gate anchor                                         self-stamps 6965a079
+  [PASS] compare-bash anchor                                      self-stamps 6965a079
+  [PASS] R14-A diag-axis sweep anchor                             self-stamps 6965a079
+  [PASS] post-state historical proof anchor                       self-stamps 6965a079
+  [PASS] R15-A alias-axis anchor                                  self-stamps 6965a079
+
+BY KIND: absent=8  anchor=12  grep=32  postcheck=4  test=8  testid=19
+ORDERED-CHANGE ROWS (checked at both ends): 59
+
+ROWS 83   PASSED 83   FAILED 0

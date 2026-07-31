@@ -169,3 +169,18 @@ values ('1', '2') were measured against 5.2.26 on macOS while the Linux
 nightly runs a different bash build (plan A12) — a bash-version-dependent PTY
 value there fails the default suite and should be read as an ORACLE-VERSION
 question first, not a psh regression.
+
+## v0.761.0 note — PTY suite growth (slot 2.5)
+
+Slot 2.5 adds a second default-run PTY module
+(`tests/system/interactive/test_heredoc_detection_interactive_pty.py`, ~70
+tests) beside 2.4's substitution-abort module, plus the alias-route and
+named-fd differential files (subprocess, parallel-safe). The PTY modules run
+in the SERIAL phase; local serial-phase cost grew ~4x over the 2.4 precedent
+(accounted per round-5 N3 / R11-D). Same reading rule as v0.760.0: these
+modules resolve the bash oracle loudly at import and their bash-side
+expectations were measured against 5.2.26 — a Linux nightly failure in them is
+an ORACLE-VERSION question first. New wrinkle from 2.5: psh answers "need
+more" with CONTEXTUAL prompts (`then> `, `for then> `) — the 2.5 module's
+detector understands them; 2.4's module does not need to (no case opens a
+construct) but shares the limitation LATENTLY (LEDGER 2.5 successor row h).

@@ -1,0 +1,6 @@
+# SHA: 6965a079cb0c8dc0b4fa2f027144bb68af77df50
+# command: pytest tests/behavioral --compare-bash -n auto -q
+# transcript: tmp/compare-bash-r9.txt
+
+............................................................             [100%]
+2986 passed, 26 skipped in 42.22s

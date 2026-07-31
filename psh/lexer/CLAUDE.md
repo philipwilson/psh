@@ -221,7 +221,7 @@ keyword recognizer either: keywords are normalized from WORD tokens by the
    `recognizers/__init__.py` only re-exports classes; adding one there does
    not activate it. Optionally add the re-export for discoverability.
 
-### Tokens are immutable
+### The lexical value graph is immutable — the WHOLE graph
 
 `Token` is `@dataclass(frozen=True)`: once the
 lexer emits a token it is never mutated. Stages that need a changed token build
@@ -231,6 +231,33 @@ do this. `position`/`end_position` are the canonical stored offsets; `span`
 (a `SourceSpan`) is a derived read-only view. `SourceMap` (`position.py`) is the
 one offset → (line, column) + line-text service (the lexer's `PositionTracker`
 and the parser's error context both read it).
+
+Freezing the token alone was not enough, and the gap was real rather than
+theoretical (reappraisal #22 MEDIUM-10): a frozen `Token` still handed out a
+mutable `parts` LIST of mutable `TokenPart` objects, so a caller could rewrite
+a lexed value after the lexer had returned it. **Every edge of the graph
+reachable from a `LexedUnit` is now immutable** — `LexedUnit.tokens` (tuple),
+`LexedUnit.heredocs` (read-only mapping), `Token`, `Token.parts` (tuple),
+`token_parts.py#TokenPart` (frozen) and the `position.py#Position` values it
+holds (frozen). Construction-time list building stays legal:
+`token_types.py#Token.__post_init__` coerces `parts` to a tuple, so a scanner
+may accumulate a list and hand it over.
+
+The freeze had to go one level DEEPER than the first attempt, and that is the
+invariant's real teaching: **freezing a container proves nothing about its
+contents.** `TokenPart` was frozen while `start_pos`/`end_pos` still held plain
+`Position` dataclasses, so `part.start_pos.offset = 999` still rewrote a lexed
+value — the shape MEDIUM-10 named, reproduced one level down. Freezing
+`Position` cost no redesign, because `PositionTracker` already keeps its own
+line/column counters and builds a fresh `Position` at emission.
+
+The guard is `tests/unit/lexer/test_lexical_value_graph_frozen.py`, and its
+universe is WALKED rather than listed: it traverses every object reachable from
+a real `LexedUnit` and flags any non-frozen dataclass and any mutable
+container. A field-NAME enumeration cannot see this class of defect, because
+the offending object is not a field but a field's VALUE — so the census walks
+the live graph, and a new field, node type or nesting level is covered without
+anybody remembering to update the test.
 
 ## Key Implementation Details
 

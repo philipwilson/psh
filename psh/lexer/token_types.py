@@ -3,7 +3,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 if TYPE_CHECKING:
     from .token_parts import TokenPart
@@ -109,8 +109,18 @@ class Token:
     attachment, in-parser retypes) build a new one with
     :func:`dataclasses.replace`. ``position``/``end_position`` remain the
     canonical stored offsets; :pyattr:`span` is a derived read-only view over
-    them. (``frozen`` guards the attributes, not the contents of the mutable
-    ``parts`` list — but ``parts`` is never mutated after construction.)
+    them.
+
+    The freeze reaches the WHOLE value graph, not merely this class's own
+    attributes: ``parts`` is a TUPLE of frozen
+    :class:`~psh.lexer.token_parts.TokenPart` values, whose own
+    :class:`~psh.lexer.position.Position` fields are frozen too (freezing
+    only the outer classes left those writable). Until reappraisal #22
+    MEDIUM-10, ``frozen`` guarded the attributes while ``parts`` stayed a
+    mutable list of mutable parts, so a lexed value could still be rewritten
+    after the lexer had returned it. Construction accepts any iterable of parts
+    and :meth:`__post_init__` coerces it, so a caller that builds a list still
+    works while the STORED value is always a tuple.
     """
     type: TokenType
     value: str
@@ -121,7 +131,7 @@ class Token:
     column: Optional[int] = None  # Column number (1-based)
     adjacent_to_previous: bool = False  # True if no whitespace between this and previous token
     is_keyword: bool = False  # True when keyword normalizer marks this as a keyword
-    parts: List['TokenPart'] = field(default_factory=list)  # Token parts (imported from lexer.token_parts)
+    parts: Tuple['TokenPart', ...] = ()  # Token parts (from lexer.token_parts)
     fd: Optional[int] = None  # File descriptor prefix (e.g., 2 in 2>file)
     var_fd: Optional[str] = None  # Named-fd prefix var (e.g. 'fd' in {fd}>file)
     combined_redirect: bool = False  # True for &> and &>> (stdout+stderr)
@@ -137,6 +147,16 @@ class Token:
     # ordinary words. (Lexer-internal payload; retired with WordToken in a
     # later phase.) repr=False for the same repr-stability reason as heredoc_id.
     array_init: Optional[Any] = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Coerce ``parts`` to a tuple so the stored graph is always frozen.
+
+        Construction sites legitimately BUILD a list of parts while scanning a
+        word; freezing at the boundary keeps that natural and still leaves no
+        mutable edge on a finished token.
+        """
+        if not isinstance(self.parts, tuple):
+            object.__setattr__(self, 'parts', tuple(self.parts))
 
     @property
     def span(self) -> SourceSpan:

@@ -1,0 +1,143 @@
+# VERIFY-ROUND8 — slot 2.5, tip a801ad1a, verdict BOUNCE (2 blockers, 14 nits)
+
+Full machine-readable copy: VERIFY-ROUND8-issues.json (same directory).
+
+## BLOCKER 1 [diffAudit] — 
+
+UNDECLARED, UNPINNED BEHAVIOUR DELTA ON A CLI-REACHABLE INPUT: an alias-introduced named-fd here-document (`alias foo='true {v}<<EOF'; foo`) reaches the branch's new `NonExecutableRedirectError` var_fd arm. Base aborts the script with a parse error (rc 2, nothing after runs); tip prints an internal-defect message containing a Python repr, then EXECUTES THE HERE-DOCUMENT BODY LINES AS COMMANDS and continues (rc 0). Neither SHA matches bash (bash consumes the body correctly), so this is not an improvement toward the oracle — it is a base->tip move into the very MEDIUM-3 harm class the slot exists to close, on a surface the slot itself created (the named-fd lexer table + var_fd threading). Brief §7 requires any behaviour delta beyond the chartered fix to be probed vs live bash, both parsers, DECLARED + PINNED; `grep -i alias tmp/remediation-ledgers/2.5.md` returns only visitor-method-alias rows, and no test in the branch varies the alias axis. It also refutes R9-B's premise that the plain-Redirect-with-var_fd shape is only synthetically constructible: the offender guards in tests/unit/io_redirect/test_heredoc_executable_type.py all hand-build the value, so their universe is narrower than the claim. Cheapest honest fixes: declare the alias route + pin it per channel/parser (it is base-different), or make the bare-parse-with-var_fd value unreachable from the alias path.
+
+### Evidence
+```
+Replayed at exact SHAs, discriminator-verified (BASE worktree e36116c3 -> `hasattr(psh.io_redirect.file_redirect,'NonExecutableRedirectError')` == False; TIP worktree a801ad1a -> True; `psh.__file__` under each tree; cwd neutral; one case per invocation).
+Probe file (od -c verified): `shopt -s expand_aliases\nalias foo="true {v}<<EOF"\nfoo\nhello\nEOF\necho AFTER\n`
+- bash 5.2.26 (/opt/homebrew/bin/bash, --norc), script + stdin + -c: stdout `AFTER`, rc 0.
+- BASE e36116c3, 3 channels x {rd,combinator} = 6 rows, ALL: `psh: <chan>:3: Parse error (line 3, column 10): Expected file name` / rc 2 / `AFTER` NOT printed (script aborted).
+- TIP a801ad1a, 3 channels x {rd,combinator} = 6 rows, ALL: `line 3: non-executable heredoc parse state reached the named-fd route: Redirect(type='<<', var_fd='v') carries no collected body. Every live parse path builds a HeredocRedirect.` / `line 4: hello: command not found` / `line 5: EOF: command not found` / `AFTER` / rc 0.
+Same alias route also reaches the other two new typed arms (base-identical there, message-only delta): `alias foo="cat <<EOF"` -> fd backend arm; `alias r="read x <<EOF"` -> builtin-stream arm (manager.py).
+```
+
+## BLOCKER 2 [diffAudit] — 
+
+FALSE CLAIM IN COMMITTED PRODUCTION SOURCE, AND IN THE RUNTIME MESSAGE ITSELF. `psh/io_redirect/file_redirect.py#NonExecutableRedirectError` states "Every live parse path builds a HeredocRedirect instead, so reaching here is an INTERNAL DEFECT, not a user error"; `psh/ast_nodes/redirects.py#HeredocRedirect` states "Every LIVE heredoc-aware parse path constructs this class"; `psh/io_redirect/CLAUDE.md` repeats the framing; and all three raised messages end with the sentence "Every live parse path builds a HeredocRedirect." printed to the user's stderr. All are falsified by ordinary user input: an alias whose expansion introduces a heredoc operator is token-substituted AFTER the heredoc-aware lex, so a live parse path builds a plain Redirect with a heredoc operator type and execution hits the arm. This is the docstring-over-claim class the slot has already been bounced for twice (R4-A three doc claims; R7-B(5) three docstrings over-claiming an escaped-spelling-only fact), and here the over-claim is also emitted at runtime. Fix is cheap: scope the wording ("every heredoc-aware parse path that COLLECTED the bodies"; name the alias-substitution route as the known exception) and drop the false sentence from the three messages.
+
+### Evidence
+```
+TIP a801ad1a, script channel, --parser rd: `alias foo="cat <<EOF"; foo; hello; EOF; echo AFTER` ->
+`... error: non-executable heredoc parse state reached execution: a plain Redirect(type='<<', target='EOF') carries no collected body. Every live parse path builds a HeredocRedirect.` (then body lines run as commands).
+Builtin-stream twin, TIP: `alias r="read x <<EOF"` -> `line 3: non-executable heredoc parse state reached the builtin stream backend: Redirect(type='<<', target='EOF') carries no collected body.`
+BASE e36116c3 same inputs raise the pre-existing `heredoc redirect reached execution without a collected body (delimiter 'EOF')` — i.e. the arm's reachability is pre-existing; only the claim that it is unreachable/not-a-user-error is new.
+```
+
+## NIT 1 [diffAudit] — 
+
+UNDECLARED USER-VISIBLE MESSAGE-TEXT DELTA on the two base-identical arms. On the alias route above, the stderr text changes base->tip for the plain `<<` fd-backend arm and the builtin-stream arm while everything else (body-lines-as-commands, rc, stdout) is identical. This is an inherent consequence of the sanctioned late-discovery-site replacement, so it is not a bounce on its own — but the declared-delta list in tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py and the ledger do not mention it, and it is a stderr byte change on a reachable input. Add it to the declared list (record-only is fine) so the next slot's identity instrument does not read it as a surprise.
+
+```
+BASE: `heredoc redirect reached execution without a collected body (delimiter 'EOF')`
+TIP:  `non-executable heredoc parse state reached execution: a plain Redirect(type='<<', target='EOF') carries no collected body. Every live parse path builds a HeredocRedirect.`
+(3 channels x 2 parsers, both SHAs; rc and stdout identical in every row.)
+```
+
+## NIT 2 [diffAudit] — 
+
+RECORD-ONLY, NO ACTION — clean results from the rest of the diff audit, so the integrator can see what was checked. (a) psh/version.py, CHANGELOG.md, README.md, ARCHITECTURE.md, docs/reviews/README.md, FLIP-PINS.md and the campaign LEDGER.md are all UNTOUCHED. (c) tests/behavioral (goldens), tests/conformance and tests/parser_differential are UNTOUCHED — no must-flip row is owned by 2.5 and no must-NOT-flip pin (incl. heredoc_nested_error_reports_absolute_line and test_divergence_heredoc_body_cmdsub_stays_runtime) is edited; the only test_divergence_ change in the diff is the ADDITION of the fenced pre-existing pin test_divergence_plain_and_digit_degenerate_forms (R11-D N1; FLIP-PINS registration is integrator-owned per R12). (d) none of the parallel session's never-touch files are touched. (b) every file in the diff maps to the brief's scope list or to a numbered ruling (operator.py/named-fd executor arms = R7-A/R8-A/R9-A; _operand_less_redirect_error asymmetry = R10-A(4); manager.py twin arm = R3-A/C1; position.py freeze = R4-A; visitor aliases/traversal/dot_generator = R2-A C3, R4 N7, R7-C; line_editor_helpers.py is DOCSTRING-ONLY per R14-B N10; redirect_program.py comment = R14-B N3; docs = R9 N1/N8 + R14-B N7). Independent spot checks that passed: the tour_of_psh_internals.md --debug-ast=pretty block reproduces BYTE-EXACT when regenerated at the tip (R9 mechanical-regeneration condition discharged); classify_redirect really does test var_fd first (redirect_program.py comment true); no surviving unguarded `heredoc_content` consumer anywhere in psh/ (all 4 read sites are isinstance-gated); no `.parts` mutation or Position field write outside PositionTracker's own counters; psh/utils exports HeredocTermination; AstChildSchema['HeredocRedirect'] matches the Redirect row; heredocs is a mappingproxy even when empty, so the frozen-graph _EDGES heredoc row is not vacuous on heredoc-free corpus sources; the heredoc map is int-keyed so _lexer_pending_heredocs' sorted() really is source order.
+
+```
+git diff origin/main...fix/remediation-2-5 --stat -- <integrator-owned files> => empty; same for tests/behavioral tests/conformance tests/parser_differential. `git diff ... | grep -E '^[+-].*def test_divergence_'` => one added line only. Tour-doc regeneration: `PYTHONPATH=<tip-worktree> python -m psh --norc --debug-ast=pretty -c 'echo "Hello, $USER" | wc -c > out.txt'` matches docs/architecture/tour_of_psh_internals.md lines 243-283 exactly up to the documented `...` trim.
+```
+
+## NIT 3 [resurrection] — 
+
+TASK-2 RESULT (no blockers). Complete deleted/renamed-symbol census over all 42 changed .py files (AST-derived, base e36116c3 -> tip a801ad1a) yields EXACTLY ONE removed top-level symbol: the dataclass field `Redirect.heredoc_content` in psh/ast_nodes/redirects.py, relocated to the new subclass `HeredocRedirect` as a required kw_only field. Zero removed functions/classes/methods/module constants/fixtures/markers/CLI flags; `git diff --name-status -M` shows 8 additions and no deletions or renames. All 10 surviving `heredoc_content` references in psh/ are type-guarded and none dangle.
+
+```
+Instrument: scratchpad/symdiff_t2.py (ast.parse of `git show <rev>:<path>` for every changed .py, module+class-body symbol sets diffed). Output: `psh/ast_nodes/redirects.py:  REMOVED: Redirect.heredoc_content` and nothing else. Surviving refs (git grep -n heredoc_content fix/remediation-2-5 -- psh/ tools/): file_redirect.py:420 (inside `_heredoc_expanded_content(redirect: 'HeredocRedirect')`, both entries isinstance-gated at :399 redirect_heredoc and :558 apply_var_fd_redirect); parsers' redirections.py:106/:136 construct HeredocRedirect only; debug_ast_visitor.py:397, formatter_visitor.py:683, linter_visitor.py:364, security_visitor.py:265 all isinstance-gated; procsub_render.py:164 converted from `node.heredoc_content is not None` to `isinstance(node, HeredocRedirect)`. No `getattr(...,'heredoc_content')`, no dataclasses.replace on redirects, no asdict/vars field-copy sites (grepped). Every `Redirect(` construction site in psh/+tools/ enumerated (28 sites) - none passes heredoc_content.
+```
+
+## NIT 4 [resurrection] — 
+
+String-keyed / exact-class registries all updated - no dangling class-name key. The two class-name-keyed registries in psh/ (visitor/traversal.py#AstChildSchema and parser/visualization/dot_generator.py colour map) both gained a `HeredocRedirect` row, and all 6 modules that define `visit_Redirect` also define `visit_HeredocRedirect`.
+
+```
+git grep -ln 'def visit_Redirect' fix/remediation-2-5 -- psh/ tools/ => debug_ast_visitor, formatter_visitor, linter_visitor, metrics_visitor, security_visitor, validator_visitor (6). git grep -ln 'visit_HeredocRedirect' => the same 6 + ast_nodes/redirects.py. git grep -n "'Redirect'" over psh/+tools/ finds only two registry rows (traversal.py:102, dot_generator.py:47), both mirrored. Runtime confirmation: 8/8 visitors (incl. EnhancedValidatorVisitor and ASTDotGenerator) visited a real heredoc AST without error.
+```
+
+## NIT 5 [resurrection] — 
+
+IMPORT/RUN PROOF PASSED in a throwaway worktree at the branch tip (created and removed as instructed).
+
+```
+Worktree /private/tmp/remv-wt-t2-74948 @ a801ad1a. `python -c 'import psh, psh.version'` => psh.__file__ = /private/tmp/remv-wt-t2-74948/psh/__init__.py, version 0.760.0 (discriminator confirms the worktree tree, not the editable install). `python -m psh -c 'echo ok'` => 'ok', exit 0. pkgutil.walk_packages over the whole psh package: 0 import failures. Targeted suites in the worktree: tests/unit/io_redirect+visitor+lexer => 2084 passed / 1 skipped; tests/unit/parser+scripting+tooling+regression => 3110 passed. Doc/registry guards (test_doc_pointers, test_doc_snippets, test_mypy_scope, test_no_direct_spawn_in_oracle_modules, test_ast_coverage_matrix, test_syntax_bearing_ast_fields_q2) => 166 passed. Worktrees removed (`git worktree list` clean of both).
+```
+
+## NIT 6 [resurrection] — 
+
+Two referenced paths do not exist in the branch tree - forward references to evidence the integrator must rescue at ceremony. If the 2.5-rescue drop omits either file these become permanent dangling pointers in committed production code and a committed test docstring.
+
+```
+tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py:14 names `docs/reviews/evidence/boundary_remediation_2026-07/2.5-rescue/base_tip_identity.py`; psh/utils/heredoc_detection.py:34 names `second_grammar_census.py`, "rescued to ``docs/reviews/evidence/`` at ceremony". Instrument: scratchpad/paths_t2.py extracted 14 repo-relative paths from added diff lines and stat'd them in the tip worktree - 13 exist, 1 missing (base_tip_identity.py); the census script has no path prefix so it was found by grep. Pattern is established (1.2-rescue, 1.3-rescue, 1.3b-rescue, 1.4-rescue, 2.1-rescue .. 2.4-rescue all exist), so this is an integrator TODO, not a dev defect. All 18 added `file.py#symbol` pointers resolve (scratchpad/ptr_t2.py; test_doc_pointers.py also green).
+```
+
+## NIT 7 [resurrection] — 
+
+Axis gap in a claim's prose, not a regression: the newly-supported `{v}<<` / `{v}<<-` / `{v}<<<` surface diverges from bash 5.2.26 on the NULL-COMMAND spelling (no command word), which the dev's corpus does not vary - every row in tests/unit/io_redirect/test_named_fd_heredoc.py carries a command word (`true`/`exec`/`cat <&$v`). The file's docstring asserts "psh now matches bash end to end" for that family; on the null-command spelling it does not. Mitigating and why this is a NIT: the identical divergence pre-exists on the untouched `{v}</dev/null` null-command form at BOTH SHAs, so this is a pre-existing psh semantic newly reachable through the new spellings, not a fresh regression, and base was worse (parse error).
+
+```
+Novel rows the dev's suite does not contain - script FILES (od -c verified), both parsers, stdin </dev/null, oracle /opt/homebrew/bin/bash 5.2.26(1) (PATH bash), REPLAYED at both SHAs in dedicated worktrees. n2 `{v}<<EOF\nb\nEOF\necho "v=[$v]"` -> bash `v=[]`; tip(rd) `v=[10]`, tip(combinator) `v=[10]`; base(e36116c3) `psh: ...n2.sh:1: Parse error (line 1, column 5): Expected file name`. n3 `{v}<<<hs\necho "v=[$v]"` -> bash `v=[]`; tip(rd/combinator) `v=[10]`; base parse error. CONTROL n1 `{v}</dev/null\necho "v=[$v]"` (surface untouched by this branch) -> bash `v=[]`; tip `v=[10]`; base `v=[10]` => pre-existing. CONTROL n4 `true {v}<<EOF...` -> bash `v=[10]` == tip `v=[10]` (the dev's covered shape, matches). Also verified as part of the same battery: 13/15 script-mode differential rows (builtin_read, builtin_while_read, func, subshell_pipe, strip_tabs, quoted_delim, fd_prefix, procsub, cmdsub, empty_body, two_docs, compound, escaped) are byte-identical to bash on both parsers.
+```
+
+## NIT 8 [resurrection] — 
+
+Positive spot-check worth recording: the rewritten `--debug-ast=pretty` example in docs/architecture/tour_of_psh_internals.md reproduces byte-for-byte against the branch, so the doc rewrite is not stale.
+
+```
+`python -m psh --debug-ast=pretty -c 'echo "Hello, $USER" | wc -c > out.txt'` in the tip worktree emits exactly the tree the doc now shows (=== AST Debug Output (recursive_descent) === / Program: / statements: [ / AndOrList @line1 ... Redirect: type: '>'), matching the added lines in the docs diff.
+```
+
+## NIT 9 [ledgerCheck] — 
+
+psh/interactive/line_editor_helpers.py appears in the branch diff although ruling R1-B ordered 'diff must not touch either file'. The change (landed in a801ad1a) is docstring/comment-only, was ordered by the round-7 nit relay (R14-B N10) and is declared in ledger B83 N10 — but no ruling text explicitly rescinded R1-B's no-touch clause. Integrator should record the supersession at ceremony. input_preprocessing.py (the other R1-B file) is confirmed untouched.
+
+```
+git diff origin/main...fix/remediation-2-5 -- psh/interactive/line_editor_helpers.py shows only module-docstring hunks (SEPARATOR-decision scoping + KNOWN DIVERGENCE paragraph); file is absent from the diff at 30ffa09a and appears only in 30ffa09a..a801ad1a.
+```
+
+## NIT 10 [ledgerCheck] — 
+
+Ledger B73's '46 files changed vs origin/main' is stale relative to the final tip: it was true at 30ffa09a (replayed: 46) but the R14 fix round grew the diff to 50 files, and the final declaration section (B87) never restates the count. Record-currency only; the never-touch audit (0 hits) replays clean at a801ad1a.
+
+```
+git diff --name-only origin/main...30ffa09a | wc -l = 46; origin/main...fix/remediation-2-5 = 50 (additions: docs/architecture/lexer_architecture.md, psh/interactive/line_editor_helpers.py, psh/io_redirect/redirect_program.py, tests/unit/visitor/test_security_missed_positions.py). No never-touch file and no behavioral/conformance/parser_differential path in the list.
+```
+
+## NIT 11 [ledgerCheck] — 
+
+heredoc_detection.py's consumer docstring presents the scanner/algebra census as a partition ('they divide by WHICH of this module's two jobs they use'), but four scanner-side consumers also call the ALGEBRA's PendingHeredocQueue.feed_line, so the division is not exclusive. No module my fresh greps found is missing from the enumeration (census total 14 sites confirmed), and the completeness oracle's algebra-only placement is correct — only the exclusive-partition phrasing overstates.
+
+```
+git grep '\.feed_line(' fix/remediation-2-5 -- psh/ finds heredoc_collector.py:89, cmdsub_scanner.py:183, input_preprocessing.py:82, and history_expansion.py:189 in addition to session.py:269 — all four are listed only under the TEXT-LEVEL SCANNER bullet in the tip docstring (heredoc_detection.py:38-52).
+```
+
+## NIT 12 [ledgerCheck] — 
+
+Reminder of the dev-surfaced, integrator-owned ceremony obligations so they do not drop: (1) campaign LEDGER.md:33 MEDIUM-3 row says 'INTERACTIVE-ONLY (latent in -c)' — proven accurate for rd but over-claimed for the combinator (B70's 12 all-channel combinator deltas); same claim at integrator plan :107; (2) the FLIP-PINS successor row for the fenced plain/digit degenerate divergence pin (r6 N3); (3) the ARCHITECTURE.md:1052 sketch (r6 N6); (4) LEDGER Part A status flips for MEDIUM-3/MEDIUM-10 at ceremony. All are on the dev's never-touch list and correctly untouched on the branch.
+
+```
+Ledger B70 ('SURFACED, NOT FIXED (integrator-owned)'), B71 r6 N3/N6 rows; git diff --name-only origin/main...fix/remediation-2-5 contains none of LEDGER.md, FLIP-PINS.md, ARCHITECTURE.md.
+```
+
+## NIT 13 [ledgerCheck] — 
+
+The must-not-flip by-name table (B74) was last emitted at 30ffa09a; the final tip a801ad1a has no re-emitted by-name table. Coverage at the final tip rests on the full gate + compare-bash (both green there, anchors self-stamped) plus the fact that every named must-not-flip set is default-run and its trees (behavioral/conformance/parser_differential) are untouched on the branch — sufficient, but B74's own stated standard was names-not-just-counts at the declared tip.
+
+```
+gate-final.txt (22,313/1,590/10) and compare-bash-final.txt (2,986/26) both contain 'a801ad1a'; git diff --name-only shows tests/behavioral, tests/conformance, tests/parser_differential absent from the branch diff; B74's table is stamped at 30ffa09a.
+```
+
+## NIT 14 [reprobe] — 
+
+Record miscount, strengthening direction: B82/B86 in the ledger, the R14 commit message, and the dev's declared summary all state the diag pin table as '9 moving + 5 CONTROL shapes' and 'table 4 -> 14 shapes'; the committed _DIAG_SHAPES in tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py has 9 moving + 6 control rows = 15 shapes (controls: single_quoted [2], double_quoted [2], arith_dollar [2], here_string [2], escaped_second_lt [1,2], true_heredoc [4]). B86's own +133 arithmetic only reconciles with 15 shapes ((15-4)x12+1=133; with 14 it would be 121). Hand-tallied prose vs derived count — the tree is stronger than the record; correct the numbers at ceremony.
+
+```
+pytest --collect-only on the file = 233 rows (only consistent with 15 diag shapes: 12+4+15*12+1+6+24+6=233); direct read of _DIAG_SHAPES shows 6 _CONTROL entries; ledger 2.5.md B82 ('9 shapes tagged moves + 5 tagged control') and B86 ('the diag table goes 4 shapes -> 14').
+```

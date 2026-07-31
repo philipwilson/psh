@@ -14,9 +14,23 @@ from typing import Optional
 from ..core.exceptions import PshError
 
 
-@dataclass
+@dataclass(frozen=True)
 class Position:
-    """Represents a position in the input text with line and column information."""
+    """A position in the input text: absolute offset plus line/column.
+
+    ``frozen``: a Position is a VALUE, and freezing it is what makes the
+    lexical value graph immutable ALL THE WAY DOWN. ``TokenPart`` holds two
+    of these (``start_pos``/``end_pos``), so leaving them mutable would have
+    reproduced reappraisal #22 MEDIUM-10 one level lower: container frozen,
+    contents writable. Nothing mutates a Position in flight —
+    :class:`PositionTracker` keeps its own line/column counters and builds a
+    fresh Position at emission — so this costs no construct-at-emission
+    redesign.
+
+    Enforced transitively (every object reachable from a ``LexedUnit``, not
+    a hand-listed set) by
+    ``tests/unit/lexer/test_lexical_value_graph_frozen.py``.
+    """
     offset: int  # Absolute position in input (0-based)
     line: int    # Line number (1-based)
     column: int  # Column number (1-based)

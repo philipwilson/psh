@@ -1,0 +1,4 @@
+cat <<EOF "abc
+EOF
+def"
+echo MARK""ER
