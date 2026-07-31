@@ -4,6 +4,47 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.761.0 (2026-08-01) — remediation 2.5: heredoc/lexical value integrity
+
+Closes reappraisal-#22 MEDIUM-3 and MEDIUM-10 (Boundary Remediation Wave 2,
+slot 2.5; nine adversarial verification rounds, two developers, 29/29
+blockers real).
+
+**MEDIUM-3 — one heredoc grammar.** The interactive session no longer asks a
+second regex grammar whether a line opens a here-document; pending heredocs
+are derived from the real lexer's events (`parser/session.py` consults the
+injected lex seam; `utils/heredoc_detection.py` keeps only the shared
+delimiter/terminator algebra and declared out-of-oracle consumers). The
+`echo \<<EOF` misdetection — PS2 drop + phantom-body swallow at a terminal —
+is fixed and PTY-pinned red-on-base; a 731-case lexer/session equivalence
+corpus and a 48-row combinator diagnostic-line pin family (membership DERIVED
+from the mechanism; three moving families incl. `set -o posix`; literal-line
+controls) pin the behavior. Declared improvements toward bash ride along:
+heredoc-vs-unclosed-quote precedence, substitution-bearing delimiters,
+`a[<<]=1`, and correct combinator line numbers on previously-swallowed lines.
+
+**MEDIUM-10 — honest value types.** The executable here-document is now
+`HeredocRedirect` with a REQUIRED body (a plain `Redirect` carrying a heredoc
+operator is non-executable parse state; typed `NonExecutableRedirectError`
+arms guard both backends, the named-fd route, and the direct-call primitives
+— offender-proven across fd kinds and the alias-expansion route). The
+complete lexical value graph is frozen (`TokenPart`, `parts` tuples,
+`Position`) with a transitive census guard over an 8-source corpus.
+
+**Named-fd completion (improvement beyond base).** `{v}<<EOF`, `{v}<<-EOF`
+and `{v}<<<word` now lex, parse and EXECUTE like bash (fd >= 10 semantics;
+base parse-errored) — with a two-direction fd-prefix table-parity guard so
+digit/named operator tables cannot drift apart, and degenerate operand-less
+forms completing with an error like bash instead of swallowing input.
+
+**Declared divergences (successor-owned pins):** alias-introduced heredoc
+bodies are not collected (whole family, uniform + user-comprehensible
+message); null-command named-fd keeps its descriptor; plain/digit dangling
+heredocs keep psh's pre-existing PS2 policy.
+
+Tests 22,723 -> 24,028 collected (+1,305; gate 22,411 passed). Evidence:
+docs/reviews/evidence/boundary_remediation_2026-07/2.5-rescue/.
+
 ## 0.760.0 (2026-07-31) - Remediation Wave 2 slot 2.4: substitution-origin frame outcome (HIGH-9)
 
 - **A syntax error inside a substitution body now aborts the enclosing frame
