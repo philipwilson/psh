@@ -1,15 +1,22 @@
 """INTERACTIVE (real PTY) heredoc-vs-not detection (slot 2.5, #22 MEDIUM-3).
 
-WHY THIS IS A PTY MODULE AND NOT A `-c` TEST. The defect is LATENT everywhere
-except a terminal. Fed `echo \\<<EOF`, the session's completeness oracle used a
-second, REGEX heredoc grammar that read the escaped `<` as opening a heredoc on
-`EOF`; the real lexer sees an escaped `<` plus an ordinary input redirection,
-and so does bash. Non-interactively the flush path re-lexes and the wrong answer
-never surfaces -- measured at base e36116c3 across `-c`, script-file and stdin,
-both parsers: 66/66 rows identical to bash. So a `-c` pin would have been GREEN
-ON BASE and would have proven nothing. Only at a terminal does the session's
-answer become observable: psh dropped to PS2 and swallowed the following line as
-a phantom here-document body.
+WHY THE ESCAPED SPELLING NEEDS A PTY PIN. For `echo \\<<EOF` SPECIFICALLY, the
+defect is latent everywhere except a terminal: the session's completeness
+oracle used a second, REGEX heredoc grammar that read the escaped `<` as
+opening a heredoc on `EOF`, while the real lexer -- and bash -- see an escaped
+`<` plus an ordinary input redirection. Non-interactively the flush path
+re-lexes and that wrong answer never surfaces, so a `-c` pin for THAT SHAPE
+would have been green on base and proven nothing. Only at a terminal is the
+session's answer observable: psh dropped to PS2 and swallowed the next line as
+a phantom body.
+
+SCOPE OF THAT CLAIM -- it is about the escaped spelling and nothing else. Round
+2 established that the slot's OTHER shapes do move non-interactively (exit
+status, stdout and stderr all change for the unclosed-quote and
+substitution-delimiter shapes, on both parsers and all three channels). Those
+are pinned in tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py.
+Do not read "latent non-interactively" as a slot-wide property; it was measured
+for one spelling.
 
 THE OBSERVABLE, and why line 2 is spelled oddly: each case sends its shape line
 then `echo MARK""ER`. A terminal ECHOES the typed bytes, so a literal

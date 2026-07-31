@@ -228,12 +228,13 @@ PTY_REGISTRY = {
         "parsers) AND the resolved bash oracle through pexpect.spawn over a "
         "pseudo-terminal (TERM=dumb) and compares whether each shell treats a "
         "line as COMPLETE or waits for a here-document body. The TERMINAL is "
-        "the subject, and that was MEASURED rather than assumed: the same "
-        "bytes through `-c`, script-file and stdin agree with bash on 66/66 "
-        "rows at base, so the divergence is observable ONLY at a prompt and a "
-        "non-PTY pin for it would be green-on-base. Removal: as above — a PTY "
-        "mode in run_shell_case, or a shared PTY differential harness owning "
-        "oracle resolution and typed outcomes.",
+        "the subject: for the ESCAPED `\\<<` spelling the divergence is "
+        "observable only at a prompt, so a non-PTY pin for THAT SHAPE would be "
+        "green-on-base. Scoped to that spelling on purpose — the slot's other "
+        "shapes DO move non-interactively and are pinned in "
+        "tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py. "
+        "Removal: as above — a PTY mode in run_shell_case, or a shared PTY "
+        "differential harness owning oracle resolution and typed outcomes.",
 }
 _EXPECTED_PTY_REGISTRY = frozenset(PTY_REGISTRY)
 
