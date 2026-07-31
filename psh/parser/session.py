@@ -63,8 +63,7 @@ if TYPE_CHECKING:
     from .parse_outcome import ParseOutcome
 
 from ..lexer import UnclosedQuoteError
-from ..utils import PendingHeredocQueue
-from ..utils.heredoc_detection import HeredocTermination
+from ..utils import HeredocTermination, PendingHeredocQueue
 from .parse_outcome import Incomplete as ParsedIncomplete
 from .parse_outcome import Invalid as ParsedInvalid
 from .recursive_descent.parser import Parser
@@ -292,8 +291,8 @@ class ParseSession:
                 hint=ContinuationHint(ContinuationReason.LINE_CONTINUATION))
 
         # 2. Lex ONCE for this fed line — the single heredoc grammar. The
-        #    result serves both the open-heredoc decision here and the trial
-        #    parse at step 4 (no second lex, and no second GRAMMAR).
+        #    result serves both the open-heredoc decision at step 3 and the
+        #    trial parse at step 5 (no second lex, and no second GRAMMAR).
         unit, lex_error = self._lex_preview(preview)
 
         # 3. Open heredoc: following lines are body text for the pending
@@ -371,7 +370,7 @@ class ParseSession:
         """Lex ``preview`` ONCE, returning ``(LexedUnit, None)`` or ``(None, exc)``.
 
         The single lex per fed non-body line. Its result answers BOTH questions
-        the engine asks of a line — "does this open a heredoc?" (step 2, via the
+        the engine asks of a line — "does this open a heredoc?" (step 3, via the
         lexer's own heredoc collector) and "does this parse?" (step 5) — so
         there is exactly one heredoc grammar and one tokenization.
 

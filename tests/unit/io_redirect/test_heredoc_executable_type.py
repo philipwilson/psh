@@ -199,6 +199,44 @@ def test_synthetic_offender_raises_typed_on_the_var_fd_route(shell, kind,
         shell.io_manager.file_redirector.apply_var_fd_redirect(offender)
 
 
+def test_operand_less_here_string_offender_raises_typed_on_the_var_fd_route(
+        shell):
+    """The SECOND typed arm on the same route -- `{v}<<<` with no operand.
+
+    Round-5 ruling R11-A(1) asked for offender rows on BOTH new arms; only the
+    `<<`/`<<-` one landed, and round 6 proved the gap by deleting the `<<<`
+    arm from `file_redirect.py#apply_var_fd_redirect` and watching 195 tests
+    stay green. An arm with no offender row is not a guard.
+
+    Unlike the heredoc arm, this one is not about a missing BODY field: a
+    here-string keeps its content in `target`/`target_word` on a plain
+    `Redirect` (the C2 decision), so the non-executable state here is an
+    operand-less operator -- the parse state `{v}<<<` produces before the
+    parser's own operand-less error fires. Reaching execution, it used to die
+    on a raw AttributeError from the None target.
+    """
+    offender = Redirect(type="<<<", target=None, var_fd="v")
+    with pytest.raises(NonExecutableRedirectError, match="carries no content"):
+        shell.io_manager.file_redirector.apply_var_fd_redirect(offender)
+
+
+def test_here_string_with_an_operand_is_NOT_an_offender(shell):
+    """The positive control: the arm keys on the MISSING operand, not on the
+    operator. `{v}<<<word` is a legitimate executable plain `Redirect` (the
+    R9-A named-fd completion), so a guard firing on the type alone would break
+    a working feature rather than catch an invalid value."""
+    import os
+
+    good = Redirect(type="<<<", target="hello", var_fd="v")
+    shell.io_manager.file_redirector.apply_var_fd_redirect(good)
+    fd = int(shell.state.get_variable("v"))
+    try:
+        assert fd >= 10
+        assert os.read(fd, 32) == b"hello\n"
+    finally:
+        os.close(fd)
+
+
 def test_synthetic_offender_raises_at_the_BUILTIN_STREAM_backend(shell,
                                                                  tmp_path):
     """The OTHER backend's explicit arm (round-2 nit 12).

@@ -625,12 +625,18 @@ def has_unclosed_heredoc(command: str) -> bool:
 def open_heredoc_specs(command: str) -> "Tuple[HeredocSpec, ...]":
     """The heredocs *command* opens but never closes, in source order.
 
-    Empty means every heredoc (if any) already has its body. This is the
-    completeness oracle's scan: the CommandAccumulator seeds its incremental
-    :class:`PendingHeredocQueue` from it (checking each subsequent line
-    against the queue HEAD, without re-scanning the whole buffer). Body/
-    terminator routing delegates to the queue's head-of-queue policy — a
-    line equal to a LATER pending delimiter is body text (H1/G1).
+    Empty means every heredoc (if any) already has its body.
+
+    This is a TEXT-LEVEL re-scan of a whole buffer, and since remediation 2.5
+    it is NOT the completeness oracle's scan: the oracle asks the LEXER
+    (``parser/session.py#_lexer_pending_heredocs``), which is why the session
+    no longer opens a phantom heredoc on ``echo \\<<EOF``. The only production
+    consumers of THIS function are the cmdhist joiner's two calls in
+    ``interactive/line_editor_helpers.py#convert_multiline_to_single``, which
+    ask whether a newline falls inside an open heredoc body before joining a
+    multi-line history entry. Body/terminator routing delegates to the queue's
+    head-of-queue policy — a line equal to a LATER pending delimiter is body
+    text (H1/G1).
     """
     # Cheap gate: no '<<' anywhere means no heredoc. Everything else (quotes,
     # arithmetic '<<', backticks) is decided accurately below, per line.
