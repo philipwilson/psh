@@ -223,6 +223,17 @@ PTY_REGISTRY = {
         "coverage falls out of the non-interactive matrix was measured FALSE. "
         "Removal: as above — a PTY mode in run_shell_case, or a shared PTY "
         "differential harness owning oracle resolution and typed outcomes.",
+    "system/interactive/test_heredoc_detection_interactive_pty.py":
+        "owner=slot2.5 (#22 MEDIUM-3). PTY bash-DIFFERENTIAL: drives psh (both "
+        "parsers) AND the resolved bash oracle through pexpect.spawn over a "
+        "pseudo-terminal (TERM=dumb) and compares whether each shell treats a "
+        "line as COMPLETE or waits for a here-document body. The TERMINAL is "
+        "the subject, and that was MEASURED rather than assumed: the same "
+        "bytes through `-c`, script-file and stdin agree with bash on 66/66 "
+        "rows at base, so the divergence is observable ONLY at a prompt and a "
+        "non-PTY pin for it would be green-on-base. Removal: as above — a PTY "
+        "mode in run_shell_case, or a shared PTY differential harness owning "
+        "oracle resolution and typed outcomes.",
 }
 _EXPECTED_PTY_REGISTRY = frozenset(PTY_REGISTRY)
 
@@ -251,6 +262,7 @@ _EXPECTED_SPAWN_SITES = {
 _EXPECTED_PTY_SITES = {
     "system/interactive/test_multiline_immediate_error_i3.py": 2,  # psh + bash spawn
     "system/interactive/test_substitution_abort_interactive_pty.py": 2,  # psh + bash
+    "system/interactive/test_heredoc_detection_interactive_pty.py": 2,   # psh + bash
 }
 
 
