@@ -7,7 +7,7 @@ This module handles parsing of I/O redirections, heredocs, and here-strings.
 import re
 from typing import List
 
-from ....ast_nodes import Redirect
+from ....ast_nodes import HeredocRedirect, Redirect
 from ....lexer.heredoc_lexer import (
     delimiter_token_acceptable,
     raw_delimiter_from_tokens,
@@ -129,7 +129,7 @@ class RedirectionParser(ParserSubcomponent):
             if entry is None:
                 raise self.parser.error(
                     f"here document body not collected (id {heredoc_id})")
-            return Redirect(
+            return HeredocRedirect(
                 type=token.value,
                 target=entry.spec.raw,
                 heredoc_content=entry.collected.body,
@@ -138,10 +138,15 @@ class RedirectionParser(ParserSubcomponent):
                 fd=token.fd,
             )
 
-        # Bare parse (bodies still in the token stream; unit-test path):
-        # recover the raw spelling from the source span when available —
-        # token values drop a VARIABLE's `$` and a STRING's quotes — and
-        # derive quotedness through the one rule.
+        # Bare parse (bodies still in the token stream; unit-test path): build
+        # the INCOMPLETE PARSE STATE — a plain Redirect with a heredoc operator
+        # type, structurally a heredoc and honestly not executable. It carries
+        # no body, so an executable heredoc with a missing body cannot be
+        # manufactured here (#22 MEDIUM-10).
+        #
+        # Recover the raw spelling from the source span when available — token
+        # values drop a VARIABLE's `$` and a STRING's quotes — and derive
+        # quotedness through the one rule.
         source_text = self.parser.ctx.source_text
         start = delim_tokens[0].position
         end = delim_tokens[-1].end_position
@@ -153,7 +158,6 @@ class RedirectionParser(ParserSubcomponent):
         return Redirect(
             type=token.value,
             target=raw,
-            heredoc_content=None,
             heredoc_quoted=heredoc_quoted,
             fd=token.fd,
         )

@@ -13,7 +13,7 @@ concrete ``psh.ast_nodes`` node and requires each to be classified:
 * STRUCTURE_BACKED — re-parsed syntax whose node carries a ``Word``/``Program``
   structural backing (asserted present);
 * JUSTIFIED_RAW — a runtime-expansion string bash does NOT read-time-validate
-  (only ``Redirect.heredoc_content``);
+  (only ``HeredocRedirect.heredoc_content``);
 * PLAIN — a name / operator / quote char / literal, never re-parsed as syntax.
 
 A NEW str field on any node — or removing a template from a TEMPLATE_BACKED node
@@ -103,7 +103,10 @@ STRUCTURE_BACKED = {
 # nested $() — templating it would DIVERGE (reject `<<EOF … $(if) … EOF` at read
 # time). Pinned by tests/conformance/bash/test_syntax_template_timing_conformance.
 JUSTIFIED_RAW = {
-    ("Redirect", "heredoc_content"):
+    # The body lives on the EXECUTABLE subclass only (remediation 2.5): a
+    # plain Redirect with a heredoc operator type is incomplete parse state
+    # and carries no body field at all.
+    ("HeredocRedirect", "heredoc_content"):
         "heredoc body = runtime-expansion context; bash does not read-time-"
         "validate its nested $() (templating would diverge)",
 }
@@ -127,6 +130,12 @@ PLAIN = {
     ("Redirect", "target"),               # raw heredoc delimiter / filename fallback (target_word backs expansion)
     ("Redirect", "quote_type"),           # here-string quote char
     ("Redirect", "var_fd"),               # {v}>f variable NAME
+    # HeredocRedirect inherits these four; the classification is keyed by
+    # EXACT class name, so the executable subclass needs its own rows.
+    ("HeredocRedirect", "type"),          # operator '<<' / '<<-'
+    ("HeredocRedirect", "target"),        # raw heredoc delimiter
+    ("HeredocRedirect", "quote_type"),    # unused for heredocs; inherited
+    ("HeredocRedirect", "var_fd"),        # {v}<<E variable NAME
     ("SelectLoop", "variable"),           # select var name
     ("UnaryTestExpression", "operator"),  # -f / -z (operand is a Word)
     ("VariableExpansion", "name"),        # ALSO in TEMPLATE_BACKED (subscript slice)

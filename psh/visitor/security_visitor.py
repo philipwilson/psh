@@ -17,6 +17,7 @@ from ..ast_nodes import (
     CommandSubstitution,
     ForLoop,
     FunctionDef,
+    HeredocRedirect,
     IfConditional,
     LiteralPart,
     Pipeline,
@@ -261,7 +262,7 @@ class SecurityVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
         # (no parsed AST until the typed heredoc body lands), so its commands
         # cannot be analyzed here. Flag the opaque executable region rather
         # than silently passing it (no clean claim over unanalyzed code).
-        body = node.heredoc_content
+        body = node.heredoc_content if isinstance(node, HeredocRedirect) else None
         if (node.type in ('<<', '<<-') and body and not node.heredoc_quoted
                 and ('$(' in body or '`' in body)):
             self.issues.append(SecurityIssue(
@@ -271,6 +272,13 @@ class SecurityVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
                 'but cannot be statically analyzed',
                 node
             ))
+
+    # Executable heredocs are a SUBCLASS and visitor dispatch is
+    # EXACT-CLASS (visitor/base.py#ASTVisitor.visit resolves
+    # visit_{class name} with no MRO walk), so the subclass needs its
+    # own entry. tests/unit/visitor/test_ast_coverage_matrix.py fails
+    # if a visitor forgets it.
+    visit_HeredocRedirect = visit_Redirect
 
     def visit_CommandSubstitution(self, node: CommandSubstitution) -> None:
         """Flag a backtick substitution's body as an unanalyzed region.

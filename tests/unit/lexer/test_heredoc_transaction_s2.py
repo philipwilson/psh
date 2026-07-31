@@ -264,7 +264,13 @@ class TestParserSpecTruth:
         red = self._heredoc_redirects(ast)[0]
         assert red.target == "'EOF'"
         assert red.heredoc_quoted is True
-        assert red.heredoc_content is None  # bare parse: nothing collected
+        # Bare parse: the INCOMPLETE PARSE STATE — a plain Redirect with no
+        # body FIELD. Was `red.heredoc_content is None`, which pinned the
+        # defective representability (#22 MEDIUM-10); executable heredocs are
+        # now ast_nodes/redirects.py#HeredocRedirect, body required.
+        from psh.ast_nodes import HeredocRedirect, Redirect
+        assert type(red) is Redirect
+        assert not isinstance(red, HeredocRedirect)
 
 
 class TestFormatterRawEmission:
@@ -328,11 +334,30 @@ class TestExecutableBodyPresence:
     """A heredoc redirect with no collected body is a loud internal error."""
 
     def test_executor_raises_on_missing_body(self, captured_shell):
-        from psh.ast_nodes import Redirect
-        redirect = Redirect(type='<<', target='EOF', heredoc_content=None)
-        with pytest.raises(RuntimeError, match='without a collected body'):
-            captured_shell.io_manager.file_redirector.redirect_heredoc(
-                redirect)
+        """The missing-body value is now UNREPRESENTABLE, not detected late.
+
+        This used to construct `Redirect(type='<<', heredoc_content=None)` and
+        assert that execution raised — i.e. it pinned the late-discovery
+        behavior #22 MEDIUM-10 flagged. Remediation 2.5 removed the state
+        instead: the executable type's body is required at construction, and a
+        structurally-heredoc PLAIN Redirect reaching execution hits an explicit
+        arm raising the typed NonExecutableRedirectError (a RuntimeError, so
+        strict-errors keeps it loud). Both halves are asserted here; the full
+        battery lives in
+        tests/unit/io_redirect/test_heredoc_executable_type.py.
+        """
+        from psh.ast_nodes import HeredocRedirect, Redirect
+        from psh.io_redirect.file_redirect import NonExecutableRedirectError
+        from psh.io_redirect.planner import RedirectPlan
+
+        with pytest.raises(TypeError, match='heredoc_content'):
+            HeredocRedirect(type='<<', target='EOF')
+
+        plan = RedirectPlan(redirect=Redirect(type='<<', target='EOF'),
+                            target=None)
+        with pytest.raises(NonExecutableRedirectError,
+                           match='no collected body'):
+            captured_shell.io_manager.file_redirector.apply_fd_plan(plan)
 
     def test_empty_body_is_not_an_error(self, captured_shell):
         rc = captured_shell.run_command('cat <<EOF\nEOF\necho ok')

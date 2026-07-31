@@ -6,7 +6,12 @@ import stat
 import sys
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO, Tuple, cast
 
-from ..ast_nodes import ExpansionPart, ProcessSubstitution, Redirect
+from ..ast_nodes import (
+    ExpansionPart,
+    HeredocRedirect,
+    ProcessSubstitution,
+    Redirect,
+)
 from ..core.process_lease import ComponentKind, get_coordinator
 from .planner import RedirectPlan, RedirectPlanner
 from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
@@ -14,6 +19,23 @@ from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
 if TYPE_CHECKING:
     from ..core.state import ShellState
     from ..shell import Shell
+
+
+class NonExecutableRedirectError(RuntimeError):
+    """A non-executable redirect parse state reached execution.
+
+    Raised when a plain :class:`~psh.ast_nodes.redirects.Redirect` carrying a
+    heredoc operator type — the INCOMPLETE parse state a bare token-level
+    parse produces, with the bodies still in the token stream — is handed to
+    the fd universe. Every live parse path builds a
+    :class:`~psh.ast_nodes.redirects.HeredocRedirect` instead, so reaching
+    here is an INTERNAL DEFECT, not a user error.
+
+    Deriving from ``RuntimeError`` puts it in the strict-errors-LOUD class of
+    the expected-error taxonomy (``psh/core/CLAUDE.md``): it is re-raised
+    rather than masked as exit 1, so the suite fails loudly instead of
+    silently opening a file named after the delimiter.
+    """
 
 
 #: First fd slot for long-lived STD_FDS lease backups. Above the >=10
@@ -346,22 +368,19 @@ class FileRedirector:
         """Target fd for a heredoc/here-string: explicit prefix or stdin (0)."""
         return redirect.fd if redirect.fd is not None else 0
 
-    def redirect_heredoc(self, redirect):
+    def redirect_heredoc(self, redirect: 'HeredocRedirect'):
         """Point the redirect's fd (default stdin) at the heredoc content.
 
         Shared redirect primitive (fd backend and builtin stream backend).
         Returns the expanded content.
 
-        A heredoc redirect reaching execution with NO collected body is an
-        internal defect, never a silent empty document: every live parse
-        path attaches the body at Redirect construction (campaign S2 — an
-        empty body is '', not None)."""
+        Takes a :class:`~psh.ast_nodes.redirects.HeredocRedirect`, whose body
+        is non-optional — so "reached execution with no collected body" is not
+        a state this function can be handed (remediation 2.5). The old
+        late-discovery ``RuntimeError`` here is replaced by that type plus the
+        explicit non-executable arm in :meth:`apply_fd_plan`."""
         content = redirect.heredoc_content
-        if content is None:
-            raise RuntimeError(
-                "heredoc redirect reached execution without a collected "
-                f"body (delimiter {redirect.target!r})")
-        if content and not getattr(redirect, 'heredoc_quoted', False):
+        if content and not redirect.heredoc_quoted:
             # Heredoc bodies are a dquote-like context for nested
             # ${x:-word} operands (bash keeps the quotes of ${x:-'q'});
             # $'...' stays literal there (DQ_STRING, not DQ_WORD).
@@ -659,8 +678,20 @@ class FileRedirector:
             self.redirect_input_from_file(target, redirect)
         elif redirect.type == '<>':
             self.redirect_readwrite(target, redirect)
-        elif redirect.type in ('<<', '<<-'):
+        elif isinstance(redirect, HeredocRedirect):
             self.redirect_heredoc(redirect)
+        elif redirect.type in ('<<', '<<-'):
+            # Structurally a heredoc, but the INCOMPLETE PARSE STATE (a bare
+            # token-level parse, bodies still in the token stream) — never
+            # executable. Explicit arm on purpose: without it this would fall
+            # through the type-string chain and end up opening a file named
+            # after the delimiter. An internal defect, so a strict-errors-LOUD
+            # class (psh/core/CLAUDE.md's expected-error taxonomy).
+            raise NonExecutableRedirectError(
+                "non-executable heredoc parse state reached execution: a "
+                f"plain Redirect(type={redirect.type!r}, "
+                f"target={redirect.target!r}) carries no collected body. "
+                "Every live parse path builds a HeredocRedirect.")
         elif redirect.type == '<<<':
             self.redirect_herestring(redirect)
         elif redirect.type == '>|':

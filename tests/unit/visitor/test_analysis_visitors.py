@@ -5,7 +5,7 @@ tests pin their observable output and exercise the shared child-traversal
 (`psh/visitor/traversal.py`) that all three now use for `generic_visit`.
 """
 
-from psh.ast_nodes import Redirect
+from psh.ast_nodes import HeredocRedirect
 from psh.lexer import tokenize
 from psh.parser import parse
 from psh.visitor import (
@@ -242,19 +242,19 @@ class TestLinterRedirectTargets:
 
     def test_heredoc_body_expansion_flagged(self):
         # Heredoc bodies undergo expansion; an undefined var in the body is a
-        # variable usage. (Built directly: the CLI tokenizer doesn't always
-        # populate heredoc_content, but in-process parses do.)
-        r = Redirect(type="<<", target="END",
-                     heredoc_content="value is $missing\n",
-                     heredoc_quoted=False)
+        # variable usage. Built as the EXECUTABLE type: only HeredocRedirect
+        # carries a body (remediation 2.5).
+        r = HeredocRedirect(type="<<", target="END",
+                            heredoc_content="value is $missing\n",
+                            heredoc_quoted=False)
         v = LinterVisitor()
         v.visit(r)
         assert any("'missing' may be undefined" in i.message for i in v.issues)
 
     def test_quoted_heredoc_body_not_expanded(self):
         # A quoted delimiter disables expansion — no variable-usage finding.
-        r = Redirect(type="<<", target="END",
-                     heredoc_content="value is $missing\n",
+        r = HeredocRedirect(type="<<", target="END",
+                            heredoc_content="value is $missing\n",
                      heredoc_quoted=True)
         v = LinterVisitor()
         v.visit(r)

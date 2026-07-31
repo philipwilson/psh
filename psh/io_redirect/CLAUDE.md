@@ -615,5 +615,23 @@ DEBUG IOManager: redirected stdout to 'output.txt' (mode 'w'); sys.stdout is now
 
 ### With Parser (`psh/parser/`)
 
-- `Redirect` AST nodes created with type, target, fd, heredoc_content
+- `Redirect` AST nodes created with type, target, fd
 - `heredoc_quoted` attribute indicates if delimiter was quoted
+- **Executable here-documents are a distinct TYPE, and execution dispatches on
+  it.** `ast_nodes/redirects.py#HeredocRedirect` is the only redirect that
+  carries a body, and that body is required at construction — so "an executable
+  heredoc with no collected body" is unrepresentable rather than discovered
+  late (reappraisal #22 MEDIUM-10; the old discovery point was a `RuntimeError`
+  inside `redirect_heredoc`). A plain `Redirect` whose `type` is `<<`/`<<-` is
+  the INCOMPLETE PARSE STATE a bare token-level parse produces with the bodies
+  still in the token stream: structurally a heredoc, honestly not executable.
+  Both backends route executable heredocs by `isinstance`
+  (`file_redirect.py#FileRedirector.apply_fd_plan`,
+  `manager.py#IOManager.setup_builtin_redirections`) and give the parse-state
+  value an EXPLICIT arm raising `file_redirect.py#NonExecutableRedirectError`
+  — without that arm it would fall through the operator-string chain and open a
+  file named after the delimiter. The error derives from `RuntimeError`, the
+  strict-errors-LOUD class of the expected-error taxonomy
+  (`psh/core/CLAUDE.md`). Here-strings are NOT part of the split: `<<<` content
+  has always lived in `target`/`target_word`, so it stays a plain `Redirect`.
+  Guard: `tests/unit/io_redirect/test_heredoc_executable_type.py`.

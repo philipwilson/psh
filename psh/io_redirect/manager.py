@@ -69,8 +69,8 @@ import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, List, NoReturn, Optional, TextIO, Tuple, cast
 
-from ..ast_nodes import Command, Redirect
-from .file_redirect import FileRedirector
+from ..ast_nodes import Command, HeredocRedirect, Redirect
+from .file_redirect import FileRedirector, NonExecutableRedirectError
 from .process_sub import ProcessSubstitutionHandler
 from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
 
@@ -628,8 +628,16 @@ class IOManager:
             # ONE offset, exactly the input twin of the `<` case above.
             if redirect.type == '<<<':
                 self.file_redirector.redirect_herestring(redirect)
-            else:
+            elif isinstance(redirect, HeredocRedirect):
                 self.file_redirector.redirect_heredoc(redirect)
+            else:
+                # The non-executable heredoc parse state — same explicit arm as
+                # the fd backend (file_redirect.py#apply_fd_plan); never a
+                # silent empty document.
+                raise NonExecutableRedirectError(
+                    "non-executable heredoc parse state reached the builtin "
+                    f"stream backend: Redirect(type={redirect.type!r}, "
+                    f"target={redirect.target!r}) carries no collected body.")
             f = self.file_redirector.dup_sharing_stream(0, 'r')
             frame.opened_streams.append(f)
             sys.stdin = f

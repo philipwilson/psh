@@ -44,7 +44,16 @@ def test_parse_heredoc():
     redirect = command.redirects[0]
     assert redirect.type == "<<"
     assert redirect.target == "EOF"
-    assert redirect.heredoc_content is None  # Not collected yet
+    # A bare parse yields the INCOMPLETE PARSE STATE: a plain Redirect,
+    # structurally a heredoc, carrying no body field at all. This line used to
+    # read `assert redirect.heredoc_content is None`, which PINNED exactly the
+    # defective representability #22 MEDIUM-10 reported — an executable heredoc
+    # value with no body. Executable heredocs are now a separate type
+    # (ast_nodes/redirects.py#HeredocRedirect) whose body is required at
+    # construction, so the old assertion's subject no longer exists.
+    from psh.ast_nodes import HeredocRedirect, Redirect
+    assert type(redirect) is Redirect
+    assert not isinstance(redirect, HeredocRedirect)
 
 
 def test_tokenize_here_string():

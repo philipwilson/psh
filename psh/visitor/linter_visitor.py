@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Set
 
 from ..ast_nodes import (
     FunctionDef,
+    HeredocRedirect,
     IfConditional,
     Pipeline,
     Program,
@@ -360,9 +361,16 @@ class LinterVisitor(RedirectTraversalMixin, TotalTraversalVisitor):
                 self._check_variable_usage(node.target)
 
         # Heredoc / here-string body: expanded unless quoted.
-        body = node.heredoc_content
+        body = node.heredoc_content if isinstance(node, HeredocRedirect) else None
         if body and '$' in body and not node.heredoc_quoted and node.quote_type != "'":
             self._check_variable_usage(body)
+
+    # Executable heredocs are a SUBCLASS and visitor dispatch is
+    # EXACT-CLASS (visitor/base.py#ASTVisitor.visit resolves
+    # visit_{class name} with no MRO walk), so the subclass needs its
+    # own entry. tests/unit/visitor/test_ast_coverage_matrix.py fails
+    # if a visitor forgets it.
+    visit_HeredocRedirect = visit_Redirect
 
     # Helper methods
 

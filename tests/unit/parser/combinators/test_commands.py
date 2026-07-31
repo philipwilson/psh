@@ -178,8 +178,16 @@ class TestCommandParsers:
         assert len(result.value.redirects) == 1
         redirect = result.value.redirects[0]
         assert redirect.type == "<<<"
+        # A here-string's CONTENT lives in target/target_word — it never lived
+        # in a heredoc body field. This line used to read
+        # `assert redirect.heredoc_content is None`, which merely asserted the
+        # default of a field the here-string path never sets; with executable
+        # heredoc bodies moved onto their own type (remediation 2.5), `<<<`
+        # stays a plain Redirect and the meaningful assertion is where the
+        # content actually is.
+        from psh.ast_nodes import HeredocRedirect
+        assert not isinstance(redirect, HeredocRedirect)
         assert redirect.target == "hello"
-        assert redirect.heredoc_content is None
         assert redirect.quote_type is None
 
 
