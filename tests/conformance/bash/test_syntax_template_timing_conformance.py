@@ -476,6 +476,53 @@ def test_exit_trap_teardown_action_error_changes_nothing():
     assert bc.stdout == pc.stdout == "B\nVALID\n"
 
 
+def test_exit_trap_teardown_under_errexit_is_a_declared_divergence():
+    """DECLARED DIVERGENCE (base-identical, NOT the consumer's doing): with
+    ``set -e`` ACTIVE, bash's teardown-time abort still moves the status to 2;
+    psh's teardown swallow leaves the status it already had.
+
+    The pin above covers the same shapes WITHOUT errexit, which is exactly how
+    this corner escaped five rounds of probing (round-5 verifier finding). The
+    swallow is right — the action must not run and must not abort anything, and
+    at teardown there is nothing left to abort — but bash's errexit still marks
+    the shell, and psh's does not.
+
+    Measured at base 1b271d77 and at this tip, both error kinds, all three
+    channels, both parsers (``tmp/r24-probes/r6f.py`` -> ``r6f-*.txt``): psh's
+    value is UNCHANGED across the whole branch, so nothing in slot 2.4 moved
+    it. Pinned both-sides so the difference is a record rather than a surprise;
+    closing it belongs to whoever owns errexit-at-teardown, not to HIGH-9."""
+    rows = [
+        # (script, bash rc, psh rc, shared stdout)
+        ("( set -e; trap 'echo %s' EXIT; echo IN )\necho AFTER rc=$?",
+         0, 0, None),                      # stdout differs only in the rc echo
+        ("set -e\ntrap 'echo %s' EXIT\necho IN", 2, 0, "IN\n"),
+    ]
+    for template, brc, prc, out in rows:
+        for body in ("$(if)", "$(fi)"):    # BOTH error kinds
+            script = template % body
+            for channel in ("c", "file", "stdin"):
+                b, p = _bash(script, channel), _psh(script, channel)
+                assert b.returncode == brc, (script, channel, b)
+                assert p.returncode == prc, (script, channel, p)
+                if out is not None:
+                    assert b.stdout == p.stdout == out, (script, channel,
+                                                         b.stdout, p.stdout)
+                else:
+                    # The fork shape: the divergence surfaces in $? AFTER the
+                    # subshell, not in its exit status.
+                    assert b.stdout == "IN\nAFTER rc=2\n", (script, channel, b)
+                    assert p.stdout == "IN\nAFTER rc=0\n", (script, channel, p)
+                assert "Traceback (most recent call last)" not in p.stderr, \
+                    p.stderr[-400:]
+    # CONTROL: the same fork shape WITHOUT errexit is an EQUALITY (the row the
+    # pin above owns) — so this divergence is errexit's, not the swallow's.
+    ctl = "( trap 'echo $(fi)' EXIT; echo IN )\necho AFTER rc=$?"
+    bc, pc = _bash(ctl, "c"), _psh(ctl, "c")
+    assert bc.returncode == pc.returncode == 0
+    assert bc.stdout == pc.stdout == "IN\nAFTER rc=0\n"
+
+
 def test_posix_relative_source_divergence_and_its_abort_status(tmp_path):
     """PRE-EXISTING divergence (NOT the substitution consumer's), pinned here
     because the I3 consumer MOVED psh's value inside it.
@@ -743,15 +790,31 @@ def test_interactive_dash_c_channel_disposition():
     so the consumer never fires there. Probed against ``bash -i -c`` rather
     than assumed:
 
-    * an EVAL frame: BOTH shells continue (rc 0, ``AFTER`` prints). bash does
-      not abort an interactive shell's frame either, so psh's exemption is
-      right and this row MATCHES.
+    * an EVAL frame's CONTINUATION: BOTH shells continue (rc 0, ``AFTER``
+      prints). bash does not abort an interactive shell's frame either, so
+      psh's exemption is right and this row MATCHES.
     * the DIRECT shape: both reject the buffer and print nothing, but the
       status differs — bash 1, psh 2.
+    * the eval frame's STATUS, and the FORK shapes: psh leaves 2 where bash
+      leaves 1.
 
-    Only the status differs, and only on the direct shape. Interactivity
-    semantics are deliberately NOT touched to close it (out of scope); pinned
-    so the disposition is explicit rather than incidental."""
+    RECORD CORRECTION (round 5 -> 6). The round-5 text of this pin said "Only
+    the status differs, and only on the direct shape". The second half was
+    FALSE and the tree falsified it: within this very channel the fork shapes
+    differ too (``( set -e; eval 'echo $(if)' ) || echo SUPPRC=$?`` -> bash 1,
+    psh 2), as does the eval frame's own ``$?``. They are added as rows below
+    rather than left to prose. Cause of the false absolute: the round-5 rows
+    observed only the SHELL's exit status, so every shape whose divergence
+    shows up in ``$?`` INSIDE the frame was invisible to the instrument.
+
+    All rows here are BASE-IDENTICAL (measured at 1b271d77 and at the slot tip,
+    both parsers: ``tmp/r24-probes/r6c_flags.py`` -> ``r6c-flags-*.txt``), so
+    the slot moved nothing in this channel. Interactivity semantics are
+    deliberately NOT touched to close them (out of scope); the mechanism is the
+    per-shell ``is_script_mode`` gate, which a forked child of an interactive
+    shell inherits — see the interactive PTY pin
+    ``tests/system/interactive/test_substitution_abort_interactive_pty.py``,
+    which pins the same family at a real terminal."""
     ev = "echo B; eval 'echo $(fi)'; echo AFTER"
     direct = "echo B; echo $(fi); echo AFTER"
     # Routed through the typed runners, not raw subprocess: the oracle-bearing
@@ -764,3 +827,63 @@ def test_interactive_dash_c_channel_disposition():
     p_d = run_psh(["-i", "-c", direct], cwd=_ROOT, timeout=30)
     assert b_d.stdout == p_d.stdout == "", (b_d.stdout, p_d.stdout)
     assert b_d.returncode == 1 and p_d.returncode == 2, (b_d, p_d)
+
+    # The rows the round-5 instrument could not see: the divergence lands in
+    # $? INSIDE the frame, while the shell itself exits 0.
+    for script, bash_out, psh_out in [
+        # a FORK inside the interactive shell, with and without errexit
+        ("( set -e; eval 'echo $(if)' ) || echo SUPPRC=$?",
+         "SUPPRC=1\n", "SUPPRC=2\n"),
+        ("( eval 'echo $(if)' ) || echo SUPPRC=$?",
+         "SUPPRC=1\n", "SUPPRC=2\n"),
+        # the eval frame's own status (its CONTINUATION already matches above)
+        ("eval 'echo $(fi)'; echo AFTERRC=$?", "AFTERRC=1\n", "AFTERRC=2\n"),
+    ]:
+        b = run_bash(["-i", "-c", script], cwd=_ROOT, timeout=30)
+        p = run_psh(["-i", "-c", script], cwd=_ROOT, timeout=30)
+        assert b.returncode == p.returncode == 0, (script, b, p)
+        assert b.stdout == bash_out, (script, b.stdout)
+        assert p.stdout == psh_out, (script, p.stdout)
+    # CONTROL: with errexit ACTIVE and UNSUPPRESSED the fork agrees — so the
+    # divergence above is the suppression/child gate, not the fork itself.
+    ctl = "( set -e; eval 'echo $(if)' ); echo AFTERRC=$?"
+    bc = run_bash(["-i", "-c", ctl], cwd=_ROOT, timeout=30)
+    pc = run_psh(["-i", "-c", ctl], cwd=_ROOT, timeout=30)
+    assert bc.stdout == pc.stdout == "AFTERRC=2\n", (bc.stdout, pc.stdout)
+
+
+def test_static_check_spellings_dash_n_and_validate():
+    """psh's ``-n`` matches bash's ``-n``; psh's ``--validate`` does not.
+
+    IMPROVEMENT PINNED (slot 2.4): psh's noexec spelling moved 2 -> 127 in the
+    ``-c`` channel for every substitution-body shape, which is what bash gives.
+    It rode in on the channel rule rather than being aimed at, and an unpinned
+    improvement is indistinguishable from an accident — so it is pinned here,
+    with the divergent sibling beside it.
+
+    DECLARED ASYMMETRY: ``--validate`` is psh's own static-check spelling (bash
+    has no equivalent; the timing matrix above uses it as the analogue of bash
+    ``-n``). It still answers 2 on the same input, so psh's two static checks
+    now disagree with each other. Recorded rather than fixed: which of the two
+    should carry the channel rule is a CLI-surface question, not a frame-outcome
+    one. Measured at base 1b271d77 and at the slot tip, both parsers
+    (``tmp/r24-probes/r6c_flags.py`` -> ``r6c-flags-*.txt``): at base psh ``-n``
+    answered 2 in the ``-c`` channel, so this row is red-on-base."""
+    substitution_shapes = ["echo $(if)", "echo $(fi)", "cat <(if)"]
+    for script in substitution_shapes:
+        b_c = run_bash(["-n", "-c", script], cwd=_ROOT, timeout=30)
+        p_c = run_psh(["-n", "-c", script], cwd=_ROOT, timeout=30)
+        assert b_c.returncode == 127, (script, b_c)
+        assert p_c.returncode == 127, (script, p_c)          # moved 2 -> 127
+        v_c = run_psh(["--validate", "-c", script], cwd=_ROOT, timeout=30)
+        assert v_c.returncode == 2, (script, v_c)            # the asymmetry
+    # CONTROLS. A plain syntax error is not substitution-origin, so the channel
+    # rule does not apply to it and all three spellings agree at 2; valid input
+    # is 0 everywhere. Both hold at base too — they are what makes the row
+    # above a MOVE rather than a wholesale change of the flag's meaning.
+    for script, expected in [("if", 2), ("echo hi", 0)]:
+        b_c = run_bash(["-n", "-c", script], cwd=_ROOT, timeout=30)
+        p_c = run_psh(["-n", "-c", script], cwd=_ROOT, timeout=30)
+        v_c = run_psh(["--validate", "-c", script], cwd=_ROOT, timeout=30)
+        assert b_c.returncode == p_c.returncode == v_c.returncode == expected, \
+            (script, b_c, p_c, v_c)
