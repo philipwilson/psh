@@ -67,24 +67,45 @@ ABORT = "SubstitutionSyntaxAbort"
 
 
 def _local_aliases(tree):
-    """Every local name that REFERS to the abort in this module.
+    """The local names a module STATICALLY binds to the abort.
 
-    ``from psh.core.exceptions import SubstitutionSyntaxAbort as SSA`` rebinds
-    the class to a name the detectors would otherwise never recognise — a
-    round-6 verifier inserted exactly that and every guard stayed green. The
-    alias map is rebuilt per module, so a guard sees the names that module
-    actually uses.
+    Two rebinding forms are resolved, both found by verifiers against earlier
+    versions of these guards:
+
+    * an IMPORT alias — ``from psh.core.exceptions import
+      SubstitutionSyntaxAbort as SSA`` (round-6 finding: every guard stayed
+      green);
+    * an ASSIGNMENT alias — ``SSA = SubstitutionSyntaxAbort`` (round-7
+      finding: same). Chains resolve too, since each pass over the tree feeds
+      the next.
+
+    KNOWN LIMIT, stated rather than implied — this is deliberately NOT "every
+    local name that refers to the abort", which is the universal the round-7
+    verifier falsified in one line. A binding the reader cannot see WITHOUT
+    executing the module is out of reach here: a name held in a list/dict/
+    tuple, one produced by ``getattr``, one bound inside a function that runs
+    at import, or a runtime ``importlib`` lookup. Those belong to the
+    broad-catch ratchets and to review, not to a static name resolver.
     """
     names = {ABORT}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                if alias.name == ABORT and alias.asname:
-                    names.add(alias.asname)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name.endswith("." + ABORT) and alias.asname:
-                    names.add(alias.asname)
+    for _ in range(3):                     # resolve short alias CHAINS
+        before = len(names)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if alias.name == ABORT and alias.asname:
+                        names.add(alias.asname)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.endswith("." + ABORT) and alias.asname:
+                        names.add(alias.asname)
+            elif isinstance(node, ast.Assign):
+                if _exc_name(node.value) in names:
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            names.add(target.id)
+        if len(names) == before:
+            break
     return names
 
 
@@ -314,6 +335,12 @@ def test_guard3_bites_on_a_synthetic_re_derivation(label, offender):
      "    except SSA:\n"
      "        pass\n",
      "catch"),
+    ("assignment-aliased raise",
+     "from psh.core.exceptions import SubstitutionSyntaxAbort\n"
+     "SSA = SubstitutionSyntaxAbort\n"
+     "def sneaky():\n"
+     "    raise SSA(nested=True)\n",
+     "raise"),
     ("aliased re-derivation",
      "from psh.core.exceptions import SubstitutionSyntaxAbort as SSA\n"
      "def frame(e):\n"

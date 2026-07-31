@@ -91,6 +91,34 @@ def _bash(script, channel):
     return _run_channel(run_bash, script, channel, is_psh=False)
 
 
+def _psh_parser(script, channel, parser):
+    """psh through *channel* with an EXPLICIT parser selection.
+
+    The default helpers take psh's default parser (recursive descent), so a
+    family pinned only through them is pinned for ONE parser. This runner is
+    what ``test_new_families_agree_across_parsers`` uses to close that gap
+    without doubling the runtime of every row.
+    """
+    if channel == "c":
+        r = run_psh(["--parser", parser, "-c", script], cwd=_ROOT, timeout=30)
+    elif channel == "stdin":
+        r = run_psh(["--parser", parser], stdin_data=script + "\n",
+                    stdin_mode="pipe", cwd=_ROOT, timeout=30)
+    elif channel == "file":
+        with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False,
+                                         dir=_SCRIPT_DIR) as f:
+            f.write(script + "\n")
+            path = f.name
+        try:
+            r = run_psh(["--parser", parser, path], cwd=_ROOT, timeout=30)
+        finally:
+            os.unlink(path)
+    else:
+        raise ValueError(channel)
+    assert is_comparable(r), r
+    return r
+
+
 _CHANNELS = ["c", "file", "stdin", "validate"]
 
 # ---- REJECT: invalid nested modern substitution in a syntax-bearing region.
@@ -1060,12 +1088,20 @@ def test_background_fork_severing_matches_bash():
     the member rows so a future change cannot satisfy one route by breaking the
     other (which is precisely how this slot spent rounds 4 through 6).
 
+    SCOPE, stated because the unqualified form of that sentence was FALSE: it
+    describes the PIPELINE-MEMBER and BACKGROUND routes, which is where this
+    slot measured it. It is NOT a route-universal — a REDIRECTION-spelled
+    process substitution (``< <(…)`` / ``> >(…)``) has a compound child body
+    that bash does NOT reach through, while the ARGUMENT spelling
+    (``cat <(…)``) does. That split is pinned as a divergence in
+    ``test_redirect_procsub_suppression_is_a_declared_divergence`` below.
+
     The child's status is read through ``wait``, so each row observes the
     CHILD, not the backgrounding command's own 0.
 
     RED-ON-d64a3294 for the bare-simple rows (they answered 1); the and-or and
     loop rows were 2 there because a widened signature's other caller
-    (``core.py#_execute_background_list``) still took the default seed. Chain
+    (``executor/core.py#_execute_background_list``) still took the default seed. Chain
     and per-row evidence: ``tmp/r24-probes/r7a.py`` -> ``r7a-*.txt``."""
     def child_status(script, channel):
         return _psh(script, channel), _bash(script, channel)
@@ -1153,7 +1189,23 @@ def test_ordinary_errexit_co_movements_are_declared():
     movement it was meant to bound. These rows are the ones that DO move,
     placed beside them.
 
-    Base 1b271d77 differed from bash on every row below; this tip matches."""
+    Base 1b271d77 differed from bash on every row below; this tip matches.
+
+    THE EXHAUSTIVE RECORD IS NOT THIS SAMPLE. ``tmp/r24-probes/r8b_hunt.py``
+    enumerates the space — {4 failing-command bodies} x {8 routes} x {6
+    suppression sources} = 186 rows, each classified against bash AND against
+    the wave base — and its committed output ``r8b-hunt-TIP.txt`` is the
+    record: **60 MOVED-TO-BASH, 126 UNMOVED-MATCH, 0 MOVED-AWAY, 0
+    pre-existing divergences**. The rows below SAMPLE that, chosen to cover
+    each family plus the shapes a reviewer would ask about (a `command`
+    prefix, an assignment prefix, a while-condition source) and one that does
+    NOT move, kept beside them on purpose.
+
+    (The hunt compares the LINE MULTISET: a background child shares its
+    parent's stdout, so interleaving is scheduling rather than behaviour — 11
+    rows differ only in order and are flagged ORDER-RACY in the output. An
+    earlier version of that instrument compared ordered stdout and
+    mis-classified 8 of them.)"""
     rows = [
         # (script, shared expected stdout)
         # 1. a failing command inside a MEMBER's eval'd / sourced text
@@ -1180,6 +1232,32 @@ def test_ordinary_errexit_co_movements_are_declared():
     for channel in ("c", "file"):
         b, p = _bash(bg, channel), _psh(bg, channel)
         assert b.stdout == p.stdout == "child=1\n", (channel, b.stdout, p.stdout)
+    # WIDENING (ruling R8-B): the named shapes the 7-row sample did not reach.
+    # A `command` prefix, an assignment prefix and a while-condition source all
+    # MOVE with the simple-member family, because a prefix does not stop the
+    # member being a simple command.
+    for script, expected in [
+        ("set -e\n{ true | command eval 'false; echo A'; } || echo GOT rc=$?\necho END",
+         "GOT rc=1\nEND\n"),
+        ("set -e\n{ true | X=1 eval 'false; echo A'; } || echo GOT rc=$?\necho END",
+         "GOT rc=1\nEND\n"),
+        ("set -e\nwhile true | eval 'false; echo A'; do break; done\n"
+         "echo AFTER rc=$?\necho END", "AFTER rc=0\nEND\n"),
+    ]:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == expected, (script, channel,
+                                                      b.stdout, p.stdout)
+    # ...and the `{ …; } &` spelling does NOT move: a brace group is a body,
+    # so it CARRIES the suppression and its child runs on in both shells. Read
+    # through `wait` rather than through interleaved stdout, which is racy.
+    bgbrace = ("set -e\n{ { eval 'false; echo A'; } & } || true\np=$!\n"
+               "if wait $p; then echo child=0; else echo child=$?; fi")
+    for channel in ("c", "file"):
+        b, p = _bash(bgbrace, channel), _psh(bgbrace, channel)
+        assert b.stdout == p.stdout == "A\nchild=0\n", (channel, b.stdout,
+                                                         p.stdout)
+
     # CONTROLS, unmoved and kept beside the moved rows on purpose: a COMPOUND
     # member carries the suppression, and an UNSUPPRESSED background subshell
     # is unaffected by any of this.
@@ -1190,6 +1268,132 @@ def test_ordinary_errexit_co_movements_are_declared():
     ]:
         b, p = _bash(script, "c"), _psh(script, "c")
         assert b.stdout == p.stdout == expected, (script, b.stdout, p.stdout)
+
+
+def test_redirect_procsub_suppression_is_a_declared_divergence():
+    """DECLARED DIVERGENCE (base-identical, pre-existing): bash does NOT carry
+    an ignored ``set -e`` into a REDIRECTION-spelled process substitution;
+    psh does. The ARGUMENT spelling carries in both shells.
+
+    THE SPELLING SPLIT, which is the whole point of this pin:
+
+    * ``cat <(false; echo A)`` — the ARGUMENT spelling — bash carries the
+      suppression in, the child runs on, and psh matches. (Rows below.)
+    * ``read -r line < <(false; echo A)`` and ``: > >(false; echo A > f)`` —
+      the REDIRECTION spellings, read and write side — bash runs the child
+      with errexit EFFECTIVE, so it dies at the ``false``; psh's child runs
+      on. Both channels, both parsers, byte-identical at base 1b271d77 and at
+      this tip.
+
+    WHY IT IS PINNED RATHER THAN FIXED: nothing in slot 2.4 moved it (the
+    behaviour predates the slot and is identical at the wave base), and the
+    fix is procsub CHILD SEEDING — adjacent to this slot's machinery but
+    outside HIGH-9's frame-outcome charter. Successor row recorded.
+
+    WHY IT EXISTS AT ALL: round 7 answered "what does bash do at the
+    substitution routes?" from a corpus that held the SPELLING axis constant,
+    and generalised across it. The rows here vary that axis explicitly, and
+    the errexit-free controls prove errexit is the operative mechanism rather
+    than anything about procsub plumbing. Evidence ``tmp/r24-probes/r8a.py``
+    -> ``r8a-TIP.txt`` / ``r8a-base1b271d77.txt``."""
+    # READ side: bash's child dies at the `false`; psh's runs on and produces
+    # a line for `read` to consume.
+    read_rows = [
+        ("set -e\nif read -r line < <(false; echo A); then echo got:$line;"
+         " else echo F:$?; fi\necho END", "F:1\nEND\n", "got:A\nEND\n"),
+        ("set -e\nif read -r line < <(eval 'false; echo A'); then echo got:$line;"
+         " else echo F:$?; fi\necho END", "F:1\nEND\n", "got:A\nEND\n"),
+    ]
+    for script, bash_out, psh_out in read_rows:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == bash_out, (script, channel, b.stdout)
+            assert p.stdout == psh_out, (script, channel, p.stdout)
+    # WRITE side, observed through a file the child would create. The row
+    # deletes it first and settles with a BOUNDED poll rather than `wait`,
+    # which does not cover a procsub child in every shell — an earlier version
+    # of this probe read a LEFTOVER file and reported a parser split that was
+    # not there.
+    write = ("rm -f pinw.txt\nset -e\n"
+             "if : > >(false; echo A > pinw.txt); then echo ok; else echo F:$?; fi\n"
+             "for i in 1 2 3 4 5 6 7 8 9 10; do [ -f pinw.txt ] && break;"
+             " sleep 0.1; done\n"
+             "if [ -f pinw.txt ]; then echo WROTE; else echo NOWRITE; fi\necho END")
+    for channel in ("c", "file"):
+        b, p = _bash(write, channel), _psh(write, channel)
+        assert b.stdout == "ok\nNOWRITE\nEND\n", (channel, b.stdout)
+        assert p.stdout == "ok\nWROTE\nEND\n", (channel, p.stdout)
+    # CONTROL 1 — the ARGUMENT spelling AGREES, which is what makes this a
+    # spelling split rather than a procsub-wide divergence.
+    for script in ["set -e\n{ cat <(false; echo A); } || echo GOT rc=$?\necho END",
+                   "set -e\nif cat <(false; echo A); then echo T;"
+                   " else echo GOT rc=$?; fi\necho END"]:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout, (script, channel, b.stdout, p.stdout)
+    # CONTROL 2 — WITHOUT errexit both spellings agree in both shells, so the
+    # operative mechanism is errexit and not procsub itself.
+    for script in ["if read -r line < <(false; echo A); then echo got:$line;"
+                   " else echo F:$?; fi\necho END"]:
+        b, p = _bash(script, "c"), _psh(script, "c")
+        assert b.stdout == p.stdout == "got:A\nEND\n", (b.stdout, p.stdout)
+    # CONTROL 3 — the SUBSTITUTION-ABORT twin matches in BOTH spellings, so
+    # this slot's own family is unaffected by the split.
+    for script in ["set -e\n{ read -r line < <(eval 'echo $(if)'); } || echo GOT rc=$?\necho END",
+                   "set -e\n{ cat <(eval 'echo $(if)'); } || echo GOT rc=$?\necho END"]:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout, (script, channel, b.stdout, p.stdout)
+
+
+def test_new_families_agree_across_parsers():
+    """Every family this slot added answers IDENTICALLY under both parsers.
+
+    DOMAIN, stated because this is a representative sweep and not a second
+    copy of every row: one row per family added by slot 2.4 — pipeline-member
+    severing, the background route, the one-shot deferral, the ordinary-errexit
+    co-movements, the redirect-procsub divergence, the function-frame channel
+    divergence, the teardown-under-errexit divergence and the `-n` static
+    check — each run through the `-c` and script-file channels under BOTH
+    `--parser rd` and `--parser combinator`.
+
+    WHY IT EXISTS: the module's helpers take psh's DEFAULT parser, so ~180 new
+    rows were pinned for recursive descent only. The batteries behind them ran
+    both parsers and found no split (`tmp/r24-probes/r6b*.py`, `r7a.py`,
+    `r8a.py` print `<<< PARSER SPLIT` and never did), but a battery is not a
+    pin. This is the durable half.
+
+    It asserts rd == combinator rather than re-asserting each family's VALUE:
+    the values are pinned by the family tests, and duplicating them here would
+    mean two places to update when one legitimately changes."""
+    rows = [
+        # (label, script)
+        ("member severing",
+         "set -e\n{ true | eval 'echo $(if)'; } || echo GOT rc=$?"),
+        ("background severing",
+         "set -e\n{ eval 'echo $(if)' & } || true\np=$!\n"
+         "if wait $p; then echo child=0; else echo child=$?; fi"),
+        ("one-shot deferral",
+         "f() { eval 'echo $(if)'; }\nset -e\n"
+         "{ true | eval 'f'; } || echo GOT rc=$?"),
+        ("ordinary co-movement",
+         "set -e\n{ true | eval 'false; echo A'; } || echo GOT rc=$?\necho END"),
+        ("redirect procsub",
+         "set -e\nif read -r line < <(false; echo A); then echo got:$line;"
+         " else echo F:$?; fi\necho END"),
+        ("function-frame channel",
+         "f() { eval 'echo $(if)'; }\nset -e\n{ true | f; } || echo GOT rc=$?"),
+        ("teardown under errexit",
+         "( set -e; trap 'echo $(fi)' EXIT; echo IN )\necho AFTER rc=$?"),
+        ("embedding/abort direct", "echo B\necho $(fi)\necho AFTER"),
+    ]
+    for label, script in rows:
+        for channel in ("c", "file"):
+            rd = _psh_parser(script, channel, "rd")
+            cb = _psh_parser(script, channel, "combinator")
+            assert rd.returncode == cb.returncode, (label, channel,
+                                                    rd.returncode, cb.returncode)
+            assert rd.stdout == cb.stdout, (label, channel, rd.stdout, cb.stdout)
 
 
 def test_static_check_spellings_dash_n_and_validate():
