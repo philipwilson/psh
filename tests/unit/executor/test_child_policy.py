@@ -12,6 +12,7 @@ from psh.core.exceptions import (
     FunctionReturn,
     LoopBreak,
     LoopContinue,
+    SubstitutionSyntaxAbort,
     TopLevelAbort,
 )
 from psh.executor.child_policy import (
@@ -21,47 +22,99 @@ from psh.executor.child_policy import (
 )
 
 
+class _StubState:
+    """Minimal ShellState stand-in: the taxonomy only reads ``options``."""
+
+    def __init__(self, **options):
+        self.options = dict(options)
+
+
 class TestMapChildException:
     """The ONE child-exit taxonomy (H10): a control-flow/exit exception at a
     forked child's top → the child's exit code. Every fork site delegates
     here, so these pins guard the single mapping."""
 
     def test_top_level_abort_maps_to_status(self):
-        assert map_child_exception(TopLevelAbort(2)) == 2
+        assert map_child_exception(TopLevelAbort(2), _StubState()) == 2
 
     def test_function_return_maps_to_exit_code(self):
-        assert map_child_exception(FunctionReturn(3)) == 3
+        assert map_child_exception(FunctionReturn(3), _StubState()) == 3
 
     def test_loop_break_maps_to_exit_status(self):
-        assert map_child_exception(LoopBreak(exit_status=1)) == 1
+        assert map_child_exception(LoopBreak(exit_status=1), _StubState()) == 1
 
     def test_loop_break_none_status_maps_to_zero(self):
-        assert map_child_exception(LoopBreak(exit_status=None)) == 0
+        assert map_child_exception(LoopBreak(exit_status=None), _StubState()) == 0
 
     def test_loop_continue_maps_to_exit_status(self):
-        assert map_child_exception(LoopContinue(exit_status=0)) == 0
+        assert map_child_exception(LoopContinue(exit_status=0), _StubState()) == 0
 
     def test_system_exit_int_maps_to_code(self):
-        assert map_child_exception(SystemExit(4)) == 4
+        assert map_child_exception(SystemExit(4), _StubState()) == 4
 
     def test_system_exit_none_maps_to_zero(self):
         # THE divergence the launcher copy got wrong (it mapped None → 1).
         # Python's own convention: a bare sys.exit()/SystemExit(None) → 0.
-        assert map_child_exception(SystemExit(None)) == 0
-        assert map_child_exception(SystemExit()) == 0
+        assert map_child_exception(SystemExit(None), _StubState()) == 0
+        assert map_child_exception(SystemExit(), _StubState()) == 0
 
     def test_system_exit_nonint_noncode_maps_to_one(self):
-        assert map_child_exception(SystemExit("boom")) == 1
+        assert map_child_exception(SystemExit("boom"), _StubState()) == 1
 
     def test_unknown_exception_reraises(self):
         # Not one of the CHILD_EXIT_EXCEPTIONS: callers catch exactly that
         # group before delegating, so an unexpected type re-raises here.
         with pytest.raises(RuntimeError):
-            map_child_exception(RuntimeError("x"))
+            map_child_exception(RuntimeError("x"), _StubState())
 
-    def test_taxonomy_tuple_is_the_five_families(self):
+    def test_substitution_syntax_abort_maps_to_one(self):
+        # A substitution-body syntax error is fatal to the shell PROCESS, so a
+        # FORK is the only thing that contains it: the child dies and the
+        # parent runs on. This arm pins the UNSUPPRESSED-errexit-off case,
+        # which is 1 in every channel — a child inside a `-c` shell exits 1,
+        # not the 127 the main shell maps to (slot 2.4). It is NOT a flat
+        # constant: with effective errexit the same child exits 2, pinned by
+        # the errexit_suppressed arm below. ("Flat 1 in every channel" was the
+        # old wording here; rounds 5-6 flagged it as falsified by its own
+        # neighbour and round 7 corrected it.)
+        assert map_child_exception(SubstitutionSyntaxAbort(), _StubState()) == 1
+        assert map_child_exception(
+            SubstitutionSyntaxAbort(nested=True), _StubState()) == 1
+
+    def test_substitution_syntax_abort_honours_errexit_in_the_child(self):
+        # NOT a flat constant: `set -e` INSIDE the forked child makes bash exit
+        # 2 there, exactly as the main policy's first branch does. The previous
+        # pin asserted the constant 1 and so could not see the regression.
+        errexit = _StubState(errexit=True)
+        assert map_child_exception(SubstitutionSyntaxAbort(), errexit) == 2
+        assert map_child_exception(
+            SubstitutionSyntaxAbort(nested=True), errexit) == 2
+        # The CHANNEL rule still does not apply to a child: command_mode alone
+        # leaves it 1, never the main shell's 127.
+        assert map_child_exception(
+            SubstitutionSyntaxAbort(), _StubState(command_mode=True)) == 1
+
+    def test_substitution_syntax_abort_errexit_suppressed_arm(self):
+        # The arm the round-4 unit pin missed: EFFECTIVE errexit, not the raw
+        # flag. With the flag set but the fork inside a suppressing context
+        # (`( … ) || recover`, an if/while condition, `!`) bash leaves the
+        # child at 1, so the suppression must beat the flag.
+        # The suppression travels ON THE ERROR (stamped at raise), so the
+        # taxonomy reads it from the exception rather than from an argument —
+        # no caller can pass a wrong or defaulted value.
+        errexit = _StubState(errexit=True)
+        assert map_child_exception(
+            SubstitutionSyntaxAbort(errexit_suppressed=True), errexit) == 1
+        assert map_child_exception(
+            SubstitutionSyntaxAbort(errexit_suppressed=False), errexit) == 2
+        # Suppression without errexit changes nothing (already 1).
+        assert map_child_exception(
+            SubstitutionSyntaxAbort(errexit_suppressed=True), _StubState()) == 1
+
+    def test_taxonomy_tuple_is_the_six_families(self):
         assert set(CHILD_EXIT_EXCEPTIONS) == {
             TopLevelAbort, FunctionReturn, LoopBreak, LoopContinue, SystemExit,
+            SubstitutionSyntaxAbort,
         }
 
 

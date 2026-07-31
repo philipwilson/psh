@@ -29,6 +29,7 @@ from .exceptions import (
     ReadError,
     ReadonlyVariableError,
     SpecialBuiltinUsageError,
+    SubstitutionSyntaxAbort,
     TopLevelAbort,
     UnboundVariableError,
 )
@@ -58,6 +59,7 @@ __all__ = [
     'LoopBreak',
     'LoopContinue',
     'TopLevelAbort',
+    'SubstitutionSyntaxAbort',
     'UnboundVariableError',
     'ReadonlyVariableError',
     'SpecialBuiltinUsageError',

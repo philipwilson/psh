@@ -1,0 +1,25 @@
+discriminator: /Users/pwilson/src/psh-r2-4/tmp/r6b-base/psh/__init__.py
+========================================================================
+-i -c CHANNEL
+  DIVERGE fork_errexit_suppressed    [rd        ] bash=(0, 'SUPPRC=1\n') psh=(0, 'SUPPRC=2\n')
+  DIVERGE fork_errexit_suppressed    [combinator] bash=(0, 'SUPPRC=1\n') psh=(0, 'SUPPRC=2\n')
+  DIVERGE fork_no_errexit            [rd        ] bash=(0, 'SUPPRC=1\n') psh=(0, 'SUPPRC=2\n')
+  DIVERGE fork_no_errexit            [combinator] bash=(0, 'SUPPRC=1\n') psh=(0, 'SUPPRC=2\n')
+  MATCH   eval_frame                 [rd        ] bash=(0, 'B\nAFTER\n') psh=(0, 'B\nAFTER\n')
+  MATCH   eval_frame                 [combinator] bash=(0, 'B\nAFTER\n') psh=(0, 'B\nAFTER\n')
+  DIVERGE direct                     [rd        ] bash=(1, '') psh=(2, '')
+  DIVERGE direct                     [combinator] bash=(1, '') psh=(2, '')
+  DIVERGE eval_frame_status          [rd        ] bash=(0, 'AFTERRC=1\n') psh=(0, 'AFTERRC=2\n')
+  DIVERGE eval_frame_status          [combinator] bash=(0, 'AFTERRC=1\n') psh=(0, 'AFTERRC=2\n')
+========================================================================
+STATIC CHECK: bash -n  vs  psh -n  vs  psh --validate
+  unclosed_body              [rd        ] bash -n: c=127 file=2 | psh -n: c=2 file=2 | psh --validate: c=2 file=2
+  unclosed_body              [combinator] bash -n: c=127 file=2 | psh -n: c=2 file=2 | psh --validate: c=2 file=2
+  complete_but_invalid_body  [rd        ] bash -n: c=127 file=2 | psh -n: c=2 file=2 | psh --validate: c=2 file=2
+  complete_but_invalid_body  [combinator] bash -n: c=127 file=2 | psh -n: c=2 file=2 | psh --validate: c=2 file=2
+  procsub_body               [rd        ] bash -n: c=127 file=2 | psh -n: c=2 file=2 | psh --validate: c=2 file=2
+  procsub_body               [combinator] bash -n: c=127 file=2 | psh -n: c=2 file=2 | psh --validate: c=2 file=2
+  plain_syntax_error         [rd        ] bash -n: c=2 file=2 | psh -n: c=2 file=2 | psh --validate: c=2 file=2
+  plain_syntax_error         [combinator] bash -n: c=2 file=2 | psh -n: c=2 file=2 | psh --validate: c=2 file=2
+  valid                      [rd        ] bash -n: c=0 file=0 | psh -n: c=0 file=0 | psh --validate: c=0 file=0
+  valid                      [combinator] bash -n: c=0 file=0 | psh -n: c=0 file=0 | psh --validate: c=0 file=0

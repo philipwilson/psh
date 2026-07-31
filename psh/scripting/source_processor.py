@@ -17,12 +17,14 @@ from ..core import (
     LoopBreak,
     LoopContinue,
     SpecialBuiltinUsageError,
+    SubstitutionSyntaxAbort,
     TopLevelAbort,
     report_internal_defect,
 )
+from ..core.internal_errors import substitution_abort_status
 from ..lexer import UnclosedQuoteError
 from ..lexer.token_formatter import TokenFormatter
-from ..parser import ParseError
+from ..parser import ParseError, is_substitution_origin
 from ..utils.ast_debug import print_ast_debug
 from ..visitor.traversal import walk_ast
 from .base import ScriptComponent
@@ -95,6 +97,18 @@ class SourceProcessor(ScriptComponent):
         except SystemExit as exc:
             code = exc.code
             exit_code = code if isinstance(code, int) else (0 if code is None else 1)
+        except SubstitutionSyntaxAbort as exc:
+            # A substitution-body syntax error is fatal to the shell PROCESS
+            # (bash). It reached here because NO frame contains it — not a
+            # function, an `if` condition, an `&&` list, eval, source or a trap
+            # action — only a fork does. The diagnostic was printed at the raise
+            # site; the channel-dependent status is the one mapping in
+            # core/internal_errors.py#substitution_abort_status. Falling through
+            # to execute_exit_trap() below is deliberate: bash runs the EXIT
+            # trap here and it observes this status.
+            exit_code = substitution_abort_status(
+                self.state, exc.nested, exc.errexit_suppressed)
+            self.state.last_exit_code = exit_code
         self.shell.trap_manager.execute_exit_trap()
         return exit_code
 
@@ -205,6 +219,17 @@ class SourceProcessor(ScriptComponent):
                 command_start_line = 0
                 exit_code = 2  # Bash uses exit code 2 for syntax errors
                 self.state.last_exit_code = 2
+                # SECOND of the two substitution-origin consumer sites, sharing
+                # ONE policy with the first (_execute_buffered_command). The
+                # split is by ERROR KIND, not by channel: the accumulator
+                # returns NeedMore for an UNTERMINATED body (`$(if)`) — which
+                # flushes into _execute_buffered_command — but a COMPLETE but
+                # ill-formed body (`$(fi)`, `$(;)`, `$(x ;; y)`, `<(fi)`, ...)
+                # completes HERE carrying the same typed error. Both kinds are
+                # equally fatal in bash, so both must reach the same abort.
+                self._substitution_syntax_abort(
+                    result.error,
+                    getattr(self.shell, '_current_executor', None) is not None)
                 # In non-interactive mode, exit immediately on parse errors
                 if not input_source.is_interactive():
                     self._posix_syntax_abort(input_source)
@@ -264,6 +289,77 @@ class SourceProcessor(ScriptComponent):
         detail = render_syntax_error_detail(error, source_text=source_text)
         print(f"psh: {self._location(input_source, line)}: {detail}",
               file=sys.stderr)
+
+    def _substitution_syntax_abort(self, error, nested: bool) -> None:
+        """Substitution-origin fatal SYNTAX error (bash 5.2.26, slot 2.4).
+
+        The I3 CONSUMER of the typed producer contract: a syntax error in a
+        ``$(...)``/``<(...)``/``>(...)`` BODY is fatal to bash's shell process,
+        while an ordinary syntax error in the same position is not. The
+        distinction is read from the ERROR'S TYPE via the named predicate
+        ``parser.is_substitution_origin`` — never from its message or its exit
+        code — and turned into the typed
+        ``core/exceptions.py#SubstitutionSyntaxAbort``, which no non-fork frame
+        catches. ``execute_as_main`` resolves it into the process status on the
+        ordinary path; the ONE exception is an EXIT trap firing at TEARDOWN,
+        where ``core/trap_manager.py#TrapManager.execute_exit_trap`` swallows it
+        instead — the shell is already exiting, so bash reports the diagnostic
+        and changes nothing.
+
+        A no-op when ``state.is_script_mode`` is FALSE — which is the
+        interactive FAMILY, not just a live REPL: ``-i -c`` turns it off too,
+        so the consumer does not fire there either (probed: bash does not abort
+        an interactive frame either, so the eval shape MATCHES; only the direct
+        shape's status differs, pinned as a declared divergence). bash's
+        interactive loop reports the diagnostic and carries on (a sourced file
+        even resumes at its own next line), so the REPL must not die on
+        ``echo $(if)``. The test is
+        ``state.is_script_mode`` — the same predicate ``_posix_syntax_abort``
+        uses, and deliberately NOT the immediate input source's
+        ``is_interactive()``, which is False for an ``eval`` string even inside
+        an interactive shell.
+
+        Unlike the POSIX policy below, this abort is NOT routed through
+        ``SpecialBuiltinUsageError``: bash aborts even when the frame is
+        entered as ``command eval`` / ``builtin eval`` / ``command source``,
+        which strip the special-builtin property (probe-verified, both
+        spellings, all three channels).
+        """
+        if not is_substitution_origin(error):
+            return
+        if not self.state.is_script_mode:
+            return
+        raise SubstitutionSyntaxAbort(nested=nested,
+                                      errexit_suppressed=self._errexit_suppressed())
+
+    def _errexit_suppressed(self) -> bool:
+        """Is errexit SUPPRESSED at this exact moment (``||``, an ``if``/
+        ``while`` condition, ``!``)?
+
+        Read from the live executor context's suppression counter, which is
+        already the TOTAL depth: it is seeded from the fork site and
+        incremented by contexts entered inside the child. Read HERE, at raise
+        time, because the counter unwinds as the exception propagates — a
+        later read at the fork boundary is blind to in-child contexts and
+        stale for the rest.
+
+        NO LIVE EXECUTOR is a LEGITIMATE state, not a wiring bug: the error can
+        be raised from the outermost READER parse, before any command has begun
+        executing (``psh -c 'echo $(fi)'`` has no executor yet). No executor
+        means no suppressing context can be open, so False is the correct
+        answer — not a defensive fallback.
+
+        What is explicit here is the CONTEXT read: ``executor.context`` is a
+        plain attribute access, so a genuinely missing ``context`` would raise
+        rather than silently read as "unsuppressed". The ``_current_executor``
+        read itself keeps this file's house style (five identical reads
+        alongside it) and does tolerate absence — which is the legitimate state
+        described above, not a rename dodge. Both halves are exercised by
+        ``tests/unit/scripting/test_errexit_suppressed_read.py``."""
+        executor = getattr(self.shell, '_current_executor', None)
+        if executor is None:
+            return False
+        return bool(executor.context.errexit_suppress)
 
     def _posix_syntax_abort(self, input_source) -> None:
         """POSIX-mode fatal SYNTAX error (bash 5.2, probe tmp/posixexit).
@@ -398,6 +494,7 @@ class SourceProcessor(ScriptComponent):
             self._report_syntax_error(e, input_source, start_line,
                                       source_text=command_string)
             self.state.last_exit_code = 2  # Bash uses exit code 2 for syntax errors
+            self._substitution_syntax_abort(e, nested)
             self._posix_syntax_abort(input_source)
             return 2
         except UnclosedQuoteError as e:

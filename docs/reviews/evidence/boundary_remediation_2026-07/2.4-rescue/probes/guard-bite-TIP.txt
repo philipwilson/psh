@@ -1,0 +1,11 @@
+SHA: d934a3cae58f716319e8b329798d180ab3f628c6
+tree before: 0 modified/untracked under psh/
+--- guards WITH the offender present (both must FAIL) ---
+FAILED tests/unit/tooling/test_substitution_abort_guards.py::test_only_one_raise_site_for_the_abort
+FAILED tests/unit/tooling/test_substitution_abort_guards.py::test_only_the_sanctioned_non_fork_catchers_exist
+FAILED tests/unit/tooling/test_substitution_abort_guards.py::test_status_mapping_is_not_re_derived_at_frames
+3 failed, 13 passed in 0.12s
+--- offender removed; tree under psh/: 0 entries ---
+--- guards WITHOUT the offender (all must PASS) ---
+................                                                         [100%]
+16 passed in 0.11s

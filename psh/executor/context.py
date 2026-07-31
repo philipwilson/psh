@@ -34,6 +34,33 @@ class ExecutionContext:
     # this context, the exemption extends through them, as in bash.
     errexit_suppress: int = 0
 
+    # The suppression a forked PIPELINE MEMBER inherited but must NOT apply to
+    # its own simple command. bash's rule, verbatim from the manual ("The Set
+    # Builtin"):
+    #
+    #     If a compound command or shell function executes in a context where
+    #     -e is being ignored, none of the commands executed within the
+    #     compound command or function body will be affected by the -e setting.
+    #
+    # A SIMPLE-COMMAND member introduces no such body, so `set -e` stays
+    # effective for the text its `eval`/`.` parses: `set -e; { true | eval
+    # 'echo $(if)'; } || recover` leaves 2 in bash, while the same member
+    # wrapped in `{ }`, `( )`, a function, or any loop/case leaves 1.
+    #
+    # ONE WRITER — the pipeline member closure (executor/pipeline.py), in the
+    # forked child only, on a context created for that member alone.
+    # ONE READER — executor/function.py#FunctionOperationExecutor._function_frame,
+    # which re-applies it for a function BODY's duration: the "or shell
+    # function" half of the same sentence. It is read at BODY entry rather than
+    # decided from the member's AST because `{ true | $Q; }` names a function
+    # only after expansion.
+    #
+    # Bookkeeping, not status derivation: the substitution abort's stamp still
+    # reads errexit_suppress at the raise site (core/exceptions.py#
+    # SubstitutionSyntaxAbort), and this field exists so that counter is
+    # already correct when it does.
+    errexit_suppress_deferred: int = 0
+
     # Floor for the POSIX special-builtin SUPPRESSIBLE-exit check: the
     # suppressible class (invalid options / top-level return) is exempt from
     # the posix-mode exit only when errexit_suppress rose ABOVE this floor —

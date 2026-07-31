@@ -22,6 +22,7 @@ The package is organized into focused modules:
 
 from .child_policy import (
     apply_child_signal_policy,
+    expansion_child_suppression,
     flush_child_streams,
     fork_with_signal_window,
     run_child_shell,
@@ -38,6 +39,7 @@ __all__ = [
     'apply_child_signal_policy',
     'flush_child_streams',
     'fork_with_signal_window',
+    'expansion_child_suppression',
     'run_child_shell',
     'TestExpressionEvaluator',
 ]

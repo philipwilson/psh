@@ -128,6 +128,98 @@ def fatal_expansion_status(state: 'ShellState', exc: BaseException, *,
     raise TopLevelAbort(1, errexit_immune=True)
 
 
+def substitution_abort_status(state: 'ShellState', nested: bool,
+                              errexit_suppressed: bool) -> int:
+    """The ONE status mapping for a substitution-origin shell abort.
+
+    Consumes ``SubstitutionSyntaxAbort`` at the outermost boundary
+    (``scripting/source_processor.py#execute_as_main``). bash 5.2.26's status
+    for this fatality is NOT a single number — it depends on the channel and
+    on where the error was found — so the whole mapping lives here rather than
+    as scattered exit-code comparisons at the frames.
+
+    Probe-verified (slot 2.4 batteries under ``tmp/r24-probes/``, PATH bash
+    5.2.26, every row run in the ``-c``, script-file and stdin channels):
+
+    * ``set -e`` active -> **2**, in every channel and for both the direct and
+      the eval/source-nested shapes. errexit is checked FIRST because it wins
+      over the ``-c`` rule (``set -e`` under ``-c`` gives 2, not 127). It is
+      EFFECTIVE errexit: in a suppressing context (``||``, ``&&`` non-final, an
+      ``if``/``while`` condition, ``!``) bash uses the ordinary channel status
+      instead, so the flag alone is not enough. The suppression is read from
+      the stamp the error carries (see
+      ``core/exceptions.py#SubstitutionSyntaxAbort``), never re-derived here.
+    * ``-c`` (``command_mode``) -> **127**, at any nesting depth and for either
+      error kind: the direct parse, or an ``eval``/``source``/function/trap
+      frame inside the ``-c`` string, all give 127 — provided both of
+      ``SourceProcessor``'s syntax-error exits reach this policy (see
+      ``core/exceptions.py#SubstitutionSyntaxAbort``).
+    * a script FILE or stdin -> **2** when the outermost source's own parse
+      found it, **1** when it came from a nested ``eval``/``source`` string.
+      The 1 is bash's ``EX_BADSYNTAX`` (257) truncated to 8 bits; psh reports
+      the real status rather than replicating the pre-truncation internal that
+      bash leaks into ``$?`` inside an EXIT trap (declared divergence, pinned).
+
+    A FORKED child does not come here: it goes through
+    :func:`substitution_child_abort_status` instead, which drops the CHANNEL
+    rule (a subshell/cmdsub/pipeline member inside a ``-c`` shell exits 1, not
+    127) but keeps the errexit branch above.
+    """
+    if state.options.get('errexit', False) and not errexit_suppressed:
+        return 2
+    if state.options.get('command_mode'):
+        return 127
+    return 1 if nested else 2
+
+
+def substitution_child_abort_status(state: 'ShellState',
+                                    errexit_suppressed: bool) -> int:
+    """The FORKED-CHILD half of :func:`substitution_abort_status`.
+
+    A forked child does NOT use the channel rule — it exits 1 even inside a
+    ``-c`` shell, where the main shell uses 127. Probed per ROUTE (slot 2.4
+    batteries ``tmp/r24-probes/r7a.py`` and ``r6b*.py``): subshell, brace
+    group, command substitution, backticks, process substitution, pipeline
+    members and every background spelling. ONE ROUTE DISAGREES and is
+    DECLARED, not covered by this sentence: a child whose own command resolves
+    DIRECTLY to a shell FUNCTION, where bash leaks the ``-c`` channel status
+    (127) into the child — pinned as
+    ``test_function_member_channel_rule_is_a_declared_divergence``.
+
+    But it DOES honour the errexit branch, for the same reason that branch is
+    FIRST in the main policy: with ``set -e`` active in the child, bash exits
+    **2** there too — ``( set -e; eval 'echo $(if)' )`` leaves ``$?``=2 where
+    the same subshell without errexit leaves 1.
+
+    The errexit test is EFFECTIVE errexit, not the raw flag: bash consults the
+    flag MINUS the suppression context. ``set -e`` with the fork inside a
+    suppressing context — ``( … ) || recover``, an ``if``/``while`` condition,
+    a ``!`` negation — leaves the child at **1**, because errexit does not
+    apply there; the same fork outside such a context is 2. The two shapes are
+    indistinguishable from ``state`` alone (both read ``errexit=True``), which
+    is why the suppression depth is passed IN from the fork site.
+
+    WHICH forks inherit that depth is bash's severing rule, not a per-site
+    choice: a fork whose body is a COMPOUND command or a directly-invoked
+    FUNCTION carries it; a fork running a BARE SIMPLE command severs it and
+    runs with errexit effective (``executor/context.py#errexit_suppress_deferred``
+    quotes the manual sentence). It holds at the pipeline-member route and at
+    the background route alike — but NOT at the substitution routes, where
+    bash's rule is spelling-split: an ARGUMENT-spelled substitution child
+    (``$( )``, backticks, ``<( )``) keeps the enclosing context's suppression,
+    while a REDIRECTION-spelled procsub (``< <( )``, ``> >( )``) runs with
+    errexit effective (the declared divergence is pinned by
+    ``test_redirect_procsub_suppression_is_a_declared_divergence``).
+
+    Kept beside the main policy rather than inlined at the fork sites so the
+    two halves cannot drift: it is the SAME mapping restricted to the axis a
+    child can see.
+    """
+    if state.options.get('errexit', False) and not errexit_suppressed:
+        return 2
+    return 1
+
+
 def arith_assignment_discard(state: 'ShellState') -> NoReturn:
     """Discard for an arithmetic error in ASSIGNMENT or SUBSCRIPT position.
 

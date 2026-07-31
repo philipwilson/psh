@@ -1,0 +1,16 @@
+R6-E(1) INSTRUMENT: pytest --collect-only -q over the touched test files, per commit.
+Five files through round 5; the guards file does not exist before 54001334, so
+the pre-54001334 commits are counted over the four that exist (the verifier's rule).
+
+=== 1b271d77 (4 files: guards absent) ===
+
+293 tests collected in 0.04s
+=== f0cc466e (4 files: guards absent) ===
+
+329 tests collected in 0.10s
+=== 54001334 (5 files) ===
+
+340 tests collected in 0.05s
+=== 5121ec8b (5 files) ===
+
+340 tests collected in 0.05s

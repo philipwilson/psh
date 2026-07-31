@@ -1,0 +1,422 @@
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+========================================================================
+b1_bg_subshell_suppressed
+0000000    s   e   t       -   e  \n   {       (       e   v   a   l    
+0000020    '   e   c   h   o       $   (   i   f   )   '       )       &
+0000040        w   a   i   t       $   !   ;       }       |   |       e
+0000060    c   h   o       G   O   T       r   c   =   $   ?  \n        
+0000076
+  [c] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+========================================================================
+b2_bg_brace_suppressed
+0000000    s   e   t       -   e  \n   {       {       e   v   a   l    
+0000020    '   e   c   h   o       $   (   i   f   )   '   ;       }    
+0000040    &       w   a   i   t       $   !   ;       }       |   |    
+0000060    e   c   h   o       G   O   T       r   c   =   $   ?  \n    
+0000077
+  [c] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+========================================================================
+b3_bg_subshell_unsuppressed
+0000000    s   e   t       -   e  \n   (       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '       )       &       w
+0000040    a   i   t       $   !  \n   e   c   h   o       A   F   T   E
+0000060    R       r   c   =   $   ?  \n                                
+0000070
+  [c] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+  [file] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+  [stdin] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+========================================================================
+c1_fork_suppressed
+0000000    s   e   t       -   e  \n   (       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '       )       |   |    
+0000040    e   c   h   o       G   O   T       r   c   =   $   ?  \n    
+0000057
+  [c] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+========================================================================
+c2_fork_unsuppressed
+0000000    s   e   t       -   e  \n   (       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '       )  \n   e   c   h
+0000040    o       A   F   T   E   R       r   c   =   $   ?  \n        
+0000056
+  [c] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+  [file] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+  [stdin] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+========================================================================
+c3_in_child_suppressed
+0000000    (       s   e   t       -   e   ;       e   v   a   l       '
+0000020    e   c   h   o       $   (   i   f   )   '       |   |       e
+0000040    c   h   o       i   n   -   c   h   i   l   d       r   c   =
+0000060    $   ?       )  \n   e   c   h   o       A   F   T   E   R    
+0000100    r   c   =   $   ?  \n                                        
+0000106
+  [c] MATCH
+    bash rc=0 out='AFTER rc=1\n'
+    psh-rd  rc=0 out='AFTER rc=1\n'
+    psh-cb  rc=0 out='AFTER rc=1\n'
+  [file] MATCH
+    bash rc=0 out='AFTER rc=1\n'
+    psh-rd  rc=0 out='AFTER rc=1\n'
+    psh-cb  rc=0 out='AFTER rc=1\n'
+  [stdin] MATCH
+    bash rc=0 out='AFTER rc=1\n'
+    psh-rd  rc=0 out='AFTER rc=1\n'
+    psh-cb  rc=0 out='AFTER rc=1\n'
+========================================================================
+g1_generic_false_in_brace_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       f   a   l   s   e   ;       e   c   h   o       N   O
+0000040    P   E   ;       }   ;       }       |   |       e   c   h   o
+0000060        G   O   T       r   c   =   $   ?  \n                    
+0000073
+  [c] MATCH
+    bash rc=0 out='NOPE\n'
+    psh-rd  rc=0 out='NOPE\n'
+    psh-cb  rc=0 out='NOPE\n'
+  [file] MATCH
+    bash rc=0 out='NOPE\n'
+    psh-rd  rc=0 out='NOPE\n'
+    psh-cb  rc=0 out='NOPE\n'
+  [stdin] MATCH
+    bash rc=0 out='NOPE\n'
+    psh-rd  rc=0 out='NOPE\n'
+    psh-cb  rc=0 out='NOPE\n'
+========================================================================
+g2_generic_false_in_subshell_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    (       f   a   l   s   e   ;       e   c   h   o       N   O
+0000040    P   E       )   ;       }       |   |       e   c   h   o    
+0000060    G   O   T       r   c   =   $   ?  \n                        
+0000072
+  [c] MATCH
+    bash rc=0 out='NOPE\n'
+    psh-rd  rc=0 out='NOPE\n'
+    psh-cb  rc=0 out='NOPE\n'
+  [file] MATCH
+    bash rc=0 out='NOPE\n'
+    psh-rd  rc=0 out='NOPE\n'
+    psh-cb  rc=0 out='NOPE\n'
+  [stdin] MATCH
+    bash rc=0 out='NOPE\n'
+    psh-rd  rc=0 out='NOPE\n'
+    psh-cb  rc=0 out='NOPE\n'
+========================================================================
+g3_generic_false_in_brace_member_unsuppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       f   a   l   s   e   ;       e   c   h   o       N   O
+0000040    P   E   ;       }   ;       }  \n   e   c   h   o       A   F
+0000060    T   E   R       r   c   =   $   ?  \n                        
+0000072
+  [c] MATCH
+    bash rc=1 out=''
+    psh-rd  rc=1 out=''
+    psh-cb  rc=1 out=''
+  [file] MATCH
+    bash rc=1 out=''
+    psh-rd  rc=1 out=''
+    psh-cb  rc=1 out=''
+  [stdin] MATCH
+    bash rc=1 out=''
+    psh-rd  rc=1 out=''
+    psh-cb  rc=1 out=''
+========================================================================
+g4_generic_func_member_suppressed
+0000000    f   (   )       {       f   a   l   s   e   ;       e   c   h
+0000020    o       N   O   P   E   ;       }  \n   s   e   t       -   e
+0000040   \n   {       t   r   u   e       |       f   ;       }       |
+0000060    |       e   c   h   o       G   O   T       r   c   =   $   ?
+0000100   \n                                                            
+0000101
+  [c] MATCH
+    bash rc=0 out='NOPE\n'
+    psh-rd  rc=0 out='NOPE\n'
+    psh-cb  rc=0 out='NOPE\n'
+  [file] MATCH
+    bash rc=0 out='NOPE\n'
+    psh-rd  rc=0 out='NOPE\n'
+    psh-cb  rc=0 out='NOPE\n'
+  [stdin] MATCH
+    bash rc=0 out='NOPE\n'
+    psh-rd  rc=0 out='NOPE\n'
+    psh-cb  rc=0 out='NOPE\n'
+========================================================================
+p10_final_member_andand_nonfinal
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }       &   &       e   c   h   o       T  \n   e
+0000060    c   h   o       A   F   T   E   R       r   c   =   $   ?  \n
+0000100
+  [c] MATCH
+    bash rc=0 out='AFTER rc=2\n'
+    psh-rd  rc=0 out='AFTER rc=2\n'
+    psh-cb  rc=0 out='AFTER rc=2\n'
+  [file] MATCH
+    bash rc=0 out='AFTER rc=2\n'
+    psh-rd  rc=0 out='AFTER rc=2\n'
+    psh-cb  rc=0 out='AFTER rc=2\n'
+  [stdin] MATCH
+    bash rc=0 out='AFTER rc=2\n'
+    psh-rd  rc=0 out='AFTER rc=2\n'
+    psh-cb  rc=0 out='AFTER rc=2\n'
+========================================================================
+p11_direct_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   c   h   o       $   (   i   f   )   ;       }       |   |
+0000040        e   c   h   o       G   O   T       r   c   =   $   ?  \n
+0000060
+  [c] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+  [file] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+  [stdin] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+========================================================================
+p12_func_member_suppressed
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   {       t   r   u   e       |       f   ;       }    
+0000060    |   |       e   c   h   o       G   O   T       r   c   =   $
+0000100    ?  \n                                                        
+0000102
+  [c] DIVERGE
+    bash rc=0 out='GOT rc=127\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+========================================================================
+p1_final_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n                                    
+0000067
+  [c] MATCH
+    bash rc=0 out='GOT rc=2\n'
+    psh-rd  rc=0 out='GOT rc=2\n'
+    psh-cb  rc=0 out='GOT rc=2\n'
+  [file] MATCH
+    bash rc=0 out='GOT rc=2\n'
+    psh-rd  rc=0 out='GOT rc=2\n'
+    psh-cb  rc=0 out='GOT rc=2\n'
+  [stdin] MATCH
+    bash rc=0 out='GOT rc=2\n'
+    psh-rd  rc=0 out='GOT rc=2\n'
+    psh-cb  rc=0 out='GOT rc=2\n'
+========================================================================
+p2_final_member_unsuppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }  \n   e   c   h   o       A   F   T   E   R    
+0000060    r   c   =   $   ?  \n                                        
+0000066
+  [c] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+  [file] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+  [stdin] MATCH
+    bash rc=2 out=''
+    psh-rd  rc=2 out=''
+    psh-cb  rc=2 out=''
+========================================================================
+p3_subshell_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    (       e   v   a   l       '   e   c   h   o       $   (   i
+0000040    f   )   '       )   ;       }       |   |       e   c   h   o
+0000060        G   O   T       r   c   =   $   ?  \n                    
+0000073
+  [c] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+========================================================================
+p4_brace_member_suppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       e   v   a   l       '   e   c   h   o       $   (   i
+0000040    f   )   '   ;       }   ;       }       |   |       e   c   h
+0000060    o       G   O   T       r   c   =   $   ?  \n                
+0000074
+  [c] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+========================================================================
+p5_nonfinal_member_suppressed_pipestatus
+0000000    s   e   t       -   e  \n   {       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '       |       c   a   t
+0000040    ;       }       |   |       e   c   h   o       G   O   T    
+0000060    r   c   =   $   ?  \n   e   c   h   o       P   S   =   $   {
+0000100    P   I   P   E   S   T   A   T   U   S   [   *   ]   }  \n    
+0000117
+  [c] DIVERGE
+    bash rc=0 out='PS=2 0\n'
+    psh-rd  rc=0 out='PS=0\n'
+    psh-cb  rc=0 out='PS=0\n'
+  [file] DIVERGE
+    bash rc=0 out='PS=2 0\n'
+    psh-rd  rc=0 out='PS=0\n'
+    psh-cb  rc=0 out='PS=0\n'
+  [stdin] DIVERGE
+    bash rc=0 out='PS=2 0\n'
+    psh-rd  rc=0 out='PS=0\n'
+    psh-cb  rc=0 out='PS=0\n'
+========================================================================
+p6_final_member_no_errexit
+0000000    {       t   r   u   e       |       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '   ;       }       |   |
+0000040        e   c   h   o       G   O   T       r   c   =   $   ?  \n
+0000060
+  [c] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+  [stdin] MATCH
+    bash rc=0 out='GOT rc=1\n'
+    psh-rd  rc=0 out='GOT rc=1\n'
+    psh-cb  rc=0 out='GOT rc=1\n'
+========================================================================
+p7_final_member_negated
+0000000    s   e   t       -   e  \n   !       {       t   r   u   e    
+0000020    |       e   v   a   l       '   e   c   h   o       $   (   i
+0000040    f   )   '   ;       }  \n   e   c   h   o       A   F   T   E
+0000060    R       r   c   =   $   ?  \n                                
+0000070
+  [c] MATCH
+    bash rc=0 out='AFTER rc=0\n'
+    psh-rd  rc=0 out='AFTER rc=0\n'
+    psh-cb  rc=0 out='AFTER rc=0\n'
+  [file] MATCH
+    bash rc=0 out='AFTER rc=0\n'
+    psh-rd  rc=0 out='AFTER rc=0\n'
+    psh-cb  rc=0 out='AFTER rc=0\n'
+  [stdin] MATCH
+    bash rc=0 out='AFTER rc=0\n'
+    psh-rd  rc=0 out='AFTER rc=0\n'
+    psh-cb  rc=0 out='AFTER rc=0\n'
+========================================================================
+p8_final_member_if_cond
+0000000    s   e   t       -   e  \n   i   f       t   r   u   e       |
+0000020        e   v   a   l       '   e   c   h   o       $   (   i   f
+0000040    )   '   ;       t   h   e   n       e   c   h   o       T   ;
+0000060        e   l   s   e       e   c   h   o       G   O   T       r
+0000100    c   =   $   ?   ;       f   i  \n                            
+0000111
+  [c] MATCH
+    bash rc=0 out='GOT rc=2\n'
+    psh-rd  rc=0 out='GOT rc=2\n'
+    psh-cb  rc=0 out='GOT rc=2\n'
+  [file] MATCH
+    bash rc=0 out='GOT rc=2\n'
+    psh-rd  rc=0 out='GOT rc=2\n'
+    psh-cb  rc=0 out='GOT rc=2\n'
+  [stdin] MATCH
+    bash rc=0 out='GOT rc=2\n'
+    psh-rd  rc=0 out='GOT rc=2\n'
+    psh-cb  rc=0 out='GOT rc=2\n'
+========================================================================
+p9_final_member_while_cond
+0000000    s   e   t       -   e  \n   w   h   i   l   e       t   r   u
+0000020    e       |       e   v   a   l       '   e   c   h   o       $
+0000040    (   i   f   )   '   ;       d   o       e   c   h   o       B
+0000060    O   D   Y   ;       b   r   e   a   k   ;       d   o   n   e
+0000100   \n   e   c   h   o       A   F   T   E   R       r   c   =   $
+0000120    ?  \n                                                        
+0000122
+  [c] MATCH
+    bash rc=0 out='AFTER rc=0\n'
+    psh-rd  rc=0 out='AFTER rc=0\n'
+    psh-cb  rc=0 out='AFTER rc=0\n'
+  [file] MATCH
+    bash rc=0 out='AFTER rc=0\n'
+    psh-rd  rc=0 out='AFTER rc=0\n'
+    psh-cb  rc=0 out='AFTER rc=0\n'
+  [stdin] MATCH
+    bash rc=0 out='AFTER rc=0\n'
+    psh-rd  rc=0 out='AFTER rc=0\n'
+    psh-cb  rc=0 out='AFTER rc=0\n'

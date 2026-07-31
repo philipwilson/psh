@@ -420,6 +420,27 @@ shell-error path, give it a `PshError` subclass (e.g. `FunctionDefinitionError`)
 so it classifies as expected — do not let a bare Python exception stand in for
 a shell error.
 
+**Unwinding OUTCOMES derive from `BaseException`, not `Exception`.**
+`exceptions.py#TopLevelAbort` and `exceptions.py#SubstitutionSyntaxAbort` are
+outcomes rather than errors: their condition was already reported at the raise
+site, and they must cross the last-resort guards without being misread as
+internal defects — the same reason `SystemExit` does. The two differ in REACH,
+and that difference IS the semantics: `TopLevelAbort` discards one command line
+and RESUMES (contained at every buffered boundary, so `eval`/`source` keep
+going), while `SubstitutionSyntaxAbort` ends the shell PROCESS and is contained
+only by a fork (`executor/child_policy.py#map_child_exception`). Its status
+mapping lives in `internal_errors.py#substitution_abort_status` — never at the
+raise site, which cannot know the outermost channel.
+
+Because that reach is the shell PROCESS, `SubstitutionSyntaxAbort` is also the
+one unwinding outcome that crosses psh's IN-PROCESS EMBEDDING BOUNDARY:
+`shell.py#Shell.run_command` lets it escape to its caller in script mode rather
+than flattening it into a status, since the only sanctioned consumer is the
+whole-shell entry point `scripting/source_processor.py#SourceProcessor.execute_as_main`.
+An embedder that wants a status runs through that entry point instead. In the
+interactive family (`state.is_script_mode` False, which includes `-i -c`) the
+consumer does not fire at all, so nothing escapes.
+
 ### Computed Special Parameters (`special_registry.py`)
 
 The dynamically computed specials (`RANDOM`, `SECONDS`, `BASHPID`, `SRANDOM`,

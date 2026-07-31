@@ -594,19 +594,44 @@ Subscript-specific invariants (remediation 2.3, HIGH-4 + MEDIUM-4):
   regions are structurally excluded (C1 — the arith tier's raw
   preservation is load-bearing, pinned in `test_render_tiers`).
 
-A substitution-body syntax error is raised as `SubstitutionSyntaxError` (an inert
+A substitution-body syntax error is raised as `SubstitutionSyntaxError` (a
 `ParseError` subclass; `is_substitution_origin`) at the one chokepoint
-`support/nested_parse.py#parse_nested_command`. It is the typed producer contract
-for the exit-code / eval-source-fatality mapping (I3's consumer job); psh keeps
-its uniform syntax-error code 2 today.
+`psh/parser/recursive_descent/support/nested_parse.py#parse_nested_command`.
+It is the typed PRODUCER
+contract, and it is no longer inert: the error's TYPE — never its message or
+its exit code — is what tells the consumer that this syntax error is fatal to
+the shell where an ordinary one is not. The CONSUMER is
+`scripting/source_processor.py#SourceProcessor._substitution_syntax_abort`,
+which turns it into `core/exceptions.py#SubstitutionSyntaxAbort`.
 
-**Remaining documented divergences** (pinned in
-`tests/conformance/bash/test_nested_substitution_timing_conformance.py` and
-`test_syntax_template_timing_conformance.py`): a substitution-body syntax error
-exits 127 in bash's string channels (`-c`/eval/source) and ABORTS the enclosing
-eval/source frame, while psh uses its uniform code 2 and continues past the frame
-(same mechanism, carried to campaign I3); and `$(if)` inside a heredoc BODY is
-expanded at runtime by both shells (not a template region).
+The consumer must sit at BOTH of `SourceProcessor`'s syntax-error exits,
+because the two carry the same typed error by different routes: an
+UNTERMINATED body (`$(if)`) makes the accumulator ask for more input and
+surfaces as a flushed buffer, while a COMPLETE but ill-formed body (`$(fi)`,
+`$(;)`) completes the accumulator's trial parse and surfaces from its error
+branch. Wiring only one leaves the other kind behaving exactly as before —
+that shipped once and was caught in verification.
+
+**Remaining documented divergences** in this family:
+
+- `$(if)` inside a heredoc BODY is expanded at runtime by both shells (not a
+  template region), so it stays non-fatal — pinned in
+  `tests/conformance/bash/test_nested_substitution_timing_conformance.py`
+  (`test_divergence_heredoc_body_cmdsub_stays_runtime`).
+- A MID-SCRIPT trap action string whose own parse fails (a signal trap, DEBUG,
+  ERR or RETURN — probed across all of them, the behaviour is uniform WITHIN
+  the non-fork case): both shells abort, but bash exits 2 in the file/stdin
+  channels where psh exits 1 (`-c` and all stdout agree). Inside a FORK the
+  same family is bash 2 / psh 1 in every channel, unless effective errexit
+  applies in the child, where both are 2. This EXCLUDES the EXIT trap at teardown, which
+  is a different shape and matches bash exactly: the error is reported and
+  changes nothing, because the shell is already exiting.
+- The status bash's EXIT trap observes for this abort in file/stdin is its
+  internal pre-truncation `EX_BADSYNTAX` (257); psh reports the true process
+  status. Both are pinned in `test_syntax_template_timing_conformance.py`.
+
+The `-c` exit-code split and the eval/source frame fatality that used to be
+listed here are CLOSED by the consumer above.
 
 ## Configuration
 

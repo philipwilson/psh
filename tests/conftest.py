@@ -571,7 +571,13 @@ def pytest_runtest_setup(item):
         if ("test_pty_smoke" in str(item.fspath)
                 or "test_pty_shutdown_route_f2" in str(item.fspath)
                 or "test_multiline_immediate_error_i3" in str(item.fspath)
-                or "test_pty_huponexit_j1" in str(item.fspath)):
+                or "test_pty_huponexit_j1" in str(item.fspath)
+                # Slot 2.4 (ruling R6-C): the substitution abort's INTERACTIVE
+                # disposition. Same conventions as its neighbours here
+                # (deterministic, ~8s), and admitted for a specific reason: the
+                # facts it pins exist ONLY at a terminal, so an opt-in pin for
+                # them is a pin that never runs.
+                or "test_substitution_abort_interactive_pty" in str(item.fspath)):
             return
         if not item.config.getoption("--run-interactive", default=False):
             pytest.skip("Interactive tests skipped (use --run-interactive to run)")

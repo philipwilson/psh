@@ -1,0 +1,276 @@
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+========================================================================
+s10_simple_member_procsub
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   c   a   t       <   (   i   f   )   '
+0000040    ;       }       |   |       e   c   h   o       G   O   T    
+0000060    r   c   =   $   ?  \n                                        
+0000066
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s10_simple_member_procsub.sh: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+s11_brace_member_complete_but_invalid
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       e   v   a   l       '   e   c   h   o       $   (   f
+0000040    i   )   '   ;       }   ;       }       |   |       e   c   h
+0000060    o       G   O   T       r   c   =   $   ?  \n                
+0000074
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `fi'\n/opt/homebrew/bin/bash: eval: line 2: `echo $(fi)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 1): Expected command\n\nfi\n^\n\nContext:  -> HERE <- <EOF>\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s11_brace_member_complete_but_invalid.sh: eval: line 2: syntax error near unexpected token `fi'\n/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s11_brace_member_complete_but_invalid.sh: eval: line 2: `echo $(fi)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 1): Expected command\n\nfi\n^\n\nContext:  -> HERE <- <EOF>\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+s12_simple_member_source
+0000000    p   r   i   n   t   f       '   %   s   \   n   '       "   e
+0000020    c   h   o       \   $   (   i   f   )   "       >       s   u
+0000040    b   .   s   h  \n   s   e   t       -   e  \n   {       t   r
+0000060    u   e       |       .       .   /   s   u   b   .   s   h   ;
+0000100        }       |   |       e   c   h   o       G   O   T       r
+0000120    c   =   $   ?  \n                                            
+0000125
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="./sub.sh: line 1: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: ./sub.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="./sub.sh: line 1: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: ./sub.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+s13_fork_suppressed_continues
+0000000    s   e   t       -   e  \n   (       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '   ;       e   c   h   o
+0000040        I   N   C   H   I   L   D       )       |   |       e   c
+0000060    h   o       G   O   T       r   c   =   $   ?  \n            
+0000075
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `)'\n/opt/homebrew/bin/bash: eval: line 2: `echo $(if)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s13_fork_suppressed_continues.sh: eval: line 2: syntax error near unexpected token `)'\n/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s13_fork_suppressed_continues.sh: eval: line 2: `echo $(if)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+s14_simple_member_no_eval_runtime
+0000000    s   e   t       -   e  \n   Q   =   '   e   c   h   o       $
+0000020    (   i   f   )   '  \n   {       t   r   u   e       |       $
+0000040    Q   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n                                    
+0000067
+  [c] MATCH
+    bash   rc=0 out='$(if)\n'
+    bash   err=''
+    psh-rd rc=0 out='$(if)\n'
+    psh-rd err=''
+    psh-cb rc=0 out='$(if)\n'
+  [file] MATCH
+    bash   rc=0 out='$(if)\n'
+    bash   err=''
+    psh-rd rc=0 out='$(if)\n'
+    psh-rd err=''
+    psh-cb rc=0 out='$(if)\n'
+========================================================================
+s1_brace_member_continues
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       e   v   a   l       '   e   c   h   o       $   (   i
+0000040    f   )   '   ;       e   c   h   o       I   N   M   E   M   ;
+0000060        }   ;       }       |   |       e   c   h   o       G   O
+0000100    T       r   c   =   $   ?  \n                                
+0000110
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `)'\n/opt/homebrew/bin/bash: eval: line 2: `echo $(if)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s1_brace_member_continues.sh: eval: line 2: syntax error near unexpected token `)'\n/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s1_brace_member_continues.sh: eval: line 2: `echo $(if)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+s2_subshell_member_continues
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    (       e   v   a   l       '   e   c   h   o       $   (   i
+0000040    f   )   '   ;       e   c   h   o       I   N   S   U   B    
+0000060    )   ;       }       |   |       e   c   h   o       G   O   T
+0000100        r   c   =   $   ?  \n                                    
+0000107
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `)'\n/opt/homebrew/bin/bash: eval: line 2: `echo $(if)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s2_subshell_member_continues.sh: eval: line 2: syntax error near unexpected token `)'\n/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s2_subshell_member_continues.sh: eval: line 2: `echo $(if)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+s3_func_member_continues
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       e   c   h   o       I   N
+0000040    F   U   N   C   ;       }  \n   s   e   t       -   e  \n   {
+0000060        t   r   u   e       |       f   ;       }       |   |    
+0000100    e   c   h   o       G   O   T       r   c   =   $   ?  \n    
+0000117
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=127\n'
+    bash   err="environment: eval: line 1: syntax error near unexpected token `)'\nenvironment: eval: line 1: `echo $(if)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s3_func_member_continues.sh: eval: line 1: syntax error near unexpected token `)'\n/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s3_func_member_continues.sh: eval: line 1: `echo $(if)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+s4_simple_member_plain
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n                                    
+0000067
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s4_simple_member_plain.sh: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+s5_func_member_unsuppressed
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   {       t   r   u   e       |       f   ;       }  \n
+0000060    e   c   h   o       A   F   T   E   R       r   c   =   $   ?
+0000100   \n                                                            
+0000101
+  [c] MATCH
+    bash   rc=2 out=''
+    bash   err="environment: eval: line 1: syntax error near unexpected token `)'\n"
+    psh-rd rc=2 out=''
+    psh-rd err='psh: <command>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=2 out=''
+  [file] MATCH
+    bash   rc=2 out=''
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s5_func_member_unsuppressed.sh: eval: line 1: syntax error near unexpected token `)'\n"
+    psh-rd rc=2 out=''
+    psh-rd err='psh: <command>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=2 out=''
+========================================================================
+s6_pipeline_is_the_orleft
+0000000    s   e   t       -   e  \n   t   r   u   e       |       e   v
+0000020    a   l       '   e   c   h   o       $   (   i   f   )   '    
+0000040    |   |       e   c   h   o       G   O   T       r   c   =   $
+0000060    ?  \n                                                        
+0000062
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s6_pipeline_is_the_orleft.sh: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+s7_nonfinal_member_no_brace
+0000000    s   e   t       -   e  \n   e   v   a   l       '   e   c   h
+0000020    o       $   (   i   f   )   '       |       c   a   t       |
+0000040    |       e   c   h   o       G   O   T       r   c   =   $   ?
+0000060   \n   e   c   h   o       P   S   =   $   {   P   I   P   E   S
+0000100    T   A   T   U   S   [   *   ]   }  \n                        
+0000112
+  [c] DIVERGE
+    bash   rc=0 out='PS=2 0\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='PS=1 0\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='PS=1 0\n'
+  [file] DIVERGE
+    bash   rc=0 out='PS=2 0\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s7_nonfinal_member_no_brace.sh: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='PS=1 0\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='PS=1 0\n'
+========================================================================
+s8_middle_member_of_three
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '       |       c   a   t   ;       }       |   |       e   c
+0000060    h   o       G   O   T       r   c   =   $   ?  \n   e   c   h
+0000100    o       P   S   =   $   {   P   I   P   E   S   T   A   T   U
+0000120    S   [   *   ]   }  \n                                        
+0000126
+  [c] DIVERGE
+    bash   rc=0 out='PS=0 2 0\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='PS=0\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='PS=0\n'
+  [file] DIVERGE
+    bash   rc=0 out='PS=0 2 0\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s8_middle_member_of_three.sh: eval: line 2: syntax error near unexpected token `)'\n"
+    psh-rd rc=0 out='PS=0\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    psh-cb rc=0 out='PS=0\n'
+========================================================================
+s9_simple_member_complete_but_invalid
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   f   i   )
+0000040    '   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n                                    
+0000067
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="/opt/homebrew/bin/bash: eval: line 2: syntax error near unexpected token `fi'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 1): Expected command\n\nfi\n^\n\nContext:  -> HERE <- <EOF>\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] DIVERGE
+    bash   rc=0 out='GOT rc=2\n'
+    bash   err="/Users/pwilson/src/psh-r2-4/tmp/r24-probes/work-r6b2/s9_simple_member_complete_but_invalid.sh: eval: line 2: syntax error near unexpected token `fi'\n"
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-rd err='psh: <command>:2: Parse error (line 2, column 1): Expected command\n\nfi\n^\n\nContext:  -> HERE <- <EOF>\n'
+    psh-cb rc=0 out='GOT rc=1\n'

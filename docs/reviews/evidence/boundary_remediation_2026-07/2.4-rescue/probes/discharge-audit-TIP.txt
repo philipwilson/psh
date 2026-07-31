@@ -1,0 +1,143 @@
+DISCHARGE AUDIT at d934a3cae58f716319e8b329798d180ab3f628c6
+| item | status | instrument (path :: pattern that must match)
+--- round 5 rows (carried forward; they must still hold) ---
+| R5-C1 O3 docstring fixed           | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /RECORD CORRECTION (round 4 . 5)/
+| R5-C1 non-fork domain              | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /in the NON-FORK case/
+| R5-C2 posix-fork pin               | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_posix_option_times_fork_matrix/
+| R5-C3 record preserved             | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /base-identical / not mine/
+| R5-D guard: one raise site         | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /def test_only_one_raise_site_for_the_abort/
+| R5-D guard: catchers               | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /def test_only_the_sanctioned_non_fork_catchers_exist/
+| R5-D guard: no re-derivation       | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /def test_status_mapping_is_not_re_derived_at_frames/
+| R5-D offenders actually run        | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /def test_guard2_bites_on_a_synthetic_second_catcher/
+| R5-E errexit_suppressed arm        | PASS     | tests/unit/executor/test_child_policy.py :: /def test_substitution_syntax_abort_errexit_suppressed_arm/
+| R5-F1 -i -c pin                    | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_interactive_dash_c_channel_disposition/
+--- R6-A: the background fork site carries the forking depth ---
+| R6-A seed threaded                 | PASS     | psh/executor/subshell.py :: /_errexit_suppress_seed = errexit_suppress/
+| R6-A bg branch takes it            | PASS     | psh/executor/subshell.py :: /errexit_suppress=errexit_suppress/
+--- R6-B: the pipeline-member suppression boundary ---
+| R6-B member reset                  | PASS     | psh/executor/pipeline.py :: /errexit_suppress/
+| R6-B function-body restore         | PASS     | psh/executor/function.py :: /errexit_suppress/
+| R6-B pin exists                    | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_pipeline_member_suppression_matches_bash/
+--- R10: the option axis at the cmdsub creator ---
+| R10-A shared helper                | PASS     | psh/executor/child_policy.py :: /def expansion_child_suppression/
+| R10-A cmdsub passes it             | PASS     | psh/expansion/command_sub.py :: /errexit_suppress_override=expansion_child_suppression/
+| R10-A procsub delegates            | PASS     | psh/io_redirect/process_sub.py :: /expansion_child_suppression(shell._current_executor)/
+| R10-A no duplicate arithmetic      | PASS     | psh/io_redirect/process_sub.py :: /def _pre_sever_suppression/ absent
+| R10-A option-axis pin              | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_member_cmdsub_keeps_pre_sever_context_under_inherit_errexit/
+| R10-A creator census               | PASS     | tmp/remediation-ledgers/2.4.md :: /FORK-CREATOR CENSUS FIRST/
+| R10-B mechanism scoped             | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /THE OPTION AXIS IS THE EXCEPTION/
+| R10-B fifth instance               | PASS     | tmp/remediation-ledgers/2.4.md :: /FIFTH INSTANCE/
+| R10-C successor row (h)            | PASS     | tmp/remediation-ledgers/2.4.md :: /SUCCESSOR ROW (h)/
+| R10-C census domain scoped         | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /four SHELL bodies/
+| R10-D green-on-base table          | PASS     | tmp/remediation-ledgers/2.4.md :: /why green at base is right/
+| R10-E amendment R9/R10 clause      | PASS     | tmp/remediation-ledgers/2.4.md :: /R9/R10 clause/
+--- R9: the member x substitution intersection ---
+| R9-A expansion-time seed           | PASS     | psh/io_redirect/process_sub.py :: /self.shell, for_expansion=True/
+| R9-A override forwarded            | PASS     | psh/executor/child_policy.py :: /errexit_suppress_override/
+| R9-A redirect NOT overridden       | PASS     | psh/executor/child_policy.py :: /spelling is deliberately NOT overridden/
+| R9-A/B intersection pin            | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_member_substitution_children_keep_the_pre_sever_context/
+| R9-A cmdsub answer pinned          | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /WHY THE CMDSUB TWIN DOES NOT MOVE/
+| R9-B universal corrected           | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /MEASURED AT THE SEVERED-MEMBER ROUTE TOO/
+| R9-C PTY invariant scoped          | PASS     | tests/system/interactive/test_substitution_abort_interactive_pty.py :: /SCOPE OF THAT INVARIANT/
+| R9-C successor row (g)             | PASS     | tmp/remediation-ledgers/2.4.md :: /SUCCESSOR ROW (g)/
+| R9-E nightly caveat                | PASS     | tests/system/interactive/test_substitution_abort_interactive_pty.py :: /FOR A NIGHTLY READER/
+| R9-D amendment cited               | PASS     | tmp/remediation-ledgers/2.4.md :: /DATED AMENDMENT (2026-07-31, integrator)/
+| R9-E committed wording gone        | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /its committed output/ absent
+--- R8: the spelling axis, the enumeration, both parsers ---
+| R8-A redirect-procsub pin          | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_redirect_procsub_suppression_is_a_declared_divergence/
+| R8-A scope qualifier               | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /It is NOT a route-universal/
+| R8-A route claim corrected         | PASS     | tmp/remediation-ledgers/2.4.md :: /FALSE for the/
+| R8-A successor row (f)             | PASS     | tmp/remediation-ledgers/2.4.md :: /SUCCESSOR ROW (f)/
+| R8-A stop-and-report recorded      | PASS     | tmp/remediation-ledgers/2.4.md :: /STOP-AND-REPORT — one production docstring/
+| R8-B hunt instrument               | PASS     | tmp/r24-probes/r8b-hunt-TIP.txt :: /MOVED-TO-BASH/
+| R8-B hunt has no regressions       | PASS     | tmp/r24-probes/r8b-hunt-TIP.txt :: /ROWS: 186/
+| R8-B no MOVED-AWAY rows            | PASS     | tmp/r24-probes/r8b-hunt-TIP.txt :: /^MOVED-AWAY/ absent
+| R8-B pin cites the hunt            | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /r8b_hunt.py/
+| R8-B widening rows                 | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /WIDENING (ruling R8-B)/
+| R8-C both-parser sweep             | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_new_families_agree_across_parsers/
+| R8-D pointer qualified             | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /executor/core.py#_execute_background_list/
+| R8-D nightly note                  | PASS     | tmp/remediation-ledgers/2.4.md :: /PTY module and the Linux nightly/
+| R8-D audit count corrected         | PASS     | tmp/remediation-ledgers/2.4.md :: /60 .chk. + 8 .nchk. = 68/
+| R8-D successor (e) merged-ref      | PASS     | tmp/remediation-ledgers/2.4.md :: /MERGE AT CEREMONY/
+| R8 guard assignment aliases        | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /an ASSIGNMENT alias/
+| R8 guard limit stated              | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /KNOWN LIMIT, stated rather than implied/
+| R8 pin temp-dir hygiene            | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /PRIVATE temp dir/
+--- R7-A: the severing rule at EVERY route ---
+| R7-A bg sever hook                 | PASS     | psh/executor/child_policy.py :: /sever_errexit_context/
+| R7-A bg bare-simple severs         | PASS     | psh/executor/strategies.py :: /sever_errexit_context=context/
+| R7-A one-shot consumption          | PASS     | psh/executor/command.py :: /is not DispatchKind.FUNCTION/
+| R7-A dropped seed threaded         | PASS     | psh/executor/core.py :: /errexit_suppress=self.context.errexit_suppress/
+| R7-A bg pin                        | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_background_fork_severing_matches_bash/
+| R7-A one-shot pin                  | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_deferred_suppression_is_one_shot/
+--- R7-B: the ordinary-errexit co-movements ---
+| R7-B co-movement pin               | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_ordinary_errexit_co_movements_are_declared/
+--- R7-C: production corrections ---
+| R7-C probe claim corrected         | PASS     | psh/core/internal_errors.py :: /Probed per ROUTE/
+| R7-C false claim gone              | PASS     | psh/core/internal_errors.py :: /probe-verified for subshell,/ absent
+| R7-C pointer resolves              | PASS     | psh/executor/context.py :: /FunctionOperationExecutor._function_frame/
+| R7-C dangling pointer gone         | PASS     | psh/executor/context.py :: /#FunctionExecutor\./ absent
+| R7-C alias resolution              | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /def _local_aliases/
+| R7-C alias offenders run           | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /def test_guards_resolve_import_aliases/
+--- R6-C: the interactive family, at a real terminal ---
+| R6-C PTY pin module                | PASS     | tests/system/interactive/test_substitution_abort_interactive_pty.py :: /def test_interactive_substitution_abort_disposition/
+| R6-C PTY module registered         | PASS     | tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py :: /test_substitution_abort_interactive_pty.py/
+| R6-C PTY site count pinned         | PASS     | tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py :: /test_substitution_abort_interactive_pty.py": 2/
+| R6-C PTY pin runs by default       | PASS     | tests/conftest.py :: /test_substitution_abort_interactive_pty/
+| R6-C falsified absolute fixed      | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /RECORD CORRECTION (round 5 -> 6)/
+| R6-C old absolute gone             | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /and only on the direct shape\./ absent
+| R6-C -n / --validate pin           | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_static_check_spellings_dash_n_and_validate/
+| R6-C successor row written         | PASS     | tmp/remediation-ledgers/2.4.md :: /children of interactive shells keep the legacy statuses/
+--- R6-D: the embedding contract ---
+| R6-D run_command docstring         | PASS     | psh/shell.py :: /EMBEDDING CONTRACT/
+| R6-D core CLAUDE.md note           | PASS     | psh/core/CLAUDE.md :: /IN-PROCESS EMBEDDING BOUNDARY/
+| R6-D pin exists                    | PASS     | tests/unit/scripting/test_embedding_abort_contract.py :: /def test_script_mode_lets_the_abort_escape_run_command/
+| R6-D control pin exists            | PASS     | tests/unit/scripting/test_embedding_abort_contract.py :: /def test_the_escape_is_not_a_generic_syntax_error_escape/
+--- R7-D: the round-6 record corrections ---
+| R7-D(1) red-on-base corrected      | PASS     | tmp/remediation-ledgers/2.4.md :: /CORRECTED: 5 of 6 fail/
+| R7-D(1) instrument committed       | PASS     | tmp/r24-probes/r7d-redonbase.txt :: /5 failed, 1 passed/
+| R7-D(2) four not two               | PASS     | tmp/remediation-ledgers/2.4.md :: /CORRECTED: there were FOUR/
+| R7-D(2) dies-with-1 gone           | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /child dies with 1 and the parent/ absent
+| R7-D(2) flat-1 gone                | PASS     | tests/unit/executor/test_child_policy.py :: /Flat 1 in every channel\./ absent
+| R7-D(3) audit count corrected      | PASS     | tmp/remediation-ledgers/2.4.md :: /script had 55 checks; the 56th/
+| R7-D(4) file list restated         | PASS     | tmp/remediation-ledgers/2.4.md :: /restated from .git diff --name-only/
+| R7-D(5) 360090b2 names file        | PASS     | tmp/remediation-ledgers/2.4.md :: /It touched \*\*.psh/executor/subshell.py/
+| R7-D scope accounting              | PASS     | tmp/remediation-ledgers/2.4.md :: /SCOPE ACCOUNTING/
+| R7 concurrency self-report         | PASS     | tmp/remediation-ledgers/2.4.md :: /Self-reported process error this round/
+--- R6-E: the record corrections ---
+| R6-E accounting corrected          | PASS     | tmp/remediation-ledgers/2.4.md :: /CORRECTED: 54001334 = +11, 5121ec8b = +0/
+| R6-E collect-only pasted           | PASS     | tmp/remediation-ledgers/2.4.md :: /340 tests collected/
+| R6-E COND1 cause stated            | PASS     | tmp/remediation-ledgers/2.4.md :: /the failure is a CORPUS GAP, not a stale/
+| R6-E R5-F(2) recorded dropped      | PASS     | tmp/remediation-ledgers/2.4.md :: /R5-F(2) (the PTY fork×errexit row) — was DROPPED/
+| R6-E R5-E closure recorded         | PASS     | tmp/remediation-ledgers/2.4.md :: /ONLY in commit 5121ec8b.s message/
+--- R6-F: guards that bite, and the stale docstrings ---
+| R6-F raise detector symmetric      | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /def _exc_name/
+| R6-F rederive detector is AST      | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /def _find_rederive_sites/
+| R6-F line regex gone               | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /_REDERIVE = re.compile/ absent
+| R6-F evasion offenders run         | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /two lines/
+| R6-F attr-raise offender runs      | PASS     | tests/unit/tooling/test_substitution_abort_guards.py :: /def test_guard1_bites_on_an_attribute_qualified_raise_site/
+| R6-F arity fixed                   | PASS     | psh/executor/child_policy.py :: /substitution_child_abort_status(state,/
+| R6-F stale launcher sentence       | PASS     | psh/executor/child_policy.py :: /passes the default/ absent
+| R6-F getattr claim corrected       | PASS     | psh/scripting/source_processor.py :: /What is explicit here is the CONTEXT read/
+| R6-F suppression unit arms         | PASS     | tests/unit/scripting/test_errexit_suppressed_read.py :: /def test_a_live_executor_without_a_context_raises/
+| R6-F teardown-errexit pin          | PASS     | tests/conformance/bash/test_syntax_template_timing_conformance.py :: /def test_exit_trap_teardown_under_errexit_is_a_declared_divergence/
+--- instrument outputs: stamped with THIS tip and carrying their verdict ---
+| instrument r6b                     | PASS     | tmp/r24-probes/r6b-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r6b2                    | PASS     | tmp/r24-probes/r6b2-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r6b3                    | PASS     | tmp/r24-probes/r6b3-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r6b4                    | PASS     | tmp/r24-probes/r6b4-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r6b5                    | PASS     | tmp/r24-probes/r6b5-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r6f                     | PASS     | tmp/r24-probes/r6f-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r7a                     | PASS     | tmp/r24-probes/r7a-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r8a                     | PASS     | tmp/r24-probes/r8a-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r9a                     | PASS     | tmp/r24-probes/r9a-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r10a                    | PASS     | tmp/r24-probes/r10a-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r6c_flags               | PASS     | tmp/r24-probes/r6c_flags-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r6d_embed               | PASS     | tmp/r24-probes/r6d_embed-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r6_bounced              | PASS     | tmp/r24-probes/r6_bounced-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| instrument r6c_pty                 | PASS     | tmp/r24-probes/r6c_pty-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| chain table                        | PASS     | tmp/r24-probes/r6b-CHAIN-TIP.txt :: SHA d934a3cae58f716319e8b329798d180ab3f628c6
+| BOUNCED ROWS all pass              | PASS     | tmp/r24-probes/r6_bounced-TIP.txt :: /SUMMARY: 99/99 rows PASS, 0 FAIL/
+| chain: no REGRESSION rows          | PASS     | tmp/r24-probes/r6b-CHAIN-TIP.txt :: /^REGRESSION / absent
+| guard-bite transcript              | PASS     | tmp/r24-probes/guard-bite-TIP.txt :: /d934a3cae58f716319e8b329798d180ab3f628c6/
+
+DISCHARGE AUDIT: ALL ROWS PASS at d934a3cae58f716319e8b329798d180ab3f628c6

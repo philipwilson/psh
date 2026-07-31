@@ -273,8 +273,15 @@ child — the semantic boundary is "becoming a healthy child" (runner) vs
    exception maps through `map_child_exception` — the ONE taxonomy
    (`TopLevelAbort`→`.status`, `FunctionReturn`→`.exit_code`,
    `LoopBreak`/`LoopContinue`→`.exit_status or 0`, `SystemExit`→its code,
-   `SystemExit(None)`→0): substitutions/subshells run in a subshell, so
-   `exit`/`break`/`return` must not unwind the parent.
+   `SystemExit(None)`→0, `SubstitutionSyntaxAbort`→
+   `core/internal_errors.py#substitution_child_abort_status`): substitutions/
+   subshells run in a subshell, so `exit`/`break`/`return` must not unwind the
+   parent. The `SubstitutionSyntaxAbort` arm is what makes a FORK the only
+   thing that contains a substitution-origin shell abort — the child dies, the
+   parent continues. Its status is CHANNEL-independent (1 even inside a `-c`
+   shell, where the main shell uses 127) but NOT a constant: with `set -e`
+   active in the child it is 2, the same first branch as the main-shell
+   mapping. That is why the taxonomy takes a `ShellState`.
 5. `flush_child_streams(child.stdout, child.stderr, sys.stdout, sys.stderr)`
 6. `os._exit(exit_code)`; any other exception → `psh: {error_label}
    error: ...` on fd 2, then `os._exit(1)`

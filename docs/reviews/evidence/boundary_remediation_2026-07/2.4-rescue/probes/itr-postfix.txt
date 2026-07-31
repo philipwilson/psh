@@ -1,0 +1,24 @@
+======================================================================
+INTERACTIVE direct_cmdsub b'echo BEFORE\necho $(if)\necho AFTER-STILL-ALIVE\nexit 7\n'
+  bash rc=TIMEOUT-KILLED survived=True  exit7=False
+      transcript="echo BEFORE\r\necho $(if)\r\necho AFTER-STILL-ALIVE\r\nexit 7\r\n\x1b[?2004h$ echo BEFORE\r\n\x1b[?2004l\rBEFORE\r\n\x1b[?2004h$ echo $(if)\r\n\x1b[?2004l\rbash: syntax error near unexpected token `)'\r\nbash: syntax error\r\n\x1b[?2004h$ echo AFTER-STILL-ALIVE\r\n\x1b[?2004l\rAFTER-STILL-ALIVE\r\n\x1b[?2004h$ exit 7\r\n\x1b[?2004l\rexit\r\n"
+  psh  rc=TIMEOUT-KILLED survived=True  exit7=False
+      transcript='echo BEFORE\r\necho $(if)\r\necho AFTER-STILL-ALIVE\r\nexit 7\r\n\x1b]0;r24-probes — psh — 80×24\x07\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ \r\x1b[60Cecho BEFORE\r\nBEFORE\r\n\x1b]0;r24-probes — psh — 80×24\x07\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ \r\x1b[60Cecho $(if)\r\n> \r\x1b[2Cecho AFTER-STILL-ALIVE\r\n> \r\x1b[2Cexit 7\r\n> \r\x1b[2C'
+======================================================================
+INTERACTIVE eval_cmdsub b"echo BEFORE\neval 'echo $(if)'\necho AFTER-STILL-ALIVE\nexit 7\n"
+  bash rc=TIMEOUT-KILLED survived=True  exit7=False
+      transcript="echo BEFORE\r\neval 'echo $(if)'\r\necho AFTER-STILL-ALIVE\r\nexit 7\r\n\x1b[?2004h$ echo BEFORE\r\n\x1b[?2004l\rBEFORE\r\n\x1b[?2004h$ eval 'echo $(if)'\r\n\x1b[?2004l\rbash: syntax error near unexpected token `)'\r\n\x1b[?2004h$ echo AFTER-STILL-ALIVE\r\n\x1b[?2004l\rAFTER-STILL-ALIVE\r\n\x1b[?2004h$ exit 7\r\n\x1b[?2004l\rexit\r\n"
+  psh  rc=TIMEOUT-KILLED survived=True  exit7=False
+      transcript='if -> HERE <- \r\n\x1b]0;r24-probes — psh — 80×24\x07\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ \r\x1b[60Cecho AFTER-STILL-AL\r\x1b[J\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ echo AFTER-STILL-ALI \r\x1b[K\rVE\r\nAFTER-STILL-ALIVE\r\n\x1b]0;r24-probes — psh — 80×24\x07\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ \r\x1b[60Cexit 7\r\n'
+======================================================================
+INTERACTIVE source_cmdsub b'echo BEFORE\nsource sub.sh\necho AFTER-STILL-ALIVE\nexit 7\n'
+  bash rc=TIMEOUT-KILLED survived=True  exit7=False
+      transcript="echo BEFORE\r\nsource sub.sh\r\necho AFTER-STILL-ALIVE\r\nexit 7\r\n\x1b[?2004h$ echo BEFORE\r\n\x1b[?2004l\rBEFORE\r\n\x1b[?2004h$ source sub.sh\r\n\x1b[?2004l\rIN-BEFORE\r\nbash: sub.sh: line 2: syntax error near unexpected token `)'\r\nbash: sub.sh: line 2: `echo $(if)'\r\nIN-AFTER\r\n\x1b[?2004h$ echo AFTER-STILL-ALIVE\r\n\x1b[?2004l\rAFTER-STILL-ALIVE\r\n\x1b[?2004h$ exit 7\r\n\x1b[?2004l\rexit\r\n"
+  psh  rc=TIMEOUT-KILLED survived=True  exit7=False
+      transcript='if -> HERE <- \r\n\x1b]0;r24-probes — psh — 80×24\x07\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ \r\x1b[60Cecho AFTER-STILL-AL\r\x1b[J\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ echo AFTER-STILL-ALI \r\x1b[K\rVE\r\nAFTER-STILL-ALIVE\r\n\x1b]0;r24-probes — psh — 80×24\x07\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ \r\x1b[60Cexit 7\r\n'
+======================================================================
+INTERACTIVE procsub b'echo BEFORE\ncat <(if)\necho AFTER-STILL-ALIVE\nexit 7\n'
+  bash rc=TIMEOUT-KILLED survived=True  exit7=False
+      transcript="echo BEFORE\r\ncat <(if)\r\necho AFTER-STILL-ALIVE\r\nexit 7\r\n\x1b[?2004h$ echo BEFORE\r\n\x1b[?2004l\rBEFORE\r\n\x1b[?2004h$ cat <(if)\r\n\x1b[?2004l\rbash: syntax error near unexpected token `)'\r\nbash: syntax error\r\n\x1b[?2004h$ echo AFTER-STILL-ALIVE\r\n\x1b[?2004l\rAFTER-STILL-ALIVE\r\n\x1b[?2004h$ exit 7\r\n\x1b[?2004l\rexit\r\n"
+  psh  rc=TIMEOUT-KILLED survived=True  exit7=False
+      transcript='echo BEFORE\r\ncat <(if)\r\necho AFTER-STILL-ALIVE\r\nexit 7\r\n\x1b]0;r24-probes — psh — 80×24\x07\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ \r\x1b[60Cecho BEFORE\r\nBEFORE\r\n\x1b]0;r24-probes — psh — 80×24\x07\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r2-4/tmp/r24-probes/work-itr\x1b[0m$ \r\x1b[60Ccat <(if)\r\n> \r\x1b[2Cecho AFTER-STILL-ALIVE\r\n> \r\x1b[2Cexit 7\r\n> \r\x1b[2C'

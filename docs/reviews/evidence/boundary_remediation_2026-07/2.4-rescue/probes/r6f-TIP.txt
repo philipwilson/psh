@@ -1,0 +1,179 @@
+SHA: d934a3cae58f716319e8b329798d180ab3f628c6
+battery: r6f.py
+date: 2026-07-31T09:07:04Z
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+========================================================================
+t1_fork_errexit_exit_trap_action_error
+0000000    (       s   e   t       -   e   ;       t   r   a   p       '
+0000020    e   c   h   o       $   (   f   i   )   '       E   X   I   T
+0000040    ;       e   c   h   o       I   N       )  \n   e   c   h   o
+0000060        A   F   T   E   R       r   c   =   $   ?  \n            
+0000075
+  [c] DIVERGE
+    bash   rc=0 out='IN\nAFTER rc=2\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN\nAFTER rc=0\n'
+  [file] DIVERGE
+    bash   rc=0 out='IN\nAFTER rc=2\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN\nAFTER rc=0\n'
+  [stdin] DIVERGE
+    bash   rc=0 out='IN\nAFTER rc=2\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN\nAFTER rc=0\n'
+========================================================================
+t1b_fork_errexit_exit_trap_unclosed_kind
+0000000    (       s   e   t       -   e   ;       t   r   a   p       '
+0000020    e   c   h   o       $   (   i   f   )   '       E   X   I   T
+0000040    ;       e   c   h   o       I   N       )  \n   e   c   h   o
+0000060        A   F   T   E   R       r   c   =   $   ?  \n            
+0000075
+  [c] DIVERGE
+    bash   rc=0 out='IN\nAFTER rc=2\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN\nAFTER rc=0\n'
+  [file] DIVERGE
+    bash   rc=0 out='IN\nAFTER rc=2\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN\nAFTER rc=0\n'
+  [stdin] DIVERGE
+    bash   rc=0 out='IN\nAFTER rc=2\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN\nAFTER rc=0\n'
+========================================================================
+t2_fork_errexit_debug_trap_action_error
+0000000    (       s   e   t       -   e   ;       s   e   t       -   T
+0000020    ;       t   r   a   p       '   e   c   h   o       $   (   f
+0000040    i   )   '       D   E   B   U   G   ;       e   c   h   o    
+0000060    I   N       )  \n   e   c   h   o       A   F   T   E   R    
+0000100    r   c   =   $   ?  \n                                        
+0000106
+  [c] MATCH
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=2\n'
+    psh-cb rc=0 out='AFTER rc=2\n'
+  [file] MATCH
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=2\n'
+    psh-cb rc=0 out='AFTER rc=2\n'
+  [stdin] MATCH
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=2\n'
+    psh-cb rc=0 out='AFTER rc=2\n'
+========================================================================
+t3_main_errexit_exit_trap_action_error
+0000000    s   e   t       -   e  \n   t   r   a   p       '   e   c   h
+0000020    o       $   (   f   i   )   '       E   X   I   T  \n   e   c
+0000040    h   o       I   N  \n                                        
+0000046
+  [c] DIVERGE
+    bash   rc=2 out='IN\n'
+    psh-rd rc=0 out='IN\n'
+    psh-cb rc=0 out='IN\n'
+  [file] DIVERGE
+    bash   rc=2 out='IN\n'
+    psh-rd rc=0 out='IN\n'
+    psh-cb rc=0 out='IN\n'
+  [stdin] DIVERGE
+    bash   rc=2 out='IN\n'
+    psh-rd rc=0 out='IN\n'
+    psh-cb rc=0 out='IN\n'
+========================================================================
+t4_member_exit_trap_on_abort
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       t   r   a   p       '   e   c   h   o       B   Y   E
+0000040    '       E   X   I   T   ;       e   v   a   l       '   e   c
+0000060    h   o       $   (   i   f   )   '   ;       }   ;       }    
+0000100    |   |       e   c   h   o       G   O   T       r   c   =   $
+0000120    ?  \n                                                        
+0000122
+  [c] DIVERGE
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] DIVERGE
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [stdin] DIVERGE
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+t5_fork_exit_trap_action_error_no_errexit
+0000000    (       t   r   a   p       '   e   c   h   o       C   T   ;
+0000020        e   c   h   o       $   (   f   i   )   '       E   X   I
+0000040    T   ;       e   c   h   o       I   N       )  \n   e   c   h
+0000060    o       A   F   T   E   R       r   c   =   $   ?  \n        
+0000076
+  [c] MATCH
+    bash   rc=0 out='IN\nAFTER rc=0\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN\nAFTER rc=0\n'
+  [file] MATCH
+    bash   rc=0 out='IN\nAFTER rc=0\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN\nAFTER rc=0\n'
+  [stdin] MATCH
+    bash   rc=0 out='IN\nAFTER rc=0\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN\nAFTER rc=0\n'
+========================================================================
+t6_member_exit_trap_on_ordinary_failure
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       t   r   a   p       '   e   c   h   o       B   Y   E
+0000040    '       E   X   I   T   ;       f   a   l   s   e   ;       }
+0000060    ;       }       |   |       e   c   h   o       G   O   T    
+0000100    r   c   =   $   ?  \n                                        
+0000106
+  [c] DIVERGE
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [file] DIVERGE
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+  [stdin] DIVERGE
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+    psh-cb rc=0 out='GOT rc=1\n'
+========================================================================
+t7_member_exit_trap_on_clean_exit
+0000000    {       t   r   u   e       |       {       t   r   a   p    
+0000020    '   e   c   h   o       B   Y   E   '       E   X   I   T   ;
+0000040        e   c   h   o       O   K   ;       }   ;       }  \n   e
+0000060    c   h   o       A   F   T   E   R       r   c   =   $   ?  \n
+0000100
+  [c] DIVERGE
+    bash   rc=0 out='OK\nBYE\nAFTER rc=0\n'
+    psh-rd rc=0 out='OK\nAFTER rc=0\n'
+    psh-cb rc=0 out='OK\nAFTER rc=0\n'
+  [file] DIVERGE
+    bash   rc=0 out='OK\nBYE\nAFTER rc=0\n'
+    psh-rd rc=0 out='OK\nAFTER rc=0\n'
+    psh-cb rc=0 out='OK\nAFTER rc=0\n'
+  [stdin] DIVERGE
+    bash   rc=0 out='OK\nBYE\nAFTER rc=0\n'
+    psh-rd rc=0 out='OK\nAFTER rc=0\n'
+    psh-cb rc=0 out='OK\nAFTER rc=0\n'
+========================================================================
+t8_subshell_exit_trap_on_abort
+0000000    s   e   t       -   e  \n   (       t   r   a   p       '   e
+0000020    c   h   o       B   Y   E   '       E   X   I   T   ;       e
+0000040    v   a   l       '   e   c   h   o       $   (   i   f   )   '
+0000060        )       |   |       e   c   h   o       G   O   T       r
+0000100    c   =   $   ?  \n                                            
+0000105
+  [c] MATCH
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='BYE\nGOT rc=1\n'
+    psh-cb rc=0 out='BYE\nGOT rc=1\n'
+  [file] MATCH
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='BYE\nGOT rc=1\n'
+    psh-cb rc=0 out='BYE\nGOT rc=1\n'
+  [stdin] MATCH
+    bash   rc=0 out='BYE\nGOT rc=1\n'
+    psh-rd rc=0 out='BYE\nGOT rc=1\n'
+    psh-cb rc=0 out='BYE\nGOT rc=1\n'

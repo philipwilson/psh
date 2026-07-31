@@ -102,7 +102,8 @@ class SubshellExecutor:
                              errexit_suppress: int = 0) -> int:
         """Execute statements in an isolated subshell environment."""
         if background:
-            return self._execute_background_subshell(statements, redirects)
+            return self._execute_background_subshell(
+                statements, redirects, errexit_suppress=errexit_suppress)
 
         # Execute in foreground subshell with proper isolation
         return self._execute_foreground_subshell(statements, redirects,
@@ -240,8 +241,18 @@ class SubshellExecutor:
         from .child_policy import die_by_signal
         die_by_signal(os.WTERMSIG(raw))
 
-    def _execute_background_subshell(self, statements, redirects: List['Redirect']) -> int:
-        """Execute subshell in background with job control tracking."""
+    def _execute_background_subshell(self, statements, redirects: List['Redirect'],
+                                     errexit_suppress: int = 0) -> int:
+        """Execute subshell in background with job control tracking.
+
+        ``errexit_suppress`` is the FORKING context's suppression depth, seeded
+        into the fresh subshell exactly as the foreground path does. It must be
+        threaded explicitly here because ``Shell.for_subshell`` builds a NEW
+        shell rather than reusing the parent's executor, so — unlike the brace
+        spelling ``{ …; } &``, which reuses it — nothing else carries the depth
+        across. Dropping it made ``set -e; { ( … ) & wait $!; } || recover``
+        read as unsuppressed.
+        """
         # Create execution function
         def execute_fn():
             # Import Shell lazily to avoid circular dependency
@@ -249,6 +260,11 @@ class SubshellExecutor:
             from .child_policy import run_background_shell_child
 
             subshell = Shell.for_subshell(self.shell)
+            # Seed the FORKING context's suppression depth into the fresh
+            # shell: for_subshell builds a NEW shell, so unlike the brace
+            # spelling (which reuses the parent's executor) nothing else
+            # carries the depth across the fork.
+            subshell._errexit_suppress_seed = errexit_suppress
 
             # Share I/O streams for consistent output handling
             subshell.stdout = self.shell.stdout

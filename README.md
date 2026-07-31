@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-style, bash-compatible shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.759.0 | **Tests**: 21,000+ | **Compatibility**: POSIX + bash, verified against live bash
+**Current Version**: 0.760.0 | **Tests**: 21,000+ | **Compatibility**: POSIX + bash, verified against live bash
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -247,8 +247,8 @@ PSH includes two parser implementations with deliberately different statuses:
 - **Parser Selection**: Use `parser-select combinator` builtin (or `--parser combinator`) to switch implementations interactively
 
 ### Project Statistics
-- **Lines of Code**: ~78,900 lines of production code in `psh/` across 274 Python files, plus ~148,400 lines of tests in `tests/` (783 Python files)
-- **Test Coverage**: 22,632 tests in 764 test files
+- **Lines of Code**: ~79,500 lines of production code in `psh/` across 274 Python files, plus ~150,600 lines of tests in `tests/` (787 Python files)
+- **Test Coverage**: 22,723 tests in 768 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations

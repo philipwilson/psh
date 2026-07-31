@@ -14,7 +14,9 @@ if TYPE_CHECKING:
 
 def create_process_substitution(
         cmd_str: str, direction: str,
-        shell: 'Shell') -> Tuple[Optional[int], str, int, Optional[str]]:
+        shell: 'Shell', *,
+        for_expansion: bool = False
+        ) -> Tuple[Optional[int], str, int, Optional[str]]:
     """Create a process substitution, returning
     ``(parent_fd, path, child_pid, cleanup_path)``.
 
@@ -28,7 +30,8 @@ def create_process_substitution(
         None for FIFO-backed write-side substitutions.
     """
     if direction == 'out':
-        return _create_write_process_substitution(cmd_str, shell)
+        return _create_write_process_substitution(
+            cmd_str, shell, for_expansion=for_expansion)
 
     # Create pipe
     # For <(cmd), parent reads from pipe, child writes to it
@@ -55,7 +58,7 @@ def create_process_substitution(
     # blocked across the fork window (the v0.300 lost-signal race fix;
     # the child unblocks them in apply_child_signal_policy after
     # resetting handlers to SIG_DFL).
-    from psh.executor import fork_with_signal_window, run_child_shell
+    from psh.executor import expansion_child_suppression, fork_with_signal_window, run_child_shell
     pid = fork_with_signal_window()
     if pid == 0:  # Child
         # run_child_shell owns the generic child-process work (signal
@@ -85,6 +88,9 @@ def create_process_substitution(
             # bash does not keep parent traps listable in a
             # process-substitution child (unlike $(trap)).
             inherit_traps=False,
+            errexit_suppress_override=(
+                expansion_child_suppression(shell._current_executor)
+                if for_expansion else None),
             error_label='process substitution',
         )
 
@@ -119,7 +125,10 @@ def _unlink_fifo_dir(fifo_path: str) -> None:
         pass
 
 
-def _create_write_process_substitution(cmd_str: str, shell: 'Shell') -> Tuple[None, str, int, str]:
+def _create_write_process_substitution(
+        cmd_str: str, shell: 'Shell', *,
+        for_expansion: bool = False
+        ) -> Tuple[None, str, int, str]:
     """Create a FIFO-backed ``>(cmd)`` substitution.
 
     On macOS, reopening a write-only pipe through ``/dev/fd/N`` can fail
@@ -131,7 +140,7 @@ def _create_write_process_substitution(cmd_str: str, shell: 'Shell') -> Tuple[No
     fifo_path = os.path.join(fifo_dir, 'pipe')
     os.mkfifo(fifo_path, 0o600)
 
-    from psh.executor import fork_with_signal_window, run_child_shell
+    from psh.executor import expansion_child_suppression, fork_with_signal_window, run_child_shell
     pid = fork_with_signal_window()
     if pid == 0:
         def _io_setup() -> None:
@@ -196,6 +205,9 @@ def _create_write_process_substitution(cmd_str: str, shell: 'Shell') -> Tuple[No
             # bash does not keep parent traps listable in a
             # process-substitution child (unlike $(trap)).
             inherit_traps=False,
+            errexit_suppress_override=(
+                expansion_child_suppression(shell._current_executor)
+                if for_expansion else None),
             error_label='process substitution',
         )
 
@@ -288,7 +300,7 @@ class ProcessSubstitutionHandler:
             The /dev/fd/N path to splice into the word.
         """
         fd, path, pid, cleanup_path = create_process_substitution(
-            command, direction, self.shell)
+            command, direction, self.shell, for_expansion=True)
         resource = ProcessSubstitutionResource(path, fd, pid, cleanup_path)
         # The consuming command reads /dev/fd/N, so the parent fd must outlive
         # this expansion — hand it to the scope for deferred close.

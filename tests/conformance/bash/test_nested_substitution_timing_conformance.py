@@ -22,10 +22,11 @@ Two groups:
   continue-around-errors, heredoc bodies, byte content, deep nesting, and
   incomplete-input handling must stay identical to bash / to psh-today.
 
-The exit-CODE divergence (bash 127 vs psh's uniform 2 in string channels) and
-the heredoc-body case remain documented divergences at the bottom (the 127
-mapping is I3's job; the S3 timing match holds regardless). The broader S3
-timing matrix (quoting × channel × dead-branch × backtick-vs-$()) lives in
+The exit-CODE divergence is CLOSED (slot 2.4): psh matches bash's 127 in the
+``-c`` channel for BOTH substitution error kinds, while a script file and
+stdin keep 2 — the status is channel-dependent, never "uniform". The
+heredoc-BODY case remains a documented divergence at the bottom. The broader
+S3 timing matrix (quoting × channel × dead-branch × backtick-vs-$()) lives in
 ``test_syntax_template_timing_conformance.py``.
 
 All cases drive full-buffer execution through subprocesses so psh and bash are
@@ -370,18 +371,88 @@ def test_over_deep_cmdsub_nesting_is_clean_error():
     "a=(1 2); echo ${a[$(if)]}",        # S3: array subscript
     "a[$(if)]=v",                       # S3: element-assignment subscript
 ])
-def test_divergence_c_mode_exit_code_is_127_in_bash(cmd):
-    """A substitution-body syntax error in ``bash -c`` exits 127 (a quirk of
-    bash's string-execution channels: -c/eval/source; stdin/file exit 2). psh
-    uses its uniform syntax-error code 2 in every channel. The TIMING match
-    (nothing executes, whole buffer rejected at read time) holds across the
-    whole S3 family; only the exact code differs, and that 127/frame-abort
-    mapping is the I3 consumer of S3's typed SubstitutionSyntaxError."""
+def test_c_mode_exit_code_is_127_like_bash(cmd):
+    """CLOSED S3->I3 divergence: a substitution-body syntax error under ``-c``
+    now exits 127 in psh too, for every spelling in the family.
+
+    ``-c`` is the channel where bash uses 127; a script FILE and stdin use 2
+    for this same direct shape (pinned separately below), so the fix is
+    channel-scoped rather than a blanket new status. The consumer is the typed
+    ``SubstitutionSyntaxAbort`` that ``core/internal_errors.py#
+    substitution_abort_status`` maps per channel — the I3 half of S3's
+    ``SubstitutionSyntaxError`` producer contract.
+
+    NOTE the body is ``if`` — an UNTERMINATED construct, i.e. the at-EOF error
+    kind. The complete-but-ill-formed kind takes a DIFFERENT SourceProcessor
+    exit and is pinned by the ``$(fi)`` twin below; keep both, because a fix
+    wired to only one of the two sites passes this test and fails that one."""
     b = _bash_c(cmd)
     p = _psh_c(cmd)
-    assert b.returncode == 127                  # bash -c quirk (all substitutions)
-    assert p.returncode == 2                     # psh: uniform syntax-error code
+    assert b.returncode == p.returncode == 127   # both: bash's -c status
     assert b.stdout == p.stdout == ""            # neither executes anything
+
+
+@pytest.mark.parametrize("cmd", [
+    "echo $(fi)",                       # top-level command sub
+    "cat <(fi)",                        # process sub
+    "x=set; echo ${x:-$(fi)}",          # S3: parameter-expansion operand
+    "echo $(( $(fi) + 1 ))",            # S3: arithmetic template
+    "a=(1 2); echo ${a[$(fi)]}",        # S3: array subscript
+    "a[$(fi)]=v",                       # S3: element-assignment subscript
+])
+def test_c_mode_127_for_complete_but_invalid_bodies(cmd):
+    """TWIN of the pin above on the ERROR-KIND axis, which the original
+    corpus held constant and therefore missed.
+
+    ``$(if)`` is UNTERMINATED: the accumulator returns NeedMore, the buffer is
+    flushed, and the error surfaces from ``_execute_buffered_command``.
+    ``$(fi)`` is COMPLETE but ill-formed: the accumulator's trial parse
+    completes carrying the same typed error, and it surfaces from the OTHER
+    exit (``_run_from_source``'s ``result.error is not None`` branch). Both are
+    equally fatal in bash, so both sites consume through the one policy —
+    varying only the spelling would leave half the defect alive."""
+    b = _bash_c(cmd)
+    p = _psh_c(cmd)
+    assert b.returncode == p.returncode == 127, (cmd, b, p)
+    assert b.stdout == p.stdout == "", (cmd, b.stdout, p.stdout)
+
+
+@pytest.mark.parametrize("body", ["$(;)", "$(x ;; y)", "$(done)", "$(esac)",
+                                  "$(then)", "$(| x)", "$(&& x)"])
+def test_c_mode_127_across_other_invalid_body_kinds(body):
+    """A sample ACROSS the complete-but-invalid space rather than one witness:
+    bare operator, misplaced ``;;``, several wrong keywords, and leading
+    ``|``/``&&``. Generating over the kind space is what the round-1 corpus
+    lacked (it varied spelling only)."""
+    cmd = "echo " + body
+    b = _bash_c(cmd)
+    p = _psh_c(cmd)
+    assert b.returncode == p.returncode == 127, (cmd, b, p)
+    assert b.stdout == p.stdout == "", (cmd, b.stdout, p.stdout)
+
+
+@pytest.mark.parametrize("cmd", [
+    "echo $(if)",
+    "cat <(if)",
+    "x=set; echo ${x:-$(if)}",
+    "echo $(( $(if) + 1 ))",
+    "a=(1 2); echo ${a[$(if)]}",
+    "a[$(if)]=v",
+])
+def test_file_and_stdin_direct_status_stays_2(cmd):
+    """MUST-NOT-REGRESS twin of the pin above: in the FILE and STDIN channels
+    the same six spellings exit **2**, not 127, in both shells.
+
+    psh already matched bash here before the I3 consumer landed, so this pins
+    the half of the direct shape that the 127 fix must leave alone — the status
+    is channel-dependent (see substitution_abort_status), and a blanket 127
+    would silently break these two channels."""
+    bf, pf = _run_file([BASH], cmd + "\n"), _run_file([sys.executable], cmd + "\n")
+    assert bf.returncode == pf.returncode == 2, (bf, pf)
+    assert bf.stdout == pf.stdout == "", (bf.stdout, pf.stdout)
+    bs, ps = _bash_stdin(cmd + "\n"), _psh_stdin(cmd + "\n")
+    assert bs.returncode == ps.returncode == 2, (bs, ps)
+    assert bs.stdout == ps.stdout == "", (bs.stdout, ps.stdout)
 
 
 # ==========================================================================
@@ -437,8 +508,9 @@ def test_param_expansion_word_cmdsub_now_rejects_at_read_time():
     param_parser stored it as a raw string and the operand engine expanded it at
     runtime, so psh continued past it. S3's WordTemplate validates the nested
     modern substitution when the command is READ, so the whole buffer is
-    rejected before anything runs — matching bash. (rc differs: bash 127 in -c,
-    psh's uniform 2 — see the 127 family pin above.)"""
+    rejected before anything runs — matching bash. The rc matches too since
+    slot 2.4 (both 127 under ``-c``); this row asserts only the TIMING, so it
+    stays agnostic about the exact status — see the 127 family pin above."""
     cmd = "echo before; echo ${x:-$(if)}; echo after"
     b = _bash_c(cmd)
     p = _psh_c(cmd)

@@ -1,0 +1,27 @@
+PSH_ROOT: /Users/pwilson/src/psh-r2-4
+bash: /opt/homebrew/bin/bash
+========================================================================
+fork_errexit_suppressed: "( set -e; eval 'echo $(if)' ) || echo SUPPRC=$?"
+  bash           SUPPRC=1 AFTERRC=None diagnostic=True alive=True traceback=False
+  psh-rd         SUPPRC=2 AFTERRC=None diagnostic=True alive=True traceback=False
+  psh-comb       SUPPRC=2 AFTERRC=None diagnostic=True alive=True traceback=False
+========================================================================
+fork_errexit_unsuppressed: "( set -e; eval 'echo $(if)' ); echo AFTERRC=$?"
+  bash           SUPPRC=None AFTERRC=2 diagnostic=True alive=True traceback=False
+  psh-rd         SUPPRC=None AFTERRC=2 diagnostic=True alive=True traceback=False
+  psh-comb       SUPPRC=None AFTERRC=2 diagnostic=True alive=True traceback=False
+========================================================================
+fork_no_errexit: "( eval 'echo $(if)' ) || echo SUPPRC=$?"
+  bash           SUPPRC=1 AFTERRC=None diagnostic=True alive=True traceback=False
+  psh-rd         SUPPRC=2 AFTERRC=None diagnostic=True alive=True traceback=False
+  psh-comb       SUPPRC=2 AFTERRC=None diagnostic=True alive=True traceback=False
+========================================================================
+eval_frame_direct: "eval 'echo $(fi)'; echo AFTERRC=$?"
+  bash           SUPPRC=None AFTERRC=1 diagnostic=True alive=True traceback=False
+  psh-rd         SUPPRC=None AFTERRC=2 diagnostic=True alive=True traceback=False
+  psh-comb       SUPPRC=None AFTERRC=2 diagnostic=True alive=True traceback=False
+========================================================================
+direct_complete_but_invalid: 'echo $(fi); echo AFTERRC=$?'
+  bash           SUPPRC=None AFTERRC=None diagnostic=True alive=True traceback=False
+  psh-rd         SUPPRC=None AFTERRC=None diagnostic=True alive=True traceback=False
+  psh-comb       SUPPRC=None AFTERRC=None diagnostic=True alive=True traceback=False

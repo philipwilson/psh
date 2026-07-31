@@ -1,0 +1,253 @@
+discriminator: /Users/pwilson/src/psh-r2-4/tmp/r6b-base/psh/__init__.py
+========================================================================
+m1_simple_orlist
+0000000    s   e   t       -   e  \n   e   v   a   l       '   e   c   h
+0000020    o       $   (   i   f   )   '       |   |       e   c   h   o
+0000040        G   O   T       r   c   =   $   ?  \n                    
+0000053
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=127 out=''
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=1 out=''
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+m2_brace_orlist
+0000000    s   e   t       -   e  \n   {       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '   ;       }       |   |
+0000040        e   c   h   o       G   O   T       r   c   =   $   ?  \n
+0000060
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=127 out=''
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=1 out=''
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+m3_simple_if_cond
+0000000    s   e   t       -   e  \n   i   f       e   v   a   l       '
+0000020    e   c   h   o       $   (   i   f   )   '   ;       t   h   e
+0000040    n       e   c   h   o       T   ;       e   l   s   e       e
+0000060    c   h   o       G   O   T       r   c   =   $   ?   ;       f
+0000100    i  \n                                                        
+0000102
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=127 out=''
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=1 out=''
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+m4_simple_negated
+0000000    s   e   t       -   e  \n   !       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '  \n   e   c   h   o    
+0000040    A   F   T   E   R       r   c   =   $   ?  \n                
+0000054
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=127 out=''
+    psh-rd rc=0 out='AFTER rc=0\n'
+    psh-cb rc=0 out='AFTER rc=0\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=1 out=''
+    psh-rd rc=0 out='AFTER rc=0\n'
+    psh-cb rc=0 out='AFTER rc=0\n'
+========================================================================
+m5_func_orlist
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   f       |   |       e   c   h   o       G   O   T    
+0000060    r   c   =   $   ?  \n                                        
+0000066
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=127 out=''
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=1 out=''
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+m6_simple_unsuppressed
+0000000    s   e   t       -   e  \n   e   v   a   l       '   e   c   h
+0000020    o       $   (   i   f   )   '  \n   e   c   h   o       A   F
+0000040    T   E   R       r   c   =   $   ?  \n                        
+0000052
+  [c] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+  [file] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+========================================================================
+m7_simple_while_cond
+0000000    s   e   t       -   e  \n   w   h   i   l   e       e   v   a
+0000020    l       '   e   c   h   o       $   (   i   f   )   '   ;    
+0000040    d   o       :   ;       d   o   n   e  \n   e   c   h   o    
+0000060    A   F   T   E   R       r   c   =   $   ?  \n                
+0000074
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=127 out=''
+    psh-rd rc=0 out='AFTER rc=0\n'
+    psh-cb rc=0 out='AFTER rc=0\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=1 out=''
+    psh-rd rc=0 out='AFTER rc=0\n'
+    psh-cb rc=0 out='AFTER rc=0\n'
+========================================================================
+m8_subshell_orlist
+0000000    s   e   t       -   e  \n   (       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '       )       |   |    
+0000040    e   c   h   o       G   O   T       r   c   =   $   ?  \n    
+0000057
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+m9_simple_andand_nonfinal
+0000000    s   e   t       -   e  \n   e   v   a   l       '   e   c   h
+0000020    o       $   (   i   f   )   '       &   &       e   c   h   o
+0000040        T  \n   e   c   h   o       A   F   T   E   R       r   c
+0000060    =   $   ?  \n                                                
+0000064
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=127 out=''
+    psh-rd rc=0 out='AFTER rc=2\n'
+    psh-cb rc=0 out='AFTER rc=2\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=1 out=''
+    psh-rd rc=0 out='AFTER rc=2\n'
+    psh-cb rc=0 out='AFTER rc=2\n'
+========================================================================
+n1_brace_member_unsuppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       e   v   a   l       '   e   c   h   o       $   (   i
+0000040    f   )   '   ;       }   ;       }  \n   e   c   h   o       A
+0000060    F   T   E   R       r   c   =   $   ?  \n                    
+0000073
+  [c] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+  [file] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+========================================================================
+n2_subshell_member_unsuppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    (       e   v   a   l       '   e   c   h   o       $   (   i
+0000040    f   )   '       )   ;       }  \n   e   c   h   o       A   F
+0000060    T   E   R       r   c   =   $   ?  \n                        
+0000072
+  [c] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+  [file] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+========================================================================
+n3_func_member_unsuppressed
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   i   f   )   '   ;       }  \n   s   e   t       -
+0000040    e  \n   {       t   r   u   e       |       f   ;       }  \n
+0000060    e   c   h   o       A   F   T   E   R       r   c   =   $   ?
+0000100   \n                                                            
+0000101
+  [c] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+  [file] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+========================================================================
+n4_simple_member_unsuppressed
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }  \n   e   c   h   o       A   F   T   E   R    
+0000060    r   c   =   $   ?  \n                                        
+0000066
+  [c] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+  [file] MATCH  bash-err-lines=1
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+    psh-cb rc=2 out=''
+========================================================================
+n5_simple_in_suppressed_subshell
+0000000    s   e   t       -   e  \n   (       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '       )       |   |    
+0000040    e   c   h   o       G   O   T       r   c   =   $   ?  \n    
+0000057
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+n6_simple_in_bg_subshell_suppressed
+0000000    s   e   t       -   e  \n   {       (       e   v   a   l    
+0000020    '   e   c   h   o       $   (   i   f   )   '       )       &
+0000040        w   a   i   t       $   !   ;       }       |   |       e
+0000060    c   h   o       G   O   T       r   c   =   $   ?  \n        
+0000076
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=2\n'
+    psh-cb rc=0 out='GOT rc=2\n'
+========================================================================
+n7_in_child_simple_suppressed
+0000000    (       s   e   t       -   e   ;       e   v   a   l       '
+0000020    e   c   h   o       $   (   i   f   )   '       |   |       e
+0000040    c   h   o       I   N       r   c   =   $   ?       )  \n   e
+0000060    c   h   o       A   F   T   E   R       r   c   =   $   ?  \n
+0000100
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='IN rc=2\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN rc=2\nAFTER rc=0\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='IN rc=2\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN rc=2\nAFTER rc=0\n'
+========================================================================
+n8_in_child_brace_suppressed
+0000000    (       s   e   t       -   e   ;       {       e   v   a   l
+0000020        '   e   c   h   o       $   (   i   f   )   '   ;       }
+0000040        |   |       e   c   h   o       I   N       r   c   =   $
+0000060    ?       )  \n   e   c   h   o       A   F   T   E   R       r
+0000100    c   =   $   ?  \n                                            
+0000105
+  [c] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='IN rc=2\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN rc=2\nAFTER rc=0\n'
+  [file] DIVERGE  bash-err-lines=2
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='IN rc=2\nAFTER rc=0\n'
+    psh-cb rc=0 out='IN rc=2\nAFTER rc=0\n'

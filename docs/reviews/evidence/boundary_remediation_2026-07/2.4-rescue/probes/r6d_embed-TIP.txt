@@ -1,0 +1,11 @@
+SHA: d934a3cae58f716319e8b329798d180ab3f628c6
+battery: r6d_embed.py
+date: 2026-07-31T09:08:06Z
+PSH_ROOT: /Users/pwilson/src/psh-r2-4
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+script      'echo $(if)'   -> RAISED SubstitutionSyntaxAbort
+script      'echo $(fi)'   -> RAISED SubstitutionSyntaxAbort
+script      'cat <(if)'    -> RAISED SubstitutionSyntaxAbort
+script      'if'           -> RC 2
+interactive 'echo $(if)'   -> RC 2
+interactive 'echo $(fi)'   -> RC 2

@@ -4,6 +4,36 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.760.0 (2026-07-31) - Remediation Wave 2 slot 2.4: substitution-origin frame outcome (HIGH-9)
+
+- **A syntax error inside a substitution body now aborts the enclosing frame
+  like bash.** One typed `SubstitutionSyntaxAbort` (BaseException) is raised at
+  a single consumer helper and consumed at the frame boundaries: `-c` exits
+  127, a file/stdin reader-parse keeps 2, a nested `eval`/`source` frame
+  propagates 1, forked children contain the abort, the EXIT trap still runs
+  (and a trap ACTION whose own text fails at teardown is reported and changes
+  nothing, matching bash), and `command eval` cannot strip it. Both error
+  kinds (unterminated and complete-but-invalid) and all substitution
+  spellings ride the same path. The interactive REPL is exempt, pinned at a
+  real PTY.
+- **Forked children honour EFFECTIVE errexit, with bash's severing rule at
+  every fork route.** The suppression depth is stamped on the error at raise
+  time; simple-command pipeline members and backgrounded bare simples sever
+  the inherited `-e`-ignoring, compound bodies and directly-invoked function
+  bodies carry it, and expansion-time substitution children keep the
+  PRE-SEVER depth through one shared helper (spelling-split at
+  redirection-spelled procsub declared and pinned). Ordinary-errexit
+  co-movements toward bash are declared and pinned.
+- Three consumer-side anti-bypass guards (no second raise site, exactly one
+  non-fork catcher, no re-derived status mapping) with synthetic offenders
+  that bite; `psh -n` now reports 127 in `-c` like bash (`--validate`
+  asymmetry declared); the embedding contract of `Shell.run_command()` is
+  documented and pinned.
+- HIGH-9 and predecessor carry #22 CLOSED (qualified to producer-tagged
+  classes; the scanner-balancing six-form family is carried to the lexer
+  successor with end-to-end pins). Ten adversarial verification rounds; +91
+  tests; full evidence in `docs/reviews/evidence/boundary_remediation_2026-07/2.4-rescue/`.
+
 ## 0.759.0 (2026-07-30) - Nightly hygiene: deterministic write-side procsub delivery
 - **Test-only.** The write-side process-substitution closed-fds differentials
   (`test_process_sub_closed_fds.py`) raced the oracle harness's post-exit

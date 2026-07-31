@@ -44,11 +44,16 @@ from ..core.exceptions import (
     FunctionReturn,
     LoopBreak,
     LoopContinue,
+    SubstitutionSyntaxAbort,
     TopLevelAbort,
 )
+from ..core.internal_errors import substitution_child_abort_status
 
 if TYPE_CHECKING:
+    from ..core.state import ShellState
     from ..shell import Shell
+    from .context import ExecutionContext
+    from .core import ExecutorVisitor
 
 # The control-flow / exit exceptions a forked child's body may raise at its
 # top. Caught as a group at every fork site; the code mapping lives once in
@@ -57,10 +62,11 @@ if TYPE_CHECKING:
 # arms them (it may exec an external binary).
 CHILD_EXIT_EXCEPTIONS = (
     TopLevelAbort, FunctionReturn, LoopBreak, LoopContinue, SystemExit,
+    SubstitutionSyntaxAbort,
 )
 
 
-def map_child_exception(exc: BaseException) -> int:
+def map_child_exception(exc: BaseException, state: 'ShellState') -> int:
     """Map a control-flow / exit exception at a forked child's top to the
     child's exit code — the ONE taxonomy every fork site shares.
 
@@ -78,8 +84,23 @@ def map_child_exception(exc: BaseException) -> int:
     - SystemExit (the ``exit`` builtin) → its integer code; ``exit`` with no
       argument, i.e. ``SystemExit(None)``, → 0 (Python's own convention for a
       bare ``sys.exit()``); a non-int, non-None code → 1.
+    - SubstitutionSyntaxAbort (a substitution-body syntax error, fatal to the
+      shell process) → ``substitution_child_abort_status(state,
+      exc.errexit_suppressed)``. This is what makes a fork CONTAIN the
+      fatality: the child dies and the parent runs on, so ``( eval 'echo
+      $(if)' ); echo rc=$?`` prints rc=1 and continues. The status is
+      CHANNEL-independent — a child inside a ``-c`` shell exits 1, not the main
+      shell's 127 — but it is NOT a flat constant: with EFFECTIVE errexit
+      active in the child it is 2, exactly as in the main policy's first
+      branch. BOTH arguments are load-bearing and neither is derivable from the
+      other: ``state`` carries the errexit FLAG, while the second argument
+      carries the SUPPRESSION, because a fork inside a suppressing context
+      (``( … ) || recover``, an ``if``/``while`` condition, ``!``) is 1 even
+      though the flag reads True — the two shapes are identical from ``state``
+      alone. The suppression is not re-derived here: it is the stamp the error
+      carries from its raise site (``core/exceptions.py#SubstitutionSyntaxAbort``).
 
-    Only the five CHILD_EXIT_EXCEPTIONS are handled; anything else re-raises
+    Only the six CHILD_EXIT_EXCEPTIONS are handled; anything else re-raises
     (callers catch exactly that group before calling this). KeyboardInterrupt
     (→130) and unexpected Exceptions stay caller-local — see the module note.
     """
@@ -92,7 +113,36 @@ def map_child_exception(exc: BaseException) -> int:
     if isinstance(exc, SystemExit):
         code = exc.code
         return code if isinstance(code, int) else (0 if code is None else 1)
+    if isinstance(exc, SubstitutionSyntaxAbort):
+        return substitution_child_abort_status(state, exc.errexit_suppressed)
     raise exc
+
+
+def sync_child_status_for_exit_trap(state: 'ShellState', exc: BaseException,
+                                    exit_code: int) -> None:
+    """Publish a mapped child status into ``$?`` before the child's EXIT trap.
+
+    Every other member of the taxonomy already leaves ``$?`` correct when it
+    reaches a fork boundary — ``exit`` sets it at the raise site, and
+    ``TopLevelAbort`` carries its status. ``SubstitutionSyntaxAbort`` does not:
+    its status is decided AT the boundary (channel-independent, and 1 unless
+    EFFECTIVE errexit applies in the child, in which case 2), while the raise
+    site left the ordinary syntax-error 2 behind. So
+    the child's own EXIT trap would observe a stale 2 while the process exits
+    1 — an inconsistency bash does not have (probe: a command-substitution
+    child's EXIT trap sees 1, matching its exit status; the control
+    ``exit 1`` sees 1 in both shells).
+
+    For a SUBSHELL child bash instead shows its internal pre-truncation
+    ``EX_BADSYNTAX`` (257) here; psh reports the true status 1, the same
+    declared choice made for the main shell's EXIT trap.
+
+    Takes the ``ShellState``, not the ``Shell``: publishing ``$?`` is its whole
+    job, so it is a state consumer rather than a service-locator boundary
+    (campaign Q1 — the ratchet caught the first, wider signature).
+    """
+    if isinstance(exc, SubstitutionSyntaxAbort):
+        state.last_exit_code = exit_code
 
 
 def fork_with_signal_window() -> int:
@@ -222,7 +272,10 @@ def die_by_signal(sig: int) -> None:
 
 
 def run_background_shell_child(shell: 'Shell',
-                               body: Callable[[], int]) -> int:
+                               body: Callable[[], int],
+                               *,
+                               sever_errexit_context: Optional['ExecutionContext'] = None
+                               ) -> int:
     """Run a backgrounded compound body with full trap discipline.
 
     The shared "what every backgrounded shell-process child does" wrapper,
@@ -253,6 +306,19 @@ def run_background_shell_child(shell: 'Shell',
     shell.interactive_manager.signal_manager.install_child_trap_handlers(
         background=True)
 
+    # A backgrounded BARE SIMPLE command SEVERS the enclosing list's errexit
+    # suppression, for the same reason a simple pipeline member does: it
+    # introduces no compound body for bash's ignored `set -e` to reach through
+    # (the manual sentence is quoted at context.py#errexit_suppress_deferred).
+    # `{ eval 'echo $(if)' & } || true` leaves the child at 2, while
+    # `{ ( … ) & }`, `{ { …; } & }` and `{ f & }` — which DO introduce one —
+    # leave it at 1. Only the bare-simple caller passes a context here; there
+    # is no deferral to park, because the routes that would re-apply it are
+    # exactly the ones that never sever.
+    if sever_errexit_context is not None:
+        sever_errexit_context.errexit_suppress = 0
+        sever_errexit_context.errexit_suppress_deferred = 0
+
     exit_code = 0
     try:
         exit_code = body()
@@ -261,7 +327,8 @@ def run_background_shell_child(shell: 'Shell',
     except CHILD_EXIT_EXCEPTIONS as e:
         # A control-flow/exit exception at the body's top: subshell boundary,
         # so break/return cannot cross the fork; map via the shared taxonomy.
-        exit_code = map_child_exception(e)
+        exit_code = map_child_exception(e, shell.state)
+        sync_child_status_for_exit_trap(shell.state, e, exit_code)
     finally:
         # A managed-signal trap queued while the body ran (e.g. after the
         # last statement) still fires; then the EXIT trap runs on the way
@@ -351,16 +418,54 @@ def run_child_body(child_shell: 'Shell',
     try:
         exit_code = body(child_shell)
     except CHILD_EXIT_EXCEPTIONS as e:
-        exit_code = map_child_exception(e)
+        exit_code = map_child_exception(e, child_shell.state)
+        sync_child_status_for_exit_trap(child_shell.state, e, exit_code)
 
     try:
         child_shell.trap_manager.execute_exit_trap()
     except SystemExit as e:
-        exit_code = map_child_exception(e)
+        exit_code = map_child_exception(e, child_shell.state)
     except Exception:
         pass
 
     return exit_code
+
+
+def expansion_child_suppression(
+        executor: Optional['ExecutorVisitor']) -> Optional[int]:
+    """The errexit-suppression depth an EXPANSION-TIME substitution child
+    inherits: the depth its frame had BEFORE any severing.
+
+    A forked pipeline member whose own node is a simple command SEVERS the
+    enclosing list's suppression for its own execution and parks the depth in
+    ``executor/context.py#errexit_suppress_deferred``. bash does not extend
+    that severing to a substitution the member EXPANDS, so the child inherits
+    current + parked. Outside a severed member the parked half is 0 and this
+    is just the live depth — the value the child would have inherited anyway.
+
+    ONE function for BOTH expansion-time creators (``expansion/command_sub.py``
+    and ``io_redirect/process_sub.py``) on purpose: they were fixed one round
+    apart, and a second copy of this arithmetic is how the two would drift.
+
+    Takes the LIVE EXECUTOR (or None), not the shell: the arithmetic needs one
+    context and nothing else, and a boundary module that accepts a whole
+    ``Shell`` is what the Q1 shell-consumer ratchet exists to prevent — it
+    caught this function's first draft, which took one.
+
+    Returns None when there is no live executor (the outermost reader parse),
+    leaving :func:`run_child_shell` on its ordinary path.
+
+    NOTE ON WHEN IT MATTERS: a command-substitution child normally runs with
+    the errexit OPTION cleared, so the depth is not observable inside it. Under
+    ``shopt -s inherit_errexit`` or ``set -o posix`` the child DOES inherit
+    errexit (see ``expansion/command_sub.py``'s ``reset_errexit`` argument) and
+    the depth decides whether it survives. Process-substitution children always
+    inherit errexit, so it always matters for them.
+    """
+    if executor is None:
+        return None
+    context = executor.context
+    return context.errexit_suppress + context.errexit_suppress_deferred
 
 
 def run_child_shell(parent_shell: 'Shell',
@@ -370,6 +475,7 @@ def run_child_shell(parent_shell: 'Shell',
                     io_setup: Optional[Callable[[], None]] = None,
                     inherit_traps: bool = True,
                     reset_errexit: bool = False,
+                    errexit_suppress_override: Optional[int] = None,
                     error_label: str = 'forked child') -> NoReturn:
     """Run the body of a forked substitution child; never returns.
 
@@ -424,8 +530,18 @@ def run_child_shell(parent_shell: 'Shell',
         parent_executor = parent_shell._current_executor
         loop_seed = (parent_executor.context.loop_depth
                      if parent_executor is not None else None)
+        # ``errexit_suppress_override`` is how an EXPANSION-TIME substitution
+        # child of a SEVERED pipeline member gets the depth its frame had
+        # BEFORE severing. bash keeps such a child suppressed (`set -e;
+        # { true | cat <(false; echo A); } || …` prints A), while the member's
+        # own execution runs with errexit effective — so the member's context
+        # is the wrong thing for this child to inherit. The REDIRECTION
+        # spelling is deliberately NOT overridden: bash does not carry the
+        # suppression there, and psh matches by taking the member's context.
         errexit_suppress = (parent_executor.context.errexit_suppress
                             if parent_executor is not None else 0)
+        if errexit_suppress_override is not None:
+            errexit_suppress = errexit_suppress_override
 
         exit_code = run_child_body(
             child_shell, body,

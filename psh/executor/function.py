@@ -210,8 +210,15 @@ class FunctionOperationExecutor:
         this manager never swallows an exception.
 
         The frame is: ``context.current_function``, ``context.loop_depth``,
-        the positional parameters, one pushed variable scope, one
-        ``function_stack`` entry, and the hidden RETURN trap.
+        the errexit-suppression pair (see below), the positional parameters,
+        one pushed variable scope, one ``function_stack`` entry, and the hidden
+        RETURN trap.
+
+        The errexit pair is the one frame field this manager also WRITES rather
+        than merely restoring: a function body is one of the two frames bash
+        applies an ignored ``set -e`` through, so a suppression a forked
+        pipeline member deferred (``ExecutionContext#errexit_suppress_deferred``)
+        is re-applied here for the body's duration.
         """
         # Save current context
         old_function = context.current_function
@@ -222,9 +229,23 @@ class FunctionOperationExecutor:
         # (probe D5e; see ShellState.positionals_changed_by_set).
         old_positionals_changed = self.shell.state.positionals_changed_by_set
         old_loop_depth = context.loop_depth
+        old_errexit_suppress = context.errexit_suppress
+        old_errexit_deferred = context.errexit_suppress_deferred
 
         # Set up function context
         context.current_function = name
+
+        # A function BODY is one of the two frames bash applies an ignored
+        # `set -e` through — "a compound command or shell function", the
+        # sentence quoted at ExecutionContext#errexit_suppress_deferred. A
+        # forked pipeline member whose own node is a simple command parks the
+        # inherited suppression there instead of applying it; if THIS call is
+        # that member, the body is where it comes back. Deciding it here rather
+        # than from the member's AST is what makes `{ true | $Q; }` with Q=f
+        # behave like `{ true | f; }`: the name resolves before we arrive.
+        if context.errexit_suppress_deferred:
+            context.errexit_suppress = context.errexit_suppress_deferred
+            context.errexit_suppress_deferred = 0
 
         # A function body is a fresh control-flow scope: the caller's loop
         # nesting is not visible inside it, so `break`/`continue` in the body
@@ -285,5 +306,7 @@ class FunctionOperationExecutor:
             # $#/$@/$* with it — they are derived, never stored)
             context.current_function = old_function
             context.loop_depth = old_loop_depth
+            context.errexit_suppress = old_errexit_suppress
+            context.errexit_suppress_deferred = old_errexit_deferred
             self.shell.state.positional_params = old_positional_params
             self.shell.state.positionals_changed_by_set = old_positionals_changed

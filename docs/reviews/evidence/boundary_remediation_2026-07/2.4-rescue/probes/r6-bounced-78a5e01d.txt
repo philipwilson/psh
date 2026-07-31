@@ -1,0 +1,400 @@
+discriminator: /Users/pwilson/src/psh-r2-4/psh/__init__.py
+bash: /opt/homebrew/bin/bash (PATH oracle, 5.2.26)
+========================================================================
+[R1] cbi_direct_c   expect=MATCH
+0000000    e   c   h   o       $   (   f   i   )  \n                    
+0000013
+  PASS [c]
+    bash   rc=127 out=''
+    psh-rd rc=127 out=''
+========================================================================
+[R1] cbi_procsub_c   expect=MATCH
+0000000    c   a   t       <   (   f   i   )  \n                        
+0000012
+  PASS [c]
+    bash   rc=127 out=''
+    psh-rd rc=127 out=''
+========================================================================
+[R1] cbi_operand_c   expect=MATCH
+0000000    x   =   s   e   t   ;       e   c   h   o       $   {   x   :
+0000020    -   $   (   f   i   )   }  \n                                
+0000030
+  PASS [c]
+    bash   rc=127 out=''
+    psh-rd rc=127 out=''
+========================================================================
+[R1] cbi_arith_c   expect=MATCH
+0000000    e   c   h   o       $   (   (       $   (   f   i   )       +
+0000020        1       )   )  \n                                        
+0000026
+  PASS [c]
+    bash   rc=127 out=''
+    psh-rd rc=127 out=''
+========================================================================
+[R1] cbi_subscript_c   expect=MATCH
+0000000    a   =   (   1       2   )   ;       e   c   h   o       $   {
+0000020    a   [   $   (   f   i   )   ]   }  \n                        
+0000032
+  PASS [c]
+    bash   rc=127 out=''
+    psh-rd rc=127 out=''
+========================================================================
+[R1] cbi_subscript_assign_c   expect=MATCH
+0000000    a   [   $   (   f   i   )   ]   =   v  \n                    
+0000013
+  PASS [c]
+    bash   rc=127 out=''
+    psh-rd rc=127 out=''
+========================================================================
+[R1] cbi_eval_frame   expect=MATCH
+0000000    e   c   h   o       B  \n   e   v   a   l       '   e   c   h
+0000020    o       X   ;       e   c   h   o       $   (   f   i   )   '
+0000040   \n   e   c   h   o       A   F   T   E   R  \n                
+0000054
+  PASS [c]
+    bash   rc=127 out='B\n'
+    psh-rd rc=127 out='B\n'
+  PASS [file]
+    bash   rc=1 out='B\n'
+    psh-rd rc=1 out='B\n'
+  PASS [stdin]
+    bash   rc=1 out='B\n'
+    psh-rd rc=1 out='B\n'
+========================================================================
+[R1] cbi_function_frame   expect=MATCH
+0000000    f   (   )       {       e   v   a   l       '   e   c   h   o
+0000020        $   (   f   i   )   '   ;       }  \n   e   c   h   o    
+0000040    B  \n   f  \n   e   c   h   o       A   F   T   E   R  \n    
+0000057
+  PASS [c]
+    bash   rc=127 out='B\n'
+    psh-rd rc=127 out='B\n'
+  PASS [file]
+    bash   rc=1 out='B\n'
+    psh-rd rc=1 out='B\n'
+  PASS [stdin]
+    bash   rc=1 out='B\n'
+    psh-rd rc=1 out='B\n'
+========================================================================
+[R1] cbi_midbuffer   expect=MATCH
+0000000    e   c   h   o       B  \n   e   c   h   o       $   (   f   i
+0000020    )  \n   e   c   h   o       A   F   T   E   R  \n            
+0000035
+  PASS [c]
+    bash   rc=127 out='B\n'
+    psh-rd rc=127 out='B\n'
+  PASS [file]
+    bash   rc=2 out='B\n'
+    psh-rd rc=2 out='B\n'
+  PASS [stdin]
+    bash   rc=2 out='B\n'
+    psh-rd rc=2 out='B\n'
+========================================================================
+[R2] teardown_traceback   expect=MATCH
+0000000    t   r   a   p       '   e   c   h   o       T   ;       e   c
+0000020    h   o       $   (   f   i   )   ;       e   c   h   o       T
+0000040    2   '       E   X   I   T  \n   e   c   h   o       B  \n    
+0000057
+  PASS [c]
+    bash   rc=0 out='B\n'
+    psh-rd rc=0 out='B\n'
+  PASS [file]
+    bash   rc=0 out='B\n'
+    psh-rd rc=0 out='B\n'
+  PASS [stdin]
+    bash   rc=0 out='B\n'
+    psh-rd rc=0 out='B\n'
+========================================================================
+[R2] teardown_status_clobber   expect=MATCH
+0000000    t   r   a   p       '   e   c   h   o       T   ;       e   c
+0000020    h   o       $   (   f   i   )   '       E   X   I   T  \n   e
+0000040    c   h   o       B  \n   e   x   i   t       3  \n            
+0000055
+  PASS [c]
+    bash   rc=3 out='B\n'
+    psh-rd rc=3 out='B\n'
+  PASS [file]
+    bash   rc=3 out='B\n'
+    psh-rd rc=3 out='B\n'
+  PASS [stdin]
+    bash   rc=3 out='B\n'
+    psh-rd rc=3 out='B\n'
+========================================================================
+[R2] teardown_in_subshell   expect=MATCH
+0000000    (       t   r   a   p       '   e   c   h   o       C   T   ;
+0000020        e   c   h   o       $   (   f   i   )   '       E   X   I
+0000040    T   ;       e   c   h   o       I   N       )  \n   e   c   h
+0000060    o       A   F   T   E   R       r   c   =   $   ?  \n        
+0000076
+  PASS [c]
+    bash   rc=0 out='IN\nAFTER rc=0\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+  PASS [file]
+    bash   rc=0 out='IN\nAFTER rc=0\n'
+    psh-rd rc=0 out='IN\nAFTER rc=0\n'
+========================================================================
+[R2] teardown_in_cmdsub   expect=MATCH
+0000000    x   =   $   (       t   r   a   p       '   e   c   h   o    
+0000020    $   (   f   i   )   '       E   X   I   T   ;       e   c   h
+0000040    o       I   N       )  \n   e   c   h   o       A   F   T   E
+0000060    R       r   c   =   $   ?       x   =   $   x  \n            
+0000075
+  PASS [c]
+    bash   rc=0 out='AFTER rc=0 x=IN\n'
+    psh-rd rc=0 out='AFTER rc=0 x=IN\n'
+  PASS [file]
+    bash   rc=0 out='AFTER rc=0 x=IN\n'
+    psh-rd rc=0 out='AFTER rc=0 x=IN\n'
+========================================================================
+[R3] scanner_case_direct   expect=('DECLARED', 2, 'B\n')
+0000000    e   c   h   o       B  \n   e   c   h   o       $   (   c   a
+0000020    s   e       x       i   n   )  \n   e   c   h   o       A   F
+0000040    T   E   R  \n                                                
+0000044
+  PASS [c]
+    bash   rc=127 out='B\n'
+    psh-rd rc=2 out='B\n'
+========================================================================
+[R3] scanner_case_eval   expect=('DECLARED', 0, 'B\nAFTER\n')
+0000000    e   c   h   o       B  \n   e   v   a   l       '   e   c   h
+0000020    o       $   (   c   a   s   e       x       i   n   )   '  \n
+0000040    e   c   h   o       A   F   T   E   R  \n                    
+0000053
+  PASS [c]
+    bash   rc=127 out='B\n'
+    psh-rd rc=0 out='B\nAFTER\n'
+========================================================================
+[R3] scanner_typed_control   expect=MATCH
+0000000    e   c   h   o       B  \n   e   c   h   o       $   (   w   h
+0000020    i   l   e       t   r   u   e   )  \n   e   c   h   o       A
+0000040    F   T   E   R  \n                                            
+0000045
+  PASS [c]
+    bash   rc=127 out='B\n'
+    psh-rd rc=127 out='B\n'
+========================================================================
+[R3] fork_debug_trap   expect=('DECLARED', 0, 'AFTER rc=1\n')
+0000000    (       s   e   t       -   T   ;       t   r   a   p       '
+0000020    e   c   h   o       $   (   f   i   )   '       D   E   B   U
+0000040    G   ;       e   c   h   o       I   N       )  \n   e   c   h
+0000060    o       A   F   T   E   R       r   c   =   $   ?  \n        
+0000076
+  PASS [c]
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+  PASS [file]
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+========================================================================
+[R3] fork_return_trap   expect=('DECLARED', 0, 'INF\nAFTER rc=1\n')
+0000000    (       s   e   t       -   T   ;       t   r   a   p       '
+0000020    e   c   h   o       $   (   f   i   )   '       R   E   T   U
+0000040    R   N   ;       f   (   )       {       e   c   h   o       I
+0000060    N   F   ;       }   ;       f   ;       e   c   h   o       I
+0000100    N       )  \n   e   c   h   o       A   F   T   E   R       r
+0000120    c   =   $   ?  \n                                            
+0000125
+  PASS [c]
+    bash   rc=0 out='INF\nAFTER rc=2\n'
+    psh-rd rc=0 out='INF\nAFTER rc=1\n'
+  PASS [file]
+    bash   rc=0 out='INF\nAFTER rc=2\n'
+    psh-rd rc=0 out='INF\nAFTER rc=1\n'
+========================================================================
+[R3] fork_err_trap   expect=('DECLARED', 0, 'AFTER rc=1\n')
+0000000    (       s   e   t       -   E   ;       t   r   a   p       '
+0000020    e   c   h   o       $   (   f   i   )   '       E   R   R   ;
+0000040        f   a   l   s   e   ;       e   c   h   o       I   N    
+0000060    )  \n   e   c   h   o       A   F   T   E   R       r   c   =
+0000100    $   ?  \n                                                    
+0000103
+  PASS [c]
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+  PASS [file]
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+========================================================================
+[R3] fork_errexit   expect=MATCH
+0000000    (       s   e   t       -   e   ;       e   v   a   l       '
+0000020    e   c   h   o       $   (   f   i   )   '       )  \n   e   c
+0000040    h   o       A   F   T   E   R       r   c   =   $   ?  \n    
+0000057
+  PASS [c]
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=2\n'
+  PASS [file]
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=2\n'
+  PASS [stdin]
+    bash   rc=0 out='AFTER rc=2\n'
+    psh-rd rc=0 out='AFTER rc=2\n'
+========================================================================
+[R4] inchild_or   expect=MATCH
+0000000    (       s   e   t       -   e   ;       e   v   a   l       '
+0000020    e   c   h   o       $   (   i   f   )   '       |   |       e
+0000040    c   h   o       i   n   -   c   h   i   l   d       r   c   =
+0000060    $   ?       )  \n   e   c   h   o       A   F   T   E   R    
+0000100    r   c   =   $   ?  \n                                        
+0000106
+  PASS [c]
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+  PASS [file]
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+  PASS [stdin]
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+========================================================================
+[R4] inchild_ifcond   expect=MATCH
+0000000    (       s   e   t       -   e   ;       i   f       e   v   a
+0000020    l       '   e   c   h   o       $   (   i   f   )   '   ;    
+0000040    t   h   e   n       e   c   h   o       T   ;       e   l   s
+0000060    e       e   c   h   o       i   n   -   c   h   i   l   d    
+0000100    r   c   =   $   ?   ;       f   i       )  \n   e   c   h   o
+0000120        A   F   T   E   R       r   c   =   $   ?  \n            
+0000135
+  PASS [c]
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+  PASS [file]
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+========================================================================
+[R4] bg_subshell_suppressed   expect=MATCH
+0000000    s   e   t       -   e  \n   {       (       e   v   a   l    
+0000020    '   e   c   h   o       $   (   i   f   )   '       )       &
+0000040        w   a   i   t       $   !   ;       }       |   |       e
+0000060    c   h   o       G   O   T       r   c   =   $   ?  \n        
+0000076
+  PASS [c]
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  PASS [file]
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  PASS [stdin]
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+[R4] bg_brace_suppressed   expect=MATCH
+0000000    s   e   t       -   e  \n   {       {       e   v   a   l    
+0000020    '   e   c   h   o       $   (   i   f   )   '   ;       }    
+0000040    &       w   a   i   t       $   !   ;       }       |   |    
+0000060    e   c   h   o       G   O   T       r   c   =   $   ?  \n    
+0000077
+  PASS [c]
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  PASS [file]
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+[R4] bg_unsuppressed   expect=MATCH
+0000000    s   e   t       -   e  \n   (       e   v   a   l       '   e
+0000020    c   h   o       $   (   i   f   )   '       )       &       w
+0000040    a   i   t       $   !  \n   e   c   h   o       A   F   T   E
+0000060    R       r   c   =   $   ?  \n                                
+0000070
+  PASS [c]
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+  PASS [file]
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+========================================================================
+[R4] posix_in_fork   expect=MATCH
+0000000    (       s   e   t       -   o       p   o   s   i   x   ;    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '       )  \n   e   c   h   o       A   F   T   E   R       r
+0000060    c   =   $   ?  \n                                            
+0000065
+  PASS [c]
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+  PASS [file]
+    bash   rc=0 out='AFTER rc=1\n'
+    psh-rd rc=0 out='AFTER rc=1\n'
+========================================================================
+[R4] main_suppressed_or   expect=MATCH
+0000000    s   e   t       -   e  \n   e   v   a   l       '   e   c   h
+0000020    o       $   (   i   f   )   '       |   |       e   c   h   o
+0000040        G   O   T       r   c   =   $   ?  \n                    
+0000053
+  PASS [c]
+    bash   rc=127 out=''
+    psh-rd rc=127 out=''
+  PASS [file]
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+  PASS [stdin]
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+========================================================================
+[R4] main_suppressed_ifcond   expect=MATCH
+0000000    s   e   t       -   e  \n   i   f       e   v   a   l       '
+0000020    e   c   h   o       $   (   i   f   )   '   ;       t   h   e
+0000040    n       e   c   h   o       T   ;       e   l   s   e       e
+0000060    c   h   o       G   O   T       r   c   =   $   ?   ;       f
+0000100    i  \n                                                        
+0000102
+  PASS [c]
+    bash   rc=127 out=''
+    psh-rd rc=127 out=''
+  PASS [file]
+    bash   rc=1 out=''
+    psh-rd rc=1 out=''
+========================================================================
+[R5] member_simple_suppressed   expect=MATCH
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n                                    
+0000067
+  FAIL [c]
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  FAIL [file]
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  FAIL [stdin]
+    bash   rc=0 out='GOT rc=2\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+[R5] member_compound_suppressed   expect=MATCH
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    {       e   v   a   l       '   e   c   h   o       $   (   i
+0000040    f   )   '   ;       }   ;       }       |   |       e   c   h
+0000060    o       G   O   T       r   c   =   $   ?  \n                
+0000074
+  PASS [c]
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+  PASS [file]
+    bash   rc=0 out='GOT rc=1\n'
+    psh-rd rc=0 out='GOT rc=1\n'
+========================================================================
+[R5] member_unsuppressed   expect=MATCH
+0000000    s   e   t       -   e  \n   {       t   r   u   e       |    
+0000020    e   v   a   l       '   e   c   h   o       $   (   i   f   )
+0000040    '   ;       }  \n   e   c   h   o       A   F   T   E   R    
+0000060    r   c   =   $   ?  \n                                        
+0000066
+  PASS [c]
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+  PASS [file]
+    bash   rc=2 out=''
+    psh-rd rc=2 out=''
+========================================================================
+[R5] ic_fork_errexit_note   expect=MATCH
+0000000    (       s   e   t       -   e   ;       e   v   a   l       '
+0000020    e   c   h   o       $   (   i   f   )   '       )       |   |
+0000040        e   c   h   o       S   U   P   P   R   C   =   $   ?  \n
+0000060
+  PASS [c]
+    bash   rc=0 out='SUPPRC=1\n'
+    psh-rd rc=0 out='SUPPRC=1\n'
+========================================================================
+SUMMARY: 61/64 rows PASS, 3 FAIL

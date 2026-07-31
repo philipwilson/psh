@@ -9,7 +9,12 @@ from ..utils.signal_utils import (
     signal_name_to_number,
     signal_number_to_name,
 )
-from .exceptions import FunctionReturn, LoopBreak, LoopContinue
+from .exceptions import (
+    FunctionReturn,
+    LoopBreak,
+    LoopContinue,
+    SubstitutionSyntaxAbort,
+)
 from .process_lease import ComponentKind, get_coordinator
 
 if TYPE_CHECKING:
@@ -535,12 +540,31 @@ class TrapManager:
         Idempotent: the EXIT trap fires at most once per shell, no matter
         how many exit paths reach here (explicit ``exit`` builtin, end of a
         ``-c`` string, end of a script, end of piped stdin).
+
+        A substitution-body syntax error in the ACTION'S OWN TEXT is REPORTED
+        AND SWALLOWED here, changing nothing: the diagnostic was printed at the
+        raise site, and at teardown there is nothing left to abort — the shell
+        is already exiting. bash agrees (probe: ``trap 'echo $(fi)' EXIT; echo
+        B`` exits 0 having printed B and the diagnostic, and none of the action
+        runs; ``exit 3`` with such a trap still exits 3). Swallowing at THIS
+        method rather than at each caller is what keeps every teardown path —
+        ``execute_as_main``, the ``exit`` builtin's own fire, ``Shell.shutdown``
+        and the two forked-child teardowns — on one policy, and it deliberately
+        does NOT touch ``execute_trap`` itself, so a mid-script trap action
+        (the declared O3 shape) still aborts.
+
+        Without this the abort escapes as an uncaught ``BaseException``: the
+        teardown callers guard ``SystemExit``/``Exception``, neither of which
+        catches it, so it reached the CLI as a raw Python traceback.
         """
         if getattr(self, '_exit_trap_executed', False):
             return
         if self.get_handler('EXIT'):
             self._exit_trap_executed = True
-            self.execute_trap('EXIT')
+            try:
+                self.execute_trap('EXIT')
+            except SubstitutionSyntaxAbort:
+                pass
 
     def _inherited_into_function(self, trace_option: str) -> bool:
         """Whether a DEBUG/ERR/RETURN trap fires while inside a function body.

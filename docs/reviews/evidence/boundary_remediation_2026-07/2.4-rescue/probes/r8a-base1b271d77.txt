@@ -1,0 +1,247 @@
+discriminator: /Users/pwilson/src/psh-r2-4/tmp/r8-base/psh/__init__.py
+========================================================================
+p10_redirect_read_abort
+0000000    s   e   t       -   e  \n   {       r   e   a   d       -   r
+0000020        l   i   n   e       <       <   (   e   v   a   l       '
+0000040    e   c   h   o       $   (   i   f   )   '   )   ;       }    
+0000060    |   |       e   c   h   o       G   O   T       r   c   =   $
+0000100    ?  \n   e   c   h   o       E   N   D  \n                    
+0000113
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+    psh-cb rc=0 out='GOT rc=1\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+    psh-cb rc=0 out='GOT rc=1\nEND\n'
+========================================================================
+p11_argument_abort
+0000000    s   e   t       -   e  \n   {       c   a   t       <   (   e
+0000020    v   a   l       '   e   c   h   o       $   (   i   f   )   '
+0000040    )   ;       }       |   |       e   c   h   o       G   O   T
+0000060        r   c   =   $   ?  \n   e   c   h   o       E   N   D  \n
+0000100
+  [c] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+    psh-cb rc=0 out='END\n'
+  [file] MATCH
+    bash   rc=0 out='END\n'
+    psh-rd rc=0 out='END\n'
+    psh-cb rc=0 out='END\n'
+========================================================================
+p12_cmdsub_ordinary
+0000000    s   e   t       -   e  \n   {       x   =   $   (   f   a   l
+0000020    s   e   ;       e   c   h   o       A   )   ;       }       |
+0000040    |       e   c   h   o       G   O   T       r   c   =   $   ?
+0000060   \n   e   c   h   o       x   =   [   $   x   ]  \n   e   c   h
+0000100    o       E   N   D  \n                                        
+0000106
+  [c] MATCH
+    bash   rc=0 out='x=[A]\nEND\n'
+    psh-rd rc=0 out='x=[A]\nEND\n'
+    psh-cb rc=0 out='x=[A]\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='x=[A]\nEND\n'
+    psh-rd rc=0 out='x=[A]\nEND\n'
+    psh-cb rc=0 out='x=[A]\nEND\n'
+========================================================================
+p13_backtick_ordinary
+0000000    s   e   t       -   e  \n   {       x   =   `   f   a   l   s
+0000020    e   ;       e   c   h   o       A   `   ;       }       |   |
+0000040        e   c   h   o       G   O   T       r   c   =   $   ?  \n
+0000060    e   c   h   o       x   =   [   $   x   ]  \n   e   c   h   o
+0000100        E   N   D  \n                                            
+0000105
+  [c] MATCH
+    bash   rc=0 out='x=[A]\nEND\n'
+    psh-rd rc=0 out='x=[A]\nEND\n'
+    psh-cb rc=0 out='x=[A]\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='x=[A]\nEND\n'
+    psh-rd rc=0 out='x=[A]\nEND\n'
+    psh-cb rc=0 out='x=[A]\nEND\n'
+========================================================================
+p14_cmdsub_redirect_input
+0000000    s   e   t       -   e  \n   {       r   e   a   d       -   r
+0000020        l   i   n   e       <       <   (   :       )   ;       }
+0000040        |   |       e   c   h   o       G   O   T       r   c   =
+0000060    $   ?  \n   e   c   h   o       E   N   D  \n                
+0000074
+  [c] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+    psh-cb rc=0 out='GOT rc=1\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='GOT rc=1\nEND\n'
+    psh-rd rc=0 out='GOT rc=1\nEND\n'
+    psh-cb rc=0 out='GOT rc=1\nEND\n'
+========================================================================
+p1_redirect_read_ifcond
+0000000    s   e   t       -   e  \n   i   f       r   e   a   d       -
+0000020    r       l   i   n   e       <       <   (   f   a   l   s   e
+0000040    ;       e   c   h   o       A   )   ;       t   h   e   n    
+0000060    e   c   h   o       g   o   t   :   $   l   i   n   e   ;    
+0000100    e   l   s   e       e   c   h   o       F   :   $   ?   ;    
+0000120    f   i  \n   e   c   h   o       E   N   D  \n                
+0000134
+  [c] DIVERGE
+    bash   rc=0 out='F:1\nEND\n'
+    psh-rd rc=0 out='got:A\nEND\n'
+    psh-cb rc=0 out='got:A\nEND\n'
+  [file] DIVERGE
+    bash   rc=0 out='F:1\nEND\n'
+    psh-rd rc=0 out='got:A\nEND\n'
+    psh-cb rc=0 out='got:A\nEND\n'
+========================================================================
+p2_redirect_read_orlist
+0000000    s   e   t       -   e  \n   {       r   e   a   d       -   r
+0000020        l   i   n   e       <       <   (   f   a   l   s   e   ;
+0000040        e   c   h   o       A   )   ;       }       |   |       e
+0000060    c   h   o       G   O   T       r   c   =   $   ?  \n   e   c
+0000100    h   o       l   i   n   e   =   [   $   {   l   i   n   e   -
+0000120    u   n   s   e   t   }   ]  \n   e   c   h   o       E   N   D
+0000140   \n                                                            
+0000141
+  [c] DIVERGE
+    bash   rc=0 out='GOT rc=1\nline=[]\nEND\n'
+    psh-rd rc=0 out='line=[A]\nEND\n'
+    psh-cb rc=0 out='line=[A]\nEND\n'
+  [file] DIVERGE
+    bash   rc=0 out='GOT rc=1\nline=[]\nEND\n'
+    psh-rd rc=0 out='line=[A]\nEND\n'
+    psh-cb rc=0 out='line=[A]\nEND\n'
+========================================================================
+p3_redirect_read_eval_body
+0000000    s   e   t       -   e  \n   i   f       r   e   a   d       -
+0000020    r       l   i   n   e       <       <   (   e   v   a   l    
+0000040    '   f   a   l   s   e   ;       e   c   h   o       A   '   )
+0000060    ;       t   h   e   n       e   c   h   o       g   o   t   :
+0000100    $   l   i   n   e   ;       e   l   s   e       e   c   h   o
+0000120        F   :   $   ?   ;       f   i  \n   e   c   h   o       E
+0000140    N   D  \n                                                    
+0000143
+  [c] DIVERGE
+    bash   rc=0 out='F:1\nEND\n'
+    psh-rd rc=0 out='got:A\nEND\n'
+    psh-cb rc=0 out='got:A\nEND\n'
+  [file] DIVERGE
+    bash   rc=0 out='F:1\nEND\n'
+    psh-rd rc=0 out='got:A\nEND\n'
+    psh-cb rc=0 out='got:A\nEND\n'
+========================================================================
+p4_redirect_read_no_errexit
+0000000    i   f       r   e   a   d       -   r       l   i   n   e    
+0000020    <       <   (   f   a   l   s   e   ;       e   c   h   o    
+0000040    A   )   ;       t   h   e   n       e   c   h   o       g   o
+0000060    t   :   $   l   i   n   e   ;       e   l   s   e       e   c
+0000100    h   o       F   :   $   ?   ;       f   i  \n   e   c   h   o
+0000120        E   N   D  \n                                            
+0000125
+  [c] MATCH
+    bash   rc=0 out='got:A\nEND\n'
+    psh-rd rc=0 out='got:A\nEND\n'
+    psh-cb rc=0 out='got:A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='got:A\nEND\n'
+    psh-rd rc=0 out='got:A\nEND\n'
+    psh-cb rc=0 out='got:A\nEND\n'
+========================================================================
+p5_redirect_write_ifcond
+0000000    r   m       -   f       w   5   .   t   x   t  \n   s   e   t
+0000020        -   e  \n   i   f       :       >       >   (   f   a   l
+0000040    s   e   ;       e   c   h   o       A       >       w   5   .
+0000060    t   x   t   )   ;       t   h   e   n       e   c   h   o    
+0000100    o   k   ;       e   l   s   e       e   c   h   o       F   :
+0000120    $   ?   ;       f   i  \n   f   o   r       i       i   n    
+0000140    1       2       3       4       5       6       7       8    
+0000160    9       1   0   ;       d   o       [       -   f       w   5
+0000200    .   t   x   t       ]       &   &       b   r   e   a   k   ;
+0000220        s   l   e   e   p       0   .   1   ;       d   o   n   e
+0000240   \n   i   f       [       -   f       w   5   .   t   x   t    
+0000260    ]   ;       t   h   e   n       e   c   h   o       W   R   O
+0000300    T   E   ;       e   l   s   e       e   c   h   o       N   O
+0000320    W   R   I   T   E   ;       f   i  \n   e   c   h   o       E
+0000340    N   D  \n                                                    
+0000343
+  [c] DIVERGE
+    bash   rc=0 out='ok\nNOWRITE\nEND\n'
+    psh-rd rc=0 out='ok\nWROTE\nEND\n'
+    psh-cb rc=0 out='ok\nWROTE\nEND\n'
+  [file] DIVERGE
+    bash   rc=0 out='ok\nNOWRITE\nEND\n'
+    psh-rd rc=0 out='ok\nWROTE\nEND\n'
+    psh-cb rc=0 out='ok\nWROTE\nEND\n'
+========================================================================
+p6_redirect_write_no_errexit
+0000000    r   m       -   f       w   6   .   t   x   t  \n   i   f    
+0000020    :       >       >   (   f   a   l   s   e   ;       e   c   h
+0000040    o       A       >       w   6   .   t   x   t   )   ;       t
+0000060    h   e   n       e   c   h   o       o   k   ;       e   l   s
+0000100    e       e   c   h   o       F   :   $   ?   ;       f   i  \n
+0000120    f   o   r       i       i   n       1       2       3       4
+0000140        5       6       7       8       9       1   0   ;       d
+0000160    o       [       -   f       w   6   .   t   x   t       ]    
+0000200    &   &       b   r   e   a   k   ;       s   l   e   e   p    
+0000220    0   .   1   ;       d   o   n   e  \n   i   f       [       -
+0000240    f       w   6   .   t   x   t       ]   ;       t   h   e   n
+0000260        e   c   h   o       W   R   O   T   E   ;       e   l   s
+0000300    e       e   c   h   o       N   O   W   R   I   T   E   ;    
+0000320    f   i  \n   e   c   h   o       E   N   D  \n                
+0000334
+  [c] MATCH
+    bash   rc=0 out='ok\nWROTE\nEND\n'
+    psh-rd rc=0 out='ok\nWROTE\nEND\n'
+    psh-cb rc=0 out='ok\nWROTE\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='ok\nWROTE\nEND\n'
+    psh-rd rc=0 out='ok\nWROTE\nEND\n'
+    psh-cb rc=0 out='ok\nWROTE\nEND\n'
+========================================================================
+p7_argument_orlist
+0000000    s   e   t       -   e  \n   {       c   a   t       <   (   f
+0000020    a   l   s   e   ;       e   c   h   o       A   )   ;       }
+0000040        |   |       e   c   h   o       G   O   T       r   c   =
+0000060    $   ?  \n   e   c   h   o       E   N   D  \n                
+0000074
+  [c] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+    psh-cb rc=0 out='A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+    psh-cb rc=0 out='A\nEND\n'
+========================================================================
+p8_argument_eval_body
+0000000    s   e   t       -   e  \n   {       c   a   t       <   (   e
+0000020    v   a   l       '   f   a   l   s   e   ;       e   c   h   o
+0000040        A   '   )   ;       }       |   |       e   c   h   o    
+0000060    G   O   T       r   c   =   $   ?  \n   e   c   h   o       E
+0000100    N   D  \n                                                    
+0000103
+  [c] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+    psh-cb rc=0 out='A\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nEND\n'
+    psh-rd rc=0 out='A\nEND\n'
+    psh-cb rc=0 out='A\nEND\n'
+========================================================================
+p9_argument_ifcond
+0000000    s   e   t       -   e  \n   i   f       c   a   t       <   (
+0000020    f   a   l   s   e   ;       e   c   h   o       A   )   ;    
+0000040    t   h   e   n       e   c   h   o       T   ;       e   l   s
+0000060    e       e   c   h   o       G   O   T       r   c   =   $   ?
+0000100    ;       f   i  \n   e   c   h   o       E   N   D  \n        
+0000116
+  [c] MATCH
+    bash   rc=0 out='A\nT\nEND\n'
+    psh-rd rc=0 out='A\nT\nEND\n'
+    psh-cb rc=0 out='A\nT\nEND\n'
+  [file] MATCH
+    bash   rc=0 out='A\nT\nEND\n'
+    psh-rd rc=0 out='A\nT\nEND\n'
+    psh-cb rc=0 out='A\nT\nEND\n'
