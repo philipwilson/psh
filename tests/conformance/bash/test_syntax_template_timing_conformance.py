@@ -852,6 +852,60 @@ def test_interactive_dash_c_channel_disposition():
     assert bc.stdout == pc.stdout == "AFTERRC=2\n", (bc.stdout, pc.stdout)
 
 
+def test_function_member_channel_rule_is_a_declared_divergence():
+    """A FUNCTION-call pipeline member: bash applies the MAIN-SHELL channel
+    rule inside the forked member, psh applies the child rule.
+
+    `-c` channel: bash 127, psh 1. File and stdin: both 1, so the divergence
+    is the CHANNEL rule and nothing else. It shows up only for a member that
+    calls a FUNCTION — the brace-group and subshell member spellings give 1 in
+    every channel in BOTH shells (controls below).
+
+    DECLARED, NOT FIXED, and pinned because THE SLOT MOVED IT TWICE: at base
+    1b271d77 this shape did not abort at all (the function frame contained the
+    error and INFUNC printed), round 4 made it 2, and it is 1 now. An
+    unpinned behaviour delta is a bounce even when it is an improvement, and
+    this one is still short of bash.
+
+    WHY NOT FIXED HERE: psh's forked children deliberately do NOT use the
+    channel rule — `core/internal_errors.py#substitution_child_abort_status`
+    drops it precisely because a subshell, command substitution, backtick,
+    pipeline member or background job inside a `-c` shell exits 1 and not 127,
+    which five rounds of probing established and several pins now assert. bash
+    disagrees with itself here (its brace-group and subshell members answer 1
+    in `-c`, its function member answers 127), so matching it means teaching
+    psh's child policy a shape-dependent exception to a rule the rest of the
+    suite pins. That is a policy change, not a frame-outcome fix, and it
+    belongs to whoever owns the child-vs-main split.
+
+    Measured over bash 5.2.26, both parsers, chain-replayed at base 1b271d77,
+    round-4 f0cc466e and the slot tip (``tmp/r24-probes/r6b2.py``,
+    ``r6b4.py`` -> the ``s3``/``p12``/``k5``/``k10`` rows)."""
+    function_members = [
+        # a plain function call as the member
+        "f() { eval 'echo $(if)'; }\nset -e\n{ true | f; } || echo GOT rc=$?",
+        # the same function reached through an expansion
+        "f() { eval 'echo $(if)'; }\nQ=f\nset -e\n{ true | $Q; } || echo GOT rc=$?",
+        # a function whose BODY is itself a compound
+        "f() { { eval 'echo $(if)'; }; }\nset -e\n{ true | f; } || echo GOT rc=$?",
+    ]
+    for script in function_members:
+        b_c, p_c = _bash(script, "c"), _psh(script, "c")
+        assert b_c.stdout == "GOT rc=127\n", (script, b_c.stdout)
+        assert p_c.stdout == "GOT rc=1\n", (script, p_c.stdout)
+        # file and stdin AGREE at 1 — the divergence is the channel rule.
+        for channel in ("file", "stdin"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == "GOT rc=1\n", (script, channel,
+                                                          b.stdout, p.stdout)
+    # CONTROLS: the OTHER compound member spellings agree with bash in the
+    # `-c` channel too, which is what makes this specific to a function frame.
+    for member in ["{ eval 'echo $(if)'; }", "( eval 'echo $(if)' )"]:
+        script = "set -e\n{ true | %s; } || echo GOT rc=$?" % member
+        b, p = _bash(script, "c"), _psh(script, "c")
+        assert b.stdout == p.stdout == "GOT rc=1\n", (member, b.stdout, p.stdout)
+
+
 def test_static_check_spellings_dash_n_and_validate():
     """psh's ``-n`` matches bash's ``-n``; psh's ``--validate`` does not.
 
