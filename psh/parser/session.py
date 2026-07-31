@@ -62,11 +62,8 @@ if TYPE_CHECKING:
     from .parse_outcome import ParseOutcome
 
 from ..lexer import UnclosedQuoteError
-from ..utils import (
-    PendingHeredocQueue,
-    contains_heredoc,
-    open_heredoc_specs,
-)
+from ..utils import PendingHeredocQueue
+from ..utils.heredoc_detection import HeredocTermination
 from .parse_outcome import Incomplete as ParsedIncomplete
 from .parse_outcome import Invalid as ParsedInvalid
 from .recursive_descent.parser import Parser
@@ -293,30 +290,48 @@ class ParseSession:
                 Completeness.INCOMPLETE,
                 hint=ContinuationHint(ContinuationReason.LINE_CONTINUATION))
 
-        # 2. Open heredoc: following lines are body text for the pending
-        #    delimiters, NOT command text — don't show them to the parser.
-        if contains_heredoc(preview):
-            self._open_heredocs = PendingHeredocQueue()
-            for spec in open_heredoc_specs(preview):
-                self._open_heredocs.push(spec)
-            head = self._open_heredocs.head
-            if head is not None:
-                return SessionStep(
-                    Completeness.INCOMPLETE,
-                    hint=ContinuationHint(ContinuationReason.HEREDOC,
-                                          detail=head.cooked))
+        # 2. Lex ONCE for this fed line — the single heredoc grammar. The
+        #    result serves both the open-heredoc decision here and the trial
+        #    parse at step 4 (no second lex, and no second GRAMMAR).
+        unit, lex_error = self._lex_preview(preview)
 
-        # 3. A failed/unexpanded history reference: complete, unparsed.
+        # 3. Open heredoc: following lines are body text for the pending
+        #    delimiters, NOT command text — don't show them to the parser.
+        #    Pending-ness comes from the LEXER's own heredoc collector (an
+        #    entry still terminated by EOF at the end of the buffered text is
+        #    one whose terminator line has not arrived yet), never from a
+        #    second regex scan of the raw text. That scan read `echo \<<EOF`
+        #    as opening a heredoc on `EOF`, while the real lexer — correctly —
+        #    sees an escaped `<` plus an ordinary input redirection, so psh
+        #    dropped to PS2 and swallowed the next line as a phantom body
+        #    (reappraisal #22 MEDIUM-3; PTY-pinned in
+        #    tests/system/interactive/test_heredoc_detection_interactive_pty.py).
+        if unit is not None:
+            pending = _lexer_pending_heredocs(unit)
+            if pending:
+                self._open_heredocs = PendingHeredocQueue()
+                for spec in pending:
+                    self._open_heredocs.push(spec)
+                head = self._open_heredocs.head
+                if head is not None:
+                    return SessionStep(
+                        Completeness.INCOMPLETE,
+                        hint=ContinuationHint(ContinuationReason.HEREDOC,
+                                              detail=head.cooked))
+
+        # 4. A failed/unexpanded history reference: complete, unparsed.
         #    Execution re-runs the expansion with reporting.
         if self.inputs.detects_history_reference(preview):
             return self._complete(raw, preview)
 
-        # 4. The real oracle: tokenize and parse the preview into the honest
+        # 5. The real oracle: parse the tokens lexed at step 2 into the honest
         #    Complete | Incomplete | Invalid outcome sum (campaign S4). Only the
         #    LEXER layer still signals through exceptions (an unclosed quote /
-        #    other lexer SyntaxError raised before parsing).
+        #    other lexer SyntaxError raised before parsing) — that exception was
+        #    captured at step 2 and is re-raised here so the branches below stay
+        #    exactly where they were in the decision order.
         try:
-            outcome, tokens = self._trial_parse(preview)
+            outcome, tokens = self._trial_parse(preview, unit, lex_error)
         except UnclosedQuoteError as e:
             return SessionStep(
                 Completeness.INCOMPLETE,
@@ -351,23 +366,49 @@ class ParseSession:
 
     # === Internals ===
 
-    def _trial_parse(self, preview: str) -> "Tuple[ParseOutcome, Sequence[Any]]":
-        """Tokenize and parse ``preview``, returning ``(ParseOutcome, tokens)``.
+    def _lex_preview(self, preview: str) -> "Tuple[Optional[Any], Optional[Exception]]":
+        """Lex ``preview`` ONCE, returning ``(LexedUnit, None)`` or ``(None, exc)``.
 
-        Uses the injected heredoc-aware lex→alias seam (shared with execution
-        and analysis) but builds the recursive-descent ``Parser`` itself and
-        asks it for the typed ``Complete | Incomplete | Invalid`` outcome
-        (campaign S4): the completeness oracle relies on the ``Incomplete``
-        variant's open-construct trail and ``unclosed_expansion`` kind, which
-        the combinator parser does not compute — so the trial is recursive
-        descent REGARDLESS of the active parser (its AST is reused for execution
-        only when recursive descent is active too, decided by the caller). The
-        lexer may still raise ``UnclosedQuoteError``/``SyntaxError`` here;
-        ``feed`` catches those.
+        The single lex per fed non-body line. Its result answers BOTH questions
+        the engine asks of a line — "does this open a heredoc?" (step 2, via the
+        lexer's own heredoc collector) and "does this parse?" (step 5) — so
+        there is exactly one heredoc grammar and one tokenization.
+
+        A lexer error is CAPTURED rather than propagated: the open-heredoc
+        decision simply cannot be made for text that does not tokenize, and the
+        error must surface at its historical point in the decision order (after
+        the history-reference check), which :meth:`_trial_parse` re-raises it
+        at. Capturing also keeps the lex count at exactly one per fed line on
+        the unclosed-quote continuation path.
         """
-        tokens, heredocs = self.inputs.lex(preview, self.start_line)
+        try:
+            unit = self.inputs.lex(preview, self.start_line)
+        except (UnclosedQuoteError, SyntaxError) as e:
+            return None, e
         self.ops.lex_calls += 1
-        self.ops.tokens_lexed += len(tokens)
+        self.ops.tokens_lexed += len(unit[0])
+        return unit, None
+
+    def _trial_parse(self, preview: str, unit: "Optional[Any]",
+                     lex_error: "Optional[Exception]",
+                     ) -> "Tuple[ParseOutcome, Sequence[Any]]":
+        """Parse the tokens lexed at step 2, returning ``(ParseOutcome, tokens)``.
+
+        Builds the recursive-descent ``Parser`` and asks it for the typed
+        ``Complete | Incomplete | Invalid`` outcome (campaign S4): the
+        completeness oracle relies on the ``Incomplete`` variant's
+        open-construct trail and ``unclosed_expansion`` kind, which the
+        combinator parser does not compute — so the trial is recursive descent
+        REGARDLESS of the active parser (its AST is reused for execution only
+        when recursive descent is active too, decided by the caller).
+
+        Re-raises the lexer exception captured by :meth:`_lex_preview`; ``feed``
+        catches it exactly where it always did.
+        """
+        if lex_error is not None:
+            raise lex_error
+        assert unit is not None  # lex_error is None => unit is not None
+        tokens, heredocs = unit
         parser = Parser(list(tokens), source_text=preview,
                         line_offset=max(0, self.start_line - 1),
                         heredocs=heredocs,
@@ -409,6 +450,29 @@ class ParserDriver:
     def start_session(inputs: SessionInputs) -> ParseSession:
         """Begin an incremental completeness session over ``inputs``."""
         return ParseSession(inputs)
+
+
+def _lexer_pending_heredocs(unit: Any) -> "Tuple[Any, ...]":
+    """The heredocs still awaiting a terminator line, from LEXER EVENTS.
+
+    ``unit`` is the ``LexedUnit`` the injected lex seam returned. Its
+    ``heredocs`` map is the lexer's own heredoc collector output; an entry
+    whose termination is ``EOF`` is one whose terminator line had not arrived
+    by the end of the buffered text — i.e. still open. Entries are returned in
+    spec-ordinal order, which is source order, so the head-of-queue close
+    policy (H1/G1) sees the same order bash reads bodies in.
+
+    ``heredocs`` is ``None`` when the seam performed plain (non-heredoc-aware)
+    lexing, which it does only when the text contains no ``<<`` at all.
+    """
+    heredocs = unit[1]
+    if not heredocs:
+        return ()
+    return tuple(
+        entry.spec
+        for _, entry in sorted(heredocs.items())
+        if entry.collected.termination is HeredocTermination.EOF
+    )
 
 
 def _strip_trailing_separators(raw: str) -> str:

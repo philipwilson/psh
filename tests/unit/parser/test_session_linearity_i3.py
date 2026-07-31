@@ -81,6 +81,39 @@ def test_heredoc_body_line_is_o1(n):
     assert ops.heredoc_body_lines == n + 1
 
 
+@pytest.mark.parametrize("n", [50, 100, 200])
+def test_heredoc_body_line_costs_no_lex(n):
+    """Body lines cost no LEX either — the other half of the O(1) claim.
+
+    Slot 2.5 moved the open-heredoc decision off a regex pre-scan and onto the
+    real lexer, so the heredoc-OPENING line now lexes where it previously
+    returned before lexing. That is a declared CONSTANT (+1 lex per opening
+    line), pinned by ``test_heredoc_opening_line_costs_exactly_one_extra_lex``
+    below — not a per-body-line cost. This test is what stops the constant from
+    silently becoming O(k): whatever the body size, the lex count is the same.
+    """
+    ops = _feed_heredoc_body(Shell(), n)
+    assert ops.lex_calls == _feed_heredoc_body(Shell(), 50).lex_calls
+    assert ops.tokens_lexed == _feed_heredoc_body(Shell(), 50).tokens_lexed
+
+
+def test_heredoc_opening_line_costs_exactly_one_extra_lex():
+    """The DECLARED constant of the 2.5 one-grammar fix, pinned explicitly.
+
+    Two lexes for a whole heredoc command: one for the opening line (the
+    lexer-event heredoc decision) and one for the final trial parse after the
+    terminator. The N body lines in between cost none. Before 2.5 the opening
+    line answered from the regex scanner and never lexed, so this was 1 — the
+    +1 is the price of having a single heredoc grammar, and it is a constant.
+    """
+    assert _feed_heredoc_body(Shell(), 0).lex_calls == 2
+    assert _feed_heredoc_body(Shell(), 200).lex_calls == 2
+    # A plain command still costs exactly one lex — the extra lex belongs to
+    # the heredoc opening, not to every fed line.
+    assert _feed_multi_command(Shell(), 1).lex_calls == 1
+    assert _feed_multi_command(Shell(), 10).lex_calls == 10
+
+
 def test_heredoc_body_parse_work_is_constant_across_sizes():
     small = _feed_heredoc_body(Shell(), 100).tokens_parsed
     large = _feed_heredoc_body(Shell(), 400).tokens_parsed

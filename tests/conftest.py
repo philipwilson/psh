@@ -577,7 +577,15 @@ def pytest_runtest_setup(item):
                 # (deterministic, ~8s), and admitted for a specific reason: the
                 # facts it pins exist ONLY at a terminal, so an opt-in pin for
                 # them is a pin that never runs.
-                or "test_substitution_abort_interactive_pty" in str(item.fspath)):
+                or "test_substitution_abort_interactive_pty" in str(item.fspath)
+                # Slot 2.5: heredoc-vs-not detection at a terminal. Admitted on
+                # the same terms and for the same reason: the MEDIUM-3
+                # divergence is LATENT in -c/script/stdin (66/66 rows identical
+                # to bash at base) and observable ONLY at a PTY, so an opt-in
+                # pin for it is a pin that never runs. It races MARKER against
+                # PS2 instead of waiting out timeouts, so it stays
+                # deterministic and quick.
+                or "test_heredoc_detection_interactive_pty" in str(item.fspath)):
             return
         if not item.config.getoption("--run-interactive", default=False):
             pytest.skip("Interactive tests skipped (use --run-interactive to run)")

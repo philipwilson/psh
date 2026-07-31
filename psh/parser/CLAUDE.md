@@ -259,6 +259,31 @@ invariants (heredoc/multi-command LINEAR, the residual O(k²) by doubling-ratio)
 are pinned in `tests/unit/parser/test_session_linearity_i3.py`; the one-engine
 chokepoint + synthetic offender in `tests/unit/tooling/test_session_engine_guard_i3.py`.
 
+**ONE heredoc grammar — the session asks the LEXER (remediation 2.5).** Whether
+a fed line opens a here-document is decided from canonical lexer events, never
+from a second scan of the raw text: `session.py#_lexer_pending_heredocs` reads
+the lexer's own heredoc collector through the injected lex seam (an entry still
+terminated by `HeredocTermination.EOF` at the end of the buffered text is one
+whose terminator line has not arrived). `feed` therefore lexes exactly ONCE per
+non-body line and that single result answers both the heredoc question and the
+trial parse. The regex scanner in `utils/heredoc_detection.py` is no longer a
+second opinion on heredoc-ness for this path; what the module still owns — and
+what the lexer shares with it — is the delimiter/terminator ALGEBRA
+(`unquote_heredoc_delimiter`, `heredoc_terminator_matches`, `HeredocSpec`,
+`PendingHeredocQueue`).
+
+That split matters because the two grammars DISAGREED: on `echo \<<EOF` the
+regex reported a pending heredoc on `EOF` while the real lexer produced an
+escaped `<` plus an ordinary input redirection — so psh dropped to PS2 and
+swallowed the next physical line as a phantom body (#22 MEDIUM-3). The
+divergence was observable only at a terminal, hence a PTY pin
+(`tests/system/interactive/test_heredoc_detection_interactive_pty.py`); the
+one-grammar property itself is pinned over a generated corpus by
+`tests/unit/parser/test_session_lexer_heredoc_equivalence.py`. Deriving the
+answer from the lexer costs one extra lex on a heredoc-OPENING line — a
+constant, pinned as such in `test_session_linearity_i3.py`; body lines still
+cost no lex and no parse.
+
 Parse errors: `consume()` raises a `ParseError` on the first unexpected token
 (no error-collection mode). `ParseError` has one diagnostic interface —
 `error.summary` (short reason), `error.render()` (rich), and `str(error)`
