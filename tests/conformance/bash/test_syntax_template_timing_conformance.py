@@ -1314,11 +1314,17 @@ def test_redirect_procsub_suppression_is_a_declared_divergence():
     # which does not cover a procsub child in every shell — an earlier version
     # of this probe read a LEFTOVER file and reported a parser split that was
     # not there.
-    write = ("rm -f pinw.txt\nset -e\n"
-             "if : > >(false; echo A > pinw.txt); then echo ok; else echo F:$?; fi\n"
-             "for i in 1 2 3 4 5 6 7 8 9 10; do [ -f pinw.txt ] && break;"
+    # The observation file lives in a PRIVATE temp dir the script makes and
+    # removes: the helpers run with cwd=<repo root>, so a relative name here
+    # would drop a file in the working tree (it did, once) and would collide
+    # between xdist workers.
+    write = ("d=$(mktemp -d)\nset -e\n"
+             "if : > >(false; echo A > \"$d/w.txt\"); then echo ok;"
+             " else echo F:$?; fi\n"
+             "for i in 1 2 3 4 5 6 7 8 9 10; do [ -f \"$d/w.txt\" ] && break;"
              " sleep 0.1; done\n"
-             "if [ -f pinw.txt ]; then echo WROTE; else echo NOWRITE; fi\necho END")
+             "if [ -f \"$d/w.txt\" ]; then echo WROTE; else echo NOWRITE; fi\n"
+             "rm -rf \"$d\"\necho END")
     for channel in ("c", "file"):
         b, p = _bash(write, channel), _psh(write, channel)
         assert b.stdout == "ok\nNOWRITE\nEND\n", (channel, b.stdout)
