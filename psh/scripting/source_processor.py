@@ -106,7 +106,8 @@ class SourceProcessor(ScriptComponent):
             # core/internal_errors.py#substitution_abort_status. Falling through
             # to execute_exit_trap() below is deliberate: bash runs the EXIT
             # trap here and it observes this status.
-            exit_code = substitution_abort_status(self.state, exc.nested)
+            exit_code = substitution_abort_status(
+                self.state, exc.nested, exc.errexit_suppressed)
             self.state.last_exit_code = exit_code
         self.shell.trap_manager.execute_exit_trap()
         return exit_code
@@ -305,9 +306,14 @@ class SourceProcessor(ScriptComponent):
         instead — the shell is already exiting, so bash reports the diagnostic
         and changes nothing.
 
-        A no-op when the shell is INTERACTIVE: bash's interactive loop reports
-        the diagnostic and carries on (a sourced file even resumes at its own
-        next line), so the REPL must never die on ``echo $(if)``. The test is
+        A no-op when ``state.is_script_mode`` is FALSE — which is the
+        interactive FAMILY, not just a live REPL: ``-i -c`` turns it off too,
+        so the consumer does not fire there either (probed: bash does not abort
+        an interactive frame either, so the eval shape MATCHES; only the direct
+        shape's status differs, pinned as a declared divergence). bash's
+        interactive loop reports the diagnostic and carries on (a sourced file
+        even resumes at its own next line), so the REPL must not die on
+        ``echo $(if)``. The test is
         ``state.is_script_mode`` — the same predicate ``_posix_syntax_abort``
         uses, and deliberately NOT the immediate input source's
         ``is_interactive()``, which is False for an ``eval`` string even inside
@@ -323,7 +329,32 @@ class SourceProcessor(ScriptComponent):
             return
         if not self.state.is_script_mode:
             return
-        raise SubstitutionSyntaxAbort(nested=nested)
+        raise SubstitutionSyntaxAbort(nested=nested,
+                                      errexit_suppressed=self._errexit_suppressed())
+
+    def _errexit_suppressed(self) -> bool:
+        """Is errexit SUPPRESSED at this exact moment (``||``, an ``if``/
+        ``while`` condition, ``!``)?
+
+        Read from the live executor context's suppression counter, which is
+        already the TOTAL depth: it is seeded from the fork site and
+        incremented by contexts entered inside the child. Read HERE, at raise
+        time, because the counter unwinds as the exception propagates — a
+        later read at the fork boundary is blind to in-child contexts and
+        stale for the rest.
+
+        NO LIVE EXECUTOR is a LEGITIMATE state, not a wiring bug: the error can
+        be raised from the outermost READER parse, before any command has begun
+        executing (``psh -c 'echo $(fi)'`` has no executor yet). No executor
+        means no suppressing context can be open, so False is the correct
+        answer — not a defensive fallback. The check is explicit rather than a
+        ``getattr`` default so that a genuinely missing ``context`` attribute
+        would raise instead of silently reading as "unsuppressed".
+        """
+        executor = getattr(self.shell, '_current_executor', None)
+        if executor is None:
+            return False
+        return bool(executor.context.errexit_suppress)
 
     def _posix_syntax_abort(self, input_source) -> None:
         """POSIX-mode fatal SYNTAX error (bash 5.2, probe tmp/posixexit).

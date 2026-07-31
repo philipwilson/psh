@@ -128,7 +128,8 @@ def fatal_expansion_status(state: 'ShellState', exc: BaseException, *,
     raise TopLevelAbort(1, errexit_immune=True)
 
 
-def substitution_abort_status(state: 'ShellState', nested: bool) -> int:
+def substitution_abort_status(state: 'ShellState', nested: bool,
+                              errexit_suppressed: bool) -> int:
     """The ONE status mapping for a substitution-origin shell abort.
 
     Consumes ``SubstitutionSyntaxAbort`` at the outermost boundary
@@ -142,11 +143,12 @@ def substitution_abort_status(state: 'ShellState', nested: bool) -> int:
 
     * ``set -e`` active -> **2**, in every channel and for both the direct and
       the eval/source-nested shapes. errexit is checked FIRST because it wins
-      over the ``-c`` rule (``set -e`` under ``-c`` gives 2, not 127). NOTE this
-      MAIN-shell branch tests the raw flag; a suppressing context (``||``, an
-      ``if`` condition) makes bash use the channel status instead, which psh
-      does not yet model here — a declared, carried divergence. The CHILD half
-      (:func:`substitution_child_abort_status`) does test effective errexit.
+      over the ``-c`` rule (``set -e`` under ``-c`` gives 2, not 127). It is
+      EFFECTIVE errexit: in a suppressing context (``||``, ``&&`` non-final, an
+      ``if``/``while`` condition, ``!``) bash uses the ordinary channel status
+      instead, so the flag alone is not enough. The suppression is read from
+      the stamp the error carries (see
+      ``core/exceptions.py#SubstitutionSyntaxAbort``), never re-derived here.
     * ``-c`` (``command_mode``) -> **127**, at any nesting depth and for either
       error kind: the direct parse, or an ``eval``/``source``/function/trap
       frame inside the ``-c`` string, all give 127 — provided both of
@@ -163,7 +165,7 @@ def substitution_abort_status(state: 'ShellState', nested: bool) -> int:
     rule (a subshell/cmdsub/pipeline member inside a ``-c`` shell exits 1, not
     127) but keeps the errexit branch above.
     """
-    if state.options.get('errexit', False):
+    if state.options.get('errexit', False) and not errexit_suppressed:
         return 2
     if state.options.get('command_mode'):
         return 127
@@ -171,7 +173,7 @@ def substitution_abort_status(state: 'ShellState', nested: bool) -> int:
 
 
 def substitution_child_abort_status(state: 'ShellState',
-                                    errexit_suppressed: bool = False) -> int:
+                                    errexit_suppressed: bool) -> int:
     """The FORKED-CHILD half of :func:`substitution_abort_status`.
 
     A forked child does NOT use the channel rule — it exits 1 even inside a

@@ -94,15 +94,17 @@ class TestMapChildException:
         # flag. With the flag set but the fork inside a suppressing context
         # (`( … ) || recover`, an if/while condition, `!`) bash leaves the
         # child at 1, so the suppression must beat the flag.
+        # The suppression travels ON THE ERROR (stamped at raise), so the
+        # taxonomy reads it from the exception rather than from an argument —
+        # no caller can pass a wrong or defaulted value.
         errexit = _StubState(errexit=True)
         assert map_child_exception(
-            SubstitutionSyntaxAbort(), errexit, errexit_suppressed=True) == 1
+            SubstitutionSyntaxAbort(errexit_suppressed=True), errexit) == 1
         assert map_child_exception(
-            SubstitutionSyntaxAbort(), errexit, errexit_suppressed=False) == 2
+            SubstitutionSyntaxAbort(errexit_suppressed=False), errexit) == 2
         # Suppression without errexit changes nothing (already 1).
-        plain = _StubState()
         assert map_child_exception(
-            SubstitutionSyntaxAbort(), plain, errexit_suppressed=True) == 1
+            SubstitutionSyntaxAbort(errexit_suppressed=True), _StubState()) == 1
 
     def test_taxonomy_tuple_is_the_six_families(self):
         assert set(CHILD_EXIT_EXCEPTIONS) == {

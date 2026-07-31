@@ -138,8 +138,10 @@ class SubstitutionSyntaxAbort(BaseException):
       abort.
     * FORK boundaries DO contain it, because they are separate processes: a
       subshell, command/process substitution, a pipeline member and a
-      background job all die with status 1 while the parent continues. That
-      falls out of ``executor/child_policy.py#CHILD_EXIT_EXCEPTIONS``.
+      background job all die while the parent continues — with status 1, or 2
+      when EFFECTIVE errexit applies in the child. That falls out of
+      ``executor/child_policy.py#CHILD_EXIT_EXCEPTIONS`` and
+      ``core/internal_errors.py#substitution_child_abort_status``.
     * The EXIT trap still runs and observes the abort status, because the one
       consumption point is ``scripting/source_processor.py#execute_as_main``,
       which fires the trap after recovering the status.
@@ -153,9 +155,19 @@ class SubstitutionSyntaxAbort(BaseException):
     (False). It selects the status, which is otherwise channel-dependent; the
     whole mapping lives in ``core/internal_errors.py#substitution_abort_status``
     rather than at the raise site, which cannot know the outermost channel.
+
+    ``errexit_suppressed`` is STAMPED AT CONSTRUCTION from the live executor
+    context's suppression depth, because the fact must travel WITH the error.
+    A suppressing context entered INSIDE a forked child (``( set -e; cmd ||
+    recover )``) is invisible at the fork boundary, and the counter unwinds as
+    the exception propagates, so any later read is either blind or stale. The
+    context's counter is already the TOTAL depth — seeded from the fork site
+    and incremented by in-child contexts — so nothing needs composing here.
+    Consumers READ THIS FIELD; no consumer re-derives it.
     """
-    def __init__(self, nested: bool = False):
+    def __init__(self, nested: bool = False, errexit_suppressed: bool = False):
         self.nested = nested
+        self.errexit_suppressed = errexit_suppressed
         super().__init__()
 
 

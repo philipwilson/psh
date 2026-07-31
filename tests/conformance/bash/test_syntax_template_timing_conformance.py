@@ -629,29 +629,41 @@ def test_fork_times_midscript_trap_action_status():
     assert b.stdout == "GOT rc=2\n" and p.stdout == "GOT rc=1\n", (b.stdout, p.stdout)
 
 
-def test_main_shell_suppressed_errexit_status_is_carried():
-    """DECLARED + CARRIED (round 4): in the MAIN shell, a suppressing context
-    (``||``, an ``if`` condition) leaves psh at 2 where bash uses its ordinary
-    channel status (127 under ``-c``, 1 for a file).
+def test_main_shell_suppressed_errexit_status_matches_bash():
+    """CLOSED (round 5): in the MAIN shell a suppressing context (``||``,
+    ``&&`` non-final, an ``if``/``while`` condition, ``!``) now yields bash's
+    ordinary CHANNEL status rather than the errexit 2.
 
-    RECORD CORRECTION (round 5): round 4 described this family as
-    "base-identical / not mine". MEASURED FALSE against a base worktree —
-    ``set -e; eval 'echo $(fi)' || echo GOT`` at BASE continues with rc 0 and
-    prints ``GOT rc=2`` / ``AFTER rc=0``, while at tip it ABORTS with rc 2 and
-    no output. The slot MOVED this observable; what is pre-existing is only
-    that psh's status here never matched bash's. The assertions below were
-    always right; the surrounding prose understated the scope.
+    FLIP DECLARED, not silent: rounds 4-5 pinned this as a DIVERGENCE (psh 2 vs
+    bash 127/-c, 1/file) and carried it to a successor. Extending the
+    stamp-at-raise to ``substitution_abort_status`` closed it in-slot, so the
+    row is flipped to EQUALITY here and the carry is WITHDRAWN. errexit is
+    EFFECTIVE errexit at the main shell too, exactly as in the child half.
 
-    Fixing it means applying the same effective-errexit question to the MAIN
-    policy at every frame, which is its own bounded piece of work. Carried to
-    the successor queue; the child-side plumbing from this slot is the natural
-    starting point."""
+    Matrix behind this row: 6 suppression contexts x eval/direct x both error
+    kinds x 3 channels x both parsers = 144 rows, 0 mismatches.
+
+    RECORD CORRECTION preserved through the flip (round 4 -> 5): round 4
+    described this family as "base-identical / not mine". That was MEASURED
+    FALSE against a base worktree at 1b271d77 — BASE continued with rc 0 and
+    printed ``GOT rc=2`` / ``AFTER rc=0``, while the round-4 tip ABORTED with
+    rc 2 and no output, so the slot HAD moved the observable. What was
+    genuinely pre-existing is only that psh's status never matched bash's.
+    Kept here because the flip withdrew the carry row that used to hold this
+    history, and a corrected record must outlive the thing it corrects."""
     for script in ("set -e\neval 'echo $(fi)' || echo GOT",
-                   "set -e\nif eval 'echo $(fi)'; then echo T; fi"):
-        b_c, p_c = _bash(script, "c"), _psh(script, "c")
-        assert b_c.returncode == 127 and p_c.returncode == 2, (script, b_c, p_c)
-        b_f, p_f = _bash(script, "file"), _psh(script, "file")
-        assert b_f.returncode == 1 and p_f.returncode == 2, (script, b_f, p_f)
+                   "set -e\nif eval 'echo $(fi)'; then echo T; fi",
+                   "set -e\n! eval 'echo $(fi)'",
+                   "set -e\neval 'echo $(fi)' && echo AND"):
+        for channel in ("c", "file", "stdin"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.returncode == p.returncode, (script, channel, b, p)
+            assert b.stdout == p.stdout, (script, channel, b.stdout, p.stdout)
+    # CONTROL: UNsuppressed errexit still uses the errexit status 2.
+    plain = "set -e\necho B\neval 'echo $(fi)'\necho AFTER"
+    for channel in ("c", "file", "stdin"):
+        b, p = _bash(plain, channel), _psh(plain, channel)
+        assert b.returncode == p.returncode == 2, (channel, b, p)
 
 
 def test_unclosed_cmdsub_classified_bodies_are_carried(tmp_path):
@@ -740,17 +752,15 @@ def test_interactive_dash_c_channel_disposition():
     Only the status differs, and only on the direct shape. Interactivity
     semantics are deliberately NOT touched to close it (out of scope); pinned
     so the disposition is explicit rather than incidental."""
-    import subprocess
-    import sys as _sys
     ev = "echo B; eval 'echo $(fi)'; echo AFTER"
     direct = "echo B; echo $(fi); echo AFTER"
-
-    def run(argv, script):
-        return subprocess.run(argv + ["-i", "-c", script],
-                              capture_output=True, text=True, timeout=30)
-    b_ev, p_ev = run([_ORACLE.path], ev), run([_sys.executable, "-m", "psh"], ev)
+    # Routed through the typed runners, not raw subprocess: the oracle-bearing
+    # module ratchet requires every launch to keep the is_comparable net.
+    b_ev = run_bash(["-i", "-c", ev], cwd=_ROOT, timeout=30)
+    p_ev = run_psh(["-i", "-c", ev], cwd=_ROOT, timeout=30)
     assert b_ev.returncode == p_ev.returncode == 0, (b_ev, p_ev)
     assert b_ev.stdout == p_ev.stdout == "B\nAFTER\n", (b_ev.stdout, p_ev.stdout)
-    b_d, p_d = run([_ORACLE.path], direct), run([_sys.executable, "-m", "psh"], direct)
+    b_d = run_bash(["-i", "-c", direct], cwd=_ROOT, timeout=30)
+    p_d = run_psh(["-i", "-c", direct], cwd=_ROOT, timeout=30)
     assert b_d.stdout == p_d.stdout == "", (b_d.stdout, p_d.stdout)
     assert b_d.returncode == 1 and p_d.returncode == 2, (b_d, p_d)

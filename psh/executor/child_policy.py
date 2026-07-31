@@ -64,8 +64,7 @@ CHILD_EXIT_EXCEPTIONS = (
 )
 
 
-def map_child_exception(exc: BaseException, state: 'ShellState',
-                        errexit_suppressed: bool = False) -> int:
+def map_child_exception(exc: BaseException, state: 'ShellState') -> int:
     """Map a control-flow / exit exception at a forked child's top to the
     child's exit code — the ONE taxonomy every fork site shares.
 
@@ -111,7 +110,7 @@ def map_child_exception(exc: BaseException, state: 'ShellState',
         code = exc.code
         return code if isinstance(code, int) else (0 if code is None else 1)
     if isinstance(exc, SubstitutionSyntaxAbort):
-        return substitution_child_abort_status(state, errexit_suppressed)
+        return substitution_child_abort_status(state, exc.errexit_suppressed)
     raise exc
 
 
@@ -308,9 +307,7 @@ def run_background_shell_child(shell: 'Shell',
     except CHILD_EXIT_EXCEPTIONS as e:
         # A control-flow/exit exception at the body's top: subshell boundary,
         # so break/return cannot cross the fork; map via the shared taxonomy.
-        exit_code = map_child_exception(
-            e, shell.state,
-            errexit_suppressed=bool(getattr(shell, '_errexit_suppress_seed', 0)))
+        exit_code = map_child_exception(e, shell.state)
         sync_child_status_for_exit_trap(shell.state, e, exit_code)
     finally:
         # A managed-signal trap queued while the body ran (e.g. after the
@@ -401,9 +398,7 @@ def run_child_body(child_shell: 'Shell',
     try:
         exit_code = body(child_shell)
     except CHILD_EXIT_EXCEPTIONS as e:
-        exit_code = map_child_exception(
-            e, child_shell.state,
-            errexit_suppressed=bool(errexit_suppress))
+        exit_code = map_child_exception(e, child_shell.state)
         sync_child_status_for_exit_trap(child_shell.state, e, exit_code)
 
     try:
