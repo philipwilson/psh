@@ -771,6 +771,18 @@ class CommandExecutor:
         self.shell.job_manager.note_simple_command(
             cmd_name if resolved.dispatch_kind in _BUILTIN_DISPATCH_KINDS
             else None)
+        # ONE-SHOT consumption of a pipeline member's DEFERRED errexit
+        # suppression (context.py#errexit_suppress_deferred). The deferral is
+        # bound to the member's OWN resolved command: bash re-applies an
+        # ignored `set -e` through a DIRECTLY-INVOKED function body, and
+        # nothing else. So a FUNCTION dispatch leaves it for _function_frame to
+        # apply, and EVERY other dispatch discards it here — which is what
+        # keeps a function reached through an `eval`/`.` TEXT (`{ true | eval
+        # 'f'; }`) severed, exactly like the eval itself. Discarding on a
+        # non-function dispatch is also what makes it one-shot: it cannot
+        # survive into anything the member starts.
+        if resolved.dispatch_kind is not DispatchKind.FUNCTION:
+            context.errexit_suppress_deferred = 0
         return self._invoke_resolution(
             resolved, cmd_name, args, node, context, invocation)
 

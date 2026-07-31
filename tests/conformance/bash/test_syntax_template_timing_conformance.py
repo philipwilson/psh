@@ -294,9 +294,18 @@ def test_eval_frame_fatality_status_is_channel_dependent():
 
 def test_substitution_fatality_is_contained_by_forks():
     """A FORK contains the fatality (it is an ``exit`` of that process): the
-    child dies with 1 and the parent runs on — in every channel, including
-    ``-c`` where the main shell itself would have used 127. Non-fork frames do
-    NOT contain it (pinned above), so this is the model's other half."""
+    child dies and the parent runs on — in every channel, including ``-c``
+    where the main shell itself would have used 127. Non-fork frames do NOT
+    contain it (pinned above), so this is the model's other half.
+
+    RECORD CORRECTION (rounds 5-6 flagged, round 7 fixed): this docstring used
+    to say "the child dies with 1 … in every channel". The STATUS half of that
+    was falsified by the tree — with EFFECTIVE errexit the child dies with 2,
+    which this file's own ``test_substitution_fatality_status_under_errexit_is_2``
+    pins. The rows below carry no ``set -e``, so the TEST stayed green while
+    the PROSE was false; it survived two verification rounds for exactly that
+    reason. What is channel-independent is the CONTAINMENT and the absence of
+    the 127 channel rule — not a single constant."""
     for channel in ("c", "file", "stdin"):
         for script in ("( eval 'echo $(if)' ); echo AFTER rc=$?",
                        "x=$(eval 'echo $(if)'); echo AFTER rc=$?",
@@ -1018,12 +1027,169 @@ def test_function_member_channel_rule_is_a_declared_divergence():
             b, p = _bash(script, channel), _psh(script, channel)
             assert b.stdout == p.stdout == "GOT rc=1\n", (script, channel,
                                                           b.stdout, p.stdout)
+    # The BACKGROUND route shows the same leak, so the divergence follows the
+    # FUNCTION FRAME rather than the pipeline: `{ f & } || true` leaves the
+    # child at 127 in bash and 1 in psh, while file/stdin agree at 1.
+    bg = ("f() { eval 'echo $(if)'; }\nset -e\n{ f & } || true\np=$!\n"
+          "if wait $p; then echo child=0; else echo child=$?; fi")
+    b_bg, p_bg = _bash(bg, "c"), _psh(bg, "c")
+    assert b_bg.stdout == "child=127\n", b_bg.stdout
+    assert p_bg.stdout == "child=1\n", p_bg.stdout
+    for channel in ("file", "stdin"):
+        b, p = _bash(bg, channel), _psh(bg, channel)
+        assert b.stdout == p.stdout == "child=1\n", (channel, b.stdout, p.stdout)
+
     # CONTROLS: the OTHER compound member spellings agree with bash in the
     # `-c` channel too, which is what makes this specific to a function frame.
     for member in ["{ eval 'echo $(if)'; }", "( eval 'echo $(if)' )"]:
         script = "set -e\n{ true | %s; } || echo GOT rc=$?" % member
         b, p = _bash(script, "c"), _psh(script, "c")
         assert b.stdout == p.stdout == "GOT rc=1\n", (member, b.stdout, p.stdout)
+
+
+def test_background_fork_severing_matches_bash():
+    """The severing rule at the BACKGROUND route: a backgrounded BARE SIMPLE
+    command severs the enclosing list's errexit suppression; every background
+    spelling that introduces a body carries it.
+
+    Same rule, same sentence, different fork site as
+    ``test_pipeline_member_suppression_matches_bash`` — bash's ignored
+    ``set -e`` reaches through a COMPOUND body or a directly-invoked FUNCTION
+    body and through nothing else. Round 6 implemented it for pipeline members
+    only; these rows are the background half, and they are pinned TOGETHER with
+    the member rows so a future change cannot satisfy one route by breaking the
+    other (which is precisely how this slot spent rounds 4 through 6).
+
+    The child's status is read through ``wait``, so each row observes the
+    CHILD, not the backgrounding command's own 0.
+
+    RED-ON-d64a3294 for the bare-simple rows (they answered 1); the and-or and
+    loop rows were 2 there because a widened signature's other caller
+    (``core.py#_execute_background_list``) still took the default seed. Chain
+    and per-row evidence: ``tmp/r24-probes/r7a.py`` -> ``r7a-*.txt``."""
+    def child_status(script, channel):
+        return _psh(script, channel), _bash(script, channel)
+
+    wait_tail = "\np=$!\nif wait $p; then echo child=0; else echo child=$?; fi"
+    # (script body, expected child status) — SEVERING rows: bare simple.
+    severing = [
+        "set -e\n{ eval 'echo $(if)' & } || true",
+        "set -e\n! { eval 'echo $(if)' & true; }",
+        "set -e\nif { eval 'echo $(if)' & true; }; then :; fi",
+        "set -e\n{ eval 'echo $(fi)' & } || true",
+    ]
+    for body in severing:
+        script = body + wait_tail
+        for channel in ("c", "file"):
+            p_, b_ = child_status(script, channel)
+            assert b_.stdout == "child=2\n", (script, channel, b_.stdout)
+            assert p_.stdout == "child=2\n", (script, channel, p_.stdout)
+    # CARRYING rows: every background spelling that introduces a body.
+    carrying = [
+        "set -e\n{ ( eval 'echo $(if)' ) & } || true",
+        "set -e\n{ { eval 'echo $(if)'; } & } || true",
+        "set -e\n{ : && eval 'echo $(if)' & } || true",
+        "set -e\n{ for i in 1; do eval 'echo $(fi)'; done & } || true",
+    ]
+    for body in carrying:
+        script = body + wait_tail
+        for channel in ("c", "file"):
+            p_, b_ = child_status(script, channel)
+            assert b_.stdout == "child=1\n", (script, channel, b_.stdout)
+            assert p_.stdout == "child=1\n", (script, channel, p_.stdout)
+    # CONTROL: unsuppressed, the bare-simple child is 2 in both shells anyway,
+    # so the severing rows above are about the SUPPRESSION, not the route.
+    ctl = "set -e\neval 'echo $(if)' &" + wait_tail
+    p_, b_ = child_status(ctl, "c")
+    assert b_.stdout == p_.stdout == "child=2\n", (b_.stdout, p_.stdout)
+
+
+def test_deferred_suppression_is_one_shot():
+    """A pipeline member's deferred suppression is bound to the member's OWN
+    resolved command: a function reached through the member's ``eval``/``.``
+    TEXT does NOT get it back.
+
+    The deferral exists so that `{ true | f; }` — where the member IS the
+    function — keeps bash's behaviour of reaching through a function body. It
+    must not survive into anything the member merely STARTS: bash severs
+    `{ true | eval 'f'; }` exactly as it severs `{ true | eval 'echo $(if)'; }`,
+    because the member's own command is the eval, not the function.
+
+    RED-ON-d64a3294: round 6 re-applied the deferral at ANY function-body entry
+    inside the member, so all five rows below answered 1 where bash and the
+    wave base answer 2. Evidence ``tmp/r24-probes/r7a.py`` rows o1-o7."""
+    rows = [
+        "f() { eval 'echo $(if)'; }\nset -e\n"
+        "{ true | eval 'f'; } || echo GOT rc=$?",
+        "f() { eval 'echo $(fi)'; }\nset -e\n"
+        "{ true | eval 'f'; } || echo GOT rc=$?",
+        "f() { eval 'echo $(if)'; }\nset -e\n"
+        "if true | eval 'f'; then echo T; else echo GOT rc=$?; fi",
+        # the function reached through an EXPANSION inside the eval'd text
+        "f() { eval 'echo $(if)'; }\nQ=f\nset -e\n"
+        "{ true | eval '$Q'; } || echo GOT rc=$?",
+    ]
+    for script in rows:
+        for channel in ("c", "file", "stdin"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout, (script, channel, b.stdout, p.stdout)
+            assert "rc=2" in p.stdout, (script, channel, p.stdout)
+    # CONTROL: the member IS the function -> the deferral DOES apply (file and
+    # stdin; the -c row is the declared channel divergence pinned separately).
+    direct = "f() { eval 'echo $(if)'; }\nset -e\n{ true | f; } || echo GOT rc=$?"
+    for channel in ("file", "stdin"):
+        b, p = _bash(direct, channel), _psh(direct, channel)
+        assert b.stdout == p.stdout == "GOT rc=1\n", (channel, b.stdout, p.stdout)
+
+
+def test_ordinary_errexit_co_movements_are_declared():
+    """DECLARED IMPROVEMENTS: the severing work also moved ORDINARY errexit —
+    no substitution error anywhere — toward bash, in three families.
+
+    They are pinned because an unpinned improvement is indistinguishable from
+    an accident, and because the existing suppression pins' controls (a POSIX
+    special builtin, a plain failing member) are precisely the shapes that do
+    NOT move: a control set that only contains unmoved shapes conceals the
+    movement it was meant to bound. These rows are the ones that DO move,
+    placed beside them.
+
+    Base 1b271d77 differed from bash on every row below; this tip matches."""
+    rows = [
+        # (script, shared expected stdout)
+        # 1. a failing command inside a MEMBER's eval'd / sourced text
+        ("set -e\n{ true | eval 'false; echo A'; } || echo GOT rc=$?\necho END",
+         "GOT rc=1\nEND\n"),
+        ("set -e\nif true | eval 'false; echo A'; then echo T;"
+         " else echo GOT rc=$?; fi\necho END", "GOT rc=1\nEND\n"),
+        # 2. a BACKGROUND SUBSHELL in a suppressing context (it CARRIES the
+        #    suppression now, so the body runs on)
+        ("set -e\n{ ( false; echo A ) & wait $!; } || echo GOT rc=$?\necho END",
+         "A\nEND\n"),
+        ("set -e\nif { ( false; echo A ) & wait $!; }; then echo T;"
+         " else echo GOT rc=$?; fi\necho END", "A\nT\nEND\n"),
+    ]
+    for script, expected in rows:
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == expected, (script, channel,
+                                                      b.stdout, p.stdout)
+    # 3. a backgrounded BARE SIMPLE command SEVERS, so its own `false` fires
+    #    errexit and the child dies 1 where base ran on with 0.
+    bg = ("set -e\n{ eval 'false; echo A' & } || true\np=$!\n"
+          "if wait $p; then echo child=0; else echo child=$?; fi")
+    for channel in ("c", "file"):
+        b, p = _bash(bg, channel), _psh(bg, channel)
+        assert b.stdout == p.stdout == "child=1\n", (channel, b.stdout, p.stdout)
+    # CONTROLS, unmoved and kept beside the moved rows on purpose: a COMPOUND
+    # member carries the suppression, and an UNSUPPRESSED background subshell
+    # is unaffected by any of this.
+    for script, expected in [
+        ("set -e\n{ true | { eval 'false; echo A'; }; } || echo GOT rc=$?\necho END",
+         "A\nEND\n"),
+        ("set -e\n( false; echo A ) & wait $!\necho END", ""),
+    ]:
+        b, p = _bash(script, "c"), _psh(script, "c")
+        assert b.stdout == p.stdout == expected, (script, b.stdout, p.stdout)
 
 
 def test_static_check_spellings_dash_n_and_validate():

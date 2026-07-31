@@ -69,9 +69,14 @@ class TestMapChildException:
 
     def test_substitution_syntax_abort_maps_to_one(self):
         # A substitution-body syntax error is fatal to the shell PROCESS, so a
-        # FORK is the only thing that contains it: the child dies with 1 and
-        # the parent runs on. Flat 1 in every channel — a child inside a `-c`
-        # shell exits 1, not the 127 the main shell maps to (slot 2.4).
+        # FORK is the only thing that contains it: the child dies and the
+        # parent runs on. This arm pins the UNSUPPRESSED-errexit-off case,
+        # which is 1 in every channel — a child inside a `-c` shell exits 1,
+        # not the 127 the main shell maps to (slot 2.4). It is NOT a flat
+        # constant: with effective errexit the same child exits 2, pinned by
+        # the errexit_suppressed arm below. ("Flat 1 in every channel" was the
+        # old wording here; rounds 5-6 flagged it as falsified by its own
+        # neighbour and round 7 corrected it.)
         assert map_child_exception(SubstitutionSyntaxAbort(), _StubState()) == 1
         assert map_child_exception(
             SubstitutionSyntaxAbort(nested=True), _StubState()) == 1

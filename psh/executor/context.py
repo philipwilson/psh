@@ -49,7 +49,7 @@ class ExecutionContext:
     #
     # ONE WRITER — the pipeline member closure (executor/pipeline.py), in the
     # forked child only, on a context created for that member alone.
-    # ONE READER — executor/function.py#FunctionExecutor._function_frame,
+    # ONE READER — executor/function.py#FunctionOperationExecutor._function_frame,
     # which re-applies it for a function BODY's duration: the "or shell
     # function" half of the same sentence. It is read at BODY entry rather than
     # decided from the member's AST because `{ true | $Q; }` names a function

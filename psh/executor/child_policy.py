@@ -52,6 +52,7 @@ from ..core.internal_errors import substitution_child_abort_status
 if TYPE_CHECKING:
     from ..core.state import ShellState
     from ..shell import Shell
+    from .context import ExecutionContext
 
 # The control-flow / exit exceptions a forked child's body may raise at its
 # top. Caught as a group at every fork site; the code mapping lives once in
@@ -270,7 +271,10 @@ def die_by_signal(sig: int) -> None:
 
 
 def run_background_shell_child(shell: 'Shell',
-                               body: Callable[[], int]) -> int:
+                               body: Callable[[], int],
+                               *,
+                               sever_errexit_context: Optional['ExecutionContext'] = None
+                               ) -> int:
     """Run a backgrounded compound body with full trap discipline.
 
     The shared "what every backgrounded shell-process child does" wrapper,
@@ -300,6 +304,19 @@ def run_background_shell_child(shell: 'Shell',
     shell.trap_manager.enter_subshell_trap_environment()
     shell.interactive_manager.signal_manager.install_child_trap_handlers(
         background=True)
+
+    # A backgrounded BARE SIMPLE command SEVERS the enclosing list's errexit
+    # suppression, for the same reason a simple pipeline member does: it
+    # introduces no compound body for bash's ignored `set -e` to reach through
+    # (the manual sentence is quoted at context.py#errexit_suppress_deferred).
+    # `{ eval 'echo $(if)' & } || true` leaves the child at 2, while
+    # `{ ( … ) & }`, `{ { …; } & }` and `{ f & }` — which DO introduce one —
+    # leave it at 1. Only the bare-simple caller passes a context here; there
+    # is no deferral to park, because the routes that would re-apply it are
+    # exactly the ones that never sever.
+    if sever_errexit_context is not None:
+        sever_errexit_context.errexit_suppress = 0
+        sever_errexit_context.errexit_suppress_deferred = 0
 
     exit_code = 0
     try:

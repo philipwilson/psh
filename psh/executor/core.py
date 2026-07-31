@@ -302,7 +302,14 @@ class ExecutorVisitor(ASTVisitor[int]):
         foreground_copy.operators = node.operators
         statements = StatementList()
         statements.statements.append(foreground_copy)
-        return self.subshell_executor._execute_background_subshell(statements, [])
+        # A backgrounded and-or list / compound command DOES introduce a body,
+        # so bash's ignored `set -e` reaches through it and the forking
+        # context's suppression depth must cross the fork — the same threading
+        # `( … ) &` and `{ …; } &` already get (subshell.py). This caller was
+        # left on the old two-argument signature when that parameter was added,
+        # so `a && b &` and `for … done &` silently took the default 0.
+        return self.subshell_executor._execute_background_subshell(
+            statements, [], errexit_suppress=self.context.errexit_suppress)
 
     def visit_Pipeline(self, node: Pipeline) -> int:
         """Execute a pipeline of commands."""

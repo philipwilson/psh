@@ -442,7 +442,13 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
                 return execute_builtin_guarded(
                     builtin, cmd_name, args, shell, invocation)
 
-            return run_background_shell_child(shell, body)
+            # A backgrounded BUILTIN is a BARE SIMPLE command: it severs the
+            # enclosing list's errexit suppression (child_policy.py#
+            # run_background_shell_child states the rule). The backgrounded
+            # FUNCTION path below deliberately does NOT pass this — a function
+            # body is one of the two frames bash reaches through.
+            return run_background_shell_child(shell, body,
+                                              sever_errexit_context=context)
 
         # The child keeps running shell code (eval/source can start pipelines
         # or set traps), so mark it a shell process.

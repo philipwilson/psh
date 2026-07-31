@@ -177,8 +177,15 @@ def substitution_child_abort_status(state: 'ShellState',
     """The FORKED-CHILD half of :func:`substitution_abort_status`.
 
     A forked child does NOT use the channel rule — it exits 1 even inside a
-    ``-c`` shell, where the main shell uses 127 (probe-verified for subshell,
-    command substitution, backticks, pipeline members and background jobs).
+    ``-c`` shell, where the main shell uses 127. Probed per ROUTE (slot 2.4
+    batteries ``tmp/r24-probes/r7a.py`` and ``r6b*.py``): subshell, brace
+    group, command substitution, backticks, process substitution, pipeline
+    members and every background spelling. ONE ROUTE DISAGREES and is
+    DECLARED, not covered by this sentence: a child whose own command resolves
+    DIRECTLY to a shell FUNCTION, where bash leaks the ``-c`` channel status
+    (127) into the child — pinned as
+    ``test_function_member_channel_rule_is_a_declared_divergence``.
+
     But it DOES honour the errexit branch, for the same reason that branch is
     FIRST in the main policy: with ``set -e`` active in the child, bash exits
     **2** there too — ``( set -e; eval 'echo $(if)' )`` leaves ``$?``=2 where
@@ -191,6 +198,13 @@ def substitution_child_abort_status(state: 'ShellState',
     apply there; the same fork outside such a context is 2. The two shapes are
     indistinguishable from ``state`` alone (both read ``errexit=True``), which
     is why the suppression depth is passed IN from the fork site.
+
+    WHICH forks inherit that depth is bash's severing rule, not a per-site
+    choice: a fork whose body is a COMPOUND command or a directly-invoked
+    FUNCTION carries it; a fork running a BARE SIMPLE command severs it and
+    runs with errexit effective (``executor/context.py#errexit_suppress_deferred``
+    quotes the manual sentence). It holds at the pipeline-member route and at
+    the background route alike.
 
     Kept beside the main policy rather than inlined at the fork sites so the
     two halves cannot drift: it is the SAME mapping restricted to the axis a

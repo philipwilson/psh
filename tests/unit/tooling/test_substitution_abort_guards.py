@@ -63,13 +63,39 @@ def _enclosing_func(tree, lineno):
     return best.name if best else None
 
 
+ABORT = "SubstitutionSyntaxAbort"
+
+
+def _local_aliases(tree):
+    """Every local name that REFERS to the abort in this module.
+
+    ``from psh.core.exceptions import SubstitutionSyntaxAbort as SSA`` rebinds
+    the class to a name the detectors would otherwise never recognise — a
+    round-6 verifier inserted exactly that and every guard stayed green. The
+    alias map is rebuilt per module, so a guard sees the names that module
+    actually uses.
+    """
+    names = {ABORT}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == ABORT and alias.asname:
+                    names.add(alias.asname)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.endswith("." + ABORT) and alias.asname:
+                    names.add(alias.asname)
+    return names
+
+
 def _exc_name(node):
     """The exception NAME a raise/type expression denotes, bare or qualified.
 
     Both spellings must be seen: ``SubstitutionSyntaxAbort`` and
     ``exceptions.SubstitutionSyntaxAbort`` (the attribute-qualified form is
     how a second raise site would most plausibly appear — reaching for the
-    module to dodge an import cycle).
+    module to dodge an import cycle). An IMPORT ALIAS is resolved separately,
+    by ``_local_aliases``, because the alias is invisible at the use site.
     """
     if isinstance(node, ast.Call):
         node = node.func
@@ -82,21 +108,23 @@ def _exc_name(node):
 
 def _find_raise_sites(source, tree):
     out = []
+    names = _local_aliases(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Raise) and node.exc is not None:
-            if _exc_name(node.exc) == "SubstitutionSyntaxAbort":
+            if _exc_name(node.exc) in names:
                 out.append((node.lineno, _enclosing_func(tree, node.lineno)))
     return out
 
 
 def _find_catch_sites(source, tree):
     out = []
+    aliases = _local_aliases(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.ExceptHandler) and node.type is not None:
             t = node.type
             names = [_exc_name(sub)
                      for sub in (t.elts if isinstance(t, ast.Tuple) else [t])]
-            if "SubstitutionSyntaxAbort" in names:
+            if aliases.intersection(names):
                 out.append((node.lineno, _enclosing_func(tree, node.lineno)))
     return out
 
@@ -172,9 +200,9 @@ _POLICY_FILE = "psh/core/internal_errors.py"
 _STATUS_CONSTANTS = frozenset((1, 2, 127))
 
 
-def _mentions_abort(node):
-    """True if the expression names the abort, bare or attribute-qualified."""
-    return any(_exc_name(sub) == "SubstitutionSyntaxAbort"
+def _mentions_abort(node, aliases=frozenset({ABORT})):
+    """True if the expression names the abort, under any of its local names."""
+    return any(_exc_name(sub) in aliases
                for sub in ast.walk(node)
                if isinstance(sub, (ast.Name, ast.Attribute)))
 
@@ -199,11 +227,12 @@ def _find_rederive_sites(tree):
     the drift this slot actually suffered.
     """
     out = []
+    aliases = _local_aliases(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.If):
-            keyed = _mentions_abort(node.test)
+            keyed = _mentions_abort(node.test, aliases)
         elif isinstance(node, ast.ExceptHandler) and node.type is not None:
-            keyed = _mentions_abort(node.type)
+            keyed = _mentions_abort(node.type, aliases)
         else:
             continue
         if not keyed:
@@ -269,6 +298,42 @@ def test_status_mapping_is_not_re_derived_at_frames():
 ])
 def test_guard3_bites_on_a_synthetic_re_derivation(label, offender):
     assert _find_rederive_sites(ast.parse(offender)), (label, offender)
+
+
+@pytest.mark.parametrize("label,offender,detector", [
+    ("aliased raise",
+     "from psh.core.exceptions import SubstitutionSyntaxAbort as SSA\n"
+     "def sneaky():\n"
+     "    raise SSA(nested=True)\n",
+     "raise"),
+    ("aliased catch",
+     "from psh.core.exceptions import SubstitutionSyntaxAbort as SSA\n"
+     "def swallow():\n"
+     "    try:\n"
+     "        pass\n"
+     "    except SSA:\n"
+     "        pass\n",
+     "catch"),
+    ("aliased re-derivation",
+     "from psh.core.exceptions import SubstitutionSyntaxAbort as SSA\n"
+     "def frame(e):\n"
+     "    if isinstance(e, SSA):\n"
+     "        return 127\n",
+     "rederive"),
+])
+def test_guards_resolve_import_aliases(label, offender, detector):
+    """An import alias rebinds the class to a name the use site never spells.
+
+    A round-6 verifier inserted `from … import SubstitutionSyntaxAbort as SSA`
+    under psh/ and ALL twelve guards stayed green — the detectors matched
+    Name and Attribute but never consulted the module's import bindings.
+    Each detector now resolves aliases per module, and each is held to it
+    here."""
+    tree = ast.parse(offender)
+    found = {"raise": _find_raise_sites(offender, tree),
+             "catch": _find_catch_sites(offender, tree),
+             "rederive": _find_rederive_sites(tree)}[detector]
+    assert found, (label, detector, offender)
 
 
 def test_guard1_bites_on_an_attribute_qualified_raise_site():
