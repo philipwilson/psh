@@ -235,6 +235,21 @@ class PipelineExecutor:
                         # silent (bash), not "only meaningful in a loop".
                         child_context = pipeline_context.fork_context()
 
+                        # bash carries the enclosing list's errexit SUPPRESSION
+                        # into a member only through a compound command or a
+                        # function BODY (the manual's sentence is quoted at
+                        # ExecutionContext#errexit_suppress_deferred). A
+                        # SIMPLE-COMMAND member introduces neither, so its own
+                        # execution — including text its `eval`/`.` parses —
+                        # runs with errexit EFFECTIVE. The depth is DEFERRED
+                        # rather than discarded so a function member can restore
+                        # it at body entry, which is the only point at which
+                        # `{ true | $Q; }` is known to name a function.
+                        if isinstance(cmd_node, SimpleCommand):
+                            child_context.errexit_suppress_deferred = \
+                                child_context.errexit_suppress
+                            child_context.errexit_suppress = 0
+
                         # Wire stdin/stdout onto this member's pipe endpoints
                         # (collision-safe; closes the endpoints it doesn't use).
                         self._setup_pipeline_redirections(
