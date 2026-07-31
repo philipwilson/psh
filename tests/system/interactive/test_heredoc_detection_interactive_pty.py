@@ -325,9 +325,14 @@ _PREEXISTING_DEGENERATE = ["cat <<", "cat 0<<", "cat <<<", "cat 0<<<"]
 
 @pytest.mark.parametrize("line", _PREEXISTING_DEGENERATE)
 @pytest.mark.parametrize("parser", ["rd", "combinator"])
-def test_plain_and_digit_degenerate_forms_diverge_from_bash(line, parser,
+def test_divergence_plain_and_digit_degenerate_forms(line, parser,
                                                             tmp_path):
     """A DIVERGENCE row, pinned as a divergence rather than hidden.
+
+    Named `test_divergence_*` to the campaign convention so the FLIP-PINS
+    enumeration finds it: an invisible divergence pin defeats its own purpose
+    (round-5 nit 1). When the successor closes this row, THIS test is the one
+    that must be consciously flipped.
 
     For the PLAIN and DIGIT spellings with no operand, bash reports a syntax
     error and returns to PS1 while psh waits at PS2. This is PRE-EXISTING and

@@ -181,14 +181,20 @@ def test_synthetic_offender_raises_typed_on_every_fd_kind(shell, kind, extra):
         shell.io_manager.file_redirector.apply_fd_plan(plan)
 
 
-@pytest.mark.parametrize("kind,extra", _FD_KINDS, ids=[k[0] for k in _FD_KINDS])
+# Only the NAMED kind reaches apply_var_fd_redirect at all, so the route test
+# below is parametrized over that one value rather than over all three with two
+# structurally-forced skips -- an axis that reads as three live rows when only
+# one can ever run is a dishonest axis (round-5 nit 2).
+_VAR_FD_ROUTE_KINDS = [k for k in _FD_KINDS if "var_fd" in k[1]]
+
+
+@pytest.mark.parametrize("kind,extra", _VAR_FD_ROUTE_KINDS,
+                         ids=[k[0] for k in _VAR_FD_ROUTE_KINDS])
 def test_synthetic_offender_raises_typed_on_the_var_fd_route(shell, kind,
                                                              extra):
     """And through apply_var_fd_redirect directly -- the route that used to die
     on a raw AttributeError from the missing body field."""
     offender = Redirect(type="<<", target="EOF", **extra)
-    if not offender.var_fd:
-        pytest.skip("apply_var_fd_redirect is only reached for a named fd")
     with pytest.raises(NonExecutableRedirectError, match="no collected body"):
         shell.io_manager.file_redirector.apply_var_fd_redirect(offender)
 
