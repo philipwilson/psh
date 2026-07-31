@@ -285,6 +285,7 @@ class OperatorRecognizer(ContextualRecognizer):
         # retired (remediation 2.5) the lexer became the only decider, and this
         # gap turned into executing a here-document body as commands.
         for op, tok_type in (
+            ('<<<', TokenType.HERE_STRING),
             ('<<-', TokenType.HEREDOC_STRIP),
             ('>>', TokenType.REDIRECT_APPEND),
             ('<>', TokenType.REDIRECT_READWRITE),

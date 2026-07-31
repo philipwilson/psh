@@ -2,9 +2,16 @@
 
 Distinguishes a real ``<<EOF`` heredoc from a ``<<`` bit-shift (arithmetic) or
 a ``<<<`` here-string, and tracks whether a heredoc's delimiter has appeared
-yet. This is the single source of truth for heredoc line-gathering, consumed
-by the shared completeness oracle (`scripting/command_accumulator.py`) that
-both the script/`-c`/stdin path and the interactive multiline path drive.
+yet.
+
+This module owns the delimiter/terminator ALGEBRA — the one quote-removal
+rule, the one terminator-match rule, and the ordinal-identity spec/queue types
+— which the lexer shares. It is NOT the source of truth for whether a line
+opens a here-document: since remediation 2.5 the completeness oracle asks the
+LEXER (`parser/session.py#_lexer_pending_heredocs`), so there is ONE heredoc
+grammar and it is the real one. The text-level scanner below survives for the
+line-editor and continuation-join heuristics that are not completeness
+decisions.
 
 This module also owns the campaign-S2 heredoc transaction contracts:
 

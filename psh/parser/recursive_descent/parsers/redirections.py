@@ -186,6 +186,10 @@ class RedirectionParser(ParserSubcomponent):
             target=content_value,
             quote_type=quote_type,
             fd=token.fd,
+            # `{v}<<<word` carries its variable NAME, exactly as the heredoc
+            # arm does; dropping it would put the content on stdin instead of
+            # a freshly allocated fd.
+            var_fd=token.var_fd,
             target_word=word,
         )
 

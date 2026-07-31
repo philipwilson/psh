@@ -538,6 +538,19 @@ class FileRedirector:
         # The content is materialized on a fresh fd >= 10 rather than on stdin,
         # and the number lands in the variable — the same allocation contract as
         # the open-a-file forms below, with the body as the source.
+        #
+        # The non-executable parse state gets the SAME typed error here as at
+        # the two operator-string arms. This route reaches the fd universe
+        # BEFORE either of those (var_fd is dispatched first), so without this
+        # the value died on a raw AttributeError from the missing body field —
+        # and it is a shape this slot CREATED: before the named-fd heredoc
+        # fix, `cat {v}<<EOF` failed at parse time and no such value existed.
+        if rtype in ('<<', '<<-') and not isinstance(redirect, HeredocRedirect):
+            raise NonExecutableRedirectError(
+                "non-executable heredoc parse state reached the named-fd "
+                f"route: Redirect(type={rtype!r}, var_fd={name!r}) carries no "
+                "collected body. Every live parse path builds a "
+                "HeredocRedirect.")
         if rtype in ('<<', '<<-', '<<<'):
             content = (self.redirect_herestring_content(redirect)
                        if rtype == '<<<' else self.heredoc_content(redirect))

@@ -157,6 +157,42 @@ def test_debug_ast_labels_the_executable_heredoc_by_its_type(fmt, tmp_path):
     assert "HeredocRedirect" in dump, (fmt, dump[:400])
 
 
+# FD-KIND AXIS for the synthetic offender (round-3 blocker R9-B). The
+# var_fd route reaches the fd universe BEFORE either operator-string arm, so
+# it needed its own arm -- and the value shape is one THIS SLOT created: before
+# the named-fd heredoc fix, `cat {v}<<EOF` failed at parse time and no
+# bare-parse value with type='<<' AND var_fd could exist. When a fix creates a
+# new representable shape, every guard universe must grow with it.
+_FD_KINDS = [
+    ("none", {}),
+    ("digit", {"fd": 3}),
+    ("named", {"var_fd": "v"}),
+]
+
+
+@pytest.mark.parametrize("kind,extra", _FD_KINDS, ids=[k[0] for k in _FD_KINDS])
+def test_synthetic_offender_raises_typed_on_every_fd_kind(shell, kind, extra):
+    """Every fd kind, at the fd backend."""
+    from psh.io_redirect.planner import RedirectPlan
+
+    offender = Redirect(type="<<", target="EOF", **extra)
+    plan = RedirectPlan(redirect=offender, target=None)
+    with pytest.raises(NonExecutableRedirectError, match="no collected body"):
+        shell.io_manager.file_redirector.apply_fd_plan(plan)
+
+
+@pytest.mark.parametrize("kind,extra", _FD_KINDS, ids=[k[0] for k in _FD_KINDS])
+def test_synthetic_offender_raises_typed_on_the_var_fd_route(shell, kind,
+                                                             extra):
+    """And through apply_var_fd_redirect directly -- the route that used to die
+    on a raw AttributeError from the missing body field."""
+    offender = Redirect(type="<<", target="EOF", **extra)
+    if not offender.var_fd:
+        pytest.skip("apply_var_fd_redirect is only reached for a named fd")
+    with pytest.raises(NonExecutableRedirectError, match="no collected body"):
+        shell.io_manager.file_redirector.apply_var_fd_redirect(offender)
+
+
 def test_synthetic_offender_raises_at_the_BUILTIN_STREAM_backend(shell,
                                                                  tmp_path):
     """The OTHER backend's explicit arm (round-2 nit 12).

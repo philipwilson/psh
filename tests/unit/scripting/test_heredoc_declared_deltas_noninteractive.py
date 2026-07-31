@@ -34,7 +34,9 @@ THE THREE DECLARED DELTAS, with their measured base values:
    At tip BOTH emit it, matching bash. Pinned per-parser, because a per-parser
    difference is invisible to any test that runs one parser.
 """
+import pathlib
 import re
+import tempfile
 
 import pytest
 from shell_oracle import Completed, is_comparable, run_bash, run_psh
@@ -47,13 +49,15 @@ _PARSERS = ("rd", "combinator")
 
 
 def _normalise(text):
-    """Compare on the MESSAGE, not on which binary emitted it."""
+    """Compare on the MESSAGE, not on which binary emitted it or which temp
+    path the script-file channel happened to use."""
+    text = re.sub(r"\S*(?:psh_case|bash_case)\.sh", "<SCRIPT>", text)
     return re.sub(r"^[^\s:]*(?:psh|bash)[^\s:]*:", "<SH>:", text,
                   flags=re.MULTILINE)
 
 
 @pytest.mark.parametrize("label,script", _SHAPES, ids=[s[0] for s in _SHAPES])
-@pytest.mark.parametrize("channel", ["dash_c", "stdin"])
+@pytest.mark.parametrize("channel", ["dash_c", "stdin", "script"])
 @pytest.mark.parametrize("parser", _PARSERS)
 def test_declared_delta_matches_bash_non_interactively(label, script, channel,
                                                        parser):
@@ -61,9 +65,21 @@ def test_declared_delta_matches_bash_non_interactively(label, script, channel,
     if channel == "dash_c":
         psh = run_psh(["--norc", "--parser", parser, "-c", script])
         bash = run_bash(["--norc", "-c", script])
-    else:
+    elif channel == "stdin":
         psh = run_psh(["--norc", "--parser", parser], stdin_data=script)
         bash = run_bash(["--norc"], stdin_data=script)
+    else:
+        # SCRIPT-FILE channel (round-3 nit 12: the ledger claimed per-channel
+        # coverage while this one was missing). Each shell gets its OWN copy at
+        # its own path, and the path is normalised out of diagnostics below, so
+        # the comparison is on behaviour rather than on temp-file names.
+        with tempfile.TemporaryDirectory() as d:
+            pp = pathlib.Path(d) / "psh_case.sh"
+            bp = pathlib.Path(d) / "bash_case.sh"
+            pp.write_text(script)
+            bp.write_text(script)
+            psh = run_psh(["--norc", "--parser", parser, str(pp)])
+            bash = run_bash(["--norc", str(bp)])
     assert is_comparable(psh) and is_comparable(bash), (psh, bash)
     assert isinstance(psh, Completed) and isinstance(bash, Completed)
     assert psh.returncode == bash.returncode, (label, channel, parser,

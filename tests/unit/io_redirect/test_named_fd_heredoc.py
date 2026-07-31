@@ -21,7 +21,10 @@ WHAT IS PINNED, and the honest status of each half:
 * EXECUTION — an IMPROVEMENT BEYOND BASE, never a restoration. Base could not
   RUN any of these: it failed at parse time with `Expected file name`. psh now
   matches bash end to end, allocating a descriptor and storing its number in
-  the variable.
+  the variable. That covers `{v}<<`, `{v}<<-` AND `{v}<<<` — the here-string
+  spelling was missed in round 2 and closed in round 3; the structural guard
+  against another sibling-table gap is
+  tests/unit/lexer/test_fd_prefix_table_parity.py.
 
 ORACLE: bash, differential, same host, same bytes, via the typed runner.
 Non-interactive half; the terminal half is the `named_fd_*` rows of
@@ -41,6 +44,13 @@ _ROWS = [
     ("quoted", "true {v}<<'EOF'\nbody $NOPE\nEOF\necho RC=$?\n"),
     ("exec_then_read", "exec {v}<<EOF\nhello\nEOF\ncat <&$v\necho RC=$?\n"),
     ("inline_read", "{v}<<EOF cat <&$v\nhello\nEOF\n"),
+    # HERE-STRING on the named fd (round-3 blocker R9-A). The digit-fd table
+    # has had `<<<` all along; the named-fd table did not, so `{v}<<<w`
+    # parse-errored while `0<<<w` worked. Same improvement-beyond-base status
+    # as the heredoc forms: base could not run it at all.
+    ("herestring", "true {v}<<<hello\necho RC=$?\n"),
+    ("herestring_exec", "exec {v}<<<hello\ncat <&$v\necho RC=$?\n"),
+    ("herestring_fd", "true {v}<<<hello\necho FD=$v\n"),
     # The fd NUMBER is compared against bash's own rather than pinned to a
     # literal: bash allocates the LOWEST FREE fd >= 10, which depends on what
     # descriptors the shell holds, so a hard-coded 10 could red on the Linux

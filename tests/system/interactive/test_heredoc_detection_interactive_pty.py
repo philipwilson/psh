@@ -119,6 +119,9 @@ _ROWS = [
     # SINGLE `<` is an ordinary redirect and must stay COMPLETE, so a fix that
     # over-matched `{v}<` as a heredoc would fail here.
     ("named_fd_plain_redirect", ["echo x {v}</dev/null"], True),
+    # The here-string spelling on a named fd (round-3 blocker R9-A): complete,
+    # like every other here-string, and it parse-errored at base.
+    ("named_fd_herestring", ["true {v}<<<hello"], True),
 
     # --- The two DECLARED interactive improvements (round-1 blocker R4-B) ---
     # Both were RED ON BASE and both now match bash; measured at base
