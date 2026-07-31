@@ -123,3 +123,37 @@ parallel job failed on a SINGLE golden comparison. CLASSIFIED, not a regression:
 a racy-oracle artifact, dispositioned above with the run link; psh behavior is
 correct and deterministically pinned. Nightly instrumentation (sampler + fd
 snapshots + PSH_DISK_WATCH) stays per its recorded removal criterion.
+
+## Scheduled-nightly window 2026-07-26 → 2026-07-30 (classified at resume, fixed v0.759.0)
+
+Five scheduled runs since the pause: 07-26 FAILED (30187441750), 07-27 FAILED
+(30236690742), 07-28 GREEN (30327629745), 07-29 GREEN (30421244108), 07-30
+FAILED (30512764726). All three failures classified; none is a psh behavior
+regression:
+
+- **07-26 (`a765f1a0`):** golden `r18t1_bgtrap_wait_bare_then_explicit_127`
+  stdout divergence — this run executed BEFORE PR #504's `psh_only`
+  quarantine merged; the case is quarantined at every later tip. Pre-existing
+  classification stands unchanged; no action.
+- **07-27 + 07-30 (both at `1b271d77` = v0.758.0):**
+  `test_process_sub_closed_fds.py::test_write_side_procsub_closed_fds_matches_bash`
+  — 07-27 the `exec 0<&-` param, 07-30 the bare param — each with
+  psh=('', '', 'data\n') vs bash=('', '', ''). Same commit was GREEN 07-28
+  and 07-29: an intermittent HARNESS race, not behavior. Mechanism (probed
+  2026-07-30, forced-slow child): NEITHER shell waits for a write-side
+  `>(...)` child at command end — bash exits in 0.00s with the fd 9 file
+  still empty (the child settles it later), and `run_shell_case`'s post-exit
+  defensive `_killpg_sigkill` sweep then races the child. Bash's `cat` loses
+  under Linux-runner load → empty file; psh's child won every observed race
+  only because ~170 ms of interpreter teardown shields it — the psh-side
+  delivery assertions were latently flaky too. **Fix (v0.759.0, test-only):**
+  `_WRITE_BODY` carries a shell-neutral completion barrier (substitution
+  touches a flag file after writing; parent spin-waits, bounded at ~4 s so a
+  real delivery regression still fails as a comparison, not a timeout).
+  Verified: forced-1s-slow child delivers by exit on bash 5.2.26 + psh RD +
+  psh combinator (1.02/1.15/1.16 s); file soaked 20/20 green.
+- **Probe by-catch (recorded in LEDGER Part D, successor row):** bash 5.2's
+  bare `wait` DOES reach the procsub child (1.02 s, delivered); psh's bare
+  `wait` does NOT (0.12 s, empty). Real divergence, deliberately NOT
+  exercised by the fixed test (the barrier avoids `wait` precisely so the
+  test doesn't depend on divergent semantics).
