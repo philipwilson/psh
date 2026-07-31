@@ -347,10 +347,15 @@ class SourceProcessor(ScriptComponent):
         be raised from the outermost READER parse, before any command has begun
         executing (``psh -c 'echo $(fi)'`` has no executor yet). No executor
         means no suppressing context can be open, so False is the correct
-        answer — not a defensive fallback. The check is explicit rather than a
-        ``getattr`` default so that a genuinely missing ``context`` attribute
-        would raise instead of silently reading as "unsuppressed".
-        """
+        answer — not a defensive fallback.
+
+        What is explicit here is the CONTEXT read: ``executor.context`` is a
+        plain attribute access, so a genuinely missing ``context`` would raise
+        rather than silently read as "unsuppressed". The ``_current_executor``
+        read itself keeps this file's house style (five identical reads
+        alongside it) and does tolerate absence — which is the legitimate state
+        described above, not a rename dodge. Both halves are exercised by
+        ``tests/unit/scripting/test_errexit_suppressed_read.py``."""
         executor = getattr(self.shell, '_current_executor', None)
         if executor is None:
             return False

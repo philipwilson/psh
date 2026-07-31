@@ -13,15 +13,19 @@ actually RUN here, so every guard is proven to BITE rather than merely to pass:
    this slot* and was caught by a verification BOUNCE rather than by any
    executable check; this guard is the check that should have caught it. A
    THIRD catcher would silently re-contain the fatality in a frame bash does
-   not.
+   not. Named catchers only, bare and attribute-qualified: a bare ``except:``
+   swallowing everything is a broader defect with its own ratchets
+   (``test_broad_valueerror_catch_q2.py``, ``test_subscript_no_broad_except.py``)
+   and is deliberately not this guard's business.
 3. NO RE-DERIVED STATUS MAPPING — the abort's status constants live only in the
    two policy functions in ``core/internal_errors.py``. A frame that compares
-   or re-derives them is how the channel rule drifts out of one place.
+   or re-derives them is how the channel rule drifts out of one place. Detected
+   structurally (see ``_find_rederive_sites``); the line-shaped regex this
+   replaced missed the two-line spelling of its own offender.
 """
 
 import ast
 import pathlib
-import re
 
 import pytest
 
@@ -59,17 +63,28 @@ def _enclosing_func(tree, lineno):
     return best.name if best else None
 
 
+def _exc_name(node):
+    """The exception NAME a raise/type expression denotes, bare or qualified.
+
+    Both spellings must be seen: ``SubstitutionSyntaxAbort`` and
+    ``exceptions.SubstitutionSyntaxAbort`` (the attribute-qualified form is
+    how a second raise site would most plausibly appear — reaching for the
+    module to dodge an import cycle).
+    """
+    if isinstance(node, ast.Call):
+        node = node.func
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
 def _find_raise_sites(source, tree):
     out = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Raise) and node.exc is not None:
-            call = node.exc
-            name = None
-            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name):
-                name = call.func.id
-            elif isinstance(call, ast.Name):
-                name = call.id
-            if name == "SubstitutionSyntaxAbort":
+            if _exc_name(node.exc) == "SubstitutionSyntaxAbort":
                 out.append((node.lineno, _enclosing_func(tree, node.lineno)))
     return out
 
@@ -78,13 +93,9 @@ def _find_catch_sites(source, tree):
     out = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ExceptHandler) and node.type is not None:
-            names = []
             t = node.type
-            for sub in (t.elts if isinstance(t, ast.Tuple) else [t]):
-                if isinstance(sub, ast.Name):
-                    names.append(sub.id)
-                elif isinstance(sub, ast.Attribute):
-                    names.append(sub.attr)
+            names = [_exc_name(sub)
+                     for sub in (t.elts if isinstance(t, ast.Tuple) else [t])]
             if "SubstitutionSyntaxAbort" in names:
                 out.append((node.lineno, _enclosing_func(tree, node.lineno)))
     return out
@@ -158,9 +169,53 @@ def test_guard2_bites_on_a_synthetic_second_catcher():
 # The abort's status constants may appear ONLY in the two policy functions.
 _POLICY_FUNCS = {"substitution_abort_status", "substitution_child_abort_status"}
 _POLICY_FILE = "psh/core/internal_errors.py"
-# A frame re-deriving the mapping looks like a comparison against the abort's
-# own statuses next to the outcome's name.
-_REDERIVE = re.compile(r"SubstitutionSyntaxAbort[^\n]*\b(127|== ?2|== ?1)\b")
+_STATUS_CONSTANTS = frozenset((1, 2, 127))
+
+
+def _mentions_abort(node):
+    """True if the expression names the abort, bare or attribute-qualified."""
+    return any(_exc_name(sub) == "SubstitutionSyntaxAbort"
+               for sub in ast.walk(node)
+               if isinstance(sub, (ast.Name, ast.Attribute)))
+
+
+def _find_rederive_sites(tree):
+    """Branches KEYED ON the abort that produce a status constant themselves.
+
+    Structural, not textual: an ``if``/``elif`` whose test names the abort, or
+    an ``except`` clause catching it, whose body then returns or assigns one of
+    the abort's own statuses. The predecessor of this detector was a
+    single-line regex, so the most natural offender —
+
+        if isinstance(e, SubstitutionSyntaxAbort):
+            return 127
+
+    — evaded it purely by being two lines (round-5 verifier finding). Reading
+    the tree removes the line-shape dependence entirely.
+
+    KNOWN LIMIT, stated rather than implied: a constant laundered through a
+    value computed elsewhere (``return _STATUS[kind]``) is not re-derivation
+    this guard can see. It detects the mapping written AT the frame, which is
+    the drift this slot actually suffered.
+    """
+    out = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If):
+            keyed = _mentions_abort(node.test)
+        elif isinstance(node, ast.ExceptHandler) and node.type is not None:
+            keyed = _mentions_abort(node.type)
+        else:
+            continue
+        if not keyed:
+            continue
+        for stmt in node.body:
+            for sub in ast.walk(stmt):
+                if isinstance(sub, (ast.Return, ast.Assign, ast.AnnAssign)):
+                    value = sub.value
+                    if (isinstance(value, ast.Constant)
+                            and value.value in _STATUS_CONSTANTS):
+                        out.append((sub.lineno, value.value))
+    return out
 
 
 def test_status_mapping_is_not_re_derived_at_frames():
@@ -170,9 +225,8 @@ def test_status_mapping_is_not_re_derived_at_frames():
         src = path.read_text()
         if "SubstitutionSyntaxAbort" not in src:
             continue
-        for i, line in enumerate(src.splitlines(), 1):
-            if _REDERIVE.search(line):
-                offenders.append((rel, i, line.strip()))
+        for lineno, value in _find_rederive_sites(ast.parse(src)):
+            offenders.append((rel, lineno, value))
     assert not offenders, offenders
     # ...and the SUBSTITUTION-abort policy really is where the guard says.
     # (Scoped to these two functions on purpose: internal_errors.py also holds
@@ -191,9 +245,46 @@ def test_status_mapping_is_not_re_derived_at_frames():
     assert {1, 2, 127} <= seen, seen
 
 
-def test_guard3_bites_on_a_synthetic_re_derivation():
-    offender = "    if isinstance(e, SubstitutionSyntaxAbort): return 127\n"
-    assert _REDERIVE.search(offender), offender
+@pytest.mark.parametrize("label,offender", [
+    ("one line",
+     "def frame(e):\n"
+     "    if isinstance(e, SubstitutionSyntaxAbort): return 127\n"),
+    # The round-5 verifier's evasion shape: identical meaning, two lines. The
+    # regex this detector replaced could not see it.
+    ("two lines",
+     "def frame(e):\n"
+     "    if isinstance(e, SubstitutionSyntaxAbort):\n"
+     "        return 127\n"),
+    ("attribute-qualified",
+     "def frame(e):\n"
+     "    if isinstance(e, exceptions.SubstitutionSyntaxAbort):\n"
+     "        return 127\n"),
+    ("through a local",
+     "def frame(e):\n"
+     "    try:\n"
+     "        run()\n"
+     "    except SubstitutionSyntaxAbort:\n"
+     "        status = 2\n"
+     "        return status\n"),
+])
+def test_guard3_bites_on_a_synthetic_re_derivation(label, offender):
+    assert _find_rederive_sites(ast.parse(offender)), (label, offender)
+
+
+def test_guard1_bites_on_an_attribute_qualified_raise_site():
+    """The raise detector must be symmetric with the catch detector.
+
+    ``raise exceptions.SubstitutionSyntaxAbort(...)`` — the spelling a second
+    raise site would most plausibly wear, since reaching for the module is how
+    one dodges an import cycle — was invisible to the bare-Name-only detector
+    (round-5 verifier finding).
+    """
+    offender = (
+        "from psh.core import exceptions\n"
+        "def sneaky():\n"
+        "    raise exceptions.SubstitutionSyntaxAbort(nested=True)\n"
+    )
+    assert _find_raise_sites(offender, ast.parse(offender)) == [(3, "sneaky")]
 
 
 @pytest.mark.parametrize("name,expected", [

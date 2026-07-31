@@ -83,18 +83,20 @@ def map_child_exception(exc: BaseException, state: 'ShellState') -> int:
       argument, i.e. ``SystemExit(None)``, → 0 (Python's own convention for a
       bare ``sys.exit()``); a non-int, non-None code → 1.
     - SubstitutionSyntaxAbort (a substitution-body syntax error, fatal to the
-      shell process) → ``substitution_child_abort_status(state)``. This is what
-      makes a fork CONTAIN the fatality: the child dies and the parent runs on,
-      so ``( eval 'echo $(if)' ); echo rc=$?`` prints rc=1 and continues. The
-      status is CHANNEL-independent — a child inside a ``-c`` shell exits 1,
-      not the main shell's 127 — but it is NOT a flat constant: with EFFECTIVE
-      errexit active in the child it is 2, exactly as in the main policy's
-      first branch. ``state`` carries the flag; ``errexit_suppressed`` carries
-      the other half, because a fork inside a suppressing context (``( … ) ||
-      recover``, an ``if``/``while`` condition, ``!``) is 1 even though the
-      flag reads True — the two shapes are identical from ``state`` alone.
-      Fork sites pass their own suppression depth; the launcher's leaf-child
-      path has no suppressing context of its own and passes the default.
+      shell process) → ``substitution_child_abort_status(state,
+      exc.errexit_suppressed)``. This is what makes a fork CONTAIN the
+      fatality: the child dies and the parent runs on, so ``( eval 'echo
+      $(if)' ); echo rc=$?`` prints rc=1 and continues. The status is
+      CHANNEL-independent — a child inside a ``-c`` shell exits 1, not the main
+      shell's 127 — but it is NOT a flat constant: with EFFECTIVE errexit
+      active in the child it is 2, exactly as in the main policy's first
+      branch. BOTH arguments are load-bearing and neither is derivable from the
+      other: ``state`` carries the errexit FLAG, while the second argument
+      carries the SUPPRESSION, because a fork inside a suppressing context
+      (``( … ) || recover``, an ``if``/``while`` condition, ``!``) is 1 even
+      though the flag reads True — the two shapes are identical from ``state``
+      alone. The suppression is not re-derived here: it is the stamp the error
+      carries from its raise site (``core/exceptions.py#SubstitutionSyntaxAbort``).
 
     Only the six CHILD_EXIT_EXCEPTIONS are handled; anything else re-raises
     (callers catch exactly that group before calling this). KeyboardInterrupt
