@@ -393,12 +393,24 @@ def test_substitution_fatality_from_a_trap_action():
     bespoke trap-action plumbing distinct from the eval/source branch, which
     the ruling put out of scope; the ``-c`` channel and all stdout agree.
 
-    DOMAIN — the declaration's universe, probed rather than assumed: the
-    divergence is UNIFORM across every action-bearing trap kind that fires
-    MID-SCRIPT (a signal trap, DEBUG, ERR, RETURN), which is why the corpus
-    below samples them rather than USR1 alone. It explicitly EXCLUDES the EXIT
-    trap at teardown, which is a different shape and MATCHES bash exactly —
-    see ``test_exit_trap_teardown_action_error_changes_nothing``."""
+    DOMAIN — stated as what was actually probed, and no wider. The divergence
+    is uniform across every action-bearing trap kind that fires MID-SCRIPT (a
+    signal trap, DEBUG, ERR, RETURN) **in the NON-FORK case**, which is what
+    the corpus below samples. It excludes two neighbours that behave
+    differently and are pinned separately:
+
+    * the EXIT trap at TEARDOWN, which MATCHES bash exactly —
+      ``test_exit_trap_teardown_action_error_changes_nothing``;
+    * the same actions inside a FORK, where the status is bash 2 / psh 1 in
+      every channel unless effective errexit applies in the child —
+      ``test_fork_times_midscript_trap_action_status``.
+
+    RECORD CORRECTION (round 4 → 5): this paragraph previously claimed the
+    universe was "probed rather than assumed" and "UNIFORM across every
+    action-bearing trap kind". The fork axis was never in that corpus, so the
+    claim was false on it. Round 4's ledger and completion report both stated
+    this correction had been made HERE; it had not — the correcting sentence
+    was written only into the new fork pin's docstring. Corrected in round 5."""
     nested = ("trap 'echo TA; eval \"echo \\$(if)\"; echo TA2' USR1\n"
               "echo B\nkill -USR1 $$\nsleep 0.2\necho AFTER")
     for channel, expected in (("c", 127), ("file", 1), ("stdin", 1)):
@@ -622,10 +634,17 @@ def test_main_shell_suppressed_errexit_status_is_carried():
     (``||``, an ``if`` condition) leaves psh at 2 where bash uses its ordinary
     channel status (127 under ``-c``, 1 for a file).
 
-    This diverges AT BASE too — it is not introduced by this slot — and fixing
-    it means applying the same effective-errexit question to the MAIN policy at
-    every frame, which is its own bounded piece of work. Carried to the
-    successor queue; the child-side plumbing added this round is the natural
+    RECORD CORRECTION (round 5): round 4 described this family as
+    "base-identical / not mine". MEASURED FALSE against a base worktree —
+    ``set -e; eval 'echo $(fi)' || echo GOT`` at BASE continues with rc 0 and
+    prints ``GOT rc=2`` / ``AFTER rc=0``, while at tip it ABORTS with rc 2 and
+    no output. The slot MOVED this observable; what is pre-existing is only
+    that psh's status here never matched bash's. The assertions below were
+    always right; the surrounding prose understated the scope.
+
+    Fixing it means applying the same effective-errexit question to the MAIN
+    policy at every frame, which is its own bounded piece of work. Carried to
+    the successor queue; the child-side plumbing from this slot is the natural
     starting point."""
     for script in ("set -e\neval 'echo $(fi)' || echo GOT",
                    "set -e\nif eval 'echo $(fi)'; then echo T; fi"):
@@ -675,3 +694,63 @@ def test_unclosed_cmdsub_classified_bodies_are_carried(tmp_path):
     typed = "echo B\necho $(while true)\necho AFTER"
     bt, pt = _bash(typed, "c"), _psh(typed, "c")
     assert bt.returncode == pt.returncode == 127, (bt, pt)
+
+
+def test_posix_option_times_fork_matrix():
+    """OPTION x FORK matrix for the abort status — the pin that round 4's
+    ledger CLAIMED existed. It did not: round 4 ran this as a probe only and
+    recorded it as "pinned". Added in round 5 with the record corrected.
+
+    ``set -o posix`` does not change the child's status (1, or 2 under
+    effective errexit, exactly as without it); the errexit column is the
+    R4-A rule; the pipeline column is the member's own containment."""
+    inner = "eval 'echo $(fi)'"
+    rows = [
+        # (option prefix inside the fork, fork shape, expected stdout)
+        ("",              "( %s )",            "AFTER rc=1\n"),
+        ("set -o posix; ", "( %s )",           "AFTER rc=1\n"),
+        ("set -e; ",      "( %s )",            "AFTER rc=2\n"),
+        ("",              "x=$( %s )",         "AFTER rc=1\n"),
+        ("set -o posix; ", "x=$( %s )",        "AFTER rc=1\n"),
+        ("set -e; ",      "x=$( %s )",         "AFTER rc=2\n"),
+        ("",              "( %s ) | cat",      "AFTER rc=0\n"),
+        ("set -o posix; ", "( %s ) | cat",     "AFTER rc=0\n"),
+        ("set -e; ",      "( %s ) | cat",      "AFTER rc=0\n"),
+    ]
+    for opt, shape, expected in rows:
+        script = (shape % (opt + inner)) + "\necho AFTER rc=$?"
+        for channel in ("c", "file"):
+            b, p = _bash(script, channel), _psh(script, channel)
+            assert b.stdout == p.stdout == expected, (script, channel, b.stdout, p.stdout)
+
+
+def test_interactive_dash_c_channel_disposition():
+    """DECLARED (round 5, ruling R5-F): the ``-i -c`` channel.
+
+    psh gates the abort on ``state.is_script_mode``, which ``-i -c`` turns off,
+    so the consumer never fires there. Probed against ``bash -i -c`` rather
+    than assumed:
+
+    * an EVAL frame: BOTH shells continue (rc 0, ``AFTER`` prints). bash does
+      not abort an interactive shell's frame either, so psh's exemption is
+      right and this row MATCHES.
+    * the DIRECT shape: both reject the buffer and print nothing, but the
+      status differs — bash 1, psh 2.
+
+    Only the status differs, and only on the direct shape. Interactivity
+    semantics are deliberately NOT touched to close it (out of scope); pinned
+    so the disposition is explicit rather than incidental."""
+    import subprocess
+    import sys as _sys
+    ev = "echo B; eval 'echo $(fi)'; echo AFTER"
+    direct = "echo B; echo $(fi); echo AFTER"
+
+    def run(argv, script):
+        return subprocess.run(argv + ["-i", "-c", script],
+                              capture_output=True, text=True, timeout=30)
+    b_ev, p_ev = run([_ORACLE.path], ev), run([_sys.executable, "-m", "psh"], ev)
+    assert b_ev.returncode == p_ev.returncode == 0, (b_ev, p_ev)
+    assert b_ev.stdout == p_ev.stdout == "B\nAFTER\n", (b_ev.stdout, p_ev.stdout)
+    b_d, p_d = run([_ORACLE.path], direct), run([_sys.executable, "-m", "psh"], direct)
+    assert b_d.stdout == p_d.stdout == "", (b_d.stdout, p_d.stdout)
+    assert b_d.returncode == 1 and p_d.returncode == 2, (b_d, p_d)

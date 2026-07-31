@@ -89,6 +89,21 @@ class TestMapChildException:
         assert map_child_exception(
             SubstitutionSyntaxAbort(), _StubState(command_mode=True)) == 1
 
+    def test_substitution_syntax_abort_errexit_suppressed_arm(self):
+        # The arm the round-4 unit pin missed: EFFECTIVE errexit, not the raw
+        # flag. With the flag set but the fork inside a suppressing context
+        # (`( … ) || recover`, an if/while condition, `!`) bash leaves the
+        # child at 1, so the suppression must beat the flag.
+        errexit = _StubState(errexit=True)
+        assert map_child_exception(
+            SubstitutionSyntaxAbort(), errexit, errexit_suppressed=True) == 1
+        assert map_child_exception(
+            SubstitutionSyntaxAbort(), errexit, errexit_suppressed=False) == 2
+        # Suppression without errexit changes nothing (already 1).
+        plain = _StubState()
+        assert map_child_exception(
+            SubstitutionSyntaxAbort(), plain, errexit_suppressed=True) == 1
+
     def test_taxonomy_tuple_is_the_six_families(self):
         assert set(CHILD_EXIT_EXCEPTIONS) == {
             TopLevelAbort, FunctionReturn, LoopBreak, LoopContinue, SystemExit,
