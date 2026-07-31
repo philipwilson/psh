@@ -1,0 +1,50 @@
+=== FINAL 6965a079cb0c8dc0b4fa2f027144bb68af77df50 (/Users/pwilson/src/psh-r2-5) ===
+shape                      operand  outcome
+cat << EOF                 present  NeedMore/HEREDOC
+cat <<                     ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat <<- EOF                present  NeedMore/HEREDOC
+cat <<-                    ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat <<< EOF                present  Complete
+cat <<<                    ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat < EOF                  present  Complete
+cat <                      ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat > EOF                  present  Complete
+cat >                      ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat >> EOF                 present  Complete
+cat >>                     ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat <> EOF                 present  Complete
+cat <>                     ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat >| EOF                 present  Complete
+cat >|                     ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat 0<< EOF                present  NeedMore/HEREDOC
+cat 0<<                    ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat 0<<- EOF               present  NeedMore/HEREDOC
+cat 0<<-                   ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat 0<<< EOF               present  Complete
+cat 0<<<                   ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat 0< EOF                 present  Complete
+cat 0<                     ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat 0> EOF                 present  Complete
+cat 0>                     ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat 0>> EOF                present  Complete
+cat 0>>                    ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat 0<> EOF                present  Complete
+cat 0<>                    ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat 0>| EOF                present  Complete+ERROR
+cat 0>|                    ABSENT   Complete+ERROR
+cat {v}<< EOF              present  NeedMore/HEREDOC
+cat {v}<<                  ABSENT   Complete+ERROR
+cat {v}<<- EOF             present  NeedMore/HEREDOC
+cat {v}<<-                 ABSENT   Complete+ERROR
+cat {v}<<< EOF             present  Complete
+cat {v}<<<                 ABSENT   Complete+ERROR
+cat {v}< EOF               present  Complete
+cat {v}<                   ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat {v}> EOF               present  Complete
+cat {v}>                   ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat {v}>> EOF              present  Complete
+cat {v}>>                  ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat {v}<> EOF              present  Complete
+cat {v}<>                  ABSENT   NeedMore/INCOMPLETE_STRUCTURE
+cat {v}>| EOF              present  Complete
+cat {v}>|                  ABSENT   NeedMore/INCOMPLETE_STRUCTURE

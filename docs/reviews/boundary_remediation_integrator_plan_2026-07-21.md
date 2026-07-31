@@ -105,7 +105,11 @@ accurate before this campaign builds on it.
   (the flush path re-lexes correctly) and live ONLY interactively (psh drops
   to PS2 and swallows the next line as phantom body). Its red-on-base pin must
   therefore be a PTY pin; a `-c` pin is green-on-base and violates sequence
-  rule 3.
+  rule 3. [SCOPING CORRECTED at 2.5 close, evidence B70: the latency claim
+  holds for the RD parser ONLY — under the COMBINATOR the misdetection also
+  moved non-interactive diagnostic line numbers on all three channels, so a
+  combinator `-c` diag pin would have been red-on-base. The PTY-pin mandate
+  itself was right; its stated reason was rd-scoped.]
 
 **A6 — compare-bash invocation.** The §12 ceremony command
 `python run_tests.py --compare-bash` is the invocation that block-buffer

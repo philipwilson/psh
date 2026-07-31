@@ -1,0 +1,4 @@
+cat <<E
+hello
+E
+nosuchcmd

@@ -1,0 +1,241 @@
+# VERIFY-ROUND2 — slot 2.5, tip 575291a1, verdict BOUNCE (7 blockers, 15 nits)
+
+Full machine-readable copy: VERIFY-ROUND2-issues.json (same directory).
+
+## BLOCKER 1 [diffAudit] — 
+
+TASK 1(b) — UNDECLARED, UNPINNED INTERACTIVE REGRESSION AWAY FROM BASH: the named-fd here-document `{var}<<DELIM` loses heredoc detection at the session, and its body lines are then EXECUTED AS COMMANDS. The one-grammar fix derives pending heredocs from lexer events, but the lexer never registers `{v}<<` as a heredoc operator (it emits two separate REDIRECT_IN '<' tokens and an EMPTY heredoc map), whereas the retired regex scanner did — and so does bash. Base agreed with bash's full PS1/PS2 prompt sequence; tip does not. This is the slot's own primary axis (heredoc-vs-not detection at a terminal), the exact assertion shape the branch's own PTY module makes, and it is red at tip where it was green at base. Root cause is inside the slot's declared scope (`psh/lexer/heredoc_lexer.py` registration / the named-fd redirect recognizer). Axis gap: both new corpora vary digit-prefixed fds (`0<<`) but never the named-fd `{v}<<` spelling, so nothing in the branch catches it.
+
+### Evidence
+```
+REPLAYED PTY probe (/private/tmp/.../scratchpad/pty_varfd.py, pexpect, TERM=dumb, PS1='P1> ' PS2='P2> ', oracle /opt/homebrew/bin/bash 5.2.26, discriminator-verified worktrees v-base@e36116c3 / v-tip@575291a1, orphan sweep 0):
+  lines sent: `true {v}<<EOF` / `body` / `EOF` / `echo MARK""ER`
+    bash            prompts=['PS2','PS2','PS1','PS1']
+    BASE/rd         prompts=['PS2','PS2','PS1','PS1']   (== bash)
+    BASE/combinator prompts=['PS2','PS2','PS1','PS1']   (== bash)
+    TIP/rd          prompts=['PS1','PS1','PS1','PS1']   transcript: `psh: body: command not found | psh: EOF: command not found`
+    TIP/combinator  prompts=['PS1','PS1','PS1','PS1']   same
+  Control row `cat 0<<EOF` is IDENTICAL base/tip/bash (['PS2','PS2','PS1']) — the defect is specific to the named-fd spelling.
+Session-API isolation (CommandAccumulator.feed, one line):
+  v-base: 'cat {v}<<EOF' -> NeedMore hint=HintKind.HEREDOC ; 'cat {v}<<-EOF' -> NeedMore HEREDOC ; 'exec {v}<<EOF' -> NeedMore HEREDOC
+  v-tip : all three -> Complete hint=None
+Lexer root cause (v-tip, HeredocLexer.tokenize_with_heredocs):
+  'cat {v}<<EOF\n' -> heredocs: dict_keys([])  tokens: [('WORD','cat'),('REDIRECT_IN','<',var_fd='v'),('REDIRECT_IN','<'),('WORD','EOF')]
+  'cat 0<<EOF\n'   -> heredocs: dict_keys([0]) tokens: [('WORD','cat'),('HEREDOC','<<',fd=0,heredoc_id=0),('WORD','EOF')]
+```
+
+## BLOCKER 2 [diffAudit] — 
+
+TASK 1(b) — THE BRIEF'S "non-interactive (-c/script/stdin) heredoc behavior is asserted UNCHANGED — prove it" OBLIGATION IS NOT DISCHARGED, AND THE LEDGER'S DISCHARGE CLAIM IS FALSE. Twelve non-interactive rows changed base->tip (2 shapes x 3 channels x 2 parsers), measured with the DEV'S OWN input bytes. Both changes move toward bash, but the brief states "an unpinned improvement is still a bounce", and the branch pins these two shapes ONLY as PTY rows: the PTY module calls them "The two DECLARED interactive improvements" and the equivalence-corpus docstring explicitly names the PTY row as the covering instrument for the unclosed-quote shape. Nothing in the branch pins the non-interactive half. Separately, the instrument the ledger cites (A4/B6, "rows=66 agree=66 differ=0 — unchanged from base") measures psh-vs-BASH agreement, not base-vs-tip identity, and its BASE run covered only 11 cases (66 = 11x3x2) — `heredoc_unclosed_dq`, `subst_delim_*`, `fd_dup_*`, `nested_*` are absent from `noninteractive-base-e36116c3.txt` (grep for `case=heredoc_unclosed_dq` returns nothing there; the TIP file has 22 cases / 132 rows). That same 66/66 result is cited by integrator ruling R1-B as the BOUNDING EVIDENCE for leaving `scripting/input_preprocessing.py` and `interactive/line_editor_helpers.py` untouched, so the ruling rests on a claim that does not cover the shapes that actually moved.
+
+### Evidence
+```
+REPLAYED, individual-run, discriminator-verified (/private/tmp/.../scratchpad/probe_unclosed.py), inputs taken verbatim from /Users/pwilson/src/psh-r2-5/tmp/r2-5-probes/inputs/*.in:
+  heredoc_unclosed_dq  (`cat <<EOF "abc` / `EOF` / `def"` / `echo MARK""ER`)
+     dash_c/rd     BASE=(0,'MARKER\n')  TIP=(1,'')  BASH=(1,'')
+     dash_c/comb   BASE=(0,'MARKER\n')  TIP=(1,'')  BASH=(1,'')
+     script/rd     BASE=(0,'MARKER\n')  TIP=(1,'')  BASH=(1,'')
+     script/comb   BASE=(0,'MARKER\n')  TIP=(1,'')  BASH=(1,'')
+     stdin/rd      BASE=(0,'MARKER\n')  TIP=(1,'')  BASH=(1,'')
+     stdin/comb    BASE=(0,'MARKER\n')  TIP=(1,'')  BASH=(1,'')
+  subst_delim_dollar (`cat <<$(x)` / `hi` / `$` / `echo MARK""ER`)
+     all 6 rows    BASE=(0,'hi\n$\nMARKER\n')  TIP=(0,'hi\n$\necho MARK""ER\n')  BASH=(0,'hi\n$\necho MARK""ER\n')
+  Controls unchanged: escaped_lt (the chartered MEDIUM-3 shape) BASE==TIP==BASH=(0,'MARKER\n') on all 6 rows — the A5 latency claim itself IS confirmed; true_heredoc and subst_delim_full also 6/6 identical.
+  TOTAL non-interactive rows where BASE != TIP: 12.
+Instrument-universe check: `grep 'case=heredoc_unclosed_dq' noninteractive-base-e36116c3.txt` -> no output; `grep TOTALS` -> base `rows=66 agree=66 differ=0`, final `rows=132 agree=126 differ=6`.
+Search of the branch diff for a non-interactive pin of `cat <<EOF "abc`: none (only tests/unit/scripting/test_heredoc_in_unclosed_substitution_eof.py, which pins the different `echo $(cat <<E` shape).
+```
+
+## BLOCKER 3 [diffAudit] — 
+
+TASK 1(b) — FALSE GUARD CLAIM repeated in 7 production locations, protecting a bypass surface this slot created. The identical comment "tests/unit/visitor/test_ast_coverage_matrix.py fails if a visitor forgets it" is written in `psh/ast_nodes/redirects.py` (HeredocRedirect docstring) and in all six visitors. It is TRUE only for FormatterVisitor. `test_ast_coverage_matrix.executable_node_classes()` filters to Statement/Command subclasses plus containers, so Redirect/HeredocRedirect are excluded from the validator/analysis matrices — removing `visit_HeredocRedirect = visit_Redirect` from MetricsVisitor, ValidatorVisitor, SecurityVisitor, LinterVisitor or DebugASTVisitor leaves the guard GREEN. The type split turned exact-class visitor dispatch into a new silent-failure surface (analysis findings and metrics vanish rather than erroring), and the slot typology requires an anti-bypass guard RUN against a synthetic offender for it. Fix is cheap: either extend the matrix to cover redirect-carrying helper nodes for the analysis visitors, or correct the seven comments to name the real (formatter-only) guard.
+
+### Evidence
+```
+MUTATION-PROVED at tip (v-tip@575291a1, files restored afterwards; `git status --porcelain` shows no tracked modification):
+  (a) remove `visit_HeredocRedirect = visit_Redirect` from psh/visitor/metrics_visitor.py ->
+      `pytest tests/unit/visitor/test_ast_coverage_matrix.py -q` => 85 passed
+      `pytest tests/unit/visitor tests/unit/tooling -q`         => 1462 passed  (guard never fires)
+      behavioural consequence measured: MetricsVisitor over `cat <<EOF\nbody\nEOF\n` reports here_documents = 0 (should be 1)
+  (b) remove the alias from validator_visitor + security_visitor + linter_visitor + debug_ast_visitor (all four at once) ->
+      `pytest tests/unit/visitor/test_ast_coverage_matrix.py -q` => 85 passed
+  (c) POSITIVE CONTROL — remove the alias from psh/visitor/formatter_visitor.py ->
+      => 1 failed: "FormatterVisitor lacks visit_ methods for: ['HeredocRedirect']"
+  Enumeration source: tests/unit/visitor/test_ast_coverage_matrix.py:103 `if issubclass(c, (Statement, Command)) or c in containers`.
+```
+
+## BLOCKER 4 [resurrection] — 
+
+UNDECLARED, UNPINNED NON-INTERACTIVE BEHAVIOR CHANGE (exit status + stdout): the heredoc-plus-unclosed-quote shape `cat <<EOF "abc` changes in -c, script-file AND stdin modes, on BOTH parsers. The brief asserts "Non-interactive (-c/script/stdin) heredoc behavior is asserted UNCHANGED — prove it" and "any behavior delta beyond the chartered fix ... DECLARED + PINNED (an unpinned improvement is still a bounce)". The dev declared this fact as INTERACTIVE-ONLY and pinned it only as PTY row `heredoc_unclosed_dq`; nothing in the branch pins the non-interactive exit status. (The change moves psh TOWARD bash — it is an improvement — but it is unpinned and mis-declared.)
+
+### Evidence
+```
+REPLAYED, one invocation per row, discriminator-verified worktrees (base detached e36116c3 = v0.760.0, tip detached 575291a1), oracle /opt/homebrew/bin/bash = GNU bash 5.2.26(1) aarch64-apple-darwin23.2.0. Script bytes (od -c verified): `cat <<EOF "abc\nEOF\ndef"\necho done\n`.
+mode=file  parser=rd:         bash rc=1 stdout=''        base rc=0 stdout='done\n'   tip rc=1 stdout=''  -> tip==bash byte-identical incl. stderr ('warning: here-document at line 3 delimited by end-of-file (wanted `EOF\')' + cat ENOENT); base != bash
+mode=file  parser=combinator: identical result
+mode=c     parser=rd/comb:    base rc=0 stdout='done\n' ; tip rc=1 stdout='' (stderr differs from bash only by the `psh:`/`bash:` prefix)
+mode=stdin parser=rd/comb:    base rc=0 stdout='done\n' ; tip rc=1 stdout=''
+So a -c pin for this row is RED ON BASE and GREEN AT TIP — it is not a PTY-only fact. Harness: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/replay.py. Grep proves it is unpinned: `git grep -n '<<EOF "abc' fix/remediation-2-5 -- tests/` hits only tests/system/interactive/test_heredoc_detection_interactive_pty.py:111,116 and a docstring in tests/unit/parser/test_session_lexer_heredoc_equivalence.py:60; golden_cases.yaml is unmodified in the diff.
+```
+
+## BLOCKER 5 [resurrection] — 
+
+UNDECLARED, UNPINNED NON-INTERACTIVE BEHAVIOR CHANGE (stdout + new stderr warning): the substitution-bearing-delimiter shape `cat <<$(x)` with a `$` line changes in -c, script-file AND stdin modes, both parsers — base terminated the here-document on the wrongly-cooked delimiter `$` and ran the following command, tip takes the delimiter literally (matching bash) so the following command becomes body text and an end-of-file warning is emitted. Same class as the previous issue: declared by the dev as an interactive improvement and pinned only as PTY rows `subst_delim_dollar`/`subst_delim_full`; the non-interactive stdout change has no pin.
+
+### Evidence
+```
+REPLAYED base e36116c3 vs tip 575291a1 vs bash 5.2.26, script bytes `cat <<$(x)\nhi\n$\necho done\n`:
+mode=file  parser=rd:         bash rc=0 stdout='hi\n$\necho done\n' + "warning: here-document at line 1 delimited by end-of-file (wanted `$(x)')"; base rc=0 stdout='hi\n$\ndone\n' NO warning; tip rc=0 stdout='hi\n$\necho done\n' + warning -> tip==bash byte-identical, base!=bash
+mode=file  parser=combinator: identical result
+mode=c and mode=stdin, both parsers: same base->tip stdout flip.
+Harnesses: scratchpad/diffprobe2.py (13 shapes x 3 modes, path-normalized, individual runs) and scratchpad/replay.py. Unpinned: `git grep -rn '<<\$(x)' fix/remediation-2-5 -- tests/` hits only the PTY module and the equivalence-corpus docstring/_BOUNCED_ROW_CLASSES (which asserts corpus membership, not shell output); tests/behavioral/golden_cases.yaml is not touched by the diff.
+```
+
+## BLOCKER 6 [resurrection] — 
+
+FALSE CLAIMS BAKED INTO COMMITTED INSTRUMENTS (false red/bound claims). Three committed statements are falsified by the replays above: (a) tests/unit/scripting/test_heredoc_in_unclosed_substitution_eof.py docstring — "BOUNDED, measured base-vs-tip: ... The delta needs the heredoc to be INSIDE the unclosed substitution"; (b) tests/system/interactive/test_heredoc_detection_interactive_pty.py module docstring — "Non-interactively the flush path re-lexes and the wrong answer never surfaces ... So a `-c` pin would have been GREEN ON BASE and would have proven nothing", applied to a module that also carries the two improvement rows; (c) tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py PTY_REGISTRY entry — "the divergence is observable ONLY at a prompt and a non-PTY pin for it would be green-on-base". The 66/66 non-interactive-parity measurement in the ledger is true for the escaped-`\<<` spelling but is generalised in these docstrings into a claim about the whole slot, which the branch's own new rows break.
+
+### Evidence
+```
+At least THREE non-interactive base-vs-tip deltas exist, none inside an unclosed substitution: (1) `cat <<EOF "abc...` rc 0->1 (issue 1); (2) `cat <<$(x)`/`$` stdout flip (issue 2); (3) `cat {fd}<<EOF` parse-error context text: base 'Context: cat < -> HERE <- EOF <newline> hello' vs tip 'Context: cat < -> HERE <- EOF <EOF>' (rc 2 both, all three modes). Measured with scratchpad/diffprobe2.py at base e36116c3 / tip 575291a1 with tmpdir paths normalized so the diff is not a path artifact; controls in the same run were byte-identical (plain `cat <<EOF`, `cat <<-EOF`, unterminated heredoc, `echo \<<EOF`, `$((1<<2))`, `'<<EOF'`, backtick/`$V` delimiters: SAME on all three modes).
+```
+
+## BLOCKER 7 [reprobe] — 
+
+Undeclared + unpinned NON-INTERACTIVE behavior delta (rd parser, all three channels). For 'heredoc opener + unclosed double-quote on one line, quote closing on a later line' — byte-exact probe `cat <<EOF "abc\nEOF\ndef"\n` (od -c verified) and the quoted-delimiter variant `cat <<'EOF' "abc\nEOF\ndef"\n` — base rd emits NO 'warning: here-document at line 3 delimited by end-of-file' line on ANY of -c/script/stdin, while tip rd emits it (= base combinator = bash 5.2.26 modulo the program-name prefix; rc=1 and stdout unchanged). This is a base→tip behavior change beyond the chartered fix: the brief's must-not-flip section asserts 'Non-interactive (-c/script/stdin) heredoc behavior is asserted UNCHANGED — prove it, don't assume it', and §7 says an unpinned improvement is still a bounce (the exact R4-B class, one input mode over: the INTERACTIVE flip of this same shape IS declared+PTY-pinned in B18, the non-interactive flip is declared nowhere in the ledger and pinned by no committed test — the PTY row heredoc_unclosed_dq is interactive-only, tests/behavioral and tests/conformance are untouched, and no committed test asserts this warning). The dev's own parity instruments were structurally blind twice over: (1) the heredoc_unclosed_dq case was added to the non-interactive matrix at TIP only — noninteractive-base-e36116c3.txt contains zero rows for it, so tip-vs-base was never measured for the fix-round cases; (2) noninteractive_probe.py's norm() reduces stderr to an 'ENOENT' shape classifier, which swallows a whole appearing/disappearing warning line whenever an ENOENT is present — so even a base re-run would have reported agree=True. Cure per the R4-B precedent: DECLARE in the ledger + pin red-on-base (non-interactive pin, both parsers, oracle version recorded), and either extend the base-side matrix for fix-round cases or narrow the parity claim's instrument statement. Bounding evidence: quote-never-closed (`cat <<EOF "abc\nEOF\n`) and heredoc+unclosed-$( (`cat <<EOF $(x...`) variants are byte-identical base==tip (pre-existing divergences from bash, undisturbed); subst_delim non-interactive rows byte-identical base==tip==bash.
+
+### Evidence
+```
+Replayed at base e36116c3 and tip 575291a1 in discriminator-verified throwaway worktrees, PATH bash GNU 5.2.26(1)-release /opt/homebrew/bin/bash. base/rd stdin+script+dash_c: err='cat: abc\nEOF\ndef: No such file or directory\n' (NO warning). tip/rd all 3 channels: err='psh: line 3: warning: here-document at line 3 delimited by end-of-file (wanted `EOF')\ncat: abc\nEOF\ndef: No such file or directory\n' == bash shape. base/combinator already warned (rd-only flip). Same flip on the <<'EOF' variant. Ledger grep: B18 declares only the interactive flip; no 'warning'/non-interactive delta declaration. git grep: no committed pin ('EOF "abc' appears only in the interactive PTY module). Dev matrix: grep heredoc_unclosed noninteractive-base-e36116c3.txt = 0 rows; noninteractive_probe.py:39-42 norm() = 'ENOENT' if 'No such file or directory' in err.
+```
+
+## NIT 1 [diffAudit] — 
+
+Second, undeclared instance of the delta class the branch declared and pinned in B20: the `{v}<<` parse-error diagnostic's token Context changes base->tip in all three non-interactive channels on both parsers (rc and stdout identical). It is a direct consequence of BLOCKER 1 and would disappear if that is fixed; recording it so the bounding claim in tests/unit/scripting/test_heredoc_in_unclosed_substitution_eof.py ("the delta needs the heredoc to be INSIDE the unclosed substitution") is not read as covering the whole class.
+
+```
+probe_modes.py, script `cat {v}<<EOF\nbody\nEOF\necho SECOND\n`, 6 rows (-c/file/stdin x rd/combinator), rc=2 and stdout='' on both:
+  base stderr tail: "Context: cat < -> HERE <- EOF <newline> body"
+  tip  stderr tail: "Context: cat < -> HERE <- EOF <EOF>"
+```
+
+## NIT 2 [diffAudit] — 
+
+`DebugASTVisitor.visit_Redirect` still hardcodes `self._format_header("Redirect", ...)`, so that visitor labels an executable heredoc "Redirect" while the five `--debug-ast` formats now print `HeredocRedirect` (declared + pinned by tests/unit/io_redirect/test_heredoc_executable_type.py). Not a base->tip delta — recorded only as an inconsistency inside the newly-declared labelling story.
+
+```
+psh/visitor/debug_ast_visitor.py:399 `return self._format_header("Redirect", ', '.join(parts))`, reached via `visit_HeredocRedirect = visit_Redirect` at :406. Confirmed the five formats do print the subclass: `--debug-ast=tree|compact|pretty|sexp|dot` on `cat <<EOF\nbody\nEOF\n` all emit `HeredocRedirect`.
+```
+
+## NIT 3 [diffAudit] — 
+
+INFO — what the diff audit verified CLEAN (recorded so the integrator does not re-derive it). (1) Task 1(a): psh/version.py, CHANGELOG.md, README.md, ARCHITECTURE.md are ABSENT from the 39-file diff — no integrator-owned file touched. (2) Task 1(d): none of plan §3's never-touch parallel-session files appear (`" 1 "`, `b]y`, `bugs.txt`, `d/`, `decomment.py`, `docs/reviews/README.md`, `docs/reviews/*.md`). (3) Task 1(c): tests/behavioral/golden_cases.yaml and FLIP-PINS.md are untouched; FLIP-PINS has no 2.5 must-flip row, and no `test_divergence_*` file is touched, so no must-NOT-flip pin is silently flipped. (4) Every out-of-scope hunk carries an integrator ruling (procsub_render.py = N1, tour_of_psh_internals.md = N6, dot_generator = N7, --debug-ast label pin = N8, conftest default-run admission follows the sanctioned 2.4 pattern). (5) No live code lost: all 12 base `heredoc_content` sites are migrated, no dangling `file.py#symbol` or test-path reference in the new prose, and both exact-class registries (traversal.AstChildSchema, dot_generator.type_colors) gained their HeredocRedirect row. (6) Red-on-base REPLAYED for all three deliverables.
+
+```
+Replays (all discriminator-verified, v-base@e36116c3 / v-tip@575291a1):
+  PTY module            base: 10 failed / 32 deselected (subset, --run-interactive) | tip: 42 passed
+  equivalence corpus    base: 31 failed, 520 passed                                 | tip: 551 passed
+  frozen-graph census   base: 20 failed, 4 passed                                   | tip: 24 passed (with the other new unit files, 53 passed)
+  must-not-flip set     tip: `pytest tests/conformance/bash/test_nested_substitution_timing_conformance.py tests/conformance/bash/test_syntax_template_timing_conformance.py tests/conformance/bash/test_subscript_keying_conformance.py tests/integration/redirection -q` => 1053 passed
+  ruff check psh tests tools => All checks passed;  mypy => Success: no issues found in 274 source files (base count 274)
+Novel rows the dev's suite does not contain, all clean: 54 `<<` spellings x {file,stdin,-c} x {rd,combinator} detection differential => 0 regressions outside the `{v}<<` family (BLOCKER 1); 22 heredoc shapes x 2 parsers under PSH_STRICT_ERRORS=1 => 0 base/tip differences, 0 NonExecutableRedirectError, 0 tracebacks; history joiner `convert_multiline_to_single` unmangled on `cat <<$(x)`/`cat <<EOF "abc`.
+Housekeeping: two throwaway worktrees are still in place for follow-up tasks — remove with `git -C /Users/pwilson/src/psh worktree remove --force /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/v-base` and `.../v-tip`. Probe scripts and outputs kept at /private/tmp/.../scratchpad/{probe_modes.py,probe_detect.py,probe_unclosed.py,pty_varfd.py,fuzz.py,probe_out.txt,detect_out.txt}.
+```
+
+## NIT 4 [resurrection] — 
+
+`cat {fd}<<EOF` (named-fd prefix on a heredoc operator) is an unvaried axis in BOTH new corpora — the PTY corpus and the equivalence corpus vary digit-prefixed fds (`0<<`) but never `{name}<<`, and psh's lexer does not register a pending heredoc for it while bash does. Both base and tip fail to parse it (rc 2 pre-existing), so this is not a regression, but the resulting diagnostic text changed and the axis the brief's charter names ("digit-prefixed fds" / adjacency) is only half covered.
+
+```
+Novel row not in the dev's corpus: session vs lexer both answer () for `cat {fd}<<EOF` at tip (my equivalence probe: 12/12 novel rows agreed, including `cat 2<<EOF`, `cat <<EOF; echo hi`, `for i in 1; do cat <<EOF`, `cat <<E'O'F`, `cat <<EOF# not a comment`, backtick-nested `echo \<<EOF`). bash 5.2.26 accepts `cat {fd}<<EOF` (script `cat {fd}<<EOF\nhello\nEOF\necho done` </dev/null prints 'done' rc=0); psh rc=2 'Expected file name' at BOTH base and tip.
+```
+
+## NIT 5 [resurrection] — 
+
+The second (regex) heredoc grammar survives on the interactive path outside the session: psh/interactive/line_editor_helpers.py still imports `contains_heredoc`, `open_heredoc_specs` and `scan_line_heredoc_markers` and uses them in `convert_multiline_to_single`/`_has_real_heredoc` to decide heredoc-ness when joining a multi-line entry for history. This is consistent with the brief (which scopes the one-grammar charter to the SESSION path) and is not a bounce, but psh/parser/CLAUDE.md's new prose ("ONE heredoc grammar — the session asks the LEXER") should not be read as tree-wide; the integrator may want a carry row.
+
+```
+git grep -n 'contains_heredoc\|open_heredoc_specs\|scan_line_heredoc_markers' fix/remediation-2-5 -- psh/ -> psh/interactive/line_editor_helpers.py:31,61,66,75,86,95; psh/interactive/history_expansion.py:20,175; psh/scripting/lex_parse.py:41,110; psh/utils/* (definitions). psh/parser/session.py no longer imports either scanner (import block replaced by `from ..utils import PendingHeredocQueue` + `from ..utils.heredoc_detection import HeredocTermination`).
+```
+
+## NIT 6 [resurrection] — 
+
+TASK 2 RESULT (informational, no defect found): the RESURRECTION HUNT is CLEAN. The full diff removes exactly four definitions and every surviving reference resolves; the branch imports, runs, and passes every guard that could see a dangling reference.
+
+```
+Removed definitions (git diff origin/main...fix/remediation-2-5 | grep '^-' filtered to def/class/field lines) = exactly 4: (1) `Redirect.heredoc_content: Optional[str] = None` (field moved to the new HeredocRedirect subclass); (2) `Token.parts: List['TokenPart'] = field(default_factory=list)` -> `Tuple[...] = ()`; (3) `_trial_parse(self, preview)` re-signatured; (4) `redirect_heredoc(self, redirect)` re-signatured. No deleted classes, constants, fixtures, markers or CLI flags; `git diff --summary -M` shows creates only, no renames.
+HUNT: `git grep -n heredoc_content fix/remediation-2-5 -- psh/ tests/ docs/ tools/` -> 6 psh hits, all either on HeredocRedirect or isinstance-guarded (file_redirect.py:382 inside `redirect_heredoc(redirect: 'HeredocRedirect')`, reached only via `isinstance` arms at file_redirect.py:681 and manager.py:631; procsub_render/debug/formatter/linter/security all isinstance-guarded); every tests/ hit is a live heredoc-aware parse (-> HeredocRedirect) or was converted; docs hits are historical archive/review files only. `contains_heredoc`/`open_heredoc_specs` were only un-imported from session.py, still defined and exported in psh/utils. No survivors of list semantics on Token.parts (`.parts.append/.extend/.insert/.pop/parts[i]=/parts==[]` : zero hits in psh/ tests/ tools/); no Position/TokenPart mutation sites (`.offset=|.line=|.column=|start_pos.=|end_pos.=` : zero hits). All six visitors with visit_Redirect gained visit_HeredocRedirect; AstChildSchema, dot_generator colours and the q2 field classification all gained rows; no other exact-class-name dispatch exists (executor/core.py:598 is only generic_visit's error text; visualization node_fields has no per-class registry). Every new doc pointer resolves (HeredocRedirect, NonExecutableRedirectError, apply_fd_plan, setup_builtin_redirections, redirect_herestring, _lexer_pending_heredocs, unquote_heredoc_delimiter, heredoc_terminator_matches, HeredocSpec, PendingHeredocQueue, Position, TokenPart).
+RUN PROOF (throwaway worktree at 575291a1, cwd=worktree, since fix/remediation-2-5 is checked out in psh-r2-5): `python -c 'import psh, psh.version'` -> psh.__file__ = <worktree>/psh/__init__.py, version 0.760.0; `python -m psh -c 'echo ok'` -> ok; heredoc script runs on both parsers; all five --debug-ast formats render HeredocRedirect. Targeted suites in that worktree: 241 passed (ast_coverage_matrix, traversal_totality_battery, walk_ast_schema, doc_pointers, doc_snippets, syntax_bearing_ast_fields_q2, visualization_corpus) and 1120 passed (tests/unit/io_redirect, tests/unit/visitor, heredoc transaction/session/linearity/combinator/regression/tooling modules); `ruff check psh tests tools` -> All checks passed. Worktree removed afterwards (`git worktree remove --force`); no orphaned psh/bash processes.
+```
+
+## NIT 7 [ledgerCheck] — 
+
+Census instrument (C) reports a false particular: it claims psh/scripting/input_preprocessing.py has an 'own << regex literal at :13'. The file contains no regex literal at all (line 13 is the process_line_continuations docstring; the only '<<' in the file is docstring prose at :26; its real consumer is the imported scan_line_heredoc_markers at :115, which IS correctly cited elsewhere in B19). The 15-site union and every disposition are unaffected because the file is independently counted by instrument (A), but the recorded (C) output contains one wrong row particular.
+
+```
+tmp/r2-5-probes/second-grammar-census.txt section (C) vs `git show fix/remediation-2-5:psh/scripting/input_preprocessing.py` lines 1-30 and `git grep 're.compile\|<<' fix/remediation-2-5 -- psh/scripting/input_preprocessing.py` (only :26, a docstring).
+```
+
+## NIT 8 [ledgerCheck] — 
+
+Hand-carried number in the ledger: B18 ('849 -> 1,953 generated cases') and B27's table present 1,953 as the value of the 5-axis cartesian '9 x 9 x 3 x 4 x 2', which equals 1,944. The extra 9 are the file's named (non-generated) tests; the committed test module docstring states the correct 1,944. Cosmetic — the final +646 delta was derived and I independently reconciled the per-file sum (551+42+24+15+4+4+3+2+1 = 646) and replayed 604 of those tests live — but it is exactly the presentational class R4-D condemned.
+
+```
+Dev ledger B27 table row '= 1,953' vs tests/unit/parser/test_session_lexer_heredoc_equivalence.py docstring ('full 5-axis cartesian of 1,944 rows'); 9*9*3*4*2 = 1,944.
+```
+
+## NIT 9 [ledgerCheck] — 
+
+The 2.2 line_offset carry's final disposition is not restated at the final-declaration close-out (B29-B31). It IS dispositioned in the ledger (D4 proposal + R1-D ruling 'stays carried', ACKed), so it is not silent, but unlike carry #11 (which got the explicit B13 assessment row at final declaration) it lacks a final-declaration row, which the brief's letter asks for ('STILL-OPEN rows are declared empty-or-deferred EXPLICITLY at final declaration').
+
+```
+Brief tmp/remediation-ledgers/briefs/2.5.md carry section; dev ledger D4 + B15 R1-D row; B29-B31 contain no 2.2-carry row.
+```
+
+## NIT 10 [ledgerCheck] — 
+
+B19's classification sentence 'The remaining 11 sites consume the shared delimiter/terminator ALGEBRA (HeredocSpec, PendingHeredocQueue, heredoc_terminator_matches)' mis-describes psh/scripting/lex_parse.py, which consumes contains_heredoc — neither the algebra nor a grammar, but the documented pure substring over-approximation ("'<<' in command_string", heredoc_detection.py:640-658) used as the tokenization dispatch, including on the session path via command_accumulator._lex -> lex_and_expand. Substantively harmless — it can never under-detect a real heredoc, so it is not a second opinion on heredoc-ness (I verified this and probed 6 novel comment-adjacency rows plus a stdin parity row, all agreeing with the lexer and with bash) — but the blanket 'algebra' claim is inaccurate for that site and the ledger never names the gate's session-path reachability.
+
+```
+git show fix/remediation-2-5:psh/scripting/lex_parse.py :110 (contains_heredoc dispatch); heredoc_detection.py:640 (substring over-approximation, 'must NEVER return False for a real heredoc'); command_accumulator.py _lex -> lex_and_expand; verifier novel probe: 6/6 comment-adjacency rows AGREE (session==lexer) and `printf 'cat <<E#F\nhello\nE#F\necho AFTER\n'` byte-identical bash-vs-psh at tip.
+```
+
+## NIT 11 [reprobe] — 
+
+B30's blanket sentence 'Every row re-checked at the final tip; every anchor stamped at or after the commit it describes' overstates for two rows: B19's second-grammar-census.txt self-stamps 063815ad (mtime 13:27, before 692610a7 at 13:40) and B26's history_composite_probe evidence was produced 13:56 (before 8a2e92d7 13:57 and the 14:13 tip). Substance is safe — I re-ran the census at 575291a1 (identical, 15 sites) and independently confirmed the composite behavior at tip with fresh PTY probes, and the two intervening commits touch only two test files disjoint from both claims — but by the letter of the R6-D standard the dev is now held to ('an anchor stamped at an earlier commit is stale'), these two anchors should be re-stamped or the B30 sentence scoped.
+
+```
+second-grammar-census.txt header 'SHA: 063815ad', mtime Jul 31 13:27; history_composite_probe.py mtime 13:56; commit times: 692610a7 13:40:05, 8a2e92d7 13:57:33, 575291a1 14:13:08. My replay at 575291a1: TOTAL DISTINCT SITES: 15, identical output; my PTY history probes at tip: expansion resumes = bash both parsers. 8a2e92d7 touches only the PTY test file; 575291a1 only the equivalence test file.
+```
+
+## NIT 12 [reprobe] — 
+
+No committed synthetic-offender test drives the BUILTIN-STREAM arm (psh/io_redirect/manager.py:637). Both committed C1 guard tests (test_heredoc_executable_type.py::test_synthetic_offender_raises_the_typed_error_at_the_fd_backend and the rewritten s2 test) exercise apply_fd_plan only. My probe proves the manager arm bites today (hand-built plain Redirect type='<<' and '<<-' through setup_builtin_redirections → NonExecutableRedirectError, no file named after the delimiter), but if that arm were later deleted the guard suite stays green and a structurally-heredoc plain Redirect on the builtin path silently gets no stdin redirect. One offender row against setup_builtin_redirections closes it.
+
+```
+grep NonExecutableRedirectError tests/ → only fd-backend drivers; my probe at tip: builtin-stream backend typed error 'non-executable heredoc parse state reached the builtin stream backend: Redirect(type=...' for '<<' and '<<-', file 'EOF' created? False.
+```
+
+## NIT 13 [reprobe] — 
+
+Pre-existing (base-identical) interactive divergence surfaced by a fresh row, for the successor queue next to the R4-C carried history mirror: `echo !!` on the line IMMEDIATELY after a multi-line true heredoc closes. Both shells store the whole heredoc command (opener+body+terminator) as one multi-line history entry and echo the full expansion, but bash still reads the re-opened heredoc's body from the TERMINAL (PS2 after `echo !!`; my probe's next line closes it, then the remaining expanded lines run as commands), while psh consumes the body embedded in the expanded text itself (PS1 immediately). Byte-identical transcripts at e36116c3 and 575291a1, both parsers — NOT the slot's change; the slot's own composite (`echo !!` after an intervening simple command, and after `echo \<<EOF`) matches bash exactly.
+
+```
+hist_direct probe (real PTY, HISTFILE set): lines ['cat <<EOF','hi','EOF','echo !!','EOF'] → bash prompts [PS2,PS2,PS1,PS2,PS1]; psh rd+combinator [PS2,PS2,PS1,PS1,PS1] with identical tails at BOTH SHAs ('echo cat <<EOF\nhi\nEOF\ncat' then 'psh: EOF: command not found'). My hist_after_true_heredoc row (with intervening 'echo done') AGREES with bash on both parsers at tip.
+```
+
+## NIT 14 [reprobe] — 
+
+Ledger B27's BEFORE line writes '9 operators × 9 delimiters × 3 marker-quotings × 4 contexts × 2 option states = 1,953 tests' — the literal product is 1,944; 1,953 is the file's collected total (972 cartesian lines + 3 arithmetic extras = 975 lines × 2 option states + 3 fixed tests). Every operative count is correct (I reproduced 1,953 collected at 8a2e92d7 and 551 at 575291a1, and the module docstring's '1,944-row cartesian' is accurate); only the ledger's equation-as-written conflates the cartesian with the file total. Given this campaign's precision-of-record standard, worth a one-word correction at ceremony.
+
+```
+pytest --collect-only at 8a2e92d7: 1953; at 575291a1: 551. Generator enumeration: 975 pre-trim lines (972 cartesian + 3 arith), 273 post-trim lines (243 product + 27 context + 3 arith); 273×2+5=551.
+```
+
+## NIT 15 [reprobe] — 
+
+test_the_trim_kept_every_axis_varied iterates over the LIVE axis lists (_OPERATORS/_DELIMITERS/_CONTEXTS), so deleting an entry from a list also deletes it from this test's universe — the test passed my drop-the-nested-context mutation. In practice the trim is still guarded: the hardcoded-literal _BOUNCED_ROW_CLASSES hook caught both my generator mutations (substitution-delimiter drop and context drop), and it executes the real generator rather than grepping names. Note only — the combined pair bites; a future NON-bounced axis value has weaker protection than a bounced one.
+
+```
+Mutation 1 (remove '$(x)','`x`','$V','${V}' from _DELIMITERS): test_every_bounced_row_class_survived_the_trim FAILED. Mutation 2 (remove 'echo $(cat {marker})' from _CONTEXTS): bounced-row hook FAILED, axis-varied test PASSED. Restored: all hooks green.
+```

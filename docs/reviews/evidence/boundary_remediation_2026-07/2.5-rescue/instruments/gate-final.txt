@@ -1,0 +1,10 @@
+# SHA: 6965a079cb0c8dc0b4fa2f027144bb68af77df50
+# command: python -u run_tests.py --parallel
+# transcript: tmp/gate-r9b.txt
+
+================================================================================
+TEST RUN SUMMARY
+================================================================================
+Combined across 2 phase(s) (from phase manifests): 22411 passed, 1590 skipped, 10 xfailed
+Full transcript saved to: /Users/pwilson/src/psh-r2-5/tmp/last-test-run.txt
+✅ All test phases PASSED

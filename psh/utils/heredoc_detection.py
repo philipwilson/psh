@@ -31,8 +31,9 @@ This module also owns the campaign-S2 heredoc transaction contracts:
   :func:`heredoc_terminator_matches` (guarded by
   ``tests/unit/tooling/test_heredoc_transaction_guards.py``).
 
-CONSUMERS, enumerated from a census (``second_grammar_census.py``, rescued to
-``docs/reviews/evidence/`` at ceremony) rather than gestured at, and GROUPED BY
+CONSUMERS, enumerated from a census (``docs/reviews/evidence/
+boundary_remediation_2026-07/2.5-rescue/second_grammar_census.py``) rather
+than gestured at, and GROUPED BY
 which of this module's two jobs each one needs it for. The grouping is NOT a
 partition: four of the scanner consumers below (``heredoc_collector``,
 ``cmdsub_scanner``, ``input_preprocessing``, ``history_expansion``) also drive

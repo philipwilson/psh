@@ -1,0 +1,182 @@
+# DIAG AXIS SWEPT ACROSS EVERY SPELLING FAMILY (R14-A + tail)
+# base: /Users/pwilson/src/psh-r25-base  SHA: e36116c30d12d1305f163fd6d8eaada8d72b1116
+# tip : /Users/pwilson/src/psh-r2-5  SHA: 6965a079cb0c8dc0b4fa2f027144bb68af77df50
+# oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+# discriminator OK : I /Users/pwilson/src/psh-r25-base/psh/__init__.py
+# discriminator OK : I /Users/pwilson/src/psh-r2-5/psh/__init__.py
+
+# family        label                      chan     parser      base_lines -> tip_lines   bash_lines   verdict
+  escaped      escaped_lt                 dash_c   rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt                 dash_c   combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt                 script   rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt                 script   combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt                 stdin    rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt                 stdin    combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt_quoted          dash_c   rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt_quoted          dash_c   combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt_quoted          script   rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt_quoted          script   combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt_quoted          stdin    rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt_quoted          stdin    combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt_strip           dash_c   rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt_strip           dash_c   combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt_strip           script   rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt_strip           script   combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt_strip           stdin    rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt_strip           stdin    combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt_digit           dash_c   rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt_digit           dash_c   combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt_digit           script   rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt_digit           script   combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped      escaped_lt_digit           stdin    rd          [1, 2, 3]  -> [1, 2, 3]  [1, 2, 3]    ident   tip==bash_lines
+  escaped      escaped_lt_digit           stdin    combinator  [1, 1, 1]  -> [1, 2, 3]  [1, 2, 3]    MOVED   tip==bash_lines
+  escaped2     escaped_second_lt          dash_c   rd          [1, 2]     -> [1, 2]     [1, 2]       ident   tip==bash_lines
+  escaped2     escaped_second_lt          dash_c   combinator  [1, 2]     -> [1, 2]     [1, 2]       ident   tip==bash_lines
+  escaped2     escaped_second_lt          script   rd          [1, 2]     -> [1, 2]     [1, 2]       ident   tip==bash_lines
+  escaped2     escaped_second_lt          script   combinator  [1, 2]     -> [1, 2]     [1, 2]       ident   tip==bash_lines
+  escaped2     escaped_second_lt          stdin    rd          [1, 2]     -> [1, 2]     [1, 2]       ident   tip==bash_lines
+  escaped2     escaped_second_lt          stdin    combinator  [1, 2]     -> [1, 2]     [1, 2]       ident   tip==bash_lines
+  subscript    subscript_shift_valid      dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    subscript_shift_valid      dash_c   combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    subscript_shift_valid      script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    subscript_shift_valid      script   combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    subscript_shift_valid      stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    subscript_shift_valid      stdin    combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    subscript_shift_spaces     dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    subscript_shift_spaces     dash_c   combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    subscript_shift_spaces     script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    subscript_shift_spaces     script   combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    subscript_shift_spaces     stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    subscript_shift_spaces     stdin    combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    subscript_shift_expand     dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    subscript_shift_expand     dash_c   combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    subscript_shift_expand     script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    subscript_shift_expand     script   combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    subscript_shift_expand     stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    subscript_shift_expand     stdin    combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    declare_subscript_shift    dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    declare_subscript_shift    dash_c   combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    declare_subscript_shift    script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    declare_subscript_shift    script   combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    declare_subscript_shift    stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  subscript    declare_subscript_shift    stdin    combinator  [1]        -> [2]        [2]          MOVED   tip==bash_lines
+  subscript    subscript_degenerate       dash_c   rd          [1]        -> [1]        [1, 2]       ident   LINES DIFFER
+  subscript    subscript_degenerate       dash_c   combinator  [1]        -> [1]        [1, 2]       ident   LINES DIFFER
+  subscript    subscript_degenerate       script   rd          [1]        -> [1, 2]     [1, 2]       MOVED   tip==bash_lines
+  subscript    subscript_degenerate       script   combinator  [1]        -> [1, 2]     [1, 2]       MOVED   tip==bash_lines
+  subscript    subscript_degenerate       stdin    rd          [1]        -> [1, 2]     [1, 2]       MOVED   tip==bash_lines
+  subscript    subscript_degenerate       stdin    combinator  [1]        -> [1, 2]     [1, 2]       MOVED   tip==bash_lines
+  quoted       single_quoted              dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       single_quoted              dash_c   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       single_quoted              script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       single_quoted              script   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       single_quoted              stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       single_quoted              stdin    combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       double_quoted              dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       double_quoted              dash_c   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       double_quoted              script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       double_quoted              script   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       double_quoted              stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  quoted       double_quoted              stdin    combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dollar               dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dollar               dash_c   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dollar               script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dollar               script   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dollar               stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dollar               stdin    combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dbl_paren            dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dbl_paren            dash_c   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dbl_paren            script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dbl_paren            script   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dbl_paren            stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        arith_dbl_paren            stdin    combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        let_shift                  dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        let_shift                  dash_c   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        let_shift                  script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        let_shift                  script   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        let_shift                  stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  arith        let_shift                  stdin    combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  herestring   here_string                dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  herestring   here_string                dash_c   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  herestring   here_string                script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  herestring   here_string                script   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  herestring   here_string                stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  herestring   here_string                stdin    combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  fd_dup       fd_dup_in                  dash_c   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  fd_dup       fd_dup_in                  dash_c   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  fd_dup       fd_dup_in                  script   rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  fd_dup       fd_dup_in                  script   combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  fd_dup       fd_dup_in                  stdin    rd          [2]        -> [2]        [2]          ident   tip==bash_lines
+  fd_dup       fd_dup_in                  stdin    combinator  [2]        -> [2]        [2]          ident   tip==bash_lines
+  true_heredoc true_heredoc               dash_c   rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc               dash_c   combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc               script   rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc               script   combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc               stdin    rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc               stdin    combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_strip         dash_c   rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_strip         dash_c   combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_strip         script   rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_strip         script   combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_strip         stdin    rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_strip         stdin    combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_quoted        dash_c   rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_quoted        dash_c   combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_quoted        script   rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_quoted        script   combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_quoted        stdin    rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_quoted        stdin    combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_fd            dash_c   rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_fd            dash_c   combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_fd            script   rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_fd            script   combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_fd            stdin    rd          [4]        -> [4]        [4]          ident   tip==bash_lines
+  true_heredoc true_heredoc_fd            stdin    combinator  [4]        -> [4]        [4]          ident   tip==bash_lines
+  no_heredoc   no_heredoc_ctl             dash_c   rd          [2, 4]     -> [2, 4]     [2, 4]       ident   tip==bash_lines
+  no_heredoc   no_heredoc_ctl             dash_c   combinator  [1, 4]     -> [1, 4]     [2, 4]       ident   LINES DIFFER
+  no_heredoc   no_heredoc_ctl             script   rd          [2, 4]     -> [2, 4]     [2, 4]       ident   tip==bash_lines
+  no_heredoc   no_heredoc_ctl             script   combinator  [1, 4]     -> [1, 4]     [2, 4]       ident   LINES DIFFER
+  no_heredoc   no_heredoc_ctl             stdin    rd          [2, 4]     -> [2, 4]     [2, 4]       ident   tip==bash_lines
+  no_heredoc   no_heredoc_ctl             stdin    combinator  [1, 4]     -> [1, 4]     [2, 4]       ident   LINES DIFFER
+  option       posix_escaped_lt           dash_c   rd          [2, 3, 4]  -> [2, 3, 4]  [2, 3, 4]    ident   tip==bash_lines
+  option       posix_escaped_lt           dash_c   combinator  [2, 2, 2]  -> [2, 3, 4]  [2, 3, 4]    MOVED   tip==bash_lines
+  option       posix_escaped_lt           script   rd          [2, 3, 4]  -> [2, 3, 4]  [2, 3, 4]    ident   tip==bash_lines
+  option       posix_escaped_lt           script   combinator  [2, 2, 2]  -> [2, 3, 4]  [2, 3, 4]    MOVED   tip==bash_lines
+  option       posix_escaped_lt           stdin    rd          [2, 3, 4]  -> [2, 3, 4]  [2, 3, 4]    ident   tip==bash_lines
+  option       posix_escaped_lt           stdin    combinator  [2, 2, 2]  -> [2, 3, 4]  [2, 3, 4]    MOVED   tip==bash_lines
+
+# TOTALS rows=138 moved=31 identical=107
+# FAMILIES THAT MOVE:     ['escaped', 'option', 'subscript']
+# FAMILIES THAT DO NOT:   ['arith', 'escaped2', 'fd_dup', 'herestring', 'no_heredoc', 'quoted', 'true_heredoc']
+# MOVED rows, by (family,label,chan,parser):
+#     ('escaped', 'escaped_lt', 'dash_c', 'combinator')
+#     ('escaped', 'escaped_lt', 'script', 'combinator')
+#     ('escaped', 'escaped_lt', 'stdin', 'combinator')
+#     ('escaped', 'escaped_lt_quoted', 'dash_c', 'combinator')
+#     ('escaped', 'escaped_lt_quoted', 'script', 'combinator')
+#     ('escaped', 'escaped_lt_quoted', 'stdin', 'combinator')
+#     ('escaped', 'escaped_lt_strip', 'dash_c', 'combinator')
+#     ('escaped', 'escaped_lt_strip', 'script', 'combinator')
+#     ('escaped', 'escaped_lt_strip', 'stdin', 'combinator')
+#     ('escaped', 'escaped_lt_digit', 'dash_c', 'combinator')
+#     ('escaped', 'escaped_lt_digit', 'script', 'combinator')
+#     ('escaped', 'escaped_lt_digit', 'stdin', 'combinator')
+#     ('subscript', 'subscript_shift_valid', 'dash_c', 'combinator')
+#     ('subscript', 'subscript_shift_valid', 'script', 'combinator')
+#     ('subscript', 'subscript_shift_valid', 'stdin', 'combinator')
+#     ('subscript', 'subscript_shift_spaces', 'dash_c', 'combinator')
+#     ('subscript', 'subscript_shift_spaces', 'script', 'combinator')
+#     ('subscript', 'subscript_shift_spaces', 'stdin', 'combinator')
+#     ('subscript', 'subscript_shift_expand', 'dash_c', 'combinator')
+#     ('subscript', 'subscript_shift_expand', 'script', 'combinator')
+#     ('subscript', 'subscript_shift_expand', 'stdin', 'combinator')
+#     ('subscript', 'declare_subscript_shift', 'dash_c', 'combinator')
+#     ('subscript', 'declare_subscript_shift', 'script', 'combinator')
+#     ('subscript', 'declare_subscript_shift', 'stdin', 'combinator')
+#     ('subscript', 'subscript_degenerate', 'script', 'rd')
+#     ('subscript', 'subscript_degenerate', 'script', 'combinator')
+#     ('subscript', 'subscript_degenerate', 'stdin', 'rd')
+#     ('subscript', 'subscript_degenerate', 'stdin', 'combinator')
+#     ('option', 'posix_escaped_lt', 'dash_c', 'combinator')
+#     ('option', 'posix_escaped_lt', 'script', 'combinator')
+#     ('option', 'posix_escaped_lt', 'stdin', 'combinator')

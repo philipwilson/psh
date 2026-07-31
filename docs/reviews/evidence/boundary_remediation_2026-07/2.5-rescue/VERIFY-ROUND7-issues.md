@@ -1,0 +1,170 @@
+# VERIFY-ROUND7 — slot 2.5, tip 30ffa09a, verdict BOUNCE (1 blocker, 17 nits)
+
+Full machine-readable copy: VERIFY-ROUND7-issues.json (same directory).
+
+## BLOCKER 1 [resurrection] — 
+
+UNDECLARED + UNPINNED behavior delta: assignment subscripts containing a VALID `<<` arithmetic shift (`a[1<<2]=1`, `a[ 1 << 2 ]=1`, `declare -a b; b[3<<1]=z`) move the combinator's diagnostic line numbers from WRONG (line 1) to CORRECT (line 2 = bash) between base and tip, on all three non-interactive channels. This is the same causal class as the dev's declared delta #4, but the declaration and the pins are scoped to the ESCAPED SPELLING only: `_ESCAPED_DIAG_SHAPES` in tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py contains four `echo \<<...` rows and nothing else, and the one subscript row that exists (`_CLASS_SHAPES`'s `subscript_shift_operator` = the DEGENERATE `a[<<]=1`) asserts only outcome class (`psh.stderr.strip()` non-empty, `"AFTER" in stdout` parity) — assertions that are structurally blind to line numbers. Nothing in the branch would notice a revert of this shape family, and nothing in the ledger names it (grep for `1<<2` / `subscript` in tmp/remediation-ledgers/2.5.md returns only the arithmetic-shift equivalence rows and B53's `a[<<]=1`). Per the brief's behavior guard ("Any behavior delta beyond the chartered fix ... DECLARED + PINNED (an unpinned improvement is still a bounce)") and the AXIS-QUANTIFICATION rule this is the same unvaried-axis failure the dev was bounced for in rounds 2 and 6 — the DIAG axis was added to the escaped spellings only, not to the spelling corpus the declaration's own prose quantifies over ("the session's regex opened a phantom heredoc, so the following physical lines joined ONE buffer"). Mitigating, for integrator judgement: the MECHANISM is protected — a wholesale revert of the fix would red the escaped-spelling pins — so what is unprotected is a shape-scoped regression. Fix shape: add the subscript-shift shapes to _ESCAPED_DIAG_SHAPES (or a sibling parametrization) and name them in the declared-delta list.
+
+### Evidence
+```
+REPLAYED, both SHAs, live PATH bash. Probe file /Users/pwilson/src/psh/tmp/r2-5-verify/ss.sh (od -c verified: `a   [   1   <   <   2   ]   =   1   ;    e c h o   $ { a [ 4 ] } \n n o s u c h c m d _ x y z \n`).
+
+bash 5.2.26 (/opt/homebrew/bin/bash): stdout '1\n', stderr 'ss.sh: line 2: nosuchcmd_xyz: command not found', rc=127
+base e36116c3 --parser rd        : line 2  (already correct)
+base e36116c3 --parser combinator: line 1  (WRONG)
+tip  30ffa09a --parser rd        : line 2
+tip  30ffa09a --parser combinator: line 2  (MOVED, = bash)
+
+Extent quantified by /Users/pwilson/src/psh/tmp/r2-5-verify/diag2.py (13 shapes x 2 parsers, script channel, one subprocess per row):
+  subscript_shift_valid     combinator  base (127,'',[1])      tip (127,'',[2])      bash (127,'',[2])      ***MOVED***
+  subscript_shift_spaces    combinator  base (127,'',[1])      tip (127,'',[2])      bash (127,'',[2])      ***MOVED***
+  subscript_shift_expand    combinator  base (127,'1\n',[1])   tip (127,'1\n',[2])   bash (127,'1\n',[2])   ***MOVED***
+  declare_subscript_shift   combinator  base (127,'',[1])      tip (127,'',[2])      bash (127,'',[2])      ***MOVED***
+  escaped_lt                combinator  base (127,'',[1,1])    tip (127,'',[1,2])    bash (127,'',[1,2])    ***MOVED*** (DECLARED+PINNED)
+  subscript_degenerate      rd+comb     base (1,'',[1])        tip (127,'',[1,2])    bash (127,'',[1,2])    ***MOVED*** (DECLARED, B53)
+  arith_dollar / arith_dbl_paren / let_shift / sq_op / dq_op / cond_shift / true_heredoc_control: identical at both SHAs (controls)
+
+All three channels: /Users/pwilson/src/psh/tmp/r2-5-verify/identity2.py reported DIFFS=6 over 216 rows -- 3 escaped_lt (declared) + 3 subscript_shift (dash_c, stdin, script), all combinator.
+
+Pin-absence check: `grep -rn "1<<2|a\[<<\]|subscript_shift" tests/` at the branch tip returns only test_heredoc_declared_deltas_noninteractive.py:89 (the degenerate `a[<<]=1` class row) and unrelated line-editor/heredoc-detection rows.
+```
+
+## NIT 1 [diffAudit] — 
+
+Dangling reference in PRODUCTION source: psh/utils/heredoc_detection.py:36 cites `docs/reviews/evidence/boundary_remediation_2026-07/2.5-rescue/second_grammar_census.py`, which does not exist anywhere in this branch. This is the ordered form (R12-F/NIT-7 replaced the scratch path `tmp/r2-5-probes/second_grammar_census.py`), and 2.1-/2.2-/2.3-/2.4-rescue all exist on origin/main so the integrator does land these at ceremony — but at the tip the sentence reads as naming an existing file, unlike the test module which states in-line that it is 'rescued ... at ceremony'. It is also the FIRST citation of a docs/reviews/evidence path from psh/ production source (zero such citations on origin/main). Ceremony checklist item: land 2.5-rescue/second_grammar_census.py in the same release, or reword.
+
+```
+git ls-tree -r --name-only fix/remediation-2-5 -- docs/reviews/evidence/boundary_remediation_2026-07/ | cut -d/ -f4 | sort -u  ->  1.2-rescue 1.3-rescue 1.3b-rescue 1.4-rescue 2.1-rescue 2.2-rescue 2.3-rescue 2.4-rescue  (no 2.5-rescue).  git grep -n 'docs/reviews/evidence' origin/main -- psh/  ->  (empty);  same grep at tip -> psh/utils/heredoc_detection.py:36 only.
+```
+
+## NIT 2 [diffAudit] — 
+
+Stale comment left behind by the type split, in a file the diff does not touch: tests/unit/visitor/test_security_missed_positions.py:184 still says `parse(tokenize(...)) leaves heredoc_content None`. After this slot a bare token-level parse yields a plain Redirect with NO heredoc_content field at all, so the comment now describes a state that is unrepresentable. Same class as the two assertions the slot did correctly update (test_heredoc.py, test_heredoc_transaction_s2.py).
+
+```
+git grep -n heredoc_content fix/remediation-2-5 -- tests/unit/visitor/test_security_missed_positions.py -> ':184:# parse(tokenize(...)) leaves heredoc_content None and mis-lexes the body'; file absent from `git diff --name-only origin/main...fix/remediation-2-5`.
+```
+
+## NIT 3 [diffAudit] — 
+
+Enumerating comment not extended for the operation space the slot grew: psh/io_redirect/redirect_program.py:38 still reads `VAR_FD = "var_fd"          # {v}>  {v}<  {v}>&N  {v}>&-`. classify_redirect now routes `{v}<<`, `{v}<<-` and `{v}<<<` to VAR_FD (var_fd is checked first), and apply_var_fd_redirect materializes them on a fresh fd >= 10 — so the enumeration is incomplete at the single place a reader looks up what VAR_FD covers. Exactly the 'make the comment TRUE' item R9-A(3) raised for the executor arm, one file over.
+
+```
+psh/io_redirect/redirect_program.py:38 `VAR_FD = "var_fd"          # {v}>  {v}<  {v}>&N  {v}>&-`; :49-53 `if redirect.var_fd: return RedirectOpKind.VAR_FD` precedes the `('<<','<<-','<<<') -> HERE_INPUT` arm; psh/io_redirect/file_redirect.py:564 `if rtype in ('<<', '<<-', '<<<'):` inside apply_var_fd_redirect.
+```
+
+## NIT 4 [diffAudit] — 
+
+Un-swept consumer of the new representable shape: psh/executor/command.py#_INPUT_REBIND_TYPES contains '<<'/'<<-'/'<<<', and _rebind_input_cursors_after_exec maps `redirect.fd is None` to fd 0. `exec {v}<<EOF` — a value shape THIS SLOT created (base parse-errored, so it could not exist) — has fd=None and var_fd='v', so it now calls registry.rebind(0) although it never touches fd 0. Conservative (a dropped InputCursor is re-created), so not raised to blocker, but it is the same 'a fix that creates a new shape must grow every consumer's universe' pattern that produced blockers R9-B and R10-A, and nothing in the diff or the new guards covers it.
+
+```
+psh/executor/command.py:995 `_INPUT_REBIND_TYPES = frozenset({'<', '<>', '<<', '<<-', '<<<', '<&', '<&-'})`; :1009-1011 `if fd is None: if redirect.type in self._INPUT_REBIND_TYPES: fd = 0 ... registry.rebind(fd)`. The `exec_then_read` row of tests/unit/io_redirect/test_named_fd_heredoc.py drives exactly this path but asserts only stdout/rc parity.
+```
+
+## NIT 5 [diffAudit] — 
+
+Frozen-graph census universe is one corpus line, not the class. tests/unit/lexer/test_lexical_value_graph_frozen.py walks a live LexedUnit built from a single _SOURCE and its docstring claims 'a new field, a new node type, or a new nesting level is covered without anybody remembering to update the test'. That holds only for shapes this one source produces. Token.array_init (Optional[Any], repr=False) is a graph edge no corpus line exercises — it is parser-set today so not currently reachable from a LexedUnit, but the walk would not notice if it became lexer-set. A second/third corpus source, or an assertion that the walked type set covers every field-declared type, would make the universe match the words the brief asked for ('the universe is the CLASS ... not the names you know').
+
+```
+tests/unit/lexer/test_lexical_value_graph_frozen.py:_SOURCE = 'echo "a$b"c $(x) ${y:-d} <<E\nbody\nE\n' with @pytest.fixture(scope="module") def unit(); psh/lexer/token_types.py:149 `array_init: Optional[Any] = field(default=None, repr=False)` (set only at psh/parser/combinators/commands/simple.py:111/161, never by the lexer).
+```
+
+## NIT 6 [diffAudit] — 
+
+Docstring over-claims relative to the assertion in tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py::test_class_shapes_report_an_error_and_carry_on_like_bash: the prose says 'both shells report a diagnostic, and both still run the follow-up command', but the assertion is an AGREEMENT check `("AFTER" in psh.stdout) == ("AFTER" in bash.stdout)`, which is equally satisfied when NEITHER runs it — the expected outcome for `bash -c` on a syntax error. The row is honest; the sentence describing it is not. Same test also reads psh.stderr/bash.stderr without the `isinstance(..., Completed)` guard its sibling rows use.
+
+```
+tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py: docstring 'What is asserted: both shells report a diagnostic, and both still run the follow-up command.' vs body `assert ("AFTER" in psh.stdout) == ("AFTER" in bash.stdout)`; the two preceding rows begin `assert is_comparable(psh) and is_comparable(bash)` / `assert isinstance(psh, Completed) and isinstance(bash, Completed)`, this one does not.
+```
+
+## NIT 7 [resurrection] — 
+
+Stale code sketch NEWLY FALSIFIED by this branch: docs/architecture/lexer_architecture.md:245 still declares `parts: List['TokenPart'] = field(default_factory=list)` inside its verbatim `@dataclass(frozen=True) class Token:` block — i.e. the live architecture doc still teaches the exact mutable-list shape #22 MEDIUM-10(b) named and this slot fixed. The sketch was ACCURATE on origin/main, so the drift is this branch's. The dev updated the sibling sketches in docs/architecture/tour_of_psh_internals.md (verified byte-accurate against tip output) but missed this file. Not caught by tests/unit/tooling/test_doc_snippets.py, whose REGISTRY only covers psh/*/CLAUDE.md. (Pre-existing and NOT this branch's: line 262 of the same file still says "composite token support built-in (`RichToken`, also frozen)" and docs/architecture/ast_data_flow.md:52,62 still say `RichToken.parts` — RichToken was retired long before this slot.)
+
+```
+branch tip 30ffa09a, docs/architecture/lexer_architecture.md lines 231-250 quote the Token dataclass verbatim including `parts: List['TokenPart'] = field(default_factory=list)`; psh/lexer/token_types.py:134 at the same SHA reads `parts: Tuple['TokenPart', ...] = ()` plus a new `__post_init__` tuple coercion.
+```
+
+## NIT 8 [resurrection] — 
+
+Two FORWARD references to an evidence directory that does not exist in the branch tree: psh/utils/heredoc_detection.py:36 cites `docs/reviews/evidence/boundary_remediation_2026-07/2.5-rescue/second_grammar_census.py` and tests/unit/scripting/test_heredoc_declared_deltas_noninteractive.py:14 cites `.../2.5-rescue/base_tip_identity.py`. `ls docs/reviews/evidence/boundary_remediation_2026-07/2.5-rescue/` at the branch tip: No such file or directory. The convention is that the integrator lands the rescue dir at ceremony (1.2/1.3/1.3b/1.4/2.1-rescue are all on origin/main, and tests/unit/visitor/test_security_missed_positions.py:11 already cites one that way), and both named files DO exist in the dev worktree at /Users/pwilson/src/psh-r2-5/tmp/r2-5-probes/{second_grammar_census.py,base_tip_identity.py}. ACTION: if the ceremony rescue commit does not include both files under that exact path, a dangling pointer ships inside production `psh/` source — at which point this becomes a blocker.
+
+```
+`git grep -n "evidence/boundary_remediation" fix/remediation-2-5 -- psh/ tests/` returns the two citations above; `git ls-tree -r --name-only fix/remediation-2-5 -- docs/reviews/evidence/boundary_remediation_2026-07/2.5-rescue/` returns nothing; `find /Users/pwilson/src/psh-r2-5/tmp -name 'second_grammar_census*' -o -name 'base_tip_identity*'` finds both under tmp/r2-5-probes/.
+```
+
+## NIT 9 [resurrection] — 
+
+The new SURVIVING-CONSUMERS census in psh/utils/heredoc_detection.py's module docstring does not match its own stated universe. It enumerates consumers of "the text-level scanner" and lists "the formatter" — but psh/visitor/formatter_visitor.py:8 imports only `unquote_heredoc_delimiter`, which the SAME docstring classifies as the delimiter/terminator ALGEBRA, not the scanner. Conversely three other algebra consumers are omitted: psh/lexer/keyword_normalizer.py:6, psh/parser/combinators/commands/redirections.py:15 and psh/parser/recursive_descent/parsers/redirections.py:16 (all `unquote_heredoc_delimiter`). Either it is the scanner census (drop the formatter) or the module census (add the other three). Same file, line 627: `open_heredoc_specs`' docstring says "The only production consumers of THIS function are the cmdhist joiner's two calls" — `has_unclosed_heredoc` (line 624, same module, exported from psh.utils) also calls it; that helper now has zero production callers, which was already true on origin/main, so it is not a regression, but the wording is absolute where the fact is not.
+
+```
+branch tip: `grep -rn --include="*.py" -E "from \.\.?\.?utils import|heredoc_detection import" psh/` lists keyword_normalizer.py, cmdsub_scanner.py, heredoc_lexer.py, heredoc_collector.py, both parsers' redirections.py, formatter_visitor.py, history_expansion.py, line_editor_helpers.py, input_preprocessing.py, lex_parse.py, session.py. `grep -rn has_unclosed_heredoc psh/` returns only its definition and the psh.utils re-export.
+```
+
+## NIT 10 [resurrection] — 
+
+psh/interactive/line_editor_helpers.py's module docstring (lines 3-8) still claims the cmdhist joiner's decision "comes from the REAL lexer and parser (the same oracle `CommandAccumulator` uses)". After this slot that is false for the heredoc half: the joiner still decides heredoc-ness with the TEXT scanner (`open_heredoc_specs` at :61,:75 and `scan_line_heredoc_markers` at :32) while the completeness oracle now decides it from lexer events, and the two disagree on precisely MEDIUM-3's spelling. Leaving the FILE untouched is correct and integrator-ACKed (ruling R1-B, ledger lines 316/326/844 — declared STILL-OPEN, "diff must not touch either file"), and the diff honours that. What is new drift is the parenthetical, which the branch did not correct while it was rewriting the neighbouring authority claims in heredoc_detection.py.
+
+```
+Probed at tip in-process (no red/green claim, single-SHA observation): `convert_multiline_to_single("echo \\<<EOF\\necho after")` returns the input UNCHANGED (newline kept verbatim = treated as heredoc body), while `convert_multiline_to_single("echo '<<'EOF\\necho after")` correctly returns "echo '<<'EOF; echo after". The session/lexer at the same SHA calls `echo \\<<EOF` COMPLETE — my identity differential shows the follow-up line reported at 'line 2' at tip vs 'line 1' at base under the combinator. psh/interactive/line_editor_helpers.py is byte-identical between origin/main and the branch tip (absent from the diff), so the joiner did not change; the agreement did.
+```
+
+## NIT 11 [resurrection] — 
+
+Cosmetic continuation-indent misalignment introduced by the HeredocRedirect rename in tests/unit/visitor/test_analysis_visitors.py: in `test_quoted_heredoc_body_not_expanded` the first two keyword arguments were re-indented to the new call site but `heredoc_quoted=True` was left at the old column. ruff is clean (the rule is not enabled), so this is purely visual.
+
+```
+branch tip, tests/unit/visitor/test_analysis_visitors.py:256-258:
+        r = HeredocRedirect(type="<<", target="END",
+                            heredoc_content="value is $missing\n",
+                     heredoc_quoted=True)
+```
+
+## NIT 12 [ledgerCheck] — 
+
+Ceremony reminder (dev already surfaced, integrator-owned): the committed campaign docs still carry the MEDIUM-3 'INTERACTIVE-ONLY' claim that this slot's own B70 evidence refutes for the combinator (all-channel line-number deltas, 12 rows). docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md:33 and boundary_remediation_integrator_plan_2026-07-21.md:107 must be amended when the MEDIUM-3 row is closed, or the closure record re-asserts a claim the slot disproved.
+
+```
+Slot ledger B70 ('SURFACED, NOT FIXED'); my replay of the census/identity instruments confirms the ledger's account; both files are on the dev's never-touch list so only the integrator can fix them.
+```
+
+## NIT 13 [ledgerCheck] — 
+
+Replay-tally decomposition wobble: round-1 is counted as '6 blockers + 11 nits' in B24/B41/B50/B66 but '5 blockers + 11 actioned nits' in B77, because R4-B's two flips are sometimes one blocker and sometimes two rows. Each grand total is internally consistent with its own table and every underlying row is individually anchored, but the round-1 decomposition flips representation between tables — a hand-carried-count residue of exactly the class the campaign polices.
+
+```
+Round-1 bounce header says 'BOUNCE, 5 blockers / 16 nits' (ledger ~line 707); B24 'Replayed: 6 blockers + 11 actioned nits'; B50/B66 repeat 6+11; B77 says '5 blockers + 11 actioned nits'.
+```
+
+## NIT 14 [ledgerCheck] — 
+
+Novel-row observation for the successor file: for a[<<-]=1 (strip-operator subscript, sibling of the pinned a[<<]=1) psh's diagnostic names the token '<<' although the spelling was '<<-'. Outcome class is correct and equals bash on both parsers and both channels I probed (line completes, error reported, follow-up runs; PTY marker runs) — cosmetic wording only, no action required in-slot.
+
+```
+My stdin probe: bash rc=0 '<<-: syntax error: operand expected' + AFTER5; psh both parsers rc=0 'Unexpected token: << at position 0' + AFTER5; my PTY probe: marker_ran=True on bash, psh-rd, psh-combinator at tip 30ffa09a.
+```
+
+## NIT 15 [reprobe] — 
+
+R12-D-AMENDED explicitly named heredoc_detection.py lines 192 and 204 as carrying the stale oracle-as-scanner-consumer claim, but both survive verbatim at tip (now :194/:206, in the heredoc_terminator_matches docstring) and B68 never declares a disposition for them. The semantic post-state nonetheless HOLDS: those lines describe the terminator ALGEBRA, which the completeness path genuinely still shares (session.py:269 feeds body lines to PendingHeredocQueue.feed_line, the sole production caller of heredoc_terminator_matches), and no line of the file names the oracle or CommandAccumulator as consumers of the TEXT-LEVEL SCANNER (CommandAccumulator absent whole-file; :629 block rewritten). Record gap only — dev-2-5's stand-down line list was overbroad for these two lines and dev-2-5b's implicit judgment call went unstated; worth one sentence in the ceremony record.
+
+```
+git diff ec99b420..30ffa09a -- psh/utils/heredoc_detection.py shows only the module-docstring path fix and the open_heredoc_specs rewrite; ec99b420:192/204 text byte-identical at tip :194/:206; grep 'CommandAccumulator' at tip = 0 hits; session.py:269 self._open_heredocs.feed_line(line); psh/utils grep shows PendingHeredocQueue.feed_line is the one caller of heredoc_terminator_matches.
+```
+
+## NIT 16 [reprobe] — 
+
+certify_ledger.py's HEAD-side checks read the dev worktree's WORKING TREE (hardcoded ROOT=/Users/pwilson/src/psh-r2-5, p.read_text()), not commit content — a dirty tracked tree could certify text not in 30ffa09a. I verified the tracked tree was clean at the tip before crediting the 61/61 run, so the certification stands; for future rescue instruments, reading HEAD-side patterns via `git show HEAD:path` would close the gap. Informational.
+
+```
+certify_ledger.py lines 57, 283-287; git -C /Users/pwilson/src/psh-r2-5 status --porcelain (tracked entries: none) at 30ffa09a before my run; independent run output: ROWS 61 PASSED 61 FAILED 0, exit 0.
+```
+
+## NIT 17 [reprobe] — 
+
+For the closure record, not a dev defect: my independent full gate at the tip worktree showed 16 failures (22,100 passed), ALL in directory-stack/navigation tests, proven to be a verifier-environment artifact — the throwaway worktree sat under the macOS /tmp symlink, so pwd's logical path (/tmp/...) diverged from os.getcwd()'s physical path (/private/tmp/...). The identical 16 tests fail at BASE e36116c3 from the same path and all 61 pass at tip from the physical path, so the branch's 22,116/1,590/10 gate claim is corroborated (22,100 + 16 environmental = 22,116). Compare-bash was independently reproduced EXACT (2,986 passed / 26 skipped) at 30ffa09a.
+
+```
+Gate run /private/tmp/remv-probe-r7/tmp/gate-verify-r7.txt (22,100 passed, 16 failed, 1,590 skipped, 10 xfailed); failing assertion '/tmp/remv-probe-r7' == '/private/tmp/remv-probe-r7'; base control from /tmp/remv-base-r7: same 16 failed; tip from physical path /private/tmp/remv-probe-r7: 61 passed; compare-bash: 2986 passed, 26 skipped in 41.58s at 30ffa09a.
+```

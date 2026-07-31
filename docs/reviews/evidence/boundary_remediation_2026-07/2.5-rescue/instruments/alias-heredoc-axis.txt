@@ -1,0 +1,137 @@
+# THE ALIAS AXIS -- base vs tip vs bash (R15-A)
+# base: /Users/pwilson/src/psh-r25-base  SHA: e36116c30d12d1305f163fd6d8eaada8d72b1116
+# tip : /Users/pwilson/src/psh-r2-5  SHA: 6965a079cb0c8dc0b4fa2f027144bb68af77df50
+# discriminator: I /Users/pwilson/src/psh-r25-base/psh/__init__.py False
+# discriminator: I /Users/pwilson/src/psh-r2-5/psh/__init__.py True
+
+### plain / alias_plain
+    script bytes: b'shopt -s expand_aliases\nalias foo="cat <<EOF"\nfoo\nhello\nEOF\necho AFTER\n'
+    bash  rc=0 out='hello\nAFTER\n' err=''
+  [MSG-ONLY ] chan=dash_c  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=dash_c  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=script  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=script  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=stdin   parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=stdin   parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+
+### digit / alias_digit
+    script bytes: b'shopt -s expand_aliases\nalias foo="cat 0<<EOF"\nfoo\nhello\nEOF\necho AFTER\n'
+    bash  rc=0 out='hello\nAFTER\n' err=''
+  [MSG-ONLY ] chan=dash_c  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=dash_c  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=script  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=script  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=stdin   parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=stdin   parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: error: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: error: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+
+### var_fd / alias_var_fd
+    script bytes: b'shopt -s expand_aliases\nalias foo="true {v}<<EOF"\nfoo\nhello\nEOF\necho AFTER\n'
+    bash  rc=0 out='AFTER\n' err=''
+  [DELTA    ] chan=dash_c  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: -c:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `{v}<<` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=dash_c  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: -c:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `{v}<<` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=script  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: <S>:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<S>: line 3: here-document `{v}<<` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=script  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: <S>:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<S>: line 3: here-document `{v}<<` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=stdin   parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: <stdin>:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `{v}<<` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=stdin   parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: <stdin>:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `{v}<<` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+
+### var_fd / alias_var_fd_strip
+    script bytes: b'shopt -s expand_aliases\nalias foo="true {v}<<-EOF"\nfoo\nhello\nEOF\necho AFTER\n'
+    bash  rc=0 out='AFTER\n' err=''
+  [DELTA    ] chan=dash_c  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: -c:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- -EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `{v}<<-` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=dash_c  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: -c:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- -EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `{v}<<-` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=script  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: <S>:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- -EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<S>: line 3: here-document `{v}<<-` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=script  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: <S>:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- -EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<S>: line 3: here-document `{v}<<-` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=stdin   parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: <stdin>:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- -EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `{v}<<-` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [DELTA    ] chan=stdin   parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(2, '', '<SH>: <stdin>:3: Parse error (line 3, column 10): Expected file name\n\nfoo\n         ^\n\nContext: true < -> HERE <- -EOF <EOF>\n')
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `{v}<<-` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+
+### builtin_stream / alias_builtin_read
+    script bytes: b'shopt -s expand_aliases\nalias r="read x <<EOF"\nr\nhello\nEOF\necho AFTER\n'
+    bash  rc=0 out='AFTER\n' err=''
+  [MSG-ONLY ] chan=dash_c  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: line 3: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `<<EOF` was never collected (builtin stream). psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=dash_c  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: line 3: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `<<EOF` was never collected (builtin stream). psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=script  parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<S>: line 3: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<S>: line 3: here-document `<<EOF` was never collected (builtin stream). psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=script  parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<S>: line 3: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<S>: line 3: here-document `<<EOF` was never collected (builtin stream). psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<S>: line 4: hello: command not found\n<S>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=stdin   parser=rd          tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: line 3: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `<<EOF` was never collected (builtin stream). psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+  [MSG-ONLY ] chan=stdin   parser=combinator  tip_rc=0 tip_out='AFTER\n' bash_match=no
+      base=(0, 'AFTER\n', "<SH>: line 3: heredoc redirect reached execution without a collected body (delimiter 'EOF')\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n")
+      tip =(0, 'AFTER\n', '<SH>: line 3: here-document `<<EOF` was never collected (builtin stream). psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.\n<SH>: line 4: hello: command not found\n<SH>: line 5: EOF: command not found\n')
+
+### control / direct_heredoc
+    script bytes: b'shopt -s expand_aliases\ncat <<EOF\nhello\nEOF\necho AFTER\n'
+    bash  rc=0 out='hello\nAFTER\n' err=''
+  [IDENTICAL] chan=dash_c  parser=rd          tip_rc=0 tip_out='hello\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=dash_c  parser=combinator  tip_rc=0 tip_out='hello\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=script  parser=rd          tip_rc=0 tip_out='hello\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=script  parser=combinator  tip_rc=0 tip_out='hello\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=stdin   parser=rd          tip_rc=0 tip_out='hello\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=stdin   parser=combinator  tip_rc=0 tip_out='hello\nAFTER\n' bash_match=YES
+
+### control / alias_no_heredoc
+    script bytes: b'shopt -s expand_aliases\nalias foo="echo hi"\nfoo\necho AFTER\n'
+    bash  rc=0 out='hi\nAFTER\n' err=''
+  [IDENTICAL] chan=dash_c  parser=rd          tip_rc=0 tip_out='hi\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=dash_c  parser=combinator  tip_rc=0 tip_out='hi\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=script  parser=rd          tip_rc=0 tip_out='hi\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=script  parser=combinator  tip_rc=0 tip_out='hi\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=stdin   parser=rd          tip_rc=0 tip_out='hi\nAFTER\n' bash_match=YES
+  [IDENTICAL] chan=stdin   parser=combinator  tip_rc=0 tip_out='hi\nAFTER\n' bash_match=YES
+
+# TOTALS {'delta': 12, 'msg_only': 18, 'identical': 12}

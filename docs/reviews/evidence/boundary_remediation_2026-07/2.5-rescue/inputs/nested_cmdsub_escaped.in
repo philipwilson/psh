@@ -1,0 +1,2 @@
+echo $(echo \<<EOF)
+echo MARK""ER
