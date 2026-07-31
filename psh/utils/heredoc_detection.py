@@ -32,7 +32,9 @@ This module also owns the campaign-S2 heredoc transaction contracts:
   ``tests/unit/tooling/test_heredoc_transaction_guards.py``).
 
 SURVIVING CONSUMERS of the text-level scanner, enumerated so this docstring
-matches the census (`tmp/r2-5-probes/second_grammar_census.py`) rather than
+matches the census
+(`docs/reviews/evidence/boundary_remediation_2026-07/2.5-rescue/second_grammar_census.py`)
+rather than
 gesturing at it: the lexer's ``HeredocCollector``; the ``$(...)`` extent
 scanner (``lexer/cmdsub_scanner.py``); the interactive line editor
 (``interactive/line_editor_helpers.py``); the continuation-join preprocessor

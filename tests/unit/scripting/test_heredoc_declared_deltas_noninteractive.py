@@ -9,8 +9,11 @@ The false framing survived round 1 because the instrument backing it compared
 psh against BASH at each SHA and reported "66/66 agree". Agreement with an
 oracle at two points cannot establish IDENTITY between those points: two shells
 can agree with bash at both SHAs while psh's own answer changed in ways bash
-never sees. The rebuilt instrument (tmp/r2-5-probes/base_tip_identity.py) diffs
-psh against ITSELF across the two trees and found 18 non-identical rows.
+never sees. The rebuilt instrument diffs psh against ITSELF across the two
+trees; it is rescued to
+docs/reviews/evidence/boundary_remediation_2026-07/2.5-rescue/base_tip_identity.py
+at ceremony (it runs from the dev worktree's gitignored tmp/, so citing that
+path would name a file the shipped tree does not contain).
 
 ORACLE FOR EVERY ROW BELOW: bash, differential, same host, same bytes, through
 the typed runner. Every delta moves psh TOWARD bash and stays.
@@ -254,4 +257,32 @@ def test_class_shapes_report_an_error_and_carry_on_like_bash(label, script,
     assert bash.stderr.strip(), (label, channel, parser, "bash reported nothing")
     assert ("AFTER" in psh.stdout) == ("AFTER" in bash.stdout), (
         label, channel, parser, psh.stdout, bash.stdout)
+
+
+# The DEGENERATE forms' own diagnostic wording, psh-side only (round-6 nit 10).
+# The outcome-class rows above are GREEN ON BASE for these shapes by design --
+# the class did not change, only the wording did. That is the right design, but
+# it left the DECLARED delta ("Expected file name" at base -> the messages
+# below at tip) with no test that would notice a revert. No bash parity is
+# involved or claimed: bash quotes the line, psh names the construct.
+_DEGENERATE_WORDING = [
+    ("degenerate_named_heredoc", "cat {v}<<",
+     "Expected delimiter after here document operator"),
+    ("degenerate_named_strip", "cat {v}<<-",
+     "Expected delimiter after here document operator"),
+    ("degenerate_named_herestring", "cat {v}<<<",
+     "Expected string after here string operator"),
+]
+
+
+@pytest.mark.parametrize("label,script,expected", _DEGENERATE_WORDING,
+                         ids=[s[0] for s in _DEGENERATE_WORDING])
+@pytest.mark.parametrize("parser", _PARSERS)
+def test_degenerate_named_forms_name_the_missing_operand(label, script,
+                                                         expected, parser):
+    """psh-side wording pin. RED ON BASE: base said 'Expected file name',
+    having never recognised the operator at all."""
+    psh = run_psh(["--norc", "--parser", parser, "-c", script])
+    assert isinstance(psh, Completed), psh
+    assert expected in psh.stderr, (label, parser, psh.stderr)
 

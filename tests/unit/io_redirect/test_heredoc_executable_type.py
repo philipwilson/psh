@@ -156,6 +156,17 @@ def test_debug_ast_labels_the_executable_heredoc_by_its_type(fmt, tmp_path):
     dump = result.stdout + result.stderr
     assert "HeredocRedirect" in dump, (fmt, dump[:400])
 
+    # THE FIELD-ORDER HALF (round-6 nit 2). The label is not the only visible
+    # change: `heredoc_content` is now a kw-only field on the SUBCLASS, so it
+    # dumps AFTER `heredoc_id` where it used to come before `heredoc_quoted`.
+    # The declaration says "label and field order"; asserting only the label
+    # would leave half of it unpinned. `dot` is excluded because it renders the
+    # node LABEL alone and prints no fields at all -- the ordering half simply
+    # does not exist there.
+    if fmt != "dot":
+        assert dump.index("heredoc_id") < dump.index("heredoc_content"), (
+            fmt, dump[:400])
+
 
 # FD-KIND AXIS for the synthetic offender (round-3 blocker R9-B). The
 # var_fd route reaches the fd universe BEFORE either operator-string arm, so
