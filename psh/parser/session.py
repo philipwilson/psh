@@ -15,8 +15,9 @@ oracle):
   ``Incomplete`` outcome (`parse_outcome()`, campaign S4) carrying the
   unclosed-expansion KIND and the open-construct trail;
 - heredoc bodies are matched incrementally against the pending
-  ``PendingHeredocQueue`` (S2) — a body line like ``)`` is never shown to the
-  parser as command text, and a body line costs O(1) (no re-lex, no re-parse).
+  ``PendingHeredocQueue`` (S2), seeded from LEXER EVENTS rather than a
+  text-level scan — a body line like ``)`` is never shown to the parser as
+  command text, and a body line costs O(1) (no re-lex, no re-parse).
 
 `ParserDriver.start_session(inputs)` returns a `ParseSession`; each
 `feed(line)` returns the typed `Completeness` classification (mapping onto the

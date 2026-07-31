@@ -30,6 +30,19 @@ _SOURCE = (pathlib.Path(__file__).resolve().parents[3]
 # before adding one.
 _DELIBERATE_EXCLUSIONS: dict[str, str] = {}
 
+# Operators the DIGIT-fd table may lack, with the reason. The reverse direction
+# matters as much as the forward one -- a gap either way is the same class of
+# defect, and checking only one direction is how the `<<<` gap survived.
+_DIGIT_EXCLUSIONS: dict[str, str] = {
+    ">|": (
+        "PRE-EXISTING and OUT of this slot's charter: `2>|f` is a psh parse "
+        "error while bash accepts it. The gap predates slot 2.5 (measured at "
+        "base e36116c3), so ruling R10-C/N3 records it as a SUCCESSOR row "
+        "rather than a fix smuggled in under a regression repair. Remove this "
+        "entry when that row is taken."
+    ),
+}
+
 
 def _table_operators(func_name):
     """The operator strings a recognizer's redirect table matches, read from
@@ -70,6 +83,31 @@ def test_named_fd_table_covers_the_digit_fd_table():
         "digit prefix reaches, or the omission must be listed in "
         "_DELIBERATE_EXCLUSIONS with a reason checked against bash."
     )
+
+
+def test_digit_fd_table_covers_the_named_fd_table():
+    """THE REVERSE parity invariant (round-4 nits 3+16).
+
+    Checking one direction only is how the `<<<` gap survived three rounds:
+    the named table was missing an operator the digit table had, and nothing
+    asked the question the other way round either.
+    """
+    digit = _table_operators("_try_fd_prefixed_redirect")
+    named = _table_operators("_try_var_fd_redirect")
+    missing = {op for op in named - digit if op not in _DIGIT_EXCLUSIONS}
+    assert not missing, (
+        f"the digit-fd operator table is missing {sorted(missing)}, which the "
+        "named-fd table accepts. Either add it, or list it in "
+        "_DIGIT_EXCLUSIONS with a reason checked against bash."
+    )
+
+
+def test_every_declared_digit_exclusion_is_really_absent():
+    """Keeps the reverse exclusion list honest, same as the forward one."""
+    digit = _table_operators("_try_fd_prefixed_redirect")
+    named = _table_operators("_try_var_fd_redirect")
+    stale = [op for op in _DIGIT_EXCLUSIONS if op not in named - digit]
+    assert not stale, f"stale _DIGIT_EXCLUSIONS entries: {stale}"
 
 
 def test_every_declared_exclusion_is_really_absent():

@@ -20,10 +20,10 @@ quantification requires every axis to be VARIED, not every combination to be
 ENUMERATED, and a 4x-overbuilt product buries the rows that carry signal. The
 shape is now:
 
-    full product   operator x delimiter x marker-quoting  (9 x 9 x 3 = 243)
+    full product   operator x delimiter x marker-quoting (12 x 9 x 3 = 324)
     orthogonal     command context, varied against every operator
     orthogonal     option state, varied by parametrize over the whole corpus
-                                                        -> 551 tests
+                                                        -> 731 tests
 
 The three product axes are the ones that INTERACT: whether a marker opens a
 here-document depends on the operator spelling, the delimiter spelling and
@@ -148,7 +148,8 @@ def _corpus():
     obscures which rows carry signal. So:
 
     * FULL PRODUCT over the three GRAMMAR-DECIDING axes — operator x delimiter
-      x marker-quoting (9 x 9 x 3 = 243). These interact: whether a marker is a
+      x marker-quoting (12 x 9 x 3 = 324, after the named-fd operators joined
+      the axis in round 2). These interact: whether a marker is a
       heredoc depends on the operator spelling, the delimiter spelling, and
       whether the whole marker is quoted, together.
     * ORTHOGONAL for the axes that do NOT interact with the grammar decision:

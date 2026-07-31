@@ -419,14 +419,39 @@ def test_validator_traverses_group_bodies():
 # exact-class with no MRO walk, so "handles Redirect" does not imply "handles
 # HeredocRedirect" for anyone.
 
-_REDIRECT_VISITORS = [
-    ("SecurityVisitor", SecurityVisitor),
-    ("ValidatorVisitor", ValidatorVisitor),
-    ("MetricsVisitor", MetricsVisitor),
-    ("DebugASTVisitor", DebugASTVisitor),
-    ("LinterVisitor", LinterVisitor),
-    ("FormatterVisitor", FormatterVisitor),
-]
+def _visitors_defining_visit_redirect():
+    """CENSUS, not a hand list (round-4 nit 12): every production visitor
+    class that defines `visit_Redirect`, discovered by walking the visitor
+    package. A hand list silently stops covering a visitor added later --
+    which is the same shape as every other universe defect this slot hit."""
+    import importlib
+    import inspect
+    import pkgutil
+
+    import psh.visitor as visitor_pkg
+
+    found = {}
+    for mod in pkgutil.iter_modules(visitor_pkg.__path__):
+        module = importlib.import_module(f"psh.visitor.{mod.name}")
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            if obj.__module__ != module.__name__:
+                continue
+            if "visit_Redirect" in vars(obj):
+                found[name] = obj
+    return sorted(found.items())
+
+
+_REDIRECT_VISITORS = _visitors_defining_visit_redirect()
+
+
+def test_the_visitor_census_found_the_known_set():
+    """Non-vacuity + drift alarm: an empty or shrunken census would make every
+    parametrized row below disappear silently."""
+    names = {n for n, _ in _REDIRECT_VISITORS}
+    expected = {"SecurityVisitor", "ValidatorVisitor", "MetricsVisitor",
+                "DebugASTVisitor", "LinterVisitor", "FormatterVisitor"}
+    assert expected <= names, (
+        f"census lost visitors: {sorted(expected - names)}")
 
 _HEREDOC_SRC = "cat <<EOF\nbody\nEOF\n"
 

@@ -396,11 +396,21 @@ class FileRedirector:
         a state this function can be handed (remediation 2.5). The old
         late-discovery ``RuntimeError`` here is replaced by that type plus the
         explicit non-executable arm in :meth:`apply_fd_plan`."""
-        content = self.heredoc_content(redirect)
+        if not isinstance(redirect, HeredocRedirect):
+            # DIRECT-CALL boundary: the dispatchers gate on the type, but this
+            # primitive is public and a caller can reach it with the
+            # non-executable parse state. Same typed error as every other seam
+            # (round-4 nits 11/18, the R9-B class) rather than a raw
+            # AttributeError from the missing body field.
+            raise NonExecutableRedirectError(
+                "non-executable heredoc parse state reached redirect_heredoc: "
+                f"Redirect(type={redirect.type!r}, target={redirect.target!r}) "
+                "carries no collected body.")
+        content = self._heredoc_expanded_content(redirect)
         self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
 
-    def heredoc_content(self, redirect: 'HeredocRedirect') -> str:
+    def _heredoc_expanded_content(self, redirect: 'HeredocRedirect') -> str:
         """The heredoc body after expansion — THE one place that decides it.
 
         Shared by the stdin/explicit-fd path (:meth:`redirect_heredoc`) and the
@@ -422,11 +432,11 @@ class FileRedirector:
 
         Shared redirect primitive (fd backend and builtin stream backend).
         Returns the content."""
-        content = self.redirect_herestring_content(redirect)
+        content = self._herestring_expanded_content(redirect)
         self._content_to_fd(content, self._heredoc_fd(redirect))
         return content
 
-    def redirect_herestring_content(self, redirect) -> str:
+    def _herestring_expanded_content(self, redirect) -> str:
         """The here-string content after expansion — THE one place that
         decides it, shared with the named-fd path."""
         word = getattr(redirect, 'target_word', None)
@@ -552,8 +562,17 @@ class FileRedirector:
                 "collected body. Every live parse path builds a "
                 "HeredocRedirect.")
         if rtype in ('<<', '<<-', '<<<'):
-            content = (self.redirect_herestring_content(redirect)
-                       if rtype == '<<<' else self.heredoc_content(redirect))
+            if rtype == '<<<' and redirect.target is None \
+                    and getattr(redirect, 'target_word', None) is None:
+                # The here-string twin of the arm above: an operand-less
+                # `{v}<<<` reaching execution is the same non-executable parse
+                # state, and died on a raw AttributeError from the None target.
+                raise NonExecutableRedirectError(
+                    "non-executable here-string parse state reached the "
+                    f"named-fd route: Redirect(type={rtype!r}, "
+                    f"var_fd={name!r}) carries no content.")
+            content = (self._herestring_expanded_content(redirect)
+                       if rtype == '<<<' else self._heredoc_expanded_content(redirect))
             newfd = self._content_to_free_fd(content)
             self.shell.state.set_variable(name, str(newfd))
             return

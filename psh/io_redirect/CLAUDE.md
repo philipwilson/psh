@@ -635,3 +635,17 @@ DEBUG IOManager: redirected stdout to 'output.txt' (mode 'w'); sys.stdout is now
   (`psh/core/CLAUDE.md`). Here-strings are NOT part of the split: `<<<` content
   has always lived in `target`/`target_word`, so it stays a plain `Redirect`.
   Guard: `tests/unit/io_redirect/test_heredoc_executable_type.py`.
+- **Named-fd here-documents and here-strings** (`{v}<<`, `{v}<<-`, `{v}<<<`)
+  are owned here: `apply_var_fd_redirect` materializes the body or word on a
+  freshly allocated descriptor >= 10 and stores the number in the variable,
+  the same allocation contract as `{v}>file`, with the content coming from
+  `_heredoc_expanded_content` / `_herestring_expanded_content` so a named-fd
+  form can never drift from its plain twin on quoting or expansion. Every
+  non-executable parse state reaching any of these seams raises the typed
+  `NonExecutableRedirectError` rather than a raw attribute failure — including
+  the direct-call boundaries (`redirect_heredoc` itself, and an operand-less
+  `{v}<<<`). Guards:
+  `tests/unit/io_redirect/test_named_fd_heredoc.py` and the fd-kind axis rows
+  in `test_heredoc_executable_type.py`; the lexer-side table parity that keeps
+  the named and digit fd prefixes in step is
+  `tests/unit/lexer/test_fd_prefix_table_parity.py`.
