@@ -36,7 +36,13 @@ from pathlib import Path
 import pytest
 
 TREE_ROOT = str(Path(__file__).resolve().parents[3])
-ORACLE = "/opt/homebrew/bin/bash"
+# The blessed oracle through the ONE resolver -- never a hardcoded path
+# (tests/harness/shell_oracle.py#resolve_bash; the static ratchet
+# test_bash_oracle_resolution.py enforces this and caught the first
+# version of both these files).
+from shell_oracle import resolve_bash  # noqa: E402
+
+_ORACLE = resolve_bash()
 
 
 def _run_psh(script_bytes, tmp_path, parser):
@@ -94,13 +100,11 @@ def test_named_fd_heredoc_matches_bash(label, script, expected, parser,
 def test_the_expectations_are_bash_s_own_answers(label, script, expected,
                                                  tmp_path):
     """The expected values above are not hand-reasoned: they are what the
-    blessed oracle prints for the same bytes. Skipped rather than silently
-    weakened if the oracle is unavailable."""
-    if not Path(ORACLE).exists():                            # pragma: no cover
-        pytest.skip(f"oracle {ORACLE} not present")
+    blessed oracle prints for the same bytes. The oracle is resolved at import
+    and raises there if absent -- loud, never a silent skip."""
     script_path = tmp_path / "oracle.sh"
     script_path.write_bytes(script)
-    result = subprocess.run([ORACLE, "--norc", str(script_path)],
+    result = subprocess.run([_ORACLE.path, "--norc", str(script_path)],
                             capture_output=True, text=True, cwd=str(tmp_path),
                             stdin=subprocess.DEVNULL, timeout=30)
     assert result.stdout == expected, (label, result.stdout)
@@ -139,11 +143,9 @@ def test_the_allocated_fd_matches_the_oracle_on_this_host(parser, tmp_path):
     holds. A literal expectation would have made the Linux nightly red for a
     difference that is not a psh defect.
     """
-    if not Path(ORACLE).exists():                            # pragma: no cover
-        pytest.skip(f"oracle {ORACLE} not present")
     script = tmp_path / "fd.sh"
     script.write_bytes(_FD_SCRIPT)
-    oracle = subprocess.run([ORACLE, "--norc", str(script)],
+    oracle = subprocess.run([_ORACLE.path, "--norc", str(script)],
                             capture_output=True, text=True, cwd=str(tmp_path),
                             stdin=subprocess.DEVNULL, timeout=30)
     result = _run_psh(_FD_SCRIPT, tmp_path, parser)

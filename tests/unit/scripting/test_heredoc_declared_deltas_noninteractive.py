@@ -41,7 +41,13 @@ from pathlib import Path
 import pytest
 
 TREE_ROOT = str(Path(__file__).resolve().parents[3])
-ORACLE = "/opt/homebrew/bin/bash"
+# The blessed oracle through the ONE resolver -- never a hardcoded path
+# (tests/harness/shell_oracle.py#resolve_bash; the static ratchet
+# test_bash_oracle_resolution.py enforces this and caught the first
+# version of both these files).
+from shell_oracle import resolve_bash  # noqa: E402
+
+_ORACLE = resolve_bash()
 
 # (label, script bytes)
 _SHAPES = [
@@ -86,8 +92,6 @@ def _run(argv, raw, channel, cwd, env=None):
 def test_declared_delta_matches_bash_non_interactively(label, raw, channel,
                                                        parser, tmp_path):
     """DIFFERENTIAL against the oracle, per channel AND per parser."""
-    if not Path(ORACLE).exists():                            # pragma: no cover
-        pytest.skip(f"oracle {ORACLE} not present")
     env = dict(os.environ, PYTHONPATH=TREE_ROOT)
     which = subprocess.run(
         [sys.executable, "-c", "import psh; print(psh.__file__)"],
@@ -96,7 +100,7 @@ def test_declared_delta_matches_bash_non_interactively(label, raw, channel,
 
     psh = _run([sys.executable, "-m", "psh", "--norc", "--parser", parser],
                raw, channel, str(tmp_path), env)
-    bash = _run([ORACLE, "--norc"], raw, channel, str(tmp_path))
+    bash = _run([_ORACLE.path, "--norc"], raw, channel, str(tmp_path))
     assert psh == bash, (label, channel, parser, psh, bash)
 
 
