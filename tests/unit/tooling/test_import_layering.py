@@ -297,8 +297,13 @@ FUNC_IMPORT_CAPS = {
     'psh.scripting.input_preprocessing': 1,
     'psh.scripting.input_sources': 1,
     'psh.scripting.lex_parse': 1,
-    # Ratcheted down by remediation 2.6 (6->5, 9->7). The new
-    # psh.scripting.analysis_session needs no entry at all: it defers nothing.
+    # Remediation 2.6 lowered both caps, but only ONE is a ratchet the work
+    # earned: visitor_modes' ACTUAL deferred count fell 9 -> 7 (the slot added
+    # imports, then hoisted those and more). source_processor's cap was already
+    # slack -- actual 5 against a cap of 6 -- so 6 -> 5 tightens a cap onto a
+    # count that was there all along, as did deleting the command_accumulator
+    # entry (actual 0, cap 2). The new psh.scripting.analysis_session needs no
+    # entry at all: it defers nothing.
     'psh.scripting.source_processor': 5,
     'psh.scripting.visitor_modes': 7,
     'psh.shell': 5,
