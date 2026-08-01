@@ -1,0 +1,238 @@
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-validate-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-validate-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-format-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-format-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-metrics-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-metrics-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-security-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-security-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-lint-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[file-lint-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-validate-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-validate-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-format-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-format-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-metrics-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-metrics-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-security-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-security-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-lint-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[command-lint-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-validate-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-validate-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-format-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-format-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-metrics-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-metrics-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-security-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-security-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-lint-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_state_aware_signature[stdin-lint-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_script_executes_at_both_ends[rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_script_executes_at_both_ends[combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_same_unit_change_does_not_apply[rd]
+PASSED tests/system/test_analysis_state_aware.py::TestStateAwareAnalysis::test_same_unit_change_does_not_apply[combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[if true; then shopt -s extglob; fi\necho @(a|b)\n-True]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[true && shopt -s extglob\necho @(a|b)\n-True]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[{ shopt -s extglob; }\necho @(a|b)\n-True]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[for i in a; do shopt -s extglob; done\necho @(a|b)\n-True]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[e() { shopt -s extglob; }\ne\necho @(a|b)\n-True]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[set -o extglob\necho @(a|b)\n-True]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[( shopt -s extglob )\necho @(a|b)\n-False]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[shopt -s extglob | cat\necho @(a|b)\n-False]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[x=$(shopt -s extglob)\necho @(a|b)\n-False]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_isolation_decides_whether_a_change_applies[shopt -s extglob &\nwait\necho @(a|b)\n-False]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_disable_is_permissive_by_design
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_declared_residual_eval_and_source_stay_blind[eval 'shopt -s extglob'\necho @(a|b)\n]
+PASSED tests/system/test_analysis_state_aware.py::TestTransitionRule::test_declared_residual_eval_and_source_stay_blind[printf 'shopt -s extglob\\n' > sub.sh\n. ./sub.sh\necho @(a|b)\n]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasRegressionGuards::test_alias_defined_then_used_still_analyzes[file-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasRegressionGuards::test_alias_defined_then_used_still_analyzes[file-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasRegressionGuards::test_alias_defined_then_used_still_analyzes[command-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasRegressionGuards::test_alias_defined_then_used_still_analyzes[command-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasRegressionGuards::test_alias_defined_then_used_still_analyzes[stdin-rd]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasRegressionGuards::test_alias_defined_then_used_still_analyzes[stdin-combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasRegressionGuards::test_format_still_does_not_expand_aliases
+PASSED tests/system/test_analysis_state_aware.py::TestTwoStaticSurfaces::test_two_static_surfaces_split
+PASSED tests/system/test_analysis_state_aware.py::TestUnitLineDiagnostics::test_syntax_error_carries_its_line[file]
+PASSED tests/system/test_analysis_state_aware.py::TestUnitLineDiagnostics::test_syntax_error_carries_its_line[command]
+PASSED tests/system/test_analysis_state_aware.py::TestUnitLineDiagnostics::test_syntax_error_carries_its_line[stdin]
+PASSED tests/system/test_analysis_state_aware.py::TestUnitLineDiagnostics::test_analysis_location_matches_execution_location[rd]
+PASSED tests/system/test_analysis_state_aware.py::TestUnitLineDiagnostics::test_analysis_location_matches_execution_location[combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestUnitLineDiagnostics::test_combinator_toplevel_line_is_the_2_2_carry
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocWordCorruption::test_word_after_heredoc_body_is_intact[rd]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocWordCorruption::test_word_after_heredoc_body_is_intact[combinator]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocWordCorruption::test_validator_sees_the_real_loop_variable
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocWordCorruption::test_metrics_counted_the_corrupted_word_as_a_variable
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocWordCorruption::test_execution_control_unchanged
+PASSED tests/system/test_analysis_state_aware.py::TestFormatPosixRender::test_posix_literal_is_not_reprinted_as_an_expansion
+PASSED tests/system/test_analysis_state_aware.py::TestFormatPosixRender::test_validate_stops_reporting_issues_about_a_literal
+PASSED tests/system/test_analysis_state_aware.py::TestFormatPosixRender::test_posix_named_fd_is_a_word_not_a_redirect
+PASSED tests/system/test_analysis_state_aware.py::TestModeCombinationRejected::test_distinct_modes_are_a_usage_error[flags0]
+PASSED tests/system/test_analysis_state_aware.py::TestModeCombinationRejected::test_distinct_modes_are_a_usage_error[flags1]
+PASSED tests/system/test_analysis_state_aware.py::TestModeCombinationRejected::test_distinct_modes_are_a_usage_error[flags2]
+PASSED tests/system/test_analysis_state_aware.py::TestModeCombinationRejected::test_distinct_modes_are_a_usage_error[flags3]
+PASSED tests/system/test_analysis_state_aware.py::TestModeCombinationRejected::test_repeating_one_mode_is_fine
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's here\nEOF\n-format]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nsay "hi"\nEOF\n-validate]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nsay "hi"\nEOF\n-format]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nsay "hi"\nEOF\n-metrics]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nsay "hi"\nEOF\n-security]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nsay "hi"\nEOF\n-lint]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<-EOF\n\tit's tabbed\nEOF\n-format]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<'EOF'\nit's quoted-delimiter\nEOF\n-format]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's one\nEOF\ncat <<EOF2\nit's two\nEOF2\n-format]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[f() {\n  cat <<EOF\n  it's nested\nEOF\n}\nf\n-format]
+PASSED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\ndon't `echo x` $(echo y)\nEOF\n-format]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[set -o extglob -- a b]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt -p extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt -u extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[myshopt -s extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopts -s extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[echo shopt -s extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[set -s extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt -s histappend]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[set -o pipefail]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[set -- -o extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[set -e -- -o extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt -su extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt -us extglob]
+PASSED tests/system/test_analysis_state_aware.py::TestExpandAliasesIsOrderedNotMonotone::test_re_enabling_restores_expansion
+PASSED tests/system/test_analysis_state_aware.py::TestExpandAliasesIsOrderedNotMonotone::test_disable_inside_a_subshell_does_not_escape
+PASSED tests/system/test_analysis_state_aware.py::TestExpandAliasesIsOrderedNotMonotone::test_definitions_still_land_while_expansion_is_off
+PASSED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[alias iff='if true; then'\nprintf '%s' alias\niff echo X; fi\n]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[alias iff='if true; then'\necho alias zz=1\niff echo X; fi\n]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[alias iff='if true; then'\naliasx foo 2>/dev/null\niff echo X; fi\n]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[alias iff='if true; then'\niff echo X; fi\n]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[alias iff='if true; then'\nunalias iff\niff echo X; fi\n]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[alias iff='if true; then'\ntrue; unalias iff\niff echo X; fi\n]
+PASSED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[alias iff='if true; then'\nunalias -a\niff echo X; fi\n]
+PASSED tests/unit/test_parse_invocation.py::TestFrozenConfig::test_mutation_raises
+PASSED tests/unit/test_parse_invocation.py::TestFrozenConfig::test_field_deletion_raises
+PASSED tests/unit/test_parse_invocation.py::TestFrozenConfig::test_collections_are_immutable_types
+PASSED tests/unit/test_parse_invocation.py::TestStopsAtFirstOperand::test_operand_ends_option_parsing
+PASSED tests/unit/test_parse_invocation.py::TestStopsAtFirstOperand::test_flags_before_operand_are_consumed
+PASSED tests/unit/test_parse_invocation.py::TestStopsAtFirstOperand::test_c_command_string_is_an_operand
+PASSED tests/unit/test_parse_invocation.py::TestStopsAtFirstOperand::test_flag_between_c_and_command_string
+PASSED tests/unit/test_parse_invocation.py::TestEndOfOptionsMarkers::test_double_dash_ends_options
+PASSED tests/unit/test_parse_invocation.py::TestEndOfOptionsMarkers::test_double_dash_operand_may_start_with_dash
+PASSED tests/unit/test_parse_invocation.py::TestEndOfOptionsMarkers::test_lone_dash_ends_options
+PASSED tests/unit/test_parse_invocation.py::TestEndOfOptionsMarkers::test_lone_dash_with_nothing_after
+PASSED tests/unit/test_parse_invocation.py::TestValueOptions::test_parser_space_form
+PASSED tests/unit/test_parse_invocation.py::TestValueOptions::test_parser_equals_form
+PASSED tests/unit/test_parse_invocation.py::TestValueOptions::test_parser_canonical_name
+PASSED tests/unit/test_parse_invocation.py::TestValueOptions::test_parser_invalid_name_raises_before_any_shell
+PASSED tests/unit/test_parse_invocation.py::TestValueOptions::test_rcfile_space_form
+PASSED tests/unit/test_parse_invocation.py::TestValueOptions::test_missing_value_raises_2
+PASSED tests/unit/test_parse_invocation.py::TestValueOptions::test_value_flag_consumes_dash_value_in_flag_position
+PASSED tests/unit/test_parse_invocation.py::TestInvalidOptions::test_unknown_option_raises_2
+PASSED tests/unit/test_parse_invocation.py::TestInvalidOptions::test_unknown_short_option_raises_2
+PASSED tests/unit/test_parse_invocation.py::TestInvalidOptions::test_unknown_char_in_cluster_raises_2
+PASSED tests/unit/test_parse_invocation.py::TestInvalidOptions::test_c_missing_command_raises_2
+PASSED tests/unit/test_parse_invocation.py::TestRegistryDerivedShortOptions::test_single_set_option
+PASSED tests/unit/test_parse_invocation.py::TestRegistryDerivedShortOptions::test_cluster_maps_each_char
+PASSED tests/unit/test_parse_invocation.py::TestRegistryDerivedShortOptions::test_previously_missing_letters_now_map
+PASSED tests/unit/test_parse_invocation.py::TestRegistryDerivedShortOptions::test_dash_h_is_hashall_not_help
+PASSED tests/unit/test_parse_invocation.py::TestRegistryDerivedShortOptions::test_plus_h_disables_hashall
+PASSED tests/unit/test_parse_invocation.py::TestRegistryDerivedShortOptions::test_surface_is_registry_derived
+PASSED tests/unit/test_parse_invocation.py::TestRegistryDerivedShortOptions::test_later_transition_recorded_after_earlier
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_dash_i_requests_interactive
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_plus_i_alone_does_not_force
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_plus_i_cancels_earlier_dash_i
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_dash_i_after_plus_i_wins
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_plus_s_acts_like_dash_s
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_plus_s_does_not_cancel_dash_s
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_plus_c_enables_command_mode
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_plus_c_does_not_cancel_dash_c
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_cluster_with_s_and_interactive
+PASSED tests/unit/test_parse_invocation.py::TestInvocationOnlySignSemantics::test_ic_cluster_takes_next_arg_as_command
+PASSED tests/unit/test_parse_invocation.py::TestSourceKindAndDollarZero::test_default_is_stdin
+PASSED tests/unit/test_parse_invocation.py::TestSourceKindAndDollarZero::test_c_positional_zero_and_params
+PASSED tests/unit/test_parse_invocation.py::TestSourceKindAndDollarZero::test_c_without_name_keeps_shell_argv0
+PASSED tests/unit/test_parse_invocation.py::TestSourceKindAndDollarZero::test_script_argv0_is_script_path
+PASSED tests/unit/test_parse_invocation.py::TestSourceKindAndDollarZero::test_s_with_operands_collects_positionals
+PASSED tests/unit/test_parse_invocation.py::TestSourceKindAndDollarZero::test_s_with_c_keeps_forced_stdin_fact
+PASSED tests/unit/test_parse_invocation.py::TestLongOptionForms::test_o_long_option_enables
+PASSED tests/unit/test_parse_invocation.py::TestLongOptionForms::test_plus_o_long_option_disables
+PASSED tests/unit/test_parse_invocation.py::TestLongOptionForms::test_o_in_cluster_consumes_next_arg
+PASSED tests/unit/test_parse_invocation.py::TestLongOptionForms::test_o_attached_name
+PASSED tests/unit/test_parse_invocation.py::TestLongOptionForms::test_o_bad_name_raises_2
+PASSED tests/unit/test_parse_invocation.py::TestLongOptionForms::test_o_rejects_internal_option_name
+PASSED tests/unit/test_parse_invocation.py::TestLongOptionForms::test_bare_trailing_o_is_listing_request
+PASSED tests/unit/test_parse_invocation.py::TestLongOptionForms::test_bare_trailing_plus_o_is_listing_request
+PASSED tests/unit/test_parse_invocation.py::TestLongOptionForms::test_posix_flag_is_a_transition
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_debug_flags_become_transitions
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_debug_ast_format
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_debug_detail_implies_base
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags0]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags1]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags2]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags3]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags4]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags5]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags6]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags7]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags8]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags9]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_distinct_analysis_modes_rejected[flags10]
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_analysis_mode_deduplicated
+PASSED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_single_analysis_mode_still_accepted
+PASSED tests/unit/test_parse_invocation.py::TestHelpVersionFlags::test_help_flag
+PASSED tests/unit/test_parse_invocation.py::TestHelpVersionFlags::test_dash_h_is_not_help
+PASSED tests/unit/test_parse_invocation.py::TestHelpVersionFlags::test_version_flag
+PASSED tests/unit/test_parse_invocation.py::TestHelpVersionFlags::test_help_in_operand_position_passes_through
+FAILED tests/system/test_analysis_state_aware.py::TestModeCombinationRejected::test_help_and_version_still_answer[flags0-Usage: psh]
+FAILED tests/system/test_analysis_state_aware.py::TestModeCombinationRejected::test_help_and_version_still_answer[flags1-Usage: psh]
+FAILED tests/system/test_analysis_state_aware.py::TestModeCombinationRejected::test_help_and_version_still_answer[flags2-version]
+FAILED tests/system/test_analysis_state_aware.py::TestModeCombinationRejected::test_help_and_version_still_answer[flags3-version]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's here\nEOF\n-validate]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's here\nEOF\n-metrics]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's here\nEOF\n-security]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's here\nEOF\n-lint]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<-EOF\n\tit's tabbed\nEOF\n-validate]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<-EOF\n\tit's tabbed\nEOF\n-metrics]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<-EOF\n\tit's tabbed\nEOF\n-security]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<-EOF\n\tit's tabbed\nEOF\n-lint]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<'EOF'\nit's quoted-delimiter\nEOF\n-validate]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<'EOF'\nit's quoted-delimiter\nEOF\n-metrics]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<'EOF'\nit's quoted-delimiter\nEOF\n-security]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<'EOF'\nit's quoted-delimiter\nEOF\n-lint]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's one\nEOF\ncat <<EOF2\nit's two\nEOF2\n-validate]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's one\nEOF\ncat <<EOF2\nit's two\nEOF2\n-metrics]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's one\nEOF\ncat <<EOF2\nit's two\nEOF2\n-security]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\nit's one\nEOF\ncat <<EOF2\nit's two\nEOF2\n-lint]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[f() {\n  cat <<EOF\n  it's nested\nEOF\n}\nf\n-validate]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[f() {\n  cat <<EOF\n  it's nested\nEOF\n}\nf\n-metrics]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[f() {\n  cat <<EOF\n  it's nested\nEOF\n}\nf\n-security]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[f() {\n  cat <<EOF\n  it's nested\nEOF\n}\nf\n-lint]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\ndon't `echo x` $(echo y)\nEOF\n-validate]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\ndon't `echo x` $(echo y)\nEOF\n-metrics]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\ndon't `echo x` $(echo y)\nEOF\n-security]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_quote_bearing_heredoc_body_analyzes_clean[cat <<EOF\ndon't `echo x` $(echo y)\nEOF\n-lint]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_alias_inside_a_heredoc_body_is_data_not_state
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_every_unit_error_carries_a_line_prefix[rd]
+FAILED tests/system/test_analysis_state_aware.py::TestHeredocBodiesAreNotCommandText::test_every_unit_error_carries_a_line_prefix[combinator]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[builtin shopt -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[command shopt -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[\\shopt -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[x=1 shopt -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[shopt -sq extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[shopt -qs extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[set -e -o extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[command builtin shopt -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[x=1 y=2 builtin shopt -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[sh\\opt -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[s\\hopt -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[shop\\t -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[\\s\\h\\o\\p\\t -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestExpandAliasesIsOrderedNotMonotone::test_disable_stops_expansion_in_later_units
+FAILED tests/system/test_analysis_state_aware.py::TestExpandAliasesIsOrderedNotMonotone::test_unreached_conditional_disable_is_the_declared_cost
+FAILED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_argument_position_unalias_does_not_wipe_the_table
+FAILED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_argument_position_alias_does_not_define
+FAILED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[alias iff='if true; then'\necho unalias -a\niff echo X; fi\n]
+FAILED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[echo alias iff='if true; then'\niff echo X; fi\n]
+FAILED tests/system/test_analysis_state_aware.py::TestAliasPositionDiscipline::test_analysis_agrees_with_execution_about_alias_state[cat <<EOF\nalias iff='if true; then'\nEOF\niff echo X; fi\n]
+FAILED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_help_and_version_outrank_the_mode_conflict[flags0]
+FAILED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_help_and_version_outrank_the_mode_conflict[flags1]
+FAILED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_help_and_version_outrank_the_mode_conflict[flags2]
+FAILED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_help_and_version_outrank_the_mode_conflict[flags3]
+FAILED tests/unit/test_parse_invocation.py::TestDebugAndAnalysisFlags::test_help_and_version_outrank_the_mode_conflict[flags4]

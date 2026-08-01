@@ -49,6 +49,10 @@ assert the psh-divergent result — the owning slot sweeps its own files.
 | `test_history_p_interactive_conformance.py::TestHistoryEvalOuterSinglePExpansionH35` | B#35, stays. |
 | `tests/conformance/differences/` framework + `assert_documented_difference` users (`test_posix_compliance.py` ×2, `test_user_guide_notes_conformance.py` ×1) | Slot 1.2 audits these three during oracle migration: each either maps to a ledger row or gets one. |
 
+| `tests/system/test_analysis_state_aware.py::TestTwoStaticSurfaces::test_two_static_surfaces_split` | 2.6 DELIBERATE divergence: `--validate` is state-aware, `psh -n`/`bash -n` stay state-blind (analysis-totality charter). RED-ON-BASE. NOT discoverable via the `def test_divergence_` enumeration above — recorded here per R13-E(4); the `bash -n` AGREEMENT half is `tests/conformance/bash/test_noexec_state_blindness_conformance.py` (claim-proving CONTROL ROW, green-on-base by design). |
+| `tests/system/test_analysis_state_aware.py::TestExpandAliasesIsOrderedNotMonotone::test_unreached_conditional_disable_is_the_declared_cost` (+ the four R13-B shapes) | 2.6 declared COST pin, divergent direction: an unreached conditional `shopt -u expand_aliases` narrows analysis (exec 0 / validate 2). Closing it = successor's alias-overlay work; flip only with a re-ruling. |
+| `tests/system/test_analysis_state_aware.py::TestAliasAxisNormalizationAsymmetry` (5 spelling classes) + `TestAliasIsolationAsymmetry` | 2.6 declared limitations, divergent direction (base-faithful): prefixed/quoted alias heads invisible to analysis; alias-table absorption isolation-blind. Successor row (b) owns them. |
+
 ## Watch note
 
 Slot 4B.3 (history) closes ledger B#32: the nightly's 6 red
