@@ -232,13 +232,18 @@ class TestUnitLineDiagnostics:
         """The claim that survives BOTH parsers: analysis reports a syntax
         error at the same place execution does.
 
-        Under `--parser combinator` that place is line 1 rather than line 3 —
-        the parser never stamps top-level statement lines, a PRE-EXISTING
-        defect (LEDGER Part D, "2.2 carry: combinator ignores line_offset for
-        TOP-LEVEL statements", owned by the parser successor). Analysis does
-        not inherit it from this slot; it CONVERGES on execution, which has
-        always reported that line. Pinning the two together means closing the
-        carry moves both surfaces at once, or fails here.
+        Under `--parser combinator` that place is line 1 rather than line 3,
+        because the combinator never stamps top-level statement lines. That is
+        the PRE-EXISTING campaign-ledger row
+
+            2.2 carry: combinator ignores line_offset for TOP-LEVEL statements
+
+        (unified LEDGER Part D, owned by the parser successor). Analysis does
+        not inherit it from this slot — it CONVERGES on execution, which has
+        always reported that line. Deriving the expected prefix from execution
+        rather than hard-coding it means this row keeps passing when the carry
+        closes; `test_combinator_toplevel_line_is_the_2_2_carry` is the
+        tripwire that ANNOUNCES the close.
         """
         _script(tmp_path, self.SCRIPT)
         execution = _psh(tmp_path, ["--parser", parser, "s.sh"])
@@ -248,6 +253,27 @@ class TestUnitLineDiagnostics:
         prefix = [line for line in execution.stderr.splitlines()
                   if line.startswith("psh: s.sh:")][0].split(" Parse error")[0]
         assert prefix in analysis.stderr, (prefix, analysis.stderr)
+
+    def test_combinator_toplevel_line_is_the_2_2_carry(self, tmp_path):
+        """CARRY TRIPWIRE — EXPECTED TO FLIP, and that is the point.
+
+        This asserts the combinator's CURRENT, WRONG line number (1 for an
+        error on line 3) on both the analysis and execution surfaces, so that
+        closing
+
+            2.2 carry: combinator ignores line_offset for TOP-LEVEL statements
+
+        fails here loudly instead of improving psh in silence. When that carry
+        closes, delete this test and tighten the sibling row above to assert
+        line 3 for both parsers. A failure here is NOT a regression in slot
+        2.6 — it is the carry being fixed.
+        """
+        _script(tmp_path, self.SCRIPT)
+        analysis = _psh(tmp_path, ["--parser", "combinator", "--validate", "s.sh"])
+        execution = _psh(tmp_path, ["--parser", "combinator", "s.sh"])
+        assert is_comparable(analysis) and is_comparable(execution)
+        assert "psh: s.sh:1:" in analysis.stderr, analysis.stderr
+        assert "psh: s.sh:1:" in execution.stderr, execution.stderr
 
 
 class TestHeredocWordCorruption:

@@ -294,7 +294,7 @@ FUNC_IMPORT_CAPS = {
     'psh.parser.recursive_descent.support.nested_parse': 2,
     'psh.parser.recursive_descent.support.word_builder': 1,
     'psh.scripting.base': 3,
-    'psh.scripting.command_accumulator': 2,
+    'psh.scripting.command_accumulator': 0,
     'psh.scripting.input_preprocessing': 1,
     'psh.scripting.input_sources': 1,
     'psh.scripting.lex_parse': 1,

@@ -188,6 +188,16 @@ class TestSessionStateIsIsolatedFromTheShell:
         assert session.carrier.state.options.get("extglob") is True
         assert "zz" in session.carrier.alias_manager.aliases
 
+    def test_carrier_keeps_an_embedders_shell_subclass(self):
+        """The carrier is built through the shell's own type, so an embedder
+        that subclasses Shell is analyzed by its own class rather than being
+        silently downgraded to the base one."""
+        class EmbedderShell(Shell):
+            pass
+
+        session = AnalysisSession(EmbedderShell(norc=True))
+        assert type(session.carrier) is EmbedderShell
+
 
 class TestSingleAnalysisMode:
     """MEDIUM-9(b) at the constructor: the ambiguous state is unrepresentable."""
