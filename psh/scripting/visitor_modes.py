@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any
 
 from ..core import report_internal_defect
 from ..core.exceptions import PshError
+from ..parser import ParseError
+from .analysis_session import AnalysisSyntaxError, parse_for_analysis
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -50,7 +52,6 @@ def _parse_for_analysis(shell: 'Shell', content: str,
     ``--format``'s ``expand_aliases=False`` exception lives on the session; see
     ``AnalysisSession`` for that and for the which-transitions-apply rule.
     """
-    from .analysis_session import parse_for_analysis
     return parse_for_analysis(shell, content,
                               drop_dangling_at_eof=drop_dangling_at_eof)
 
@@ -73,7 +74,6 @@ def _report_syntax_error(location: str, exc: Exception,
     with no per-command start line; parsing unit by unit gives it the same
     ``<source>:<line>:`` prefix execution prints.
     """
-    from ..parser import ParseError
     from .lex_parse import render_syntax_error_detail
     line = start_line
     if (isinstance(exc, ParseError) and exc.error_context
@@ -98,7 +98,6 @@ def handle_visitor_mode_for_content(shell: 'Shell', content: str,
     drop it; ``-c`` keeps it literal), so analysis sees the same text
     execution would.
     """
-    from .analysis_session import AnalysisSyntaxError
     try:
         ast = _parse_for_analysis(shell, content,
                                   drop_dangling_at_eof=drop_dangling_at_eof)

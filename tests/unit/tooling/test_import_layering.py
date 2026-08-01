@@ -298,8 +298,10 @@ FUNC_IMPORT_CAPS = {
     'psh.scripting.input_preprocessing': 1,
     'psh.scripting.input_sources': 1,
     'psh.scripting.lex_parse': 1,
-    'psh.scripting.source_processor': 6,
-    'psh.scripting.visitor_modes': 9,
+    # Ratcheted down by remediation 2.6 (6->5, 9->7). The new
+    # psh.scripting.analysis_session needs no entry at all: it defers nothing.
+    'psh.scripting.source_processor': 5,
+    'psh.scripting.visitor_modes': 7,
     'psh.shell': 5,
     'psh.utils.ast_debug': 6,
     # 3rd deferred import (S2): the ANSI-C escape decoder for $'...' heredoc

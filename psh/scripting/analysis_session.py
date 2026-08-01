@@ -52,7 +52,14 @@ runs?". The divergence from ``bash -n`` is deliberate and pinned.
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from ..ast_nodes import Program
+from ..ast_nodes.commands import SimpleCommand
+from ..invocation import resolve_parser_name
+from ..lexer import tokenize
+from ..lexer.token_types import TokenType
+from ..visitor.traversal import walk_ast
+from .input_preprocessing import process_line_continuations
 from .lex_parse import lex_and_parse
+from .program_source import ProgramSource
 from .source_processor import _offset_line_numbers, iter_command_units
 
 if TYPE_CHECKING:
@@ -100,9 +107,6 @@ def _directive_commands(node: Any, isolated: bool = False):
     state-preserving by default, which is the safe direction: it can only make
     the session more permissive, never make it invent a syntax error.
     """
-    from ..ast_nodes.commands import SimpleCommand
-    from ..visitor.traversal import walk_ast
-
     if type(node).__name__ in ISOLATING_NODES:
         isolated = True
     # Every member of a MULTI-command pipeline runs in its own process; a
@@ -122,12 +126,15 @@ class AnalysisSession:
     """Parses an input unit by unit under evolving parse-relevant state."""
 
     def __init__(self, shell: 'Shell') -> None:
-        from ..shell import Shell as _Shell
         self.shell = shell
-        #: The evolving state. A child shell rather than a bag of fields so the
-        #: pipeline reads it through the same attributes it reads for
-        #: execution. norc: startup input must never run for an analysis.
-        self.carrier = _Shell(parent_shell=shell, norc=True)
+        #: The evolving state. A child shell rather than a bag of fields, so
+        #: the pipeline reads it through the same attributes it reads for
+        #: execution. Built through the shell's OWN type: ``psh.shell`` sits
+        #: above this package, so naming it here would invert the import
+        #: layering — and an embedder's Shell subclass should carry its own
+        #: behaviour into the analysis anyway. ``norc``: startup input must
+        #: never run for an analysis.
+        self.carrier = type(shell)(parent_shell=shell, norc=True)
         #: ``--format`` is a SOURCE-TO-SOURCE tool: reprinting an alias's body
         #: in place of its name would rewrite the user's script rather than
         #: format it, so it alone parses with aliases off (integrator ruling,
@@ -142,9 +149,6 @@ class AnalysisSession:
         for a trailing backslash at true end of input, applied per unit exactly
         as ``SourceProcessor._preprocess_command`` applies it.
         """
-        from .input_preprocessing import process_line_continuations
-        from .program_source import ProgramSource
-
         merged = Program()
         input_source = ProgramSource.command_string(content).make_input_source()
         for start_line, unit in iter_command_units(self.carrier, input_source):
@@ -191,7 +195,6 @@ class AnalysisSession:
                 if rest[1] in PARSE_RELEVANT_OPTIONS:
                     self.carrier.state.options[rest[1]] = True
             elif head == 'parser-select' and rest:
-                from ..invocation import resolve_parser_name
                 selected = resolve_parser_name(rest[0])
                 if selected is not None:
                     self.carrier.active_parser = selected
@@ -207,9 +210,6 @@ class AnalysisSession:
         line 1 and uses it on line 2 would stop analyzing — the one place where
         going incremental could have LOST behavior (remediation 2.6 R1-G).
         """
-        from ..lexer import tokenize
-        from ..lexer.token_types import TokenType
-
         table = self.carrier.alias_manager.aliases
         tokens = [t for t in tokenize(text, shell_options=self.carrier.state.options)
                   if t.type != TokenType.EOF]
@@ -239,7 +239,6 @@ def parse_for_analysis(shell: 'Shell', content: str,
 
 def unit_texts(shell: 'Shell', content: str) -> List[Optional[str]]:
     """The unit boundaries analysis would use — for tests and debugging."""
-    from .program_source import ProgramSource
     session = AnalysisSession(shell)
     return [unit.text for _, unit in iter_command_units(
         session.carrier,
