@@ -447,33 +447,49 @@ class TestNoUnsanctionedStringSurgery:
 
     MODULE = "psh/scripting/analysis_session.py"
 
-    #: (function, operation) -> why this site is not a re-derivation.
+    #: (function, operation, COUNT) -> why this site is not a re-derivation.
+    #:
+    #: The count is part of the key (R13-E-5): keying on (function, operation)
+    #: alone let a SECOND site of an already-sanctioned shape appear inside a
+    #: sanctioned function without the guard noticing — the universe lesson
+    #: again, one level down.
+    #:
+    #: Each justification must open with one of two TAGS (R13-E-6), because
+    #: prose alone is satisfiable by boilerplate:
+    #:   consumes-lexer-fact: <which fact>
+    #:   no-fact-because:     <why the lexer cannot know it>
     SANCTIONED = {
-        ('_effective_words', '.sub()'):
-            "APPLIES the lexer's verdict rather than replacing it: the "
+        ('_effective_words', '.sub()', 1):
+            "consumes-lexer-fact: part.quoted. APPLIES the lexer's verdict "
+            "rather than replacing it: the "
             "backslash-escape substitution runs ONLY on parts the lexer marked "
             "unquoted (part.quoted is False). This is the one place the "
             "quoting fact is consumed, and everything downstream reads its "
             "output instead of raw token text.",
-        ('_normalize_head', '.match()'):
+        ('_normalize_head', '.match()', 1):
+            "consumes-lexer-fact: _effective_words output. "
             "Recognizes a NAME=value assignment prefix on an ALREADY "
             "quote-resolved word from _effective_words — a shape test on a "
             "resolved value, not a re-derivation of quoting.",
-        ('_option_changes', '.startswith()'):
+        ('_option_changes', '.startswith()', 3):
+            "consumes-lexer-fact: _effective_words output. "
             "Distinguishes a flag word from an operand on an already "
             "quote-resolved word. `-` is not quotable into or out of "
             "existence by anything the lexer hides: `\\-s` resolves to `-s` "
             "in _effective_words first (pinned).",
-        ('_option_changes', 'slice'):
+        ('_option_changes', 'slice', 4):
+            "consumes-lexer-fact: _effective_words output. "
             "Reads the LETTERS of an already quote-resolved cluster flag "
             "(`-sq` -> `sq`). The cluster's spelling is fully determined once "
             "quoting is resolved.",
-        ('analyze', '.strip()'):
-            "Operates on the UNIT'S RAW SOURCE TEXT, not on a token value — "
+        ('analyze', '.strip()', 3):
+            "no-fact-because: the decision happens BEFORE lexing, so there is "
+            "no token yet. Operates on the UNIT'S RAW SOURCE TEXT, not on a token value — "
             "the blank/comment-only skip, mirroring the identical test in "
             "source_processor.iter_command_units. There is no lexer fact to "
             "consume here: the decision happens before lexing, by design.",
-        ('analyze', '.startswith()'):
+        ('analyze', '.startswith()', 1):
+            "no-fact-because: same pre-lexing decision as the .strip() above. "
             "Same site as the .strip() above: the whole-line comment skip on "
             "raw source text, mirroring the execution path.",
     }
@@ -498,18 +514,21 @@ class TestNoUnsanctionedStringSurgery:
                         best = f
             return best.name if best else '<module>'
 
-        found = set()
+        counts: dict = {}
         for node in pyast.walk(tree):
+            key = None
             if (isinstance(node, pyast.Call)
                     and isinstance(node.func, pyast.Attribute)
                     and node.func.attr in cls.STR_METHODS):
-                found.add((where(node), f".{node.func.attr}()"))
+                key = (where(node), f".{node.func.attr}()")
             elif (isinstance(node, pyast.Subscript)
                   and isinstance(node.slice, pyast.Slice)
                   and not (isinstance(node.value, pyast.Name)
                            and node.value.id in cls.TYPING_NAMES)):
-                found.add((where(node), "slice"))
-        return found
+                key = (where(node), "slice")
+            if key is not None:
+                counts[key] = counts.get(key, 0) + 1
+        return {(fn, op, n) for (fn, op), n in counts.items()}
 
     def test_every_string_surgery_site_is_sanctioned(self):
         source = (Path(__file__).resolve().parents[3] / self.MODULE).read_text()
@@ -530,14 +549,42 @@ class TestNoUnsanctionedStringSurgery:
         stale = set(self.SANCTIONED) - found
         assert not stale, f"SANCTIONED lists sites that no longer exist: {sorted(stale)}"
 
-    def test_every_justification_is_substantive(self):
+    def test_every_justification_is_substantive_and_tagged(self):
         """A one-word justification would satisfy the letter of the rule and
-        none of its purpose."""
+        none of its purpose; an untagged one lets prose stand in for a
+        decision. Both are structurally rejected (R13-E-6)."""
         for site, why in self.SANCTIONED.items():
             assert len(why) >= 80, f"{site} justification is too thin: {why!r}"
+            assert why.startswith(("consumes-lexer-fact:", "no-fact-because:")), (
+                f"{site} justification must open with one of the two tagged "
+                f"forms, got: {why[:40]!r}")
 
     def test_the_scan_detects_a_planted_site(self):
         """MUTATION PROOF: the guard must SEE a new site, not just pass."""
         planted = "def _sneaky(word):\n    return word.replace('\\\\', '')\n"
         found = self._sites(planted)
-        assert ('_sneaky', '.replace()') in found, found
+        assert ('_sneaky', '.replace()', 1) in found, found
+
+    def test_a_second_site_of_a_sanctioned_shape_is_visible(self):
+        """R13-E-5: the count is what makes a SECOND site of an already-allowed
+        shape visible. Keyed on (function, operation) alone this would pass."""
+        one = "def f(w):\n    return w.strip()\n"
+        two = "def f(w):\n    return w.strip().strip()\n"
+        assert self._sites(one) == {('f', '.strip()', 1)}
+        assert self._sites(two) == {('f', '.strip()', 2)}
+
+    def test_the_mirrored_line_is_not_inside_a_code_fence(self):
+        """R13-E-1: the mutual-exclusion sentence mirrored into the second
+        guide copy first landed INSIDE a fenced code block, where it renders
+        as shell input rather than prose. Asserted structurally (fence parity
+        before the line) because that is a property of the document, not of
+        the edit that produced it."""
+        guide = (Path(__file__).resolve().parents[3]
+                 / "docs/user_guide/13_shell_scripts.md")
+        lines = guide.read_text().splitlines()
+        target = next(i for i, line in enumerate(lines)
+                      if line.startswith("Only one analysis mode may be given"))
+        fences = sum(1 for line in lines[:target] if line.startswith("```"))
+        assert fences % 2 == 0, (
+            "the mirrored line sits inside a fenced code block "
+            f"({fences} fences open before line {target + 1})")

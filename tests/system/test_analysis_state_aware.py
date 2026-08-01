@@ -117,14 +117,23 @@ class TestTransitionRule:
         ("shopt -s extglob | cat\necho @(a|b)\n", False),
         ("x=$(shopt -s extglob)\necho @(a|b)\n", False),
         ("shopt -s extglob &\nwait\necho @(a|b)\n", False),
-        # R11-B N1: the rest of the never-reached class, so the corpus matches
-        # the declared rule instead of sampling it. Each is treated as LIVE by
-        # the monotone rule (analysis cannot evaluate reachability) — these
-        # rows assert the ANALYSIS side of that declared permissiveness.
+        # R11-B N1, ENABLE direction: a never-reached ENABLE is treated as
+        # LIVE, the declared permissiveness of the monotone rule.
         ("e() { shopt -s extglob; }\necho @(a|b)\n", True),
         ("while false; do shopt -s extglob; done\necho @(a|b)\n", True),
         ("case z in a) shopt -s extglob;; esac\necho @(a|b)\n", True),
         ("true || shopt -s extglob\necho @(a|b)\n", True),
+        # R11-B N1 AS ORDERED, DISABLE direction: the never-reached class is
+        # about DISABLES, where the monotone rule does the opposite work — the
+        # disable is IGNORED, so an earlier enable survives and the construct
+        # still parses. Round 4 caught the enable mirrors above being shipped
+        # in place of these; they are the deliverable.
+        ("shopt -s extglob\ne() { shopt -u extglob; }\necho @(a|b)\n", True),
+        ("shopt -s extglob\nwhile false; do shopt -u extglob; done\n"
+         "echo @(a|b)\n", True),
+        ("shopt -s extglob\ncase z in a) shopt -u extglob;; esac\n"
+         "echo @(a|b)\n", True),
+        ("shopt -s extglob\ntrue || shopt -u extglob\necho @(a|b)\n", True),
     ])
     def test_isolation_decides_whether_a_change_applies(self, tmp_path,
                                                         script, applies):
@@ -558,6 +567,12 @@ class TestDirectiveSpellingAxis:
         # untouched) — measured identical in psh and bash 5.2.26.
         "shopt -su extglob",
         "shopt -us extglob",
+        # R13-A: the SEPARATE-WORD spelling of the same refusal. The corpus
+        # above held the cluster SHAPE constant, so the recognizer encoded the
+        # measurement for one spelling of a rule the builtin applies to both.
+        "shopt -s -u extglob",
+        "shopt -u -s extglob",
+        "shopt -s -q -u extglob",
         # R11-A: a QUOTED backslash is ordinary text, so these are commands of
         # that literal name, not `shopt`. Both shells agree; the recognizer
         # must read the lexer's per-part quote context rather than strip
@@ -840,3 +855,50 @@ class TestDeclaredAnalysisSideEffects:
         assert is_comparable(execution) and is_comparable(analysis)
         assert execution.returncode == 0, execution.stderr
         assert analysis.returncode == 0, analysis.stderr
+
+
+class TestAliasAxisNormalizationAsymmetry:
+    """R11-B N13 / R13-B(3): a DECLARED, base-faithful limitation.
+
+    The OPTION axis normalizes a directive's head through the prefixes that do
+    not change which builtin runs. The ALIAS axis does not: absorption runs
+    `AliasManager.expand_aliases`, whose command-position walk recognizes the
+    bare words `alias`/`unalias` only. So four spellings that DEFINE an alias
+    at execution are invisible to analysis.
+
+    Preserved rather than fixed here on purpose. Closing it means widening the
+    alias decider's own recognition, which lives in psh/expansion/ —
+    STOP-and-report scope for this slot — and building a second, wider
+    recognizer beside it is precisely the fault class this slot hit three
+    times (R8-A, R9-A, R11-A). Base absorbed nothing at all, so this is
+    base-faithful. The successor home is the public AliasManager
+    analysis-overlay seam (R5-C / R8-E-9), whose row now names these rows.
+
+    Asserted in the DIVERGENT direction, so closing it fails here loudly.
+    """
+
+    USE = "iff echo X; fi\n"
+
+    @pytest.mark.parametrize("definition", [
+        "command alias iff='if true; then'",
+        "builtin alias iff='if true; then'",
+        "x=1 alias iff='if true; then'",
+        "\\alias iff='if true; then'",
+    ])
+    def test_normalized_alias_spellings_are_not_absorbed(self, tmp_path,
+                                                         definition):
+        _script(tmp_path, f"{definition}\n{self.USE}")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0, execution.stderr   # the alias IS defined
+        assert analysis.returncode == 2                      # analysis misses it
+
+    def test_the_bare_spelling_is_absorbed(self, tmp_path):
+        """The control: without a prefix the two agree, so the rows above pin
+        the NORMALIZATION gap and not a broken alias axis."""
+        _script(tmp_path, f"alias iff='if true; then'\n{self.USE}")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == analysis.returncode == 0

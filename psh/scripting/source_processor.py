@@ -31,7 +31,7 @@ from .base import ScriptComponent
 from .command_accumulator import CommandAccumulator, Complete, NeedMore
 
 
-def _offset_line_numbers(node: ASTNode, delta: int) -> None:
+def offset_line_numbers(node: ASTNode, delta: int) -> None:
     """Add *delta* to every stamped ``.line`` in an AST subtree, in place.
 
     The parser stamps statement nodes with buffer-relative lines; this
@@ -57,10 +57,11 @@ def _offset_line_numbers(node: ASTNode, delta: int) -> None:
     if node.line is not None:
         node.line += delta
     for child in walk_ast(node):
-        _offset_line_numbers(child, delta)
+        offset_line_numbers(child, delta)
 
 
-def iter_command_units(shell, input_source, base_line: int = 1):
+def iter_command_units(shell, input_source, base_line: int = 1,
+                       trace: bool = True):
     """Yield ``(start_line, Complete)`` for each complete logical command.
 
     THE line-gathering loop — the one place physical lines become logical
@@ -73,6 +74,9 @@ def iter_command_units(shell, input_source, base_line: int = 1):
     delimiter), and end of input flushes whatever is buffered — a truncated
     construct included, so it parses to "unexpected end of input" at the
     consumer rather than vanishing.
+
+    ``trace`` gates the ``--debug-exec`` read-line trace: it belongs to
+    EXECUTION, so the non-executing analysis session passes False.
 
     ``start_line`` is the ABSOLUTE source line the unit begins on (``base_line``
     offsets nested runs — eval, trap actions — onto the invoking command's
@@ -88,7 +92,10 @@ def iter_command_units(shell, input_source, base_line: int = 1):
 
     while True:
         line = input_source.read_line()
-        if shell.state.options.get('debug-exec', False):
+        if trace and shell.state.options.get('debug-exec', False):
+            # `trace` is False for the analysis session: --debug-exec traces
+            # EXECUTION, and analysis executes nothing, so emitting the
+            # execution trace there is output about work that never happened.
             print(f"DEBUG source_processor: read line: {repr(line)}",
                   file=sys.stderr)
         if line is None:  # EOF
@@ -681,9 +688,9 @@ class SourceProcessor(ScriptComponent):
         # Convert the parser's buffer-relative $LINENO stamps to absolute
         # source lines (offset by where this buffer began). Done once here
         # so a function body bakes in its definition-site lines. See
-        # ASTNode.line and _offset_line_numbers.
+        # ASTNode.line and offset_line_numbers.
         if start_line > 1:
-            _offset_line_numbers(ast, start_line - 1)
+            offset_line_numbers(ast, start_line - 1)
 
         # Debug: Print AST if requested
         if self.state.debug_ast:

@@ -56,8 +56,10 @@ and blind on 2, a directive inside an ``eval`` STRING or a ``source``d FILE,
 which no non-executing analysis can see. Those counts describe the MONOTONE
 options; ``expand_aliases`` adds one more declared cost of its own — an
 unreached conditional DISABLE narrows analysis, the only place the option axis
-can still produce a false syntax error. All are pinned as divergences (R1-C,
-R8-B).
+can still produce a false syntax error. A directive is also read WITHOUT
+command resolution, so a ``shopt`` shadowed by a shell function of the same
+name is absorbed anyway — analysis accepts more than the shell does there.
+All are pinned as divergences (R1-C, R8-B, R11-B N12).
 
 COST. Parsing per unit is slower than one whole-file parse, because each unit
 pays its own lex and parse setup: measured **3.2x** on a 4,000-line script
@@ -84,7 +86,7 @@ from ..visitor.traversal import walk_ast
 from .input_preprocessing import process_line_continuations
 from .lex_parse import lex_and_expand, parse_tokens
 from .program_source import ProgramSource
-from .source_processor import _offset_line_numbers, iter_command_units
+from .source_processor import iter_command_units, offset_line_numbers
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -182,7 +184,15 @@ def _normalize_head(words: Sequence[Optional[str]]) -> List[Optional[str]]:
            and _ASSIGNMENT_WORD.match(remaining[0])):
         remaining.pop(0)
     while len(remaining) > 1 and remaining[0] in _TRANSPARENT_HEADS:
-        remaining.pop(0)
+        transparent = remaining.pop(0)
+        # `command -p` still runs the command (with a default PATH), so it is
+        # transparent and repeatable. `command -v`/`-V` are NOT: they PRINT a
+        # description and run nothing, so a head behind them is not a
+        # directive and must fall through unrecognized. `builtin` has no `-p`
+        # (measured: `builtin -p shopt …` fails in both shells).
+        if transparent == 'command':
+            while len(remaining) > 1 and remaining[0] == '-p':
+                remaining.pop(0)
     return remaining
 
 
@@ -193,9 +203,11 @@ def _option_changes(words: Sequence[Optional[str]]) -> List[Tuple[str, bool]]:
 
     * ``shopt -s NAME...`` / ``shopt -u NAME...``, including CLUSTERED short
       flags (`-sq`, `-qs`) — the letter decides, not the exact flag word. A
-      cluster carrying BOTH letters (`-su`) changes nothing: both shells
-      reject it with "cannot set and unset shell options simultaneously",
-      rc 1, option untouched (measured, psh and bash 5.2.26 identical).
+      command whose flag letters carry BOTH ``s`` and ``u`` changes nothing,
+      in EITHER spelling — ``shopt -su X`` and ``shopt -s -u X`` are both
+      refused with "cannot set and unset shell options simultaneously", rc 1,
+      option untouched (measured in psh and bash 5.2.26; pinned for both forms
+      by ``tests/unit/builtins/test_shopt_set_o.py#test_s_and_u_conflict``).
     * ``set -o NAME`` / ``set +o NAME``, at ANY position in the argument list
       and in clustered form, so `set -e -o extglob` is seen. The sign carries
       bash's inversion: `+o` DISABLES. Scanning stops at ``--``, which ends
@@ -212,12 +224,22 @@ def _option_changes(words: Sequence[Optional[str]]) -> List[Tuple[str, bool]]:
     head, rest = remaining[0], [w for w in remaining[1:] if w is not None]
     changes: List[Tuple[str, bool]] = []
     if head == 'shopt':
+        # Aggregate the WHOLE flag set before deciding. The builtin refuses
+        # "set and unset simultaneously" however the letters are SPELLED —
+        # `shopt -su X` and `shopt -s -u X` are both rc 1 with the option
+        # untouched (the repo's own
+        # tests/unit/builtins/test_shopt_set_o.py#test_s_and_u_conflict pins
+        # both forms). Deciding per WORD saw only the clustered spelling and
+        # let the separate-word form fall through to last-write-wins,
+        # inventing a state change the shell declines to make.
+        letters = ''.join(word[1:] for word in rest
+                          if word.startswith('-') and len(word) > 1)
+        if 's' in letters and 'u' in letters:
+            return []
         enable = None
         for word in rest:
             if word.startswith('-') and len(word) > 1:
                 letters = word[1:]
-                if 's' in letters and 'u' in letters:
-                    return []      # contradictory: the builtin refuses
                 if 's' in letters:
                     enable = True
                 elif 'u' in letters:
@@ -328,7 +350,8 @@ class AnalysisSession:
         """
         merged = Program()
         input_source = ProgramSource.command_string(content).make_input_source()
-        for start_line, unit in iter_command_units(self.carrier, input_source):
+        for start_line, unit in iter_command_units(self.carrier, input_source,
+                                                   trace=False):
             text = process_line_continuations(
                 unit.text, drop_dangling_at_eof=drop_dangling_at_eof)
             if unit.error is not None:
@@ -355,7 +378,7 @@ class AnalysisSession:
             except Exception as exc:
                 raise AnalysisSyntaxError(exc, start_line) from exc
             if start_line > 1:
-                _offset_line_numbers(ast, start_line - 1)
+                offset_line_numbers(ast, start_line - 1)
             merged.statements.extend(ast.statements)
             self._absorb_transitions(ast, lexed.tokens)
         return merged

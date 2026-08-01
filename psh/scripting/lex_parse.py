@@ -14,7 +14,7 @@ sequence out by hand and the analysis copy had DRIFTED — it ignored
   can no longer drift.
 - :func:`parse_tokens` — dispatch a token stream to the shell's ACTIVE parser
   (recursive-descent or combinator), heredoc-aware. THE shared parse-dispatch,
-  called by the two active-parser callers.
+  called by the three active-parser callers.
 - :func:`lex_and_parse` — ``lex_and_expand`` + ``parse_tokens``: the convenience
   chokepoint for a caller that needs neither the intermediate token stream nor a
   parser pinned to recursive descent. It is also the WHOLE-FILE-PARSE ORACLE the

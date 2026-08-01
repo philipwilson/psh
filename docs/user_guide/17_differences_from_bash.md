@@ -827,6 +827,9 @@ For `extglob` and `posix`, analysis errs toward accepting:
   reporting errors for scripts that run fine.
 - Turning one of them back off does not narrow the analysis, for the same
   reason.
+- Analysis does not work out which command a name will resolve to, so a
+  `shopt` that a shell function of the same name would shadow is still read as
+  the builtin.
 
 For `expand_aliases` the rule is different, because the shell's own behaviour
 is: unsetting it really does stop aliases expanding on later lines, so analysis
