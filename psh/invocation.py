@@ -304,7 +304,11 @@ def parse_invocation(argv: List[str]) -> InvocationConfig:
     # — in the pure parser, before any Shell exists — makes that silent drop
     # unrepresentable rather than merely unlikely. Repeating the SAME flag
     # stays legal (deduped above), like every other psh option.
-    if len(st.analysis) > 1:
+    # ...but `--help` and `--version` still win, in ANY argv order. They ask
+    # what psh IS rather than for a run to be configured, so refusing to answer
+    # because the rest of the line contradicts itself helps nobody — and it is
+    # what psh did before the exclusivity rule existed.
+    if len(st.analysis) > 1 and not (st.print_help or st.print_version):
         raise InvocationError((
             "psh: only one analysis mode may be given: "
             + " ".join(f"--{mode}" for mode in st.analysis),

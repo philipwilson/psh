@@ -213,6 +213,9 @@ def _run_lint(ast: Any) -> int:
 #: "two modes requested" by running whichever it tested first (validate beat
 #: lint, so ``psh --validate --lint f.sh`` never linted, silently). That state
 #: is now rejected at invocation parsing, and a table cannot re-invent a winner.
+#: An unknown mode name raises KeyError here rather than falling through to a
+#: silent no-op: it is an internal defect, and under strict-errors the suite
+#: surfaces it instead of a clean exit 0 that analyzed nothing.
 _MODE_RUNNERS = {
     'validate': _run_validate,
     'format': _run_format,

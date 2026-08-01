@@ -21,6 +21,8 @@ same binary under `-n`. `bash -n` does not execute `shopt` either, so it
 reports the same false syntax error psh used to; psh's divergence from it is
 deliberate and pinned in `test_two_static_surfaces_split`.
 """
+import re
+
 import pytest
 
 from tests.harness.shell_oracle import is_comparable, run_bash, run_psh
@@ -52,7 +54,7 @@ class TestStateAwareAnalysis:
     @pytest.mark.parametrize("mode", MODES)
     @pytest.mark.parametrize("channel", ["file", "command", "stdin"])
     def test_state_aware_signature(self, tmp_path, parser, mode, channel):
-        cwd = _script(tmp_path, EXTGLOB_SCRIPT)
+        _script(tmp_path, EXTGLOB_SCRIPT)
         flags = ["--parser", parser, f"--{mode}"]
         if channel == "file":
             result = _psh(tmp_path, flags + ["s.sh"])
@@ -66,7 +68,6 @@ class TestStateAwareAnalysis:
         # findings) is that mode's own business.
         assert result.returncode != 2, result.stderr
         assert "Parse error" not in result.stderr
-        assert cwd  # the script file was the input for the file channel
 
     @pytest.mark.parametrize("parser", PARSERS)
     def test_script_executes_at_both_ends(self, tmp_path, parser):
@@ -302,8 +303,19 @@ class TestHeredocWordCorruption:
         _script(tmp_path, self.SCRIPT)
         result = _psh(tmp_path, ["--validate", "s.sh"])
         assert is_comparable(result)
-        assert "var: file" in result.stdout or result.returncode == 0
+        assert result.returncode == 0, result.stderr
+        assert "var: file" in result.stdout, result.stdout
         assert "var: F" not in result.stdout, result.stdout
+
+    def test_metrics_counted_the_corrupted_word_as_a_variable(self, tmp_path):
+        """R8-E-2: the --metrics face of the same corruption. The mangled loop
+        variable was counted as an extra variable, so the reported figure was
+        silently wrong — no error, just a number nobody could check. Base
+        (42f75591, rd) reported 4; the correct count is 3."""
+        _script(tmp_path, self.SCRIPT)
+        result = _psh(tmp_path, ["--metrics", "s.sh"])
+        assert is_comparable(result)
+        assert "Variables Used:             3" in result.stdout, result.stdout
 
     def test_execution_control_unchanged(self, tmp_path):
         """Execution never had the bug and still does not — = bash."""
@@ -330,6 +342,28 @@ class TestFormatPosixRender:
         assert "${äö}" not in result.stdout, result.stdout
         assert "echo $äö" in result.stdout, result.stdout
 
+    def test_validate_stops_reporting_issues_about_a_literal(self, tmp_path):
+        """R8-E-2: the --validate face of the same mis-parse. Reading `$äö` as
+        an expansion under posix produced TWO findings about a variable that
+        does not exist in the script — an undefined-variable warning and an
+        unquoted-expansion info. Base (42f75591) reported 2 issues; the correct
+        answer is none, because posix makes that text literal."""
+        _script(tmp_path, "set -o posix\necho $äö\n")
+        result = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(result)
+        assert result.returncode == 0
+        assert "No issues found" in result.stdout, result.stdout
+
+    def test_posix_named_fd_is_a_word_not_a_redirect(self, tmp_path):
+        """R8-E-2: the named-fd face. Under posix the lexer does not accept a
+        non-portable `{name}` as a file-descriptor name, so `exec {äö}<f` is a
+        COMMAND followed by a redirect. Base reprinted it as the named-fd form
+        it had mis-parsed."""
+        _script(tmp_path, "set -o posix\nexec {äö}<f\n")
+        result = _psh(tmp_path, ["--format", "s.sh"])
+        assert is_comparable(result)
+        assert "exec {äö} <f" in result.stdout, result.stdout
+
 
 class TestModeCombinationRejected:
     """MEDIUM-9(b) / R1-A, end to end at the CLI."""
@@ -350,9 +384,217 @@ class TestModeCombinationRejected:
         # The run analyzed NOTHING — rejection precedes Shell construction.
         assert result.stdout == ""
 
+    @pytest.mark.parametrize("flags,expect", [
+        (["--help", "--validate", "--lint"], "Usage: psh"),
+        (["--validate", "--lint", "--help"], "Usage: psh"),
+        (["--version", "--validate", "--lint"], "version"),
+        (["--validate", "--lint", "--version"], "version"),
+    ])
+    def test_help_and_version_still_answer(self, tmp_path, flags, expect):
+        """R8-E-1: the exclusivity rule must not swallow --help/--version.
+        RED at the dissolved tip 62f2bd45 (rc 2, usage error); base and this
+        tip both answer with rc 0."""
+        _script(tmp_path, PLAIN_SCRIPT)
+        result = _psh(tmp_path, flags)
+        assert is_comparable(result)
+        assert result.returncode == 0, result.stderr
+        assert expect in result.stdout, result.stdout
+
     def test_repeating_one_mode_is_fine(self, tmp_path):
         _script(tmp_path, PLAIN_SCRIPT)
         once = _psh(tmp_path, ["--lint", "s.sh"])
         twice = _psh(tmp_path, ["--lint", "--lint", "s.sh"])
         assert is_comparable(once) and is_comparable(twice)
         assert (once.returncode, once.stdout) == (twice.returncode, twice.stdout)
+
+
+class TestHeredocBodiesAreNotCommandText:
+    """R8-A regression pins. RED AT THE DISSOLVED TIP 62f2bd45, not at base.
+
+    The first analysis session absorbed alias state by re-tokenizing each
+    unit's RAW TEXT with the plain lexer, which lexes heredoc BODIES as command
+    text. Three faces, one cause, one fix: the absorption pass now consumes the
+    SAME heredoc-aware token stream the real parse produces, so a body is never
+    lexed at all.
+
+    These are REGRESSION pins: base (42f75591) was green, the dissolved tip was
+    red. They exist because the round-1 corpus used bodies like `abc`/`body`/`x`
+    — an observability gap, since no body could SAY anything a lexer would
+    choke on.
+    """
+
+    QUOTE_BODIES = [
+        "cat <<EOF\nit's here\nEOF\n",                       # apostrophe
+        "cat <<EOF\nsay \"hi\"\nEOF\n",                      # double quote
+        "cat <<-EOF\n\tit's tabbed\nEOF\n",                  # <<- form
+        "cat <<'EOF'\nit's quoted-delimiter\nEOF\n",         # quoted delimiter
+        "cat <<EOF\nit's one\nEOF\ncat <<EOF2\nit's two\nEOF2\n",   # two heredocs
+        "f() {\n  cat <<EOF\n  it's nested\nEOF\n}\nf\n",    # body in a function
+        "cat <<EOF\ndon't `echo x` $(echo y)\nEOF\n",        # body with substitutions
+    ]
+
+    @pytest.mark.parametrize("mode", MODES)
+    @pytest.mark.parametrize("script", QUOTE_BODIES)
+    def test_quote_bearing_heredoc_body_analyzes_clean(self, tmp_path, mode,
+                                                       script):
+        _script(tmp_path, script)
+        analysis = _psh(tmp_path, [f"--{mode}", "s.sh"])
+        execution = _psh(tmp_path, ["s.sh"])
+        assert is_comparable(analysis) and is_comparable(execution)
+        assert execution.returncode == 0, execution.stderr
+        assert analysis.returncode != 2, analysis.stderr
+        assert "Unclosed" not in analysis.stderr
+
+    def test_alias_inside_a_heredoc_body_is_data_not_state(self, tmp_path):
+        """A heredoc body is text the shell hands to a command; an `alias` line
+        in one defines nothing. Analysis must reach the same verdict execution
+        does — which it cannot if it lexes the body as commands."""
+        _script(tmp_path, "cat <<EOF\nalias iff='if true; then'\nEOF\n"
+                          "iff echo X; fi\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        # The alias was never defined, so the later line is a syntax error in
+        # BOTH surfaces. The pin is the AGREEMENT.
+        assert execution.returncode == analysis.returncode == 2
+
+    @pytest.mark.parametrize("parser", PARSERS)
+    def test_every_unit_error_carries_a_line_prefix(self, tmp_path, parser):
+        """Face three: the lex half used to escape the session's own error
+        envelope, printing a bare `psh: file:` with NO line at all. Every
+        per-unit lex OR parse failure now routes through the envelope and
+        carries a `file:N:` prefix.
+
+        The prefix FORM is what this asserts for both parsers. WHICH N appears
+        under `--parser combinator` is governed by the pre-existing row
+
+            2.2 carry: combinator ignores line_offset for TOP-LEVEL statements
+
+        so the literal line is asserted for rd only; the combinator's current
+        value is pinned by `test_combinator_toplevel_line_is_the_2_2_carry`.
+        """
+        _script(tmp_path, "cat <<EOF\nit's fine\nEOF\necho ok\nif\n")
+        result = _psh(tmp_path, ["--parser", parser, "--validate", "s.sh"])
+        assert is_comparable(result)
+        assert result.returncode == 2
+        assert re.search(r"^psh: s\.sh:\d+: ", result.stderr, re.M), result.stderr
+        if parser == "rd":
+            assert "psh: s.sh:5:" in result.stderr, result.stderr
+
+
+class TestDirectiveSpellingAxis:
+    """R8-B/R8-D: a directive is recognized however it is SPELLED.
+
+    Red at base AND at the dissolved tip: the first fix recognized only the
+    bare `shopt -s` / `set -o` heads while claiming to apply "every option
+    ENABLE found in a parsed unit" — the MEDIUM-9 signature surviving on the
+    first axis of the catalogue (spelling).
+    """
+
+    ENABLES = [
+        "builtin shopt -s extglob",
+        "command shopt -s extglob",
+        "\\shopt -s extglob",
+        "x=1 shopt -s extglob",
+        "shopt -sq extglob",
+        "shopt -qs extglob",
+        "set -e -o extglob",
+        "command builtin shopt -s extglob",
+        "x=1 y=2 builtin shopt -s extglob",
+    ]
+
+    #: Near-misses: they LOOK like directives and must NOT be treated as one.
+    NON_ENABLES = [
+        "shopt -p extglob",        # print, not set
+        "shopt -u extglob",        # unset (monotone: never narrows, but also
+                                   # must not ENABLE)
+        "myshopt -s extglob",      # different command
+        "shopts -s extglob",       # different command
+        "echo shopt -s extglob",   # an argument, not a command
+        "set -s extglob",          # -s is not -o
+        "shopt -s histappend",     # a real option, but not parse-relevant
+        "set -o pipefail",         # ditto
+    ]
+
+    @pytest.mark.parametrize("directive", ENABLES)
+    def test_spelling_is_recognized(self, tmp_path, directive):
+        _script(tmp_path, f"{directive}\necho @(a|b)\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0, execution.stderr
+        assert analysis.returncode != 2, analysis.stderr
+
+    @pytest.mark.parametrize("directive", NON_ENABLES)
+    def test_near_miss_is_not_mistaken_for_a_directive(self, tmp_path,
+                                                       directive):
+        """The recognizer must not become a substring search: each of these
+        leaves extglob OFF, so the later line stays a syntax error."""
+        _script(tmp_path, f"{directive}\necho @(a|b)\n")
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(analysis)
+        assert analysis.returncode == 2, analysis.stdout
+
+
+class TestExpandAliasesIsOrderedNotMonotone:
+    """R8-B: expand_aliases follows its MEASURED semantics, not the monotone
+    rule extglob/posix use.
+
+    Execution truth table (psh, script channel), measured before the fix:
+      define,use -> expanded · define,DISABLE,use -> NOT expanded (127)
+      define,disable,ENABLE,use -> expanded · disable in SUBSHELL -> expanded
+      disable in if-TRUE -> NOT expanded · disable in if-FALSE -> expanded
+    Analysis follows the value rule (last write wins) under the same STRUCTURAL
+    rules as every other option; it cannot evaluate reachability, which is the
+    declared cost pinned by the last row here.
+    """
+
+    ALIAS = "alias iff='if true; then'\n"
+    USE = "iff echo X; fi\n"
+
+    def test_disable_stops_expansion_in_later_units(self, tmp_path):
+        _script(tmp_path, self.ALIAS + "shopt -u expand_aliases\n" + self.USE)
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 2 and analysis.returncode == 2
+
+    def test_re_enabling_restores_expansion(self, tmp_path):
+        _script(tmp_path, self.ALIAS + "shopt -u expand_aliases\n"
+                          "shopt -s expand_aliases\n" + self.USE)
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0 and analysis.returncode == 0
+
+    def test_disable_inside_a_subshell_does_not_escape(self, tmp_path):
+        _script(tmp_path, self.ALIAS + "( shopt -u expand_aliases )\n" + self.USE)
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0 and analysis.returncode == 0
+
+    def test_definitions_still_land_while_expansion_is_off(self, tmp_path):
+        """`alias` DEFINES even when expansion is unset — only expansion is
+        gated — so re-enabling later finds the alias already there."""
+        _script(tmp_path, "shopt -u expand_aliases\n" + self.ALIAS
+                          + "shopt -s expand_aliases\n" + self.USE)
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0 and analysis.returncode == 0
+
+    def test_unreached_conditional_disable_is_the_declared_cost(self, tmp_path):
+        """DECLARED DIVERGENCE (R8-B). Ordered semantics mean a disable that
+        execution never reaches still narrows analysis — the one place the
+        option axis can produce a false syntax error, accepted because
+        modelling expand_aliases as monotone would model a shell nobody runs.
+        Asserted in the DIVERGENT direction so closing it is a visible flip."""
+        _script(tmp_path, self.ALIAS
+                          + "if false; then shopt -u expand_aliases; fi\n"
+                          + self.USE)
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0      # execution never disables
+        assert analysis.returncode == 2       # analysis does — declared

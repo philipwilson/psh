@@ -385,6 +385,21 @@ class TestDebugAndAnalysisFlags:
         for flag in dict.fromkeys(flags):
             assert flag in caught.value.lines[0], caught.value.lines
 
+    @pytest.mark.parametrize("flags", [
+        ["--help", "--validate", "--lint"],
+        ["--validate", "--lint", "--help"],
+        ["--validate", "--help", "--lint"],
+        ["--version", "--validate", "--lint"],
+        ["--validate", "--lint", "--version"],
+    ])
+    def test_help_and_version_outrank_the_mode_conflict(self, flags):
+        """`--help`/`--version` ask what psh IS; they are answered whatever
+        else the command line says, in ANY order. Refusing to print usage
+        because the rest of the line contradicts itself helps nobody, and psh
+        answered them before the exclusivity rule existed."""
+        config = parse_invocation(flags)      # must not raise
+        assert config.print_help or config.print_version
+
     def test_analysis_mode_deduplicated(self):
         config = parse_invocation(['--lint', '--lint', 's.sh'])
         assert config.analysis_modes == ('lint',)
