@@ -109,9 +109,19 @@ class Extglob:
 
     Each alternative is a fully compiled :class:`Sequence`. An empty group
     (``@()``) has a single empty-sequence alternative, matching bash.
+
+    ``enclosed`` records whether this group was parsed INSIDE some outer
+    group's alternative — a compile-time property that decides bash's
+    end-of-string negation rule (slot 3.1): a ``!(...)`` reached with an
+    empty subject remainder directly after a wildcard run matches
+    UNCONDITIONALLY at top level but NEVER when enclosed (bash 5.2's
+    NUL-driven ``glob_patscan`` escapes an alternative slice and finds the
+    enclosing ``)``, flipping the inverted EXTMATCH result — measured and
+    corpus-pinned, see ``test_pattern_bash_composition_differential.py``).
     """
     op: str
     alts: Tuple["Sequence", ...]
+    enclosed: bool = False
 
 
 @dataclass(eq=False)
@@ -122,9 +132,16 @@ class Sequence:
     ``has_extglob`` is a lazily computed routing hint (see
     :func:`_seq_has_extglob`): a sequence with no :class:`Extglob` element is
     matched by the fully iterative fast paths (two-pointer boolean / forward
-    DP), never recursing at all."""
+    DP), never recursing at all.
+
+    ``bash_quirk`` is the lazily computed bash-composition routing flag (see
+    :func:`_seq_bash_quirk`): only a sequence in which an extglob group sits
+    directly after a wildcard run (here or in any nested alternative) routes
+    to the measured-composition matcher (:class:`_BashMatcher`); every other
+    pattern keeps the fast paths unchanged."""
     elements: Tuple[object, ...] = field(default_factory=tuple)
     has_extglob: Optional[bool] = None
+    bash_quirk: Optional[bool] = None
 
 
 def _seq_has_extglob(seq: Sequence) -> bool:
@@ -134,6 +151,46 @@ def _seq_has_extglob(seq: Sequence) -> bool:
         he = any(type(e) is Extglob for e in seq.elements)
         seq.has_extglob = he
     return he
+
+
+def _seq_bash_quirk(seq: Sequence) -> bool:
+    """Whether *seq* needs the measured bash-composition matcher.
+
+    True iff an :class:`Extglob` element follows a wildcard run containing a
+    :class:`Star` — directly, or with intervening ``?``/``*`` wildcards —
+    at this level or inside any nested alternative. Exactly these shapes are
+    where bash 5.2's measured semantics diverge from the reachability DP
+    (slot 3.1 corpus: 0 divergence outside them in 65,625 measured cells):
+    the star case's strict continuation bounds, its ``?(``/``*(``
+    try-then-skip branches, and the end-of-string negation rule are all
+    slice-end-relative, so they cannot ride one forward reachability pass.
+    Lazily cached on the node (same pattern as ``has_extglob``).
+
+    This flag is also the EXACT exclusion predicate for the regex-oracle
+    agreement corpus in ``test_pattern_engine_matcher.py`` (the regex model
+    cannot express bash's star∘group composition) — one decider, imported
+    there, never re-derived (R3).
+    """
+    q = seq.bash_quirk
+    if q is None:
+        q = False
+        star_run = False
+        for e in seq.elements:
+            t = type(e)
+            if t is Star:
+                star_run = True
+            elif t is AnyChar:
+                pass  # a '?' rides an active wildcard run (bash collapses it)
+            elif t is Extglob:
+                eg = cast(Extglob, e)
+                if star_run or any(_seq_bash_quirk(alt) for alt in eg.alts):
+                    q = True
+                    break
+                star_run = False
+            else:
+                star_run = False
+        seq.bash_quirk = q
+    return q
 
 
 # --- compiler (raw string; ``\\`` is an escape) ----------------------------
@@ -154,8 +211,13 @@ def compile_pattern(pattern: str, *, extglob: bool = True,
     return _parse(pattern, 0, len(pattern), extglob)
 
 
-def _parse(pattern: str, start: int, end: int, extglob: bool) -> Sequence:
-    """Compile ``pattern[start:end]`` into a Sequence (``\\`` = escape)."""
+def _parse(pattern: str, start: int, end: int, extglob: bool,
+           enclosed: bool = False) -> Sequence:
+    """Compile ``pattern[start:end]`` into a Sequence (``\\`` = escape).
+
+    ``enclosed`` is True while parsing INSIDE any extglob group's alternative;
+    it stamps :attr:`Extglob.enclosed` (the compile-time input to bash's
+    end-of-string negation rule)."""
     elements: List[object] = []
     i = start
     while i < end:
@@ -175,7 +237,7 @@ def _parse(pattern: str, start: int, end: int, extglob: bool) -> Sequence:
                 inner = pattern[i + 2:close]
                 alts = tuple(_parse_alt(a, extglob)
                              for a in _split_pattern_list(inner))
-                elements.append(Extglob(ch, alts))
+                elements.append(Extglob(ch, alts, enclosed))
                 i = close + 1
                 continue
             # Unbalanced paren: the prefix char is a literal; reprocess '('.
@@ -209,8 +271,11 @@ def _parse(pattern: str, start: int, end: int, extglob: bool) -> Sequence:
 
 
 def _parse_alt(alt: str, extglob: bool) -> Sequence:
-    """Compile one extglob alternative (always with extglob enabled inside)."""
-    return _parse(alt, 0, len(alt), extglob)
+    """Compile one extglob alternative (always with extglob enabled inside).
+
+    Everything inside an alternative is ``enclosed`` — including any nested
+    groups' own alternatives (the flag only deepens, never resets)."""
+    return _parse(alt, 0, len(alt), extglob, enclosed=True)
 
 
 @lru_cache(maxsize=4096)
@@ -574,17 +639,233 @@ class _Matcher:
 _EMPTY: frozenset = frozenset()
 
 
+# --- measured bash-composition matcher (slot 3.1) ---------------------------
+#
+# bash 5.2 composes a wildcard run with a FOLLOWING extglob group by rules
+# that are relative to where the matched slice ENDS (sm_loop.c star case),
+# so for exactly those shapes (_seq_bash_quirk) "pattern matches text[i:k]"
+# is a per-(i,k) boolean and cannot ride the forward reachability DP. This
+# matcher is a faithful port of the MEASURED model (65,625 corpus cells vs
+# live bash 5.2.26, 0 mismatches — slot 3.1 ledger A4; enforced by
+# test_pattern_bash_composition_differential.py). Non-quirk patterns never
+# reach it. The rules, in bash sm_loop.c terms:
+#
+#   * star case, after collapsing consecutive wildcards: the continuation is
+#     tried at every position STRICTLY before the slice end (an
+#     empty-remainder match of an @/+-headed rest is impossible);
+#   * a `?(...)` inside the wildcard run: extmatch ONCE at the current
+#     position, else the group is SKIPPED and the run continues;
+#   * a `*(...)` inside the run: extmatch at every position strictly before
+#     the slice end, else SKIPPED;
+#   * the run reaching the end of the pattern (including via skips) matches;
+#   * empty remainder with the next element `!(...)`: matches
+#     unconditionally iff the group is NOT enclosed (Extglob.enclosed) —
+#     anything after the group is ignored;
+#   * EXTMATCH: '@' = alt-span + continuation over all splits; '?' adds the
+#     zero-instance try; '*'/'+' = closure over nonempty alt spans (+ the
+#     zero/one-instance seeds) with continuation at every closure point;
+#     '!' = per-split complement AND continuation.
+#
+# Recursion here is bounded by the PATTERN structure (one frame per group
+# dispatch / star-run in a sequence, plus alt nesting) — never by subject
+# length or star count; the per-(sequence, element, si, se) memo keeps the
+# evaluation polynomial (guarded by count_states via `states`).
+
+
+class _BashMatcher:
+    """One subject × one profile evaluation of a bash-quirk pattern.
+
+    ``match(seq, ei, si, se)`` — do ``seq.elements[ei:]`` match exactly
+    ``s[si:se]`` under the measured bash-5.2 composition semantics. One
+    instance is shared across a whole relation call (all slice bounds), so
+    the memo carries across the per-k loops. ``states`` counts uncached
+    evaluations — the deterministic complexity guard."""
+
+    __slots__ = ("s", "fp", "ic", "memo", "states")
+
+    def __init__(self, s: str, for_pathname: bool, ic: bool) -> None:
+        self.s = s
+        self.fp = for_pathname
+        self.ic = ic
+        self.memo: dict = {}
+        self.states = 0
+
+    def match(self, seq: Sequence, ei: int, si: int, se: int) -> bool:
+        key = (id(seq), ei, si, se)
+        r = self.memo.get(key)
+        if r is None:
+            self.states += 1
+            r = self._match(seq, ei, si, se)
+            self.memo[key] = r
+        return r
+
+    def _match(self, seq: Sequence, ei: int, si: int, se: int) -> bool:
+        s, fp, ic = self.s, self.fp, self.ic
+        elements = seq.elements
+        ne = len(elements)
+        i, n = ei, si
+        while i < ne:
+            node = elements[i]
+            t = type(node)
+            if t is Extglob:
+                # main-loop dispatch: the group + rest decide (returns).
+                return self._extmatch(cast(Extglob, node), seq, i, n, se)
+            if t is Literal:
+                if n < se and _eq(s[n], cast(Literal, node).char, ic):
+                    n += 1
+                    i += 1
+                    continue
+                return False
+            if t is AnyChar:
+                if n < se and (not fp or s[n] != '/'):
+                    n += 1
+                    i += 1
+                    continue
+                return False
+            if t is Bracket:
+                if (n < se and (not fp or s[n] != '/')
+                        and _bracket_match(cast(Bracket, node).content,
+                                           s[n], ic)):
+                    n += 1
+                    i += 1
+                    continue
+                return False
+            # Star: the bash star case.
+            i += 1
+            if i >= ne:
+                return True  # trailing star swallows the remainder
+            # Collapse loop: wildcards and ?(/*( groups ride the run.
+            while True:
+                node2 = elements[i]
+                t2 = type(node2)
+                if t2 is Star:
+                    if fp and n < se and s[n] == '/':
+                        return False
+                elif t2 is AnyChar:
+                    if fp and n < se and s[n] == '/':
+                        return False
+                    if n >= se:
+                        return False
+                    n += 1
+                elif t2 is Extglob and cast(Extglob, node2).op == '?':
+                    if fp and n < se and s[n] == '/':
+                        return False
+                    if self._extmatch(cast(Extglob, node2), seq, i, n, se):
+                        return True
+                    # group failed: SKIP it, continue the run
+                elif t2 is Extglob and cast(Extglob, node2).op == '*':
+                    if fp and n < se and s[n] == '/':
+                        return False
+                    for n2 in range(n, se):  # strictly before slice end
+                        if self._extmatch(cast(Extglob, node2), seq, i, n2,
+                                          se):
+                            return True
+                else:
+                    break  # first element the run cannot absorb
+                i += 1
+                if i >= ne:
+                    return True  # run (incl. skips) consumed the pattern
+            # node2 = first non-run element, at index i.
+            if (t2 is Extglob and cast(Extglob, node2).op == '!'
+                    and n == se):
+                # end-of-string negation rule: unconditional, rest ignored.
+                return not cast(Extglob, node2).enclosed
+            if fp and t2 is Literal and cast(Literal, node2).char == '/':
+                # [star]/rest: consume up to a slash, then match the rest.
+                m2 = s.find('/', n, se)
+                if m2 != -1:
+                    return self.match(seq, i + 1, m2 + 1, se)
+                return False
+            bound = se
+            if fp:
+                m2 = s.find('/', n, se)
+                if m2 != -1:
+                    bound = m2  # a star never crosses '/'
+            for n2 in range(n, bound):  # strictly before the slice end
+                if self.match(seq, i, n2, se):
+                    return True
+            return False
+        return n == se
+
+    # -- extglob group + continuation (bash EXTMATCH) ------------------------
+
+    def _extmatch(self, node: Extglob, seq: Sequence, gi: int, si: int,
+                  se: int) -> bool:
+        """Group at ``seq.elements[gi]`` matched at ``s[si:]``, then the rest
+        of *seq*, all within the slice ending at *se*."""
+        op = node.op
+        alts = node.alts
+
+        def rest_ok(pos: int) -> bool:
+            return self.match(seq, gi + 1, pos, se)
+
+        if op == '@':
+            for split in range(si, se + 1):
+                if self._alt_span(alts, si, split) and rest_ok(split):
+                    return True
+            return False
+        if op == '?':
+            if rest_ok(si):
+                return True
+            for split in range(si, se + 1):
+                if self._alt_span(alts, si, split) and rest_ok(split):
+                    return True
+            return False
+        if op == '*':
+            return any(rest_ok(pos)
+                       for pos in self._closure(alts, {si}, se))
+        if op == '+':
+            seed = {split for split in range(si, se + 1)
+                    if self._alt_span(alts, si, split)}
+            return any(rest_ok(pos) for pos in self._closure(alts, seed, se))
+        # op == '!': per-split complement AND continuation.
+        for split in range(si, se + 1):
+            if not self._alt_span(alts, si, split) and rest_ok(split):
+                return True
+        return False
+
+    def _alt_span(self, alts: Tuple[Sequence, ...], a: int, b: int) -> bool:
+        """Whether some alternative fully matches the span ``s[a:b]``."""
+        return any(self.match(alt, 0, a, b) for alt in alts)
+
+    def _closure(self, alts: Tuple[Sequence, ...], seed: set,
+                 se: int) -> set:
+        """Positions reachable from *seed* by zero or more NONEMPTY alt
+        spans (iterative frontier expansion — no per-instance recursion)."""
+        seen = set(seed)
+        frontier = list(seed)
+        while frontier:
+            nxt = []
+            for pos in frontier:
+                for end in range(pos + 1, se + 1):
+                    if end not in seen and self._alt_span(alts, pos, end):
+                        seen.add(end)
+                        nxt.append(end)
+            frontier = nxt
+        return seen
+
+
 # --- free-function API (compatibility + primitives) ------------------------
 
 def reachable_ends(root: Sequence, s: str, *, for_pathname: bool = False,
                    ic: bool = False) -> frozenset:
-    """Every index ``k`` such that *root* fully matches ``s[:k]``."""
+    """Every index ``k`` such that *root* fully matches ``s[:k]``.
+
+    For bash-quirk patterns (:func:`_seq_bash_quirk`) membership is
+    slice-end-relative, so each ``k`` is evaluated as its own slice boolean
+    (one shared memoized matcher); everything else keeps the forward DP."""
+    if _seq_bash_quirk(root):
+        bm = _BashMatcher(s, for_pathname, ic)
+        return frozenset(k for k in range(len(s) + 1)
+                         if bm.match(root, 0, 0, k))
     return _Matcher(s, for_pathname, ic).reach(root, 0)
 
 
 def fullmatch(root: Sequence, s: str, *, for_pathname: bool = False,
               ic: bool = False) -> bool:
     """Whether *root* matches the whole of *s* (iterative for plain globs)."""
+    if _seq_bash_quirk(root):
+        return _BashMatcher(s, for_pathname, ic).match(root, 0, 0, len(s))
     return _Matcher(s, for_pathname, ic).full_reaches(root, 0)
 
 
@@ -593,8 +874,14 @@ def match_at(root: Sequence, s: str, pos: int, *, for_pathname: bool = False,
     """Leftmost-longest match LENGTH of *root* at ``s[pos:]``, or None.
 
     bash takes the longest match at the leftmost position (substitution), so
-    this returns ``max`` of the reachable ends of ``s[pos:]`` minus ``pos``.
+    this returns the largest ``k - pos`` with a full match of ``s[pos:k]``.
     """
+    if _seq_bash_quirk(root):
+        bm = _BashMatcher(s, for_pathname, ic)
+        for k in range(len(s), pos - 1, -1):
+            if bm.match(root, 0, pos, k):
+                return k - pos
+        return None
     m = _Matcher(s, for_pathname, ic)
     ends = m.reach(root, pos)
     return (max(ends) - pos) if ends else None
@@ -603,7 +890,11 @@ def match_at(root: Sequence, s: str, pos: int, *, for_pathname: bool = False,
 def count_states(root: Sequence, s: str, *, for_pathname: bool = False,
                  ic: bool = False) -> int:
     """Number of distinct sequence states evaluated for a full-pattern match of
-    *s* — the polynomial-complexity guard for tests."""
+    *s* — the polynomial-complexity guard for tests (both matcher paths)."""
+    if _seq_bash_quirk(root):
+        bm = _BashMatcher(s, for_pathname, ic)
+        bm.match(root, 0, 0, len(s))
+        return bm.states
     m = _Matcher(s, for_pathname, ic)
     m.reach(root, 0)
     return m.states
@@ -625,6 +916,9 @@ class CompiledPattern:
         """Whether the pattern matches the WHOLE of *text*
         (``case`` / ``[[ == ]]`` / name filter / one pathname component /
         one character for case modification)."""
+        if _seq_bash_quirk(self.root):
+            return _BashMatcher(text, profile.for_pathname, profile.ic).match(
+                self.root, 0, 0, len(text))
         return _Matcher(text, profile.for_pathname, profile.ic)._full(
             self.root, 0, 0)
 
@@ -632,7 +926,16 @@ class CompiledPattern:
                       profile: MatchProfile = STRING) -> frozenset:
         """Every end index ``k`` (``start <= k <= len(text)``) such that the
         pattern matches ``text[start:k]`` — prefix removal (``#`` = ``min``,
-        ``##`` = ``max``)."""
+        ``##`` = ``max``).
+
+        bash-quirk patterns (:func:`_seq_bash_quirk`) have slice-end-relative
+        semantics, so each ``k`` is its own slice boolean (one shared
+        memoized matcher); all other patterns keep the one-pass DP."""
+        if _seq_bash_quirk(self.root):
+            bm = _BashMatcher(text, profile.for_pathname, profile.ic)
+            root = self.root
+            return frozenset(k for k in range(start, len(text) + 1)
+                             if bm.match(root, 0, start, k))
         m = _Matcher(text, profile.for_pathname, profile.ic)
         return m._ends(self.root, 0, start)
 
@@ -643,6 +946,11 @@ class CompiledPattern:
         suffix, ``%%`` = ``min`` start / longest suffix)."""
         if end is None:
             end = len(text)
+        if _seq_bash_quirk(self.root):
+            bm = _BashMatcher(text, profile.for_pathname, profile.ic)
+            root = self.root
+            return frozenset(i for i in range(end + 1)
+                             if bm.match(root, 0, i, end))
         m = _Matcher(text, profile.for_pathname, profile.ic)
         match = m._ends
         root = self.root
@@ -656,6 +964,13 @@ class CompiledPattern:
                 profile: MatchProfile = STRING) -> Optional[int]:
         """Leftmost-longest match LENGTH at ``text[pos:]``, or ``None`` — the
         substitution primitive (``${v/}`` family). 0 is a zero-width match."""
+        if _seq_bash_quirk(self.root):
+            bm = _BashMatcher(text, profile.for_pathname, profile.ic)
+            root = self.root
+            for k in range(len(text), pos - 1, -1):
+                if bm.match(root, 0, pos, k):
+                    return k - pos
+            return None
         m = _Matcher(text, profile.for_pathname, profile.ic)
         ends = m._ends(self.root, 0, pos)
         return (max(ends) - pos) if ends else None
@@ -664,10 +979,22 @@ class CompiledPattern:
         """Return a ``pos -> Optional[int]`` leftmost-longest-length callable
         bound to ONE reused matcher, so a left-to-right substitution scan over
         *text* shares the matcher's per-subject precompute (the next-slash
-        table) instead of building one matcher per position."""
+        table / the bash-composition memo) instead of building one matcher
+        per position."""
+        root = self.root
+        if _seq_bash_quirk(root):
+            bm = _BashMatcher(text, profile.for_pathname, profile.ic)
+            n = len(text)
+
+            def bash_span_at(pos: int) -> Optional[int]:
+                for k in range(n, pos - 1, -1):
+                    if bm.match(root, 0, pos, k):
+                        return k - pos
+                return None
+
+            return bash_span_at
         m = _Matcher(text, profile.for_pathname, profile.ic)
         match = m._ends
-        root = self.root
 
         def span_at(pos: int) -> Optional[int]:
             ends = match(root, 0, pos)
