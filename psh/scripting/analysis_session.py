@@ -62,10 +62,11 @@ name is absorbed anyway — analysis accepts more than the shell does there.
 All are pinned as divergences (R1-C, R8-B, R11-B N12).
 
 COST. Parsing per unit is slower than one whole-file parse, because each unit
-pays its own lex and parse setup: measured **3.2x** on a 4,000-line script
-(0.23s -> 0.72s) on the development host. Analysis modes are one-shot CLI
-tools, not an inner loop, so this is recorded rather than optimized; a
-successor may revisit it.
+pays its own lex and parse setup: **~3.3x** on a 4,000-line script (median
+0.21s -> 0.69s over 5 runs after a discarded warm-up, on one development
+host). It is a magnitude, not a benchmark — a second host measured 2.2x on
+the same shape. Analysis modes are one-shot CLI tools, not an inner loop, so
+this is recorded rather than optimized; a successor may revisit it.
 
 RELATIONSHIP TO ``bash -n`` (R1-E). ``bash -n`` does not execute ``shopt``
 either, so it reports the same false syntax error, and psh's own ``-n``

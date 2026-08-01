@@ -146,6 +146,117 @@ class TestParseRelevantOptionsIsDerived:
         assert self._keys_the_pipeline_reads(), "the real trace found nothing"
 
 
+class TestAbandoningTheSharedChunkerIsSafe:
+    """"Execution behavior UNTOUCHED", given a structural argument at last.
+
+    Execution's line-gathering loop became a GENERATOR shared with the
+    analysis session. The claim that this changed nothing rested entirely on
+    the gate and compare-bash being green — never on a reason (R16, adopting
+    the stand-down note's re-verify list, which named the generator's
+    early-return paths as the place to look).
+
+    The reason is that the generator owns NOTHING. `_run_from_source` returns
+    early from inside the for-loop on two paths — the POSIX syntax abort and
+    the errexit exit — abandoning the generator mid-iteration. That is
+    equivalent to the old `while` loop's `return` precisely because there is
+    no `try`/`finally`, no `with`, and no acquired resource in the generator
+    body: the input source belongs to the caller, exactly as it did before.
+    Both halves are asserted, because either alone could stop being true.
+    """
+
+    def test_the_generator_body_acquires_nothing(self):
+        """If a `try`/`finally` or `with` ever appears here, abandonment stops
+        being free and the early-return paths need revisiting."""
+        import inspect
+        import textwrap
+
+        from psh.scripting.source_processor import iter_command_units
+
+        tree = pyast.parse(textwrap.dedent(inspect.getsource(iter_command_units)))
+        kinds = {type(node).__name__ for node in pyast.walk(tree)}
+        assert not kinds & {"Try", "With", "AsyncWith", "TryStar"}, (
+            "the shared chunker now has cleanup semantics, so abandoning it on "
+            "the errexit / POSIX-abort paths is no longer equivalent to the "
+            f"old loop's return: found {sorted(kinds & {'Try', 'With'})}")
+
+    def test_abandoning_it_midway_raises_nothing_and_leaves_the_source_usable(self):
+        """The behavioral half: stop consuming after one unit, close the
+        generator explicitly (what garbage collection does anyway), and the
+        input source is still readable — no state was torn down with it."""
+        from psh.scripting.program_source import ProgramSource
+        from psh.scripting.source_processor import iter_command_units
+
+        shell = Shell(norc=True)
+        source = ProgramSource.command_string(
+            "echo one\necho two\necho three\n").make_input_source()
+        units = iter_command_units(shell, source, trace=False)
+        first = next(units)
+        assert "one" in first[1].text
+        units.close()                      # the abort paths' effect, forced
+        assert source.read_line() is not None, (
+            "the input source was consumed or closed with the generator")
+
+
+class TestAnalysisModesAreInvocationOnly:
+    """The interactive-leg conclusion, as a GUARD rather than as prose.
+
+    The brief's rule is "interactive-only is a conclusion, never a starting
+    point — and so is CLI-only". Slot 2.6 censused this and concluded the five
+    analysis modes are reachable only through their invocation flags, so no
+    PTY pin is owed. That conclusion was a substantive deliverable that
+    existed only as a ledger sentence, with nothing in the tree asserting it
+    (R16, adopting the stand-down note's re-verify list).
+
+    Re-derived here, and now pinned: if a later change gives an analysis mode
+    a runtime spelling, this fails and the PTY-pin question reopens instead of
+    a stale sentence continuing to say it was settled.
+    """
+
+    def test_no_analysis_mode_is_reachable_as_a_shell_option(self):
+        """C1: no `set -o validate` / `shopt -s lint` spelling exists."""
+        from psh.core.option_registry import OPTION_REGISTRY
+        from psh.invocation import ANALYSIS_MODES
+
+        assert len(OPTION_REGISTRY) > 40, "registry looks wrong; guard is blind"
+        overlap = [m for m in ANALYSIS_MODES if m in OPTION_REGISTRY]
+        assert not overlap, (
+            f"analysis mode(s) {overlap} now have a shell-option spelling, so "
+            "they are reachable at runtime — the invocation-only conclusion no "
+            "longer holds and an interactive/PTY pin is owed")
+
+    def test_analysis_mode_is_written_in_exactly_one_place(self):
+        """C2: nothing mutates the mode after construction, so it cannot be
+        switched on from inside a running shell."""
+        import re
+
+        sites = []
+        for path in (Path(__file__).resolve().parents[3] / "psh").rglob("*.py"):
+            for i, line in enumerate(path.read_text().splitlines(), 1):
+                if re.search(r"\banalysis_mode\s*=(?!=)", line):
+                    sites.append(f"{path.name}:{i}")
+        assert len(sites) == 1, (
+            f"analysis_mode is assigned in {len(sites)} places: {sites}. "
+            "More than one means it can be mutated after construction, which "
+            "is a runtime path into analysis.")
+        assert sites[0].startswith("shell.py:"), sites
+
+    def test_the_analysis_entry_points_are_called_only_from_main(self):
+        """C3: the only callers are the three invocation branches in
+        __main__.py (plus visitor_modes delegating to itself)."""
+        import re
+
+        root = Path(__file__).resolve().parents[3] / "psh"
+        callers = set()
+        pattern = re.compile(r"(handle_visitor_mode_for_\w+|apply_visitor_mode)\s*\(")
+        for path in root.rglob("*.py"):
+            for line in path.read_text().splitlines():
+                if pattern.search(line) and not line.strip().startswith("def "):
+                    callers.add(path.relative_to(root).as_posix())
+        assert callers <= {"__main__.py", "scripting/visitor_modes.py"}, (
+            f"analysis entry points are now called from {sorted(callers)} — a "
+            "new caller may be a runtime path into analysis")
+
+
 class TestEveryPerUnitFailureReachesTheEnvelope:
     """R15-B-G: a failure anywhere in a unit's handling carries the unit's line.
 
