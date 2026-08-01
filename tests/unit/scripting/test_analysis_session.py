@@ -15,10 +15,13 @@ import pytest
 
 from psh.ast_nodes.commands import CompoundCommand
 from psh.scripting.analysis_session import (
+    DEBUG_OPTIONS,
     ISOLATING_NODES,
     MONOTONE_OPTIONS,
     ORDERED_OPTIONS,
     PARSE_RELEVANT_OPTIONS,
+    SET_O_TABLE_OPTIONS,
+    SHOPT_TABLE_OPTIONS,
     AnalysisSession,
     parse_for_analysis,
 )
@@ -141,6 +144,107 @@ class TestParseRelevantOptionsIsDerived:
         rec.get("absent_key")
         assert log == {"newopt", "absent_key"}
         assert self._keys_the_pipeline_reads(), "the real trace found nothing"
+
+
+class TestCarrierDoesNotInheritDebugOptions:
+    """R15-B-C, code half: the carrier is built with every debug option OFF.
+
+    Analysis executes nothing, so an execution trace on an analysis run
+    describes work that never happened. One line escaped even before any
+    analysis ran — a child state re-detects the terminal and reports it under
+    `debug-exec` — which is why the clearing happens ACROSS the construction
+    rather than after it.
+    """
+
+    def test_debug_options_are_derived_from_the_registry(self):
+        """A typed list would silently miss a new debug-* option; this one
+        cannot, so the guard is the derivation itself."""
+        from psh.core.option_registry import OPTION_REGISTRY
+
+        assert set(DEBUG_OPTIONS) == {name for name in OPTION_REGISTRY
+                                      if name.startswith('debug')}
+        assert 'debug-exec' in DEBUG_OPTIONS
+
+    def test_carrier_has_every_debug_option_off(self):
+        shell = Shell(norc=True)
+        for name in DEBUG_OPTIONS:
+            shell.state.options[name] = True
+        session = AnalysisSession(shell)
+        for name in DEBUG_OPTIONS:
+            assert session.carrier.state.options[name] is False, name
+
+    def test_the_parent_shells_debug_options_are_restored(self):
+        """The clearing is a window around construction, not a mutation the
+        caller keeps: the parent is left exactly as it was found."""
+        shell = Shell(norc=True)
+        for name in DEBUG_OPTIONS:
+            shell.state.options[name] = True
+        AnalysisSession(shell)
+        for name in DEBUG_OPTIONS:
+            assert shell.state.options[name] is True, name
+
+    def test_the_parent_is_restored_even_when_construction_raises(self):
+        """The window is closed by `finally`, so a failed construction cannot
+        leave the caller's shell with its debug options silently off."""
+        shell = Shell(norc=True)
+        shell.state.options['debug-exec'] = True
+
+        class _Exploding(type(shell)):          # type: ignore[misc]
+            def __init__(self, *args, **kwargs):
+                raise RuntimeError("construction failed")
+
+        shell.__class__ = _Exploding
+        with pytest.raises(RuntimeError):
+            AnalysisSession(shell)
+        assert shell.state.options['debug-exec'] is True
+
+    def test_constructing_the_carrier_writes_nothing_to_stderr(self, capsys):
+        """The leak was a PRINT, so the pin is about output, not about a flag:
+        a future line emitted under some other debug option fails here too."""
+        shell = Shell(norc=True)
+        for name in DEBUG_OPTIONS:
+            shell.state.options[name] = True
+        capsys.readouterr()
+        AnalysisSession(shell)
+        assert capsys.readouterr().err == ""
+
+
+class TestShoptTableRoutingIsDerived:
+    """R15-B-B: `-o` decides WHICH option table a `shopt` operand names, and
+    for the options this session threads the two tables are disjoint.
+
+    Measured in psh and bash 5.2.26: `shopt -s posix` is refused ("invalid
+    shell option name") while `shopt -so posix` sets it; `shopt -so extglob`
+    is refused ("invalid option name") while `shopt -s extglob` sets it. A
+    recognizer that read the flags but not the table would invent both of
+    those state changes.
+
+    DERIVED, not curated — the same lesson as PARSE_RELEVANT_OPTIONS above:
+    the truth is the builtin's own tables, so this compares against them in
+    both directions instead of freezing a list somebody typed. `psh.scripting`
+    cannot import `psh.builtins` at module level (a documented cycle), so the
+    constants live in the session and the derivation lives here.
+    """
+
+    def test_routing_constants_match_the_builtins_own_tables(self):
+        from psh.builtins.shell_options import _SET_O_NAMES, _SHOPT_NAMES
+
+        for name in PARSE_RELEVANT_OPTIONS:
+            in_shopt = name in _SHOPT_NAMES
+            in_set_o = name in _SET_O_NAMES
+            assert (name in SHOPT_TABLE_OPTIONS) == in_shopt, (
+                f"{name}: SHOPT_TABLE_OPTIONS disagrees with the shopt "
+                f"builtin's own _SHOPT_NAMES (builtin says {in_shopt})")
+            assert (name in SET_O_TABLE_OPTIONS) == in_set_o, (
+                f"{name}: SET_O_TABLE_OPTIONS disagrees with the shopt "
+                f"builtin's own _SET_O_NAMES (builtin says {in_set_o})")
+
+    def test_the_two_routings_are_disjoint_for_threaded_options(self):
+        """Stated as its own fact because the branch relies on it: an operand
+        names one table or the other, never both."""
+        assert not set(SHOPT_TABLE_OPTIONS) & set(SET_O_TABLE_OPTIONS)
+        assert set(SHOPT_TABLE_OPTIONS) | set(SET_O_TABLE_OPTIONS) == set(
+            PARSE_RELEVANT_OPTIONS)
 
 
 class TestIsolationClassificationIsTotal:
@@ -471,17 +575,32 @@ class TestNoUnsanctionedStringSurgery:
             "Recognizes a NAME=value assignment prefix on an ALREADY "
             "quote-resolved word from _effective_words — a shape test on a "
             "resolved value, not a re-derivation of quoting.",
-        ('_option_changes', '.startswith()', 3):
+        ('<module>', '.startswith()', 1):
+            "no-fact-because: there is no token here at all. Selects the "
+            "`debug-*` entries out of OPTION_REGISTRY at import time — the "
+            "operand is an option-registry KEY from a fixed internal "
+            "vocabulary, never shell input, so no lexer fact exists or could "
+            "apply. Deriving the family this way is what stops a new debug "
+            "option from being missed by a hand-typed list.",
+        ('_option_changes', 'slice', 2):
+            "consumes-lexer-fact: _effective_words output. "
+            "Drops the head word, and reads the LETTERS of an already "
+            "quote-resolved `set -o`/`set +o` flag. Both operate on values "
+            "whose spelling is fully determined once quoting is resolved.",
+        ('_shopt_split', '.startswith()', 1):
             "consumes-lexer-fact: _effective_words output. "
             "Distinguishes a flag word from an operand on an already "
             "quote-resolved word. `-` is not quotable into or out of "
             "existence by anything the lexer hides: `\\-s` resolves to `-s` "
             "in _effective_words first (pinned).",
-        ('_option_changes', 'slice', 4):
+        ('_shopt_split', 'slice', 4):
             "consumes-lexer-fact: _effective_words output. "
             "Reads the LETTERS of an already quote-resolved cluster flag "
-            "(`-sq` -> `sq`). The cluster's spelling is fully determined once "
-            "quoting is resolved.",
+            "(`-sq` -> `sq`) and splits the argument list at the first "
+            "operand. The split MIRRORS the builtin's own argument loop "
+            "(psh/builtins/shell_options.py#ShoptBuiltin.execute), which is "
+            "the decider for this grammar; what is tested is the shape of an "
+            "already-resolved value, not a re-derivation of quoting.",
         ('analyze', '.strip()', 3):
             "no-fact-because: the decision happens BEFORE lexing, so there is "
             "no token yet. Operates on the UNIT'S RAW SOURCE TEXT, not on a token value — "

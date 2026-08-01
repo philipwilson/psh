@@ -80,6 +80,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
 from ..ast_nodes import Program
 from ..ast_nodes.commands import SimpleCommand
 from ..ast_nodes.words import LiteralPart
+from ..core.option_registry import OPTION_REGISTRY
 from ..invocation import resolve_parser_name
 from ..lexer.token_types import TokenType
 from ..visitor.traversal import walk_ast
@@ -127,6 +128,33 @@ _ASSIGNMENT_WORD = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
 #: part was unquoted (see :func:`_effective_words`) — inside quotes a backslash
 #: is ordinary text and this must not touch it.
 _UNQUOTED_ESCAPE = re.compile(r'\\(.)', re.DOTALL)
+
+#: Debug options, DERIVED from the registry so a new `debug-*` joins by itself.
+#: The carrier is built with all of them OFF: analysis EXECUTES NOTHING, so an
+#: execution trace emitted from an analysis run describes work that never
+#: happened. Inheriting them also leaked a construction-time line — a child
+#: state re-detects the terminal and reports it under `debug-exec` — onto the
+#: stderr of `--debug-exec --validate`, which is not an execution at all.
+DEBUG_OPTIONS: Tuple[str, ...] = tuple(
+    sorted(name for name in OPTION_REGISTRY if name.startswith('debug')))
+
+#: Flag letters `shopt` accepts (bash's internal_getopt over "psuoq", mirrored
+#: by the builtin). A letter outside this set aborts the builtin with rc 2
+#: BEFORE it applies anything, so such a command changes no state at all.
+_SHOPT_FLAG_LETTERS = 'psuoq'
+
+#: Which option TABLE a `shopt` command's operands name. Without `-o` it is the
+#: shopt table; with `-o` it is the set-o table, and for the options this
+#: session threads the two are DISJOINT: `shopt -s posix` is refused with
+#: "invalid shell option name" while `shopt -so posix` sets it, and
+#: `shopt -so extglob` is refused while `shopt -s extglob` sets it (measured in
+#: psh and bash 5.2.26). A recognizer reading the flags but not the table would
+#: invent both of those state changes. These cover the `shopt` spellings only:
+#: psh's `set -o` accepts all three names as a documented superset over bash.
+#: DERIVED, not curated — ``test_analysis_session.py`` checks both tuples
+#: against the builtin's own _SHOPT_NAMES / _SET_O_NAMES in both directions.
+SHOPT_TABLE_OPTIONS: Tuple[str, ...] = ('extglob', 'expand_aliases')
+SET_O_TABLE_OPTIONS: Tuple[str, ...] = ('posix',)
 
 #: Node types whose interior runs with its own copy of the shell state, so an
 #: option change inside them dies with them. Totality (every ``CompoundCommand``
@@ -196,18 +224,57 @@ def _normalize_head(words: Sequence[Optional[str]]) -> List[Optional[str]]:
     return remaining
 
 
+def _shopt_split(rest: Sequence[str]) -> Tuple[Optional[str], List[str]]:
+    """A `shopt` command's flag LETTERS and its operands, split as it splits them.
+
+    Mirrors the builtin's own argument loop
+    (``psh/builtins/shell_options.py#ShoptBuiltin.execute``), because that loop
+    is the decider: flags cluster in any order and combination, parsing STOPS
+    at the first operand, ``--`` ends flags, and a flag letter outside
+    ``psuoq`` aborts with rc 2 before anything is applied.
+
+    The stopping rule is the one this function exists for, and the repo
+    already pins it —
+    ``tests/unit/builtins/test_shopt_set_o.py#test_flag_after_operand_is_an_operand``:
+    in ``shopt extglob -s`` the ``-s`` is an option NAME, so extglob is
+    QUERIED, not set. Reading flag letters PAST the first operand made
+    analysis invent enables the shell declines to make (``shopt -q extglob
+    -s``) and miss enables it really applies (``shopt -s extglob -u``).
+
+    Returns ``(None, [])`` when a bad flag letter aborts the command.
+    """
+    flags = ''
+    for index, word in enumerate(rest):
+        if word == '--':
+            return flags, list(rest[index + 1:])
+        if word.startswith('-') and len(word) > 1:
+            if any(letter not in _SHOPT_FLAG_LETTERS for letter in word[1:]):
+                return None, []
+            flags += word[1:]
+        else:
+            return flags, list(rest[index:])
+    return flags, []
+
+
 def _option_changes(words: Sequence[Optional[str]]) -> List[Tuple[str, bool]]:
     """Every (option, enable) this command would apply, in order.
 
     Recognizes the two spellings that reach the shell's option state:
 
-    * ``shopt -s NAME...`` / ``shopt -u NAME...``, including CLUSTERED short
-      flags (`-sq`, `-qs`) — the letter decides, not the exact flag word. A
-      command whose flag letters carry BOTH ``s`` and ``u`` changes nothing,
-      in EITHER spelling — ``shopt -su X`` and ``shopt -s -u X`` are both
-      refused with "cannot set and unset shell options simultaneously", rc 1,
-      option untouched (measured in psh and bash 5.2.26; pinned for both forms
-      by ``tests/unit/builtins/test_shopt_set_o.py#test_s_and_u_conflict``).
+    * ``shopt -s NAME...`` / ``shopt -u NAME...``, with the words split by
+      :func:`_shopt_split` exactly as the builtin splits them — clustered
+      flags (`-sq`, `-qs`) count by LETTER, flag reading STOPS at the first
+      operand, ``--`` ends flags, and a bad flag letter aborts the command
+      before it applies anything. A command whose flag letters carry BOTH
+      ``s`` and ``u`` changes nothing, in EITHER spelling — ``shopt -su X``
+      and ``shopt -s -u X`` are both refused with "cannot set and unset shell
+      options simultaneously", rc 1, option untouched (measured in psh and
+      bash 5.2.26; pinned for both forms by
+      ``tests/unit/builtins/test_shopt_set_o.py#test_s_and_u_conflict``).
+      ``-o`` switches which TABLE the operands name
+      (:data:`SHOPT_TABLE_OPTIONS` / :data:`SET_O_TABLE_OPTIONS`), so
+      ``shopt -so extglob`` and ``shopt -s posix`` are both refusals, not
+      state changes.
     * ``set -o NAME`` / ``set +o NAME``, at ANY position in the argument list
       and in clustered form, so `set -e -o extglob` is seen. The sign carries
       bash's inversion: `+o` DISABLES. Scanning stops at ``--``, which ends
@@ -224,31 +291,25 @@ def _option_changes(words: Sequence[Optional[str]]) -> List[Tuple[str, bool]]:
     head, rest = remaining[0], [w for w in remaining[1:] if w is not None]
     changes: List[Tuple[str, bool]] = []
     if head == 'shopt':
-        # Aggregate the WHOLE flag set before deciding. The builtin refuses
-        # "set and unset simultaneously" however the letters are SPELLED —
-        # `shopt -su X` and `shopt -s -u X` are both rc 1 with the option
-        # untouched (the repo's own
-        # tests/unit/builtins/test_shopt_set_o.py#test_s_and_u_conflict pins
-        # both forms). Deciding per WORD saw only the clustered spelling and
-        # let the separate-word form fall through to last-write-wins,
-        # inventing a state change the shell declines to make.
-        letters = ''.join(word[1:] for word in rest
-                          if word.startswith('-') and len(word) > 1)
-        if 's' in letters and 'u' in letters:
-            return []
-        enable = None
-        for word in rest:
-            if word.startswith('-') and len(word) > 1:
-                letters = word[1:]
-                if 's' in letters:
-                    enable = True
-                elif 'u' in letters:
-                    enable = False
-        if enable is None:
-            return []
-        for word in rest:
-            if not word.startswith('-') and word in PARSE_RELEVANT_OPTIONS:
-                changes.append((word, enable))
+        # The builtin's own split decides which words are flags: aggregating
+        # letters from the WHOLE argument list read flags that are really
+        # operands, which both invented enables (`shopt -q extglob -s`) and
+        # missed real ones (`shopt -s extglob -u`).
+        flags, operands = _shopt_split(rest)
+        if flags is None:
+            return []          # a bad flag letter: rc 2, nothing applied
+        if 's' in flags and 'u' in flags:
+            return []          # refused, rc 1, option untouched
+        if 's' in flags:
+            enable = True
+        elif 'u' in flags:
+            enable = False
+        else:
+            return []          # a query or a listing, not a change
+        table = SET_O_TABLE_OPTIONS if 'o' in flags else SHOPT_TABLE_OPTIONS
+        for name in operands:
+            if name in PARSE_RELEVANT_OPTIONS and name in table:
+                changes.append((name, enable))
     elif head == 'set':
         index = 0
         while index < len(rest):
@@ -325,13 +386,52 @@ class AnalysisSession:
         #: layering — and an embedder's Shell subclass should carry its own
         #: behaviour into the analysis anyway. ``norc``: startup input must
         #: never run for an analysis.
-        self.carrier = type(shell)(parent_shell=shell, norc=True)
+        self.carrier = self._build_carrier(shell)
         #: ``--format`` is a SOURCE-TO-SOURCE tool: reprinting an alias's body
         #: in place of its name would rewrite the user's script rather than
         #: format it, so it alone parses with aliases off (integrator ruling,
         #: reappraisal #19 T6). It still threads OPTION state — a formatter
         #: that mis-lexes its input reprints something the shell would not run.
         self.expand_aliases = shell.analysis_mode != 'format'
+
+    @staticmethod
+    def _build_carrier(shell: 'Shell') -> 'Shell':
+        """The carrier shell, built with every debug option OFF.
+
+        EMBEDDER CONTRACT for the ``type(shell)`` construction: a Shell
+        subclass an embedder passes in is constructed here with exactly two
+        keywords, ``parent_shell=`` and ``norc=``, and nothing else. A
+        subclass that requires additional constructor arguments, or that makes
+        either of those mean something different, cannot be used as an
+        analysis carrier — the analysis path has no other way to reach it.
+
+        The clearing happens on the PARENT across the construction rather than
+        on the carrier afterwards, because one of the lines is emitted DURING
+        construction: a child state re-detects the terminal and reports the
+        result under ``debug-exec``, so clearing the carrier's options after
+        the fact would come one line too late. The parent's own values are
+        restored in ``finally``, including when construction raises, so the
+        window is invisible to everything but the carrier it creates
+        (pinned in ``test_analysis_session.py``).
+        """
+        options = shell.state.options
+        saved = {name: options[name] for name in DEBUG_OPTIONS
+                 if name in options}
+        scopes_were_traced = bool(saved.get('debug-scopes', False))
+        try:
+            for name in saved:
+                options[name] = False
+            # The scope manager keeps its OWN debug flag rather than reading
+            # the option, and a child clones the manager — so clearing the
+            # option alone left the carrier tracing every variable it
+            # inherited. Both switches belong in the same window.
+            if scopes_were_traced:
+                shell.state.scope_manager.enable_debug(False)
+            return type(shell)(parent_shell=shell, norc=True)
+        finally:
+            options.update(saved)
+            if scopes_were_traced:
+                shell.state.scope_manager.enable_debug(True)
 
     def analyze(self, content: str, drop_dangling_at_eof: bool = False) -> Program:
         """Parse *content* into ONE merged ``Program``, executing nothing.

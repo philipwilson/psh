@@ -545,6 +545,13 @@ class TestDirectiveSpellingAxis:
         # unquoted backslashes in the FLAG and the OPERAND resolve too
         "shopt -s ext\\glob",
         "shopt \\-s extglob",
+        # R15-B-B: flag reading STOPS at the first operand, so a `-u` AFTER the
+        # operand is an option NAME and the `-s` still applies. Red at base and
+        # at every dissolved tip — an incomplete-fix lineage, not a regression.
+        "shopt -s extglob -u",
+        "shopt -s extglob -o",
+        # `--` ends flags; the operand after it is still an operand
+        "shopt -s -- extglob",
     ]
 
     #: Near-misses: they LOOK like directives and must NOT be treated as one.
@@ -582,6 +589,14 @@ class TestDirectiveSpellingAxis:
         "'shopt -s extglob'",
         # the operand mirror: a quoted backslash in the OPTION NAME too
         "shopt -s 'ext\\glob'",
+        # R15-B-B: reading flag letters PAST the first operand invented enables
+        # the shell declines to make. Each of these leaves extglob OFF —
+        # measured in psh and bash 5.2.26 (execution surface).
+        "shopt -q extglob -s",     # -s is an option NAME; extglob is QUERIED
+        "shopt extglob -s",        # the builtin's own pinned shape
+        "shopt -- -s extglob",     # `--` first: every later word is an operand
+        "shopt -z -s extglob",     # bad flag letter: rc 2, nothing applied
+        "shopt -so extglob",       # -o names the SET-O table; extglob is not in it
     ]
 
     @pytest.mark.parametrize("directive", ENABLES)
@@ -602,6 +617,118 @@ class TestDirectiveSpellingAxis:
         analysis = _psh(tmp_path, ["--validate", "s.sh"])
         assert is_comparable(analysis)
         assert analysis.returncode == 2, analysis.stdout
+
+
+class TestShoptFlagWordArrangement:
+    """R15-B-B/F: flag reading stops at the FIRST OPERAND, as the builtin does.
+
+    THREE-POINT SHAPE, and it differs per face, so each row says which it is:
+
+    * the false-GREEN faces are green at base 42f75591 (base applied no
+      directive at all, so the detector stayed a syntax error), RED at the
+      dissolved tip e1113813, green here — real regressions of this slot;
+    * the false-RED face `shopt -s extglob -u` was red at base too, and at
+      every dissolved tip since. It is an INCOMPLETE-FIX lineage, declared as
+      such rather than counted as a regression.
+
+    The round-4 fix aggregated flag letters over the WHOLE argument list. That
+    is right for `shopt -su X` and `shopt -s -u X` and wrong for everything
+    else, because the builtin stops reading flags at the first operand — a
+    later `-s` is an option NAME. The deciding spec was already pinned in this
+    repo, at
+    `tests/unit/builtins/test_shopt_set_o.py::test_flag_after_operand_is_an_operand`,
+    for the THIRD time this slot; `_shopt_split` now mirrors the builtin's own
+    argument loop instead of modelling one shape of it.
+
+    ORACLE: psh EXECUTION, with bash 5.2.26 agreeing on every extglob row
+    (measured). On the alias rows bash is NOT the oracle — it defaults
+    expand_aliases off non-interactively, so bash rejects them all for an
+    unrelated reason; the claim there is analysis-agrees-with-psh-execution.
+    """
+
+    #: (script, what the arrangement means) — extglob axis. The detector line
+    #: parses only when extglob is really live, so execution's rc reads out
+    #: the shell's answer and analysis's rc reads out the recognizer's.
+    EXTGLOB_ARRANGEMENTS = [
+        "shopt -s extglob -u",      # -u is an operand: extglob IS set
+        "shopt -q extglob -s",      # -s is an operand: extglob is QUERIED
+        "shopt extglob -s",         # the builtin's own pinned shape
+        "shopt -- -s extglob",      # `--` first: nothing is a flag
+        "shopt -s -- extglob",      # `--` after flags: extglob IS set
+        "shopt -z -s extglob",      # bad flag letter: rc 2, nothing applied
+        "shopt -so extglob",        # -o names the set-o table, which lacks it
+        "shopt -s extglob -o",      # -o after the operand is not a flag
+        "shopt -s -u extglob",      # R13-A: refused, option untouched
+        "shopt -sq extglob",        # control: a real clustered enable
+    ]
+
+    #: The alias axis (R15-B-F), completing the R13-A pin set. The alias is
+    #: load-bearing for the parse, so rc reads out expand_aliases exactly as
+    #: the extglob detector reads out extglob.
+    ALIAS_ARRANGEMENTS = [
+        "shopt expand_aliases -u",     # false-RED face: a query, not a disable
+        "shopt -q expand_aliases -u",  # false-RED face: ditto, with a flag
+        "shopt -u expand_aliases -s",  # false-GREEN face: it really disables
+        "shopt -s -u expand_aliases",  # R13-A separate-word contradiction
+        "shopt -u expand_aliases",     # control: a real disable
+    ]
+
+    @pytest.mark.parametrize("directive", EXTGLOB_ARRANGEMENTS)
+    def test_analysis_agrees_with_execution_about_extglob(self, tmp_path,
+                                                          directive):
+        """Whatever execution concludes about extglob, analysis concludes too.
+
+        Asserting agreement rather than fixed statuses is deliberate: a
+        recognizer that is wrong but self-consistent cannot pass this.
+        """
+        _script(tmp_path, f"{directive}\ncase ab in +(a)b) echo M;; esac\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        bash = run_bash(["s.sh"], cwd=str(tmp_path))
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert is_comparable(bash)
+        assert execution.returncode == analysis.returncode, (
+            f"execution rc={execution.returncode} but analysis "
+            f"rc={analysis.returncode} for: {directive}")
+        assert bash.returncode == execution.returncode, (
+            f"bash 5.2.26 rc={bash.returncode} but psh execution "
+            f"rc={execution.returncode} for: {directive}")
+
+    @pytest.mark.parametrize("directive", ALIAS_ARRANGEMENTS)
+    def test_analysis_agrees_with_execution_about_expand_aliases(
+            self, tmp_path, directive):
+        """The alias-axis twin. psh execution is the oracle: bash defaults
+        expand_aliases off non-interactively (measured), so bash's rc here
+        answers a different question and is deliberately not asserted."""
+        _script(tmp_path, f"alias iff='if true; then'\n{directive}\n"
+                          "iff echo X; fi\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == analysis.returncode, (
+            f"execution rc={execution.returncode} but analysis "
+            f"rc={analysis.returncode} for: {directive}")
+
+    def test_false_red_face_is_an_incomplete_fix_not_a_regression(self,
+                                                                  tmp_path):
+        """`shopt -s extglob -u` really enables extglob, and analysis missed it
+        at base and at every dissolved tip since. Stated as its own row so the
+        lineage is declared rather than implied by the class docstring."""
+        _script(tmp_path, "shopt -s extglob -u\ncase ab in +(a)b) echo M;; esac\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0, execution.stderr
+        assert analysis.returncode == 0, analysis.stderr
+
+    def test_false_green_face_no_longer_invents_an_enable(self, tmp_path):
+        """`shopt -q extglob -s` changes nothing, so the later line is a
+        syntax error in BOTH surfaces. Green at base, red at e1113813."""
+        _script(tmp_path, "shopt -q extglob -s\ncase ab in +(a)b) echo M;; esac\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 2 and analysis.returncode == 2
 
 
 class TestExpandAliasesIsOrderedNotMonotone:
@@ -855,6 +982,59 @@ class TestDeclaredAnalysisSideEffects:
         assert is_comparable(execution) and is_comparable(analysis)
         assert execution.returncode == 0, execution.stderr
         assert analysis.returncode == 0, analysis.stderr
+
+
+class TestDebugTraceDoesNotLeakIntoAnalysis:
+    """R15-B-C, pin half: a debug flag says nothing on an analysis run.
+
+    RED at the dissolved tip e1113813: `--debug-exec --validate` printed
+    "DEBUG: Not running on a terminal (stdin is not a TTY)" to stderr. Analysis
+    executes nothing, so an execution trace there describes work that never
+    happened — and the line came from the CARRIER's construction, before any
+    unit was even parsed.
+
+    The execution control is the other half of the claim: the fix must silence
+    the trace on analysis WITHOUT silencing it where it belongs.
+    """
+
+    #: Multi-unit, and one unit changes parse-relevant state, so the session
+    #: does real per-unit work rather than trivially producing nothing.
+    SCRIPT = "shopt -s extglob\ncase ab in +(a)b) echo M;; esac\necho done\n"
+
+    @pytest.mark.parametrize("mode", MODES)
+    def test_debug_flag_writes_nothing_on_an_analysis_run(self, tmp_path, mode):
+        """Empty stderr, and stdout byte-identical to the run without the debug
+        flag — the flag must change NOTHING about an analysis, not merely move
+        its output somewhere else."""
+        _script(tmp_path, self.SCRIPT)
+        plain = _psh(tmp_path, [f"--{mode}", "s.sh"])
+        debug = _psh(tmp_path, ["--debug-exec", f"--{mode}", "s.sh"])
+        assert is_comparable(plain) and is_comparable(debug)
+        assert debug.stderr == "", debug.stderr
+        assert debug.stdout == plain.stdout
+        assert debug.returncode == plain.returncode
+
+    def test_every_debug_flag_is_silent_on_analysis(self, tmp_path):
+        """The whole family, not just the one that leaked: the carrier clears
+        every registered debug option, so no sibling can start leaking later."""
+        _script(tmp_path, self.SCRIPT)
+        flags = ["--debug-ast", "--debug-tokens", "--debug-scopes",
+                 "--debug-expansion", "--debug-expansion-detail",
+                 "--debug-exec", "--debug-exec-fork"]
+        for flag in flags:
+            result = _psh(tmp_path, [flag, "--validate", "s.sh"])
+            assert is_comparable(result)
+            assert result.stderr == "", f"{flag} leaked: {result.stderr}"
+
+    def test_execution_control_the_trace_still_fires(self, tmp_path):
+        """The control that makes the silence pin meaningful: on a real
+        EXECUTION, --debug-exec still traces as it always did."""
+        _script(tmp_path, self.SCRIPT)
+        result = _psh(tmp_path, ["--debug-exec", "s.sh"])
+        assert is_comparable(result)
+        assert result.returncode == 0
+        assert "DEBUG" in result.stderr
+        assert "BuiltinStrategy" in result.stderr, result.stderr
 
 
 class TestAliasAxisNormalizationAsymmetry:

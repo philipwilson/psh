@@ -203,7 +203,7 @@ def test_metrics_counts_commands_in_elif_function_body():
 
 # --- Line offsetting over template-sub programs (round-3 B8 disclosure pin) --
 
-def testoffset_line_numbers_reaches_stamped_template_sub_nodes():
+def test_offset_line_numbers_reaches_stamped_template_sub_nodes():
     """TEMPLATE_SUBS descent is a REAL (if today invisible) change for
     source_processor.offset_line_numbers: some nodes inside a template-sub
     program DO carry buffer-relative line stamps (AndOrList/Pipeline; the
