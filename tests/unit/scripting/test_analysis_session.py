@@ -248,19 +248,44 @@ class TestShoptTableRoutingIsDerived:
 
 
 class TestIsolationClassificationIsTotal:
-    """Every compound shape is classified, so a new one cannot arrive unseen.
+    """Every node shape the walk can reach is classified, so a new one cannot
+    arrive unseen.
 
-    The session treats an unclassified compound as STATE-PRESERVING, which is
-    the safe default (more permissive, never a false syntax error) — but silent
-    defaults are how coverage rots, so the classification is enumerated here
-    and a new CompoundCommand subclass fails this test until it is placed.
+    The session treats an unclassified node as STATE-PRESERVING, which is the
+    safe default (more permissive, never a false syntax error) — but silent
+    defaults are how coverage rots, so the classification is enumerated here.
+
+    R15-B-G, the guard's UNIVERSE. This used to enumerate `CompoundCommand`
+    subclasses, while `_directive_commands` classifies by TYPE NAME over every
+    node `walk_ast` descends into. Two of the three isolating shapes
+    (CommandSubstitution, ProcessSubstitution) are not CompoundCommands at
+    all, so the universe did not even contain the answers the code was giving
+    — and a NEW isolating shape outside the CompoundCommand tree would have
+    arrived silently. The universe is now the traversal schema itself, which
+    is exactly what the code walks.
+
+    Two isolation rules are CONDITIONAL and so are not node-type facts: a
+    Pipeline isolates only when it has more than one member, and any node
+    isolates when it carries `background`. Both are asserted separately below.
     """
 
+    #: Every schema node type that does NOT isolate state. Reviewed one by
+    #: one: none of these runs its interior in a separate process or a
+    #: throwaway copy of the shell state.
     STATE_PRESERVING = {
-        "ArithmeticEvaluation", "BraceGroup", "CStyleForLoop",
-        "CaseConditional", "EnhancedTestStatement", "ForLoop",
-        "IfConditional", "SelectLoop", "UnifiedControlStructure",
-        "UntilLoop", "WhileLoop",
+        "AndOrList", "ArithmeticEvaluation", "ArithmeticExpansion",
+        "ArrayAssignment", "ArrayElementAssignment", "ArrayInitialization",
+        "BinaryTestExpression", "BraceGroup", "CStyleForLoop",
+        "CaseConditional", "CaseItem", "CasePattern",
+        "CompoundTestExpression", "EnhancedTestStatement", "ExpansionPart",
+        "ForLoop", "FunctionDef", "HeredocRedirect", "IfConditional",
+        "LiteralPart", "NegatedTestExpression", "ParameterExpansion",
+        "Pipeline", "Program", "Redirect", "SelectLoop", "SimpleCommand",
+        "StatementList", "UnaryTestExpression", "UntilLoop",
+        "VariableExpansion", "WhileLoop", "Word", "WordPart",
+        # Not in the traversal schema, but a CompoundCommand subclass, so it
+        # is classified here too rather than falling through the wider check.
+        "UnifiedControlStructure",
     }
 
     @staticmethod
@@ -271,15 +296,59 @@ class TestIsolationClassificationIsTotal:
                 yield from descend(sub)
         return set(descend(CompoundCommand))
 
+    @staticmethod
+    def _schema_node_names():
+        from psh.visitor.traversal import AstChildSchema
+        return set(AstChildSchema)
+
+    def test_every_walkable_node_type_is_classified(self):
+        """THE universe: what `walk_ast` descends into is what
+        `_directive_commands` type-name-checks, so that is what must be
+        classified."""
+        classified = self.STATE_PRESERVING | set(ISOLATING_NODES)
+        unclassified = self._schema_node_names() - classified
+        assert not unclassified, (
+            "new AST shape(s) reachable by the traversal but not classified "
+            f"by the analysis session's isolation rule: {sorted(unclassified)}")
+
     def test_every_compound_command_is_classified(self):
+        """The narrower universe is kept as well: a CompoundCommand subclass
+        that never joined the traversal schema is still a shape the session
+        can meet."""
         classified = self.STATE_PRESERVING | set(ISOLATING_NODES)
         unclassified = self._all_compound_names() - classified
         assert not unclassified, (
             "new compound AST shape(s) not classified by the analysis "
             f"session's isolation rule: {sorted(unclassified)}")
 
+    def test_every_isolating_name_is_a_real_node_type(self):
+        """A classification naming something that does not exist is a dead
+        allowance — the stale-entry fault the string-surgery guard rejects,
+        in the other direction."""
+        known = self._schema_node_names() | self._all_compound_names()
+        unknown = set(ISOLATING_NODES) - known
+        assert not unknown, (
+            f"ISOLATING_NODES names non-existent node type(s): {sorted(unknown)}")
+
     def test_isolating_and_preserving_do_not_overlap(self):
         assert not (self.STATE_PRESERVING & set(ISOLATING_NODES))
+
+    def test_the_conditional_isolation_rules_hold(self):
+        """The two rules that are not node-type facts: a multi-member pipeline
+        isolates, a one-member pipeline does not, and `background` isolates."""
+        shell = _shell("validate")
+        # A directive inside a MULTI-member pipeline runs in its own process.
+        session = AnalysisSession(shell)
+        session.analyze("shopt -s extglob | cat\n")
+        assert session.carrier.state.options.get("extglob") is not True
+        # A ONE-member pipeline is just a command: its effect survives.
+        session = AnalysisSession(_shell("validate"))
+        session.analyze("shopt -s extglob\n")
+        assert session.carrier.state.options.get("extglob") is True
+        # Background isolates too.
+        session = AnalysisSession(_shell("validate"))
+        session.analyze("shopt -s extglob &\n")
+        assert session.carrier.state.options.get("extglob") is not True
 
 
 class TestPerUnitParseMatchesWholeFileWhenNothingChanges:
@@ -310,6 +379,74 @@ class TestPerUnitParseMatchesWholeFileWhenNothingChanges:
         session = parse_for_analysis(shell, source)
         whole = _whole_file_parse(shell, source, expand_aliases=False)
         assert FormatterVisitor().visit(session) == FormatterVisitor().visit(whole)
+
+    #: R13-E9/R15-B-D: a wider no-option-change corpus for the FIVE-mode
+    #: byte-identical claim. F7 shapes are excluded AS DECLARED — a heredoc
+    #: body followed by later commands is the one place the whole-file parse
+    #: is WRONG (it corrupts the following words), so demanding byte-identity
+    #: there would pin the corruption this slot removed.
+    PARITY_CORPUS = CORPUS + [
+        "while read -r line; do\n  echo \"$line\"\ndone < f\n",
+        "a=1\nb=$((a + 1))\necho \"$a $b\"\n",
+        "( cd /tmp && echo sub )\n{ echo brace; }\n",
+        "echo \"${x:-default}\"\necho 'literal $x'\n",
+        "trap 'echo bye' EXIT\necho body\n",
+    ]
+
+    @pytest.mark.parametrize("mode", ["validate", "format", "metrics",
+                                      "security", "lint"])
+    @pytest.mark.parametrize("source", PARITY_CORPUS)
+    def test_every_mode_renders_byte_identically(self, capsys, mode, source):
+        """The exit-code contract's other half: for input that changes no
+        parse-relevant state, going per-unit must not move what ANY mode
+        prints, byte for byte, nor the status it returns.
+
+        The comparison drives the REAL mode runner over both programs rather
+        than re-deriving each mode's rendering — the same reuse rule the code
+        under test is held to.
+        """
+        from psh.scripting.visitor_modes import apply_visitor_mode
+
+        shell = _shell(mode)
+        expand = mode != "format"
+        session = parse_for_analysis(shell, source)
+        whole = _whole_file_parse(shell, source, expand_aliases=expand)
+
+        capsys.readouterr()
+        session_status = apply_visitor_mode(shell, session)
+        session_out = capsys.readouterr()
+        whole_status = apply_visitor_mode(shell, whole)
+        whole_out = capsys.readouterr()
+
+        assert session_out.out == whole_out.out, (
+            f"{mode} stdout moved for a no-option-change script")
+        assert session_out.err == whole_out.err, (
+            f"{mode} stderr moved for a no-option-change script")
+        assert session_status == whole_status
+
+    def test_the_parity_comparison_can_actually_fail(self, capsys):
+        """MUTATION PROOF: a comparison that never differs proves nothing.
+
+        The F7 shape — a heredoc body followed by later commands — is the one
+        the whole-file parse gets WRONG, corrupting the words after the body.
+        So the two programs must DIFFER here, and the session's answer must be
+        the correct one. This is why F7 cells are excluded from the corpus
+        above by declaration rather than by hope.
+        """
+        from psh.visitor import FormatterVisitor
+
+        source = ("usage() {\n    cat <<EOF\nabc\nEOF\n}\n"
+                  "for file in a b; do echo $file; done\n")
+        shell = _shell("format")
+        session = parse_for_analysis(shell, source)
+        whole = _whole_file_parse(shell, source, expand_aliases=False)
+
+        session_text = FormatterVisitor().visit(session)
+        whole_text = FormatterVisitor().visit(whole)
+        assert session_text != whole_text, (
+            "the parity comparison cannot distinguish two programs")
+        assert "for file in a b" in session_text, session_text
+        assert "for file in a b" not in whole_text, whole_text
 
 
 class TestMonotoneEnablesCannotInventAnError:
@@ -474,6 +611,22 @@ class TestSingleAnalysisMode:
             Shell(norc=True, validate_only=True, lint_only=True)
         assert "validate_only" in str(caught.value)
         assert "lint_only" in str(caught.value)
+
+    def test_the_construction_error_is_typed(self):
+        """R15-B-G: a bare ValueError says only "something was wrong". The
+        CLI spelling of this mistake already raises a named InvocationError;
+        the keyword spelling now raises a named error too, so an embedder can
+        catch exactly this and nothing else.
+
+        It still SUBCLASSES ValueError, so an embedder's existing
+        `except ValueError` keeps working — asserted here so that
+        compatibility is a pinned property rather than a happy accident.
+        """
+        from psh.invocation import AnalysisModeConflictError
+
+        with pytest.raises(AnalysisModeConflictError):
+            Shell(norc=True, validate_only=True, lint_only=True)
+        assert issubclass(AnalysisModeConflictError, ValueError)
 
     @pytest.mark.parametrize("mode", ["validate", "format", "metrics",
                                       "security", "lint"])

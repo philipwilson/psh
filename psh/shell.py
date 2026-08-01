@@ -34,7 +34,12 @@ from .executor.job_control import JobManager
 from .expansion import ExpansionManager
 from .expansion.aliases import AliasManager
 from .interactive import InteractiveManager, load_rc_file
-from .invocation import ANALYSIS_MODES, InvocationConfig, SourceKind
+from .invocation import (
+    ANALYSIS_MODES,
+    AnalysisModeConflictError,
+    InvocationConfig,
+    SourceKind,
+)
 from .io_redirect import IOManager
 from .scripting.base import ScriptManager
 
@@ -61,7 +66,7 @@ def _single_analysis_mode(**flags: bool) -> Optional[str]:
     chosen = [name[: -len("_only")] for name in ANALYSIS_MODES_ONLY
               if flags.get(name)]
     if len(chosen) > 1:
-        raise ValueError(
+        raise AnalysisModeConflictError(
             "only one analysis mode may be set, got: "
             + ", ".join(f"{mode}_only" for mode in chosen))
     return chosen[0] if chosen else None

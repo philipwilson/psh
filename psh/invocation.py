@@ -62,6 +62,22 @@ class InvocationError(Exception):
         self.status = status
 
 
+class AnalysisModeConflictError(ValueError):
+    """Two or more analysis modes requested through the LEGACY keyword path.
+
+    The CLI spelling of this mistake is rejected by :func:`parse_invocation`
+    with an :class:`InvocationError` before a Shell exists. The keyword
+    spelling (``Shell(validate_only=True, lint_only=True)``) is an EMBEDDER
+    API misuse, caught in ``Shell.__init__`` so the ambiguous state cannot be
+    constructed either way — silently resolving it by a priority chain was
+    the MEDIUM-9(b) defect.
+
+    Subclasses ``ValueError`` deliberately: the type is precise enough to
+    catch on its own, while an embedder's existing ``except ValueError``
+    keeps working.
+    """
+
+
 @dataclass(frozen=True)
 class InvocationConfig:
     """The complete, validated result of parsing psh's command line.

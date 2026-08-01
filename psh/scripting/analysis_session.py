@@ -475,12 +475,17 @@ class AnalysisSession:
                     lexed.tokens, lexed.heredocs, self.carrier,
                     source_text=text, line_offset=max(0, base_line - 1),
                     lexer_options=self.carrier.state.options)
+                if start_line > 1:
+                    offset_line_numbers(ast, start_line - 1)
+                # Absorption runs INSIDE the envelope as well. It walks THIS
+                # unit's AST and tokens, so a failure there is a failure to
+                # analyze this unit and must reach the caller carrying the
+                # unit's line — the last path by which an inner exception
+                # could still escape the envelope unlabelled.
+                self._absorb_transitions(ast, lexed.tokens)
             except Exception as exc:
                 raise AnalysisSyntaxError(exc, start_line) from exc
-            if start_line > 1:
-                offset_line_numbers(ast, start_line - 1)
             merged.statements.extend(ast.statements)
-            self._absorb_transitions(ast, lexed.tokens)
         return merged
 
     def expands_aliases_now(self) -> bool:

@@ -545,6 +545,11 @@ class TestDirectiveSpellingAxis:
         # unquoted backslashes in the FLAG and the OPERAND resolve too
         "shopt -s ext\\glob",
         "shopt \\-s extglob",
+        # R13-E3/R15-B-E: `command -p` still RUNS the command (with a default
+        # PATH), so the directive behind it is live — measured rc 0 in psh and
+        # bash 5.2.26. The code widening landed in round 4; these are its pins.
+        "command -p shopt -s extglob",
+        "command -p -p shopt -s extglob",
         # R15-B-B: flag reading STOPS at the first operand, so a `-u` AFTER the
         # operand is an option NAME and the `-s` still applies. Red at base and
         # at every dissolved tip — an incomplete-fix lineage, not a regression.
@@ -589,6 +594,13 @@ class TestDirectiveSpellingAxis:
         "'shopt -s extglob'",
         # the operand mirror: a quoted backslash in the OPTION NAME too
         "shopt -s 'ext\\glob'",
+        # R13-E3/R15-B-E: the near-misses of the `command -p` widening.
+        # `builtin` has no `-p`, and `command -v`/`-V` PRINT a description and
+        # run nothing — so no directive behind them is live. All three are rc 2
+        # in psh and bash 5.2.26 (measured), i.e. the script really does fail.
+        "builtin -p shopt -s extglob",
+        "command -v shopt -s extglob",
+        "command -V shopt -s extglob",
         # R15-B-B: reading flag letters PAST the first operand invented enables
         # the shell declines to make. Each of these leaves extglob OFF —
         # measured in psh and bash 5.2.26 (execution surface).

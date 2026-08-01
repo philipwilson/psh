@@ -400,6 +400,47 @@ class TestDebugAndAnalysisFlags:
         config = parse_invocation(flags)      # must not raise
         assert config.print_help or config.print_version
 
+    @pytest.mark.parametrize("argv", [
+        ["--help", "--badopt"],
+        ["--badopt", "--help"],
+        ["--version", "--badopt"],
+        ["--badopt", "--version"],
+    ])
+    def test_an_invalid_option_outranks_help_and_version(self, argv):
+        """R15-B-G, the rest of the precedence order. `--help`/`--version`
+        outrank the mode conflict, but NOT an unparseable command line: psh
+        cannot answer a question it could not read. Measured status 2 in
+        every order."""
+        with pytest.raises(InvocationError) as caught:
+            parse_invocation(argv)
+        assert caught.value.status == 2
+        assert "--badopt" in caught.value.lines[0], caught.value.lines
+
+    @pytest.mark.parametrize("argv", [
+        ["--validate", "--lint", "--badopt", "s.sh"],
+        ["--badopt", "--validate", "--lint", "s.sh"],
+    ])
+    def test_an_invalid_option_outranks_the_mode_conflict(self, argv):
+        """Both are status 2, so this pins WHICH message the user gets: the
+        unreadable flag, not a conflict among the ones that did parse."""
+        with pytest.raises(InvocationError) as caught:
+            parse_invocation(argv)
+        assert caught.value.status == 2
+        assert "--badopt" in caught.value.lines[0], caught.value.lines
+        assert "only one analysis mode" not in caught.value.lines[0]
+
+    def test_the_precedence_order_is_stated_whole(self):
+        """The three levels in ONE place, so the order is a pinned fact rather
+        than something a reader assembles from three tests:
+        invalid option > --help/--version > analysis-mode conflict."""
+        with pytest.raises(InvocationError):           # level 1 beats level 2
+            parse_invocation(["--help", "--badopt"])
+        assert parse_invocation(                       # level 2 beats level 3
+            ["--help", "--validate", "--lint"]).print_help
+        with pytest.raises(InvocationError) as caught:  # level 3 still errors
+            parse_invocation(["--validate", "--lint", "s.sh"])
+        assert "only one analysis mode" in caught.value.lines[0]
+
     def test_analysis_mode_deduplicated(self):
         config = parse_invocation(['--lint', '--lint', 's.sh'])
         assert config.analysis_modes == ('lint',)
