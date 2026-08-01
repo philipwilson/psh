@@ -146,6 +146,57 @@ class TestParseRelevantOptionsIsDerived:
         assert self._keys_the_pipeline_reads(), "the real trace found nothing"
 
 
+class TestEveryPerUnitFailureReachesTheEnvelope:
+    """R15-B-G: a failure anywhere in a unit's handling carries the unit's line.
+
+    The envelope exists so a per-unit failure is reported the way execution
+    reports one — `psh: <source>:<line>:`. Lexing and parsing were inside it;
+    the state-absorption pass, which walks the SAME unit's AST and tokens, ran
+    outside it, so an exception there would have escaped as a bare traceback
+    with no location. Pinned by making absorption fail on purpose, because the
+    structural fact ("the call is inside the try") is not observable from
+    outside and an indentation check is not a behavior claim.
+    """
+
+    def test_an_absorption_failure_is_wrapped_with_the_units_line(self,
+                                                                  monkeypatch):
+        from psh.scripting.analysis_session import AnalysisSyntaxError
+
+        session = AnalysisSession(_shell("validate"))
+
+        def explode(self, ast, tokens):
+            raise RuntimeError("absorption blew up")
+
+        monkeypatch.setattr(AnalysisSession, "_absorb_transitions", explode)
+        with pytest.raises(AnalysisSyntaxError) as caught:
+            session.analyze("echo one\necho two\necho three\n")
+        # The FIRST unit is on line 1, so that is the line reported.
+        assert caught.value.start_line == 1
+        assert isinstance(caught.value.error, RuntimeError)
+
+    def test_the_line_is_the_failing_units_line_not_always_one(self,
+                                                               monkeypatch):
+        """The control: a wrapper that always said line 1 would pass the test
+        above while telling the user nothing."""
+        from psh.scripting.analysis_session import AnalysisSyntaxError
+
+        session = AnalysisSession(_shell("validate"))
+        seen = {"units": 0}
+        original = AnalysisSession._absorb_transitions
+
+        def explode_on_third(self, ast, tokens):
+            seen["units"] += 1
+            if seen["units"] == 3:
+                raise RuntimeError("absorption blew up on unit 3")
+            return original(self, ast, tokens)
+
+        monkeypatch.setattr(AnalysisSession, "_absorb_transitions",
+                            explode_on_third)
+        with pytest.raises(AnalysisSyntaxError) as caught:
+            session.analyze("echo one\necho two\necho three\n")
+        assert caught.value.start_line == 3
+
+
 class TestCarrierDoesNotInheritDebugOptions:
     """R15-B-C, code half: the carrier is built with every debug option OFF.
 
