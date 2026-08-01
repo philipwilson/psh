@@ -10,6 +10,14 @@ threads parse-relevant state between units without executing anything.
 RED-ON-BASE: every row in `test_state_aware_signature` is rc 2 at 42f75591 and
 rc != 2 here, on all three channels and both parsers, for all five modes.
 
+Not every class here is red at BASE, and the distinction matters. Three classes
+are red at the DISSOLVED round-1 tip 053750e5 instead, because they pin
+regressions this slot's own fix rounds introduced and then removed:
+`TestHeredocBodiesAreNotCommandText` (a body-blind re-lex),
+`TestAliasPositionDiscipline` (a position-blind re-walk), and the
+help/version rows in `TestModeCombinationRejected`. Each says so in its own
+docstring; none is presented as base evidence.
+
 DECLARED REGRESSION GUARDS (not red-on-base evidence — remediation 2.6 R1-G):
 `test_alias_defined_then_used_*` was already GREEN at base, because whole-file
 analysis lexed the file as ONE token stream and `AliasManager.expand_aliases`
@@ -501,9 +509,19 @@ class TestDirectiveSpellingAxis:
         "set -e -o extglob",
         "command builtin shopt -s extglob",
         "x=1 y=2 builtin shopt -s extglob",
+        # R9-C-3: a backslash before an ordinary character is just quoting, so
+        # every one of these runs `shopt` — the head normalizer must see past
+        # backslashes ANYWHERE in the word, not only a leading one.
+        "sh\\opt -s extglob",
+        "s\\hopt -s extglob",
+        "shop\\t -s extglob",
+        "\\s\\h\\o\\p\\t -s extglob",
+        # the -o pair need not be first, and -- after it does not undo it
+        "set -o extglob -- a b",
     ]
 
     #: Near-misses: they LOOK like directives and must NOT be treated as one.
+    #: Each was MEASURED against execution — every row leaves extglob off.
     NON_ENABLES = [
         "shopt -p extglob",        # print, not set
         "shopt -u extglob",        # unset (monotone: never narrows, but also
@@ -514,6 +532,14 @@ class TestDirectiveSpellingAxis:
         "set -s extglob",          # -s is not -o
         "shopt -s histappend",     # a real option, but not parse-relevant
         "set -o pipefail",         # ditto
+        # R9-C-1: `--` ends option scanning; these set $1/$2 instead.
+        "set -- -o extglob",
+        "set -e -- -o extglob",
+        # R9-C-2: a cluster carrying BOTH letters is refused by the builtin
+        # ("cannot set and unset shell options simultaneously", rc 1, option
+        # untouched) — measured identical in psh and bash 5.2.26.
+        "shopt -su extglob",
+        "shopt -us extglob",
     ]
 
     @pytest.mark.parametrize("directive", ENABLES)
@@ -598,3 +624,79 @@ class TestExpandAliasesIsOrderedNotMonotone:
         assert is_comparable(execution) and is_comparable(analysis)
         assert execution.returncode == 0      # execution never disables
         assert analysis.returncode == 2       # analysis does — declared
+
+
+class TestAliasPositionDiscipline:
+    """R9-A regression pins. THREE-POINT SHAPE: green at base 42f75591, RED at
+    the dissolved tip 053750e5, green here.
+
+    The fix round absorbed alias definitions by scanning each unit's token
+    stream for the WORDS `alias`/`unalias` — which dropped the command-position
+    guard the real expander applies. The shell only treats those words as
+    commands in command position; as ARGUMENTS they are ordinary text.
+
+    This was the slot's SECOND reinvention of an existing decider (the first
+    dropped the heredoc grammar). The absorption pass now RUNS
+    `AliasManager.expand_aliases` with the session table as its overlay, so the
+    position discipline is inherited rather than re-derived: a decider's guards
+    are part of the decider.
+    """
+
+    def test_argument_position_unalias_does_not_wipe_the_table(self, tmp_path):
+        """FACE 1 (false RED at the dissolved tip). `echo unalias -a` is an
+        argument; it unaliases nothing, so the later alias still expands."""
+        _script(tmp_path, "alias iff='if true; then'\necho unalias -a\n"
+                          "iff echo X; fi\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0, execution.stderr
+        assert analysis.returncode == 0, analysis.stderr
+
+    def test_argument_position_alias_does_not_define(self, tmp_path):
+        """FACE 2 (false GREEN at the dissolved tip). `echo alias iff=...` is
+        an argument; it defines nothing, so the later line is a syntax error in
+        both surfaces — and bash agrees about the script."""
+        _script(tmp_path, "echo alias iff='if true; then'\niff echo X; fi\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        bash = run_bash(["s.sh"], cwd=str(tmp_path))
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert is_comparable(bash)
+        assert execution.returncode == 2 and analysis.returncode == 2
+        assert bash.returncode == 2
+
+    #: The alias-axis twin of the option axis's near-miss controls: shapes that
+    #: LOOK like alias state changes and are not. psh EXECUTION is the oracle
+    #: here — bash defaults expand_aliases off non-interactively, a documented
+    #: psh divergence, so the claim is analysis-agrees-with-psh-execution.
+    NEAR_MISSES = [
+        "alias iff='if true; then'\necho unalias -a\niff echo X; fi\n",
+        "alias iff='if true; then'\nprintf '%s' alias\niff echo X; fi\n",
+        "alias iff='if true; then'\necho alias zz=1\niff echo X; fi\n",
+        "echo alias iff='if true; then'\niff echo X; fi\n",
+        "cat <<EOF\nalias iff='if true; then'\nEOF\niff echo X; fi\n",
+        "alias iff='if true; then'\naliasx foo 2>/dev/null\niff echo X; fi\n",
+    ]
+
+    #: The real thing, in command position — these DO change alias state.
+    REAL_CHANGES = [
+        "alias iff='if true; then'\niff echo X; fi\n",
+        "alias iff='if true; then'\nunalias iff\niff echo X; fi\n",
+        "alias iff='if true; then'\ntrue; unalias iff\niff echo X; fi\n",
+        "alias iff='if true; then'\nunalias -a\niff echo X; fi\n",
+    ]
+
+    @pytest.mark.parametrize("script", NEAR_MISSES + REAL_CHANGES)
+    def test_analysis_agrees_with_execution_about_alias_state(self, tmp_path,
+                                                              script):
+        """One assertion for both lists: whatever psh EXECUTION concludes about
+        the alias table, analysis concludes too. Splitting them into expected
+        statuses would let a wrong-but-consistent recognizer pass."""
+        _script(tmp_path, script)
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == analysis.returncode, (
+            f"execution rc={execution.returncode} but analysis "
+            f"rc={analysis.returncode} for:\n{script}")

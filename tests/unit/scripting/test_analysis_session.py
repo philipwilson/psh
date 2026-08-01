@@ -8,6 +8,7 @@ shapes it walks, and that going per-unit did not change what the visitors see
 for input with no state change in it.
 """
 import itertools
+from pathlib import Path
 
 import pytest
 
@@ -377,3 +378,37 @@ class TestSingleAnalysisMode:
 
     def test_no_mode_is_none(self):
         assert Shell(norc=True).analysis_mode is None
+
+
+class TestUserGuideMatchesTheRule:
+    """R9-B: the user-facing declaration must not contradict the pins.
+
+    The user guide's limits bullets described ALL options as monotone, which
+    stopped being true when expand_aliases became ordered — and the branch's
+    own declared-cost pin asserted the opposite. "Declared + pinned + doc'd"
+    means the doc is part of the claim, so a contradiction there is a defect
+    even when every test passes.
+    """
+
+    GUIDE = (Path(__file__).resolve().parents[3]
+             / "docs/user_guide/17_differences_from_bash.md")
+
+    def test_the_monotone_claim_is_scoped_to_the_monotone_options(self):
+        text = self.GUIDE.read_text()
+        section = text[text.index("**Analysis follows the script's own settings.**"):]
+        section = section[:section.index("### Parser Selection")]
+        # The unqualified "turning an option back off does not narrow" claim
+        # must no longer stand on its own.
+        assert "For `extglob` and `posix`" in section, (
+            "the monotone bullets are not scoped to the options they describe")
+        assert "expand_aliases" in section, (
+            "the ordered option is not mentioned where its rule differs")
+
+    def test_the_declared_cost_is_stated_in_user_facing_words(self):
+        text = self.GUIDE.read_text()
+        section = text[text.index("**Analysis follows the script's own settings.**"):]
+        section = section[:section.index("### Parser Selection")]
+        # The cost the branch pins must be findable by a reader who hit it.
+        assert "shopt -u expand_aliases" in section
+        assert "fails `--validate`" in section, (
+            "the guide states the rule but not the consequence a user meets")

@@ -815,13 +815,34 @@ shopt -s extglob
 case "$x" in +(a)) echo "one or more a" ;; esac   # analyzed, not rejected
 ```
 
-Three limits follow from analysis never *executing* the script:
+Some limits follow from analysis never *executing* the script. It cannot know
+whether a line is actually reached, and it handles that differently for
+lexing options than for alias expansion.
 
-- It cannot know whether a line is actually reached, so a setting enabled
-  inside a branch that never runs is still treated as enabled. Analysis accepts
-  slightly more than the shell would, rather than reporting errors for scripts
-  that run fine.
-- Turning an option back off does not narrow the analysis, for the same reason.
+For `extglob` and `posix`, analysis errs toward accepting:
+
+- A setting enabled inside a branch that never runs is still treated as
+  enabled, so analysis accepts slightly more than the shell would rather than
+  reporting errors for scripts that run fine.
+- Turning one of them back off does not narrow the analysis, for the same
+  reason.
+
+For `expand_aliases` the rule is different, because the shell's own behaviour
+is: unsetting it really does stop aliases expanding on later lines, so analysis
+follows the last setting it can see, on or off. The cost is that a disable
+analysis cannot know is unreachable still applies:
+
+```bash
+alias iff='if true; then'
+if false; then shopt -u expand_aliases; fi   # never runs...
+iff echo X; fi                               # ...but analysis stops expanding
+```
+
+That script runs fine and fails `--validate`. Writing the `shopt` outside a
+branch — or not disabling expansion at all — analyzes as it runs.
+
+One more limit applies to every setting:
+
 - A setting made inside `eval '...'` or in a `source`d file is invisible to
   analysis — seeing it would mean running the very code analysis promises not
   to run. Such a script runs, but may not validate.

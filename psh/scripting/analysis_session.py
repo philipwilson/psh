@@ -35,8 +35,8 @@ Structure, the same for every option:
 * directives inside a FUNCTION BODY do apply — a defined function is usually
   called, and execution's answer for the common case is "live";
 * a directive is recognized through the prefixes that do not change which
-  builtin runs (assignment prefixes, a backslash-escaped head, ``builtin``/``command``)
-  and through clustered flags — see :func:`_option_changes`.
+  builtin runs (assignment prefixes, backslash quoting, ``builtin`` /
+  ``command``) and through clustered flags — see :func:`_option_changes`.
 
 Value, PER OPTION, because the options do not share semantics:
 
@@ -48,15 +48,22 @@ Value, PER OPTION, because the options do not share semantics:
   stops expanding aliases in later units, = bash). Modelling it as monotone
   would model a shell nobody runs.
 
-Consequences, measured against execution and DECLARED rather than hidden: for
-the monotone options the rule is exact for 19 of 29 corpus rows and PERMISSIVE
-for 8 (an unreached directive is treated as live, so analysis parses a
-superset — it can miss a syntax error, never invent one); for
-``expand_aliases`` an unreached conditional DISABLE narrows analysis, which is
-the one place the option axis can still produce a false syntax error, and it is
-pinned as such. Blind for 2 rows in every case — a directive inside an ``eval``
-STRING or a ``source``d FILE, which no non-executing analysis can see. Those
-are the declared residual (R1-C); all are pinned as divergences.
+Consequences, measured against execution and DECLARED rather than hidden. Over
+the 29-row structural corpus that scored the rule (extglob as the detector):
+exact on 19 rows, PERMISSIVE on 8 (an unreached directive is treated as live,
+so analysis parses a superset — it can miss a syntax error, never invent one),
+and blind on 2, a directive inside an ``eval`` STRING or a ``source``d FILE,
+which no non-executing analysis can see. Those counts describe the MONOTONE
+options; ``expand_aliases`` adds one more declared cost of its own — an
+unreached conditional DISABLE narrows analysis, the only place the option axis
+can still produce a false syntax error. All are pinned as divergences (R1-C,
+R8-B).
+
+COST. Parsing per unit is slower than one whole-file parse, because each unit
+pays its own lex and parse setup: measured **3.2x** on a 4,000-line script
+(0.23s -> 0.72s) on the development host. Analysis modes are one-shot CLI
+tools, not an inner loop, so this is recorded rather than optimized; a
+successor may revisit it.
 
 RELATIONSHIP TO ``bash -n`` (R1-E). ``bash -n`` does not execute ``shopt``
 either, so it reports the same false syntax error, and psh's own ``-n``
@@ -123,20 +130,21 @@ ISOLATING_NODES = ('SubshellGroup', 'CommandSubstitution', 'ProcessSubstitution'
 def _normalize_head(args: Sequence[str]) -> List[str]:
     """Strip the prefixes that change WHO runs a command but not WHICH builtin.
 
-    `x=1 command \\shopt -s extglob` runs the same `shopt` the bare spelling
+    `x=1 command sh\\opt -s extglob` runs the same `shopt` the bare spelling
     does, and execution applies its option either way — so an analysis that
     only recognized the bare head silently missed six live spellings while
     claiming to find "every option ENABLE in a parsed unit". Handles, in
-    order: leading `NAME=value` assignment words, a backslash-escaped head
-    (`\\shopt` — bash's suppress-alias-expansion spelling), and any run of
-    `builtin` / `command` prefixes.
+    order: leading `NAME=value` assignment words, backslash quoting ANYWHERE
+    in the head (`\\shopt`, `sh\\opt`, `\\s\\h\\o\\p\\t` — a backslash before
+    an ordinary character is just quoting, and all of those run `shopt`), and
+    any run of `builtin` / `command` prefixes.
     """
     words = list(args)
     while words and _ASSIGNMENT_WORD.match(words[0]):
         words.pop(0)
     while words:
-        if words[0].startswith('\\'):
-            words[0] = words[0][1:]
+        if '\\' in words[0]:
+            words[0] = words[0].replace('\\', '')
             continue
         if words[0] in _TRANSPARENT_HEADS and len(words) > 1:
             words.pop(0)
@@ -151,10 +159,15 @@ def _option_changes(args: Sequence[str]) -> List[Tuple[str, bool]]:
     Recognizes the two spellings that reach the shell's option state:
 
     * ``shopt -s NAME...`` / ``shopt -u NAME...``, including CLUSTERED short
-      flags (`-sq`, `-qs`) — the letter decides, not the exact flag word;
+      flags (`-sq`, `-qs`) — the letter decides, not the exact flag word. A
+      cluster carrying BOTH letters (`-su`) changes nothing: both shells
+      reject it with "cannot set and unset shell options simultaneously",
+      rc 1, option untouched (measured, psh and bash 5.2.26 identical).
     * ``set -o NAME`` / ``set +o NAME``, at ANY position in the argument list
       and in clustered form, so `set -e -o extglob` is seen. The sign carries
-      bash's inversion: `+o` DISABLES.
+      bash's inversion: `+o` DISABLES. Scanning stops at ``--``, which ends
+      options and makes the rest positional parameters — `set -- -o extglob`
+      sets `$1`/`$2`, it does not touch extglob (measured).
 
     Returns only options this session threads; everything else is ignored, so
     an unrelated `shopt -s histappend` is not mistaken for parse-relevant
@@ -169,9 +182,12 @@ def _option_changes(args: Sequence[str]) -> List[Tuple[str, bool]]:
         enable = None
         for word in rest:
             if word.startswith('-') and len(word) > 1:
-                if 's' in word[1:]:
+                letters = word[1:]
+                if 's' in letters and 'u' in letters:
+                    return []      # contradictory: the builtin refuses
+                if 's' in letters:
                     enable = True
-                elif 'u' in word[1:]:
+                elif 'u' in letters:
                     enable = False
         if enable is None:
             return []
@@ -182,6 +198,8 @@ def _option_changes(args: Sequence[str]) -> List[Tuple[str, bool]]:
         index = 0
         while index < len(rest):
             word = rest[index]
+            if word == '--':
+                break          # ends options; the rest are positionals
             if (len(word) > 1 and word[0] in '-+' and 'o' in word[1:]
                     and index + 1 < len(rest)):
                 name = rest[index + 1]
@@ -352,6 +370,15 @@ class AnalysisSession:
         to the shell. Definitions are absorbed even while expansion is OFF,
         because the ``alias`` builtin still DEFINES when ``expand_aliases`` is
         unset — only expansion is gated.
+
+        THE WALK IS THE REAL ONE. This runs ``AliasManager.expand_aliases``
+        over the unit with the session's table as its in-pass overlay, and
+        keeps the overlay rather than the expansion. Absorbing by hand instead
+        — scanning the stream for the words ``alias``/``unalias`` — silently
+        dropped the decider's COMMAND-POSITION guard, so `echo unalias -a`
+        wiped the analysis table and `echo alias x=...` created an entry, in
+        argument position where the shell does neither. A decider's guards are
+        part of the decider; reusing the walk is the only way to inherit them.
         """
         table = self.carrier.alias_manager.aliases
         stream = [t for t in tokens if t.type != TokenType.EOF]
@@ -359,15 +386,8 @@ class AnalysisSession:
                    for t in stream):
             return
         effective = dict(table)
-        index = 0
-        while index < len(stream):
-            token = stream[index]
-            if (token.type == TokenType.WORD
-                    and token.value in ('alias', 'unalias')):
-                index = self.carrier.alias_manager._absorb_alias_command(
-                    stream, index, effective)
-                continue
-            index += 1
+        self.carrier.alias_manager.expand_aliases(
+            list(stream), effective, self.carrier.state.options)
         table.clear()
         table.update(effective)
 
