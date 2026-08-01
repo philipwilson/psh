@@ -164,6 +164,57 @@ class TestPerUnitParseMatchesWholeFileWhenNothingChanges:
         assert FormatterVisitor().visit(session) == FormatterVisitor().visit(whole)
 
 
+class TestMonotoneEnablesCannotInventAnError:
+    """The safety property the whole transitions rule rests on.
+
+    The rule treats an unreached directive as live, which is only defensible
+    because turning a parse-relevant option ON can make analysis accept MORE
+    than the shell would, never make it REJECT what the shell accepts. If some
+    input parsed with an option off and failed with it on, the rule would
+    manufacture exactly the false syntax errors this slot exists to remove.
+
+    This is EVIDENCE over a STATED DOMAIN, not a proof: an adversarial corpus
+    built to break the property — truncated and malformed extglob openers,
+    extglob syntax in the positions the parser treats specially, and
+    non-portable identifiers, which is where posix mode narrows what counts as
+    a name.
+    """
+
+    CORPUS = [
+        "echo @(a", "echo +(", "echo ?(a|b", "echo !(a))", "echo *(a)b)",
+        "case x in @(a) esac", "echo a@(", "echo @()", "echo @(a|b)c(d)",
+        "[[ a == @(a ]]", "echo $((1+2))", "echo ${x@Q}", "f() { :; }",
+        "echo @( a )", "echo x@(y)z", "echo '@(a'", 'echo "@(a"',
+        "echo $äö", "echo ${äö}", "äö=1", "exec {äö}<f", "echo {a,b}",
+        "declare -A m; m[@(k)]=v", "echo a>@(b)", "case @(x) in *) :;; esac",
+        "for i in @(a|b); do :; done", "echo \\@(a", "echo @(a\\|b)",
+        "time @(a)", "! @(a)", "echo @(a)$(echo @(b))",
+    ]
+
+    @staticmethod
+    def _parses(shell, source, **options):
+        opts = dict(shell.state.options)
+        opts.update(options)
+        try:
+            lex_and_parse(source, shell, expand_aliases=True,
+                          lexer_options=opts)
+            return True
+        except Exception:
+            return False
+
+    @pytest.mark.parametrize("option", PARSE_RELEVANT_OPTIONS)
+    @pytest.mark.parametrize("source", CORPUS)
+    def test_enabling_an_option_never_rejects_what_it_accepted(self, option,
+                                                               source):
+        shell = _shell("validate")
+        off = self._parses(shell, source, **{option: False})
+        on = self._parses(shell, source, **{option: True})
+        assert not (off and not on), (
+            f"enabling {option!r} turned a parsing input into a failing one: "
+            f"{source!r} — the monotone-enable rule can invent a syntax error, "
+            "so the transitions rule's safety property does not hold")
+
+
 class TestSessionStateIsIsolatedFromTheShell:
     """The session must not mutate the shell it was asked to analyze FOR."""
 

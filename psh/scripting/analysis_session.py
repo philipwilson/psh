@@ -49,7 +49,7 @@ bash and makes ``--validate`` state-aware: they answer different questions —
 "what does bash's syntax check say?" versus "would this script parse as it
 runs?". The divergence from ``bash -n`` is deliberate and pinned.
 """
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Tuple
 
 from ..ast_nodes import Program
 from ..ast_nodes.commands import SimpleCommand
@@ -235,11 +235,3 @@ def parse_for_analysis(shell: 'Shell', content: str,
     """Parse *content* for analysis under evolving parse-relevant state."""
     return AnalysisSession(shell).analyze(
         content, drop_dangling_at_eof=drop_dangling_at_eof)
-
-
-def unit_texts(shell: 'Shell', content: str) -> List[Optional[str]]:
-    """The unit boundaries analysis would use — for tests and debugging."""
-    session = AnalysisSession(shell)
-    return [unit.text for _, unit in iter_command_units(
-        session.carrier,
-        ProgramSource.command_string(content).make_input_source())]
