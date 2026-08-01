@@ -1,15 +1,15 @@
-"""Characterization pins for the unified `//` substitution scan (T8 item 1).
+"""Characterization pins for the substitution scan's empty-match behaviour.
 
-`_substitute_all_empty_aware` (regex), `_substitute_all_matcher` (extglob
-non-negation) and `_substitute_all_negation` (extglob negation) were three
-hand-rolled left-to-right scans differing only in their zero-width stepping
-bound. They now share one `_substitute_scan(value, replacement, match_at,
-negation=)` loop. These cases lock psh's exact output byte-for-byte so the
-merge stays behaviour-preserving; the empty-match battery
-(tmp/r19-ledgers/T8-probes/item1_empty_match.sh) verified 18/20 match bash and
-2 are the pre-existing per-quantifier `?()` quirk documented in
-parameter_expansion.py (bash suppresses the empty match for `?()` on an empty
-subject; psh does not — left as-is, NOT this scan's concern).
+Originally the T8 item-1 lock for the unified substitution scan (18/20 rows
+bash-verified; 2 rows pinned psh's then-divergent `?()`-on-empty output).
+Slot 3.1 replaced the scan with bash's measured pat_subst / match_upattern
+consumer layer (see the parameter_expansion.py module docstring): the
+`?()`-on-empty quirk CLOSED — bash's match_pattern_char gate makes a scan
+position with an empty remainder eligible only for `*`-headed pattern text —
+so every row here is now the live-bash-verified value (bash 5.2.26,
+re-verified 2026-08-02; the two former divergence pins flipped to `[]`).
+The bash-composition battery holds the corpus-level lock; these rows keep
+the in-process captured_shell reading.
 """
 
 import pytest
@@ -25,18 +25,19 @@ CASES = [
     (r'x=abc; echo "${x//\*/-}"', "abc\n"),
     (r'x=; echo "[${x//\*/-}]"', "[]\n"),
     ('shopt -s extglob; x=abc; echo "${x//?()/-}"', "-a-b-c\n"),
-    # pre-existing `?()`-on-empty quirk (bash: "[]"): psh emits the empty match
-    ('shopt -s extglob; x=; echo "[${x//?()/-}]"', "[-]\n"),
+    # `?()`-head is gated off an empty subject (match_pattern_char: only
+    # `*`-headed pattern text is eligible at an empty position) — bash-verified
+    ('shopt -s extglob; x=; echo "[${x//?()/-}]"', "[]\n"),
     ('shopt -s extglob; x=abc; echo "${x//*(q)/-}"', "-a-b-c\n"),
     ('shopt -s extglob; x=; echo "[${x//*(q)/-}]"', "[-]\n"),
     ('shopt -s extglob; x=aqqb; echo "${x//*(q)/-}"', "-a--b\n"),
     ('shopt -s extglob; x=abc; echo "${x//!(x)/-}"', "-\n"),
-    # the negation zero-width knob: empty subject -> no end-of-subject match
+    # `!(`-head gated off an empty subject (same match_pattern_char rule)
     ('shopt -s extglob; x=; echo "[${x//!(x)/-}]"', "[]\n"),
     ('shopt -s extglob; x=abc; echo "${x//!(b)/-}"', "-\n"),
     ('shopt -s extglob; x=a; echo "${x//!(z)/-}"', "-\n"),
-    # pre-existing `?()`-on-empty quirk, first-match form
-    ('shopt -s extglob; x=; echo "[${x/?()/-}]"', "[-]\n"),
+    # `?()`-head gated off an empty subject, first-match form — bash-verified
+    ('shopt -s extglob; x=; echo "[${x/?()/-}]"', "[]\n"),
     ('shopt -s extglob; x=; echo "[${x/!(x)/-}]"', "[]\n"),
     ('x=; echo "[${x/#/P}]"', "[P]\n"),
 ]

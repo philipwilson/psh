@@ -6,15 +6,43 @@ substitution, substring, case modification, name matching). Parsing of the
 
 Every pattern operator here routes through the ONE compiled pattern engine
 (``pattern_engine``) and its four relations — ``matching_ends`` (prefix
-removal), ``matching_starts`` (suffix removal), ``span_at`` / ``matching_spans``
+removal), ``matching_starts`` (suffix removal), ``span_at`` / ``spanner``
 (substitution), and ``full_match`` (case modification). No operator builds a
 regex or does its own anchoring; plain globs and extglob share one linear,
 memoized matcher (#20 H7), so a plain ``${x##*a*a…*b}`` can no longer backtrack
 exponentially and semantics cannot drift from ``case`` / ``[[ == ]]``.
-"""
-from typing import TYPE_CHECKING, List, Optional, Union
 
-from .pattern_engine import STRING, CompiledPattern, PatternCompiler, string_profile
+Substitution additionally implements bash's MEASURED consumer layer (slot
+3.1; bash-5.2 ``subst.c`` mechanics, corpus-pinned in
+``test_pattern_bash_composition_differential.py``), which sits ON TOP of the
+engine's slice booleans:
+
+1. **empty-subject single-shot** (``pat_subst``): on an empty subject every
+   form reduces to one match decision — one replacement or nothing;
+2. **the pre-test** (``match_upattern``): the pattern is wrapped in
+   anchor-dependent ``*``\\ s and full-matched against the (remaining)
+   subject first; failure suppresses the whole operation. The wrapper
+   inherits the star∘extglob composition rules, which is exactly how
+   ``${v/%!(a)/Z}`` on ``a`` substitutes nothing in bash;
+3. **the end-position gate** (``match_pattern_char``): a scan position with
+   nothing left to read is eligible only if the pattern TEXT starts with a
+   ``*`` (wildcard star or ``*(`` group — a char-level rule in bash);
+4. **the global-replace loop never scans the end-of-subject position**
+   (``pat_subst``'s ``while (*str)``).
+
+Removal has NO consumer layer (pure slice booleans) — measured, same corpus.
+"""
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union, cast
+
+from .pattern_engine import (
+    STRING,
+    CompiledPattern,
+    Extglob,
+    PatternCompiler,
+    Sequence,
+    Star,
+    string_profile,
+)
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -78,19 +106,6 @@ class ParameterExpansionOps:
         """Get the length of a string."""
         return str(len(value))
 
-    def _neg(self, pattern: str) -> bool:
-        """Whether *pattern* contains an extglob negation ``!(...)`` group.
-
-        The one negation-specific behaviour left after the engine unification:
-        bash's substitution never emits an end-of-subject zero-width match for a
-        negation pattern (``${x//!(x)/-}`` on '' -> ''), even on an empty
-        subject, while non-negation forms do (``${x//*(q)/-}`` on '' -> '-').
-        """
-        if not self._extglob:
-            return False
-        from .extglob import _contains_negation
-        return _contains_negation(pattern)
-
     # ---- Pattern removal: matching_ends (prefix) / matching_starts (suffix).
     # Removal is always case-SENSITIVE (bash): the STRING profile.
 
@@ -118,80 +133,136 @@ class ParameterExpansionOps:
         starts = self._compile(pattern).matching_starts(value, len(value), STRING)
         return value[:min(starts)] if starts else value
 
-    # ---- Pattern substitution: span_at / matching_spans (leftmost-longest).
+    # ---- Pattern substitution: the engine's slice booleans under bash's
+    # measured consumer layer (module docstring, mechanisms 1-4; slot 3.1).
+
+    def _sub_machinery(self, pattern: str, anchor: str
+                       ) -> Tuple[CompiledPattern, CompiledPattern, bool]:
+        """Compile *pattern* plus its bash ``match_upattern`` machinery.
+
+        Returns ``(compiled, wrapped, end_eligible)`` for ``anchor`` in
+        ``'any'``/``'beg'``/``'end'``:
+
+        * ``wrapped`` — the pre-test pattern: a ``*`` is prepended unless the
+          head element is a wildcard :class:`Star` (never for ``'beg'``) and
+          appended unless the tail element is one (never for ``'end'``) —
+          bash's exact head/tail rules, including the nuances that a ``*(``
+          group head still gets the prepend and an escaped ``\\*`` tail still
+          gets the append. The wrapper SHARES the compiled element nodes, so
+          its bash-composition routing and enclosure bits are exactly those
+          of the spelled-out ``*pat*`` pattern.
+        * ``end_eligible`` — bash's ``match_pattern_char`` rule for a scan
+          position with an empty remainder: the pattern TEXT begins with a
+          ``*`` — a CHAR-level test, so a wildcard star or a ``*(`` group
+          head passes, an escaped ``\\*`` (compiled ``Literal('*')``) fails.
+        """
+        compiled = self._compile(pattern)
+        elems = compiled.root.elements
+        head = elems[0] if elems else None
+        tail = elems[-1] if elems else None
+        head_star = type(head) is Star
+        end_eligible = head_star or (
+            type(head) is Extglob and cast(Extglob, head).op == '*')
+        pre: Tuple[object, ...] = ()
+        post: Tuple[object, ...] = ()
+        if anchor != 'beg' and not head_star:
+            pre = (Star(),)
+        if anchor != 'end' and not (type(tail) is Star):
+            post = (Star(),)
+        if pre or post:
+            wrapped = CompiledPattern(Sequence(pre + elems + post))
+        else:
+            wrapped = compiled
+        return compiled, wrapped, end_eligible
+
+    def _any_match(self, compiled: CompiledPattern, wrapped: CompiledPattern,
+                   end_eligible: bool, value: str,
+                   profile) -> Optional[Tuple[int, int]]:
+        """bash ``match_upattern`` MATCH_ANY on *value*: the ``(start, end)``
+        of the leftmost-longest ELIGIBLE match, or ``None``.
+
+        Pre-test first (mechanism 2); then the leftmost scan, where the
+        empty-remainder position ``len(value)`` is gated by ``end_eligible``
+        (mechanism 3). Longest-at-position is the engine's ``spanner``."""
+        if not wrapped.full_match(value, profile):
+            return None
+        n = len(value)
+        span_at = compiled.spanner(value, profile)
+        limit = n + 1 if end_eligible else n
+        for p in range(limit):
+            length = span_at(p)
+            if length is not None:
+                return (p, p + length)
+        return None
 
     def substitute_first(self, value: str, pattern: str,
                          replacement: Union[str, list]) -> str:
         """Replace first match (``${v/pat/repl}``)."""
         profile = string_profile(self._nocasematch)
-        span_at = self._compile(pattern).spanner(value, profile)
-        n = len(value)
-        # A zero-width match at end-of-subject is dropped for negation !(x) but
-        # emitted for *(x)/plain *; only negation suppresses it.
-        suppress_end_empty = self._neg(pattern)
-        for p in range(n + 1):
-            length = span_at(p)
-            if length is None:
-                continue
-            if length == 0 and p == n and suppress_end_empty:
-                continue
-            return (value[:p]
-                    + self.render_replacement(replacement, value[p:p + length])
-                    + value[p + length:])
-        return value
+        compiled, wrapped, end_eligible = self._sub_machinery(pattern, 'any')
+        if not compiled.root.elements:
+            # Empty pattern: one zero-width match at position 0.
+            return self.render_replacement(replacement, '') + value
+        m = self._any_match(compiled, wrapped, end_eligible, value, profile)
+        if m is None:
+            return value
+        s, e = m
+        return (value[:s] + self.render_replacement(replacement, value[s:e])
+                + value[e:])
 
     def substitute_all(self, value: str, pattern: str,
                        replacement: Union[str, list]) -> str:
-        """Replace all matches (``${v//pat/repl}``)."""
+        """Replace all matches (``${v//pat/repl}``).
+
+        bash's ``pat_subst`` loop: one MATCH_ANY per REMAINING SUFFIX (the
+        pre-test and end gate apply per suffix), a zero-width match copies
+        one character forward, and the loop runs only while characters
+        remain — the end-of-subject position is never scanned on a
+        non-empty subject (mechanism 4). An empty subject is the
+        single-shot decision (mechanism 1)."""
         profile = string_profile(self._nocasematch)
-        span_at = self._compile(pattern).spanner(value, profile)
-        return self._substitute_scan(
-            value, replacement, span_at, negation=self._neg(pattern))
-
-    def _substitute_scan(self, value: str, replacement: Union[str, list],
-                         match_at, *, negation: bool = False) -> str:
-        """One left-to-right global-substitution scan (all ``//`` paths).
-
-        ``match_at(pos)`` returns the leftmost-LONGEST match length at ``pos``
-        (0 for a zero-width match, ``None`` for no match) — the engine's
-        ``span_at`` relation for plain globs AND extglob (with or without
-        negation), so there is one scanner behind every substitution.
-
-        ``negation`` selects the sole behavioural difference between the paths:
-        the end-of-subject zero-width policy (bash). The non-negation forms
-        suppress a zero-width match at the very end of a NON-empty subject but
-        still emit one on an EMPTY subject (``${x//*(q)/-}`` on '' -> '-');
-        negation suppresses the end-of-subject empty match ALWAYS, even on an
-        empty subject (``${x//!(x)/-}`` on '' -> '').
-        """
+        compiled, wrapped, end_eligible = self._sub_machinery(pattern, 'any')
+        if not compiled.root.elements:
+            # Empty pattern: zero-width before every char (none at the end).
+            rep = self.render_replacement(replacement, '')
+            if not value:
+                return rep
+            return ''.join(rep + ch for ch in value)
+        if not value:
+            m = self._any_match(compiled, wrapped, end_eligible, '', profile)
+            return self.render_replacement(replacement, '') if m else value
         out: List[str] = []
-        pos = 0
         n = len(value)
-        while pos <= n:
-            length = match_at(pos)
-            if length is not None and length > 0:
-                out.append(self.render_replacement(
-                    replacement, value[pos:pos + length]))
-                pos += length
-            elif length is not None and not (pos == n and (negation or n > 0)):
-                # Zero-width match, allowed: NOT the suppressed end-of-subject
-                # match (suppressed for a non-empty subject, and — for negation
-                # — even for an empty subject).
-                out.append(self.render_replacement(replacement, ''))
-                if pos < n:
-                    out.append(value[pos])
-                pos += 1
-            else:
-                if pos < n:
-                    out.append(value[pos])
-                pos += 1
+        pos = 0
+        while pos < n:
+            suffix = value[pos:]
+            m = self._any_match(compiled, wrapped, end_eligible, suffix,
+                                profile)
+            if m is None:
+                break
+            s, e = pos + m[0], pos + m[1]
+            out.append(value[pos:s])
+            out.append(self.render_replacement(replacement, value[s:e]))
+            if s == e:  # zero-width: copy one character to make progress
+                out.append(value[e])
+                e += 1
+            pos = e
+        out.append(value[pos:])
         return ''.join(out)
 
     def substitute_prefix(self, value: str, pattern: str,
                           replacement: Union[str, list]) -> str:
         """Replace an anchored prefix match (``${v/#pat/repl}``)."""
         profile = string_profile(self._nocasematch)
-        length = self._compile(pattern).span_at(value, 0, profile)
+        compiled, wrapped, end_eligible = self._sub_machinery(pattern, 'beg')
+        if not compiled.root.elements:
+            # bash pat_subst special case 1: null pattern prefixes REP.
+            return self.render_replacement(replacement, '') + value
+        if not wrapped.full_match(value, profile):
+            return value
+        if not value and not end_eligible:
+            return value  # match_pattern_char gate at position 0 of ''
+        length = compiled.span_at(value, 0, profile)
         if length is not None:
             return (self.render_replacement(replacement, value[:length])
                     + value[length:])
@@ -201,10 +272,19 @@ class ParameterExpansionOps:
                           replacement: Union[str, list]) -> str:
         """Replace an anchored suffix match (``${v/%pat/repl}``).
 
-        Longest matching suffix = the SMALLEST start index whose suffix matches
-        (``matching_starts`` min)."""
+        Longest matching suffix = the SMALLEST start index whose suffix
+        matches (``matching_starts`` min). No position gate (bash MATCH_END
+        has none) — but the pre-test applies, with only the PREPENDED star
+        (so ``${v/%!(a)/Z}`` on ``a`` is suppressed by the wrapped
+        ``*!(a)`` failing, exactly as measured)."""
         profile = string_profile(self._nocasematch)
-        starts = self._compile(pattern).matching_starts(value, len(value), profile)
+        compiled, wrapped, _end_eligible = self._sub_machinery(pattern, 'end')
+        if not compiled.root.elements:
+            # bash pat_subst special case 2: null pattern appends REP.
+            return value + self.render_replacement(replacement, '')
+        if not wrapped.full_match(value, profile):
+            return value
+        starts = compiled.matching_starts(value, len(value), profile)
         if starts:
             i = min(starts)
             return (value[:i]
