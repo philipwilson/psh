@@ -26,9 +26,6 @@ python run_tests.py --all-nocapture        # Simple mode - run all with -s
 # Run tests manually (for specific scenarios)
 python -m pytest tests/                    # All tests, serially (subshell tests pass without -s as of v0.195.0)
 python -m pytest tests/integration/subshells/      # Subshell tests (no -s needed)
-python -m pytest tests/test_foo.py -v     # Specific test file
-python -m pytest tests/unit/builtins/ -v  # Specific test category
-python -m pytest -k "test_name" -xvs      # Specific test with output
 
 # Manual parallel runs MUST exclude serial-marked tests, or xdist workers crash
 # (process/signal/job-control + permanent-fd tests; see "Known Test Issues").
@@ -42,37 +39,12 @@ python run_conformance_tests.py           # Full conformance suite
 python run_conformance_tests.py --posix-only    # POSIX compliance only
 python run_conformance_tests.py --bash-only     # Bash compatibility only
 python run_conformance_tests.py --summary-only  # Just show summary
-
-# Run specific test categories
-python -m pytest tests/unit/              # Unit tests (builtins, expansion, lexer, parser)
-python -m pytest tests/integration/       # Integration tests (pipelines, control flow)
-python -m pytest tests/system/            # System tests (interactive, initialization)
-python -m pytest tests/performance/       # Performance benchmarks
-
-# Run psh
-python -m psh                              # Interactive shell
-python -m psh script.sh                    # Run script
-python -m psh -c "echo hello"             # Run command
-
-# Debug options
-python -m psh --debug-ast                  # Show AST before execution
-python -m psh --debug-tokens              # Show tokenization
-python -m psh --debug-expansion           # Trace expansions
-python -m psh --debug-exec                 # Debug executor (process groups, signals)
-python -m psh --validate script.sh        # Validate without executing
 ```
 
+(`python -m psh --help` lists the run modes and the `--debug-*` /
+`--validate` flags; `ls tests/` shows the suite layout.)
+
 ## Test Organization
-
-### Main Test Suite (`tests/`)
-- **Location**: `/tests/`
-- **Organization**:
-  - `unit/` - Unit tests (builtins, expansion, lexer, parser)
-  - `integration/` - Integration tests (pipelines, control flow, functions)
-  - `system/` - System tests (interactive, initialization, scripts)
-  - `conformance/` - POSIX/bash compatibility tests
-- **Command**: `python -m pytest tests/`
-
 
 **Interactive testing**
 
@@ -132,32 +104,14 @@ rotting as a scratch file.
 
 ### Release workflow (per completed enhancement)
 
-The gate is **local** — GitHub's per-PR `tests.yml` workflow is intentionally
-disabled (`gh workflow disable tests.yml`, state `disabled_manually`; re-enable
-with `gh workflow enable tests.yml`). The nightly full+bash+coverage run
-(`nightly.yml`) stays on as a safety net. `release-tag.yml` auto-creates the
-annotated `vX.Y.Z` tag when `psh/version.py` changes on main, so tagging is
-automatic — there is **no manual `git tag`** step.
-
-1. Work on a `fix/<topic>` branch.
-2. Full suite green LOCALLY: `python run_tests.py --parallel > tmp/test-results-N.txt 2>&1`
-   (this is THE gate). Also `ruff check psh tests tools` and `mypy` clean.
-3. Update `psh/version.py` (bump `__version__`) and add a `CHANGELOG.md` entry.
-4. Update the version string in **all** of these files (they must always match):
-   - `README.md` — the `**Current Version**:` line (also the `**Tests**:` and
-     `**Test Coverage**:` counts and Recent Development when they changed)
-   - `ARCHITECTURE.md` — the `**Current Version**:` line
-5. **Attestation (campaign E4):** commit the version bump, then at that commit
-   run `python run_tests.py --parallel --write-attestation > tmp/gate-attest.txt 2>&1`
-   (on a green run it also runs ruff+mypy itself and writes
-   `gate_attestation.json`). Commit `gate_attestation.json` as the FINAL
-   commit — `release-tag.yml` verifies it before tagging (version matches
-   HEAD's `psh/version.py`, gated commit is an ancestor, and nothing but the
-   attestation changed since the gate ran) and FAILS loudly otherwise.
-6. Push, open a PR (`gh pr create --head <branch>`),
-   then merge immediately (`gh pr merge <n> --merge --delete-branch` — no CI to
-   wait on). `release-tag.yml` creates the `vX.Y.Z` tag on the version bump
-   (attestation-gated as above); verify with `git fetch --tags`.
+The full procedure lives in the `psh-release` skill
+(`.claude/skills/psh-release/SKILL.md`) — read it before cutting a release.
+Two prohibitions that must hold even without it loaded:
+**there is no manual `git tag` step** (`release-tag.yml` auto-tags on a
+`psh/version.py` change), and `gate_attestation.json` must be the **FINAL**
+commit of the release branch or tagging fails loudly. The gate is **local**:
+per-PR CI is intentionally disabled, so a green `run_tests.py --parallel`,
+`ruff check psh tests tools`, and `mypy` are your responsibility before merging.
 
 ### Architecture documentation files and what they contain
 
@@ -251,23 +205,10 @@ Each major subsystem has its own CLAUDE.md with detailed guidance:
 | **Interactive** | `psh/interactive/CLAUDE.md` | REPL, job control, history, completion |
 
 These provide focused documentation for working within each subsystem.
-
-### Key Files
-- `psh/shell.py` - Main orchestrator (thin wiring; no execution logic)
-- `psh/parser/` - Recursive descent parser package
-- `psh/lexer/` - Modular tokenizer package with recognizer architecture
-- `psh/executor/` - Execution engine with visitor pattern
-- `psh/core/state.py` - Central state management
-- `psh/expansion/manager.py` - Orchestrates all expansions
-
-### Component Managers
-Each manager handles a specific aspect:
-- `ExpansionManager` - Variable, command substitution, globs, etc.
-- `IOManager` - Redirections, pipes, heredocs
-- `JobManager` - Background jobs, job control
-- `ProcessLauncher` - Unified process creation with proper job control (single shared instance on `shell.process_launcher`)
-- `FunctionManager` - Shell function definitions
-- `AliasManager` - Shell aliases
+For the file layout and the component managers (`ExpansionManager`,
+`IOManager`, `JobManager`, `ProcessLauncher`, `FunctionManager`,
+`AliasManager`), read ARCHITECTURE.md's Quick Map — it is the maintained
+copy.
 
 ### Process Execution Architecture
 PSH has one fork helper and one child signal policy; job-controlled process
@@ -304,13 +245,7 @@ Use Word helper properties for semantic queries:
 | `word.has_unquoted_expansion` | unquoted + `$` in arg | Vulnerable to splitting |
 | `word.effective_quote_char` | `quote_types[i]` | The quote char (`'`, `"`, `$'`, or None) |
 
-### Execution Flow
-```
-Input → Line Continuation → Tokenization → Parsing → AST → Expansion → Execution
-                                                                         ↓
-                                                                   ProcessLauncher
-                                                                   (fork + job control)
-```
+(The end-to-end stage pipeline lives in ARCHITECTURE.md's Quick Map.)
 
 ## Development Guidelines
 
@@ -430,13 +365,6 @@ See `docs/test_pattern_guide.md` for examples and patterns.
 
 The canonical version lives in `psh/version.py`; see `CHANGELOG.md` for
 detailed history. (Do not record the version number here — it goes stale.)
-
-## Debugging Tips
-
-1. **Import Errors**: Clear `__pycache__` directories if you see module import issues
-2. **Test Failures**: Run failing tests individually to check for test pollution
-3. **Parser Issues**: Use `--debug-ast` and `--debug-tokens` to see parsing details
-4. **Expansion Issues**: Use `--debug-expansion` to trace variable/command expansion
 
 ## Important Notes
 

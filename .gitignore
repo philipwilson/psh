@@ -151,5 +151,10 @@ cython_debug/
 
 # macOS
 .DS_Store
-# Claude Code local state (worktrees, agent transcripts)
-.claude/
+# Claude Code local state (worktrees, agent transcripts, local settings).
+# `.claude/*` rather than `.claude/` so the negation below can take effect —
+# git does not descend into an excluded directory, so a `!` rule under a
+# `.claude/` exclusion would be inert.
+.claude/*
+# ...except shared skills, which are project documentation and are checked in.
+!.claude/skills/
