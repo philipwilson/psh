@@ -355,13 +355,44 @@ class TestDebugAndAnalysisFlags:
         assert config.option_transitions == (
             ('debug-expansion-detail', True), ('debug-expansion', True))
 
-    def test_analysis_modes_ordered(self):
-        config = parse_invocation(['--security', '--format', 's.sh'])
-        assert config.analysis_modes == ('security', 'format')
+    # DECLARED FLIP (remediation 2.6, MEDIUM-9(b)): this class used to pin
+    # `parse_invocation(['--security', '--format', ...])` RETAINING both modes
+    # in order. Retaining them was never honoured downstream — all 26 measured
+    # combinations collapsed to one fixed-priority winner and none said so, so
+    # `psh --validate --lint f.sh` silently never linted. Two DISTINCT modes
+    # are now a usage error raised here, before any Shell exists; repeating the
+    # SAME flag still dedupes.
+
+    @pytest.mark.parametrize("flags", [
+        # ordered pairs, so the rejection is not one lucky ordering
+        ['--security', '--format'], ['--format', '--security'],
+        ['--validate', '--lint'], ['--lint', '--validate'],
+        ['--metrics', '--security'], ['--format', '--metrics'],
+        # three-way and the full five, in both directions
+        ['--validate', '--lint', '--security'],
+        ['--lint', '--security', '--validate'],
+        ['--validate', '--format', '--metrics', '--security', '--lint'],
+        ['--lint', '--security', '--metrics', '--format', '--validate'],
+        # a duplicate alongside a distinct mode is still two distinct modes
+        ['--lint', '--lint', '--validate'],
+    ])
+    def test_distinct_analysis_modes_rejected(self, flags):
+        with pytest.raises(InvocationError) as caught:
+            parse_invocation(flags + ['s.sh'])
+        assert caught.value.status == 2
+        # The message names EVERY offending flag, so the user sees what they
+        # asked for instead of guessing which one would have won.
+        for flag in dict.fromkeys(flags):
+            assert flag in caught.value.lines[0], caught.value.lines
 
     def test_analysis_mode_deduplicated(self):
         config = parse_invocation(['--lint', '--lint', 's.sh'])
         assert config.analysis_modes == ('lint',)
+
+    def test_single_analysis_mode_still_accepted(self):
+        for mode in ('validate', 'format', 'metrics', 'security', 'lint'):
+            config = parse_invocation([f'--{mode}', 's.sh'])
+            assert config.analysis_modes == (mode,)
 
 
 class TestHelpVersionFlags:

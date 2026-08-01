@@ -296,6 +296,21 @@ def parse_invocation(argv: List[str]) -> InvocationConfig:
 
     operands = argv[i:]
 
+    # Analysis modes are MUTUALLY EXCLUSIVE. Each one owns the run's whole
+    # stdout and its exit status, so there is nothing to compose: psh used to
+    # keep every requested mode and then let a fixed-priority chain pick one,
+    # so `psh --validate --lint f.sh` silently never linted (26 of 26 measured
+    # combinations collapsed to one winner, 0 of them said so). Rejecting here
+    # — in the pure parser, before any Shell exists — makes that silent drop
+    # unrepresentable rather than merely unlikely. Repeating the SAME flag
+    # stays legal (deduped above), like every other psh option.
+    if len(st.analysis) > 1:
+        raise InvocationError((
+            "psh: only one analysis mode may be given: "
+            + " ".join(f"--{mode}" for mode in st.analysis),
+            "Try 'psh --help' for more information.",
+        ))
+
     # Validate the parser BEFORE any Shell can exist (probe class A4a: an
     # invalid parser used to run the rc file first).
     parser: Optional[str] = None

@@ -34,7 +34,7 @@ from .executor.job_control import JobManager
 from .expansion import ExpansionManager
 from .expansion.aliases import AliasManager
 from .interactive import InteractiveManager, load_rc_file
-from .invocation import InvocationConfig, SourceKind
+from .invocation import ANALYSIS_MODES, InvocationConfig, SourceKind
 from .io_redirect import IOManager
 from .scripting.base import ScriptManager
 
@@ -42,6 +42,29 @@ if TYPE_CHECKING:
     from .core.process_lease import ActivationLease
     from .executor.core import ExecutorVisitor
     from .lexer.token_types import Token
+
+
+#: The legacy keyword spelling of each analysis mode, in ANALYSIS_MODES order.
+ANALYSIS_MODES_ONLY = tuple(f"{mode}_only" for mode in ANALYSIS_MODES)
+
+
+def _single_analysis_mode(**flags: bool) -> Optional[str]:
+    """Collapse the legacy per-mode keyword flags to ONE mode name, or None.
+
+    The keyword form (``validate_only=True``) is the construction path kept for
+    embedders and the test tree; the CLI reaches the same place through
+    ``InvocationConfig.analysis_modes``. Either way at most one mode may be
+    live, so asking for two raises here rather than being silently resolved by
+    a downstream priority chain (the MEDIUM-9(b) defect). Keyword names are
+    ``<mode>_only``; the mode order is ``invocation.ANALYSIS_MODES``.
+    """
+    chosen = [name[: -len("_only")] for name in ANALYSIS_MODES_ONLY
+              if flags.get(name)]
+    if len(chosen) > 1:
+        raise ValueError(
+            "only one analysis mode may be set, got: "
+            + ", ".join(f"{mode}_only" for mode in chosen))
+    return chosen[0] if chosen else None
 
 
 class Shell:
@@ -87,6 +110,8 @@ class Shell:
             ast_format = invocation.ast_format
             force_interactive = invocation.interactive
             command_mode = invocation.source_kind is SourceKind.COMMAND
+            # parse_invocation rejects two DISTINCT modes, so this tuple holds
+            # at most one name.
             validate_only = "validate" in invocation.analysis_modes
             format_only = "format" in invocation.analysis_modes
             metrics_only = "metrics" in invocation.analysis_modes
@@ -105,15 +130,19 @@ class Shell:
         if command_mode:
             self.state.options['command_mode'] = True
 
-        # CLI analysis-mode flags (--validate/--format/--metrics/--security/
-        # --lint) and AST debug format. Stored verbatim for the callers that
-        # branch on them: __main__/scripting.visitor_modes and the source
-        # processor's validate-only path.
-        self.validate_only = validate_only
-        self.format_only = format_only
-        self.metrics_only = metrics_only
-        self.security_only = security_only
-        self.lint_only = lint_only
+        # The CLI analysis mode (--validate/--format/--metrics/--security/
+        # --lint), as ONE name or None — never a set of booleans that could
+        # disagree. Five independent flags made "two modes requested" a
+        # representable state that nothing downstream could honour, so
+        # `apply_visitor_mode` silently ran the first one its priority chain
+        # matched; the single name removes the state instead of handling it.
+        # `parse_invocation` rejects the CLI spelling of that state before any
+        # Shell exists; this constructor rejects the LEGACY keyword spelling of
+        # it, so an embedder cannot construct the ambiguity either.
+        self.analysis_mode = _single_analysis_mode(
+            validate_only=validate_only, format_only=format_only,
+            metrics_only=metrics_only, security_only=security_only,
+            lint_only=lint_only)
         self.ast_format = ast_format
 
         self._init_managers()

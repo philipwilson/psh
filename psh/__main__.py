@@ -64,6 +64,7 @@ Options:
   --metrics        Analyze script and print code metrics
   --security       Perform security analysis on script
   --lint           Perform linting analysis on script
+                   (the five analysis modes are mutually exclusive)
 
 Arguments:
   script           Script file to execute
