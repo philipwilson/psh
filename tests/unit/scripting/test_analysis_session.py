@@ -360,15 +360,19 @@ class TestCarrierDoesNotInheritDebugOptions:
             AnalysisSession(shell)
         assert shell.state.options['debug-exec'] is True
 
-    def test_constructing_the_carrier_writes_nothing_to_stderr(self, capsys):
+    def test_constructing_the_carrier_writes_nothing_to_stderr(self):
         """The leak was a PRINT, so the pin is about output, not about a flag:
         a future line emitted under some other debug option fails here too."""
+        import contextlib
+        import io
+
         shell = Shell(norc=True)
         for name in DEBUG_OPTIONS:
             shell.state.options[name] = True
-        capsys.readouterr()
-        AnalysisSession(shell)
-        assert capsys.readouterr().err == ""
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            AnalysisSession(shell)
+        assert err.getvalue() == ""
 
 
 class TestShoptTableRoutingIsDerived:
@@ -555,10 +559,29 @@ class TestPerUnitParseMatchesWholeFileWhenNothingChanges:
         "trap 'echo bye' EXIT\necho body\n",
     ]
 
+    @staticmethod
+    def _render(shell, program):
+        """Run the REAL mode runner and return (stdout, stderr, status).
+
+        `contextlib.redirect_*` rather than pytest's capture fixture: the
+        project's Output Capture Rules reserve that fixture for cases these
+        visitors are not (they `print` at the Python level and touch no fds),
+        and the fixture ratchet caps how many files may request it.
+        """
+        import contextlib
+        import io
+
+        from psh.scripting.visitor_modes import apply_visitor_mode
+
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = apply_visitor_mode(shell, program)
+        return out.getvalue(), err.getvalue(), status
+
     @pytest.mark.parametrize("mode", ["validate", "format", "metrics",
                                       "security", "lint"])
     @pytest.mark.parametrize("source", PARITY_CORPUS)
-    def test_every_mode_renders_byte_identically(self, capsys, mode, source):
+    def test_every_mode_renders_byte_identically(self, mode, source):
         """The exit-code contract's other half: for input that changes no
         parse-relevant state, going per-unit must not move what ANY mode
         prints, byte for byte, nor the status it returns.
@@ -567,26 +590,21 @@ class TestPerUnitParseMatchesWholeFileWhenNothingChanges:
         than re-deriving each mode's rendering — the same reuse rule the code
         under test is held to.
         """
-        from psh.scripting.visitor_modes import apply_visitor_mode
-
         shell = _shell(mode)
         expand = mode != "format"
         session = parse_for_analysis(shell, source)
         whole = _whole_file_parse(shell, source, expand_aliases=expand)
 
-        capsys.readouterr()
-        session_status = apply_visitor_mode(shell, session)
-        session_out = capsys.readouterr()
-        whole_status = apply_visitor_mode(shell, whole)
-        whole_out = capsys.readouterr()
+        session_out, session_err, session_status = self._render(shell, session)
+        whole_out, whole_err, whole_status = self._render(shell, whole)
 
-        assert session_out.out == whole_out.out, (
+        assert session_out == whole_out, (
             f"{mode} stdout moved for a no-option-change script")
-        assert session_out.err == whole_out.err, (
+        assert session_err == whole_err, (
             f"{mode} stderr moved for a no-option-change script")
         assert session_status == whole_status
 
-    def test_the_parity_comparison_can_actually_fail(self, capsys):
+    def test_the_parity_comparison_can_actually_fail(self):
         """MUTATION PROOF: a comparison that never differs proves nothing.
 
         The F7 shape — a heredoc body followed by later commands — is the one
