@@ -447,10 +447,13 @@ def _extglob_consume(pattern: str, s: str, for_pathname: bool = False,
     delegates to the memoized matcher (``pattern_engine``): the pattern is
     compiled once and each ``(node, position)`` state is evaluated at most once,
     so the ``?(a)…!(z)`` fan-out that made the former recursive ``_match_from``
-    exponential is now polynomial. The reachable-end-set contract is unchanged —
-    verified equal to the former matcher over ~24k random cases. The import is
-    lazy to avoid a top-level cycle (``pattern_engine`` imports this module's
-    scanning/char primitives)."""
+    exponential is now polynomial. The SET contract ("every ``k`` such that
+    the pattern fully matches ``s[:k]``") is unchanged; since slot 3.1 the
+    engine answers it per-slice for bash-composition patterns (a group
+    directly after a wildcard run — ``pattern_engine._seq_bash_quirk``) and
+    by the forward DP for everything else. The import is lazy to avoid a
+    top-level cycle (``pattern_engine`` imports this module's scanning/char
+    primitives)."""
     from .pattern_engine import compile_cached, reachable_ends
     return set(reachable_ends(compile_cached(pattern), s,
                               for_pathname=for_pathname, ic=ic))

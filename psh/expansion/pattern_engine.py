@@ -37,6 +37,19 @@ extglob semantics cannot drift between them:
    :class:`CompiledPattern` exposes: ``full_match``, ``matching_ends`` (prefix
    removal), ``matching_starts`` (suffix removal), and ``span_at`` /
    ``matching_spans`` (leftmost-longest substitution).
+3. EXCEPT for bash-composition patterns (slot 3.1): where an extglob group
+   sits directly after a wildcard run, bash 5.2's measured semantics are
+   SLICE-END-RELATIVE (the star case's strict continuation bounds, its
+   ``?(``/``*(`` try-then-skip branches, and the unenclosed-negation
+   end-of-string rule — ``lib/glob/sm_loop.c``), so "matches ``text[i:k]``"
+   is a per-``(i, k)`` boolean that no single forward pass can produce.
+   :func:`_seq_bash_quirk` routes exactly those patterns to
+   :class:`_BashMatcher` (a memoized port of the measured model — 64,575
+   corpus cells against live bash, 0 mismatches; the lock is
+   ``test_pattern_bash_composition_differential.py``), and the relations
+   evaluate them as per-slice booleans. Every other pattern keeps the fast
+   paths above unchanged. Flagged-pattern recursion is bounded by PATTERN
+   structure (star-runs + group dispatches + nesting), never subject length.
 
 The compiled AST carries no locale or policy state: :class:`MatchProfile`
 supplies ``for_pathname`` (whether ``*``/``?`` cross ``/``) and ``ic``
@@ -1005,9 +1018,13 @@ class CompiledPattern:
     def matching_spans(self, text: str,
                        profile: MatchProfile = STRING) -> Iterator[Tuple[int, int]]:
         """Left-to-right leftmost-longest non-overlapping match spans
-        ``(start, end)`` over *text* — the ``${v//}`` global-substitution walk.
-        Zero-width matches advance by one; the consumer applies bash's
-        end-of-subject empty-match policy."""
+        ``(start, end)`` over *text*. Zero-width matches advance by one.
+
+        A generic relation (pinned by ``test_pattern_relations.py``); the
+        ``${v//}`` consumer no longer walks it directly — substitution
+        implements bash's measured ``pat_subst`` loop over ``spanner`` with
+        the pre-test and position gate at the consumer seam
+        (``parameter_expansion.py``, slot 3.1)."""
         span_at = self.spanner(text, profile)
         pos = 0
         n = len(text)

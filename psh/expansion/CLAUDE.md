@@ -31,9 +31,9 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `operands.py` | `OperandOpsMixin` - expands pattern/replacement operands, `glob_escape()` |
 | `fields.py` | `FieldExpansionMixin` - `expand_to_fields()` for multi-field `$@`/array results |
 | `pattern.py` | `match_shell_pattern()` - the thin full-match facade for `case`/`[[ == ]]`/name filters: `PatternCompiler.compile(pattern).full_match(...)` — plain AND extglob route through the one engine (campaign W3; no regex path) |
-| `pattern_engine.py` | THE compiled shell-pattern engine: `PatternCompiler.compile`(raw string)/`compile_protected`(protection runs) → `CompiledPattern` with the FOUR relations (`full_match`/`matching_ends`/`matching_starts`/`span_at`+`matching_spans`); iterative stars + literal chains (two-pointer boolean / forward position-set DP — star count never consumes recursion frames), recursion ONLY for extglob nesting depth; `MatchProfile` (for_pathname, ic). Legacy `compile_pattern`/`reachable_ends`/`fullmatch`/`match_at`/`count_states` kept (see "Pattern matching engine" below) |
+| `pattern_engine.py` | THE compiled shell-pattern engine: `PatternCompiler.compile`(raw string)/`compile_protected`(protection runs) → `CompiledPattern` with the FOUR relations (`full_match`/`matching_ends`/`matching_starts`/`span_at`+`matching_spans`); iterative stars + literal chains (two-pointer boolean / forward position-set DP — star count never consumes recursion frames), recursion ONLY for extglob nesting depth; bash-composition patterns (a group directly after a wildcard run — `pattern_engine.py#_seq_bash_quirk`) route to the measured slice-relative matcher `pattern_engine.py#_BashMatcher` (slot 3.1); `MatchProfile` (for_pathname, ic). Legacy `compile_pattern`/`reachable_ends`/`fullmatch`/`match_at`/`count_states` kept (see "Pattern matching engine" below) |
 | `extglob.py` | Extglob scanning primitives (`_find_matching_paren`, `_split_pattern_list`, `_bracket_end`, `_bracket_match`), locale-aware bracket membership (`_bracket_to_regex`), and thin `extglob_fullmatch`/`extglob_match_at`/`_extglob_consume` that delegate to `pattern_engine`. (`extglob_to_regex`/`_convert_pattern` build no production regex after W3 but are PERMANENT reference ORACLES — campaign Q3 integrator ruling, NOT deferred deletions — the regex-backed differential cross-check against `pattern_engine` in `test_pattern_engine_matcher.py`; the fully-unreferenced `glob_to_regex_body` sibling was deleted in the campaign Q2 census) |
-| `parameter_expansion.py` | `ParameterExpansionOps` - string ops behind the operators (incl. `PATSUB_MATCH`); the engine, not the `ParameterExpansion` AST node |
+| `parameter_expansion.py` | `ParameterExpansionOps` - string ops behind the operators (incl. `PATSUB_MATCH`); the engine, not the `ParameterExpansion` AST node. Substitution implements bash's measured pat_subst/match_upattern consumer layer (empty-subject single-shot, `*`-wrapped pre-test, end-position gate, end-never-scanned `//` loop — `parameter_expansion.py#_sub_machinery`/`#_any_match`, slot 3.1); removal is pure slice booleans |
 | `command_sub.py` | `CommandSubstitutionExecutor` - runs `$(cmd)` and `` `cmd` ``; the engine, not the `CommandSubstitution` AST node |
 | `tilde.py` | `TildeExpander` - handles `~` and `~user` |
 | `glob.py` | `GlobExpander` - pathname expansion (wildcards). (`normalize_bracket_expressions`/`_POSIX_CLASSES_PATHNAME` build no production output after W3 but are the PERMANENT `fnmatch` reference ORACLE — campaign Q3 ruling, NOT a deferred deletion — cross-checking `_component_matcher` in `test_unified_glob_converter.py`) |
@@ -283,7 +283,25 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
   `matching_starts(text, end)` (suffix removal — `%`=max start, `%%`=min start),
   and `span_at(text, pos)` / `matching_spans(text)` (leftmost-longest
   substitution). `parameter_expansion.py` calls these directly — no operator
-  builds a regex or does its own anchoring.
+  builds a regex or does its own anchoring; substitution ADDITIONALLY applies
+  bash's measured consumer layer at the seam (empty-subject single-shot,
+  `*`-wrapped pre-test, end-position gate, end-never-scanned `//` loop —
+  `parameter_expansion.py#_sub_machinery`/`#_any_match`, slot 3.1), while
+  removal is pure slice booleans.
+- **Bash-composition patterns are SLICE-END-RELATIVE** (slot 3.1): where an
+  extglob group sits directly after a wildcard run, bash 5.2's measured
+  semantics (strict star continuation bounds, `?(`/`*(` try-then-skip,
+  the unenclosed-negation end-of-string rule) depend on where the matched
+  slice ENDS, so "matches `text[i:k]`" is a per-`(i,k)` boolean no single
+  forward pass can produce. `pattern_engine.py#_seq_bash_quirk` (compile-time,
+  transitive through alternatives; `Extglob.enclosed` carries the negation
+  rule's input) routes exactly those patterns to
+  `pattern_engine.py#_BashMatcher`, and the relations evaluate them per-slice.
+  Every other pattern keeps the fast paths below unchanged. The corpus lock
+  (64,575 deterministic cells vs live bash) is
+  `test_pattern_bash_composition_differential.py`; the same flag is the
+  regex-oracle exclusion predicate in `test_pattern_engine_matcher.py` (the
+  regex model cannot express this composition).
 - **Stars and literal chains are ITERATIVE; recursion only for extglob
   nesting.** The boolean full match for extglob-free sequences (every plain
   glob) is the classic two-pointer backtrack — zero recursion, one backtrack
@@ -297,7 +315,10 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
   depth, a compile-time structural property; at the bound psh raises
   `RecursionError` as an expected shell error (probed: bash 5.2 SEGFAULTS at
   depth 30k where psh fails cleanly — pinned in `test_pattern_relations.py` +
-  the nightly benchmark tier).
+  the nightly benchmark tier). Flagged bash-composition patterns additionally
+  recurse per star-run/group dispatch — still pattern-structure-bounded,
+  never subject-length; the contract (100-unit chain fine, 1000-unit chain =
+  clean `RecursionError`) is pinned in the composition battery.
 - **Policies stay outside the matcher** as a typed `MatchProfile`
   (`for_pathname`, `ic`); bracket membership and case folding delegate to the
   shared, locale-aware `extglob._bracket_match`/`_eq`, so POSIX `[:class:]`
@@ -312,9 +333,12 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
   bracket-escaping and `operands.glob_escape`'s incomplete set).
 
 Complexity is guarded deterministically by `count_states()` (see
-`tests/unit/expansion/test_pattern_engine_matcher.py` and
-`test_pattern_relations.py`); behavior is locked against live bash in
-`test_pattern_engine_differential.py`.
+`tests/unit/expansion/test_pattern_engine_matcher.py`,
+`test_pattern_relations.py`, and the `_BashMatcher` bounds in
+`test_pattern_bash_composition_differential.py`); behavior is locked against
+live bash in `test_pattern_engine_differential.py` (every row an equality
+lock — the former `KNOWN_DIVERGENCES` q4/neg7 set CLOSED in slot 3.1) and
+the composition corpus battery.
 
 ### Indirection: `${!name}`
 
