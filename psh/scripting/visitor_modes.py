@@ -37,10 +37,12 @@ def _parse_for_analysis(shell: 'Shell', content: str,
     posix, the alias table, the active parser) from each unit to the next
     WITHOUT executing anything — so a script that enables extglob on line 1 and
     uses ``+(...)`` on line 2 analyzes exactly as it runs (remediation
-    MEDIUM-9(a)). Each unit goes through ``lex_parse.lex_and_parse``, the same
-    heredoc-aware lex→alias→parse pipeline execution uses, so analysis honours
-    ``--parser`` and threads lexer options into nested-substitution re-lexing
-    (reappraisal #19 H11). A heredoc BODY stays attached to its redirect.
+    MEDIUM-9(a)). Each unit goes through ``lex_parse.lex_and_expand`` then
+    ``lex_parse.parse_tokens`` — the same heredoc-aware lex→alias→parse
+    pipeline execution uses, split so the session can feed ONE token stream to
+    both the parse and its state absorption — so analysis honours ``--parser``
+    and threads lexer options into nested-substitution re-lexing (reappraisal
+    #19 H11). A heredoc BODY stays attached to its redirect.
 
     Line continuations are joined per unit (as
     ``SourceProcessor._preprocess_command`` does): the lexer does NOT collapse a

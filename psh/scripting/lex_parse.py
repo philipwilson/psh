@@ -17,7 +17,10 @@ sequence out by hand and the analysis copy had DRIFTED — it ignored
   called by the two active-parser callers.
 - :func:`lex_and_parse` — ``lex_and_expand`` + ``parse_tokens``: the convenience
   chokepoint for a caller that needs neither the intermediate token stream nor a
-  parser pinned to recursive descent.
+  parser pinned to recursive descent. It is also the WHOLE-FILE-PARSE ORACLE the
+  analysis-session tests compare against: they assert that parsing a script unit
+  by unit reproduces what one whole-file parse produced, so this function has
+  cross-module test consumers and must not be inlined away as unused.
 
 The completeness trial (``command_accumulator``) shares :func:`lex_and_expand`
 but keeps its OWN recursive-descent ``Parser`` construction: the interactive

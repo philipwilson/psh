@@ -117,6 +117,14 @@ class TestTransitionRule:
         ("shopt -s extglob | cat\necho @(a|b)\n", False),
         ("x=$(shopt -s extglob)\necho @(a|b)\n", False),
         ("shopt -s extglob &\nwait\necho @(a|b)\n", False),
+        # R11-B N1: the rest of the never-reached class, so the corpus matches
+        # the declared rule instead of sampling it. Each is treated as LIVE by
+        # the monotone rule (analysis cannot evaluate reachability) — these
+        # rows assert the ANALYSIS side of that declared permissiveness.
+        ("e() { shopt -s extglob; }\necho @(a|b)\n", True),
+        ("while false; do shopt -s extglob; done\necho @(a|b)\n", True),
+        ("case z in a) shopt -s extglob;; esac\necho @(a|b)\n", True),
+        ("true || shopt -s extglob\necho @(a|b)\n", True),
     ])
     def test_isolation_decides_whether_a_change_applies(self, tmp_path,
                                                         script, applies):
@@ -518,6 +526,16 @@ class TestDirectiveSpellingAxis:
         "\\s\\h\\o\\p\\t -s extglob",
         # the -o pair need not be first, and -- after it does not undo it
         "set -o extglob -- a b",
+        # R11-A: quoting a command NAME does not change which command runs, so
+        # these all execute `shopt` — measured in psh and bash 5.2.26.
+        "'shopt' -s extglob",
+        '"shopt" -s extglob',
+        "sh''opt -s extglob",
+        "'sh'opt -s extglob",
+        "s'h'opt -s extglob",
+        # unquoted backslashes in the FLAG and the OPERAND resolve too
+        "shopt -s ext\\glob",
+        "shopt \\-s extglob",
     ]
 
     #: Near-misses: they LOOK like directives and must NOT be treated as one.
@@ -540,6 +558,15 @@ class TestDirectiveSpellingAxis:
         # untouched) — measured identical in psh and bash 5.2.26.
         "shopt -su extglob",
         "shopt -us extglob",
+        # R11-A: a QUOTED backslash is ordinary text, so these are commands of
+        # that literal name, not `shopt`. Both shells agree; the recognizer
+        # must read the lexer's per-part quote context rather than strip
+        # backslashes on sight.
+        "'sh\\opt' -s extglob",
+        '"sh\\\\opt" -s extglob',
+        "'shopt -s extglob'",
+        # the operand mirror: a quoted backslash in the OPTION NAME too
+        "shopt -s 'ext\\glob'",
     ]
 
     @pytest.mark.parametrize("directive", ENABLES)
@@ -700,3 +727,116 @@ class TestAliasPositionDiscipline:
         assert execution.returncode == analysis.returncode, (
             f"execution rc={execution.returncode} but analysis "
             f"rc={analysis.returncode} for:\n{script}")
+
+
+class TestQuotedHeadIsNotADirective:
+    """R11-A blocker pins. THREE-POINT SHAPE: green at base 42f75591, RED at
+    the dissolved tip b254ca52, green here.
+
+    `_normalize_head` stripped backslashes unconditionally, so `'sh\\opt'` —
+    a word the shell treats as a command of that literal name — was read as
+    `shopt`. The lexer already knows the difference: every LiteralPart carries
+    `quoted`/`quote_char`, and a backslash is quoting only in an UNQUOTED part.
+
+    This was the slot's THIRD re-derivation of something the pipeline already
+    knew (after a body-blind re-lex and a position-blind re-walk), which is why
+    the fix ships with a sanctioned-sites guard —
+    tests/unit/scripting/test_analysis_session.py::TestNoUnsanctionedStringSurgery
+    — rather than only these two rows.
+    """
+
+    def test_quoted_head_does_not_invent_a_disable(self, tmp_path):
+        """FALSE-RED face: the invented `expand_aliases` disable made analysis
+        stop expanding a live alias, failing a script that runs clean."""
+        _script(tmp_path, "alias iff='if true; then'\n"
+                          "'sh\\opt' -u expand_aliases\niff echo X; fi\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0, execution.stderr
+        assert analysis.returncode == 0, analysis.stderr
+
+    @pytest.mark.parametrize("script", [
+        "'sh\\opt' -s extglob\necho @(a|b)\n",
+        '"sh\\\\opt" -s extglob\necho @(a|b)\n',
+    ])
+    def test_quoted_head_does_not_invent_an_enable(self, tmp_path, script):
+        """FALSE-GREEN face: the invented extglob enable made analysis accept a
+        script BOTH shells reject."""
+        _script(tmp_path, script)
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        bash = run_bash(["s.sh"], cwd=str(tmp_path))
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert is_comparable(bash)
+        assert execution.returncode == 2 and bash.returncode == 2
+        assert analysis.returncode == 2
+
+    def test_expansion_head_is_a_declared_residual(self, tmp_path):
+        """DECLARED DIVERGENCE. A head that is an EXPANSION (`c=shopt; $c -s
+        extglob`) has no statically knowable value, so analysis cannot see the
+        directive — the same family as the eval/source residual, and for the
+        same reason: resolving it would mean executing. Pre-existing (base
+        recognized no spelling at all) and newly VISIBLE now that the spelling
+        class is named. Asserted in the divergent direction."""
+        _script(tmp_path, "c=shopt\n$c -s extglob\necho @(a|b)\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0      # execution resolves $c and applies it
+        assert analysis.returncode == 2       # analysis cannot, and says so
+
+    def test_function_shadowed_shopt_is_absorbed_anyway(self, tmp_path):
+        """R11-B N12, DECLARED control row. Analysis is not resolution-aware:
+        a `shopt` shadowed by a shell FUNCTION is still absorbed as a
+        directive, so analysis accepts more than the shell does here. Recorded
+        as measured; general resolution-awareness is a successor row."""
+        _script(tmp_path, "shopt() { :; }\nshopt -s extglob\necho @(a|b)\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 2      # the function ran; extglob is off
+        assert analysis.returncode == 0       # analysis absorbed it anyway
+
+
+class TestDeclaredAnalysisSideEffects:
+    """R11-B N2/N3: two measured consequences of going per-unit, DECLARED.
+
+    Neither changes execution. Both are recorded here rather than left for a
+    reader to discover, because "declared + pinned + doc'd" is the standard
+    this slot is held to.
+    """
+
+    def test_combinator_error_detail_line_is_unit_relative(self, tmp_path):
+        """N2. Under `--parser combinator` the DETAIL line inside a parse
+        error ("(line N, column C)") is unit-relative, because each unit is
+        now parsed on its own. The `psh: file:N:` PREFIX is unaffected.
+
+        This rides the pre-existing ledger row
+
+            2.2 carry: combinator ignores line_offset for TOP-LEVEL statements
+
+        and closing that carry is expected to move both. No parser internals
+        were touched by this slot.
+        """
+        _script(tmp_path, "echo one\necho two\nif\n")
+        result = _psh(tmp_path, ["--parser", "combinator", "--validate", "s.sh"])
+        assert is_comparable(result)
+        assert result.returncode == 2
+        assert "(line 1," in result.stderr, result.stderr
+
+    def test_alias_defined_then_used_across_a_heredoc(self, tmp_path):
+        """N3. An alias defined before a heredoc still expands after it —
+        analysis threads the definition across the unit boundary the heredoc
+        creates. Execution is unchanged and is asserted alongside, so the pin
+        cannot pass by both surfaces breaking together. Cross-ref: the B100
+        alias-heredoc successor row covers bodies collected at expansion time,
+        which is a different question.
+        """
+        _script(tmp_path, "alias iff='if true; then'\ncat <<EOF\nplain body\nEOF\n"
+                          "iff echo X; fi\n")
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 0, execution.stderr
+        assert analysis.returncode == 0, analysis.stderr

@@ -77,6 +77,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
 
 from ..ast_nodes import Program
 from ..ast_nodes.commands import SimpleCommand
+from ..ast_nodes.words import LiteralPart
 from ..invocation import resolve_parser_name
 from ..lexer.token_types import TokenType
 from ..visitor.traversal import walk_ast
@@ -119,6 +120,12 @@ _TRANSPARENT_HEADS = ('builtin', 'command')
 #: A leading `NAME=value` word (a temporary-environment assignment prefix).
 _ASSIGNMENT_WORD = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
 
+#: A backslash escape in an UNQUOTED literal part: the backslash is quoting and
+#: the character after it is the text. Applied ONLY where the lexer says the
+#: part was unquoted (see :func:`_effective_words`) — inside quotes a backslash
+#: is ordinary text and this must not touch it.
+_UNQUOTED_ESCAPE = re.compile(r'\\(.)', re.DOTALL)
+
 #: Node types whose interior runs with its own copy of the shell state, so an
 #: option change inside them dies with them. Totality (every ``CompoundCommand``
 #: subclass classified either here or as state-preserving) is guarded by
@@ -127,33 +134,59 @@ _ASSIGNMENT_WORD = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
 ISOLATING_NODES = ('SubshellGroup', 'CommandSubstitution', 'ProcessSubstitution')
 
 
-def _normalize_head(args: Sequence[str]) -> List[str]:
+def _effective_words(command: Any) -> List[Optional[str]]:
+    """Each word of *command* as the SHELL would see it — one entry per word.
+
+    THE LEXER OWNS QUOTING, so this reads its answer instead of re-deriving
+    one. Every ``LiteralPart`` carries ``quoted``/``quote_char`` (the v0.120
+    Word/TokenPart invariant), and that single fact decides what a backslash
+    means: in an UNQUOTED part ``\\x`` is quoting and yields ``x``; in a QUOTED
+    part the backslash is ordinary text the shell keeps. So ``sh\\opt`` IS the
+    ``shopt`` builtin while ``'sh\\opt'`` is a command of that literal name —
+    measured identical in psh and bash 5.2.26 over eleven head spellings.
+
+    An entry is ``None`` when the word contains an EXPANSION: its value is not
+    statically knowable, so it can never match a directive name. Returning
+    ``None`` rather than a best-effort rendering is the point — guessing here
+    is how the previous version invented directives the shell never runs.
+    """
+    effective: List[Optional[str]] = []
+    for word in getattr(command, 'words', ()) or ():
+        pieces: List[str] = []
+        known = True
+        for part in word.parts:
+            if not isinstance(part, LiteralPart):
+                known = False
+                break
+            pieces.append(part.text if part.quoted
+                          else _UNQUOTED_ESCAPE.sub(r'\1', part.text))
+        effective.append(''.join(pieces) if known else None)
+    return effective
+
+
+def _normalize_head(words: Sequence[Optional[str]]) -> List[Optional[str]]:
     """Strip the prefixes that change WHO runs a command but not WHICH builtin.
 
     `x=1 command sh\\opt -s extglob` runs the same `shopt` the bare spelling
     does, and execution applies its option either way — so an analysis that
     only recognized the bare head silently missed six live spellings while
-    claiming to find "every option ENABLE in a parsed unit". Handles, in
-    order: leading `NAME=value` assignment words, backslash quoting ANYWHERE
-    in the head (`\\shopt`, `sh\\opt`, `\\s\\h\\o\\p\\t` — a backslash before
-    an ordinary character is just quoting, and all of those run `shopt`), and
-    any run of `builtin` / `command` prefixes.
+    claiming to find "every option ENABLE in a parsed unit". Handles leading
+    `NAME=value` assignment words and any run of `builtin`/`command` prefixes.
+
+    Backslash quoting is deliberately NOT handled here: it was already
+    resolved by :func:`_effective_words` from the lexer's per-part quote
+    context, which is the only place the distinction is known.
     """
-    words = list(args)
-    while words and _ASSIGNMENT_WORD.match(words[0]):
-        words.pop(0)
-    while words:
-        if '\\' in words[0]:
-            words[0] = words[0].replace('\\', '')
-            continue
-        if words[0] in _TRANSPARENT_HEADS and len(words) > 1:
-            words.pop(0)
-            continue
-        break
-    return words
+    remaining = list(words)
+    while (remaining and remaining[0] is not None
+           and _ASSIGNMENT_WORD.match(remaining[0])):
+        remaining.pop(0)
+    while len(remaining) > 1 and remaining[0] in _TRANSPARENT_HEADS:
+        remaining.pop(0)
+    return remaining
 
 
-def _option_changes(args: Sequence[str]) -> List[Tuple[str, bool]]:
+def _option_changes(words: Sequence[Optional[str]]) -> List[Tuple[str, bool]]:
     """Every (option, enable) this command would apply, in order.
 
     Recognizes the two spellings that reach the shell's option state:
@@ -173,10 +206,10 @@ def _option_changes(args: Sequence[str]) -> List[Tuple[str, bool]]:
     an unrelated `shopt -s histappend` is not mistaken for parse-relevant
     state.
     """
-    words = _normalize_head(args)
-    if not words:
+    remaining = _normalize_head(words)
+    if not remaining:
         return []
-    head, rest = words[0], words[1:]
+    head, rest = remaining[0], [w for w in remaining[1:] if w is not None]
     changes: List[Tuple[str, bool]] = []
     if head == 'shopt':
         enable = None
@@ -211,11 +244,12 @@ def _option_changes(args: Sequence[str]) -> List[Tuple[str, bool]]:
     return changes
 
 
-def _parser_selection(args: Sequence[str]) -> Optional[str]:
+def _parser_selection(words: Sequence[Optional[str]]) -> Optional[str]:
     """The parser a ``parser-select`` command would activate, if any."""
-    words = _normalize_head(args)
-    if len(words) >= 2 and words[0] == 'parser-select':
-        return resolve_parser_name(words[1])
+    remaining = _normalize_head(words)
+    if len(remaining) >= 2 and remaining[0] == 'parser-select' \
+            and remaining[1] is not None:
+        return resolve_parser_name(remaining[1])
     return None
 
 
@@ -341,7 +375,8 @@ class AnalysisSession:
         """Apply this unit's parse-relevant state changes to later units."""
         self._absorb_aliases(tokens)
         for command in _directive_commands(ast):
-            for name, enable in _option_changes(command.args):
+            words = _effective_words(command)
+            for name, enable in _option_changes(words):
                 if name in MONOTONE_OPTIONS:
                     # Enables only: narrowing could re-invent the false syntax
                     # errors this session exists to remove.
@@ -350,7 +385,7 @@ class AnalysisSession:
                 elif name in ORDERED_OPTIONS:
                     # Last write wins, matching execution's measured behavior.
                     self.carrier.state.options[name] = enable
-            selected = _parser_selection(command.args)
+            selected = _parser_selection(words)
             if selected is not None:
                 self.carrier.active_parser = selected
 

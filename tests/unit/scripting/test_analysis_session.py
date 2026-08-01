@@ -7,6 +7,7 @@ fall behind the lexer, that its isolation classification is TOTAL over the AST
 shapes it walks, and that going per-unit did not change what the visitors see
 for input with no state change in it.
 """
+import ast as pyast
 import itertools
 from pathlib import Path
 
@@ -403,6 +404,13 @@ class TestUserGuideMatchesTheRule:
             "the monotone bullets are not scoped to the options they describe")
         assert "expand_aliases" in section, (
             "the ordered option is not mentioned where its rule differs")
+        # N14: the superseded unqualified sentence must not come BACK. Only
+        # certify.py asserted this absence, and certify.py is not part of the
+        # suite — a resurrection would have shipped green.
+        assert "Turning an option back off does not narrow the analysis" \
+            not in text, (
+                "the unqualified all-options-monotone sentence has returned; "
+                "it is false for expand_aliases")
 
     def test_the_declared_cost_is_stated_in_user_facing_words(self):
         text = self.GUIDE.read_text()
@@ -412,3 +420,124 @@ class TestUserGuideMatchesTheRule:
         assert "shopt -u expand_aliases" in section
         assert "fails `--validate`" in section, (
             "the guide states the rule but not the consequence a user meets")
+
+
+class TestNoUnsanctionedStringSurgery:
+    """R11-A(2), the CLASS guard: after three instances, make a fourth fail.
+
+    Three of this slot's seven verifier-found defects were the same fault —
+    re-deriving, from raw text, something the pipeline already knew:
+
+    * R8-A lexed heredoc bodies the lexer had already set aside;
+    * R9-A re-walked tokens the alias decider already walks, losing its
+      command-position guard;
+    * R11-A stripped backslashes the LEXER had already classified as quoted or
+      not, inventing directives out of `'sh\\opt'`.
+
+    Every one passed review and passed a gate. What they have in common is
+    string surgery on a value the lexer had already resolved, so this guard
+    freezes the list of places this module is allowed to do that. Each entry
+    names WHY the surgery is legitimate. A new site fails here until it is
+    either replaced by a lexer-provided fact or justified in writing.
+
+    This is a SANCTIONED-SITES guard, not a ban: some string handling is
+    correct and unavoidable. The point is that adding one must be a decision
+    somebody records, not a reflex nobody notices.
+    """
+
+    MODULE = "psh/scripting/analysis_session.py"
+
+    #: (function, operation) -> why this site is not a re-derivation.
+    SANCTIONED = {
+        ('_effective_words', '.sub()'):
+            "APPLIES the lexer's verdict rather than replacing it: the "
+            "backslash-escape substitution runs ONLY on parts the lexer marked "
+            "unquoted (part.quoted is False). This is the one place the "
+            "quoting fact is consumed, and everything downstream reads its "
+            "output instead of raw token text.",
+        ('_normalize_head', '.match()'):
+            "Recognizes a NAME=value assignment prefix on an ALREADY "
+            "quote-resolved word from _effective_words — a shape test on a "
+            "resolved value, not a re-derivation of quoting.",
+        ('_option_changes', '.startswith()'):
+            "Distinguishes a flag word from an operand on an already "
+            "quote-resolved word. `-` is not quotable into or out of "
+            "existence by anything the lexer hides: `\\-s` resolves to `-s` "
+            "in _effective_words first (pinned).",
+        ('_option_changes', 'slice'):
+            "Reads the LETTERS of an already quote-resolved cluster flag "
+            "(`-sq` -> `sq`). The cluster's spelling is fully determined once "
+            "quoting is resolved.",
+        ('analyze', '.strip()'):
+            "Operates on the UNIT'S RAW SOURCE TEXT, not on a token value — "
+            "the blank/comment-only skip, mirroring the identical test in "
+            "source_processor.iter_command_units. There is no lexer fact to "
+            "consume here: the decision happens before lexing, by design.",
+        ('analyze', '.startswith()'):
+            "Same site as the .strip() above: the whole-line comment skip on "
+            "raw source text, mirroring the execution path.",
+    }
+
+    TYPING_NAMES = {'List', 'Optional', 'Tuple', 'Sequence', 'Dict', 'Any',
+                    'Mapping', 'Union', 'Set'}
+    STR_METHODS = {'replace', 'strip', 'lstrip', 'rstrip', 'split',
+                   'startswith', 'endswith', 'sub', 'match', 'find',
+                   'partition', 'rpartition', 'removeprefix', 'removesuffix'}
+
+    @classmethod
+    def _sites(cls, source: str):
+        tree = pyast.parse(source)
+        funcs = [n for n in pyast.walk(tree)
+                 if isinstance(n, (pyast.FunctionDef, pyast.AsyncFunctionDef))]
+
+        def where(node):
+            best = None
+            for f in funcs:
+                if f.lineno <= node.lineno <= (f.end_lineno or f.lineno):
+                    if best is None or f.lineno > best.lineno:
+                        best = f
+            return best.name if best else '<module>'
+
+        found = set()
+        for node in pyast.walk(tree):
+            if (isinstance(node, pyast.Call)
+                    and isinstance(node.func, pyast.Attribute)
+                    and node.func.attr in cls.STR_METHODS):
+                found.add((where(node), f".{node.func.attr}()"))
+            elif (isinstance(node, pyast.Subscript)
+                  and isinstance(node.slice, pyast.Slice)
+                  and not (isinstance(node.value, pyast.Name)
+                           and node.value.id in cls.TYPING_NAMES)):
+                found.add((where(node), "slice"))
+        return found
+
+    def test_every_string_surgery_site_is_sanctioned(self):
+        source = (Path(__file__).resolve().parents[3] / self.MODULE).read_text()
+        found = self._sites(source)
+        unsanctioned = found - set(self.SANCTIONED)
+        assert not unsanctioned, (
+            "new string-surgery site(s) in the analysis session: "
+            f"{sorted(unsanctioned)}.\nThree of this slot's defects came from "
+            "re-deriving what the lexer already knew. Either consume the "
+            "lexer-provided fact instead, or add the site to SANCTIONED with "
+            "a written justification.")
+
+    def test_no_sanctioned_entry_has_gone_stale(self):
+        """The list must not accumulate entries for code that is gone — a
+        stale allowance is how a guard quietly stops guarding."""
+        source = (Path(__file__).resolve().parents[3] / self.MODULE).read_text()
+        found = self._sites(source)
+        stale = set(self.SANCTIONED) - found
+        assert not stale, f"SANCTIONED lists sites that no longer exist: {sorted(stale)}"
+
+    def test_every_justification_is_substantive(self):
+        """A one-word justification would satisfy the letter of the rule and
+        none of its purpose."""
+        for site, why in self.SANCTIONED.items():
+            assert len(why) >= 80, f"{site} justification is too thin: {why!r}"
+
+    def test_the_scan_detects_a_planted_site(self):
+        """MUTATION PROOF: the guard must SEE a new site, not just pass."""
+        planted = "def _sneaky(word):\n    return word.replace('\\\\', '')\n"
+        found = self._sites(planted)
+        assert ('_sneaky', '.replace()') in found, found

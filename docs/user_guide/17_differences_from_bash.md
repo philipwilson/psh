@@ -530,10 +530,11 @@ OFF the Unicode extension; ASCII names behave identically in both modes.
 Note on `for`/`function` error flow: in DEFAULT mode both shells simply report
 "not a valid identifier" (status 1) and CONTINUE — PSH matches bash here. The
 flow differs only under `set -o posix`: bash then treats the invalid name as a
-*parse* error and aborts the whole input (exit 2), whereas PSH — which parses the
-entire program before executing, so a runtime `set -o posix` cannot influence
-parsing — still rejects it at *execution* time (status 1) and continues. Both
-reject the name; only the posix abort-vs-continue flow differs.
+*parse* error and aborts the whole input (exit 2), whereas PSH rejects it at
+*execution* time (status 1) and continues. (PSH parses one command at a time, so
+a `set -o posix` does affect how LATER commands are parsed — it just does not
+turn this particular rejection into a parse error.) Both reject the name; only
+the posix abort-vs-continue flow differs.
 
 ### Case Modification and Unicode
 
