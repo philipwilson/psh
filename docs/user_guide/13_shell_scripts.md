@@ -738,6 +738,9 @@ psh$ psh --metrics script.sh     # Code complexity metrics
 psh$ psh --format script.sh      # Pretty-print script
 ```
 
+Only one analysis mode may be given per run: `psh --validate --lint script.sh`
+is a usage error naming both flags, rather than silently running one of them.
+
 ### Error Diagnosis
 
 ```bash

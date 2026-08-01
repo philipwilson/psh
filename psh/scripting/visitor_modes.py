@@ -1,56 +1,35 @@
 """CLI analysis modes (--validate, --format, --metrics, --security, --lint).
 
-These modes parse the input and run an analysis visitor over the AST
-instead of executing it. They live with the rest of the script-entry
-plumbing: their only caller is ``__main__.main()``, and Shell itself
-keeps no CLI-mode logic beyond storing the flags it was constructed with.
+These modes parse the input and run an analysis visitor over the AST instead of
+executing it. They live with the rest of the script-entry plumbing: their only
+caller is ``__main__.main()``, and Shell itself keeps no CLI-mode logic beyond
+the ONE mode name it was constructed with (``Shell.analysis_mode``).
+
+The parse comes from :mod:`psh.scripting.analysis_session`, which walks the
+same unit boundaries execution walks and threads parse-relevant state between
+units — so what a script establishes as it runs is what analysis sees. This
+module owns the CLI-facing half: the per-channel entry points, the error model
+(syntax error 2 / internal defect via ``report_internal_defect``), and the
+mode→visitor table.
+
+Exactly one mode can be live: ``parse_invocation`` rejects two distinct
+``--mode`` flags before a Shell exists, so there is no priority chain here to
+silently pick a winner.
 """
 import sys
 from typing import TYPE_CHECKING, Any
 
 from ..core import report_internal_defect
 from ..core.exceptions import PshError
+from ..parser import ParseError
+from .analysis_session import AnalysisSyntaxError, parse_for_analysis
 
 if TYPE_CHECKING:
     from ..shell import Shell
 
 
-def _parse_for_analysis(shell: 'Shell', content: str,
-                        drop_dangling_at_eof: bool = False) -> Any:
-    """Parse *content* into an AST for analysis via the shared pipeline.
-
-    Routes through ``scripting.lex_parse.lex_and_parse`` — the SAME
-    heredoc-aware lex→alias→parse pipeline the execution path uses — so analysis
-    honours the active parser (``--parser combinator``), threads the shell's
-    lexer options (extglob) into nested-substitution re-lexing, and consults the
-    alias table at the seam, exactly as execution does. (This copy had drifted:
-    it ignored ``--parser`` and dropped ``lexer_options`` / alias expansion —
-    reappraisal #19 H11.) A heredoc BODY is still attached to its redirect
-    rather than parsed as separate commands.
-
-    Line continuations are joined first (as
-    ``SourceProcessor._preprocess_command`` does): the lexer does NOT collapse a
-    continuation in every context (``then\\``, inside ``[[ ]]``), so without this
-    analysis reported false syntax errors on valid scripts that execute fine.
-    ``drop_dangling_at_eof`` mirrors the execution path's stream-vs-string rule
-    for a trailing backslash at true EOF.
-
-    One deliberate exception: ``--format`` parses with ``expand_aliases=False``.
-    The advisory modes analyze what would EXECUTE, so they see through aliases;
-    but ``--format`` is a SOURCE-TO-SOURCE tool — reprinting ``zz`` as its alias
-    body would rewrite the user's script, not format it (integrator ruling,
-    reappraisal #19 T6).
-    """
-    from .input_preprocessing import process_line_continuations
-    from .lex_parse import lex_and_parse
-    content = process_line_continuations(
-        content, drop_dangling_at_eof=drop_dangling_at_eof)
-    return lex_and_parse(content, shell,
-                         expand_aliases=not shell.format_only,
-                         lexer_options=shell.state.options)
-
-
-def _report_syntax_error(location: str, exc: Exception) -> int:
+def _report_syntax_error(location: str, exc: Exception,
+                         start_line: int = 0) -> int:
     """Print an analysis syntax-error diagnostic and return 2 (bash's ``-n``
     status for a syntax error).
 
@@ -60,15 +39,20 @@ def _report_syntax_error(location: str, exc: Exception) -> int:
     execution renderer through ``lex_parse.render_syntax_error_detail``, so the
     two cannot drift.
 
-    This renderer stays distinct from ``SourceProcessor._report_syntax_error``:
-    analysis has only a bare *location* LABEL (``-c``, the script path,
-    ``<stdin>``) — the whole content was parsed at once, so there is no
-    per-command start line to fall back to and no ``input_source``. The
-    ParseError's own ``(line N, column C)`` and source-line caret still appear
-    (analysis threads ``source_text`` into the parser via ``lex_and_parse``).
+    The location carries a LINE, exactly as ``SourceProcessor._report_syntax_
+    error`` renders it: the error's own absolute line when the ParseError knows
+    it (bash reports the line the error is ON), else the line the failing UNIT
+    started on. Analysis could not do this while the whole input was one parse
+    with no per-command start line; parsing unit by unit gives it the same
+    ``<source>:<line>:`` prefix execution prints.
     """
     from .lex_parse import render_syntax_error_detail
-    print(f"psh: {location}: {render_syntax_error_detail(exc)}", file=sys.stderr)
+    line = start_line
+    if (isinstance(exc, ParseError) and exc.error_context
+            and exc.error_context.line):
+        line = exc.error_context.line
+    where = f"{location}:{line}" if line > 0 else location
+    print(f"psh: {where}: {render_syntax_error_detail(exc)}", file=sys.stderr)
     return 2
 
 
@@ -87,9 +71,17 @@ def handle_visitor_mode_for_content(shell: 'Shell', content: str,
     execution would.
     """
     try:
-        ast = _parse_for_analysis(shell, content,
-                                  drop_dangling_at_eof=drop_dangling_at_eof)
+        ast = parse_for_analysis(shell, content,
+                                 drop_dangling_at_eof=drop_dangling_at_eof)
         return apply_visitor_mode(shell, ast)
+    except AnalysisSyntaxError as e:
+        # A unit failed to parse. The session knows WHICH unit, so the
+        # diagnostic can point at it the way execution's does.
+        if not isinstance(e.error, (PshError, SyntaxError)):
+            return report_internal_defect(
+                shell.state, e.error, prefix=f"{location}: unexpected error: ",
+                stream=sys.stderr)
+        return _report_syntax_error(location, e.error, e.start_line)
     except (PshError, SyntaxError) as e:
         # ParseError (PshError) and UnclosedQuoteError (PshError+SyntaxError
         # as of the r19-P6 dual-rooting) are all expected syntax errors —
@@ -149,44 +141,71 @@ def handle_visitor_mode_for_script(shell: 'Shell', script_path: str) -> int:
                                            drop_dangling_at_eof=True)
 
 
-def apply_visitor_mode(shell: 'Shell', ast: Any) -> int:
-    """Apply the analysis visitor selected by the shell's CLI mode flags."""
-    if shell.validate_only:
-        from ..visitor import EnhancedValidatorVisitor
-        validator = EnhancedValidatorVisitor()
-        validator.visit(ast)
-        print(validator.get_summary())
-        error_count = sum(1 for i in validator.issues if i.severity.value == 'error')
-        return 1 if error_count > 0 else 0
+def _run_validate(ast: Any) -> int:
+    from ..visitor import EnhancedValidatorVisitor
+    validator = EnhancedValidatorVisitor()
+    validator.visit(ast)
+    print(validator.get_summary())
+    error_count = sum(1 for i in validator.issues if i.severity.value == 'error')
+    return 1 if error_count > 0 else 0
 
-    if shell.format_only:
-        from ..visitor import FormatterVisitor
-        formatter = FormatterVisitor()
-        formatted_code = formatter.visit(ast)
-        print(formatted_code)
-        return 0
 
-    if shell.metrics_only:
-        from ..visitor import MetricsVisitor
-        metrics = MetricsVisitor()
-        metrics.visit(ast)
-        print(metrics.get_summary())
-        return 0
-
-    if shell.security_only:
-        from ..visitor import SecurityVisitor
-        security = SecurityVisitor()
-        security.visit(ast)
-        print(security.get_summary())
-        issue_count = len(security.issues)
-        return 1 if issue_count > 0 else 0
-
-    if shell.lint_only:
-        from ..visitor import LinterVisitor
-        linter = LinterVisitor()
-        linter.visit(ast)
-        print(linter.get_summary())
-        issue_count = len(linter.issues)
-        return 1 if issue_count > 0 else 0
-
+def _run_format(ast: Any) -> int:
+    from ..visitor import FormatterVisitor
+    print(FormatterVisitor().visit(ast))
     return 0
+
+
+def _run_metrics(ast: Any) -> int:
+    from ..visitor import MetricsVisitor
+    metrics = MetricsVisitor()
+    metrics.visit(ast)
+    print(metrics.get_summary())
+    return 0
+
+
+def _run_security(ast: Any) -> int:
+    from ..visitor import SecurityVisitor
+    security = SecurityVisitor()
+    security.visit(ast)
+    print(security.get_summary())
+    return 1 if security.issues else 0
+
+
+def _run_lint(ast: Any) -> int:
+    from ..visitor import LinterVisitor
+    linter = LinterVisitor()
+    linter.visit(ast)
+    print(linter.get_summary())
+    return 1 if linter.issues else 0
+
+
+#: One runner per analysis mode, keyed by the name ``Shell.analysis_mode``
+#: holds. A TABLE, not a priority chain: the if-chain this replaces resolved
+#: "two modes requested" by running whichever it tested first (validate beat
+#: lint, so ``psh --validate --lint f.sh`` never linted, silently). That state
+#: is now rejected at invocation parsing, and a table cannot re-invent a winner.
+#: An unknown mode name raises KeyError here rather than falling through to a
+#: silent no-op: it is an internal defect, and under strict-errors the suite
+#: surfaces it instead of a clean exit 0 that analyzed nothing.
+_MODE_RUNNERS = {
+    'validate': _run_validate,
+    'format': _run_format,
+    'metrics': _run_metrics,
+    'security': _run_security,
+    'lint': _run_lint,
+}
+
+
+def apply_visitor_mode(shell: 'Shell', ast: Any) -> int:
+    """Run the shell's selected analysis visitor over *ast*.
+
+    ``shell.analysis_mode`` is ONE mode name or None; None means no analysis
+    mode was requested (status 0, nothing printed). Statuses are per mode:
+    ``--validate``/``--security``/``--lint`` return 1 when they found
+    something, ``--format``/``--metrics`` always 0. A syntax error is status 2
+    and is reported by the caller, never here.
+    """
+    if shell.analysis_mode is None:
+        return 0
+    return _MODE_RUNNERS[shell.analysis_mode](ast)

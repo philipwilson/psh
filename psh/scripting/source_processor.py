@@ -31,7 +31,7 @@ from .base import ScriptComponent
 from .command_accumulator import CommandAccumulator, Complete, NeedMore
 
 
-def _offset_line_numbers(node: ASTNode, delta: int) -> None:
+def offset_line_numbers(node: ASTNode, delta: int) -> None:
     """Add *delta* to every stamped ``.line`` in an AST subtree, in place.
 
     The parser stamps statement nodes with buffer-relative lines; this
@@ -57,7 +57,82 @@ def _offset_line_numbers(node: ASTNode, delta: int) -> None:
     if node.line is not None:
         node.line += delta
     for child in walk_ast(node):
-        _offset_line_numbers(child, delta)
+        offset_line_numbers(child, delta)
+
+
+def iter_command_units(shell, input_source, base_line: int = 1,
+                       trace: bool = True):
+    """Yield ``(start_line, Complete)`` for each complete logical command.
+
+    THE line-gathering loop — the one place physical lines become logical
+    command units. Execution drives it (``SourceProcessor._run_from_source``)
+    and so does the non-executing analysis session
+    (``scripting/analysis_session.py``): "analysis sees the units execution
+    sees" is only true if the two SHARE this code instead of agreeing about it.
+    Blank lines and whole-line comments are skipped between commands, a heredoc
+    body stays inside its own unit (the accumulator keeps reading to the
+    delimiter), and end of input flushes whatever is buffered — a truncated
+    construct included, so it parses to "unexpected end of input" at the
+    consumer rather than vanishing.
+
+    ``trace`` gates the ``--debug-exec`` read-line trace: it belongs to
+    EXECUTION, so the non-executing analysis session passes False.
+
+    ``start_line`` is the ABSOLUTE source line the unit begins on (``base_line``
+    offsets nested runs — eval, trap actions — onto the invoking command's
+    line), or 0 for an input with no meaningful line. A yielded ``Complete``
+    may carry ``.error``: the unit is complete but INVALID, and the consumer
+    decides what that means (execution reports and may abort; analysis reports
+    it as the syntax error).
+    """
+    accumulator = CommandAccumulator(shell)
+    accumulator.history_expansion_eligible = getattr(
+        input_source, 'history_expansion_eligible', True)
+    command_start_line = 0
+
+    while True:
+        line = input_source.read_line()
+        if trace and shell.state.options.get('debug-exec', False):
+            # `trace` is False for the analysis session: --debug-exec traces
+            # EXECUTION, and analysis executes nothing, so emitting the
+            # execution trace there is output about work that never happened.
+            print(f"DEBUG source_processor: read line: {repr(line)}",
+                  file=sys.stderr)
+        if line is None:  # EOF
+            # Hand back any remaining buffered command (a truncated construct
+            # parses to "unexpected end of input" at the consumer). End of
+            # input inside a heredoc body is NOT special: like bash, the
+            # heredoc is "delimited by end-of-file" — the lexer finalizes the
+            # gathered lines as the body and prints bash's warning.
+            if not accumulator.is_empty:
+                yield command_start_line, accumulator.flush()
+            return
+
+        if accumulator.is_empty:
+            # Skip empty lines when no command is being built
+            if not line.strip():
+                continue
+            # Skip comment lines when no command is being built. Only for
+            # single-line chunks: a multi-line string (e.g. from
+            # run_command(), where StringInput yields the whole string as one
+            # "line") may start with a comment yet contain commands — the
+            # lexer strips embedded comments during tokenization.
+            if line.strip().startswith('#') and '\n' not in line.strip():
+                continue
+            # Offset the source's own line number onto an absolute line for
+            # $LINENO. base_line is 1 for normal sources (no shift); for
+            # eval / trap actions it is the invoking command's line.
+            command_start_line = base_line + input_source.get_line_number() - 1
+            # Tell the accumulator where this command starts so its
+            # trial-parse errors carry absolute line numbers.
+            accumulator.start_line = max(1, command_start_line)
+
+        result = accumulator.feed(line)
+        if isinstance(result, NeedMore):
+            continue
+
+        yield command_start_line, result
+        command_start_line = 0
 
 
 class SourceProcessor(ScriptComponent):
@@ -159,64 +234,22 @@ class SourceProcessor(ScriptComponent):
 
     def _run_from_source(self, input_source, add_to_history: bool = True,
                          base_line: int = 1) -> int:
-        """The line-gathering loop of :meth:`execute_from_source`."""
+        """Execute each unit the shared gathering loop yields.
+
+        The gathering itself lives in module-level ``iter_command_units`` so
+        the analysis session walks the SAME unit boundaries without executing
+        anything; what stays here is what execution does with each unit.
+        """
         exit_code = 0
-        command_start_line = 0
-        accumulator = CommandAccumulator(self.shell)
-        accumulator.history_expansion_eligible = getattr(
-            input_source, 'history_expansion_eligible', True)
 
-        while True:
-            line = input_source.read_line()
-            if self.state.options.get('debug-exec', False):
-                print(f"DEBUG source_processor: read line: {repr(line)}", file=sys.stderr)
-            if line is None:  # EOF
-                # Execute any remaining buffered command (a truncated
-                # construct parses to "unexpected end of input" here).
-                # End of input inside a heredoc body is NOT special: like
-                # bash, the heredoc is "delimited by end-of-file" — the
-                # lexer finalizes the gathered lines as the body, prints
-                # bash's warning, and the command runs (it used to be
-                # silently dropped, rc 0).
-                if not accumulator.is_empty:
-                    exit_code = self._execute_buffered_command(
-                        accumulator.flush(), input_source, command_start_line,
-                        add_to_history)
-                    if self._should_exit_on_error(exit_code, input_source):
-                        return exit_code
-                break
-
-            if accumulator.is_empty:
-                # Skip empty lines when no command is being built
-                if not line.strip():
-                    continue
-                # Skip comment lines when no command is being built. Only
-                # for single-line chunks: a multi-line string (e.g. from
-                # run_command(), where StringInput yields the whole string
-                # as one "line") may start with a comment yet contain
-                # commands — the lexer strips embedded comments during
-                # tokenization.
-                if line.strip().startswith('#') and '\n' not in line.strip():
-                    continue
-                # Offset the source's own line number onto an absolute line
-                # for $LINENO. base_line is 1 for normal sources (no shift);
-                # for eval / trap actions it is the invoking command's line.
-                command_start_line = base_line + input_source.get_line_number() - 1
-                # Tell the accumulator where this command starts so its
-                # trial-parse errors carry absolute line numbers.
-                accumulator.start_line = max(1, command_start_line)
-
-            result = accumulator.feed(line)
-            if isinstance(result, NeedMore):
-                continue
-
+        for command_start_line, result in iter_command_units(
+                self.shell, input_source, base_line):
             if result.error is not None:
                 # A real syntax error (not incomplete input): report it
                 # against where the command started and reset.
                 self._report_syntax_error(result.error, input_source,
                                           command_start_line,
                                           source_text=result.source or result.text)
-                command_start_line = 0
                 exit_code = 2  # Bash uses exit code 2 for syntax errors
                 self.state.last_exit_code = 2
                 # SECOND of the two substitution-origin consumer sites, sharing
@@ -238,7 +271,6 @@ class SourceProcessor(ScriptComponent):
 
             exit_code = self._execute_buffered_command(
                 result, input_source, command_start_line, add_to_history)
-            command_start_line = 0
             if self._should_exit_on_error(exit_code, input_source):
                 return exit_code
 
@@ -656,9 +688,9 @@ class SourceProcessor(ScriptComponent):
         # Convert the parser's buffer-relative $LINENO stamps to absolute
         # source lines (offset by where this buffer began). Done once here
         # so a function body bakes in its definition-site lines. See
-        # ASTNode.line and _offset_line_numbers.
+        # ASTNode.line and offset_line_numbers.
         if start_line > 1:
-            _offset_line_numbers(ast, start_line - 1)
+            offset_line_numbers(ast, start_line - 1)
 
         # Debug: Print AST if requested
         if self.state.debug_ast:

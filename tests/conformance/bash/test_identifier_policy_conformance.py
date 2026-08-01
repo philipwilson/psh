@@ -21,11 +21,25 @@ bash 5.2:
 Note on ``for``/``function`` error flow: in DEFAULT mode both shells report
 "not a valid identifier" (status 1) and CONTINUE — psh matches bash. The flow
 differs only under ``set -o posix``: bash then treats the invalid name as a
-PARSE error and aborts the whole input (exit 2), whereas psh — which parses the
-entire program before executing, so runtime ``set -o posix`` cannot influence
-parsing — still rejects it at EXECUTION time (status 1, then continues). Both
-REJECT the name; only the posix abort-vs-continue flow differs. The posix cases
-are pinned as "psh rejects, bash rejects" rather than identical.
+PARSE error and aborts the whole input (exit 2), whereas psh rejects it at
+EXECUTION time (status 1, then continues). Both REJECT the name; only the
+posix abort-vs-continue flow differs, and the posix cases are pinned as "psh
+rejects, bash rejects" rather than identical.
+
+The REASON is not that psh parses everything up front — it does not, and the
+sentence that used to say so here was false at every commit. psh's execution
+parses ONE COMMAND AT A TIME, so a runtime ``set -o posix`` DOES reach the
+parse of later commands: measured, ``äö=hello`` followed by ``echo $äö``
+prints ``hello``, while the same script with ``set -o posix`` between them
+prints ``$äö`` — the option changed how the LATER command was parsed. What
+differs between the shells is WHERE the name is judged: psh's parser accepts
+the ``for`` name and the identifier policy rejects it at execution, while bash
+rejects it in the parser. The pinned conclusion below is unchanged.
+
+This sentence was the verbatim twin of the user-guide claim corrected earlier
+in remediation 2.6 (R11-B N4); it is fixed here under R21-A, and a
+certification row now asserts the whole phrase family is absent tree-wide so a
+third twin cannot survive.
 """
 
 import re

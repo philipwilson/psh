@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.761.0
+**Current Version**: 0.762.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -91,7 +91,7 @@ psh/
 │   ├── job_control.py       # JobManager
 │   └── strategies.py        # Builtin/function/external dispatch
 ├── io_redirect/             # IOManager, FileRedirector (incl. heredocs), procsub scopes
-├── scripting/               # ScriptManager, input sources/preprocessing, source processor, CLI analysis modes (visitor_modes.py)
+├── scripting/               # ScriptManager, input sources/preprocessing, source processor, CLI analysis modes (visitor_modes.py) + state-aware analysis session (analysis_session.py)
 ├── interactive/             # REPL, line editor, history, completion, signals
 ├── builtins/                # Builtin commands (registry + implementations)
 ├── visitor/                 # Formatter/validator/security/metrics/linter visitors
@@ -610,9 +610,10 @@ required token; its collected errors were never read, and it was removed.)
 
 Both the execution path and the analysis modes (`--validate`/`--format`/
 `--metrics`/`--security`/`--lint`) print `render()`, so a syntax error reads
-the same everywhere. (The caret line additionally needs the parser to be given
-`source_text`; the execution path supplies it, the analysis parse path does
-not yet — see appraisal finding 12.)
+the same everywhere. Analysis threads `source_text` into the parser (since
+the reappraisal-#19 H11 fix) and, since v0.762.0, parses per execution unit —
+so an analysis diagnostic carries the same `file:N:` prefix and per-unit line
+numbers as the execution renderer (`analysis_session.py#AnalysisSession`).
 
 ### 3.11 Recursive Descent Implementation
 

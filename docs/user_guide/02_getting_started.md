@@ -191,35 +191,55 @@ $ python -m psh --debug-exec-fork -c 'ls | head -n 2'
 Here's a complete list of PSH command-line options:
 
 ```
-psh [options] [script] [arguments]
+Usage: psh [options] [script [args...]]
+       psh [options] -c command [args...]
+
+Python Shell (psh) - An educational Unix shell implementation
 
 Options:
-  -c <command>              Execute command and exit
-  -s                        Read commands from stdin; operands become $1, $2, ...
-  -i                        Force interactive mode (+i cancels)
-  -a -b -e -f -h -m -n -u   Set shell options at startup (like bash: allexport,
-  -v -x -B -C -E -H -T        notify, errexit, ..., hashall for -h); a leading
-                              '+' turns the option off, and clusters work (-eux)
-  -o NAME / +o NAME         Enable/disable a shell option by name (set -o NAME);
-                              a bare trailing -o/+o prints the option listing
-  --help                    Show help message
-  -V, --version             Show version information
-  --debug-ast               Show parsed AST before execution
-  --debug-ast=FORMAT        AST format: tree, pretty, compact, dot, sexp
-  --debug-tokens            Show tokenized input before parsing
-  --debug-scopes            Show variable scope operations
-  --debug-expansion         Show expansions as they occur
-  --debug-expansion-detail  Show detailed expansion steps
-  --debug-exec              Show executor operations
-  --debug-exec-fork         Show fork/exec details
-  --norc                    Don't load ~/.pshrc file
-  --rcfile <file>           Use alternative RC file instead of ~/.pshrc
-  --parser <parser>         Select parser: rd (recursive_descent), pc (combinator)
-  --validate                Validate script without executing
-  --format                  Format script and print formatted version
-  --metrics                 Analyze script and print code metrics
-  --security                Perform security analysis on script
-  --lint                    Perform linting analysis on script
+  -c command       Execute command and exit
+  -s               Read commands from stdin; operands become positional params
+  -i               Force interactive mode (load rc, set $- 'i' flag); +i cancels
+  -a -b -e -f -h -m Set shell options (allexport, notify, errexit, noglob,
+  -n -u -v -x        hashall, monitor, noexec, nounset, verbose, xtrace)
+  -B -C -E -H -T   Set shell options (braceexpand, noclobber, errtrace,
+                     histexpand, functrace)
+  +e +x +B ...     A leading '+' turns the option OFF (bash set +x); clusters
+  -o NAME          Enable shell option NAME by name (like set -o NAME)
+  +o NAME          Disable shell option NAME by name (like set +o NAME)
+  -o / +o          Bare trailing -o/+o prints the option listing (like set -o)
+  --               End of options; remaining arguments are operands
+  --help           Show this help message and exit
+  -V, --version    Show version information and exit
+  --norc           Do not read ~/.pshrc on startup
+  --posix          Enable POSIX mode at startup (like set -o posix)
+  --rcfile FILE    Read FILE instead of ~/.pshrc
+  --parser PARSER  Select parser: recursive_descent (rd, default), combinator (pc, educational)
+  --force-interactive Same as -i
+  --debug-ast      Print AST before execution (debugging)
+  --debug-ast=FORMAT AST format: pretty, tree, compact, dot, sexp
+  --debug-tokens   Print tokens before parsing (debugging)
+  --debug-scopes   Print variable scope operations (debugging)
+  --debug-expansion Print expansions as they occur (debugging)
+  --debug-expansion-detail Print detailed expansion steps (debugging)
+  --debug-exec     Print executor operations (debugging)
+  --debug-exec-fork Print fork/exec details (debugging)
+  --validate       Validate script without executing (check for errors)
+  --format         Format script and print formatted version
+  --metrics        Analyze script and print code metrics
+  --security       Perform security analysis on script
+  --lint           Perform linting analysis on script
+                   (the five analysis modes are mutually exclusive)
+
+Arguments:
+  script           Script file to execute
+  args             Arguments passed to script or command
+
+Examples:
+  psh                          # Start interactive shell
+  psh script.sh arg1 arg2      # Execute script with arguments
+  psh -c 'echo $1' hello       # Execute command with arguments
+  source script.sh arg1        # Source script with arguments
 ```
 
 ## 2.2 Basic Command Structure

@@ -62,6 +62,22 @@ class InvocationError(Exception):
         self.status = status
 
 
+class AnalysisModeConflictError(ValueError):
+    """Two or more analysis modes requested through the LEGACY keyword path.
+
+    The CLI spelling of this mistake is rejected by :func:`parse_invocation`
+    with an :class:`InvocationError` before a Shell exists. The keyword
+    spelling (``Shell(validate_only=True, lint_only=True)``) is an EMBEDDER
+    API misuse, caught in ``Shell.__init__`` so the ambiguous state cannot be
+    constructed either way — silently resolving it by a priority chain was
+    the MEDIUM-9(b) defect.
+
+    Subclasses ``ValueError`` deliberately: the type is precise enough to
+    catch on its own, while an embedder's existing ``except ValueError``
+    keeps working.
+    """
+
+
 @dataclass(frozen=True)
 class InvocationConfig:
     """The complete, validated result of parsing psh's command line.
@@ -295,6 +311,25 @@ def parse_invocation(argv: List[str]) -> InvocationConfig:
             raise _invalid_option(arg)
 
     operands = argv[i:]
+
+    # Analysis modes are MUTUALLY EXCLUSIVE. Each one owns the run's whole
+    # stdout and its exit status, so there is nothing to compose: psh used to
+    # keep every requested mode and then let a fixed-priority chain pick one,
+    # so `psh --validate --lint f.sh` silently never linted (26 of 26 measured
+    # combinations collapsed to one winner, 0 of them said so). Rejecting here
+    # — in the pure parser, before any Shell exists — makes that silent drop
+    # unrepresentable rather than merely unlikely. Repeating the SAME flag
+    # stays legal (deduped above), like every other psh option.
+    # ...but `--help` and `--version` still win, in ANY argv order. They ask
+    # what psh IS rather than for a run to be configured, so refusing to answer
+    # because the rest of the line contradicts itself helps nobody — and it is
+    # what psh did before the exclusivity rule existed.
+    if len(st.analysis) > 1 and not (st.print_help or st.print_version):
+        raise InvocationError((
+            "psh: only one analysis mode may be given: "
+            + " ".join(f"--{mode}" for mode in st.analysis),
+            "Try 'psh --help' for more information.",
+        ))
 
     # Validate the parser BEFORE any Shell can exist (probe class A4a: an
     # invalid parser used to run the rc file first).

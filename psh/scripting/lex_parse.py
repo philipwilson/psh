@@ -3,7 +3,7 @@
 Three script-entry callers must turn buffered text into an AST the same way:
 the completeness-trial parser (``parser/session.py#ParseSession._trial_parse``), the
 execution parser (``source_processor._parse_command``), and the analysis
-parser (``visitor_modes._parse_for_analysis``). Historically each wrote the
+parser (``analysis_session.parse_for_analysis``). Historically each wrote the
 sequence out by hand and the analysis copy had DRIFTED — it ignored
 ``--parser``, dropped ``lexer_options``, and skipped alias expansion
 (reappraisal #19 H11). The pipeline now lives here:
@@ -14,10 +14,21 @@ sequence out by hand and the analysis copy had DRIFTED — it ignored
   can no longer drift.
 - :func:`parse_tokens` — dispatch a token stream to the shell's ACTIVE parser
   (recursive-descent or combinator), heredoc-aware. THE shared parse-dispatch,
-  called by the two active-parser callers.
+  called by the three active-parser callers.
 - :func:`lex_and_parse` — ``lex_and_expand`` + ``parse_tokens``: the convenience
   chokepoint for a caller that needs neither the intermediate token stream nor a
-  parser pinned to recursive descent.
+  parser pinned to recursive descent. It is also the WHOLE-FILE-PARSE ORACLE the
+  analysis-session tests compare against: they assert that parsing a script unit
+  by unit reproduces what one whole-file parse produced, so this function has
+  cross-module test consumers and must not be inlined away as unused.
+
+  IT STAYS IN ``psh/`` BY RULING (remediation 2.6 R21-G), which supersedes this
+  note as the authority. The question — whether an oracle whose only consumers
+  are tests belongs in the test tree — was asked twice and answered: moving it
+  would require a test-tree TWIN of production lex/parse plumbing, and
+  test-only twins drift from the path they claim to mirror, which is the
+  worse-outlawed shape. A six-line production function with declared
+  cross-test consumers and a docstring stating the role is the honest minimum.
 
 The completeness trial (``command_accumulator``) shares :func:`lex_and_expand`
 but keeps its OWN recursive-descent ``Parser`` construction: the interactive

@@ -4,6 +4,47 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.762.0 (2026-08-01) - State-aware analysis session (remediation slot 2.6, MEDIUM-9; Wave 2 complete)
+
+- Analysis modes (`--validate`/`--format`/`--metrics`/`--security`/`--lint`)
+  now parse INCREMENTALLY under evolving option state, driving execution's own
+  unit chunking: a script that enables `extglob` (or `posix`, or defines
+  aliases) mid-file now validates exactly as it executes. The parse-relevant
+  state universe (extglob, posix, expand_aliases + alias table, parser
+  selection) is DERIVED from the pipeline and guard-enforced.
+- Per-option transition rule, measured against execution before encoding:
+  monotone enables for extglob/posix (including function bodies; safety
+  property pinned over a 29,984-cell generated corpus), ordered last-wins for
+  expand_aliases (the one declared cost — an unreached conditional disable
+  narrows analysis — is pinned in the divergent direction). Declared
+  residuals: directives inside `eval` strings / `source`d files / expansion
+  heads stay invisible (analysis never executes).
+- Directive recognition mirrors the shopt builtin's own argument grammar:
+  first-operand stop, contradictory `-s`/`-u` refusal (clustered AND separate
+  words), quote-aware head normalization via the lexer's part context,
+  `command`/`builtin`/backslash/assignment prefixes, `set -o` pairs at any
+  position. Alias absorption runs `AliasManager.expand_aliases` itself, so
+  command-position discipline is inherited, and heredoc BODIES are never
+  lexed as command text.
+- Multiple analysis modes are now REJECTED at invocation parsing (usage
+  error 2 naming every offending flag) instead of silently running only a
+  fixed-priority winner; `--help`/`--version` suppress the conflict check.
+  The five `*_only` booleans collapsed to one honest `analysis_mode`.
+- Analysis syntax errors now carry execution's `file:LINE:` prefix and
+  correct per-unit line numbers (stderr-format change; previously a bare
+  label, with wrong lines on several shapes).
+- Co-landed fixes: recursive-descent whole-file analysis corrupted words
+  AFTER a heredoc body (AST-level; `--validate`/`--format`/`--metrics`
+  faces); `--format` under `set -o posix` re-rendered `$äö` meaning-changing;
+  `--debug-exec` leaked execution trace/terminal-detection output into
+  analysis. New `psh -n` vs `--validate` two-surface contract: `-n` stays
+  bash-`-n`-parity (state-blind, conformance-pinned), `--validate` is
+  state-aware by design (declared divergence).
+- Verification: seven adversarial rounds, two devs (context handover per
+  standing agreement), 19 verifier-found defects + 1 integrator-ruling
+  falsification, 0 false findings. Evidence:
+  `docs/reviews/evidence/boundary_remediation_2026-07/2.6-rescue/`.
+
 ## 0.761.0 (2026-08-01) — remediation 2.5: heredoc/lexical value integrity
 
 Closes reappraisal-#22 MEDIUM-3 and MEDIUM-10 (Boundary Remediation Wave 2,

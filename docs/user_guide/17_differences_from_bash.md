@@ -530,10 +530,11 @@ OFF the Unicode extension; ASCII names behave identically in both modes.
 Note on `for`/`function` error flow: in DEFAULT mode both shells simply report
 "not a valid identifier" (status 1) and CONTINUE — PSH matches bash here. The
 flow differs only under `set -o posix`: bash then treats the invalid name as a
-*parse* error and aborts the whole input (exit 2), whereas PSH — which parses the
-entire program before executing, so a runtime `set -o posix` cannot influence
-parsing — still rejects it at *execution* time (status 1) and continues. Both
-reject the name; only the posix abort-vs-continue flow differs.
+*parse* error and aborts the whole input (exit 2), whereas PSH rejects it at
+*execution* time (status 1) and continues. (PSH parses one command at a time, so
+a `set -o posix` does affect how LATER commands are parsed — it just does not
+turn this particular rejection into a parse error.) Both reject the name; only
+the posix abort-vs-continue flow differs.
 
 ### Case Modification and Unicode
 
@@ -800,6 +801,60 @@ psh --security script.sh    # Check for security concerns
 # Code metrics
 psh --metrics script.sh     # Show complexity and statistics
 ```
+
+**One mode per run.** Each mode owns the run's output and its exit status, so
+they do not combine: `psh --validate --lint script.sh` is a usage error (exit
+2) naming both flags, instead of silently running only one of them. Repeating a
+single flag is fine.
+
+**Analysis follows the script's own settings.** These tools read a script the
+way the shell runs it — one command at a time — so an option the script enables
+is in effect for the lines after it:
+
+```bash
+shopt -s extglob
+case "$x" in +(a)) echo "one or more a" ;; esac   # analyzed, not rejected
+```
+
+Some limits follow from analysis never *executing* the script. It cannot know
+whether a line is actually reached, and it handles that differently for
+lexing options than for alias expansion.
+
+For `extglob` and `posix`, analysis errs toward accepting:
+
+- A setting enabled inside a branch that never runs is still treated as
+  enabled, so analysis accepts slightly more than the shell would rather than
+  reporting errors for scripts that run fine.
+- Turning one of them back off does not narrow the analysis, for the same
+  reason.
+- Analysis does not work out which command a name will resolve to, so a
+  `shopt` that a shell function of the same name would shadow is still read as
+  the builtin.
+
+For `expand_aliases` the rule is different, because the shell's own behaviour
+is: unsetting it really does stop aliases expanding on later lines, so analysis
+follows the last setting it can see, on or off. The cost is that a disable
+analysis cannot know is unreachable still applies:
+
+```bash
+alias iff='if true; then'
+if false; then shopt -u expand_aliases; fi   # never runs...
+iff echo X; fi                               # ...but analysis stops expanding
+```
+
+That script runs fine and fails `--validate`. Writing the `shopt` outside a
+branch — or not disabling expansion at all — analyzes as it runs.
+
+One more limit applies to every setting:
+
+- A setting made inside `eval '...'` or in a `source`d file is invisible to
+  analysis — seeing it would mean running the very code analysis promises not
+  to run. Such a script runs, but may not validate.
+
+`--validate` is psh's own analysis and behaves as described above. The POSIX
+`-n` flag is a different tool: it is Bash's syntax check, and like `bash -n` it
+does not execute a script's `shopt` commands — so `psh -n` and `bash -n` agree
+with each other rather than with `--validate`.
 
 ### Parser Selection
 

@@ -300,7 +300,7 @@ combine small adjacent slots at dispatch time):
   events (PTY-pinned per A5); executable `HeredocRedirect` body
   non-optional; frozen token-part graph (MEDIUM-3, MEDIUM-10).
 - 2.6 Analysis session: state-aware incremental analysis; compose or reject
-  multiple modes at invocation (MEDIUM-9).
+  multiple modes at invocation (MEDIUM-9). **DISCHARGED v0.762.0** (reject-at-invocation ruled; 7 verify rounds, 2 devs, evidence `2.6-rescue/`). **WAVE 2 COMPLETE** — 2.1 v0.756.0, 2.2 v0.757.0, 2.3 v0.758.0, 2.4 v0.760.0, 2.5 v0.761.0, 2.6 v0.762.0.
 
 **Wave 3 — expansion semantics and command authority** (target 4 releases)
 - 3.1 Pattern correctness: continuation-aware negation + nullable-extglob

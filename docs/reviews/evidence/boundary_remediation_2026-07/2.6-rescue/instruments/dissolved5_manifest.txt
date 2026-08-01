@@ -1,0 +1,23 @@
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_spelling_is_recognized[shopt -s extglob -u]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt -q extglob -s]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt extglob -s]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt -- -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt -z -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestDirectiveSpellingAxis::test_near_miss_is_not_mistaken_for_a_directive[shopt -so extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_analysis_agrees_with_execution_about_extglob[shopt -s extglob -u]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_analysis_agrees_with_execution_about_extglob[shopt -q extglob -s]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_analysis_agrees_with_execution_about_extglob[shopt extglob -s]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_analysis_agrees_with_execution_about_extglob[shopt -- -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_analysis_agrees_with_execution_about_extglob[shopt -z -s extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_analysis_agrees_with_execution_about_extglob[shopt -so extglob]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_analysis_agrees_with_execution_about_expand_aliases[shopt expand_aliases -u]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_analysis_agrees_with_execution_about_expand_aliases[shopt -q expand_aliases -u]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_analysis_agrees_with_execution_about_expand_aliases[shopt -u expand_aliases -s]
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_false_red_face_is_an_incomplete_fix_not_a_regression
+FAILED tests/system/test_analysis_state_aware.py::TestShoptFlagWordArrangement::test_false_green_face_no_longer_invents_an_enable
+FAILED tests/system/test_analysis_state_aware.py::TestDebugTraceDoesNotLeakIntoAnalysis::test_debug_flag_writes_nothing_on_an_analysis_run[validate]
+FAILED tests/system/test_analysis_state_aware.py::TestDebugTraceDoesNotLeakIntoAnalysis::test_debug_flag_writes_nothing_on_an_analysis_run[format]
+FAILED tests/system/test_analysis_state_aware.py::TestDebugTraceDoesNotLeakIntoAnalysis::test_debug_flag_writes_nothing_on_an_analysis_run[metrics]
+FAILED tests/system/test_analysis_state_aware.py::TestDebugTraceDoesNotLeakIntoAnalysis::test_debug_flag_writes_nothing_on_an_analysis_run[security]
+FAILED tests/system/test_analysis_state_aware.py::TestDebugTraceDoesNotLeakIntoAnalysis::test_debug_flag_writes_nothing_on_an_analysis_run[lint]
+FAILED tests/system/test_analysis_state_aware.py::TestDebugTraceDoesNotLeakIntoAnalysis::test_every_debug_flag_is_silent_on_analysis

@@ -166,6 +166,23 @@ class TestShoptFlagGrammar:
                     in captured_shell.get_stderr())
             captured_shell.clear_output()
 
+    def test_ddash_ends_flags_and_the_operand_still_applies(self, captured_shell):
+        """`--` ends the flags; what follows is an operand, and the `-s` seen
+        before it still applies. rc 0, nothing on either stream, extglob on —
+        measured identical in bash 5.2.26.
+
+        R21-D. This row exists because a mutation attack on the flag loop
+        (ledger addendum, five-mutation probe) found `--`-ends-flags to be the
+        ONE rule with no committed test of its own on this suite: deleting it
+        from the builtin left all 33 tests here green, and only the analysis
+        session's mirror noticed. A rule the builtin owns should not depend on
+        a consumer's tests to be guarded.
+        """
+        assert captured_shell.run_command('shopt -s -- extglob') == 0
+        assert captured_shell.get_stdout() == ""
+        assert captured_shell.get_stderr() == ""
+        assert captured_shell.state.options['extglob'] is True
+
     def test_flag_after_operand_is_an_operand(self, captured_shell):
         # bash: parsing stops at the first operand; the later -s is a (bad)
         # option NAME, and extglob is queried, not set.

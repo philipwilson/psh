@@ -665,11 +665,11 @@ def test_scanner_ignores_named_field_visit_and_prose():
 
 
 def test_source_processor_offset_uses_walk_ast_not_reflection():
-    """Campaign Q2 carry: source_processor._offset_line_numbers was migrated off
+    """Campaign Q2 carry: source_processor.offset_line_numbers was migrated off
     generic field reflection onto walk_ast — it must no longer reflect."""
     found = _scan_production_reflection()
     assert "scripting/source_processor.py" not in found, (
         "source_processor.py reintroduced generic field reflection — "
-        "_offset_line_numbers must descend via walk_ast")
+        "offset_line_numbers must descend via walk_ast")
     src = (_PSH_ROOT / "scripting" / "source_processor.py").read_text()
     assert "walk_ast" in src, "source_processor must import/use walk_ast"

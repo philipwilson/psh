@@ -5,7 +5,7 @@ backslash-newline joining the execution path performs
 (`SourceProcessor._preprocess_command`). The lexer does NOT collapse a
 continuation in every context (a `\\`-newline right after `then`, or inside
 `[[ ]]`), so `--validate` reported false syntax errors on scripts that execute
-cleanly. `visitor_modes._parse_for_analysis` now runs
+cleanly. `analysis_session.parse_for_analysis` now runs
 `process_line_continuations` first. Pinned against bash 5.2 (the scripts run).
 """
 import os
