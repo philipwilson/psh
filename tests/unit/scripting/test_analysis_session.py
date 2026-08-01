@@ -405,6 +405,38 @@ class TestShoptTableRoutingIsDerived:
                 f"{name}: SET_O_TABLE_OPTIONS disagrees with the shopt "
                 f"builtin's own _SET_O_NAMES (builtin says {in_set_o})")
 
+    @pytest.mark.parametrize("o_flag", [False, True])
+    @pytest.mark.parametrize("option", PARSE_RELEVANT_OPTIONS)
+    def test_the_constants_predict_the_builtins_measured_behavior(self, option,
+                                                                  o_flag):
+        """R17-A: anchor the constants to what the builtin DOES, not to what
+        its tables say.
+
+        Comparing the constants against `_SHOPT_NAMES`/`_SET_O_NAMES` catches
+        drift in the tables, but both sides could agree and both be wrong
+        about the resulting behavior — the cited-copy drift class. So each
+        cell RUNS the real builtin from a known state and checks the option
+        moved exactly when the constants predict it.
+
+        The six cells reproduce the measurements the constants were written
+        from: `shopt -s posix` is refused while `shopt -so posix` sets it, and
+        the extglob mirror (psh and bash 5.2.26 agreeing on all six).
+        """
+        table = SET_O_TABLE_OPTIONS if o_flag else SHOPT_TABLE_OPTIONS
+        predicted = option in table
+
+        shell = Shell(norc=True)
+        shell.state.options[option] = False
+        shell.run_command(f"shopt -s{'o' if o_flag else ''} {option}")
+        actual = bool(shell.state.options.get(option))
+
+        assert actual == predicted, (
+            f"`shopt -s{'o' if o_flag else ''} {option}` "
+            f"{'set' if actual else 'did NOT set'} the option, but the "
+            f"routing constants predict it "
+            f"{'would' if predicted else 'would not'}. The constants no "
+            "longer describe the builtin's behavior.")
+
     def test_the_two_routings_are_disjoint_for_threaded_options(self):
         """Stated as its own fact because the branch relies on it: an operand
         names one table or the other, never both."""
