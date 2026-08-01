@@ -383,12 +383,18 @@ def test_bash_matcher_states_stay_polynomial():
 def test_bash_matcher_recursion_contract():
     """Flagged-pattern recursion is bounded by PATTERN structure.
 
-    A 100-unit star∘negation chain evaluates fine at the default recursion
-    limit; a pathological 1000-unit chain raises a clean RecursionError —
-    an EXPECTED shell error under strict-errors (the same taxonomy as
-    extglob nesting depth; declared in slot 3.1). Subject length and star
-    count alone never recurse (non-flagged patterns keep the iterative
-    paths — pinned by the existing matcher/relations suites)."""
+    A 100-unit star∘negation chain evaluates fine at any recursion limit
+    this suite runs under; a chain with as many units as the CURRENT limit
+    (each unit costs at least one frame — the process limit is 1000 by
+    default and 40,000 once a shell has activated, psh/core/process_lease.py)
+    raises a clean RecursionError — an EXPECTED shell error under
+    strict-errors, the same taxonomy as extglob nesting depth (declared in
+    slot 3.1). Subject length and star count alone never recurse
+    (non-flagged patterns keep the iterative paths — pinned by the existing
+    matcher/relations suites)."""
+    import sys
+
     assert fullmatch(compile_pattern("*!(a)" * 100), "aaa") is True
+    units = sys.getrecursionlimit()
     with pytest.raises(RecursionError):
-        fullmatch(compile_pattern("*!(a)" * 1000), "aaa")
+        fullmatch(compile_pattern("*!(a)" * units), "aaa")
