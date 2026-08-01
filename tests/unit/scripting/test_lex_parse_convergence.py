@@ -71,11 +71,16 @@ def test_delta_b_lexer_options_reach_nested_substitution():
     assert ast is not None
 
     # Both branches of the symmetric option: with extglob OFF the same input
-    # is a genuine syntax error.
+    # is a genuine syntax error. Since remediation 2.6 the analysis session
+    # reports which UNIT failed, so the ParseError arrives inside a typed
+    # AnalysisSyntaxError carrying that unit's start line — the parse verdict
+    # this test pins is unchanged, only its envelope.
     from psh.parser import ParseError
+    from psh.scripting.analysis_session import AnalysisSyntaxError
     off = Shell(norc=True)
-    with pytest.raises(ParseError):
+    with pytest.raises(AnalysisSyntaxError) as caught:
         _parse_for_analysis(off, src)
+    assert isinstance(caught.value.error, ParseError)
 
 
 # --- Delta C: the ADVISORY modes consult the alias table at the seam (like
@@ -105,7 +110,7 @@ def test_delta_c_analysis_expands_aliases():
     # Advisory analysis (--validate/--lint/...; any mode but --format) sees
     # what would EXECUTE: the alias expands at the lex→parse seam.
     shell = Shell(norc=True)
-    shell.lint_only = True
+    shell.analysis_mode = 'lint'
     shell.alias_manager.define_alias('ll', 'ls -l')
     cmd = _first_simple_command(_parse_for_analysis(shell, 'll'))
     assert cmd is not None
@@ -118,7 +123,7 @@ def test_delta_c_format_preserves_alias_word(capsys):
     # must not rewrite the script. Red on the pre-ruling tip (which inlined
     # `printf UNIQUE_XYZ` for `zz`).
     shell = Shell(norc=True)
-    shell.format_only = True
+    shell.analysis_mode = 'format'
     rc = handle_visitor_mode_for_content(
         shell, 'alias zz="printf UNIQUE_XYZ"\nzz', '-c')
     assert rc == 0
@@ -183,7 +188,7 @@ def test_analysis_internal_defect_raises_under_strict(monkeypatch):
     monkeypatch.setattr('psh.visitor.LinterVisitor.visit', boom)
 
     shell = Shell(norc=True)
-    shell.lint_only = True
+    shell.analysis_mode = 'lint'
     shell.state.options['strict-errors'] = True
     with pytest.raises(TypeError):
         handle_visitor_mode_for_content(shell, 'echo hi', '-c')
@@ -195,7 +200,7 @@ def test_analysis_internal_defect_reports_without_strict(monkeypatch, capsys):
     monkeypatch.setattr('psh.visitor.LinterVisitor.visit', boom)
 
     shell = Shell(norc=True)
-    shell.lint_only = True
+    shell.analysis_mode = 'lint'
     shell.state.options['strict-errors'] = False
     rc = handle_visitor_mode_for_content(shell, 'echo hi', '-c')
     assert rc == 1
@@ -209,7 +214,7 @@ def test_analysis_syntax_error_still_clean_under_strict(monkeypatch):
     # Contrast: a real syntax error is an EXPECTED shell error — it renders and
     # returns 2 even under strict-errors (it must NOT re-raise).
     shell = Shell(norc=True)
-    shell.validate_only = True
+    shell.analysis_mode = 'validate'
     shell.state.options['strict-errors'] = True
     rc = handle_visitor_mode_for_content(shell, 'if', '-c')
     assert rc == 2

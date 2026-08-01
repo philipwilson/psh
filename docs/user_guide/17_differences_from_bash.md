@@ -801,6 +801,36 @@ psh --security script.sh    # Check for security concerns
 psh --metrics script.sh     # Show complexity and statistics
 ```
 
+**One mode per run.** Each mode owns the run's output and its exit status, so
+they do not combine: `psh --validate --lint script.sh` is a usage error (exit
+2) naming both flags, instead of silently running only one of them. Repeating a
+single flag is fine.
+
+**Analysis follows the script's own settings.** These tools read a script the
+way the shell runs it — one command at a time — so an option the script enables
+is in effect for the lines after it:
+
+```bash
+shopt -s extglob
+case "$x" in +(a)) echo "one or more a" ;; esac   # analyzed, not rejected
+```
+
+Three limits follow from analysis never *executing* the script:
+
+- It cannot know whether a line is actually reached, so a setting enabled
+  inside a branch that never runs is still treated as enabled. Analysis accepts
+  slightly more than the shell would, rather than reporting errors for scripts
+  that run fine.
+- Turning an option back off does not narrow the analysis, for the same reason.
+- A setting made inside `eval '...'` or in a `source`d file is invisible to
+  analysis — seeing it would mean running the very code analysis promises not
+  to run. Such a script runs, but may not validate.
+
+`--validate` is psh's own analysis and behaves as described above. The POSIX
+`-n` flag is a different tool: it is Bash's syntax check, and like `bash -n` it
+does not execute a script's `shopt` commands — so `psh -n` and `bash -n` agree
+with each other rather than with `--validate`.
+
 ### Parser Selection
 
 ```bash
