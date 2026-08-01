@@ -23,6 +23,7 @@ from psh.expansion.extglob import (
     extglob_to_regex,
 )
 from psh.expansion.pattern_engine import (
+    _seq_bash_quirk,
     compile_pattern,
     count_states,
     fullmatch,
@@ -144,14 +145,28 @@ def test_new_fullmatch_agrees_with_regex_converter_on_nonneg():
     reference oracle — production-dead after W3, but retained PERMANENTLY for
     exactly this differential cross-check; campaign Q3 ruling) must agree on
     every non-negation extglob pattern — a standing consistency check between
-    the two live backends. Negation is not expressible as a Python regex, so it
-    is excluded; plain globs are compared elsewhere.
+    the two live backends. Two exclusions, each with a stronger oracle
+    elsewhere:
+
+    * negation is not expressible as a Python regex (plain globs are
+      compared elsewhere);
+    * bash-composition patterns (``_seq_bash_quirk``: an extglob group
+      directly after a wildcard run) — slot 3.1: bash's REAL star∘group
+      composition is slice-end-relative and cannot be expressed by the
+      regex model (``.*(?:a|.*)`` matches "" where bash's ``*@(a|*)`` does
+      not). The exclusion predicate IS the engine's routing flag — the one
+      decider, imported, never a textual twin — and the excluded shapes are
+      covered against LIVE BASH by the corpus in
+      ``test_pattern_bash_composition_differential.py``.
     """
     mismatches = []
     for pat, subj in _cases(seed=555, count=6000):
         if _contains_negation(pat) or not contains_extglob(pat):
             continue
-        new = fullmatch(compile_pattern(pat), subj)
+        root = compile_pattern(pat)
+        if _seq_bash_quirk(root):
+            continue
+        new = fullmatch(root, subj)
         regex_str = extglob_to_regex(pat, anchored=True, from_start=True)
         try:
             old = bool(re.fullmatch(regex_str, subj))
