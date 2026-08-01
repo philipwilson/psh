@@ -1055,8 +1055,10 @@ class TestAliasAxisNormalizationAsymmetry:
     The OPTION axis normalizes a directive's head through the prefixes that do
     not change which builtin runs. The ALIAS axis does not: absorption runs
     `AliasManager.expand_aliases`, whose command-position walk recognizes the
-    bare words `alias`/`unalias` only. So four spellings that DEFINE an alias
-    at execution are invisible to analysis.
+    bare words `alias`/`unalias` only. So FIVE classes of spelling that DEFINE
+    an alias at execution are invisible to analysis: the four prefix forms,
+    plus QUOTED heads (R21-B) — which the OPTION axis learned to read from the
+    lexer's per-part quote context in R11-A while the alias axis never did.
 
     Preserved rather than fixed here on purpose. Closing it means widening the
     alias decider's own recognition, which lives in psh/expansion/ —
@@ -1076,6 +1078,15 @@ class TestAliasAxisNormalizationAsymmetry:
         "builtin alias iff='if true; then'",
         "x=1 alias iff='if true; then'",
         "\\alias iff='if true; then'",
+        # R21-B(2), the FIFTH class: quoting a command NAME does not change
+        # which command runs, so each of these really defines the alias —
+        # measured rc 0 at execution. The option axis reads the lexer's
+        # per-part quote context to see through exactly this (R11-A); the
+        # alias decider's own walk compares bare words and does not.
+        "'alias' iff='if true; then'",
+        '"alias" iff=\'if true; then\'',
+        "al''ias iff='if true; then'",
+        "a'l'ias iff='if true; then'",
     ])
     def test_normalized_alias_spellings_are_not_absorbed(self, tmp_path,
                                                          definition):
@@ -1094,3 +1105,50 @@ class TestAliasAxisNormalizationAsymmetry:
         analysis = _psh(tmp_path, ["--validate", "s.sh"])
         assert is_comparable(execution) and is_comparable(analysis)
         assert execution.returncode == analysis.returncode == 0
+
+    #: R21-B(1), the OTHER declared alias-axis limitation: ISOLATION.
+    #: The option axis drops a directive that sits in a state-isolated region;
+    #: the alias axis absorbs a definition wherever it appears in the unit's
+    #: token stream. MEASURED base 42f75591 == tip on every row below, so this
+    #: is base-faithful and pre-existing, pinned only so movement is visible.
+    #:
+    #: (script, execution rc, analysis rc, what the row shows)
+    ISOLATION_ROWS = [
+        ("( alias iff='if true; then' )\niff echo X; fi\n", 2, 0,
+         "subshell definition dies with the subshell; analysis keeps it"),
+        ("alias iff='if true; then' | cat\niff echo X; fi\n", 2, 0,
+         "pipeline member runs in its own process; analysis keeps it"),
+        ("alias iff='if true; then' &\nwait\niff echo X; fi\n", 2, 0,
+         "background definition dies with the job; analysis keeps it"),
+        ("alias iff='if true; then'\n( unalias -a )\niff echo X; fi\n", 0, 2,
+         "an ISOLATED unalias -a narrows analysis — the divergent direction, "
+         "and the one shape here that can invent a syntax error"),
+    ]
+
+    @pytest.mark.parametrize("script,exec_rc,analysis_rc,why", ISOLATION_ROWS)
+    def test_alias_absorption_ignores_state_isolation(self, tmp_path, script,
+                                                      exec_rc, analysis_rc, why):
+        """Fixed statuses, not agreement, BECAUSE these rows pin a divergence:
+        an agreement assertion would be red by construction and could never
+        say which direction the gap runs."""
+        _script(tmp_path, script)
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == exec_rc, f"{why}: {execution.stderr}"
+        assert analysis.returncode == analysis_rc, f"{why}: {analysis.stderr}"
+
+    def test_a_substitution_definition_is_not_absorbed(self, tmp_path):
+        """The control that keeps the rows above honest: absorption is not
+        simply 'anything anywhere'. A definition inside a command
+        substitution is NOT absorbed — not because the isolation rule is
+        applied, but because the substitution is one WORD token and the
+        decider's command-position walk never sees an `alias` head there.
+        Recording the real reason matters: it would be easy to read this row
+        as evidence the isolation rule works on this axis, and it does not.
+        """
+        _script(tmp_path, "x=$(alias iff='if true; then')\n" + self.USE)
+        execution = _psh(tmp_path, ["s.sh"])
+        analysis = _psh(tmp_path, ["--validate", "s.sh"])
+        assert is_comparable(execution) and is_comparable(analysis)
+        assert execution.returncode == 2 and analysis.returncode == 2

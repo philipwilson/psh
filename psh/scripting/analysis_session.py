@@ -558,6 +558,30 @@ class AnalysisSession:
 
 def parse_for_analysis(shell: 'Shell', content: str,
                        drop_dangling_at_eof: bool = False) -> Program:
-    """Parse *content* for analysis under evolving parse-relevant state."""
+    """Parse *content* into an AST for analysis, unit by unit.
+
+    THE one door into analysis parsing: every analysis mode reaches the
+    session through here. It walks the same
+    unit boundaries execution walks and threads parse-relevant state (extglob,
+    posix, the alias table, the active parser) from each unit to the next
+    WITHOUT executing anything — so a script that enables extglob on line 1 and
+    uses ``+(...)`` on line 2 analyzes exactly as it runs (remediation
+    MEDIUM-9(a)). Each unit goes through ``lex_parse.lex_and_expand`` then
+    ``lex_parse.parse_tokens`` — the same heredoc-aware lex→alias→parse
+    pipeline execution uses, split so the session can feed ONE token stream to
+    both the parse and its state absorption — so analysis honours ``--parser``
+    and threads lexer options into nested-substitution re-lexing (reappraisal
+    #19 H11). A heredoc BODY stays attached to its redirect.
+
+    Line continuations are joined per unit (as
+    ``SourceProcessor._preprocess_command`` does): the lexer does NOT collapse a
+    continuation in every context (``then\\``, inside ``[[ ]]``), so without this
+    analysis reported false syntax errors on valid scripts that execute fine.
+    ``drop_dangling_at_eof`` mirrors the execution path's stream-vs-string rule
+    for a trailing backslash at true EOF.
+
+    ``--format``'s ``expand_aliases=False`` exception lives on the session; see
+    ``AnalysisSession`` for that and for the which-transitions-apply rule.
+    """
     return AnalysisSession(shell).analyze(
         content, drop_dangling_at_eof=drop_dangling_at_eof)

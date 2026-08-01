@@ -430,16 +430,53 @@ class TestDebugAndAnalysisFlags:
         assert "only one analysis mode" not in caught.value.lines[0]
 
     def test_the_precedence_order_is_stated_whole(self):
-        """The three levels in ONE place, so the order is a pinned fact rather
-        than something a reader assembles from three tests:
-        invalid option > --help/--version > analysis-mode conflict."""
-        with pytest.raises(InvocationError):           # level 1 beats level 2
-            parse_invocation(["--help", "--badopt"])
-        assert parse_invocation(                       # level 2 beats level 3
-            ["--help", "--validate", "--lint"]).print_help
-        with pytest.raises(InvocationError) as caught:  # level 3 still errors
-            parse_invocation(["--validate", "--lint", "s.sh"])
+        """The whole order in ONE place, MEASURED — including the part that is
+        easy to state wrongly (R21-C).
+
+        The order is NOT "invalid option > help/version > mode-conflict >
+        invalid value". `--help` does not OUTRANK the mode conflict; it
+        SUPPRESSES that check (psh/invocation.py:327 guards it with
+        `not (st.print_help or st.print_version)`), while the parser-VALUE
+        check that follows at :336 is suppressed by nothing. So:
+
+            invalid option SPELLING   raised while scanning argv
+          > analysis-mode CONFLICT    end of parse; SKIPPED under help/version
+          > invalid option VALUE      end of parse; never skipped
+          > --help/--version output   printed by __main__ on a clean parse
+
+        The decisive cell is the three-way one, which the simpler ranking gets
+        wrong: with help AND a conflict AND a bad value, the VALUE error wins,
+        because help removed the conflict check and the value check does not
+        care about help.
+        """
+        # SPELLING beats everything downstream, in any order.
+        for argv in (["--help", "--badopt"], ["--badopt", "--parser", "bogus"]):
+            with pytest.raises(InvocationError) as caught:
+                parse_invocation(argv)
+            assert "--badopt" in caught.value.lines[0], argv
+
+        # CONFLICT beats a bad VALUE when no help/version is present.
+        with pytest.raises(InvocationError) as caught:
+            parse_invocation(["--validate", "--lint", "--parser", "bogus", "s.sh"])
         assert "only one analysis mode" in caught.value.lines[0]
+
+        # help SUPPRESSES the conflict check — the only reason a
+        # contradictory command line can parse cleanly at all.
+        assert parse_invocation(["--help", "--validate", "--lint"]).print_help
+
+        # ...but it does NOT suppress the VALUE check.
+        for argv in (["--help", "--parser", "bogus"],
+                     ["--parser", "bogus", "--help"]):
+            with pytest.raises(InvocationError) as caught:
+                parse_invocation(argv)
+            assert "unknown parser" in caught.value.lines[0], argv
+
+        # THE DECISIVE CELL: all three present. Suppressing the conflict lets
+        # the value error through, so VALUE wins — not help.
+        with pytest.raises(InvocationError) as caught:
+            parse_invocation(["--help", "--validate", "--lint",
+                              "--parser", "bogus"])
+        assert "unknown parser" in caught.value.lines[0], caught.value.lines
 
     def test_analysis_mode_deduplicated(self):
         config = parse_invocation(['--lint', '--lint', 's.sh'])

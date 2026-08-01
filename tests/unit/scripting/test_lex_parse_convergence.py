@@ -15,7 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from psh.scripting.visitor_modes import _parse_for_analysis, handle_visitor_mode_for_content
+from psh.scripting.analysis_session import parse_for_analysis
+from psh.scripting.visitor_modes import handle_visitor_mode_for_content
 from psh.shell import Shell
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -67,7 +68,7 @@ def test_delta_b_lexer_options_reach_nested_substitution():
 
     on = Shell(norc=True)
     on.state.options['extglob'] = True
-    ast = _parse_for_analysis(on, src)   # must not raise
+    ast = parse_for_analysis(on, src)   # must not raise
     assert ast is not None
 
     # Both branches of the symmetric option: with extglob OFF the same input
@@ -79,7 +80,7 @@ def test_delta_b_lexer_options_reach_nested_substitution():
     from psh.scripting.analysis_session import AnalysisSyntaxError
     off = Shell(norc=True)
     with pytest.raises(AnalysisSyntaxError) as caught:
-        _parse_for_analysis(off, src)
+        parse_for_analysis(off, src)
     assert isinstance(caught.value.error, ParseError)
 
 
@@ -112,7 +113,7 @@ def test_delta_c_analysis_expands_aliases():
     shell = Shell(norc=True)
     shell.analysis_mode = 'lint'
     shell.alias_manager.define_alias('ll', 'ls -l')
-    cmd = _first_simple_command(_parse_for_analysis(shell, 'll'))
+    cmd = _first_simple_command(parse_for_analysis(shell, 'll'))
     assert cmd is not None
     # 'll' expanded to 'ls -l' — before the fix this stayed ['ll'].
     assert cmd.args == ['ls', '-l'], cmd.args
