@@ -280,8 +280,15 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
 - **The four relations** on `CompiledPattern` are exactly what consumers need:
   `full_match(text)` (case/`[[`/name filter/one pathname entry/one case-mod
   char), `matching_ends(text, start)` (prefix removal — `#`=min, `##`=max),
-  `matching_starts(text, end)` (suffix removal — `%`=max start, `%%`=min start),
+  `matching_starts(text, end)` (suffix removal — `%`=max start, `%%`=min start;
+  ONE backward all-start pass, `pattern_engine.py#_Matcher._starts`, not a
+  forward DP per start index),
   and `span_at(text, pos)` / `spanner(text)` (leftmost-longest substitution;
+  `spanner` pre-filters positions with the same all-start pass, so a subject
+  with NO match costs one pass instead of one DP per position, and
+  `suffix_matcher(text)` answers the per-suffix pre-test in place rather than
+  re-slicing the subject — the substitution scan shares ONE matcher across
+  every position;
   `matching_spans` is a test-pinned relation oracle with no production
   caller — labelled in its docstring, kept per the extglob_to_regex
   permanent-oracle precedent). `parameter_expansion.py` calls these
@@ -345,13 +352,35 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
   This retired both former interim encodings (`_pattern_from_runs`
   bracket-escaping and `operands.glob_escape`'s incomplete set).
 
-Complexity is guarded deterministically by `count_states()` (see
-`tests/unit/expansion/test_pattern_engine_matcher.py`,
+Complexity is guarded deterministically by TWO counters, and the difference
+between them is load-bearing. `count_states()` counts memo KEYS — a guard on
+memo coverage (`tests/unit/expansion/test_pattern_engine_matcher.py`,
 `test_pattern_relations.py`, and the `_BashMatcher` bounds in
-`test_pattern_bash_composition_differential.py`); behavior is locked against
-live bash in `test_pattern_engine_differential.py` (every row an equality
-lock — the former `KNOWN_DIVERGENCES` q4/neg7 set CLOSED in slot 3.1) and
-the composition corpus battery.
+`test_pattern_bash_composition_differential.py`). `count_transitions()` counts
+WORK, including loop steps that end in a memo HIT, and carries the
+running-time guarantees (`test_pattern_engine_transitions.py`). A key count can
+be polynomially smaller than the work producing it: `**(a)b` once had a
+quadratic key count and a CUBIC running time, so the state-count pin passed
+with ~50% headroom while the cubic went unnoticed for a release. Complexity
+pins therefore go on `count_transitions`, read off the matcher the relation
+ACTUALLY USED (`pattern_engine.py#_relation_starts` / `#_relation_ends` /
+`#_relation_full` return `(result, matcher)` for exactly this reason) — a
+counter that re-derives the relation measures a path no consumer takes.
+Behavior is locked against live bash in `test_pattern_engine_differential.py`
+(every row an equality lock — the former `KNOWN_DIVERGENCES` q4/neg7 set
+CLOSED in slot 3.1) and the composition corpus battery.
+
+The compiled AST is IMMUTABLE: every node is a frozen dataclass and the four
+routing bits (`has_extglob`/`bash_quirk`/`sub_fast`/`nullable`) are derived at
+CONSTRUCTION, not lazily, because compiles are cached and a mutable shared node
+let one caller poison every later cache hit — observably, through ordinary
+shell execution. The derivation reads each child's already-derived bits in O(1)
+instead of recursing, so construction cost is independent of extglob NESTING
+depth; that is what keeps the matcher, not the constructor, the thing
+`test_pattern_relations.py` pins the recursion bound on. The freeze targets
+HONEST-CALLER ACCIDENT, not adversarial bypass (`object.__setattr__` still
+works and is out of scope by ruling). Pinned by
+`test_pattern_engine_immutability.py`.
 
 ### Indirection: `${!name}`
 
