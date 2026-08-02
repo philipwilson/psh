@@ -188,7 +188,52 @@ def test_untriggered_conditional_returns_the_view(cmd, expected):
 
 
 # ---------------------------------------------------------------------------
-# 5. M8 regression locks — the fixed blocker must not be re-introducible
+# 5. NESTED operands — a field vector inside a field vector
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('cmd,expected', [
+    # THE cell the static guard caught red-handed: an unruled projection while
+    # mapping view members re-flattened a nested TRIGGERED operand. The inner
+    # ${a[@]:-"$@"} is itself a field vector, and its fields must survive
+    # being spliced into the outer one.
+    ('unset x a; set -- p "q 2"; count "${x:-${a[@]:-"$@"}}"',
+     'n=2 [p] [q 2]\n'),
+    ('unset x a; set -- p "q 2"; count ${x:-${a[@]:-"$@"}}',
+     'n=2 [p] [q 2]\n'),
+    # Plain nesting through a scalar default.
+    ('unset x y; set -- "a 1" b; count "${x:-${y:-"$@"}}"', 'n=2 [a 1] [b]\n'),
+    ('unset x y; set -- "a 1" b; count ${x:-${y:-"$@"}}', 'n=2 [a 1] [b]\n'),
+    # THREE levels deep.
+    ('unset x y z; set -- "a 1" b; count "${x:-${y:-${z:-"$@"}}}"',
+     'n=2 [a 1] [b]\n'),
+    # Nested operand whose own quoting must survive the outer level.
+    # In QUOTED outer context the nested single quotes are LITERAL characters
+    # (DQ rules propagate into the nested operand); unquoted they are removed.
+    # One field either way — the quoting differs, the field count does not.
+    ("unset x z; count \"${x:-${z:-'p q'}}\"", "n=1 ['p q']\n"),
+    ("unset x z; count ${x:-${z:-'p q'}}", 'n=1 [p q]\n'),
+    # Nested alternate, and a nested [*] view (which joins its OWN elements
+    # but must not join a triggered operand's fields).
+    ('y=set; set -- "a 1" b; unset x; count "${x:-${y:+"$@"}}"',
+     'n=2 [a 1] [b]\n'),
+    ('unset x a; set -- p "q 2"; count "${x:-${a[*]:-"$@"}}"',
+     'n=2 [p] [q 2]\n'),
+    # Nested inside a MIXED operand: boundaries land where bash puts them.
+    ('unset x y; set -- a b; count "${x:-pre${y:-"$@"}post}"',
+     'n=2 [prea] [bpost]\n'),
+])
+def test_nested_operand_fields_survive(cmd, expected):
+    """A nested value operand contributes its OWN field vector.
+
+    Required by R3.3: this family is where the projection guard caught a real
+    re-flatten in the change that introduced it, so it is pinned as equality
+    rows rather than left to the guard alone.
+    """
+    _agree(cmd, expected)
+
+
+# ---------------------------------------------------------------------------
+# 6. M8 regression locks — the fixed blocker must not be re-introducible
 # ---------------------------------------------------------------------------
 
 def test_m8_lock_operand_at_is_not_flattened():
