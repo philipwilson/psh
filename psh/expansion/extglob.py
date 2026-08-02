@@ -249,7 +249,15 @@ def _convert_pattern(pattern: str, for_pathname: bool, extglob: bool = True,
 # ---------------------------------------------------------------------------
 
 def _contains_negation(pattern: str) -> bool:
-    """True if *pattern* contains a ``!(...)`` extglob group (at any depth)."""
+    """True if *pattern* contains a ``!(...)`` extglob group (at any depth).
+
+    PRODUCTION-DEAD since slot 3.1 (its last production caller,
+    ``parameter_expansion._neg``, was replaced by the measured consumer
+    layer) but retained as a test-owned decider: the negation-exclusion
+    predicate of the regex-oracle agreement corpus in
+    ``test_pattern_engine_matcher.py`` (negation is not expressible as a
+    Python regex). Same keep-with-label treatment as ``extglob_to_regex``
+    (the campaign Q3 permanent-oracle precedent)."""
     i = 0
     while i < len(pattern):
         ch = pattern[i]

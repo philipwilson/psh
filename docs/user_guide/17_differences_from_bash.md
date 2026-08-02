@@ -56,8 +56,10 @@ shopt globasciiranges # ON by default (bash 5): [a-z] ranges use ASCII bounds
 
 ### Extended Glob Patterns (extglob)
 
-Extended glob patterns are supported once `extglob` is enabled, in globbing,
-`[[ ]]`, and `case`:
+Extended glob patterns are supported in globbing, `[[ ]]`, and `case`.
+Globbing and `case` need `extglob` enabled before the line is parsed; the
+`[[ ]]` pattern operand recognizes them regardless of the shopt — exactly as
+in bash:
 
 ```bash
 shopt -s extglob

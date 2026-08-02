@@ -32,6 +32,7 @@ engine's slice booleans:
 
 Removal has NO consumer layer (pure slice booleans) — measured, same corpus.
 """
+from functools import lru_cache
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union, cast
 
 from .pattern_engine import (
@@ -50,6 +51,36 @@ if TYPE_CHECKING:
 # Sentinel marking "the matched text" in a prepared replacement template
 # (bash 5.2 patsub_replacement: an unquoted & in the replacement).
 PATSUB_MATCH = object()
+
+
+@lru_cache(maxsize=512)
+def _sub_machinery_cached(pattern: str, anchor: str, extglob: bool
+                          ) -> Tuple[CompiledPattern, CompiledPattern, bool]:
+    """Cached body of ``ParameterExpansionOps._sub_machinery`` (see it for
+    the semantics; round-1 nit N3). Semantics-neutral: ``CompiledPattern``
+    is stateless and the wrapped Sequence's lazy routing/enclosure bits are
+    identical for equal ``(pattern, anchor, extglob)`` keys. The memo
+    amortizes wrapper construction and its ``_seq_bash_quirk`` walk across
+    repeated substitutions of one pattern; the dominant per-operation cost
+    (matching) is unchanged — measured gain recorded in the slot ledger."""
+    compiled = PatternCompiler.compile(pattern, extglob=extglob)
+    elems = compiled.root.elements
+    head = elems[0] if elems else None
+    tail = elems[-1] if elems else None
+    head_star = type(head) is Star
+    end_eligible = head_star or (
+        type(head) is Extglob and cast(Extglob, head).op == '*')
+    pre: Tuple[object, ...] = ()
+    post: Tuple[object, ...] = ()
+    if anchor != 'beg' and not head_star:
+        pre = (Star(),)
+    if anchor != 'end' and not (type(tail) is Star):
+        post = (Star(),)
+    if pre or post:
+        wrapped = CompiledPattern(Sequence(pre + elems + post))
+    else:
+        wrapped = compiled
+    return compiled, wrapped, end_eligible
 
 
 class ParameterExpansionOps:
@@ -156,24 +187,7 @@ class ParameterExpansionOps:
           ``*`` — a CHAR-level test, so a wildcard star or a ``*(`` group
           head passes, an escaped ``\\*`` (compiled ``Literal('*')``) fails.
         """
-        compiled = self._compile(pattern)
-        elems = compiled.root.elements
-        head = elems[0] if elems else None
-        tail = elems[-1] if elems else None
-        head_star = type(head) is Star
-        end_eligible = head_star or (
-            type(head) is Extglob and cast(Extglob, head).op == '*')
-        pre: Tuple[object, ...] = ()
-        post: Tuple[object, ...] = ()
-        if anchor != 'beg' and not head_star:
-            pre = (Star(),)
-        if anchor != 'end' and not (type(tail) is Star):
-            post = (Star(),)
-        if pre or post:
-            wrapped = CompiledPattern(Sequence(pre + elems + post))
-        else:
-            wrapped = compiled
-        return compiled, wrapped, end_eligible
+        return _sub_machinery_cached(pattern, anchor, self._extglob)
 
     def _any_match(self, compiled: CompiledPattern, wrapped: CompiledPattern,
                    end_eligible: bool, value: str,
