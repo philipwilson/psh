@@ -1,0 +1,60 @@
+== ceremony ==
+bash: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+psh discriminator (cwd=/Users/pwilson/src/psh-r3-1/tmp/slot31/neutral):
+/Users/pwilson/src/psh-r3-1/psh/__init__.py
+0.762.0
+tree SHA: 29456fdce1037d9737c845b982bcc447ebefb27d
+
+== [[ anchors: rc per shell x extglob on/off x parser ==
+H7a eg=on  '[[ "" == *@(a|*) ]]'
+    bash:[rc=0 out='rc=1\n' err='']  psh-rd:[rc=0 out='rc=0\n' err='']  psh-comb:[rc=0 out='rc=0\n' err='']
+H7a eg=off '[[ "" == *@(a|*) ]]'
+    bash:[rc=0 out='rc=1\n' err='']  psh-rd:[rc=0 out='rc=0\n' err='']  psh-comb:[rc=0 out='rc=0\n' err='']
+H7b eg=on  '[[ a == *!(a) ]]'
+    bash:[rc=0 out='rc=1\n' err='']  psh-rd:[rc=0 out='rc=0\n' err='']  psh-comb:[rc=0 out='rc=0\n' err='']
+H7b eg=off '[[ a == *!(a) ]]'
+    bash:[rc=0 out='rc=1\n' err='']  psh-rd:[rc=0 out='rc=0\n' err='']  psh-comb:[rc=0 out='rc=0\n' err='']
+H7c eg=on  '[[ "" == *!(*) ]]'
+    bash:[rc=0 out='rc=0\n' err='']  psh-rd:[rc=0 out='rc=1\n' err='']  psh-comb:[rc=0 out='rc=1\n' err='']
+H7c eg=off '[[ "" == *!(*) ]]'
+    bash:[rc=0 out='rc=0\n' err='']  psh-rd:[rc=0 out='rc=1\n' err='']  psh-comb:[rc=0 out='rc=1\n' err='']
+
+== per-consumer propagation cells (shopt -s extglob) ==
+case_H7b [SAME]
+    bash:[rc=2 out='' err="/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `('\n/opt/homebrew/bin/bash: -c: line 1: `shopt -s extglob; case a in *!(a)) echo M;; *) echo N;; esac; echo rc=$?'\n"]
+    psh :[rc=2 out='' err="psh: -c:1: Parse error (line 1, column 31): Expected ')', got '('\n\nshopt -s extglob; case a in *!(a)) echo M;; *) echo N;; esac; echo rc=$?\n                              ^\n\nSuggestions:\n  • Add ')' to close parentheses\n\nContext: a in *! -> HERE <- a ) )\n"]
+case_H7a [SAME]
+    bash:[rc=2 out='' err='/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `(\'\n/opt/homebrew/bin/bash: -c: line 1: `shopt -s extglob; case "" in *@(a|*)) echo M;; *) echo N;; esac; echo rc=$?\'\n']
+    psh :[rc=2 out='' err='psh: -c:1: Parse error (line 1, column 32): Expected \')\', got \'(\'\n\nshopt -s extglob; case "" in *@(a|*)) echo M;; *) echo N;; esac; echo rc=$?\n                               ^\n\nSuggestions:\n  • Add \')\' to close parentheses\n\nContext: <string> in *@ -> HERE <- a | *\n']
+case_H7c [SAME]
+    bash:[rc=2 out='' err='/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `(\'\n/opt/homebrew/bin/bash: -c: line 1: `shopt -s extglob; case "" in *!(*)) echo M;; *) echo N;; esac; echo rc=$?\'\n']
+    psh :[rc=2 out='' err='psh: -c:1: Parse error (line 1, column 32): Expected \')\', got \'(\'\n\nshopt -s extglob; case "" in *!(*)) echo M;; *) echo N;; esac; echo rc=$?\n                               ^\n\nSuggestions:\n  • Add \')\' to close parentheses\n\nContext: <string> in *! -> HERE <- * ) )\n']
+rem_H7b [DIFF]
+    bash:[rc=0 out='[a][a]\nrc=0\n' err='']
+    psh :[rc=0 out='[a][]\nrc=0\n' err='']
+rem_H7b_sfx [DIFF]
+    bash:[rc=0 out='[a][a]\nrc=0\n' err='']
+    psh :[rc=0 out='[a][]\nrc=0\n' err='']
+rem_H7a [SAME]
+    bash:[rc=0 out='[][]\nrc=0\n' err='']
+    psh :[rc=0 out='[][]\nrc=0\n' err='']
+sub_H7b [DIFF]
+    bash:[rc=0 out='[Xa][Xa]\nrc=0\n' err='']
+    psh :[rc=0 out='[X][X]\nrc=0\n' err='']
+sub_H7a [DIFF]
+    bash:[rc=0 out='[][]\nrc=0\n' err='']
+    psh :[rc=0 out='[X][X]\nrc=0\n' err='']
+sub_H7c [DIFF]
+    bash:[rc=0 out='[X][X]\nrc=0\n' err='']
+    psh :[rc=0 out='[][]\nrc=0\n' err='']
+
+== pathname glob cells (cwd=globdir with files: a ab b) ==
+glob_negA [SAME]
+    bash:[rc=2 out='' err='/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `(\'\n/opt/homebrew/bin/bash: -c: line 1: `shopt -s extglob; printf "[%s]\\n" *!(a); echo rc=$?\'\n']
+    psh :[rc=2 out='' err='psh: -c:1: Parse error (line 1, column 37): syntax error near unexpected token \'(\'\n\nshopt -s extglob; printf "[%s]\\n" *!(a); echo rc=$?\n                                    ^\n\nContext: printf [%s]\\n *! -> HERE <- a ) ;\n']
+glob_negStar [SAME]
+    bash:[rc=2 out='' err='/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `(\'\n/opt/homebrew/bin/bash: -c: line 1: `shopt -s extglob; printf "[%s]\\n" *!(*); echo rc=$?\'\n']
+    psh :[rc=2 out='' err='psh: -c:1: Parse error (line 1, column 37): syntax error near unexpected token \'(\'\n\nshopt -s extglob; printf "[%s]\\n" *!(*); echo rc=$?\n                                    ^\n\nContext: printf [%s]\\n *! -> HERE <- * ) ;\n']
+glob_atStar [SAME]
+    bash:[rc=2 out='' err='/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `(\'\n/opt/homebrew/bin/bash: -c: line 1: `shopt -s extglob; printf "[%s]\\n" *@(a|*); echo rc=$?\'\n']
+    psh :[rc=2 out='' err='psh: -c:1: Parse error (line 1, column 37): syntax error near unexpected token \'(\'\n\nshopt -s extglob; printf "[%s]\\n" *@(a|*); echo rc=$?\n                                    ^\n\nContext: printf [%s]\\n *@ -> HERE <- a | *\n']

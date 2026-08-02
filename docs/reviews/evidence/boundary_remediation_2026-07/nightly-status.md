@@ -184,3 +184,34 @@ an ORACLE-VERSION question first. New wrinkle from 2.5: psh answers "need
 more" with CONTEXTUAL prompts (`then> `, `for then> `) — the 2.5 module's
 detector understands them; 2.4's module does not need to (no case opens a
 construct) but shares the limitation LATENTLY (LEDGER 2.5 successor row h).
+
+## 2026-08-02 — first run with v0.762.0: RED (1 flake, classified)
+
+Run 30731957016 (04:12 UTC): conformance job GREEN — every new v0.762.0
+module (bash-n state-blindness conformance, tooling guards) passed on
+Linux at first exposure. Parallel-suite job: 1 failed / 24,271 passed —
+`test_exit_trap_paths.py::TestExitTrapOnFatalSignal::
+test_exit7_in_exit_trap_still_dies_by_sigterm`, `assert out ==
+"cleanup\n"` got `''` (serial phase). Classification (this file's
+oracle-version-first rule applied): NOT oracle (no bash in the assert;
+conformance green); NOT v0.762.0-related (analysis-session slot touches
+nothing near signal/trap paths); SIBLING of the pre-campaign Linux-red
+exit-trap family (launch census above; family fixed by 1.4, green
+07-31/08-01). The harness is event-based (ready sentinel written AFTER
+the trap line executes), so this is not a trap-not-installed race.
+Local reproduction: 0/30 on macOS at 29456fdc. DISPOSITION:
+recurrence-watch (the 1.3 precedent). If it recurs: first hypothesis is
+the trap RUNNING but its stdout flush being lost on the SIGTERM
+re-raise path (output was empty, not partial).
+
+## Reading rule addition for v0.763.0 (slot 3.1)
+
+Slot 3.1 adds `tests/unit/expansion/test_pattern_bash_composition_
+differential.py` (18 tests, default-run, PARALLEL phase): a generated
+corpus battery that spawns LIVE bash per bucket. Its cells were measured
+against bash 5.2.26; the star∘extglob quirk cells are BASH-VERSION-
+SENSITIVE by nature (they encode glibc/sm_loop mechanics). The rows
+carry explicit oracle-drift failure arms, so on a Linux nightly with a
+different bash a failure in this module is an ORACLE-VERSION question
+FIRST — read the failure arm's message before suspecting the engine.
+The same applies to the escaped-metachar axis rows (subst.c mechanics).

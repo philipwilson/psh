@@ -10216,10 +10216,12 @@
   exit_code: 1
 
 # =============================================================================
-# T8 item 1 — substitution empty-match semantics (unified scan loop).
+# T8 item 1 — substitution empty-match semantics.
 # Locks the zero-width stepping policy against bash: anchored empties, the
-# empty-capable extglob non-negation matcher, and the negation knob (an
-# empty subject yields NO end-of-subject empty match).
+# empty-capable extglob matcher, and end-of-subject suppression (an empty
+# subject yields NO end-of-subject empty match — decided since v0.763.0 by
+# the measured bash consumer layer in parameter_expansion.py; the original
+# unified scan loop and its negation knob are retired).
 # =============================================================================
 - name: subst_anchor_front_empty
   command: 'x=abc; echo "${x/#/pre}"'

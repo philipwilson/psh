@@ -1,0 +1,8 @@
+string-consumer grid: 294 rows, DIFF=2
+pattern/subject key: p0='*!(a)'; p1='*!(*)'; p2='*@(a|*)'; p3='*?(a)'; p4='?(a)'; p5='!(a)'; p6='!(*)'; p7='*(a)'; p8='*@()'; p9='@(*!(a))'; p10='*!(a)b'; p11='?(x)'; p12='!(x)'; p13='@(|a)'
+subjects: s0=''; s1='a'; s2='b'; s3='ab'; s4='aa'
+  DIFF q1: bash='1' psh='0'
+  DIFF q3: bash='1' psh='0'
+
+glob grid (files a ab b ba .ha sub/a sub/ab): 12 rows, DIFF=0
+glob key: g0='*!(a)'; g1='!(a)'; g2='!(*)'; g3='!(a*)'; g4='*?(a)'; g5='?(a)b'; g6='sub/!(a)'; g7='!(sub)'; g8='!(.)*'; g9='!(a)/a'; g10='.!(a)'; g11='*!(a)b'

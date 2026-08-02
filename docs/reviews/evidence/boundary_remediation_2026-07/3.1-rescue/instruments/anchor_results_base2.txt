@@ -1,0 +1,24 @@
+case_H7b [rd:DIFF comb:DIFF] (cwd=neutral)
+    bash    :[rc=0 out='N\nrc=0\n' err='']
+    psh-rd  :[rc=0 out='M\nrc=0\n' err='']
+    psh-comb:[rc=0 out='M\nrc=0\n' err='']
+case_H7a [rd:DIFF comb:DIFF] (cwd=neutral)
+    bash    :[rc=0 out='N\nrc=0\n' err='']
+    psh-rd  :[rc=0 out='M\nrc=0\n' err='']
+    psh-comb:[rc=0 out='M\nrc=0\n' err='']
+case_H7c [rd:DIFF comb:DIFF] (cwd=neutral)
+    bash    :[rc=0 out='M\nrc=0\n' err='']
+    psh-rd  :[rc=0 out='N\nrc=0\n' err='']
+    psh-comb:[rc=0 out='N\nrc=0\n' err='']
+glob_negA [rd:DIFF comb:DIFF] (cwd=globdir)
+    bash    :[rc=0 out='[ab]\n[b]\nrc=0\n' err='']
+    psh-rd  :[rc=0 out='[a]\n[ab]\n[b]\nrc=0\n' err='']
+    psh-comb:[rc=0 out='[a]\n[ab]\n[b]\nrc=0\n' err='']
+glob_negStar [rd:SAME comb:SAME] (cwd=globdir)
+    bash    :[rc=0 out='[*!(*)]\nrc=0\n' err='']
+    psh-rd  :[rc=0 out='[*!(*)]\nrc=0\n' err='']
+    psh-comb:[rc=0 out='[*!(*)]\nrc=0\n' err='']
+glob_atStar [rd:SAME comb:SAME] (cwd=globdir)
+    bash    :[rc=0 out='[a]\n[ab]\n[b]\nrc=0\n' err='']
+    psh-rd  :[rc=0 out='[a]\n[ab]\n[b]\nrc=0\n' err='']
+    psh-comb:[rc=0 out='[a]\n[ab]\n[b]\nrc=0\n' err='']
