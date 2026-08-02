@@ -269,11 +269,17 @@ distinction no string can carry, and one that is observable only because the
 two cells differ solely in the OUTER quoting. Both properties are pinned in
 `tests/conformance/bash/test_operand_field_ir_conformance.py`.
 
-Scalar projection is retained ONLY where bash itself demands one string —
-an assignment value, the `:=` store, a `case` pattern, a `[[ ]]` operand, a
-pattern/replacement operand, the `:?` message, and the shared string walker
-(`variable.py#expand_string_variables`, which serves heredoc bodies,
-here-strings, `$(( ))` and `[[ ]]` string operands). Each such site NAMES the
+Scalar projection is retained only at NAMED terminal consumers: an assignment
+value, the `:=` store, a `[[ ]]` operand, a pattern/replacement operand, the
+`:?` message, the shared string walker (`variable.py#expand_string_variables`,
+which serves heredoc bodies, here-strings, `$(( ))` and `[[ ]]` string
+operands) — and a `case` PATTERN, which is the one member that is NOT
+bash-demanded. Every other member is a context where bash ITSELF requires one
+string, each probe-backed. The `case` pattern is psh POLICY: bash matches the
+FIRST FIELD of a multi-field pattern operand rather than joining, so psh's
+join is a deliberate preservation of base behaviour, divergent and
+successor-owned — pinned in both directions by
+`tests/conformance/bash/test_subscript_keying_conformance.py#test_case_pattern_multifield_operand_divergence`. Each such site NAMES the
 projection by calling `operands.py#OperandValue.as_scalar`, and
 `tests/unit/tooling/test_operand_projection_guard.py` holds that call set
 closed: an unnamed string conversion of an `OperandValue` raises

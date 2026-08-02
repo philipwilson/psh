@@ -276,6 +276,91 @@ def test_single_field_redirect_target_still_works(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 4d. Consumer + producer perimeter (round-2 NITs 1-3)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('cmd,expected', [
+    # `printf -v` writes ONE string, so the vector is projected on the way in.
+    ('unset x; set -- a b; printf -v v "%s" ${x:-"$@"}; count "$v"',
+     'n=1 [ab]\n'),
+])
+def test_additional_terminal_consumers(cmd, expected):
+    """Consumers the round-1 census did not enumerate (round-2 NIT 1)."""
+    _agree(cmd, expected)
+
+
+def test_bracket_builtin_sees_the_fields():
+    """The `[` builtin is a CONSUMER, not a projection site: it receives the
+    operand's fields as separate ARGV entries and reports its own arity error,
+    identically in both shells (round-2 NIT 1).
+
+    Compared with the program-name prefix normalised — the only legitimate
+    difference between the two shells' diagnostics.
+    """
+    import re as _re
+    cmd = 'unset x; set -- a b; [ ${x:-"$@"} = "a b" ]; echo "rc=$?"'
+    p, b = _run(cmd)
+    norm = lambda t: _re.sub(r'^[^:]*: line \d+: ', '', t.strip())
+    assert 'too many arguments' in norm(b.stderr), \
+        f"bash oracle moved: {b.stderr!r}"
+    assert norm(p.stderr) == norm(b.stderr)
+    assert p.stdout == b.stdout == 'rc=2\n'
+
+
+@pytest.mark.parametrize('cmd,expected', [
+    # The name-PREFIX view is a field producer like ${a[@]}.
+    ('unset x; PFXa=1; PFXb=2; count "${x:-"${!PFX@}"}"',
+     'n=2 [PFXa] [PFXb]\n'),
+    # @Q is per-element: it stays a field producer through the operand.
+    ('unset x; set -- "a b" c; count "${x:-"${@@Q}"}"',
+     "n=2 ['a b'] ['c']\n"),
+    # @K is whole-array: ONE field, the transform's own contract. The contrast
+    # row — without it the family could be read as "all transforms produce
+    # fields", which is false.
+    ('unset x; declare -A h; h[k]=v; count "${x:-"${h[@]@K}"}"',
+     'n=1 [k "v" ]\n'),
+])
+def test_view_producer_perimeter(cmd, expected):
+    """The perimeter of the B2 family: which VIEW-ish operand contents are
+    field producers and which are not (round-2 NIT 2)."""
+    _agree(cmd, expected)
+
+
+@pytest.mark.parametrize('cmd,expected', [
+    # TWO producers in one operand: the boundary between them is real, and the
+    # adjacent inner fields fuse (q + m -> "qm") exactly as bash does it.
+    ('unset x; set -- p q; a=(m n); count "${x:-"$@""${a[@]}"}"',
+     'n=3 [p] [qm] [n]\n'),
+    # A literal glued to $@ INSIDE the quoted region attaches to the first and
+    # last fields, not to every field.
+    ('unset x; set -- p q; count "${x:-"pre$@post"}"', 'n=2 [prep] [qpost]\n'),
+])
+def test_producer_adjacency_inside_the_operand(cmd, expected):
+    """Adjacency arithmetic when a producer meets neighbouring text or a
+    second producer (round-2 NIT 3). These are splice-boundary rows: they fail
+    if the first/last-field attachment rule is wrong even when the field COUNT
+    is right."""
+    _agree(cmd, expected)
+
+
+def test_positional_slice_empty_operand_divergence():
+    """DOCUMENTED PRE-EXISTING DIVERGENCE (round-2 NIT 4), successor-owned.
+
+    ``"${@:}"`` — an empty slice operand — is a BAD SUBSTITUTION in bash
+    (rc=1); psh accepts it AND includes ``$0``. Slot 3.3 did not create this
+    and does not fix it, but the psh-side SHAPE changed with the field IR, so
+    it is pinned in both directions rather than left to drift silently.
+    """
+    cmd = 'unset x; set -- a b; count "${@:}"'
+    p, b = _run(cmd)
+    assert 'bad substitution' in b.stderr and b.returncode == 1, \
+        f"bash oracle moved: {b.stderr!r} rc={b.returncode}"
+    assert p.returncode == 0
+    assert p.stdout.startswith('n=3 ') and p.stdout.endswith(' [a] [b]\n'), \
+        f"psh shape moved: {p.stdout!r}"
+
+
+# ---------------------------------------------------------------------------
 # 5. NESTED operands — a field vector inside a field vector
 # ---------------------------------------------------------------------------
 

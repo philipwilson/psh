@@ -9,8 +9,12 @@ only projection is :meth:`~psh.expansion.operands.OperandValue.as_scalar`.
 
 These guards keep that property from eroding:
 
-1. The retired ``OperandResult`` str-subclass stays deleted — reintroducing a
-   str-subclass operand result restores the silent-re-entry hazard wholesale.
+1. The retired ``OperandResult`` str-subclass stays deleted **within
+   ``psh/``** — the scanner's scope, and the scope that matters, since that is
+   where an operand result could be produced. Reintroducing a str-subclass
+   operand result there restores the silent-re-entry hazard wholesale. (Test
+   and doc trees are not scanned; a mention in prose is not a producer, and
+   this module's own docstring names the symbol deliberately.)
 2. ``as_scalar()`` is called ONLY from the RULED terminal consumers. A new
    call site is a reviewed edit to :data:`RULED_PROJECTIONS` here, which is
    the campaign's "the set is CLOSED" ruling expressed as a test.
@@ -51,10 +55,16 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 PSH = ROOT / "psh"
 
 #: The RULED terminal consumers: (module path relative to psh/, enclosing
-#: function name). Each is a context where bash ITSELF requires one string,
-#: every one probe-backed against bash 5.2.26 (slot 3.3 Phase A, matrices I/L).
+#: function name). Each is a context where PSH projects the field vector to one
+#: string. ALL ROWS EXCEPT the `case` pattern are contexts where bash ITSELF
+#: requires one string, each probe-backed against bash 5.2.26 (slot 3.3 Phase
+#: A, matrices I/L). The `case` pattern is the exception and is marked as such
+#: below: bash matches the FIRST FIELD of a multi-field pattern operand rather
+#: than joining, so psh's join is POLICY preserving base behaviour, not a bash
+#: requirement.
 #: Adding a row here is a semantic decision — that a context genuinely cannot
-#: carry more than one field — and must come with its bash probe.
+#: carry more than one field — and must come with its bash probe, or with an
+#: explicit note that it is psh policy and a divergence pin naming the gap.
 RULED_PROJECTIONS = {
     # A pattern / replacement operand is one string, and feeds the FROZEN
     # pattern engine: `v="a b c"; "${v#${x:-"$@"}}"` is ' c' in bash.
@@ -70,7 +80,12 @@ RULED_PROJECTIONS = {
     ("expansion/variable.py", "expand_string_variables"),
     # An assignment VALUE is one string: `v=${x:-"$@"}` assigns 'a b'.
     ("expansion/word_expander.py", "expand_assignment_value_word"),
-    # A `case` PATTERN word is one glob pattern.
+    # A `case` PATTERN word: psh joins to one glob pattern. NOT bash-demanded —
+    # bash matches the FIRST FIELD of a multi-field pattern operand. psh's join
+    # preserves base behaviour; the divergence is pinned in both directions by
+    # test_subscript_keying_conformance.py::
+    #     test_case_pattern_multifield_operand_divergence
+    # and is successor-owned (first-field model).
     ("expansion/manager.py", "expand_word_as_pattern"),
     # [[ ]] operands: `[[ ${x:-"$@"} == "a b" ]]` is true in bash.
     ("executor/enhanced_test_evaluator.py", "_operand_string"),

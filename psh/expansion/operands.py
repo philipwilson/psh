@@ -583,10 +583,7 @@ class OperandOpsMixin(_Base):
     @staticmethod
     def _skip_dollar_construct(text: str, i: int) -> int:
         """Index just past the ${...}, $(...) or $((...)) at text[i]."""
-        from ..lexer.pure_helpers import (
-            find_balanced_double_parentheses,
-            find_closing_delimiter,
-        )
+        from ..lexer.pure_helpers import find_balanced_double_parentheses
         if text.startswith('$((', i):
             end, found = find_balanced_double_parentheses(
                 text, i + 3, track_quotes=True)
@@ -627,10 +624,7 @@ class OperandOpsMixin(_Base):
         quote context, inherited by nested ``${...}`` operators (bash:
         the single quotes in ``"${x:-${z:-'q'}}"`` stay literal).
         """
-        from ..lexer.pure_helpers import (
-            find_balanced_double_parentheses,
-            find_closing_delimiter,
-        )
+        from ..lexer.pure_helpers import find_balanced_double_parentheses
         n = len(text)
         if text[i] == '`':
             j = i + 1
