@@ -60,9 +60,17 @@ def test_every_node_type_is_frozen_and_identity_keyed():
         assert params.frozen is True, f"{cls.__name__} is not frozen"
         assert params.eq is False, (
             f"{cls.__name__} has eq=True — identity semantics lost")
-    # identity hashing still works (the memo key depends on it)
+    # Identity hashing still works — the matcher's memo key depends on it.
+    # (The original form of this assertion was
+    #     assert a != b and hash(a) != hash(b) or a is not b
+    # which precedence-groups as ``(X and Y) or (a is not b)``. The final
+    # disjunct is always true for two distinct objects, so the line was
+    # VACUOUS: it would have passed even if the nodes had gained value
+    # equality and started colliding in the memo.)
     a, b = Literal('x'), Literal('x')
-    assert a != b and hash(a) != hash(b) or a is not b
+    assert a is not b
+    assert a != b, "value equality would merge distinct nodes in the memo"
+    assert hash(a) != hash(b), "identity hash lost"
     assert len({a, b}) == 2
 
 
