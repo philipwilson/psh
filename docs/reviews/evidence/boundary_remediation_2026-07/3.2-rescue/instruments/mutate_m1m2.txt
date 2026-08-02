@@ -1,0 +1,15 @@
+backed up 2 files -> /Users/pwilson/src/psh-r3-2/tmp/slot32/backup
+  M1: FAILS (good)  [suffix linearity: all-start pass reverted to per-start DP]
+       1 failed, 12 passed in 0.05s
+       reason: assert ratio < 2.6, (
+       reason: E   assert 3.975235179378287 < 2.6
+  M2: FAILS (good)  [no-match scan linearity: all-start pre-filter removed]
+       1 failed in 0.03s
+       reason: assert span_at.matcher.transitions > 0, (
+       reason: E   assert 0 > 0
+
+SUMMARY (every class must FAIL):
+  M1: FAILED as required
+  M2: FAILED as required
+
+final restore verified: True

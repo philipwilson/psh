@@ -1,0 +1,7 @@
+  [/Users/pwilson/src/psh-r3-2/tmp/slot32/basearm-wt] arm ok: 49400 cells from /Users/pwilson/src/psh-r3-2/tmp/slot32/basearm-wt/psh/__init__.py
+  [/Users/pwilson/src/psh-r3-2] arm ok: 49400 cells from /Users/pwilson/src/psh-r3-2/psh/__init__.py
+cells: 49400
+base arm worktree /Users/pwilson/src/psh-r3-2/tmp/slot32/basearm-wt @ da037aa802fdfd81ac835cf4fa4428ba8ca994f5
+probe worktree removed: True
+comparisons: 49400 cells x 27 recorded relations/operators = 1333800
+DISAGREEMENTS: 0

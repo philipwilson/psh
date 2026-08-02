@@ -1,0 +1,14 @@
+no-match substitution scan, measured through the REAL spanner:
+pattern              100       200       400       800   ratios
+*x                   202       402       802      1602   1.99 2.00 2.00
+a*x                  202       402       802      1602   1.99 2.00 2.00
+zzz                  202       402       802      1602   1.99 2.00 2.00
+*(ab)x               202       402       802      1602   1.99 2.00 2.00
+*a*b*x               202       402       802      1602   1.99 2.00 2.00
+[ab]*x               202       402       802      1602   1.99 2.00 2.00
+*[!a]x               202       402       802      1602   1.99 2.00 2.00
++(a)x                202       402       802      1602   1.99 2.00 2.00
+
+quirk no-match scan (smaller N; these stay per-slice by construction):
+*!(a)x             29250    359125   4936375   12.28 13.75
+**(a)x              9125     67625    520250   7.41 7.69

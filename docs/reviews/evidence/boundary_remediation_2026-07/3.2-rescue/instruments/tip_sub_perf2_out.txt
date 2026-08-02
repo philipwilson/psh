@@ -1,0 +1,69 @@
+# discriminator OK: /Users/pwilson/src/psh-r3-2/psh/__init__.py  version=0.763.0
+# bash oracle: /opt/homebrew/bin/bash -> GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+==============================================================================
+A1-e  dispatch census: fast_ok + wrapper quirk per pattern (anchor 'any')
+==============================================================================
+  ELIGIBLE  +([[:space:]])           fast_ok=True  pat_quirk=False wrapper_quirk=True  end_eligible=False
+  INELIG-nullable *([[:space:]])     fast_ok=False pat_quirk=False wrapper_quirk=True  end_eligible=True
+  INELIG-negation !(x)               fast_ok=False pat_quirk=False wrapper_quirk=True  end_eligible=False
+  INELIG-nullalt @(x|)               fast_ok=False pat_quirk=False wrapper_quirk=True  end_eligible=False
+
+==============================================================================
+A1-f  semantic cross-check vs live bash 5.2.26 (small N, before any edit)
+==============================================================================
+  cross-check cells=40  mismatches=0
+
+==============================================================================
+A1-g  ${v//pat/-} in-process op timing at base (D-2a basis)
+==============================================================================
+pattern                            shape             N     seconds   ratio
+ELIGIBLE  +([[:space:]])           consecutive     400      0.0011     nan
+ELIGIBLE  +([[:space:]])           consecutive     800      0.0020    1.82
+ELIGIBLE  +([[:space:]])           consecutive    1600      0.0041    2.07
+ELIGIBLE  +([[:space:]])           consecutive    3200      0.0081    1.99
+ELIGIBLE  +([[:space:]])           word_spaced     400      0.0035     nan
+ELIGIBLE  +([[:space:]])           word_spaced     800      0.0067    1.90
+ELIGIBLE  +([[:space:]])           word_spaced    1600      0.0130    1.94
+ELIGIBLE  +([[:space:]])           word_spaced    3200      0.0263    2.02
+INELIG-nullable *([[:space:]])     consecutive     400      0.0012     nan
+INELIG-nullable *([[:space:]])     consecutive     800      0.0023    1.96
+INELIG-nullable *([[:space:]])     consecutive    1600      0.0044    1.92
+INELIG-nullable *([[:space:]])     consecutive    3200      0.0087    1.96
+INELIG-nullable *([[:space:]])     word_spaced     400      0.0050     nan
+INELIG-nullable *([[:space:]])     word_spaced     800      0.0097    1.97
+INELIG-nullable *([[:space:]])     word_spaced    1600      0.0195    2.00
+INELIG-nullable *([[:space:]])     word_spaced    3200      0.0388    1.99
+INELIG-negation !(x)               consecutive     400      0.0002     nan
+INELIG-negation !(x)               consecutive     800      0.0002    1.06
+INELIG-negation !(x)               consecutive    1600      0.0002    1.19
+INELIG-negation !(x)               consecutive    3200      0.0003    1.29
+INELIG-negation !(x)               word_spaced     400      0.0002     nan
+INELIG-negation !(x)               word_spaced     800      0.0002    1.20
+INELIG-negation !(x)               word_spaced    1600      0.0003    1.31
+INELIG-negation !(x)               word_spaced    3200      0.0005    1.57
+INELIG-nullalt @(x|)               consecutive     400      0.0018     nan
+INELIG-nullalt @(x|)               consecutive     800      0.0035    1.94
+INELIG-nullalt @(x|)               consecutive    1600      0.0068    1.95
+INELIG-nullalt @(x|)               consecutive    3200      0.0135    1.99
+INELIG-nullalt @(x|)               word_spaced     400      0.0036     nan
+INELIG-nullalt @(x|)               word_spaced     800      0.0068    1.92
+INELIG-nullalt @(x|)               word_spaced    1600      0.0136    1.98
+INELIG-nullalt @(x|)               word_spaced    3200      0.0272    2.00
+
+==============================================================================
+A1-h  removal operators (no consumer layer) on quirk patterns
+==============================================================================
+op                                      N     seconds   ratio
+r=${v%%*!(a)}                         100      0.0043     nan
+r=${v%%*!(a)}                         200      0.0165    3.81
+r=${v%%*!(a)}                         400      0.0674    4.08
+r=${v%%*!(a)}                         800      0.2754    4.08
+r=${v##*!(a)}                         100      0.0038     nan
+r=${v##*!(a)}                         200      0.0144    3.81
+r=${v##*!(a)}                         400      0.0573    3.97
+r=${v##*!(a)}                         800      0.2334    4.07
+r=${v%%*+(a)}                         100      0.0005     nan
+r=${v%%*+(a)}                         200      0.0008    1.63
+r=${v%%*+(a)}                         400      0.0014    1.86
+r=${v%%*+(a)}                         800      0.0028    1.99

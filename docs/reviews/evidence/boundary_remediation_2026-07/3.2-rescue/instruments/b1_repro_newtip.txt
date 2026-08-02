@@ -1,0 +1,16 @@
+# tree=/Users/pwilson/src/psh-r3-2/tmp/slot32/wt-tip2
+# HEAD=6407c1c44ce1ae2be6770b5abf01b25e5a3b3113
+# psh=/Users/pwilson/src/psh-r3-2/tmp/slot32/wt-tip2/psh/__init__.py
+
+pattern            shape              400       800      1600      3200   ratios
++([[:space:]])     consecutive     0.0013    0.0021    0.0040    0.0079   1.58 1.90 1.99
++([[:space:]])     word_spaced     0.0036    0.0070    0.0138    0.0273   1.96 1.98 1.98
++(a)               a-run           0.0005    0.0007    0.0013    0.0025   1.62 1.78 1.86
+!(x)               x-run           0.0002    0.0002    0.0003    0.0004   1.09 1.24 1.38
+*([[:space:]])     consecutive     0.0013    0.0024    0.0046    0.0090   1.86 1.92 1.95
+*([[:space:]])     word_spaced     0.0053    0.0102    0.0204    0.0406   1.94 1.99 2.00
+
+spanner construction only            400       800      1600   ratios
++([[:space:]]) consecutive        0.0000    0.0000    0.0000   0.73 0.73
++(a) a-run                        0.0000    0.0000    0.0000   0.86 0.95
+*b a-run (no extglob)             0.0000    0.0001    0.0001   1.98 1.78

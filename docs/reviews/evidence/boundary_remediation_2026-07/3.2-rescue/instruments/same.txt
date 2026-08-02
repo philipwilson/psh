@@ -1,0 +1,5 @@
+  [/Users/pwilson/src/psh-r3-2] arm ok: 49400 cells from /Users/pwilson/src/psh-r3-2/psh/__init__.py
+  [/Users/pwilson/src/psh-r3-2] arm ok: 49400 cells from /Users/pwilson/src/psh-r3-2/psh/__init__.py
+cells: 49400
+comparisons: 49400 cells x 25 recorded relations/operators = 1235000
+DISAGREEMENTS: 0

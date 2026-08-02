@@ -1,0 +1,52 @@
+# discriminator OK: psh=/Users/pwilson/src/psh-r3-2/psh/__init__.py
+# version=0.763.0  cwd=/Users/pwilson/src/psh-r3-2/tmp/slot32
+# python=3.14.2
+
+======================================================================
+A1-a  matching_starts quadratic (A9 handoff baseline)
+======================================================================
+
+## A9: matching_starts pattern='*b' subject='a'*N
+      N      seconds    ratio
+    500       0.0057      nan
+   1000       0.0225     3.94
+   2000       0.0910     4.04
+   4000       0.3599     3.95
+   8000       1.3825     3.84
+
+======================================================================
+A1-b  full_match on quirk patterns  (OPENER PRIORITY, E-1)
+======================================================================
+
+## E-1 opener: full_match pattern='**(a)b' subject='a'*N
+      N      seconds    ratio
+     50       0.0091      nan
+    100       0.0666     7.33
+    200       0.5259     7.90
+    400       4.2831     8.14
+    800      36.1568     8.44
+        (stopped: exceeded 20.0s budget)
+
+======================================================================
+A1-c  matching_ends '*!(a)'  (E-1: ~17x base at N=200)
+======================================================================
+
+## E-1: matching_ends pattern='*!(a)' subject='a'*N
+      N      seconds    ratio
+     50       0.0010      nan
+    100       0.0037     3.75
+    200       0.0146     3.92
+    400       0.0588     4.03
+    800       0.2494     4.25
+
+======================================================================
+A1-d  quirk-flag census for the shapes above
+======================================================================
+  '*b'                   bash_quirk=False has_extglob=False sub_fast_eligible=True
+  '**(a)b'               bash_quirk=True  has_extglob=True  sub_fast_eligible=False
+  '*!(a)'                bash_quirk=True  has_extglob=True  sub_fast_eligible=False
+  '+([[:space:]])'       bash_quirk=False has_extglob=True  sub_fast_eligible=True
+  '*([[:space:]])'       bash_quirk=False has_extglob=True  sub_fast_eligible=False
+  '!(x)'                 bash_quirk=False has_extglob=True  sub_fast_eligible=False
+  '*+([[:space:]])'      bash_quirk=True  has_extglob=True  sub_fast_eligible=True
+  '*+([[:space:]])*'     bash_quirk=True  has_extglob=True  sub_fast_eligible=True
