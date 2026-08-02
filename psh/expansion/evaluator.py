@@ -15,6 +15,7 @@ from ..ast_nodes import (
     ProcessSubstitution,
     VariableExpansion,
 )
+from .operands import OperandOrStr
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -29,7 +30,7 @@ class ExpansionEvaluator:
         self.expansion_manager = shell.expansion_manager
 
     def evaluate(self, expansion: Expansion,
-                 quote_ctx: Optional[str] = None) -> str:
+                 quote_ctx: Optional[str] = None) -> OperandOrStr:
         """Evaluate any expansion type.
 
         Reconstructs the canonical string form and delegates to
@@ -61,7 +62,7 @@ class ExpansionEvaluator:
         else:
             raise ValueError(f"Unknown expansion type: {type(expansion)}")
 
-    def _evaluate_variable(self, expansion: VariableExpansion) -> str:
+    def _evaluate_variable(self, expansion: VariableExpansion) -> OperandOrStr:
         """Evaluate simple variable expansion by delegating to VariableExpander."""
         name = expansion.name
         # Array subscript syntax (arr[0]) requires ${...} form
@@ -88,7 +89,7 @@ class ExpansionEvaluator:
         return self.expansion_manager.command_sub.execute(cmd_sub)
 
     def _evaluate_parameter(self, expansion: ParameterExpansion,
-                            quote_ctx: Optional[str] = None) -> str:
+                            quote_ctx: Optional[str] = None) -> OperandOrStr:
         """Evaluate parameter expansion by calling VariableExpander directly.
 
         Uses expand_parameter_direct() with the pre-parsed components —

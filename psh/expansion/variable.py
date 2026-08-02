@@ -26,7 +26,7 @@ from ..core.exceptions import BadSubstitutionError
 from ..lexer.unicode_support import is_valid_name
 from .arrays import ArrayOpsMixin
 from .fields import FieldExpansionMixin
-from .operands import OperandOpsMixin
+from .operands import OperandOpsMixin, OperandOrStr, OperandValue
 from .operators import OperatorOpsMixin
 from .param_parser import parse_parameter_expansion, validate_parameter_expansion
 from .parameter_expansion import ParameterExpansionOps
@@ -85,7 +85,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         return self._expand_special_variable(var_name)
 
     def expand_variable(self, var_expr: str,
-                        quote_ctx: Optional[str] = None) -> str:
+                        quote_ctx: Optional[str] = None) -> OperandOrStr:
         """Expand a variable expression starting with $.
 
         This is the string-expansion ENTRY point (here-docs, double-quoted
@@ -189,7 +189,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
 
     def expand_parameter_direct(self, operator: str, var_name: str,
                                 operand: Optional[str],
-                                quote_ctx: Optional[str] = None) -> str:
+                                quote_ctx: Optional[str] = None
+                                ) -> OperandOrStr:
         """Expand a parameter expansion from pre-parsed components.
 
         Called by ExpansionEvaluator for Word AST nodes and by
@@ -302,7 +303,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             return True, str(len(params))
         if operator in self._VALUE_OPERATORS:
             return True, joiner.join(
-                self._apply_operator(operator, p, operand, var_name=var_name)
+                self._apply_scalar_operator(operator, p, operand,
+                                            var_name=var_name)
                 for p in params)
         if operator == ':':
             assert operand is not None  # ':' always carries a slice operand
@@ -409,10 +411,17 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                     assign_error=f"{label}: bad array subscript",
                     quote_ctx=quote_ctx)
                 if len(fields) == 1:
-                    # Return a single field as-is: a triggered operand is an
-                    # OperandResult whose segments carry quote protection
-                    # (${a[*]:-'p q'} must stay ONE field — bash); str.join
-                    # would flatten it to a plain str and lose that.
+                    # Return the single member as-is. When the operator
+                    # TRIGGERED, that member is the operand's OperandValue —
+                    # its whole FIELD VECTOR — and it must reach the Word
+                    # walker intact: the [@]/[*] joiner applies to the ARRAY's
+                    # elements, never to a substituted operand. bash, probed
+                    # 5.2.26 (matrix H):
+                    #     unset a; set -- a b
+                    #     "${a[*]:-"$@"}"  -> <a><b>  (the operand's 2 fields)
+                    #     "${a[*]:-'p q'}" -> <p q>   (the operand is 1 field)
+                    # Both follow from the same rule; joining here would
+                    # flatten the first, which IS the HIGH-6 defect.
                     return True, fields[0]
                 return True, joiner.join(fields)
 
@@ -422,8 +431,8 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             op_var = array_name if (len(operator) == 2 and operator[0] == '@') else var_name
             results = []
             for element in elements:
-                results.append(self._apply_operator(operator, element, operand,
-                                                    var_name=op_var))
+                results.append(self._apply_scalar_operator(
+                    operator, element, operand, var_name=op_var))
 
             if index_expr == '@':
                 return True, ' '.join(results)
@@ -445,7 +454,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
         # value falls through to the shared operator application.
         return False, self._expand_array_subscript(var_name)
 
-    def _expand_indirect(self, name: str) -> str:
+    def _expand_indirect(self, name: str) -> OperandOrStr:
         """Expand ${!name}.
 
         If *name* is a nameref, yield its target *name* (bash treats namerefs
@@ -544,7 +553,15 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
             if (text[i] == '$' and i + 1 < n) or text[i] == '`':
                 expanded, i = self._expand_one_dollar(text, i,
                                                       quote_ctx=quote_ctx)
-                result.append(str(expanded))
+                # RULED TERMINAL CONSUMER (the shared one): every caller of
+                # this walker builds ONE string — heredoc bodies, here-strings,
+                # $(( )) and [[ ]] string operands, redirect targets, case
+                # patterns, array subscripts. A nested value operand's field
+                # vector is projected here, by name (probed: `cat <<< ${x:-"$@"}`
+                # emits the single line `a b`).
+                result.append(expanded.as_scalar()
+                              if isinstance(expanded, OperandValue)
+                              else str(expanded))
                 continue
             elif text[i] == '\\' and i + 1 < len(text):
                 piece, i = self._process_double_quote_escape(text, i, lexed=lexed)
