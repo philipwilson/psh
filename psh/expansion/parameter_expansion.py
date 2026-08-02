@@ -6,15 +6,42 @@ substitution, substring, case modification, name matching). Parsing of the
 
 Every pattern operator here routes through the ONE compiled pattern engine
 (``pattern_engine``) and its four relations — ``matching_ends`` (prefix
-removal), ``matching_starts`` (suffix removal), ``span_at`` / ``matching_spans``
+removal), ``matching_starts`` (suffix removal), ``span_at`` / ``spanner``
 (substitution), and ``full_match`` (case modification). No operator builds a
 regex or does its own anchoring; plain globs and extglob share one linear,
 memoized matcher (#20 H7), so a plain ``${x##*a*a…*b}`` can no longer backtrack
 exponentially and semantics cannot drift from ``case`` / ``[[ == ]]``.
-"""
-from typing import TYPE_CHECKING, List, Optional, Union
 
-from .pattern_engine import STRING, CompiledPattern, PatternCompiler, string_profile
+Substitution additionally implements bash's MEASURED consumer layer (slot
+3.1; bash-5.2 ``subst.c`` mechanics, corpus-pinned in
+``test_pattern_bash_composition_differential.py``), which sits ON TOP of the
+engine's slice booleans:
+
+1. **empty-subject single-shot** (``pat_subst``): on an empty subject every
+   form reduces to one match decision — one replacement or nothing;
+2. **the pre-test** (``match_upattern``): the pattern is wrapped in
+   anchor-dependent ``*``\\ s and full-matched against the (remaining)
+   subject first; failure suppresses the whole operation. The wrapper
+   inherits the star∘extglob composition rules, which is exactly how
+   ``${v/%!(a)/Z}`` on ``a`` substitutes nothing in bash;
+3. **the end-position gate** (``match_pattern_char``): a scan position with
+   nothing left to read is eligible only if the pattern TEXT starts with a
+   ``*`` (wildcard star or ``*(`` group — a char-level rule in bash);
+4. **the global-replace loop never scans the end-of-subject position**
+   (``pat_subst``'s ``while (*str)``).
+
+Removal has NO consumer layer (pure slice booleans) — measured, same corpus.
+"""
+from functools import lru_cache
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+
+from .pattern_engine import (
+    STRING,
+    CompiledPattern,
+    PatternCompiler,
+    string_profile,
+    sub_fast_eligible,
+)
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -22,6 +49,89 @@ if TYPE_CHECKING:
 # Sentinel marking "the matched text" in a prepared replacement template
 # (bash 5.2 patsub_replacement: an unquoted & in the replacement).
 PATSUB_MATCH = object()
+
+
+@lru_cache(maxsize=512)
+def _sub_machinery_cached(pattern: str, anchor: str, extglob: bool
+                          ) -> Tuple[CompiledPattern, CompiledPattern, bool,
+                                     bool]:
+    """Cached body of ``ParameterExpansionOps._sub_machinery`` (see it for
+    the semantics; round-1 nit N3, round-2 B2-1/B2-2). Semantics-neutral
+    memo: identical results for equal ``(pattern, anchor, extglob)`` keys;
+    it amortizes wrapper construction — the dominant matching cost is
+    unchanged (measured, slot ledger).
+
+    The wrapper follows bash ``match_upattern``'s npat rules EXACTLY
+    (subst.c; MEASURED on the slot's backslash-axis corpus, round 2):
+
+    * OUTER GUARD — a RAW-CHAR test on both ends of the pattern TEXT:
+      if the head is a raw ``*`` (not a ``*(`` group with extglob) AND the
+      last char is a raw ``*`` — EVEN an escaped ``\\*`` — bash builds NO
+      wrapper: the pre-test is the raw pattern itself, which is why
+      ``${v/*a\\*/Z}`` substitutes nothing unless the subject full-matches
+      the pattern (the round-2 45-cell family).
+    * Otherwise npat is built as a STRING: ``*`` prepended unless
+      (anchor 'beg', or raw-``*`` non-group head); ``*`` appended unless
+      (anchor 'end', or the last char is a ``*`` that is NOT escaped by an
+      ODD backslash run — an odd-escaped ``\\*`` tail DOES get the append).
+      The string is then compiled, preserving bash's paren pun: prepending
+      ``*`` to a ``(``-headed pattern forms a ``*(...)`` GROUP (measured:
+      ``${v/%(a)/Z}`` on ``(a)`` substitutes nothing in bash because its
+      pre-test parses as the group ``*(a)``).
+
+    ``end_eligible`` is bash ``match_pattern_char``'s empty-position rule,
+    also a RAW-CHAR test: the pattern TEXT begins with ``*`` (wildcard or
+    ``*(`` group head both pass; an escaped ``\\*`` head fails).
+
+    ``fast_ok`` (4th element) gates the Path-A linear fast path (round-2
+    B2-2): the AST eligibility (``pattern_engine.sub_fast_eligible``) AND
+    wrapper REDUNDANCY — two raw-char shapes make the pre-test a REAL
+    suppressor that the fast path must not skip (found by the battery's
+    own backslash rows): (a) the outer-guard case with an ODD-escaped
+    ``\\*`` tail (the pre-test is the raw pattern, a full-match
+    constraint), and (b) a ``(``-headed pattern under extglob (the
+    string-built wrapper's paren pun). Everything else reduces the
+    pre-test to "a substring match exists" — proven by the corpus-union +
+    backslash-axis equivalence measurements (0 disagreements)."""
+    compiled = PatternCompiler.compile(pattern, extglob=extglob)
+    end_eligible = pattern.startswith('*')
+    head_raw_star = end_eligible and not (
+        extglob and pattern[1:2] == '(')
+
+    def _odd_escaped_star_tail() -> bool:
+        if not pattern.endswith('*'):
+            return False
+        k = len(pattern) - 2
+        nback = 0
+        while k >= 0 and pattern[k] == '\\':
+            nback += 1
+            k -= 1
+        return nback % 2 == 1
+
+    fast_ok = (sub_fast_eligible(compiled.root)
+               and not (head_raw_star and _odd_escaped_star_tail())
+               and not (extglob and pattern.startswith('(')))
+    if head_raw_star and pattern.endswith('*'):
+        # outer guard: NO wrapper (the raw pattern is the pre-test)
+        return compiled, compiled, end_eligible, fast_ok
+    parts: List[str] = []
+    if anchor != 'beg' and not head_raw_star:
+        parts.append('*')
+    parts.append(pattern)
+    if anchor != 'end' and pattern:
+        if pattern.endswith('*'):
+            if _odd_escaped_star_tail():
+                parts.append('*')  # odd-escaped \\* tail: literal, append
+        else:
+            parts.append('*')
+    elif anchor != 'end' and not pattern:
+        parts.append('*')
+    wrap_str = ''.join(parts)
+    if wrap_str == pattern:
+        wrapped = compiled
+    else:
+        wrapped = PatternCompiler.compile(wrap_str, extglob=extglob)
+    return compiled, wrapped, end_eligible, fast_ok
 
 
 class ParameterExpansionOps:
@@ -78,19 +188,6 @@ class ParameterExpansionOps:
         """Get the length of a string."""
         return str(len(value))
 
-    def _neg(self, pattern: str) -> bool:
-        """Whether *pattern* contains an extglob negation ``!(...)`` group.
-
-        The one negation-specific behaviour left after the engine unification:
-        bash's substitution never emits an end-of-subject zero-width match for a
-        negation pattern (``${x//!(x)/-}`` on '' -> ''), even on an empty
-        subject, while non-negation forms do (``${x//*(q)/-}`` on '' -> '-').
-        """
-        if not self._extglob:
-            return False
-        from .extglob import _contains_negation
-        return _contains_negation(pattern)
-
     # ---- Pattern removal: matching_ends (prefix) / matching_starts (suffix).
     # Removal is always case-SENSITIVE (bash): the STRING profile.
 
@@ -118,65 +215,140 @@ class ParameterExpansionOps:
         starts = self._compile(pattern).matching_starts(value, len(value), STRING)
         return value[:min(starts)] if starts else value
 
-    # ---- Pattern substitution: span_at / matching_spans (leftmost-longest).
+    # ---- Pattern substitution: the engine's slice booleans under bash's
+    # measured consumer layer (module docstring, mechanisms 1-4; slot 3.1).
+
+    def _sub_machinery(self, pattern: str, anchor: str
+                       ) -> Tuple[CompiledPattern, CompiledPattern, bool,
+                                  bool]:
+        """Compile *pattern* plus its bash ``match_upattern`` machinery.
+
+        Returns ``(compiled, wrapped, end_eligible, fast_ok)`` for
+        ``anchor`` in ``'any'``/``'beg'``/``'end'``. The measured wrapper
+        and gate rules — bash's RAW-CHAR outer guard on both pattern ends
+        (no wrapper at all for a raw-``*``-head/raw-``*``-tail pattern,
+        even when the tail star is escaped), the odd-backslash-escaped-tail
+        append, the string-built wrapper with its ``(``-head paren pun, the
+        raw-char empty-position gate, and the Path-A ``fast_ok`` gate —
+        live on :func:`_sub_machinery_cached` (round-2 B2-1/B2-2)."""
+        return _sub_machinery_cached(pattern, anchor, self._extglob)
+
+    def _any_match(self, compiled: CompiledPattern, wrapped: CompiledPattern,
+                   end_eligible: bool, value: str,
+                   profile) -> Optional[Tuple[int, int]]:
+        """bash ``match_upattern`` MATCH_ANY on *value*: the ``(start, end)``
+        of the leftmost-longest ELIGIBLE match, or ``None``.
+
+        Pre-test first (mechanism 2); then the leftmost scan, where the
+        empty-remainder position ``len(value)`` is gated by ``end_eligible``
+        (mechanism 3). Longest-at-position is the engine's ``spanner``."""
+        if not wrapped.full_match(value, profile):
+            return None
+        n = len(value)
+        span_at = compiled.spanner(value, profile)
+        limit = n + 1 if end_eligible else n
+        for p in range(limit):
+            length = span_at(p)
+            if length is not None:
+                return (p, p + length)
+        return None
 
     def substitute_first(self, value: str, pattern: str,
                          replacement: Union[str, list]) -> str:
         """Replace first match (``${v/pat/repl}``)."""
         profile = string_profile(self._nocasematch)
-        span_at = self._compile(pattern).spanner(value, profile)
-        n = len(value)
-        # A zero-width match at end-of-subject is dropped for negation !(x) but
-        # emitted for *(x)/plain *; only negation suppresses it.
-        suppress_end_empty = self._neg(pattern)
-        for p in range(n + 1):
+        compiled, wrapped, end_eligible, fast_ok = self._sub_machinery(
+            pattern, 'any')
+        if not compiled.root.elements:
+            # Empty pattern: one zero-width match at position 0.
+            return self.render_replacement(replacement, '') + value
+        if fast_ok:
+            return self._substitute_first_fast(value, compiled, replacement,
+                                               profile)
+        m = self._any_match(compiled, wrapped, end_eligible, value, profile)
+        if m is None:
+            return value
+        s, e = m
+        return (value[:s] + self.render_replacement(replacement, value[s:e])
+                + value[e:])
+
+    def _substitute_first_fast(self, value, compiled, replacement, profile):
+        """Path-A linear scan for fast_ok patterns (see
+        ``_sub_machinery_cached``): leftmost-longest match via one spanner —
+        the bash machinery is vacuous/reducible on this class (corpus-union
+        + backslash-axis equivalence proof: 0 disagreements)."""
+        span_at = compiled.spanner(value, profile)
+        for p in range(len(value) + 1):
             length = span_at(p)
-            if length is None:
-                continue
-            if length == 0 and p == n and suppress_end_empty:
-                continue
-            return (value[:p]
-                    + self.render_replacement(replacement, value[p:p + length])
-                    + value[p + length:])
+            if length is not None:
+                return (value[:p]
+                        + self.render_replacement(replacement,
+                                                  value[p:p + length])
+                        + value[p + length:])
         return value
 
     def substitute_all(self, value: str, pattern: str,
                        replacement: Union[str, list]) -> str:
-        """Replace all matches (``${v//pat/repl}``)."""
+        """Replace all matches (``${v//pat/repl}``).
+
+        bash's ``pat_subst`` loop: one MATCH_ANY per REMAINING SUFFIX (the
+        pre-test and end gate apply per suffix), a zero-width match copies
+        one character forward, and the loop runs only while characters
+        remain — the end-of-subject position is never scanned on a
+        non-empty subject (mechanism 4). An empty subject is the
+        single-shot decision (mechanism 1). fast_ok patterns take the
+        equivalent LINEAR scan instead."""
         profile = string_profile(self._nocasematch)
-        span_at = self._compile(pattern).spanner(value, profile)
-        return self._substitute_scan(
-            value, replacement, span_at, negation=self._neg(pattern))
+        compiled, wrapped, end_eligible, fast_ok = self._sub_machinery(
+            pattern, 'any')
+        if not compiled.root.elements:
+            # Empty pattern: zero-width before every char (none at the end).
+            rep = self.render_replacement(replacement, '')
+            if not value:
+                return rep
+            return ''.join(rep + ch for ch in value)
+        if fast_ok:
+            return self._substitute_all_fast(value, compiled, replacement,
+                                             profile)
+        if not value:
+            m = self._any_match(compiled, wrapped, end_eligible, '', profile)
+            return self.render_replacement(replacement, '') if m else value
+        out: List[str] = []
+        n = len(value)
+        pos = 0
+        while pos < n:
+            suffix = value[pos:]
+            m = self._any_match(compiled, wrapped, end_eligible, suffix,
+                                profile)
+            if m is None:
+                break
+            s, e = pos + m[0], pos + m[1]
+            out.append(value[pos:s])
+            out.append(self.render_replacement(replacement, value[s:e]))
+            if s == e:  # zero-width: copy one character to make progress
+                out.append(value[e])
+                e += 1
+            pos = e
+        out.append(value[pos:])
+        return ''.join(out)
 
-    def _substitute_scan(self, value: str, replacement: Union[str, list],
-                         match_at, *, negation: bool = False) -> str:
-        """One left-to-right global-substitution scan (all ``//`` paths).
-
-        ``match_at(pos)`` returns the leftmost-LONGEST match length at ``pos``
-        (0 for a zero-width match, ``None`` for no match) — the engine's
-        ``span_at`` relation for plain globs AND extglob (with or without
-        negation), so there is one scanner behind every substitution.
-
-        ``negation`` selects the sole behavioural difference between the paths:
-        the end-of-subject zero-width policy (bash). The non-negation forms
-        suppress a zero-width match at the very end of a NON-empty subject but
-        still emit one on an EMPTY subject (``${x//*(q)/-}`` on '' -> '-');
-        negation suppresses the end-of-subject empty match ALWAYS, even on an
-        empty subject (``${x//!(x)/-}`` on '' -> '').
-        """
+    def _substitute_all_fast(self, value, compiled, replacement, profile):
+        """Path-A linear global scan for fast_ok patterns: one spanner,
+        left-to-right leftmost-longest, zero-width advances by one and the
+        end-of-subject empty match is emitted only on an EMPTY subject
+        (the observable bash behaviour on this class — corpus-union +
+        backslash-axis equivalence proof: 0 disagreements)."""
+        span_at = compiled.spanner(value, profile)
         out: List[str] = []
         pos = 0
         n = len(value)
         while pos <= n:
-            length = match_at(pos)
+            length = span_at(pos)
             if length is not None and length > 0:
                 out.append(self.render_replacement(
                     replacement, value[pos:pos + length]))
                 pos += length
-            elif length is not None and not (pos == n and (negation or n > 0)):
-                # Zero-width match, allowed: NOT the suppressed end-of-subject
-                # match (suppressed for a non-empty subject, and — for negation
-                # — even for an empty subject).
+            elif length is not None and not (pos == n and n > 0):
                 out.append(self.render_replacement(replacement, ''))
                 if pos < n:
                     out.append(value[pos])
@@ -191,7 +363,22 @@ class ParameterExpansionOps:
                           replacement: Union[str, list]) -> str:
         """Replace an anchored prefix match (``${v/#pat/repl}``)."""
         profile = string_profile(self._nocasematch)
-        length = self._compile(pattern).span_at(value, 0, profile)
+        compiled, wrapped, end_eligible, fast_ok = self._sub_machinery(
+            pattern, 'beg')
+        if not compiled.root.elements:
+            # bash pat_subst special case 1: null pattern prefixes REP.
+            return self.render_replacement(replacement, '') + value
+        if fast_ok:
+            length = compiled.span_at(value, 0, profile)
+            if length is not None:
+                return (self.render_replacement(replacement, value[:length])
+                        + value[length:])
+            return value
+        if not wrapped.full_match(value, profile):
+            return value
+        if not value and not end_eligible:
+            return value  # match_pattern_char gate at position 0 of ''
+        length = compiled.span_at(value, 0, profile)
         if length is not None:
             return (self.render_replacement(replacement, value[:length])
                     + value[length:])
@@ -201,10 +388,22 @@ class ParameterExpansionOps:
                           replacement: Union[str, list]) -> str:
         """Replace an anchored suffix match (``${v/%pat/repl}``).
 
-        Longest matching suffix = the SMALLEST start index whose suffix matches
-        (``matching_starts`` min)."""
+        Longest matching suffix = the SMALLEST start index whose suffix
+        matches (``matching_starts`` min). No position gate (bash MATCH_END
+        has none) — but the pre-test applies, with only the PREPENDED star
+        (so ``${v/%!(a)/Z}`` on ``a`` is suppressed by the wrapped
+        ``*!(a)`` failing, exactly as measured). fast_ok patterns skip the
+        pre-test (equivalence-proven)."""
         profile = string_profile(self._nocasematch)
-        starts = self._compile(pattern).matching_starts(value, len(value), profile)
+        compiled, wrapped, _end_eligible, fast_ok = self._sub_machinery(
+            pattern, 'end')
+        if not compiled.root.elements:
+            # bash pat_subst special case 2: null pattern appends REP.
+            return value + self.render_replacement(replacement, '')
+        if not fast_ok:
+            if not wrapped.full_match(value, profile):
+                return value
+        starts = compiled.matching_starts(value, len(value), profile)
         if starts:
             i = min(starts)
             return (value[:i]

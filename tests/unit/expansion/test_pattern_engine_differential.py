@@ -7,12 +7,17 @@ finding #6). It exercises all five shell-pattern consumers — ``case``,
 matrix (plain globs, ranges, POSIX classes, all five extglob operators,
 negation, nested extglob, quoted/literal metacharacters, bracket sets holding
 metacharacters, empty patterns, anchoring) and compares psh output against
-bash 5.x row by row. Any UNEXPECTED divergence fails the suite; the two known
-pre-existing quirks are listed in ``KNOWN_DIVERGENCES`` and asserted stable.
+bash 5.x row by row. EVERY row is an equality lock: the former
+``KNOWN_DIVERGENCES`` set (the q4/neg7 empty-subject substitution quirk)
+CLOSED in slot 3.1 — bash's behaviour there is mechanically derived from its
+``pat_subst``/``match_upattern``/``match_pattern_char`` consumer layer, which
+psh now implements (``parameter_expansion.py`` module docstring;
+``test_former_known_divergences_now_match_bash`` pins the closure, and the
+star∘extglob composition corpus lives in
+``test_pattern_bash_composition_differential.py``).
 
 The rows are batched into ONE script per bucket and each shell is spawned once
-per bucket (fast, truly differential). It is designed to pass UNCHANGED before
-and after the engine flip — proving the reroute is behaviour-preserving.
+per bucket (fast, truly differential).
 """
 import pytest
 from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
@@ -88,21 +93,6 @@ ROWS = [
     ("anc3", "abcdef", "*cd*", False),
 ]
 
-# Pre-existing psh<->bash divergences NOT introduced by the engine work. Excluded
-# from the equality lock and asserted stable so a regression here is still caught.
-KNOWN_DIVERGENCES = {
-    # Empty-subject zero-width substitution quirk (PRE-EXISTING; confirmed on
-    # base main b3f18815 before this campaign). On an EMPTY subject bash
-    # suppresses the zero-width match for a zero-width-capable extglob group in
-    # the unanchored (${x/}, ${x//}) and prefix-anchored (${x/#}) substitution
-    # forms; psh emits it. Not derivable from the match extent -- the matcher
-    # returns the correct reachable-end set {0}, and the SUFFIX form (${x/%})
-    # already matches bash, so this is a bash operator-and-anchor-specific empty
-    # quirk, left as-is (out of scope for the pattern-engine work).
-    "q4_sub1", "q4_sub2", "q4_sub3", "neg7_sub3",
-}
-
-
 def _shq(s):
     return "'" + s.replace("'", "'\\''") + "'"
 
@@ -145,7 +135,7 @@ def _compare(script, env_extra=None, cwd=None):
     p = _run(run_psh, script, env_extra, cwd)
     bt, pt = _tags(b.stdout), _tags(p.stdout)
     unexpected = [(k, bt.get(k), pt.get(k)) for k in bt
-                  if bt.get(k) != pt.get(k) and k not in KNOWN_DIVERGENCES]
+                  if bt.get(k) != pt.get(k)]
     return bt, pt, unexpected
 
 
@@ -159,29 +149,40 @@ def test_string_consumers_match_bash():
     assert bt, "bash produced no tagged output"
     assert not unexpected, "psh diverges from bash on: " + "; ".join(
         f"{k}: bash={b!r} psh={p!r}" for k, b, p in unexpected)
-    # The documented quirks must still be present (and still divergent).
-    for k in KNOWN_DIVERGENCES:
+    # The formerly-divergent q4/neg7 substitution cells must still be
+    # EXERCISED (they are equality-locked by the comparison above); their
+    # silent absence would weaken the closure lock.
+    for k in ("q4_sub1", "q4_sub2", "q4_sub3", "neg7_sub3", "q4_sub4"):
         assert k in bt
 
 
-def test_known_divergences_are_still_divergent():
-    """Pin that the documented quirks remain exactly as documented.
+def test_former_known_divergences_now_match_bash():
+    """The four former KNOWN_DIVERGENCES keys are CLOSED: psh == bash.
 
-    If a future change accidentally *fixes* one, this fails loudly so the
-    KNOWN_DIVERGENCES list (and the campaign's found-not-fixed record) is
-    updated deliberately rather than drifting silently.
+    Until slot 3.1 these cells were excluded from the equality lock and
+    pinned divergent (bash suppressed the empty-subject zero-width
+    substitution; psh emitted it — the retired
+    ``test_known_divergences_are_still_divergent``). The mechanism is bash's
+    substitution consumer layer — the ``match_pattern_char`` gate (an empty
+    scan position takes only ``*``-headed pattern text), ``pat_subst``'s
+    empty-subject single-shot, and the ``match_upattern`` pre-test — which
+    psh now implements (``parameter_expansion.py``), so all five cells
+    (four former keys + the suffix control) are plain equality: EMPTY output
+    for the gated forms, ``Z`` for the suffix form, in BOTH shells.
     """
     script = ("shopt -s extglob\n"
               "s=''; printf 'q4_sub1=%s\\n' \"${s/?(x)/Z}\"\n"
               "s=''; printf 'q4_sub2=%s\\n' \"${s//?(x)/Z}\"\n"
               "s=''; printf 'q4_sub3=%s\\n' \"${s/#?(x)/Z}\"\n"
               "s=''; printf 'neg7_sub3=%s\\n' \"${s/#!(x)/Z}\"\n"
-              # The SUFFIX form is NOT part of the quirk: bash and psh agree.
+              # The SUFFIX form has no position gate; its pre-test (`*?(x)`)
+              # passes on the empty subject: both shells substitute.
               "s=''; printf 'q4_sub4=%s\\n' \"${s/%?(x)/Z}\"\n")
     bt = _tags(_run(run_bash, script, {"LC_ALL": "C"}).stdout)
     pt = _tags(_run(run_psh, script, {"LC_ALL": "C"}).stdout)
     for k in ("q4_sub1", "q4_sub2", "q4_sub3", "neg7_sub3"):
-        assert bt.get(k) == "" and pt.get(k) == "Z", k
+        assert bt.get(k) == "", (k, bt.get(k))
+        assert pt.get(k) == bt.get(k), (k, bt.get(k), pt.get(k))
     assert bt.get("q4_sub4") == "Z" and pt.get("q4_sub4") == "Z"
 
 

@@ -56,8 +56,10 @@ shopt globasciiranges # ON by default (bash 5): [a-z] ranges use ASCII bounds
 
 ### Extended Glob Patterns (extglob)
 
-Extended glob patterns are supported once `extglob` is enabled, in globbing,
-`[[ ]]`, and `case`:
+Extended glob patterns are supported in globbing, `[[ ]]`, and `case`.
+Globbing and `case` need `extglob` enabled before the line is parsed; the
+`[[ ]]` pattern operand recognizes them regardless of the shopt — exactly as
+in bash:
 
 ```bash
 shopt -s extglob
@@ -66,8 +68,9 @@ ls !(*.txt)          # Everything except .txt files
 case "$x" in +(a)) echo "one or more a" ;; esac
 ```
 
-As in Bash, `extglob` must be enabled *before* the line that uses an extended
-pattern is parsed. In a single `-c` string the whole line is parsed at once, so
+As in Bash, globbing and `case` need `extglob` enabled *before* the line that
+uses an extended pattern is parsed (the `[[ ]]` pattern operand does not — see
+above). In a single `-c` string the whole line is parsed at once, so
 `shopt -s extglob; ls !(*.txt)` will not work — enable it on an earlier line
 (for example in your rc file or a preceding command).
 
