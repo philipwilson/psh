@@ -33,16 +33,14 @@ engine's slice booleans:
 Removal has NO consumer layer (pure slice booleans) — measured, same corpus.
 """
 from functools import lru_cache
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from .pattern_engine import (
     STRING,
     CompiledPattern,
-    Extglob,
     PatternCompiler,
-    Sequence,
-    Star,
     string_profile,
+    sub_fast_eligible,
 )
 
 if TYPE_CHECKING:
@@ -55,32 +53,85 @@ PATSUB_MATCH = object()
 
 @lru_cache(maxsize=512)
 def _sub_machinery_cached(pattern: str, anchor: str, extglob: bool
-                          ) -> Tuple[CompiledPattern, CompiledPattern, bool]:
+                          ) -> Tuple[CompiledPattern, CompiledPattern, bool,
+                                     bool]:
     """Cached body of ``ParameterExpansionOps._sub_machinery`` (see it for
-    the semantics; round-1 nit N3). Semantics-neutral: ``CompiledPattern``
-    is stateless and the wrapped Sequence's lazy routing/enclosure bits are
-    identical for equal ``(pattern, anchor, extglob)`` keys. The memo
-    amortizes wrapper construction and its ``_seq_bash_quirk`` walk across
-    repeated substitutions of one pattern; the dominant per-operation cost
-    (matching) is unchanged — measured gain recorded in the slot ledger."""
+    the semantics; round-1 nit N3, round-2 B2-1/B2-2). Semantics-neutral
+    memo: identical results for equal ``(pattern, anchor, extglob)`` keys;
+    it amortizes wrapper construction — the dominant matching cost is
+    unchanged (measured, slot ledger).
+
+    The wrapper follows bash ``match_upattern``'s npat rules EXACTLY
+    (subst.c; MEASURED on the slot's backslash-axis corpus, round 2):
+
+    * OUTER GUARD — a RAW-CHAR test on both ends of the pattern TEXT:
+      if the head is a raw ``*`` (not a ``*(`` group with extglob) AND the
+      last char is a raw ``*`` — EVEN an escaped ``\\*`` — bash builds NO
+      wrapper: the pre-test is the raw pattern itself, which is why
+      ``${v/*a\\*/Z}`` substitutes nothing unless the subject full-matches
+      the pattern (the round-2 45-cell family).
+    * Otherwise npat is built as a STRING: ``*`` prepended unless
+      (anchor 'beg', or raw-``*`` non-group head); ``*`` appended unless
+      (anchor 'end', or the last char is a ``*`` that is NOT escaped by an
+      ODD backslash run — an odd-escaped ``\\*`` tail DOES get the append).
+      The string is then compiled, preserving bash's paren pun: prepending
+      ``*`` to a ``(``-headed pattern forms a ``*(...)`` GROUP (measured:
+      ``${v/%(a)/Z}`` on ``(a)`` substitutes nothing in bash because its
+      pre-test parses as the group ``*(a)``).
+
+    ``end_eligible`` is bash ``match_pattern_char``'s empty-position rule,
+    also a RAW-CHAR test: the pattern TEXT begins with ``*`` (wildcard or
+    ``*(`` group head both pass; an escaped ``\\*`` head fails).
+
+    ``fast_ok`` (4th element) gates the Path-A linear fast path (round-2
+    B2-2): the AST eligibility (``pattern_engine.sub_fast_eligible``) AND
+    wrapper REDUNDANCY — two raw-char shapes make the pre-test a REAL
+    suppressor that the fast path must not skip (found by the battery's
+    own backslash rows): (a) the outer-guard case with an ODD-escaped
+    ``\\*`` tail (the pre-test is the raw pattern, a full-match
+    constraint), and (b) a ``(``-headed pattern under extglob (the
+    string-built wrapper's paren pun). Everything else reduces the
+    pre-test to "a substring match exists" — proven by the corpus-union +
+    backslash-axis equivalence measurements (0 disagreements)."""
     compiled = PatternCompiler.compile(pattern, extglob=extglob)
-    elems = compiled.root.elements
-    head = elems[0] if elems else None
-    tail = elems[-1] if elems else None
-    head_star = type(head) is Star
-    end_eligible = head_star or (
-        type(head) is Extglob and cast(Extglob, head).op == '*')
-    pre: Tuple[object, ...] = ()
-    post: Tuple[object, ...] = ()
-    if anchor != 'beg' and not head_star:
-        pre = (Star(),)
-    if anchor != 'end' and not (type(tail) is Star):
-        post = (Star(),)
-    if pre or post:
-        wrapped = CompiledPattern(Sequence(pre + elems + post))
-    else:
+    end_eligible = pattern.startswith('*')
+    head_raw_star = end_eligible and not (
+        extglob and pattern[1:2] == '(')
+
+    def _odd_escaped_star_tail() -> bool:
+        if not pattern.endswith('*'):
+            return False
+        k = len(pattern) - 2
+        nback = 0
+        while k >= 0 and pattern[k] == '\\':
+            nback += 1
+            k -= 1
+        return nback % 2 == 1
+
+    fast_ok = (sub_fast_eligible(compiled.root)
+               and not (head_raw_star and _odd_escaped_star_tail())
+               and not (extglob and pattern.startswith('(')))
+    if head_raw_star and pattern.endswith('*'):
+        # outer guard: NO wrapper (the raw pattern is the pre-test)
+        return compiled, compiled, end_eligible, fast_ok
+    parts: List[str] = []
+    if anchor != 'beg' and not head_raw_star:
+        parts.append('*')
+    parts.append(pattern)
+    if anchor != 'end' and pattern:
+        if pattern.endswith('*'):
+            if _odd_escaped_star_tail():
+                parts.append('*')  # odd-escaped \\* tail: literal, append
+        else:
+            parts.append('*')
+    elif anchor != 'end' and not pattern:
+        parts.append('*')
+    wrap_str = ''.join(parts)
+    if wrap_str == pattern:
         wrapped = compiled
-    return compiled, wrapped, end_eligible
+    else:
+        wrapped = PatternCompiler.compile(wrap_str, extglob=extglob)
+    return compiled, wrapped, end_eligible, fast_ok
 
 
 class ParameterExpansionOps:
@@ -168,25 +219,18 @@ class ParameterExpansionOps:
     # measured consumer layer (module docstring, mechanisms 1-4; slot 3.1).
 
     def _sub_machinery(self, pattern: str, anchor: str
-                       ) -> Tuple[CompiledPattern, CompiledPattern, bool]:
+                       ) -> Tuple[CompiledPattern, CompiledPattern, bool,
+                                  bool]:
         """Compile *pattern* plus its bash ``match_upattern`` machinery.
 
-        Returns ``(compiled, wrapped, end_eligible)`` for ``anchor`` in
-        ``'any'``/``'beg'``/``'end'``:
-
-        * ``wrapped`` — the pre-test pattern: a ``*`` is prepended unless the
-          head element is a wildcard :class:`Star` (never for ``'beg'``) and
-          appended unless the tail element is one (never for ``'end'``) —
-          bash's exact head/tail rules, including the nuances that a ``*(``
-          group head still gets the prepend and an escaped ``\\*`` tail still
-          gets the append. The wrapper SHARES the compiled element nodes, so
-          its bash-composition routing and enclosure bits are exactly those
-          of the spelled-out ``*pat*`` pattern.
-        * ``end_eligible`` — bash's ``match_pattern_char`` rule for a scan
-          position with an empty remainder: the pattern TEXT begins with a
-          ``*`` — a CHAR-level test, so a wildcard star or a ``*(`` group
-          head passes, an escaped ``\\*`` (compiled ``Literal('*')``) fails.
-        """
+        Returns ``(compiled, wrapped, end_eligible, fast_ok)`` for
+        ``anchor`` in ``'any'``/``'beg'``/``'end'``. The measured wrapper
+        and gate rules — bash's RAW-CHAR outer guard on both pattern ends
+        (no wrapper at all for a raw-``*``-head/raw-``*``-tail pattern,
+        even when the tail star is escaped), the odd-backslash-escaped-tail
+        append, the string-built wrapper with its ``(``-head paren pun, the
+        raw-char empty-position gate, and the Path-A ``fast_ok`` gate —
+        live on :func:`_sub_machinery_cached` (round-2 B2-1/B2-2)."""
         return _sub_machinery_cached(pattern, anchor, self._extglob)
 
     def _any_match(self, compiled: CompiledPattern, wrapped: CompiledPattern,
@@ -213,16 +257,35 @@ class ParameterExpansionOps:
                          replacement: Union[str, list]) -> str:
         """Replace first match (``${v/pat/repl}``)."""
         profile = string_profile(self._nocasematch)
-        compiled, wrapped, end_eligible = self._sub_machinery(pattern, 'any')
+        compiled, wrapped, end_eligible, fast_ok = self._sub_machinery(
+            pattern, 'any')
         if not compiled.root.elements:
             # Empty pattern: one zero-width match at position 0.
             return self.render_replacement(replacement, '') + value
+        if fast_ok:
+            return self._substitute_first_fast(value, compiled, replacement,
+                                               profile)
         m = self._any_match(compiled, wrapped, end_eligible, value, profile)
         if m is None:
             return value
         s, e = m
         return (value[:s] + self.render_replacement(replacement, value[s:e])
                 + value[e:])
+
+    def _substitute_first_fast(self, value, compiled, replacement, profile):
+        """Path-A linear scan for fast_ok patterns (see
+        ``_sub_machinery_cached``): leftmost-longest match via one spanner —
+        the bash machinery is vacuous/reducible on this class (corpus-union
+        + backslash-axis equivalence proof: 0 disagreements)."""
+        span_at = compiled.spanner(value, profile)
+        for p in range(len(value) + 1):
+            length = span_at(p)
+            if length is not None:
+                return (value[:p]
+                        + self.render_replacement(replacement,
+                                                  value[p:p + length])
+                        + value[p + length:])
+        return value
 
     def substitute_all(self, value: str, pattern: str,
                        replacement: Union[str, list]) -> str:
@@ -233,15 +296,20 @@ class ParameterExpansionOps:
         one character forward, and the loop runs only while characters
         remain — the end-of-subject position is never scanned on a
         non-empty subject (mechanism 4). An empty subject is the
-        single-shot decision (mechanism 1)."""
+        single-shot decision (mechanism 1). fast_ok patterns take the
+        equivalent LINEAR scan instead."""
         profile = string_profile(self._nocasematch)
-        compiled, wrapped, end_eligible = self._sub_machinery(pattern, 'any')
+        compiled, wrapped, end_eligible, fast_ok = self._sub_machinery(
+            pattern, 'any')
         if not compiled.root.elements:
             # Empty pattern: zero-width before every char (none at the end).
             rep = self.render_replacement(replacement, '')
             if not value:
                 return rep
             return ''.join(rep + ch for ch in value)
+        if fast_ok:
+            return self._substitute_all_fast(value, compiled, replacement,
+                                             profile)
         if not value:
             m = self._any_match(compiled, wrapped, end_eligible, '', profile)
             return self.render_replacement(replacement, '') if m else value
@@ -264,14 +332,48 @@ class ParameterExpansionOps:
         out.append(value[pos:])
         return ''.join(out)
 
+    def _substitute_all_fast(self, value, compiled, replacement, profile):
+        """Path-A linear global scan for fast_ok patterns: one spanner,
+        left-to-right leftmost-longest, zero-width advances by one and the
+        end-of-subject empty match is emitted only on an EMPTY subject
+        (the observable bash behaviour on this class — corpus-union +
+        backslash-axis equivalence proof: 0 disagreements)."""
+        span_at = compiled.spanner(value, profile)
+        out: List[str] = []
+        pos = 0
+        n = len(value)
+        while pos <= n:
+            length = span_at(pos)
+            if length is not None and length > 0:
+                out.append(self.render_replacement(
+                    replacement, value[pos:pos + length]))
+                pos += length
+            elif length is not None and not (pos == n and n > 0):
+                out.append(self.render_replacement(replacement, ''))
+                if pos < n:
+                    out.append(value[pos])
+                pos += 1
+            else:
+                if pos < n:
+                    out.append(value[pos])
+                pos += 1
+        return ''.join(out)
+
     def substitute_prefix(self, value: str, pattern: str,
                           replacement: Union[str, list]) -> str:
         """Replace an anchored prefix match (``${v/#pat/repl}``)."""
         profile = string_profile(self._nocasematch)
-        compiled, wrapped, end_eligible = self._sub_machinery(pattern, 'beg')
+        compiled, wrapped, end_eligible, fast_ok = self._sub_machinery(
+            pattern, 'beg')
         if not compiled.root.elements:
             # bash pat_subst special case 1: null pattern prefixes REP.
             return self.render_replacement(replacement, '') + value
+        if fast_ok:
+            length = compiled.span_at(value, 0, profile)
+            if length is not None:
+                return (self.render_replacement(replacement, value[:length])
+                        + value[length:])
+            return value
         if not wrapped.full_match(value, profile):
             return value
         if not value and not end_eligible:
@@ -290,14 +392,17 @@ class ParameterExpansionOps:
         matches (``matching_starts`` min). No position gate (bash MATCH_END
         has none) — but the pre-test applies, with only the PREPENDED star
         (so ``${v/%!(a)/Z}`` on ``a`` is suppressed by the wrapped
-        ``*!(a)`` failing, exactly as measured)."""
+        ``*!(a)`` failing, exactly as measured). fast_ok patterns skip the
+        pre-test (equivalence-proven)."""
         profile = string_profile(self._nocasematch)
-        compiled, wrapped, _end_eligible = self._sub_machinery(pattern, 'end')
+        compiled, wrapped, _end_eligible, fast_ok = self._sub_machinery(
+            pattern, 'end')
         if not compiled.root.elements:
             # bash pat_subst special case 2: null pattern appends REP.
             return value + self.render_replacement(replacement, '')
-        if not wrapped.full_match(value, profile):
-            return value
+        if not fast_ok:
+            if not wrapped.full_match(value, profile):
+                return value
         starts = compiled.matching_starts(value, len(value), profile)
         if starts:
             i = min(starts)

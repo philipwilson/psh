@@ -36,7 +36,9 @@ extglob semantics cannot drift between them:
    reachable-end set natively serves the four relations
    :class:`CompiledPattern` exposes: ``full_match``, ``matching_ends`` (prefix
    removal), ``matching_starts`` (suffix removal), and ``span_at`` /
-   ``matching_spans`` (leftmost-longest substitution).
+   ``spanner`` (leftmost-longest substitution; ``matching_spans`` is a
+   labelled PERMANENT test-pinned relation oracle with no production
+   caller — see its docstring).
 3. EXCEPT for bash-composition patterns (slot 3.1): where an extglob group
    sits directly after a wildcard run, bash 5.2's measured semantics are
    SLICE-END-RELATIVE (the star case's strict continuation bounds, its
@@ -162,6 +164,7 @@ class Sequence:
     elements: Tuple[object, ...] = field(default_factory=tuple)
     has_extglob: Optional[bool] = None
     bash_quirk: Optional[bool] = None
+    sub_fast: Optional[bool] = None
 
 
 def _seq_has_extglob(seq: Sequence) -> bool:
@@ -173,6 +176,59 @@ def _seq_has_extglob(seq: Sequence) -> bool:
     return he
 
 
+def _seq_nullable(seq: Sequence) -> bool:
+    """Whether *seq* can match the empty string (compile-time walk).
+
+    Star is nullable; Literal/AnyChar/Bracket are not; an Extglob is
+    nullable iff its op is ``?``/``*`` or (``@``/``+``) with a nullable
+    alternative; ``!`` is treated as nullable (its complement usually
+    admits the empty span) — callers that need ``!`` excluded do so
+    separately (see :func:`sub_fast_eligible`)."""
+    for e in seq.elements:
+        t = type(e)
+        if t is Star:
+            continue
+        if t is Extglob:
+            eg = cast(Extglob, e)
+            if eg.op in '?*!':
+                continue
+            if any(_seq_nullable(a) for a in eg.alts):
+                continue
+            return False
+        return False
+    return True
+
+
+def sub_fast_eligible(seq: Sequence) -> bool:
+    """Round-2 Path A eligibility (R10 B2-2): every extglob group in *seq*
+    — at any nesting depth — is NON-NEGATION and NON-NULLABLE.
+
+    For such patterns the substitution consumer layer's mechanisms are
+    vacuous or reducible (no zero-width group matches exist, so the
+    empty-position gate, the empty-subject single-shot and the end-of-
+    subject policy cannot fire differently, and the ``*pat*`` pre-test
+    reduces to "a substring match exists"), so the consumer may run the
+    LINEAR direct scan instead of the per-suffix bash machinery.
+    Equivalence is not argued from this docstring: it is MEASURED — the
+    slot's corpus-union equivalence proof (0 disagreements over every
+    eligible cell x four operators) and the battery's boundary test.
+    Derived from compiled-node properties only; lazily cached
+    (``Sequence.sub_fast``)."""
+    r = seq.sub_fast
+    if r is None:
+        r = True
+        for e in seq.elements:
+            if type(e) is Extglob:
+                eg = cast(Extglob, e)
+                if (eg.op == '!' or eg.op in '?*'
+                        or any(_seq_nullable(a) for a in eg.alts)
+                        or not all(sub_fast_eligible(a) for a in eg.alts)):
+                    r = False
+                    break
+        seq.sub_fast = r
+    return r
+
+
 def _seq_bash_quirk(seq: Sequence) -> bool:
     """Whether *seq* needs the measured bash-composition matcher.
 
@@ -180,11 +236,16 @@ def _seq_bash_quirk(seq: Sequence) -> bool:
     :class:`Star` — directly, or with intervening ``?``/``*`` wildcards —
     at this level or inside any nested alternative. Exactly these shapes are
     where bash 5.2's measured semantics diverge from the reachability DP
-    (slot 3.1 corpus: 0 divergence outside them in 65,625 measured cells):
+    (measured scope: see below):
     the star case's strict continuation bounds, its ``?(``/``*(``
     try-then-skip branches, and the end-of-string negation rule are all
     slice-end-relative, so they cannot ride one forward reachability pass.
     Lazily cached on the node (same pattern as ``has_extglob``).
+
+    "Exactly these shapes" is a claim SCOPED to the slot's measured corpora
+    (437,811 cells across the three deterministic corpora + the widened
+    grammar-v2 battery): zero divergence was measured outside the flagged
+    class there; the battery keeps that scope pinned.
 
     This flag is also the EXACT exclusion predicate for the regex-oracle
     agreement corpus in ``test_pattern_engine_matcher.py`` (the regex model

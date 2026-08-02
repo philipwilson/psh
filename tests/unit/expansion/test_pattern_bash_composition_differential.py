@@ -234,7 +234,9 @@ def test_composition_corpus_engine_matches_bash():
     ("H7b", "a", "*!(a)", 1),
     ("H7c", "", "*!(*)", 0),
     # Round-1 star-jump cells (R7 B-1/B-2): the committed segment placement
-    # keeps the negation special away from these entries.
+    # keeps the negation special away from these entries. B2b is a CONTROL
+    # (green at base, both bounced tips, and the fix — the jump DOES fire
+    # its special when the committed entry equals the subject end).
     ("B1", "aa", "*a*!(a)?a", 1),
     ("B2", "aa", "*a*!(a)", 1),
     ("B2b", "ba", "*a*!(a)", 0),
@@ -244,10 +246,11 @@ def test_double_bracket_anchor_rows(rid, subj, pat, bash_rc):
     measured value.
 
     Red-on-base: at 29456fdc psh answered the complement of every H7 row
-    (slot 3.1 ledger A1); B2 was wrong at base AND at the round-1 tip, B1
-    regressed at the round-1 tip (ledger C-0) — all fixed by the star-jump
-    port. The bash side is ALSO pinned so an oracle-version behaviour
-    change fails loudly as oracle drift, not silently."""
+    (slot 3.1 ledger A1); B2 was wrong at base AND at the round-1 tip, and
+    B1 regressed at the round-1 tip (ledger C-0) — both fixed by the
+    star-jump port. B2b is a four-point-green CONTROL row. The bash side
+    is ALSO pinned so an oracle-version behaviour change fails loudly as
+    oracle drift, not silently."""
     script = f"[[ '{subj}' == {pat} ]]"
     b = _run(run_bash, ["-c", script])
     p = _run(run_psh, ["-c", script])
@@ -467,6 +470,155 @@ def test_bash_matcher_states_stay_polynomial():
         assert states <= (n + 2) ** 2, (
             f"pattern '**(a)b' on 'a'*{n}: {states} states (bound "
             f"{(n + 2) ** 2}) — the _BashMatcher memo regressed")
+
+
+# --- round-2 B2-1: the escaped-metachar / backslash axis --------------------
+
+# (tag, snippet, measured bash 5.2.26 value). The sub rows marked FIXED were
+# divergent at base AND at the round-2 tip (ledger D records; the corpus4
+# harness is the red-on-base instrument): bash's RAW-CHAR outer wrap guard
+# builds NO wrapper for raw-*-head/raw-*-tail patterns, so the raw-pattern
+# pre-test suppresses the whole substitution; the paren-pun row pins the
+# string-built wrapper (npat `*`+`(a)` parses as the `*(a)` GROUP).
+_BACKSLASH_ROWS = [
+    ("bs_fix1", r'v="a*b"; printf "bs_fix1=[%s][%s][%s][%s]\n"'
+                r' "${v/*a\*/Z}" "${v//*a\*/Z}" "${v/#*a\*/Z}"'
+                r' "${v/%*a\*/Z}"', "[a*b][a*b][a*b][a*b]"),  # FIXED
+    ("bs_fix2", r'v="a*b"; printf "bs_fix2=[%s][%s]\n"'
+                r' "${v/*\*/Z}" "${v//*\*/Z}"', "[a*b][a*b]"),  # FIXED
+    ("bs_pun", r'v="(a)"; printf "bs_pun=[%s]\n" "${v/%(a)/Z}"',
+     "[(a)]"),  # FIXED (paren pun)
+    ("bs_ctl1", r'v="a*b"; printf "bs_ctl1=[%s]\n" "${v/\*/Z}"',
+     "[aZb]"),  # control: no raw-* head, wrapper built
+    ("bs_ctl2", r'v="xa*"; printf "bs_ctl2=[%s]\n" "${v/*a\*/Z}"',
+     "[Z]"),  # control: raw pre-test full-matches, substitution runs
+    # measured: `a\\\*` = literal `a\*`; `a\\*` = literal `a\` + LIVE star —
+    # 'a*b' contains no backslash, so neither matches.
+    ("bs_ctl3", r'v="a*b"; printf "bs_ctl3=[%s][%s]\n"'
+                r' "${v/a\\\*/Z}" "${v/a\\*/Z}"', "[a*b][a*b]"),
+    # removal has NO pre-test (slice booleans): the same pattern that the
+    # wrap guard suppresses in substitution DOES remove — measured.
+    ("bs_rem", r'v="a*b"; printf "bs_rem=[%s][%s]\n"'
+               r' "${v#*a\*}" "${v%%\**}"', "[b][a]"),
+    ("bs_dbr", r"[[ 'a*b' == *a\* ]]; printf 'bs_dbr=%s\n' $?", "1"),
+    ("bs_dbr2", r"[[ 'xa*' == *a\* ]]; printf 'bs_dbr2=%s\n' $?", "0"),
+    ("bs_case", "case 'a*' in\n"
+                "a\\*) printf 'bs_case=M\\n';;\n"
+                "*) printf 'bs_case=N\\n';;\n"
+                "esac", "M"),
+]
+
+
+def test_escaped_metachar_axis():
+    """The backslash axis through substitution, removal, ``[[`` and case.
+
+    Round-2 B2-1: the wrap guard is a RAW-CHAR both-ends test (see
+    ``parameter_expansion._sub_machinery_cached``); the FIXED rows were
+    divergent at base and at the round-2 tip. Rows carry the measured bash
+    value AND assert psh equality (drift loud on either side)."""
+    lines = ["shopt -s extglob"]
+    for _tag, snippet, _exp in _BACKSLASH_ROWS:
+        lines.append(snippet)
+    script = "\n".join(lines) + "\n"
+    bt = _tags(_run(run_bash, [], stdin_data=script).stdout)
+    pt = _tags(_run(run_psh, [], stdin_data=script).stdout)
+    problems = []
+    for tag, _snippet, expected in _BACKSLASH_ROWS:
+        if bt.get(tag) != expected:
+            problems.append((tag, "oracle drift", expected, bt.get(tag)))
+        if pt.get(tag) != bt.get(tag):
+            problems.append((tag, "psh!=bash", bt.get(tag), pt.get(tag)))
+    assert not problems, problems
+
+
+# --- round-2 B2-2 Path A: fast-path eligibility boundary --------------------
+
+def test_fast_path_eligibility_boundary():
+    """``sub_fast_eligible`` pins + a deterministic two-path equivalence
+    sample.
+
+    The predicate (derived from compiled-node properties): every group at
+    any depth is non-negation AND non-nullable. The full corpus-union
+    equivalence proof (0 disagreements over every eligible cell x four
+    operators) is the slot's Phase-D instrument; this test pins the
+    predicate's boundary and re-checks a deterministic sample through BOTH
+    code paths in-process."""
+    import psh.expansion.parameter_expansion as px
+    from psh.expansion.pattern_engine import sub_fast_eligible
+    from psh.shell import Shell
+
+    eligible = ["a", "abc", "*", "a*b", r"\*", "+(a)", "@(a|b)", "*a*@(bc)",
+                "+([[:space:]])", "a?b", "[ab]c", "@(a)+(b)c"]
+    ineligible = ["?(a)", "*(a)", "!(a)", "+()", "@(a|)", "a*!(b)",
+                  "@(?(a))", "+(*(a))", "@(a|@(b|))"]
+    for pat in eligible:
+        assert sub_fast_eligible(compile_pattern(pat)) is True, pat
+    for pat in ineligible:
+        assert sub_fast_eligible(compile_pattern(pat)) is False, pat
+
+    # fast_ok = AST eligibility x wrapper REDUNDANCY (raw-char): the two
+    # suppressor shapes — outer-guard with an odd-escaped `\*` tail, and
+    # the `(`-head paren pun — must NOT take the fast path even though
+    # their ASTs are group-free (found by the backslash rows above).
+    from psh.expansion.parameter_expansion import _sub_machinery_cached
+    for pat, ok in [(r"*a\*", False), ("(a)", False), (r"\(a\)", True),
+                    ("*a*", True), (r"a\*", True), (r"*a\\*", True),
+                    (r"*\*", False)]:
+        _c, _w, _e, fast_ok = _sub_machinery_cached(pat, "any", True)
+        assert fast_ok is ok, (pat, fast_ok)
+
+    sh = Shell()
+    sh.run_command("shopt -s extglob")
+    po = px.ParameterExpansionOps(sh)
+    ops = [po.substitute_first, po.substitute_all, po.substitute_prefix,
+           po.substitute_suffix]
+    pats = ["a", "*", "a*b", "+(a)", "@(a|b)b", "*a*@(bc)", "a?b"]
+    subjects = ["", "a", "b", "ab", "aab", "abc", "a*b", "aa"]
+    real = px.sub_fast_eligible
+    diffs = []
+    for pat in pats:
+        assert sub_fast_eligible(compile_pattern(pat)) is True, pat
+        for subj in subjects:
+            for fn in ops:
+                fast = fn(subj, pat, "Z")
+                # Force the machinery path: patch the predicate AND clear
+                # the machinery memo — its cached tuples carry fast_ok
+                # computed with the REAL predicate (round-2 lesson: the
+                # first version of this forcing compared fast vs fast).
+                px.sub_fast_eligible = lambda seq: False
+                px._sub_machinery_cached.cache_clear()
+                try:
+                    mach = fn(subj, pat, "Z")
+                finally:
+                    px.sub_fast_eligible = real
+                    px._sub_machinery_cached.cache_clear()
+                if fast != mach:
+                    diffs.append((pat, subj, fn.__name__, fast, mach))
+    assert not diffs, diffs
+
+
+# --- round-2 N8: Extglob.enclosed compile invariant -------------------------
+
+def test_extglob_enclosed_compile_invariant():
+    """The COMPILER is the reference for ``Extglob.enclosed``: a group that
+    is a direct element of the root sequence has ``enclosed=False``; every
+    group nested inside any alternative has ``enclosed=True``. Hand-built
+    ASTs must honor this contract (it feeds the end-of-string negation
+    rule; named in the 3.2 freeze handoff)."""
+    from psh.expansion.pattern_engine import Extglob, Sequence
+
+    def walk(seq, nested):
+        for e in seq.elements:
+            if type(e) is Extglob:
+                assert e.enclosed is nested, (e.op, nested)
+                for alt in e.alts:
+                    walk(alt, True)
+
+    for pat in ["!(a)", "@(!(a)|b)", "*!(a)", "@(a|@(b|!(c)))",
+                "?(x)y!(z)", "*a*!(@(b))"]:
+        root = compile_pattern(pat)
+        assert isinstance(root, Sequence)
+        walk(root, False)
 
 
 def test_bash_matcher_recursion_contract():
