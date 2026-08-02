@@ -33,12 +33,16 @@ extglob semantics cannot drift between them:
    into extglob alternatives — bounded by extglob NESTING depth, a compile-time
    structural property; past the interpreter limit that raises
    ``RecursionError``, an EXPECTED shell error under strict-errors. The
-   reachable-end set natively serves the four relations
-   :class:`CompiledPattern` exposes: ``full_match``, ``matching_ends`` (prefix
-   removal), ``matching_starts`` (suffix removal), and ``span_at`` /
-   ``spanner`` (leftmost-longest substitution; ``matching_spans`` is a
-   labelled PERMANENT test-pinned relation oracle with no production
-   caller — see its docstring).
+   reachable-end set serves ``full_match``, ``matching_ends`` (prefix
+   removal), and ``span_at`` / ``spanner`` (leftmost-longest substitution;
+   ``matching_spans`` is a labelled PERMANENT test-pinned relation oracle with
+   no production caller — see its docstring). ``matching_starts`` (suffix
+   removal) is the ONE relation the forward set cannot serve in one pass — it
+   asks about every START, not every end — so it runs the BACKWARD twin,
+   :meth:`_Matcher._starts`, a single right-to-left fold that answers all
+   start positions at once instead of one forward DP per start. ``spanner``
+   uses the same backward pass as a pre-filter for extglob-free patterns, so
+   a subject with no match costs one pass rather than one DP per position.
 3. EXCEPT for bash-composition patterns (slot 3.1): where an extglob group
    sits directly after a wildcard run, bash 5.2's measured semantics are
    SLICE-END-RELATIVE (the star case's strict continuation bounds, its
@@ -548,14 +552,24 @@ def pathname_profile(ic: bool) -> MatchProfile:
 
 # --- the matcher: iterative stars, recursion only for extglob nesting -------
 #
-# Reachable-end-position-set semantics: ``_ends(seq, ei, si)`` returns every
-# index ``k`` such that ``seq.elements[ei:]`` fully matches ``s[si:k]``. This is
-# the contract every consumer is built from:
-#   * full match          -> len(s) in ends
+# TWO DUAL POSITION-SET PASSES, forward and backward.
+#
+# Forward — ``_ends(seq, ei, si)`` returns every index ``k`` such that
+# ``seq.elements[ei:]`` fully matches ``s[si:k]``. It serves the relations that
+# fix a START and ask about ends:
+#   * full match            -> len(s) in ends
 #   * prefix removal (#/##) -> min/max of matching_ends
-#   * suffix removal (%/%%) -> matching_starts (i where s[i:end] fully matches)
 #   * leftmost-longest sub  -> span_at(pos) = max ends of s[pos:]
 #   * pathname component    -> full_match(entry, for_pathname=True)
+#
+# Backward — ``_starts(seq, end)`` returns every index ``i`` such that *seq*
+# fully matches ``s[i:end]``. Suffix removal fixes the END and asks about
+# STARTS, which the forward pass can only answer one start at a time; running
+# it per start is what made ``%``/``%%`` quadratic (and CUBIC on quirk-flagged
+# patterns) before #20 HIGH-7's perf half:
+#   * suffix removal (%/%%) -> matching_starts = one _starts pass
+# ``spanner`` also uses ``_starts`` as an all-start PRE-FILTER, but only for
+# extglob-free patterns — see its docstring for why the gate is about cost.
 #
 # STAR COUNT NEVER CONSUMES RECURSION FRAMES (bounce ruling, 2026-07-19):
 #   * ``_full_simple`` — the boolean full match for sequences WITHOUT extglob
@@ -590,12 +604,21 @@ class _Instrumentation:
     suffix — which no per-call transition count can see, since each individual
     call stays small. Counting constructions makes "one matcher for the whole
     scan" directly assertable (mutation class M7).
+
+    ``record``/``instances`` support :func:`operation_transitions`, which
+    totals the work of a WHOLE consumer operation. A relation-level counter
+    cannot stand in for that: :func:`count_transitions`'s ``'scan'`` mode walks
+    EVERY position, whereas ``${v//pat/r}`` JUMPS past each match — so on a
+    MATCHING subject the two measure different things, and the scan mode
+    reports the no-match cost. Recording is off by default and costs a branch.
     """
 
-    __slots__ = ("matchers",)
+    __slots__ = ("matchers", "record", "instances")
 
     def __init__(self) -> None:
         self.matchers = 0
+        self.record = False
+        self.instances: List[object] = []
 
 
 #: Shared counter object; tests read and reset it, production only increments.
@@ -624,6 +647,8 @@ class _Matcher:
         self.transitions = 0
         self._nslash: Optional[List[int]] = None
         INSTRUMENTATION.matchers += 1
+        if INSTRUMENTATION.record:
+            INSTRUMENTATION.instances.append(self)
 
     # -- shared precompute ---------------------------------------------------
 
@@ -838,7 +863,17 @@ class _Matcher:
         return frozenset(i for i in range(end + 1) if cur[i])
 
     def _element_ends(self, node: Extglob, si: int) -> set:
-        """End indices after matching ONE extglob element ``op(alts)`` @ si."""
+        """End indices after matching ONE extglob element ``op(alts)`` @ si.
+
+        This is PER-POSITION work, and it is where an extglob element's real
+        cost lives: a caller that asks it at every subject position (the
+        backward pass's Extglob branch, or a per-position scan) pays whatever
+        this costs, n times over. It is therefore COUNTED — the negation
+        branch's span walk especially. Leaving it uncounted let the counter
+        certify `!(a)b` as linear while its wall time was quadratic, which is
+        the same blindness ``count_states`` already demonstrates one level up.
+        """
+        self.transitions += 1
         op = node.op
         alts = node.alts
         if op == '@':
@@ -855,6 +890,7 @@ class _Matcher:
         s, fp = self.s, self.fp
         out = set()
         for end in range(si, self.n + 1):
+            self.transitions += 1
             if fp and '/' in s[si:end]:
                 break
             if end not in positive:
@@ -876,6 +912,7 @@ class _Matcher:
         while frontier:
             nxt: set = set()
             for p in frontier:
+                self.transitions += 1
                 for end in self._alt_ends(alts, p):
                     if end not in seen and end != p:  # skip empty match (no loop)
                         seen.add(end)
@@ -934,9 +971,22 @@ _EMPTY: frozenset = frozenset()
 #
 # Recursion here is bounded by the PATTERN structure (one frame per group
 # dispatch, plus alt nesting; star-run scanning and jump commits are
-# iterative) — never by subject length or star count; the per-(sequence,
-# element, si, se) memo keeps the evaluation polynomial (guarded by
-# count_states via `states`).
+# iterative) — never by subject length or star count.
+#
+# TWO memos keep the evaluation polynomial, and they guard different things.
+# The per-(sequence, element, si, se) memo bounds how many distinct states are
+# ever EVALUATED. It does NOT bound how often they are RE-WALKED, and that gap
+# was a real cubic: the `*`/`+` closure used to be rebuilt from scratch at
+# every star entry position, O(n^2) of re-walking per entry over O(n) entries,
+# with every lookup inside it already a memo hit. `_ok_table` memoizes that
+# closure per (group, element, slice-end), which is what returns the
+# `**(a)b` class to a quadratic bound.
+#
+# Consequently `count_states` (which counts memo MISSES) is NOT the complexity
+# guard for this matcher — it was quadratic-by-construction while the running
+# time was cubic, and its pin passed with ~50% headroom throughout. The guard
+# is `count_transitions`, which counts work including memo HITS; `states`
+# remains as a memo-coverage guard only.
 
 
 class _BashMatcher:
@@ -961,6 +1011,8 @@ class _BashMatcher:
         self.transitions = 0
         self._ok: dict = {}
         INSTRUMENTATION.matchers += 1
+        if INSTRUMENTATION.record:
+            INSTRUMENTATION.instances.append(self)
 
     def match(self, seq: Sequence, ei: int, si: int, se: int) -> bool:
         # Counted on EVERY call, hit or miss. Re-walking positions whose
@@ -1195,7 +1247,13 @@ class _BashMatcher:
         if op == '*':
             return bool(self._ok_table(node, seq, gi, se)[si])
         if op == '+':
-            # One-or-more: some NONEMPTY first instance, then the closure.
+            # One-or-more: SOME first instance, then the closure from there.
+            # The first instance may be EMPTY when an alternative matches the
+            # empty string — ``split`` starts at ``si``. That is deliberate and
+            # matches the retired ``_closure`` seed, which was built from the
+            # same inclusive ``range(si, se + 1)``; the closure's own steps are
+            # the nonempty ones. (An earlier comment here said "NONEMPTY first
+            # instance", which the code has never done.)
             tbl = self._ok_table(node, seq, gi, se)
             for split in range(si, se + 1):
                 self.transitions += 1
@@ -1279,6 +1337,29 @@ def count_states(root: Sequence, s: str, *, for_pathname: bool = False,
     m = _Matcher(s, for_pathname, ic)
     m.reach(root, 0)
     return m.states
+
+
+def operation_transitions(fn) -> int:
+    """Total DP transitions across EVERY matcher one consumer operation builds.
+
+    The end-to-end companion to :func:`count_transitions`. A relation-level
+    count cannot certify a CONSUMER: ``${v//pat/r}`` on a MATCHING subject
+    jumps past each match instead of probing every position, so
+    ``count_transitions(..., relation='scan')`` — which does walk every
+    position — reports that operation's NO-MATCH cost rather than its real
+    one. This runs *fn* with matcher recording on and sums the work actually
+    done, so a claim like "global substitution on this shape is linear" is
+    asserted against the operation the claim is about.
+    """
+    INSTRUMENTATION.instances = []
+    INSTRUMENTATION.record = True
+    try:
+        fn()
+        return sum(m.transitions                            # type: ignore[attr-defined]
+                   for m in INSTRUMENTATION.instances)
+    finally:
+        INSTRUMENTATION.record = False
+        INSTRUMENTATION.instances = []
 
 
 def count_transitions(root: Sequence, s: str, *, for_pathname: bool = False,
@@ -1472,13 +1553,15 @@ class CompiledPattern:
         m = _Matcher(text, profile.for_pathname, profile.ic)
         match = m._ends
 
-        if profile.for_pathname:
-            def pathname_span_at(pos: int) -> Optional[int]:
+        # The pre-filter below is SOUND for every non-pathname pattern but only
+        # CHEAP for some, so it is gated on cost, not on correctness.
+        if profile.for_pathname or root.has_extglob:
+            def unfiltered_span_at(pos: int) -> Optional[int]:
                 ends = match(root, 0, pos)
                 return (max(ends) - pos) if ends else None
 
-            pathname_span_at.matcher = m                    # type: ignore[attr-defined]
-            return pathname_span_at
+            unfiltered_span_at.matcher = m                  # type: ignore[attr-defined]
+            return unfiltered_span_at
 
         # ALL-START PRE-FILTER (the substitution scan's linearity).
         # The consumer walks every position asking "does a match start here?",
@@ -1489,9 +1572,26 @@ class CompiledPattern:
         # remainder) — so ``_starts`` of the star-extended pattern IS the set
         # of positions a match can start at. A no-match subject is then ONE
         # pass, and the forward DP runs only where a match really begins.
-        # Restricted to non-pathname profiles: under for_pathname a star
-        # cannot cross '/', so the trailing star would not absorb an arbitrary
-        # remainder and the identity above would not hold.
+        #
+        # GATED ON TWO CONDITIONS, both about COST:
+        #  * non-pathname — under for_pathname a star cannot cross '/', so the
+        #    trailing star would not absorb an arbitrary remainder and the
+        #    identity above would not hold (this one IS correctness);
+        #  * NO Extglob element — ``_starts`` is a single O(nodes*n) backward
+        #    pass for every element type EXCEPT Extglob, whose branch pays
+        #    per-position ``_element_ends``. Building the filter for an
+        #    extglob-bearing pattern therefore costs O(n^2) BEFORE the first
+        #    span_at, which is a net loss and, inside the substitution fast
+        #    path, turned linear eligible-pattern substitutions quadratic
+        #    (``${v//+([[:space:]])/-}`` on ' '*3200: 0.008s -> 11.9s). Top-
+        #    level ``has_extglob`` is the right predicate because a nested
+        #    group cannot exist without a containing top-level Extglob element,
+        #    and the probe sequence adds only a Star.
+        #
+        # CONSEQUENCE, stated where the claim is made: the "no-match
+        # substitution scan is linear" guarantee is SCOPED to extglob-free
+        # patterns. Extglob-bearing patterns keep the per-position forward DP
+        # and their own achieved bound.
         startable = m._starts(Sequence(root.elements + (Star(),)), len(text))
 
         def span_at(pos: int) -> Optional[int]:
