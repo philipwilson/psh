@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.763.0 (2026-08-02) - Bash-exact pattern composition (remediation slot 3.1, HIGH-7 semantics half)
+
+- The pattern engine's star∘extglob composition is now the MEASURED bash
+  mechanism across all five consumers (`[[`, `case`, `${#/##/%/%%}` removal,
+  `${/}`/`${//}` substitution, pathname glob): the glibc star-jump —
+  inter-star segments commit at their LEFTMOST match and are never retried;
+  the committed entry position feeds the end-of-subject negation special
+  (top-level, non-enclosed groups only) and the nullable-group skip branches.
+  Ported from bash-5.2 `sm_loop.c` and validated cell-exact against live
+  bash 5.2.26 (427,586 distinct corpus cells, 0 mismatches; survived
+  ~1.8M-cell independent verification assaults).
+- Fixes the three confirmed `[[` divergences (`[[ "" == *@(a|*) ]]`,
+  `[[ a == *!(a) ]]`, `[[ "" == *!(*) ]]`) and their propagation into every
+  consumer; all pinned red-on-base.
+- The empty-subject substitution quirk set (`KNOWN_DIVERGENCES`
+  q4_sub1/q4_sub2/q4_sub3/neg7_sub3) is CLOSED: the quirks are mechanically
+  derived from bash's substitution consumer layer (`pat_subst` single-shot,
+  `match_upattern` *-wrap with the raw-char both-ends guard and its paren
+  pun, `match_pattern_char` end-position gate), now implemented at the
+  `parameter_expansion.py` seam. Escaped-metachar axis measured and fixed
+  (`${v/*\*/Z}`-family; 2,016-cell backslash corpus, 0 divergent).
+- Path-A eligibility-gated fast path keeps non-quirk substitution patterns
+  on the base linear scanner (equivalence-proven: 341,836 comparisons, 0
+  disagreements, mutation-proven forcing). DECLARED (A9) residual for slot
+  3.2: quirk-flagged relations pay up to ~O(nodes·n³); baselines recorded.
+- New default-run generated differential battery
+  (`test_pattern_bash_composition_differential.py`, 18 tests) with a
+  successor-visible `RESIDUAL_DIVERGENCES` structure (lexer-seam
+  quoted-chars family + operand-extent `/` family, pinned divergent).
+- User guide: `[[` extglob support corrected (guide 16) and the extglob
+  enablement rule scoped to globbing/`case` (guide 17).
+- Campaign records: FLIP-PINS KNOWN_DIVERGENCES row closed; LEDGER HIGH-7
+  semantics half closed (perf/immutability half → slot 3.2); evidence in
+  `docs/reviews/evidence/boundary_remediation_2026-07/3.1-rescue/`.
+  3 verification rounds; 24,455 tests (783 files).
+
 ## 0.762.0 (2026-08-01) - State-aware analysis session (remediation slot 2.6, MEDIUM-9; Wave 2 complete)
 
 - Analysis modes (`--validate`/`--format`/`--metrics`/`--security`/`--lint`)
