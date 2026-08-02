@@ -234,9 +234,13 @@ def test_composition_corpus_engine_matches_bash():
     ("H7b", "a", "*!(a)", 1),
     ("H7c", "", "*!(*)", 0),
     # Round-1 star-jump cells (R7 B-1/B-2): the committed segment placement
-    # keeps the negation special away from these entries. B2b is a CONTROL
-    # (green at base, both bounced tips, and the fix — the jump DOES fire
-    # its special when the committed entry equals the subject end).
+    # keeps the negation special away from these entries.
+    # B1 = THREE-POINT regression pin: green at base 29456fdc, RED at the
+    # round-1 tip 7bec085c (the pre-jump port over-fired the special),
+    # green at the jump fix. B2 = red-on-base pin (wrong at base AND at
+    # 7bec085c, fixed by the jump). B2b = four-point-green CONTROL (the
+    # jump DOES fire its special when the committed entry equals the
+    # subject end).
     ("B1", "aa", "*a*!(a)?a", 1),
     ("B2", "aa", "*a*!(a)", 1),
     ("B2b", "ba", "*a*!(a)", 0),
@@ -305,6 +309,9 @@ _CONSUMER_ROWS = [
     ("sub_jump", 'v=aa; printf "sub_jump=[%s][%s][%s][%s]\\n"'
                  ' "${v/*a*!(a)/Z}" "${v//*a*!(a)/Z}" "${v/#*a*!(a)/Z}"'
                  ' "${v/%*a*!(a)/Z}"', "[Za][ZZ][Za][aa]"),
+    # subc_jump = THREE-POINT (B-1 through substitution: base aa, round-1
+    # tip Z, fixed aa); case_jump = red-on-base (B-2 through case);
+    # case_jump2 = CONTROL (green at every measured point).
     ("subc_jump", 'v=aa; printf "subc_jump=[%s]\\n" "${v/*a*!(a)?a/Z}"',
      "[aa]"),
     ("case_jump", 'case aa in\n*a*!(a)) echo "case_jump=M";;\n'
@@ -416,6 +423,13 @@ RESIDUAL_DIVERGENCES = [
     ("lex_case_q1", 'case a in\n!("a")) echo "lex_case_q1=M";;\n'
                     '*) echo "lex_case_q1=N";;\nesac',
      "N", "M"),
+    # OPERAND-EXTENT family (round-3 verifier find; PRE-EXISTING at base;
+    # sibling of the lexer-seam rows, different seam): bash terminates the
+    # ${v/pat/repl} PATTERN at the first unquoted `/` even inside an open
+    # extglob group (pattern `*!(`, replacement `)`); psh's operand parser
+    # balances the parens across the `/`. Measured: bash `)/Z` / psh ``.
+    ("opx_slash", 'v=""; printf "opx_slash=[%s]\\n" "${v/*!(/)/Z}"',
+     "[)/Z]", "[]"),
 ]
 
 
@@ -567,6 +581,13 @@ def test_fast_path_eligibility_boundary():
         _c, _w, _e, fast_ok = _sub_machinery_cached(pat, "any", True)
         assert fast_ok is ok, (pat, fast_ok)
 
+    # Shell activation raises the PROCESS recursion limit to 40k
+    # (core/process_lease.py) with no teardown — an invisible order
+    # coupling with test_bash_matcher_recursion_contract, which READS the
+    # live limit. Snapshot/restore so this test leaves the process as it
+    # found it (round-3 nit).
+    import sys
+    saved_limit = sys.getrecursionlimit()
     sh = Shell()
     sh.run_command("shopt -s extglob")
     po = px.ParameterExpansionOps(sh)
@@ -594,6 +615,7 @@ def test_fast_path_eligibility_boundary():
                     px._sub_machinery_cached.cache_clear()
                 if fast != mach:
                     diffs.append((pat, subj, fn.__name__, fast, mach))
+    sys.setrecursionlimit(saved_limit)
     assert not diffs, diffs
 
 

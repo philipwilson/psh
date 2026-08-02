@@ -158,6 +158,11 @@ def test_new_fullmatch_agrees_with_regex_converter_on_nonneg():
       decider, imported, never a textual twin — and the excluded shapes are
       covered against LIVE BASH by the corpus in
       ``test_pattern_bash_composition_differential.py``.
+
+    DERIVED narrowing counts (from the exclusion-census script, slot 3.1
+    ledger C8/D-5): of the 6,000 generated cases, 1,687 are excluded as
+    negation-bearing, 689 as extglob-free (compared elsewhere), 267 by the
+    bash-composition flag — 3,357 cases remain in the agreement corpus.
     """
     mismatches = []
     for pat, subj in _cases(seed=555, count=6000):
