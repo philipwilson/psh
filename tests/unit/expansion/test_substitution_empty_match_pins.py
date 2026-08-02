@@ -44,7 +44,7 @@ CASES = [
 
 
 @pytest.mark.parametrize("cmd,expected", CASES)
-def test_substitution_scan(captured_shell, cmd, expected):
+def test_substitution_empty_match(captured_shell, cmd, expected):
     captured_shell.clear_output()
     rc = captured_shell.run_command(cmd)
     assert rc == 0
