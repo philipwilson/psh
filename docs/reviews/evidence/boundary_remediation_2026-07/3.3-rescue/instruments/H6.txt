@@ -1,0 +1,560 @@
+PSH_ROOT   : /Users/pwilson/src/psh-r3-3
+psh import : /Users/pwilson/src/psh-r3-3/psh/__init__.py
+psh SHA    : d0f7d929ebdbde4d4ed794de66a0ae760ee2e655  (psh/ dirty: True)
+bash       : /opt/homebrew/bin/bash — GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+tree note  : Matrix H6 (untriggered conditional = the VIEW)
+
+=== MATRIX-H6-UNTRIGGERED-VIEW ===
+[SAME] H6-unset-@-c+-Q :: unset a; count "${a[@]:+X}"
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-unset-@-c+-U :: unset a; count ${a[@]:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-unset-@-+-Q :: unset a; count "${a[@]+X}"
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-unset-@-+-U :: unset a; count ${a[@]+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-unset-@-c--Q :: unset a; count "${a[@]:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-unset-@-c--U :: unset a; count ${a[@]:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-unset-@---Q :: unset a; count "${a[@]-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-unset-@---U :: unset a; count ${a[@]-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-unset-*-c+-Q :: unset a; count "${a[*]:+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-unset-*-c+-U :: unset a; count ${a[*]:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-unset-*-+-Q :: unset a; count "${a[*]+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-unset-*-+-U :: unset a; count ${a[*]+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-unset-*-c--Q :: unset a; count "${a[*]:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-unset-*-c--U :: unset a; count ${a[*]:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-unset-*---Q :: unset a; count "${a[*]-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-unset-*---U :: unset a; count ${a[*]-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-empty-@-c+-Q :: a=(); count "${a[@]:+X}"
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-empty-@-c+-U :: a=(); count ${a[@]:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-empty-@-+-Q :: a=(); count "${a[@]+X}"
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-empty-@-+-U :: a=(); count ${a[@]+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-empty-@-c--Q :: a=(); count "${a[@]:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-empty-@-c--U :: a=(); count ${a[@]:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-empty-@---Q :: a=(); count "${a[@]-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-empty-@---U :: a=(); count ${a[@]-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-empty-*-c+-Q :: a=(); count "${a[*]:+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-empty-*-c+-U :: a=(); count ${a[*]:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-empty-*-+-Q :: a=(); count "${a[*]+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-empty-*-+-U :: a=(); count ${a[*]+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-empty-*-c--Q :: a=(); count "${a[*]:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-empty-*-c--U :: a=(); count ${a[*]:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-empty-*---Q :: a=(); count "${a[*]-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-empty-*---U :: a=(); count ${a[*]-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-onenull-@-c+-Q :: a=(""); count "${a[@]:+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-onenull-@-c+-U :: a=(""); count ${a[@]:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-onenull-@-+-Q :: a=(""); count "${a[@]+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-onenull-@-+-U :: a=(""); count ${a[@]+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-onenull-@-c--Q :: a=(""); count "${a[@]:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-onenull-@-c--U :: a=(""); count ${a[@]:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-onenull-@---Q :: a=(""); count "${a[@]-X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-onenull-@---U :: a=(""); count ${a[@]-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-onenull-*-c+-Q :: a=(""); count "${a[*]:+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-onenull-*-c+-U :: a=(""); count ${a[*]:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-onenull-*-+-Q :: a=(""); count "${a[*]+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-onenull-*-+-U :: a=(""); count ${a[*]+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-onenull-*-c--Q :: a=(""); count "${a[*]:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-onenull-*-c--U :: a=(""); count ${a[*]:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-onenull-*---Q :: a=(""); count "${a[*]-X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-onenull-*---U :: a=(""); count ${a[*]-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-twonull-@-c+-Q :: a=("" ""); count "${a[@]:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-twonull-@-c+-U :: a=("" ""); count ${a[@]:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-twonull-@-+-Q :: a=("" ""); count "${a[@]+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-twonull-@-+-U :: a=("" ""); count ${a[@]+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-twonull-@-c--Q :: a=("" ""); count "${a[@]:-X}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] H6-twonull-@-c--U :: a=("" ""); count ${a[@]:-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-twonull-@---Q :: a=("" ""); count "${a[@]-X}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] H6-twonull-@---U :: a=("" ""); count ${a[@]-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-twonull-*-c+-Q :: a=("" ""); count "${a[*]:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-twonull-*-c+-U :: a=("" ""); count ${a[*]:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-twonull-*-+-Q :: a=("" ""); count "${a[*]+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-twonull-*-+-U :: a=("" ""); count ${a[*]+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-twonull-*-c--Q :: a=("" ""); count "${a[*]:-X}"
+    bash: 'n=1 [ ]' rc=0
+    psh : 'n=1 [ ]' rc=0
+[SAME] H6-twonull-*-c--U :: a=("" ""); count ${a[*]:-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-twonull-*---Q :: a=("" ""); count "${a[*]-X}"
+    bash: 'n=1 [ ]' rc=0
+    psh : 'n=1 [ ]' rc=0
+[SAME] H6-twonull-*---U :: a=("" ""); count ${a[*]-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-one-@-c+-Q :: a=(z); count "${a[@]:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-one-@-c+-U :: a=(z); count ${a[@]:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-one-@-+-Q :: a=(z); count "${a[@]+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-one-@-+-U :: a=(z); count ${a[@]+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-one-@-c--Q :: a=(z); count "${a[@]:-X}"
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-one-@-c--U :: a=(z); count ${a[@]:-X}
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-one-@---Q :: a=(z); count "${a[@]-X}"
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-one-@---U :: a=(z); count ${a[@]-X}
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-one-*-c+-Q :: a=(z); count "${a[*]:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-one-*-c+-U :: a=(z); count ${a[*]:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-one-*-+-Q :: a=(z); count "${a[*]+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-one-*-+-U :: a=(z); count ${a[*]+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-one-*-c--Q :: a=(z); count "${a[*]:-X}"
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-one-*-c--U :: a=(z); count ${a[*]:-X}
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-one-*---Q :: a=(z); count "${a[*]-X}"
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-one-*---U :: a=(z); count ${a[*]-X}
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-two-@-c+-Q :: a=(z w); count "${a[@]:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-two-@-c+-U :: a=(z w); count ${a[@]:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-two-@-+-Q :: a=(z w); count "${a[@]+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-two-@-+-U :: a=(z w); count ${a[@]+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-two-@-c--Q :: a=(z w); count "${a[@]:-X}"
+    bash: 'n=2 [z] [w]' rc=0
+    psh : 'n=2 [z] [w]' rc=0
+[SAME] H6-two-@-c--U :: a=(z w); count ${a[@]:-X}
+    bash: 'n=2 [z] [w]' rc=0
+    psh : 'n=2 [z] [w]' rc=0
+[SAME] H6-two-@---Q :: a=(z w); count "${a[@]-X}"
+    bash: 'n=2 [z] [w]' rc=0
+    psh : 'n=2 [z] [w]' rc=0
+[SAME] H6-two-@---U :: a=(z w); count ${a[@]-X}
+    bash: 'n=2 [z] [w]' rc=0
+    psh : 'n=2 [z] [w]' rc=0
+[SAME] H6-two-*-c+-Q :: a=(z w); count "${a[*]:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-two-*-c+-U :: a=(z w); count ${a[*]:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-two-*-+-Q :: a=(z w); count "${a[*]+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-two-*-+-U :: a=(z w); count ${a[*]+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-two-*-c--Q :: a=(z w); count "${a[*]:-X}"
+    bash: 'n=1 [z w]' rc=0
+    psh : 'n=1 [z w]' rc=0
+[SAME] H6-two-*-c--U :: a=(z w); count ${a[*]:-X}
+    bash: 'n=2 [z] [w]' rc=0
+    psh : 'n=2 [z] [w]' rc=0
+[SAME] H6-two-*---Q :: a=(z w); count "${a[*]-X}"
+    bash: 'n=1 [z w]' rc=0
+    psh : 'n=1 [z w]' rc=0
+[SAME] H6-two-*---U :: a=(z w); count ${a[*]-X}
+    bash: 'n=2 [z] [w]' rc=0
+    psh : 'n=2 [z] [w]' rc=0
+[SAME] H6-p-none-@-c+-Q :: set --; count "${@:+X}"
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-none-@-c+-U :: set --; count ${@:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-none-@-+-Q :: set --; count "${@+X}"
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-none-@-+-U :: set --; count ${@+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-none-@-c--Q :: set --; count "${@:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-none-@-c--U :: set --; count ${@:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-none-@---Q :: set --; count "${@-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-none-@---U :: set --; count ${@-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-none-*-c+-Q :: set --; count "${*:+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-p-none-*-c+-U :: set --; count ${*:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-none-*-+-Q :: set --; count "${*+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-p-none-*-+-U :: set --; count ${*+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-none-*-c--Q :: set --; count "${*:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-none-*-c--U :: set --; count ${*:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-none-*---Q :: set --; count "${*-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-none-*---U :: set --; count ${*-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-onenull-@-c+-Q :: set -- ""; count "${@:+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-p-onenull-@-c+-U :: set -- ""; count ${@:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-onenull-@-+-Q :: set -- ""; count "${@+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-onenull-@-+-U :: set -- ""; count ${@+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-onenull-@-c--Q :: set -- ""; count "${@:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-onenull-@-c--U :: set -- ""; count ${@:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-onenull-@---Q :: set -- ""; count "${@-X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-p-onenull-@---U :: set -- ""; count ${@-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-onenull-*-c+-Q :: set -- ""; count "${*:+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-p-onenull-*-c+-U :: set -- ""; count ${*:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-onenull-*-+-Q :: set -- ""; count "${*+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-onenull-*-+-U :: set -- ""; count ${*+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-onenull-*-c--Q :: set -- ""; count "${*:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-onenull-*-c--U :: set -- ""; count ${*:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-onenull-*---Q :: set -- ""; count "${*-X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-p-onenull-*---U :: set -- ""; count ${*-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-twonull-@-c+-Q :: set -- "" ""; count "${@:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-twonull-@-c+-U :: set -- "" ""; count ${@:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-twonull-@-+-Q :: set -- "" ""; count "${@+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-twonull-@-+-U :: set -- "" ""; count ${@+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-twonull-@-c--Q :: set -- "" ""; count "${@:-X}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] H6-p-twonull-@-c--U :: set -- "" ""; count ${@:-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-twonull-@---Q :: set -- "" ""; count "${@-X}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] H6-p-twonull-@---U :: set -- "" ""; count ${@-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-twonull-*-c+-Q :: set -- "" ""; count "${*:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-twonull-*-c+-U :: set -- "" ""; count ${*:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-twonull-*-+-Q :: set -- "" ""; count "${*+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-twonull-*-+-U :: set -- "" ""; count ${*+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-twonull-*-c--Q :: set -- "" ""; count "${*:-X}"
+    bash: 'n=1 [ ]' rc=0
+    psh : 'n=1 [ ]' rc=0
+[SAME] H6-p-twonull-*-c--U :: set -- "" ""; count ${*:-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-twonull-*---Q :: set -- "" ""; count "${*-X}"
+    bash: 'n=1 [ ]' rc=0
+    psh : 'n=1 [ ]' rc=0
+[SAME] H6-p-twonull-*---U :: set -- "" ""; count ${*-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-p-one-@-c+-Q :: set -- z; count "${@:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-one-@-c+-U :: set -- z; count ${@:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-one-@-+-Q :: set -- z; count "${@+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-one-@-+-U :: set -- z; count ${@+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-one-@-c--Q :: set -- z; count "${@:-X}"
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-p-one-@-c--U :: set -- z; count ${@:-X}
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-p-one-@---Q :: set -- z; count "${@-X}"
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-p-one-@---U :: set -- z; count ${@-X}
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-p-one-*-c+-Q :: set -- z; count "${*:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-one-*-c+-U :: set -- z; count ${*:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-one-*-+-Q :: set -- z; count "${*+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-one-*-+-U :: set -- z; count ${*+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-p-one-*-c--Q :: set -- z; count "${*:-X}"
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-p-one-*-c--U :: set -- z; count ${*:-X}
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-p-one-*---Q :: set -- z; count "${*-X}"
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-p-one-*---U :: set -- z; count ${*-X}
+    bash: 'n=1 [z]' rc=0
+    psh : 'n=1 [z]' rc=0
+[SAME] H6-s-unset-c+-Q :: unset x; count "${x:+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-s-unset-c+-U :: unset x; count ${x:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-s-unset-+-Q :: unset x; count "${x+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-s-unset-+-U :: unset x; count ${x+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-s-unset-c--Q :: unset x; count "${x:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-unset-c--U :: unset x; count ${x:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-unset---Q :: unset x; count "${x-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-unset---U :: unset x; count ${x-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-null-c+-Q :: x=; count "${x:+X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-s-null-c+-U :: x=; count ${x:+X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-s-null-+-Q :: x=; count "${x+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-null-+-U :: x=; count ${x+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-null-c--Q :: x=; count "${x:-X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-null-c--U :: x=; count ${x:-X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-null---Q :: x=; count "${x-X}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] H6-s-null---U :: x=; count ${x-X}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] H6-s-set-c+-Q :: x=S; count "${x:+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-set-c+-U :: x=S; count ${x:+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-set-+-Q :: x=S; count "${x+X}"
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-set-+-U :: x=S; count ${x+X}
+    bash: 'n=1 [X]' rc=0
+    psh : 'n=1 [X]' rc=0
+[SAME] H6-s-set-c--Q :: x=S; count "${x:-X}"
+    bash: 'n=1 [S]' rc=0
+    psh : 'n=1 [S]' rc=0
+[SAME] H6-s-set-c--U :: x=S; count ${x:-X}
+    bash: 'n=1 [S]' rc=0
+    psh : 'n=1 [S]' rc=0
+[SAME] H6-s-set---Q :: x=S; count "${x-X}"
+    bash: 'n=1 [S]' rc=0
+    psh : 'n=1 [S]' rc=0
+[SAME] H6-s-set---U :: x=S; count ${x-X}
+    bash: 'n=1 [S]' rc=0
+    psh : 'n=1 [S]' rc=0
+--- MATRIX-H6-UNTRIGGERED-VIEW: 184 cells | DIFF 0 | SAME 184 ---

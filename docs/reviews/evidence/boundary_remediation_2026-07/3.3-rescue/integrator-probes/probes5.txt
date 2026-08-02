@@ -1,0 +1,13 @@
+sig|unset x; set -- a b; printf "<%s>" "${x:-"$@"}"
+p4|unset x; set -- "a 1" b; printf "<%s>" "${x:-"$@"}"
+h6|a=(""); C "${a[@]:+X}"
+h6_unset|unset a; C "${a[@]:+X}"
+h6_postwin|set -- ""; C "${@:+X}"
+empty_uq|set --; unset x; C ${x:-"$@"}
+empty_q|set --; unset x; C "${x:-"$@"}"
+dbracket|unset x; set -- a b; [[ ${x:-"$@"} == "a b" ]] && echo TRUE || echo FALSE
+casepat|unset x; set -- a b; case "a b" in ${x:-"$@"}) echo HIT;; *) echo MISS;; esac
+cp_a|unset x; set -- a b; case a in ${x:-"$@"}) echo HIT;; *) echo MISS;; esac
+ifs_X_q|unset x; set -- aXq b; IFS=X; C ${x:-"$@"}
+nested|unset x; unset a; set -- p q; C "${x:-${a[@]:-"$@"}}"
+asg_q|unset x; set -- a b; C "${x:="$@"}"; C "$x"

@@ -1,0 +1,445 @@
+PSH_ROOT   : /Users/pwilson/src/psh-r3-3
+psh import : /Users/pwilson/src/psh-r3-3/psh/__init__.py
+psh SHA    : d0f7d929ebdbde4d4ed794de66a0ae760ee2e655  (psh/ dirty: False)
+bash       : /opt/homebrew/bin/bash — GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+tree note  : Matrix L (scalar projection separator)
+
+=== MATRIX-L-SCALAR-PROJECTION ===
+[SAME] L-dflt-assign-at :: set -- a b; a=(a b);  unset x; v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-assign-bareat :: set -- a b; a=(a b);  unset x; v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-assign-star :: set -- a b; a=(a b);  unset x; v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-assign-arrat :: set -- a b; a=(a b);  unset x; v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-assignq-at :: set -- a b; a=(a b);  unset x; v="${x:-"$@"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-assignq-bareat :: set -- a b; a=(a b);  unset x; v="${x:-$@}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-assignq-star :: set -- a b; a=(a b);  unset x; v="${x:-"$*"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-assignq-arrat :: set -- a b; a=(a b);  unset x; v="${x:-"${a[@]}"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-declare-at :: set -- a b; a=(a b);  unset x; declare v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-declare-bareat :: set -- a b; a=(a b);  unset x; declare v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-declare-star :: set -- a b; a=(a b);  unset x; declare v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-declare-arrat :: set -- a b; a=(a b);  unset x; declare v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-store-at :: set -- a b; a=(a b);  unset x; : ${x:="$@"}; count "$x"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-case-at :: set -- a b; a=(a b);  unset x; case ${x:-"$@"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-dflt-case-bareat :: set -- a b; a=(a b);  unset x; case ${x:-$@} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-dflt-case-star :: set -- a b; a=(a b);  unset x; case ${x:-"$*"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-dflt-case-arrat :: set -- a b; a=(a b);  unset x; case ${x:-"${a[@]}"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-dflt-dbr-at :: set -- a b; a=(a b);  unset x; [[ ${x:-"$@"} == "a b" ]] && echo SP || { [[ ${x:-"$@"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-dflt-dbr-bareat :: set -- a b; a=(a b);  unset x; [[ ${x:-$@} == "a b" ]] && echo SP || { [[ ${x:-$@} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-dflt-dbr-star :: set -- a b; a=(a b);  unset x; [[ ${x:-"$*"} == "a b" ]] && echo SP || { [[ ${x:-"$*"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-dflt-dbr-arrat :: set -- a b; a=(a b);  unset x; [[ ${x:-"${a[@]}"} == "a b" ]] && echo SP || { [[ ${x:-"${a[@]}"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-dflt-hstr-at :: set -- a b; a=(a b);  unset x; cat <<< ${x:-"$@"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-dflt-hstr-bareat :: set -- a b; a=(a b);  unset x; cat <<< ${x:-$@}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-dflt-hstr-star :: set -- a b; a=(a b);  unset x; cat <<< ${x:-"$*"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-dflt-hstr-arrat :: set -- a b; a=(a b);  unset x; cat <<< ${x:-"${a[@]}"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-dflt-subkey-at :: set -- a b; a=(a b);  unset x; declare -A h; h[${x:-"$@"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-subkey-bareat :: set -- a b; a=(a b);  unset x; declare -A h; h[${x:-$@}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-subkey-star :: set -- a b; a=(a b);  unset x; declare -A h; h[${x:-"$*"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-dflt-subkey-arrat :: set -- a b; a=(a b);  unset x; declare -A h; h[${x:-"${a[@]}"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-assign-at :: set -- a b; a=(a b); IFS=:; unset x; v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-assign-bareat :: set -- a b; a=(a b); IFS=:; unset x; v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-assign-star :: set -- a b; a=(a b); IFS=:; unset x; v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] L-colon-assign-arrat :: set -- a b; a=(a b); IFS=:; unset x; v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-assignq-at :: set -- a b; a=(a b); IFS=:; unset x; v="${x:-"$@"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-assignq-bareat :: set -- a b; a=(a b); IFS=:; unset x; v="${x:-$@}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-assignq-star :: set -- a b; a=(a b); IFS=:; unset x; v="${x:-"$*"}"; count "$v"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] L-colon-assignq-arrat :: set -- a b; a=(a b); IFS=:; unset x; v="${x:-"${a[@]}"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-declare-at :: set -- a b; a=(a b); IFS=:; unset x; declare v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-declare-bareat :: set -- a b; a=(a b); IFS=:; unset x; declare v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-declare-star :: set -- a b; a=(a b); IFS=:; unset x; declare v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] L-colon-declare-arrat :: set -- a b; a=(a b); IFS=:; unset x; declare v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-store-at :: set -- a b; a=(a b); IFS=:; unset x; : ${x:="$@"}; count "$x"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-case-at :: set -- a b; a=(a b); IFS=:; unset x; case ${x:-"$@"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-colon-case-bareat :: set -- a b; a=(a b); IFS=:; unset x; case ${x:-$@} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-colon-case-star :: set -- a b; a=(a b); IFS=:; unset x; case ${x:-"$*"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'COLON' rc=0
+    psh : 'COLON' rc=0
+[SAME] L-colon-case-arrat :: set -- a b; a=(a b); IFS=:; unset x; case ${x:-"${a[@]}"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-colon-dbr-at :: set -- a b; a=(a b); IFS=:; unset x; [[ ${x:-"$@"} == "a b" ]] && echo SP || { [[ ${x:-"$@"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-colon-dbr-bareat :: set -- a b; a=(a b); IFS=:; unset x; [[ ${x:-$@} == "a b" ]] && echo SP || { [[ ${x:-$@} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-colon-dbr-star :: set -- a b; a=(a b); IFS=:; unset x; [[ ${x:-"$*"} == "a b" ]] && echo SP || { [[ ${x:-"$*"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'COLON' rc=0
+    psh : 'COLON' rc=0
+[SAME] L-colon-dbr-arrat :: set -- a b; a=(a b); IFS=:; unset x; [[ ${x:-"${a[@]}"} == "a b" ]] && echo SP || { [[ ${x:-"${a[@]}"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-colon-hstr-at :: set -- a b; a=(a b); IFS=:; unset x; cat <<< ${x:-"$@"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-colon-hstr-bareat :: set -- a b; a=(a b); IFS=:; unset x; cat <<< ${x:-$@}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-colon-hstr-star :: set -- a b; a=(a b); IFS=:; unset x; cat <<< ${x:-"$*"}
+    bash: 'a:b' rc=0
+    psh : 'a:b' rc=0
+[SAME] L-colon-hstr-arrat :: set -- a b; a=(a b); IFS=:; unset x; cat <<< ${x:-"${a[@]}"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-colon-subkey-at :: set -- a b; a=(a b); IFS=:; unset x; declare -A h; h[${x:-"$@"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-subkey-bareat :: set -- a b; a=(a b); IFS=:; unset x; declare -A h; h[${x:-$@}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-colon-subkey-star :: set -- a b; a=(a b); IFS=:; unset x; declare -A h; h[${x:-"$*"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] L-colon-subkey-arrat :: set -- a b; a=(a b); IFS=:; unset x; declare -A h; h[${x:-"${a[@]}"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-assign-at :: set -- a b; a=(a b); IFS=; unset x; v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-assign-bareat :: set -- a b; a=(a b); IFS=; unset x; v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-assign-star :: set -- a b; a=(a b); IFS=; unset x; v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] L-empty-assign-arrat :: set -- a b; a=(a b); IFS=; unset x; v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-assignq-at :: set -- a b; a=(a b); IFS=; unset x; v="${x:-"$@"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-assignq-bareat :: set -- a b; a=(a b); IFS=; unset x; v="${x:-$@}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-assignq-star :: set -- a b; a=(a b); IFS=; unset x; v="${x:-"$*"}"; count "$v"
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] L-empty-assignq-arrat :: set -- a b; a=(a b); IFS=; unset x; v="${x:-"${a[@]}"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-declare-at :: set -- a b; a=(a b); IFS=; unset x; declare v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-declare-bareat :: set -- a b; a=(a b); IFS=; unset x; declare v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-declare-star :: set -- a b; a=(a b); IFS=; unset x; declare v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] L-empty-declare-arrat :: set -- a b; a=(a b); IFS=; unset x; declare v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-store-at :: set -- a b; a=(a b); IFS=; unset x; : ${x:="$@"}; count "$x"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-case-at :: set -- a b; a=(a b); IFS=; unset x; case ${x:-"$@"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-empty-case-bareat :: set -- a b; a=(a b); IFS=; unset x; case ${x:-$@} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-empty-case-star :: set -- a b; a=(a b); IFS=; unset x; case ${x:-"$*"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'NONE' rc=0
+    psh : 'NONE' rc=0
+[SAME] L-empty-case-arrat :: set -- a b; a=(a b); IFS=; unset x; case ${x:-"${a[@]}"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-empty-dbr-at :: set -- a b; a=(a b); IFS=; unset x; [[ ${x:-"$@"} == "a b" ]] && echo SP || { [[ ${x:-"$@"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-empty-dbr-bareat :: set -- a b; a=(a b); IFS=; unset x; [[ ${x:-$@} == "a b" ]] && echo SP || { [[ ${x:-$@} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-empty-dbr-star :: set -- a b; a=(a b); IFS=; unset x; [[ ${x:-"$*"} == "a b" ]] && echo SP || { [[ ${x:-"$*"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'OTHER' rc=0
+    psh : 'OTHER' rc=0
+[SAME] L-empty-dbr-arrat :: set -- a b; a=(a b); IFS=; unset x; [[ ${x:-"${a[@]}"} == "a b" ]] && echo SP || { [[ ${x:-"${a[@]}"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-empty-hstr-at :: set -- a b; a=(a b); IFS=; unset x; cat <<< ${x:-"$@"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-empty-hstr-bareat :: set -- a b; a=(a b); IFS=; unset x; cat <<< ${x:-$@}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-empty-hstr-star :: set -- a b; a=(a b); IFS=; unset x; cat <<< ${x:-"$*"}
+    bash: 'ab' rc=0
+    psh : 'ab' rc=0
+[SAME] L-empty-hstr-arrat :: set -- a b; a=(a b); IFS=; unset x; cat <<< ${x:-"${a[@]}"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-empty-subkey-at :: set -- a b; a=(a b); IFS=; unset x; declare -A h; h[${x:-"$@"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-subkey-bareat :: set -- a b; a=(a b); IFS=; unset x; declare -A h; h[${x:-$@}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-empty-subkey-star :: set -- a b; a=(a b); IFS=; unset x; declare -A h; h[${x:-"$*"}]=v; count "${!h[@]}"
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] L-empty-subkey-arrat :: set -- a b; a=(a b); IFS=; unset x; declare -A h; h[${x:-"${a[@]}"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-assign-at :: set -- a b; a=(a b); IFS=:-; unset x; v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-assign-bareat :: set -- a b; a=(a b); IFS=:-; unset x; v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-assign-star :: set -- a b; a=(a b); IFS=:-; unset x; v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] L-multi-assign-arrat :: set -- a b; a=(a b); IFS=:-; unset x; v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-assignq-at :: set -- a b; a=(a b); IFS=:-; unset x; v="${x:-"$@"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-assignq-bareat :: set -- a b; a=(a b); IFS=:-; unset x; v="${x:-$@}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-assignq-star :: set -- a b; a=(a b); IFS=:-; unset x; v="${x:-"$*"}"; count "$v"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] L-multi-assignq-arrat :: set -- a b; a=(a b); IFS=:-; unset x; v="${x:-"${a[@]}"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-declare-at :: set -- a b; a=(a b); IFS=:-; unset x; declare v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-declare-bareat :: set -- a b; a=(a b); IFS=:-; unset x; declare v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-declare-star :: set -- a b; a=(a b); IFS=:-; unset x; declare v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] L-multi-declare-arrat :: set -- a b; a=(a b); IFS=:-; unset x; declare v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-store-at :: set -- a b; a=(a b); IFS=:-; unset x; : ${x:="$@"}; count "$x"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-case-at :: set -- a b; a=(a b); IFS=:-; unset x; case ${x:-"$@"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-multi-case-bareat :: set -- a b; a=(a b); IFS=:-; unset x; case ${x:-$@} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-multi-case-star :: set -- a b; a=(a b); IFS=:-; unset x; case ${x:-"$*"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'COLON' rc=0
+    psh : 'COLON' rc=0
+[SAME] L-multi-case-arrat :: set -- a b; a=(a b); IFS=:-; unset x; case ${x:-"${a[@]}"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-multi-dbr-at :: set -- a b; a=(a b); IFS=:-; unset x; [[ ${x:-"$@"} == "a b" ]] && echo SP || { [[ ${x:-"$@"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-multi-dbr-bareat :: set -- a b; a=(a b); IFS=:-; unset x; [[ ${x:-$@} == "a b" ]] && echo SP || { [[ ${x:-$@} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-multi-dbr-star :: set -- a b; a=(a b); IFS=:-; unset x; [[ ${x:-"$*"} == "a b" ]] && echo SP || { [[ ${x:-"$*"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'COLON' rc=0
+    psh : 'COLON' rc=0
+[SAME] L-multi-dbr-arrat :: set -- a b; a=(a b); IFS=:-; unset x; [[ ${x:-"${a[@]}"} == "a b" ]] && echo SP || { [[ ${x:-"${a[@]}"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-multi-hstr-at :: set -- a b; a=(a b); IFS=:-; unset x; cat <<< ${x:-"$@"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-multi-hstr-bareat :: set -- a b; a=(a b); IFS=:-; unset x; cat <<< ${x:-$@}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-multi-hstr-star :: set -- a b; a=(a b); IFS=:-; unset x; cat <<< ${x:-"$*"}
+    bash: 'a:b' rc=0
+    psh : 'a:b' rc=0
+[SAME] L-multi-hstr-arrat :: set -- a b; a=(a b); IFS=:-; unset x; cat <<< ${x:-"${a[@]}"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-multi-subkey-at :: set -- a b; a=(a b); IFS=:-; unset x; declare -A h; h[${x:-"$@"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-subkey-bareat :: set -- a b; a=(a b); IFS=:-; unset x; declare -A h; h[${x:-$@}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-multi-subkey-star :: set -- a b; a=(a b); IFS=:-; unset x; declare -A h; h[${x:-"$*"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] L-multi-subkey-arrat :: set -- a b; a=(a b); IFS=:-; unset x; declare -A h; h[${x:-"${a[@]}"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-assign-at :: set -- a b; a=(a b); IFS=$'\t'; unset x; v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-assign-bareat :: set -- a b; a=(a b); IFS=$'\t'; unset x; v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-assign-star :: set -- a b; a=(a b); IFS=$'\t'; unset x; v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [a\tb]' rc=0
+    psh : 'n=1 [a\tb]' rc=0
+[SAME] L-tab-assign-arrat :: set -- a b; a=(a b); IFS=$'\t'; unset x; v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-assignq-at :: set -- a b; a=(a b); IFS=$'\t'; unset x; v="${x:-"$@"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-assignq-bareat :: set -- a b; a=(a b); IFS=$'\t'; unset x; v="${x:-$@}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-assignq-star :: set -- a b; a=(a b); IFS=$'\t'; unset x; v="${x:-"$*"}"; count "$v"
+    bash: 'n=1 [a\tb]' rc=0
+    psh : 'n=1 [a\tb]' rc=0
+[SAME] L-tab-assignq-arrat :: set -- a b; a=(a b); IFS=$'\t'; unset x; v="${x:-"${a[@]}"}"; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-declare-at :: set -- a b; a=(a b); IFS=$'\t'; unset x; declare v=${x:-"$@"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-declare-bareat :: set -- a b; a=(a b); IFS=$'\t'; unset x; declare v=${x:-$@}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-declare-star :: set -- a b; a=(a b); IFS=$'\t'; unset x; declare v=${x:-"$*"}; count "$v"
+    bash: 'n=1 [a\tb]' rc=0
+    psh : 'n=1 [a\tb]' rc=0
+[SAME] L-tab-declare-arrat :: set -- a b; a=(a b); IFS=$'\t'; unset x; declare v=${x:-"${a[@]}"}; count "$v"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-store-at :: set -- a b; a=(a b); IFS=$'\t'; unset x; : ${x:="$@"}; count "$x"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-case-at :: set -- a b; a=(a b); IFS=$'\t'; unset x; case ${x:-"$@"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-tab-case-bareat :: set -- a b; a=(a b); IFS=$'\t'; unset x; case ${x:-$@} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-tab-case-star :: set -- a b; a=(a b); IFS=$'\t'; unset x; case ${x:-"$*"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'OTHER' rc=0
+    psh : 'OTHER' rc=0
+[SAME] L-tab-case-arrat :: set -- a b; a=(a b); IFS=$'\t'; unset x; case ${x:-"${a[@]}"} in "a b") echo SP;; "a:b") echo COLON;; "ab") echo NONE;; *) echo OTHER;; esac
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-tab-dbr-at :: set -- a b; a=(a b); IFS=$'\t'; unset x; [[ ${x:-"$@"} == "a b" ]] && echo SP || { [[ ${x:-"$@"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-tab-dbr-bareat :: set -- a b; a=(a b); IFS=$'\t'; unset x; [[ ${x:-$@} == "a b" ]] && echo SP || { [[ ${x:-$@} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-tab-dbr-star :: set -- a b; a=(a b); IFS=$'\t'; unset x; [[ ${x:-"$*"} == "a b" ]] && echo SP || { [[ ${x:-"$*"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'OTHER' rc=0
+    psh : 'OTHER' rc=0
+[SAME] L-tab-dbr-arrat :: set -- a b; a=(a b); IFS=$'\t'; unset x; [[ ${x:-"${a[@]}"} == "a b" ]] && echo SP || { [[ ${x:-"${a[@]}"} == "a:b" ]] && echo COLON || echo OTHER; }
+    bash: 'SP' rc=0
+    psh : 'SP' rc=0
+[SAME] L-tab-hstr-at :: set -- a b; a=(a b); IFS=$'\t'; unset x; cat <<< ${x:-"$@"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-tab-hstr-bareat :: set -- a b; a=(a b); IFS=$'\t'; unset x; cat <<< ${x:-$@}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-tab-hstr-star :: set -- a b; a=(a b); IFS=$'\t'; unset x; cat <<< ${x:-"$*"}
+    bash: 'a\tb' rc=0
+    psh : 'a\tb' rc=0
+[SAME] L-tab-hstr-arrat :: set -- a b; a=(a b); IFS=$'\t'; unset x; cat <<< ${x:-"${a[@]}"}
+    bash: 'a b' rc=0
+    psh : 'a b' rc=0
+[SAME] L-tab-subkey-at :: set -- a b; a=(a b); IFS=$'\t'; unset x; declare -A h; h[${x:-"$@"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-subkey-bareat :: set -- a b; a=(a b); IFS=$'\t'; unset x; declare -A h; h[${x:-$@}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] L-tab-subkey-star :: set -- a b; a=(a b); IFS=$'\t'; unset x; declare -A h; h[${x:-"$*"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a\tb]' rc=0
+    psh : 'n=1 [a\tb]' rc=0
+[SAME] L-tab-subkey-arrat :: set -- a b; a=(a b); IFS=$'\t'; unset x; declare -A h; h[${x:-"${a[@]}"}]=v; count "${!h[@]}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+--- MATRIX-L-SCALAR-PROJECTION: 145 cells | DIFF 0 | SAME 145 ---
+
+elapsed: 1.3s for 145 cells

@@ -1,0 +1,11 @@
+cp_a|unset x; set -- a b; case a in ${x:-"$@"}) echo HIT;; *) echo MISS;; esac
+cp_b|unset x; set -- a b; case b in ${x:-"$@"}) echo HIT;; *) echo MISS;; esac
+cp_ab_single|unset x; set -- "a b"; case "a b" in ${x:-"$@"}) echo HIT;; *) echo MISS;; esac
+cp_star|unset x; set -- 'a*' b; case aZZ in ${x:-"$@"}) echo HIT;; *) echo MISS;; esac
+hs_null|x=""; C "${x:+X}"
+hs_unset|unset y; C "${y:+X}"
+hs_null_uq|x=""; C ${x:+X}
+h_2el|a=("" ""); C "${a[@]:+X}"
+h_nonnull|a=("q"); C "${a[@]:+X}"
+h_mixed|a=("" "q"); C "${a[@]:+X}"
+h_unq|a=(""); C ${a[@]:+X}
