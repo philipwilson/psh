@@ -4,7 +4,7 @@
 
 Python Shell (psh) is a POSIX-style, bash-compatible shell written entirely in Python, designed for learning shell internals while providing practical functionality. It features a clean, readable codebase with modern architecture and powerful built-in analysis tools.
 
-**Current Version**: 0.763.0 | **Tests**: 24,400+ | **Compatibility**: POSIX + bash, verified against live bash
+**Current Version**: 0.764.0 | **Tests**: 24,500+ | **Compatibility**: POSIX + bash, verified against live bash
 
 *All source code and documentation (except this note) has been written by Claude Code using Sonnet 4.x and Opus 4.x models.*
 
@@ -31,7 +31,7 @@ psh --format script.sh
 
 - 🔍 **CLI Analysis Tools**: Built-in script formatting, metrics, security analysis, and linting
 - 📚 **Educational Focus**: Clean, readable codebase designed for learning shell internals
-- 🧪 **Comprehensive Testing**: 24,400+ tests ensuring reliability and robustness
+- 🧪 **Comprehensive Testing**: 24,500+ tests ensuring reliability and robustness
 - 🏗️ **Modern Architecture**: Component-based design with unified lexer and visitor pattern integration
 - 🎓 **Dual Parser Implementation**: Production recursive descent parser, plus an educational parser-combinator alternative for comparing parsing paradigms
 - 📋 **POSIX + bash compatible**: behavior is conformance-tested against live bash (see the compatibility matrix in the user guide)
@@ -247,8 +247,8 @@ PSH includes two parser implementations with deliberately different statuses:
 - **Parser Selection**: Use `parser-select combinator` builtin (or `--parser combinator`) to switch implementations interactively
 
 ### Project Statistics
-- **Lines of Code**: ~81,400 lines of production code in `psh/` across 275 Python files, plus ~156,400 lines of tests in `tests/` (802 Python files)
-- **Test Coverage**: 24,455 tests in 783 test files
+- **Lines of Code**: ~81,900 lines of production code in `psh/` across 275 Python files, plus ~156,900 lines of tests in `tests/` (804 Python files)
+- **Test Coverage**: 24,511 tests in 785 test files
 - **Architecture**: 8 major components with focused responsibilities
 - **Visitors**: 7 analysis and transformation visitors (`psh/visitor/`)
 - **Dual Parser**: Both recursive descent and parser combinator implementations
