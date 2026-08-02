@@ -20,9 +20,29 @@ These guards keep that property from eroding:
    that fails loudly, whereas a shell-error type would be swallowed to exit 1
    and the loudness — the whole point — would be lost.
 
-The scanners are self-tested against synthetic offenders (the tests whose
-names end ``_guard_detects_*``) so they cannot rot into no-ops: a guard that
+The scanners are self-tested against synthetic offenders (the
+``test_guard_detects_*`` tests) so they cannot rot into no-ops: a guard that
 cannot fail is not a guard.
+
+**What these scanners do and do NOT see** — narrowed after round-1 NIT 5,
+because the earlier wording implied broader coverage than the implementation
+delivers. They are AST scanners over ``psh/``, and they detect:
+
+- a direct ``<expr>.as_scalar()`` call, attributed to its nearest enclosing
+  function (a module-level or class-body call reports ``<module>``, so it
+  cannot slip past the ruled-set check);
+- a reference to a retired symbol by NAME — a ``Name``, an attribute access,
+  or a class definition.
+
+They do NOT see an INDIRECT projection: binding the method and calling it
+later (``f = v.as_scalar; f()``), reaching it via ``getattr``, or building the
+name dynamically. That residue is accepted deliberately rather than
+overlooked. Widening the scanner to dataflow analysis would buy a guard harder
+to trust than the property it protects, and the RUNTIME half already covers
+what the static half cannot: an unnamed string conversion raises however it is
+spelled, because the check lives in ``__str__`` rather than at the call site.
+The static half's job is narrower and worth stating plainly — it keeps the
+RULED SET honest, not the language.
 """
 import ast
 import pathlib

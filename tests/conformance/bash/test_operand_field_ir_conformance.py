@@ -188,6 +188,94 @@ def test_untriggered_conditional_returns_the_view(cmd, expected):
 
 
 # ---------------------------------------------------------------------------
+# 4b. The ARRAY-VIEW operand-content family (round-1 blocker B2)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('cmd,expected', [
+    ('unset x; a=("m n" o); count "${x:-"${a[@]}"}"', 'n=2 [m n] [o]\n'),
+    ('unset x; a=("m n" o); count ${x:-"${a[@]}"}', 'n=2 [m n] [o]\n'),
+    ('unset x; a=("m n" o); count "${x:-${a[@]}}"', 'n=2 [m n] [o]\n'),
+    ('x=S; a=("m n" o); count "${x:+"${a[@]}"}"', 'n=2 [m n] [o]\n'),
+    ('unset x; a=("m n" o); count "${x-"${a[@]}"}"', 'n=2 [m n] [o]\n'),
+    # Associative KEYS are a view too.
+    ('unset x; declare -A h; h[k1]=1; h["k 2"]=2; count "${x:-"${!h[@]}"}"',
+     'n=2 [k1] [k 2]\n'),
+    # A SLICED view keeps its own field boundaries.
+    ('unset x; a=(p "q r" s); count "${x:-"${a[@]:1}"}"', 'n=2 [q r] [s]\n'),
+    # Boundaries land correctly when the view is flanked by literals.
+    ('unset x; a=("m n" o); count "A${x:-"${a[@]}"}Z"', 'n=2 [Am n] [oZ]\n'),
+])
+def test_array_view_as_operand_content_keeps_fields(cmd, expected):
+    """An array VIEW inside a value operand produces fields, like ``"$@"``.
+
+    Round-1 B2: this whole family moved base -> tip (one joined field -> the
+    field vector, matching bash) with NO pin detecting it, and a mutation
+    disabling the view branch left every relevant test green. These rows close
+    that gap; ``test_m8_lock_view_operand_content_is_a_producer`` is the
+    matching mutation lock.
+    """
+    _agree(cmd, expected)
+
+
+def test_star_view_as_operand_content_stays_one_field():
+    """CONTROL for the family above: a ``[*]`` view joins its OWN elements
+    before the operand ever sees it, so it is ONE field in bash, at base and
+    at tip alike. Without this row the family could be satisfied by "make
+    every view produce fields", which would be wrong."""
+    _agree('unset x; a=("m n" o); count "${x:-"${a[*]}"}"', 'n=1 [m n o]\n')
+
+
+# ---------------------------------------------------------------------------
+# 4c. The REDIRECT TARGET (round-1 blockers B1/B6): CLOSED IN SLOT
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('script', [
+    'unset x; set -- f1 f2; echo hi > ${x:-"$@"}',
+    'unset x; set -- f1 f2; echo hi > "${x:-"$@"}"',
+    'unset x; a=(f1 f2); echo hi > ${x:-"${a[@]}"}',
+    'unset x; set -- f1 f2; cat < ${x:-"$@"}',
+])
+def test_multifield_redirect_target_is_ambiguous(script, tmp_path):
+    """A multi-field operand as a redirect target is an AMBIGUOUS REDIRECT.
+
+    Round-1 B1/B6. At base psh silently created ONE file literally named
+    ``f1 f2`` and exited 0; at tip the operand is a field vector, the redirect
+    sees two fields, and psh reports bash's own diagnostic and fails —
+    matching bash in message form AND exit status. This consumer was CLOSED
+    IN SLOT; the ledger's earlier "pre-existing, unchanged" record of it was
+    wrong on both counts and is corrected.
+
+    Compared with the program-name prefix normalised, since that legitimately
+    differs between the two shells.
+    """
+    import re as _re
+    p = run_psh(['-c', script], cwd=str(tmp_path), timeout=15)
+    b = run_bash(['-c', script], cwd=str(tmp_path), timeout=15)
+    assert is_comparable(p) and is_comparable(b), (p, b)
+
+    def norm(text):
+        return _re.sub(r'^[^:]*: line \d+: ', '', text.strip())
+
+    assert 'ambiguous redirect' in norm(b.stderr), \
+        f"bash oracle moved: {b.stderr!r}"
+    assert norm(p.stderr) == norm(b.stderr)
+    assert p.returncode == b.returncode != 0
+    assert sorted(q.name for q in tmp_path.iterdir()) == []
+
+
+def test_single_field_redirect_target_still_works(tmp_path):
+    """AGREEMENT CONTROL for the rows above: a ONE-field operand target is an
+    ordinary redirect and must keep working. Without this, those rows could be
+    satisfied by making every operand target ambiguous."""
+    script = 'unset x; set -- solo; echo hi > ${x:-"$@"}; echo "rc=$?"'
+    p = run_psh(['-c', script], cwd=str(tmp_path), timeout=15)
+    b = run_bash(['-c', script], cwd=str(tmp_path), timeout=15)
+    assert is_comparable(p) and is_comparable(b), (p, b)
+    assert p.stdout == b.stdout == 'rc=0\n'
+    assert (tmp_path / 'solo').read_text() == 'hi\n'
+
+
+# ---------------------------------------------------------------------------
 # 5. NESTED operands — a field vector inside a field vector
 # ---------------------------------------------------------------------------
 
@@ -260,6 +348,37 @@ def test_m8_lock_assignment_still_projects():
     _agree('unset x; set -- "a 1" b; count "${x:="$@"}"', 'n=1 [a 1 b]\n')
     _agree('unset x; set -- "a 1" b; : "${x:="$@"}"; count "$x"',
            'n=1 [a 1 b]\n')
+
+
+def test_m8_lock_view_operand_content_is_a_producer():
+    """M8 LOCK #4 (round-1 B2) — disabling the operator-less array-VIEW branch
+    of ``_operand_dollar_fields`` must fail HERE.
+
+    The verifier's isolating mutation did exactly that and left every relevant
+    test green: the view family had moved to bash with nothing watching it.
+    The subject carries an embedded space so the join is observable, and the
+    ``[*]`` control is asserted in the same test so a mutation that makes ALL
+    views produce fields fails too — the lock bites in BOTH directions.
+    """
+    _agree('unset x; a=("m n" o); count "${x:-"${a[@]}"}"', 'n=2 [m n] [o]\n')
+    _agree('unset x; a=("m n" o); count "${x:-"${a[*]}"}"', 'n=1 [m n o]\n')
+
+
+def test_m8_lock_redirect_target_arity(tmp_path):
+    """M8 LOCK #5 (round-1 B1/B6) — losing the field vector at the redirect
+    target must fail HERE.
+
+    If the operand flattens again, the target becomes ONE field named
+    ``f1 f2``, the redirect succeeds, and a file appears. Both halves are
+    asserted: the diagnostic AND the absence of the file.
+    """
+    import re as _re
+    script = 'unset x; set -- f1 f2; echo hi > ${x:-"$@"}'
+    p = run_psh(['-c', script], cwd=str(tmp_path), timeout=15)
+    assert p.returncode != 0
+    assert 'ambiguous redirect' in _re.sub(r'^[^:]*: line \d+: ', '',
+                                          p.stderr.strip())
+    assert sorted(q.name for q in tmp_path.iterdir()) == []
 
 
 def test_m8_lock_empty_field_distinction_survives():

@@ -511,8 +511,12 @@ class OperandOpsMixin(_Base):
         (expanded_text, new_index, new_inner_state).
         """
         if operand[i + 1].isdigit():
+            # A positional (`$1`) carries no operator, so this is always a
+            # string. Narrowed by assertion, matching the name branch below —
+            # an as_scalar() here would be an unruled scalar re-entry.
             expanded, i = self._expand_one_dollar(operand, i)
-            return str(expanded), i, inner
+            assert not isinstance(expanded, OperandValue)
+            return expanded, i, inner
         j = i + 1
         name: List[str] = []
         while j < len(operand):

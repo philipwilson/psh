@@ -226,7 +226,13 @@ class ExpansionManager:
         return self.word_expander.expand_assignment_value_word(word)
 
     def expand_expansion(self, expansion, quote_ctx=None) -> 'OperandOrStr':
-        """Evaluate a single expansion AST node to a string (public API).
+        """Evaluate a single expansion AST node (public API).
+
+        Returns a ``str`` for most expansions, or an
+        ``operands.OperandValue`` — a FIELD VECTOR — when the node carries a
+        value operator (``:-`` ``:=`` ``:+`` ``:?`` and the non-colon twins).
+        A caller that needs one string must NAME the projection
+        (``OperandValue.as_scalar``); it is not implicitly stringable.
 
         Used by the executor when building an assignment value from Word parts;
         kept public so callers need not reach into a private method.

@@ -1728,6 +1728,38 @@ def test_operand_at_preserves_fields(cmd, bash_out):
     assert p.stdout == b.stdout
 
 
+@pytest.mark.parametrize('cmd', [
+    # signature cell
+    'unset x; set -- a b; printf "<%s>" "${x:-"$@"}"',
+    # subject shape: the row that can actually detect the flatten
+    'unset x; set -- "a 1" "b 2"; printf "<%s>" ${x:-"$@"}',
+    # ZERO-POSITIONAL pair — the empty-field representation, both faces
+    'n() { echo "n=$#"; }; unset x; set --; n ${x:-"$@"}',
+    'n() { echo "n=$#"; }; unset x; set --; n "${x:-"$@"}"',
+    # array VIEW as operand content (round-1 B2 family)
+    'unset x; a=("m n" o); printf "<%s>" "${x:-"${a[@]}"}"',
+    # alternate face + nesting
+    'x=S; set -- "a 1" b; printf "<%s>" "${x:+"$@"}"',
+    'unset x y; set -- "a 1" b; printf "<%s>" "${x:-${y:-"$@"}}"',
+])
+def test_operand_at_preserves_fields_combinator(cmd):
+    """The COMBINATOR parser leg for the flipped pin.
+
+    Round-1 blocker B3: the ledger claimed "the existing pin runs `_psh_comb`"
+    — it did not; the base pin body ran `_psh`/`_bash` only, and neither the
+    flipped pin nor the battery referenced the combinator at all. The claim
+    was inherited from the brief and repeated without derivation. This test is
+    the claim made TRUE rather than retracted, since the parser axis is worth
+    covering: the fix lives in expansion, so both parsers must agree with bash.
+
+    Kept as a separate function rather than folded into the equality pin so a
+    combinator-only regression names itself in the failure output.
+    """
+    b = _bash(cmd)
+    assert _psh(cmd).stdout == b.stdout
+    assert _psh_comb(cmd).stdout == b.stdout
+
+
 @pytest.mark.parametrize('cmd,bash_out,psh_out', [
     ('unset x; IFS=X; set -- aXq b; printf "<%s>" ${x:-$@}',
      '<aXq b>', '<a><q b>'),
