@@ -53,7 +53,9 @@ tmp/probes-r17t1-quoting/):
 from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple, Union
 
 from ..lexer.cmdsub_scanner import find_command_substitution_end
+from ..lexer.pure_helpers import find_closing_delimiter
 from ..lexer.recognizers.word_scanners import scan_inline_ansi_c
+from .param_parser import parse_parameter_expansion
 from .word_expansion_types import ExpandedField, FieldRun, Protection, Split
 
 if TYPE_CHECKING:
@@ -250,8 +252,6 @@ class OperandOpsMixin(_Base):
         scalar semantics, which is why ``$*``/``${a[*]}`` (joined with
         IFS[0] before they get here) correctly stay one field.
         """
-        from ..lexer.pure_helpers import find_closing_delimiter
-        from .param_parser import parse_parameter_expansion
         if text.startswith('$@', i):
             return list(self.state.positional_params), i + 2
         if text.startswith('${', i):
