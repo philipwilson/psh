@@ -281,27 +281,36 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
   `full_match(text)` (case/`[[`/name filter/one pathname entry/one case-mod
   char), `matching_ends(text, start)` (prefix removal — `#`=min, `##`=max),
   `matching_starts(text, end)` (suffix removal — `%`=max start, `%%`=min start),
-  and `span_at(text, pos)` / `matching_spans(text)` (leftmost-longest
-  substitution). `parameter_expansion.py` calls these directly — no operator
-  builds a regex or does its own anchoring; substitution ADDITIONALLY applies
-  bash's measured consumer layer at the seam (empty-subject single-shot,
-  `*`-wrapped pre-test, end-position gate, end-never-scanned `//` loop —
-  `parameter_expansion.py#_sub_machinery`/`#_any_match`, slot 3.1), while
-  removal is pure slice booleans.
+  and `span_at(text, pos)` / `spanner(text)` (leftmost-longest substitution;
+  `matching_spans` is a test-pinned relation oracle with no production
+  caller — labelled in its docstring, kept per the extglob_to_regex
+  permanent-oracle precedent). `parameter_expansion.py` calls these
+  directly — no operator builds a regex or does its own anchoring;
+  substitution ADDITIONALLY applies bash's measured consumer layer at the
+  seam (empty-subject single-shot, `*`-wrapped pre-test, end-position gate,
+  end-never-scanned `//` loop — `parameter_expansion.py#_sub_machinery`/
+  `#_any_match`, slot 3.1), while removal is pure slice booleans.
 - **Bash-composition patterns are SLICE-END-RELATIVE** (slot 3.1): where an
   extglob group sits directly after a wildcard run, bash 5.2's measured
   semantics (strict star continuation bounds, `?(`/`*(` try-then-skip,
   the unenclosed-negation end-of-string rule) depend on where the matched
   slice ENDS, so "matches `text[i:k]`" is a per-`(i,k)` boolean no single
-  forward pass can produce. `pattern_engine.py#_seq_bash_quirk` (compile-time,
-  transitive through alternatives; `Extglob.enclosed` carries the negation
-  rule's input) routes exactly those patterns to
-  `pattern_engine.py#_BashMatcher`, and the relations evaluate them per-slice.
-  Every other pattern keeps the fast paths below unchanged. The corpus lock
-  (64,575 deterministic cells vs live bash) is
-  `test_pattern_bash_composition_differential.py`; the same flag is the
-  regex-oracle exclusion predicate in `test_pattern_engine_matcher.py` (the
-  regex model cannot express this composition).
+  forward pass can produce. These patterns also see bash's glibc star-JUMP
+  (round 1): the star scan's inner walk stops at the next wildcard star and
+  COMMITS that position — a simple-element segment between stars is placed
+  at its LEFTMOST match, deciding which entry position the rules above see
+  (`pattern_engine.py#_BashMatcher._segment`; groups are jump-opaque).
+  `pattern_engine.py#_seq_bash_quirk` (compile-time, transitive through
+  alternatives; `Extglob.enclosed` carries the negation rule's input) routes
+  exactly those patterns to `pattern_engine.py#_BashMatcher`, and the
+  relations evaluate them per-slice. Every other pattern keeps the fast
+  paths below unchanged. Exactness is SCOPED to the measured corpora
+  (437,811 cells vs live bash across the slot's three deterministic corpora
+  incl. a disjoint-alphabet mirror); the permanent lock is the grammar-v2
+  battery in `test_pattern_bash_composition_differential.py`, and the same
+  flag is the regex-oracle exclusion predicate in
+  `test_pattern_engine_matcher.py` (the regex model cannot express this
+  composition).
 - **Stars and literal chains are ITERATIVE; recursion only for extglob
   nesting.** The boolean full match for extglob-free sequences (every plain
   glob) is the classic two-pointer backtrack — zero recursion, one backtrack
@@ -316,9 +325,13 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
   `RecursionError` as an expected shell error (probed: bash 5.2 SEGFAULTS at
   depth 30k where psh fails cleanly — pinned in `test_pattern_relations.py` +
   the nightly benchmark tier). Flagged bash-composition patterns additionally
-  recurse per star-run/group dispatch — still pattern-structure-bounded,
-  never subject-length; the contract (100-unit chain fine, 1000-unit chain =
-  clean `RecursionError`) is pinned in the composition battery.
+  recurse per group dispatch (star-run scanning and jump commits are
+  iterative) — still pattern-structure-bounded, never subject-length; the
+  contract is pinned LIMIT-RELATIVE in the composition battery (a 100-unit
+  star∘negation chain evaluates at any limit this suite runs under; a chain
+  with as many units as the CURRENT `sys.getrecursionlimit()` — 1000 default,
+  40,000 after shell activation via `core/process_lease.py#RECURSION_LIMIT` —
+  raises a clean `RecursionError`, an expected shell error).
 - **Policies stay outside the matcher** as a typed `MatchProfile`
   (`for_pathname`, `ic`); bracket membership and case folding delegate to the
   shared, locale-aware `extglob._bracket_match`/`_eq`, so POSIX `[:class:]`
