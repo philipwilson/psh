@@ -208,8 +208,8 @@ class Sequence:
 
     ``sub_fast`` — substitution Path-A eligibility (see
     :func:`sub_fast_eligible`). ``nullable`` — whether the sequence can match
-    the empty string (see :func:`_seq_nullable`); it is a stored bit only so
-    that ``sub_fast`` can be derived without recursion.
+    the empty string (see :func:`_derive_nullable`); it is a stored bit only
+    so that ``sub_fast`` can be derived without recursion.
     """
     elements: Tuple[object, ...] = field(default_factory=tuple)
     has_extglob: bool = field(init=False, default=False)
@@ -269,9 +269,12 @@ def _derive_nullable(elements: Tuple[object, ...]) -> bool:
     return True
 
 
-def _seq_nullable(seq: Sequence) -> bool:
-    """Whether *seq* can match the empty string (derived at construction)."""
-    return seq.nullable
+# ``_seq_nullable(seq)`` was RETIRED here: once the bit moved to construction
+# time its body was ``return seq.nullable``, with zero callers and zero tests
+# (its one remaining mention was a docstring cross-reference, now pointing at
+# :func:`_derive_nullable`). Read ``seq.nullable`` directly. Its sibling
+# :func:`_seq_has_extglob` KEEPS its wrapper — that one still has a live
+# caller, so the name is load-bearing there and not here.
 
 
 def sub_fast_eligible(seq: Sequence) -> bool:
@@ -1249,11 +1252,10 @@ class _BashMatcher:
         if op == '+':
             # One-or-more: SOME first instance, then the closure from there.
             # The first instance may be EMPTY when an alternative matches the
-            # empty string — ``split`` starts at ``si``. That is deliberate and
-            # matches the retired ``_closure`` seed, which was built from the
-            # same inclusive ``range(si, se + 1)``; the closure's own steps are
-            # the nonempty ones. (An earlier comment here said "NONEMPTY first
-            # instance", which the code has never done.)
+            # empty string — ``split`` starts at ``si``, matching the retired
+            # ``_closure`` seed, which was built from the same inclusive
+            # ``range(si, se + 1)``. It is the closure's own steps that are
+            # constrained to be nonempty.
             tbl = self._ok_table(node, seq, gi, se)
             for split in range(si, se + 1):
                 self.transitions += 1

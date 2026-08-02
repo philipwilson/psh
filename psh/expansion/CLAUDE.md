@@ -282,13 +282,17 @@ modification, pathname components, and name filters (`HISTIGNORE`, `print -m`,
   char), `matching_ends(text, start)` (prefix removal — `#`=min, `##`=max),
   `matching_starts(text, end)` (suffix removal — `%`=max start, `%%`=min start;
   ONE backward all-start pass, `pattern_engine.py#_Matcher._starts`, not a
-  forward DP per start index),
+  forward DP per start index — for NON-QUIRK patterns, since quirk-flagged
+  ones are slice-end-relative and stay per-slice on `_BashMatcher`),
   and `span_at(text, pos)` / `spanner(text)` (leftmost-longest substitution;
-  `spanner` pre-filters positions with the same all-start pass, so a subject
-  with NO match costs one pass instead of one DP per position, and
-  `suffix_matcher(text)` answers the per-suffix pre-test in place rather than
-  re-slicing the subject — the substitution scan shares ONE matcher across
-  every position;
+  `spanner` pre-filters positions with the same all-start pass — but ONLY for
+  EXTGLOB-FREE, non-pathname patterns, because `_starts`' Extglob branch pays
+  per-position `_element_ends` and building the filter there costs O(n²)
+  before the first `span_at` — so a no-match subject costs one pass instead
+  of one DP per position for that class, and extglob-bearing patterns keep
+  the per-position DP with their own achieved bound. `suffix_matcher(text)`
+  answers the per-suffix pre-test in place rather than re-slicing the
+  subject — the substitution scan shares ONE matcher across every position;
   `matching_spans` is a test-pinned relation oracle with no production
   caller — labelled in its docstring, kept per the extglob_to_regex
   permanent-oracle precedent). `parameter_expansion.py` calls these
