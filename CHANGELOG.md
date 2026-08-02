@@ -4,6 +4,39 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.765.0 (2026-08-02) - Operand field IR (remediation slot 3.3, HIGH-6)
+
+- Value operands (`${x:-word}` and the `:-`/`-`/`:+`/`+`/`:=`/`=`/`:?`/`?`
+  family) now expand to a FIELD VECTOR instead of a joined string: an
+  opaque `OperandValue` carrying `ExpandedField`/`FieldRun` (the word
+  walker's own currency) preserves multiple `"$@"`/`"${a[@]}"` fields,
+  explicit empties, and per-region quote protection all the way to field
+  splitting. The signature cell `unset x; set -- a b;
+  printf '<%s>' "${x:-"$@"}"` now prints `<a><b>` like bash.
+- Scalar projection survives ONLY at ruled terminal consumers via a named
+  `.as_scalar()` (assignment values, the `:=` store, `[[ ]]` operands,
+  case patterns, pattern/replacement operands, `:?` messages, here-strings
+  and other string contexts). `OperandValue.__str__` raises `TypeError`,
+  so an unruled scalar re-entry fails loudly; a static guard
+  (`test_operand_projection_guard.py`) pins the closed consumer set.
+- Zero-fields vs one-empty-field is now representable: `set --; unset x;
+  ${x:-"$@"}` yields no fields (bash-equal) while `"${x:-"$@"}"` and
+  `${x:-""}` keep one empty field.
+- Untriggered conditionals return the parameter's own quoted expansion:
+  `a=(""); "${a[@]:+X}"` yields one empty field like bash (unset/empty
+  arrays still yield none).
+- A multi-field value operand as a redirect target is now an
+  "ambiguous redirect" error like bash (previously psh silently created a
+  single file named with the joined text).
+- 178 new tests: the flipped operand-flatten conformance pin (4 divergence
+  params became 21 equality rows + 7 combinator rows), an 88-row
+  operand-field-IR conformance battery, 10 projection-guard rows, and five
+  mutation locks. Declared, both-sides-pinned residual divergences
+  (successor-owned): bare-`$@`-under-IFS inside operands, case-pattern
+  first-field matching, and `${@:}` slice acceptance.
+- Boundary Remediation Campaign slot 3.3: closes HIGH-6 and carry #4.
+  Evidence: `docs/reviews/evidence/boundary_remediation_2026-07/3.3-rescue/`.
+
 ## 0.764.0 (2026-08-02) - Pattern engine integrity and performance (remediation slot 3.2, HIGH-7 perf half + MEDIUM-6)
 
 - The pattern engine's compiled representation is now IMMUTABLE: all six
