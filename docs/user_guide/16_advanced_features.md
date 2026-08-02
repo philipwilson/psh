@@ -227,10 +227,10 @@ Safe without quotes
 psh$ [[ "hello.txt" == *.txt ]] && echo "Text file"
 Text file
 
-# Note: Extended glob patterns like @(pdf|doc) are not supported
-# Use standard glob patterns instead:
-psh$ [[ "document.pdf" == *.pdf ]] && echo "PDF Document"
-PDF Document
+# Extended glob patterns work here too (honored in [[ ]] regardless of
+# the extglob shopt, matching bash):
+psh$ [[ "document.pdf" == @(*.pdf|*.doc) ]] && echo "Document"
+Document
 ```
 
 ### Regular Expression Matching
