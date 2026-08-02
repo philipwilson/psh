@@ -1676,15 +1676,103 @@ def test_divergence_unlexable_subscript_typed_error():
     ('unset x; set -- a b; printf "<%s>" ${x:-"$@"}', '<a><b>'),
     ('x=set; set -- a b; printf "<%s>" "${x:+"$@"}"', '<a><b>'),
     ('unset x; set -- "a 1" b; printf "<%s>" "${x:-"$@"}"', '<a 1><b>'),
+    # --- SUBJECT SHAPE: the axis that decides whether a row can detect this
+    # defect at all (with a plain `a b` subject in unquoted outer context the
+    # space-join is undone by re-splitting, reproducing bash by accident) ---
+    ('unset x; set -- "a 1" "b 2"; printf "<%s>" ${x:-"$@"}', '<a 1><b 2>'),
+    ('unset x; set -- "" b; printf "<%s>" "${x:-"$@"}"', '<><b>'),
+    ('unset x; set -- "a	z" b; printf "<%s>" ${x:-"$@"}', '<a\tz><b>'),
+    ('unset x; set -- "a*" b; printf "<%s>" "${x:-"$@"}"', '<a*><b>'),
+    # --- non-colon twins and the alternate family -------------------------
+    ('unset x; set -- "a 1" b; printf "<%s>" "${x-"$@"}"', '<a 1><b>'),
+    ('x=set; set -- "a 1" b; printf "<%s>" "${x+"$@"}"', '<a 1><b>'),
+    # --- POSITIONAL COUNT, including the empty-$@ boundary rule ------------
+    ('unset x; set -- a; printf "<%s>" "${x:-"$@"}"', '<a>'),
+    ('unset x; set -- a b c; printf "<%s>" "${x:-"$@"}"', '<a><b><c>'),
+    ('unset x; set --; printf "<%s>|" pre"${x:-"$@"}"post', '<prepost>|'),
+    # --- nested and mixed operands ----------------------------------------
+    ('unset x y; set -- "a 1" b; printf "<%s>" "${x:-${y:-"$@"}}"', '<a 1><b>'),
+    ('unset x; set -- a b; printf "<%s>" "${x:-pre"$@"post}"', '<prea><bpost>'),
+    # --- array views: the [@]/[*] joiner must not touch a TRIGGERED operand
+    ('unset a; set -- "a 1" b; printf "<%s>" "${a[@]:-"$@"}"', '<a 1><b>'),
+    ('unset a; set -- "a 1" b; printf "<%s>" "${a[*]:-"$@"}"', '<a 1><b>'),
+    # the pinned single-field preserve, both quote states (in QUOTED outer
+    # context the operand's single quotes are LITERAL — DQ rules — so they
+    # appear in the output; unquoted they are removed. One field either way.)
+    ("unset a; printf \"<%s>\" \"${a[*]:-'p q'}\"", "<'p q'>"),
+    ("unset a; printf \"<%s>\" ${a[*]:-'p q'}", '<p q>'),
+    # --- IFS: field boundaries are not made of IFS -------------------------
+    ('unset x; IFS=:; set -- "a 1" b; printf "<%s>" "${x:-"$@"}"', '<a 1><b>'),
+    ('unset x; IFS=; set -- "a 1" b; printf "<%s>" ${x:-"$@"}', '<a 1><b>'),
 ])
-def test_divergence_operand_at_flattens(cmd, bash_out):
-    """W1-verify carry (nit 9, W1/W2 seam residue): `"$@"` inside a
-    parameter-operand word yields separate fields in bash; psh's
-    OperandResult mini-IR carries protection but not field boundaries, so
-    the fields flatten to one (space-joined). Base-identical (probed at
-    d4db9c57); needs field-boundary-carrying operand results (W1/W3)."""
+def test_operand_at_preserves_fields(cmd, bash_out):
+    """A ``"$@"`` inside a value-operand word KEEPS its fields (HIGH-6).
+
+    FLIPPED in remediation slot 3.3 from ``test_divergence_operand_at_flattens``,
+    which pinned the divergence: the operand IR carried per-segment quote
+    protection but no FIELD dimension, so multiple positionals collapsed into
+    one space-joined field. The operand result is now a field vector
+    (``psh/expansion/operands.py``: ``OperandValue``) and the boundaries reach
+    the Word walker's splice algebra intact.
+
+    Rows are AGREEMENT-FORM (psh == bash) with the bash side ALSO pinned to a
+    literal, so a shared regression in both shells cannot pass unnoticed.
+
+    Row selection: a ``set -- a b`` subject in UNQUOTED outer context cannot
+    detect this defect, so the shape/count/IFS rows carry the detection
+    weight. A BARE ``$@`` is deliberately absent — it is a different,
+    successor-owned mechanism (``test_operand_bare_at_ifs_divergence``).
+    """
     p, b = _psh(cmd), _bash(cmd)
-    assert b.stdout == bash_out
-    # psh: ONE field, space-joined:
-    joined = '<' + bash_out.replace('><', ' ').strip('<>') + '>'
-    assert p.stdout == joined
+    assert b.stdout == bash_out, f"bash oracle moved: {b.stdout!r}"
+    assert p.stdout == b.stdout
+
+
+@pytest.mark.parametrize('cmd,bash_out,psh_out', [
+    ('unset x; IFS=X; set -- aXq b; printf "<%s>" ${x:-$@}',
+     '<aXq b>', '<a><q b>'),
+    ('unset x; IFS=XY; set -- aXq b; printf "<%s>" ${x:-$@}',
+     '<aXq b>', '<a><q b>'),
+    ('unset x; IFS="X "; set -- aXq b; printf "<%s>" ${x:-$@}',
+     '<aXq><b>', '<a><q><b>'),
+])
+def test_operand_bare_at_ifs_divergence(cmd, bash_out, psh_out):
+    """DOCUMENTED PRE-EXISTING DIVERGENCE (successor-owned): a BARE ``$@``
+    inside a value operand under a NON-DEFAULT IFS.
+
+    bash protects the parameter CONTENT from splitting while the separator
+    joining the fields stays split-eligible, so ``aXq`` survives intact under
+    ``IFS=X`` even though ``X`` is an IFS character. Neither a
+    join-then-split model nor a splice-fields model reproduces all three rows,
+    so slot 3.3 shipped no guess: it preserves the pre-field behaviour here
+    EXACTLY (measured identical at base d0f7d929) and owns only the PROTECTED
+    ``"$@"`` form.
+
+    Pinned BOTH SIDES in the divergent direction — flipping it is a ruling,
+    not a drive-by. The successor that models the rule flips it to equality.
+    """
+    p, b = _psh(cmd), _bash(cmd)
+    assert b.stdout == bash_out, f"bash oracle moved: {b.stdout!r}"
+    assert p.stdout == psh_out, f"psh moved: {p.stdout!r}"
+
+
+@pytest.mark.parametrize('cmd,bash_out,psh_out', [
+    ('unset x; set -- a b; case "a b" in ${x:-"$@"}) echo HIT;; *) echo MISS;; esac',
+     'MISS\n', 'HIT\n'),
+    ('unset x; set -- a b; case a in ${x:-"$@"}) echo HIT;; *) echo MISS;; esac',
+     'HIT\n', 'MISS\n'),
+])
+def test_case_pattern_multifield_operand_divergence(cmd, bash_out, psh_out):
+    """DOCUMENTED PRE-EXISTING DIVERGENCE (successor-owned): a multi-field
+    value operand used as a ``case`` PATTERN.
+
+    bash matches the FIRST FIELD only; psh joins the fields into one pattern.
+    Slot 3.3 made this projection EXPLICIT
+    (``ExpansionManager.expand_word_as_pattern``) WITHOUT changing behaviour —
+    the join is exactly what base did — so these rows are a declared exclusion
+    from that slot's "matrix matches bash" claim, not a regression. Both
+    directions pinned so the successor's flip is visible.
+    """
+    p, b = _psh(cmd), _bash(cmd)
+    assert b.stdout == bash_out, f"bash oracle moved: {b.stdout!r}"
+    assert p.stdout == psh_out, f"psh moved: {p.stdout!r}"
