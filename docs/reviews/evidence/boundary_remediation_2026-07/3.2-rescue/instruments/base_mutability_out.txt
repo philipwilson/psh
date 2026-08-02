@@ -1,0 +1,58 @@
+# discriminator OK: /Users/pwilson/src/psh-r3-2/psh/__init__.py  version=0.763.0
+
+==============================================================================
+A2-a  STATIC census: which attributes of the compiled representation are writable
+==============================================================================
+  Literal    dataclass=True  frozen=False __slots__=None     fields=['char']
+  AnyChar    dataclass=True  frozen=False __slots__=None     fields=[]
+  Star       dataclass=True  frozen=False __slots__=None     fields=[]
+  Bracket    dataclass=True  frozen=False __slots__=None     fields=['content']
+  Extglob    dataclass=True  frozen=False __slots__=None     fields=['op', 'alts', 'enclosed']
+  Sequence   dataclass=True  frozen=False __slots__=None     fields=['elements', 'has_extglob', 'bash_quirk', 'sub_fast']
+  MatchProfile frozen=True (already immutable)
+  CompiledPattern __slots__=('root',) (slot 'root' is REBINDABLE)
+
+  caches in scope:
+    compile_cached          CacheInfo(hits=0, misses=0, maxsize=4096, currsize=0)  maxsize=4096
+    _sub_machinery_cached   CacheInfo(hits=0, misses=0, maxsize=512, currsize=0)  maxsize=512
+
+==============================================================================
+A2-b  DEMO 1 — Literal.char mutation poisons a later INDEPENDENT compile
+==============================================================================
+  before: compile('abc').full_match('abc') = True
+  [POISONED    ] Literal.char  after: full_match('abc')=False full_match('zbc')=True
+
+==============================================================================
+A2-c  DEMO 2 — Sequence.bash_quirk lazy bit flip changes the MATCHER ROUTE
+==============================================================================
+  [POISONED    ] Sequence.bash_quirk  true(quirk)=False poisoned(non-quirk route)=True on '*!(a)' vs 'a'
+
+==============================================================================
+A2-d  DEMO 3 — Extglob.enclosed stamp flip changes end-of-string negation
+==============================================================================
+  [POISONED    ] Extglob.enclosed  true=True poisoned=False on '*!(a)' vs ''
+
+==============================================================================
+A2-e  DEMO 4 — Sequence.elements REBIND (tuple is immutable, the slot is not)
+==============================================================================
+  [POISONED    ] Sequence.elements rebind  true=True poisoned=False
+
+==============================================================================
+A2-f  DEMO 5 — Sequence.sub_fast flip changes the SUBSTITUTION dispatch
+==============================================================================
+  [POISONED    ] Sequence.sub_fast  true fast_ok=True poisoned fast_ok=False (dispatch: linear Path A vs _BashMatcher envelope)
+
+==============================================================================
+A2-g  DEMO 6 — poisoning is visible THROUGH THE SHELL (end-to-end, no engine API)
+==============================================================================
+  [POISONED    ] end-to-end via Shell  before='HIT' after(v=abc)='abc' after(v=zbc)='HIT'
+
+==============================================================================
+A2-h  DEMO 7 — _sub_machinery_cached hands out the SAME CompiledPattern objects
+==============================================================================
+  [POISONED    ] _sub_machinery_cached aliasing  compiled is compiled: True, wrapped is wrapped: True (so a write through either poisons every later consumer)
+  [POISONED    ] CompiledPattern.root rebind  later cache hit returns the rebound root
+
+==============================================================================
+SUMMARY: 7/7 poisoning demos reproduced at base.
+==============================================================================

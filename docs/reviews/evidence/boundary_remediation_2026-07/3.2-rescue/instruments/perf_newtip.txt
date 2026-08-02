@@ -1,0 +1,24 @@
+## A9: matching_starts pattern='*b' subject='a'*N
+      N      seconds    ratio
+    500       0.0000      nan
+   1000       0.0000     1.66
+   2000       0.0001     1.83
+   4000       0.0001     1.72
+   8000       0.0002     1.66
+
+## E-1 opener: full_match pattern='**(a)b' subject='a'*N
+      N      seconds    ratio
+     50       0.0001      nan
+    100       0.0003     2.58
+    200       0.0008     2.99
+    400       0.0030     3.70
+    800       0.0109     3.65
+
+## E-1: matching_ends pattern='*!(a)' subject='a'*N
+      N      seconds    ratio
+     50       0.0010      nan
+    100       0.0038     3.76
+    200       0.0151     3.98
+    400       0.0611     4.04
+    800       0.2496     4.08
+

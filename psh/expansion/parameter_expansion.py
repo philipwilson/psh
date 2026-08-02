@@ -233,25 +233,39 @@ class ParameterExpansionOps:
         live on :func:`_sub_machinery_cached` (round-2 B2-1/B2-2)."""
         return _sub_machinery_cached(pattern, anchor, self._extglob)
 
-    def _any_match(self, compiled: CompiledPattern, wrapped: CompiledPattern,
-                   end_eligible: bool, value: str,
-                   profile) -> Optional[Tuple[int, int]]:
-        """bash ``match_upattern`` MATCH_ANY on *value*: the ``(start, end)``
-        of the leftmost-longest ELIGIBLE match, or ``None``.
+    @staticmethod
+    def _any_match_from(pre_test, span_at, end_eligible: bool, n: int,
+                        pos: int) -> Optional[Tuple[int, int]]:
+        """bash ``match_upattern`` MATCH_ANY on the suffix ``value[pos:]``,
+        in ABSOLUTE coordinates: the ``(start, end)`` of the leftmost-longest
+        ELIGIBLE match, or ``None``.
 
         Pre-test first (mechanism 2); then the leftmost scan, where the
-        empty-remainder position ``len(value)`` is gated by ``end_eligible``
-        (mechanism 3). Longest-at-position is the engine's ``spanner``."""
-        if not wrapped.full_match(value, profile):
+        empty-remainder position ``n`` is gated by ``end_eligible``
+        (mechanism 3). Longest-at-position is the engine's ``spanner``.
+
+        This is the SINGLE body of the MATCH_ANY rule. ``pre_test`` and
+        ``span_at`` are per-subject callables (``CompiledPattern.suffix_matcher``
+        / ``.spanner``) built ONCE and reused across every scan position, so
+        the global-replace loop no longer rebuilds a matcher — nor re-copies
+        the subject — per remaining suffix."""
+        if not pre_test(pos):
             return None
-        n = len(value)
-        span_at = compiled.spanner(value, profile)
         limit = n + 1 if end_eligible else n
-        for p in range(limit):
+        for p in range(pos, limit):
             length = span_at(p)
             if length is not None:
                 return (p, p + length)
         return None
+
+    def _any_match(self, compiled: CompiledPattern, wrapped: CompiledPattern,
+                   end_eligible: bool, value: str,
+                   profile) -> Optional[Tuple[int, int]]:
+        """MATCH_ANY on the whole of *value* — :meth:`_any_match_from` at
+        position 0 (one rule, one body)."""
+        return self._any_match_from(wrapped.suffix_matcher(value, profile),
+                                    compiled.spanner(value, profile),
+                                    end_eligible, len(value), 0)
 
     def substitute_first(self, value: str, pattern: str,
                          replacement: Union[str, list]) -> str:
@@ -316,13 +330,18 @@ class ParameterExpansionOps:
         out: List[str] = []
         n = len(value)
         pos = 0
+        # ONE pre-test matcher and ONE spanner for the whole scan: bash's
+        # mechanics are per-remaining-suffix, but the suffix is a WINDOW on
+        # the subject, not a new string (measured identity — see
+        # CompiledPattern.suffix_matcher). Rebuilding them per suffix cost an
+        # O(n) copy and a discarded memo at every match.
+        pre_test = wrapped.suffix_matcher(value, profile)
+        span_at = compiled.spanner(value, profile)
         while pos < n:
-            suffix = value[pos:]
-            m = self._any_match(compiled, wrapped, end_eligible, suffix,
-                                profile)
+            m = self._any_match_from(pre_test, span_at, end_eligible, n, pos)
             if m is None:
                 break
-            s, e = pos + m[0], pos + m[1]
+            s, e = m
             out.append(value[pos:s])
             out.append(self.render_replacement(replacement, value[s:e]))
             if s == e:  # zero-width: copy one character to make progress

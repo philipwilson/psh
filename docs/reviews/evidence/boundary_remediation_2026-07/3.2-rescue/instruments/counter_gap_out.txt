@@ -1,0 +1,51 @@
+# discriminator OK: /Users/pwilson/src/psh-r3-2/psh/__init__.py  version=0.763.0
+============================================================================
+The CUBIC pattern the existing pin claims to guard
+============================================================================
+
+## pattern='**(a)b'   quirk=True
+     N       states  st.ratio   memo_len    seconds  t.ratio
+    16          154       nan        154     0.0004      nan
+    32          562      3.65        562     0.0027     6.41
+    64         2146      3.82       2146     0.0186     7.01
+   128         8386      3.91       8386     0.1393     7.50
+   256        33154      3.95      33154     1.1460     8.23
+
+============================================================================
+The existing pin's own bound, evaluated (assert states <= (n+2)**2)
+============================================================================
+  n=  16 states=     154 bound=     324  PASS  headroom=     170
+  n=  64 states=    2146 bound=    4356  PASS  headroom=    2210
+  n= 128 states=    8386 bound=   16900  PASS  headroom=    8514
+  n= 256 states=   33154 bound=   66564  PASS  headroom=   33410
+
+============================================================================
+Linear-family rows the same pin guards (bound 8*(n+2))
+============================================================================
+
+## pattern='*!(a)'   quirk=True
+     N       states  st.ratio   memo_len    seconds  t.ratio
+    16           34       nan         34     0.0000      nan
+    64          130      3.82        130     0.0001     2.31
+   256          514      3.95        514     0.0003     3.93
+
+## pattern='*?(a|b)'   quirk=True
+     N       states  st.ratio   memo_len    seconds  t.ratio
+    16           36       nan         36     0.0000      nan
+    64          132      3.67        132     0.0001     3.45
+   256          516      3.91        516     0.0003     3.79
+
+## pattern='*@(a|*)'   quirk=True
+     N       states  st.ratio   memo_len    seconds  t.ratio
+    16           51       nan         51     0.0000      nan
+    64          195      3.82        195     0.0001     3.85
+   256          771      3.95        771     0.0004     3.89
+
+============================================================================
+matching_starts (non-quirk '*b') — states vs wall time
+============================================================================
+     N   sum_states    ratio    seconds  t.ratio
+   250        31877      nan     0.0013      nan
+   500       126252     3.96     0.0055     4.17
+  1000       502502     3.98     0.0218     3.93
+  2000      2005002     3.99     0.0885     4.06

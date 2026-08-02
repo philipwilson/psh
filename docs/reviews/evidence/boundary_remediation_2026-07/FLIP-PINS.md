@@ -38,6 +38,7 @@ assert the psh-divergent result — the owning slot sweeps its own files.
 
 | Pin | Status |
 |---|---|
+| `test_pattern_bash_composition_differential.py::test_bash_matcher_states_stay_polynomial` — bound TIGHTENED (n+2)²→4·(n+2) + n=256 by slot 3.2 | **3.2 declared pin change v0.764.0** (ruled R1(4), tighten-only, red-on-base verified by round-2 diffAudit: base states 154 at n=16 vs bound 72; tip 18). The original bound was accidentally green — `count_states` counts memo misses (quadratic) while the guarded evaluation was cubic; complexity pins now live on `count_transitions`/`operation_transitions` (`test_pattern_engine_transitions.py`). Loosening either bound needs a ruling. |
 | `test_subscript_keying_conformance.py::test_divergence_empty_arith_subscript_fatality` | Re-carried (ledger B#3); 2.3 left it INTACT (verified rounds 1-4). Deliberate flip needs a ruling — never silently. |
 | `::test_divergence_dq_ansi_bracket_read` (+ 18-cell parity matrix) | **2.3 KEEP-ruled v0.758.0** (bash cannot read back its own `$'['`-keyed write; psh round-trips). Never "fix" toward bash's broken shape. |
 | `::test_divergence_sq_in_dq_readback_outcome` | **2.3 KEEP-ruled v0.758.0** (same bash-cannot-read-own-writes family). |

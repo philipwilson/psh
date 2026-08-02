@@ -1,0 +1,57 @@
+# discriminator OK: /Users/pwilson/src/psh-r3-2/psh/__init__.py  version=0.763.0
+==================================================================
+formerly-QUARTIC consumers on '**(a)b' — TIP (base was x15.5/doubling)
+==================================================================
+
+## matching_ends
+      N     seconds    ratio  implied exp
+     50      0.0022      nan          nan
+    100      0.0102     4.70         2.23
+    200      0.0589     5.79         2.53
+    400      0.3984     6.76         2.76
+    800      2.8273     7.10         2.83
+
+## span_at(pos=0)
+      N     seconds    ratio  implied exp
+     50      0.0020      nan          nan
+    100      0.0100     4.90         2.29
+    200      0.0572     5.71         2.51
+    400      0.3805     6.65         2.73
+    800      2.7872     7.32         2.87
+
+## spanner full scan
+      N     seconds    ratio  implied exp
+     50      0.0565      nan          nan
+    100      0.6070    10.75         3.43
+    200      7.5170    12.38         3.63
+    400    108.6229    14.45         3.85
+        (stopped)
+
+==================================================================
+TRANSITION COUNTS (deterministic; the linearity pins' substrate)
+==================================================================
+pattern          relation       N   transitions   ratio
+*b               starts       100           101     nan
+*b               starts       200           201    1.99
+*b               starts       400           401    2.00
+*b               starts       800           801    2.00
+*b               full         100             0     nan
+*b               full         200             0     nan
+*b               full         400             0     nan
+*b               full         800             0     nan
+*a*b             starts       100           101     nan
+*a*b             starts       200           201    1.99
+*a*b             starts       400           401    2.00
+*a*b             starts       800           801    2.00
+**(a)b           full         100          5351     nan
+**(a)b           full         200         20701    3.87
+**(a)b           full         400         81401    3.93
+**(a)b           full         800        322801    3.97
+*+(a)            starts       100           601     nan
+*+(a)            starts       200          1201    2.00
+*+(a)            starts       400          2401    2.00
+*+(a)            starts       800          4801    2.00
+*!(a)            ends         100          5350     nan
+*!(a)            ends         200         20700    3.87
+*!(a)            ends         400         81400    3.93
+*!(a)            ends         800        322800    3.97

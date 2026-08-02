@@ -33,12 +33,16 @@ extglob semantics cannot drift between them:
    into extglob alternatives — bounded by extglob NESTING depth, a compile-time
    structural property; past the interpreter limit that raises
    ``RecursionError``, an EXPECTED shell error under strict-errors. The
-   reachable-end set natively serves the four relations
-   :class:`CompiledPattern` exposes: ``full_match``, ``matching_ends`` (prefix
-   removal), ``matching_starts`` (suffix removal), and ``span_at`` /
-   ``spanner`` (leftmost-longest substitution; ``matching_spans`` is a
-   labelled PERMANENT test-pinned relation oracle with no production
-   caller — see its docstring).
+   reachable-end set serves ``full_match``, ``matching_ends`` (prefix
+   removal), and ``span_at`` / ``spanner`` (leftmost-longest substitution;
+   ``matching_spans`` is a labelled PERMANENT test-pinned relation oracle with
+   no production caller — see its docstring). ``matching_starts`` (suffix
+   removal) is the ONE relation the forward set cannot serve in one pass — it
+   asks about every START, not every end — so it runs the BACKWARD twin,
+   :meth:`_Matcher._starts`, a single right-to-left fold that answers all
+   start positions at once instead of one forward DP per start. ``spanner``
+   uses the same backward pass as a pre-filter for extglob-free patterns, so
+   a subject with no match costs one pass rather than one DP per position.
 3. EXCEPT for bash-composition patterns (slot 3.1): where an extglob group
    sits directly after a wildcard run, bash 5.2's measured semantics are
    SLICE-END-RELATIVE (the star case's strict continuation bounds, its
@@ -66,6 +70,17 @@ supplies ``for_pathname`` (whether ``*``/``?`` cross ``/``) and ``ic``
 is reusable across contexts. Bracket membership still delegates to the shared,
 locale-aware ``extglob._bracket_match`` (which resolves POSIX ``[:class:]`` via
 the locale service), so class semantics are preserved byte-for-byte.
+
+The compiled AST is also IMMUTABLE (#20 MEDIUM-6). Every node is a frozen
+dataclass and the four routing bits are derived at construction, because
+compiles are CACHED: one compile's result is handed to every later caller with
+the same key, so a caller that mutated a node poisoned every subsequent cache
+hit. THREAT MODEL: the freeze prevents HONEST-CALLER ACCIDENT, not adversarial
+bypass — a normal attribute write raises ``FrozenInstanceError``, while
+``object.__setattr__`` and module-attribute rebinding remain possible and are
+deliberately out of scope (Python freezing is leaky by construction, so
+pinning their impossibility would pin a falsehood). Pinned by
+``tests/unit/expansion/test_pattern_engine_immutability.py``.
 """
 from __future__ import annotations
 
@@ -88,28 +103,44 @@ from .extglob import (
 
 # --- AST node types --------------------------------------------------------
 #
-# Nodes are plain (mutable) dataclasses matched by object identity: the matcher
-# memoizes on ``id(node)`` so each node created by one compile is a distinct
-# state. ``eq=False`` keeps identity semantics and makes them hashable, which
-# the round-trip tests and the matcher's memo rely on.
+# Nodes are FROZEN dataclasses matched by object identity: the matcher memoizes
+# on ``id(node)`` so each node created by one compile is a distinct state.
+# ``eq=False`` keeps identity semantics and leaves ``__hash__`` as object's,
+# which the round-trip tests and the matcher's memo rely on.
+#
+# WHY FROZEN (#20 MEDIUM-6): compiles are CACHED (:func:`compile_cached`, and
+# ``parameter_expansion._sub_machinery_cached`` above it), so one compile's
+# result is handed to every later caller with the same key. While nodes were
+# mutable, a caller that wrote to one — ``node.char = 'z'``, or a routing bit
+# like ``seq.bash_quirk`` — POISONED every subsequent cache hit, observable
+# through ordinary shell execution (``${v//abc/HIT}`` silently ceasing to
+# match its own subject). Freezing makes that write raise instead.
+#
+# THREAT MODEL (ruled): the freeze prevents HONEST-CALLER ACCIDENT, not
+# adversarial bypass. A normal attribute write raises ``FrozenInstanceError``;
+# ``object.__setattr__`` and module-attribute rebinding remain possible and are
+# deliberately OUT OF SCOPE — Python freezing is leaky by construction, and
+# pinning "no adversarial bypass" would pin a falsehood. The behavioral
+# criterion pinned is: a caller CANNOT mutate the result of one compile and
+# affect a later match (``test_pattern_engine_immutability.py``).
 
-@dataclass(eq=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class Literal:
     """A single literal character (a plain char, or the target of a ``\\``)."""
     char: str
 
 
-@dataclass(eq=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class AnyChar:
     """``?`` — matches exactly one character (not ``/`` when for_pathname)."""
 
 
-@dataclass(eq=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class Star:
     """``*`` — matches zero or more characters (not ``/`` when for_pathname)."""
 
 
-@dataclass(eq=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class Bracket:
     """``[...]`` — a bracket expression.
 
@@ -125,7 +156,7 @@ class Bracket:
     content: str
 
 
-@dataclass(eq=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class Extglob:
     """An extended-glob group ``op(alt|alt|…)`` with ``op`` in ``?*+@!``.
 
@@ -146,45 +177,84 @@ class Extglob:
     enclosed: bool = False
 
 
-@dataclass(eq=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class Sequence:
     """An ordered run of nodes; the compiled form of a whole pattern or one
     extglob alternative.
 
-    ``has_extglob`` is a lazily computed routing hint (see
-    :func:`_seq_has_extglob`): a sequence with no :class:`Extglob` element is
-    matched by the fully iterative fast paths (two-pointer boolean / forward
-    DP), never recursing at all.
+    The four routing bits are DERIVED AT CONSTRUCTION, not lazily on first
+    query: the node is frozen, so there is nowhere to cache a late answer, and
+    a write-once slot would only re-introduce the mutable surface the freeze
+    exists to remove. They are pure functions of ``elements`` (see the
+    ``_derive_*`` helpers), so computing them eagerly cannot change any
+    answer — an equivalence guard in the slot's proof asserts precomputed ==
+    the former lazy derivation over the whole corpus.
 
-    ``bash_quirk`` is the lazily computed bash-composition routing flag (see
-    :func:`_seq_bash_quirk`): only a sequence in which an extglob group sits
-    directly after a wildcard run (here or in any nested alternative) routes
-    to the measured-composition matcher (:class:`_BashMatcher`); every other
-    pattern keeps the fast paths unchanged."""
+    The derivation is NON-RECURSIVE: a child Sequence is fully constructed
+    before its parent, so each bit is read from the children in O(1) rather
+    than recursing into them. Construction therefore costs O(len(elements))
+    per node regardless of extglob NESTING depth — which is what keeps
+    ``test_pattern_relations.py``'s iteratively-built 2,000-deep AST
+    constructible while still raising ``RecursionError`` at MATCH time.
+
+    ``has_extglob`` — routing hint: a sequence with no :class:`Extglob`
+    element is matched by the fully iterative fast paths (two-pointer boolean
+    / forward DP), never recursing at all.
+
+    ``bash_quirk`` — bash-composition routing flag: only a sequence in which
+    an extglob group sits directly after a wildcard run (here or in any nested
+    alternative) routes to the measured-composition matcher
+    (:class:`_BashMatcher`); every other pattern keeps the fast paths.
+
+    ``sub_fast`` — substitution Path-A eligibility (see
+    :func:`sub_fast_eligible`). ``nullable`` — whether the sequence can match
+    the empty string (see :func:`_derive_nullable`); it is a stored bit only
+    so that ``sub_fast`` can be derived without recursion.
+    """
     elements: Tuple[object, ...] = field(default_factory=tuple)
-    has_extglob: Optional[bool] = None
-    bash_quirk: Optional[bool] = None
-    sub_fast: Optional[bool] = None
+    has_extglob: bool = field(init=False, default=False)
+    bash_quirk: bool = field(init=False, default=False)
+    sub_fast: bool = field(init=False, default=False)
+    nullable: bool = field(init=False, default=False)
+
+    def __post_init__(self) -> None:
+        # The documented frozen-dataclass idiom for derived fields. This is
+        # the class's OWN constructor, not a caller reaching in: the freeze
+        # it establishes is exactly what the threat model promises callers.
+        setattr_ = object.__setattr__
+        elements = self.elements
+        setattr_(self, 'has_extglob', _derive_has_extglob(elements))
+        setattr_(self, 'nullable', _derive_nullable(elements))
+        setattr_(self, 'bash_quirk', _derive_bash_quirk(elements))
+        setattr_(self, 'sub_fast', _derive_sub_fast(elements))
+
+
+# --- construction-time derivations of the four routing bits ----------------
+#
+# Each reads its children's ALREADY-DERIVED bits instead of recursing, so the
+# cost is O(len(elements)) per node and independent of nesting depth.
+
+def _derive_has_extglob(elements: Tuple[object, ...]) -> bool:
+    """Whether *elements* contains an :class:`Extglob` element."""
+    return any(type(e) is Extglob for e in elements)
 
 
 def _seq_has_extglob(seq: Sequence) -> bool:
-    """Whether *seq* contains an :class:`Extglob` element (lazily cached)."""
-    he = seq.has_extglob
-    if he is None:
-        he = any(type(e) is Extglob for e in seq.elements)
-        seq.has_extglob = he
-    return he
+    """Whether *seq* contains an :class:`Extglob` element (derived at
+    construction; this is the stable read-side name every consumer uses)."""
+    return seq.has_extglob
 
 
-def _seq_nullable(seq: Sequence) -> bool:
-    """Whether *seq* can match the empty string (compile-time walk).
+def _derive_nullable(elements: Tuple[object, ...]) -> bool:
+    """Whether *elements* can match the empty string.
 
     Star is nullable; Literal/AnyChar/Bracket are not; an Extglob is
     nullable iff its op is ``?``/``*`` or (``@``/``+``) with a nullable
     alternative; ``!`` is treated as nullable (its complement usually
     admits the empty span) — callers that need ``!`` excluded do so
-    separately (see :func:`sub_fast_eligible`)."""
-    for e in seq.elements:
+    separately (see :func:`sub_fast_eligible`). Alternatives are read via
+    their own already-derived ``nullable`` bit, never re-walked."""
+    for e in elements:
         t = type(e)
         if t is Star:
             continue
@@ -192,11 +262,19 @@ def _seq_nullable(seq: Sequence) -> bool:
             eg = cast(Extglob, e)
             if eg.op in '?*!':
                 continue
-            if any(_seq_nullable(a) for a in eg.alts):
+            if any(a.nullable for a in eg.alts):
                 continue
             return False
         return False
     return True
+
+
+# ``_seq_nullable(seq)`` was RETIRED here: once the bit moved to construction
+# time its body was ``return seq.nullable``, with zero callers and zero tests
+# (its one remaining mention was a docstring cross-reference, now pointing at
+# :func:`_derive_nullable`). Read ``seq.nullable`` directly. Its sibling
+# :func:`_seq_has_extglob` KEEPS its wrapper — that one still has a live
+# caller, so the name is load-bearing there and not here.
 
 
 def sub_fast_eligible(seq: Sequence) -> bool:
@@ -212,21 +290,24 @@ def sub_fast_eligible(seq: Sequence) -> bool:
     Equivalence is not argued from this docstring: it is MEASURED — the
     slot's corpus-union equivalence proof (0 disagreements over every
     eligible cell x four operators) and the battery's boundary test.
-    Derived from compiled-node properties only; lazily cached
+    Derived from compiled-node properties only, at construction
     (``Sequence.sub_fast``)."""
-    r = seq.sub_fast
-    if r is None:
-        r = True
-        for e in seq.elements:
-            if type(e) is Extglob:
-                eg = cast(Extglob, e)
-                if (eg.op == '!' or eg.op in '?*'
-                        or any(_seq_nullable(a) for a in eg.alts)
-                        or not all(sub_fast_eligible(a) for a in eg.alts)):
-                    r = False
-                    break
-        seq.sub_fast = r
-    return r
+    return seq.sub_fast
+
+
+def _derive_sub_fast(elements: Tuple[object, ...]) -> bool:
+    """Construction-time derivation of :func:`sub_fast_eligible`.
+
+    "At any nesting depth" is carried by the children's OWN already-derived
+    ``sub_fast``/``nullable`` bits rather than by recursion."""
+    for e in elements:
+        if type(e) is Extglob:
+            eg = cast(Extglob, e)
+            if (eg.op == '!' or eg.op in '?*'
+                    or any(a.nullable for a in eg.alts)
+                    or not all(a.sub_fast for a in eg.alts)):
+                return False
+    return True
 
 
 def _seq_bash_quirk(seq: Sequence) -> bool:
@@ -240,7 +321,7 @@ def _seq_bash_quirk(seq: Sequence) -> bool:
     the star case's strict continuation bounds, its ``?(``/``*(``
     try-then-skip branches, and the end-of-string negation rule are all
     slice-end-relative, so they cannot ride one forward reachability pass.
-    Lazily cached on the node (same pattern as ``has_extglob``).
+    Derived at construction (same as ``has_extglob``).
 
     "Exactly these shapes" is a claim SCOPED to the slot's measured corpora
     (437,811 cells across the three deterministic corpora + the widened
@@ -252,26 +333,29 @@ def _seq_bash_quirk(seq: Sequence) -> bool:
     cannot express bash's star∘group composition) — one decider, imported
     there, never re-derived (R3).
     """
-    q = seq.bash_quirk
-    if q is None:
-        q = False
-        star_run = False
-        for e in seq.elements:
-            t = type(e)
-            if t is Star:
-                star_run = True
-            elif t is AnyChar:
-                pass  # a '?' rides an active wildcard run (bash collapses it)
-            elif t is Extglob:
-                eg = cast(Extglob, e)
-                if star_run or any(_seq_bash_quirk(alt) for alt in eg.alts):
-                    q = True
-                    break
-                star_run = False
-            else:
-                star_run = False
-        seq.bash_quirk = q
-    return q
+    return seq.bash_quirk
+
+
+def _derive_bash_quirk(elements: Tuple[object, ...]) -> bool:
+    """Construction-time derivation of :func:`_seq_bash_quirk`.
+
+    Nested alternatives contribute through their OWN already-derived
+    ``bash_quirk`` bit ("or inside any nested alternative"), not recursion."""
+    star_run = False
+    for e in elements:
+        t = type(e)
+        if t is Star:
+            star_run = True
+        elif t is AnyChar:
+            pass  # a '?' rides an active wildcard run (bash collapses it)
+        elif t is Extglob:
+            eg = cast(Extglob, e)
+            if star_run or any(a.bash_quirk for a in eg.alts):
+                return True
+            star_run = False
+        else:
+            star_run = False
+    return False
 
 
 # --- compiler (raw string; ``\\`` is an escape) ----------------------------
@@ -471,14 +555,24 @@ def pathname_profile(ic: bool) -> MatchProfile:
 
 # --- the matcher: iterative stars, recursion only for extglob nesting -------
 #
-# Reachable-end-position-set semantics: ``_ends(seq, ei, si)`` returns every
-# index ``k`` such that ``seq.elements[ei:]`` fully matches ``s[si:k]``. This is
-# the contract every consumer is built from:
-#   * full match          -> len(s) in ends
+# TWO DUAL POSITION-SET PASSES, forward and backward.
+#
+# Forward — ``_ends(seq, ei, si)`` returns every index ``k`` such that
+# ``seq.elements[ei:]`` fully matches ``s[si:k]``. It serves the relations that
+# fix a START and ask about ends:
+#   * full match            -> len(s) in ends
 #   * prefix removal (#/##) -> min/max of matching_ends
-#   * suffix removal (%/%%) -> matching_starts (i where s[i:end] fully matches)
 #   * leftmost-longest sub  -> span_at(pos) = max ends of s[pos:]
 #   * pathname component    -> full_match(entry, for_pathname=True)
+#
+# Backward — ``_starts(seq, end)`` returns every index ``i`` such that *seq*
+# fully matches ``s[i:end]``. Suffix removal fixes the END and asks about
+# STARTS, which the forward pass can only answer one start at a time; running
+# it per start is what made ``%``/``%%`` quadratic (and CUBIC on quirk-flagged
+# patterns) before #20 HIGH-7's perf half:
+#   * suffix removal (%/%%) -> matching_starts = one _starts pass
+# ``spanner`` also uses ``_starts`` as an all-start PRE-FILTER, but only for
+# extglob-free patterns — see its docstring for why the gate is about cost.
 #
 # STAR COUNT NEVER CONSUMES RECURSION FRAMES (bounce ruling, 2026-07-19):
 #   * ``_full_simple`` — the boolean full match for sequences WITHOUT extglob
@@ -503,16 +597,49 @@ def pathname_profile(ic: bool) -> MatchProfile:
 # the Matcher rather than in any key.
 
 
+class _Instrumentation:
+    """Process-wide counters for complexity pins (test instrumentation).
+
+    ``matchers`` counts matcher CONSTRUCTIONS. It exists because the
+    substitution consumer's linearity is a SHARING property, not a per-call
+    one: bash's mechanics are per-remaining-suffix, and the cheap way to get
+    them wrong is to build a fresh matcher (and copy the subject) for every
+    suffix — which no per-call transition count can see, since each individual
+    call stays small. Counting constructions makes "one matcher for the whole
+    scan" directly assertable (mutation class M7).
+
+    ``record``/``instances`` support :func:`operation_transitions`, which
+    totals the work of a WHOLE consumer operation. A relation-level counter
+    cannot stand in for that: :func:`count_transitions`'s ``'scan'`` mode walks
+    EVERY position, whereas ``${v//pat/r}`` JUMPS past each match — so on a
+    MATCHING subject the two measure different things, and the scan mode
+    reports the no-match cost. Recording is off by default and costs a branch.
+    """
+
+    __slots__ = ("matchers", "record", "instances")
+
+    def __init__(self) -> None:
+        self.matchers = 0
+        self.record = False
+        self.instances: List[object] = []
+
+
+#: Shared counter object; tests read and reset it, production only increments.
+INSTRUMENTATION = _Instrumentation()
+
+
 class _Matcher:
     """One match of a compiled pattern against one subject.
 
-    A fresh instance is created per relation call (``matching_starts`` and the
-    substitution ``spanner`` reuse one across entry positions). ``states``
-    counts (element, position) evaluations in the forward DP — the
-    polynomial-complexity guard the tests assert on.
+    A fresh instance is created per relation call (the substitution
+    ``spanner`` reuses one across entry positions). ``states`` counts
+    (element, position) evaluations in the forward DP — the
+    polynomial-complexity guard the tests assert on. ``transitions`` counts
+    DP transitions in both directions and is the counter the LINEARITY pins
+    assert on; see :func:`count_transitions` for why the two differ.
     """
 
-    __slots__ = ("s", "n", "fp", "ic", "states", "_nslash")
+    __slots__ = ("s", "n", "fp", "ic", "states", "transitions", "_nslash")
 
     def __init__(self, s: str, for_pathname: bool, ic: bool) -> None:
         self.s = s
@@ -520,7 +647,11 @@ class _Matcher:
         self.fp = for_pathname
         self.ic = ic
         self.states = 0
+        self.transitions = 0
         self._nslash: Optional[List[int]] = None
+        INSTRUMENTATION.matchers += 1
+        if INSTRUMENTATION.record:
+            INSTRUMENTATION.instances.append(self)
 
     # -- shared precompute ---------------------------------------------------
 
@@ -564,6 +695,7 @@ class _Matcher:
         star_p = -1
         star_i = si
         while i < n:
+            self.transitions += 1
             if p < ne:
                 node = elements[p]
                 t = type(node)
@@ -620,6 +752,7 @@ class _Matcher:
             if not positions:
                 return _EMPTY
             self.states += len(positions)
+            self.transitions += len(positions)
             node = elements[idx]
             t = type(node)
             if t is Literal:
@@ -660,8 +793,90 @@ class _Matcher:
                 positions = new2
         return frozenset(positions)
 
+    # -- all-start relation: ONE backward pass over the elements -------------
+
+    def _starts(self, seq: Sequence, end: int) -> frozenset:
+        """Every ``i`` such that *seq* matches EXACTLY ``s[i:end]``.
+
+        The BACKWARD twin of :meth:`_ends`, and the reason suffix removal is
+        no longer quadratic: ``cur`` is the characteristic vector of
+        ``S_j = { p : elements[j:] matches s[p:end] }``, seeded ``S_ne={end}``
+        and folded right-to-left, so ONE pass answers every start position at
+        once instead of running a forward DP per start (#20 HIGH-7 perf
+        half). Each plain element is a single O(end) scan; a non-pathname
+        Star is the downward closure ``[0, max(S_{j+1})]`` (a star reaches any
+        later position), and under for_pathname it stops at the next ``/``,
+        which it cannot consume. Only an Extglob element still pays the
+        per-position :meth:`_element_ends` — the recursion bound and the
+        extglob cost model are unchanged.
+        """
+        elements = seq.elements
+        s, fp, ic = self.s, self.fp, self.ic
+        cur = bytearray(end + 1)
+        cur[end] = 1
+        for idx in range(len(elements) - 1, -1, -1):
+            node = elements[idx]
+            t = type(node)
+            nxt = bytearray(end + 1)
+            self.transitions += end + 1
+            if t is Literal:
+                ch = cast(Literal, node).char
+                for p in range(end):
+                    if cur[p + 1] and _eq(s[p], ch, ic):
+                        nxt[p] = 1
+            elif t is AnyChar:
+                for p in range(end):
+                    if cur[p + 1] and (not fp or s[p] != '/'):
+                        nxt[p] = 1
+            elif t is Bracket:
+                content = cast(Bracket, node).content
+                for p in range(end):
+                    if (cur[p + 1] and (not fp or s[p] != '/')
+                            and _bracket_match(content, s[p], ic)):
+                        nxt[p] = 1
+            elif t is Star:
+                if not fp:
+                    hi = -1
+                    for q in range(end, -1, -1):
+                        if cur[q]:
+                            hi = q
+                            break
+                    if hi >= 0:
+                        for p in range(hi + 1):
+                            nxt[p] = 1
+                else:
+                    ns = self._next_slash()
+                    for p in range(end + 1):
+                        limit = ns[p]
+                        if limit > end:
+                            limit = end
+                        for q in range(p, limit + 1):
+                            if cur[q]:
+                                nxt[p] = 1
+                                break
+            else:  # Extglob: per-position element ends (unchanged cost model)
+                for p in range(end + 1):
+                    for q in self._element_ends(cast(Extglob, node), p):
+                        if q <= end and cur[q]:
+                            nxt[p] = 1
+                            break
+            cur = nxt
+            if 1 not in cur:
+                return _EMPTY
+        return frozenset(i for i in range(end + 1) if cur[i])
+
     def _element_ends(self, node: Extglob, si: int) -> set:
-        """End indices after matching ONE extglob element ``op(alts)`` @ si."""
+        """End indices after matching ONE extglob element ``op(alts)`` @ si.
+
+        This is PER-POSITION work, and it is where an extglob element's real
+        cost lives: a caller that asks it at every subject position (the
+        backward pass's Extglob branch, or a per-position scan) pays whatever
+        this costs, n times over. It is therefore COUNTED — the negation
+        branch's span walk especially. Leaving it uncounted let the counter
+        certify `!(a)b` as linear while its wall time was quadratic, which is
+        the same blindness ``count_states`` already demonstrates one level up.
+        """
+        self.transitions += 1
         op = node.op
         alts = node.alts
         if op == '@':
@@ -678,6 +893,7 @@ class _Matcher:
         s, fp = self.s, self.fp
         out = set()
         for end in range(si, self.n + 1):
+            self.transitions += 1
             if fp and '/' in s[si:end]:
                 break
             if end not in positive:
@@ -699,6 +915,7 @@ class _Matcher:
         while frontier:
             nxt: set = set()
             for p in frontier:
+                self.transitions += 1
                 for end in self._alt_ends(alts, p):
                     if end not in seen and end != p:  # skip empty match (no loop)
                         seen.add(end)
@@ -757,9 +974,22 @@ _EMPTY: frozenset = frozenset()
 #
 # Recursion here is bounded by the PATTERN structure (one frame per group
 # dispatch, plus alt nesting; star-run scanning and jump commits are
-# iterative) — never by subject length or star count; the per-(sequence,
-# element, si, se) memo keeps the evaluation polynomial (guarded by
-# count_states via `states`).
+# iterative) — never by subject length or star count.
+#
+# TWO memos keep the evaluation polynomial, and they guard different things.
+# The per-(sequence, element, si, se) memo bounds how many distinct states are
+# ever EVALUATED. It does NOT bound how often they are RE-WALKED, and that gap
+# was a real cubic: the `*`/`+` closure used to be rebuilt from scratch at
+# every star entry position, O(n^2) of re-walking per entry over O(n) entries,
+# with every lookup inside it already a memo hit. `_ok_table` memoizes that
+# closure per (group, element, slice-end), which is what returns the
+# `**(a)b` class to a quadratic bound.
+#
+# Consequently `count_states` (which counts memo MISSES) is NOT the complexity
+# guard for this matcher — it was quadratic-by-construction while the running
+# time was cubic, and its pin passed with ~50% headroom throughout. The guard
+# is `count_transitions`, which counts work including memo HITS; `states`
+# remains as a memo-coverage guard only.
 
 
 class _BashMatcher:
@@ -769,9 +999,11 @@ class _BashMatcher:
     ``s[si:se]`` under the measured bash-5.2 composition semantics. One
     instance is shared across a whole relation call (all slice bounds), so
     the memo carries across the per-k loops. ``states`` counts uncached
-    evaluations — the deterministic complexity guard."""
+    evaluations; ``transitions`` counts WORK (loop steps, including steps that
+    end in a memo HIT) — the two differ by a whole complexity class here, see
+    :func:`count_transitions`."""
 
-    __slots__ = ("s", "fp", "ic", "memo", "states")
+    __slots__ = ("s", "fp", "ic", "memo", "states", "transitions", "_ok")
 
     def __init__(self, s: str, for_pathname: bool, ic: bool) -> None:
         self.s = s
@@ -779,8 +1011,21 @@ class _BashMatcher:
         self.ic = ic
         self.memo: dict = {}
         self.states = 0
+        self.transitions = 0
+        self._ok: dict = {}
+        INSTRUMENTATION.matchers += 1
+        if INSTRUMENTATION.record:
+            INSTRUMENTATION.instances.append(self)
 
     def match(self, seq: Sequence, ei: int, si: int, se: int) -> bool:
+        # Counted on EVERY call, hit or miss. Re-walking positions whose
+        # answers are already memoized is the cost that made this matcher
+        # cubic, and counting only misses (``states``) cannot see it. Counting
+        # at the one door every evaluation strategy must pass through also
+        # keeps the pin honest against a REWRITE of the loops above: an
+        # implementation that re-queries more must report more, whatever shape
+        # its loops take (mutation class M3).
+        self.transitions += 1
         key = (id(seq), ei, si, se)
         r = self.memo.get(key)
         if r is None:
@@ -788,6 +1033,41 @@ class _BashMatcher:
             r = self._match(seq, ei, si, se)
             self.memo[key] = r
         return r
+
+    # -- closure reachability, computed ONCE per (group, gi, se) -------------
+
+    def _ok_table(self, node: Extglob, seq: Sequence, gi: int,
+                  se: int) -> bytearray:
+        """``ok[p]`` — can the REST of *seq* match, entering the closure of
+        ``node``'s alternatives at *p* and ending at *se*?
+
+        ``ok(p) = rest(p) or ∃q>p: alt_span(p,q) ∧ ok(q)`` — the same relation
+        the former ``_closure`` built as an explicit position set, unrolled as
+        a backward DP. The point is the MEMO: the star case dispatches a group
+        at O(n) entry positions, and each dispatch used to rebuild the whole
+        closure — O(n²) of re-walking per entry, O(n³) overall, even though
+        every ``alt_span`` inside it was already a memo hit. Keyed by
+        ``(group, gi, se)``, the table is built once and read O(1) thereafter,
+        which is what returns the ``**(a)b`` class to a polynomial bound.
+        ``+`` reuses the same table behind its nonempty-seed test.
+        """
+        key = (id(node), gi, se)
+        tbl = self._ok.get(key)
+        if tbl is None:
+            alts = node.alts
+            tbl = bytearray(se + 2)
+            for p in range(se, -1, -1):
+                self.transitions += 1
+                r = self.match(seq, gi + 1, p, se)
+                if not r:
+                    for q in range(p + 1, se + 1):
+                        self.transitions += 1
+                        if tbl[q] and self._alt_span(alts, p, q):
+                            r = True
+                            break
+                tbl[p] = 1 if r else 0
+            self._ok[key] = tbl
+        return tbl
 
     def _match(self, seq: Sequence, ei: int, si: int, se: int) -> bool:
         s, fp, ic = self.s, self.fp, self.ic
@@ -883,6 +1163,7 @@ class _BashMatcher:
                         bound = m2  # a star never crosses '/'
                 jump = None
                 for n2 in range(n, bound):  # strictly before the slice end
+                    self.transitions += 1
                     verdict, jn, jj = self._segment(seq, i, n2, se)
                     if verdict == 1:
                         return True
@@ -910,6 +1191,7 @@ class _BashMatcher:
         elements = seq.elements
         ne = len(elements)
         while j < ne:
+            self.transitions += 1
             node = elements[j]
             t = type(node)
             if t is Extglob:
@@ -953,6 +1235,7 @@ class _BashMatcher:
 
         if op == '@':
             for split in range(si, se + 1):
+                self.transitions += 1
                 if self._alt_span(alts, si, split) and rest_ok(split):
                     return True
             return False
@@ -960,18 +1243,28 @@ class _BashMatcher:
             if rest_ok(si):
                 return True
             for split in range(si, se + 1):
+                self.transitions += 1
                 if self._alt_span(alts, si, split) and rest_ok(split):
                     return True
             return False
         if op == '*':
-            return any(rest_ok(pos)
-                       for pos in self._closure(alts, {si}, se))
+            return bool(self._ok_table(node, seq, gi, se)[si])
         if op == '+':
-            seed = {split for split in range(si, se + 1)
-                    if self._alt_span(alts, si, split)}
-            return any(rest_ok(pos) for pos in self._closure(alts, seed, se))
+            # One-or-more: SOME first instance, then the closure from there.
+            # The first instance may be EMPTY when an alternative matches the
+            # empty string — ``split`` starts at ``si``, matching the retired
+            # ``_closure`` seed, which was built from the same inclusive
+            # ``range(si, se + 1)``. It is the closure's own steps that are
+            # constrained to be nonempty.
+            tbl = self._ok_table(node, seq, gi, se)
+            for split in range(si, se + 1):
+                self.transitions += 1
+                if tbl[split] and self._alt_span(alts, si, split):
+                    return True
+            return False
         # op == '!': per-split complement AND continuation.
         for split in range(si, se + 1):
+            self.transitions += 1
             if not self._alt_span(alts, si, split) and rest_ok(split):
                 return True
         return False
@@ -980,21 +1273,13 @@ class _BashMatcher:
         """Whether some alternative fully matches the span ``s[a:b]``."""
         return any(self.match(alt, 0, a, b) for alt in alts)
 
-    def _closure(self, alts: Tuple[Sequence, ...], seed: set,
-                 se: int) -> set:
-        """Positions reachable from *seed* by zero or more NONEMPTY alt
-        spans (iterative frontier expansion — no per-instance recursion)."""
-        seen = set(seed)
-        frontier = list(seed)
-        while frontier:
-            nxt = []
-            for pos in frontier:
-                for end in range(pos + 1, se + 1):
-                    if end not in seen and self._alt_span(alts, pos, end):
-                        seen.add(end)
-                        nxt.append(end)
-            frontier = nxt
-        return seen
+    # ``_closure`` (explicit reachable-position set, rebuilt per group
+    # dispatch) was RETIRED in favour of :meth:`_ok_table`, which decides the
+    # same relation — "some position reachable from p by zero-or-more nonempty
+    # alternative spans satisfies the continuation" — memoized per
+    # ``(group, gi, se)`` instead of recomputed per entry position. Its two
+    # callers were the ``*`` and ``+`` branches of :meth:`_extmatch`, both
+    # rewritten above; the equivalence is corpus-proven, not argued.
 
 
 # --- free-function API (compatibility + primitives) ------------------------
@@ -1042,7 +1327,11 @@ def match_at(root: Sequence, s: str, pos: int, *, for_pathname: bool = False,
 def count_states(root: Sequence, s: str, *, for_pathname: bool = False,
                  ic: bool = False) -> int:
     """Number of distinct sequence states evaluated for a full-pattern match of
-    *s* — the polynomial-complexity guard for tests (both matcher paths)."""
+    *s* — the polynomial-complexity guard for tests (both matcher paths).
+
+    This counts MEMO KEYS (uncached evaluations). It is the right guard for
+    "the memo still covers the state space", which is what its pins assert —
+    but see :func:`count_transitions` for why it is NOT a work counter."""
     if _seq_bash_quirk(root):
         bm = _BashMatcher(s, for_pathname, ic)
         bm.match(root, 0, 0, len(s))
@@ -1052,27 +1341,130 @@ def count_states(root: Sequence, s: str, *, for_pathname: bool = False,
     return m.states
 
 
+def operation_transitions(fn) -> int:
+    """Total DP transitions across EVERY matcher one consumer operation builds.
+
+    The end-to-end companion to :func:`count_transitions`. A relation-level
+    count cannot certify a CONSUMER: ``${v//pat/r}`` on a MATCHING subject
+    jumps past each match instead of probing every position, so
+    ``count_transitions(..., relation='scan')`` — which does walk every
+    position — reports that operation's NO-MATCH cost rather than its real
+    one. This runs *fn* with matcher recording on and sums the work actually
+    done, so a claim like "global substitution on this shape is linear" is
+    asserted against the operation the claim is about.
+    """
+    INSTRUMENTATION.instances = []
+    INSTRUMENTATION.record = True
+    try:
+        fn()
+        return sum(m.transitions                            # type: ignore[attr-defined]
+                   for m in INSTRUMENTATION.instances)
+    finally:
+        INSTRUMENTATION.record = False
+        INSTRUMENTATION.instances = []
+
+
+def count_transitions(root: Sequence, s: str, *, for_pathname: bool = False,
+                      ic: bool = False, relation: str = 'full') -> int:
+    """Number of DP TRANSITIONS (units of loop work) for one relation call.
+
+    Distinct from :func:`count_states`, and the distinction is the whole
+    point. ``count_states`` counts memo MISSES, so work spent re-walking
+    positions whose answers are already memoized is INVISIBLE to it. At the
+    time this counter was added, ``_BashMatcher`` on ``**(a)b`` had a
+    quadratic key count and a CUBIC running time — and the shipped
+    state-count pin, being quadratic-bounded, passed at every size with ~50%
+    headroom while the cubic went unnoticed. A complexity pin that cannot
+    fail for the defect it names is not a pin, so the linearity guarantees
+    are asserted on THIS counter, which increments per loop step including
+    steps that end in a memo hit.
+
+    ``relation`` selects what is measured: ``'full'`` (whole-subject match),
+    ``'starts'`` (the all-start backward pass behind suffix removal),
+    ``'ends'`` (the forward reachable-end pass behind prefix removal), or
+    ``'scan'`` (ONE spanner evaluated at every position — the substitution
+    consumer's leftmost scan, whose no-match case the linearity criterion
+    names).
+    """
+    n = len(s)
+    if relation == 'scan':
+        # Drive the REAL consumer scan (one shared spanner, every position),
+        # and read the counter off the matcher that scan actually used.
+        profile = MatchProfile(for_pathname=for_pathname, ic=ic)
+        span_at = CompiledPattern(root).spanner(s, profile)
+        for pos in range(n + 1):
+            span_at(pos)
+        return int(span_at.matcher.transitions)
+    profile = MatchProfile(for_pathname=for_pathname, ic=ic)
+    if relation == 'starts':
+        return _relation_starts(root, s, n, profile)[1].transitions
+    if relation == 'ends':
+        return _relation_ends(root, s, 0, profile)[1].transitions
+    return _relation_full(root, s, profile)[1].transitions
+
+
+# --- relation bodies: ONE implementation, shared by the API and the counter -
+#
+# Each returns ``(result, matcher)``. The public :class:`CompiledPattern`
+# method takes the result; :func:`count_transitions` takes the matcher. They
+# are the SAME evaluation, which is the point: a complexity counter that
+# re-derives the relation instead of observing it measures a path no consumer
+# takes, and will happily stay green while the real path regresses. That is
+# not hypothetical — an earlier draft of this module counted a re-derived
+# suffix scan, and reverting the all-start pass to per-start evaluation did
+# not move the number at all (mutation class M1).
+
+
+def _relation_starts(root: Sequence, text: str, end: int,
+                     profile: MatchProfile):
+    """``({i : root matches text[i:end]}, matcher)`` — suffix removal."""
+    if _seq_bash_quirk(root):
+        bm = _BashMatcher(text, profile.for_pathname, profile.ic)
+        return (frozenset(i for i in range(end + 1)
+                          if bm.match(root, 0, i, end)), bm)
+    m = _Matcher(text, profile.for_pathname, profile.ic)
+    return m._starts(root, end), m
+
+
+def _relation_ends(root: Sequence, text: str, start: int,
+                   profile: MatchProfile):
+    """``({k : root matches text[start:k]}, matcher)`` — prefix removal."""
+    if _seq_bash_quirk(root):
+        bm = _BashMatcher(text, profile.for_pathname, profile.ic)
+        return (frozenset(k for k in range(start, len(text) + 1)
+                          if bm.match(root, 0, start, k)), bm)
+    m = _Matcher(text, profile.for_pathname, profile.ic)
+    return m._ends(root, 0, start), m
+
+
+def _relation_full(root: Sequence, text: str, profile: MatchProfile):
+    """``(root matches the whole of text, matcher)``."""
+    if _seq_bash_quirk(root):
+        bm = _BashMatcher(text, profile.for_pathname, profile.ic)
+        return bm.match(root, 0, 0, len(text)), bm
+    m = _Matcher(text, profile.for_pathname, profile.ic)
+    return m._full(root, 0, 0), m
+
+
 # --- the four relations on a compiled pattern ------------------------------
 
+@dataclass(frozen=True, eq=False, slots=True)
 class CompiledPattern:
     """One parse of a shell pattern; exposes the four relations its consumers
     need. Compiled once (via :class:`PatternCompiler`), reused across subjects
-    and profiles (the AST carries no policy — :class:`MatchProfile` does)."""
+    and profiles (the AST carries no policy — :class:`MatchProfile` does).
 
-    __slots__ = ("root",)
+    Frozen for the same reason the nodes are: ``_sub_machinery_cached`` hands
+    the SAME ``CompiledPattern`` objects to every later caller, so a rebound
+    ``root`` would poison the cache (MEDIUM-6 demo 7)."""
 
-    def __init__(self, root: Sequence) -> None:
-        self.root = root
+    root: Sequence
 
     def full_match(self, text: str, profile: MatchProfile = STRING) -> bool:
         """Whether the pattern matches the WHOLE of *text*
         (``case`` / ``[[ == ]]`` / name filter / one pathname component /
         one character for case modification)."""
-        if _seq_bash_quirk(self.root):
-            return _BashMatcher(text, profile.for_pathname, profile.ic).match(
-                self.root, 0, 0, len(text))
-        return _Matcher(text, profile.for_pathname, profile.ic)._full(
-            self.root, 0, 0)
+        return _relation_full(self.root, text, profile)[0]
 
     def matching_ends(self, text: str, start: int = 0,
                       profile: MatchProfile = STRING) -> frozenset:
@@ -1083,13 +1475,7 @@ class CompiledPattern:
         bash-quirk patterns (:func:`_seq_bash_quirk`) have slice-end-relative
         semantics, so each ``k`` is its own slice boolean (one shared
         memoized matcher); all other patterns keep the one-pass DP."""
-        if _seq_bash_quirk(self.root):
-            bm = _BashMatcher(text, profile.for_pathname, profile.ic)
-            root = self.root
-            return frozenset(k for k in range(start, len(text) + 1)
-                             if bm.match(root, 0, start, k))
-        m = _Matcher(text, profile.for_pathname, profile.ic)
-        return m._ends(self.root, 0, start)
+        return _relation_ends(self.root, text, start, profile)[0]
 
     def matching_starts(self, text: str, end: Optional[int] = None,
                         profile: MatchProfile = STRING) -> frozenset:
@@ -1098,19 +1484,7 @@ class CompiledPattern:
         suffix, ``%%`` = ``min`` start / longest suffix)."""
         if end is None:
             end = len(text)
-        if _seq_bash_quirk(self.root):
-            bm = _BashMatcher(text, profile.for_pathname, profile.ic)
-            root = self.root
-            return frozenset(i for i in range(end + 1)
-                             if bm.match(root, 0, i, end))
-        m = _Matcher(text, profile.for_pathname, profile.ic)
-        match = m._ends
-        root = self.root
-        out = set()
-        for i in range(end + 1):
-            if end in match(root, 0, i):
-                out.add(i)
-        return frozenset(out)
+        return _relation_starts(self.root, text, end, profile)[0]
 
     def span_at(self, text: str, pos: int,
                 profile: MatchProfile = STRING) -> Optional[int]:
@@ -1126,6 +1500,34 @@ class CompiledPattern:
         m = _Matcher(text, profile.for_pathname, profile.ic)
         ends = m._ends(self.root, 0, pos)
         return (max(ends) - pos) if ends else None
+
+    def suffix_matcher(self, text: str, profile: MatchProfile = STRING):
+        """Return a ``pos -> bool`` "matches ``text[pos:]`` exactly" callable
+        bound to ONE reused matcher — the all-start form of ``full_match``.
+
+        The substitution pre-test asks this question once per remaining
+        suffix. Asking it as ``full_match(text[pos:])`` materialises a fresh
+        string AND a fresh matcher at every scan position — O(n) copy plus a
+        discarded memo, O(n) times — which is the whole residual quadratic on
+        subjects with many matches. Evaluated in place against the original
+        string it is the same relation (measured: 29,088 cells over both
+        matcher routes, both profiles, every anchor and position, 0
+        disagreements) at O(1) amortized cost."""
+        root = self.root
+        n = len(text)
+        if _seq_bash_quirk(root):
+            bm = _BashMatcher(text, profile.for_pathname, profile.ic)
+
+            def bash_suffix_match(pos: int) -> bool:
+                return bm.match(root, 0, pos, n)
+
+            return bash_suffix_match
+        m = _Matcher(text, profile.for_pathname, profile.ic)
+
+        def suffix_match(pos: int) -> bool:
+            return m._full(root, 0, pos)
+
+        return suffix_match
 
     def spanner(self, text: str, profile: MatchProfile = STRING):
         """Return a ``pos -> Optional[int]`` leftmost-longest-length callable
@@ -1144,14 +1546,63 @@ class CompiledPattern:
                         return k - pos
                 return None
 
+            # The matcher doing the work, exposed so :func:`count_transitions`
+            # measures THIS scan rather than a re-derived copy of it — a
+            # complexity counter that does not observe the real path is the
+            # failure mode ``count_states`` already demonstrates.
+            bash_span_at.matcher = bm                       # type: ignore[attr-defined]
             return bash_span_at
         m = _Matcher(text, profile.for_pathname, profile.ic)
         match = m._ends
 
+        # The pre-filter below is SOUND for every non-pathname pattern but only
+        # CHEAP for some, so it is gated on cost, not on correctness.
+        if profile.for_pathname or root.has_extglob:
+            def unfiltered_span_at(pos: int) -> Optional[int]:
+                ends = match(root, 0, pos)
+                return (max(ends) - pos) if ends else None
+
+            unfiltered_span_at.matcher = m                  # type: ignore[attr-defined]
+            return unfiltered_span_at
+
+        # ALL-START PRE-FILTER (the substitution scan's linearity).
+        # The consumer walks every position asking "does a match start here?",
+        # and each ask used to run a full forward DP — so a subject with NO
+        # match cost one DP per position. The startable set is one BACKWARD
+        # pass instead, because ``P*`` matches ``text[p:]`` EXACTLY iff ``P``
+        # matches ``text[p:k]`` for some k >= p (the trailing star absorbs the
+        # remainder) — so ``_starts`` of the star-extended pattern IS the set
+        # of positions a match can start at. A no-match subject is then ONE
+        # pass, and the forward DP runs only where a match really begins.
+        #
+        # GATED ON TWO CONDITIONS, both about COST:
+        #  * non-pathname — under for_pathname a star cannot cross '/', so the
+        #    trailing star would not absorb an arbitrary remainder and the
+        #    identity above would not hold (this one IS correctness);
+        #  * NO Extglob element — ``_starts`` is a single O(nodes*n) backward
+        #    pass for every element type EXCEPT Extglob, whose branch pays
+        #    per-position ``_element_ends``. Building the filter for an
+        #    extglob-bearing pattern therefore costs O(n^2) BEFORE the first
+        #    span_at, which is a net loss and, inside the substitution fast
+        #    path, turned linear eligible-pattern substitutions quadratic
+        #    (``${v//+([[:space:]])/-}`` on ' '*3200: 0.008s -> 11.9s). Top-
+        #    level ``has_extglob`` is the right predicate because a nested
+        #    group cannot exist without a containing top-level Extglob element,
+        #    and the probe sequence adds only a Star.
+        #
+        # CONSEQUENCE, stated where the claim is made: the "no-match
+        # substitution scan is linear" guarantee is SCOPED to extglob-free
+        # patterns. Extglob-bearing patterns keep the per-position forward DP
+        # and their own achieved bound.
+        startable = m._starts(Sequence(root.elements + (Star(),)), len(text))
+
         def span_at(pos: int) -> Optional[int]:
+            if pos not in startable:
+                return None
             ends = match(root, 0, pos)
             return (max(ends) - pos) if ends else None
 
+        span_at.matcher = m                                 # type: ignore[attr-defined]
         return span_at
 
     def matching_spans(self, text: str,

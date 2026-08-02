@@ -4,6 +4,49 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.764.0 (2026-08-02) - Pattern engine integrity and performance (remediation slot 3.2, HIGH-7 perf half + MEDIUM-6)
+
+- The pattern engine's compiled representation is now IMMUTABLE: all six
+  node classes and `CompiledPattern` are frozen slotted dataclasses
+  (identity semantics retained for the id-keyed memos), and the routing
+  bits (`has_extglob`/`bash_quirk`/`sub_fast`, plus new `nullable`) are
+  precomputed non-recursively at construction instead of lazily cached.
+  A caller can no longer mutate one compile's result and poison later
+  cache hits — all seven MEDIUM-6 poisoning demos (including flipping a
+  live shell's `${v//abc/HIT}` between two identical commands) are now
+  raise-assertion pins, red at v0.763.0. Threat model: honest-caller
+  accident; `object.__setattr__` bypass declared out of scope.
+- Polynomial-bound restoration (HIGH-7 perf half, closing the 3.1
+  handoff): a one-pass backward all-start relation (`_Matcher._starts`)
+  and a memoized alternation table (`_BashMatcher._ok_table`) replace
+  per-start forward DP — `matching_starts` quadratic→linear (1.38s→
+  0.0002s at N=8000), `full_match('**(a)b')` cubic→quadratic (36.2s→
+  0.011s at N=800), `${v%%*+(a)}` cubic→linear, the quartic
+  `matching_ends`/`span_at` quirk shapes →~n^2.9, and the ineligible
+  substitution class linear on BOTH subject shapes (13.8s→0.009s
+  consecutive, 75.5s→0.041s word-spaced at N=3200). `!`-group relations
+  stay at their declared quadratic floor.
+- Semantics are bit-identical by construction and by proof: a
+  full-universe equivalence run (428,144 corpus cells × 27 relations/
+  operators = 11,559,888 comparisons, process-isolated arms) found 0
+  disagreements, re-proved at the final tip.
+- New deterministic complexity instruments: `count_transitions` (DP
+  work), `operation_transitions` (end-to-end consumer work), and
+  matcher-construction counting — with linearity pins scoped to
+  extglob-free patterns and extglob-bearing rows pinned at measured
+  achieved bounds on subjects that actually exercise the groups. The
+  previous `count_states` pin was accidentally green (it counts memo
+  misses, which grow quadratically while the guarded evaluation was
+  cubic); its bound is tightened (n+2)²→4·(n+2) as a declared pin
+  change. An eight-class mutation battery guards the instruments,
+  including one class that re-introduces this slot's own bounced
+  regression (an eagerly-built all-start pre-filter that made eligible
+  substitutions quadratic) and is caught by the gate pin.
+- Adversarial verification: 2 rounds (BOUNCE with 5 blockers → PASS),
+  0 false blockers; full gate 22,894 passed / 1,590 skipped / 10
+  xfailed; compare-bash 2,986 EXACT. Evidence tree:
+  `docs/reviews/evidence/boundary_remediation_2026-07/3.2-rescue/`.
+
 ## 0.763.0 (2026-08-02) - Bash-exact pattern composition (remediation slot 3.1, HIGH-7 semantics half)
 
 - The pattern engine's star∘extglob composition is now the MEASURED bash

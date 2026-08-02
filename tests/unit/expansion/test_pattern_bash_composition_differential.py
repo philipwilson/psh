@@ -468,8 +468,19 @@ def test_bash_matcher_flag_predicate():
 def test_bash_matcher_states_stay_polynomial():
     """The memoized _BashMatcher evaluates polynomially many states.
 
-    Bounds calibrated at introduction (linear for single trailing groups,
-    ~N^2/2 for the `**(a)b` inclusive branch). Failure names the pattern."""
+    ``count_states`` counts memo KEYS. That is a real guard on memo coverage,
+    but it is NOT a work counter — the running-time guarantees live on
+    ``count_transitions`` in ``test_pattern_engine_transitions.py``. The
+    distinction was learned here: the ``**(a)b`` bound below used to be
+    ``(n+2)**2``, which this quadratic-by-construction counter satisfied at
+    every size with ~50% headroom for a whole release while the evaluation it
+    names was CUBIC in running time.
+
+    Bound RE-CALIBRATED (declared pin change — TIGHTENED, never loosened)
+    once the closure memo landed: keys for ``**(a)b`` measure EXACTLY ``n+2``
+    at n=16/64/128/256/512, so a LINEAR bound with 4x headroom replaces the
+    old quadratic one, and n=256 joins the sizes. Failure names the pattern.
+    """
     linear = ["*!(a)", "*?(a|b)", "*@(a|*)"]
     for pat in linear:
         for n in (16, 64, 256):
@@ -478,12 +489,12 @@ def test_bash_matcher_states_stay_polynomial():
             assert states <= 8 * (n + 2), (
                 f"pattern {pat!r} on 'a'*{n}: {states} states (bound "
                 f"{8 * (n + 2)}) — the _BashMatcher memo regressed")
-    for n in (16, 64, 128):
+    for n in (16, 64, 128, 256):
         subj = "a" * n
         states = count_states(compile_pattern("**(a)b"), subj)
-        assert states <= (n + 2) ** 2, (
+        assert states <= 4 * (n + 2), (
             f"pattern '**(a)b' on 'a'*{n}: {states} states (bound "
-            f"{(n + 2) ** 2}) — the _BashMatcher memo regressed")
+            f"{4 * (n + 2)}) — the _BashMatcher closure memo regressed")
 
 
 # --- round-2 B2-1: the escaped-metachar / backslash axis --------------------
