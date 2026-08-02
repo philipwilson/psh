@@ -1,0 +1,253 @@
+"""Drift-locks for the ONE operand scalar projection (remediation slot 3.3).
+
+HIGH-6 was a value operand flattening its ``"$@"`` fields into one
+space-joined field. The flatten was possible — and invisible — because the
+operand result was a ``str`` SUBCLASS: every consumer accepted it silently, so
+the scalar projection re-entered without anyone naming it. The fix makes the
+operand result an opaque :class:`psh.expansion.operands.OperandValue` whose
+only projection is :meth:`~psh.expansion.operands.OperandValue.as_scalar`.
+
+These guards keep that property from eroding:
+
+1. The retired ``OperandResult`` str-subclass stays deleted **within
+   ``psh/``** — the scanner's scope, and the scope that matters, since that is
+   where an operand result could be produced. Reintroducing a str-subclass
+   operand result there restores the silent-re-entry hazard wholesale. (Test
+   and doc trees are not scanned; a mention in prose is not a producer, and
+   this module's own docstring names the symbol deliberately.)
+2. ``as_scalar()`` is called ONLY from the RULED terminal consumers. A new
+   call site is a reviewed edit to :data:`RULED_PROJECTIONS` here, which is
+   the campaign's "the set is CLOSED" ruling expressed as a test.
+3. ``OperandValue.__str__`` raises ``TypeError`` specifically — not a
+   ``PshError`` and not any expected-shell-error type. Under the suite-wide
+   ``PSH_STRICT_ERRORS`` policy a stray ``TypeError`` is an INTERNAL DEFECT
+   that fails loudly, whereas a shell-error type would be swallowed to exit 1
+   and the loudness — the whole point — would be lost.
+
+The scanners are self-tested against synthetic offenders (the
+``test_guard_detects_*`` tests) so they cannot rot into no-ops: a guard that
+cannot fail is not a guard.
+
+**What these scanners do and do NOT see** — narrowed after round-1 NIT 5,
+because the earlier wording implied broader coverage than the implementation
+delivers. They are AST scanners over ``psh/``, and they detect:
+
+- a direct ``<expr>.as_scalar()`` call, attributed to its nearest enclosing
+  function (a module-level or class-body call reports ``<module>``, so it
+  cannot slip past the ruled-set check);
+- a reference to a retired symbol by NAME — a ``Name``, an attribute access,
+  or a class definition.
+
+They do NOT see an INDIRECT projection: binding the method and calling it
+later (``f = v.as_scalar; f()``), reaching it via ``getattr``, or building the
+name dynamically. That residue is accepted deliberately rather than
+overlooked. Widening the scanner to dataflow analysis would buy a guard harder
+to trust than the property it protects, and the RUNTIME half already covers
+what the static half cannot: an unnamed string conversion raises however it is
+spelled, because the check lives in ``__str__`` rather than at the call site.
+The static half's job is narrower and worth stating plainly — it keeps the
+RULED SET honest, not the language.
+"""
+import ast
+import pathlib
+
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+PSH = ROOT / "psh"
+
+#: The RULED terminal consumers: (module path relative to psh/, enclosing
+#: function name). Each is a context where PSH projects the field vector to one
+#: string. ALL ROWS EXCEPT the `case` pattern are contexts where bash ITSELF
+#: requires one string, each probe-backed against bash 5.2.26 (slot 3.3 Phase
+#: A, matrices I/L). The `case` pattern is the exception and is marked as such
+#: below: bash matches the FIRST FIELD of a multi-field pattern operand rather
+#: than joining, so psh's join is POLICY preserving base behaviour, not a bash
+#: requirement.
+#: Adding a row here is a semantic decision — that a context genuinely cannot
+#: carry more than one field — and must come with its bash probe, or with an
+#: explicit note that it is psh policy and a divergence pin naming the gap.
+RULED_PROJECTIONS = {
+    # A pattern / replacement operand is one string, and feeds the FROZEN
+    # pattern engine: `v="a b c"; "${v#${x:-"$@"}}"` is ' c' in bash.
+    ("expansion/operands.py", "_expand_pattern_operand"),
+    ("expansion/operands.py", "_expand_replacement_operand"),
+    # ${x:?MSG} / ${x?MSG} render ONE diagnostic message.
+    ("expansion/operators.py", "_view_conditional"),
+    ("expansion/operators.py", "_qmark_error"),
+    # ${x:=W} STORES a scalar: a shell variable holds a string (matrix D).
+    ("expansion/operators.py", "_assign_default"),
+    # The shared string walker: heredoc bodies, here-strings, $(( )),
+    # [[ ]] string operands, redirect targets, array subscripts.
+    ("expansion/variable.py", "expand_string_variables"),
+    # An assignment VALUE is one string: `v=${x:-"$@"}` assigns 'a b'.
+    ("expansion/word_expander.py", "expand_assignment_value_word"),
+    # A `case` PATTERN word: psh joins to one glob pattern. NOT bash-demanded —
+    # bash matches the FIRST FIELD of a multi-field pattern operand. psh's join
+    # preserves base behaviour; the divergence is pinned in both directions by
+    # test_subscript_keying_conformance.py::
+    #     test_case_pattern_multifield_operand_divergence
+    # and is successor-owned (first-field model).
+    ("expansion/manager.py", "expand_word_as_pattern"),
+    # [[ ]] operands: `[[ ${x:-"$@"} == "a b" ]]` is true in bash.
+    ("executor/enhanced_test_evaluator.py", "_operand_string"),
+    ("executor/enhanced_test_evaluator.py", "_rhs_walk"),
+}
+
+#: Symbols the 3.3 consolidation deleted. Reappearance = the str-subclass
+#: operand result is back, and with it the unnamed scalar re-entry.
+RETIRED = ("OperandResult",)
+
+
+def _sources():
+    return [p for p in PSH.rglob("*.py") if "__pycache__" not in p.parts]
+
+
+def _rel(path):
+    return str(path.relative_to(PSH))
+
+
+def find_as_scalar_calls(source: str):
+    """Return {enclosing function name} for every ``.as_scalar()`` call.
+
+    A call at module level (or in a class body) is reported as ``'<module>'``
+    so it can never silently pass the ruled-set check.
+    """
+    tree = ast.parse(source)
+    parents = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[child] = node
+    found = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "as_scalar"):
+            cur = parents.get(node)
+            name = "<module>"
+            while cur is not None:
+                if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    name = cur.name
+                    break
+                cur = parents.get(cur)
+            found.add(name)
+    return found
+
+
+def find_retired(source: str):
+    tree = ast.parse(source)
+    hits = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in RETIRED:
+            hits.add(node.id)
+        elif isinstance(node, ast.Attribute) and node.attr in RETIRED:
+            hits.add(node.attr)
+        elif isinstance(node, ast.ClassDef) and node.name in RETIRED:
+            hits.add(node.name)
+    return hits
+
+
+# --------------------------------------------------------------------------
+# The guards
+# --------------------------------------------------------------------------
+
+def test_retired_operand_result_absent():
+    """The str-subclass operand result stays deleted."""
+    offenders = {}
+    for path in _sources():
+        hits = find_retired(path.read_text())
+        if hits:
+            offenders[_rel(path)] = sorted(hits)
+    assert not offenders, (
+        "The retired str-subclass operand result reappeared — a str-subclass "
+        "result is silently consumable and reopens HIGH-6: " + repr(offenders))
+
+
+def test_projection_called_only_from_ruled_consumers():
+    """``as_scalar()`` is called ONLY from the ruled terminal-consumer set.
+
+    This is the charter's "static guards find no semantic scalar re-entry"
+    criterion. A NEW call site means some context started demanding one
+    string; that is a semantic decision needing a bash probe, so it is a
+    reviewed edit to RULED_PROJECTIONS, not a silent addition.
+    """
+    actual = set()
+    for path in _sources():
+        for func in find_as_scalar_calls(path.read_text()):
+            actual.add((_rel(path), func))
+    unruled = actual - RULED_PROJECTIONS
+    assert not unruled, (
+        "UNRULED scalar projection(s) — every as_scalar() call must sit in a "
+        "ruled terminal consumer backed by a bash probe: " + repr(sorted(unruled)))
+
+
+def test_every_ruled_projection_still_exists():
+    """No ruled row is stale (a row naming a vanished site guards nothing).
+
+    The AGREEMENT-FORM half of the guard above: without this, deleting a
+    projection would leave RULED_PROJECTIONS quietly over-permissive.
+    """
+    actual = set()
+    for path in _sources():
+        for func in find_as_scalar_calls(path.read_text()):
+            actual.add((_rel(path), func))
+    stale = RULED_PROJECTIONS - actual
+    assert not stale, (
+        "RULED_PROJECTIONS names site(s) that no longer project — remove the "
+        "row or restore the call: " + repr(sorted(stale)))
+
+
+def test_operand_value_str_raises_type_error():
+    """``str(OperandValue)`` raises TypeError, not a shell-error type.
+
+    TypeError specifically: PSH_STRICT_ERRORS treats an unexpected TypeError
+    as an internal defect and fails LOUDLY, while a PshError/OSError/
+    ValueError would be swallowed to exit 1 and an unnamed scalar re-entry
+    would pass silently — exactly the failure mode this slot removed.
+    """
+    import pytest
+
+    from psh.core.exceptions import PshError
+    from psh.expansion.operands import OperandValue
+    from psh.expansion.word_expansion_types import ExpandedField
+
+    value = OperandValue([ExpandedField([])])
+    with pytest.raises(TypeError) as exc:
+        str(value)
+    assert not isinstance(exc.value, PshError)
+    # The message must name the remedy, or the loud failure is not actionable.
+    assert "as_scalar" in str(exc.value)
+
+
+def test_operand_value_is_not_a_str():
+    """The type cannot be silently consumed as a string."""
+    from psh.expansion.operands import OperandValue
+    assert not issubclass(OperandValue, str)
+
+
+# --------------------------------------------------------------------------
+# Guard-the-guards: synthetic offenders the scanners MUST catch
+# --------------------------------------------------------------------------
+
+def test_guard_detects_unruled_projection():
+    assert find_as_scalar_calls(
+        "def sneaky():\n    return value.as_scalar()\n") == {"sneaky"}
+
+
+def test_guard_detects_module_level_projection():
+    assert find_as_scalar_calls("X = value.as_scalar()\n") == {"<module>"}
+
+
+def test_guard_detects_nested_projection():
+    """A call buried in a nested def is attributed to the nearest function,
+    so wrapping a projection in a helper cannot hide it from the ruled set."""
+    src = "def outer():\n    def inner():\n        return v.as_scalar()\n"
+    assert find_as_scalar_calls(src) == {"inner"}
+
+
+def test_guard_ignores_unrelated_calls():
+    assert find_as_scalar_calls("def f():\n    return v.as_text()\n") == set()
+
+
+def test_guard_detects_retired_symbol():
+    assert find_retired("class OperandResult(str):\n    pass\n") == {"OperandResult"}
+    assert find_retired("x = OperandResult([])\n") == {"OperandResult"}
+    assert find_retired("x = OperandValue([])\n") == set()

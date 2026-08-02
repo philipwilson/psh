@@ -28,7 +28,7 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `arrays.py` | `ArrayOpsMixin` - `${arr[i]}`, `${arr[@]}` access (keying via `subscript.py`) |
 | `subscript.py` | `SubscriptEvaluator` - THE one array-subscript keying authority (indexed arithmetic vs associative string key, decided by target kind; campaign W2) |
 | `operators.py` | `OperatorOpsMixin` - `${VAR:-...}`, `${VAR#...}`, `${VAR/p/r}`, case ops |
-| `operands.py` | `OperandOpsMixin` - expands pattern/replacement operands, `glob_escape()` |
+| `operands.py` | `OperandOpsMixin` - expands VALUE operands to a field vector (`OperandValue`) and pattern/replacement operands to strings, `glob_escape()` |
 | `fields.py` | `FieldExpansionMixin` - `expand_to_fields()` for multi-field `$@`/array results |
 | `pattern.py` | `match_shell_pattern()` - the thin full-match facade for `case`/`[[ == ]]`/name filters: `PatternCompiler.compile(pattern).full_match(...)` — plain AND extglob route through the one engine (campaign W3; no regex path) |
 | `pattern_engine.py` | THE compiled shell-pattern engine: `PatternCompiler.compile`(raw string)/`compile_protected`(protection runs) → `CompiledPattern` with the FOUR relations (`full_match`/`matching_ends`/`matching_starts`/`span_at`+`spanner`; `matching_spans` = labelled permanent test-pinned relation oracle, no production caller); iterative stars + literal chains (two-pointer boolean / forward position-set DP — star count never consumes recursion frames), recursion ONLY for extglob nesting depth; bash-composition patterns (a group directly after a wildcard run — `pattern_engine.py#_seq_bash_quirk`) route to the measured slice-relative matcher `pattern_engine.py#_BashMatcher` (slot 3.1); `MatchProfile` (for_pathname, ic). Legacy `compile_pattern`/`reachable_ends`/`fullmatch`/`match_at`/`count_states` kept (see "Pattern matching engine" below) |
@@ -251,6 +251,43 @@ quoted OR unquoted, route through ONE algebra in `word_expander.py`:
   with `(a, b)` → `xa`, `by`; empty `$@` between affixes → one field). There is
   no `$@` shortcut: no walker returns `str | list[str]` and no join happens
   before field splitting and pathname generation (`#20 H5`).
+
+### Value Operand Expansion: a FIELD VECTOR, not a string
+
+A value operand (`${x:-W}`, `${x:+W}`, `${x:=W}`, `${x:?W}` and the
+non-colon twins) expands to `operands.py#OperandValue` — a vector of
+`ExpandedField`, the same currency the Word walker uses, so there is ONE
+field model in the subsystem rather than an operand-specific second one.
+Field boundaries, explicit empties and per-run quote protection all survive
+to `word_expander.py#WordExpander._walk_expansion_part`, which splices them
+through the same algebra `$@` already used.
+
+The invariant, and why the type is not a `str`: bash keeps the positionals of
+a `"$@"` inside an operand APART, and it distinguishes an operand that
+produced NO fields from one that produced a single EMPTY field — a
+distinction no string can carry, and one that is observable only because the
+two cells differ solely in the OUTER quoting. Both properties are pinned in
+`tests/conformance/bash/test_operand_field_ir_conformance.py`.
+
+Scalar projection is retained only at NAMED terminal consumers: an assignment
+value, the `:=` store, a `[[ ]]` operand, a pattern/replacement operand, the
+`:?` message, the shared string walker (`variable.py#expand_string_variables`,
+which serves heredoc bodies, here-strings, `$(( ))` and `[[ ]]` string
+operands) — and a `case` PATTERN, which is the one member that is NOT
+bash-demanded. Every other member is a context where bash ITSELF requires one
+string, each probe-backed. The `case` pattern is psh POLICY: bash matches the
+FIRST FIELD of a multi-field pattern operand rather than joining, so psh's
+join is a deliberate preservation of base behaviour, divergent and
+successor-owned — pinned in both directions by
+`tests/conformance/bash/test_subscript_keying_conformance.py#test_case_pattern_multifield_operand_divergence`. Each such site NAMES the
+projection by calling `operands.py#OperandValue.as_scalar`, and
+`tests/unit/tooling/test_operand_projection_guard.py` holds that call set
+closed: an unnamed string conversion of an `OperandValue` raises
+`TypeError` rather than silently flattening. The predecessor IR was a `str` SUBCLASS, which is
+precisely why the flatten went unnoticed — every consumer accepted it.
+
+The projection joins with a literal SPACE and does NOT consult IFS; `$*` is
+the contrasting mechanism, joining with IFS[0] BEFORE the operand IR sees it.
 
 ### Pattern and Replacement Operand Expansion
 

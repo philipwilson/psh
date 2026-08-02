@@ -1,0 +1,8 @@
+dbracket|unset x; set -- a b; [[ ${x:-"$@"} == "a b" ]] && echo TRUE || echo FALSE
+casepat|unset x; set -- a b; case "a b" in ${x:-"$@"}) echo HIT;; *) echo MISS;; esac
+ifs_X|unset x; set -- aXq b; IFS=X; C ${x:-$@}
+ifs_Xsp|unset x; set -- aXq b; IFS='X '; C ${x:-$@}
+ifs_empty|unset x; set -- aXq b; IFS=; C ${x:-$@}
+ifs_X_q|unset x; set -- aXq b; IFS=X; C ${x:-"$@"}
+h6_cell|a=(""); C "${a[@]:+X}"
+h6_star|a=(""); C "${a[*]:+X}"

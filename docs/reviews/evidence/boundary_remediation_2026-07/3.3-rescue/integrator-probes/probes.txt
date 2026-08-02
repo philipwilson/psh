@@ -1,0 +1,15 @@
+p1_q_ab|unset x; set -- a b; printf "<%s>" "${x:-"$@"}"
+p2_uq_ab|unset x; set -- a b; printf "<%s>" ${x:-"$@"}
+p3_q_plus|x=set; set -- a b; printf "<%s>" "${x:+"$@"}"
+p4_q_a1b|unset x; set -- "a 1" b; printf "<%s>" "${x:-"$@"}"
+ctl_bareat_ab|unset x; set -- a b; printf "<%s>" ${x:-$@}
+ctl_bareat_a1b|unset x; set -- "a 1" b; printf "<%s>" ${x:-$@}
+cnt_uq_a1b|unset x; set -- "a 1" b; C ${x:-"$@"}
+cnt_q_a1b|unset x; set -- "a 1" b; C "${x:-"$@"}"
+empty_uq|set --; unset x; C ${x:-"$@"}
+empty_q|set --; unset x; C "${x:-"$@"}"
+emptystr_uq|unset x; C ${x:-""}
+emptystr_q|unset x; C "${x:-""}"
+asg_q|unset x; set -- a b; C "${x:="$@"}"; C "$x"
+asg_uq|unset y; set -- a b; C ${y:="$@"}; C "$y"
+ifs_sep|unset x; set -- a b; IFS=:; v=${x:-"$@"}; C "$v"; w=${x:-"$*"}; C "$w"

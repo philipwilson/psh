@@ -10398,3 +10398,74 @@
   stdout: "[a\n]"
   stderr: ""
   exit_code: 0
+
+# --- operand field IR (remediation slot 3.3, HIGH-6) ------------------------
+# A value operand is a field vector: the positionals of a "$@" inside it stay
+# apart. Subjects carry an embedded space on purpose — with a plain `a b`
+# subject a space-join is undone by re-splitting and the defect is invisible.
+- name: operand_at_preserves_fields_quoted
+  command: 'unset x; set -- "a 1" "b 2"; printf ''<%s>'' "${x:-"$@"}"'
+  stdout: "<a 1><b 2>"
+  stderr: ""
+  exit_code: 0
+
+- name: operand_at_preserves_fields_unquoted
+  command: 'unset x; set -- "a 1" "b 2"; printf ''<%s>'' ${x:-"$@"}'
+  stdout: "<a 1><b 2>"
+  stderr: ""
+  exit_code: 0
+
+- name: operand_at_preserves_fields_alternate
+  command: 'x=set; set -- "a 1" b; printf ''<%s>'' "${x:+"$@"}"'
+  stdout: "<a 1><b>"
+  stderr: ""
+  exit_code: 0
+
+- name: operand_at_empty_positional_survives
+  command: 'unset x; set -- "" b; printf ''<%s>'' "${x:-"$@"}"'
+  stdout: "<><b>"
+  stderr: ""
+  exit_code: 0
+
+# "no fields" and "one empty field" differ ONLY in the outer quoting.
+# NOTE the observer: printf renders zero arguments and one empty argument
+# IDENTICALLY (both give <>), so these two use an argument COUNTER instead —
+# with printf the pair would be vacuous.
+- name: operand_empty_at_elides_unquoted
+  command: 'n() { echo "n=$#"; }; unset x; set --; n ${x:-"$@"}'
+  stdout: "n=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: operand_empty_at_is_one_empty_field_quoted
+  command: 'n() { echo "n=$#"; }; unset x; set --; n "${x:-"$@"}"'
+  stdout: "n=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: operand_empty_at_joins_adjacent_literals
+  command: 'unset x; set --; printf ''<%s>|'' pre"${x:-"$@"}"post'
+  stdout: "<prepost>|"
+  stderr: ""
+  exit_code: 0
+
+# The [@]/[*] joiner never applies to a TRIGGERED operand.
+- name: operand_star_view_keeps_operand_fields
+  command: 'unset a; set -- "a 1" b; printf ''<%s>'' "${a[*]:-"$@"}"'
+  stdout: "<a 1><b>"
+  stderr: ""
+  exit_code: 0
+
+# := is a terminal scalar projection in bash itself: the store flattens.
+- name: operand_assign_stores_scalar
+  command: 'unset x; set -- "a 1" b; : "${x:="$@"}"; printf ''<%s>'' "$x"'
+  stdout: "<a 1 b>"
+  stderr: ""
+  exit_code: 0
+
+# An untriggered conditional yields the VIEW, not a synthesized empty scalar.
+- name: operand_untriggered_alternate_yields_view
+  command: 'n() { echo "n=$#"; }; a=(""); n "${a[@]:+X}"'
+  stdout: "n=1\n"
+  stderr: ""
+  exit_code: 0

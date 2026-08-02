@@ -1,0 +1,8 @@
+u_unset|unset a; C "${a[@]:+X}"
+u_empty|a=(); C "${a[@]:+X}"
+u_unset_dash|unset a; C "${a[@]:-Y}"
+u_single_dash|a=(""); C "${a[@]:-Y}"
+u_empty_view|a=(); C "${a[@]}"
+u_single_view|a=(""); C "${a[@]}"
+u_plain_at|set --; C "${@:+X}"
+u_null_first|a=("" "q"); b=("q" ""); C "${b[@]:+X}"

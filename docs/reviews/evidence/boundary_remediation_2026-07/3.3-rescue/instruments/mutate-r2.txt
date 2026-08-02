@@ -1,0 +1,48 @@
+tree: /Users/pwilson/src/psh-r3-3
+HEAD: d81ae82b056fc5aa7a9111534f28c351e0ff8d02
+
+[M8-1-reflatten] mutating psh/expansion/operands.py
+    lock test_m8_lock_operand_at_is_not_flattened
+    -> CAUGHT (lock failed as required)
+       E   AssertionError: assert 'n=1 [a 1 b 2]\n' == 'n=2 [a 1] [b 2]\n'
+       E     
+       E     - n=2 [a 1] [b 2]
+       E     ?   ^     ^^^
+    restored, sha match: 6db41e2aeda4
+
+[M8-2-assign-preserves] mutating psh/expansion/operators.py
+    lock test_m8_lock_assignment_still_projects
+    -> CAUGHT (lock failed as required)
+       E   AssertionError: assert 'n=1 [a 1]\n' == 'n=1 [a 1 b]\n'
+       E     
+       E     - n=1 [a 1 b]
+       E     ?         --
+    restored, sha match: eeaf807fdc48
+
+[M8-4-view-branch-off] mutating psh/expansion/operands.py
+    lock test_m8_lock_view_operand_content_is_a_producer
+    -> CAUGHT (lock failed as required)
+       E   AssertionError: assert 'n=1 [m n o]\n' == 'n=2 [m n] [o]\n'
+       E     
+       E     - n=2 [m n] [o]
+       E     ?   ^     ^^^
+    restored, sha match: 6db41e2aeda4
+
+[M8-5-redirect-arity] mutating psh/expansion/operands.py
+    lock test_m8_lock_redirect_target_arity
+    -> CAUGHT (lock failed as required)
+       E   AssertionError: assert 0 != 0
+       E    +  where 0 = Completed(stdout='', stderr='', returncode=0, duration=0.12251199991442263).returncode
+       FAILED tests/conformance/bash/test_operand_field_ir_conformance.py::test_m8_lock_redirect_target_arity
+       1 failed in 0.16s
+    restored, sha match: 6db41e2aeda4
+
+[M8-3-empty-collapse] mutating psh/expansion/operands.py
+    lock test_m8_lock_empty_field_distinction_survives
+    -> CAUGHT (lock failed as required)
+       E   AssertionError: assert 'n=1 []\n' == 'n=0\n'
+       E     
+       E     - n=0
+       E     + n=1 []
+    restored, sha match: 6db41e2aeda4
+

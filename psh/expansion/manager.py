@@ -16,6 +16,7 @@ from ..core.assignment_utils import ASSIGNMENT_PREFIX_RE
 from .brace_expansion_words import WordBraceExpander
 from .command_sub import CommandSubstitutionExecutor
 from .glob import GlobExpander
+from .operands import OperandOrStr
 from .subscript import SubscriptEvaluator
 from .tilde import TildeExpander
 from .variable import VariableExpander
@@ -224,8 +225,14 @@ class ExpansionManager:
         """
         return self.word_expander.expand_assignment_value_word(word)
 
-    def expand_expansion(self, expansion, quote_ctx=None) -> str:
-        """Evaluate a single expansion AST node to a string (public API).
+    def expand_expansion(self, expansion, quote_ctx=None) -> 'OperandOrStr':
+        """Evaluate a single expansion AST node (public API).
+
+        Returns a ``str`` for most expansions, or an
+        ``operands.OperandValue`` — a FIELD VECTOR — when the node carries a
+        value operator (``:-`` ``:=`` ``:+`` ``:?`` and the non-colon twins).
+        A caller that needs one string must NAME the projection
+        (``OperandValue.as_scalar``); it is not implicitly stringable.
 
         Used by the executor when building an assignment value from Word parts;
         kept public so callers need not reach into a private method.
@@ -279,10 +286,21 @@ class ExpansionManager:
                 if isinstance(part.expansion, ProcessSubstitution):
                     out.append(str(part.expansion))
                     continue
-                from .operands import DQ_WORD
+                from .operands import DQ_WORD, OperandValue
                 expanded = self.expand_expansion(
                     part.expansion,
                     quote_ctx=DQ_WORD if part.quoted else None)
+                # RULED TERMINAL CONSUMER (psh side): a case PATTERN is one
+                # glob-pattern string, so a value operand's vector is joined
+                # here. DOCUMENTED PRE-EXISTING DIVERGENCE (integrator R2.1,
+                # successor-owned): on a MULTI-FIELD pattern operand bash
+                # matches the FIRST FIELD only, e.g.
+                #     set -- a b; case a in ${x:-"$@"}) ...
+                # matches in bash and not in psh. This projection RESTORES the
+                # base (join) behaviour exactly — it neither creates nor fixes
+                # that divergence, which is pinned both-sides.
+                if isinstance(expanded, OperandValue):
+                    expanded = expanded.as_scalar()
                 out.append(ve.glob_escape(expanded) if part.quoted else expanded)
         return ''.join(out)
 

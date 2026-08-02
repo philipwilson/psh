@@ -1,0 +1,1534 @@
+PSH_ROOT   : /Users/pwilson/src/psh-r3-3
+psh import : /Users/pwilson/src/psh-r3-3/psh/__init__.py
+psh SHA    : d0f7d929ebdbde4d4ed794de66a0ae760ee2e655  (psh/ dirty: True)
+bash       : /opt/homebrew/bin/bash — GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+tree note  : Matrices B-F (axes)
+
+=== MATRIX-B-SUBJECT-SHAPE ===
+[SAME] B-plain-c--dqat-Q :: a=("a 1" b); set -- a b; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-c--dqat-U :: a=("a 1" b); set -- a b; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-c--bareat-Q :: a=("a 1" b); set -- a b; unset x; count "${x:-$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-c--bareat-U :: a=("a 1" b); set -- a b; unset x; count ${x:-$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-c--arrat-Q :: a=("a 1" b); set -- a b; unset x; count "${x:-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-plain-c--arrat-U :: a=("a 1" b); set -- a b; unset x; count ${x:-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-plain---dqat-Q :: a=("a 1" b); set -- a b; unset x; count "${x-"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain---dqat-U :: a=("a 1" b); set -- a b; unset x; count ${x-"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain---bareat-Q :: a=("a 1" b); set -- a b; unset x; count "${x-$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain---bareat-U :: a=("a 1" b); set -- a b; unset x; count ${x-$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain---arrat-Q :: a=("a 1" b); set -- a b; unset x; count "${x-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-plain---arrat-U :: a=("a 1" b); set -- a b; unset x; count ${x-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-plain-c+-dqat-Q :: a=("a 1" b); set -- a b; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-c+-dqat-U :: a=("a 1" b); set -- a b; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-c+-bareat-Q :: a=("a 1" b); set -- a b; x=S; count "${x:+$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-c+-bareat-U :: a=("a 1" b); set -- a b; x=S; count ${x:+$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-c+-arrat-Q :: a=("a 1" b); set -- a b; x=S; count "${x:+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-plain-c+-arrat-U :: a=("a 1" b); set -- a b; x=S; count ${x:+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-plain-+-dqat-Q :: a=("a 1" b); set -- a b; x=S; count "${x+"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-+-dqat-U :: a=("a 1" b); set -- a b; x=S; count ${x+"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-+-bareat-Q :: a=("a 1" b); set -- a b; x=S; count "${x+$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-+-bareat-U :: a=("a 1" b); set -- a b; x=S; count ${x+$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] B-plain-+-arrat-Q :: a=("a 1" b); set -- a b; x=S; count "${x+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-plain-+-arrat-U :: a=("a 1" b); set -- a b; x=S; count ${x+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c--dqat-Q :: a=("a 1" b); set -- "a 1" b; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c--dqat-U :: a=("a 1" b); set -- "a 1" b; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c--bareat-Q :: a=("a 1" b); set -- "a 1" b; unset x; count "${x:-$@}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c--bareat-U :: a=("a 1" b); set -- "a 1" b; unset x; count ${x:-$@}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] B-space-c--arrat-Q :: a=("a 1" b); set -- "a 1" b; unset x; count "${x:-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c--arrat-U :: a=("a 1" b); set -- "a 1" b; unset x; count ${x:-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space---dqat-Q :: a=("a 1" b); set -- "a 1" b; unset x; count "${x-"$@"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space---dqat-U :: a=("a 1" b); set -- "a 1" b; unset x; count ${x-"$@"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space---bareat-Q :: a=("a 1" b); set -- "a 1" b; unset x; count "${x-$@}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space---bareat-U :: a=("a 1" b); set -- "a 1" b; unset x; count ${x-$@}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] B-space---arrat-Q :: a=("a 1" b); set -- "a 1" b; unset x; count "${x-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space---arrat-U :: a=("a 1" b); set -- "a 1" b; unset x; count ${x-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c+-dqat-Q :: a=("a 1" b); set -- "a 1" b; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c+-dqat-U :: a=("a 1" b); set -- "a 1" b; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c+-bareat-Q :: a=("a 1" b); set -- "a 1" b; x=S; count "${x:+$@}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c+-bareat-U :: a=("a 1" b); set -- "a 1" b; x=S; count ${x:+$@}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] B-space-c+-arrat-Q :: a=("a 1" b); set -- "a 1" b; x=S; count "${x:+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-c+-arrat-U :: a=("a 1" b); set -- "a 1" b; x=S; count ${x:+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-+-dqat-Q :: a=("a 1" b); set -- "a 1" b; x=S; count "${x+"$@"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-+-dqat-U :: a=("a 1" b); set -- "a 1" b; x=S; count ${x+"$@"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-+-bareat-Q :: a=("a 1" b); set -- "a 1" b; x=S; count "${x+$@}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-+-bareat-U :: a=("a 1" b); set -- "a 1" b; x=S; count ${x+$@}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] B-space-+-arrat-Q :: a=("a 1" b); set -- "a 1" b; x=S; count "${x+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-space-+-arrat-U :: a=("a 1" b); set -- "a 1" b; x=S; count ${x+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-bothsp-c--dqat-Q :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp-c--dqat-U :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp-c--bareat-Q :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count "${x:-$@}"
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp-c--bareat-U :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count ${x:-$@}
+    bash: 'n=4 [a] [1] [b] [2]' rc=0
+    psh : 'n=4 [a] [1] [b] [2]' rc=0
+[SAME] B-bothsp-c--arrat-Q :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count "${x:-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-bothsp-c--arrat-U :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count ${x:-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-bothsp---dqat-Q :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count "${x-"$@"}"
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp---dqat-U :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count ${x-"$@"}
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp---bareat-Q :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count "${x-$@}"
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp---bareat-U :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count ${x-$@}
+    bash: 'n=4 [a] [1] [b] [2]' rc=0
+    psh : 'n=4 [a] [1] [b] [2]' rc=0
+[SAME] B-bothsp---arrat-Q :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count "${x-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-bothsp---arrat-U :: a=("a 1" b); set -- "a 1" "b 2"; unset x; count ${x-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-bothsp-c+-dqat-Q :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp-c+-dqat-U :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp-c+-bareat-Q :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count "${x:+$@}"
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp-c+-bareat-U :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count ${x:+$@}
+    bash: 'n=4 [a] [1] [b] [2]' rc=0
+    psh : 'n=4 [a] [1] [b] [2]' rc=0
+[SAME] B-bothsp-c+-arrat-Q :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count "${x:+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-bothsp-c+-arrat-U :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count ${x:+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-bothsp-+-dqat-Q :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count "${x+"$@"}"
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp-+-dqat-U :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count ${x+"$@"}
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp-+-bareat-Q :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count "${x+$@}"
+    bash: 'n=2 [a 1] [b 2]' rc=0
+    psh : 'n=2 [a 1] [b 2]' rc=0
+[SAME] B-bothsp-+-bareat-U :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count ${x+$@}
+    bash: 'n=4 [a] [1] [b] [2]' rc=0
+    psh : 'n=4 [a] [1] [b] [2]' rc=0
+[SAME] B-bothsp-+-arrat-Q :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count "${x+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-bothsp-+-arrat-U :: a=("a 1" b); set -- "a 1" "b 2"; x=S; count ${x+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-emptyp-c--dqat-Q :: a=("a 1" b); set -- "" b; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp-c--dqat-U :: a=("a 1" b); set -- "" b; unset x; count ${x:-"$@"}
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp-c--bareat-Q :: a=("a 1" b); set -- "" b; unset x; count "${x:-$@}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp-c--bareat-U :: a=("a 1" b); set -- "" b; unset x; count ${x:-$@}
+    bash: 'n=1 [b]' rc=0
+    psh : 'n=1 [b]' rc=0
+[SAME] B-emptyp-c--arrat-Q :: a=("a 1" b); set -- "" b; unset x; count "${x:-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-emptyp-c--arrat-U :: a=("a 1" b); set -- "" b; unset x; count ${x:-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-emptyp---dqat-Q :: a=("a 1" b); set -- "" b; unset x; count "${x-"$@"}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp---dqat-U :: a=("a 1" b); set -- "" b; unset x; count ${x-"$@"}
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp---bareat-Q :: a=("a 1" b); set -- "" b; unset x; count "${x-$@}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp---bareat-U :: a=("a 1" b); set -- "" b; unset x; count ${x-$@}
+    bash: 'n=1 [b]' rc=0
+    psh : 'n=1 [b]' rc=0
+[SAME] B-emptyp---arrat-Q :: a=("a 1" b); set -- "" b; unset x; count "${x-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-emptyp---arrat-U :: a=("a 1" b); set -- "" b; unset x; count ${x-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-emptyp-c+-dqat-Q :: a=("a 1" b); set -- "" b; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp-c+-dqat-U :: a=("a 1" b); set -- "" b; x=S; count ${x:+"$@"}
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp-c+-bareat-Q :: a=("a 1" b); set -- "" b; x=S; count "${x:+$@}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp-c+-bareat-U :: a=("a 1" b); set -- "" b; x=S; count ${x:+$@}
+    bash: 'n=1 [b]' rc=0
+    psh : 'n=1 [b]' rc=0
+[SAME] B-emptyp-c+-arrat-Q :: a=("a 1" b); set -- "" b; x=S; count "${x:+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-emptyp-c+-arrat-U :: a=("a 1" b); set -- "" b; x=S; count ${x:+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-emptyp-+-dqat-Q :: a=("a 1" b); set -- "" b; x=S; count "${x+"$@"}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp-+-dqat-U :: a=("a 1" b); set -- "" b; x=S; count ${x+"$@"}
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp-+-bareat-Q :: a=("a 1" b); set -- "" b; x=S; count "${x+$@}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] B-emptyp-+-bareat-U :: a=("a 1" b); set -- "" b; x=S; count ${x+$@}
+    bash: 'n=1 [b]' rc=0
+    psh : 'n=1 [b]' rc=0
+[SAME] B-emptyp-+-arrat-Q :: a=("a 1" b); set -- "" b; x=S; count "${x+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-emptyp-+-arrat-U :: a=("a 1" b); set -- "" b; x=S; count ${x+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-allempty-c--dqat-Q :: a=("a 1" b); set -- "" ""; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty-c--dqat-U :: a=("a 1" b); set -- "" ""; unset x; count ${x:-"$@"}
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty-c--bareat-Q :: a=("a 1" b); set -- "" ""; unset x; count "${x:-$@}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty-c--bareat-U :: a=("a 1" b); set -- "" ""; unset x; count ${x:-$@}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] B-allempty-c--arrat-Q :: a=("a 1" b); set -- "" ""; unset x; count "${x:-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-allempty-c--arrat-U :: a=("a 1" b); set -- "" ""; unset x; count ${x:-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-allempty---dqat-Q :: a=("a 1" b); set -- "" ""; unset x; count "${x-"$@"}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty---dqat-U :: a=("a 1" b); set -- "" ""; unset x; count ${x-"$@"}
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty---bareat-Q :: a=("a 1" b); set -- "" ""; unset x; count "${x-$@}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty---bareat-U :: a=("a 1" b); set -- "" ""; unset x; count ${x-$@}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] B-allempty---arrat-Q :: a=("a 1" b); set -- "" ""; unset x; count "${x-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-allempty---arrat-U :: a=("a 1" b); set -- "" ""; unset x; count ${x-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-allempty-c+-dqat-Q :: a=("a 1" b); set -- "" ""; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty-c+-dqat-U :: a=("a 1" b); set -- "" ""; x=S; count ${x:+"$@"}
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty-c+-bareat-Q :: a=("a 1" b); set -- "" ""; x=S; count "${x:+$@}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty-c+-bareat-U :: a=("a 1" b); set -- "" ""; x=S; count ${x:+$@}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] B-allempty-c+-arrat-Q :: a=("a 1" b); set -- "" ""; x=S; count "${x:+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-allempty-c+-arrat-U :: a=("a 1" b); set -- "" ""; x=S; count ${x:+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-allempty-+-dqat-Q :: a=("a 1" b); set -- "" ""; x=S; count "${x+"$@"}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty-+-dqat-U :: a=("a 1" b); set -- "" ""; x=S; count ${x+"$@"}
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty-+-bareat-Q :: a=("a 1" b); set -- "" ""; x=S; count "${x+$@}"
+    bash: 'n=2 [] []' rc=0
+    psh : 'n=2 [] []' rc=0
+[SAME] B-allempty-+-bareat-U :: a=("a 1" b); set -- "" ""; x=S; count ${x+$@}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] B-allempty-+-arrat-Q :: a=("a 1" b); set -- "" ""; x=S; count "${x+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-allempty-+-arrat-U :: a=("a 1" b); set -- "" ""; x=S; count ${x+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-tab-c--dqat-Q :: a=("a 1" b); set -- "a	z" b; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab-c--dqat-U :: a=("a 1" b); set -- "a	z" b; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab-c--bareat-Q :: a=("a 1" b); set -- "a	z" b; unset x; count "${x:-$@}"
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab-c--bareat-U :: a=("a 1" b); set -- "a	z" b; unset x; count ${x:-$@}
+    bash: 'n=3 [a] [z] [b]' rc=0
+    psh : 'n=3 [a] [z] [b]' rc=0
+[SAME] B-tab-c--arrat-Q :: a=("a 1" b); set -- "a	z" b; unset x; count "${x:-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-tab-c--arrat-U :: a=("a 1" b); set -- "a	z" b; unset x; count ${x:-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-tab---dqat-Q :: a=("a 1" b); set -- "a	z" b; unset x; count "${x-"$@"}"
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab---dqat-U :: a=("a 1" b); set -- "a	z" b; unset x; count ${x-"$@"}
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab---bareat-Q :: a=("a 1" b); set -- "a	z" b; unset x; count "${x-$@}"
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab---bareat-U :: a=("a 1" b); set -- "a	z" b; unset x; count ${x-$@}
+    bash: 'n=3 [a] [z] [b]' rc=0
+    psh : 'n=3 [a] [z] [b]' rc=0
+[SAME] B-tab---arrat-Q :: a=("a 1" b); set -- "a	z" b; unset x; count "${x-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-tab---arrat-U :: a=("a 1" b); set -- "a	z" b; unset x; count ${x-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-tab-c+-dqat-Q :: a=("a 1" b); set -- "a	z" b; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab-c+-dqat-U :: a=("a 1" b); set -- "a	z" b; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab-c+-bareat-Q :: a=("a 1" b); set -- "a	z" b; x=S; count "${x:+$@}"
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab-c+-bareat-U :: a=("a 1" b); set -- "a	z" b; x=S; count ${x:+$@}
+    bash: 'n=3 [a] [z] [b]' rc=0
+    psh : 'n=3 [a] [z] [b]' rc=0
+[SAME] B-tab-c+-arrat-Q :: a=("a 1" b); set -- "a	z" b; x=S; count "${x:+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-tab-c+-arrat-U :: a=("a 1" b); set -- "a	z" b; x=S; count ${x:+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-tab-+-dqat-Q :: a=("a 1" b); set -- "a	z" b; x=S; count "${x+"$@"}"
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab-+-dqat-U :: a=("a 1" b); set -- "a	z" b; x=S; count ${x+"$@"}
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab-+-bareat-Q :: a=("a 1" b); set -- "a	z" b; x=S; count "${x+$@}"
+    bash: 'n=2 [a\tz] [b]' rc=0
+    psh : 'n=2 [a\tz] [b]' rc=0
+[SAME] B-tab-+-bareat-U :: a=("a 1" b); set -- "a	z" b; x=S; count ${x+$@}
+    bash: 'n=3 [a] [z] [b]' rc=0
+    psh : 'n=3 [a] [z] [b]' rc=0
+[SAME] B-tab-+-arrat-Q :: a=("a 1" b); set -- "a	z" b; x=S; count "${x+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-tab-+-arrat-U :: a=("a 1" b); set -- "a	z" b; x=S; count ${x+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-colon-c--dqat-Q :: a=("a 1" b); set -- "a:z" b; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-c--dqat-U :: a=("a 1" b); set -- "a:z" b; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-c--bareat-Q :: a=("a 1" b); set -- "a:z" b; unset x; count "${x:-$@}"
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-c--bareat-U :: a=("a 1" b); set -- "a:z" b; unset x; count ${x:-$@}
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-c--arrat-Q :: a=("a 1" b); set -- "a:z" b; unset x; count "${x:-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-colon-c--arrat-U :: a=("a 1" b); set -- "a:z" b; unset x; count ${x:-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-colon---dqat-Q :: a=("a 1" b); set -- "a:z" b; unset x; count "${x-"$@"}"
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon---dqat-U :: a=("a 1" b); set -- "a:z" b; unset x; count ${x-"$@"}
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon---bareat-Q :: a=("a 1" b); set -- "a:z" b; unset x; count "${x-$@}"
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon---bareat-U :: a=("a 1" b); set -- "a:z" b; unset x; count ${x-$@}
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon---arrat-Q :: a=("a 1" b); set -- "a:z" b; unset x; count "${x-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-colon---arrat-U :: a=("a 1" b); set -- "a:z" b; unset x; count ${x-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-colon-c+-dqat-Q :: a=("a 1" b); set -- "a:z" b; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-c+-dqat-U :: a=("a 1" b); set -- "a:z" b; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-c+-bareat-Q :: a=("a 1" b); set -- "a:z" b; x=S; count "${x:+$@}"
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-c+-bareat-U :: a=("a 1" b); set -- "a:z" b; x=S; count ${x:+$@}
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-c+-arrat-Q :: a=("a 1" b); set -- "a:z" b; x=S; count "${x:+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-colon-c+-arrat-U :: a=("a 1" b); set -- "a:z" b; x=S; count ${x:+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-colon-+-dqat-Q :: a=("a 1" b); set -- "a:z" b; x=S; count "${x+"$@"}"
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-+-dqat-U :: a=("a 1" b); set -- "a:z" b; x=S; count ${x+"$@"}
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-+-bareat-Q :: a=("a 1" b); set -- "a:z" b; x=S; count "${x+$@}"
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-+-bareat-U :: a=("a 1" b); set -- "a:z" b; x=S; count ${x+$@}
+    bash: 'n=2 [a:z] [b]' rc=0
+    psh : 'n=2 [a:z] [b]' rc=0
+[SAME] B-colon-+-arrat-Q :: a=("a 1" b); set -- "a:z" b; x=S; count "${x+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-colon-+-arrat-U :: a=("a 1" b); set -- "a:z" b; x=S; count ${x+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-glob-c--dqat-Q :: a=("a 1" b); set -- "a*" b; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-c--dqat-U :: a=("a 1" b); set -- "a*" b; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-c--bareat-Q :: a=("a 1" b); set -- "a*" b; unset x; count "${x:-$@}"
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-c--bareat-U :: a=("a 1" b); set -- "a*" b; unset x; count ${x:-$@}
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-c--arrat-Q :: a=("a 1" b); set -- "a*" b; unset x; count "${x:-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-glob-c--arrat-U :: a=("a 1" b); set -- "a*" b; unset x; count ${x:-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-glob---dqat-Q :: a=("a 1" b); set -- "a*" b; unset x; count "${x-"$@"}"
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob---dqat-U :: a=("a 1" b); set -- "a*" b; unset x; count ${x-"$@"}
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob---bareat-Q :: a=("a 1" b); set -- "a*" b; unset x; count "${x-$@}"
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob---bareat-U :: a=("a 1" b); set -- "a*" b; unset x; count ${x-$@}
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob---arrat-Q :: a=("a 1" b); set -- "a*" b; unset x; count "${x-"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-glob---arrat-U :: a=("a 1" b); set -- "a*" b; unset x; count ${x-"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-glob-c+-dqat-Q :: a=("a 1" b); set -- "a*" b; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-c+-dqat-U :: a=("a 1" b); set -- "a*" b; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-c+-bareat-Q :: a=("a 1" b); set -- "a*" b; x=S; count "${x:+$@}"
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-c+-bareat-U :: a=("a 1" b); set -- "a*" b; x=S; count ${x:+$@}
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-c+-arrat-Q :: a=("a 1" b); set -- "a*" b; x=S; count "${x:+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-glob-c+-arrat-U :: a=("a 1" b); set -- "a*" b; x=S; count ${x:+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-glob-+-dqat-Q :: a=("a 1" b); set -- "a*" b; x=S; count "${x+"$@"}"
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-+-dqat-U :: a=("a 1" b); set -- "a*" b; x=S; count ${x+"$@"}
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-+-bareat-Q :: a=("a 1" b); set -- "a*" b; x=S; count "${x+$@}"
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-+-bareat-U :: a=("a 1" b); set -- "a*" b; x=S; count ${x+$@}
+    bash: 'n=2 [a*] [b]' rc=0
+    psh : 'n=2 [a*] [b]' rc=0
+[SAME] B-glob-+-arrat-Q :: a=("a 1" b); set -- "a*" b; x=S; count "${x+"${a[@]}"}"
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+[SAME] B-glob-+-arrat-U :: a=("a 1" b); set -- "a*" b; x=S; count ${x+"${a[@]}"}
+    bash: 'n=2 [a 1] [b]' rc=0
+    psh : 'n=2 [a 1] [b]' rc=0
+--- MATRIX-B-SUBJECT-SHAPE: 192 cells | DIFF 0 | SAME 192 ---
+
+=== MATRIX-C-POSITIONAL-COUNT ===
+[SAME] C-n0-c--dqat-Q :: set --; unset x; count "${x:-"$@"}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[DIFF] C-n0-c--dqat-U :: set --; unset x; count ${x:-"$@"}
+    bash: 'n=0' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n0-c--bareat-Q :: set --; unset x; count "${x:-$@}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n0-c--bareat-U :: set --; unset x; count ${x:-$@}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] C-n0-c--mixed-Q :: set --; unset x; count "${x:-pre"$@"post}"
+    bash: 'n=1 [prepost]' rc=0
+    psh : 'n=1 [prepost]' rc=0
+[SAME] C-n0-c--mixed-U :: set --; unset x; count ${x:-pre"$@"post}
+    bash: 'n=1 [prepost]' rc=0
+    psh : 'n=1 [prepost]' rc=0
+[SAME] C-n0-c--dqstar-Q :: set --; unset x; count "${x:-"$*"}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n0-c--dqstar-U :: set --; unset x; count ${x:-"$*"}
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n0-c+-dqat-Q :: set --; x=S; count "${x:+"$@"}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[DIFF] C-n0-c+-dqat-U :: set --; x=S; count ${x:+"$@"}
+    bash: 'n=0' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n0-c+-bareat-Q :: set --; x=S; count "${x:+$@}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n0-c+-bareat-U :: set --; x=S; count ${x:+$@}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] C-n0-c+-mixed-Q :: set --; x=S; count "${x:+pre"$@"post}"
+    bash: 'n=1 [prepost]' rc=0
+    psh : 'n=1 [prepost]' rc=0
+[SAME] C-n0-c+-mixed-U :: set --; x=S; count ${x:+pre"$@"post}
+    bash: 'n=1 [prepost]' rc=0
+    psh : 'n=1 [prepost]' rc=0
+[SAME] C-n0-c+-dqstar-Q :: set --; x=S; count "${x:+"$*"}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n0-c+-dqstar-U :: set --; x=S; count ${x:+"$*"}
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1-c--dqat-Q :: set -- a; unset x; count "${x:-"$@"}"
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c--dqat-U :: set -- a; unset x; count ${x:-"$@"}
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c--bareat-Q :: set -- a; unset x; count "${x:-$@}"
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c--bareat-U :: set -- a; unset x; count ${x:-$@}
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c--mixed-Q :: set -- a; unset x; count "${x:-pre"$@"post}"
+    bash: 'n=1 [preapost]' rc=0
+    psh : 'n=1 [preapost]' rc=0
+[SAME] C-n1-c--mixed-U :: set -- a; unset x; count ${x:-pre"$@"post}
+    bash: 'n=1 [preapost]' rc=0
+    psh : 'n=1 [preapost]' rc=0
+[SAME] C-n1-c--dqstar-Q :: set -- a; unset x; count "${x:-"$*"}"
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c--dqstar-U :: set -- a; unset x; count ${x:-"$*"}
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c+-dqat-Q :: set -- a; x=S; count "${x:+"$@"}"
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c+-dqat-U :: set -- a; x=S; count ${x:+"$@"}
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c+-bareat-Q :: set -- a; x=S; count "${x:+$@}"
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c+-bareat-U :: set -- a; x=S; count ${x:+$@}
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c+-mixed-Q :: set -- a; x=S; count "${x:+pre"$@"post}"
+    bash: 'n=1 [preapost]' rc=0
+    psh : 'n=1 [preapost]' rc=0
+[SAME] C-n1-c+-mixed-U :: set -- a; x=S; count ${x:+pre"$@"post}
+    bash: 'n=1 [preapost]' rc=0
+    psh : 'n=1 [preapost]' rc=0
+[SAME] C-n1-c+-dqstar-Q :: set -- a; x=S; count "${x:+"$*"}"
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n1-c+-dqstar-U :: set -- a; x=S; count ${x:+"$*"}
+    bash: 'n=1 [a]' rc=0
+    psh : 'n=1 [a]' rc=0
+[SAME] C-n2-c--dqat-Q :: set -- a b; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] C-n2-c--dqat-U :: set -- a b; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] C-n2-c--bareat-Q :: set -- a b; unset x; count "${x:-$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] C-n2-c--bareat-U :: set -- a b; unset x; count ${x:-$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] C-n2-c--mixed-Q :: set -- a b; unset x; count "${x:-pre"$@"post}"
+    bash: 'n=2 [prea] [bpost]' rc=0
+    psh : 'n=2 [prea] [bpost]' rc=0
+[SAME] C-n2-c--mixed-U :: set -- a b; unset x; count ${x:-pre"$@"post}
+    bash: 'n=2 [prea] [bpost]' rc=0
+    psh : 'n=2 [prea] [bpost]' rc=0
+[SAME] C-n2-c--dqstar-Q :: set -- a b; unset x; count "${x:-"$*"}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] C-n2-c--dqstar-U :: set -- a b; unset x; count ${x:-"$*"}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] C-n2-c+-dqat-Q :: set -- a b; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] C-n2-c+-dqat-U :: set -- a b; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] C-n2-c+-bareat-Q :: set -- a b; x=S; count "${x:+$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] C-n2-c+-bareat-U :: set -- a b; x=S; count ${x:+$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] C-n2-c+-mixed-Q :: set -- a b; x=S; count "${x:+pre"$@"post}"
+    bash: 'n=2 [prea] [bpost]' rc=0
+    psh : 'n=2 [prea] [bpost]' rc=0
+[SAME] C-n2-c+-mixed-U :: set -- a b; x=S; count ${x:+pre"$@"post}
+    bash: 'n=2 [prea] [bpost]' rc=0
+    psh : 'n=2 [prea] [bpost]' rc=0
+[SAME] C-n2-c+-dqstar-Q :: set -- a b; x=S; count "${x:+"$*"}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] C-n2-c+-dqstar-U :: set -- a b; x=S; count ${x:+"$*"}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] C-n3-c--dqat-Q :: set -- a b c; unset x; count "${x:-"$@"}"
+    bash: 'n=3 [a] [b] [c]' rc=0
+    psh : 'n=3 [a] [b] [c]' rc=0
+[SAME] C-n3-c--dqat-U :: set -- a b c; unset x; count ${x:-"$@"}
+    bash: 'n=3 [a] [b] [c]' rc=0
+    psh : 'n=3 [a] [b] [c]' rc=0
+[SAME] C-n3-c--bareat-Q :: set -- a b c; unset x; count "${x:-$@}"
+    bash: 'n=3 [a] [b] [c]' rc=0
+    psh : 'n=3 [a] [b] [c]' rc=0
+[SAME] C-n3-c--bareat-U :: set -- a b c; unset x; count ${x:-$@}
+    bash: 'n=3 [a] [b] [c]' rc=0
+    psh : 'n=3 [a] [b] [c]' rc=0
+[SAME] C-n3-c--mixed-Q :: set -- a b c; unset x; count "${x:-pre"$@"post}"
+    bash: 'n=3 [prea] [b] [cpost]' rc=0
+    psh : 'n=3 [prea] [b] [cpost]' rc=0
+[SAME] C-n3-c--mixed-U :: set -- a b c; unset x; count ${x:-pre"$@"post}
+    bash: 'n=3 [prea] [b] [cpost]' rc=0
+    psh : 'n=3 [prea] [b] [cpost]' rc=0
+[SAME] C-n3-c--dqstar-Q :: set -- a b c; unset x; count "${x:-"$*"}"
+    bash: 'n=1 [a b c]' rc=0
+    psh : 'n=1 [a b c]' rc=0
+[SAME] C-n3-c--dqstar-U :: set -- a b c; unset x; count ${x:-"$*"}
+    bash: 'n=1 [a b c]' rc=0
+    psh : 'n=1 [a b c]' rc=0
+[SAME] C-n3-c+-dqat-Q :: set -- a b c; x=S; count "${x:+"$@"}"
+    bash: 'n=3 [a] [b] [c]' rc=0
+    psh : 'n=3 [a] [b] [c]' rc=0
+[SAME] C-n3-c+-dqat-U :: set -- a b c; x=S; count ${x:+"$@"}
+    bash: 'n=3 [a] [b] [c]' rc=0
+    psh : 'n=3 [a] [b] [c]' rc=0
+[SAME] C-n3-c+-bareat-Q :: set -- a b c; x=S; count "${x:+$@}"
+    bash: 'n=3 [a] [b] [c]' rc=0
+    psh : 'n=3 [a] [b] [c]' rc=0
+[SAME] C-n3-c+-bareat-U :: set -- a b c; x=S; count ${x:+$@}
+    bash: 'n=3 [a] [b] [c]' rc=0
+    psh : 'n=3 [a] [b] [c]' rc=0
+[SAME] C-n3-c+-mixed-Q :: set -- a b c; x=S; count "${x:+pre"$@"post}"
+    bash: 'n=3 [prea] [b] [cpost]' rc=0
+    psh : 'n=3 [prea] [b] [cpost]' rc=0
+[SAME] C-n3-c+-mixed-U :: set -- a b c; x=S; count ${x:+pre"$@"post}
+    bash: 'n=3 [prea] [b] [cpost]' rc=0
+    psh : 'n=3 [prea] [b] [cpost]' rc=0
+[SAME] C-n3-c+-dqstar-Q :: set -- a b c; x=S; count "${x:+"$*"}"
+    bash: 'n=1 [a b c]' rc=0
+    psh : 'n=1 [a b c]' rc=0
+[SAME] C-n3-c+-dqstar-U :: set -- a b c; x=S; count ${x:+"$*"}
+    bash: 'n=1 [a b c]' rc=0
+    psh : 'n=1 [a b c]' rc=0
+[SAME] C-n1e-c--dqat-Q :: set -- ""; unset x; count "${x:-"$@"}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1e-c--dqat-U :: set -- ""; unset x; count ${x:-"$@"}
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1e-c--bareat-Q :: set -- ""; unset x; count "${x:-$@}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1e-c--bareat-U :: set -- ""; unset x; count ${x:-$@}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] C-n1e-c--mixed-Q :: set -- ""; unset x; count "${x:-pre"$@"post}"
+    bash: 'n=1 [prepost]' rc=0
+    psh : 'n=1 [prepost]' rc=0
+[SAME] C-n1e-c--mixed-U :: set -- ""; unset x; count ${x:-pre"$@"post}
+    bash: 'n=1 [prepost]' rc=0
+    psh : 'n=1 [prepost]' rc=0
+[SAME] C-n1e-c--dqstar-Q :: set -- ""; unset x; count "${x:-"$*"}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1e-c--dqstar-U :: set -- ""; unset x; count ${x:-"$*"}
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1e-c+-dqat-Q :: set -- ""; x=S; count "${x:+"$@"}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1e-c+-dqat-U :: set -- ""; x=S; count ${x:+"$@"}
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1e-c+-bareat-Q :: set -- ""; x=S; count "${x:+$@}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1e-c+-bareat-U :: set -- ""; x=S; count ${x:+$@}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] C-n1e-c+-mixed-Q :: set -- ""; x=S; count "${x:+pre"$@"post}"
+    bash: 'n=1 [prepost]' rc=0
+    psh : 'n=1 [prepost]' rc=0
+[SAME] C-n1e-c+-mixed-U :: set -- ""; x=S; count ${x:+pre"$@"post}
+    bash: 'n=1 [prepost]' rc=0
+    psh : 'n=1 [prepost]' rc=0
+[SAME] C-n1e-c+-dqstar-Q :: set -- ""; x=S; count "${x:+"$*"}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n1e-c+-dqstar-U :: set -- ""; x=S; count ${x:+"$*"}
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] C-n2e-c--dqat-Q :: set -- "" b; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] C-n2e-c--dqat-U :: set -- "" b; unset x; count ${x:-"$@"}
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] C-n2e-c--bareat-Q :: set -- "" b; unset x; count "${x:-$@}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] C-n2e-c--bareat-U :: set -- "" b; unset x; count ${x:-$@}
+    bash: 'n=1 [b]' rc=0
+    psh : 'n=1 [b]' rc=0
+[SAME] C-n2e-c--mixed-Q :: set -- "" b; unset x; count "${x:-pre"$@"post}"
+    bash: 'n=2 [pre] [bpost]' rc=0
+    psh : 'n=2 [pre] [bpost]' rc=0
+[SAME] C-n2e-c--mixed-U :: set -- "" b; unset x; count ${x:-pre"$@"post}
+    bash: 'n=2 [pre] [bpost]' rc=0
+    psh : 'n=2 [pre] [bpost]' rc=0
+[SAME] C-n2e-c--dqstar-Q :: set -- "" b; unset x; count "${x:-"$*"}"
+    bash: 'n=1 [ b]' rc=0
+    psh : 'n=1 [ b]' rc=0
+[SAME] C-n2e-c--dqstar-U :: set -- "" b; unset x; count ${x:-"$*"}
+    bash: 'n=1 [ b]' rc=0
+    psh : 'n=1 [ b]' rc=0
+[SAME] C-n2e-c+-dqat-Q :: set -- "" b; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] C-n2e-c+-dqat-U :: set -- "" b; x=S; count ${x:+"$@"}
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] C-n2e-c+-bareat-Q :: set -- "" b; x=S; count "${x:+$@}"
+    bash: 'n=2 [] [b]' rc=0
+    psh : 'n=2 [] [b]' rc=0
+[SAME] C-n2e-c+-bareat-U :: set -- "" b; x=S; count ${x:+$@}
+    bash: 'n=1 [b]' rc=0
+    psh : 'n=1 [b]' rc=0
+[SAME] C-n2e-c+-mixed-Q :: set -- "" b; x=S; count "${x:+pre"$@"post}"
+    bash: 'n=2 [pre] [bpost]' rc=0
+    psh : 'n=2 [pre] [bpost]' rc=0
+[SAME] C-n2e-c+-mixed-U :: set -- "" b; x=S; count ${x:+pre"$@"post}
+    bash: 'n=2 [pre] [bpost]' rc=0
+    psh : 'n=2 [pre] [bpost]' rc=0
+[SAME] C-n2e-c+-dqstar-Q :: set -- "" b; x=S; count "${x:+"$*"}"
+    bash: 'n=1 [ b]' rc=0
+    psh : 'n=1 [ b]' rc=0
+[SAME] C-n2e-c+-dqstar-U :: set -- "" b; x=S; count ${x:+"$*"}
+    bash: 'n=1 [ b]' rc=0
+    psh : 'n=1 [ b]' rc=0
+[SAME] C-n3e-c--dqat-Q :: set -- a "" c; unset x; count "${x:-"$@"}"
+    bash: 'n=3 [a] [] [c]' rc=0
+    psh : 'n=3 [a] [] [c]' rc=0
+[SAME] C-n3e-c--dqat-U :: set -- a "" c; unset x; count ${x:-"$@"}
+    bash: 'n=3 [a] [] [c]' rc=0
+    psh : 'n=3 [a] [] [c]' rc=0
+[SAME] C-n3e-c--bareat-Q :: set -- a "" c; unset x; count "${x:-$@}"
+    bash: 'n=3 [a] [] [c]' rc=0
+    psh : 'n=3 [a] [] [c]' rc=0
+[SAME] C-n3e-c--bareat-U :: set -- a "" c; unset x; count ${x:-$@}
+    bash: 'n=2 [a] [c]' rc=0
+    psh : 'n=2 [a] [c]' rc=0
+[SAME] C-n3e-c--mixed-Q :: set -- a "" c; unset x; count "${x:-pre"$@"post}"
+    bash: 'n=3 [prea] [] [cpost]' rc=0
+    psh : 'n=3 [prea] [] [cpost]' rc=0
+[SAME] C-n3e-c--mixed-U :: set -- a "" c; unset x; count ${x:-pre"$@"post}
+    bash: 'n=3 [prea] [] [cpost]' rc=0
+    psh : 'n=3 [prea] [] [cpost]' rc=0
+[SAME] C-n3e-c--dqstar-Q :: set -- a "" c; unset x; count "${x:-"$*"}"
+    bash: 'n=1 [a  c]' rc=0
+    psh : 'n=1 [a  c]' rc=0
+[SAME] C-n3e-c--dqstar-U :: set -- a "" c; unset x; count ${x:-"$*"}
+    bash: 'n=1 [a  c]' rc=0
+    psh : 'n=1 [a  c]' rc=0
+[SAME] C-n3e-c+-dqat-Q :: set -- a "" c; x=S; count "${x:+"$@"}"
+    bash: 'n=3 [a] [] [c]' rc=0
+    psh : 'n=3 [a] [] [c]' rc=0
+[SAME] C-n3e-c+-dqat-U :: set -- a "" c; x=S; count ${x:+"$@"}
+    bash: 'n=3 [a] [] [c]' rc=0
+    psh : 'n=3 [a] [] [c]' rc=0
+[SAME] C-n3e-c+-bareat-Q :: set -- a "" c; x=S; count "${x:+$@}"
+    bash: 'n=3 [a] [] [c]' rc=0
+    psh : 'n=3 [a] [] [c]' rc=0
+[SAME] C-n3e-c+-bareat-U :: set -- a "" c; x=S; count ${x:+$@}
+    bash: 'n=2 [a] [c]' rc=0
+    psh : 'n=2 [a] [c]' rc=0
+[SAME] C-n3e-c+-mixed-Q :: set -- a "" c; x=S; count "${x:+pre"$@"post}"
+    bash: 'n=3 [prea] [] [cpost]' rc=0
+    psh : 'n=3 [prea] [] [cpost]' rc=0
+[SAME] C-n3e-c+-mixed-U :: set -- a "" c; x=S; count ${x:+pre"$@"post}
+    bash: 'n=3 [prea] [] [cpost]' rc=0
+    psh : 'n=3 [prea] [] [cpost]' rc=0
+[SAME] C-n3e-c+-dqstar-Q :: set -- a "" c; x=S; count "${x:+"$*"}"
+    bash: 'n=1 [a  c]' rc=0
+    psh : 'n=1 [a  c]' rc=0
+[SAME] C-n3e-c+-dqstar-U :: set -- a "" c; x=S; count ${x:+"$*"}
+    bash: 'n=1 [a  c]' rc=0
+    psh : 'n=1 [a  c]' rc=0
+--- MATRIX-C-POSITIONAL-COUNT: 112 cells | DIFF 2 | SAME 110 ---
+
+=== MATRIX-D-ASSIGN-STORE-VS-EMIT ===
+[SAME] D-emit-c=-dqat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x:="$@"}"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-store-c=-dqat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x:="$@"}"; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-c=-dqat-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x:="$@"}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] D-store-c=-dqat-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x:="$@"}; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-c=-bareat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x:=$@}"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-store-c=-bareat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x:=$@}"; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-c=-bareat-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x:=$@}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] D-store-c=-bareat-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x:=$@}; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-c=-dqstar-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x:="$*"}"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-store-c=-dqstar-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x:="$*"}"; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-c=-dqstar-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x:="$*"}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] D-store-c=-dqstar-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x:="$*"}; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-c=-arrat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x:="${a[@]}"}"
+    bash: 'n=1 [p q 2]' rc=0
+    psh : 'n=1 [p q 2]' rc=0
+[SAME] D-store-c=-arrat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x:="${a[@]}"}"; count "$x"
+    bash: 'n=1 [p q 2]' rc=0
+    psh : 'n=1 [p q 2]' rc=0
+[SAME] D-emit-c=-arrat-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x:="${a[@]}"}
+    bash: 'n=3 [p] [q] [2]' rc=0
+    psh : 'n=3 [p] [q] [2]' rc=0
+[SAME] D-store-c=-arrat-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x:="${a[@]}"}; count "$x"
+    bash: 'n=1 [p q 2]' rc=0
+    psh : 'n=1 [p q 2]' rc=0
+[SAME] D-emit-c=-sqsp-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x:='a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] D-store-c=-sqsp-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x:='a b'}"; count "$x"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] D-emit-c=-sqsp-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x:='a b'}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] D-store-c=-sqsp-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x:='a b'}; count "$x"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] D-emit-c=-bslash-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x:=a\ b}"
+    bash: 'n=1 [a\\ b]' rc=0
+    psh : 'n=1 [a\\ b]' rc=0
+[SAME] D-store-c=-bslash-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x:=a\ b}"; count "$x"
+    bash: 'n=1 [a\\ b]' rc=0
+    psh : 'n=1 [a\\ b]' rc=0
+[SAME] D-emit-c=-bslash-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x:=a\ b}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] D-store-c=-bslash-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x:=a\ b}; count "$x"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] D-emit-c=-emptydq-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x:=""}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] D-store-c=-emptydq-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x:=""}"; count "$x"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] D-emit-c=-emptydq-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x:=""}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] D-store-c=-emptydq-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x:=""}; count "$x"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] D-emit-c=-mixed-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x:=pre"$@"post}"
+    bash: 'n=1 [prea 1 bpost]' rc=0
+    psh : 'n=1 [prea 1 bpost]' rc=0
+[SAME] D-store-c=-mixed-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x:=pre"$@"post}"; count "$x"
+    bash: 'n=1 [prea 1 bpost]' rc=0
+    psh : 'n=1 [prea 1 bpost]' rc=0
+[SAME] D-emit-c=-mixed-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x:=pre"$@"post}
+    bash: 'n=3 [prea] [1] [bpost]' rc=0
+    psh : 'n=3 [prea] [1] [bpost]' rc=0
+[SAME] D-store-c=-mixed-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x:=pre"$@"post}; count "$x"
+    bash: 'n=1 [prea 1 bpost]' rc=0
+    psh : 'n=1 [prea 1 bpost]' rc=0
+[SAME] D-emit-=-dqat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x="$@"}"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-store-=-dqat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x="$@"}"; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-=-dqat-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x="$@"}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] D-store-=-dqat-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x="$@"}; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-=-bareat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x=$@}"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-store-=-bareat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x=$@}"; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-=-bareat-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x=$@}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] D-store-=-bareat-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x=$@}; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-=-dqstar-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x="$*"}"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-store-=-dqstar-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x="$*"}"; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-=-dqstar-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x="$*"}
+    bash: 'n=3 [a] [1] [b]' rc=0
+    psh : 'n=3 [a] [1] [b]' rc=0
+[SAME] D-store-=-dqstar-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x="$*"}; count "$x"
+    bash: 'n=1 [a 1 b]' rc=0
+    psh : 'n=1 [a 1 b]' rc=0
+[SAME] D-emit-=-arrat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x="${a[@]}"}"
+    bash: 'n=1 [p q 2]' rc=0
+    psh : 'n=1 [p q 2]' rc=0
+[SAME] D-store-=-arrat-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x="${a[@]}"}"; count "$x"
+    bash: 'n=1 [p q 2]' rc=0
+    psh : 'n=1 [p q 2]' rc=0
+[SAME] D-emit-=-arrat-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x="${a[@]}"}
+    bash: 'n=3 [p] [q] [2]' rc=0
+    psh : 'n=3 [p] [q] [2]' rc=0
+[SAME] D-store-=-arrat-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x="${a[@]}"}; count "$x"
+    bash: 'n=1 [p q 2]' rc=0
+    psh : 'n=1 [p q 2]' rc=0
+[SAME] D-emit-=-sqsp-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x='a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] D-store-=-sqsp-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x='a b'}"; count "$x"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] D-emit-=-sqsp-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x='a b'}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] D-store-=-sqsp-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x='a b'}; count "$x"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] D-emit-=-bslash-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x=a\ b}"
+    bash: 'n=1 [a\\ b]' rc=0
+    psh : 'n=1 [a\\ b]' rc=0
+[SAME] D-store-=-bslash-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x=a\ b}"; count "$x"
+    bash: 'n=1 [a\\ b]' rc=0
+    psh : 'n=1 [a\\ b]' rc=0
+[SAME] D-emit-=-bslash-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x=a\ b}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] D-store-=-bslash-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x=a\ b}; count "$x"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] D-emit-=-emptydq-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x=""}"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] D-store-=-emptydq-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x=""}"; count "$x"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] D-emit-=-emptydq-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x=""}
+    bash: 'n=0' rc=0
+    psh : 'n=0' rc=0
+[SAME] D-store-=-emptydq-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x=""}; count "$x"
+    bash: 'n=1 []' rc=0
+    psh : 'n=1 []' rc=0
+[SAME] D-emit-=-mixed-Q :: set -- "a 1" b; a=(p "q 2"); unset x; count "${x=pre"$@"post}"
+    bash: 'n=1 [prea 1 bpost]' rc=0
+    psh : 'n=1 [prea 1 bpost]' rc=0
+[SAME] D-store-=-mixed-Q :: set -- "a 1" b; a=(p "q 2"); unset x; : "${x=pre"$@"post}"; count "$x"
+    bash: 'n=1 [prea 1 bpost]' rc=0
+    psh : 'n=1 [prea 1 bpost]' rc=0
+[SAME] D-emit-=-mixed-U :: set -- "a 1" b; a=(p "q 2"); unset x; count ${x=pre"$@"post}
+    bash: 'n=3 [prea] [1] [bpost]' rc=0
+    psh : 'n=3 [prea] [1] [bpost]' rc=0
+[SAME] D-store-=-mixed-U :: set -- "a 1" b; a=(p "q 2"); unset x; : ${x=pre"$@"post}; count "$x"
+    bash: 'n=1 [prea 1 bpost]' rc=0
+    psh : 'n=1 [prea 1 bpost]' rc=0
+--- MATRIX-D-ASSIGN-STORE-VS-EMIT: 64 cells | DIFF 0 | SAME 64 ---
+
+=== MATRIX-E-QMARK ===
+[DIFF] E-c?-dqat-Q :: set -- a b; unset x; count "${x:?"$@"}"
+    bash: '/opt/homebrew/bin/bash: line 5: x: a b' rc=1
+    psh : 'psh: line 5: x: a b' rc=127
+[DIFF] E-c?-dqat-U :: set -- a b; unset x; count ${x:?"$@"}
+    bash: '/opt/homebrew/bin/bash: line 8: x: a b' rc=1
+    psh : 'psh: line 8: x: a b' rc=127
+[DIFF] E-c?-bareat-Q :: set -- a b; unset x; count "${x:?$@}"
+    bash: '/opt/homebrew/bin/bash: line 11: x: a b' rc=1
+    psh : 'psh: line 11: x: a b' rc=127
+[DIFF] E-c?-bareat-U :: set -- a b; unset x; count ${x:?$@}
+    bash: '/opt/homebrew/bin/bash: line 14: x: a b' rc=1
+    psh : 'psh: line 14: x: a b' rc=127
+[DIFF] E-c?-sq-Q :: set -- a b; unset x; count "${x:?'m sg'}"
+    bash: '/opt/homebrew/bin/bash: line 17: x: m sg' rc=1
+    psh : 'psh: line 17: x: m sg' rc=127
+[DIFF] E-c?-sq-U :: set -- a b; unset x; count ${x:?'m sg'}
+    bash: '/opt/homebrew/bin/bash: line 20: x: m sg' rc=1
+    psh : 'psh: line 20: x: m sg' rc=127
+[DIFF] E-c?-empty-Q :: set -- a b; unset x; count "${x:?}"
+    bash: '/opt/homebrew/bin/bash: line 23: x: parameter null or not set' rc=1
+    psh : 'psh: line 23: x: parameter null or not set' rc=127
+[DIFF] E-c?-empty-U :: set -- a b; unset x; count ${x:?}
+    bash: '/opt/homebrew/bin/bash: line 26: x: parameter null or not set' rc=1
+    psh : 'psh: line 26: x: parameter null or not set' rc=127
+[DIFF] E-?-dqat-Q :: set -- a b; unset x; count "${x?"$@"}"
+    bash: '/opt/homebrew/bin/bash: line 29: x: a b' rc=1
+    psh : 'psh: line 29: x: a b' rc=127
+[DIFF] E-?-dqat-U :: set -- a b; unset x; count ${x?"$@"}
+    bash: '/opt/homebrew/bin/bash: line 32: x: a b' rc=1
+    psh : 'psh: line 32: x: a b' rc=127
+[DIFF] E-?-bareat-Q :: set -- a b; unset x; count "${x?$@}"
+    bash: '/opt/homebrew/bin/bash: line 35: x: a b' rc=1
+    psh : 'psh: line 35: x: a b' rc=127
+[DIFF] E-?-bareat-U :: set -- a b; unset x; count ${x?$@}
+    bash: '/opt/homebrew/bin/bash: line 38: x: a b' rc=1
+    psh : 'psh: line 38: x: a b' rc=127
+[DIFF] E-?-sq-Q :: set -- a b; unset x; count "${x?'m sg'}"
+    bash: '/opt/homebrew/bin/bash: line 41: x: m sg' rc=1
+    psh : 'psh: line 41: x: m sg' rc=127
+[DIFF] E-?-sq-U :: set -- a b; unset x; count ${x?'m sg'}
+    bash: '/opt/homebrew/bin/bash: line 44: x: m sg' rc=1
+    psh : 'psh: line 44: x: m sg' rc=127
+[DIFF] E-?-empty-Q :: set -- a b; unset x; count "${x?}"
+    bash: '/opt/homebrew/bin/bash: line 47: x: parameter not set' rc=1
+    psh : 'psh: line 47: x: parameter not set' rc=127
+[DIFF] E-?-empty-U :: set -- a b; unset x; count ${x?}
+    bash: '/opt/homebrew/bin/bash: line 50: x: parameter not set' rc=1
+    psh : 'psh: line 50: x: parameter not set' rc=127
+--- MATRIX-E-QMARK: 16 cells | DIFF 16 | SAME 0 ---
+
+=== MATRIX-F-IFS ===
+[SAME] F-dflt-c--dqat-Q :: set -- a b;  unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c--dqat-U :: set -- a b;  unset x; count ${x:-"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c--bareat-Q :: set -- a b;  unset x; count "${x:-$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c--bareat-U :: set -- a b;  unset x; count ${x:-$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c--dqstar-Q :: set -- a b;  unset x; count "${x:-"$*"}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c--dqstar-U :: set -- a b;  unset x; count ${x:-"$*"}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c--barestar-Q :: set -- a b;  unset x; count "${x:-$*}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c--barestar-U :: set -- a b;  unset x; count ${x:-$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c--sqsp-Q :: set -- a b;  unset x; count "${x:-'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-dflt-c--sqsp-U :: set -- a b;  unset x; count ${x:-'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c--plain-Q :: set -- a b;  unset x; count "${x:-a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c--plain-U :: set -- a b;  unset x; count ${x:-a b}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c+-dqat-Q :: set -- a b;  x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c+-dqat-U :: set -- a b;  x=S; count ${x:+"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c+-bareat-Q :: set -- a b;  x=S; count "${x:+$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c+-bareat-U :: set -- a b;  x=S; count ${x:+$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c+-dqstar-Q :: set -- a b;  x=S; count "${x:+"$*"}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c+-dqstar-U :: set -- a b;  x=S; count ${x:+"$*"}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c+-barestar-Q :: set -- a b;  x=S; count "${x:+$*}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c+-barestar-U :: set -- a b;  x=S; count ${x:+$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-dflt-c+-sqsp-Q :: set -- a b;  x=S; count "${x:+'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-dflt-c+-sqsp-U :: set -- a b;  x=S; count ${x:+'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c+-plain-Q :: set -- a b;  x=S; count "${x:+a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-dflt-c+-plain-U :: set -- a b;  x=S; count ${x:+a b}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-empty-c--dqat-Q :: set -- a b; IFS=; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-empty-c--dqat-U :: set -- a b; IFS=; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-empty-c--bareat-Q :: set -- a b; IFS=; unset x; count "${x:-$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-empty-c--bareat-U :: set -- a b; IFS=; unset x; count ${x:-$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-empty-c--dqstar-Q :: set -- a b; IFS=; unset x; count "${x:-"$*"}"
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] F-empty-c--dqstar-U :: set -- a b; IFS=; unset x; count ${x:-"$*"}
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] F-empty-c--barestar-Q :: set -- a b; IFS=; unset x; count "${x:-$*}"
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[DIFF] F-empty-c--barestar-U :: set -- a b; IFS=; unset x; count ${x:-$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] F-empty-c--sqsp-Q :: set -- a b; IFS=; unset x; count "${x:-'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-empty-c--sqsp-U :: set -- a b; IFS=; unset x; count ${x:-'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-empty-c--plain-Q :: set -- a b; IFS=; unset x; count "${x:-a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-empty-c--plain-U :: set -- a b; IFS=; unset x; count ${x:-a b}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-empty-c+-dqat-Q :: set -- a b; IFS=; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-empty-c+-dqat-U :: set -- a b; IFS=; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-empty-c+-bareat-Q :: set -- a b; IFS=; x=S; count "${x:+$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-empty-c+-bareat-U :: set -- a b; IFS=; x=S; count ${x:+$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-empty-c+-dqstar-Q :: set -- a b; IFS=; x=S; count "${x:+"$*"}"
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] F-empty-c+-dqstar-U :: set -- a b; IFS=; x=S; count ${x:+"$*"}
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] F-empty-c+-barestar-Q :: set -- a b; IFS=; x=S; count "${x:+$*}"
+    bash: 'n=1 [ab]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[DIFF] F-empty-c+-barestar-U :: set -- a b; IFS=; x=S; count ${x:+$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=1 [ab]' rc=0
+[SAME] F-empty-c+-sqsp-Q :: set -- a b; IFS=; x=S; count "${x:+'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-empty-c+-sqsp-U :: set -- a b; IFS=; x=S; count ${x:+'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-empty-c+-plain-Q :: set -- a b; IFS=; x=S; count "${x:+a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-empty-c+-plain-U :: set -- a b; IFS=; x=S; count ${x:+a b}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colon-c--dqat-Q :: set -- a b; IFS=:; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colon-c--dqat-U :: set -- a b; IFS=:; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colon-c--bareat-Q :: set -- a b; IFS=:; unset x; count "${x:-$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[DIFF] F-colon-c--bareat-U :: set -- a b; IFS=:; unset x; count ${x:-$@}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colon-c--dqstar-Q :: set -- a b; IFS=:; unset x; count "${x:-"$*"}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colon-c--dqstar-U :: set -- a b; IFS=:; unset x; count ${x:-"$*"}
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colon-c--barestar-Q :: set -- a b; IFS=:; unset x; count "${x:-$*}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colon-c--barestar-U :: set -- a b; IFS=:; unset x; count ${x:-$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colon-c--sqsp-Q :: set -- a b; IFS=:; unset x; count "${x:-'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-colon-c--sqsp-U :: set -- a b; IFS=:; unset x; count ${x:-'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colon-c--plain-Q :: set -- a b; IFS=:; unset x; count "${x:-a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colon-c--plain-U :: set -- a b; IFS=:; unset x; count ${x:-a b}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colon-c+-dqat-Q :: set -- a b; IFS=:; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colon-c+-dqat-U :: set -- a b; IFS=:; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colon-c+-bareat-Q :: set -- a b; IFS=:; x=S; count "${x:+$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[DIFF] F-colon-c+-bareat-U :: set -- a b; IFS=:; x=S; count ${x:+$@}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colon-c+-dqstar-Q :: set -- a b; IFS=:; x=S; count "${x:+"$*"}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colon-c+-dqstar-U :: set -- a b; IFS=:; x=S; count ${x:+"$*"}
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colon-c+-barestar-Q :: set -- a b; IFS=:; x=S; count "${x:+$*}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colon-c+-barestar-U :: set -- a b; IFS=:; x=S; count ${x:+$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colon-c+-sqsp-Q :: set -- a b; IFS=:; x=S; count "${x:+'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-colon-c+-sqsp-U :: set -- a b; IFS=:; x=S; count ${x:+'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colon-c+-plain-Q :: set -- a b; IFS=:; x=S; count "${x:+a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colon-c+-plain-U :: set -- a b; IFS=:; x=S; count ${x:+a b}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c--dqat-Q :: set -- a b; IFS=' '; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c--dqat-U :: set -- a b; IFS=' '; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c--bareat-Q :: set -- a b; IFS=' '; unset x; count "${x:-$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c--bareat-U :: set -- a b; IFS=' '; unset x; count ${x:-$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c--dqstar-Q :: set -- a b; IFS=' '; unset x; count "${x:-"$*"}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c--dqstar-U :: set -- a b; IFS=' '; unset x; count ${x:-"$*"}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c--barestar-Q :: set -- a b; IFS=' '; unset x; count "${x:-$*}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c--barestar-U :: set -- a b; IFS=' '; unset x; count ${x:-$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c--sqsp-Q :: set -- a b; IFS=' '; unset x; count "${x:-'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-sp-c--sqsp-U :: set -- a b; IFS=' '; unset x; count ${x:-'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c--plain-Q :: set -- a b; IFS=' '; unset x; count "${x:-a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c--plain-U :: set -- a b; IFS=' '; unset x; count ${x:-a b}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c+-dqat-Q :: set -- a b; IFS=' '; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c+-dqat-U :: set -- a b; IFS=' '; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c+-bareat-Q :: set -- a b; IFS=' '; x=S; count "${x:+$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c+-bareat-U :: set -- a b; IFS=' '; x=S; count ${x:+$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c+-dqstar-Q :: set -- a b; IFS=' '; x=S; count "${x:+"$*"}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c+-dqstar-U :: set -- a b; IFS=' '; x=S; count ${x:+"$*"}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c+-barestar-Q :: set -- a b; IFS=' '; x=S; count "${x:+$*}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c+-barestar-U :: set -- a b; IFS=' '; x=S; count ${x:+$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-sp-c+-sqsp-Q :: set -- a b; IFS=' '; x=S; count "${x:+'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-sp-c+-sqsp-U :: set -- a b; IFS=' '; x=S; count ${x:+'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c+-plain-Q :: set -- a b; IFS=' '; x=S; count "${x:+a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-sp-c+-plain-U :: set -- a b; IFS=' '; x=S; count ${x:+a b}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c--dqat-Q :: set -- a b; IFS=': '; unset x; count "${x:-"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c--dqat-U :: set -- a b; IFS=': '; unset x; count ${x:-"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c--bareat-Q :: set -- a b; IFS=': '; unset x; count "${x:-$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c--bareat-U :: set -- a b; IFS=': '; unset x; count ${x:-$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c--dqstar-Q :: set -- a b; IFS=': '; unset x; count "${x:-"$*"}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colonsp-c--dqstar-U :: set -- a b; IFS=': '; unset x; count ${x:-"$*"}
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colonsp-c--barestar-Q :: set -- a b; IFS=': '; unset x; count "${x:-$*}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colonsp-c--barestar-U :: set -- a b; IFS=': '; unset x; count ${x:-$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c--sqsp-Q :: set -- a b; IFS=': '; unset x; count "${x:-'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-colonsp-c--sqsp-U :: set -- a b; IFS=': '; unset x; count ${x:-'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colonsp-c--plain-Q :: set -- a b; IFS=': '; unset x; count "${x:-a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colonsp-c--plain-U :: set -- a b; IFS=': '; unset x; count ${x:-a b}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c+-dqat-Q :: set -- a b; IFS=': '; x=S; count "${x:+"$@"}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c+-dqat-U :: set -- a b; IFS=': '; x=S; count ${x:+"$@"}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c+-bareat-Q :: set -- a b; IFS=': '; x=S; count "${x:+$@}"
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c+-bareat-U :: set -- a b; IFS=': '; x=S; count ${x:+$@}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c+-dqstar-Q :: set -- a b; IFS=': '; x=S; count "${x:+"$*"}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colonsp-c+-dqstar-U :: set -- a b; IFS=': '; x=S; count ${x:+"$*"}
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colonsp-c+-barestar-Q :: set -- a b; IFS=': '; x=S; count "${x:+$*}"
+    bash: 'n=1 [a:b]' rc=0
+    psh : 'n=1 [a:b]' rc=0
+[SAME] F-colonsp-c+-barestar-U :: set -- a b; IFS=': '; x=S; count ${x:+$*}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+[SAME] F-colonsp-c+-sqsp-Q :: set -- a b; IFS=': '; x=S; count "${x:+'a b'}"
+    bash: "n=1 ['a b']" rc=0
+    psh : "n=1 ['a b']" rc=0
+[SAME] F-colonsp-c+-sqsp-U :: set -- a b; IFS=': '; x=S; count ${x:+'a b'}
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colonsp-c+-plain-Q :: set -- a b; IFS=': '; x=S; count "${x:+a b}"
+    bash: 'n=1 [a b]' rc=0
+    psh : 'n=1 [a b]' rc=0
+[SAME] F-colonsp-c+-plain-U :: set -- a b; IFS=': '; x=S; count ${x:+a b}
+    bash: 'n=2 [a] [b]' rc=0
+    psh : 'n=2 [a] [b]' rc=0
+--- MATRIX-F-IFS: 120 cells | DIFF 4 | SAME 116 ---
+
+elapsed: 3.7s for 504 cells

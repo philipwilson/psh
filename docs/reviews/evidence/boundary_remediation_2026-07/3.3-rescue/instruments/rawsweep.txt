@@ -1,0 +1,1556 @@
+RAW-PAIR BASE-vs-TIP SWEEP (B1(d) corrected instrument)
+  base : /Users/pwilson/src/psh-r3-3-base  @ d0f7d929ebdbde4d4ed794de66a0ae760ee2e655  import=/Users/pwilson/src/psh-r3-3-base/psh/__init__.py
+  tip  : /Users/pwilson/src/psh-r3-3  @ 8251ed51beb954e6c8471e45be1f098bcfbd487b  import=/Users/pwilson/src/psh-r3-3/psh/__init__.py
+  bash : /opt/homebrew/bin/bash — GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip psh/ dirty: False
+  cells: 2146 distinct ids
+
+CELLS WHOSE BEHAVIOR CHANGED base -> tip: 386
+
+[toward-bash] A-+-nul-arrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-+-nul-arrat-U
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-+-nul-barearrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-+-nul-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-+-nul-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-+-nul-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-+-nul-mixed-Q
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-+-nul-mixed-U
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-+-nul-nested-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-+-nul-nested-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-+-set-arrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-+-set-arrat-U
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-+-set-barearrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-+-set-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-+-set-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-+-set-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-+-set-mixed-Q
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-+-set-mixed-U
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-+-set-nested-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-+-set-nested-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A---uns-arrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A---uns-arrat-U
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A---uns-barearrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A---uns-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A---uns-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A---uns-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A---uns-mixed-Q
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A---uns-mixed-U
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A---uns-nested-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A---uns-nested-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c+-set-arrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-c+-set-arrat-U
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-c+-set-barearrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-c+-set-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c+-set-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c+-set-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c+-set-mixed-Q
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-c+-set-mixed-U
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-c+-set-nested-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c+-set-nested-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--nul-arrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-c--nul-arrat-U
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-c--nul-barearrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-c--nul-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--nul-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--nul-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--nul-mixed-Q
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-c--nul-mixed-U
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-c--nul-nested-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--nul-nested-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--uns-arrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-c--uns-arrat-U
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-c--uns-barearrat-Q
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] A-c--uns-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--uns-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--uns-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--uns-mixed-Q
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-c--uns-mixed-U
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] A-c--uns-nested-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] A-c--uns-nested-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-allempty-+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-allempty-+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-allempty-+-bareat-Q
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty-+-dqat-Q
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty-+-dqat-U
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty---arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-allempty---arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-allempty---bareat-Q
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty---dqat-Q
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty---dqat-U
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty-c+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-allempty-c+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-allempty-c+-bareat-Q
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty-c+-dqat-Q
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty-c+-dqat-U
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty-c--arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-allempty-c--arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-allempty-c--bareat-Q
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty-c--dqat-Q
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-allempty-c--dqat-U
+    bash: ('n=2 [] []', '0')
+    base: ('n=1 [ ]', '0')
+    tip : ('n=2 [] []', '0')
+[toward-bash] B-bothsp-+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-bothsp-+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-bothsp-+-bareat-Q
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp-+-dqat-Q
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp-+-dqat-U
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp---arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-bothsp---arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-bothsp---bareat-Q
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp---dqat-Q
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp---dqat-U
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp-c+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-bothsp-c+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-bothsp-c+-bareat-Q
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp-c+-dqat-Q
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp-c+-dqat-U
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp-c--arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-bothsp-c--arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-bothsp-c--bareat-Q
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp-c--dqat-Q
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-bothsp-c--dqat-U
+    bash: ('n=2 [a 1] [b 2]', '0')
+    base: ('n=1 [a 1 b 2]', '0')
+    tip : ('n=2 [a 1] [b 2]', '0')
+[toward-bash] B-colon-+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-colon-+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-colon-+-bareat-Q
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon-+-dqat-Q
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon-+-dqat-U
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon---arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-colon---arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-colon---bareat-Q
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon---dqat-Q
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon---dqat-U
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon-c+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-colon-c+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-colon-c+-bareat-Q
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon-c+-dqat-Q
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon-c+-dqat-U
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon-c--arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-colon-c--arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-colon-c--bareat-Q
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon-c--dqat-Q
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-colon-c--dqat-U
+    bash: ('n=2 [a:z] [b]', '0')
+    base: ('n=1 [a:z b]', '0')
+    tip : ('n=2 [a:z] [b]', '0')
+[toward-bash] B-emptyp-+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-emptyp-+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-emptyp-+-bareat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp-+-dqat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp-+-dqat-U
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp---arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-emptyp---arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-emptyp---bareat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp---dqat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp---dqat-U
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp-c+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-emptyp-c+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-emptyp-c+-bareat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp-c+-dqat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp-c+-dqat-U
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp-c--arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-emptyp-c--arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-emptyp-c--bareat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp-c--dqat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-emptyp-c--dqat-U
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] B-glob-+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-glob-+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-glob-+-bareat-Q
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob-+-dqat-Q
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob-+-dqat-U
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob---arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-glob---arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-glob---bareat-Q
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob---dqat-Q
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob---dqat-U
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob-c+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-glob-c+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-glob-c+-bareat-Q
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob-c+-dqat-Q
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob-c+-dqat-U
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob-c--arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-glob-c--arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-glob-c--bareat-Q
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob-c--dqat-Q
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-glob-c--dqat-U
+    bash: ('n=2 [a*] [b]', '0')
+    base: ('n=1 [a* b]', '0')
+    tip : ('n=2 [a*] [b]', '0')
+[toward-bash] B-plain-+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-plain-+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-plain-+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain-+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain-+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain---arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-plain---arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-plain---bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain---dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain---dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain-c+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-plain-c+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-plain-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain-c--arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-plain-c--arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-plain-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-plain-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] B-space-+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-+-bareat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-+-dqat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-+-dqat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space---arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space---arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space---bareat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space---dqat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space---dqat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c+-bareat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c+-dqat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c+-dqat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c--arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c--arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c--bareat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c--dqat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-space-c--dqat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-tab-+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-tab-+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-tab-+-bareat-Q
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab-+-dqat-Q
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab-+-dqat-U
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab---arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-tab---arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-tab---bareat-Q
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab---dqat-Q
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab---dqat-U
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab-c+-arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-tab-c+-arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-tab-c+-bareat-Q
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab-c+-dqat-Q
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab-c+-dqat-U
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab-c--arrat-Q
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-tab-c--arrat-U
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] B-tab-c--bareat-Q
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab-c--dqat-Q
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] B-tab-c--dqat-U
+    bash: ('n=2 [a\tz] [b]', '0')
+    base: ('n=1 [a\tz b]', '0')
+    tip : ('n=2 [a\tz] [b]', '0')
+[toward-bash] C-n0-c+-dqat-U
+    bash: ('n=0', '0')
+    base: ('n=1 []', '0')
+    tip : ('n=0', '0')
+[toward-bash] C-n0-c--dqat-U
+    bash: ('n=0', '0')
+    base: ('n=1 []', '0')
+    tip : ('n=0', '0')
+[toward-bash] C-n2-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] C-n2-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] C-n2-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] C-n2-c+-mixed-Q
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] C-n2-c+-mixed-U
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] C-n2-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] C-n2-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] C-n2-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] C-n2-c--mixed-Q
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] C-n2-c--mixed-U
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] C-n2e-c+-bareat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] C-n2e-c+-dqat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] C-n2e-c+-dqat-U
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] C-n2e-c+-mixed-Q
+    bash: ('n=2 [pre] [bpost]', '0')
+    base: ('n=1 [pre bpost]', '0')
+    tip : ('n=2 [pre] [bpost]', '0')
+[toward-bash] C-n2e-c+-mixed-U
+    bash: ('n=2 [pre] [bpost]', '0')
+    base: ('n=1 [pre bpost]', '0')
+    tip : ('n=2 [pre] [bpost]', '0')
+[toward-bash] C-n2e-c--bareat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] C-n2e-c--dqat-Q
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] C-n2e-c--dqat-U
+    bash: ('n=2 [] [b]', '0')
+    base: ('n=1 [ b]', '0')
+    tip : ('n=2 [] [b]', '0')
+[toward-bash] C-n2e-c--mixed-Q
+    bash: ('n=2 [pre] [bpost]', '0')
+    base: ('n=1 [pre bpost]', '0')
+    tip : ('n=2 [pre] [bpost]', '0')
+[toward-bash] C-n2e-c--mixed-U
+    bash: ('n=2 [pre] [bpost]', '0')
+    base: ('n=1 [pre bpost]', '0')
+    tip : ('n=2 [pre] [bpost]', '0')
+[toward-bash] C-n3-c+-bareat-Q
+    bash: ('n=3 [a] [b] [c]', '0')
+    base: ('n=1 [a b c]', '0')
+    tip : ('n=3 [a] [b] [c]', '0')
+[toward-bash] C-n3-c+-dqat-Q
+    bash: ('n=3 [a] [b] [c]', '0')
+    base: ('n=1 [a b c]', '0')
+    tip : ('n=3 [a] [b] [c]', '0')
+[toward-bash] C-n3-c+-dqat-U
+    bash: ('n=3 [a] [b] [c]', '0')
+    base: ('n=1 [a b c]', '0')
+    tip : ('n=3 [a] [b] [c]', '0')
+[toward-bash] C-n3-c+-mixed-Q
+    bash: ('n=3 [prea] [b] [cpost]', '0')
+    base: ('n=1 [prea b cpost]', '0')
+    tip : ('n=3 [prea] [b] [cpost]', '0')
+[toward-bash] C-n3-c+-mixed-U
+    bash: ('n=3 [prea] [b] [cpost]', '0')
+    base: ('n=1 [prea b cpost]', '0')
+    tip : ('n=3 [prea] [b] [cpost]', '0')
+[toward-bash] C-n3-c--bareat-Q
+    bash: ('n=3 [a] [b] [c]', '0')
+    base: ('n=1 [a b c]', '0')
+    tip : ('n=3 [a] [b] [c]', '0')
+[toward-bash] C-n3-c--dqat-Q
+    bash: ('n=3 [a] [b] [c]', '0')
+    base: ('n=1 [a b c]', '0')
+    tip : ('n=3 [a] [b] [c]', '0')
+[toward-bash] C-n3-c--dqat-U
+    bash: ('n=3 [a] [b] [c]', '0')
+    base: ('n=1 [a b c]', '0')
+    tip : ('n=3 [a] [b] [c]', '0')
+[toward-bash] C-n3-c--mixed-Q
+    bash: ('n=3 [prea] [b] [cpost]', '0')
+    base: ('n=1 [prea b cpost]', '0')
+    tip : ('n=3 [prea] [b] [cpost]', '0')
+[toward-bash] C-n3-c--mixed-U
+    bash: ('n=3 [prea] [b] [cpost]', '0')
+    base: ('n=1 [prea b cpost]', '0')
+    tip : ('n=3 [prea] [b] [cpost]', '0')
+[toward-bash] C-n3e-c+-bareat-Q
+    bash: ('n=3 [a] [] [c]', '0')
+    base: ('n=1 [a  c]', '0')
+    tip : ('n=3 [a] [] [c]', '0')
+[toward-bash] C-n3e-c+-dqat-Q
+    bash: ('n=3 [a] [] [c]', '0')
+    base: ('n=1 [a  c]', '0')
+    tip : ('n=3 [a] [] [c]', '0')
+[toward-bash] C-n3e-c+-dqat-U
+    bash: ('n=3 [a] [] [c]', '0')
+    base: ('n=1 [a  c]', '0')
+    tip : ('n=3 [a] [] [c]', '0')
+[toward-bash] C-n3e-c+-mixed-Q
+    bash: ('n=3 [prea] [] [cpost]', '0')
+    base: ('n=1 [prea  cpost]', '0')
+    tip : ('n=3 [prea] [] [cpost]', '0')
+[toward-bash] C-n3e-c+-mixed-U
+    bash: ('n=3 [prea] [] [cpost]', '0')
+    base: ('n=1 [prea  cpost]', '0')
+    tip : ('n=3 [prea] [] [cpost]', '0')
+[toward-bash] C-n3e-c--bareat-Q
+    bash: ('n=3 [a] [] [c]', '0')
+    base: ('n=1 [a  c]', '0')
+    tip : ('n=3 [a] [] [c]', '0')
+[toward-bash] C-n3e-c--dqat-Q
+    bash: ('n=3 [a] [] [c]', '0')
+    base: ('n=1 [a  c]', '0')
+    tip : ('n=3 [a] [] [c]', '0')
+[toward-bash] C-n3e-c--dqat-U
+    bash: ('n=3 [a] [] [c]', '0')
+    base: ('n=1 [a  c]', '0')
+    tip : ('n=3 [a] [] [c]', '0')
+[toward-bash] C-n3e-c--mixed-Q
+    bash: ('n=3 [prea] [] [cpost]', '0')
+    base: ('n=1 [prea  cpost]', '0')
+    tip : ('n=3 [prea] [] [cpost]', '0')
+[toward-bash] C-n3e-c--mixed-U
+    bash: ('n=3 [prea] [] [cpost]', '0')
+    base: ('n=1 [prea  cpost]', '0')
+    tip : ('n=3 [prea] [] [cpost]', '0')
+[toward-bash] F-colon-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colon-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colon-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colon-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colon-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colon-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colonsp-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colonsp-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colonsp-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colonsp-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colonsp-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-colonsp-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-dflt-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-dflt-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-dflt-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-dflt-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-dflt-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-dflt-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-empty-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-empty-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-empty-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-empty-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-empty-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-empty-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-sp-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-sp-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-sp-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-sp-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-sp-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] F-sp-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-empty---bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-empty---dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-empty---dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-empty-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-empty-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-empty-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-one-+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-one-+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-one-+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-one-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-one-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-one-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-onenull-+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-onenull-+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-onenull-+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-onenull-c+-bareat-Q
+    bash: ('n=1 []', '0')
+    base: ('n=0', '0')
+    tip : ('n=1 []', '0')
+[toward-bash] H-at-onenull-c+-dqat-Q
+    bash: ('n=1 []', '0')
+    base: ('n=0', '0')
+    tip : ('n=1 []', '0')
+[toward-bash] H-at-onenull-c+-dqstar-Q
+    bash: ('n=1 []', '0')
+    base: ('n=0', '0')
+    tip : ('n=1 []', '0')
+[toward-bash] H-at-onenull-c+-emptydq-Q
+    bash: ('n=1 []', '0')
+    base: ('n=0', '0')
+    tip : ('n=1 []', '0')
+[toward-bash] H-at-onenull-c+-plain-Q
+    bash: ('n=1 []', '0')
+    base: ('n=0', '0')
+    tip : ('n=1 []', '0')
+[toward-bash] H-at-onenull-c+-sqsp-Q
+    bash: ('n=1 []', '0')
+    base: ('n=0', '0')
+    tip : ('n=1 []', '0')
+[toward-bash] H-at-onenull-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-onenull-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-onenull-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-two-+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-two-+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-two-+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-two-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-two-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-two-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-twonull-+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-twonull-+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-twonull-+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-twonull-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-twonull-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-twonull-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-unset---bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-unset---dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-at-unset---dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-empty---bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-empty---dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-empty---dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-empty-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-empty-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-empty-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-one-+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-one-+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-one-+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-one-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-one-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-one-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-onenull-+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-onenull-+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-onenull-+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-onenull-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-onenull-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-onenull-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-two-+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-two-+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-two-+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-two-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-two-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-two-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-twonull-+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-twonull-+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-twonull-+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-twonull-c+-bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-twonull-c+-dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-twonull-c+-dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-unset---bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-unset---dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-unset---dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-unset-c--bareat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-unset-c--dqat-Q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H-star-unset-c--dqat-U
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] H6-onenull-@-c+-Q
+    bash: ('n=1 []', '0')
+    base: ('n=0', '0')
+    tip : ('n=1 []', '0')
+[toward-bash] H6-p-onenull-@-c+-Q
+    bash: ('n=1 []', '0')
+    base: ('n=0', '0')
+    tip : ('n=1 []', '0')
+[toward-bash] I-exportname
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] I-funcarg
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[neither-matches-bash] I-redirtarget
+    bash: ('/opt/homebrew/bin/bash: line 245: ${x:-"$@"}: ambiguous redirect\nn=0', '0')
+    base: ('n=2 [a] [b]', '0')
+    tip : ('psh: line 245: ${x:-"$@"}: ambiguous redirect\nn=0', '0')
+[toward-bash] J-c+-bs-quote-Q
+    bash: ('n=2 ["a] [b"]', '0')
+    base: ('n=1 ["a b"]', '0')
+    tip : ('n=2 ["a] [b"]', '0')
+[toward-bash] J-c+-dq-bs-at-Q
+    bash: ('n=2 [pre"a] [b"post]', '0')
+    base: ('n=1 [pre"a b"post]', '0')
+    tip : ('n=2 [pre"a] [b"post]', '0')
+[toward-bash] J-c+-dq-bs-at-U
+    bash: ('n=2 [pre"a] [b"post]', '0')
+    base: ('n=1 [pre"a b"post]', '0')
+    tip : ('n=2 [pre"a] [b"post]', '0')
+[toward-bash] J-c--bs-quote-Q
+    bash: ('n=2 ["a] [b"]', '0')
+    base: ('n=1 ["a b"]', '0')
+    tip : ('n=2 ["a] [b"]', '0')
+[toward-bash] J-c--dq-bs-at-Q
+    bash: ('n=2 [pre"a] [b"post]', '0')
+    base: ('n=1 [pre"a b"post]', '0')
+    tip : ('n=2 [pre"a] [b"post]', '0')
+[toward-bash] J-c--dq-bs-at-U
+    bash: ('n=2 [pre"a] [b"post]', '0')
+    base: ('n=1 [pre"a b"post]', '0')
+    tip : ('n=2 [pre"a] [b"post]', '0')
+[toward-bash] K-arr
+    bash: ('n=2 [p] [q]', '0')
+    base: ('n=1 [p q]', '0')
+    tip : ('n=2 [p] [q]', '0')
+[toward-bash] K-mixed
+    bash: ('n=2 [prea] [bpost]', '0')
+    base: ('n=1 [prea bpost]', '0')
+    tip : ('n=2 [prea] [bpost]', '0')
+[toward-bash] K-n0
+    bash: ('n=0', '0')
+    base: ('n=1 []', '0')
+    tip : ('n=0', '0')
+[toward-bash] K-nested
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] K-sig-plus
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] K-sig-q
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+[toward-bash] K-sig-sp
+    bash: ('n=2 [a 1] [b]', '0')
+    base: ('n=1 [a 1 b]', '0')
+    tip : ('n=2 [a 1] [b]', '0')
+[toward-bash] K-sig-u
+    bash: ('n=2 [a] [b]', '0')
+    base: ('n=1 [a b]', '0')
+    tip : ('n=2 [a] [b]', '0')
+
+summary: 386 changed — toward-bash 385, away-from-bash 0, neither 1
+unchanged: 1760

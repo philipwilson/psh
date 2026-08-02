@@ -21,6 +21,7 @@ from ..core.exceptions import BadSubstitutionError
 from ..lexer.pure_helpers import handle_ansi_c_escape
 from ..utils.escapes import quote_at_q
 from .arithmetic import ArithmeticError, evaluate_arithmetic
+from .operands import OperandOrStr, OperandValue
 
 if TYPE_CHECKING:
     from ._protocols import VariableExpanderProtocol
@@ -252,7 +253,18 @@ class OperatorOpsMixin(_Base):
             return ([self._expand_operand(operand or '', quote_ctx)]
                     if triggered else list(elements))
         if base == '+':
-            return ([] if triggered
+            # When the alternate does NOT fire, bash yields the VIEW's own
+            # fields — it does not synthesize an empty scalar. The two are
+            # indistinguishable for an unset or empty array (both are zero
+            # fields) but not for an array holding ONE EMPTY element, which is
+            # the cell that separates them (probed 5.2.26):
+            #     unset a;    "${a[@]:+X}"  -> 0 fields
+            #     a=();       "${a[@]:+X}"  -> 0 fields
+            #     a=("");     "${a[@]:+X}"  -> 1 EMPTY field   <- the cell
+            # The trigger LOGIC is unchanged: the joined view is still what is
+            # tested for null, so a=("" "") joins to " ", is non-null, and
+            # DOES fire.
+            return (list(elements) if triggered
                     else [self._expand_operand(operand or '', quote_ctx)])
         if base == '=':
             if triggered:
@@ -265,16 +277,37 @@ class OperatorOpsMixin(_Base):
             # bash renders the error word with UNQUOTED-context rules even
             # when the expansion sits inside double quotes (probed:
             # "${x:?'m'}" reports m, not 'm').
-            msg = str(self._expand_operand(operand)) if operand else empty_msg
+            msg = (self._expand_operand(operand).as_scalar()  # RULED: one message
+                   if operand else empty_msg)
             print(f"{self.state.error_location_prefix()}{qmark_subject}: {msg}", file=sys.stderr)
             self.state.last_exit_code = 127
             raise FatalExpansionError(f"{qmark_subject}: {msg}", exit_code=127)
         return list(elements)
 
+    def _apply_scalar_operator(self, operator: str, value: str,
+                               operand: Optional[str],
+                               var_name: str = '', is_set: bool = True) -> str:
+        """:meth:`_apply_operator` for a NON-value operator.
+
+        The per-ELEMENT drivers (``${a[@]#pat}``, ``${*^^}``, …) reach this;
+        the value operators (``:-`` ``:=`` ``:+`` ``:?`` and the non-colon
+        twins) are dispatched to ``_view_conditional`` BEFORE any per-element
+        loop, so a field vector cannot arrive here. The assertion makes that
+        structural fact checkable instead of assumed — and it is deliberately
+        NOT a projection: silently calling ``as_scalar()`` here would add an
+        unruled scalar re-entry, which is the defect this slot removed.
+        """
+        result = self._apply_operator(operator, value, operand,
+                                      var_name=var_name, is_set=is_set)
+        assert not isinstance(result, OperandValue), (
+            f"value operator {operator!r} reached a per-element driver; "
+            f"value operators dispatch through _view_conditional")
+        return result
+
     def _apply_operator(self, operator: str, value: str,
                         operand: Optional[str],
                         var_name: str = '', is_set: bool = True,
-                        quote_ctx: Optional[str] = None) -> str:
+                        quote_ctx: Optional[str] = None) -> OperandOrStr:
         """Apply a parameter expansion operator to a resolved value.
 
         ``is_set`` distinguishes unset from set-but-empty and is only consulted
@@ -391,15 +424,26 @@ class OperatorOpsMixin(_Base):
                         quote_ctx: Optional[str]) -> str:
         """Expand, STORE, and return a ``:=``/``=`` default (bash).
 
-        The assigned value is the quote-removed word; the expansion then
-        RESULTS in the variable's new value — plain value semantics, so
-        an unquoted ``${x:=a\\ b}`` splits into two fields even though
-        ``${x:-a\\ b}`` stays one (probed: bash stores "a b" and prints
-        <a><b>). Hence the plain-str coercion: no operand segments (and
-        their splitting protection) survive an assignment.
+        RULED TERMINAL CONSUMER — and the one that is terminal in bash
+        ITSELF, not merely in psh: a shell variable holds a string, so the
+        assignment PROJECTS the operand's field vector at store time and the
+        expansion then RESULTS in the stored scalar under ordinary value
+        semantics. Both faces are measured (bash 5.2.26, matrix D, 64 cells):
+
+            set -- a b; unset x
+            "${x:="$@"}"                -> ONE field  'a b'   (store, quoted)
+             ${x:="$@"}                 -> TWO fields 'a','b' (stored scalar,
+                                           re-split by ordinary IFS rules)
+            : "${x:="$@"}"; echo "$x"   -> 'a b'               (what is stored)
+
+        So the operand's field structure and its splitting protection do NOT
+        survive the store — an unquoted ``${x:=a\\ b}`` splits into two
+        fields even though ``${x:-a\\ b}`` stays one. Making this
+        field-preserving would be a REGRESSION, not a fix; it is pinned as
+        such (tests/conformance/bash/test_operand_field_ir_conformance.py).
         """
         self._reject_nonassignable(var_name)
-        expanded_default = str(self._expand_operand(operand, quote_ctx))
+        expanded_default = self._expand_operand(operand, quote_ctx).as_scalar()
         if var_name:
             try:
                 self.set_var_or_array_element(var_name, expanded_default)
@@ -433,7 +477,8 @@ class OperatorOpsMixin(_Base):
         rules regardless of the enclosing quotes (probed: both
         ``${x:?'m'}`` and ``"${x:?'m'}"`` report ``m``).
         """
-        msg = str(self._expand_operand(operand)) if operand else default_msg
+        msg = (self._expand_operand(operand).as_scalar()  # RULED: one message
+               if operand else default_msg)
         print(f"{self.state.error_location_prefix()}{var_name}: {msg}", file=sys.stderr)
         self.state.last_exit_code = 127
         raise FatalExpansionError(f"{var_name}: {msg}", exit_code=127)

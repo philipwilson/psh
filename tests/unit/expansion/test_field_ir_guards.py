@@ -79,19 +79,56 @@ class TestSoleChokepoint:
             f"the sole terminal boundary: {offenders}")
 
     def test_expanded_word_constructed_only_in_engine(self):
-        """The field IR is produced only by the engine (word_expander.py)."""
-        offenders = []
+        """``ExpandedWord`` has ONE producer; ``ExpandedField`` has two.
+
+        The WORD-level IR is still built only by the engine — that is the
+        boundary this guard exists to hold, and it is what keeps
+        ``materialize`` the sole IR-to-strings conversion.
+
+        ``ExpandedField`` gained a second producer in remediation slot 3.3
+        (integrator ruling (c)): a VALUE OPERAND expands to a field vector, and
+        that vector is expressed in the walker's OWN currency instead of a
+        parallel operand-specific type. This honours the guard's intent rather
+        than evading it — reappraisal #20 H5/H6 was about admitting no
+        ALTERNATIVE field representation and no join before splitting or
+        globbing, and ``operands.py`` introduces neither: it feeds fields into
+        the same splice algebra ``$@`` already used, and never flattens them.
+        A THIRD producer needs the same scrutiny the second one got.
+        """
+        field_producers = {
+            "psh/expansion/word_expander.py",
+            "psh/expansion/operands.py",   # value operands -> field vector (3.3)
+        }
+        word_offenders = []
+        field_offenders = []
         for py, src in _psh_sources():
             rel = py.relative_to(ROOT).as_posix()
-            if rel == "psh/expansion/word_expander.py":
-                continue
-            # Constructing the IR outside the engine would be a second producer.
-            if re.search(r"\bExpandedWord\(", src) or re.search(
-                    r"\bExpandedField\(", src):
-                offenders.append(rel)
-        assert not offenders, (
-            "ExpandedWord/ExpandedField are built only by WordExpander "
-            f"(one producer): {offenders}")
+            if (re.search(r"\bExpandedWord\(", src)
+                    and rel != "psh/expansion/word_expander.py"):
+                word_offenders.append(rel)
+            if re.search(r"\bExpandedField\(", src) and rel not in field_producers:
+                field_offenders.append(rel)
+        assert not word_offenders, (
+            "ExpandedWord is built only by WordExpander (one producer): "
+            f"{word_offenders}")
+        assert not field_offenders, (
+            "ExpandedField producers are the engine and the operand walker "
+            f"only: {field_offenders}")
+
+    def test_operand_walker_stays_field_level(self):
+        """The second ``ExpandedField`` producer must not drift word-level.
+
+        ``operands.py`` may build FIELDS; building an ``ExpandedWord`` there —
+        or calling ``materialize`` — would make it a second word engine and put
+        a second path in front of the sole terminal boundary. Pinned separately
+        so the widening above cannot creep upward unnoticed.
+        """
+        src = (ROOT / "psh/expansion/operands.py").read_text()
+        assert not re.search(r"\bExpandedWord\(", src), (
+            "operands.py must stay FIELD-level: it builds ExpandedField, "
+            "never the word-level IR")
+        assert ".materialize(" not in src, (
+            "operands.py must not reach the IR-to-strings boundary")
 
 
 # --------------------------------------------------------------------------

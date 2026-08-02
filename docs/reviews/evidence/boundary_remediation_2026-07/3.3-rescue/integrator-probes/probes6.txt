@@ -1,0 +1,7 @@
+printfv|unset x; set -- a b; printf -v out "%s" "${x:-"$@"}"; C "$out"
+testb|unset x; set -- a b; [ -n "${x:-"$@"}" ]; echo rc=$?
+pfx|unset x; ZQA=1; ZQB=2; C "${x:-"${!ZQ@}"}"
+atQ|unset x; set -- a b; C "${x:-"${@@Q}"}"
+hK|unset x; declare -A h; h[k]=v; C "${x:-"${h[@]@K}"}"
+adj2|unset x; a=(p "q m"); b=(n); C "${x:-"${a[@]}""${b[@]}"}"
+slice0|unset x; set -- a b; C "${x:-"${@:}"}"

@@ -63,7 +63,7 @@ from ..ast_nodes import (
 )
 from ..core import TopLevelAbort
 from .glob import GLOB_METACHARS, has_glob_metacharacters
-from .operands import DQ_WORD
+from .operands import DQ_WORD, OperandValue
 from .word_expansion_types import (
     ExpandedField,
     ExpandedWord,
@@ -484,21 +484,23 @@ class WordExpander:
         # Ordinary single-field expansion.
         result = self.manager.expand_expansion(
             part.expansion, quote_ctx=DQ_WORD if part.quoted else None)
+        if isinstance(result, OperandValue):
+            # A value-operand result (${x:-word}) is a FIELD VECTOR, so it
+            # routes through the SAME splice algebra as $@ instead of
+            # collapsing to one run — bash "${x:-"$@"}" is <a><b>, and the
+            # field boundaries survive the enclosing quotes. Run protection
+            # was already decided during the operand walk (the quote context
+            # is threaded into it), so the runs splice as-is.
+            if policy.split:
+                builder.splice(result.fields)
+            elif result.fields:
+                # No-split: join field texts with a single space (bash).
+                builder.add(FieldRun(
+                    ' '.join(f.text for f in result.fields),
+                    _PROTECTED, _NEVER, 'field-join'))
+            return
         if part.quoted:
             builder.add(FieldRun(result, _PROTECTED, _NEVER, 'expansion'))
-            return
-        segs = getattr(result, 'segments', None)
-        if segs is not None:
-            # A value-operand result (${x:-word}): quoted/escaped regions of
-            # the operand are protected from splitting and globbing; unquoted
-            # regions stay active/split-eligible (bash: ${x:-'a b'} one field).
-            runs = self._operand_runs(segs)
-            if runs:
-                builder.add_runs(runs)
-            else:
-                # Empty operand: keep the zero-field rule (an expansion that
-                # vanishes contributes no surviving field on its own).
-                builder.add(FieldRun('', _ACTIVE, _ELIGIBLE, 'operand'))
             return
         # Plain unquoted expansion: its text is the only split-eligible text,
         # and glob chars in it are active.
@@ -506,18 +508,22 @@ class WordExpander:
 
     def _fields_to_expanded(self, fields: List, quoted: bool
                             ) -> List[ExpandedField]:
-        """Map ``$@``/``[@]`` field strings to :class:`ExpandedField`s.
+        """Map ``$@``/``[@]`` view members to :class:`ExpandedField`s.
 
-        A quoted field is one PROTECTED, NEVER run. An unquoted field is
-        ACTIVE and IFS_ELIGIBLE (each field further splits), unless it carries
-        operand ``.segments`` (a triggered ``${a[@]:-'a b'}`` default), whose
-        protected regions stay protected.
+        A quoted field is one PROTECTED, NEVER run; an unquoted field is
+        ACTIVE and IFS_ELIGIBLE (each field further splits). A member that is
+        an :class:`OperandValue` is a TRIGGERED value operand
+        (``${a[@]:-"$@"}``) and contributes its OWN field vector — one view
+        member can therefore yield several fields, which is bash: the
+        ``[@]``/``[*]`` joiner applies to the array's elements, never to a
+        substituted operand (``${a[*]:-"$@"}`` is ``<a><b>``, while
+        ``${a[*]:-'p q'}`` stays the single field ``p q`` because that
+        operand is itself one field).
         """
         out: List[ExpandedField] = []
         for f in fields:
-            segs = getattr(f, 'segments', None)
-            if segs is not None and not quoted:
-                out.append(ExpandedField(self._operand_runs(segs)))
+            if isinstance(f, OperandValue):
+                out.extend(f.fields)
             elif quoted:
                 out.append(ExpandedField(
                     [FieldRun(str(f), _PROTECTED, _NEVER, 'field')]))
@@ -525,20 +531,6 @@ class WordExpander:
                 out.append(ExpandedField(
                     [FieldRun(str(f), _ACTIVE, _ELIGIBLE, 'field')]))
         return out
-
-    @staticmethod
-    def _operand_runs(segs: Tuple[Tuple[str, bool], ...]) -> List[FieldRun]:
-        """Map OperandResult (text, protected) pairs to :class:`FieldRun`s.
-
-        Protected regions (quoted/escaped operand text) become PROTECTED,
-        NEVER runs; unprotected regions stay ACTIVE, IFS_ELIGIBLE like any
-        unquoted expansion result.
-        """
-        return [
-            FieldRun(text, _PROTECTED, _NEVER, 'operand') if protected
-            else FieldRun(text, _ACTIVE, _ELIGIBLE, 'operand')
-            for text, protected in segs
-        ]
 
     # ------------------------------------------------------------------
     # Field splitting (pass 2): per committed field, split IFS_ELIGIBLE runs
@@ -825,9 +817,15 @@ class WordExpander:
                         part.expansion.direction, part.expansion.source)
                     result_parts.append(path)
                 else:
-                    result_parts.append(str(self.manager.expand_expansion(
+                    # RULED TERMINAL CONSUMER: an assignment value is ONE
+                    # string (bash: v=${x:-"$@"} assigns 'a b'), so a value
+                    # operand's field vector is projected here by name.
+                    value = self.manager.expand_expansion(
                         part.expansion,
-                        quote_ctx=DQ_WORD if part.quoted else None)))
+                        quote_ctx=DQ_WORD if part.quoted else None)
+                    result_parts.append(value.as_scalar()
+                                        if isinstance(value, OperandValue)
+                                        else str(value))
                 prev_char = ''
                 value_len += 1
 

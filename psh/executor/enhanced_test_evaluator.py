@@ -15,7 +15,7 @@ from ..builtins.test_command import TestBuiltin, variable_is_set
 from ..core import IndexedArray, VarAttributes
 from ..expansion.arithmetic import evaluate_arithmetic
 from ..expansion.glob import translate_posix_classes
-from ..expansion.operands import DQ_STRING, DQ_WORD
+from ..expansion.operands import DQ_STRING, DQ_WORD, OperandValue
 from ..expansion.pattern import match_shell_pattern
 from ..expansion.word_expander import WordExpander
 from ..utils.file_tests import file_newer_than, file_older_than, files_same
@@ -77,7 +77,12 @@ class TestExpressionEvaluator:
             if isinstance(part, LiteralPart):
                 out.append(self._literal_part_text(part, leading=(i == 0)))
             elif isinstance(part, ExpansionPart):
-                out.append(self.expansion_manager.expand_expansion(part.expansion))
+                # RULED TERMINAL CONSUMER: a [[ ]] operand is ONE string
+                # (bash: `[[ ${x:-"$@"} == "a b" ]]` is true), so a value
+                # operand's field vector is projected here by name.
+                expanded = self.expansion_manager.expand_expansion(part.expansion)
+                out.append(expanded.as_scalar()
+                           if isinstance(expanded, OperandValue) else expanded)
         return ''.join(out)
 
     def _literal_part_text(self, part, leading: bool) -> str:
@@ -259,6 +264,10 @@ class TestExpressionEvaluator:
                 expanded = self.expansion_manager.expand_expansion(
                     part.expansion,
                     quote_ctx=DQ_WORD if part.quoted else None)
+                # RULED TERMINAL CONSUMER (see _operand_string): a [[ ]] RHS
+                # pattern is one pattern string.
+                if isinstance(expanded, OperandValue):
+                    expanded = expanded.as_scalar()
                 out.append(escape(expanded) if part.quoted else expanded)
         return ''.join(out)
 
