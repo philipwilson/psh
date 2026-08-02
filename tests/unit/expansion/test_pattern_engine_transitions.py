@@ -28,6 +28,13 @@ SCOPE. The "no-match substitution scan is linear" guarantee holds for
 EXTGLOB-FREE patterns. Extglob-bearing patterns keep the per-position forward
 DP — the all-start pre-filter is gated off for them, because building it costs
 O(n^2) there — and get their own achieved-bound rows.
+
+BOUND TIGHTNESS. Several bounds below sit just above the measured ratio (4.6
+on a measured 3.97-3.99). That is safe ONLY because the instrument is
+noise-free: transition counts are deterministic integers, identical on any
+machine under any load. The same margin around a wall-clock measurement would
+be a flake generator — which is precisely why these pins count instead of
+timing, and why the wall-clock numbers live in the slot ledger instead.
 """
 import pytest
 
@@ -152,6 +159,12 @@ def test_extglob_no_match_scan_achieved_bound(pattern, unit):
     (building it would cost more than it saves), so each position runs its own
     forward DP. The subject reaches the group, so this row cannot pass by
     short-circuit. Measured x3.97-3.99; bounded at 4.6.
+
+    A bound that sits this close to the measurement is only safe because the
+    instrument is NOISE-FREE: transition counts are deterministic, so the same
+    tree yields the same integer on any machine under any load. The identical
+    margin around a wall-clock number would be a flake generator, which is the
+    reason these pins count instead of timing.
     """
     counts = _counts(pattern, 'scan', lambda n: unit * n)
     ratio = _max_ratio(counts)
