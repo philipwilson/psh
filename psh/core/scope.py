@@ -197,7 +197,7 @@ class ScopeManager:
         ``declare -g``/``export`` in the body reaches PAST it to the real
         global and therefore SURVIVES the return. Modelling the temp-env as
         a genuine scope reproduces all of that exactly — see
-        ``CommandAssignments.apply_prefix``. Named distinctly from a
+        ``CommandAssignments.commit_prefix``. Named distinctly from a
         function scope so ``--debug-scopes`` output stays legible.
 
         ``staging=True`` marks the scope as a prefix transaction still in
@@ -676,7 +676,7 @@ class ScopeManager:
                 # container — ``a=(1 2 3); a=x`` yields a[0]=x with a still an
                 # array; only a compound ``a=(...)`` replaces the whole array.
                 # This also makes a temp-env prefix (``a=x cmd``) non-destructive:
-                # apply_prefix snapshots the whole array (a deep copy) up front
+                # commit_prefix snapshots the whole array (a deep copy) up front
                 # and restore() puts that container back afterward.
                 scalar = self._apply_attributes(
                     value,

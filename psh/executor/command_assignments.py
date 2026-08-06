@@ -36,7 +36,7 @@ POSIX ordering contract (probe-verified against bash 5.2):
    the caller makes the assignment error fatal instead.
 """
 import copy
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Sequence, Tuple, cast
 
 from ..ast_nodes import ExpansionPart, LiteralPart, Word
 from ..core import (
@@ -109,14 +109,14 @@ class StagedPrefix(NamedTuple):
         temporary environment does.
     """
 
-    pairs: List[Tuple[str, object]]
+    pairs: Sequence[Tuple[str, object]]
     failed: bool
     staging_scope: bool
 
 
 # The staged value for a command with NO prefix assignments — the hot-path
 # default, so an unprefixed command allocates nothing and opens no scope.
-EMPTY_STAGED = StagedPrefix([], False, False)
+EMPTY_STAGED = StagedPrefix((), False, False)
 
 
 class CommandAssignments:
@@ -581,6 +581,7 @@ class CommandAssignments:
             # variable was UNSET, so restore() can re-unset it; an ARRAY is a
             # DEEP COPY (the scalar write mutates element 0 in place, and
             # restoring only element 0 would leave a spurious slot).
+            saved = None
             if var not in saved_vars:
                 existing = scope_manager.get_variable_object(var)
                 existing_val = existing.value if existing is not None else None
@@ -589,7 +590,7 @@ class CommandAssignments:
                     state_snapshot = copy.deepcopy(existing_val)
                 else:
                     state_snapshot = scope_manager.get_variable(var)
-                saved_vars[var] = {
+                saved = {
                     'state': state_snapshot,
                     'was_exported': bool(existing and existing.is_exported),
                 }
@@ -597,10 +598,18 @@ class CommandAssignments:
                 scope_manager.set_variable(
                     var, resolved, attributes=VarAttributes.EXPORT, local=False)
             except ReadonlyVariableError as e:
+                # Use e.name so a readonly array-element write reports the array
+                # name (``a[0]=X cmd`` -> ``a: readonly variable``).
                 print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
                       file=self.state.stderr)
                 failed = True
                 continue
+            # Recorded only once the write SUCCEEDED: a refused assignment left
+            # the variable untouched, so restore() must have nothing to undo for
+            # it. Snapshotting before the write would hand restore a name it
+            # never changed.
+            if saved is not None:
+                saved_vars[var] = saved
             assignments.append((var, resolved))
             # An array object must never reach execve's environment (F8) —
             # serialize to its scalar view (element 0).
@@ -618,10 +627,17 @@ class CommandAssignments:
                      temp_scope: bool = False) -> PrefixOutcome:
         """Expand and install a command's prefix assignments in one call.
 
-        The one-shot composition of the two transaction phases, for callers
-        that do NOT need to resolve the command in between. The executor uses
-        :meth:`expand_prefix` and :meth:`commit_prefix` separately, because
-        resolution must read the state the expansions leave behind.
+        TEST-ONLY as of slot 3.4: there are no production callers. The
+        executor drives :meth:`expand_prefix` and :meth:`commit_prefix`
+        separately, because resolution must run between them and read the
+        state the expansions leave behind — a static ratchet
+        (``tests/unit/tooling/test_resolution_timing_ratchet_3_4.py``) fails
+        if this composition reappears on the dispatch path, where it would
+        expand a second time.
+
+        Retained because the unit tests for the assignment sub-domain want
+        one call rather than two, and because "expand then commit with a
+        known route" is the honest summary of what the pair does.
         """
         return self.commit_prefix(self.expand_prefix(raw_assignments),
                                   temp_scope=temp_scope)

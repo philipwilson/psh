@@ -597,6 +597,16 @@ class CommandExecutor:
             # An error between the transaction's two phases (i.e. while
             # resolving) leaves the staging scope open with nothing owning it.
             if staging_scope_open:
+                # Mirror of CommandAssignments._pop_staging_scope: assert
+                # ownership rather than assume it. Both failure directions are
+                # silent — popping a scope we do not own destroys someone
+                # else's bindings, and leaving ours behind is invisible to
+                # every enumeration surface.
+                stack = self.state.scope_manager.scope_stack
+                assert len(stack) > 1 and stack[-1].is_staging, (
+                    "prefix transaction lost ownership of its staging scope "
+                    f"(depth={len(stack)}, "
+                    f"top_is_staging={getattr(stack[-1], 'is_staging', None)})")
                 self.state.scope_manager.pop_scope()
             # In POSIX mode, prefix assignments before a special builtin
             # persist (only then is prefix_assignments_persist True);
