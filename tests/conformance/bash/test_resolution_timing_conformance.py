@@ -382,6 +382,10 @@ def test_readonly_posixly_correct_blocks_the_flip():
                  id='store-read-by-later-prefix'),
     pytest.param('set -- a b c; unset IFS; A=${IFS:=-} B="$*" '
                  'eval \'echo "B=[$B]"\'', id='IFS-written-then-used'),
+    # The read spelling too: the row above proves the JOIN saw the new IFS,
+    # this one proves IFS itself reads back as stored (N3).
+    pytest.param('set -- a b c; unset IFS; A=${IFS:=-} B="$*" '
+                 'eval \'echo "B=[$B] IFS=[$IFS]"\'', id='IFS-read-spelling'),
     pytest.param('A=$((PATH=0)) /bin/echo abs-path-works; echo "rc=$?"',
                  id='PATH-clobbered-by-arithmetic'),
 ])
@@ -891,6 +895,10 @@ def test_divergence_readonly_prefix_rc_under_a_value_side_flip():
     # successor slot unifies the rc shape.
     assert b.returncode == 127, b
     assert p.returncode == 1, p
+    # The DIAGNOSTIC leg agrees, which bounds the divergence to the rc alone
+    # (N15): both shells name the same variable in the same shape.
+    assert _err_tail(p) == _err_tail(b), (
+        f'psh err={p.stderr!r}\nbash err={b.stderr!r}')
 
 
 def test_nameref_cycle_prefix_matches_bash_end_to_end():
@@ -1270,3 +1278,143 @@ def test_nameref_name_level_posix_prefix_flips_in_BOTH_shells_CONTROL():
     to namerefs generally."""
     _assert_same('unset POSIXLY_CORRECT; declare -n npc=POSIXLY_CORRECT; '
                  'eval(){ echo FN; }; npc=1 eval "echo BP"')
+
+
+# ===========================================================================
+# STALE STAGED-PAIR SNAPSHOT (R22 B1) — the staging scope is the single
+# source of truth.
+#
+# Carrying VALUES from staging time produced a split brain inside one
+# command: a later prefix reading `$A` saw the live staging scope (9) while
+# the command received the staging-time snapshot (1). commit now READS each
+# staged name's current value out of the scope.
+#
+# The hard constraint on that read is pinned separately below: it is a READ,
+# never a re-expansion, so every value's side effects still happen once.
+# ===========================================================================
+
+LIVE_VALUE_KINDS = [
+    pytest.param('$((A=9))', id='arith-store'),
+    pytest.param('${A:=9}', id='colon-equals-store'),
+    pytest.param('${A:+${A}9}', id='colon-plus-nested'),
+]
+
+LIVE_VALUE_ROUTES = [
+    pytest.param('/bin/sh -c \'echo "[$A]"\'', id='external-child-env'),
+    pytest.param('eval \'echo "[$A]"\'', id='special-builtin'),
+    pytest.param('declare -p A', id='regular-builtin-declare-p'),
+]
+
+
+@pytest.mark.parametrize('route', LIVE_VALUE_ROUTES)
+@pytest.mark.parametrize('value', LIVE_VALUE_KINDS)
+def test_command_sees_the_live_staged_value_not_the_snapshot(value, route):
+    """RED ON THE ROUND-5 TIP. A later value's in-process store updates the
+    staged binding; the command must receive that, not what was staged."""
+    _assert_same(f'unset A; A=1 B={value} {route}')
+
+
+def test_later_prefix_and_command_agree_on_the_staged_value():
+    """The split-brain cell itself: both readers of A must give the same
+    answer. The tip gave `A=1 C=9` — one command, two truths."""
+    p, b = _both('unset A; A=1 B=$((A=9)) C=$A /bin/sh -c \'echo "A=$A C=$C"\'')
+    assert b.stdout == 'A=9 C=9\n', b
+    assert p.stdout == b.stdout
+
+
+def test_declare_p_inside_the_command_shows_the_live_value():
+    _assert_same('unset A; A=1 B=$((A=9)) eval \'declare -p A\'')
+
+
+def test_posix_persistence_persists_the_LIVE_value():
+    """RED ON THE ROUND-5 TIP. Persistence made the stale literal permanent,
+    which is the worst version of the bug: it outlived the command."""
+    p, b = _both('unset A; set -o posix; A=1 B=$((A=9)) eval ":"; '
+                 'echo "A=[$A]"')
+    assert b.stdout == 'A=[9]\n', b
+    assert p.stdout == b.stdout
+
+
+def test_function_route_was_never_affected_CONTROL():
+    """CONTROL. The function route ADOPTS the staging scope rather than
+    copying out of it, so it always read the live value — which is what
+    localised the bug to the copy."""
+    _assert_same('f(){ echo "A=[$A]"; }; unset A; A=1 B=$((A=9)) f')
+
+
+def test_live_value_read_for_a_PATH_target(tmp_path):
+    """The PATH row: a later value rewriting PATH must be the PATH the
+    deferred external search actually uses."""
+    bindir = tmp_path / 'pd'
+    bindir.mkdir()
+    prog = bindir / 'mycmd_live'
+    prog.write_text('#!/bin/sh\necho MINE\n')
+    prog.chmod(0o755)
+    cmd = (f'OLD=$PATH; unset PATH; B=${{PATH:={bindir}:$OLD}} '
+           f'mycmd_live; echo "rc=$?"')
+    p, b = _both(cmd)
+    assert b.stdout == 'MINE\nrc=0\n', b
+    assert p.stdout == b.stdout
+
+
+@pytest.mark.parametrize('mode', ['file', 'stdin'])
+def test_live_staged_value_in_file_and_stdin_modes(mode, tmp_path):
+    script = 'unset A\nA=1 B=$((A=9)) /bin/sh -c \'echo "[$A]"\'\n'
+    if mode == 'file':
+        path = tmp_path / 'probe.sh'
+        path.write_text(script)
+        p = run_psh([str(path)], cwd=PSH_ROOT, timeout=15)
+        b = run_bash([str(path)], cwd=PSH_ROOT, timeout=15)
+    else:
+        p = run_psh([], cwd=PSH_ROOT, timeout=15, stdin_data=script)
+        b = run_bash([], cwd=PSH_ROOT, timeout=15, stdin_data=script)
+    assert is_comparable(p) and is_comparable(b)
+    assert b.stdout == '[9]\n', b
+    assert p.stdout == b.stdout
+
+
+def test_live_staged_value_under_the_combinator_parser():
+    p = _psh('unset A; A=1 B=$((A=9)) /bin/sh -c \'echo "[$A]"\'',
+             parser='combinator')
+    b = _bash('unset A; A=1 B=$((A=9)) /bin/sh -c \'echo "[$A]"\'')
+    assert b.stdout == '[9]\n', b
+    assert p.stdout == b.stdout
+
+
+def test_the_live_read_is_a_read_not_a_re_expansion(tmp_path):
+    """HARD CONSTRAINT (R22). Reading the staged value at commit must not
+    re-run the expansion that produced it. A command substitution appends one
+    line per evaluation; exactly one line may appear."""
+    counter = tmp_path / 'runs'
+    _psh(f'A=$(echo tick >> {counter}; echo x) /bin/echo y >/dev/null')
+    assert counter.read_text().count('tick') == 1, (
+        f'the value was evaluated {counter.read_text().count("tick")} times; '
+        'commit must READ the staged value, never re-expand it')
+
+
+def test_nameref_to_element_survives_the_live_read():
+    """The staging scope keys a nameref-to-element binding on its RESOLVED
+    target (`a[0]`), not the nameref name, so the live read has to carry both
+    names or the binding vanishes at commit. It did, briefly."""
+    _assert_same('a=(x y); declare -n r=a[0]; r=NEW eval \'echo "[$r]"\'')
+
+
+def test_divergence_arith_write_to_a_staged_name_does_not_persist():
+    """OUT OF CHARTER, pre-existing at BOTH ends — surfaced while pinning B1.
+
+    `unset A; A=1 B=$((A=9)) cmd; echo $A` → bash leaves **A=9**; psh leaves
+    it UNSET, at base and at tip alike. When a value's arithmetic store names
+    a variable that is ALSO a prefix binding, bash's write reaches the real
+    variable and outlives the command, while psh's updates the temporary
+    binding and is discarded with it.
+
+    Distinct from B1, which was about what the COMMAND sees (now fixed and
+    pinned above). This is what SURVIVES the command, and it is a temp-env
+    write-through question rather than a staging-snapshot one — so it is
+    declared and pinned here, not fixed in-slot.
+    """
+    cmd = 'unset A; A=1 B=$((A=9)) /bin/echo x >/dev/null; echo "after=[${A-UNSET}]"'
+    p, b = _both(cmd)
+    assert b.stdout == 'after=[9]\n', b
+    # psh's CURRENT shape at both ends — update when a successor fixes it.
+    assert p.stdout == 'after=[UNSET]\n', p
