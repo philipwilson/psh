@@ -10518,7 +10518,7 @@
 # Carry #7: a later prefix reads the LITERAL temp binding, because the
 # temporary environment masks the dynamic special.
 - name: prefix_random_masks_dynamic_special_for_later_prefix
-  command: 'RANDOM=1 b=$RANDOM printenv b'
+  command: 'RANDOM=1 b=$RANDOM /bin/sh -c ''echo "$b"'''
   stdout: "1\n"
   stderr: ""
   exit_code: 0

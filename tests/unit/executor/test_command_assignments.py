@@ -170,3 +170,71 @@ class TestApplyPrefixAndRestore:
         assert outcome.applied == [('x', 'abcd')]
         ca.restore(outcome)
         assert shell.state.get_variable('x') == 'ab'
+
+
+# ---------------------------------------------------------------------------
+# Staging-scope ownership (slot 3.4 N9).
+# ---------------------------------------------------------------------------
+
+def test_install_loop_exception_is_not_masked_by_the_ownership_check(
+        captured_shell):
+    """An unexpected exception inside commit_prefix's install loop must reach
+    the caller unchanged.
+
+    The staging scope's ownership check exists to catch scope-stack
+    corruption, but it must never become the thing that REPORTS an unrelated
+    failure: if ownership were still held when the install loop raised, the
+    unwinder would trip the ownership error and the original exception —
+    the one that actually explains the failure — would be lost. Ownership is
+    therefore transferred before the loop runs.
+    """
+    ca = CommandAssignments(captured_shell)
+    node = first_simple_command('A=1 B=2 /bin/echo x')
+    staged = ca.expand_prefix(ca.extract(node))
+    assert staged.staging_scope, 'fixture assumption: a staging scope is open'
+
+    boom = ValueError('install-loop failure')
+
+    def explode(*_args, **_kwargs):
+        raise boom
+
+    captured_shell.state.scope_manager.set_command_temp_env_var = explode
+    with pytest.raises(ValueError) as excinfo:
+        ca.commit_prefix(staged, temp_scope=False)
+    assert excinfo.value is boom, 'the original exception must not be replaced'
+
+
+def test_executor_unwinder_does_not_mask_an_install_loop_exception(
+        captured_shell):
+    """The same property through the REAL executor path, which is where the
+    masking actually happened.
+
+    A direct commit_prefix call cannot show this: the mask came from the
+    dispatcher's finally, which still believed it owned a staging scope that
+    commit_prefix had already disposed of, and so raised an ownership error
+    over the top of the real one.
+    """
+    boom = ValueError('install-loop failure')
+
+    def explode(*_args, **_kwargs):
+        raise boom
+
+    captured_shell.state.scope_manager.set_command_temp_env_var = explode
+    with pytest.raises(ValueError) as excinfo:
+        captured_shell.run_command('A=1 B=2 /bin/echo x')
+    assert excinfo.value is boom, (
+        'the dispatcher unwinder replaced the real exception '
+        f'with {excinfo.value!r}')
+
+
+def test_ownership_violation_raises_rather_than_asserting(captured_shell):
+    """The ownership check is a raise, not an assert: assertions vanish under
+    `python -O`, which is exactly where silent scope-stack corruption would do
+    the most damage."""
+    ca = CommandAssignments(captured_shell)
+    node = first_simple_command('A=1 /bin/echo x')
+    staged = ca.expand_prefix(ca.extract(node))
+    # Someone else pops the scope out from under the transaction.
+    captured_shell.state.scope_manager.pop_scope()
+    with pytest.raises(RuntimeError, match='lost ownership'):
+        ca.commit_prefix(staged, temp_scope=False)
