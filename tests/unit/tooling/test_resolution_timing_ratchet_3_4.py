@@ -150,6 +150,21 @@ def test_the_three_transaction_calls_are_present_exactly_once():
     assert calls[EXPAND][0] < calls[RESOLVE][0] < calls[COMMIT][0], calls
 
 
+def test_the_one_shot_composition_is_absent_from_the_dispatch_path():
+    """``apply_prefix`` is RETAINED as the one-shot composition of the two
+    phases, for callers that need no resolution in between — but it must never
+    appear on the dispatch path, where it would expand a second time.
+
+    Stated as its own assertion rather than left implicit in the
+    ``re-expansion`` rule above, so the retention decision stays visibly
+    conditional on this property holding.
+    """
+    calls = transaction_calls(COMMAND_PY.read_text())
+    assert calls[APPLY] == [], (
+        f"{APPLY} reappeared on the dispatch path at {calls[APPLY]} — the "
+        "composition expands, so every value's side effects would run twice")
+
+
 # --------------------------------------------------------------------------
 # Forcing tests — one synthetic offender per rule, each tripping ONLY its own
 # --------------------------------------------------------------------------
