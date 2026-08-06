@@ -1127,7 +1127,7 @@ class FileRedirector:
         exists in THIS process — a forked child's copied baseline is stale
         (its coordinator pid-reset the lease) and must not be shuffled.
         """
-        baseline = getattr(self, '_std_baseline', None)
+        baseline = self._std_baseline
         if baseline is None or not baseline.active:
             return
         if get_coordinator().find_component(
