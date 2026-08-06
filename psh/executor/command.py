@@ -526,9 +526,14 @@ class CommandExecutor:
             # PHASE 2: route the ALREADY-EXPANDED bindings to the destination
             # the resolution chose. Never re-expands — a second expansion would
             # re-run every value's side effects.
+            # OWNERSHIP TRANSFER, before the call: commit_prefix disposes of
+            # the staging scope as its first act. Clearing the flag afterwards
+            # would leave this unwinder believing it still owned a scope that
+            # is already gone, so a mid-install failure would surface as a
+            # bogus ownership error instead of the exception that caused it.
+            staging_scope_open = False
             prefix = self.assignments.commit_prefix(
                 staged, temp_scope=pushed_temp_scope)
-            staging_scope_open = False
 
             if prefix.failed and self.state.options.get('errexit'):
                 # bash: under set -e a prefix-assignment error (e.g.
@@ -603,10 +608,11 @@ class CommandExecutor:
                 # else's bindings, and leaving ours behind is invisible to
                 # every enumeration surface.
                 stack = self.state.scope_manager.scope_stack
-                assert len(stack) > 1 and stack[-1].is_staging, (
-                    "prefix transaction lost ownership of its staging scope "
-                    f"(depth={len(stack)}, "
-                    f"top_is_staging={getattr(stack[-1], 'is_staging', None)})")
+                if len(stack) <= 1 or not stack[-1].is_staging:
+                    raise RuntimeError(
+                        "internal error: prefix transaction lost ownership of "
+                        f"its staging scope (depth={len(stack)}, "
+                        f"top_is_staging={getattr(stack[-1], 'is_staging', None)})")
                 self.state.scope_manager.pop_scope()
             # In POSIX mode, prefix assignments before a special builtin
             # persist (only then is prefix_assignments_persist True);

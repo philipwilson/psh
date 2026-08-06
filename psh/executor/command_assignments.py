@@ -435,19 +435,23 @@ class CommandAssignments:
             raise
 
     def _pop_staging_scope(self) -> None:
-        """Pop the staging scope, asserting this transaction actually owns it.
+        """Pop the staging scope, checking this transaction still owns it.
 
         Ownership is checked rather than assumed because the failure is silent
         both ways: popping a scope we do not own destroys someone else's
         bindings, and failing to pop ours leaves an enumeration-INVISIBLE
         scope behind. ``staged.staging_scope`` says a scope was opened; this
         says the one on top is still it.
+
+        A ``raise``, not an ``assert``: assertions vanish under ``python -O``,
+        which is exactly where a silent scope-stack corruption would be worst.
         """
         stack = self.state.scope_manager.scope_stack
-        assert len(stack) > 1 and stack[-1].is_staging, (
-            "prefix transaction lost ownership of its staging scope "
-            f"(depth={len(stack)}, "
-            f"top_is_staging={getattr(stack[-1], 'is_staging', None)})")
+        if len(stack) <= 1 or not stack[-1].is_staging:
+            raise RuntimeError(
+                "internal error: prefix transaction lost ownership of its "
+                f"staging scope (depth={len(stack)}, top_is_staging="
+                f"{getattr(stack[-1], 'is_staging', None)})")
         self.state.scope_manager.pop_scope()
 
     def _discard_staging_scope(self) -> None:
@@ -466,6 +470,27 @@ class CommandAssignments:
         staging_scope = False
 
         for var, value, value_word in raw_assignments:
+            # REFUSE BEFORE EVALUATE. bash never evaluates the value of an
+            # assignment it is going to refuse: after
+            # ``readonly RX; RX=$((Z=9)) f`` its Z is UNSET. So the check runs
+            # on the NAME alone, before expansion, and a refused assignment
+            # contributes ZERO side effects — no arithmetic write, no ``:=``
+            # store, no command substitution, and so no posix flip either.
+            #
+            # Checking after expansion (as this did) let a refused assignment's
+            # value still flip posix, which then routed the refusal through the
+            # POSIX prefix-error branch and aborted a statement that bash runs.
+            # A nameref prefix (``declare -n r=a; r=x cmd``) writes THROUGH to
+            # its target, so the name to test is the resolved one; an append
+            # (``a+=z``) arrives as ``a+``.
+            write_name = scope_manager.resolve_nameref_name(
+                var[:-1] if var.endswith('+') else var)
+            if '[' not in write_name and self._readonly_blocks(write_name):
+                print(f"{self.state.error_location_prefix()}{write_name}: readonly variable",
+                      file=self.state.stderr)
+                failed = True
+                continue
+
             value = self._expand_value(value, value_word)
             if xtrace:
                 # set -x: a command-prefix assignment (`x=5 cmd`) is traced
@@ -473,17 +498,9 @@ class CommandAssignments:
                 ps4 = self.expansion_manager.expand_ps4()
                 self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
             var, resolved = resolve_append_assignment(scope_manager, var, value)
-            # A nameref prefix (``declare -n r=a; r=x cmd``) writes THROUGH to
-            # the target, so key everything on the target name. A subscripted
-            # target (nameref to an array element) stays as-is.
-            write_name = scope_manager.resolve_nameref_name(var)
+            # A subscripted target (nameref to an array element) stays as-is.
             if '[' not in write_name:
                 var = write_name
-                if self._readonly_blocks(var):
-                    print(f"{self.state.error_location_prefix()}{var}: readonly variable",
-                          file=self.state.stderr)
-                    failed = True
-                    continue
 
             if not staging_scope:
                 scope_manager.push_temp_env_scope(staging=True)
@@ -539,6 +556,11 @@ class CommandAssignments:
 
         scope_manager = self.state.scope_manager
         if staged.staging_scope:
+            # OWNERSHIP TRANSFER, done BEFORE the install loop: from here on
+            # this transaction no longer owns a staging scope, so an exception
+            # raised while installing cannot reach the ownership check and
+            # replace itself with a bogus "lost ownership" error. The original
+            # exception propagates; the caller's unwinder finds nothing to pop.
             self._pop_staging_scope()
 
         saved_vars: Dict[str, dict] = {}
