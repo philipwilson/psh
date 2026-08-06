@@ -10,6 +10,9 @@ than a bare ``ValueError``. Two directions must hold:
   ``except (ValueError, ...)`` catch that converts it to a
   ``ShellArithmeticError`` (a ``PshError``), so even with strict-errors ON it
   is a clean shell arithmetic error (rc 1), never a re-raised internal defect.
+  That catch is the reason every OUTER ``except ValueError`` leg guarding
+  ``evaluate_arithmetic`` was dead and could be removed in remediation 3.5 —
+  it is exhaustive for the user-reachable class, so nothing bare escapes.
 
 - **Injected internal ``RuntimeError`` → strict re-raise.** A cant-happen
   branch, forced to fire via monkeypatch, is a genuine internal defect: under
@@ -30,16 +33,23 @@ _HUGE_INT = "9" * 5000
 
 # --- Direction A: user-reachable ValueError stays a clean shell error --------
 #
-# These pins must discriminate the PRIMARY catch from the FALLBACK: the kept
-# ``except (ValueError, ...)`` in _evaluate_arithmetic_inner converts the
-# huge-int ValueError to a ShellArithmeticError, which renders as
-# ``psh: arithmetic error: ...``. If that catch were removed, the ValueError
-# would instead escape to arithmetic_expansion_value's last-resort
-# ``except (ValueError, TypeError)`` and render as
-# ``psh: unexpected arithmetic error: ...`` — same rc 1, different shape. So
-# the assertions anchor the EXACT primary prefix AND reject the fallback's
-# "unexpected" marker; deleting ValueError from the kept catch turns these
-# pins red (mutation M2, transcript archived in the P6 ledger).
+# These pins anchor the PRIMARY catch: the kept ``except (ValueError, ...)`` in
+# _evaluate_arithmetic_inner converts the huge-int ValueError to a
+# ShellArithmeticError, which renders as ``psh: arithmetic error: ...``.
+# Deleting ValueError from that catch turns these pins red (mutation M2,
+# transcript archived in the P6 ledger).
+#
+# UPDATED by remediation 3.5 (MEDIUM-12b): there is no longer a FALLBACK to
+# discriminate against. arithmetic_expansion_value's last-resort
+# ``except (ValueError, TypeError)`` — which rendered as
+# ``psh: unexpected arithmetic error: ...`` at the same rc 1 — has been DELETED
+# as an internal-defect masker (its VE leg was dead precisely BECAUSE the
+# primary catch below is exhaustive for user-reachable VEs, and its TE leg
+# fired only for psh bugs). So removing the primary catch now makes the
+# ValueError PROPAGATE as an internal defect under strict-errors rather than
+# re-render in a second shape. The ``"unexpected" not in stderr`` assertions
+# are kept: they still fail if any such fallback is re-introduced, which is
+# exactly what tests/unit/tooling/test_typed_expansion_error_m8_locks.py locks.
 
 def test_huge_int_via_variable_is_clean_error_under_strict(captured_shell):
     """A huge stored integer read into arithmetic is a clean arithmetic error

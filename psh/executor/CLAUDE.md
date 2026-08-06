@@ -286,6 +286,24 @@ child — the semantic boundary is "becoming a healthy child" (runner) vs
    shell, where the main shell uses 127) but NOT a constant: with `set -e`
    active in the child it is 2, the same first branch as the main-shell
    mapping. That is why the taxonomy takes a `ShellState`.
+
+   **The CHANNEL-STAMP arms (A10.1, slot 3.5).** Two arms are conditional on a
+   stamp rather than flat. The shell-exit expansion family (`${x:?}`, unknown
+   `@X` on a set var, `set -u`) carries a channel-dependent status — 127 under
+   `-c`, 1 for a script file or stdin — which a forked child must NOT inherit:
+   bash's child exits 1 there. `core/internal_errors.py#fatal_expansion_status`
+   therefore marks what it raises with `fatal_expansion_channel`, and both the
+   `TopLevelAbort` and the `SystemExit` arm re-derive the child's status
+   through `core/internal_errors.py#fatal_expansion_child_status` when they see
+   it. BOTH routes are stamped because a `-c` invocation sets a script name, so
+   that family leaves `fatal_expansion_status` as a `SystemExit` — stamping
+   only the `TopLevelAbort` would miss the very channel the rule exists for.
+   Only that one raise site stamps, so every other abort (readonly-assignment
+   refusal, `FUNCNEST`, `failglob`, the errexit-immune discard family) keeps
+   `.status` verbatim at a fork; that topology, not a guard clause, is what
+   fences the rule off from the readonly-refusal statuses. Unlike its
+   substitution sibling this child status is FLAT 1 — no errexit branch, which
+   is probe-derived rather than an oversight (the docstring says why).
 5. `flush_child_streams(child.stdout, child.stderr, sys.stdout, sys.stderr)`
 6. `os._exit(exit_code)`; any other exception → `psh: {error_label}
    error: ...` on fd 2, then `os._exit(1)`

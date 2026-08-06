@@ -10544,3 +10544,77 @@
   stdout: "RX=[UNSET]\n"
   stderr: "readonly variable"
   exit_code: 0
+
+# =============================================================================
+# TYPED EXPANSION/ARITHMETIC ERRORS (MEDIUM-12b, slot 3.5)
+# =============================================================================
+# Promoted from the slot's probe batteries. The full status matrix lives in
+# tests/conformance/bash/test_typed_expansion_errors_conformance.py; these are
+# the single-line cases worth re-running against a real bash every time.
+
+# A10.1: a forked child does NOT inherit the -c channel's 127 for a shell-exit
+# expansion failure — bash's subshell child exits 1.
+- name: fatal_expansion_subshell_child_exits_1_not_channel_status
+  command: '( echo ${x?boom} ); echo "after rc=$?"'
+  stdout: "after rc=1\n"
+  stderr: "boom"
+  exit_code: 0
+
+- name: fatal_expansion_cmdsub_child_exits_1_not_channel_status
+  command: 'vv=$( echo ${x?boom} ); echo "after rc=$?"'
+  stdout: "after rc=1\n"
+  stderr: "boom"
+  exit_code: 0
+
+# ...but WITHOUT a fork the -c channel status still applies (the other half of
+# the rule: a fix that made everything 1 would break this).
+- name: fatal_expansion_direct_keeps_channel_status
+  command: 'echo ${x?boom}; echo "after rc=$?"'
+  stdout: ""
+  stderr: "boom"
+  exit_code: 127
+
+# Ruling (d): errexit forces 1 over the -c channel status...
+- name: fatal_expansion_errexit_overrides_channel_status
+  command: 'set -e; echo ${x?boom}'
+  stdout: ""
+  stderr: "boom"
+  exit_code: 1
+
+# ...reading the RAW flag, not effective errexit: a suppressing context still
+# exits with 1 and does NOT recover (the sibling policy subtracts suppression;
+# copying it here is the trap).
+- name: fatal_expansion_errexit_raw_flag_not_effective
+  command: 'set -e; echo ${x?boom} || echo RECOVERED; echo TAIL'
+  stdout: ""
+  stderr: "boom"
+  exit_code: 1
+
+# ...and it is the CURRENT flag.
+- name: fatal_expansion_errexit_turned_off_restores_channel_status
+  command: 'set -e; set +e; echo ${x?boom}'
+  stdout: ""
+  stderr: "boom"
+  exit_code: 127
+
+# The discard family is errexit-immune and was never channel-dependent.
+- name: discard_family_subshell_child_unchanged_by_3_5
+  command: '( echo $((1/0)) ); echo "after rc=$?"'
+  stdout: "after rc=1\n"
+  stderr: "arithmetic error: Division by zero"
+  exit_code: 0
+
+# Fence: a readonly-assignment abort is an UNSTAMPED TopLevelAbort and keeps
+# its own status at a fork (same rc pair as A10.1, different raise site).
+- name: readonly_abort_child_status_untouched_by_a10_1
+  command: 'readonly r=1; ( r=2 ) || echo "child rc=$?"'
+  stdout: "child rc=1\n"
+  stderr: "readonly variable"
+  exit_code: 0
+
+# The typed substring failure keeps bash's message and status.
+- name: substring_negative_length_is_typed_at_detection_point
+  command: 'v=abcdefgh; echo X${v:2:-99}Y'
+  stdout: ""
+  stderr: "substring expression < 0"
+  exit_code: 1
