@@ -774,6 +774,15 @@ def arithmetic_expansion_value(arith_expr: str, shell) -> int:
     value verbatim exactly once. A second pass here would rescan
     substituted text for further $-expansion, which bash does not do
     (x='$y' makes $(($x)) a syntax error, not the value of y).
+
+    Only TYPED failures are converted here. ``evaluate_arithmetic`` cannot let
+    a bare ``ValueError`` escape — :func:`_evaluate_arithmetic_inner` converts
+    the user-reachable ones (the int()-digit-limit class) to
+    ``ShellArithmeticError``, and the depth guard around it raises the same
+    typed class — so a ``ValueError``/``TypeError`` arriving here would be an
+    INTERNAL DEFECT. It gets no arm: it propagates to the last-resort guard and
+    surfaces under strict-errors (MEDIUM-12b; the removed net printed
+    "unexpected arithmetic error" and masked exactly that).
     """
     import sys
 
@@ -794,10 +803,6 @@ def arithmetic_expansion_value(arith_expr: str, shell) -> int:
         print(f"psh: arithmetic error: {e}", file=sys.stderr)
         # Raise exception to stop command execution (like bash)
         raise ExpansionError(f"arithmetic error: {e}") from e
-    except (ValueError, TypeError) as e:
-        print(f"psh: unexpected arithmetic error: {e}", file=sys.stderr)
-        # Raise exception to stop command execution (like bash)
-        raise ExpansionError(f"unexpected arithmetic error: {e}") from e
 
 
 def execute_arithmetic_expansion(expr: str, shell) -> int:

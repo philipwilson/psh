@@ -30,6 +30,7 @@ from .exceptions import (
     ReadonlyVariableError,
     SpecialBuiltinUsageError,
     SubstitutionSyntaxAbort,
+    TestExpressionError,
     TopLevelAbort,
     UnboundVariableError,
 )
@@ -68,6 +69,7 @@ __all__ = [
     'FatalExpansionError',
     'FunctionDefinitionError',
     'ArraySubscriptError',
+    'TestExpressionError',
     'ReadError',
     # Variables
     'Variable',

@@ -12,7 +12,7 @@ from ..ast_nodes import (
     UnaryTestExpression,
 )
 from ..builtins.test_command import TestBuiltin, variable_is_set
-from ..core import IndexedArray, VarAttributes
+from ..core import IndexedArray, TestExpressionError, VarAttributes
 from ..expansion.arithmetic import evaluate_arithmetic
 from ..expansion.glob import translate_posix_classes
 from ..expansion.operands import DQ_STRING, DQ_WORD, OperandValue
@@ -55,7 +55,12 @@ class TestExpressionEvaluator:
         elif isinstance(expr, NegatedTestExpression):
             return not self.evaluate(expr.expression)
         else:
-            raise ValueError(f"Unknown test expression type: {type(expr).__name__}")
+            # Can't-happen: the parser only builds the node types handled
+            # above. An INTERNAL DEFECT, not a user error — RuntimeError so
+            # strict-errors surfaces it instead of the old `[[` VT net
+            # reporting it as a user syntax error (MEDIUM-12b).
+            raise RuntimeError(
+                f"Unknown test expression type: {type(expr).__name__}")
 
     def _operand_string(self, word) -> str:
         """Expand a [[ ]] operand Word to its subject/literal string,
@@ -180,7 +185,11 @@ class TestExpressionEvaluator:
             try:
                 pattern = re.compile(regex_src, flags)
             except re.error as e:
-                raise ValueError(f"invalid regex: {e}") from e
+                # USER-reachable ([[ x =~ [ ]]): typed at its detection point
+                # so visit_EnhancedTestStatement can catch the user error
+                # without a raw VT net (MEDIUM-12b). Message and status 2 are
+                # unchanged (bash parity, probe-pinned).
+                raise TestExpressionError(f"invalid regex: {e}") from e
             match = pattern.search(left)
             self._set_bash_rematch(match)
             return bool(match)
@@ -203,7 +212,9 @@ class TestExpressionEvaluator:
         elif expr.operator == '-ef':
             return files_same(left, right)
         else:
-            raise ValueError(f"unknown binary operator: {expr.operator}")
+            # Can't-happen (the parser validates the operator set): an
+            # INTERNAL DEFECT, see the note on `evaluate` above.
+            raise RuntimeError(f"unknown binary operator: {expr.operator}")
 
     def _arith_operand(self, value: str) -> int:
         """Arithmetic-evaluate a ``-eq``/``-lt``/... operand.
@@ -354,7 +365,9 @@ class TestExpressionEvaluator:
                 return True
             return self.evaluate(expr.right)
         else:
-            raise ValueError(f"unknown compound operator: {expr.operator}")
+            # Can't-happen (only && and || are built here): an INTERNAL
+            # DEFECT, see the note on `evaluate` above.
+            raise RuntimeError(f"unknown compound operator: {expr.operator}")
 
     def _is_variable_set(self, var_ref: str) -> bool:
         """Check if a variable (or array element) is set — shared with the

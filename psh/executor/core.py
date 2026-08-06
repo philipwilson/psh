@@ -38,7 +38,14 @@ from ..ast_nodes import (
     UntilLoop,
     WhileLoop,
 )
-from ..core import LoopBreak, LoopContinue, NamerefCycleError, ReadonlyVariableError, UnboundVariableError
+from ..core import (
+    LoopBreak,
+    LoopContinue,
+    NamerefCycleError,
+    ReadonlyVariableError,
+    TestExpressionError,
+    UnboundVariableError,
+)
 from .array import ArrayOperationExecutor
 from .command import CommandExecutor
 from .context import ExecutionContext
@@ -514,7 +521,10 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # -c list).
                 from .strategies import report_assignment_error
                 return report_assignment_error(self.state, e)
-            except (ValueError, ArithmeticError) as e:
+            except ArithmeticError as e:
+                # The user-reachable class: ShellArithmeticError subclasses the
+                # builtin ArithmeticError. The former ValueError co-leg was DEAD
+                # — a bare VE cannot escape evaluate_arithmetic (MEDIUM-12b).
                 print(f"psh: ((: {e}", file=self.state.stderr)
                 return 1
 
@@ -573,7 +583,20 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # instead of leaking an "unexpected error" abort.
                 from .strategies import report_assignment_error
                 return report_assignment_error(self.state, e)
-            except (ValueError, TypeError, OSError) as e:
+            except (TestExpressionError, OSError) as e:
+                # TestExpressionError = a USER syntax failure in the expression
+                # (the live case is an invalid `=~` regex), typed at its
+                # detection point in enhanced_test_evaluator.py. OSError stays:
+                # it is an EXPECTED shell error (core/internal_errors.py's
+                # _EXPECTED_SHELL_ERRORS), never an internal defect, so keeping
+                # it here reports a file-test I/O failure in the `[[` form
+                # rather than routing it to the last-resort guard.
+                #
+                # The former raw (ValueError, TypeError) net is GONE
+                # (MEDIUM-12b): it masked the evaluator's three can't-happen
+                # branches — and ANY TypeError bug in the evaluator — as a
+                # user-facing `[[` syntax error. Those branches now raise
+                # RuntimeError and surface as internal defects.
                 # Sibling diagnostics in this method use state.stderr (the
                 # redirect- and capture-aware sink); match them.
                 print(f"psh: [[: {e}", file=self.state.stderr)

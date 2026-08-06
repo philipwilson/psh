@@ -87,7 +87,13 @@ class OperatorOpsMixin(_Base):
                 length = evaluate_arithmetic(length_str, self.shell)
             else:
                 length = 0
-        except (ValueError, ArithmeticError):
+        except ArithmeticError:
+            # ``ArithmeticError`` here is the module alias for
+            # ``ShellArithmeticError`` (arithmetic/errors.py), i.e. already the
+            # typed class. The former ``ValueError`` co-leg was DEAD: a bare VE
+            # cannot escape ``evaluate_arithmetic`` (its inner converter turns
+            # the user-reachable ones into ShellArithmeticError), so the leg
+            # could only ever have caught an internal defect (MEDIUM-12b).
             msg = f"{what}: {operand}: invalid offset or length"
             print(f"psh: {msg}", file=sys.stderr)
             self.state.last_exit_code = 1
@@ -141,10 +147,13 @@ class OperatorOpsMixin(_Base):
             return []
         try:
             return [self.param_expansion.extract_substring(value, offset, length)]
-        except ValueError as e:
+        except ExpansionError as e:
+            # The failure arrives TYPED from its detection point
+            # (parameter_expansion.py#extract_substring); this frame owns the
+            # location prefix and $?, then re-raises it unchanged.
             print(f"{self.state.error_location_prefix()}{e}", file=sys.stderr)
             self.state.last_exit_code = 1
-            raise ExpansionError(str(e), exit_code=1) from e
+            raise
 
     def _slice_sequence(self, elements: list, operand: str,
                         what: str = 'seq', indices=None) -> list:
@@ -393,12 +402,14 @@ class OperatorOpsMixin(_Base):
             offset, length = self._parse_slice_operand(operand, var_name or 'var')
             try:
                 return self.param_expansion.extract_substring(value, offset, length)
-            except ValueError as e:
+            except ExpansionError as e:
                 # Out-of-range negative length: bash reports an error and a
-                # non-zero exit status.
+                # non-zero exit status. Typed at its detection point
+                # (parameter_expansion.py#extract_substring); this frame adds
+                # the location prefix and $?, then re-raises it unchanged.
                 print(f"{self.state.error_location_prefix()}{e}", file=sys.stderr)
                 self.state.last_exit_code = 1
-                raise ExpansionError(str(e), exit_code=1) from e
+                raise
         elif operator == '!*':
             # ${!prefix*}: names joined with the first character of IFS
             names = self.param_expansion.match_variable_names(var_name)

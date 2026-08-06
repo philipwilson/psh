@@ -386,7 +386,11 @@ Two distinct families — do not mix them up:
   `FatalExpansionError` for the `${x:?}`/unknown-`@X`-transform kinds that
   exit a non-interactive shell — see `fatal_expansion_status` in
   `internal_errors.py` for the bash discard-line model),
-  `FunctionDefinitionError` (invalid/reserved/readonly function name), and
+  `FunctionDefinitionError` (invalid/reserved/readonly function name),
+  `TestExpressionError` (a USER-syntax failure evaluating a `[[ ]]` expression
+  — the live instance is an invalid `=~` regex; raised at its detection point
+  in `executor/enhanced_test_evaluator.py` so the statement handler needs no
+  raw-VT net), and
   `ReadError` (a `read`/`mapfile` option-VALUE error carrying bash's exit
   code). The lexer's `UnclosedQuoteError` also roots here, dual-inheriting
   `(PshError, SyntaxError)` so the load-bearing `except SyntaxError`
@@ -420,6 +424,30 @@ shell-error path, give it a `PshError` subclass (e.g. `FunctionDefinitionError`)
 so it classifies as expected — do not let a bare Python exception stand in for
 a shell error.
 
+**The corollary is a rule about CATCH sites, and it is ratcheted.** A guard
+that converts a broad or raw-VT exception into a user-facing shell error
+defeats `strict-errors` at that point: the defect never reaches
+`report_internal_defect` to be classified. Remediation 2.3 (subscript) and 3.5
+(expansion/arithmetic) removed that class of net; the surviving rule is —
+
+- type a USER-reachable failure at its DETECTION point (`ExpansionError` for
+  the substring bound in `expansion/parameter_expansion.py#extract_substring`,
+  `TestExpressionError` for an invalid `=~` regex in
+  `executor/enhanced_test_evaluator.py`) and catch THAT class, not `ValueError`;
+- make a can't-happen branch raise `RuntimeError`, so it surfaces as the defect
+  it is — `expansion/arithmetic/evaluator.py#_evaluate_arithmetic_inner`
+  documents the split, and the `[[ ]]` evaluator now follows it;
+- keep `OSError` where a site genuinely does I/O: it is in the expected set, so
+  catching it is not masking.
+
+Two ratchets police this and divide the space by handler SHAPE, not by module:
+`tests/unit/tooling/test_subscript_no_broad_except.py` (bare `except:` /
+`Exception` / `BaseException` in a GROW-only guarded module set, `except
+PshError` the widest allowed) and
+`tests/unit/tooling/test_broad_valueerror_catch_q2.py` (broad
+`ValueError`/`TypeError` nets; shrink-only, with a stale-entry check that
+forces the ledger to shrink when a site narrows).
+
 **Unwinding OUTCOMES derive from `BaseException`, not `Exception`.**
 `exceptions.py#TopLevelAbort` and `exceptions.py#SubstitutionSyntaxAbort` are
 outcomes rather than errors: their condition was already reported at the raise
@@ -431,6 +459,35 @@ going), while `SubstitutionSyntaxAbort` ends the shell PROCESS and is contained
 only by a fork (`executor/child_policy.py#map_child_exception`). Its status
 mapping lives in `internal_errors.py#substitution_abort_status` — never at the
 raise site, which cannot know the outermost channel.
+
+**A status that depends on the CHANNEL is decided at the boundary, not at the
+raise site — and that now applies to part of `TopLevelAbort` too** (slot 3.5,
+A10.1). The shell-exit expansion family (`${x:?}`, unknown `@X` on a set var,
+`set -u`) takes its status from the channel: 127 under `-c`, 1 for a script
+file or stdin. That is a MAIN-shell rule — bash's forked children exit 1 for
+the same failure even inside a `-c` shell. So `fatal_expansion_status` STAMPS
+the abort it raises with the CHANNEL-DERIVED flag itself
+(`TopLevelAbort(..., fatal_expansion_channel=channel)`, and the same attribute
+on the `SystemExit` it raises in script mode — `-c` takes that route, because
+`-c` sets a script name). The stamp is CONDITIONAL, not a constant `True`: it
+is set only on the branch that actually consulted `command_mode`, so the
+interactive-family path — which yields status 1 for its own reason, not the
+channel's — leaves it False and its children keep `.status`.
+`map_child_exception` re-derives the child's status through
+`internal_errors.py#fatal_expansion_child_status`. Only that ONE raise site
+stamps; every other `TopLevelAbort` in the tree (readonly-assignment refusal,
+`FUNCNEST`, `failglob`, the errexit-immune discard family) is
+channel-independent and keeps `.status` verbatim at a fork. The stamp — rather
+than a blanket re-map — is what keeps those other families' exit statuses
+untouched.
+
+The two child-status helpers are deliberately NOT the same shape, and the
+difference is probe-derived, not stylistic: `substitution_child_abort_status`
+drops the channel rule but keeps an errexit branch (its child is 2 under
+effective errexit, so it needs the suppression stamp), while
+`fatal_expansion_child_status` is flat 1 — errexit outside the fork, inside the
+fork, and in a suppressing context all leave it 1. Reasoning from one to the
+other by analogy gives the wrong answer; both docstrings say so.
 
 Because that reach is the shell PROCESS, `SubstitutionSyntaxAbort` is also the
 one unwinding outcome that crosses psh's IN-PROCESS EMBEDDING BOUNDARY:

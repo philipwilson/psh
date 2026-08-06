@@ -47,7 +47,10 @@ from ..core.exceptions import (
     SubstitutionSyntaxAbort,
     TopLevelAbort,
 )
-from ..core.internal_errors import substitution_child_abort_status
+from ..core.internal_errors import (
+    fatal_expansion_child_status,
+    substitution_child_abort_status,
+)
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
@@ -75,7 +78,16 @@ def map_child_exception(exc: BaseException, state: 'ShellState') -> int:
     stack, in the un-forked copy), and ``exit`` must terminate only this
     child. So each of these exceptions ends the child with a status:
 
-    - TopLevelAbort (a fatal assignment/expansion discard) → its ``.status``.
+    - TopLevelAbort (a fatal assignment/expansion discard) → its ``.status``,
+      EXCEPT when it carries the ``fatal_expansion_channel`` stamp, i.e. its
+      status came from the shell-exit family's ``-c`` CHANNEL rule. That rule
+      is a main-shell rule: bash's child exits 1 for ``${x?}``/``${x:?}``/
+      unknown-``@X``/``set -u`` even inside a ``-c`` shell, where the main
+      shell uses 127. Stamped aborts therefore map through
+      ``core/internal_errors.py#fatal_expansion_child_status`` (A10.1). The
+      stamp — rather than a blanket re-map — is what keeps every OTHER
+      TopLevelAbort (readonly-assignment refusal, FUNCNEST, failglob, the
+      errexit-immune expansion family) exiting with ``.status`` unchanged.
     - FunctionReturn (``return`` in an inherited function/sourced context) →
       its ``.exit_code`` (bash: ``f(){ x=$(return 3); }`` leaves ``$?``=3).
     - LoopBreak/LoopContinue (a break/continue escaping the child's own
@@ -83,7 +95,11 @@ def map_child_exception(exc: BaseException, state: 'ShellState') -> int:
       leaves ``$?``=1).
     - SystemExit (the ``exit`` builtin) → its integer code; ``exit`` with no
       argument, i.e. ``SystemExit(None)``, → 0 (Python's own convention for a
-      bare ``sys.exit()``); a non-int, non-None code → 1.
+      bare ``sys.exit()``); a non-int, non-None code → 1. A SystemExit carrying
+      the ``fatal_expansion_channel`` stamp is NOT the ``exit`` builtin: it is
+      the shell-exit expansion family leaving ``fatal_expansion_status`` by its
+      script-mode route (which ``-c`` takes), and maps like the stamped
+      TopLevelAbort above.
     - SubstitutionSyntaxAbort (a substitution-body syntax error, fatal to the
       shell process) → ``substitution_child_abort_status(state,
       exc.errexit_suppressed)``. This is what makes a fork CONTAIN the
@@ -105,12 +121,20 @@ def map_child_exception(exc: BaseException, state: 'ShellState') -> int:
     (→130) and unexpected Exceptions stay caller-local — see the module note.
     """
     if isinstance(exc, TopLevelAbort):
+        if getattr(exc, 'fatal_expansion_channel', False):
+            return fatal_expansion_child_status(state)
         return exc.status
     if isinstance(exc, FunctionReturn):
         return exc.exit_code
     if isinstance(exc, (LoopBreak, LoopContinue)):
         return exc.exit_status or 0
     if isinstance(exc, SystemExit):
+        if getattr(exc, 'fatal_expansion_channel', False):
+            # Same stamp, second route: a shell-exit-family expansion failure
+            # leaves fatal_expansion_status as SystemExit (not TopLevelAbort)
+            # whenever is_script_mode is set — which INCLUDES `-c`, the very
+            # channel whose 127 the child must not inherit (A10.1).
+            return fatal_expansion_child_status(state)
         code = exc.code
         return code if isinstance(code, int) else (0 if code is None else 1)
     if isinstance(exc, SubstitutionSyntaxAbort):

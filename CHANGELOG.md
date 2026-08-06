@@ -4,6 +4,47 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.767.0 (2026-08-06) - Typed expansion/arithmetic errors (remediation slot 3.5, MEDIUM-12b + A10.1)
+
+- Broad/VT exception nets on the expansion/arithmetic path removed or
+  narrowed (MEDIUM-12b, expansion/arith half CLOSED — only 5C's builtins/
+  scripting half remains): the `arithmetic_expansion_value`
+  `except (ValueError, TypeError)` net DELETED (its ValueError leg proven
+  dead by forcing; its TypeError leg masked internal defects as
+  "unexpected arithmetic error"); the PS4 fallback narrowed
+  `Exception`→`PshError` (user-observable byte-identical — a shell error
+  still falls back to raw PS4); the dead plain-ValueError legs dropped at
+  four arithmetic call sites (`executor/core.py` `(( ))` +
+  `control_flow.py`'s three `for(( ))` legs) and `operators.py:90`;
+  substring-bound failure typed at its detection point
+  (`parameter_expansion.py#extract_substring` → `ExpansionError`).
+- `[[ ]]` evaluation errors typed: new `TestExpressionError(PshError)`;
+  the net narrowed `(ValueError, TypeError, OSError)` →
+  `(TestExpressionError, OSError)` (the OSError leg is an EXPECTED shell
+  error and stays); the evaluator's three can't-happen branches raise
+  `RuntimeError` so genuine defects surface under strict-errors.
+- A10.1 CLOSED: a fatal expansion (`${x?}`, `${x:?}`, bad substitution,
+  `set -u`) inside a subshell or command substitution now exits the child
+  with status 1 like bash (was: the `-c` channel's 127 leaked through the
+  fork) — via a `fatal_expansion_channel` stamp set only in
+  `fatal_expansion_status` (both carriers) and consumed by
+  `map_child_exception`; child status is FLAT 1 (probed: no errexit
+  branch, unlike the substitution-abort sibling).
+- Errexit `-c` family (Phase A discovery, ruled in): under `set -e` bash
+  exits 1 from a fatal expansion even in `-c` mode — keyed on the errexit
+  FLAG, not effectiveness (suppressed contexts still exit 1; `set +e`
+  restores 127). 5 flag-vs-effective rows pinned must-hold.
+- Guards: 98-row conformance battery (43 red-on-base) + ratchet GROWN
+  (`expansion/manager.py` + `expansion/arithmetic/evaluator.py` enter the
+  no-broad-except GUARDED set) + Q2 VT-catch ledger genuinely shrunk by 3
+  entries (two carried false reasons, corrected) + 7 M8 mutation locks +
+  3 default-mode border pins (with the shell-reason counter-pin) + 9
+  behavioral goldens.
+- Verification: round-1 adversarial harness bounce (7 distinct findings,
+  7 real, 0 false — all doc/record class; ZERO code defects across the
+  slot) → round-2 integrator-direct PASS. Evidence:
+  `docs/reviews/evidence/boundary_remediation_2026-07/3.5-rescue/`.
+
 ## 0.766.0 (2026-08-06) - Resolution authority timing (remediation slot 3.4, HIGH-3)
 
 - Two-phase prefix-assignment transaction: `expand_prefix` stages values

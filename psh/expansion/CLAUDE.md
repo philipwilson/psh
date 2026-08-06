@@ -509,6 +509,45 @@ Three remediation-2.3 invariants on the re-lex bridge
   bash's wording; the per-route audit (four routes match bash, four are
   declared+pinned) is `test_unlexable_subscript_route_audit`.
 
+### Error typing on the expansion/arithmetic path (MEDIUM-12b, slot 3.5)
+
+A conversion net that catches a broad or raw-`ValueError`/`TypeError` class and
+reports it as a user error defeats `strict-errors` at that point: the defect
+never reaches `report_internal_defect` to be classified. The invariant on this
+path is that a USER-reachable failure is TYPED where it is DETECTED, and
+everything else propagates.
+
+- **A bare `ValueError` cannot escape `evaluate_arithmetic`**
+  (`arithmetic/evaluator.py`): the inner converter turns the user-reachable
+  ones — CPython's str-to-int digit-limit class, overflow, allocation — into
+  `ShellArithmeticError`, while the evaluator's own can't-happen branches raise
+  `RuntimeError`. The outer `except ValueError` legs guarding a call to it were
+  therefore dead, and remediation 3.5 removed them at its FIVE in-slot sites —
+  `operators.py`'s slice-operand parse, `executor/core.py`'s `(( ))`, and
+  `executor/control_flow.py`'s three `for(( ))` legs (init / condition /
+  update); each now catches `ArithmeticError`, which `ShellArithmeticError`
+  subclasses. **One leg of the same shape survives OUTSIDE that scope**:
+  `builtins/let_builtin.py:52` still catches `(ValueError, ArithmeticError)`
+  around `evaluate_arithmetic`. That is MEDIUM-12's 5C half (the builtins
+  tree), deliberately untouched here — the deadness argument applies to it
+  equally, but the removal is 5C's to make.
+- **The substring bound is typed at its detection point**:
+  `parameter_expansion.py#extract_substring` raises `ExpansionError`, and
+  `operators.py`'s two slice sites catch that and re-raise it after adding the
+  location prefix and `$?`.
+- **The PS4 fallback catches `PshError`, not `Exception`**
+  (`manager.py#expand_ps4`). The bash-parity shape is unchanged — a shell
+  error during PS4 expansion still falls back to the raw text so tracing never
+  aborts the shell — but an internal defect is no longer swallowed into that
+  fallback. Note the fallback never saw `TopLevelAbort` either way: unwinding
+  outcomes derive from `BaseException` (see `core/CLAUDE.md`).
+
+`manager.py` and `arithmetic/evaluator.py` are in the GROW-only guarded set of
+`tests/unit/tooling/test_subscript_no_broad_except.py`, so a broad handler
+reappearing in either fails loudly; the broad-VT half is
+`test_broad_valueerror_catch_q2.py`, and each removal carries an M8 mutation
+lock in `tests/unit/tooling/test_typed_expansion_error_m8_locks.py`.
+
 The `NAME[...]` extent itself — where a subscript ENDS — has ONE quote-aware
 scanner: `param_parser.py#find_subscript_end` (skips `'...'`/`"..."`/
 `$'...'`/backslash escapes/`$(...)`/`${...}`/backticks; unquoted brackets

@@ -100,12 +100,28 @@ class TopLevelAbort(BaseException):
     the top-level input loop's next line (probe-verified in file, stdin and
     interactive modes). Those raisers pass ``contain_nested=False`` so
     nested buffered boundaries re-raise instead of containing.
+
+    ``fatal_expansion_channel``: this abort's ``status`` came from the
+    SHELL-EXIT family's CHANNEL rule (``fatal_expansion_status``'s
+    ``command_mode`` branch — 127 under ``-c``, 1 elsewhere). That rule is a
+    MAIN-shell rule: bash's forked children exit 1 for the same failure even
+    inside a ``-c`` shell, so a stamped abort reaching a fork boundary is
+    re-mapped by ``executor/child_policy.py#map_child_exception`` via
+    ``internal_errors.py#fatal_expansion_child_status`` instead of using
+    ``.status`` verbatim (A10.1). Only the ONE raise site in
+    ``fatal_expansion_status`` sets it; every other ``TopLevelAbort`` in the
+    tree — readonly-assignment discards, ``FUNCNEST``, ``failglob``, the
+    errexit-immune expansion family — is channel-INDEPENDENT and keeps
+    ``.status`` at a fork, which is what keeps the readonly-refusal exit
+    statuses untouched.
     """
     def __init__(self, status: int = 1, errexit_immune: bool = False,
-                 contain_nested: bool = True):
+                 contain_nested: bool = True,
+                 fatal_expansion_channel: bool = False):
         self.status = status
         self.errexit_immune = errexit_immune
         self.contain_nested = contain_nested
+        self.fatal_expansion_channel = fatal_expansion_channel
         super().__init__()
 
 
@@ -299,6 +315,22 @@ class ArraySubscriptError(PshError):
     def __init__(self, subscript: int, message: str = "bad array subscript"):
         self.subscript = subscript
         super().__init__(message)
+
+
+class TestExpressionError(PshError):
+    """A USER-syntax failure evaluating a ``[[ ]]`` expression.
+
+    The one live instance is an invalid ``=~`` regex (``[[ x =~ [ ]]``), which
+    bash reports and fails with status 2. Typed at its detection point
+    (``executor/enhanced_test_evaluator.py``) so the statement's handler can
+    catch the user error WITHOUT a raw ``ValueError``/``TypeError`` net that
+    also swallowed the evaluator's own can't-happen branches (MEDIUM-12b).
+    Those branches now raise ``RuntimeError`` and surface as internal defects,
+    exactly as the arithmetic evaluator's do —
+    ``expansion/arithmetic/evaluator.py#_evaluate_arithmetic_inner``
+    documents the same split. A legitimate shell error (not a defect), so it
+    classifies as expected under strict-errors."""
+    exit_code = 2
 
 
 class ReadError(PshError):

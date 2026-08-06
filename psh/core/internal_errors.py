@@ -85,10 +85,31 @@ def fatal_expansion_status(state: 'ShellState', exc: BaseException, *,
       piped stdin regardless of kind; under ``-c`` it is the error's own
       status — 127 for ``:?``/``set -u``/unknown-``@X``-transform, but 1
       for a bad parameter NAME (``bash -c 'echo ${}'`` exits 1 while
-      ``bash -c 'echo ${x@Z}'`` with x set exits 127). No enclosing
+      ``bash -c 'echo ${x@Z}'`` with x set exits 127) — **unless ERREXIT is
+      on, which forces 1** (see the errexit note below). No enclosing
       construct contains it (not even ``eval``); subshell/cmdsub children
-      simply exit. An interactive (or embedded/test) shell instead discards
-      the current line with status 1.
+      exit with the CHILD status instead (see
+      :func:`fatal_expansion_child_status`). An interactive (or embedded/test)
+      shell instead discards the current line with status 1.
+
+      **The errexit override on the ``-c`` status (slot 3.5, ruling (d)).**
+      ``bash -c 'set -e; echo ${x?boom}'`` exits **1**, not 127. Probed
+      against bash 5.2.26 across the whole family (``${x?}``, ``${x:?}``,
+      unknown ``@X``, ``set -u``, and through ``eval``), both ``set -e`` and
+      ``set -o errexit`` spellings, and re-verified by the integrator.
+      Two properties make this rule NOT the one its
+      :func:`substitution_abort_status` sibling uses, and both are pinned:
+
+      * it reads the RAW errexit FLAG, not EFFECTIVE errexit — every
+        suppressing context (``|| recover``, an ``if``/``while`` condition,
+        ``!``, a non-final ``&&``) still yields 1, and none of them recovers,
+        because the shell-exit is the expansion's own and errexit merely
+        colours its status. The sibling, by contrast, must subtract the
+        suppression;
+      * it is the CURRENT flag: ``set -e; set +e`` is back to 127.
+
+      Reasoning from the sibling by analogy gives the wrong answer here; the
+      probe is the authority.
 
     - **Discard-line family** — every other expansion failure
       (``$((1/0))``, arith syntax errors, bad subscripts ``${a[1//]}``,
@@ -107,25 +128,72 @@ def fatal_expansion_status(state: 'ShellState', exc: BaseException, *,
     so the status is returned instead of raising ``TopLevelAbort``.
     """
     if isinstance(exc, (FatalExpansionError, UnboundVariableError)):
+        channel = False
         if (state.options.get('command_mode')
                 and not state.options.get('interactive')):
-            code = getattr(exc, 'exit_code', 127)  # UnboundVariable: 127
+            if state.options.get('errexit', False):
+                # errexit forces 1 over the -c channel status. RAW flag, not
+                # effective errexit — see the docstring's two pinned
+                # properties (ruling (d)).
+                code = 1
+            else:
+                code = getattr(exc, 'exit_code', 127)  # UnboundVariable: 127
+            channel = True
         else:
             # Interactive-family shells discard the line with status 1 even
             # for a -c string: `bash -ic 'set -u; echo $undef; echo after'`
             # exits 1, not 127 (probe B6, campaign F1).
             code = 1
+        # The stamp: only a status produced by the CHANNEL branch above is
+        # re-mapped at a fork boundary (A10.1); everything else keeps its own
+        # status. BOTH exits out of this branch must carry it — a ``-c``
+        # invocation has ``is_script_mode`` True (the script NAME is set), so
+        # the SystemExit route below is the one the ``-c`` channel actually
+        # takes, and stamping only the TopLevelAbort would fix the model
+        # everywhere except the channel that motivates it.
         if state.is_script_mode:
-            raise SystemExit(code)
+            exc_exit = SystemExit(code)
+            exc_exit.fatal_expansion_channel = channel  # type: ignore[attr-defined]
+            raise exc_exit
         if at_boundary:
             return code
-        raise TopLevelAbort(code)
+        raise TopLevelAbort(code, fatal_expansion_channel=channel)
     # Discard-line family: errexit-immune (bash resumes the next line even
     # under set -e — unlike a readonly or failglob discard).
     if at_boundary:
         state.errexit_eligible = False
         return 1
     raise TopLevelAbort(1, errexit_immune=True)
+
+
+def fatal_expansion_child_status(state: 'ShellState') -> int:
+    """The FORKED-CHILD half of :func:`fatal_expansion_status`'s shell-exit
+    family — the A10.1 rule.
+
+    A forked child does NOT use the CHANNEL rule: it exits **1** for a
+    ``${x?}``/``${x:?}``/unknown-``@X``/``set -u`` failure even inside a ``-c``
+    shell, where the main shell uses 127. Consumed at the fork boundary by
+    ``executor/child_policy.py#map_child_exception``, keyed on the
+    ``fatal_expansion_channel`` stamp the raise site applied — never re-derived
+    from ``state``, which cannot tell a stamped abort from a readonly discard.
+
+    **It is FLAT 1, and that is the whole point of this function existing
+    separately from its sibling.** :func:`substitution_child_abort_status`
+    drops the channel rule but KEEPS an errexit branch (its child is 2 under
+    effective errexit), and its docstring warns the status is "NOT a flat
+    constant". The analogy does not carry: probed against bash 5.2.26 (slot
+    3.5), the fatal-expansion child is 1 with errexit OFF, with errexit ON
+    outside the fork, with errexit ON *inside* the fork
+    (``( set -e; echo ${x?boom} ) || echo "child rc=$?"`` -> 1), in an
+    ``if`` condition, and for both the subshell and command-substitution
+    routes. So there is no errexit branch and no suppression argument to
+    thread — deliberately, on evidence, not by omission.
+
+    Takes ``state`` for signature symmetry with the sibling and to keep the
+    call site uniform; a future channel- or option-dependence would land here
+    rather than at the boundary.
+    """
+    return 1
 
 
 def substitution_abort_status(state: 'ShellState', nested: bool,
