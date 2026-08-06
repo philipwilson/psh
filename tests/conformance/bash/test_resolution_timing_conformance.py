@@ -28,6 +28,7 @@ function-name validation, and posix special-builtin redirection errors not
 being fatal.
 """
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 from shell_oracle import is_comparable, run_bash, run_psh
@@ -1015,16 +1016,30 @@ def test_refused_prefix_control_flow_under_errexit_and_posix(setup, ident):
     assert (p.stdout, p.returncode) == (b.stdout, b.returncode)
 
 
+def test_declare_r_spelling_now_diagnoses_like_bash():
+    """RED ON BASE — mislabelled as a CONTROL when first written.
+
+    Its stdout leg does not move (`FN`/`AFTER`, rc 0 everywhere), which is
+    what made it look like a control. Its STDERR leg does: base emitted no
+    diagnostic at all where bash prints `RY: readonly variable`. It is a
+    facet of the declared RO1 diagnostic fix, so it is tip-equality
+    evidence, not a bounding row — and counting it as a control inflated the
+    bounding set.
+    """
+    p, b = _both('declare -r RY; f(){ echo FN; }; RY=1 f; echo AFTER')
+    assert 'readonly variable' in b.stderr, b
+    assert p.stdout == b.stdout
+    assert _err_tail(p) == _err_tail(b)
+
+
 @pytest.mark.parametrize('cmd,ident', [
-    pytest.param('declare -r RY; f(){ echo FN; }; RY=1 f; echo AFTER',
-                 'declare-r-spelling'),
     pytest.param('readonly RX; RX=1 eval ":"; echo AFTER', 'LAYER-route'),
     pytest.param('RX=keep; readonly RX; f(){ echo FN; }; RX=1 f; echo AFTER',
                  'SET-readonly'),
 ])
 def test_refused_prefix_control_flow_controls(cmd, ident):
-    """CONTROLS — these did NOT move between base and tip. Recorded so the
-    toward-bash rows above are bounded rather than open-ended."""
+    """The TWO genuine bounding controls — neither leg moved between base and
+    tip, so the toward-bash rows above are bounded rather than open-ended."""
     _assert_same(cmd)
 
 
@@ -1092,3 +1107,166 @@ def test_signature_holds_in_stdin_mode(cmd, expected):
     assert is_comparable(p) and is_comparable(b)
     assert b.stdout == expected, b
     assert p.stdout == b.stdout
+
+
+def _assert_same_behaviour(cmd):
+    """stdout + rc equality, plus diagnostic PRESENCE — not its wording.
+
+    Used by the generated KIND family, where some kinds fail through psh's
+    arithmetic/expansion error path. Those message SHAPES differ from bash by
+    documented convention (`arithmetic error: Division by zero` vs
+    `1/0: division by 0 (error token is "0")`) and are slot 3.5's territory,
+    not this slot's. What this family is testing is whether the value was
+    EVALUATED, which stdout, rc, and the presence of a diagnostic answer
+    exactly; asserting the wording would make the family fail for a reason it
+    is not about.
+    """
+    p, b = _both(cmd)
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+        f"cmd={cmd!r}\npsh ={p.stdout!r} rc={p.returncode} err={p.stderr!r}\n"
+        f"bash={b.stdout!r} rc={b.returncode} err={b.stderr!r}")
+    assert bool(p.stderr.strip()) == bool(b.stderr.strip()), (
+        f"cmd={cmd!r}: one shell diagnosed and the other did not\n"
+        f"psh err={p.stderr!r}\nbash err={b.stderr!r}")
+
+
+# ===========================================================================
+# SIDE-EFFECT KIND FAMILY — GENERATED, not hand-enumerated (R18 B1/B2).
+#
+# This axis was dropped three times, the last time on the axis a ruling had
+# just created. Hand-enumerated rows drop silently because nothing counts
+# what is missing; a generated cross-product cannot, because adding a KIND
+# row below automatically walks every route and both refusal states.
+#
+# The rule the family proves, on every kind: a REFUSED assignment's value is
+# never evaluated, so it contributes NOTHING — no store, no command
+# substitution, no fatal expansion, no trace line. bash is the oracle for
+# each cell; base got most of them wrong in the same direction.
+# ===========================================================================
+
+class Kind(NamedTuple):
+    """One side-effect kind plus the observable that detects evaluation."""
+    ident: str
+    setup: str      # runs before the command
+    value: str      # the prefix VALUE whose evaluation we are detecting
+    observe: str    # runs after; prints the evidence
+    fatal: bool = False   # an unevaluated-vs-evaluated difference that
+                          # ABORTS the shell when it does happen
+
+
+SIDE_EFFECT_KINDS = [
+    Kind('arith-assign', 'unset Z; ', '$((Z=9))', 'echo "Z=[${Z-UNSET}]"'),
+    Kind('assign-default-store', 'unset Z; ', '${Z:=9}', 'echo "Z=[${Z-UNSET}]"'),
+    Kind('arith-increment', 'unset Z; ', '$((Z+=9))', 'echo "Z=[${Z-UNSET}]"'),
+    Kind('set-u-unbound', 'set -u; ', '$UNSETVAR', 'echo AFTER', fatal=True),
+    Kind('param-null-fatal', '', '${NOPE?boom}', 'echo AFTER', fatal=True),
+    Kind('arith-error-fatal', '', '$((1/0))', 'echo AFTER', fatal=True),
+]
+
+ROUTES = [
+    pytest.param('f', id='function'),
+    pytest.param('eval ":"', id='special-LAYER'),
+    pytest.param('/bin/echo x >/dev/null', id='external'),
+]
+
+
+@pytest.mark.parametrize('route', ROUTES)
+@pytest.mark.parametrize('kind', SIDE_EFFECT_KINDS, ids=lambda k: k.ident)
+def test_refused_prefix_evaluates_no_side_effect_kind(kind, route):
+    """RED ON BASE for most kinds. A refused assignment contributes nothing,
+    whatever the value's KIND and whatever the command resolves to."""
+    cmd = (f'{kind.setup}readonly RX; f(){{ :; }}; '
+           f'RX={kind.value} {route}; {kind.observe}')
+    _assert_same_behaviour(cmd)
+
+
+@pytest.mark.parametrize('route', ROUTES)
+@pytest.mark.parametrize('kind', SIDE_EFFECT_KINDS, ids=lambda k: k.ident)
+def test_unrefused_prefix_DOES_evaluate_each_kind_CONTROL(kind, route):
+    """CONTROL — the other half of every row above. Without the readonly the
+    value IS evaluated, so the rows above are detecting the refusal rather
+    than an observable that never fires."""
+    cmd = (f'{kind.setup}unset RX; f(){{ :; }}; '
+           f'RX={kind.value} {route}; {kind.observe}')
+    _assert_same_behaviour(cmd)
+
+
+@pytest.mark.parametrize('kind', [k for k in SIDE_EFFECT_KINDS if k.fatal],
+                         ids=lambda k: k.ident)
+@pytest.mark.parametrize('mode', ['file', 'stdin'])
+def test_refused_prefix_fatal_kinds_do_not_abort_the_script(kind, mode,
+                                                            tmp_path):
+    """RED ON BASE, and the sharpest of the family: base ABORTED the script
+    (rc 127 / rc 1, no output) where bash runs on. A script that used to stop
+    now continues — a behaviour change that only shows up in file and stdin
+    modes, which is why the fatal kinds carry the mode axis."""
+    script = f'{kind.setup}readonly RX\nf(){{ echo FN; }}\nRX={kind.value} f\necho AFTER\n'
+    if mode == 'file':
+        path = tmp_path / 'probe.sh'
+        path.write_text(script)
+        p = run_psh([str(path)], cwd=PSH_ROOT, timeout=15)
+        b = run_bash([str(path)], cwd=PSH_ROOT, timeout=15)
+    else:
+        p = run_psh([], cwd=PSH_ROOT, timeout=15, stdin_data=script)
+        b = run_bash([], cwd=PSH_ROOT, timeout=15, stdin_data=script)
+    assert is_comparable(p) and is_comparable(b)
+    assert 'AFTER' in b.stdout, b
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode)
+
+
+def test_refused_prefix_command_substitution_never_runs(tmp_path):
+    """RED ON BASE. The kind whose evidence is a side effect on the FILESYSTEM
+    rather than in the shell: base ran the substitution, bash and the tip do
+    not."""
+    marker = tmp_path / 'ran'
+    refused = f'readonly RX; f(){{ :; }}; RX=$(touch {marker}; echo x) f'
+    p, b = _both(refused)
+    assert is_comparable(p) and is_comparable(b)
+    assert not marker.exists(), 'bash must not run a refused value'
+    control = f'unset RX; f(){{ :; }}; RX=$(touch {marker}; echo x) f'
+    _psh(control)
+    assert marker.exists(), 'CONTROL: an unrefused value DOES run'
+
+
+def test_refused_prefix_is_not_traced(tmp_path):
+    """RED ON BASE, pinned on the TRACE — the observable that moved. Under
+    `set -x` base emitted a `+` line for the assignment it then refused."""
+    cmd = 'set -x; readonly RX; f(){ :; }; RX=1 B=2 f'
+    p, b = _both(cmd)
+    assert b.stderr.count('\n+ ') + b.stderr.startswith('+ ') > 0, b
+    plus_b = len([ln for ln in b.stderr.splitlines() if ln.startswith('+')])
+    plus_p = len([ln for ln in p.stderr.splitlines() if ln.startswith('+')])
+    assert plus_p == plus_b, (
+        f'trace line count differs: psh {plus_p} vs bash {plus_b}\n'
+        f'psh:\n{p.stderr}\nbash:\n{b.stderr}')
+
+
+# ---------------------------------------------------------------------------
+# B3 (R18) — the NAMEREF spelling of the posix store. Away-from-bash, and
+# newly REACHED by the reorder rather than caused by it: psh's posix hook
+# couples on a nameref write-through where bash's does not. N8-class — pinned
+# both sides, NOT fixed in-slot (the hook is core, shipped, and has its own
+# family of pins).
+# ---------------------------------------------------------------------------
+
+def test_divergence_nameref_spelled_posix_store_flips_dispatch():
+    """OUT OF CHARTER. bash: the write reaches POSIXLY_CORRECT but posix does
+    NOT turn on, so the function still wins. psh couples on the write-through,
+    so the special builtin wins. Base matched bash here only because it never
+    looked at the value; the reorder makes the pre-existing hook divergence
+    reach dispatch."""
+    cmd = ('unset POSIXLY_CORRECT; declare -n npc=POSIXLY_CORRECT; '
+           'eval(){ echo FN; }; A=$((npc=1)) eval "echo BP"')
+    p, b = _both(cmd)
+    assert b.stdout == 'FN\n', b
+    # psh's CURRENT shape — this pin FLIPS when the hook is fixed, which is
+    # the successor's obligation, not this slot's.
+    assert p.stdout == 'BP\n', p
+
+
+def test_nameref_name_level_posix_prefix_flips_in_BOTH_shells_CONTROL():
+    """BOUNDING CONTROL. The name-level nameref spelling flips in bash too, so
+    the divergence above is specific to the VALUE-side write-through and not
+    to namerefs generally."""
+    _assert_same('unset POSIXLY_CORRECT; declare -n npc=POSIXLY_CORRECT; '
+                 'eval(){ echo FN; }; npc=1 eval "echo BP"')
