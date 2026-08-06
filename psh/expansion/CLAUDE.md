@@ -519,7 +519,7 @@ everything else propagates.
 
 - **A bare `ValueError` cannot escape `evaluate_arithmetic`**
   (`arithmetic/evaluator.py`): the inner converter turns the user-reachable
-  ones — the `int()` digit-limit class, overflow, allocation — into
+  ones — CPython's str-to-int digit-limit class, overflow, allocation — into
   `ShellArithmeticError`, while the evaluator's own can't-happen branches raise
   `RuntimeError`. Every outer `except ValueError` leg guarding a call to it was
   therefore dead, and they are gone (`operators.py`, `executor/core.py`'s
