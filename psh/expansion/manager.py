@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from ..ast_nodes import ExpansionPart, LiteralPart, ProcessSubstitution, SimpleCommand, Word
 from ..core.assignment_utils import ASSIGNMENT_PREFIX_RE
+from ..core.exceptions import PshError
 from .brace_expansion_words import WordBraceExpander
 from .command_sub import CommandSubstitutionExecutor
 from .glob import GlobExpander
@@ -327,8 +328,17 @@ class ExpansionManager:
         ``PS4='+ ${LINENO}: '`` reports the traced line. The SINGLE PS4
         expansion helper: every xtrace emission site routes through here.
         A value with no expansion sigil is returned untouched (the fast,
-        overwhelmingly common case), and an expansion that raises falls back
-        to the raw value so tracing itself never aborts the shell.
+        overwhelmingly common case), and a SHELL ERROR during the expansion
+        falls back to the raw value so tracing itself never aborts the shell —
+        bash-parity for ``PS4='$((1/0)) '``, ``'${x?boom} '``, ``'${v@Z} '``
+        (both shells print the diagnostic, emit the RAW PS4 text, and carry on).
+
+        The fallback catches ``PshError`` and no wider (MEDIUM-12b): the former
+        ``except Exception`` also swallowed genuine internal defects, so a psh
+        bug on the PS4 path silently degraded to an untraced prompt even under
+        strict-errors. Unwinding OUTCOMES (``TopLevelAbort`` and friends) derive
+        from ``BaseException`` and were never caught here, before or after —
+        see ``core/CLAUDE.md`` on the errors-vs-outcomes split.
         """
         ps4 = self.shell.state.get_variable('PS4', '+ ')
         if '$' not in ps4 and '`' not in ps4:
@@ -342,7 +352,7 @@ class ExpansionManager:
         options['xtrace'] = False
         try:
             return self.expand_string_variables(ps4)
-        except Exception:
+        except PshError:
             return ps4
         finally:
             options['xtrace'] = saved_xtrace

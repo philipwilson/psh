@@ -514,7 +514,10 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # -c list).
                 from .strategies import report_assignment_error
                 return report_assignment_error(self.state, e)
-            except (ValueError, ArithmeticError) as e:
+            except ArithmeticError as e:
+                # The user-reachable class: ShellArithmeticError subclasses the
+                # builtin ArithmeticError. The former ValueError co-leg was DEAD
+                # — a bare VE cannot escape evaluate_arithmetic (MEDIUM-12b).
                 print(f"psh: ((: {e}", file=self.state.stderr)
                 return 1
 

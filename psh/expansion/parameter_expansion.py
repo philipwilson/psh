@@ -35,6 +35,7 @@ Removal has NO consumer layer (pure slice booleans) — measured, same corpus.
 from functools import lru_cache
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
+from ..core.exceptions import ExpansionError
 from .pattern_engine import (
     STRING,
     CompiledPattern,
@@ -455,7 +456,14 @@ class ParameterExpansionOps:
                 # (e.g. `${x:0:-5}` on a short string).
                 end = len(value) + length
                 if end < offset:
-                    raise ValueError(f"{length}: substring expression < 0")
+                    # TYPED at the detection point (MEDIUM-12b): this is a
+                    # user-syntax failure, not an internal defect, so it is an
+                    # ExpansionError (discard-line family) rather than a bare
+                    # ValueError the caller has to re-interpret. The callers
+                    # (operators.py#_slice_scalar_subscript / the ':off:len'
+                    # arm) own the location prefix and $?, so they print and
+                    # re-raise; the message text is unchanged (bash parity).
+                    raise ExpansionError(f"{length}: substring expression < 0")
                 return value[offset:end]
             else:
                 # Normal positive length

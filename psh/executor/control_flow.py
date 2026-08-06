@@ -414,10 +414,13 @@ class ControlFlowExecutor:
                     try:
                         evaluate_arithmetic(node.init_expr, self.shell)
                     except (ReadonlyVariableError, NamerefCycleError,
-                            ValueError, ArithmeticError) as e:
+                            ArithmeticError) as e:
                         # A bad init expr (`readonly z; for ((z=0; ...))`, or an
                         # evaluation failure): the loop never runs; bash reports
                         # and continues with status 1.
+                        # The ValueError co-leg was DEAD (MEDIUM-12b): a bare VE
+                        # cannot escape evaluate_arithmetic — see the sibling
+                        # comment on the condition arm below.
                         return self._arith_step_error_status(e)
 
                 while True:
@@ -430,9 +433,15 @@ class ControlFlowExecutor:
                             if result == 0:  # Zero means false
                                 break
                         except (ReadonlyVariableError, NamerefCycleError,
-                                ValueError, ArithmeticError) as e:
+                                ArithmeticError) as e:
                             # A bad condition expr stops the loop with status 1
                             # (bash reports; execution continues after).
+                            # ArithmeticError is the user-reachable evaluation
+                            # failure (ShellArithmeticError subclasses it). The
+                            # former ValueError co-leg was DEAD: the inner
+                            # converter in arithmetic/evaluator.py turns every
+                            # user-reachable VE into ShellArithmeticError, so the
+                            # leg could only mask an internal defect (MEDIUM-12b).
                             exit_status = self._arith_step_error_status(e)
                             break
 
@@ -455,9 +464,11 @@ class ControlFlowExecutor:
                         try:
                             evaluate_arithmetic(node.update_expr, self.shell)
                         except (ReadonlyVariableError, NamerefCycleError,
-                                ValueError, ArithmeticError) as e:
+                                ArithmeticError) as e:
                             # A bad update expr stops the loop with status 1;
                             # the body has already run this iteration (bash).
+                            # ValueError co-leg dropped as dead (MEDIUM-12b) —
+                            # see the condition arm above.
                             exit_status = self._arith_step_error_status(e)
                             break
 
@@ -689,8 +700,9 @@ class ControlFlowExecutor:
         The init, condition and update expressions of ``for ((...))`` all
         fail the same way (bash): a readonly / nameref-cycle assignment is
         reported via ``report_assignment_error`` (bash's message + flow), and
-        any other evaluation failure (``ValueError``/``ArithmeticError`` —
-        e.g. a bad base literal or a residual ``$``) prints ``psh: ((: <msg>``.
+        any other evaluation failure (``ArithmeticError``, i.e. the typed
+        ``ShellArithmeticError`` — e.g. a bad base literal or a residual
+        ``$``) prints ``psh: ((: <msg>``.
         Both yield status 1 and let the shell continue; the CALLER decides
         whether that ends the loop (``return`` before the loop runs, or
         ``break`` out of it)."""
