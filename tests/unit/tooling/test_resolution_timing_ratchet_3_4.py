@@ -28,11 +28,18 @@ The behavioural counterpart lives in test land and fails for its own reason:
 reordered executor. This file is the STATIC half — it fails on the shape even
 if someone were to weaken the behavioural rows.
 
-Only the DISPATCH path is scanned (``CommandExecutor._run_command``, the
-method that owns the prefix/resolve/dispatch sequence). The introspection
-callers of ``CommandResolver.resolve`` (``type`` and ``command`` builtins,
-``command_resolver.py``) are QUERY paths, not dispatch, and are outside this
-method by construction.
+SCAN SCOPE, stated so the claim is no wider than the instrument: this reads
+``CommandExecutor._run_command`` and NOTHING ELSE. A helper called FROM that
+method is outside the scan — the transaction could in principle be reordered
+by moving a call into a helper, and this ratchet would not see it. That gap
+is covered from the other side: the R3 ratchet's raw-name scan polices the
+whole of ``command.py``, and the conformance battery fails behaviourally on
+any reorder. Widening this scan to follow calls is a successor item, not a
+silent assumption.
+
+The introspection callers of ``CommandResolver.resolve`` (``type`` and
+``command`` builtins, ``command_resolver.py``) are QUERY paths, not dispatch,
+and are outside this method by construction.
 """
 
 import ast
