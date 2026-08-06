@@ -76,3 +76,12 @@ first; 4B.3 consumes that classification.
 | X1 / R4 confounders | posix fn-name validation; posix special-builtin redirection fatality |
 
 All both-sides pinned: each flips VISIBLY when a successor takes its row.
+
+### 3.5-declared divergence pins (v0.767.0; none named `test_divergence_*` — recorded per R13-E(4))
+
+| pin | file | divergence | owner |
+|---|---|---|---|
+| `TestDeclaredDivergences::test_ps4_bad_subscript_aborts_in_psh_but_not_bash` | tests/conformance/bash/test_typed_expansion_errors_conformance.py | PS4 containing a bad-subscript expansion: bash falls back to raw PS4 and CONTINUES rc 0; psh aborts rc 1 (`TopLevelAbort` is a BaseException and escapes the narrowed `except PshError` net — pre-existing, byte-identical base/tip) | D-3.5-s4 |
+| `TestDeclaredDivergences::test_invalid_regex_diagnostic_is_psh_only` | tests/conformance/bash/test_typed_expansion_errors_conformance.py | `[[ x =~ '(' ]]`: both shells rc 2, but psh prints `psh: [[: invalid regex: …` where bash is SILENT (wording/stream class) | D-3.5-s5 |
+
+Both pinned BOTH-SIDES in the divergent direction; each flips ONLY with a ruling.
