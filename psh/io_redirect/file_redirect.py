@@ -1,5 +1,6 @@
 """File redirection implementation."""
 import copy
+import errno
 import fcntl
 import os
 import stat
@@ -1028,7 +1029,20 @@ class FileRedirector:
                     # relocation protocol on _StdStreamBaseline.
                     baseline_fds[fd] = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC,
                                                    _PARKING_BASE)
-                except OSError:
+                except OSError as exc:
+                    # ONLY a genuinely closed descriptor records None. That
+                    # encoding is what `restore` reads as "this fd was closed
+                    # at baseline, close it again", so it must not double as
+                    # "we could not dup it": under fd exhaustion every dup
+                    # failed, all three recorded None, the exec still
+                    # reported success, and close() then closed the HOST's
+                    # fds 0/1/2 (slot 4A.1 probe B-13a). Any other errno —
+                    # EMFILE (table full), EINVAL (parking base above
+                    # RLIMIT_NOFILE) — means the baseline is unknowable, so
+                    # the acquisition aborts transactionally through the
+                    # handler below, exactly like a rejected acquisition.
+                    if exc.errno != errno.EBADF:
+                        raise
                     baseline_fds[fd] = None  # fd closed at baseline
             baseline = _StdStreamBaseline(
                 fds=baseline_fds,
