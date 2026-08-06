@@ -521,16 +521,22 @@ everything else propagates.
   (`arithmetic/evaluator.py`): the inner converter turns the user-reachable
   ones — CPython's str-to-int digit-limit class, overflow, allocation — into
   `ShellArithmeticError`, while the evaluator's own can't-happen branches raise
-  `RuntimeError`. Every outer `except ValueError` leg guarding a call to it was
-  therefore dead, and they are gone (`operators.py`, `executor/core.py`'s
-  `(( ))`, `executor/control_flow.py`'s three `for(( ))` legs). What remains
-  catches `ArithmeticError`, which `ShellArithmeticError` subclasses.
+  `RuntimeError`. The outer `except ValueError` legs guarding a call to it were
+  therefore dead, and remediation 3.5 removed them at its FIVE in-slot sites —
+  `operators.py`'s slice-operand parse, `executor/core.py`'s `(( ))`, and
+  `executor/control_flow.py`'s three `for(( ))` legs (init / condition /
+  update); each now catches `ArithmeticError`, which `ShellArithmeticError`
+  subclasses. **One leg of the same shape survives OUTSIDE that scope**:
+  `builtins/let_builtin.py:52` still catches `(ValueError, ArithmeticError)`
+  around `evaluate_arithmetic`. That is MEDIUM-12's 5C half (the builtins
+  tree), deliberately untouched here — the deadness argument applies to it
+  equally, but the removal is 5C's to make.
 - **The substring bound is typed at its detection point**:
   `parameter_expansion.py#extract_substring` raises `ExpansionError`, and
   `operators.py`'s two slice sites catch that and re-raise it after adding the
   location prefix and `$?`.
 - **The PS4 fallback catches `PshError`, not `Exception`**
-  (`manager.py#_expand_ps4`). The bash-parity shape is unchanged — a shell
+  (`manager.py#expand_ps4`). The bash-parity shape is unchanged — a shell
   error during PS4 expansion still falls back to the raw text so tracing never
   aborts the shell — but an internal defect is no longer swallowed into that
   fallback. Note the fallback never saw `TopLevelAbort` either way: unwinding

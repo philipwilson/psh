@@ -466,10 +466,14 @@ A10.1). The shell-exit expansion family (`${x:?}`, unknown `@X` on a set var,
 `set -u`) takes its status from the channel: 127 under `-c`, 1 for a script
 file or stdin. That is a MAIN-shell rule — bash's forked children exit 1 for
 the same failure even inside a `-c` shell. So `fatal_expansion_status` STAMPS
-the abort it raises (`TopLevelAbort(..., fatal_expansion_channel=True)`, and
-the same attribute on the `SystemExit` it raises in script mode — `-c` takes
-that route, because `-c` sets a script name), and `map_child_exception`
-re-derives the child's status through
+the abort it raises with the CHANNEL-DERIVED flag itself
+(`TopLevelAbort(..., fatal_expansion_channel=channel)`, and the same attribute
+on the `SystemExit` it raises in script mode — `-c` takes that route, because
+`-c` sets a script name). The stamp is CONDITIONAL, not a constant `True`: it
+is set only on the branch that actually consulted `command_mode`, so the
+interactive-family path — which yields status 1 for its own reason, not the
+channel's — leaves it False and its children keep `.status`.
+`map_child_exception` re-derives the child's status through
 `internal_errors.py#fatal_expansion_child_status`. Only that ONE raise site
 stamps; every other `TopLevelAbort` in the tree (readonly-assignment refusal,
 `FUNCNEST`, `failglob`, the errexit-immune discard family) is

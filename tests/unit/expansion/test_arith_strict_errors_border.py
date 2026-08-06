@@ -113,3 +113,69 @@ def test_dispatch_unknown_node_raises_runtime_error():
     ev = ArithmeticEvaluator(shell=None)
     with pytest.raises(RuntimeError, match="internal: unknown arithmetic node"):
         ev._dispatch(object())
+
+
+# --- The PS4 sibling: same border, the OTHER net remediation 3.5 narrowed ----
+#
+# ``manager.py#expand_ps4`` fell back to the RAW PS4 text on
+# ``except Exception``, swallowing a genuine internal defect on the trace path
+# in BOTH modes — invisible even under strict-errors, which is the whole
+# complaint. Narrowed to ``except PshError``, so a defect now propagates and is
+# classified.
+#
+# DECLARED DEFAULT-MODE DELTA (slot 3.5, R5-B7): this changes the DEFAULT-mode
+# consequence class for an INJECTED defect — base emitted the trace with the
+# raw PS4 text and continued (rc 0), tip aborts the command (rc 1). Measured
+# both ways in ``tmp/obs-3-5/ps4_default_mode.py``. No user-reachable route
+# exists (a PS4 expansion failing for a SHELL reason still falls back — the
+# third pin below), so the delta is injection-only. These pins LOCK the
+# declared model in both modes rather than leaving it described in prose.
+
+@pytest.fixture
+def _force_ps4_internal_defect(monkeypatch):
+    """Make the PS4 expansion path raise a genuine internal defect, and ONLY
+    that path: the wrapper delegates unless the text carries the sentinel, so
+    ordinary expansion in the same shell is untouched."""
+    from psh.expansion.manager import ExpansionManager
+    real = ExpansionManager.expand_string_variables
+
+    def wrapper(self, text, *a, **k):
+        if 'FORCEDEFECT' in text:
+            raise TypeError('FORCED-INTERNAL-DEFECT')
+        return real(self, text, *a, **k)
+
+    monkeypatch.setattr(ExpansionManager, "expand_string_variables", wrapper)
+
+
+def test_ps4_internal_defect_is_not_swallowed_when_strict_off(
+        captured_shell, _force_ps4_internal_defect):
+    """Strict OFF: the defect reaches the last-resort guard and the command
+    fails (rc 1) instead of degrading to an untraced prompt. Before the
+    narrowing this returned 0 with the raw PS4 emitted and the command run —
+    the masking this slot removed."""
+    captured_shell.state.options['strict-errors'] = False
+    rc = captured_shell.run_command("set -x; PS4='FORCEDEFECT$x '; echo hi")
+    assert rc == 1
+    assert "hi" not in captured_shell.get_stdout()
+
+
+def test_ps4_internal_defect_reraises_when_strict_on(
+        captured_shell, _force_ps4_internal_defect):
+    """Strict ON: the same defect PROPAGATES, so a real regression on the trace
+    path surfaces loudly instead of silently untracing."""
+    captured_shell.state.options['strict-errors'] = True
+    with pytest.raises(TypeError, match="FORCED-INTERNAL-DEFECT"):
+        captured_shell.run_command("set -x; PS4='FORCEDEFECT$x '; echo hi")
+
+
+def test_ps4_shell_error_still_falls_back_in_both_modes(captured_shell):
+    """COUNTER-PIN: a PS4 expansion failing for a SHELL reason (a PshError)
+    must STILL fall back to the raw text and let the command run — bash-parity,
+    and exactly what the narrowing had to preserve. Without this row the two
+    pins above would be satisfied by simply deleting the fallback."""
+    for strict in (False, True):
+        captured_shell.clear_output()
+        captured_shell.state.options['strict-errors'] = strict
+        rc = captured_shell.run_command("set -x; PS4='$((1/0)) '; echo hi")
+        assert rc == 0, f"strict={strict}"
+        assert "hi" in captured_shell.get_stdout(), f"strict={strict}"
