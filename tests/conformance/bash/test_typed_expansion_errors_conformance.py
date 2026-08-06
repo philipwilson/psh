@@ -222,10 +222,24 @@ class TestUntouchedFamilies:
         not start."""
         _assert_agree(f'{errexit}echo ${{}}; echo "after rc=$?"')
 
-    def test_exit_builtin_child_status_is_untouched(self):
+    @pytest.mark.parametrize("code", [5, 42])
+    def test_exit_builtin_child_status_is_untouched(self, code):
         """The stamp is keyed, not blanket: a real ``exit`` in a subshell still
         carries its own code through the SystemExit arm."""
-        _assert_agree('( exit 5 ) || echo "child rc=$?"')
+        _assert_agree(f'( exit {code} ) || echo "child rc=$?"')
+
+    def test_exit_127_in_a_subshell_is_the_collision_control(self):
+        """COLLISION CONTROL. 127 is the exact value a buggy stamp check would
+        silently rewrite to 1 — and the arbitrary-code controls above cannot
+        see that failure, because 5 and 42 are never what the channel rule
+        produces. A real ``exit 127`` must still be 127: the stamp is an
+        attribute on the exception, not a comparison against its status."""
+        _assert_agree('( exit 127 ) || echo "child rc=$?"')
+
+    def test_exit_127_from_a_command_not_found_child(self):
+        """The same collision reached the natural way: a not-found command in a
+        subshell genuinely exits 127."""
+        _assert_agree('( nosuchcommand_zz ) 2>/dev/null || echo "child rc=$?"')
 
     def test_readonly_assignment_abort_child_status_is_untouched(self):
         """D-3.4-s3's neighbourhood: a readonly-refusal abort is an UNSTAMPED

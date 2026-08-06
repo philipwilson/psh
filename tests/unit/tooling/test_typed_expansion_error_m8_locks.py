@@ -195,8 +195,13 @@ def _apply(tree, rel_in_psh, old, new):
 
 @pytest.mark.parametrize("mutation,cmd,healthy,broken,pin", [
     (
-        # Un-stamp the SystemExit route: the -c channel's 127 leaks into the
-        # forked child again — the A10.1 defect exactly as found.
+        # R3 condition (iii): un-stamp the SystemExit carrier ALONE, leaving
+        # the TopLevelAbort raise still stamped. This is the mutation that
+        # reproduces the near-miss in this slot's own implementation — the
+        # ruled design stamped only the TopLevelAbort, and a `-c` invocation
+        # has is_script_mode True, so the shell-exit family leaves by the
+        # SystemExit route and the channel's 127 leaked into the forked child.
+        # The `-c` subshell pin must fail for its OWN reason: after rc=127.
         ("core/internal_errors.py",
          "            exc_exit.fatal_expansion_channel = channel  # type: ignore[attr-defined]",
          "            exc_exit.fatal_expansion_channel = False  # type: ignore[attr-defined]"),
@@ -204,6 +209,21 @@ def _apply(tree, rel_in_psh, old, new):
         "after rc=1\n", "after rc=127\n",
         "test_typed_expansion_errors_conformance.py::"
         "TestA101ForkBoundaryChildStatus::test_after_marker_matches_bash",
+    ),
+    (
+        # The COLLISION mutation: a stamp check that compared the STATUS
+        # (== 127) instead of reading the attribute would pass every A10.1 row
+        # and silently rewrite a real `exit 127`. Locks the collision control
+        # row in the battery.
+        ("executor/child_policy.py",
+         "        if getattr(exc, 'fatal_expansion_channel', False):\n"
+         "            # Same stamp, second route",
+         "        if exc.code == 127:\n"
+         "            # Same stamp, second route"),
+        '( exit 127 ) || echo "child rc=$?"',
+        "child rc=127\n", "child rc=1\n",
+        "test_typed_expansion_errors_conformance.py::"
+        "TestUntouchedFamilies::test_exit_127_in_a_subshell_is_the_collision_control",
     ),
     (
         # Drop the errexit override: `set -e` under -c goes back to 127.
@@ -221,7 +241,8 @@ def _apply(tree, rel_in_psh, old, new):
         "test_typed_expansion_errors_conformance.py::"
         "TestErrexitOverridesChannelStatus::test_both_errexit_spellings",
     ),
-], ids=["a101_unstamped", "errexit_override_removed"])
+], ids=["a101_systemexit_carrier_unstamped", "stamp_check_by_status_collision",
+        "errexit_override_removed"])
 def test_m8_behavioural_mutation_regresses_the_named_pin(
         tmp_path, mutation, cmd, healthy, broken, pin):
     """Each mutation must reproduce the ORIGINAL defect's observable, which is

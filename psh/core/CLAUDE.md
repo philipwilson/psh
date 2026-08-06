@@ -386,7 +386,11 @@ Two distinct families — do not mix them up:
   `FatalExpansionError` for the `${x:?}`/unknown-`@X`-transform kinds that
   exit a non-interactive shell — see `fatal_expansion_status` in
   `internal_errors.py` for the bash discard-line model),
-  `FunctionDefinitionError` (invalid/reserved/readonly function name), and
+  `FunctionDefinitionError` (invalid/reserved/readonly function name),
+  `TestExpressionError` (a USER-syntax failure evaluating a `[[ ]]` expression
+  — the live instance is an invalid `=~` regex; raised at its detection point
+  in `executor/enhanced_test_evaluator.py` so the statement handler needs no
+  raw-VT net), and
   `ReadError` (a `read`/`mapfile` option-VALUE error carrying bash's exit
   code). The lexer's `UnclosedQuoteError` also roots here, dual-inheriting
   `(PshError, SyntaxError)` so the load-bearing `except SyntaxError`
