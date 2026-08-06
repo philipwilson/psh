@@ -301,6 +301,22 @@ class ArraySubscriptError(PshError):
         super().__init__(message)
 
 
+class TestExpressionError(PshError):
+    """A USER-syntax failure evaluating a ``[[ ]]`` expression.
+
+    The one live instance is an invalid ``=~`` regex (``[[ x =~ [ ]]``), which
+    bash reports and fails with status 2. Typed at its detection point
+    (``executor/enhanced_test_evaluator.py``) so the statement's handler can
+    catch the user error WITHOUT a raw ``ValueError``/``TypeError`` net that
+    also swallowed the evaluator's own can't-happen branches (MEDIUM-12b).
+    Those branches now raise ``RuntimeError`` and surface as internal defects,
+    exactly as the arithmetic evaluator's do —
+    ``expansion/arithmetic/evaluator.py#_evaluate_arithmetic_inner``
+    documents the same split. A legitimate shell error (not a defect), so it
+    classifies as expected under strict-errors."""
+    exit_code = 2
+
+
 class ReadError(PshError):
     """A ``read`` / ``mapfile`` option-VALUE error carrying bash's exit code.
 
