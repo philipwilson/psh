@@ -67,8 +67,8 @@ class PrefixOutcome(NamedTuple):
 
     ``saved`` is handed back to :meth:`CommandAssignments.restore` by the
     dispatcher (opaque to it) — the save/restore snapshots for the few prefix
-    names that take the SEED path (dynamic specials, array-object appends,
-    nameref-to-element) rather than bash's temporary_env. ``applied`` is the
+    names that take the SEED path (dynamic specials and array-object appends)
+    rather than bash's temporary_env. ``applied`` is the
     expanded (name, value) pairs that took effect (``exec`` without a command
     persists these); ``failed`` is True when any assignment failed (readonly) —
     fatal under ``set -e``. ``pushed_temp_env`` records whether a command
@@ -260,7 +260,7 @@ class CommandAssignments:
                 # A nameref prefix writes through to its target (bash flips
                 # posix for `declare -n r=POSIXLY_CORRECT; r=1 cmd`). A cycle
                 # cannot reach POSIXLY_CORRECT as a final target; treat it as
-                # a non-match (apply_prefix reports the cycle later).
+                # a non-match (expand_prefix reports the cycle later).
                 try:
                     name = scope_manager.resolve_nameref_name(name)
                 except NamerefCycleError:
@@ -421,11 +421,49 @@ class CommandAssignments:
         if not raw_assignments:
             return EMPTY_STAGED
 
+        try:
+            return self._stage_values(
+                raw_assignments, self.state.options.get('xtrace'))
+        except BaseException:
+            # A value's expansion can raise from the SECOND assignment onward,
+            # after the staging scope is already open (an arithmetic error, a
+            # nameref cycle, a fatal expansion). Phase 2 never runs on that
+            # path, so phase 1 unwinds its own scope here — a leaked staging
+            # scope would be enumeration-INVISIBLE pollution that also grows
+            # the scope stack once per error.
+            self._discard_staging_scope()
+            raise
+
+    def _pop_staging_scope(self) -> None:
+        """Pop the staging scope, asserting this transaction actually owns it.
+
+        Ownership is checked rather than assumed because the failure is silent
+        both ways: popping a scope we do not own destroys someone else's
+        bindings, and failing to pop ours leaves an enumeration-INVISIBLE
+        scope behind. ``staged.staging_scope`` says a scope was opened; this
+        says the one on top is still it.
+        """
+        stack = self.state.scope_manager.scope_stack
+        assert len(stack) > 1 and stack[-1].is_staging, (
+            "prefix transaction lost ownership of its staging scope "
+            f"(depth={len(stack)}, "
+            f"top_is_staging={getattr(stack[-1], 'is_staging', None)})")
+        self.state.scope_manager.pop_scope()
+
+    def _discard_staging_scope(self) -> None:
+        """Pop the staging scope if this transaction still owns one."""
+        scope_manager = self.state.scope_manager
+        stack = scope_manager.scope_stack
+        if len(stack) > 1 and stack[-1].is_staging:
+            scope_manager.pop_scope()
+
+    def _stage_values(self, raw_assignments: List[RawAssignment],
+                      xtrace: object) -> StagedPrefix:
+        """The staging loop of :meth:`expand_prefix` (which owns unwinding)."""
         scope_manager = self.state.scope_manager
         pairs: List[Tuple[str, object]] = []
         failed = False
         staging_scope = False
-        xtrace = self.state.options.get('xtrace')
 
         for var, value, value_word in raw_assignments:
             value = self._expand_value(value, value_word)
@@ -448,7 +486,7 @@ class CommandAssignments:
                     continue
 
             if not staging_scope:
-                scope_manager.push_temp_env_scope()
+                scope_manager.push_temp_env_scope(staging=True)
                 staging_scope = True
             try:
                 scope_manager.set_temp_env_var(var, resolved)
@@ -480,21 +518,28 @@ class CommandAssignments:
         * otherwise the staging scope is popped and each binding installs into
           a command temporary-environment LAYER — which name LOOKUP consults
           but whole-table ENUMERATIONS skip, exactly bash's ``temporary_env``.
-          Dynamic specials (RANDOM/SECONDS), array objects and
-          nameref-to-element targets cannot be a plain temporary binding, so
-          they take the SEED path here: a real exported write plus the
-          save/restore snapshot and literal env overlay :meth:`restore` and
-          :meth:`commit` consume. Seeding happens at COMMIT, never at staging,
-          so a later prefix value still reads the MASKED literal.
+          Dynamic specials (RANDOM/SECONDS) and array objects cannot be a
+          plain temporary binding, so they take the SEED path here: a real
+          exported write plus the save/restore snapshot and literal env
+          overlay :meth:`restore` and :meth:`commit` consume. Seeding happens
+          at COMMIT, never at staging, so a later prefix value still reads the
+          MASKED literal. A nameref-to-element prefix (``declare -n r=a[0];
+          r=v cmd``) takes NO route and does not write through — bash does not
+          write through either, and emits no diagnostic for the prefix form.
         """
         if temp_scope or not staged.pairs:
             if not temp_scope and staged.staging_scope:
-                self.state.scope_manager.pop_scope()
+                self._pop_staging_scope()
+            elif temp_scope and staged.staging_scope:
+                # FUNCTION target ADOPTS the staging scope: clear the staging
+                # flag so the body enumerates its prefix vars (bash merges a
+                # function's prefix vars into its locals).
+                self.state.scope_manager.scope_stack[-1].is_staging = False
             return PrefixOutcome({}, list(staged.pairs), staged.failed, False)
 
         scope_manager = self.state.scope_manager
         if staged.staging_scope:
-            scope_manager.pop_scope()
+            self._pop_staging_scope()
 
         saved_vars: Dict[str, dict] = {}
         assignments: List[Tuple[str, object]] = []
@@ -507,10 +552,14 @@ class CommandAssignments:
         pushed_temp_env = False
 
         for var, resolved in staged.pairs:
+            # A subscripted target cannot arrive here at all: ``a[0]=v cmd``
+            # is refused upstream as "not a valid identifier" (bash likewise),
+            # and a nameref-to-element prefix is keyed by the NAMEREF name — so
+            # neither spelling carries a bracket into this test. The bracket
+            # disjunct this once had was therefore unreachable.
             use_seed_path = (
                 scope_manager.is_dynamic_special(var)
-                or isinstance(resolved, (IndexedArray, AssociativeArray))
-                or '[' in var)
+                or isinstance(resolved, (IndexedArray, AssociativeArray)))
 
             if not use_seed_path:
                 # Common case: a hidden command temporary-environment binding.
@@ -598,7 +647,7 @@ class CommandAssignments:
                 self.state.scope_manager.unset_variable(var)
             else:
                 self.state.set_variable(var, old_state_value)
-                # apply_prefix exported the variable for the command's duration;
+                # commit_prefix exported the variable for the command's duration;
                 # if it was not exported before, take EXPORT back off (a
                 # previously-exported variable keeps it, as it should).
                 if not saved.get('was_exported'):
@@ -615,7 +664,7 @@ class CommandAssignments:
 
         The temporary-environment bindings are PROMOTED to real exported vars
         (so ``VAR=v : ; declare -p VAR`` shows them), then the layer is popped.
-        Seed-path variables stay exactly as apply_prefix left them; their env
+        Seed-path variables stay exactly as commit_prefix left them; their env
         overlay is dropped so later materializations read the persisted vars.
         """
 
