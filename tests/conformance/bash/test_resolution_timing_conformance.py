@@ -521,11 +521,25 @@ def test_readonly_refusal_controls_must_stay_green(cmd):
     _assert_same(cmd)
 
 
-def test_readonly_refusal_does_not_flip_posix():
-    """PARITY. A refused POSIXLY_CORRECT assignment must not enable posix as a
-    side effect of being staged — the reason the check precedes the write."""
-    _assert_same('readonly POSIXLY_CORRECT; f(){ echo FN; }; '
-                 '{ POSIXLY_CORRECT=1 f; } 2>/dev/null; echo "rc=$?"')
+@pytest.mark.parametrize('prefix,ident', [
+    pytest.param('POSIXLY_CORRECT=1', 'name-level'),
+    pytest.param('RX=$((POSIXLY_CORRECT=1))', 'value-side-arith'),
+    pytest.param('RX=${POSIXLY_CORRECT:=1}', 'value-side-store'),
+])
+def test_readonly_refusal_does_not_flip_posix(prefix, ident):
+    """A refused assignment must not enable posix, by either spelling.
+
+    The row previously walked only the NAME-level form — the one spelling
+    this slot did NOT need to fix — while the value-side spellings, which are
+    the axis the slot exists for, went unpinned. They refuse for different
+    reasons: the name-level flip is blocked because the binding is never
+    installed, the value-side flip because the VALUE is never evaluated.
+    """
+    setup = ('readonly POSIXLY_CORRECT; ' if ident == 'name-level'
+             else 'unset POSIXLY_CORRECT; readonly RX; ')
+    _assert_same(f'{setup}f(){{ echo FN; }}; '
+                 f'{{ {prefix} f; }} 2>/dev/null; echo "rc=$?"; '
+                 'echo "pc=[${POSIXLY_CORRECT-UNSET}]"')
 
 
 # ---------------------------------------------------------------------------
@@ -911,3 +925,170 @@ def test_command_own_name_variable_axis(cmd):
     """EQUALITY (matched at base and tip). Pinned so the axis stops being a
     gap in the matrix rather than a claim about it."""
     _assert_same(cmd)
+
+
+# ---------------------------------------------------------------------------
+# B1 (R14) — REFUSE BEFORE EVALUATE.
+#
+# bash never evaluates the value of an assignment it is going to refuse. psh
+# evaluated first and refused after, so a refused prefix's value still ran its
+# side effects; when one of those flipped posix, the refusal then took the
+# POSIX prefix-error branch and ABORTED a statement bash runs. That was a
+# regression born from the COMPOSITION of two in-slot fixes (the RO1 refusal
+# and the value-side posix flip) — neither wrong alone.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('value', [
+    pytest.param('$((POSIXLY_CORRECT=1))', id='arith-flip'),
+    pytest.param('${POSIXLY_CORRECT:=1}', id='store-flip'),
+])
+@pytest.mark.parametrize('define,invoke', [
+    pytest.param('f(){ echo FN; }', 'f', id='function'),
+    pytest.param('eval(){ echo FN; }', 'eval "echo FN"',
+                 id='function-shadowing-special'),
+])
+@pytest.mark.parametrize('extra', ['', 'C=3 '], ids=['alone', 'extra-prefix'])
+def test_refused_prefix_does_not_flip_posix_or_abort(value, define, invoke,
+                                                     extra):
+    """RED ON ROUND-3 TIP (the regression) — the statement must still run,
+    rc 0, and posix must stay OFF because the refused value was never
+    evaluated."""
+    cmd = (f'unset POSIXLY_CORRECT; readonly RX; {define}; '
+           f'{extra}RX={value} {invoke}; '
+           'echo "rc=$?"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"')
+    p, b = _both(cmd)
+    assert 'rc=0' in b.stdout and 'pc=[UNSET]' in b.stdout, b
+    assert p.stdout == b.stdout
+
+
+@pytest.mark.parametrize('tail,ident', [
+    pytest.param('f', 'function'),
+    pytest.param('eval ":"', 'special-builtin-LAYER'),
+    pytest.param('/bin/echo x >/dev/null', 'external'),
+])
+def test_refused_prefix_contributes_zero_side_effects(tail, ident):
+    """RED ON BASE (declared toward-bash delta). The refused value's write
+    must not happen at all: base left Z=9, bash and the tip leave it UNSET.
+    This is the census row — a refused assignment contributes NO side
+    effects, on every route."""
+    cmd = f'unset Z; readonly RX; f(){{ :; }}; RX=$((Z=9)) {tail}; echo "Z=[${{Z-UNSET}}]"'
+    p, b = _both(cmd)
+    assert 'Z=[UNSET]' in b.stdout, b
+    assert p.stdout == b.stdout
+
+
+def test_refused_prefix_value_is_invisible_to_later_prefixes():
+    """Interleave cell: a refused assignment contributes nothing for a LATER
+    prefix's expansion to read."""
+    _assert_same('unset Z; readonly RX; RX=$((Z=9)) B=${Z-UNSET} '
+                 'eval \'echo "B=[$B]"\'')
+
+
+def test_refused_prefix_then_erroring_later_value_leaves_no_staging_scope():
+    """COMPOSITION CELL (R14): B1's hoist and SEM-3's unwinding share phase 1.
+    A refusal followed by an erroring value in a LATER prefix must still leave
+    the scope stack restored and no staging scope behind."""
+    from psh.shell import Shell
+    shell = Shell()
+    sm = shell.state.scope_manager
+    before = len(sm.scope_stack)
+    shell.run_command('readonly RX; unset A; RX=1 A=1 B=$((1/0)) /bin/echo x')
+    assert len(sm.scope_stack) == before, (
+        f'scope stack grew: {before} -> {len(sm.scope_stack)}')
+    assert not any(getattr(s, 'is_staging', False) for s in sm.scope_stack)
+
+
+# ---------------------------------------------------------------------------
+# B3 (R14) — RO1's control-flow observables, all toward-bash, all declared.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('setup,ident', [
+    pytest.param('set -e; ', 'errexit'),
+    pytest.param('set -o posix; ', 'posix'),
+])
+def test_refused_prefix_control_flow_under_errexit_and_posix(setup, ident):
+    """RED ON BASE. Base ran the function and continued (rc 0); bash and the
+    tip abort the statement (rc 1)."""
+    cmd = f'{setup}readonly RX; f(){{ echo FN; }}; RX=1 f; echo AFTER'
+    p, b = _both(cmd)
+    assert b.returncode == 1 and 'AFTER' not in b.stdout, b
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode)
+
+
+@pytest.mark.parametrize('cmd,ident', [
+    pytest.param('declare -r RY; f(){ echo FN; }; RY=1 f; echo AFTER',
+                 'declare-r-spelling'),
+    pytest.param('readonly RX; RX=1 eval ":"; echo AFTER', 'LAYER-route'),
+    pytest.param('RX=keep; readonly RX; f(){ echo FN; }; RX=1 f; echo AFTER',
+                 'SET-readonly'),
+])
+def test_refused_prefix_control_flow_controls(cmd, ident):
+    """CONTROLS — these did NOT move between base and tip. Recorded so the
+    toward-bash rows above are bounded rather than open-ended."""
+    _assert_same(cmd)
+
+
+# ---------------------------------------------------------------------------
+# B5 (R14) — the $((RANDOM)) axis: arithmetic-context read of a staged
+# dynamic special. Dropped from the matrix; it hid an already-flipped row.
+# ---------------------------------------------------------------------------
+
+def test_arithmetic_context_read_of_a_staged_dynamic_special():
+    """RED ON BASE. `RANDOM=1 b=$((RANDOM))` — bash 1, base 10791, tip 1.
+    Fixed by the staging mask, but on an axis the matrix never walked, so it
+    was an unpinned toward-bash row until the harness found it."""
+    p, b = _both('RANDOM=1 b=$((RANDOM)) eval \'echo "[$b]"\'')
+    assert b.stdout == '[1]\n', b
+    assert p.stdout == b.stdout
+
+
+def test_arithmetic_context_read_function_target_CONTROL():
+    """CONTROL — matched at base too."""
+    _assert_same('f(){ echo "[$b]"; }; RANDOM=1 b=$((RANDOM)) f')
+
+
+def test_nameref_prefix_target_is_preserved_not_destroyed():
+    """N3 — the nameref itself survives a prefix write through it."""
+    _assert_same('declare -n r=t; t=orig; r=NEW /bin/echo run >/dev/null; '
+                 'declare -p r')
+
+
+# ---------------------------------------------------------------------------
+# DOCUMENTED DIVERGENCES added this round — pre-existing at BOTH ends, no
+# in-slot fix (R14 B4 / N2). Successor-owned; see the ledger rows.
+# ---------------------------------------------------------------------------
+
+def test_divergence_nameref_to_element_prefix_invisible_to_a_function():
+    """OUT OF CHARTER (B4). A nameref-to-element prefix IS visible to eval and
+    to an external, but NOT to a function body: bash `r=[NEW]`, psh `r=[x]` at
+    base and tip alike. Likely subsumed by Option (A)'s model work."""
+    cmd = 'a=(x y); declare -n r=a[0]; f(){ echo "r=[$r]"; }; r=NEW f'
+    p, b = _both(cmd)
+    assert b.stdout == 'r=[NEW]\n', b
+    # psh's CURRENT shape at both ends — update when a successor fixes it.
+    assert p.stdout == 'r=[x]\n', p
+
+
+def test_divergence_prefix_name_listing_during_staging():
+    """OUT OF CHARTER (N2). `${!PREFIX*}` is a fourth whole-table surface that
+    the staging scope does not hide: bash lists nothing mid-staging, psh lists
+    the staged name — at base and tip alike. Deliberately NOT fixed in-slot:
+    widening is_staging semantics mid-slot is the change R14 forbade."""
+    cmd = 'unset TQ; TQ=1 B=$(echo ${!TQ*}) /bin/sh -c \'echo "[$B]"\''
+    p, b = _both(cmd)
+    assert b.stdout == '[]\n', b
+    assert p.stdout == '[TQ]\n', p
+
+
+# ---------------------------------------------------------------------------
+# N10 — the signature cells in stdin mode. `-c` and script were covered from
+# round 1; stdin is the third input mode and was never walked for these.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('cmd,expected', MODE_CELLS)
+def test_signature_holds_in_stdin_mode(cmd, expected):
+    p = run_psh([], cwd=PSH_ROOT, timeout=15, stdin_data=cmd + '\n')
+    b = run_bash([], cwd=PSH_ROOT, timeout=15, stdin_data=cmd + '\n')
+    assert is_comparable(p) and is_comparable(b)
+    assert b.stdout == expected, b
+    assert p.stdout == b.stdout
