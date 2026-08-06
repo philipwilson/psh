@@ -1418,3 +1418,96 @@ def test_divergence_arith_write_to_a_staged_name_does_not_persist():
     assert b.stdout == 'after=[9]\n', b
     # psh's CURRENT shape at both ends — update when a successor fixes it.
     assert p.stdout == 'after=[UNSET]\n', p
+
+
+# ---------------------------------------------------------------------------
+# R26 BLOCKER — nameref spelling of a readonly prefix on the FUNCTION route.
+#
+# Two legs that must not be conflated. PRESENCE of the diagnostic is this
+# slot's delta: base was silent on the function route, bash and the tip both
+# report. WORDING is pre-existing and unfixed: bash names the NAMEREF, psh
+# names its TARGET — the LAYER control shows psh naming the target at base
+# and tip alike, so the reorder did not cause it.
+# ---------------------------------------------------------------------------
+
+def test_readonly_nameref_prefix_on_function_route_reports():
+    """RED ON BASE (presence leg, EQUALITY). Base emitted nothing; bash and
+    the tip both diagnose, both run the function, both exit 0."""
+    cmd = 'declare -n r=zz; readonly zz; f(){ echo FN; }; r=2 f'
+    p, b = _both(cmd)
+    assert (b.stdout, b.returncode) == ('FN\n', 0), b
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode)
+    assert 'readonly variable' in b.stderr and 'readonly variable' in p.stderr
+
+
+def test_divergence_readonly_nameref_diagnostic_names_the_target():
+    """OUT OF CHARTER (wording leg, BOTH-SIDES). bash names the NAMEREF `r`;
+    psh names the resolved target `zz`. Pre-existing — see the LAYER control
+    below, where psh says `zz` at base and tip alike. Joins the
+    diagnostic-wording conventions family as a successor item."""
+    cmd = 'declare -n r=zz; readonly zz; f(){ echo FN; }; r=2 f'
+    p, b = _both(cmd)
+    assert 'r: readonly variable' in b.stderr, b
+    # psh's CURRENT wording — flips when the wording class is addressed.
+    assert 'zz: readonly variable' in p.stderr, p
+
+
+def test_readonly_nameref_prefix_on_layer_route_CONTROL():
+    """CONTROL that BOUNDS the wording leg: the LAYER route reported at base
+    too, and psh named the target there as well. So the wording is not
+    something this slot introduced, and the presence delta is specific to the
+    function route."""
+    cmd = 'declare -n r=zz; readonly zz; r=2 eval ":"; echo AFTER'
+    p, b = _both(cmd)
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode)
+    assert 'zz: readonly variable' in p.stderr, p
+
+
+# ---------------------------------------------------------------------------
+# CARRY #7 — closure RE-SCOPED at tip (R26 N1/N2).
+#
+# Closed: interleave reads across target kinds, function-target masking, and
+# seeding deferred to commit. NOT closed: the command's OWN read of a staged
+# dynamic special on the LAYER/SEED route. Pinned as it stands rather than
+# claimed closed.
+# ---------------------------------------------------------------------------
+
+def test_divergence_command_own_read_of_a_staged_dynamic_special():
+    """OUT OF CHARTER, pre-existing at BOTH ends. `RANDOM=1 eval 'echo
+    $RANDOM'` gives bash the staged 1 and psh a generated number, because on
+    the LAYER/SEED route the command's own read still reaches the generator.
+    The interleave reads a LATER PREFIX makes are fixed and pinned above;
+    this is the command reading it, which is a different reader.
+
+    Option (A) — the layer masking dynamic specials — would close it; see the
+    successor family."""
+    p, b = _both("RANDOM=1 eval 'echo $RANDOM'")
+    assert b.stdout == '1\n', b
+    assert p.stdout != b.stdout, 'expected the documented divergence'
+    assert p.stdout.strip().isdigit(), p
+
+
+def test_divergence_declare_p_of_a_staged_dynamic_special():
+    """Same divergence through `declare -p`: bash shows the staged value with
+    plain export attributes, psh shows the generator's value carrying the
+    special's own `-i` attribute."""
+    p, b = _both("RANDOM=1 eval 'declare -p RANDOM'")
+    assert b.stdout == 'declare -x RANDOM="1"\n', b
+    assert p.stdout.startswith('declare -ix RANDOM='), p
+
+
+# ---------------------------------------------------------------------------
+# N5 / N12 — pipeline shape, and the nameref-aliasing corner.
+# ---------------------------------------------------------------------------
+
+def test_refused_prefix_in_a_pipeline_element():
+    """The RO1 refusal in a pipeline element — a shape none of the other rows
+    walk, since every one of them is a simple command."""
+    _assert_same('readonly RX; f(){ echo FN; }; RX=1 f | cat; echo "rc=$?"')
+
+
+def test_nameref_aliasing_two_prefixes_naming_one_target():
+    """N12. Two prefixes whose namerefs alias the SAME target: the later one
+    wins, and the command sees one binding, not two."""
+    _assert_same('unset t; declare -n p=t; declare -n q=t; '
+                 'p=1 q=2 eval \'echo "t=[$t]"\'')
