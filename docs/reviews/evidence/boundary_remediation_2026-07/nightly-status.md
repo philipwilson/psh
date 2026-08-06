@@ -263,3 +263,14 @@ additions are platform-free static/in-process rows.
 - The `$((9…))` digit-limit row is CPython-VERSION-dependent (int
   digit limit), not platform-dependent — the nightly's interpreter
   version is the variable to check if it moves.
+
+**Exit-trap flake recurrence #2 (2026-08-06, LOCAL gate, not nightly):**
+during the v0.767.0 attestation gate at dacf8520,
+`TestExitTrapOnFatalSignal::test_matches_bash_for_sigterm` failed once
+(`'' != 'EXIT-TRAP-FIRED\n'` — the same signal-timing family as the
+08-02 instance, a SIBLING row of it). Slot 3.5's diff touches no
+job-control path (harness diff audit: 20 files, none under
+executor/job_control or the trap machinery) and the failing run's other
+23,405 tests passed; single re-run green (see the attested gate).
+Recurrence count 1 → 2 post-1.4; watch continues — a third instance
+warrants a dedicated flake investigation rather than another tally.
