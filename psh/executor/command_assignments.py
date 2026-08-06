@@ -97,23 +97,37 @@ class StagedPrefix(NamedTuple):
     ``${v:=}`` write to ``POSIXLY_CORRECT`` flips posix mode), while the
     destination route is itself chosen by that dispatch answer.
 
-    ``pairs``
-        The expanded ``(name, value)`` bindings, in source order. Values are
-        expanded EXACTLY ONCE — :meth:`commit_prefix` routes these, it never
-        re-expands. A second expansion would run the side effects twice,
-        which is observable (``RANDOM=1 b=$RANDOM c=$RANDOM`` detects it).
+    ``names``
+        ``(install_name, staging_key)`` per staged binding, in source order —
+        NOT their values. The two differ only for a nameref-to-element prefix
+        (``declare -n r=a[0]; r=v cmd``): ``set_temp_env_var`` resolves the
+        nameref, so the scope keys that binding on ``a[0]`` while the command
+        must still see it installed as ``r``. Recording only one of the two
+        loses the binding at commit. The
+        staging scope is the single source of truth for what each name is
+        WORTH: a later value's in-process store (``A=1 B=$((A=9))``) updates
+        the staged binding, and the command must see what the shell sees.
+        Carrying values here snapshotted them at staging time and produced a
+        split brain — later prefixes read 9 from the scope while the command
+        got 1 from the snapshot.
+
+        :meth:`commit_prefix` therefore READS each name's value out of the
+        staging scope. That is a read, never a re-expansion: the values are
+        expanded EXACTLY ONCE, in phase 1. A second expansion would run every
+        value's side effects again, which is observable (a command
+        substitution would touch its file twice).
     ``failed``
         True when any assignment was refused (readonly) — fatal under
         ``set -e``, which the caller handles.
     ``staging_scope``
-        True when a staging temp-env SCOPE is open holding ``pairs``. A SCOPE
+        True when a staging temp-env SCOPE is open holding the bindings. A SCOPE
         (not a command temp-env LAYER) is what makes the staged bindings
         visible to the next value's expansion and to resolution, and it is
         the only staging area that MASKS a dynamic special the way bash's
         temporary environment does.
     """
 
-    pairs: Sequence[Tuple[str, object]]
+    names: Sequence[Tuple[str, str]]
     failed: bool
     staging_scope: bool
 
@@ -469,7 +483,7 @@ class CommandAssignments:
                       xtrace: object) -> StagedPrefix:
         """The staging loop of :meth:`expand_prefix` (which owns unwinding)."""
         scope_manager = self.state.scope_manager
-        pairs: List[Tuple[str, object]] = []
+        names: List[Tuple[str, str]] = []
         failed = False
         staging_scope = False
 
@@ -518,9 +532,29 @@ class CommandAssignments:
                       file=self.state.stderr)
                 failed = True
                 continue
-            pairs.append((var, resolved))
+            entry = (var, write_name)
+            if entry not in names:
+                names.append(entry)
 
-        return StagedPrefix(pairs, failed, staging_scope)
+        return StagedPrefix(names, failed, staging_scope)
+
+    def _live_pairs(self, staged: StagedPrefix) -> List[Tuple[str, object]]:
+        """The staged names paired with their CURRENT values in the scope.
+
+        Read straight out of the staging scope's own dict rather than through
+        name lookup, so the answer is unambiguously "what this transaction
+        staged, as it now stands" — not whatever an outer scope or a computed
+        special might otherwise resolve to.
+        """
+        if not staged.staging_scope:
+            return []
+        staging = self.state.scope_manager.scope_stack[-1]
+        pairs: List[Tuple[str, object]] = []
+        for install_name, staging_key in staged.names:
+            var = staging.variables.get(staging_key)
+            if var is not None:
+                pairs.append((install_name, var.value))
+        return pairs
 
     def commit_prefix(self, staged: StagedPrefix,
                       temp_scope: bool) -> PrefixOutcome:
@@ -545,10 +579,16 @@ class CommandAssignments:
           overlay :meth:`restore` and :meth:`commit` consume. Seeding happens
           at COMMIT, never at staging, so a later prefix value still reads the
           MASKED literal. A nameref-to-element prefix (``declare -n r=a[0];
-          r=v cmd``) takes NO route and does not write through — bash does not
-          write through either, and emits no diagnostic for the prefix form.
+          r=v cmd``) takes the LAYER route like any other scalar: the command
+          SEES it (``r=NEW eval 'echo $r'`` prints NEW, as in bash), but it
+          does not write through to the array and leaves no diagnostic — bash
+          does neither for the prefix form. The staging scope keys that
+          binding on its RESOLVED target (``a[0]``) because
+          ``set_temp_env_var`` follows the nameref, which is why the staged
+          record carries both the install name and the staging key.
         """
-        if temp_scope or not staged.pairs:
+        if temp_scope or not staged.names:
+            applied = self._live_pairs(staged)
             if not temp_scope and staged.staging_scope:
                 self._pop_staging_scope()
             elif temp_scope and staged.staging_scope:
@@ -556,9 +596,19 @@ class CommandAssignments:
                 # flag so the body enumerates its prefix vars (bash merges a
                 # function's prefix vars into its locals).
                 self.state.scope_manager.scope_stack[-1].is_staging = False
-            return PrefixOutcome({}, list(staged.pairs), staged.failed, False)
+            return PrefixOutcome({}, applied, staged.failed, False)
 
         scope_manager = self.state.scope_manager
+
+        # READ the live values out of the staging scope BEFORE disposing of
+        # it. The scope is the single source of truth for what each staged
+        # name is WORTH: a later value's in-process store (``A=1 B=$((A=9))``)
+        # updated the binding there, and the command must see what the shell
+        # sees. This is a READ, never a re-expansion — phase 1 expanded each
+        # value exactly once, and that has to stay true or every value's side
+        # effects would run a second time.
+        live = self._live_pairs(staged)
+
         if staged.staging_scope:
             # OWNERSHIP TRANSFER, done BEFORE the install loop: from here on
             # this transaction no longer owns a staging scope, so an exception
@@ -577,12 +627,12 @@ class CommandAssignments:
         failed = staged.failed
         pushed_temp_env = False
 
-        for var, resolved in staged.pairs:
-            # A subscripted target cannot arrive here at all: ``a[0]=v cmd``
-            # is refused upstream as "not a valid identifier" (bash likewise),
-            # and a nameref-to-element prefix is keyed by the NAMEREF name — so
-            # neither spelling carries a bracket into this test. The bracket
-            # disjunct this once had was therefore unreachable.
+        for var, resolved in live:
+            # No bracket can reach this test. ``a[0]=v cmd`` is refused
+            # upstream as "not a valid identifier" (bash likewise), and a
+            # nameref-to-element prefix installs under its NAMEREF name (the
+            # bracketed form is the staging KEY, not the install name). The
+            # bracket disjunct this once had was therefore unreachable.
             use_seed_path = (
                 scope_manager.is_dynamic_special(var)
                 or isinstance(resolved, (IndexedArray, AssociativeArray)))
