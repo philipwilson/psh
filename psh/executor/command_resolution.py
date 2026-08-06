@@ -131,7 +131,7 @@ class CommandEnvOverlay:
     Prefix assignments (``FOO=bar cmd``) are expanded left-to-right and
     installed as bash's *temporary environment* (a command temp-env LAYER for a
     builtin/external, an exported temp-env SCOPE for a function, or the seed
-    path for a dynamic special / array / nameref-to-element). This value is the
+    path for a dynamic special / array). This value is the
     typed *view* of that environment for resolution and execution; it never
     mutates the persistent variable store (the temp-env stack the layer lives on
     is explicitly not the lexical scope stack — R2).
