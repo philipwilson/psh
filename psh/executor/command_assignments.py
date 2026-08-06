@@ -548,7 +548,16 @@ class CommandAssignments:
         """
         if not staged.staging_scope:
             return []
-        staging = self.state.scope_manager.scope_stack[-1]
+        stack = self.state.scope_manager.scope_stack
+        staging = stack[-1]
+        if len(stack) <= 1 or not staging.is_staging:
+            # Same ownership check its sibling `_pop_staging_scope` makes, for
+            # the same reason: reading values out of a scope this transaction
+            # no longer owns would silently install someone else's bindings.
+            raise RuntimeError(
+                "internal error: prefix transaction read a staging scope it "
+                f"does not own (depth={len(stack)}, top_is_staging="
+                f"{getattr(staging, 'is_staging', None)})")
         pairs: List[Tuple[str, object]] = []
         for install_name, staging_key in staged.names:
             var = staging.variables.get(staging_key)

@@ -602,18 +602,28 @@ class CommandExecutor:
             # An error between the transaction's two phases (i.e. while
             # resolving) leaves the staging scope open with nothing owning it.
             if staging_scope_open:
-                # Mirror of CommandAssignments._pop_staging_scope: assert
+                # Mirror of CommandAssignments._pop_staging_scope: check
                 # ownership rather than assume it. Both failure directions are
                 # silent — popping a scope we do not own destroys someone
                 # else's bindings, and leaving ours behind is invisible to
                 # every enumeration surface.
                 stack = self.state.scope_manager.scope_stack
                 if len(stack) <= 1 or not stack[-1].is_staging:
-                    raise RuntimeError(
+                    # Raising from a `finally` REPLACES whatever exception is
+                    # already unwinding, and that one is the one explaining the
+                    # failure. So this reports only when nothing else is in
+                    # flight; otherwise it attaches as context and lets the
+                    # real exception through.
+                    ownership_error = RuntimeError(
                         "internal error: prefix transaction lost ownership of "
                         f"its staging scope (depth={len(stack)}, "
                         f"top_is_staging={getattr(stack[-1], 'is_staging', None)})")
-                self.state.scope_manager.pop_scope()
+                    in_flight = sys.exc_info()[1]
+                    if in_flight is None:
+                        raise ownership_error
+                    in_flight.__context__ = ownership_error
+                else:
+                    self.state.scope_manager.pop_scope()
             # In POSIX mode, prefix assignments before a special builtin
             # persist (only then is prefix_assignments_persist True);
             # otherwise they are restored.
