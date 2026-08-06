@@ -98,7 +98,7 @@ class ScopeManager:
         # skip it, exactly like bash. A stack (not a single dict) so a nested
         # prefix over an ``eval``'d command stays visible under the outer one
         # (``FOO=bar eval 'BAR=baz declare -p FOO BAR'`` shows both). See
-        # CommandAssignments.apply_prefix / restore / commit.
+        # CommandAssignments.expand_prefix / commit_prefix / restore / commit.
         self.command_temp_env: List[Dict[str, Variable]] = []
 
     def clone(self) -> 'ScopeManager':

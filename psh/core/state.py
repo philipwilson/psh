@@ -209,7 +209,7 @@ class ShellState:
         # environment carries, composed on top of the exported variables at
         # materialization. Empty except for the duration of such a command (a
         # function call layers a temp-env SCOPE instead — see
-        # CommandAssignments.apply_prefix). The literal wins over the
+        # CommandAssignments.commit_prefix). The literal wins over the
         # exported-variable value so ``RANDOM=5 cmd`` passes ``5`` and
         # ``a+=z cmd`` passes the element-0 view, not a re-derived value.
         self._env_overlay: Dict[str, str] = {}
@@ -1358,9 +1358,9 @@ class ShellState:
     def apply_command_env(self, assignments: Dict[str, str]) -> None:
         """Compose a command-local temporary-environment overlay.
 
-        Used by the SEED path of a ``VAR=x cmd`` prefix (a dynamic special, an
-        array-object append, or a nameref-to-element — the cases that bind a real
-        shell variable): it records the LITERAL string each name contributes to
+        Used by the SEED path of a ``VAR=x cmd`` prefix (a dynamic special or an
+        array-object append — the cases that bind a real shell variable): it
+        records the LITERAL string each name contributes to
         *this command's* process environment and materializes it (the overlay
         wins over the exported-variable value, so ``RANDOM=5 cmd`` passes ``5``
         and an array passes its element-0 view). Plain scalar prefix vars go into
