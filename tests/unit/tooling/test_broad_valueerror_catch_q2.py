@@ -130,11 +130,14 @@ BROAD_MASKING = {
         "the whole `read` record engine under one VE net — no int()/documented-"
         "VE source in the body; a VE from any helper bug is reported as a user "
         "'read error'.",
-    ("psh/executor/core.py", ("ValueError", "TypeError", "OSError"),
-     ("TestExpressionEvaluator", "evaluate")):
-        "the entire `[[ ]]` evaluation is inside the try; a VE/TypeError bug in "
-        "the evaluator is masked as a `[[` syntax error (exit 2) — it should "
-        "catch a narrow evaluator error type, not raw VT.",
+    # SHRUNK by remediation 3.5 (MEDIUM-12b, ruling (b)): the `[[ ]]` entry
+    # ("psh/executor/core.py", ("ValueError","TypeError","OSError"),
+    #  ("TestExpressionEvaluator","evaluate")) is gone. Its reason read "it
+    # should catch a narrow evaluator error type, not raw VT" — it now does:
+    # the handler is `except (TestExpressionError, OSError)`, the evaluator's
+    # invalid-regex raiser is typed, and its three can't-happen branches raise
+    # RuntimeError. The site is no longer a candidate at all, which is why the
+    # entry had to go: test_classification_has_no_stale_entries forces it.
     ("psh/parser/combinators/parser.py",
      ("AttributeError", "IndexError", "TypeError", "ParseError"),
      ("_prepare_tokens", "len", "parse")):
@@ -179,16 +182,21 @@ NARROW_SAFE = {
     ("psh/executor/child_policy.py", ("OSError", "ValueError"),
      ("getpid", "kill", "signal")):
         "os.kill/signal.signal documented signal",
-    ("psh/executor/control_flow.py",
-     ("ReadonlyVariableError", "NamerefCycleError", "ValueError",
-      "ArithmeticError"), ("evaluate_arithmetic",)):
-        "evaluate_arithmetic's VE is a user-reachable arithmetic error (a shell "
-        "error, not an internal defect)",
+    # SHRUNK by remediation 3.5 (MEDIUM-12b, ruling (a)): the two
+    # `evaluate_arithmetic` entries — control_flow.py's four-name tuple (the
+    # for(( )) init/condition/update legs) and core.py's ("ValueError",
+    # "ArithmeticError") — are gone. Their reason claimed "evaluate_arithmetic's
+    # VE is a user-reachable arithmetic error"; that was FALSE. A bare
+    # ValueError cannot escape evaluate_arithmetic at all: its inner converter
+    # (expansion/arithmetic/evaluator.py) turns every user-reachable VE into
+    # ShellArithmeticError, so the VE legs could only ever catch an internal
+    # defect. Evidence: a 200-cell user-reachable corpus under strict-errors
+    # produced zero hits, and per-leg forcing on the real path showed the legs
+    # firing only for an injected VE. The VE names are dropped from all four
+    # handlers; what remains catches ArithmeticError (and the typed assignment
+    # errors), so none of them is a VT candidate any more.
     ("psh/executor/core.py", ("OSError", "ValueError"), ("flush", "write")):
         "stream flush/write documented signal (closed/broken stream)",
-    ("psh/executor/core.py", ("ValueError", "ArithmeticError"),
-     ("evaluate_arithmetic",)):
-        "evaluate_arithmetic user arithmetic error",
     ("psh/executor/subshell.py", ("OSError", "ValueError"), ("flush",)):
         "stream flush documented signal",
     ("psh/expansion/brace_expansion.py", ("ValueError",), ("int",)):

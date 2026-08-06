@@ -1,5 +1,5 @@
-"""Ratchet: the subscript keying/extent modules stay free of broad catches
-(remediation 2.3, MEDIUM-12a).
+"""Ratchet: the subscript keying/extent + expansion error-path modules stay
+free of broad catches (remediation 2.3 MEDIUM-12a, grown by 3.5 MEDIUM-12b).
 
 The r22 finding was two ``except Exception`` fallbacks in
 ``psh/expansion/subscript.py`` (v0.750.0 lines 129/144) that silently degraded
@@ -21,6 +21,26 @@ A "broad handler" is: a bare ``except:``, ``except Exception``, or
 re-raises — in THESE modules even a translate-and-raise must name the typed
 failure classes it converts (``except PshError`` is the widest allowed).
 The detector is self-tested against synthetic offenders below.
+
+**Slot 3.5 (MEDIUM-12b) grew the set by two expansion error-path modules**,
+each admitted only after its broad catch was removed:
+
+* ``psh/expansion/manager.py`` — the PS4 expansion fallback was
+  ``except Exception``, which swallowed a genuine internal defect into the
+  raw-PS4 fallback even under ``PSH_STRICT_ERRORS=1``. Narrowed to
+  ``except PshError`` (the widest this ratchet allows), observably
+  behaviour-preserving.
+* ``psh/expansion/arithmetic/evaluator.py`` — carried the
+  ``except (ValueError, TypeError)`` "unexpected arithmetic error" net, a pure
+  internal-defect masker (its VE leg was dead, its TE leg fired only for psh
+  bugs). Deleted. This module has no broad handler to remove, so its entry is
+  a LOCK: it keeps a future ``except Exception`` from reappearing on the
+  arithmetic error path.
+
+Note the two ratchets divide the space by handler SHAPE, not by module: this
+one bites bare/``Exception``/``BaseException``, while
+``test_broad_valueerror_catch_q2.py`` keys broad ValueError/TypeError nets.
+A module can therefore be clean here and still carry a Q2 entry.
 """
 
 import ast
@@ -32,6 +52,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 GUARDED = (
     "psh/expansion/subscript.py",     # the ONE keying authority
     "psh/expansion/param_parser.py",  # the ${...} classifier + extent scanner
+    # --- grown by remediation 3.5 (MEDIUM-12b) ---
+    "psh/expansion/manager.py",       # PS4 fallback: Exception -> PshError
+    "psh/expansion/arithmetic/evaluator.py",  # the deleted VT net; lock
 )
 
 _BROAD_NAMES = {"Exception", "BaseException"}
