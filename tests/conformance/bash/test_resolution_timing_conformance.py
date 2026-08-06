@@ -689,15 +689,16 @@ def test_function_body_DOES_enumerate_its_prefix_vars_after_adoption():
 # AND the scope stack is back where it started.
 # ---------------------------------------------------------------------------
 
-# Measured at round-1 tip 7952a721: only the ARITH variant actually leaked
-# (`set | grep -c '^A='` gave 1 there, 0 here). Neither nameref-cycle
-# construction leaked at round-1, so those rows are PARITY coverage of the
-# same code path, NOT red-on-round-1 proof — labelled so they are never
-# counted as evidence the leak fix works. The arith row is that evidence.
+# SUBJECT SHAPE is load-bearing here. The error must fire on a LATER prefix,
+# with at least one binding ALREADY STAGED — that staged binding is the thing
+# that leaks. A construction whose error fires on the FIRST prefix has nothing
+# staged and cannot leak, so it passes at a tip that IS leaking and proves
+# nothing. Both rows below were verified to leak at round-1 tip 7952a721
+# (`A-IN-ENUM` there, `A-NOT-IN-ENUM` here and in bash).
 ERROR_PREFIXES = [
-    pytest.param('A=1 B=$((1/0))', id='arith-error-REPRODUCED-AT-ROUND-1'),
-    pytest.param('declare -n a=b; declare -n b=a; A=1 B=$a',
-                 id='nameref-cycle-PARITY-ONLY'),
+    pytest.param('unset A; A=1 B=$((1/0))', id='arith-error'),
+    pytest.param('declare -n r=s; declare -n s=r; unset A; A=1 r=1',
+                 id='nameref-cycle'),
 ]
 
 
@@ -707,12 +708,13 @@ def test_expansion_error_does_not_leak_the_staging_scope(bad, tmp_path):
     staging scope would be INVISIBLE to enumeration itself, so this row is
     paired with the depth row below — neither alone would catch it."""
     script = tmp_path / 'probe.sh'
-    script.write_text(f'{bad} /bin/echo x\nset | grep -c "^A="\n')
+    script.write_text(f'{bad} /bin/echo x\n'
+                      'set | grep -q "^A=" && echo A-IN-ENUM || echo A-NOT-IN-ENUM\n')
     p = run_psh([str(script)], cwd=PSH_ROOT, timeout=15)
     b = run_bash([str(script)], cwd=PSH_ROOT, timeout=15)
     assert is_comparable(p) and is_comparable(b)
-    assert p.stdout.strip().endswith('0'), p
-    assert b.stdout.strip().endswith('0'), b
+    assert b.stdout.strip().endswith('A-NOT-IN-ENUM'), b
+    assert p.stdout.strip().endswith('A-NOT-IN-ENUM'), p
 
 
 @pytest.mark.parametrize('bad', ERROR_PREFIXES)
@@ -807,17 +809,29 @@ def test_ro1_readonly_refusal_diagnostic_is_emitted_once():
 
 
 # ---------------------------------------------------------------------------
-# NIT N8 — NOT PINNED AS A DIVERGENCE, deliberately.
-#
-# R5 described "the new routing into the pre-existing rc divergence" and noted
-# bash continuing the line after a cycle warning where psh aborts. Measured at
-# BOTH round-1 tip 7952a721 and here, with both constructions
-# (`declare -n a=b; declare -n b=a` and the self-reference form): psh and bash
-# agree on stdout, stderr and rc, and both continue. There is nothing to pin.
-# A both-sides pin asserting a divergence that does not exist would be a FALSE
-# pin — it would go red the moment anyone looked. Recorded in the ledger as
-# non-reproduced, with the exact cell requested from the integrator.
+# NIT N8 — the value-side posix flip newly REACHES a pre-existing rc-shape
+# divergence. The flip is this slot's; the rc 1-vs-127 gap is not — it
+# reproduces identically at round-1 tip and via `set -o posix` with a
+# name-level prefix, i.e. it predates the transaction work and is
+# successor-owned. Pinned both-sides so the successor sees the exact shape,
+# and so the newly-reachable route stays covered meanwhile.
 # ---------------------------------------------------------------------------
+
+
+def test_documented_divergence_readonly_prefix_rc_under_a_value_side_flip():
+    """OUT OF CHARTER (rc shape). A readonly prefix error alongside a
+    value-side POSIXLY_CORRECT flip: both shells report the readonly error and
+    abort the line (no AFTER), but bash exits 127 where psh exits 1."""
+    cmd = ('unset POSIXLY_CORRECT; readonly RX 2>/dev/null; eval(){ echo FN; }; '
+           'RX=1 A=$((POSIXLY_CORRECT=1)) eval "echo BUILTIN"; echo AFTER=$?')
+    p, b = _both(cmd)
+    # Agreed part: the diagnostic fires and the line dies before AFTER.
+    assert 'readonly variable' in b.stderr and 'AFTER' not in b.stdout, b
+    assert 'readonly variable' in p.stderr and 'AFTER' not in p.stdout, p
+    # The divergence, pinned both sides. bash 127 / psh 1 — update when a
+    # successor slot unifies the rc shape.
+    assert b.returncode == 127, b
+    assert p.returncode == 1, p
 
 
 def test_nameref_cycle_prefix_matches_bash_end_to_end():
