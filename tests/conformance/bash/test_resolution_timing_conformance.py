@@ -430,7 +430,11 @@ def test_temp_env_visibility_with_the_flip_mid_list(cmd):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize('cmd,expected', [
-    pytest.param('RANDOM=1 b=$RANDOM printenv b', '1\n', id='external-printenv'),
+    # `$b`-read rather than `printenv b`: the read form carries no PATH
+    # assumption, so the row means the same thing on Linux (where the
+    # nightly runs) as on the macOS gate. Its neighbours already use it.
+    pytest.param('RANDOM=1 b=$RANDOM /bin/sh -c \'echo "$b"\'', '1\n',
+                 id='external-b-read'),
     pytest.param('RANDOM=1 b=$RANDOM eval \'echo "b=[$b]"\'', 'b=[1]\n',
                  id='special-builtin'),
     pytest.param('RANDOM=1 b=$RANDOM /bin/sh -c \'echo "b=[$b]"\'', 'b=[1]\n',
@@ -613,3 +617,211 @@ def test_redirection_error_rows_that_do_agree(cmd):
     """PARITY. The redirect-error surface agrees everywhere EXCEPT the posix ×
     special-builtin cell isolated above — which bounds that divergence."""
     _assert_same(cmd)
+
+
+# ---------------------------------------------------------------------------
+# F-FAMILY (R5/SEM-1, R6 condition 1) — the staging container is invisible to
+# whole-table ENUMERATION while the transaction is in flight, and a leaked
+# staging scope is enumeration-INVISIBLE pollution, so its absence is pinned
+# as hard as its invisibility.
+# ---------------------------------------------------------------------------
+
+# Every pattern is ANCHORED. An unanchored one matches the NAME inside another
+# variable's VALUE — bash's own BASH_EXECUTION_STRING holds the script text, so
+# `grep ' TQ='` scored a spurious hit and made a correct implementation look
+# wrong. The forcing test below proves each enumerator can still return 1.
+ENUMERATORS = [
+    pytest.param("set | grep -c '^TQ='", id='set'),
+    pytest.param("export -p | grep -cE '^(declare -x|export) TQ='", id='export-p'),
+    pytest.param("declare -p 2>/dev/null | grep -cE '^declare -[^ ]* TQ='",
+                 id='declare-p-no-name'),
+]
+
+
+@pytest.mark.parametrize('enumerator', ENUMERATORS)
+def test_enumerator_can_see_an_installed_binding(enumerator):
+    """FORCING CONTROL. Each enumerator above asserts a 0; an enumerator that
+    can ONLY return 0 would pass those rows while proving nothing. Here the
+    same command runs against a really-installed TQ and must report 1 in both
+    shells."""
+    p, b = _both(f'export TQ=1; {enumerator}')
+    assert b.stdout == '1\n', b
+    assert p.stdout == b.stdout
+
+
+@pytest.mark.parametrize('enumerator', ENUMERATORS)
+@pytest.mark.parametrize('staged', [1, 2], ids=['one-binding', 'two-bindings'])
+def test_staged_bindings_are_invisible_to_enumeration(enumerator, staged):
+    """RED ON TIP-AS-IS (round 1). A later prefix value's command substitution
+    must NOT see bindings that are staged but not yet installed."""
+    prefix = 'TQ=1 ' + ('TR=2 ' if staged == 2 else '')
+    cmd = (f'unset TQ TR; {prefix}B=$({enumerator}) '
+           f'/bin/sh -c \'echo "[$B]"\'')
+    p, b = _both(cmd)
+    assert b.stdout == '[0]\n', b
+    assert p.stdout == b.stdout
+
+
+@pytest.mark.parametrize('enumerator', ENUMERATORS)
+def test_staged_bindings_invisible_to_enumeration_in_script_mode(enumerator,
+                                                                 tmp_path):
+    script = tmp_path / 'probe.sh'
+    script.write_text(f'unset TQ; TQ=1 B=$({enumerator}) /bin/sh -c \'echo "[$B]"\'\n')
+    p = run_psh([str(script)], cwd=PSH_ROOT, timeout=15)
+    b = run_bash([str(script)], cwd=PSH_ROOT, timeout=15)
+    assert is_comparable(p) and is_comparable(b)
+    assert b.stdout == '[0]\n', b
+    assert p.stdout == b.stdout
+
+
+def test_function_body_DOES_enumerate_its_prefix_vars_after_adoption():
+    """The other side of the flag: adoption is the only transition, and after
+    it the function body enumerates its prefix vars (bash merges them into the
+    call's locals). Invisibility must not leak past the staging window."""
+    p, b = _both('f(){ set | grep -c "^TQ="; }; TQ=1 f')
+    assert b.stdout == '1\n', b
+    assert p.stdout == b.stdout
+
+
+# ---------------------------------------------------------------------------
+# SEM-3 (R6 condition 1c) — an expansion error in a 2nd+ prefix value must not
+# leak the staging scope. Asserted on BOTH observables: enumeration is clean
+# AND the scope stack is back where it started.
+# ---------------------------------------------------------------------------
+
+# Measured at round-1 tip 7952a721: only the ARITH variant actually leaked
+# (`set | grep -c '^A='` gave 1 there, 0 here). Neither nameref-cycle
+# construction leaked at round-1, so those rows are PARITY coverage of the
+# same code path, NOT red-on-round-1 proof — labelled so they are never
+# counted as evidence the leak fix works. The arith row is that evidence.
+ERROR_PREFIXES = [
+    pytest.param('A=1 B=$((1/0))', id='arith-error-REPRODUCED-AT-ROUND-1'),
+    pytest.param('declare -n a=b; declare -n b=a; A=1 B=$a',
+                 id='nameref-cycle-PARITY-ONLY'),
+]
+
+
+@pytest.mark.parametrize('bad', ERROR_PREFIXES)
+def test_expansion_error_does_not_leak_the_staging_scope(bad, tmp_path):
+    """Post-error, a staged name must not appear in enumeration. A leaked
+    staging scope would be INVISIBLE to enumeration itself, so this row is
+    paired with the depth row below — neither alone would catch it."""
+    script = tmp_path / 'probe.sh'
+    script.write_text(f'{bad} /bin/echo x\nset | grep -c "^A="\n')
+    p = run_psh([str(script)], cwd=PSH_ROOT, timeout=15)
+    b = run_bash([str(script)], cwd=PSH_ROOT, timeout=15)
+    assert is_comparable(p) and is_comparable(b)
+    assert p.stdout.strip().endswith('0'), p
+    assert b.stdout.strip().endswith('0'), b
+
+
+@pytest.mark.parametrize('bad', ERROR_PREFIXES)
+@pytest.mark.parametrize('mode', ['-c', 'script'])
+def test_expansion_error_restores_scope_depth_and_leaves_no_staging_scope(
+        bad, mode, tmp_path):
+    """The invariant a behavioural probe cannot see: zero residual staging
+    scopes AND the scope stack restored. Measured in-process, because a leaked
+    flagged scope is by construction absent from every enumeration surface."""
+    from psh.shell import Shell
+    shell = Shell()
+    try:
+        sm = shell.state.scope_manager
+        before = len(sm.scope_stack)
+        shell.run_command(f'{bad} /bin/echo x')
+        assert len(sm.scope_stack) == before, (
+            f'scope stack grew: {before} -> {len(sm.scope_stack)}')
+        assert not any(getattr(s, 'is_staging', False) for s in sm.scope_stack), (
+            'a staging scope survived the command — enumeration-invisible '
+            'pollution')
+    finally:
+        shell.close() if hasattr(shell, 'close') else None
+
+
+# ---------------------------------------------------------------------------
+# SEM-2 (R5, ruling (b) AMENDED) — a nameref-to-element prefix takes no route:
+# no write-through, and no diagnostic. RED ON BASE (base wrote through and
+# emitted a readonly diagnostic bash does not emit).
+# ---------------------------------------------------------------------------
+
+def test_nameref_to_element_prefix_is_visible_in_command():
+    """The binding IS visible to the command through name lookup."""
+    _assert_same('a=(x y); declare -n r=a[0]; r=NEW eval \'echo "[$r]"\'')
+
+
+def test_nameref_to_element_prefix_does_not_write_through():
+    """RED ON BASE. bash does not write through for the PREFIX form."""
+    p, b = _both('a=(x y); declare -n r=a[0]; r=NEW /bin/echo run >/dev/null; '
+                 'echo "a=(${a[*]})"')
+    assert b.stdout == 'a=(x y)\n', b
+    assert p.stdout == b.stdout
+
+
+def test_nameref_to_element_prefix_emits_no_diagnostic():
+    """RED ON BASE (D4). bash is silent here; base emitted a readonly error."""
+    p, b = _both('a=(x y); declare -n r=a[0]; r=NEW /bin/echo run')
+    assert b.stderr == '', b
+    assert p.stderr == b.stderr
+    assert p.stdout == b.stdout
+
+
+@pytest.mark.parametrize('cmd,expected', [
+    pytest.param('a=(x y); a=NEW /bin/echo run >/dev/null; echo "a=(${a[*]})"',
+                 'a=(x y)\n', id='array-object-append-non-destructive'),
+    pytest.param('a=(x y); a[0]=NEW /bin/echo run >/dev/null 2>&1; '
+                 'echo "a=(${a[*]})"', 'a=(x y)\n',
+                 id='direct-subscript-rejected-upstream'),
+])
+def test_seed_route_controls_still_hold(cmd, expected):
+    """CONTROL (R5 SEM-2 v): the SEED route still serves what it should.
+    Dynamic specials are covered by the carry-#7 rows above."""
+    p, b = _both(cmd)
+    assert b.stdout == expected, b
+    assert p.stdout == b.stdout
+
+
+# ---------------------------------------------------------------------------
+# NIT N2 — RO1's other observables. The headline row pins stdout+rc; these pin
+# the rest of the shape so "skip and continue" is nailed down, not inferred.
+# ---------------------------------------------------------------------------
+
+def test_ro1_readonly_refusal_still_applies_the_other_assignments():
+    """bash SKIPS the refused one and applies the rest — the command runs with
+    a partial temp env, it is not aborted."""
+    p, b = _both('readonly RX; f(){ echo "RX=[${RX-UNSET}] OK=[${OK-UNSET}]"; }; '
+                 '{ RX=1 OK=2 f; } 2>/dev/null')
+    assert b.stdout == 'RX=[UNSET] OK=[2]\n', b
+    assert p.stdout == b.stdout
+
+
+def test_ro1_readonly_refusal_leaves_no_residue_after_the_command():
+    _assert_same('readonly RX; f(){ :; }; { RX=1 f; } 2>/dev/null; '
+                 'echo "after=[${RX-UNSET}]"')
+
+
+def test_ro1_readonly_refusal_diagnostic_is_emitted_once():
+    """One diagnostic per refused assignment — not none, not per-phase twice
+    (the two-phase split makes double-reporting the natural failure mode)."""
+    p, b = _both('readonly RX; f(){ :; }; RX=1 f')
+    assert b.stderr.count('readonly variable') == 1, b
+    assert p.stderr.count('readonly variable') == 1, p
+
+
+# ---------------------------------------------------------------------------
+# NIT N8 — NOT PINNED AS A DIVERGENCE, deliberately.
+#
+# R5 described "the new routing into the pre-existing rc divergence" and noted
+# bash continuing the line after a cycle warning where psh aborts. Measured at
+# BOTH round-1 tip 7952a721 and here, with both constructions
+# (`declare -n a=b; declare -n b=a` and the self-reference form): psh and bash
+# agree on stdout, stderr and rc, and both continue. There is nothing to pin.
+# A both-sides pin asserting a divergence that does not exist would be a FALSE
+# pin — it would go red the moment anyone looked. Recorded in the ledger as
+# non-reproduced, with the exact cell requested from the integrator.
+# ---------------------------------------------------------------------------
+
+
+def test_nameref_cycle_prefix_matches_bash_end_to_end():
+    """PARITY. What actually holds at this tip: warning text, continuation and
+    rc all agree. Kept as no-regression coverage of the path SEM-3 touches."""
+    _assert_same('declare -n a=b; declare -n b=a; A=1 B=$a /bin/echo ran; '
+                 'echo AFTER')
