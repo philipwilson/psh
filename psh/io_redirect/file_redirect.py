@@ -4,6 +4,7 @@ import fcntl
 import os
 import stat
 import sys
+import weakref
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO, Tuple, cast
 
 from ..ast_nodes import (
@@ -97,7 +98,8 @@ class _StdStreamBaseline:
     relocates.
     """
 
-    __slots__ = ('fds', 'sys_streams', 'overrides', 'state', 'active')
+    __slots__ = ('fds', 'sys_streams', 'overrides', '_state_ref', 'active',
+                 '__weakref__')
 
     def __init__(self, fds: Dict[int, Optional[int]],
                  sys_streams: Tuple[Any, Any, Any],
@@ -106,7 +108,17 @@ class _StdStreamBaseline:
         self.fds = fds
         self.sys_streams = sys_streams
         self.overrides = overrides
-        self.state = state
+        # WEAK: ComponentLease requires a restore callable that does not pin
+        # the owning shell, and this baseline is reached from the coordinator
+        # through the lease's restore. Holding `state` strongly kept a shell
+        # dropped WITHOUT close() alive inside the coordinator's own
+        # component list, so it never collected and its leases rejected every
+        # later shell (slot 4A.1 probe B-01). The strong half was only ever
+        # needed for the shell's own stream OVERRIDES, which are moot once
+        # the shell is unreachable; the fd and sys.std* restore below is
+        # what the hosting process actually needs back, and it runs either
+        # way.
+        self._state_ref: 'weakref.ref[ShellState]' = weakref.ref(state)
         self.active = True
 
     def relocate_away_from(self, target_fds) -> None:
@@ -166,7 +178,13 @@ class _StdStreamBaseline:
                 os.close(saved)
             except OSError:
                 pass
-        self.state.streams.restore(self.overrides)
+        # The shell's own stream overrides, only if the shell is still
+        # reachable — restoring attributes of a collected shell is moot, and
+        # the fd/sys.std* work above (what the HOSTING process needs back)
+        # has already happened unconditionally.
+        state = self._state_ref()
+        if state is not None:
+            state.streams.restore(self.overrides)
 
 
 def _dup2_preserve_target(opened_fd: int, target_fd: int):
@@ -221,6 +239,10 @@ class FileRedirector:
         self.shell = shell
         self.state = shell.state
         self.planner = RedirectPlanner(self)
+        #: Live STD_FDS baseline while this shell holds the lease (None
+        #: otherwise): the relocation protocol's registry, cleared when a
+        #: failed exec releases a lease it had just acquired.
+        self._std_baseline: Optional[_StdStreamBaseline] = None
 
     def noclobber_blocks(self, target) -> bool:
         """True when noclobber forbids `>` to this target (bash semantics).
@@ -961,9 +983,15 @@ class FileRedirector:
         self.shell.stdout, self.shell.stderr, self.shell.stdin = shell_streams
         self.state.stdout, self.state.stderr, self.state.stdin = state_streams
 
-    def _acquire_permanent_stream_lease(self) -> None:
+    def _acquire_permanent_stream_lease(self) -> bool:
         """Acquire the STD_FDS component lease before the first permanent
-        redirect (campaign F2).
+        redirect (campaign F2). Returns True iff THIS call created the lease.
+
+        The return value is the discrimination the failed-exec rollback needs
+        (slot 4A.1): only a lease this command newly took may be released
+        when the redirect then fails — an earlier successful ``exec >f``
+        legitimately holds one, and a later failing ``exec >/bad`` must not
+        release it.
 
         Captures the restorable baseline — CLOEXEC high dups of fds 0/1/2
         (``F_DUPFD_CLOEXEC``: a later successful ``os.exec`` must not leak
@@ -983,7 +1011,7 @@ class FileRedirector:
         coordinator = get_coordinator()
         state = self.state
         if coordinator.find_component(state, ComponentKind.STD_FDS) is not None:
-            return
+            return False
         baseline_fds: Dict[int, Optional[int]] = {}
         try:
             for fd in (0, 1, 2):
@@ -1015,6 +1043,7 @@ class FileRedirector:
             # Live registry for the relocation protocol: every redirect
             # application consults it before taking a user-chosen fd.
             self._std_baseline = baseline
+            return True
         except BaseException:
             # Failed acquisition rolls back completely: close the dups we
             # took so nothing is half-acquired (coordinator state untouched).
@@ -1025,6 +1054,29 @@ class FileRedirector:
                     except OSError:
                         pass
             raise
+
+    def _release_permanent_stream_lease(self) -> None:
+        """Release a STD_FDS lease THIS command acquired (failed exec).
+
+        The lease is taken from the redirect list's SHAPE, before anything is
+        known about whether the redirect can succeed (probe B-14: acquisition
+        precedes the target open). When the redirect then fails, fds 0/1/2
+        were never changed — but the lease, its parked backups and the
+        ``_std_baseline`` registration were all retained, so a shell that
+        redirected nothing still claimed the process's standard descriptors
+        and rejected unrelated shells (slot 4A.1 probes B-05 / B-11).
+
+        Only ever called with a lease this command created; an earlier
+        successful ``exec >f`` keeps its own (B-06/B-12). Releasing runs the
+        baseline restore, which closes the parked dups and puts the streams
+        back — harmless after the caller has already rolled the fds back,
+        since the baseline describes exactly that state.
+        """
+        lease = get_coordinator().find_component(self.state,
+                                                 ComponentKind.STD_FDS)
+        self._std_baseline = None
+        if lease is not None:
+            lease.release()
 
     @staticmethod
     def _fds_claimed_by_plan(plan: RedirectPlan) -> set:
@@ -1111,8 +1163,9 @@ class FileRedirector:
         stays exactly bash's first-free->=10.
         """
         program = self.planner.plan_program(redirects)
+        lease_acquired_here = False
         if any(op.kind is not RedirectOpKind.VAR_FD for op in program):
-            self._acquire_permanent_stream_lease()
+            lease_acquired_here = self._acquire_permanent_stream_lease()
         # Pending buffered output belongs to the OLD destination; flush it
         # before the fd-level dup2 silently re-routes it to the new file.
         for stream in (self.state.stdout, self.state.stderr, sys.stdout, sys.stderr):
@@ -1183,6 +1236,13 @@ class FileRedirector:
         except Exception:
             self._rollback_std_streams(saved_streams)
             self.restore_redirections(saved_fds)
+            if lease_acquired_here:
+                # This command's own acquisition, and its redirect failed:
+                # fds 0/1/2 are back at the values the lease was meant to
+                # protect, so the lease describes nothing and must go
+                # (slot 4A.1 / charter item 5). A lease an EARLIER exec took
+                # is untouched — lease_acquired_here is False then.
+                self._release_permanent_stream_lease()
             raise
 
         # Success: the redirects are permanent. Close the fd backups so they
