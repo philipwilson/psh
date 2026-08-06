@@ -105,12 +105,41 @@ class LeaseError(RuntimeError):
     """
 
 
+class LeaseRestoreError(LeaseError):
+    """One or more component restores failed; the process is not proven clean.
+
+    Raised by the deactivation paths after EVERY restore has been attempted
+    (a failing restore must not block its siblings).  Carries the leases it
+    could not restore, which are QUARANTINED on the coordinator: ownership
+    does not silently return to "clean" when the globals may still be
+    mutated.  Deriving from :class:`LeaseError` keeps it in the loud
+    internal-defect family AND keeps existing ``pytest.raises(LeaseError)``
+    call sites matching; per-failure detail rides on ``__notes__``.
+    """
+
+    def __init__(self, message: str,
+                 failures: 'List[Tuple[ComponentLease, BaseException]]') -> None:
+        super().__init__(message)
+        self.failures = failures
+        for lease, exc in failures:
+            self.add_note(f"{lease.kind.name} ({lease.description or 'no description'}): "
+                          f"{type(exc).__name__}: {exc}")
+
+
 class ComponentKind(Enum):
     """The process-global resources a shell may lease under its owner token."""
 
     LOCALE = auto()    # libc locale (LC_CTYPE / LC_COLLATE via setlocale)
     SIGNALS = auto()   # unmanaged-signal dispositions (trap USR1/ALRM/...)
     STD_FDS = auto()   # fds 0/1/2 + sys.std* streams (permanent exec redirects)
+    # Managed-signal dispositions: the INT/TERM/HUP/QUIT/TSTP/TTOU/TTIN/
+    # CHLD/PIPE/WINCH handlers SignalManager installs at mode setup.  A kind
+    # of its OWN, never folded into SIGNALS: `acquire_component` is
+    # idempotent per (owner, kind), so two families sharing one kind would
+    # keep only the FIRST acquirer's restore callable and silently drop the
+    # other family's — measured in both acquisition orders (slot 4A.1
+    # probe D-04).
+    MANAGED_SIGNALS = auto()
 
 
 @dataclass(frozen=True)
@@ -210,6 +239,7 @@ class ProcessLeaseCoordinator:
         self._baselines: Optional[ProcessBaselines] = None
         self._activations: List[ActivationLease] = []
         self._components: List[ComponentLease] = []
+        self._quarantined: List[ComponentLease] = []
         self._relinquish_pending = False
 
     # -- introspection -------------------------------------------------
@@ -223,16 +253,91 @@ class ProcessLeaseCoordinator:
     def activation_depth(self) -> int:
         return len(self._activations)
 
+    def is_clean(self) -> bool:
+        """True when this process holds NO un-restored global state.
+
+        The question an embedder could not ask before (slot 4A.1): no owner
+        token, no activation in progress, no live component lease, and
+        nothing quarantined.  "No owner" alone was never the same question —
+        a lease stranded by a rolled-back grant leaves the token empty while
+        the globals stay mutated.
+        """
+        self._check_fork()
+        return (self._owner_ref is None and not self._activations
+                and not self._live_components() and not self._quarantined)
+
+    def quarantine_report(self) -> Tuple[str, ...]:
+        """One line per component that could not be proven restored.
+
+        Empty when the process is not quarantined.  Quarantine happens when
+        a restore callable raised: the lease is retained (not silently
+        dropped) so the failure stays visible to the next ownership event
+        instead of a half-restored process claiming to be clean.
+        """
+        self._check_fork()
+        return tuple(f"{lease.kind.name}: {lease.description or 'no description'}"
+                     for lease in self._quarantined)
+
+    def clear_quarantine(self) -> Tuple[str, ...]:
+        """Acknowledge the quarantine and drop it; returns what was cleared.
+
+        Quarantine deliberately BLOCKS every later ownership grant — a
+        process whose globals may still be mutated must not quietly hand
+        itself to the next shell.  Clearing it is therefore an explicit act
+        by whoever decided the process is usable after all: an embedder that
+        repaired the globals itself, or a fault-injection test tearing down
+        its own damage.  Nothing in psh calls this on the normal paths.
+        """
+        self._check_fork()
+        report = self.quarantine_report()
+        self._quarantined.clear()
+        return report
+
     def find_component(self, owner: Any,
                        kind: ComponentKind) -> Optional[ComponentLease]:
-        """The owner's live lease for *kind*, or None."""
+        """The owner's OWN live lease for *kind*, or None.
+
+        Filters by the lease's own ``owner_ref``, not merely by whether the
+        CALLER is the current owner: a lease stranded by a rolled-back grant
+        belongs to the rolled-back owner, and handing it to whoever now holds
+        the token made that owner fold its own acquisition into a foreign
+        lease — mutating a global under a restore callable that reverts to
+        someone else's baseline, with its own baseline never captured
+        (slot 4A.1 probe A-18).
+        """
         self._check_fork()
         if self._owner_ref is None or self._owner_ref() is not owner:
             return None
         for lease in self._components:
-            if lease.kind is kind and not lease.released:
+            if (lease.kind is kind and not lease.released
+                    and lease.owner_ref() is owner):
                 return lease
         return None
+
+    # -- lease discrimination ------------------------------------------
+
+    def _live_components(self) -> List[ComponentLease]:
+        return [lease for lease in self._components if not lease.released]
+
+    def _components_of(self, owner: Optional[Any]) -> List[ComponentLease]:
+        """The live leases *owner* actually holds (empty for None)."""
+        if owner is None:
+            return []
+        return [lease for lease in self._components
+                if not lease.released and lease.owner_ref() is owner]
+
+    def _orphan_components(self, current: Optional[Any]) -> List[ComponentLease]:
+        """Live leases that are NOT the current owner's.
+
+        Covers both shapes: a lease whose owner was rolled back (its
+        ``owner_ref`` names a different, possibly live, shell) and a lease
+        whose owner has been collected (``owner_ref()`` is None).  Written as
+        the complement of :meth:`_components_of` so a dead owner cannot slip
+        through an ``is not current`` comparison when *current* is itself
+        None.
+        """
+        own = self._components_of(current)
+        return [lease for lease in self._live_components() if lease not in own]
 
     # -- the activation transaction ------------------------------------
 
@@ -254,13 +359,15 @@ class ProcessLeaseCoordinator:
                                 self._baselines, len(self._activations) + 1)
         self._activations.append(lease)
         if changed:
+            checkpoint = len(self._components)
             try:
                 _ensure_recursion_headroom()
                 if on_grant is not None:
                     on_grant()
-            except BaseException:
+            except BaseException as exc:
                 self._activations.pop()
                 lease.released = True
+                self._unwind_components_to(checkpoint, exc)
                 self._rollback_owner(rollback)
                 raise
         return lease
@@ -293,11 +400,13 @@ class ProcessLeaseCoordinator:
             return existing
         changed, rollback = self._ensure_owner(owner)
         if changed:
+            checkpoint = len(self._components)
             try:
                 _ensure_recursion_headroom()
                 if on_grant is not None:
                     on_grant()
-            except BaseException:
+            except BaseException as exc:
+                self._unwind_components_to(checkpoint, exc)
                 self._rollback_owner(rollback)
                 raise
             # The grant glue may itself have acquired THIS kind (the locale
@@ -314,16 +423,24 @@ class ProcessLeaseCoordinator:
     def release_owner(self, owner: Any) -> None:
         """Deactivate *owner*: restore its components (LIFO), drop ownership.
 
-        The ``Shell.close()``/``shutdown()`` path.  A no-op when *owner* is
-        not the current owner.  When called mid-activation (the exit builtin
-        runs inside its own execution), components are restored immediately
-        and the owner token is released when the activation stack unwinds to
-        zero.
+        The ``Shell.close()``/``shutdown()`` path.  When called mid-activation
+        (the exit builtin runs inside its own execution), components are
+        restored immediately and the owner token is released when the
+        activation stack unwinds to zero.
+
+        A caller that is NOT the current owner still restores its OWN leases
+        (it may hold leases stranded by a rolled-back grant) — it simply does
+        not touch the token or anyone else's leases.  Returning early there
+        was what left an orphan nobody could clean up: the coordinator
+        refused because the caller was not the owner, and the owner refused
+        because the leases were not its own (slot 4A.1 probe A-10 / A5 seam
+        3).
         """
         self._check_fork()
         if self._owner_ref is None or self._owner_ref() is not owner:
+            self._release_components(self._components_of(owner))
             return
-        self._force_release_components()
+        self._release_components(self._components_of(owner))
         if self._activations:
             self._relinquish_pending = True
         else:
@@ -340,8 +457,11 @@ class ProcessLeaseCoordinator:
             act.released = True
         for comp in self._components:
             comp.released = True
+        for comp in self._quarantined:
+            comp.released = True
         self._activations.clear()
         self._components.clear()
+        self._quarantined.clear()
         self._owner_ref = None
         self._baselines = None
         self._relinquish_pending = False
@@ -352,29 +472,45 @@ class ProcessLeaseCoordinator:
 
         Returns ``(changed, rollback_token)``.  Rejection happens BEFORE any
         mutation.  A previous owner that is quiescent (no activations, no
-        components) — or already garbage-collected — hands ownership over;
-        a collected owner's leftover component leases are force-restored
-        first (GC-safety: drop-without-close still releases the globals).
+        components OF ITS OWN) — or already garbage-collected — hands
+        ownership over; leases that are nobody's (a collected owner's, or a
+        rolled-back grant's) are swept DETERMINISTICALLY first, at this
+        ownership event, without depending on garbage collection.
         """
         current = self._owner_ref() if self._owner_ref is not None else None
         if current is owner:
             return False, ()
-        if current is not None and (self._activations or self._components):
-            kinds = [c.kind.name for c in self._components]
+        if self._quarantined:
+            raise LeaseError(
+                "process ownership is QUARANTINED: "
+                f"{len(self._quarantined)} component(s) could not be restored "
+                f"and may still be mutated — {'; '.join(self.quarantine_report())}. "
+                "No shell can take ownership until the process is proven "
+                "clean (slot 4A.1)")
+        # Sweep leases belonging to nobody (rolled-back grant) or to a
+        # collected owner: they describe live process mutations, so they are
+        # restored — never merely dropped — and never counted as a competing
+        # owner's holdings.
+        orphans = self._orphan_components(current)
+        if orphans:
+            self._release_components(orphans)
+        own = self._components_of(current)
+        if current is not None and (self._activations or own):
+            held = "; ".join(f"{c.kind.name} ({c.description})" if c.description
+                             else c.kind.name for c in own) or "none"
             raise LeaseError(
                 "competing process owner: another live shell holds the "
                 f"process activation (depth={len(self._activations)}, "
-                f"components={kinds}); simultaneous active shells are "
+                f"components=[{held}]); simultaneous active shells are "
                 "unsupported — close()/shutdown() the other shell first "
-                "(campaign F2)")
+                "(campaign F2). A shell dropped WITHOUT close() that still "
+                "holds a lease keeps its globals installed and is reported "
+                "here: close() is the contract")
         if current is None:
-            # Dead or absent owner: its activations are stale bookkeeping;
-            # its component leases still describe live process mutations —
-            # restore them so the globals return to their baselines.
+            # Dead or absent owner: its activations are stale bookkeeping.
             for act in self._activations:
                 act.released = True
             self._activations.clear()
-            self._force_release_components()
         rollback = (self._owner_ref, self._baselines, self._relinquish_pending)
         self._owner_ref = weakref.ref(owner)
         self._baselines = _capture_baselines()
@@ -403,16 +539,70 @@ class ProcessLeaseCoordinator:
         self._relinquish_pending = False
 
     def _force_release_components(self) -> None:
-        """Restore and drop every component lease, innermost (LIFO) first."""
-        while self._components:
-            lease = self._components.pop()
-            if lease.released:
-                continue
+        """Restore and drop EVERY component lease, innermost (LIFO) first."""
+        self._release_components(self._live_components())
+
+    def _release_components(self, leases: List[ComponentLease]) -> None:
+        """Restore and drop *leases*, innermost (LIFO) first.
+
+        Every restore is attempted even when an earlier one raises — a
+        failing restore must not strand its siblings.  Failures are
+        COLLECTED, the leases that could not be restored are QUARANTINED
+        (retained and observable via :meth:`quarantine_report`, so the
+        process is not reported clean when it may still be mutated), and one
+        aggregate :class:`LeaseRestoreError` is raised naming all of them.
+        Before slot 4A.1 the failures were swallowed and a half-restored
+        process claimed to be clean.
+        """
+        if not leases:
+            return
+        targets = set(map(id, leases))
+        failures: List[Tuple[ComponentLease, BaseException]] = []
+        # LIFO: walk the live stack from the top, taking only the requested
+        # leases (a non-owner caller releases just its own).
+        for lease in [c for c in reversed(self._components)
+                      if id(c) in targets and not c.released]:
             lease.released = True
+            self._components.remove(lease)
             try:
                 lease._restore()
-            except Exception:
-                pass  # best-effort: one failed restore must not block the rest
+            except Exception as exc:                     # noqa: BLE001
+                failures.append((lease, exc))
+                self._quarantined.append(lease)
+        if failures:
+            kinds = ", ".join(sorted(lease.kind.name for lease, _ in failures))
+            raise LeaseRestoreError(
+                f"process-global restore failed for {len(failures)} component"
+                f"{'s' if len(failures) > 1 else ''} ({kinds}); the process "
+                "cannot be proven clean and those components are QUARANTINED "
+                "(see quarantine_report()). Every other restore was still "
+                "attempted (campaign F2 / slot 4A.1)", failures)
+
+    def _unwind_components_to(self, checkpoint: int,
+                              cause: BaseException) -> None:
+        """Restore components acquired ABOVE *checkpoint* (a failed grant).
+
+        The grant glue can re-entrantly acquire component leases (the locale
+        glue does).  When the glue then fails, those leases describe
+        mutations of a grant that is about to be rolled back: restore them
+        LIFO BEFORE the owner metadata reverts, so the rolled-back owner and
+        the lease list cannot disagree about who owns what.  Without this the
+        lease outlived its owner and every later activation was rejected —
+        blaming a shell that held nothing (slot 4A.1 probes A-04/A-08).
+
+        Restore failures here are attached to the propagating *cause* rather
+        than replacing it: the caller asked why the grant failed, and the
+        glue's own exception is that answer.
+        """
+        if len(self._components) <= checkpoint:
+            return
+        try:
+            self._release_components(self._components[checkpoint:])
+        except LeaseRestoreError as restore_error:
+            cause.add_note(f"additionally, rolling back the failed grant: "
+                           f"{restore_error}")
+            for note in getattr(restore_error, '__notes__', ()):
+                cause.add_note(f"  {note}")
 
     def _release_activation(self, lease: ActivationLease) -> None:
         self._check_fork()

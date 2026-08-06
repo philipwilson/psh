@@ -38,14 +38,19 @@ def pristine_coordinator():
     assert coord.activation_depth == 0, (
         "leaked activation lease from an earlier test")
     saved = (coord._owner_ref, coord._baselines, list(coord._activations),
-             list(coord._components), coord._relinquish_pending)
+             list(coord._components), list(coord._quarantined),
+             coord._relinquish_pending)
     try:
         yield coord
     finally:
         (coord._owner_ref, coord._baselines, activations, components,
-         coord._relinquish_pending) = saved
+         quarantined, coord._relinquish_pending) = saved
         coord._activations[:] = activations
         coord._components[:] = components
+        # Quarantine is restored too: it BLOCKS every later ownership grant,
+        # so a fault-injection test that quarantines the singleton would
+        # otherwise wedge every subsequent test in this process/xdist worker.
+        coord._quarantined[:] = quarantined
 
 
 def test_grant_and_lifo_nesting(pristine_coordinator):
