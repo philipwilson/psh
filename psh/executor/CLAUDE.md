@@ -129,11 +129,12 @@ CommandExecutor.execute()
 2. Expand command arguments (variables, globs, etc. — BEFORE the
    assignments apply, per POSIX; see command_assignments.py docstring)
 3. Expand prefix assignment VALUES (CommandAssignments.expand_prefix)
-   — before resolution, so a side effect inside a value is authoritative
-3b. Resolve ONCE (command_resolution.resolve_command)
-3c. Route the expanded bindings (CommandAssignments.commit_prefix)
-4. Try each execution strategy in order
-5. Restore assignments (CommandAssignments.restore) — unless, in POSIX
+   — before resolution, so a side effect inside a value is authoritative.
+   A readonly target is refused HERE, before its value is evaluated
+4. Resolve ONCE (command_resolution.resolve_command)
+5. Route the expanded bindings (CommandAssignments.commit_prefix)
+6. Try each execution strategy in order
+7. Restore assignments (CommandAssignments.restore) — unless, in POSIX
    mode, the command was a POSIX special builtin, where they persist
    instead (CommandAssignments.commit)
     ↓

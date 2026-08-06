@@ -10,9 +10,13 @@ POSIX ordering contract (probe-verified against bash 5.2):
 1. **Command words expand BEFORE assignments apply.** ``V=old; V=new echo
    $V`` prints ``old``: the prefix assignment is invisible to the
    command's own expansions.
-2. **Assignment values expand left-to-right at apply time**, so each
-   value sees the assignments to its left: ``A=1 B=$A cmd`` gives B the
-   value ``1`` (likewise pure ``x=1 y=$x``).
+2. **Assignment values expand left-to-right**, so each value sees the
+   assignments to its left: ``A=1 B=$A cmd`` gives B the value ``1``
+   (likewise pure ``x=1 y=$x``). For a command prefix this happens in
+   :meth:`CommandAssignments.expand_prefix`, BEFORE the command resolves —
+   a side effect inside a value must be visible to the dispatch decision it
+   governs. A REFUSED assignment (readonly target) is never evaluated at
+   all, so it contributes no side effect of any kind (bash).
 3. **Prefix assignments are temporary.** Shell state and ``shell.env``
    are restored after the command — unless, **in POSIX mode**
    (``set -o posix``), it resolved to a POSIX special builtin, where the
