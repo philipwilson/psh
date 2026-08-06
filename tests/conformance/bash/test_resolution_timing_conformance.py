@@ -568,7 +568,7 @@ def test_signature_holds_under_the_combinator_parser(cmd, expected):
 # Both-sides pins so a successor slot sees the exact current shape.
 # ---------------------------------------------------------------------------
 
-def test_documented_divergence_posix_mode_function_name_validation():
+def test_divergence_posix_mode_function_name_validation():
     """OUT OF CHARTER (slot 3.4 matrix cell X1).
 
     In posix mode bash refuses to DEFINE a function named after a special
@@ -584,7 +584,7 @@ def test_documented_divergence_posix_mode_function_name_validation():
     assert p.returncode == 0 and p.stdout == 'rc=0\n'
 
 
-def test_documented_divergence_posix_special_builtin_redirect_error_not_fatal():
+def test_divergence_posix_special_builtin_redirect_error_not_fatal():
     """OUT OF CHARTER (slot 3.4 matrix cell R4).
 
     POSIX makes a redirection error on a SPECIAL BUILTIN fatal to a
@@ -674,6 +674,35 @@ def test_staged_bindings_invisible_to_enumeration_in_script_mode(enumerator,
     assert p.stdout == b.stdout
 
 
+@pytest.mark.parametrize('enumerator', ENUMERATORS)
+@pytest.mark.parametrize('staged', [1, 2], ids=['one-binding', 'two-bindings'])
+def test_staged_bindings_invisible_to_enumeration_FUNCTION_target(enumerator,
+                                                                 staged):
+    """RED ON BASE — and the only route where base was actually wrong.
+
+    Base leaked here ([1]) while matching bash on the external route ([0]),
+    so an external-only battery could never have caught it: it was
+    red-on-round-1-tip but green-on-base, which is the wrong end to prove.
+    TARGET KIND is this slot's own new axis and the battery has to walk it.
+    """
+    prefix = 'TQ=1 ' + ('TR=2 ' if staged == 2 else '')
+    cmd = f'unset TQ TR; f(){{ echo "[$B]"; }}; {prefix}B=$({enumerator}) f'
+    p, b = _both(cmd)
+    assert b.stdout == '[0]\n', b
+    assert p.stdout == b.stdout
+
+
+@pytest.mark.parametrize('enumerator', ENUMERATORS)
+def test_staged_bindings_invisible_to_enumeration_in_stdin_mode(enumerator):
+    """The third input mode (N4) — `-c` and script are covered above."""
+    script = f'unset TQ; TQ=1 B=$({enumerator}) /bin/sh -c \'echo "[$B]"\'\n'
+    p = run_psh([], cwd=PSH_ROOT, timeout=15, stdin_data=script)
+    b = run_bash([], cwd=PSH_ROOT, timeout=15, stdin_data=script)
+    assert is_comparable(p) and is_comparable(b)
+    assert b.stdout == '[0]\n', b
+    assert p.stdout == b.stdout
+
+
 def test_function_body_DOES_enumerate_its_prefix_vars_after_adoption():
     """The other side of the flag: adoption is the only transition, and after
     it the function body enumerates its prefix vars (bash merges them into the
@@ -758,12 +787,27 @@ def test_nameref_to_element_prefix_does_not_write_through():
     assert p.stdout == b.stdout
 
 
-def test_nameref_to_element_prefix_emits_no_diagnostic():
-    """RED ON BASE (D4). bash is silent here; base emitted a readonly error."""
+def test_nameref_to_element_prefix_emits_no_diagnostic_CONTROL():
+    """PARITY CONTROL — passes at base too, so it is NOT red-on-base evidence.
+
+    Relabelled: this row shipped claiming RED ON BASE while omitting the
+    `readonly` that makes base diverge, i.e. a false red-claim standing in
+    for an unpinned cell. The real D4 cell is the next test.
+    """
     p, b = _both('a=(x y); declare -n r=a[0]; r=NEW /bin/echo run')
     assert b.stderr == '', b
     assert p.stderr == b.stderr
     assert p.stdout == b.stdout
+
+
+def test_readonly_nameref_to_element_prefix_emits_no_diagnostic():
+    """RED ON BASE (the real D4). With the array READONLY, base emitted
+    `a: readonly variable`; bash is silent and so is the tip, because the
+    prefix takes no route at all and never attempts the write."""
+    p, b = _both('a=(x y); readonly a; declare -n r=a[0]; r=NEW eval "echo ran"')
+    assert b.stdout == 'ran\n' and b.stderr == '', b
+    assert p.stdout == b.stdout
+    assert p.stderr == b.stderr
 
 
 @pytest.mark.parametrize('cmd,expected', [
@@ -818,7 +862,7 @@ def test_ro1_readonly_refusal_diagnostic_is_emitted_once():
 # ---------------------------------------------------------------------------
 
 
-def test_documented_divergence_readonly_prefix_rc_under_a_value_side_flip():
+def test_divergence_readonly_prefix_rc_under_a_value_side_flip():
     """OUT OF CHARTER (rc shape). A readonly prefix error alongside a
     value-side POSIXLY_CORRECT flip: both shells report the readonly error and
     abort the line (no AFTER), but bash exits 127 where psh exits 1."""
@@ -839,3 +883,31 @@ def test_nameref_cycle_prefix_matches_bash_end_to_end():
     rc all agree. Kept as no-regression coverage of the path SEM-3 touches."""
     _assert_same('declare -n a=b; declare -n b=a; A=1 B=$a /bin/echo ran; '
                  'echo AFTER')
+
+
+# ---------------------------------------------------------------------------
+# A8 AXIS — the command's OWN NAME VARIABLE (`c=echo; c=printf $c ...`).
+#
+# The amendment lists this axis and the round-1/round-2 matrices had ZERO
+# cells for it: a dropped axis under a "matrix complete" claim. All four cells
+# MATCH at base and at tip, so they are EQUALITY rows — the axis is covered by
+# showing it does not move, which is a result, not an absence.
+#
+# What they pin: the command WORD is expanded before the prefix assignments
+# apply, so `c=printf $c hi` still runs the OLD `c` (echo). The transaction
+# reordered when values EXPAND, not when the command word does.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('cmd', [
+    pytest.param('c=echo; c=printf $c hi', id='prefix-rebinds-the-name-var'),
+    pytest.param('unset c; c=/bin/echo $c x', id='name-var-unset-at-expansion'),
+    pytest.param('c=echo; A=$((POSIXLY_CORRECT=1)) c=/bin/echo $c y',
+                 id='name-var-rebound-under-a-value-side-flip'),
+    pytest.param('eval(){ echo FN; }; '
+                 'c=eval A=$((POSIXLY_CORRECT=1)) $c "echo VIA-NAMEVAR"',
+                 id='name-var-naming-a-shadowed-special-under-a-flip'),
+])
+def test_command_own_name_variable_axis(cmd):
+    """EQUALITY (matched at base and tip). Pinned so the axis stops being a
+    gap in the matrix rather than a claim about it."""
+    _assert_same(cmd)
