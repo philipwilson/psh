@@ -225,14 +225,12 @@ class CommandAssignments:
             self, raw_assignments: List[RawAssignment]) -> 'CommandEnvOverlay':
         """Build the :class:`CommandEnvOverlay` for a command's prefix.
 
-        Carries the metadata resolution needs BEFORE the values are installed:
-        the assigned names (source order), whether a ``PATH=`` override is
-        present, and whether a ``POSIXLY_CORRECT`` assignment will flip posix
-        mode for the command's own resolution. The values themselves are NOT
-        expanded here — expanding a value early would run its command
-        substitution out of left-to-right order (``A=$(c1) PATH=$(c2) cmd``);
-        :meth:`apply_prefix` expands and installs them after resolution, and
-        the deferred external PATH search reads the live environment then.
+        Carries the facts resolution can derive from the assignment NAMES
+        alone: the names themselves (source order), whether a ``PATH=``
+        override is present, and whether a ``POSIXLY_CORRECT`` assignment will
+        flip posix mode for the command's own resolution. Values play no part
+        — :meth:`expand_prefix` has already expanded them, in source order, by
+        the time resolution consults this overlay.
 
         The POSIXLY_CORRECT fact mirrors bash's sv_strict_posix coupling rule
         (probe-derived, R3 bounce): NAME-level (any value — even empty or an
@@ -240,8 +238,13 @@ class CommandAssignments:
         r=POSIXLY_CORRECT; r=1 cmd`` flips), but a READONLY POSIXLY_CORRECT
         blocks the flip (the assignment will fail; bash never turns posix on,
         and a same-named function keeps winning the lookup). The readonly walk
-        is the one :meth:`ScopeManager.set_command_temp_env_var` performs at
-        install, so the overlay predicts the install outcome exactly.
+        is :meth:`_readonly_blocks`, the same one :meth:`expand_prefix` uses to
+        refuse the assignment, so the overlay predicts the outcome exactly.
+
+        This covers only the NAME spelling. A posix flip performed INSIDE a
+        value (``A=$((POSIXLY_CORRECT=1))``) is invisible to any name-level
+        test; that one reaches resolution through ordering instead, because
+        :meth:`expand_prefix` runs first (slot 3.4, HIGH-3).
 
         The common case — a command with NO prefix assignments — returns the
         shared :data:`EMPTY_OVERLAY` singleton (no per-command allocation on

@@ -21,8 +21,8 @@ Executor  Executor   Executor   Executor  Executor
 |------|---------|
 | `core.py` | `ExecutorVisitor` - main visitor coordinating all execution |
 | `command.py` | `CommandExecutor` - simple command dispatch (expansion, one resolution, redirections). Normalizes the command word, builds the overlay, and resolves ONCE (`resolve_command`) BEFORE any scope/prefix decision, then drives the scope model / `exec` shortcut / POSIX prefix-error branch / persistence from the returned `ResolvedCommand` (never a raw-name recompute — #20 H10) |
-| `command_resolution.py` | `NormalizedCommandName` / `CommandEnvOverlay` / `ResolvedCommand` + `resolve_command` (R3). The SOLE mode-aware dispatch reader of the function/builtin registries; the raw `get_function`/`POSIX_SPECIAL_BUILTINS` dispatch recomputes are gone (guarded by `tests/unit/tooling/test_command_resolution_ratchet_r3.py`). The overlay carries the resolution-relevant prefix facts — notably `has_posix_override`: a `POSIXLY_CORRECT=` prefix (name-level, nameref-resolved, readonly-blocked excluded) resolves ITS OWN command in posix mode, since bash installs assignments before lookup. Values expand later in `apply_prefix` (expanding early would reorder `A=$(c1) PATH=$(c2)` side effects); the command hash/PATH stay with `command_resolver.py`, whose deferred external search reads the live environment the installed prefix determines |
-| `command_assignments.py` | `CommandAssignments` - the `NAME=value` sub-domain (extract/build_overlay/apply_pure/apply_prefix/restore/commit); its module docstring states the POSIX assignment-ordering-and-persistence contract (persistence only in POSIX mode) |
+| `command_resolution.py` | `NormalizedCommandName` / `CommandEnvOverlay` / `ResolvedCommand` + `resolve_command` (R3). The SOLE mode-aware dispatch reader of the function/builtin registries; the raw `get_function`/`POSIX_SPECIAL_BUILTINS` dispatch recomputes are gone (guarded by `tests/unit/tooling/test_command_resolution_ratchet_r3.py`). The overlay carries the NAME-level prefix facts — notably `has_posix_override`: a `POSIXLY_CORRECT=` prefix (name-level, nameref-resolved, readonly-blocked excluded) resolves ITS OWN command in posix mode, since bash installs assignments before lookup. A posix flip performed inside a prefix VALUE is invisible to that name test and reaches resolution by ORDER instead: the prefix transaction expands before resolving (slot 3.4 HIGH-3; guarded by `tests/unit/tooling/test_resolution_timing_ratchet_3_4.py`). The command hash/PATH stay with `command_resolver.py`, whose deferred external search reads the live environment the committed prefix determines |
+| `command_assignments.py` | `CommandAssignments` - the `NAME=value` sub-domain (extract/build_overlay/apply_pure/expand_prefix/commit_prefix/restore/commit); its module docstring states the POSIX assignment-ordering-and-persistence contract (persistence only in POSIX mode). Prefix application is a TWO-PHASE transaction: `expand_prefix` expands the values once, left to right, staged in a temp-env scope; `commit_prefix` then routes the already-expanded bindings per target kind. Resolution runs between them, which is why the phases are separate (`apply_prefix` remains the one-shot composition for callers that need no resolution in between) |
 | `pipeline.py` | `PipelineExecutor` - pipeline and process group management |
 | `control_flow.py` | `ControlFlowExecutor` - loops, conditionals, case |
 | `function.py` | `FunctionOperationExecutor` - function calls and scope |
@@ -128,7 +128,10 @@ CommandExecutor.execute()
    assignments — no command word — short-circuit via apply_pure)
 2. Expand command arguments (variables, globs, etc. — BEFORE the
    assignments apply, per POSIX; see command_assignments.py docstring)
-3. Apply prefix assignments (CommandAssignments.apply_prefix)
+3. Expand prefix assignment VALUES (CommandAssignments.expand_prefix)
+   — before resolution, so a side effect inside a value is authoritative
+3b. Resolve ONCE (command_resolution.resolve_command)
+3c. Route the expanded bindings (CommandAssignments.commit_prefix)
 4. Try each execution strategy in order
 5. Restore assignments (CommandAssignments.restore) — unless, in POSIX
    mode, the command was a POSIX special builtin, where they persist
