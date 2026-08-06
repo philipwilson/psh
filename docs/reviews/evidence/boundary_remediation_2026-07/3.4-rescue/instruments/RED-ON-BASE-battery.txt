@@ -1,0 +1,376 @@
+FF....FFFFFFF..FFFFFFFFFFFFF........FF....FFF..................FFFF....F [ 81%]
+....FFFFFF......                                                         [100%]
+=================================== FAILURES ===================================
+____ test_signature_side_effect_flips_posix_before_resolution[arith-assign] ____
+tests/conformance/bash/test_resolution_timing_conformance.py:98: in test_signature_side_effect_flips_posix_before_resolution
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'BUILTIN-PATH\n'
+E     
+E     - BUILTIN-PATH
+E     + FN
+_ test_signature_side_effect_flips_posix_before_resolution[colon-equals-store] _
+tests/conformance/bash/test_resolution_timing_conformance.py:98: in test_signature_side_effect_flips_posix_before_resolution
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'BUILTIN-PATH\n'
+E     
+E     - BUILTIN-PATH
+E     + FN
+__________________ test_store_kind_flips_posix[arith-assign] ___________________
+tests/conformance/bash/test_resolution_timing_conformance.py:138: in test_store_kind_flips_posix
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+________________ test_store_kind_flips_posix[arith-plus-equals] ________________
+tests/conformance/bash/test_resolution_timing_conformance.py:138: in test_store_kind_flips_posix
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+_______________ test_store_kind_flips_posix[arith-postincrement] _______________
+tests/conformance/bash/test_resolution_timing_conformance.py:138: in test_store_kind_flips_posix
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+__________________ test_store_kind_flips_posix[colon-equals] ___________________
+tests/conformance/bash/test_resolution_timing_conformance.py:138: in test_store_kind_flips_posix
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+_______________ test_store_kind_flips_posix[colon-equals-EMPTY] ________________
+tests/conformance/bash/test_resolution_timing_conformance.py:138: in test_store_kind_flips_posix
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+________________ test_store_kind_flips_posix[equals-unset-only] ________________
+tests/conformance/bash/test_resolution_timing_conformance.py:138: in test_store_kind_flips_posix
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+_______________ test_store_nested_inside_another_expansion_flips _______________
+tests/conformance/bash/test_resolution_timing_conformance.py:148: in test_store_nested_inside_another_expansion_flips
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+_ test_store_position_in_the_prefix_list_is_not_a_limiter[first-A=$((POSIXLY_CORRECT=1)) B=2 C=3] _
+tests/conformance/bash/test_resolution_timing_conformance.py:178: in test_store_position_in_the_prefix_list_is_not_a_limiter
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+_ test_store_position_in_the_prefix_list_is_not_a_limiter[middle-B=2 A=$((POSIXLY_CORRECT=1)) C=3] _
+tests/conformance/bash/test_resolution_timing_conformance.py:178: in test_store_position_in_the_prefix_list_is_not_a_limiter
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+_ test_store_position_in_the_prefix_list_is_not_a_limiter[last-B=2 C=3 A=$((POSIXLY_CORRECT=1))] _
+tests/conformance/bash/test_resolution_timing_conformance.py:178: in test_store_position_in_the_prefix_list_is_not_a_limiter
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+_____ test_function_shadowing_a_special_builtin_loses_after_the_flip[eval] _____
+tests/conformance/bash/test_resolution_timing_conformance.py:212: in test_function_shadowing_a_special_builtin_loses_after_the_flip
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval "echo S"'
+E     psh ='FN\n' rc=0 err=''
+E     bash='S\n' rc=0 err=''
+E   assert ('FN\n', 0) == ('S\n', 0)
+E     
+E     At index 0 diff: 'FN\n' != 'S\n'
+E     Use -v to get more diff
+____ test_function_shadowing_a_special_builtin_loses_after_the_flip[colon] _____
+tests/conformance/bash/test_resolution_timing_conformance.py:212: in test_function_shadowing_a_special_builtin_loses_after_the_flip
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd=':(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) : ; echo "rc=$?"'
+E     psh ='FN\nrc=0\n' rc=0 err=''
+E     bash='rc=0\n' rc=0 err=''
+E   assert ('FN\nrc=0\n', 0) == ('rc=0\n', 0)
+E     
+E     At index 0 diff: 'FN\nrc=0\n' != 'rc=0\n'
+E     Use -v to get more diff
+____ test_function_shadowing_a_special_builtin_loses_after_the_flip[export] ____
+tests/conformance/bash/test_resolution_timing_conformance.py:212: in test_function_shadowing_a_special_builtin_loses_after_the_flip
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='export(){ echo FN; }; unset V; A=$((POSIXLY_CORRECT=1)) export V=1; echo "V=[${V-UNSET}]"'
+E     psh ='FN\nV=[UNSET]\n' rc=0 err=''
+E     bash='V=[1]\n' rc=0 err=''
+E   assert ('FN\nV=[UNSET]\n', 0) == ('V=[1]\n', 0)
+E     
+E     At index 0 diff: 'FN\nV=[UNSET]\n' != 'V=[1]\n'
+E     Use -v to get more diff
+____ test_function_shadowing_a_special_builtin_loses_after_the_flip[unset] _____
+tests/conformance/bash/test_resolution_timing_conformance.py:212: in test_function_shadowing_a_special_builtin_loses_after_the_flip
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='W=keep; unset(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) unset W; echo "W=[${W-UNSET}]"'
+E     psh ='FN\nW=[keep]\n' rc=0 err=''
+E     bash='W=[UNSET]\n' rc=0 err=''
+E   assert ('FN\nW=[keep]\n', 0) == ('W=[UNSET]\n', 0)
+E     
+E     At index 0 diff: 'FN\nW=[keep]\n' != 'W=[UNSET]\n'
+E     Use -v to get more diff
+_____ test_function_shadowing_a_special_builtin_loses_after_the_flip[set] ______
+tests/conformance/bash/test_resolution_timing_conformance.py:212: in test_function_shadowing_a_special_builtin_loses_after_the_flip
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='set(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) set -- x y; echo "1=[$1]"'
+E     psh ='FN\n1=[]\n' rc=0 err=''
+E     bash='1=[x]\n' rc=0 err=''
+E   assert ('FN\n1=[]\n', 0) == ('1=[x]\n', 0)
+E     
+E     At index 0 diff: 'FN\n1=[]\n' != '1=[x]\n'
+E     Use -v to get more diff
+____ test_function_shadowing_a_special_builtin_loses_after_the_flip[shift] _____
+tests/conformance/bash/test_resolution_timing_conformance.py:212: in test_function_shadowing_a_special_builtin_loses_after_the_flip
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='shift(){ echo FN; }; set -- a b c; A=$((POSIXLY_CORRECT=1)) shift; echo "1=[$1]"'
+E     psh ='FN\n1=[a]\n' rc=0 err=''
+E     bash='1=[b]\n' rc=0 err=''
+E   assert ('FN\n1=[a]\n', 0) == ('1=[b]\n', 0)
+E     
+E     At index 0 diff: 'FN\n1=[a]\n' != '1=[b]\n'
+E     Use -v to get more diff
+_____ test_function_shadowing_a_special_builtin_loses_after_the_flip[exec] _____
+tests/conformance/bash/test_resolution_timing_conformance.py:212: in test_function_shadowing_a_special_builtin_loses_after_the_flip
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='exec(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) exec /bin/echo X; echo AFTER'
+E     psh ='FN\nAFTER\n' rc=0 err=''
+E     bash='X\n' rc=0 err=''
+E   assert ('FN\nAFTER\n', 0) == ('X\n', 0)
+E     
+E     At index 0 diff: 'FN\nAFTER\n' != 'X\n'
+E     Use -v to get more diff
+____ test_function_shadowing_a_special_builtin_loses_after_the_flip[break] _____
+tests/conformance/bash/test_resolution_timing_conformance.py:212: in test_function_shadowing_a_special_builtin_loses_after_the_flip
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='break(){ echo FN; }; for i in 1 2 3; do A=$((POSIXLY_CORRECT=1)) break; done; echo "i=[$i]"'
+E     psh ='FN\ni=[2]\n' rc=0 err=''
+E     bash='i=[1]\n' rc=0 err=''
+E   assert ('FN\ni=[2]\n', 0) == ('i=[1]\n', 0)
+E     
+E     At index 0 diff: 'FN\ni=[2]\n' != 'i=[1]\n'
+E     Use -v to get more diff
+____ test_function_shadowing_a_special_builtin_loses_after_the_flip[return] ____
+tests/conformance/bash/test_resolution_timing_conformance.py:212: in test_function_shadowing_a_special_builtin_loses_after_the_flip
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='return(){ echo FN; }; g(){ A=$((POSIXLY_CORRECT=1)) return; echo NOTREACHED; }; g; echo "rc=$?"'
+E     psh ='FN\nNOTREACHED\nrc=0\n' rc=0 err=''
+E     bash='rc=0\n' rc=0 err=''
+E   assert ('FN\nNOTREACHED\nrc=0\n', 0) == ('rc=0\n', 0)
+E     
+E     At index 0 diff: 'FN\nNOTREACHED\nrc=0\n' != 'rc=0\n'
+E     Use -v to get more diff
+______________________ test_source_shadowed_by_a_function ______________________
+tests/conformance/bash/test_resolution_timing_conformance.py:222: in test_source_shadowed_by_a_function
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'SOURCED\n'
+E     
+E     - SOURCED
+E     + FN
+_______________ test_own_flip_makes_this_commands_prefix_persist _______________
+tests/conformance/bash/test_resolution_timing_conformance.py:268: in test_own_flip_makes_this_commands_prefix_persist
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'A=[UNSET]\n' == 'A=[1]\n'
+E     
+E     - A=[1]
+E     + A=[UNSET]
+_____________ test_own_flip_persistence_with_a_shadowing_function ______________
+tests/conformance/bash/test_resolution_timing_conformance.py:277: in test_own_flip_persistence_with_a_shadowing_function
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\nA=[UNSET]\n' == 'A=[1]\n'
+E     
+E     - A=[1]
+E     + FN
+E     + A=[UNSET]
+__ test_the_side_effect_itself_persists_after_the_command[variable-persists] ___
+tests/conformance/bash/test_resolution_timing_conformance.py:310: in test_the_side_effect_itself_persists_after_the_command
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"'
+E     psh ='FN\npc=[1]\n' rc=0 err=''
+E     bash='pc=[1]\n' rc=0 err=''
+E   assert ('FN\npc=[1]\n', 0) == ('pc=[1]\n', 0)
+E     
+E     At index 0 diff: 'FN\npc=[1]\n' != 'pc=[1]\n'
+E     Use -v to get more diff
+___ test_the_side_effect_itself_persists_after_the_command[option-persists] ____
+tests/conformance/bash/test_resolution_timing_conformance.py:310: in test_the_side_effect_itself_persists_after_the_command
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":"; shopt -qo posix && echo posix-ON || echo posix-OFF'
+E     psh ='FN\nposix-ON\n' rc=0 err=''
+E     bash='posix-ON\n' rc=0 err=''
+E   assert ('FN\nposix-ON\n', 0) == ('posix-ON\n', 0)
+E     
+E     At index 0 diff: 'FN\nposix-ON\n' != 'posix-ON\n'
+E     Use -v to get more diff
+____ test_the_side_effect_itself_persists_after_the_command[store-persists] ____
+tests/conformance/bash/test_resolution_timing_conformance.py:310: in test_the_side_effect_itself_persists_after_the_command
+    _assert_same(cmd)
+tests/conformance/bash/test_resolution_timing_conformance.py:70: in _assert_same
+    assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+E   AssertionError: cmd='unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval ":"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"'
+E     psh ='FN\npc=[1]\n' rc=0 err=''
+E     bash='pc=[1]\n' rc=0 err=''
+E   assert ('FN\npc=[1]\n', 0) == ('pc=[1]\n', 0)
+E     
+E     At index 0 diff: 'FN\npc=[1]\n' != 'pc=[1]\n'
+E     Use -v to get more diff
+_____ test_carry7_later_prefix_reads_the_masked_literal[external-printenv] _____
+tests/conformance/bash/test_resolution_timing_conformance.py:450: in test_carry7_later_prefix_reads_the_masked_literal
+    assert p.stdout == b.stdout
+E   AssertionError: assert '10791\n' == '1\n'
+E     
+E     - 1
+E     + 10791
+______ test_carry7_later_prefix_reads_the_masked_literal[special-builtin] ______
+tests/conformance/bash/test_resolution_timing_conformance.py:450: in test_carry7_later_prefix_reads_the_masked_literal
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'b=[10791]\n' == 'b=[1]\n'
+E     
+E     - b=[1]
+E     + b=[10791]
+E     ?     ++++
+_______ test_carry7_later_prefix_reads_the_masked_literal[external-env] ________
+tests/conformance/bash/test_resolution_timing_conformance.py:450: in test_carry7_later_prefix_reads_the_masked_literal
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'b=[10791]\n' == 'b=[1]\n'
+E     
+E     - b=[1]
+E     + b=[10791]
+E     ?     ++++
+______ test_carry7_later_prefix_reads_the_masked_literal[two-later-reads] ______
+tests/conformance/bash/test_resolution_timing_conformance.py:450: in test_carry7_later_prefix_reads_the_masked_literal
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'b=[10791] c=[19566]\n' == 'b=[1] c=[1]\n'
+E     
+E     - b=[1] c=[1]
+E     + b=[10791] c=[19566]
+E     ?     ++++      ++++
+____________ test_readonly_declared_unset_refuses_a_function_prefix ____________
+tests/conformance/bash/test_resolution_timing_conformance.py:503: in test_readonly_declared_unset_refuses_a_function_prefix
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'RX=[1]\nrc=0\n' == 'RX=[UNSET]\nrc=0\n'
+E     
+E     - RX=[UNSET]
+E     + RX=[1]
+E       rc=0
+_____________ test_signature_holds_in_script_mode[signature-arith] _____________
+tests/conformance/bash/test_resolution_timing_conformance.py:551: in test_signature_holds_in_script_mode
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+_____________ test_signature_holds_in_script_mode[signature-store] _____________
+tests/conformance/bash/test_resolution_timing_conformance.py:551: in test_signature_holds_in_script_mode
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+_________________ test_signature_holds_in_script_mode[carry7] __________________
+tests/conformance/bash/test_resolution_timing_conformance.py:551: in test_signature_holds_in_script_mode
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'b=[10791]\n' == 'b=[1]\n'
+E     
+E     - b=[1]
+E     + b=[10791]
+E     ?     ++++
+______ test_signature_holds_under_the_combinator_parser[signature-arith] _______
+tests/conformance/bash/test_resolution_timing_conformance.py:559: in test_signature_holds_under_the_combinator_parser
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+______ test_signature_holds_under_the_combinator_parser[signature-store] _______
+tests/conformance/bash/test_resolution_timing_conformance.py:559: in test_signature_holds_under_the_combinator_parser
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'FN\n' == 'B\n'
+E     
+E     - B
+E     + FN
+___________ test_signature_holds_under_the_combinator_parser[carry7] ___________
+tests/conformance/bash/test_resolution_timing_conformance.py:559: in test_signature_holds_under_the_combinator_parser
+    assert p.stdout == b.stdout
+E   AssertionError: assert 'b=[10791]\n' == 'b=[1]\n'
+E     
+E     - b=[1]
+E     + b=[10791]
+E     ?     ++++
+=========================== short test summary info ============================
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_signature_side_effect_flips_posix_before_resolution[arith-assign]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_signature_side_effect_flips_posix_before_resolution[colon-equals-store]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_kind_flips_posix[arith-assign]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_kind_flips_posix[arith-plus-equals]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_kind_flips_posix[arith-postincrement]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_kind_flips_posix[colon-equals]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_kind_flips_posix[colon-equals-EMPTY]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_kind_flips_posix[equals-unset-only]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_nested_inside_another_expansion_flips
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_position_in_the_prefix_list_is_not_a_limiter[first-A=$((POSIXLY_CORRECT=1)) B=2 C=3]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_position_in_the_prefix_list_is_not_a_limiter[middle-B=2 A=$((POSIXLY_CORRECT=1)) C=3]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_store_position_in_the_prefix_list_is_not_a_limiter[last-B=2 C=3 A=$((POSIXLY_CORRECT=1))]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_function_shadowing_a_special_builtin_loses_after_the_flip[eval]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_function_shadowing_a_special_builtin_loses_after_the_flip[colon]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_function_shadowing_a_special_builtin_loses_after_the_flip[export]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_function_shadowing_a_special_builtin_loses_after_the_flip[unset]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_function_shadowing_a_special_builtin_loses_after_the_flip[set]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_function_shadowing_a_special_builtin_loses_after_the_flip[shift]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_function_shadowing_a_special_builtin_loses_after_the_flip[exec]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_function_shadowing_a_special_builtin_loses_after_the_flip[break]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_function_shadowing_a_special_builtin_loses_after_the_flip[return]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_source_shadowed_by_a_function
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_own_flip_makes_this_commands_prefix_persist
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_own_flip_persistence_with_a_shadowing_function
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_the_side_effect_itself_persists_after_the_command[variable-persists]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_the_side_effect_itself_persists_after_the_command[option-persists]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_the_side_effect_itself_persists_after_the_command[store-persists]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_carry7_later_prefix_reads_the_masked_literal[external-printenv]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_carry7_later_prefix_reads_the_masked_literal[special-builtin]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_carry7_later_prefix_reads_the_masked_literal[external-env]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_carry7_later_prefix_reads_the_masked_literal[two-later-reads]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_readonly_declared_unset_refuses_a_function_prefix
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_signature_holds_in_script_mode[signature-arith]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_signature_holds_in_script_mode[signature-store]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_signature_holds_in_script_mode[carry7]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_signature_holds_under_the_combinator_parser[signature-arith]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_signature_holds_under_the_combinator_parser[signature-store]
+FAILED tests/conformance/bash/test_resolution_timing_conformance.py::test_signature_holds_under_the_combinator_parser[carry7]
+38 failed, 50 passed in 20.01s

@@ -61,3 +61,18 @@ assert the psh-divergent result — the owning slot sweeps its own files.
 Slot 4B.3 (history) closes ledger B#32: the nightly's 6 red
 `test_history_outcomes_i4.py` rows on Linux may interact — 1.4 classifies them
 first; 4B.3 consumes that classification.
+
+### 3.4-declared divergence pins (v0.766.0; none named `test_divergence_*` are must-flip — recorded per R13-E(4))
+
+| pin | divergence |
+|---|---|
+| `test_divergence_readonly_prefix_rc_under_a_value_side_flip` (+ diagnostic leg) | posix special-builtin readonly abort: bash rc 127 / psh rc 1 (pre-existing shape, newly reachable) |
+| `test_divergence_nameref_spelled_posix_store_dispatch` (+ bounding control) | `A=$((npc=1))` via nameref: bash FN+posix-off / psh BP+posix-on (hook over-coupling, D-3.4-s2) |
+| `test_divergence_masked_special_own_read_layer_route` family | `RANDOM=1 eval 'echo $RANDOM'`: bash literal / psh generates (carry-#7 residue, D-3.4-s4) |
+| readonly-refusal WORDING leg (both routes) | psh names the TARGET, bash names the NAMEREF (D-3.4-s1) |
+| persistence cell `A=1 B=$((A=9)) cmd; echo $A` | bash 9 / psh UNSET (D-3.4-s6) |
+| `${!PREFIX*}` staging-window enumeration | sees staged bindings (D-3.4-s7) |
+| function-target nameref-to-element body read | bash NEW / psh stale (D-3.4-s8) |
+| X1 / R4 confounders | posix fn-name validation; posix special-builtin redirection fatality |
+
+All both-sides pinned: each flips VISIBLY when a successor takes its row.

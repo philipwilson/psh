@@ -1,0 +1,143 @@
+==============================================================================
+A8 MATRIX  cases=/Users/pwilson/src/psh-r3-4/tmp/a8/cases_b1_signature.py  mode=-c  parser=rd
+  bash_version: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  bash_path: /opt/homebrew/bin/bash
+  psh_file: /Users/pwilson/src/psh-proto-3-4/psh/__init__.py
+  psh_version: 0.765.0
+  python: 3.14.2
+==============================================================================
+
+--- [S1] DIFF (err-text differs)  arith side effect flips posix; fn shadows special builtin
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval "echo BUILTIN-PATH"
+    bash: rc=0 out='BUILTIN-PATH\n' err=''
+    psh : rc=1 out='BUILTIN-PATH\n' err='psh: line 1: list index out of range\n'
+
+--- [S2] DIFF (err-text differs)  := side effect flips posix; fn shadows special builtin
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval "echo BUILTIN-PATH"
+    bash: rc=0 out='BUILTIN-PATH\n' err=''
+    psh : rc=1 out='BUILTIN-PATH\n' err='psh: line 1: list index out of range\n'
+
+--- [S3] DIFF (err-text differs)  name-level POSIXLY_CORRECT prefix (shipped-correct control)
+    $ eval(){ echo FN; }; POSIXLY_CORRECT=1 eval "echo BUILTIN-PATH"
+    bash: rc=0 out='BUILTIN-PATH\n' err=''
+    psh : rc=1 out='BUILTIN-PATH\n' err='psh: line 1: list index out of range\n'
+
+--- [S4] MATCH  no side effect at all (control: function must win)
+    $ eval(){ echo FN; }; A=1 eval "echo BUILTIN-PATH"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [S5] MATCH  arith with NO posix write (control: function must win)
+    $ eval(){ echo FN; }; A=$((Q=1)) eval "echo BUILTIN-PATH"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [K1] DIFF (err-text differs)  arith plain assign
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K2] DIFF (err-text differs)  arith += onto unset
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT+=1)) eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K3] DIFF (err-text differs)  arith postincrement
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT++)) eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K4] DIFF (err-text differs)  := store nonempty
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K5] DIFF (err-text differs)  := store EMPTY value (name-level says any value counts)
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=} eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K6] DIFF (err-text differs)  = store (unset-only) on unset var
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT=1} eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K7] MATCH  command substitution doing the write (SUBSHELL - must NOT flip)
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$(POSIXLY_CORRECT=1; echo x) eval "echo B"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [K8] MATCH  command substitution + export (still a subshell)
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$(export POSIXLY_CORRECT=1; echo x) eval "echo B"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [K9] DIFF (err-text differs)  nested: := whose default runs an arith write
+    $ unset POSIXLY_CORRECT Z; eval(){ echo FN; }; A=${Z:=$((POSIXLY_CORRECT=1))} eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K10] DIFF (err-text differs)  arith side effect in the FIRST of several prefixes
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) B=2 C=3 eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K11] DIFF (err-text differs)  arith side effect in the LAST of several prefixes
+    $ eval(){ echo FN; }; B=2 C=3 A=$((POSIXLY_CORRECT=1)) eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K12] DIFF (err-text differs)  arith side effect in the MIDDLE of several prefixes
+    $ eval(){ echo FN; }; B=2 A=$((POSIXLY_CORRECT=1)) C=3 eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=1 out='B\n' err='psh: line 1: list index out of range\n'
+
+--- [K13] MATCH (err-text differs)  side effect inside array-subscript arithmetic
+    $ unset arr; eval(){ echo FN; }; arr[$((POSIXLY_CORRECT=1))]=v eval "echo B"
+    bash: rc=0 out='FN\n' err="/opt/homebrew/bin/bash: line 1: `arr[$((POSIXLY_CORRECT=1))]': not a valid identifier\n"
+    psh : rc=0 out='FN\n' err="psh: `arr[$((POSIXLY_CORRECT=1))]': not a valid identifier\n"
+
+--- [K14] MATCH  ${var:?} / ${var+alt} - no store, must NOT flip
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT+set} eval "echo B"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [V1] MATCH (err-text differs)  does the arith POSIXLY_CORRECT write persist after the command?
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"
+    bash: rc=0 out='pc=[1]\n' err=''
+    psh : rc=0 out='pc=[1]\n' err='psh: line 1: list index out of range\n'
+
+--- [V2] MATCH (err-text differs)  does the posix OPTION persist after the command?
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":"; shopt -qo posix && echo posix-ON || echo posix-OFF
+    bash: rc=0 out='posix-ON\n' err=''
+    psh : rc=0 out='posix-ON\n' err='psh: line 1: list index out of range\n'
+
+--- [V3] MATCH (err-text differs)  does the := store persist after the command?
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval ":"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"
+    bash: rc=0 out='pc=[1]\n' err=''
+    psh : rc=0 out='pc=[1]\n' err='psh: line 1: list index out of range\n'
+
+--- [V4] MATCH (err-text differs)  does the PREFIX var A persist? (special builtin in posix mode)
+    $ unset POSIXLY_CORRECT A; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":"; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[1]\n' err=''
+    psh : rc=0 out='A=[1]\n' err='psh: line 1: list index out of range\n'
+
+--- [V5] MATCH  baseline: shopt -qo posix reporting works at all
+    $ shopt -qo posix && echo posix-ON || echo posix-OFF; set -o posix; shopt -qo posix && echo posix-ON || echo posix-OFF
+    bash: rc=0 out='posix-OFF\nposix-ON\n' err=''
+    psh : rc=0 out='posix-OFF\nposix-ON\n' err=''
+
+--- [V6] MATCH (err-text differs)  prefix persistence after special builtin, posix pre-set (R3 family)
+    $ set -o posix; unset A; A=v eval ":"; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[v]\n' err=''
+    psh : rc=0 out='A=[v]\n' err='psh: line 1: list index out of range\n'
+
+--- [V7] DIFF  prefix persistence after special builtin, NOT posix
+    $ unset A; A=v eval ":"; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[UNSET]\n' err=''
+    psh : rc=0 out='A=[v]\n' err=''
+
+==============================================================================
+TOTALS: 26 cases, 12 MATCH, 14 DIFF
+==============================================================================
+raw pairs -> /Users/pwilson/src/psh-r3-4/tmp/a8/alt2_b1_signature.json

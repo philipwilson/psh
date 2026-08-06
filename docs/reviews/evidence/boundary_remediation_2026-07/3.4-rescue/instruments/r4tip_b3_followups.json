@@ -1,0 +1,353 @@
+{
+ "meta": {
+  "bash_version": "GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)",
+  "bash_path": "/opt/homebrew/bin/bash",
+  "psh_file": "/Users/pwilson/src/psh-r3-4/psh/__init__.py",
+  "psh_version": "0.765.0",
+  "python": "3.14.2"
+ },
+ "mode": "-c",
+ "parser": "rd",
+ "results": [
+  {
+   "id": "X1",
+   "desc": "CONFOUNDER: defining a fn named after a special builtin in posix mode",
+   "script": "set -o posix; eval(){ echo FN; }; echo \"rc=$?\"",
+   "verdict": "DIFF",
+   "same_err_text": false,
+   "bash": {
+    "out": "",
+    "err": "/opt/homebrew/bin/bash: line 1: `eval': is a special builtin\n",
+    "rc": 2
+   },
+   "psh": {
+    "out": "rc=0\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "X2",
+   "desc": "same, non-posix (control)",
+   "script": "eval(){ echo FN; }; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "rc=0\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "rc=0\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "X3",
+   "desc": "fn defined BEFORE posix, then posix turned on: fn survives?",
+   "script": "eval(){ echo FN; }; set -o posix; eval \"echo SPECIAL\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "Q1b",
+   "desc": "already-ON (fn predefined), side effect rewrites POSIXLY_CORRECT",
+   "script": "eval(){ echo FN; }; set -o posix; A=$((POSIXLY_CORRECT=1)) eval \"echo SPECIAL\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "Q3b",
+   "desc": "flip-OFF attempt via command-sub unset (subshell: must NOT flip off)",
+   "script": "eval(){ echo FN; }; POSIXLY_CORRECT=1; A=$(unset POSIXLY_CORRECT; echo x) eval \"echo SPECIAL\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "Q6",
+   "desc": "is flip-OFF reachable from a prefix expansion at all? (arith cannot unset)",
+   "script": "eval(){ echo FN; }; POSIXLY_CORRECT=1; A=$((POSIXLY_CORRECT=0)) eval \"echo SPECIAL\"; echo \"pc=[${POSIXLY_CORRECT-UNSET}]\"; shopt -qo posix && echo posix-ON || echo posix-OFF",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SPECIAL\npc=[0]\nposix-ON\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SPECIAL\npc=[0]\nposix-ON\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "Q7",
+   "desc": "POSIXLY_CORRECT=0 name-level prefix still flips ON (presence counts)",
+   "script": "eval(){ echo FN; }; unset POSIXLY_CORRECT; POSIXLY_CORRECT=0 eval \"echo SPECIAL\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "R4",
+   "desc": "PRE-SET posix, special builtin, redirect error: shell exits?",
+   "script": "set -o posix; A=1 eval \":\" > /nonexistent_dir_xyz/f; echo AFTER",
+   "verdict": "DIFF",
+   "same_err_text": false,
+   "bash": {
+    "out": "",
+    "err": "/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 1
+   },
+   "psh": {
+    "out": "AFTER\n",
+    "err": "psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "R5",
+   "desc": "NON-posix, special builtin, redirect error: shell continues",
+   "script": "A=1 eval \":\" > /nonexistent_dir_xyz/f; echo AFTER",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "AFTER\n",
+    "err": "/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "AFTER\n",
+    "err": "psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "R6",
+   "desc": "PRE-SET posix, REGULAR builtin, redirect error: continues",
+   "script": "set -o posix; A=1 pwd > /nonexistent_dir_xyz/f; echo AFTER",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "AFTER\n",
+    "err": "/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "AFTER\n",
+    "err": "psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "R1b",
+   "desc": "flip-in-prefix + special builtin + redirect error (EXIT-trap probe)",
+   "script": "trap 'echo \"TRAP pc=[${POSIXLY_CORRECT-UNSET}] A=[${A-UNSET}]\"' EXIT; unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) eval \":\" > /nonexistent_dir_xyz/f; echo AFTER",
+   "verdict": "DIFF",
+   "same_err_text": false,
+   "bash": {
+    "out": "TRAP pc=[1] A=[UNSET]\n",
+    "err": "/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 1
+   },
+   "psh": {
+    "out": "AFTER\nTRAP pc=[1] A=[1]\n",
+    "err": "psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D11",
+   "desc": "fn shadowing 'set'",
+   "script": "set(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) set -- x y; echo \"1=[$1]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "1=[x]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "1=[x]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D12",
+   "desc": "fn shadowing 'shift'",
+   "script": "shift(){ echo FN; }; set -- a b c; A=$((POSIXLY_CORRECT=1)) shift; echo \"1=[$1]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "1=[b]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "1=[b]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D13",
+   "desc": "fn shadowing 'readonly'",
+   "script": "readonly(){ echo FN; }; unset RV; A=$((POSIXLY_CORRECT=1)) readonly RV=1; RV=2 2>/dev/null; echo \"RV=[$RV]\"",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "",
+    "err": "/opt/homebrew/bin/bash: line 1: RV: readonly variable\n",
+    "rc": 127
+   },
+   "psh": {
+    "out": "",
+    "err": "psh: line 1: RV: readonly variable\n",
+    "rc": 127
+   }
+  },
+  {
+   "id": "D14",
+   "desc": "fn shadowing 'exec' (is_exec_special path)",
+   "script": "exec(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) exec /bin/echo EXECED; echo AFTER",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "EXECED\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "EXECED\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D15",
+   "desc": "fn shadowing '.' (source)",
+   "script": "printf \"echo SOURCED\\n\" > tmp/a8/src_xyz.sh; .(){ echo FN; } 2>/dev/null; A=$((POSIXLY_CORRECT=1)) . tmp/a8/src_xyz.sh",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SOURCED\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SOURCED\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D16",
+   "desc": "fn shadowing 'break' inside a loop",
+   "script": "break(){ echo FN; }; for i in 1 2 3; do A=$((POSIXLY_CORRECT=1)) break; done; echo \"i=[$i]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "i=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "i=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D17",
+   "desc": "fn shadowing 'return' inside a function",
+   "script": "return(){ echo FN; }; g(){ A=$((POSIXLY_CORRECT=1)) return; echo NOTREACHED; }; g; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "rc=0\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "rc=0\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D18",
+   "desc": "'command' prefix + flip (command bypasses functions anyway)",
+   "script": "eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) command eval \"echo SPECIAL\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D19",
+   "desc": "flip + builtin 'builtin' prefix",
+   "script": "eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) builtin eval \"echo SPECIAL\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  }
+ ]
+}

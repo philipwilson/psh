@@ -1,0 +1,115 @@
+{
+ "meta": {
+  "bash_version": "GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)",
+  "bash_path": "/opt/homebrew/bin/bash",
+  "psh_file": "/Users/pwilson/src/psh-proto-3-4/psh/__init__.py",
+  "psh_version": "0.765.0",
+  "python": "3.14.2"
+ },
+ "mode": "-c",
+ "parser": "rd",
+ "results": [
+  {
+   "id": "RO1",
+   "desc": "readonly+UNSET, FUNCTION target: is the assignment refused?",
+   "script": "readonly RX 2>/dev/null; f(){ echo \"RX=[${RX-UNSET}]\"; }; RX=1 f; echo \"rc=$?\"",
+   "verdict": "DIFF",
+   "same_err_text": false,
+   "bash": {
+    "out": "RX=[UNSET]\nrc=0\n",
+    "err": "/opt/homebrew/bin/bash: line 1: RX: readonly variable\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "RX=[1]\nrc=0\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "RO2",
+   "desc": "readonly+SET, FUNCTION target",
+   "script": "RX=keep; readonly RX; f(){ echo \"RX=[${RX-UNSET}]\"; }; RX=1 f; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "RX=[keep]\nrc=0\n",
+    "err": "/opt/homebrew/bin/bash: line 1: RX: readonly variable\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "RX=[keep]\nrc=0\n",
+    "err": "psh: line 1: RX: readonly variable\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "RO3",
+   "desc": "readonly+UNSET, BUILTIN target (layer route)",
+   "script": "readonly RX 2>/dev/null; RX=1 eval 'echo \"RX=[${RX-UNSET}]\"'; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "RX=[UNSET]\nrc=0\n",
+    "err": "/opt/homebrew/bin/bash: line 1: RX: readonly variable\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "RX=[UNSET]\nrc=0\n",
+    "err": "psh: line 1: RX: readonly variable\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "RO4",
+   "desc": "readonly+UNSET, EXTERNAL target (layer route)",
+   "script": "readonly RX 2>/dev/null; RX=1 /bin/sh -c 'echo \"RX=[${RX-UNSET}]\"'; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "RX=[UNSET]\nrc=0\n",
+    "err": "/opt/homebrew/bin/bash: line 1: RX: readonly variable\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "RX=[UNSET]\nrc=0\n",
+    "err": "psh: line 1: RX: readonly variable\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "RO5",
+   "desc": "readonly+UNSET POSIXLY_CORRECT blocks flip (the R3 pin shape)",
+   "script": "readonly POSIXLY_CORRECT 2>/dev/null; eval(){ echo fn; }; { POSIXLY_CORRECT=1 eval \"echo builtin-ran\"; } 2>/dev/null",
+   "verdict": "DIFF",
+   "same_err_text": true,
+   "bash": {
+    "out": "fn\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "builtin-ran\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "RO6",
+   "desc": "readonly+UNSET POSIXLY_CORRECT, FUNCTION target after it",
+   "script": "readonly POSIXLY_CORRECT 2>/dev/null; f(){ echo FN; }; { POSIXLY_CORRECT=1 f; } 2>/dev/null; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "FN\nrc=0\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\nrc=0\n",
+    "err": "",
+    "rc": 0
+   }
+  }
+ ]
+}

@@ -94,7 +94,10 @@ lexer tokens (RichToken.parts)
 ```
 SimpleCommand.words
   → CommandAssignments.extract()         # (var, raw, Word) triples
-  → CommandAssignments.apply_pure / CommandAssignments.apply_prefix
+  → CommandAssignments.apply_pure
+  → CommandAssignments.expand_prefix  # phase 1: expand+stage
+        # (resolve_command runs HERE, between the phases)
+  → CommandAssignments.commit_prefix  # phase 2: route, no re-expand
   → CommandAssignments._expand_value(value, word)
         # raises if word=None; locates '=' in literal parts
   → ExpansionManager.expand_assignment_value_word(value Word)

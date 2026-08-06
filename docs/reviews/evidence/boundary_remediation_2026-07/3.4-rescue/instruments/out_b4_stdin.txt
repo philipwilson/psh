@@ -1,0 +1,63 @@
+==============================================================================
+A8 MATRIX  cases=tmp/a8/cases_b4_modes.py  mode=stdin  parser=rd
+  bash_version: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  bash_path: /opt/homebrew/bin/bash
+  psh_file: /Users/pwilson/src/psh-r3-4/psh/__init__.py
+  psh_version: 0.765.0
+  python: 3.14.2
+==============================================================================
+
+--- [M-S1] DIFF  signature: arith flip, fn shadows special builtin
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval "echo BUILTIN-PATH"
+    bash: rc=0 out='BUILTIN-PATH\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [M-S2] DIFF  signature: := flip, fn shadows special builtin
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval "echo BUILTIN-PATH"
+    bash: rc=0 out='BUILTIN-PATH\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [M-S3] MATCH  name-level control (shipped-correct)
+    $ eval(){ echo FN; }; POSIXLY_CORRECT=1 eval "echo BUILTIN-PATH"
+    bash: rc=0 out='BUILTIN-PATH\n' err=''
+    psh : rc=0 out='BUILTIN-PATH\n' err=''
+
+--- [M-P1] DIFF  prefix persistence of the flipping command's own prefix
+    $ unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) eval ":"; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[1]\n' err=''
+    psh : rc=0 out='A=[UNSET]\n' err=''
+
+--- [M-C7a] DIFF  carry #7: RANDOM=1 b=$RANDOM external
+    $ RANDOM=1 b=$RANDOM printenv b
+    bash: rc=0 out='1\n' err=''
+    psh : rc=0 out='10791\n' err=''
+
+--- [M-C7c] DIFF  carry #7: RANDOM=1 b=$RANDOM builtin-visible
+    $ RANDOM=1 b=$RANDOM eval 'echo "b=[$b]"'
+    bash: rc=0 out='b=[1]\n' err=''
+    psh : rc=0 out='b=[10791]\n' err=''
+
+--- [M-T1] MATCH  left-to-right visibility (must-not-flip)
+    $ unset A B; A=1 B=$A eval 'echo "B=[$B]"'
+    bash: rc=0 out='B=[1]\n' err=''
+    psh : rc=0 out='B=[1]\n' err=''
+
+--- [M-T5] MATCH  arith write read by a later prefix (must-not-flip)
+    $ unset Z; A=$((Z=7)) B=$Z eval 'echo "B=[$B]"'
+    bash: rc=0 out='B=[7]\n' err=''
+    psh : rc=0 out='B=[7]\n' err=''
+
+--- [M-D7] MATCH  not-found: rc + side-effect persistence
+    $ unset POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) nosuchcmd_xyz 2>/dev/null; echo "rc=$?"; shopt -qo posix && echo posix-ON || echo posix-OFF
+    bash: rc=0 out='rc=127\nposix-ON\n' err=''
+    psh : rc=0 out='rc=127\nposix-ON\n' err=''
+
+--- [M-K11] DIFF  side effect in the LAST prefix still flips
+    $ eval(){ echo FN; }; B=2 C=3 A=$((POSIXLY_CORRECT=1)) eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+==============================================================================
+TOTALS: 10 cases, 4 MATCH, 6 DIFF
+==============================================================================
+raw pairs -> tmp/a8/raw_b4_stdin.json

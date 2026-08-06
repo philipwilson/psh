@@ -1,0 +1,183 @@
+{
+ "meta": {
+  "bash_version": "GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)",
+  "bash_path": "/opt/homebrew/bin/bash",
+  "psh_file": "/Users/pwilson/src/psh-r3-4/psh/__init__.py",
+  "psh_version": "0.765.0",
+  "python": "3.14.2"
+ },
+ "mode": "-c",
+ "parser": "rd",
+ "results": [
+  {
+   "id": "M-S1",
+   "desc": "signature: arith flip, fn shadows special builtin",
+   "script": "eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \"echo BUILTIN-PATH\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "M-S2",
+   "desc": "signature: := flip, fn shadows special builtin",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval \"echo BUILTIN-PATH\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "M-S3",
+   "desc": "name-level control (shipped-correct)",
+   "script": "eval(){ echo FN; }; POSIXLY_CORRECT=1 eval \"echo BUILTIN-PATH\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "M-P1",
+   "desc": "prefix persistence of the flipping command's own prefix",
+   "script": "unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) eval \":\"; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "M-C7a",
+   "desc": "carry #7: RANDOM=1 b=$RANDOM external",
+   "script": "RANDOM=1 b=$RANDOM printenv b",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "1\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "1\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "M-C7c",
+   "desc": "carry #7: RANDOM=1 b=$RANDOM builtin-visible",
+   "script": "RANDOM=1 b=$RANDOM eval 'echo \"b=[$b]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "b=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "b=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "M-T1",
+   "desc": "left-to-right visibility (must-not-flip)",
+   "script": "unset A B; A=1 B=$A eval 'echo \"B=[$B]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "M-T5",
+   "desc": "arith write read by a later prefix (must-not-flip)",
+   "script": "unset Z; A=$((Z=7)) B=$Z eval 'echo \"B=[$B]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B=[7]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B=[7]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "M-D7",
+   "desc": "not-found: rc + side-effect persistence",
+   "script": "unset POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) nosuchcmd_xyz 2>/dev/null; echo \"rc=$?\"; shopt -qo posix && echo posix-ON || echo posix-OFF",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "rc=127\nposix-ON\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "rc=127\nposix-ON\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "M-K11",
+   "desc": "side effect in the LAST prefix still flips",
+   "script": "eval(){ echo FN; }; B=2 C=3 A=$((POSIXLY_CORRECT=1)) eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  }
+ ]
+}

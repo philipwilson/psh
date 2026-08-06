@@ -1,0 +1,194 @@
+diff --git a/psh/executor/command.py b/psh/executor/command.py
+index 64f03315..5fd12841 100644
+--- a/psh/executor/command.py
++++ b/psh/executor/command.py
+@@ -485,6 +485,10 @@ class CommandExecutor:
+             # POSIX prefix-error branch are all driven by this one
+             # ``ResolvedCommand`` — never recomputed from raw names.
+             overlay = self.assignments.build_overlay(raw_assignments)
++            # PROTOTYPE ALT-1: expand + stage BEFORE resolving, so a side effect
++            # performed by a prefix VALUE expansion is part of the authoritative
++            # state resolution reads.
++            staged = self.assignments.expand_prefix(raw_assignments)
+             resolved = self.resolve_command(normalized, overlay, context)
+ 
+             # When the command resolves to a shell FUNCTION, temp-env prefix
+@@ -500,13 +504,17 @@ class CommandExecutor:
+             # instead of the discarded-scope path (H10).
+             if (resolved is not None and resolved.uses_temp_env_scope
+                     and raw_assignments):
+-                self.state.scope_manager.push_temp_env_scope()
+-                pushed_temp_scope = True
++                # ALT-2: ADOPT the staging scope as the function's temp-env
++                # scope (it already holds the expanded bindings).
++                if staged.pushed_temp_env:
++                    pushed_temp_scope = True
++                else:
++                    self.state.scope_manager.push_temp_env_scope()
++                    pushed_temp_scope = True
+ 
+-            # Apply assignments for this command, now that its words are
+-            # expanded. Each value sees the assignments to its left.
+-            prefix = self.assignments.apply_prefix(
+-                raw_assignments, temp_scope=pushed_temp_scope)
++            # PROTOTYPE ALT-1 phase 2: route the already-expanded bindings.
++            prefix = self.assignments.commit_prefix(
++                staged, temp_scope=pushed_temp_scope)
+ 
+             if prefix.failed and self.state.options.get('errexit'):
+                 # bash: under set -e a prefix-assignment error (e.g.
+diff --git a/psh/executor/command_assignments.py b/psh/executor/command_assignments.py
+index 59908da5..a03cdecd 100644
+--- a/psh/executor/command_assignments.py
++++ b/psh/executor/command_assignments.py
+@@ -82,6 +82,14 @@ class PrefixOutcome(NamedTuple):
+     pushed_temp_env: bool = False
+ 
+ 
++class StagedPrefix(NamedTuple):
++    """PROTOTYPE: expanded-but-not-yet-routed prefix bindings."""
++    pairs: List[Tuple[str, object]]
++    saved: Dict[str, dict]
++    failed: bool
++    pushed_temp_env: bool
++
++
+ class CommandAssignments:
+     """Extraction, expansion, application and restoration of
+     ``NAME=value`` words on a simple command."""
+@@ -344,6 +352,135 @@ class CommandAssignments:
+     # Prefix assignments (FOO=bar cmd)
+     # ------------------------------------------------------------------
+ 
++    # --- PROTOTYPE ALT-1: stage-then-commit-route -----------------------
++    def expand_prefix(self, raw_assignments: List[RawAssignment]) -> 'StagedPrefix':
++        """PROTOTYPE phase 1: expand values left-to-right ONCE and stage them.
++
++        Each value's expansion sees the bindings to its left (staged in a
++        command temp-env layer) and any real shell-state side effect an
++        expansion performs (arithmetic assignment, ``:=`` store) lands live —
++        so RESOLUTION, which runs after this, reads authoritative state.
++        """
++        scope_manager = self.state.scope_manager
++        pairs: List[Tuple[str, object]] = []
++        saved_vars: Dict[str, dict] = {}
++        assignment_error = False
++        pushed_temp_env = False
++        xtrace = self.state.options.get('xtrace')
++        for var, value, value_word in raw_assignments:
++            value = self._expand_value(value, value_word)
++            if xtrace:
++                ps4 = self.expansion_manager.expand_ps4()
++                self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
++            var, resolved = resolve_append_assignment(scope_manager, var, value)
++            write_name = scope_manager.resolve_nameref_name(var)
++            if '[' not in write_name:
++                var = write_name
++            # ALT-2: dynamic specials are NOT seeded during staging — a
++            # temp-env SCOPE binding MASKS them, which is what bash's temp env
++            # does (carry #7). Only arrays / nameref-to-element still need the
++            # seed route, and they cannot live in a scope binding.
++            use_seed_path = (
++                isinstance(resolved, (IndexedArray, AssociativeArray))
++                or '[' in write_name)
++            if use_seed_path:
++                if var not in saved_vars:
++                    existing = scope_manager.get_variable_object(var)
++                    existing_val = existing.value if existing is not None else None
++                    if isinstance(existing_val, (IndexedArray, AssociativeArray)):
++                        state_snapshot: object = copy.deepcopy(existing_val)
++                    else:
++                        state_snapshot = scope_manager.get_variable(var)
++                    saved_vars[var] = {
++                        'state': state_snapshot,
++                        'was_exported': bool(existing and existing.is_exported),
++                    }
++                try:
++                    scope_manager.set_variable(
++                        var, resolved, attributes=VarAttributes.EXPORT, local=False)
++                except ReadonlyVariableError as e:
++                    print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
++                          file=self.state.stderr)
++                    assignment_error = True
++                    continue
++                pairs.append((var, resolved))
++                continue
++            if not pushed_temp_env:
++                scope_manager.push_temp_env_scope()
++                pushed_temp_env = True
++            try:
++                scope_manager.set_temp_env_var(var, resolved)
++            except ReadonlyVariableError as e:
++                print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
++                      file=self.state.stderr)
++                assignment_error = True
++                continue
++            pairs.append((var, resolved))
++        return StagedPrefix(pairs, saved_vars, assignment_error, pushed_temp_env)
++
++    def commit_prefix(self, staged: 'StagedPrefix',
++                      temp_scope: bool) -> PrefixOutcome:
++        """PROTOTYPE ALT-2 phase 2: route the ALREADY-EXPANDED pairs.
++
++        FUNCTION target: the staging SCOPE *is* the destination — zero
++        migration. Otherwise the staging scope is popped and the pairs are
++        installed through the command temp-env LAYER (plain scalars) or the
++        SEED route (dynamic specials / arrays / nameref-to-element), exactly
++        as the shipped ``apply_prefix`` does — but with NO re-expansion.
++        """
++        sm = self.state.scope_manager
++        if temp_scope:
++            return PrefixOutcome({}, staged.pairs, staged.failed, False)
++
++        if staged.pushed_temp_env:
++            sm.pop_scope()
++
++        saved_vars: Dict[str, dict] = dict(staged.saved)
++        applied: List[Tuple[str, object]] = []
++        overlay: Dict[str, str] = {}
++        failed = staged.failed
++        pushed_layer = False
++        for var, resolved in staged.pairs:
++            already_seeded = var in staged.saved
++            needs_seed = already_seeded or sm.is_dynamic_special(var)
++            if not needs_seed:
++                if not pushed_layer:
++                    sm.push_command_temp_env()
++                    pushed_layer = True
++                try:
++                    sm.set_command_temp_env_var(var, resolved)
++                except ReadonlyVariableError as e:
++                    print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
++                          file=self.state.stderr)
++                    failed = True
++                    continue
++                applied.append((var, resolved))
++                continue
++            if not already_seeded:
++                existing = sm.get_variable_object(var)
++                existing_val = existing.value if existing is not None else None
++                if isinstance(existing_val, (IndexedArray, AssociativeArray)):
++                    snap: object = copy.deepcopy(existing_val)
++                else:
++                    snap = sm.get_variable(var)
++                saved_vars[var] = {'state': snap,
++                                   'was_exported': bool(existing and existing.is_exported)}
++                try:
++                    sm.set_variable(var, resolved,
++                                    attributes=VarAttributes.EXPORT, local=False)
++                except ReadonlyVariableError as e:
++                    print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
++                          file=self.state.stderr)
++                    failed = True
++                    continue
++            applied.append((var, resolved))
++            overlay[var] = (resolved.as_string()
++                            if isinstance(resolved, (IndexedArray, AssociativeArray))
++                            else cast(str, resolved))
++        if overlay:
++            self.state.apply_command_env(overlay)
++        return PrefixOutcome(saved_vars, applied, failed, pushed_layer)
++
+     def apply_prefix(self, raw_assignments: List[RawAssignment],
+                      temp_scope: bool = False) -> PrefixOutcome:
+         """Apply a command's ``NAME=value`` prefix assignments (``FOO=bar cmd``).

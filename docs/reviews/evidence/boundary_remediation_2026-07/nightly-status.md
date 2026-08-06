@@ -215,3 +215,36 @@ carry explicit oracle-drift failure arms, so on a Linux nightly with a
 different bash a failure in this module is an ORACLE-VERSION question
 FIRST — read the failure arm's message before suspecting the engine.
 The same applies to the escaped-metachar axis rows (subst.c mechanics).
+
+## 2026-08-03 — first run with v0.763.0 + v0.764.0 + v0.765.0: GREEN (watch item discharged)
+
+Run 30783876910 (04:15 UTC) at 241a923c (the v0.765.0 merge): BOTH jobs
+green. Conformance 2,930 passed — the slot 3.3 field-IR conformance rows
+(bash-oracle rows, first Linux-bash exposure) and the 3.1
+composition-differential battery all passed; no oracle-drift arms fired.
+Parallel suite combined 24,494 passed / 1,654 skipped / 10 xfailed;
+behavioral golden comparison 1,490 passed / 26 skipped. The exit-trap
+flake (08-02 entry above) did NOT recur — recurrence-watch continues,
+count stays at 1 post-1.4. One reading inside the green run: the
+benchmark tier (continue-on-error by design, artifact-only) missed one
+absolute threshold — `test_tokenization_scaling` 2.34ms vs 2.0ms budget
+on the shared runner. Same pre-existing class the nightly.yml comment
+documents (dev-machine-tuned wall-clock constants; real baselines are
+deferred campaign-exit work); not v0.763–765-related, no action.
+(08-04 through 08-06 runs: all green at v0.765.0.)
+
+## Reading rules for v0.766.0 (slot 3.4)
+
+Slot 3.4 adds `tests/conformance/bash/test_resolution_timing_conformance.py`
+(233 tests, default-run, PARALLEL phase): prefix-transaction timing vs
+LIVE bash — signature/dispatch cells, the generated side-effect-KIND
+family, refuse-before-evaluate rows, RO1, carry-#7 rows, and the
+`test_divergence_*` both-sides pins. All cells measured against bash
+5.2.26; the divergence pins encode CURRENT psh-vs-bash disagreement, so
+a Linux failure in a `test_divergence_*` row is an ORACLE-VERSION
+question FIRST (a newer/older bash may change ITS side of the pin).
+The xtrace rows compare `+`-line COUNTS (PS4 default) — portable. The
+family's external-target rows use `/bin/sh` and `$b`-reads (no printenv
+PATH assumption — REC-3). `tests/unit/tooling/
+test_resolution_timing_ratchet_3_4.py` (11) and the executor unit
+additions are platform-free static/in-process rows.

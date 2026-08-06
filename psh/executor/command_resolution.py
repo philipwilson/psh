@@ -13,28 +13,38 @@ The fix is authority timing (campaign §2.2): normalize the command word, build
 the prefix overlay, then resolve ONCE into a :class:`ResolvedCommand`, and drive
 every downstream decision from that value — never from a fresh raw-name read.
 
+Slot 3.4 closed the other half of that timing (HIGH-3). Resolution now runs
+after every fact that affects precedence EXISTS, not merely after the raw-name
+reads were removed: the prefix transaction expands its values FIRST
+(``command_assignments.py#CommandAssignments.expand_prefix``), so a side effect
+performed by a value's own expansion — ``A=$((POSIXLY_CORRECT=1)) eval …``
+enabling POSIX mode — is authoritative by the time :func:`resolve_command`
+reads it. The routing of those values to their destination happens AFTER,
+in ``command_assignments.py#CommandAssignments.commit_prefix``, because the
+destination is the one thing that needs the dispatch answer.
+
 Three campaign contract types (§5):
 
 - :class:`NormalizedCommandName` — the post-quote-removal command word plus
   bypass provenance. It cannot consume a resolution; it is produced first.
 - :class:`CommandEnvOverlay` — the typed view of the command's effective
-  environment: which names the prefix assigns and the resolution-relevant
-  facts they imply (a temporary PATH; a POSIXLY_CORRECT posix-mode flip). It
-  never mutates live scope. Values are deliberately NOT expanded at overlay
-  build time — expanding early would reorder command-substitution side effects
-  (``A=$(c1) PATH=$(c2) cmd`` must run c1 then c2); ``apply_prefix`` expands
-  and installs them left-to-right after resolution, and the external
-  strategy's deferred PATH search then reads the live environment the
-  installed overlay determines.
+  environment: which NAMES the prefix assigns and the resolution-relevant
+  facts they imply (a temporary PATH; a POSIXLY_CORRECT posix-mode flip). Built
+  from the names alone; it never mutates live scope. The VALUES are not its
+  business — the transaction has already expanded them, in source order, by
+  the time this module runs.
 - :class:`ResolvedCommand` — the single dispatch answer: kind, strategy, POSIX
   status, prefix-assignment persistence, ``exec`` policy, temp-env-scope policy.
 
 ``resolve_command`` is the SOLE reader of the function/builtin registries for a
 dispatch decision; the v0.660 :class:`~psh.executor.command_resolver.CommandResolver`
 remains the sole reader of the command hash and PATH (consulted by the external
-strategy at execute time, against the live environment described above).
-A static ratchet (``tests/unit/tooling/test_command_resolution_ratchet_r3.py``)
-fails on a raw dispatch read reintroduced into ``command.py`` outside this module.
+strategy at execute time, against the live environment the committed prefix
+determines). Two static ratchets guard this module's contract:
+``tests/unit/tooling/test_command_resolution_ratchet_r3.py`` fails on a raw
+dispatch read reintroduced into ``command.py`` (WHERE a decision may be read),
+and ``tests/unit/tooling/test_resolution_timing_ratchet_3_4.py`` fails if the
+transaction stops sealing before resolution (WHEN it may be read).
 
 Resolution runs once PER COMMAND, so the three types are ``slots=True`` (NOT
 ``frozen``): frozen dataclasses pay a per-field ``object.__setattr__`` on every
@@ -121,20 +131,19 @@ class CommandEnvOverlay:
     Prefix assignments (``FOO=bar cmd``) are expanded left-to-right and
     installed as bash's *temporary environment* (a command temp-env LAYER for a
     builtin/external, an exported temp-env SCOPE for a function, or the seed
-    path for a dynamic special / array / nameref-to-element). This value is the
+    path for a dynamic special / array). This value is the
     typed *view* of that environment for resolution and execution; it never
     mutates the persistent variable store (the temp-env stack the layer lives on
     is explicitly not the lexical scope stack — R2).
 
     ``assignment_names``
-        The names the prefix assigns, in source order (metadata available BEFORE
-        the values are installed — resolution never needs the values, only
-        which facts the names imply).
+        The names the prefix assigns, in source order — resolution needs only
+        which facts the names imply, never the values.
     ``has_path_override``
         True when one of the prefix assignments is ``PATH=...``: the command
         runs under a temporary PATH. Resolution's strategy CHOICE does not
         consult it (external is the catch-all; its PATH search is deferred to
-        execute time, by which point ``apply_prefix`` has installed the
+        execute time, by which point ``commit_prefix`` has installed the
         temporary PATH into the live environment the search reads) — the field
         records the fact for the transaction.
     ``has_posix_override``
@@ -147,11 +156,15 @@ class CommandEnvOverlay:
         assignments persist). Probe-derived rule (bash 5.2): NAME-level — any
         value counts, even ``''`` or an unset-variable expansion; a READONLY
         POSIXLY_CORRECT blocks the flip (the assignment fails and posix never
-        turns on). This is the ONLY resolution input a prefix assignment can
-        mutate (SHELLOPTS is readonly; the function/builtin registries are
-        unreachable from prefix expansion because command substitutions fork),
-        so carrying this one fact into :func:`resolve_command` restores the
-        resolve-after-install semantics under resolve-BEFORE-install ordering.
+        turns on).
+
+        This field covers the NAME spelling only. A posix flip performed by a
+        value's EXPANSION (``A=$((POSIXLY_CORRECT=1))``) is invisible to any
+        name-level test — that one is handled by ORDER instead: the write has
+        already reached the live ``posix`` option through the
+        ``core/state.py`` coupling by the time :func:`resolve_command` reads
+        it, because the transaction expanded first (slot 3.4, HIGH-3). The two
+        together are why posix is read as ``live option OR this field``.
     """
 
     assignment_names: Tuple[str, ...] = ()
@@ -227,10 +240,14 @@ def resolve_command(shell: 'Shell',
       PERSISTS.
 
     "POSIX mode" here is the live ``posix`` option OR the overlay's
-    ``has_posix_override``: a ``POSIXLY_CORRECT=1`` prefix flips posix in bash
-    BEFORE the command's own lookup (the assignment installs first there), so
-    resolving before installation must consult the overlay fact or the very
-    command the prefix decorates resolves in the wrong mode.
+    ``has_posix_override`` — two spellings of the same bash rule, because a
+    prefix can enable posix mode two ways. A ``POSIXLY_CORRECT=1`` prefix flips
+    it by NAME, and its temporary binding is not installed until after this
+    runs, so that spelling must be carried in the overlay. A write performed by
+    a prefix VALUE's expansion (``A=$((POSIXLY_CORRECT=1))``) flips the live
+    option directly, and is visible here because the transaction expands before
+    resolving (slot 3.4). Either way the command a flipping prefix decorates
+    resolves in POSIX mode, as in bash.
 
     This is the SOLE place a dispatch decision reads the function/builtin
     registries (via the strategies' ``can_execute``); the raw
@@ -238,11 +255,12 @@ def resolve_command(shell: 'Shell',
     to take before resolving are gone (the H10 authority-timing inversion). The
     command hash and PATH stay with the v0.660 ``CommandResolver``; the external
     strategy's deferred search reads the live environment, into which
-    ``apply_prefix`` has by then installed any temporary PATH the overlay names.
+    ``commit_prefix`` has by then installed any temporary PATH the overlay names.
 
     The strategy CHOICE is PATH-independent (external is the always-true
-    catch-all and its PATH search is deferred to execute time), so resolution
-    can and must precede prefix-assignment installation.
+    catch-all and its PATH search is deferred to execute time), which is why
+    the transaction can defer ROUTING until after this answer exists while
+    still expanding the values before it.
 
     Returns ``None`` only if no strategy matches (unreachable in practice — the
     external strategy is the catch-all), preserving the historical 127 fallback.

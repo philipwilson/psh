@@ -551,8 +551,8 @@ through it. No production code poke `state.env[...]` directly.
   exported vars then pops.
 - **Command-env overlay** (`state._env_overlay`, `apply_command_env` /
   `restore_command_env`): the SEED path only — a prefix over a dynamic special
-  (`RANDOM=5 cmd` → literal `5`), an array-object append (`a+=z cmd` → element-0
-  view), or a nameref-to-element records the LITERAL string that name
+  (`RANDOM=5 cmd` → literal `5`) or an array-object append (`a+=z cmd` →
+  element-0 view) records the LITERAL string that name
   contributes to the process env, composed on top of the exported vars (overlay
   WINS). Plain temp-env vars need no overlay — they materialize through the
   `variable_changed` observer + `find_exported_instance`. Teardown

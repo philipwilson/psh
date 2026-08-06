@@ -1,0 +1,727 @@
+{
+ "meta": {
+  "bash_version": "GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)",
+  "bash_path": "/opt/homebrew/bin/bash",
+  "psh_file": "/Users/pwilson/src/psh-proto-3-4/psh/__init__.py",
+  "psh_version": "0.765.0",
+  "python": "3.14.2"
+ },
+ "mode": "-c",
+ "parser": "rd",
+ "results": [
+  {
+   "id": "D1",
+   "desc": "target = plain FUNCTION (no builtin shadow): fn must still win",
+   "script": "f(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) f",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D2",
+   "desc": "target = fn shadowing SPECIAL builtin (the signature shape)",
+   "script": "eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \"echo SPECIAL\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D3",
+   "desc": "target = fn shadowing REGULAR builtin (posix does NOT reorder)",
+   "script": "unalias -a 2>/dev/null; pwd(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) pwd",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D4",
+   "desc": "target = SPECIAL builtin, no function shadow",
+   "script": "unset A; A=$((POSIXLY_CORRECT=1)) eval \"echo SPECIAL\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D5",
+   "desc": "target = REGULAR builtin, no function shadow",
+   "script": "A=$((POSIXLY_CORRECT=1)) pwd >/dev/null && echo RAN",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "RAN\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "RAN\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D6",
+   "desc": "target = EXTERNAL",
+   "script": "A=$((POSIXLY_CORRECT=1)) /bin/echo EXT",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "EXT\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "EXT\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D7",
+   "desc": "target = NOT FOUND: rc + side-effect persistence + posix state",
+   "script": "unset POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) nosuchcmd_xyz; echo \"rc=$?\"; echo \"pc=[${POSIXLY_CORRECT-UNSET}]\"; shopt -qo posix && echo posix-ON || echo posix-OFF",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "rc=127\npc=[1]\nposix-ON\n",
+    "err": "/opt/homebrew/bin/bash: line 1: nosuchcmd_xyz: command not found\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "rc=127\npc=[1]\nposix-ON\n",
+    "err": "psh: line 1: nosuchcmd_xyz: command not found\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D8",
+   "desc": "target = fn shadowing special builtin ':' ",
+   "script": ":(){ echo FN; } 2>/dev/null; A=$((POSIXLY_CORRECT=1)) : ; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "rc=0\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "rc=0\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D9",
+   "desc": "target = fn shadowing 'export' (special)",
+   "script": "export(){ echo FN; }; unset V; A=$((POSIXLY_CORRECT=1)) export V=1; echo \"V=[${V-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "V=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "V=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "D10",
+   "desc": "target = fn shadowing 'unset' (special)",
+   "script": "W=keep; unset(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) unset W; echo \"W=[${W-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "W=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "W=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "P1",
+   "desc": "flip + special builtin: does THAT command's prefix persist?",
+   "script": "unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) eval \":\"; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "P2",
+   "desc": "flip + fn-shadowed special builtin: prefix persistence",
+   "script": "unset POSIXLY_CORRECT A; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \":\"; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "P3",
+   "desc": "flip + REGULAR builtin: prefix must NOT persist",
+   "script": "unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) pwd >/dev/null; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "P4",
+   "desc": "flip + FUNCTION: prefix must NOT persist",
+   "script": "unset POSIXLY_CORRECT A; f(){ :; }; A=$((POSIXLY_CORRECT=1)) f; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "P5",
+   "desc": "flip + EXTERNAL: prefix must NOT persist",
+   "script": "unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) /bin/echo x >/dev/null; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "P6",
+   "desc": "flip + NOT-FOUND: prefix persistence",
+   "script": "unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) nosuchcmd_xyz 2>/dev/null; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "Q1",
+   "desc": "already-ON, side effect rewrites POSIXLY_CORRECT (no change)",
+   "script": "set -o posix; eval(){ echo FN; } 2>/dev/null; A=$((POSIXLY_CORRECT=1)) eval \"echo SPECIAL\"",
+   "verdict": "DIFF",
+   "same_err_text": false,
+   "bash": {
+    "out": "",
+    "err": "/opt/homebrew/bin/bash: line 1: `eval': is a special builtin\n",
+    "rc": 2
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "Q2",
+   "desc": "already-OFF, no side effect (control)",
+   "script": "eval(){ echo FN; }; eval \"echo SPECIAL\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "Q3",
+   "desc": "flip-OFF attempt: can an expansion UNSET POSIXLY_CORRECT?",
+   "script": "POSIXLY_CORRECT=1; eval(){ echo FN; } 2>/dev/null; A=$(unset POSIXLY_CORRECT; echo x) eval \"echo SPECIAL\"",
+   "verdict": "DIFF",
+   "same_err_text": false,
+   "bash": {
+    "out": "",
+    "err": "/opt/homebrew/bin/bash: line 1: `eval': is a special builtin\n",
+    "rc": 2
+   },
+   "psh": {
+    "out": "SPECIAL\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "Q4",
+   "desc": "does set +o posix unset POSIXLY_CORRECT? (coupling direction)",
+   "script": "POSIXLY_CORRECT=1; set +o posix; echo \"pc=[${POSIXLY_CORRECT-UNSET}]\"; shopt -qo posix && echo posix-ON || echo posix-OFF",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "pc=[UNSET]\nposix-OFF\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "pc=[UNSET]\nposix-OFF\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "Q5",
+   "desc": "readonly POSIXLY_CORRECT blocks the arith flip?",
+   "script": "unset POSIXLY_CORRECT; readonly POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \"echo SPECIAL\"; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "",
+    "err": "/opt/homebrew/bin/bash: line 1: POSIXLY_CORRECT: readonly variable\n",
+    "rc": 1
+   },
+   "psh": {
+    "out": "",
+    "err": "psh: line 1: POSIXLY_CORRECT: readonly variable\n",
+    "rc": 1
+   }
+  },
+  {
+   "id": "T1",
+   "desc": "later prefix reads earlier prefix (A=1 B=$A) - must SURVIVE",
+   "script": "unset A B; A=1 B=$A /bin/echo \"B-via-env\"; A=1 B=$A eval 'echo \"B=[$B]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B-via-env\nB=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B-via-env\nB=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "T2",
+   "desc": "PATH written by a := side effect, external target search",
+   "script": "mkdir -p tmp/a8/pd && printf \"#!/bin/sh\\necho MINE\\n\" > tmp/a8/pd/mycmd_xyz && chmod +x tmp/a8/pd/mycmd_xyz; OLD=$PATH; unset PATH; A=${PATH:=$OLD:$PWD/tmp/a8/pd} mycmd_xyz; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "MINE\nrc=0\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "MINE\nrc=0\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "T3",
+   "desc": "PATH written by arithmetic (numeric clobber) then external",
+   "script": "A=$((PATH=0)) /bin/echo abs-path-still-works; echo \"rc=$?\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "abs-path-still-works\nrc=0\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "abs-path-still-works\nrc=0\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "T4",
+   "desc": "IFS written by := side effect, seen by a later prefix expansion",
+   "script": "set -- a b c; unset IFS; A=${IFS:=-} B=\"$*\" eval 'echo \"B=[$B]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B=[a-b-c]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B=[a-b-c]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "T5",
+   "desc": "plain var written by arith, read by a LATER prefix",
+   "script": "unset Z; A=$((Z=7)) B=$Z eval 'echo \"B=[$B]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B=[7]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B=[7]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "T6",
+   "desc": "plain var written by :=, read by a LATER prefix",
+   "script": "unset Z; A=${Z:=7} B=$Z eval 'echo \"B=[$B]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B=[7]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B=[7]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "C7a",
+   "desc": "RANDOM=1 b=$RANDOM printenv b  (external target)",
+   "script": "RANDOM=1 b=$RANDOM printenv b",
+   "verdict": "DIFF",
+   "same_err_text": true,
+   "bash": {
+    "out": "1\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "10791\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "C7b",
+   "desc": "RANDOM=1 b=$RANDOM f  (function target)",
+   "script": "f(){ echo \"b=$b\"; }; RANDOM=1 b=$RANDOM f",
+   "verdict": "DIFF",
+   "same_err_text": true,
+   "bash": {
+    "out": "b=1\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "b=10791\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "C7c",
+   "desc": "RANDOM=1 b=$RANDOM  + regular builtin reading $b",
+   "script": "RANDOM=1 b=$RANDOM eval 'echo \"b=[$b]\"'",
+   "verdict": "DIFF",
+   "same_err_text": true,
+   "bash": {
+    "out": "b=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "b=[10791]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "C7d",
+   "desc": "RANDOM=1 b=$RANDOM external, $b-visible via sh -c",
+   "script": "RANDOM=1 b=$RANDOM /bin/sh -c 'echo \"b=[$b]\"'",
+   "verdict": "DIFF",
+   "same_err_text": true,
+   "bash": {
+    "out": "b=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "b=[10791]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "C7e",
+   "desc": "does RANDOM=1 prefix persist after an external command?",
+   "script": "RANDOM=1 /bin/echo x >/dev/null; r1=$RANDOM; r2=$RANDOM; [ \"$r1\" = \"$r2\" ] && echo SAME || echo DIFFERENT",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "DIFFERENT\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "DIFFERENT\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "C7f",
+   "desc": "RANDOM masking for a function (shipped family, must stay)",
+   "script": "f(){ echo \"$RANDOM\"; }; RANDOM=5 f",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "5\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "5\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "C7g",
+   "desc": "RANDOM=1 b=$RANDOM c=$RANDOM (two later reads)",
+   "script": "RANDOM=1 b=$RANDOM c=$RANDOM eval 'echo \"b=[$b] c=[$c]\"'",
+   "verdict": "DIFF",
+   "same_err_text": true,
+   "bash": {
+    "out": "b=[1] c=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "b=[10791] c=[19566]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "C7h",
+   "desc": "SECONDS in prefix, later prefix reads it",
+   "script": "SECONDS=100 b=$SECONDS eval 'echo \"b=[$b]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "b=[100]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "b=[100]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "E1",
+   "desc": "flip mid-list: what does a FUNCTION see?",
+   "script": "f(){ echo \"A=[$A] B=[$B]\"; }; unset A B POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) B=2 f",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[1] B=[2]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[1] B=[2]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "E2",
+   "desc": "flip mid-list: what does a special BUILTIN see?",
+   "script": "unset A B POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) B=2 eval 'echo \"A=[$A] B=[$B]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[1] B=[2]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[1] B=[2]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "E3",
+   "desc": "flip mid-list: what does an EXTERNAL see (env)?",
+   "script": "unset A B POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) B=2 /bin/sh -c 'echo \"A=[$A] B=[$B]\"'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[1] B=[2]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[1] B=[2]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "E4",
+   "desc": "declare -p of a prefix var inside a special builtin",
+   "script": "unset A POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) eval 'declare -p A'",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "declare -x A=\"1\"\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "declare -x A=\"1\"\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "R1",
+   "desc": "redirect fails on a flip-prefixed special builtin",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \":\" > /nonexistent_dir_xyz/f; echo \"rc=$?\"; echo \"pc=[${POSIXLY_CORRECT-UNSET}]\"; shopt -qo posix && echo posix-ON || echo posix-OFF",
+   "verdict": "DIFF",
+   "same_err_text": false,
+   "bash": {
+    "out": "",
+    "err": "/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 1
+   },
+   "psh": {
+    "out": "rc=1\npc=[1]\nposix-ON\n",
+    "err": "psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "R2",
+   "desc": "redirect fails on a flip-prefixed EXTERNAL",
+   "script": "unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) /bin/echo x > /nonexistent_dir_xyz/f; echo \"rc=$?\"; echo \"pc=[${POSIXLY_CORRECT-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "rc=1\npc=[1]\n",
+    "err": "/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "rc=1\npc=[1]\n",
+    "err": "psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "R3",
+   "desc": "redirect fails on a flip-prefixed NOT-FOUND command",
+   "script": "unset POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) nosuchcmd_xyz > /nonexistent_dir_xyz/f; echo \"rc=$?\"; echo \"pc=[${POSIXLY_CORRECT-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "rc=1\npc=[1]\n",
+    "err": "/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "rc=1\npc=[1]\n",
+    "err": "psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n",
+    "rc": 0
+   }
+  }
+ ]
+}

@@ -10469,3 +10469,78 @@
   stdout: "n=1\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# RESOLUTION AUTHORITY TIMING (slot 3.4, HIGH-3)
+#
+# A prefix VALUE's expansion can perform a side effect that decides how the
+# command dispatches. Resolution must therefore run after the prefix
+# transaction expands, and route the bindings after it resolves.
+# =============================================================================
+
+# The signature cell: an arithmetic write enables POSIX mode, under which the
+# special builtin outranks the shadowing function.
+- name: prefix_arith_side_effect_flips_posix_before_resolution
+  command: 'eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval "echo BUILTIN-PATH"'
+  stdout: "BUILTIN-PATH\n"
+  stderr: ""
+  exit_code: 0
+
+# Same, through a ${var:=} store rather than arithmetic.
+- name: prefix_assign_default_store_flips_posix_before_resolution
+  command: 'unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval "echo BUILTIN-PATH"'
+  stdout: "BUILTIN-PATH\n"
+  stderr: ""
+  exit_code: 0
+
+# Position is not a limiter: a side effect in the LAST prefix still governs.
+- name: prefix_side_effect_in_last_position_still_flips
+  command: 'eval(){ echo FN; }; B=2 C=3 A=$((POSIXLY_CORRECT=1)) eval "echo B"'
+  stdout: "B\n"
+  stderr: ""
+  exit_code: 0
+
+# A command substitution FORKS, so its write never reaches the parent and
+# posix does NOT flip — the boundary of the permitted-side-effects set.
+- name: prefix_command_sub_write_does_not_flip_posix
+  command: 'unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$(POSIXLY_CORRECT=1; echo x) eval "echo B"'
+  stdout: "FN\n"
+  stderr: ""
+  exit_code: 0
+
+# The flip wins for the command that flipped it: its OWN prefix persists.
+- name: prefix_own_flip_makes_assignment_persist
+  command: 'unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) eval ":"; echo "A=[${A-UNSET}]"'
+  stdout: "A=[1]\n"
+  stderr: ""
+  exit_code: 0
+
+# Carry #7: a later prefix reads the LITERAL temp binding, because the
+# temporary environment masks the dynamic special.
+- name: prefix_random_masks_dynamic_special_for_later_prefix
+  command: 'RANDOM=1 b=$RANDOM /bin/sh -c ''echo "$b"'''
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+# Two later reads agree — re-expanding the values would advance the generator.
+- name: prefix_random_mask_is_stable_across_two_reads
+  command: 'RANDOM=1 b=$RANDOM c=$RANDOM eval ''echo "b=[$b] c=[$c]"'''
+  stdout: "b=[1] c=[1]\n"
+  stderr: ""
+  exit_code: 0
+
+# Left-to-right value visibility survives the transaction split.
+- name: prefix_arith_write_read_by_later_prefix
+  command: 'unset Z; A=$((Z=7)) B=$Z eval ''echo "B=[$B]"'''
+  stdout: "B=[7]\n"
+  stderr: ""
+  exit_code: 0
+
+# RO1: a readonly target is refused before any write — bash's
+# skip-and-continue shape (error, variable stays unset, command still runs).
+- name: prefix_readonly_declared_unset_refused_on_function_route
+  command: 'readonly RX 2>/dev/null; f(){ echo "RX=[${RX-UNSET}]"; }; RX=1 f'
+  stdout: "RX=[UNSET]\n"
+  stderr: "readonly variable"
+  exit_code: 0

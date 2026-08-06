@@ -1,0 +1,113 @@
+==============================================================================
+A8 MATRIX  cases=tmp/a8/cases_b3_followups.py  mode=-c  parser=rd
+  bash_version: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  bash_path: /opt/homebrew/bin/bash
+  psh_file: /Users/pwilson/src/psh-r3-4/psh/__init__.py
+  psh_version: 0.765.0
+  python: 3.14.2
+==============================================================================
+
+--- [X1] DIFF (err-text differs)  CONFOUNDER: defining a fn named after a special builtin in posix mode
+    $ set -o posix; eval(){ echo FN; }; echo "rc=$?"
+    bash: rc=2 out='' err="/opt/homebrew/bin/bash: line 1: `eval': is a special builtin\n"
+    psh : rc=0 out='rc=0\n' err=''
+
+--- [X2] MATCH  same, non-posix (control)
+    $ eval(){ echo FN; }; echo "rc=$?"
+    bash: rc=0 out='rc=0\n' err=''
+    psh : rc=0 out='rc=0\n' err=''
+
+--- [X3] MATCH  fn defined BEFORE posix, then posix turned on: fn survives?
+    $ eval(){ echo FN; }; set -o posix; eval "echo SPECIAL"
+    bash: rc=0 out='SPECIAL\n' err=''
+    psh : rc=0 out='SPECIAL\n' err=''
+
+--- [Q1b] MATCH  already-ON (fn predefined), side effect rewrites POSIXLY_CORRECT
+    $ eval(){ echo FN; }; set -o posix; A=$((POSIXLY_CORRECT=1)) eval "echo SPECIAL"
+    bash: rc=0 out='SPECIAL\n' err=''
+    psh : rc=0 out='SPECIAL\n' err=''
+
+--- [Q3b] MATCH  flip-OFF attempt via command-sub unset (subshell: must NOT flip off)
+    $ eval(){ echo FN; }; POSIXLY_CORRECT=1; A=$(unset POSIXLY_CORRECT; echo x) eval "echo SPECIAL"
+    bash: rc=0 out='SPECIAL\n' err=''
+    psh : rc=0 out='SPECIAL\n' err=''
+
+--- [Q6] MATCH  is flip-OFF reachable from a prefix expansion at all? (arith cannot unset)
+    $ eval(){ echo FN; }; POSIXLY_CORRECT=1; A=$((POSIXLY_CORRECT=0)) eval "echo SPECIAL"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"; shopt -qo posix && echo posix-ON || echo posix-OFF
+    bash: rc=0 out='SPECIAL\npc=[0]\nposix-ON\n' err=''
+    psh : rc=0 out='SPECIAL\npc=[0]\nposix-ON\n' err=''
+
+--- [Q7] MATCH  POSIXLY_CORRECT=0 name-level prefix still flips ON (presence counts)
+    $ eval(){ echo FN; }; unset POSIXLY_CORRECT; POSIXLY_CORRECT=0 eval "echo SPECIAL"
+    bash: rc=0 out='SPECIAL\n' err=''
+    psh : rc=0 out='SPECIAL\n' err=''
+
+--- [R4] DIFF (err-text differs)  PRE-SET posix, special builtin, redirect error: shell exits?
+    $ set -o posix; A=1 eval ":" > /nonexistent_dir_xyz/f; echo AFTER
+    bash: rc=1 out='' err='/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+    psh : rc=0 out='AFTER\n' err='psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+
+--- [R5] MATCH (err-text differs)  NON-posix, special builtin, redirect error: shell continues
+    $ A=1 eval ":" > /nonexistent_dir_xyz/f; echo AFTER
+    bash: rc=0 out='AFTER\n' err='/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+    psh : rc=0 out='AFTER\n' err='psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+
+--- [R6] MATCH (err-text differs)  PRE-SET posix, REGULAR builtin, redirect error: continues
+    $ set -o posix; A=1 pwd > /nonexistent_dir_xyz/f; echo AFTER
+    bash: rc=0 out='AFTER\n' err='/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+    psh : rc=0 out='AFTER\n' err='psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+
+--- [R1b] DIFF (err-text differs)  flip-in-prefix + special builtin + redirect error (EXIT-trap probe)
+    $ trap 'echo "TRAP pc=[${POSIXLY_CORRECT-UNSET}] A=[${A-UNSET}]"' EXIT; unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) eval ":" > /nonexistent_dir_xyz/f; echo AFTER
+    bash: rc=1 out='TRAP pc=[1] A=[UNSET]\n' err='/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+    psh : rc=0 out='AFTER\nTRAP pc=[1] A=[1]\n' err='psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+
+--- [D11] MATCH  fn shadowing 'set'
+    $ set(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) set -- x y; echo "1=[$1]"
+    bash: rc=0 out='1=[x]\n' err=''
+    psh : rc=0 out='1=[x]\n' err=''
+
+--- [D12] MATCH  fn shadowing 'shift'
+    $ shift(){ echo FN; }; set -- a b c; A=$((POSIXLY_CORRECT=1)) shift; echo "1=[$1]"
+    bash: rc=0 out='1=[b]\n' err=''
+    psh : rc=0 out='1=[b]\n' err=''
+
+--- [D13] MATCH (err-text differs)  fn shadowing 'readonly'
+    $ readonly(){ echo FN; }; unset RV; A=$((POSIXLY_CORRECT=1)) readonly RV=1; RV=2 2>/dev/null; echo "RV=[$RV]"
+    bash: rc=127 out='' err='/opt/homebrew/bin/bash: line 1: RV: readonly variable\n'
+    psh : rc=127 out='' err='psh: line 1: RV: readonly variable\n'
+
+--- [D14] MATCH  fn shadowing 'exec' (is_exec_special path)
+    $ exec(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) exec /bin/echo EXECED; echo AFTER
+    bash: rc=0 out='EXECED\n' err=''
+    psh : rc=0 out='EXECED\n' err=''
+
+--- [D15] MATCH  fn shadowing '.' (source)
+    $ printf "echo SOURCED\n" > tmp/a8/src_xyz.sh; .(){ echo FN; } 2>/dev/null; A=$((POSIXLY_CORRECT=1)) . tmp/a8/src_xyz.sh
+    bash: rc=0 out='SOURCED\n' err=''
+    psh : rc=0 out='SOURCED\n' err=''
+
+--- [D16] MATCH  fn shadowing 'break' inside a loop
+    $ break(){ echo FN; }; for i in 1 2 3; do A=$((POSIXLY_CORRECT=1)) break; done; echo "i=[$i]"
+    bash: rc=0 out='i=[1]\n' err=''
+    psh : rc=0 out='i=[1]\n' err=''
+
+--- [D17] MATCH  fn shadowing 'return' inside a function
+    $ return(){ echo FN; }; g(){ A=$((POSIXLY_CORRECT=1)) return; echo NOTREACHED; }; g; echo "rc=$?"
+    bash: rc=0 out='rc=0\n' err=''
+    psh : rc=0 out='rc=0\n' err=''
+
+--- [D18] MATCH  'command' prefix + flip (command bypasses functions anyway)
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) command eval "echo SPECIAL"
+    bash: rc=0 out='SPECIAL\n' err=''
+    psh : rc=0 out='SPECIAL\n' err=''
+
+--- [D19] MATCH  flip + builtin 'builtin' prefix
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) builtin eval "echo SPECIAL"
+    bash: rc=0 out='SPECIAL\n' err=''
+    psh : rc=0 out='SPECIAL\n' err=''
+
+==============================================================================
+TOTALS: 20 cases, 17 MATCH, 3 DIFF
+==============================================================================
+raw pairs -> tmp/a8/r6tip_b3_followups.json

@@ -10,9 +10,13 @@ POSIX ordering contract (probe-verified against bash 5.2):
 1. **Command words expand BEFORE assignments apply.** ``V=old; V=new echo
    $V`` prints ``old``: the prefix assignment is invisible to the
    command's own expansions.
-2. **Assignment values expand left-to-right at apply time**, so each
-   value sees the assignments to its left: ``A=1 B=$A cmd`` gives B the
-   value ``1`` (likewise pure ``x=1 y=$x``).
+2. **Assignment values expand left-to-right**, so each value sees the
+   assignments to its left: ``A=1 B=$A cmd`` gives B the value ``1``
+   (likewise pure ``x=1 y=$x``). For a command prefix this happens in
+   :meth:`CommandAssignments.expand_prefix`, BEFORE the command resolves —
+   a side effect inside a value must be visible to the dispatch decision it
+   governs. A REFUSED assignment (readonly target) is never evaluated at
+   all, so it contributes no side effect of any kind (bash).
 3. **Prefix assignments are temporary.** Shell state and ``shell.env``
    are restored after the command — unless, **in POSIX mode**
    (``set -o posix``), it resolved to a POSIX special builtin, where the
@@ -36,7 +40,7 @@ POSIX ordering contract (probe-verified against bash 5.2):
    the caller makes the assignment error fatal instead.
 """
 import copy
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Sequence, Tuple, cast
 
 from ..ast_nodes import ExpansionPart, LiteralPart, Word
 from ..core import (
@@ -67,8 +71,8 @@ class PrefixOutcome(NamedTuple):
 
     ``saved`` is handed back to :meth:`CommandAssignments.restore` by the
     dispatcher (opaque to it) — the save/restore snapshots for the few prefix
-    names that take the SEED path (dynamic specials, array-object appends,
-    nameref-to-element) rather than bash's temporary_env. ``applied`` is the
+    names that take the SEED path (dynamic specials and array-object appends)
+    rather than bash's temporary_env. ``applied`` is the
     expanded (name, value) pairs that took effect (``exec`` without a command
     persists these); ``failed`` is True when any assignment failed (readonly) —
     fatal under ``set -e``. ``pushed_temp_env`` records whether a command
@@ -80,6 +84,57 @@ class PrefixOutcome(NamedTuple):
     applied: List[Tuple[str, object]]  # value is str, or an array object (rare)
     failed: bool
     pushed_temp_env: bool = False
+
+
+class StagedPrefix(NamedTuple):
+    """A command's prefix assignments EXPANDED but not yet routed.
+
+    The intermediate value of the two-phase prefix transaction
+    (:meth:`CommandAssignments.expand_prefix` →
+    :meth:`CommandAssignments.commit_prefix`). It exists because RESOLUTION
+    runs BETWEEN the phases: a value's expansion may perform a shell-state
+    side effect that decides how the command dispatches (an arithmetic or
+    ``${v:=}`` write to ``POSIXLY_CORRECT`` flips posix mode), while the
+    destination route is itself chosen by that dispatch answer.
+
+    ``names``
+        ``(install_name, staging_key)`` per staged binding, in source order —
+        NOT their values. The two differ only for a nameref-to-element prefix
+        (``declare -n r=a[0]; r=v cmd``): ``set_temp_env_var`` resolves the
+        nameref, so the scope keys that binding on ``a[0]`` while the command
+        must still see it installed as ``r``. Recording only one of the two
+        loses the binding at commit. The
+        staging scope is the single source of truth for what each name is
+        WORTH: a later value's in-process store (``A=1 B=$((A=9))``) updates
+        the staged binding, and the command must see what the shell sees.
+        Carrying values here snapshotted them at staging time and produced a
+        split brain — later prefixes read 9 from the scope while the command
+        got 1 from the snapshot.
+
+        :meth:`commit_prefix` therefore READS each name's value out of the
+        staging scope. That is a read, never a re-expansion: the values are
+        expanded EXACTLY ONCE, in phase 1. A second expansion would run every
+        value's side effects again, which is observable (a command
+        substitution would touch its file twice).
+    ``failed``
+        True when any assignment was refused (readonly) — fatal under
+        ``set -e``, which the caller handles.
+    ``staging_scope``
+        True when a staging temp-env SCOPE is open holding the bindings. A SCOPE
+        (not a command temp-env LAYER) is what makes the staged bindings
+        visible to the next value's expansion and to resolution, and it is
+        the only staging area that MASKS a dynamic special the way bash's
+        temporary environment does.
+    """
+
+    names: Sequence[Tuple[str, str]]
+    failed: bool
+    staging_scope: bool
+
+
+# The staged value for a command with NO prefix assignments — the hot-path
+# default, so an unprefixed command allocates nothing and opens no scope.
+EMPTY_STAGED = StagedPrefix((), False, False)
 
 
 class CommandAssignments:
@@ -188,14 +243,12 @@ class CommandAssignments:
             self, raw_assignments: List[RawAssignment]) -> 'CommandEnvOverlay':
         """Build the :class:`CommandEnvOverlay` for a command's prefix.
 
-        Carries the metadata resolution needs BEFORE the values are installed:
-        the assigned names (source order), whether a ``PATH=`` override is
-        present, and whether a ``POSIXLY_CORRECT`` assignment will flip posix
-        mode for the command's own resolution. The values themselves are NOT
-        expanded here — expanding a value early would run its command
-        substitution out of left-to-right order (``A=$(c1) PATH=$(c2) cmd``);
-        :meth:`apply_prefix` expands and installs them after resolution, and
-        the deferred external PATH search reads the live environment then.
+        Carries the facts resolution can derive from the assignment NAMES
+        alone: the names themselves (source order), whether a ``PATH=``
+        override is present, and whether a ``POSIXLY_CORRECT`` assignment will
+        flip posix mode for the command's own resolution. Values play no part
+        — :meth:`expand_prefix` has already expanded them, in source order, by
+        the time resolution consults this overlay.
 
         The POSIXLY_CORRECT fact mirrors bash's sv_strict_posix coupling rule
         (probe-derived, R3 bounce): NAME-level (any value — even empty or an
@@ -203,8 +256,13 @@ class CommandAssignments:
         r=POSIXLY_CORRECT; r=1 cmd`` flips), but a READONLY POSIXLY_CORRECT
         blocks the flip (the assignment will fail; bash never turns posix on,
         and a same-named function keeps winning the lookup). The readonly walk
-        is the one :meth:`ScopeManager.set_command_temp_env_var` performs at
-        install, so the overlay predicts the install outcome exactly.
+        is :meth:`_readonly_blocks`, the same one :meth:`expand_prefix` uses to
+        refuse the assignment, so the overlay predicts the outcome exactly.
+
+        This covers only the NAME spelling. A posix flip performed INSIDE a
+        value (``A=$((POSIXLY_CORRECT=1))``) is invisible to any name-level
+        test; that one reaches resolution through ordering instead, because
+        :meth:`expand_prefix` runs first (slot 3.4, HIGH-3).
 
         The common case — a command with NO prefix assignments — returns the
         shared :data:`EMPTY_OVERLAY` singleton (no per-command allocation on
@@ -220,7 +278,7 @@ class CommandAssignments:
                 # A nameref prefix writes through to its target (bash flips
                 # posix for `declare -n r=POSIXLY_CORRECT; r=1 cmd`). A cycle
                 # cannot reach POSIXLY_CORRECT as a final target; treat it as
-                # a non-match (apply_prefix reports the cycle later).
+                # a non-match (expand_prefix reports the cycle later).
                 try:
                     name = scope_manager.resolve_nameref_name(name)
                 except NamerefCycleError:
@@ -344,62 +402,113 @@ class CommandAssignments:
     # Prefix assignments (FOO=bar cmd)
     # ------------------------------------------------------------------
 
-    def apply_prefix(self, raw_assignments: List[RawAssignment],
-                     temp_scope: bool = False) -> PrefixOutcome:
-        """Apply a command's ``NAME=value`` prefix assignments (``FOO=bar cmd``).
+    def expand_prefix(self,
+                      raw_assignments: List[RawAssignment]) -> StagedPrefix:
+        """Phase 1 of the prefix transaction: expand the values, stage them.
 
-        bash's *temporary environment* model, three routes:
+        Each value is expanded ONCE, left to right, and staged in a temp-env
+        SCOPE so the NEXT value's expansion sees the bindings to its left
+        (``A=1 B=$A cmd`` gives B the value ``1``, bash). Any shell-state side
+        effect a value's expansion performs — an arithmetic assignment,
+        a ``${v:=}`` store — lands live, at its natural point in the
+        left-to-right order.
 
-        * ``temp_scope=True`` — the command resolves to a shell FUNCTION and the
-          caller has pushed a dedicated temp-env SCOPE (``push_temp_env_scope``).
-          Each prefix var becomes an EXPORTED local of that scope
-          (``set_temp_env_var``): visible to the body AND to enumerations run
-          inside it (bash merges a function's prefix vars into its locals), so a
-          body ``declare -g``/``export`` writing past the layer survives the
-          return while a plain body assignment is discarded. No per-variable
-          ``saved`` snapshot — the caller pops the scope.
+        Phase 1 runs BEFORE command resolution, which is the whole point: a
+        side effect that enables POSIX mode must be visible to the very
+        lookup it governs (``A=$((POSIXLY_CORRECT=1)) eval …`` resolves to the
+        special builtin, not a same-named function — bash). Resolution has no
+        side effects of its own, so moving it after expansion reorders nothing
+        observable; the relative order of the values' own command
+        substitutions is unchanged.
 
-        * a plain scalar over a BUILTIN/EXTERNAL — the common case. The var goes
-          into a command temporary-environment LAYER
-          (``set_command_temp_env_var``) that NAME LOOKUP consults (``$VAR``,
-          ``declare -p VAR``, ``${VAR@a}``, the exported-env materialization)
-          but whole-table ENUMERATIONS (``set`` / ``export -p`` / ``declare -p``
-          with no name) skip — exactly bash's separate ``temporary_env``. It is
-          exported into the command's OWN process environment yet is not a shell
-          variable, so it does not inherit the shadowed var's attributes
-          (``declare -i n=5; n=abc cmd`` -> the command sees plain ``abc``) and
-          it vanishes on teardown.
+        The staging area is a temp-env SCOPE rather than a command temp-env
+        LAYER for a measured reason: ``get_variable_object`` resolves a
+        computed special BEFORE consulting the layer, but a scope binding
+        SHADOWS it (``_local_shadows_special``). Only the scope therefore
+        reproduces bash's masking, where ``RANDOM=1 b=$RANDOM cmd`` gives b
+        the literal ``1`` instead of a generated number.
 
-        * a dynamic special / array-object append / nameref-to-element — these
-          take the legacy SEED path (a real ``set_variable`` with EXPORT plus a
-          per-name save/restore snapshot and a literal env overlay), because the
-          effect (seed RANDOM's generator; keep ``a=x cmd`` over an array
-          non-destructive; write through a nameref to an array element) cannot
-          be a plain temporary binding.
-
-        Values are expanded one at a time so each sees the assignments to its
-        left (``A=1 B=$A cmd`` gives B=1, bash). A readonly assignment does NOT
-        abort the command (bash 5.2): the error is reported, that one assignment
-        is skipped, the others still apply, and the command runs. The caller
-        handles ``set -e``, where bash makes the assignment error fatal.
+        A readonly target is refused HERE, before any write, so a blocked
+        assignment cannot flip an option as a side effect of being staged.
+        The check is :meth:`_readonly_blocks` — a direct scope scan — because
+        ``set_temp_env_var`` cannot see a DECLARED-UNSET readonly cell
+        (``readonly RX`` with no value): the lookup it uses returns None for
+        that cell. bash's shape is skip-and-continue: report, drop that one
+        assignment, apply the rest, run the command.
         """
+        if not raw_assignments:
+            return EMPTY_STAGED
 
+        try:
+            return self._stage_values(
+                raw_assignments, self.state.options.get('xtrace'))
+        except BaseException:
+            # A value's expansion can raise from the SECOND assignment onward,
+            # after the staging scope is already open (an arithmetic error, a
+            # nameref cycle, a fatal expansion). Phase 2 never runs on that
+            # path, so phase 1 unwinds its own scope here — a leaked staging
+            # scope would be enumeration-INVISIBLE pollution that also grows
+            # the scope stack once per error.
+            self._discard_staging_scope()
+            raise
+
+    def _pop_staging_scope(self) -> None:
+        """Pop the staging scope, checking this transaction still owns it.
+
+        Ownership is checked rather than assumed because the failure is silent
+        both ways: popping a scope we do not own destroys someone else's
+        bindings, and failing to pop ours leaves an enumeration-INVISIBLE
+        scope behind. ``staged.staging_scope`` says a scope was opened; this
+        says the one on top is still it.
+
+        A ``raise``, not an ``assert``: assertions vanish under ``python -O``,
+        which is exactly where a silent scope-stack corruption would be worst.
+        """
+        stack = self.state.scope_manager.scope_stack
+        if len(stack) <= 1 or not stack[-1].is_staging:
+            raise RuntimeError(
+                "internal error: prefix transaction lost ownership of its "
+                f"staging scope (depth={len(stack)}, top_is_staging="
+                f"{getattr(stack[-1], 'is_staging', None)})")
+        self.state.scope_manager.pop_scope()
+
+    def _discard_staging_scope(self) -> None:
+        """Pop the staging scope if this transaction still owns one."""
         scope_manager = self.state.scope_manager
-        saved_vars: Dict[str, dict] = {}
-        # ``resolved`` is usually a str; resolve_append_assignment can return an
-        # array object for a scalar ``+=`` onto an array variable (rare in
-        # prefix position) — hence the wider value type on the applied list.
-        assignments: List[Tuple[str, object]] = []
-        # Literal env overlay for the SEED path only (specials/arrays whose
-        # exported value is not the literal string). Temp-env vars reach the
-        # environment through the variable_changed observer + find_exported_instance,
-        # so they need no overlay entry.
-        overlay: Dict[str, str] = {}
-        assignment_error = False
-        pushed_temp_env = False
+        stack = scope_manager.scope_stack
+        if len(stack) > 1 and stack[-1].is_staging:
+            scope_manager.pop_scope()
 
-        xtrace = self.state.options.get('xtrace')
+    def _stage_values(self, raw_assignments: List[RawAssignment],
+                      xtrace: object) -> StagedPrefix:
+        """The staging loop of :meth:`expand_prefix` (which owns unwinding)."""
+        scope_manager = self.state.scope_manager
+        names: List[Tuple[str, str]] = []
+        failed = False
+        staging_scope = False
+
         for var, value, value_word in raw_assignments:
+            # REFUSE BEFORE EVALUATE. bash never evaluates the value of an
+            # assignment it is going to refuse: after
+            # ``readonly RX; RX=$((Z=9)) f`` its Z is UNSET. So the check runs
+            # on the NAME alone, before expansion, and a refused assignment
+            # contributes ZERO side effects — no arithmetic write, no ``:=``
+            # store, no command substitution, and so no posix flip either.
+            #
+            # Checking after expansion (as this did) let a refused assignment's
+            # value still flip posix, which then routed the refusal through the
+            # POSIX prefix-error branch and aborted a statement that bash runs.
+            # A nameref prefix (``declare -n r=a; r=x cmd``) writes THROUGH to
+            # its target, so the name to test is the resolved one; an append
+            # (``a+=z``) arrives as ``a+``.
+            write_name = scope_manager.resolve_nameref_name(
+                var[:-1] if var.endswith('+') else var)
+            if '[' not in write_name and self._readonly_blocks(write_name):
+                print(f"{self.state.error_location_prefix()}{write_name}: readonly variable",
+                      file=self.state.stderr)
+                failed = True
+                continue
+
             value = self._expand_value(value, value_word)
             if xtrace:
                 # set -x: a command-prefix assignment (`x=5 cmd`) is traced
@@ -407,33 +516,135 @@ class CommandAssignments:
                 ps4 = self.expansion_manager.expand_ps4()
                 self.state.stderr.write(f"{ps4}{var}={xtrace_quote(value)}\n")
             var, resolved = resolve_append_assignment(scope_manager, var, value)
-            # A nameref prefix (``declare -n r=a; r=x cmd``) writes THROUGH to
-            # the target, so key everything on the target name. A subscripted
-            # target (nameref to an array element) stays as-is — set_variable
-            # routes that through the element setter (a seed-path case).
-            write_name = scope_manager.resolve_nameref_name(var)
+            # A subscripted target (nameref to an array element) stays as-is.
             if '[' not in write_name:
                 var = write_name
 
-            if temp_scope:
-                # Function call: exported local of the pushed temp-env scope.
-                try:
-                    scope_manager.set_temp_env_var(var, resolved)
-                except ReadonlyVariableError as e:
-                    print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
-                          file=self.state.stderr)
-                    assignment_error = True
-                    continue
-                assignments.append((var, resolved))
+            if not staging_scope:
+                scope_manager.push_temp_env_scope(staging=True)
+                staging_scope = True
+            try:
+                scope_manager.set_temp_env_var(var, resolved)
+            except ReadonlyVariableError as e:
+                # Use e.name so a readonly array-element write reports the
+                # array name (``a[0]=X cmd`` -> ``a: readonly variable``).
+                print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
+                      file=self.state.stderr)
+                failed = True
                 continue
+            entry = (var, write_name)
+            if entry not in names:
+                names.append(entry)
 
-            # A dynamic special (RANDOM/SECONDS seed), an array-object result
-            # (scalar ``+=`` onto an array), or a nameref-to-element target
-            # cannot be a plain temporary binding — take the seed path.
+        return StagedPrefix(names, failed, staging_scope)
+
+    def _live_pairs(self, staged: StagedPrefix) -> List[Tuple[str, object]]:
+        """The staged names paired with their CURRENT values in the scope.
+
+        Read straight out of the staging scope's own dict rather than through
+        name lookup, so the answer is unambiguously "what this transaction
+        staged, as it now stands" — not whatever an outer scope or a computed
+        special might otherwise resolve to.
+        """
+        if not staged.staging_scope:
+            return []
+        stack = self.state.scope_manager.scope_stack
+        staging = stack[-1]
+        if len(stack) <= 1 or not staging.is_staging:
+            # Same ownership check its sibling `_pop_staging_scope` makes, for
+            # the same reason: reading values out of a scope this transaction
+            # no longer owns would silently install someone else's bindings.
+            raise RuntimeError(
+                "internal error: prefix transaction read a staging scope it "
+                f"does not own (depth={len(stack)}, top_is_staging="
+                f"{getattr(staging, 'is_staging', None)})")
+        pairs: List[Tuple[str, object]] = []
+        for install_name, staging_key in staged.names:
+            var = staging.variables.get(staging_key)
+            if var is not None:
+                pairs.append((install_name, var.value))
+        return pairs
+
+    def commit_prefix(self, staged: StagedPrefix,
+                      temp_scope: bool) -> PrefixOutcome:
+        """Phase 2 of the prefix transaction: route the staged bindings.
+
+        The values are ALREADY expanded (:meth:`expand_prefix`); this method
+        only chooses their destination, which is the one thing that needs the
+        resolution answer. It never re-expands — a second expansion would be a
+        second run of the values' side effects.
+
+        * ``temp_scope=True`` — the command resolved to a shell FUNCTION, so
+          the staging scope IS the destination and is simply adopted (bash
+          merges a function's prefix vars into its locals; the caller pops it
+          on return). Nothing moves.
+
+        * otherwise the staging scope is popped and each binding installs into
+          a command temporary-environment LAYER — which name LOOKUP consults
+          but whole-table ENUMERATIONS skip, exactly bash's ``temporary_env``.
+          Dynamic specials (RANDOM/SECONDS) and array objects cannot be a
+          plain temporary binding, so they take the SEED path here: a real
+          exported write plus the save/restore snapshot and literal env
+          overlay :meth:`restore` and :meth:`commit` consume. Seeding happens
+          at COMMIT, never at staging, so a later prefix value still reads the
+          MASKED literal. A nameref-to-element prefix (``declare -n r=a[0];
+          r=v cmd``) takes the LAYER route like any other scalar: the command
+          SEES it (``r=NEW eval 'echo $r'`` prints NEW, as in bash), but it
+          does not write through to the array and leaves no diagnostic — bash
+          does neither for the prefix form. The staging scope keys that
+          binding on its RESOLVED target (``a[0]``) because
+          ``set_temp_env_var`` follows the nameref, which is why the staged
+          record carries both the install name and the staging key.
+        """
+        if temp_scope or not staged.names:
+            applied = self._live_pairs(staged)
+            if not temp_scope and staged.staging_scope:
+                self._pop_staging_scope()
+            elif temp_scope and staged.staging_scope:
+                # FUNCTION target ADOPTS the staging scope: clear the staging
+                # flag so the body enumerates its prefix vars (bash merges a
+                # function's prefix vars into its locals).
+                self.state.scope_manager.scope_stack[-1].is_staging = False
+            return PrefixOutcome({}, applied, staged.failed, False)
+
+        scope_manager = self.state.scope_manager
+
+        # READ the live values out of the staging scope BEFORE disposing of
+        # it. The scope is the single source of truth for what each staged
+        # name is WORTH: a later value's in-process store (``A=1 B=$((A=9))``)
+        # updated the binding there, and the command must see what the shell
+        # sees. This is a READ, never a re-expansion — phase 1 expanded each
+        # value exactly once, and that has to stay true or every value's side
+        # effects would run a second time.
+        live = self._live_pairs(staged)
+
+        if staged.staging_scope:
+            # OWNERSHIP TRANSFER, done BEFORE the install loop: from here on
+            # this transaction no longer owns a staging scope, so an exception
+            # raised while installing cannot reach the ownership check and
+            # replace itself with a bogus "lost ownership" error. The original
+            # exception propagates; the caller's unwinder finds nothing to pop.
+            self._pop_staging_scope()
+
+        saved_vars: Dict[str, dict] = {}
+        assignments: List[Tuple[str, object]] = []
+        # Literal env overlay for the SEED path only (specials/arrays whose
+        # exported value is not the literal string). Temp-env vars reach the
+        # environment through the variable_changed observer +
+        # find_exported_instance, so they need no overlay entry.
+        overlay: Dict[str, str] = {}
+        failed = staged.failed
+        pushed_temp_env = False
+
+        for var, resolved in live:
+            # No bracket can reach this test. ``a[0]=v cmd`` is refused
+            # upstream as "not a valid identifier" (bash likewise), and a
+            # nameref-to-element prefix installs under its NAMEREF name (the
+            # bracketed form is the staging KEY, not the install name). The
+            # bracket disjunct this once had was therefore unreachable.
             use_seed_path = (
                 scope_manager.is_dynamic_special(var)
-                or isinstance(resolved, (IndexedArray, AssociativeArray))
-                or '[' in write_name)
+                or isinstance(resolved, (IndexedArray, AssociativeArray)))
 
             if not use_seed_path:
                 # Common case: a hidden command temporary-environment binding.
@@ -443,11 +654,9 @@ class CommandAssignments:
                 try:
                     scope_manager.set_command_temp_env_var(var, resolved)
                 except ReadonlyVariableError as e:
-                    # bash: report and skip; the real (readonly) variable keeps
-                    # its value, the other assignments apply, the command runs.
                     print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
                           file=self.state.stderr)
-                    assignment_error = True
+                    failed = True
                     continue
                 assignments.append((var, resolved))
                 continue
@@ -478,8 +687,12 @@ class CommandAssignments:
                 # name (``a[0]=X cmd`` -> ``a: readonly variable``).
                 print(f"{self.state.error_location_prefix()}{e.name}: readonly variable",
                       file=self.state.stderr)
-                assignment_error = True
+                failed = True
                 continue
+            # Recorded only once the write SUCCEEDED: a refused assignment left
+            # the variable untouched, so restore() must have nothing to undo for
+            # it. Snapshotting before the write would hand restore a name it
+            # never changed.
             if saved is not None:
                 saved_vars[var] = saved
             assignments.append((var, resolved))
@@ -493,8 +706,26 @@ class CommandAssignments:
         if overlay:
             self.state.apply_command_env(overlay)
 
-        return PrefixOutcome(saved_vars, assignments, assignment_error,
-                             pushed_temp_env)
+        return PrefixOutcome(saved_vars, assignments, failed, pushed_temp_env)
+
+    def apply_prefix(self, raw_assignments: List[RawAssignment],
+                     temp_scope: bool = False) -> PrefixOutcome:
+        """Expand and install a command's prefix assignments in one call.
+
+        TEST-ONLY as of slot 3.4: there are no production callers. The
+        executor drives :meth:`expand_prefix` and :meth:`commit_prefix`
+        separately, because resolution must run between them and read the
+        state the expansions leave behind — a static ratchet
+        (``tests/unit/tooling/test_resolution_timing_ratchet_3_4.py``) fails
+        if this composition reappears on the dispatch path, where it would
+        expand a second time.
+
+        Retained because the unit tests for the assignment sub-domain want
+        one call rather than two, and because "expand then commit with a
+        known route" is the honest summary of what the pair does.
+        """
+        return self.commit_prefix(self.expand_prefix(raw_assignments),
+                                  temp_scope=temp_scope)
 
     def restore(self, prefix: PrefixOutcome) -> None:
         """Tear down a command's prefix assignments after it runs.
@@ -517,7 +748,7 @@ class CommandAssignments:
                 self.state.scope_manager.unset_variable(var)
             else:
                 self.state.set_variable(var, old_state_value)
-                # apply_prefix exported the variable for the command's duration;
+                # commit_prefix exported the variable for the command's duration;
                 # if it was not exported before, take EXPORT back off (a
                 # previously-exported variable keeps it, as it should).
                 if not saved.get('was_exported'):
@@ -534,7 +765,7 @@ class CommandAssignments:
 
         The temporary-environment bindings are PROMOTED to real exported vars
         (so ``VAR=v : ; declare -p VAR`` shows them), then the layer is popped.
-        Seed-path variables stay exactly as apply_prefix left them; their env
+        Seed-path variables stay exactly as commit_prefix left them; their env
         overlay is dropped so later materializations read the persisted vars.
         """
 

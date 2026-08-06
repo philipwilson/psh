@@ -1,0 +1,455 @@
+{
+ "meta": {
+  "bash_version": "GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)",
+  "bash_path": "/opt/homebrew/bin/bash",
+  "psh_file": "/Users/pwilson/src/psh-r3-4/psh/__init__.py",
+  "psh_version": "0.765.0",
+  "python": "3.14.2"
+ },
+ "mode": "-c",
+ "parser": "rd",
+ "results": [
+  {
+   "id": "S1",
+   "desc": "arith side effect flips posix; fn shadows special builtin",
+   "script": "eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \"echo BUILTIN-PATH\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "S2",
+   "desc": ":= side effect flips posix; fn shadows special builtin",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval \"echo BUILTIN-PATH\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "S3",
+   "desc": "name-level POSIXLY_CORRECT prefix (shipped-correct control)",
+   "script": "eval(){ echo FN; }; POSIXLY_CORRECT=1 eval \"echo BUILTIN-PATH\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "BUILTIN-PATH\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "S4",
+   "desc": "no side effect at all (control: function must win)",
+   "script": "eval(){ echo FN; }; A=1 eval \"echo BUILTIN-PATH\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "S5",
+   "desc": "arith with NO posix write (control: function must win)",
+   "script": "eval(){ echo FN; }; A=$((Q=1)) eval \"echo BUILTIN-PATH\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K1",
+   "desc": "arith plain assign",
+   "script": "eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K2",
+   "desc": "arith += onto unset",
+   "script": "eval(){ echo FN; }; A=$((POSIXLY_CORRECT+=1)) eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K3",
+   "desc": "arith postincrement",
+   "script": "eval(){ echo FN; }; A=$((POSIXLY_CORRECT++)) eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K4",
+   "desc": ":= store nonempty",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K5",
+   "desc": ":= store EMPTY value (name-level says any value counts)",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=} eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K6",
+   "desc": "= store (unset-only) on unset var",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT=1} eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K7",
+   "desc": "command substitution doing the write (SUBSHELL - must NOT flip)",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$(POSIXLY_CORRECT=1; echo x) eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K8",
+   "desc": "command substitution + export (still a subshell)",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$(export POSIXLY_CORRECT=1; echo x) eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K9",
+   "desc": "nested: := whose default runs an arith write",
+   "script": "unset POSIXLY_CORRECT Z; eval(){ echo FN; }; A=${Z:=$((POSIXLY_CORRECT=1))} eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K10",
+   "desc": "arith side effect in the FIRST of several prefixes",
+   "script": "eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) B=2 C=3 eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K11",
+   "desc": "arith side effect in the LAST of several prefixes",
+   "script": "eval(){ echo FN; }; B=2 C=3 A=$((POSIXLY_CORRECT=1)) eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K12",
+   "desc": "arith side effect in the MIDDLE of several prefixes",
+   "script": "eval(){ echo FN; }; B=2 A=$((POSIXLY_CORRECT=1)) C=3 eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "B\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K13",
+   "desc": "side effect inside array-subscript arithmetic",
+   "script": "unset arr; eval(){ echo FN; }; arr[$((POSIXLY_CORRECT=1))]=v eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": false,
+   "bash": {
+    "out": "FN\n",
+    "err": "/opt/homebrew/bin/bash: line 1: `arr[$((POSIXLY_CORRECT=1))]': not a valid identifier\n",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\n",
+    "err": "psh: `arr[$((POSIXLY_CORRECT=1))]': not a valid identifier\n",
+    "rc": 0
+   }
+  },
+  {
+   "id": "K14",
+   "desc": "${var:?} / ${var+alt} - no store, must NOT flip",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT+set} eval \"echo B\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "FN\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "V1",
+   "desc": "does the arith POSIXLY_CORRECT write persist after the command?",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \":\"; echo \"pc=[${POSIXLY_CORRECT-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "pc=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "pc=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "V2",
+   "desc": "does the posix OPTION persist after the command?",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \":\"; shopt -qo posix && echo posix-ON || echo posix-OFF",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "posix-ON\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "posix-ON\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "V3",
+   "desc": "does the := store persist after the command?",
+   "script": "unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval \":\"; echo \"pc=[${POSIXLY_CORRECT-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "pc=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "pc=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "V4",
+   "desc": "does the PREFIX var A persist? (special builtin in posix mode)",
+   "script": "unset POSIXLY_CORRECT A; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval \":\"; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[1]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[1]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "V5",
+   "desc": "baseline: shopt -qo posix reporting works at all",
+   "script": "shopt -qo posix && echo posix-ON || echo posix-OFF; set -o posix; shopt -qo posix && echo posix-ON || echo posix-OFF",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "posix-OFF\nposix-ON\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "posix-OFF\nposix-ON\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "V6",
+   "desc": "prefix persistence after special builtin, posix pre-set (R3 family)",
+   "script": "set -o posix; unset A; A=v eval \":\"; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[v]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[v]\n",
+    "err": "",
+    "rc": 0
+   }
+  },
+  {
+   "id": "V7",
+   "desc": "prefix persistence after special builtin, NOT posix",
+   "script": "unset A; A=v eval \":\"; echo \"A=[${A-UNSET}]\"",
+   "verdict": "MATCH",
+   "same_err_text": true,
+   "bash": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   },
+   "psh": {
+    "out": "A=[UNSET]\n",
+    "err": "",
+    "rc": 0
+   }
+  }
+ ]
+}
