@@ -35,7 +35,7 @@ Manager            (arrays)    State    Manager
 | `option_registry.py` | `OPTION_REGISTRY` (single source of truth for all shell options) + `ShellOptions` (registry-backed, dict-compatible container; `ShellState.options`) |
 | `options.py` | `OptionHandler` - option *behavior* helpers (nounset check, xtrace print) |
 | `locale_service.py` | `LocaleService` (on `ShellState.locale`) - effective LC_CTYPE/LC_COLLATE from env at startup; the one home for collation (`collate_key`/`compare`), locale-gated case mapping (`upper`/`lower`/`toggle`), and POSIX character-class membership (`in_class`, `posix_class_ranges` — host libc `iswctype` via ctypes). Construction is PURE (campaign F2): the shell's service is `deferred=True`, libc application happens at activation under the coordinator's LOCALE lease (`ShellState._acquire_locale_lease`), and the process-active slot is written only by the activation glue (`set_process_active_locale`). See `docs/architecture/locale_service_design_2026-07-06.md` |
-| `process_lease.py` | `ProcessLeaseCoordinator` (campaign F2) - the ONE gate for process-global ownership: one active shell owner per process, LIFO `ActivationLease` nesting (implicit on first execution via `ShellState.activate`), `ComponentKind` leases (LOCALE / SIGNALS / STD_FDS) restored LIFO at `Shell.close()`/`shutdown()`, competing live owners rejected before mutation, fork-reset safety, and the recursion-headroom raise at ownership grant. Static ratchet: `tests/unit/tooling/test_process_global_ratchet_f2.py`; invariants: `tests/unit/core/test_process_lease.py`, purity pin `tests/unit/core/test_construction_purity_f2.py` |
+| `process_lease.py` | `ProcessLeaseCoordinator` (campaign F2) - the ONE gate for process-global ownership: one active shell owner per process, LIFO `ActivationLease` nesting (implicit on first execution via `ShellState.activate`), `ComponentKind` leases (LOCALE / SIGNALS / STD_FDS / MANAGED_SIGNALS) restored LIFO at `Shell.close()`/`shutdown()`, with a checkpointed unwind on failed grants, per-lease owner discrimination, and aggregate-plus-quarantine surfacing when a restore cannot be proven clean (slot 4A.1 — see "Process activation" below), competing live owners rejected before mutation, fork-reset safety, and the recursion-headroom raise at ownership grant. Static ratchet: `tests/unit/tooling/test_process_global_ratchet_f2.py`; invariants: `tests/unit/core/test_process_lease.py`, purity pin `tests/unit/core/test_construction_purity_f2.py` |
 | `functions.py` | `FunctionManager` - shell function definitions |
 | `exceptions.py` | `PshError` root + error classes, and control-flow signals (`LoopBreak`, etc.) |
 | `internal_errors.py` | Expected-error taxonomy + `report_internal_defect` (strict-errors guard) |
@@ -632,6 +632,58 @@ variable before delegating to the scope manager (a computed dynamic special
 like `RANDOM` is exempt — bash leaves it unexported). The env entry then
 materializes through the same `variable_changed` observer, so allexport
 needs no separate `state.env` write.
+
+### Process activation: the transaction, blame, and quarantine
+
+Ownership of the process-global resources is a TRANSACTION, not a pair of
+independent bookkeeping updates. Three invariants hold it together
+(`process_lease.py`; slot 4A.1):
+
+**A failed grant leaves nothing behind.** The grant glue
+(`state.py#ShellState._on_activation_grant`) can re-entrantly acquire
+component leases before it fails. Both grant windows —
+`process_lease.py#ProcessLeaseCoordinator.activate` and
+`#ProcessLeaseCoordinator.acquire_component` — therefore checkpoint the
+component depth and restore everything acquired above it, LIFO, BEFORE the
+owner metadata reverts (`#ProcessLeaseCoordinator._unwind_components_to`).
+The order is load-bearing: a restore runs while the failing grant is still
+the recorded owner.
+
+**Every question about a lease is asked of the LEASE, not of the token.**
+Each `ComponentLease` carries its own `owner_ref`, and the sites that judge
+ownership consult it: `#ProcessLeaseCoordinator._ensure_owner` counts only
+the current owner's leases when rejecting a competitor,
+`#ProcessLeaseCoordinator.find_component` never returns another owner's
+lease, and
+`#ProcessLeaseCoordinator.release_owner` restores the CALLER's leases even
+when the caller no longer holds the token. Asking the token instead is what
+produced blame that named an innocent shell, and what let an owner fold its
+own acquisition into a stranded foreign lease.
+
+**A process is clean only when it can be PROVEN clean.**
+`#ProcessLeaseCoordinator._release_components` attempts every restore even
+after one raises, collects the failures into one `#LeaseRestoreError` (a
+`LeaseError` subclass, so it stays in the loud internal-defect family — see
+the expected-error taxonomy above), and QUARANTINES the leases it could not
+restore. A quarantined process blocks further ownership grants and says so,
+naming the components; `#ProcessLeaseCoordinator.is_clean`,
+`#ProcessLeaseCoordinator.quarantine_report` and
+`#ProcessLeaseCoordinator.clear_quarantine` are the introspection an
+embedder needs to ask, see, and acknowledge that state.
+
+**Documented limitation — drop without `close()`.** GC handover is a
+nicety, never the mechanism: the deterministic sweep at the next ownership
+event is what guarantees recovery. A shell dropped without `close()` that
+holds only STD_FDS collects and hands over (its baseline holds the state
+weakly), but one that installed SIGNAL handlers stays reachable through the
+process-global signal registry, which retains every registration. That
+shell's dispositions really are still installed, so the next shell is
+rejected — `close()` is the contract there, pinned by
+`tests/unit/core/test_signal_lease_coordination_f2.py`.
+
+Batteries: `tests/unit/core/test_activation_transaction_4a1.py` (fault
+injection at every acquisition and restore boundary, the multi-shell
+poisoning scenarios, composition cells).
 
 ### Terminal Detection
 

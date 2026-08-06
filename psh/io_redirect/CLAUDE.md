@@ -358,6 +358,31 @@ image never inherits the backups (CLOEXEC — bash-pinned by
 named-fd redirects (`exec {v}>file`) takes no lease, keeping bash's
 first-free->=10 allocation numbering.
 
+The lease is taken from the redirect list's SHAPE, before the targets are
+opened — so acquisition can precede a redirect that then FAILS. When that
+happens fds 0/1/2 were never changed, and the acquisition must go back:
+`file_redirect.py#FileRedirector.apply_permanent_redirections` releases the
+lease through
+`file_redirect.py#FileRedirector._release_permanent_stream_lease` only when
+THIS command created it (`_acquire_permanent_stream_lease` returns whether
+it did). The discrimination is the whole point: an earlier successful
+`exec >f` legitimately owns fd 1 and a later failing `exec >/bad` must not
+release it. Leaving a lease behind for a redirect that changed nothing made
+the shell claim descriptors it did not hold, and unrelated shells were
+rejected on its behalf (slot 4A.1).
+
+`_StdStreamBaseline` records `None` for a descriptor that was CLOSED at
+baseline, and `restore` closes such a descriptor again. That encoding is
+reserved for `EBADF` alone: any other errno from the `F_DUPFD_CLOEXEC`
+baseline dup (EMFILE with a full table, EINVAL with the parking base above
+`RLIMIT_NOFILE`) means the baseline is UNKNOWABLE, so the acquisition
+aborts transactionally instead of recording a `None` that would later close
+the host's standard descriptors. The baseline holds the owning state
+WEAKLY, per the `ComponentLease` contract — the fd and `sys.std*` restore
+the hosting process needs runs regardless, and only the shell's own stream
+overrides depend on the shell still being reachable. Pinned by
+`tests/integration/redirection/test_failed_exec_lease_4a1.py`.
+
 ## Common Tasks
 
 ### Per-Type Redirect Helpers

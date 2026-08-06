@@ -341,6 +341,37 @@ is idempotent (no double-close of a reused fd), and the self-pipes are
 recreated if the loop is re-entered after a restore. Pinned by the serial
 lifecycle tests added in v0.300.
 
+**Managed dispositions are LEASED (slot 4A.1).** That teardown was the ONLY
+path that restored them, so a shell which never ran the loop — every
+embedded and transient shell — left all of them installed in the host
+(`Shell.close()` freed the notifier fds and nothing else). The first
+install into a fresh map now registers a `MANAGED_SIGNALS` component lease
+(`signal_manager.py#SignalManager._register_managed_signal_lease`), so
+`close()` restores the exact prior dispositions like any other
+process-global the shell leases, and a shell re-used after `close()`
+re-acquires. One draining restore
+(`signal_manager.py#_restore_managed_dispositions`) serves BOTH triggers,
+which is what makes teardown-then-close and close-then-teardown idempotent
+in either order: whichever runs second finds the map already empty. It
+registers through the signal registry rather than calling `signal.signal`,
+so restores stay tracked, and it holds no reference to the shell, so lease
+bookkeeping can never keep a dropped shell alive.
+
+`MANAGED_SIGNALS` is a kind of its own, never `ComponentKind.SIGNALS`
+(which `trap_manager.py` owns for unmanaged trap installs): component
+acquisition is idempotent per `(owner, kind)`, so one shared kind would
+keep only whichever family acquired FIRST and silently drop the other's
+restore. Both families on one shell, in both acquisition orders, are pinned
+in `tests/unit/interactive/test_managed_signal_lease_4a1.py`.
+
+**Behavior delta worth knowing when embedding**: because acquiring any
+component lease requires the owner token, `setup_signal_handlers()` now
+TAKES process ownership. The interactive path is unaffected —
+`run_interactive_loop()` calls `shell.activate()` immediately before setup
+— but an embedder calling setup directly on a never-activated shell while
+another shell owns the process now gets a loud `LeaseError` instead of
+silently installing handlers over it.
+
 ```python
 class SignalManager(InteractiveComponent):
     def __init__(self, shell):
