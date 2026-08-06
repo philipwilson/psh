@@ -1,0 +1,223 @@
+==============================================================================
+A8 MATRIX  cases=tmp/a8/cases_b2_targets.py  mode=-c  parser=rd
+  bash_version: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  bash_path: /opt/homebrew/bin/bash
+  psh_file: /Users/pwilson/src/psh-r3-4/psh/__init__.py
+  psh_version: 0.765.0
+  python: 3.14.2
+==============================================================================
+
+--- [D1] MATCH  target = plain FUNCTION (no builtin shadow): fn must still win
+    $ f(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) f
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [D2] MATCH  target = fn shadowing SPECIAL builtin (the signature shape)
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval "echo SPECIAL"
+    bash: rc=0 out='SPECIAL\n' err=''
+    psh : rc=0 out='SPECIAL\n' err=''
+
+--- [D3] MATCH  target = fn shadowing REGULAR builtin (posix does NOT reorder)
+    $ unalias -a 2>/dev/null; pwd(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) pwd
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [D4] MATCH  target = SPECIAL builtin, no function shadow
+    $ unset A; A=$((POSIXLY_CORRECT=1)) eval "echo SPECIAL"
+    bash: rc=0 out='SPECIAL\n' err=''
+    psh : rc=0 out='SPECIAL\n' err=''
+
+--- [D5] MATCH  target = REGULAR builtin, no function shadow
+    $ A=$((POSIXLY_CORRECT=1)) pwd >/dev/null && echo RAN
+    bash: rc=0 out='RAN\n' err=''
+    psh : rc=0 out='RAN\n' err=''
+
+--- [D6] MATCH  target = EXTERNAL
+    $ A=$((POSIXLY_CORRECT=1)) /bin/echo EXT
+    bash: rc=0 out='EXT\n' err=''
+    psh : rc=0 out='EXT\n' err=''
+
+--- [D7] MATCH (err-text differs)  target = NOT FOUND: rc + side-effect persistence + posix state
+    $ unset POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) nosuchcmd_xyz; echo "rc=$?"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"; shopt -qo posix && echo posix-ON || echo posix-OFF
+    bash: rc=0 out='rc=127\npc=[1]\nposix-ON\n' err='/opt/homebrew/bin/bash: line 1: nosuchcmd_xyz: command not found\n'
+    psh : rc=0 out='rc=127\npc=[1]\nposix-ON\n' err='psh: line 1: nosuchcmd_xyz: command not found\n'
+
+--- [D8] MATCH  target = fn shadowing special builtin ':' 
+    $ :(){ echo FN; } 2>/dev/null; A=$((POSIXLY_CORRECT=1)) : ; echo "rc=$?"
+    bash: rc=0 out='rc=0\n' err=''
+    psh : rc=0 out='rc=0\n' err=''
+
+--- [D9] MATCH  target = fn shadowing 'export' (special)
+    $ export(){ echo FN; }; unset V; A=$((POSIXLY_CORRECT=1)) export V=1; echo "V=[${V-UNSET}]"
+    bash: rc=0 out='V=[1]\n' err=''
+    psh : rc=0 out='V=[1]\n' err=''
+
+--- [D10] MATCH  target = fn shadowing 'unset' (special)
+    $ W=keep; unset(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) unset W; echo "W=[${W-UNSET}]"
+    bash: rc=0 out='W=[UNSET]\n' err=''
+    psh : rc=0 out='W=[UNSET]\n' err=''
+
+--- [P1] MATCH  flip + special builtin: does THAT command's prefix persist?
+    $ unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) eval ":"; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[1]\n' err=''
+    psh : rc=0 out='A=[1]\n' err=''
+
+--- [P2] MATCH  flip + fn-shadowed special builtin: prefix persistence
+    $ unset POSIXLY_CORRECT A; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":"; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[1]\n' err=''
+    psh : rc=0 out='A=[1]\n' err=''
+
+--- [P3] MATCH  flip + REGULAR builtin: prefix must NOT persist
+    $ unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) pwd >/dev/null; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[UNSET]\n' err=''
+    psh : rc=0 out='A=[UNSET]\n' err=''
+
+--- [P4] MATCH  flip + FUNCTION: prefix must NOT persist
+    $ unset POSIXLY_CORRECT A; f(){ :; }; A=$((POSIXLY_CORRECT=1)) f; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[UNSET]\n' err=''
+    psh : rc=0 out='A=[UNSET]\n' err=''
+
+--- [P5] MATCH  flip + EXTERNAL: prefix must NOT persist
+    $ unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) /bin/echo x >/dev/null; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[UNSET]\n' err=''
+    psh : rc=0 out='A=[UNSET]\n' err=''
+
+--- [P6] MATCH  flip + NOT-FOUND: prefix persistence
+    $ unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) nosuchcmd_xyz 2>/dev/null; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[UNSET]\n' err=''
+    psh : rc=0 out='A=[UNSET]\n' err=''
+
+--- [Q1] DIFF (err-text differs)  already-ON, side effect rewrites POSIXLY_CORRECT (no change)
+    $ set -o posix; eval(){ echo FN; } 2>/dev/null; A=$((POSIXLY_CORRECT=1)) eval "echo SPECIAL"
+    bash: rc=2 out='' err="/opt/homebrew/bin/bash: line 1: `eval': is a special builtin\n"
+    psh : rc=0 out='SPECIAL\n' err=''
+
+--- [Q2] MATCH  already-OFF, no side effect (control)
+    $ eval(){ echo FN; }; eval "echo SPECIAL"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [Q3] DIFF (err-text differs)  flip-OFF attempt: can an expansion UNSET POSIXLY_CORRECT?
+    $ POSIXLY_CORRECT=1; eval(){ echo FN; } 2>/dev/null; A=$(unset POSIXLY_CORRECT; echo x) eval "echo SPECIAL"
+    bash: rc=2 out='' err="/opt/homebrew/bin/bash: line 1: `eval': is a special builtin\n"
+    psh : rc=0 out='SPECIAL\n' err=''
+
+--- [Q4] MATCH  does set +o posix unset POSIXLY_CORRECT? (coupling direction)
+    $ POSIXLY_CORRECT=1; set +o posix; echo "pc=[${POSIXLY_CORRECT-UNSET}]"; shopt -qo posix && echo posix-ON || echo posix-OFF
+    bash: rc=0 out='pc=[UNSET]\nposix-OFF\n' err=''
+    psh : rc=0 out='pc=[UNSET]\nposix-OFF\n' err=''
+
+--- [Q5] MATCH (err-text differs)  readonly POSIXLY_CORRECT blocks the arith flip?
+    $ unset POSIXLY_CORRECT; readonly POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval "echo SPECIAL"; echo "rc=$?"
+    bash: rc=1 out='' err='/opt/homebrew/bin/bash: line 1: POSIXLY_CORRECT: readonly variable\n'
+    psh : rc=1 out='' err='psh: line 1: POSIXLY_CORRECT: readonly variable\n'
+
+--- [T1] MATCH  later prefix reads earlier prefix (A=1 B=$A) - must SURVIVE
+    $ unset A B; A=1 B=$A /bin/echo "B-via-env"; A=1 B=$A eval 'echo "B=[$B]"'
+    bash: rc=0 out='B-via-env\nB=[1]\n' err=''
+    psh : rc=0 out='B-via-env\nB=[1]\n' err=''
+
+--- [T2] MATCH  PATH written by a := side effect, external target search
+    $ mkdir -p tmp/a8/pd && printf "#!/bin/sh\necho MINE\n" > tmp/a8/pd/mycmd_xyz && chmod +x tmp/a8/pd/mycmd_xyz; OLD=$PATH; unset PATH; A=${PATH:=$OLD:$PWD/tmp/a8/pd} mycmd_xyz; echo "rc=$?"
+    bash: rc=0 out='MINE\nrc=0\n' err=''
+    psh : rc=0 out='MINE\nrc=0\n' err=''
+
+--- [T3] MATCH  PATH written by arithmetic (numeric clobber) then external
+    $ A=$((PATH=0)) /bin/echo abs-path-still-works; echo "rc=$?"
+    bash: rc=0 out='abs-path-still-works\nrc=0\n' err=''
+    psh : rc=0 out='abs-path-still-works\nrc=0\n' err=''
+
+--- [T4] MATCH  IFS written by := side effect, seen by a later prefix expansion
+    $ set -- a b c; unset IFS; A=${IFS:=-} B="$*" eval 'echo "B=[$B]"'
+    bash: rc=0 out='B=[a-b-c]\n' err=''
+    psh : rc=0 out='B=[a-b-c]\n' err=''
+
+--- [T5] MATCH  plain var written by arith, read by a LATER prefix
+    $ unset Z; A=$((Z=7)) B=$Z eval 'echo "B=[$B]"'
+    bash: rc=0 out='B=[7]\n' err=''
+    psh : rc=0 out='B=[7]\n' err=''
+
+--- [T6] MATCH  plain var written by :=, read by a LATER prefix
+    $ unset Z; A=${Z:=7} B=$Z eval 'echo "B=[$B]"'
+    bash: rc=0 out='B=[7]\n' err=''
+    psh : rc=0 out='B=[7]\n' err=''
+
+--- [C7a] MATCH  RANDOM=1 b=$RANDOM printenv b  (external target)
+    $ RANDOM=1 b=$RANDOM printenv b
+    bash: rc=0 out='1\n' err=''
+    psh : rc=0 out='1\n' err=''
+
+--- [C7b] MATCH  RANDOM=1 b=$RANDOM f  (function target)
+    $ f(){ echo "b=$b"; }; RANDOM=1 b=$RANDOM f
+    bash: rc=0 out='b=1\n' err=''
+    psh : rc=0 out='b=1\n' err=''
+
+--- [C7c] MATCH  RANDOM=1 b=$RANDOM  + regular builtin reading $b
+    $ RANDOM=1 b=$RANDOM eval 'echo "b=[$b]"'
+    bash: rc=0 out='b=[1]\n' err=''
+    psh : rc=0 out='b=[1]\n' err=''
+
+--- [C7d] MATCH  RANDOM=1 b=$RANDOM external, $b-visible via sh -c
+    $ RANDOM=1 b=$RANDOM /bin/sh -c 'echo "b=[$b]"'
+    bash: rc=0 out='b=[1]\n' err=''
+    psh : rc=0 out='b=[1]\n' err=''
+
+--- [C7e] MATCH  does RANDOM=1 prefix persist after an external command?
+    $ RANDOM=1 /bin/echo x >/dev/null; r1=$RANDOM; r2=$RANDOM; [ "$r1" = "$r2" ] && echo SAME || echo DIFFERENT
+    bash: rc=0 out='DIFFERENT\n' err=''
+    psh : rc=0 out='DIFFERENT\n' err=''
+
+--- [C7f] MATCH  RANDOM masking for a function (shipped family, must stay)
+    $ f(){ echo "$RANDOM"; }; RANDOM=5 f
+    bash: rc=0 out='5\n' err=''
+    psh : rc=0 out='5\n' err=''
+
+--- [C7g] MATCH  RANDOM=1 b=$RANDOM c=$RANDOM (two later reads)
+    $ RANDOM=1 b=$RANDOM c=$RANDOM eval 'echo "b=[$b] c=[$c]"'
+    bash: rc=0 out='b=[1] c=[1]\n' err=''
+    psh : rc=0 out='b=[1] c=[1]\n' err=''
+
+--- [C7h] MATCH  SECONDS in prefix, later prefix reads it
+    $ SECONDS=100 b=$SECONDS eval 'echo "b=[$b]"'
+    bash: rc=0 out='b=[100]\n' err=''
+    psh : rc=0 out='b=[100]\n' err=''
+
+--- [E1] MATCH  flip mid-list: what does a FUNCTION see?
+    $ f(){ echo "A=[$A] B=[$B]"; }; unset A B POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) B=2 f
+    bash: rc=0 out='A=[1] B=[2]\n' err=''
+    psh : rc=0 out='A=[1] B=[2]\n' err=''
+
+--- [E2] MATCH  flip mid-list: what does a special BUILTIN see?
+    $ unset A B POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) B=2 eval 'echo "A=[$A] B=[$B]"'
+    bash: rc=0 out='A=[1] B=[2]\n' err=''
+    psh : rc=0 out='A=[1] B=[2]\n' err=''
+
+--- [E3] MATCH  flip mid-list: what does an EXTERNAL see (env)?
+    $ unset A B POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) B=2 /bin/sh -c 'echo "A=[$A] B=[$B]"'
+    bash: rc=0 out='A=[1] B=[2]\n' err=''
+    psh : rc=0 out='A=[1] B=[2]\n' err=''
+
+--- [E4] MATCH  declare -p of a prefix var inside a special builtin
+    $ unset A POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) eval 'declare -p A'
+    bash: rc=0 out='declare -x A="1"\n' err=''
+    psh : rc=0 out='declare -x A="1"\n' err=''
+
+--- [R1] DIFF (err-text differs)  redirect fails on a flip-prefixed special builtin
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":" > /nonexistent_dir_xyz/f; echo "rc=$?"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"; shopt -qo posix && echo posix-ON || echo posix-OFF
+    bash: rc=1 out='' err='/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+    psh : rc=0 out='rc=1\npc=[1]\nposix-ON\n' err='psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+
+--- [R2] MATCH (err-text differs)  redirect fails on a flip-prefixed EXTERNAL
+    $ unset POSIXLY_CORRECT A; A=$((POSIXLY_CORRECT=1)) /bin/echo x > /nonexistent_dir_xyz/f; echo "rc=$?"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"
+    bash: rc=0 out='rc=1\npc=[1]\n' err='/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+    psh : rc=0 out='rc=1\npc=[1]\n' err='psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+
+--- [R3] MATCH (err-text differs)  redirect fails on a flip-prefixed NOT-FOUND command
+    $ unset POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) nosuchcmd_xyz > /nonexistent_dir_xyz/f; echo "rc=$?"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"
+    bash: rc=0 out='rc=1\npc=[1]\n' err='/opt/homebrew/bin/bash: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+    psh : rc=0 out='rc=1\npc=[1]\n' err='psh: line 1: /nonexistent_dir_xyz/f: No such file or directory\n'
+
+==============================================================================
+TOTALS: 42 cases, 39 MATCH, 3 DIFF
+==============================================================================
+raw pairs -> tmp/a8/r3tip_b2_targets.json

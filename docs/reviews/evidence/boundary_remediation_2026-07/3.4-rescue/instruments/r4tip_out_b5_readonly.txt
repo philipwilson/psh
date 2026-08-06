@@ -1,0 +1,43 @@
+==============================================================================
+A8 MATRIX  cases=tmp/a8/cases_b5_readonly.py  mode=-c  parser=rd
+  bash_version: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  bash_path: /opt/homebrew/bin/bash
+  psh_file: /Users/pwilson/src/psh-r3-4/psh/__init__.py
+  psh_version: 0.765.0
+  python: 3.14.2
+==============================================================================
+
+--- [RO1] MATCH (err-text differs)  readonly+UNSET, FUNCTION target: is the assignment refused?
+    $ readonly RX 2>/dev/null; f(){ echo "RX=[${RX-UNSET}]"; }; RX=1 f; echo "rc=$?"
+    bash: rc=0 out='RX=[UNSET]\nrc=0\n' err='/opt/homebrew/bin/bash: line 1: RX: readonly variable\n'
+    psh : rc=0 out='RX=[UNSET]\nrc=0\n' err='psh: line 1: RX: readonly variable\n'
+
+--- [RO2] MATCH (err-text differs)  readonly+SET, FUNCTION target
+    $ RX=keep; readonly RX; f(){ echo "RX=[${RX-UNSET}]"; }; RX=1 f; echo "rc=$?"
+    bash: rc=0 out='RX=[keep]\nrc=0\n' err='/opt/homebrew/bin/bash: line 1: RX: readonly variable\n'
+    psh : rc=0 out='RX=[keep]\nrc=0\n' err='psh: line 1: RX: readonly variable\n'
+
+--- [RO3] MATCH (err-text differs)  readonly+UNSET, BUILTIN target (layer route)
+    $ readonly RX 2>/dev/null; RX=1 eval 'echo "RX=[${RX-UNSET}]"'; echo "rc=$?"
+    bash: rc=0 out='RX=[UNSET]\nrc=0\n' err='/opt/homebrew/bin/bash: line 1: RX: readonly variable\n'
+    psh : rc=0 out='RX=[UNSET]\nrc=0\n' err='psh: line 1: RX: readonly variable\n'
+
+--- [RO4] MATCH (err-text differs)  readonly+UNSET, EXTERNAL target (layer route)
+    $ readonly RX 2>/dev/null; RX=1 /bin/sh -c 'echo "RX=[${RX-UNSET}]"'; echo "rc=$?"
+    bash: rc=0 out='RX=[UNSET]\nrc=0\n' err='/opt/homebrew/bin/bash: line 1: RX: readonly variable\n'
+    psh : rc=0 out='RX=[UNSET]\nrc=0\n' err='psh: line 1: RX: readonly variable\n'
+
+--- [RO5] MATCH  readonly+UNSET POSIXLY_CORRECT blocks flip (the R3 pin shape)
+    $ readonly POSIXLY_CORRECT 2>/dev/null; eval(){ echo fn; }; { POSIXLY_CORRECT=1 eval "echo builtin-ran"; } 2>/dev/null
+    bash: rc=0 out='fn\n' err=''
+    psh : rc=0 out='fn\n' err=''
+
+--- [RO6] MATCH  readonly+UNSET POSIXLY_CORRECT, FUNCTION target after it
+    $ readonly POSIXLY_CORRECT 2>/dev/null; f(){ echo FN; }; { POSIXLY_CORRECT=1 f; } 2>/dev/null; echo "rc=$?"
+    bash: rc=0 out='FN\nrc=0\n' err=''
+    psh : rc=0 out='FN\nrc=0\n' err=''
+
+==============================================================================
+TOTALS: 6 cases, 6 MATCH, 0 DIFF
+==============================================================================
+raw pairs -> tmp/a8/r4tip_b5_readonly.json

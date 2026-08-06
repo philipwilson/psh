@@ -1,0 +1,12 @@
+4	1	docs/architecture/ast_data_flow.md
+2	2	psh/core/CLAUDE.md
+27	4	psh/core/scope.py
+4	4	psh/core/state.py
+7	4	psh/executor/CLAUDE.md
+68	29	psh/executor/command.py
+235	89	psh/executor/command_assignments.py
+46	28	psh/executor/command_resolution.py
+2	2	tests/README.md
+75	0	tests/behavioral/golden_cases.yaml
+913	0	tests/conformance/bash/test_resolution_timing_conformance.py
+257	0	tests/unit/tooling/test_resolution_timing_ratchet_3_4.py

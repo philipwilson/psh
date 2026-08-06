@@ -1,0 +1,7 @@
+PSH project statistics (computed from the tree):
+  collected tests    : 24,819
+  test files (test_*): 789
+  test .py files     : 808
+  test lines         : 158,955
+  psh .py files      : 275
+  psh production lines: 82,464

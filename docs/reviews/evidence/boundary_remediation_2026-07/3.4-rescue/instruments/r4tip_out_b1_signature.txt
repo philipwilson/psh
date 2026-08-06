@@ -1,0 +1,143 @@
+==============================================================================
+A8 MATRIX  cases=tmp/a8/cases_b1_signature.py  mode=-c  parser=rd
+  bash_version: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  bash_path: /opt/homebrew/bin/bash
+  psh_file: /Users/pwilson/src/psh-r3-4/psh/__init__.py
+  psh_version: 0.765.0
+  python: 3.14.2
+==============================================================================
+
+--- [S1] MATCH  arith side effect flips posix; fn shadows special builtin
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval "echo BUILTIN-PATH"
+    bash: rc=0 out='BUILTIN-PATH\n' err=''
+    psh : rc=0 out='BUILTIN-PATH\n' err=''
+
+--- [S2] MATCH  := side effect flips posix; fn shadows special builtin
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval "echo BUILTIN-PATH"
+    bash: rc=0 out='BUILTIN-PATH\n' err=''
+    psh : rc=0 out='BUILTIN-PATH\n' err=''
+
+--- [S3] MATCH  name-level POSIXLY_CORRECT prefix (shipped-correct control)
+    $ eval(){ echo FN; }; POSIXLY_CORRECT=1 eval "echo BUILTIN-PATH"
+    bash: rc=0 out='BUILTIN-PATH\n' err=''
+    psh : rc=0 out='BUILTIN-PATH\n' err=''
+
+--- [S4] MATCH  no side effect at all (control: function must win)
+    $ eval(){ echo FN; }; A=1 eval "echo BUILTIN-PATH"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [S5] MATCH  arith with NO posix write (control: function must win)
+    $ eval(){ echo FN; }; A=$((Q=1)) eval "echo BUILTIN-PATH"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [K1] MATCH  arith plain assign
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K2] MATCH  arith += onto unset
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT+=1)) eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K3] MATCH  arith postincrement
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT++)) eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K4] MATCH  := store nonempty
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K5] MATCH  := store EMPTY value (name-level says any value counts)
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=} eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K6] MATCH  = store (unset-only) on unset var
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT=1} eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K7] MATCH  command substitution doing the write (SUBSHELL - must NOT flip)
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$(POSIXLY_CORRECT=1; echo x) eval "echo B"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [K8] MATCH  command substitution + export (still a subshell)
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$(export POSIXLY_CORRECT=1; echo x) eval "echo B"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [K9] MATCH  nested: := whose default runs an arith write
+    $ unset POSIXLY_CORRECT Z; eval(){ echo FN; }; A=${Z:=$((POSIXLY_CORRECT=1))} eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K10] MATCH  arith side effect in the FIRST of several prefixes
+    $ eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) B=2 C=3 eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K11] MATCH  arith side effect in the LAST of several prefixes
+    $ eval(){ echo FN; }; B=2 C=3 A=$((POSIXLY_CORRECT=1)) eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K12] MATCH  arith side effect in the MIDDLE of several prefixes
+    $ eval(){ echo FN; }; B=2 A=$((POSIXLY_CORRECT=1)) C=3 eval "echo B"
+    bash: rc=0 out='B\n' err=''
+    psh : rc=0 out='B\n' err=''
+
+--- [K13] MATCH (err-text differs)  side effect inside array-subscript arithmetic
+    $ unset arr; eval(){ echo FN; }; arr[$((POSIXLY_CORRECT=1))]=v eval "echo B"
+    bash: rc=0 out='FN\n' err="/opt/homebrew/bin/bash: line 1: `arr[$((POSIXLY_CORRECT=1))]': not a valid identifier\n"
+    psh : rc=0 out='FN\n' err="psh: `arr[$((POSIXLY_CORRECT=1))]': not a valid identifier\n"
+
+--- [K14] MATCH  ${var:?} / ${var+alt} - no store, must NOT flip
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT+set} eval "echo B"
+    bash: rc=0 out='FN\n' err=''
+    psh : rc=0 out='FN\n' err=''
+
+--- [V1] MATCH  does the arith POSIXLY_CORRECT write persist after the command?
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"
+    bash: rc=0 out='pc=[1]\n' err=''
+    psh : rc=0 out='pc=[1]\n' err=''
+
+--- [V2] MATCH  does the posix OPTION persist after the command?
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":"; shopt -qo posix && echo posix-ON || echo posix-OFF
+    bash: rc=0 out='posix-ON\n' err=''
+    psh : rc=0 out='posix-ON\n' err=''
+
+--- [V3] MATCH  does the := store persist after the command?
+    $ unset POSIXLY_CORRECT; eval(){ echo FN; }; A=${POSIXLY_CORRECT:=1} eval ":"; echo "pc=[${POSIXLY_CORRECT-UNSET}]"
+    bash: rc=0 out='pc=[1]\n' err=''
+    psh : rc=0 out='pc=[1]\n' err=''
+
+--- [V4] MATCH  does the PREFIX var A persist? (special builtin in posix mode)
+    $ unset POSIXLY_CORRECT A; eval(){ echo FN; }; A=$((POSIXLY_CORRECT=1)) eval ":"; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[1]\n' err=''
+    psh : rc=0 out='A=[1]\n' err=''
+
+--- [V5] MATCH  baseline: shopt -qo posix reporting works at all
+    $ shopt -qo posix && echo posix-ON || echo posix-OFF; set -o posix; shopt -qo posix && echo posix-ON || echo posix-OFF
+    bash: rc=0 out='posix-OFF\nposix-ON\n' err=''
+    psh : rc=0 out='posix-OFF\nposix-ON\n' err=''
+
+--- [V6] MATCH  prefix persistence after special builtin, posix pre-set (R3 family)
+    $ set -o posix; unset A; A=v eval ":"; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[v]\n' err=''
+    psh : rc=0 out='A=[v]\n' err=''
+
+--- [V7] MATCH  prefix persistence after special builtin, NOT posix
+    $ unset A; A=v eval ":"; echo "A=[${A-UNSET}]"
+    bash: rc=0 out='A=[UNSET]\n' err=''
+    psh : rc=0 out='A=[UNSET]\n' err=''
+
+==============================================================================
+TOTALS: 26 cases, 26 MATCH, 0 DIFF
+==============================================================================
+raw pairs -> tmp/a8/r4tip_b1_signature.json
