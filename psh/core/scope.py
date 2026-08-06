@@ -25,6 +25,7 @@ class VariableScope:
         # ``export``/``declare -g`` builtins write PAST it to the variable's
         # real home (bash) — see set_variable(skip_temp_env=...).
         self.is_temp_env = False
+        self.is_staging = False
         # `local -` snapshot: (set-option values, edit_mode) saved when the
         # function ran `local -`; restored by the function-return path so the
         # options changed inside the function revert (bash). None if unused.
@@ -42,6 +43,7 @@ class VariableScope:
         """
         new_scope = VariableScope(name=self.name)
         new_scope.is_temp_env = self.is_temp_env
+        new_scope.is_staging = self.is_staging
         if self.dash_snapshot is not None:
             opts, edit_mode = self.dash_snapshot
             new_scope.dash_snapshot = (dict(opts), edit_mode)
@@ -185,7 +187,7 @@ class ScopeManager:
         self._debug_print(f"Pushing scope for function: {name or 'anonymous'}")
         return new_scope
 
-    def push_temp_env_scope(self) -> VariableScope:
+    def push_temp_env_scope(self, staging: bool = False) -> VariableScope:
         """Push a scope holding a command's temp-env prefix assignments.
 
         bash treats ``X=1 func`` as a *temporary variable context* layered
@@ -197,9 +199,25 @@ class ScopeManager:
         a genuine scope reproduces all of that exactly — see
         ``CommandAssignments.apply_prefix``. Named distinctly from a
         function scope so ``--debug-scopes`` output stays legible.
+
+        ``staging=True`` marks the scope as a prefix transaction still in
+        flight (``CommandAssignments.expand_prefix``). The INVARIANT: a
+        staging scope is invisible to whole-table ENUMERATION
+        (:meth:`iter_effective_variables` skips it) while staying visible to
+        NAME lookup — its values are expanded but not yet installed, so a
+        later prefix value must read them while a ``set`` run from inside one
+        must not. **Adoption is the only transition**: a FUNCTION target
+        clears the flag and keeps the scope as its temp-env layer (bash
+        merges a function's prefix vars into its locals, so the body DOES
+        enumerate them); every other target pops it. A staging scope must
+        never outlive its command — a leaked one is enumeration-INVISIBLE
+        pollution, harder to notice than the visible kind, which is why
+        ``expand_prefix`` owns its error unwinding and why the invariant is
+        pinned rather than merely written down here.
         """
         scope = self.push_scope(name='tempenv')
         scope.is_temp_env = True
+        scope.is_staging = staging
         return scope
 
     def set_temp_env_var(self, name: str, value: Any) -> None:
@@ -1064,6 +1082,11 @@ class ScopeManager:
         """
         effective: Dict[str, Variable] = {}
         for scope in self.scope_stack:  # global first; inner scopes override
+            if scope.is_staging:
+                # A prefix transaction mid-expansion: its bindings are visible
+                # to NAME lookup (the next value reads them) but not yet
+                # installed, so whole-table enumeration must not show them.
+                continue
             effective.update(scope.variables)
         yield from effective.items()
 
