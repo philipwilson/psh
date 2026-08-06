@@ -4,6 +4,31 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.766.0 (2026-08-06) - Resolution authority timing (remediation slot 3.4, HIGH-3)
+
+- Two-phase prefix-assignment transaction: `expand_prefix` stages values
+  left-to-right in an enumeration-invisible staging scope (each value's
+  in-process side effects visible to later values AND to command
+  resolution), then exactly ONE `ResolvedCommand` is built from the
+  post-side-effect authoritative state, then `commit_prefix` installs the
+  LIVE staged values routed per target kind — closing HIGH-3: prefix side
+  effects that enable POSIX mode (`A=$((POSIXLY_CORRECT=1))`,
+  `${POSIXLY_CORRECT:=1}`) now produce the same dispatch decision as bash.
+- Refuse-before-evaluate on readonly prefix assignments (bash-measured: a
+  refused assignment's value is never evaluated) — the fatal-expansion,
+  store, command-substitution and xtrace consequence classes all follow
+  bash; declared-unset readonly names are now refused on the function
+  route with bash's skip-and-continue shape (RO1).
+- Carry #7 (RANDOM-in-prefix) closed with scope: later prefixes read the
+  literal staged binding at every target kind; the command's own read on
+  the non-function route remains a pinned, documented divergence.
+- 233-row resolution-timing conformance battery (100 red-on-base) with a
+  GENERATED side-effect-kind family, an 11-test ordering ratchet with
+  self-tested offenders, and both-sides divergence pins for the eight
+  successor-owned cells surfaced by seven adversarial verification
+  rounds (28 findings, 28 real, 0 false).
+- Evidence: `docs/reviews/evidence/boundary_remediation_2026-07/3.4-rescue/`.
+
 ## 0.765.0 (2026-08-02) - Operand field IR (remediation slot 3.3, HIGH-6)
 
 - Value operands (`${x:-word}` and the `:-`/`-`/`:+`/`+`/`:=`/`=`/`:?`/`?`
