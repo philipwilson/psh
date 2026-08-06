@@ -396,6 +396,10 @@ class CommandExecutor:
         prefix_assignments_persist = False
         prefix = None
         pushed_temp_scope = False
+        # True only in the window between phase 1 of the prefix transaction
+        # opening a staging scope and phase 2 disposing of it, so an error
+        # raised while resolving in between cannot leak the scope.
+        staging_scope_open = False
         resolved = None
 
         try:
@@ -478,35 +482,53 @@ class CommandExecutor:
                 pass
 
             # Build the immutable command-environment overlay (the prefix
-            # metadata resolution needs) and RESOLVE ONCE, before any scope
-            # or dispatch decision. This is the H10 authority-timing fix: the
-            # scope model (function temp-env scope vs command temp-env layer),
-            # the ``exec`` shortcut, prefix-assignment persistence, and the
-            # POSIX prefix-error branch are all driven by this one
-            # ``ResolvedCommand`` — never recomputed from raw names.
+            # metadata resolution needs from the NAMES alone).
             overlay = self.assignments.build_overlay(raw_assignments)
+
+            # PHASE 1 of the prefix transaction: expand the prefix VALUES,
+            # left to right, staged so each sees the ones to its left. This
+            # precedes resolution because a value's expansion can perform the
+            # side effect that decides the dispatch — an arithmetic or
+            # ``${v:=}`` write to POSIXLY_CORRECT enables POSIX mode, under
+            # which a special builtin outranks a same-named function. Resolving
+            # first would decide the lookup from stale state (the
+            # authority-timing half of #20 H10 that the R3 slot left open).
+            # Resolution has no side effects, so running it later reorders
+            # nothing observable.
+            staged = self.assignments.expand_prefix(raw_assignments)
+            staging_scope_open = staged.staging_scope
+
+            # RESOLVE ONCE, now that every fact affecting precedence exists.
+            # The scope model (function temp-env scope vs command temp-env
+            # layer), the ``exec`` shortcut, prefix-assignment persistence, and
+            # the POSIX prefix-error branch are all driven by this one
+            # ``ResolvedCommand`` — never recomputed from raw names.
             resolved = self.resolve_command(normalized, overlay, context)
 
             # When the command resolves to a shell FUNCTION, temp-env prefix
             # assignments follow bash's temporary-variable-context model: they
             # act as an exported scope layered under the function's own locals,
             # so a plain body assignment is discarded on return while a body
-            # ``declare -g``/``export`` reaches the global and survives. We push
-            # that scope HERE (before value expansion, so `A=1 B=$A f` sees A in
-            # the layer) and pop it in the finally; a mid-expansion error still
-            # unwinds cleanly because the push precedes apply_prefix. A POSIX
-            # special builtin shadowed by a same-named function resolves to the
-            # BUILTIN (not the function), so it correctly takes the persist path
-            # instead of the discarded-scope path (H10).
+            # ``declare -g``/``export`` reaches the global and survives. Phase 1
+            # already staged them in exactly such a scope, so the function path
+            # ADOPTS it rather than opening a second one; the finally pops it.
+            # A POSIX special builtin shadowed by a same-named function resolves
+            # to the BUILTIN (not the function), so it correctly takes the
+            # persist path instead of the discarded-scope path (H10).
             if (resolved is not None and resolved.uses_temp_env_scope
                     and raw_assignments):
-                self.state.scope_manager.push_temp_env_scope()
+                if not staging_scope_open:
+                    # Every assignment was refused (readonly), so phase 1 opened
+                    # no scope — the function still needs its (empty) layer.
+                    self.state.scope_manager.push_temp_env_scope()
                 pushed_temp_scope = True
 
-            # Apply assignments for this command, now that its words are
-            # expanded. Each value sees the assignments to its left.
-            prefix = self.assignments.apply_prefix(
-                raw_assignments, temp_scope=pushed_temp_scope)
+            # PHASE 2: route the ALREADY-EXPANDED bindings to the destination
+            # the resolution chose. Never re-expands — a second expansion would
+            # re-run every value's side effects.
+            prefix = self.assignments.commit_prefix(
+                staged, temp_scope=pushed_temp_scope)
+            staging_scope_open = False
 
             if prefix.failed and self.state.options.get('errexit'):
                 # bash: under set -e a prefix-assignment error (e.g.
@@ -572,10 +594,14 @@ class CommandExecutor:
             return result.status
 
         finally:
+            # An error between the transaction's two phases (i.e. while
+            # resolving) leaves the staging scope open with nothing owning it.
+            if staging_scope_open:
+                self.state.scope_manager.pop_scope()
             # In POSIX mode, prefix assignments before a special builtin
             # persist (only then is prefix_assignments_persist True);
             # otherwise they are restored.
-            if pushed_temp_scope:
+            elif pushed_temp_scope:
                 # Function temp-env layer: pop it (its variables are discarded,
                 # revealing any global write the body made). Special builtins
                 # never take the function path, so persistence doesn't apply.
