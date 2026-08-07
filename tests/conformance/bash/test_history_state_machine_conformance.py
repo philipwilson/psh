@@ -285,6 +285,28 @@ class TestDeclaredDeviations:
         assert "true typed1" in bf
         assert "true typed1" in pf
 
+    def test_write_then_append_on_the_DEFAULT_file_bash_duplicates(self, tmp_path):
+        """b5. bash's `-w` does not consume its counter, so a following `-a`
+        re-writes the same entries — on the DEFAULT file too, not just a named
+        one. psh's `-w` marks the list persisted, so `-a` adds nothing.
+
+        Registered as its own declared deviation rather than living inside the
+        unit counter-pin's assertion: a deviation only one test knows about is
+        a silent deviation."""
+        script = "history -s x\nhistory -w\nhistory -a\nexit\n"
+        (_, bf), (_, pf) = both(script, tmp_path, "devwdef")
+        assert bf.count("x") == 2, "bash re-writes what -w already wrote"
+        assert pf.count("x") == 1, "psh does not duplicate it"
+
+    def test_append_twice_duplicates_in_NEITHER_shell(self, tmp_path):
+        """CONTROL for b5: without the `-w`, a second `-a` adds nothing in
+        either shell — so b5 is specific to `-w` not consuming bash's counter,
+        not a general 'bash duplicates on every append' claim."""
+        script = "history -s x\nhistory -a\nhistory -a\nexit\n"
+        (_, bf), (_, pf) = both(script, tmp_path, "devaa")
+        assert bf.count("x") == 1
+        assert pf.count("x") == 1
+
 
 class TestClusteredFlagsRider:
     """LEDGER carry #25. bash parses clustered flags with getopt (`-d` takes an
