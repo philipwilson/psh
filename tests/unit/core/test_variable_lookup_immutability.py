@@ -533,7 +533,7 @@ class TestDeclaredThreatModelBoundary:
         by_delattr = VariableLookup.of_value("v")
         delattr(by_delattr, "_value")
         with pytest.raises(AttributeError):
-            by_delattr.value
+            assert by_delattr.value is None  # the slot is gone; reading raises
 
         # (d) object.__setattr__
         by_object_setattr = VariableLookup.of_value("v")
