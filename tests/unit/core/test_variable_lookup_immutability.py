@@ -15,18 +15,31 @@ MUTATION SURFACE x AUTHORITY GUARD axis: each mutation surface (fresh VALUE
 instance / MISSING singleton / PRESENT_UNSET singleton, x each public name) is
 attempted against each authority's guarantee.
 
-THREAT MODEL (ruled, slot 4B.1 ruling (c)). These pins prove HONEST-CALLER
-ACCIDENT: plain attribute assignment to a public name raises, on fresh
-instances and on both shared singletons alike, and a poisoning attempt leaves
-the next read clean. Declared OUT OF SCOPE as deliberate circumvention:
-``object.__setattr__``, module rebinding, and direct writes to the private
-``_status`` / ``_value`` slots. That third clause is WEAKER than the frozen-
-dataclass surface used for pattern nodes (slot 3.2, MEDIUM-6); the alternatives
-that would close it were priced and declined on measured cost (raising
-``__setattr__`` 1.081x, frozen dataclass 1.13x end-to-end on ``lookup()``).
-``TestDeclaredThreatModelBoundary`` commits that boundary as a LABELLED
-CONTROL, so the declared limit is visible in the suite rather than only in
-prose — strengthening it later is a deliberate edit that flips a control.
+THREAT MODEL (ruled, slot 4B.1 rulings (c) and (c-1)). These pins prove
+HONEST-CALLER ACCIDENT: plain attribute assignment to a public name raises, on
+fresh instances and on both shared singletons alike, and a poisoning attempt
+leaves the next read clean.
+
+Declared OUT OF SCOPE as deliberate circumvention, as an OPEN CLASS rather
+than a list: any route that writes or removes the private slots by deliberate
+construction — including plain ``_status`` / ``_value`` assignment,
+``delattr``, ``__init__`` re-invocation, ``__class__`` reassignment, and
+``object.__setattr__`` — plus module rebinding. The class is stated open
+because it was first written as a closed enumeration of three and verification
+found two further live routes (``__init__`` re-invocation, which poisons a
+shared singleton end-to-end, and ``delattr``); enumerating is the wrong shape
+for this boundary. ``pickle`` is NOT in the class: a round-trip yields a
+distinct clone that is itself immutable, leaving the real singleton unharmed.
+
+This is WEAKER than the frozen-dataclass surface used for pattern nodes (slot
+3.2, MEDIUM-6) on the private-slot clause — though not on ``__init__``
+re-invocation, which that surface admits too. The alternatives that would
+narrow it were priced and declined on measured cost (raising ``__setattr__``
+1.081x, frozen dataclass 1.13x end-to-end on ``lookup()``).
+``TestDeclaredThreatModelBoundary`` commits the boundary as a LABELLED CONTROL
+that DEMONSTRATES the routes, so the declared limit is visible in the suite
+rather than only in prose — strengthening it later is a deliberate edit that
+flips a control.
 
 Tri-state SEMANTICS are not this suite's subject and are unchanged: the
 classification rows live in `test_variable_lookup.py`, the tombstone rows in
@@ -483,17 +496,46 @@ class TestRepresentationSemantics:
 class TestDeclaredThreatModelBoundary:
     """LABELLED CONTROL — this documents a declared LIMIT, it is not a proof.
 
-    The threat model covers honest-caller accident. A direct write to the
-    private slot is deliberate circumvention and is declared OUT OF SCOPE,
-    alongside `object.__setattr__` and module rebinding. This cell makes that
-    boundary visible in the suite rather than only in prose: it asserts the
-    circumvention SUCCEEDS today. Closing the hole later (a raising
-    `__setattr__`, or a frozen dataclass — both priced and declined on
-    measured cost) is a deliberate edit that flips this control, which is
-    exactly the intent.
+    The threat model covers honest-caller accident. Reaching the private slots
+    by deliberate construction is OUT OF SCOPE, and the declaration is an OPEN
+    CLASS: the first version of this control named only plain `_value`
+    assignment, and verification found two further live routes. So the cell now
+    DEMONSTRATES each named route instead of asserting one and describing the
+    rest — a boundary claim that is only prose cannot go stale visibly.
+
+    Every route below asserts that circumvention SUCCEEDS today. Narrowing the
+    class later (a raising `__setattr__`, or a frozen dataclass — both priced
+    and declined on measured cost) is a deliberate edit that flips this
+    control, which is exactly the intent.
+
+    Hygiene: every route is exercised on a FRESH instance, never on a shared
+    singleton. Route (b) genuinely poisons whatever object it is given, and a
+    test that damaged a process-wide singleton and restored it by hand would be
+    an xdist race — the singleton's exposure is stated here and demonstrated
+    against an equivalent fresh instance.
     """
 
-    def test_control_private_slot_write_is_declared_out_of_scope(self):
-        result = VariableLookup.of_value("v")
-        result._value = "CIRCUMVENTED"
-        assert result.value == "CIRCUMVENTED"
+    def test_control_private_slot_routes_are_declared_out_of_scope(self):
+        # (a) plain private-slot assignment
+        by_assignment = VariableLookup.of_value("v")
+        by_assignment._value = "CIRCUMVENTED"
+        assert by_assignment.value == "CIRCUMVENTED"
+
+        # (b) __init__ re-invocation — the route that reaches a shared
+        #     singleton, demonstrated on a fresh MISSING-shaped instance
+        by_init = VariableLookup(LookupStatus.MISSING, None)
+        by_init.__init__(LookupStatus.VALUE, "CIRCUMVENTED")
+        assert by_init.status is LookupStatus.VALUE
+        assert by_init.value == "CIRCUMVENTED"
+        assert by_init.is_set is True
+
+        # (c) delattr on a private slot
+        by_delattr = VariableLookup.of_value("v")
+        delattr(by_delattr, "_value")
+        with pytest.raises(AttributeError):
+            by_delattr.value
+
+        # (d) object.__setattr__
+        by_object_setattr = VariableLookup.of_value("v")
+        object.__setattr__(by_object_setattr, "_value", "CIRCUMVENTED")
+        assert by_object_setattr.value == "CIRCUMVENTED"

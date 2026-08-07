@@ -55,15 +55,28 @@ merging. The frozen-dataclass cost this avoids is real, and the ratified
 non-frozen ruling for ``FieldRun`` (W1) rests on its own hot-path measurement,
 which is NOT re-opened or generalised by anything here.
 
-THREAT MODEL (ruled, slot 4B.1 ruling (c)): the pins prove HONEST-CALLER
-ACCIDENT — plain attribute assignment to a public name raises, on fresh
-instances and on both shared singletons. Declared OUT OF SCOPE as deliberate
-circumvention: ``object.__setattr__``, module rebinding, and direct writes to
-the private ``_status`` / ``_value`` slots. That third clause is WEAKER than
-the frozen-dataclass surface used for pattern nodes (slot 3.2); the
-alternatives that would close it were priced and declined on measured cost.
+THREAT MODEL (ruled, slot 4B.1 rulings (c) and (c-1)): the pins prove
+HONEST-CALLER ACCIDENT — plain attribute assignment to a public name raises,
+on fresh instances and on both shared singletons.
+
+Declared OUT OF SCOPE as deliberate circumvention, as an OPEN CLASS rather
+than a list: any route that writes or removes the private slots by deliberate
+construction — including plain ``_status`` / ``_value`` assignment,
+``delattr``, ``__init__`` re-invocation, ``__class__`` reassignment, and
+``object.__setattr__`` — plus module rebinding. The class is stated open
+because it was first written as a closed enumeration of three and
+verification found two further live routes; enumerating is the wrong shape
+for this boundary. (``pickle`` is NOT in the class: a round-trip yields a
+distinct clone that is itself immutable, leaving the real singleton
+unharmed.)
+
+This is WEAKER than the frozen-dataclass surface used for pattern nodes
+(slot 3.2) on the private-slot clause — though not on ``__init__``
+re-invocation, which that surface admits too. The alternatives that would
+narrow it were priced and declined on measured cost.
 ``tests/unit/core/test_variable_lookup_immutability.py`` commits the limit as
-a labelled control, so strengthening it later flips a visible cell.
+a labelled control that DEMONSTRATES the routes, so strengthening it later
+flips a visible cell rather than quietly narrowing a prose claim.
 """
 
 from __future__ import annotations
