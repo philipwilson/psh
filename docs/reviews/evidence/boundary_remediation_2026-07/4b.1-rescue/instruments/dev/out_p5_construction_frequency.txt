@@ -1,0 +1,11 @@
+P5 construction-frequency (MACRO) — does lookup() sit on the hot path?
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82   python: 3.14.2
+======================================================================================
+workload                                       lookup()  get_variable  _resolve_read  lookup share
+W1 variable-read heavy (no set-ness ops)              0         16006          16006        0.000%
+W2 set-ness operators ${x+w}/${x-w} heavy          6000         12005          18005       33.324%
+W3 arrays + params + functions (mixed realistic)          0          2006           2006        0.000%
+W4 nameref + export + readonly churn                  0          3506           3506        0.000%
+
+Shell STARTUP (before the workload script runs), same counters:
+    lookup()=0   get_variable()=0

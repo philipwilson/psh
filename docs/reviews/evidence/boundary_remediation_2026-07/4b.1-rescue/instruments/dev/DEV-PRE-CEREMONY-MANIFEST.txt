@@ -1,0 +1,62 @@
+# 4B.1 DEV PRE-CEREMONY MANIFEST
+captured: 2026-08-07T13:06:54Z  (BEFORE integrator ceremony commits land on this branch)
+tip:      2f08bd7a1b251066d68126cc5ad086ef2a1a664c
+branch:   fix/remediation-4b-1
+tree:     53a8ae10e4e875bf3244bdec0fc00bf61449b9b4
+
+## Commit chain (base 4f2facaf -> tip)
+ebff73db9f8ec433e1b30f183f1a97445281ca04  4B.1: make the variable-read result immutable (MEDIUM-5)
+a4ace33931f1ab0f8d535a4ab9d45e09b82e3fe8  4B.1 doc sweep: core/CLAUDE.md lookup prose
+c1c7b69a41d3fce2f8a9ca923fef88e5881eea47  4B.1 R2 SCOPE EXTENSION (doc-only): drop stale VariableLookup precedent
+0e9603e6ede828894fbe96ea1ced372d554cf984  4B.1: de-vacuate the PRESENT_UNSET equality pin (M8-5 self-catch)
+862f949d441e4d17ff6854ba808837530780b92d  4B.1 fix-round F1: BL-1 self-contradicting docstring + RN-2 cell labels
+7d42c79e369f37ecafe9758e8e0a539bf63dc51a  4B.1 fix-round F2: threat-model boundary becomes an OPEN CLASS (RN-1)
+2f08bd7a1b251066d68126cc5ad086ef2a1a664c  4B.1 fix-round F3: repair ruff B018 introduced by F2
+
+## Tracked files I changed, with blob hashes at tip
+  7ec1de8593be7e91a87051f404a83ea4f150b026  psh/core/variable_lookup.py
+  9b766c2b9d0285fd22d65ab3c4c1e762d000f2b7  psh/core/scope.py
+  b5e7deaff9979f50078053a1b9ce352ad0d37e55  psh/core/CLAUDE.md
+  01ce2d7b74fa3c3ebb2018d71d866fc91155239a  psh/executor/command_resolution.py
+  c8644cc2fd88dc95104b2dfb377f00571f0fdc57  tests/unit/core/test_variable_lookup.py
+  572156e625925644fa448249ac1ce62469839100  tests/unit/core/test_variable_lookup_immutability.py
+
+## Ledger
+  d70c4b79a8e1c5632cf5188c9f2e9514  SLOT-LEDGER-4b1.md (    1059 lines)
+
+## Instruments + outputs (md5)
+    __pycache__
+  23120ad00041949434f4eefde83d2ceb  bench_p10_real_lookup.py
+  b1e74ae0110337038ced39d9f99229f4  bench_p3_construction.py
+  a94335ec6aceb4328bf632fdb0afabd3  bench_p3b_proposed_design.py
+  c3c19c8235f530d8fa843aaa95222c52  bench_p3c_missing_policy.py
+  f2bc7c7665094e43cafd5932b8bef150  bench_p4_lookup_path.py
+  78d75254902831b7c628d5b2a786187f  DEV-PRE-CEREMONY-MANIFEST.txt
+  5cec98fb8c40520c0126b7b858a2701e  m8_mutation_locks.py
+  6914cc2e3dec77fdfd24dba54fbe7a97  m8_plugin.py
+  a9305e8d12f6b71c672068759fa457a4  out_m8_mutation_locks.txt
+  c0acc506b08ae19c5f24d7bc927e4d9f  out_m8_rerun_clean_tip.txt
+  8bfeb856245a3f6e6bde25787ecc35dc  out_p1_medium5_repro.txt
+  4c2bdc4d6be1ed61b342f448acd63feb  out_p10_base.txt
+  57afeeaa76dfe85141a3f2023950e28f  out_p10_tip.txt
+  7885ee964aff41a1bd2b2859b34a4f57  out_p2_census.txt
+  67d6b5cbb4d1c0fd7f7f1589009e1e78  out_p3_construction.txt
+  9a7b099716a02e76701c4f66b06b4dca  out_p3b_proposed_design.txt
+  683a874f513b3db3c9d1450316df316d  out_p3c_missing_policy.txt
+  55738005d38677797bb5fc45efa1c9cf  out_p4_lookup_path.txt
+  54aa3cc0a27b7d307d6308974a9accc6  out_p5_construction_frequency.txt
+  7f36bef8207e5745ce49520300ba991b  out_p6_coherence_matrix.txt
+  20d4d76ba3f06bbccefc2814d8395d78  out_p789_design_facts.txt
+  56a600f29d9d735d9c05db1b74430a64  out_redonbase_base_final.txt
+  afffd9438f1bc37ca5ab016e23ff7d69  out_redonbase_base.txt
+  1fc264e9880e09b4472a296e54309710  out_rn1_routes.txt
+  978f44d716cd3a8b56e5e16252b688f7  out_rn4_clean_tip_suites.txt
+  19802f036653f5935259cb51b5ee45ca  probe_p1_medium5_repro.py
+  59d0637ec3dbd7fcc23931087b22f651  probe_p2_census.py
+  be2dda8728988efb16864faf35274048  probe_p5_construction_frequency.py
+  c211c119bc668aca5d76b62822c7d13c  probe_p6_coherence_matrix.py
+  cf0a5581243dd0e4716358a0ea081913  probe_p789_design_facts.py
+  f6febb52bdd275161e8a25c272150393  redonbase_split.py
+
+## Dead-drop
+  6464c680bc627930de1e83115059aa62  INTEGRATOR-INBOX.md (    1193 lines)

@@ -1,0 +1,61 @@
+M8 mutation locks — slot 4B.1
+SHA: 2f08bd7a1b251066d68126cc5ad086ef2a1a664c
+worktree dirty: no
+python: 3.14.2
+==================================================================================
+
+--- CONTROL: no mutation (must be fully green) ---
+    rc=0  red cells=0
+    control clean
+
+--- M8-1: fields writable again ---
+    red cells: 37
+      RED  TestAuthorityCoherence::test_env_and_shell_agree_after_mutation_attempts
+      RED  TestAuthorityCoherence::test_nameref_target_unreachable_from_a_lookup_result
+      RED  TestAuthorityCoherence::test_no_read_can_change_without_notifying_the_observer
+      RED  TestAuthorityCoherence::test_readonly_value_unreachable_from_a_lookup_result
+      RED  TestCompositionCells::test_computed_special_read_is_frozen_too
+      RED  TestCompositionCells::test_masked_special_still_reads_unset_through_a_frozen_result
+      RED  TestCompositionCells::test_mutation_attempt_across_a_two_level_nameref_chain
+      RED  TestCompositionCells::test_mutation_attempt_on_a_readonly_export_leaves_env_coherent
+      ... and 29 more
+    VERDICT: LOCK HOLDS
+
+--- M8-2: present_unset allocates ---
+    red cells: 1
+      RED  TestRepresentationSemantics::test_present_unset_is_a_shared_singleton
+    VERDICT: LOCK HOLDS
+
+--- M8-3: binding restored (live cell leak) ---
+    red cells: 10
+      RED  TestAuthorityCoherence::test_nameref_target_unreachable_from_a_lookup_result
+      RED  TestAuthorityCoherence::test_readonly_value_unreachable_from_a_lookup_result
+      RED  TestBindingSurfaceOmitted::test_of_value_takes_no_binding_argument
+      RED  TestBindingSurfaceOmitted::test_present_unset_takes_no_binding_argument
+      RED  TestBindingSurfaceOmitted::test_result_exposes_no_binding[fresh_value]
+      RED  TestBindingSurfaceOmitted::test_result_exposes_no_binding[missing_singleton]
+      RED  TestBindingSurfaceOmitted::test_result_exposes_no_binding[present_unset_singleton]
+      RED  TestCompositionCells::test_computed_special_read_is_frozen_too
+      ... and 2 more
+    VERDICT: LOCK HOLDS
+
+--- M8-4: missing allocates per miss ---
+    red cells: 1
+      RED  TestRepresentationSemantics::test_missing_is_a_shared_singleton
+    VERDICT: LOCK HOLDS
+
+--- M8-5: __eq__ reverts to identity ---
+    red cells: 2
+      RED  TestRepresentationSemantics::test_all_declared_unset_results_are_equal
+      RED  TestRepresentationSemantics::test_equality_is_status_and_value
+    VERDICT: LOCK HOLDS
+
+==================================================================================
+lock      red cells  verdict
+M8-1             37  HOLDS
+M8-2              1  HOLDS
+M8-3             10  HOLDS
+M8-4              1  HOLDS
+M8-5              2  HOLDS
+
+5/5 locks hold
