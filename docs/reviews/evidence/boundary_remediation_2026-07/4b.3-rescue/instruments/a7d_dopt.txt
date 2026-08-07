@@ -1,0 +1,30 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  history -d 1       bash rc=0 mem=['S2', 'S3']
+  history -d 1       psh  rc=0 mem=['S2', 'S3']
+                      (baseline: delete entry 1)
+
+  history -d1        bash rc=0 mem=['S2', 'S3']
+  history -d1        psh  rc=0 mem=['S2', 'S3']
+                      (attached argument — getopt should accept)
+
+  history -cd1       bash rc=0 mem=[]
+  history -cd1       psh  rc=0 mem=[]
+                      (cluster + attached arg)
+
+  history -ad 1      bash rc=0 mem=['S2', 'S3']
+  history -ad 1      psh  rc=0 mem=['S2', 'S3']
+                      (if -d consumes the REMAINDER this is -a then -d 1 => rc 0)
+
+  history -da 1      bash rc=1 mem=['S1', 'S2', 'S3']
+  history -da 1      psh  rc=1 mem=['S1', 'S2', 'S3']
+                      (if -d consumes the REMAINDER this is -d "a" => invalid => rc 1)
+
+  history -ds 1 X    bash rc=1 mem=['S1', 'S2', 'S3']
+  history -ds 1 X    psh  rc=1 mem=['S1', 'S2', 'S3']
+                      (-d "s" => invalid)
+
+  history -sd X 1    bash rc=0 mem=['S1', 'S2', 'S3', '1']
+  history -sd X 1    psh  rc=1 mem=['S1', 'S2', 'S3']
+                      (-s wins/returns before -d is applied)
+

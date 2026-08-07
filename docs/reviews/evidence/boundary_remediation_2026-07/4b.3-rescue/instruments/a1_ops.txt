@@ -1,0 +1,317 @@
+========================================================================
+A1 — per-op counter model (psh vs bash 5.2.26)
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+--- startup-load ---
+    (baseline: what the startup load consumed)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- recording ---
+    (a normally-recorded command)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3', 'true RECORDED']
+                    psh =['seed1', 'seed2', 'seed3', 'true RECORDED']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'true RECORDED', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true RECORDED', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'true RECORDED', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true RECORDED', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'true RECORDED', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'true RECORDED', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -r default ---
+    (re-read of the DEFAULT file)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -r twice ---
+    (duplicates?)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -n default ---
+    (no unread lines at start)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -n twice ---
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -a default ---
+    (append marker: which entries land in the file)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+   AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+   AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+  => DIVERGES
+
+--- -w default ---
+    (write whole list, truncating)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+  *AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+  *AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT', 'true NEWENTRY', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT', 'true NEWENTRY', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+  => DIVERGES
+
+--- -c ---
+    (clear: both markers?)
+   AFTEROP_MEM      bash=[]
+                    psh =[]
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  *AFTERN_MEM       bash=['EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_MEM       bash=['EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -d single ---
+    (MEDIUM-7 leg A shape)
+   AFTEROP_MEM      bash=['seed2', 'seed3']
+                    psh =['seed2', 'seed3']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  *AFTERN_MEM       bash=['seed2', 'seed3', 'EXT']
+                    psh =['seed2', 'seed3', 'seed3', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_MEM       bash=['seed2', 'seed3', 'EXT']
+                    psh =['seed2', 'seed3', 'seed3', 'EXT']
+   AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -d range ---
+    (range delete)
+   AFTEROP_MEM      bash=['seed3']
+                    psh =['seed3']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  *AFTERN_MEM       bash=['seed3', 'EXT']
+                    psh =['seed3', 'seed2', 'seed3', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_MEM       bash=['seed3', 'EXT']
+                    psh =['seed3', 'seed2', 'seed3', 'EXT']
+   AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -d last ---
+    (delete ABOVE both cursors)
+   AFTEROP_MEM      bash=['seed1', 'seed2']
+                    psh =['seed1', 'seed2']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  *AFTERN_MEM       bash=['seed1', 'seed2', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_MEM       bash=['seed1', 'seed2', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -s ---
+    (store without executing)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3', 'STORED']
+                    psh =['seed1', 'seed2', 'seed3', 'STORED']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'STORED', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'STORED', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'STORED', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'STORED', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'STORED', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'STORED', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+
+########## NAMED-FILE VARIANTS (does the DEFAULT file's counter move?) ##########
+
+--- -r NAMED ---
+    (named file seeded oth1,oth2; $HISTFILE seeded seed1..3)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3', 'oth1', 'oth2']
+                    psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  *AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -n NAMED ---
+    (named file seeded oth1,oth2; $HISTFILE seeded seed1..3)
+  *AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  *AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -a NAMED ---
+    (named file seeded oth1,oth2; $HISTFILE seeded seed1..3)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  *AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+   AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -w NAMED ---
+    (named file seeded oth1,oth2; $HISTFILE seeded seed1..3)
+   AFTEROP_MEM      bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+   AFTEROP_FILE     bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   AFTERN_MEM       bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+   AFTERN_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   AFTERA_MEM       bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY', 'EXT']
+  *AFTERA_FILE      bash=['seed1', 'seed2', 'seed3', 'EXT', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'true NEWENTRY', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+
+DIVERGING CELLS (17): ['startup-load', 'recording', '-r default', '-r twice', '-n default', '-n twice', '-a default', '-w default', '-c', '-d single', '-d range', '-d last', '-s', '-r NAMED', '-n NAMED', '-a NAMED', '-w NAMED']

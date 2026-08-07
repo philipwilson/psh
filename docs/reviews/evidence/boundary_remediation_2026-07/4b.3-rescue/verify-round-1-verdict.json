@@ -1,0 +1,340 @@
+{
+  "summary": "Adversarial verification of a Boundary Remediation Campaign dev branch before integration",
+  "agentCount": 4,
+  "logs": [
+    "fix/remediation-4b-3: 4 blockers, 15 nits"
+  ],
+  "result": {
+    "branch": "fix/remediation-4b-3",
+    "briefPath": "/Users/pwilson/src/psh/tmp/remediation-ledgers/briefs/4b.3.md",
+    "overall": "BOUNCE",
+    "blockers": [
+      {
+        "task": "diffAudit",
+        "severity": "BLOCKER",
+        "description": "REGRESSION + BASH DIVERGENCE (psh/interactive/history_manager.py#_pending_entries). The new pending multiset VIEW resolves owed entries against state.history by TEXT, so a surviving entry with the same text satisfies the pending count of an entry that was deleted. Result: a `history -d`'d command is resurrected into $HISTFILE as a DUPLICATE line — exactly the exit criterion's 'without duplicate file lines' clause, and the base was CORRECT here. It also falsifies three claims the branch ships: the class docstring ('an entry that leaves state.history by ANY route ... thereby leaves pending, so nothing is ever resurrected into the file after it is gone from memory'), the identical sentence added to psh/interactive/CLAUDE.md, and delete_entry's docstring ('a deleted command is never written to the file afterwards'). The pin that NAMES the property — tests/unit/interactive/test_history_state_machine_4b3.py::TestPendingMultisetSemantics::test_a_read_copy_does_not_make_a_deleted_typed_copy_pending, docstring 'the count — not merely the membership — is what is preserved' — has a body that only does seed_file + load_from_file + assert pending == []; it never types and never deletes, so it cannot see the case its name asserts (NAME-VS-BODY). Same mechanism also defeats the pinned 'psh does not leak' claim: `-r otherfile` line 'secret_from_other', user types the same text, `history -d` the typed copy -> tip writes the FOREIGN line into $HISTFILE.",
+        "evidence": "REPLAYED, both directions. (1) Unit, own detached worktrees /tmp/remv-t1-{base,tip}-79840, discriminator printed: seed $HISTFILE=['same']; load_from_file(); add_to_history('same'); delete_entry(2,2); save_to_file() -> base bd13b303 FILE=['same'] | tip bc280e8f FILE=['same','same']. Second shape seed=['a'], typed ['a','b'], delete_entry(2,2) -> base FILE=['a','b'] | tip FILE=['a','a','b']. Control (no delete) identical in both. (2) End-to-end piped `--norc -i`, HISTIGNORE='history*:exit', script 'true same\\nhistory -d 2\\nexit', HISTFILE seeded 'true same': bash 5.2.26 (/opt/homebrew/bin/bash) -> ['true same']; psh@base bd13b303 -> ['true same']; psh@tip bc280e8f -> ['true same','true same']. (3) Leak shape at tip: memory=['secret_from_other'] (the loaded/foreign copy), HISTFILE=['secret_from_other'] written by save. Probes: /tmp/remv-t1-probe_dupview.py, /tmp/remv-t1-e2e_dupview.py, /tmp/remv-t1-probe_leak.py"
+      },
+      {
+        "task": "diffAudit",
+        "severity": "BLOCKER",
+        "description": "FALSE BASH CLAIM + SILENTLY DROPPED DIAGNOSTIC (psh/builtins/shell_state.py#_dispatch_options). The rewritten dispatcher returns bare `1` for two-of-`-anrw` under the shipped comment \"Combining two of `-a/-n/-r/-w` is an error in bash: rc 1, no message.\" Live bash 5.2.26 DOES print a message: `bash: history: cannot use more than one of -anrw`. The base also printed a diagnostic. The tip prints NOTHING on any channel, so `history -wa` now fails completely silently — a diagnostic regression that moves psh AWAY from bash, in the one direction the campaign's error-prefix work protects. It is unpinned: the only cell covering these spellings, tests/conformance/bash/test_history_state_machine_conformance.py::TestClusteredFlagsRider::test_cluster_exit_status_matches_bash ('-an','-rw','-nr'), compares EXIT STATUS ONLY (`self._rc` discards stderr into $OTHER/e and never asserts on it), so a module whose class docstring claims bash parity certifies parity it did not measure.",
+        "evidence": "REPLAYED across four spellings, piped `--norc -i`, rc captured immediately after the builtin. `history -wa`: bash rc=1 stderr=['bash: history: cannot use more than one of -anrw']; base bd13b303 rc=2 stderr=['psh: history: -wa: invalid option','psh: history: usage: ...']; tip bc280e8f rc=1 stderr=[]. Identical split for `-an`, `-rw`, `-nr`, and `-cwa` (bash rc=1 + message; tip rc=1 + silence). Probe: /tmp/remv-t1-rows3.py"
+      },
+      {
+        "task": "reprobe",
+        "severity": "BLOCKER",
+        "description": "Undeclared, unpinned behavior divergence vs bash 5.2.26 in the rider's cluster dispatch, in a DESTRUCTIVE direction. bash runs AT MOST ONE action per history invocation: when -c or -d is present, the file ops (-a/-n/-r/-w) are suppressed. psh at tip (_dispatch_options in psh/builtins/shell_state.py) applies -c/-d and then STILL runs the file op. Reproduced divergences at tip bc280e8f (piped --norc -i, scrubbed HIST*/PROMPT*, scratch HISTFILE, oracle /opt/homebrew/bin/bash 5.2.26): (a) 'history -cw' with seeded default HISTFILE: bash rc 0, file UNTOUCHED ['S1','S2'] (verified with unset-HISTFILE-before-exit so no exit-save pollution, plus a control showing separate '-c; -w' DOES truncate — instrument validated); psh rc 0, file TRUNCATED to empty. (b) 'history -wd 1' (seed S1, typed keep): bash file ['S1']; psh file ['true keep'] — the seeded line is destroyed. (c) 'history -ad 3' with 3 typed pending: bash file [] (-a never runs); psh file ['true t1','true t2']. (d) 'history -cn': bash MEM=[] (-n never runs); psh MEM=['EXT']. All four were REJECTED rc 2 at base, so this is new behavior introduced by this branch, sanctioned only as 'with its own probed bash semantics' (R1(a)) — and the probed semantics are wrong: SLOT-LEDGER §1.11 claims '-cw/-ca/-cd 1 → rc 0, both ops performed' (FALSE — bash performs only the clear), the _dispatch_options docstring presents 'then the single file operation' as 'Probed against bash 5.2.26', and test_d_takes_the_next_word_when_the_cluster_ends's docstring claims '-ad 1 IS -a plus -d 1, so both run' (FALSE for bash). Root cause is the R2-F1 instrument-mirror failure again: the a7_order.txt -cw cell used a NAMED file created empty, so 'clear-then-write' and '-w never ran' were indistinguishable, and the base psh columns matched vacuously because base rejected all clusters. Related same-family fact: bash 'history -an' fails LOUDLY ('history: cannot use more than one of -anrw') while the docstring claims 'rc 1, no message' and psh fails silently. None of these divergences is in the b1-b5 declared-deviation register, none is pinned (the -cw/-ca/-cd/-an pins assert rc only), and 'anything ELSE shell-observable that moves is a STOP' per the brief.",
+        "evidence": "Verifier probes at tip bc280e8ff72351d26f911190d85440f1804d1d35, discriminator /private/tmp/remv-4b3-tip-9107/psh/__init__.py, oracle GNU bash 5.2.26(1)-release at /opt/homebrew/bin/bash. Probe script: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/verify_probe_4b3.py. Key cells: 'CLUSTER -cw default seeded' bash FILE=['S1'] vs psh FILE=[]; minimal replay seed [S1,S2] bash file-after ['S1','S2'] with control '-c; -w' (separate commands) truncating; 'X -wd 1' bash FILE=['S1'] vs psh FILE=['true keep']; 'ORDER -ad 3 typed' bash FILE=[] vs psh FILE=['true t1','true t2']; 'X -cn' bash MEM=[] vs psh MEM=['EXT']; bash -an stderr 'bash: history: cannot use more than one of -anrw'. Mechanism: psh/builtins/shell_state.py#_dispatch_options (tip) runs file_ops[0] after the 'c'/'d' branch instead of suppressing it. False model claims: /Users/pwilson/src/psh-r4b-3/tmp/remediation-ledgers/SLOT-LEDGER-4b3.md §1.11; tests/conformance/bash/test_history_state_machine_conformance.py:363-369 docstring; non-discriminating instrument /Users/pwilson/src/psh-r4b-3/tmp/w4b3-probes/a7_order.txt '-cw NAMED' cell."
+      },
+      {
+        "task": "reprobe",
+        "severity": "BLOCKER",
+        "description": "The completion report's claim 'Six declared deviations …, each both-sides pinned' (also SLOT-LEDGER §3.6 context) is FALSE for b4. b4 = 'named-file read vs the DEFAULT cursor — bash has one global counter, corrupted by a named read'. The psh side IS pinned (tests/unit/interactive/test_history_state_machine_4b3.py::TestReadCursorPerOp::test_read_named_does_not_move_it and ::test_read_new_named_does_not_move_it), but NO test anywhere drives '-r NAMED' followed by '-n' on the default file to pin the bash side — grep of the conformance module shows no such row; the corruption exists only in docstrings. The bash-side CLAIM is true — I reproduced it independently (seed [D1,D2,D3], 'history -r X' (1 line), external append D4, 'history -n': bash MEM=[D1,D2,D3,X1,D2,D3,D4] — D2,D3 re-read because the named read set the global counter to 1; psh MEM=[D1,D2,D3,X1,D4]) — so this is a one-cell fix, but a stated register commitment was not delivered, which is bounce-grade per banked 4B.2 lesson 10 (a silently-dropped commitment is bounce-grade even when the measurement behind it turns out fine).",
+        "evidence": "Completion report in /Users/pwilson/src/psh-r4b-3/INTEGRATOR-INBOX.md ('each both-sides pinned'); register at SLOT-LEDGER-4b3.md §3.6. Pin search: grep of tests/conformance/bash/test_history_state_machine_conformance.py for 'history -r $OTHER' + 'history -n' compositions finds no named-read-then-default-n row; TestDeclaredDeviations covers b1(i)/b1(ii)/b2/b3/b5 only (test_read_named_then_append… is the b1(ii)/P6 APPEND-leak face, a different observable). Verifier reproduction of the b4 bash side: cell 'b4 (-r NAMED then -n default)' in verify_probe_4b3.py at tip bc280e8f — bash re-reads D2,D3 (counter := named file's line count), psh reads only D4."
+      }
+    ],
+    "nits": [
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "M8 driver docstring contradicts its own code, in the file whose stated purpose is preventing silent disarm. tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py::mutation_tree docstring says the repo tmp/ scratch parent is 'diagnosed as loudly as every other precondition rather than quietly created', but the first statement in the body is os.makedirs(scratch_parent, exist_ok=True) — it quietly creates it. Functionally fine; the prose is what 4B.2 lesson 2 is measured against.",
+        "evidence": "tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py, mutation_tree fixture: docstring line 'diagnosed as loudly ... rather than quietly created' immediately followed by `os.makedirs(scratch_parent, exist_ok=True)`"
+      },
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "Committed Wave-0 evidence probes now reference a deleted attribute. docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_psh.py:25,:31 read hm._file_synced_len and claim_a_s.py:24 assigns it; the attribute no longer exists after this branch. They are historical base-result probes pinned to 0215279c so they are not live code, but they AttributeError if re-run against post-merge main — worth an integrator note in the ledger row rather than a code change.",
+        "evidence": "git grep -n _file_synced_len fix/remediation-4b-3 -- docs/reviews/evidence/ -> claim_a_psh.py:25,:31; claim_a_s.py:24. Removed by the __init__ hunk replacing self._file_synced_len = 0 with self._pending: List[str] = []"
+      },
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "A newly declared psh<->bash divergence ships with a psh-side-only assertion. tests/unit/interactive/test_history_state_machine_4b3.py::TestReadCursorPerOp::test_read_named_does_not_move_it declares in prose that 'bash has ONE global counter that a named-file read overwrites — a declared deviation (a `history -r otherfile` there corrupts the default file's resume position)', but only asserts psh's side; there is no both-sides conformance cell for that cursor face (the conformance module's named-file cell covers the `-a` leak face, not the read cursor). The 4B.2 / R13-E(4) precedent is both-sides pinning in the divergent direction so a later fix is a visible flip; FLIP-PINS/LEDGER registration is integrator ceremony work, but the both-sides pin is not.",
+        "evidence": "tests/unit/interactive/test_history_state_machine_4b3.py::TestReadCursorPerOp::test_read_named_does_not_move_it body = seed/load/read_history(other)/assert mgr._file_read_len == 3 — no bash leg. Conformance module's only named-file deviation cell is TestDeclaredDeviations::test_read_named_then_append_bash_keeps_psh_keeps_too"
+      },
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "Rider #25's scope grew well past its LEDGER charter, and two of the added behavior changes are unpinned. LEDGER Part B row 25 attaches '`history -ps` clustered flag ... (trivial option-scan fix)'; the branch ships a full getopt rewrite adding at least five new observables: `--` acceptance, `-c` suppressing `-d`, `-p` short-circuiting the file op, `-s` short-circuiting print+file op, and per-LETTER invalid-option wording. I probed each against bash 5.2.26 and every one is toward-bash — but the per-letter wording change (base 'psh: history: -px: invalid option' -> tip 'psh: history: -x: invalid option', matching bash) and `history -pw FILE` (tip now prints the expansion and does not write the file, matching bash) have no pin asserting the changed channel; only rc is compared. Brief ruling slot (c) covers scope pulls, so this deserves an explicit integrator ruling rather than silent acceptance.",
+        "evidence": "Probed: `-px x` bash stderr 'bash: history: -x: invalid option' | base 'psh: history: -px: invalid option' | tip 'psh: history: -x: invalid option'. `history -pw $OTHER/out`: bash stdout=[path] FILE=[] | base stdout=[] + '-pw: invalid option' | tip stdout=[path] FILE=[]. Pins present cover rc only (TestClusteredFlagsRider::test_invalid_letter_in_a_cluster_is_still_rejected asserts rc==2; no `-pw` cell exists). Probes: /tmp/remv-t1-rows2.py, /tmp/remv-t1-rows4.py"
+      },
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "Positive confirmations, recorded so the integrator does not re-derive them. (a) Task 1(a): psh/version.py, CHANGELOG.md, README.md, ARCHITECTURE.md untouched. (b) Task 1(c): tests/behavioral/golden_cases.yaml untouched (consistent with the brief's +0 compare-bash pre-registration); FLIP-PINS.md has NO must-flip row owned by 4B.3; its must-NOT-flip history rows (test_cv_carry_characterization.py all classes, test_history_p_interactive_conformance.py::TestHistoryEvalOuterSinglePExpansionH35) are untouched in the diff and green at the tip. (c) Task 1(d): none of plan §3's never-touch files (' 1 ', b]y, bugs.txt, d/, decomment.py, docs/reviews/README.md) appear in the diff; docs/reviews/evidence/ untouched (correct — FLIP-PINS/LEDGER edits are integrator ceremony commits, per 7caad661/7bf03c80). (d) The three chartered legs plus the -s recording policy, the read-path HISTSIZE cap, and the P5 `-w otherfile` fix all reproduce as toward-bash and red-on-base on fresh rows I constructed.",
+        "evidence": "git diff --name-only origin/main...fix/remediation-4b-3 -- psh/version.py CHANGELOG.md README.md ARCHITECTURE.md docs/reviews/README.md d/ decomment.py bugs.txt 'b]y' ' 1 ' tests/behavioral/golden_cases.yaml docs/reviews/evidence/ -> EMPTY. At tip: ruff check psh tests tools 'All checks passed!'; mypy 'Success: no issues found in 275 source files'; must-hold suites 76 passed + 3111 passed; new 4B.3 suites 106 passed. Fresh red-on-base splits (bash | base | tip): `-s ' spaced'` w/ HISTCONTROL=ignorespace -> [] | [' spaced'] | []; `-s` after identical typed line w/ ignoredups -> ['true foo'] | ['true foo','true foo'] | ['true foo']; HISTIGNORE vs stored text -> ['kept'] | ['zzz1','kept'] | ['kept']; `history -r` w/ HISTSIZE=3 over 8 seeded lines -> ['L6','L7','L8'] | 11 entries | ['L6','L7','L8']; `-n` after external grow w/ HISTSIZE=3 -> ['N3','N4','N5'] | 6 entries | ['N3','N4','N5']; `-w $OTHER/out` then exit -> HISTFILE ['a','true typed1'] | ['a'] | ['a','true typed1']. Probes: /tmp/remv-t1-rows1.py, /tmp/remv-t1-rows2.py"
+      },
+      {
+        "task": "resurrection",
+        "severity": "NIT",
+        "description": "Two COMMITTED, EXECUTABLE Wave-0 evidence probes still read/write the deleted attribute `HistoryManager._file_synced_len`: docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_psh.py (lines 25, 31, reads) and claim_a_s.py (line 24, ASSIGNS `hm._file_synced_len = 0`). Both are frozen archival records — each begins `sys.path.insert(0, '/Users/pwilson/src/psh-r22-verify')` plus `assert psh.version.__version__ == '0.750.0'`, so they abort on the version pin before reaching the attribute at any current tree, and the campaign's own rule 11 (no reconstruction of an archived record) argues for leaving them byte-identical. Flagged only because the claim_a_s.py line is an ASSIGNMENT: Python would silently create a dead attribute rather than raise if that version pin were ever loosened, making the probe read green against the new model. Integrator note only — NOT a bounce.",
+        "evidence": "git grep -n \"_file_synced_len\" fix/remediation-4b-3 -- psh/ tests/ docs/ tools/\n  ...wave0-base-probes/claim_a_psh.py:25:      \"| _file_synced_len =\", hm._file_synced_len)\n  ...wave0-base-probes/claim_a_psh.py:31:      \"| _file_synced_len =\", hm._file_synced_len)\n  ...wave0-base-probes/claim_a_s.py:24:hm._file_synced_len = 0\nHeader of both files: assert psh.version.__version__ == '0.750.0', psh.version.__version__\nAll other hits are historical prose (CHANGELOG.md x5, ground_up_reappraisal_10/12 x3) or the intentional replacement docstring at tests/unit/interactive/test_history_persistence.py:135."
+      },
+      {
+        "task": "resurrection",
+        "severity": "NIT",
+        "description": "Dead branch introduced by the dispatch rewrite: HistoryBuiltin._delete still opens with `if not rest: return self._usage_error(\"-d: option requires an argument\", shell)`, but its ONLY caller is now `self._delete([delete_spec], shell, hist_mgr)` at psh/builtins/shell_state.py:164, guarded by `assert delete_spec is not None` — the list is never empty. The equivalent error is now raised earlier in _parse_options (line 115). Not a dangling reference (no deleted symbol involved) and not behavior-visible; noted so the integrator can decide whether the unreachable arm should be dropped or kept as a defensive guard.",
+        "evidence": "psh/builtins/shell_state.py:164:            status = self._delete([delete_spec], shell, hist_mgr)\npsh/builtins/shell_state.py:295-298:\n    def _delete(self, rest: List[str], shell: 'Shell',\n                hist_mgr: 'HistoryManager') -> int:\n        if not rest:\n            return self._usage_error(\"-d: option requires an argument\", shell)\ngit grep -n \"_delete(\" fix/remediation-4b-3 -- psh/builtins/shell_state.py  ->  only lines 164 and 295"
+      },
+      {
+        "task": "resurrection",
+        "severity": "NIT",
+        "description": "Retired-vocabulary drift after the `_file_synced_len` -> pending-set rename. Three surviving comments/names still say \"file-sync marker(s)\" even though history_manager.py's new prose calls the quantity the PENDING SET and clear_history deliberately no longer resets the other marker (`_file_read_len`): psh/builtins/shell_state.py:158 (\"Route through the manager so the file-sync marker resets too\"), tests/unit/builtins/test_history_flags.py:174 (same phrase) and its enclosing class name `TestClearResetsMarkers` (plural — but only ONE quantity is now reset by `-c`). Statements are still true read singular; NAME-VS-BODY drift only, all three tests green at tip.",
+        "evidence": "git grep -in \"sync marker|file-sync marker|persisted-length\" fix/remediation-4b-3 -- psh/ tests/\n  psh/builtins/shell_state.py:158:            # Route through the manager so the file-sync marker resets too —\n  tests/unit/builtins/test_history_flags.py:174:        # Regression guard: clearing must reset the file-sync marker so entries\n  tests/unit/builtins/test_history_flags.py:172: class TestClearResetsMarkers:\nContrast psh/interactive/history_manager.py clear_history(): \"The READ cursor is NOT reset.\""
+      },
+      {
+        "task": "resurrection",
+        "severity": "NIT",
+        "description": "Renamed pin `TestAppend.test_write_then_append_no_duplication` -> `test_write_then_append_to_a_named_file_re_appends` also FLIPS its assertion from `_lines(target) == ['x']` to `== ['x', 'x']`. Zero dangling references to the old name anywhere in the tree (no CLAIM_TESTS mapping, no doc, no in-tree ledger), so it is clean from the resurrection-hunt angle. Recorded here purely as a hand-off to the behavior verifier: this is an existing-pin behavior flip and needs the bash-5.2.26 probe row plus a ledger/FLIP-PINS disposition, which is outside Task 2's scope.",
+        "evidence": "git grep -n \"test_write_then_append_no_duplication\" fix/remediation-4b-3  ->  (no hits)\ntests/unit/builtins/test_history_flags.py: -        assert _lines(target) == ['x']\n                                          +        assert _lines(target) == ['x', 'x']\nPaired counter-pin added: test_write_then_append_to_the_DEFAULT_file_does_not_duplicate"
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "NIT",
+        "description": "Frozen slot ledger has duplicate section numbering and one dangling internal reference: two '## §3' sections (Pre-registrations at line 336, ROUND 3 A1' at line 486) with colliding §3.1-§3.6 subsections, and §3.1's 'Tip declared for this run: see §3.2' points at a §3.2 that does not exist in the pre-registration section (the only §3.2 is the A1' tail-window model). The tip declaration actually lives in inbox D6/D7 (bc280e8f), and the D6/R6 '§3.4/§3.5' token citations resolve correctly in context, so nothing is misjudged — but the frozen record is internally ambiguous.",
+        "evidence": "grep '^## |^### ' SLOT-LEDGER-4b3.md: '## §3 — Pre-registrations' (line 336, subsections §3.1/§3.3/§3.4/§3.5/§3.6 — no §3.2) and '## §3 — ROUND 3: A1' RE-DERIVATION' (line 486, subsections §3.1-§3.6). §3.1 line ~339: 'Tip declared for this run: see §3.2 (recorded at request time)'."
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "NIT",
+        "description": "The frozen ledger's own declared format promises 'certification rows, discharge audit, bounced-rows replay' (lines 9-11), but §4 Certification rows, §5 Discharge audit, and §6 Bounced-rows replay are empty headers. The content exists — discharge audit in inbox D7 (I replayed its key rows: never-touch/fenced zero matches, _strip_own_invocation byte-identical base-to-tip, scope = 3 production files), bounce replay as the ledger's second §3 (A1' re-derivation), certification data distributed across §3.3/§3.4 — and R7 explicitly ruled gate figures stay out of the frozen ledger, so nothing was silently dropped. But the ledger is not self-contained against its own format; Part D at ceremony must draw from the inbox, not the ledger alone.",
+        "evidence": "SLOT-LEDGER-4b3.md lines 455-459: '## §4 — Certification rows' / '## §5 — Discharge audit' / '## §6 — Bounced-rows replay' with no body; §2.1/§2.2 then appear after them out of order. Inbox R7: 'The freeze stands; gate figures stay OUT of the frozen ledger... Part D is written by me at ceremony from those records.'"
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "NIT",
+        "description": "Two explicit brief Phase-A sub-items — '-s with multiple args (one joined entry — verify)' and '-s when HISTSIZE=0 / negative (psh: negative = unlimited — must-hold unless bash disagrees)' — have no named verdict anywhere in the slot ledger. Both were in fact probed (both MATCH bash: one joined entry 'echo hello world'; HISTSIZE=-1 keeps all 5 entries in both shells) and both are pinned on the branch, so this is a ledger-prose gap, not a dropped item. Same pattern for the minimum-battery '-r twice'/'-n twice' rows, which live in a1_ops.txt and as conformance cells but are not row-reported in §1.",
+        "evidence": "tmp/w4b3-probes/a3_scap.txt lines 37-44 ('-s multiple args ... MATCHES') and 70-74 ('HISTSIZE=-1, 5x -s ... MATCHES'); pinned at tests/conformance/bash/test_history_state_machine_conformance.py::test_multiple_args_become_one_entry (line 150) and ::test_negative_histsize_is_unlimited (line 121) — both PASS at tip in my detached worktree. a1_ops.txt lines 62/98 carry the '-r twice'/'-n twice' cells; conformance ::test_read_twice_appends_twice / ::test_read_new_twice_is_idempotent pin them. Ledger has zero occurrences of 'negative'/'multiple arg'/'joined'."
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "NIT",
+        "description": "The DELETED/FLIPPED verdicts (P1/P2 read-cursor deletions, the _file_synced_len retirement under O3, and the flipped test_write_then_append_no_duplication pin) are commit-SHA-anchored only in the INBOX commit lists (D4/D5/D6), never in the frozen slot ledger itself. Cross-checked: all 8 declared SHAs are exactly the branch's commits over origin/main, and each verdict's footprint matches its named commit (P1/P2→ed326216, P3→6189fc7c, P5 + pin flip→7fd43586 which touches test_history_flags.py, rider P7→b124e187, O3 retirement→47077827, pins→49fa33ea, docs→f825216c, b5→bc280e8f). The only production hunk in the test-labeled commit 49fa33ea is verified docstring-only (_trim_to_max), matching its RN-Cdoc declaration — no undeclared behavior change.",
+        "evidence": "git log --oneline origin/main..fix/remediation-4b-3 = the 8 SHAs in inbox D6 verbatim; git show 49fa33ea -- psh/interactive/history_manager.py shows a docstring-only hunk; grep for 8-hex SHAs in SLOT-LEDGER-4b3.md finds only md5s and the base/attestation SHAs."
+      },
+      {
+        "task": "reprobe",
+        "severity": "NIT",
+        "description": "M8 driver doc/code mismatch: the mutation_tree fixture docstring says the scratch parent (repo tmp/) is 'diagnosed as loudly as every other precondition rather than quietly created', but the code quietly creates it (os.makedirs(scratch_parent, exist_ok=True)) and fails loudly only if creation fails. The behavior is the RIGHT one for the fresh-checkout requirement — I certified 11/11 arms at a fresh worktree with tmp/ absent at creation, PYTHONDONTWRITEBYTECODE=1 — but the prose asserts the opposite of what the code does.",
+        "evidence": "tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py:264-287 (docstring vs os.makedirs(exist_ok=True) at line 275). Certification run: fresh detached worktree at bc280e8f with no tmp/ at creation; 11 passed in 16.18s."
+      },
+      {
+        "task": "reprobe",
+        "severity": "NIT",
+        "description": "Ledger/inbox rc-table wording: SLOT-LEDGER §1.11 characterizes '-an/-rw/-nr' as 'rc 1 (accepted, op failed)'. Measured: bash rejects the combination outright with 'history: cannot use more than one of -anrw' on stderr — no op is attempted. psh's rc-1-with-no-message matches the exit status (pinned) but not the diagnostic; fold the message question into the Blocker-1 fix. Also for the integrator's Part D: my novel rows '-sa hello', 'history -s \"\"', and the composite typed+-d 2+external+-n sequence all MATCH between the shells at tip — no action needed, recorded as verified parity.",
+        "evidence": "bash -an stderr captured at tip: 'bash: history: cannot use more than one of -anrw', rc=1; psh rc=1 with empty stderr. Novel parity rows in verify_probe_4b3.py output (cells 'NOVEL -sa hello', 'NOVEL -s empty', 'NOVEL composite -d 2 mid')."
+      }
+    ],
+    "verdicts": {
+      "diffAudit": {
+        "verdict": "FAIL",
+        "issues": [
+          {
+            "severity": "BLOCKER",
+            "description": "REGRESSION + BASH DIVERGENCE (psh/interactive/history_manager.py#_pending_entries). The new pending multiset VIEW resolves owed entries against state.history by TEXT, so a surviving entry with the same text satisfies the pending count of an entry that was deleted. Result: a `history -d`'d command is resurrected into $HISTFILE as a DUPLICATE line — exactly the exit criterion's 'without duplicate file lines' clause, and the base was CORRECT here. It also falsifies three claims the branch ships: the class docstring ('an entry that leaves state.history by ANY route ... thereby leaves pending, so nothing is ever resurrected into the file after it is gone from memory'), the identical sentence added to psh/interactive/CLAUDE.md, and delete_entry's docstring ('a deleted command is never written to the file afterwards'). The pin that NAMES the property — tests/unit/interactive/test_history_state_machine_4b3.py::TestPendingMultisetSemantics::test_a_read_copy_does_not_make_a_deleted_typed_copy_pending, docstring 'the count — not merely the membership — is what is preserved' — has a body that only does seed_file + load_from_file + assert pending == []; it never types and never deletes, so it cannot see the case its name asserts (NAME-VS-BODY). Same mechanism also defeats the pinned 'psh does not leak' claim: `-r otherfile` line 'secret_from_other', user types the same text, `history -d` the typed copy -> tip writes the FOREIGN line into $HISTFILE.",
+            "evidence": "REPLAYED, both directions. (1) Unit, own detached worktrees /tmp/remv-t1-{base,tip}-79840, discriminator printed: seed $HISTFILE=['same']; load_from_file(); add_to_history('same'); delete_entry(2,2); save_to_file() -> base bd13b303 FILE=['same'] | tip bc280e8f FILE=['same','same']. Second shape seed=['a'], typed ['a','b'], delete_entry(2,2) -> base FILE=['a','b'] | tip FILE=['a','a','b']. Control (no delete) identical in both. (2) End-to-end piped `--norc -i`, HISTIGNORE='history*:exit', script 'true same\\nhistory -d 2\\nexit', HISTFILE seeded 'true same': bash 5.2.26 (/opt/homebrew/bin/bash) -> ['true same']; psh@base bd13b303 -> ['true same']; psh@tip bc280e8f -> ['true same','true same']. (3) Leak shape at tip: memory=['secret_from_other'] (the loaded/foreign copy), HISTFILE=['secret_from_other'] written by save. Probes: /tmp/remv-t1-probe_dupview.py, /tmp/remv-t1-e2e_dupview.py, /tmp/remv-t1-probe_leak.py"
+          },
+          {
+            "severity": "BLOCKER",
+            "description": "FALSE BASH CLAIM + SILENTLY DROPPED DIAGNOSTIC (psh/builtins/shell_state.py#_dispatch_options). The rewritten dispatcher returns bare `1` for two-of-`-anrw` under the shipped comment \"Combining two of `-a/-n/-r/-w` is an error in bash: rc 1, no message.\" Live bash 5.2.26 DOES print a message: `bash: history: cannot use more than one of -anrw`. The base also printed a diagnostic. The tip prints NOTHING on any channel, so `history -wa` now fails completely silently — a diagnostic regression that moves psh AWAY from bash, in the one direction the campaign's error-prefix work protects. It is unpinned: the only cell covering these spellings, tests/conformance/bash/test_history_state_machine_conformance.py::TestClusteredFlagsRider::test_cluster_exit_status_matches_bash ('-an','-rw','-nr'), compares EXIT STATUS ONLY (`self._rc` discards stderr into $OTHER/e and never asserts on it), so a module whose class docstring claims bash parity certifies parity it did not measure.",
+            "evidence": "REPLAYED across four spellings, piped `--norc -i`, rc captured immediately after the builtin. `history -wa`: bash rc=1 stderr=['bash: history: cannot use more than one of -anrw']; base bd13b303 rc=2 stderr=['psh: history: -wa: invalid option','psh: history: usage: ...']; tip bc280e8f rc=1 stderr=[]. Identical split for `-an`, `-rw`, `-nr`, and `-cwa` (bash rc=1 + message; tip rc=1 + silence). Probe: /tmp/remv-t1-rows3.py"
+          },
+          {
+            "severity": "NIT",
+            "description": "M8 driver docstring contradicts its own code, in the file whose stated purpose is preventing silent disarm. tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py::mutation_tree docstring says the repo tmp/ scratch parent is 'diagnosed as loudly as every other precondition rather than quietly created', but the first statement in the body is os.makedirs(scratch_parent, exist_ok=True) — it quietly creates it. Functionally fine; the prose is what 4B.2 lesson 2 is measured against.",
+            "evidence": "tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py, mutation_tree fixture: docstring line 'diagnosed as loudly ... rather than quietly created' immediately followed by `os.makedirs(scratch_parent, exist_ok=True)`"
+          },
+          {
+            "severity": "NIT",
+            "description": "Committed Wave-0 evidence probes now reference a deleted attribute. docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_psh.py:25,:31 read hm._file_synced_len and claim_a_s.py:24 assigns it; the attribute no longer exists after this branch. They are historical base-result probes pinned to 0215279c so they are not live code, but they AttributeError if re-run against post-merge main — worth an integrator note in the ledger row rather than a code change.",
+            "evidence": "git grep -n _file_synced_len fix/remediation-4b-3 -- docs/reviews/evidence/ -> claim_a_psh.py:25,:31; claim_a_s.py:24. Removed by the __init__ hunk replacing self._file_synced_len = 0 with self._pending: List[str] = []"
+          },
+          {
+            "severity": "NIT",
+            "description": "A newly declared psh<->bash divergence ships with a psh-side-only assertion. tests/unit/interactive/test_history_state_machine_4b3.py::TestReadCursorPerOp::test_read_named_does_not_move_it declares in prose that 'bash has ONE global counter that a named-file read overwrites — a declared deviation (a `history -r otherfile` there corrupts the default file's resume position)', but only asserts psh's side; there is no both-sides conformance cell for that cursor face (the conformance module's named-file cell covers the `-a` leak face, not the read cursor). The 4B.2 / R13-E(4) precedent is both-sides pinning in the divergent direction so a later fix is a visible flip; FLIP-PINS/LEDGER registration is integrator ceremony work, but the both-sides pin is not.",
+            "evidence": "tests/unit/interactive/test_history_state_machine_4b3.py::TestReadCursorPerOp::test_read_named_does_not_move_it body = seed/load/read_history(other)/assert mgr._file_read_len == 3 — no bash leg. Conformance module's only named-file deviation cell is TestDeclaredDeviations::test_read_named_then_append_bash_keeps_psh_keeps_too"
+          },
+          {
+            "severity": "NIT",
+            "description": "Rider #25's scope grew well past its LEDGER charter, and two of the added behavior changes are unpinned. LEDGER Part B row 25 attaches '`history -ps` clustered flag ... (trivial option-scan fix)'; the branch ships a full getopt rewrite adding at least five new observables: `--` acceptance, `-c` suppressing `-d`, `-p` short-circuiting the file op, `-s` short-circuiting print+file op, and per-LETTER invalid-option wording. I probed each against bash 5.2.26 and every one is toward-bash — but the per-letter wording change (base 'psh: history: -px: invalid option' -> tip 'psh: history: -x: invalid option', matching bash) and `history -pw FILE` (tip now prints the expansion and does not write the file, matching bash) have no pin asserting the changed channel; only rc is compared. Brief ruling slot (c) covers scope pulls, so this deserves an explicit integrator ruling rather than silent acceptance.",
+            "evidence": "Probed: `-px x` bash stderr 'bash: history: -x: invalid option' | base 'psh: history: -px: invalid option' | tip 'psh: history: -x: invalid option'. `history -pw $OTHER/out`: bash stdout=[path] FILE=[] | base stdout=[] + '-pw: invalid option' | tip stdout=[path] FILE=[]. Pins present cover rc only (TestClusteredFlagsRider::test_invalid_letter_in_a_cluster_is_still_rejected asserts rc==2; no `-pw` cell exists). Probes: /tmp/remv-t1-rows2.py, /tmp/remv-t1-rows4.py"
+          },
+          {
+            "severity": "NIT",
+            "description": "Positive confirmations, recorded so the integrator does not re-derive them. (a) Task 1(a): psh/version.py, CHANGELOG.md, README.md, ARCHITECTURE.md untouched. (b) Task 1(c): tests/behavioral/golden_cases.yaml untouched (consistent with the brief's +0 compare-bash pre-registration); FLIP-PINS.md has NO must-flip row owned by 4B.3; its must-NOT-flip history rows (test_cv_carry_characterization.py all classes, test_history_p_interactive_conformance.py::TestHistoryEvalOuterSinglePExpansionH35) are untouched in the diff and green at the tip. (c) Task 1(d): none of plan §3's never-touch files (' 1 ', b]y, bugs.txt, d/, decomment.py, docs/reviews/README.md) appear in the diff; docs/reviews/evidence/ untouched (correct — FLIP-PINS/LEDGER edits are integrator ceremony commits, per 7caad661/7bf03c80). (d) The three chartered legs plus the -s recording policy, the read-path HISTSIZE cap, and the P5 `-w otherfile` fix all reproduce as toward-bash and red-on-base on fresh rows I constructed.",
+            "evidence": "git diff --name-only origin/main...fix/remediation-4b-3 -- psh/version.py CHANGELOG.md README.md ARCHITECTURE.md docs/reviews/README.md d/ decomment.py bugs.txt 'b]y' ' 1 ' tests/behavioral/golden_cases.yaml docs/reviews/evidence/ -> EMPTY. At tip: ruff check psh tests tools 'All checks passed!'; mypy 'Success: no issues found in 275 source files'; must-hold suites 76 passed + 3111 passed; new 4B.3 suites 106 passed. Fresh red-on-base splits (bash | base | tip): `-s ' spaced'` w/ HISTCONTROL=ignorespace -> [] | [' spaced'] | []; `-s` after identical typed line w/ ignoredups -> ['true foo'] | ['true foo','true foo'] | ['true foo']; HISTIGNORE vs stored text -> ['kept'] | ['zzz1','kept'] | ['kept']; `history -r` w/ HISTSIZE=3 over 8 seeded lines -> ['L6','L7','L8'] | 11 entries | ['L6','L7','L8']; `-n` after external grow w/ HISTSIZE=3 -> ['N3','N4','N5'] | 6 entries | ['N3','N4','N5']; `-w $OTHER/out` then exit -> HISTFILE ['a','true typed1'] | ['a'] | ['a','true typed1']. Probes: /tmp/remv-t1-rows1.py, /tmp/remv-t1-rows2.py"
+          }
+        ]
+      },
+      "resurrection": {
+        "verdict": "PASS-WITH-NITS",
+        "issues": [
+          {
+            "severity": "NIT",
+            "description": "Two COMMITTED, EXECUTABLE Wave-0 evidence probes still read/write the deleted attribute `HistoryManager._file_synced_len`: docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_psh.py (lines 25, 31, reads) and claim_a_s.py (line 24, ASSIGNS `hm._file_synced_len = 0`). Both are frozen archival records — each begins `sys.path.insert(0, '/Users/pwilson/src/psh-r22-verify')` plus `assert psh.version.__version__ == '0.750.0'`, so they abort on the version pin before reaching the attribute at any current tree, and the campaign's own rule 11 (no reconstruction of an archived record) argues for leaving them byte-identical. Flagged only because the claim_a_s.py line is an ASSIGNMENT: Python would silently create a dead attribute rather than raise if that version pin were ever loosened, making the probe read green against the new model. Integrator note only — NOT a bounce.",
+            "evidence": "git grep -n \"_file_synced_len\" fix/remediation-4b-3 -- psh/ tests/ docs/ tools/\n  ...wave0-base-probes/claim_a_psh.py:25:      \"| _file_synced_len =\", hm._file_synced_len)\n  ...wave0-base-probes/claim_a_psh.py:31:      \"| _file_synced_len =\", hm._file_synced_len)\n  ...wave0-base-probes/claim_a_s.py:24:hm._file_synced_len = 0\nHeader of both files: assert psh.version.__version__ == '0.750.0', psh.version.__version__\nAll other hits are historical prose (CHANGELOG.md x5, ground_up_reappraisal_10/12 x3) or the intentional replacement docstring at tests/unit/interactive/test_history_persistence.py:135."
+          },
+          {
+            "severity": "NIT",
+            "description": "Dead branch introduced by the dispatch rewrite: HistoryBuiltin._delete still opens with `if not rest: return self._usage_error(\"-d: option requires an argument\", shell)`, but its ONLY caller is now `self._delete([delete_spec], shell, hist_mgr)` at psh/builtins/shell_state.py:164, guarded by `assert delete_spec is not None` — the list is never empty. The equivalent error is now raised earlier in _parse_options (line 115). Not a dangling reference (no deleted symbol involved) and not behavior-visible; noted so the integrator can decide whether the unreachable arm should be dropped or kept as a defensive guard.",
+            "evidence": "psh/builtins/shell_state.py:164:            status = self._delete([delete_spec], shell, hist_mgr)\npsh/builtins/shell_state.py:295-298:\n    def _delete(self, rest: List[str], shell: 'Shell',\n                hist_mgr: 'HistoryManager') -> int:\n        if not rest:\n            return self._usage_error(\"-d: option requires an argument\", shell)\ngit grep -n \"_delete(\" fix/remediation-4b-3 -- psh/builtins/shell_state.py  ->  only lines 164 and 295"
+          },
+          {
+            "severity": "NIT",
+            "description": "Retired-vocabulary drift after the `_file_synced_len` -> pending-set rename. Three surviving comments/names still say \"file-sync marker(s)\" even though history_manager.py's new prose calls the quantity the PENDING SET and clear_history deliberately no longer resets the other marker (`_file_read_len`): psh/builtins/shell_state.py:158 (\"Route through the manager so the file-sync marker resets too\"), tests/unit/builtins/test_history_flags.py:174 (same phrase) and its enclosing class name `TestClearResetsMarkers` (plural — but only ONE quantity is now reset by `-c`). Statements are still true read singular; NAME-VS-BODY drift only, all three tests green at tip.",
+            "evidence": "git grep -in \"sync marker|file-sync marker|persisted-length\" fix/remediation-4b-3 -- psh/ tests/\n  psh/builtins/shell_state.py:158:            # Route through the manager so the file-sync marker resets too —\n  tests/unit/builtins/test_history_flags.py:174:        # Regression guard: clearing must reset the file-sync marker so entries\n  tests/unit/builtins/test_history_flags.py:172: class TestClearResetsMarkers:\nContrast psh/interactive/history_manager.py clear_history(): \"The READ cursor is NOT reset.\""
+          },
+          {
+            "severity": "NIT",
+            "description": "Renamed pin `TestAppend.test_write_then_append_no_duplication` -> `test_write_then_append_to_a_named_file_re_appends` also FLIPS its assertion from `_lines(target) == ['x']` to `== ['x', 'x']`. Zero dangling references to the old name anywhere in the tree (no CLAIM_TESTS mapping, no doc, no in-tree ledger), so it is clean from the resurrection-hunt angle. Recorded here purely as a hand-off to the behavior verifier: this is an existing-pin behavior flip and needs the bash-5.2.26 probe row plus a ledger/FLIP-PINS disposition, which is outside Task 2's scope.",
+            "evidence": "git grep -n \"test_write_then_append_no_duplication\" fix/remediation-4b-3  ->  (no hits)\ntests/unit/builtins/test_history_flags.py: -        assert _lines(target) == ['x']\n                                          +        assert _lines(target) == ['x', 'x']\nPaired counter-pin added: test_write_then_append_to_the_DEFAULT_file_does_not_duplicate"
+          }
+        ]
+      },
+      "ledgerCheck": {
+        "issues": [
+          {
+            "severity": "NIT",
+            "description": "Frozen slot ledger has duplicate section numbering and one dangling internal reference: two '## §3' sections (Pre-registrations at line 336, ROUND 3 A1' at line 486) with colliding §3.1-§3.6 subsections, and §3.1's 'Tip declared for this run: see §3.2' points at a §3.2 that does not exist in the pre-registration section (the only §3.2 is the A1' tail-window model). The tip declaration actually lives in inbox D6/D7 (bc280e8f), and the D6/R6 '§3.4/§3.5' token citations resolve correctly in context, so nothing is misjudged — but the frozen record is internally ambiguous.",
+            "evidence": "grep '^## |^### ' SLOT-LEDGER-4b3.md: '## §3 — Pre-registrations' (line 336, subsections §3.1/§3.3/§3.4/§3.5/§3.6 — no §3.2) and '## §3 — ROUND 3: A1' RE-DERIVATION' (line 486, subsections §3.1-§3.6). §3.1 line ~339: 'Tip declared for this run: see §3.2 (recorded at request time)'."
+          },
+          {
+            "severity": "NIT",
+            "description": "The frozen ledger's own declared format promises 'certification rows, discharge audit, bounced-rows replay' (lines 9-11), but §4 Certification rows, §5 Discharge audit, and §6 Bounced-rows replay are empty headers. The content exists — discharge audit in inbox D7 (I replayed its key rows: never-touch/fenced zero matches, _strip_own_invocation byte-identical base-to-tip, scope = 3 production files), bounce replay as the ledger's second §3 (A1' re-derivation), certification data distributed across §3.3/§3.4 — and R7 explicitly ruled gate figures stay out of the frozen ledger, so nothing was silently dropped. But the ledger is not self-contained against its own format; Part D at ceremony must draw from the inbox, not the ledger alone.",
+            "evidence": "SLOT-LEDGER-4b3.md lines 455-459: '## §4 — Certification rows' / '## §5 — Discharge audit' / '## §6 — Bounced-rows replay' with no body; §2.1/§2.2 then appear after them out of order. Inbox R7: 'The freeze stands; gate figures stay OUT of the frozen ledger... Part D is written by me at ceremony from those records.'"
+          },
+          {
+            "severity": "NIT",
+            "description": "Two explicit brief Phase-A sub-items — '-s with multiple args (one joined entry — verify)' and '-s when HISTSIZE=0 / negative (psh: negative = unlimited — must-hold unless bash disagrees)' — have no named verdict anywhere in the slot ledger. Both were in fact probed (both MATCH bash: one joined entry 'echo hello world'; HISTSIZE=-1 keeps all 5 entries in both shells) and both are pinned on the branch, so this is a ledger-prose gap, not a dropped item. Same pattern for the minimum-battery '-r twice'/'-n twice' rows, which live in a1_ops.txt and as conformance cells but are not row-reported in §1.",
+            "evidence": "tmp/w4b3-probes/a3_scap.txt lines 37-44 ('-s multiple args ... MATCHES') and 70-74 ('HISTSIZE=-1, 5x -s ... MATCHES'); pinned at tests/conformance/bash/test_history_state_machine_conformance.py::test_multiple_args_become_one_entry (line 150) and ::test_negative_histsize_is_unlimited (line 121) — both PASS at tip in my detached worktree. a1_ops.txt lines 62/98 carry the '-r twice'/'-n twice' cells; conformance ::test_read_twice_appends_twice / ::test_read_new_twice_is_idempotent pin them. Ledger has zero occurrences of 'negative'/'multiple arg'/'joined'."
+          },
+          {
+            "severity": "NIT",
+            "description": "The DELETED/FLIPPED verdicts (P1/P2 read-cursor deletions, the _file_synced_len retirement under O3, and the flipped test_write_then_append_no_duplication pin) are commit-SHA-anchored only in the INBOX commit lists (D4/D5/D6), never in the frozen slot ledger itself. Cross-checked: all 8 declared SHAs are exactly the branch's commits over origin/main, and each verdict's footprint matches its named commit (P1/P2→ed326216, P3→6189fc7c, P5 + pin flip→7fd43586 which touches test_history_flags.py, rider P7→b124e187, O3 retirement→47077827, pins→49fa33ea, docs→f825216c, b5→bc280e8f). The only production hunk in the test-labeled commit 49fa33ea is verified docstring-only (_trim_to_max), matching its RN-Cdoc declaration — no undeclared behavior change.",
+            "evidence": "git log --oneline origin/main..fix/remediation-4b-3 = the 8 SHAs in inbox D6 verbatim; git show 49fa33ea -- psh/interactive/history_manager.py shows a docstring-only hunk; grep for 8-hex SHAs in SLOT-LEDGER-4b3.md finds only md5s and the base/attestation SHAs."
+          }
+        ],
+        "verdict": "PASS-WITH-NITS"
+      },
+      "reprobe": {
+        "verdict": "FAIL",
+        "issues": [
+          {
+            "severity": "BLOCKER",
+            "description": "Undeclared, unpinned behavior divergence vs bash 5.2.26 in the rider's cluster dispatch, in a DESTRUCTIVE direction. bash runs AT MOST ONE action per history invocation: when -c or -d is present, the file ops (-a/-n/-r/-w) are suppressed. psh at tip (_dispatch_options in psh/builtins/shell_state.py) applies -c/-d and then STILL runs the file op. Reproduced divergences at tip bc280e8f (piped --norc -i, scrubbed HIST*/PROMPT*, scratch HISTFILE, oracle /opt/homebrew/bin/bash 5.2.26): (a) 'history -cw' with seeded default HISTFILE: bash rc 0, file UNTOUCHED ['S1','S2'] (verified with unset-HISTFILE-before-exit so no exit-save pollution, plus a control showing separate '-c; -w' DOES truncate — instrument validated); psh rc 0, file TRUNCATED to empty. (b) 'history -wd 1' (seed S1, typed keep): bash file ['S1']; psh file ['true keep'] — the seeded line is destroyed. (c) 'history -ad 3' with 3 typed pending: bash file [] (-a never runs); psh file ['true t1','true t2']. (d) 'history -cn': bash MEM=[] (-n never runs); psh MEM=['EXT']. All four were REJECTED rc 2 at base, so this is new behavior introduced by this branch, sanctioned only as 'with its own probed bash semantics' (R1(a)) — and the probed semantics are wrong: SLOT-LEDGER §1.11 claims '-cw/-ca/-cd 1 → rc 0, both ops performed' (FALSE — bash performs only the clear), the _dispatch_options docstring presents 'then the single file operation' as 'Probed against bash 5.2.26', and test_d_takes_the_next_word_when_the_cluster_ends's docstring claims '-ad 1 IS -a plus -d 1, so both run' (FALSE for bash). Root cause is the R2-F1 instrument-mirror failure again: the a7_order.txt -cw cell used a NAMED file created empty, so 'clear-then-write' and '-w never ran' were indistinguishable, and the base psh columns matched vacuously because base rejected all clusters. Related same-family fact: bash 'history -an' fails LOUDLY ('history: cannot use more than one of -anrw') while the docstring claims 'rc 1, no message' and psh fails silently. None of these divergences is in the b1-b5 declared-deviation register, none is pinned (the -cw/-ca/-cd/-an pins assert rc only), and 'anything ELSE shell-observable that moves is a STOP' per the brief.",
+            "evidence": "Verifier probes at tip bc280e8ff72351d26f911190d85440f1804d1d35, discriminator /private/tmp/remv-4b3-tip-9107/psh/__init__.py, oracle GNU bash 5.2.26(1)-release at /opt/homebrew/bin/bash. Probe script: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/verify_probe_4b3.py. Key cells: 'CLUSTER -cw default seeded' bash FILE=['S1'] vs psh FILE=[]; minimal replay seed [S1,S2] bash file-after ['S1','S2'] with control '-c; -w' (separate commands) truncating; 'X -wd 1' bash FILE=['S1'] vs psh FILE=['true keep']; 'ORDER -ad 3 typed' bash FILE=[] vs psh FILE=['true t1','true t2']; 'X -cn' bash MEM=[] vs psh MEM=['EXT']; bash -an stderr 'bash: history: cannot use more than one of -anrw'. Mechanism: psh/builtins/shell_state.py#_dispatch_options (tip) runs file_ops[0] after the 'c'/'d' branch instead of suppressing it. False model claims: /Users/pwilson/src/psh-r4b-3/tmp/remediation-ledgers/SLOT-LEDGER-4b3.md §1.11; tests/conformance/bash/test_history_state_machine_conformance.py:363-369 docstring; non-discriminating instrument /Users/pwilson/src/psh-r4b-3/tmp/w4b3-probes/a7_order.txt '-cw NAMED' cell."
+          },
+          {
+            "severity": "BLOCKER",
+            "description": "The completion report's claim 'Six declared deviations …, each both-sides pinned' (also SLOT-LEDGER §3.6 context) is FALSE for b4. b4 = 'named-file read vs the DEFAULT cursor — bash has one global counter, corrupted by a named read'. The psh side IS pinned (tests/unit/interactive/test_history_state_machine_4b3.py::TestReadCursorPerOp::test_read_named_does_not_move_it and ::test_read_new_named_does_not_move_it), but NO test anywhere drives '-r NAMED' followed by '-n' on the default file to pin the bash side — grep of the conformance module shows no such row; the corruption exists only in docstrings. The bash-side CLAIM is true — I reproduced it independently (seed [D1,D2,D3], 'history -r X' (1 line), external append D4, 'history -n': bash MEM=[D1,D2,D3,X1,D2,D3,D4] — D2,D3 re-read because the named read set the global counter to 1; psh MEM=[D1,D2,D3,X1,D4]) — so this is a one-cell fix, but a stated register commitment was not delivered, which is bounce-grade per banked 4B.2 lesson 10 (a silently-dropped commitment is bounce-grade even when the measurement behind it turns out fine).",
+            "evidence": "Completion report in /Users/pwilson/src/psh-r4b-3/INTEGRATOR-INBOX.md ('each both-sides pinned'); register at SLOT-LEDGER-4b3.md §3.6. Pin search: grep of tests/conformance/bash/test_history_state_machine_conformance.py for 'history -r $OTHER' + 'history -n' compositions finds no named-read-then-default-n row; TestDeclaredDeviations covers b1(i)/b1(ii)/b2/b3/b5 only (test_read_named_then_append… is the b1(ii)/P6 APPEND-leak face, a different observable). Verifier reproduction of the b4 bash side: cell 'b4 (-r NAMED then -n default)' in verify_probe_4b3.py at tip bc280e8f — bash re-reads D2,D3 (counter := named file's line count), psh reads only D4."
+          },
+          {
+            "severity": "NIT",
+            "description": "M8 driver doc/code mismatch: the mutation_tree fixture docstring says the scratch parent (repo tmp/) is 'diagnosed as loudly as every other precondition rather than quietly created', but the code quietly creates it (os.makedirs(scratch_parent, exist_ok=True)) and fails loudly only if creation fails. The behavior is the RIGHT one for the fresh-checkout requirement — I certified 11/11 arms at a fresh worktree with tmp/ absent at creation, PYTHONDONTWRITEBYTECODE=1 — but the prose asserts the opposite of what the code does.",
+            "evidence": "tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py:264-287 (docstring vs os.makedirs(exist_ok=True) at line 275). Certification run: fresh detached worktree at bc280e8f with no tmp/ at creation; 11 passed in 16.18s."
+          },
+          {
+            "severity": "NIT",
+            "description": "Ledger/inbox rc-table wording: SLOT-LEDGER §1.11 characterizes '-an/-rw/-nr' as 'rc 1 (accepted, op failed)'. Measured: bash rejects the combination outright with 'history: cannot use more than one of -anrw' on stderr — no op is attempted. psh's rc-1-with-no-message matches the exit status (pinned) but not the diagnostic; fold the message question into the Blocker-1 fix. Also for the integrator's Part D: my novel rows '-sa hello', 'history -s \"\"', and the composite typed+-d 2+external+-n sequence all MATCH between the shells at tip — no action needed, recorded as verified parity.",
+            "evidence": "bash -an stderr captured at tip: 'bash: history: cannot use more than one of -anrw', rc=1; psh rc=1 with empty stderr. Novel parity rows in verify_probe_4b3.py output (cells 'NOVEL -sa hello', 'NOVEL -s empty', 'NOVEL composite -d 2 mid')."
+          }
+        ]
+      }
+    }
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Verify"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "diff-audit:fix/remediation-4b-3",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "a7887f3bf7e01a858",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1786139144648,
+      "queuedAt": 1786139142301,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "FAIL",
+      "promptPreview": "You are an adversarial verifier for the psh Boundary REMEDIATION Campaign (integrator-side review of a dev branch BEFORE it is gated and merged). Repo: /Users/pwilson/src/psh (work read-only from the main repo — do NOT check out, commit, or modify anything there; use \"git -C /Users/pwilson/src/psh <cmd>\" forms that need no checkout: diff, log, show, grep with a <branch> ref; throwaway worktrees ar…",
+      "lastProgressAt": 1786139845340,
+      "tokens": 158746,
+      "toolCalls": 55,
+      "durationMs": 700692,
+      "resultPreview": "{\"verdict\":\"FAIL\",\"issues\":[{\"severity\":\"BLOCKER\",\"description\":\"REGRESSION + BASH DIVERGENCE (psh/interactive/history_manager.py#_pending_entries). The new pending multiset VIEW resolves owed entries against state.history by TEXT, so a surviving entry with the same text satisfies the pending count of an entry that was deleted. Result: a `history -d`'d command is resurrected into $HISTFILE as a DU…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "resurrect:fix/remediation-4b-3",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "a69629538be3676b4",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1786139144516,
+      "queuedAt": 1786139142301,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "PASS-WITH-NITS",
+      "promptPreview": "You are an adversarial verifier for the psh Boundary REMEDIATION Campaign (integrator-side review of a dev branch BEFORE it is gated and merged). Repo: /Users/pwilson/src/psh (work read-only from the main repo — do NOT check out, commit, or modify anything there; use \"git -C /Users/pwilson/src/psh <cmd>\" forms that need no checkout: diff, log, show, grep with a <branch> ref; throwaway worktrees ar…",
+      "lastProgressAt": 1786139677033,
+      "tokens": 83116,
+      "toolCalls": 35,
+      "durationMs": 532516,
+      "resultPreview": "{\"verdict\":\"PASS-WITH-NITS\",\"issues\":[{\"severity\":\"NIT\",\"description\":\"Two COMMITTED, EXECUTABLE Wave-0 evidence probes still read/write the deleted attribute `HistoryManager._file_synced_len`: docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_psh.py (lines 25, 31, reads) and claim_a_s.py (line 24, ASSIGNS `hm._file_synced_len = 0`). Both are frozen archival records — ea…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "ledger:fix/remediation-4b-3",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "a2629490ff3bd9e6c",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1786139144523,
+      "queuedAt": 1786139142301,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "PASS-WITH-NITS",
+      "promptPreview": "You are an adversarial verifier for the psh Boundary REMEDIATION Campaign (integrator-side review of a dev branch BEFORE it is gated and merged). Repo: /Users/pwilson/src/psh (work read-only from the main repo — do NOT check out, commit, or modify anything there; use \"git -C /Users/pwilson/src/psh <cmd>\" forms that need no checkout: diff, log, show, grep with a <branch> ref; throwaway worktrees ar…",
+      "lastProgressAt": 1786139786729,
+      "tokens": 161365,
+      "toolCalls": 42,
+      "durationMs": 642206,
+      "resultPreview": "{\"issues\":[{\"severity\":\"NIT\",\"description\":\"Frozen slot ledger has duplicate section numbering and one dangling internal reference: two '## §3' sections (Pre-registrations at line 336, ROUND 3 A1' at line 486) with colliding §3.1-§3.6 subsections, and §3.1's 'Tip declared for this run: see §3.2' points at a §3.2 that does not exist in the pre-registration section (the only §3.2 is the A1' tail-win…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "reprobe:fix/remediation-4b-3",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "a573c88f6f9e260dd",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1786139144607,
+      "queuedAt": 1786139142301,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "FAIL",
+      "promptPreview": "You are an adversarial verifier for the psh Boundary REMEDIATION Campaign (integrator-side review of a dev branch BEFORE it is gated and merged). Repo: /Users/pwilson/src/psh (work read-only from the main repo — do NOT check out, commit, or modify anything there; use \"git -C /Users/pwilson/src/psh <cmd>\" forms that need no checkout: diff, log, show, grep with a <branch> ref; throwaway worktrees ar…",
+      "lastProgressAt": 1786140367071,
+      "tokens": 181923,
+      "toolCalls": 59,
+      "durationMs": 1222464,
+      "resultPreview": "{\"verdict\":\"FAIL\",\"issues\":[{\"severity\":\"BLOCKER\",\"description\":\"Undeclared, unpinned behavior divergence vs bash 5.2.26 in the rider's cluster dispatch, in a DESTRUCTIVE direction. bash runs AT MOST ONE action per history invocation: when -c or -d is present, the file ops (-a/-n/-r/-w) are suppressed. psh at tip (_dispatch_options in psh/builtins/shell_state.py) applies -c/-d and then STILL runs …"
+    }
+  ],
+  "totalTokens": 585150,
+  "totalToolCalls": 191
+}

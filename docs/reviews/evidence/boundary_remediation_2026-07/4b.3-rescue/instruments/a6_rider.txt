@@ -1,0 +1,224 @@
+========================================================================
+A6 — rider carry #25: clustered history flags
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+########## 1. -p/-s composition, both orders, with operands ##########
+
+--- -ps WITH operand ---
+    (does the -p print happen? does the -s store happen?)
+   bash: stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'history -ps hello', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'history -ps hello', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+--- -sp WITH operand ---
+    (reverse cluster order — same result => fixed internal order)
+   bash: stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'history -sp hello', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'history -sp hello', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+--- -p then -s as SEPARATE words ---
+    (not a cluster: -p with operands "-s" and "hello")
+   bash: stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['-s', 'hello']
+         listing=['true prev', 'echo ===PRE===', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+
+########## 2. -p/-s composition WITHOUT operands ##########
+
+--- -ps with NO operand ---
+    (rc and side effects with an empty operand list)
+   bash: stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'history -ps', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'history -ps', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'history -ps', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'history -ps', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+--- -sp with NO operand ---
+   bash: stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'history -sp', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'history -sp', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'history -sp', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'history -sp', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+
+########## 3. rc observation ##########
+
+--- rc of `history -ps hello` ---
+   bash: stdout-before=['RC=0']
+         listing=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['RC=2']
+         listing=['true prev', 'echo ===PRE===', 'history -ps hello; echo "RC=$?"', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'history -ps hello; echo "RC=$?"', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+--- rc of `history -sp hello` ---
+   bash: stdout-before=['RC=0']
+         listing=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['RC=2']
+         listing=['true prev', 'echo ===PRE===', 'history -sp hello; echo "RC=$?"', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'history -sp hello; echo "RC=$?"', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+--- rc of `history -ps` ---
+   bash: stdout-before=['RC=0']
+         listing=['true prev', 'echo ===PRE===', 'history -ps; echo "RC=$?"', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['RC=2']
+         listing=['true prev', 'echo ===PRE===', 'history -ps; echo "RC=$?"', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'history -ps; echo "RC=$?"', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'history -ps; echo "RC=$?"', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+--- rc of `history -p hello` ---
+   bash: stdout-before=['hello', 'RC=0']
+         listing=['true prev', 'echo ===PRE===', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['hello', 'RC=0']
+         listing=['true prev', 'echo ===PRE===', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+--- rc of `history -s hello` ---
+   bash: stdout-before=['RC=0']
+         listing=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['RC=0']
+         listing=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'hello', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+
+########## 4. the line-scoped CV3 strip flag under a cluster ##########
+
+--- SAME LINE: -ps a; -s b ---
+    (-s consumes the flag, -p keeps it: which applies to the cluster?)
+   bash: stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'a', 'b', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'b', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'a', 'b', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'b', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+--- SAME LINE control: -p a; -s b ---
+    (control — -p keeps the flag, so -s still strips)
+   bash: stdout-before=['a']
+         listing=['true prev', 'b', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['a']
+         listing=['true prev', 'b', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'b', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'b', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+--- SAME LINE control: -s a; -s b ---
+    (control — first -s consumes, second does not strip)
+   bash: stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'a', 'b', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['true prev', 'echo ===PRE===', 'a', 'b', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'a', 'b', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'a', 'b', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+--- -ps with a history REFERENCE operand ---
+    (what does !! resolve to after the strip?)
+   bash: stdout-before=[]
+         listing=['true prev', 'true target', 'echo ===PRE===', 'echo ===PRE===', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['true prev', 'true target', 'echo ===PRE===', 'history -ps "echo ===PRE==="', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'true target', 'echo ===PRE===', 'echo ===PRE===', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'true target', 'echo ===PRE===', 'history -ps "echo ===PRE==="', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+
+########## 5. representative sanity set of OTHER clusters ##########
+
+--- -cw (clear then write) ---
+    (order: clear-then-write or reverse?)
+   bash: stdout-before=[]
+         listing=['cat /Users/pwilson/src/psh-r4b-3/tmp/tmpf3d1ug_g/out', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'history -cw /Users/pwilson/src/psh-r4b-3/tmp/tmpzc14cf_z/out', 'cat /Users/pwilson/src/psh-r4b-3/tmp/tmpzc14cf_z/out', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['seed1', 'seed2', 'seed3', 'cat /Users/pwilson/src/psh-r4b-3/tmp/tmpf3d1ug_g/out', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'history -cw /Users/pwilson/src/psh-r4b-3/tmp/tmpzc14cf_z/out', 'cat /Users/pwilson/src/psh-r4b-3/tmp/tmpzc14cf_z/out', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+--- -an (append then read-new) ---
+    (both file ops in one invocation)
+   bash: stdout-before=[]
+         listing=['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'printf "EXTRA\\n" >> "$HISTFILE"', 'history -an', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'printf "EXTRA\\n" >> "$HISTFILE"', 'history -an', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['seed1', 'seed2', 'seed3', 'EXTRA', 'true keep', 'echo ===PRE===', 'printf "EXTRA\\n" >> "$HISTFILE"', 'history -an', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['seed1', 'seed2', 'seed3', 'EXTRA', 'true keep', 'echo ===PRE===', 'printf "EXTRA\\n" >> "$HISTFILE"', 'history -an', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+--- -rw (read then write) ---
+   bash: stdout-before=[]
+         listing=['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'history -rw', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'history -rw', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'history -rw', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'history -rw', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+--- -cd 1 (clear + delete) ---
+    (-d takes an argument; does the cluster consume it?)
+   bash: stdout-before=[]
+         listing=['echo ===OP_MEM===', 'history']
+   psh : stdout-before=[]
+         listing=['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'history -cd 1', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['seed1', 'seed2', 'seed3', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['seed1', 'seed2', 'seed3', 'true keep', 'echo ===PRE===', 'history -cd 1', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+
+
+########## 6. invalid letters inside a cluster ##########
+
+--- -pz (valid then invalid) ---
+   bash: stdout-before=['RC=2']
+         listing=['true prev', 'echo ===PRE===', 'history -pz x; echo "RC=$?"', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['RC=2']
+         listing=['true prev', 'echo ===PRE===', 'history -pz x; echo "RC=$?"', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'history -pz x; echo "RC=$?"', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'history -pz x; echo "RC=$?"', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+--- -zs (invalid then valid) ---
+   bash: stdout-before=['RC=2']
+         listing=['true prev', 'echo ===PRE===', 'history -zs x; echo "RC=$?"', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['RC=2']
+         listing=['true prev', 'echo ===PRE===', 'history -zs x; echo "RC=$?"', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'history -zs x; echo "RC=$?"', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', 'history -zs x; echo "RC=$?"', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => MATCHES
+
+--- -- terminator ---
+   bash: stdout-before=['RC=0']
+         listing=['true prev', 'echo ===PRE===', 'x', 'echo ===OP_MEM===', 'history']
+   psh : stdout-before=['RC=0']
+         listing=['true prev', 'echo ===PRE===', '-- x', 'echo ===OP_MEM===', 'history']
+   file-after-exit: bash=['true prev', 'echo ===PRE===', 'x', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+                    psh =['true prev', 'echo ===PRE===', '-- x', 'echo ===OP_MEM===', 'history', 'echo ===OP_FILE===', 'cat "$HISTFILE"', 'exit']
+  => DIVERGES
+

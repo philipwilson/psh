@@ -1,0 +1,80 @@
+========================================================================
+A7 — cluster order + `-s` newline
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+########## -c vs -w: which runs first? ##########
+
+--- -cw NAMED (seeded S1..S3, one typed entry) ---
+    (clear-then-write => out is EMPTY; write-then-clear => out has S1..S3+keep)
+   bash OUT       =[]
+   psh  OUT       =[]
+   file-after-exit: bash=['S1', 'S2', 'S3']
+                    psh =['S1', 'S2', 'S3', 'true keep']
+
+
+########## -c vs -d: which runs first? ##########
+
+--- -cd 1 then list ---
+    (delete-then-clear and clear-then-delete both end empty; rc and any error message are the discriminator)
+   bash OP_MEM    =[]
+   psh  OP_MEM    =['S1', 'S2', 'S3', 'true keep']
+   file-after-exit: bash=['S1', 'S2', 'S3']
+                    psh =['S1', 'S2', 'S3', 'true keep']
+
+
+########## -a vs -n: which runs first? ##########
+
+--- -an with an external line already in the file ---
+    (append-then-read => the appended entry is re-read into memory; read-then-append => EXTERNAL arrives before `keep` is written)
+   bash OP_MEM    =['S1', 'S2', 'S3', 'true keep']
+   psh  OP_MEM    =['S1', 'S2', 'S3', 'true keep']
+   file-after-exit: bash=['S1', 'S2', 'S3', 'EXTERNAL', 'true keep']
+                    psh =['S1', 'S2', 'S3', 'EXTERNAL', 'true keep']
+
+
+########## -r vs -w: which runs first? ##########
+
+--- -rw (default file) ---
+    (read-then-write => file ends with the doubled list; write-then-read => memory ends doubled)
+   bash OP_MEM    =['S1', 'S2', 'S3', 'true keep']
+   psh  OP_MEM    =['S1', 'S2', 'S3', 'true keep']
+   file-after-exit: bash=['S1', 'S2', 'S3', 'true keep']
+                    psh =['S1', 'S2', 'S3', 'true keep']
+
+
+########## -s vs -p: confirmed precedence, plus -s vs -c ##########
+
+--- -cs STORED (clear + store) ---
+    (clear-then-store => [STORED]; store-then-clear => [])
+   bash OP_MEM    =['STORED']
+   psh  OP_MEM    =['S1', 'S2', 'S3', 'true keep']
+   file-after-exit: bash=['S1', 'S2', 'S3', 'STORED']
+                    psh =['S1', 'S2', 'S3', 'true keep']
+
+--- -ds 1 STORED (delete + store) ---
+    (does -d consume `1` and -s store `STORED`?)
+   bash OP_MEM    =['S1', 'S2', 'S3', 'true keep']
+   psh  OP_MEM    =['S1', 'S2', 'S3', 'true keep']
+   file-after-exit: bash=['S1', 'S2', 'S3', 'true keep']
+                    psh =['S1', 'S2', 'S3', 'true keep']
+
+
+########## `-s` with an embedded newline (P3 risk) ##########
+
+--- history -s $'a\nb' ---
+    (bash: one entry verbatim, or joined to `a; b`? P3 routes -s through add_to_history, whose cmdhist joiner would join it)
+   bash OP_MEM    =['S1', 'S2', 'S3', 'a', '?b']
+   psh  OP_MEM    =['S1', 'S2', 'S3', 'a', '?b']
+   file-after-exit: bash=['S1', 'S2', 'S3', 'a', 'b']
+                    psh =['S1', 'S2', 'S3', 'a', 'b']
+
+--- a REAL multi-line typed command (control for the joiner) ---
+    (control: the cmdhist joiner IS correct for typed multi-line commands)
+   bash OP_MEM    =['S1', 'S2', 'S3', 'if true; then true joined; fi']
+   psh  OP_MEM    =['S1', 'S2', 'S3', 'if true; then true joined; fi']
+   file-after-exit: bash=['S1', 'S2', 'S3', 'if true; then true joined; fi']
+                    psh =['S1', 'S2', 'S3', 'if true; then true joined; fi']
+
