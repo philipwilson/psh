@@ -1,0 +1,15 @@
+python: 3.14.2
+SHA: b3e3dc6a8c4804af45b3bf330032731165fea03c
+
+-- frozen dataclass, plain assignment (the guarded route) --
+   setattr rejected: FrozenInstanceError
+-- frozen dataclass, __init__ re-invocation (the D-4B.1-s2 claim) --
+   __init__ LANDS -> status=VALUE value='CIRCUMVENTED'
+   VERDICT: frozen dataclass ADMITS __init__ re-invocation -> D-4B.1-s2 claim CONFIRMED
+
+-- mechanism cited by the row: generated __init__ uses object.__setattr__ --
+    (generated __init__ has no retrievable source; checking behaviourally instead)
+    behavioural: status MISSING -> VALUE (mutated in place)
+
+-- for completeness: raising __setattr__ variant vs __init__ --
+   raising-__setattr__ ADMITS __init__ -> value='CIRCUMVENTED'  (matches the row)

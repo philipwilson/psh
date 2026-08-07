@@ -99,3 +99,47 @@ Shipped as v0.770.0.
   class — §8.6).
 - Any shell-observable behavior change (compare-bash 3,042/26 EXACT both
   ends; internal-integrity slot).
+
+## Addendum (2026-08-07, post-merge — PR after #521): sign-off record
+
+Dev sign-off ran as THREE LEGS the dev itself defined when the integrator
+used an undefined term ("3-point protocol" — a carry-over of the 4A.2
+dev's self-defined sign-off; origin corrected in R6): COMPLETENESS
+(byte-identity vs a pre-declared manifest), FIDELITY (committed figures
+match the frozen ledger, splits carried as splits), BOUNDARY (shipped-
+remedy wording unsmoothed, faults present, nothing over-claimed). All
+three PASS at the gated tip (D7, re-run D8) and at origin/main after
+merge (D9): 30/30 instruments byte-identical, six dev files shipped
+byte-identical by blob hash, LEDGER row accurate incl. the 32+1+25
+split and the certification perf figure.
+
+Two sign-off findings, both accepted:
+- **The committed dev manifest was a superseded, SELF-FALSE draft**
+  (listed its own hash — unverifiable by construction — plus a
+  `__pycache__` md5-error line): the ceremony copy had raced the
+  writer by 24 seconds. Fixed pre-attestation (commit 29c13396, gate
+  stopped and re-run at the fix). Corrected the integrator's first
+  "innocent snapshot" verdict. Lessons: manifests EXCLUDE THEMSELVES
+  and say so; manifest handoff is BY EXPLICIT DECLARATION (final +
+  md5) before any ceremony copy — applied successfully to this very
+  addendum's instrument copy (declared `ca35b259…`, verified on copy).
+- **An uninstrumented load-bearing claim in the INTEGRATOR'S Part D
+  row**: D-4B.1-s2's "frozen dataclass admits `__init__`
+  re-invocation" had no instrument on either side. The dev
+  instrumented it (`out_signoff_frozen_dc_init.txt`, this directory):
+  CONFIRMED — frozen dataclass rejects plain assignment, ADMITS
+  `__init__` re-invocation; the raising-`__setattr__` variant admits
+  it too. Scope per D8: "no closing representation" is established
+  for THE TWO PRICED ALTERNATIVES THE ROW NAMES, not for every
+  conceivable representation.
+
+Extra release leg (dev-initiated, now standing for 4B.2+ ceremonies):
+**artifact verification** — hash identity proves what shipped, not
+that it works; the four original MEDIUM-5 legs re-run at a detached
+checkout of TAG v0.770.0 reproduce 0/4 (4/4 at base).
+
+Declined-with-reason (both recorded in R6/R8): the pickle
+non-circumvention PIN (a pin is a promise to preserve;
+circumvention-route semantics are not promised; slot closed at 58) and
+the M8-driver missing-plugin diagnostic (post-freeze instrument edit;
+banked as a 4B.2+ pattern instead).
