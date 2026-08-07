@@ -1,0 +1,64 @@
+P6 coherence matrix — MUTATION SURFACE x AUTHORITY GUARD
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82   python: 3.14.2
+GUARANTEE HELD=False in an (M) cell == the defect, i.e. RED-ON-BASE
+==============================================================================
+  [readonly_M] readonly  (M) mutation attempt
+    surface .binding.value : SUCCEEDED (no exception)
+    shell reads RO         : 'hacked'
+    GUARANTEE HELD         : False
+------------------------------------------------------------------------------
+  [readonly_C] readonly  (C) legitimate path coherence
+    `RO=viaShell` rc       : 1 (1 == refused)
+    store.assign('RO',...) : raised ReadonlyVariableError: RO: readonly variable
+    value                  : 'original'
+    GUARANTEE HELD         : True
+    [stderr] psh: line 1: RO: readonly variable
+------------------------------------------------------------------------------
+  [nameref_M] nameref   (M) mutation attempt on deref'd binding
+    binding.name           : 'target' (the TARGET, deref'd)
+    surface .binding.value : SUCCEEDED (no exception)
+    target reads           : 'clobbered'
+    GUARANTEE HELD         : False
+------------------------------------------------------------------------------
+  [nameref_C] nameref   (C) legitimate path coherence
+    after `ref=viaRef`: target = 'viaRef'
+    ...read back via ref       = 'viaRef'
+    readonly target; `ref=blocked` rc = 1 (1 == refused)
+    GUARANTEE HELD         : True
+    [stderr] psh: line 1: target: readonly variable
+------------------------------------------------------------------------------
+  [observer_M] observer  (M) mutation attempt
+    surface .binding.value : SUCCEEDED (no exception)
+    observer fired         : []
+    shell reads / env      : 'two' / 'one'
+    GUARANTEE HELD (read change implies observer) : False
+------------------------------------------------------------------------------
+  [observer_C] observer  (C) legitimate path coherence
+    after `EX=two` observer fired : ['EX']
+    shell reads / env      : 'two' / 'two'
+    GUARANTEE HELD         : True
+------------------------------------------------------------------------------
+  [export_M] export    (M) mutation attempt
+    surface .binding.value : SUCCEEDED (no exception)
+    shell / env            : 'two' / 'one'
+    GUARANTEE HELD (agree) : False
+------------------------------------------------------------------------------
+  [export_C] export    (C) legitimate path coherence
+    after export EX=one       : shell='one'      env='one'
+    after EX=two              : shell='two'      env='two'
+    after export EX=three     : shell='three'    env='three'
+    after unset EX            : shell=''         env=None
+    after export EX=four      : shell='four'     env='four'
+    GUARANTEE HELD         : True
+------------------------------------------------------------------------------
+  [tristate_M] tri-state (M) _MISSING poisoning, one manager
+    surface .status/.value : SUCCEEDED (no exception)
+    unrelated miss reads   : VALUE value='POISON'
+    GUARANTEE HELD         : False
+------------------------------------------------------------------------------
+  [tristate_M2] tri-state (M) poisoning across TWO SHELLS
+[FIRED]
+    shell B ${u+w} rc      : 0
+    shell B miss status    : VALUE
+    GUARANTEE HELD         : False
+------------------------------------------------------------------------------

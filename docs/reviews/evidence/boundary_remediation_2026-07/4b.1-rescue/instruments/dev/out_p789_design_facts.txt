@@ -1,0 +1,51 @@
+P7/P8/P9 design facts
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82   python: 3.14.2
+==============================================================================
+--- P7 lookup() x dynamic-special registry ---
+psh from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+  Is each name a computed special?
+    RANDOM     is_computed=True
+    SECONDS    is_computed=True
+    LINENO     is_computed=True
+    PLAINVAR   is_computed=False
+
+  Does lookup() reach the special registry, and is .binding live?
+    RANDOM     status=VALUE         binding=Variable two reads share the cell? False
+    SECONDS    status=VALUE         binding=Variable two reads share the cell? False
+    PLAINVAR   status=VALUE         binding=Variable two reads share the cell? True
+
+  Mutating a SPECIAL's binding — does anything observe it?
+    attempt: SUCCEEDED;  SECONDS before='0' after='0'
+    -> the special's binding is a THROWAWAY: True
+
+  Local shadowing a special (bash: the local wins):
+5
+------------------------------------------------------------------------------
+--- P8 scope boundary — which returns are LIVE cells ---
+psh from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+  stored cell in scope dict: Variable(name='X', value='v', attributes=<VarAttributes.NONE: 0>)
+
+  Which returns hand out THAT LIVE cell (identity test)?
+    ScopeManager.get_variable_object('X')            is the live cell? True
+    ScopeManager.get_declared_variable_object('X')   is the live cell? True
+    ScopeManager.lookup('X').binding                 is the live cell? True
+    VariableStore.get_variable_object('X')           is the live cell? True
+    ScopeManager.all_variables_with_attributes() -> X is the live cell? True
+
+  And the string projection returns no cell at all:
+    ScopeManager.get_variable('X') -> 'v' (str)
+------------------------------------------------------------------------------
+--- P9 array aliasing under a snapshot policy ---
+psh from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+  arr: binding.value is IndexedArray (mutable object: True)
+  m: binding.value is AssociativeArray (mutable object: True)
+
+  A 'snapshot' that copies only the SCALAR fields still aliases:
+    snapshot.value is the live array object? True
+    after snapshot.value.set(0, ...): shell reads ${arr[0]} = 'MUTATED_THROUGH_SNAPSHOT'
+arr[0]=MUTATED_THROUGH_SNAPSHOT
+
+  Variable.copy() DEEP-copies arrays (the honest snapshot):
+    deep.value is live? False
+arr2[0]=x
+------------------------------------------------------------------------------

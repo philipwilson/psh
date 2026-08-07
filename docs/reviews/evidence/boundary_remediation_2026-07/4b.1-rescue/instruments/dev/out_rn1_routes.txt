@@ -1,0 +1,23 @@
+psh from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+SHA: 0e9603e6ede828894fbe96ea1ced372d554cf984
+
+-- RN-1 route (i): __init__ re-invocation on the SHARED singleton --
+  missing().__init__(VALUE,'POISON')             LANDS (no exception)
+  unrelated fresh miss now reads: VALUE value='POISON'
+  -> singleton poisoned end-to-end: True
+  (probe restored singleton: MISSING)
+
+-- RN-1 route (ii): delattr on a private slot --
+  delattr(fresh, '_value')                       LANDS (no exception)
+  reading .value after delattr raises AttributeError (slot removed)
+
+-- other routes named by the amendment --
+  plain _value assignment                        LANDS (no exception)
+  object.__setattr__(_value)                     LANDS (no exception)
+  __class__ reassignment                         LANDS (no exception)
+
+-- pickle: distinct-but-immutable clone, real singleton unharmed --
+  clone is the singleton? False
+  clone status/value: MISSING None
+  clone.status assignment                        rejected: AttributeError
+  real singleton still MISSING: MISSING

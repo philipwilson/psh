@@ -49,8 +49,8 @@ transaction stops sealing before resolution (WHEN it may be read).
 Resolution runs once PER COMMAND, so the three types are ``slots=True`` (NOT
 ``frozen``): frozen dataclasses pay a per-field ``object.__setattr__`` on every
 construction, measurable on this hot path. They follow the campaign's ratified
-allocate-fresh-never-mutate discipline (the W1 ``FieldRun`` / R2 ``VariableLookup``
-precedent — slots-non-frozen with a slots guard pin instead of frozen); the
+allocate-fresh-never-mutate discipline (the W1 ``FieldRun`` precedent —
+slots-non-frozen with a slots guard pin instead of frozen); the
 ``slots`` layout already forbids growing an instance with a stray attribute. The
 overlay is still a VALUE (built once, never mutated); the "immutable view" in the
 type descriptions is that discipline, not a ``frozen`` enforcement.

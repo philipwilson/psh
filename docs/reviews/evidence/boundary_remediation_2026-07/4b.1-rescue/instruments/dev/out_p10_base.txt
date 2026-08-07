@@ -1,0 +1,15 @@
+P10 real-lookup certification benchmark (no patching)
+checkout: /Users/pwilson/src/psh-r4b-1/tmp/base-probe
+psh from: /Users/pwilson/src/psh-r4b-1/tmp/base-probe/psh/__init__.py
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82
+tracked-file dirt: YES -> ?? bench_p10_real_lookup.py
+python: 3.14.2   GC on
+representation: True  slots=('status', 'value', 'binding')
+methodology: R=11, N=100000
+==============================================================================
+    cell                                       min ns/op     median    spread
+    VALUE          lookup('SET')                 1484.68    1508.62    107.16
+    PRESENT_UNSET  lookup('DECL')                1525.28    1536.72     44.51
+    MISSING        lookup('NOPE')                 518.11     526.67     19.95
+    production     lookup('SET').is_set          1514.34    1533.86     43.79
+    control        get_variable('SET')           1383.08    1412.30     97.07

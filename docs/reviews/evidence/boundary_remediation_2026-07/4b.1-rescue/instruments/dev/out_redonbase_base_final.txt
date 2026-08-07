@@ -1,0 +1,52 @@
+redonbase_split — tests/unit/core/test_variable_lookup_immutability.py
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82
+worktree dirty: YES
+    ?? tests/unit/core/test_variable_lookup_immutability.py
+python: 3.14.2
+collected: 58 cells; running each in its own process
+==========================================================================================
+class                                     cells    RED   GREEN   other
+TestAuthorityCoherence                        8      4       4       0
+TestBindingSurfaceOmitted                     5      5       0       0
+TestCompositionCells                          4      4       0       0
+TestDeclaredThreatModelBoundary               1      1       0       0
+TestMissingSingletonNotPoisonable             4      4       0       0
+TestMutationSurfaceRejected                  30     12      18       0
+TestRepresentationSemantics                   6      3       3       0
+------------------------------------------------------------------------------------------
+TOTAL                                        58     33      25       0
+
+RED cells (defect evidence unless labelled otherwise):
+    TestMutationSurfaceRejected::test_assignment_rejected[fresh_value-status]
+    TestMutationSurfaceRejected::test_assignment_rejected[fresh_value-value]
+    TestMutationSurfaceRejected::test_assignment_rejected[missing_singleton-status]
+    TestMutationSurfaceRejected::test_assignment_rejected[missing_singleton-value]
+    TestMutationSurfaceRejected::test_assignment_rejected[present_unset_singleton-status]
+    TestMutationSurfaceRejected::test_assignment_rejected[present_unset_singleton-value]
+    TestMutationSurfaceRejected::test_deletion_rejected[fresh_value-status]
+    TestMutationSurfaceRejected::test_deletion_rejected[fresh_value-value]
+    TestMutationSurfaceRejected::test_deletion_rejected[missing_singleton-status]
+    TestMutationSurfaceRejected::test_deletion_rejected[missing_singleton-value]
+    TestMutationSurfaceRejected::test_deletion_rejected[present_unset_singleton-status]
+    TestMutationSurfaceRejected::test_deletion_rejected[present_unset_singleton-value]
+    TestBindingSurfaceOmitted::test_result_exposes_no_binding[fresh_value]
+    TestBindingSurfaceOmitted::test_result_exposes_no_binding[missing_singleton]
+    TestBindingSurfaceOmitted::test_result_exposes_no_binding[present_unset_singleton]
+    TestBindingSurfaceOmitted::test_of_value_takes_no_binding_argument
+    TestBindingSurfaceOmitted::test_present_unset_takes_no_binding_argument
+    TestMissingSingletonNotPoisonable::test_mutating_a_miss_raises_and_the_next_miss_is_clean
+    TestMissingSingletonNotPoisonable::test_mutating_a_declared_unset_result_leaves_the_next_read_clean
+    TestMissingSingletonNotPoisonable::test_poisoning_attempt_does_not_fire_a_parameter_operator
+    TestMissingSingletonNotPoisonable::test_poisoning_attempt_cannot_cross_two_sequential_shells
+    TestAuthorityCoherence::test_readonly_value_unreachable_from_a_lookup_result
+    TestAuthorityCoherence::test_nameref_target_unreachable_from_a_lookup_result
+    TestAuthorityCoherence::test_no_read_can_change_without_notifying_the_observer
+    TestAuthorityCoherence::test_env_and_shell_agree_after_mutation_attempts
+    TestCompositionCells::test_mutation_attempt_across_a_two_level_nameref_chain
+    TestCompositionCells::test_mutation_attempt_on_a_readonly_export_leaves_env_coherent
+    TestCompositionCells::test_computed_special_read_is_frozen_too
+    TestCompositionCells::test_masked_special_still_reads_unset_through_a_frozen_result
+    TestRepresentationSemantics::test_present_unset_is_a_shared_singleton
+    TestRepresentationSemantics::test_all_declared_unset_results_are_equal
+    TestRepresentationSemantics::test_repr_shows_status_and_value_and_no_binding
+    TestDeclaredThreatModelBoundary::test_control_private_slot_write_is_declared_out_of_scope

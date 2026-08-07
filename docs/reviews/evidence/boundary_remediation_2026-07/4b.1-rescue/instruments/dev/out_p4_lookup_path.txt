@@ -1,0 +1,49 @@
+P4 end-to-end ScopeManager.lookup() benchmark
+psh from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82
+python: 3.14.2   GC on
+methodology: R=11, N=100000, interleaved round-robin
+====================================================================================
+
+--- VALUE          (builds fresh) ---
+    stmt: m.lookup('SET')
+    candidate                            min ns/op     median     spread    vs C0   delta ns
+    C0 plain __slots__ (CURRENT)           1380.06    1394.61     107.42    1.00x      +0.00
+    C1 frozen dataclass slots              1560.43    1580.13     138.14    1.13x    +180.37
+    C2 NamedTuple                          1438.73    1462.60      47.51    1.04x     +58.67
+    C3 slots + raising __setattr__         1548.31    1567.39      29.28    1.12x    +168.24
+    C4 properties over slots               1382.87    1396.40      26.88    1.00x      +2.81
+
+--- PRESENT_UNSET  (builds fresh) ---
+    stmt: m.lookup('DECL')
+    candidate                            min ns/op     median     spread    vs C0   delta ns
+    C0 plain __slots__ (CURRENT)           1482.55    1497.88      93.79    1.00x      +0.00
+    C1 frozen dataclass slots              1651.23    1684.58     115.53    1.11x    +168.67
+    C2 NamedTuple                          1544.30    1568.94     137.88    1.04x     +61.75
+    C3 slots + raising __setattr__         1640.31    1670.11      55.57    1.11x    +157.76
+    C4 properties over slots               1485.97    1497.30     100.85    1.00x      +3.42
+
+--- MISSING        (singleton at base) ---
+    stmt: m.lookup('NOPE')
+    candidate                            min ns/op     median     spread    vs C0   delta ns
+    C0 plain __slots__ (CURRENT)            516.17     519.68      26.89    1.00x      +0.00
+    C1 frozen dataclass slots               517.27     520.88       7.82    1.00x      +1.10
+    C2 NamedTuple                           515.48     520.96      10.81    1.00x      -0.69
+    C3 slots + raising __setattr__          515.51     522.47      20.95    1.00x      -0.66
+    C4 properties over slots                515.63     523.19      38.85    1.00x      -0.54
+
+--- get_variable   (builds NOTHING - control) ---
+    stmt: m.get_variable('SET')
+    candidate                            min ns/op     median     spread    vs C0   delta ns
+    C0 plain __slots__ (CURRENT)           1323.64    1340.00     104.73    1.00x      +0.00
+    C1 frozen dataclass slots              1322.49    1337.70      64.16    1.00x      -1.15
+    C2 NamedTuple                          1328.95    1339.55      66.77    1.00x      +5.32
+    C3 slots + raising __setattr__         1325.69    1342.19      58.16    1.00x      +2.05
+    C4 properties over slots               1324.18    1333.86      26.13    1.00x      +0.55
+
+--- correctness control: identical tri-state answers per arm ---
+    C0 plain __slots__ (CURRENT)       (('VALUE', 'v', True, True), ('PRESENT_UNSET', None, False, True), ('MISSING', None, False, False))
+    C1 frozen dataclass slots          (('VALUE', 'v', True, True), ('PRESENT_UNSET', None, False, True), ('MISSING', None, False, False))
+    C2 NamedTuple                      (('VALUE', 'v', True, True), ('PRESENT_UNSET', None, False, True), ('MISSING', None, False, False))
+    C3 slots + raising __setattr__     (('VALUE', 'v', True, True), ('PRESENT_UNSET', None, False, True), ('MISSING', None, False, False))
+    C4 properties over slots           (('VALUE', 'v', True, True), ('PRESENT_UNSET', None, False, True), ('MISSING', None, False, False))

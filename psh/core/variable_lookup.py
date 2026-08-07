@@ -20,28 +20,69 @@ resurrected the exported value (``export FOO=outer; f(){ local FOO; echo
 "${FOO-u}"; }`` printed ``outer`` instead of bash's ``u``). The tri-state is the
 representation that makes the env fallback unnecessary and wrong.
 
-The ``binding`` half exposes the resolved ``Variable`` cell so consumers that
-need attributes / scope identity (``${x@a}``, ``declare -p``) can read them
-WITHOUT a second lookup. It is a READ view: lookups never mutate; every write
-goes through the mutation engine (`variable_store.py` / `scope.py`).
+The result is IMMUTABLE and carries no reference to a ``Variable`` cell. That
+is the read/write split made structural: `lookup()` is the READ authority, and
+every write goes through the mutation engine (`variable_store.py` /
+`scope.py`) by identifier, where the readonly guard, nameref resolution, and
+the ``variable_changed`` observer live. A read result that exposed a live cell
+was a way around all three at once — see the threat model below.
 
-``VariableLookup`` is a plain ``__slots__`` class rather than a frozen
-dataclass: ``lookup()`` sits on the shell's hottest read path and freezing
-roughly triples construction cost (``object.__setattr__`` per field — the same
-measurement that drove W1's non-frozen ``FieldRun`` ruling). The discipline is
-ALLOCATE-FRESH-NEVER-MUTATE: every instance is built by one of the three
-factories below and never written after construction. ``__slots__`` keeps
-instances closed (no ``__dict__`` to grow ad-hoc state on), guarded by the
-slots test in ``tests/unit/core/test_variable_lookup.py``.
+Reading attributes or scope identity is NOT this type's job: ask
+``get_variable_object`` / ``get_declared_variable_object``, which is where
+``${x@a}`` and ``declare -p`` already go.
+
+WHY read-only properties over private slots, and not ``frozen=True``
+(slot 4B.1 ruling (a); the earlier non-frozen ruling this replaces was made on
+a premise that was never measured):
+
+1. **The premise was false.** ``lookup()`` is not on the hot read path. The
+   string projection ``ScopeManager.get_variable`` shares the resolver walk and
+   builds no ``VariableLookup`` at all, and ``lookup()`` has ONE production
+   caller — ``expansion/operators.py#_param_is_set``, the non-colon
+   ``${x+w}`` / ``${x-w}`` set-ness test. Measured construction counts on real
+   workloads: variable-read-heavy 0, mixed scripting 0, nameref/export churn 0,
+   shell startup 0.
+2. **Immutability here costs nothing, and locking it in matters.** Properties
+   over private slots reject assignment at 1.00x construction and +2.81 ns on a
+   ~1380 ns ``lookup()``; ``frozen=True`` measured 1.13x end-to-end. Zero tax
+   is what keeps the tri-state authority usable on the hot path, so the
+   ``get_variable`` / ``lookup`` projection split is never perf-locked: if
+   those projections are ever unified, this representation survives unchanged.
+
+Both grounds are load-bearing — with (1) alone the cost would be affordable
+rather than absent, and (2) is what makes the choice robust to the projections
+merging. The frozen-dataclass cost this avoids is real, and the ratified
+non-frozen ruling for ``FieldRun`` (W1) rests on its own hot-path measurement,
+which is NOT re-opened or generalised by anything here.
+
+THREAT MODEL (ruled, slot 4B.1 rulings (c) and (c-1)): the pins prove
+HONEST-CALLER ACCIDENT — plain attribute assignment to a public name raises,
+on fresh instances and on both shared singletons.
+
+Declared OUT OF SCOPE as deliberate circumvention, as an OPEN CLASS rather
+than a list: any route that writes or removes the private slots by deliberate
+construction — including plain ``_status`` / ``_value`` assignment,
+``delattr``, ``__init__`` re-invocation, ``__class__`` reassignment, and
+``object.__setattr__`` — plus module rebinding. The class is stated open
+because it was first written as a closed enumeration of three and
+verification found two further live routes; enumerating is the wrong shape
+for this boundary. (``pickle`` is NOT in the class: a round-trip yields a
+distinct clone that is itself immutable, leaving the real singleton
+unharmed.)
+
+This is WEAKER than the frozen-dataclass surface used for pattern nodes
+(slot 3.2) on the private-slot clause — though not on ``__init__``
+re-invocation, which that surface admits too. The alternatives that would
+narrow it were priced and declined on measured cost.
+``tests/unit/core/test_variable_lookup_immutability.py`` commits the limit as
+a labelled control that DEMONSTRATES the routes, so strengthening it later
+flips a visible cell rather than quietly narrowing a prose claim.
 """
 
 from __future__ import annotations
 
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from .variables import Variable
+from typing import Optional
 
 
 class LookupStatus(Enum):
@@ -53,58 +94,67 @@ class LookupStatus(Enum):
 
 
 class VariableLookup:
-    """The typed result of ``ScopeManager.lookup(name)``.
+    """The immutable, typed result of ``ScopeManager.lookup(name)``.
 
     ``value`` is the string value when (and only when) ``status is VALUE``.
-    ``binding`` is the resolved ``Variable`` cell for VALUE and PRESENT_UNSET
-    reads (read-only view), or ``None`` for MISSING.
+    There is deliberately no reference to the resolved cell (module docstring).
 
-    Instances are allocate-fresh-never-mutate (module docstring); build them
-    only through :meth:`missing` / :meth:`present_unset` / :meth:`of_value`.
+    Build only through :meth:`missing` / :meth:`present_unset` /
+    :meth:`of_value`. ``MISSING`` and ``PRESENT_UNSET`` carry no per-instance
+    data, so each is a shared frozen constant — safe to share for the same
+    reason ``True`` and ``None`` are, and allocation-free. Equality is
+    ``status`` + ``value``; instances are unhashable (defining ``__eq__``
+    without ``__hash__``), which is preserved from the original type rather
+    than newly chosen.
     """
 
-    __slots__ = ("status", "value", "binding")
+    __slots__ = ("_status", "_value")
 
-    def __init__(self, status: LookupStatus, value: Optional[str] = None,
-                 binding: "Optional[Variable]" = None):
-        self.status = status
-        self.value = value
-        self.binding = binding
+    def __init__(self, status: LookupStatus, value: Optional[str] = None):
+        self._status = status
+        self._value = value
+
+    @property
+    def status(self) -> LookupStatus:
+        return self._status
+
+    @property
+    def value(self) -> Optional[str]:
+        return self._value
 
     def __repr__(self) -> str:
-        return (f"VariableLookup({self.status.name}, value={self.value!r}, "
-                f"binding={self.binding!r})")
+        return f"VariableLookup({self._status.name}, value={self._value!r})"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, VariableLookup):
             return NotImplemented
-        return (self.status is other.status and self.value == other.value
-                and self.binding == other.binding)
+        return self._status is other._status and self._value == other._value
 
     @property
     def is_set(self) -> bool:
         """True iff the name holds a value (``${x+w}`` fires, ``${x-w}`` keeps
         the value). Both MISSING and PRESENT_UNSET are "unset" for the
         non-colon parameter operators."""
-        return self.status is LookupStatus.VALUE
+        return self._status is LookupStatus.VALUE
 
     @property
     def is_present(self) -> bool:
         """True iff a cell exists (VALUE or PRESENT_UNSET). A PRESENT_UNSET cell
         shadows outer instances even though it reads as unset."""
-        return self.status is not LookupStatus.MISSING
+        return self._status is not LookupStatus.MISSING
 
     @classmethod
     def missing(cls) -> "VariableLookup":
         return _MISSING
 
     @classmethod
-    def present_unset(cls, binding: "Optional[Variable]" = None) -> "VariableLookup":
-        return cls(LookupStatus.PRESENT_UNSET, None, binding)
+    def present_unset(cls) -> "VariableLookup":
+        return _PRESENT_UNSET
 
     @classmethod
-    def of_value(cls, value: str, binding: "Optional[Variable]" = None) -> "VariableLookup":
-        return cls(LookupStatus.VALUE, value, binding)
+    def of_value(cls, value: str) -> "VariableLookup":
+        return cls(LookupStatus.VALUE, value)
 
 
-_MISSING = VariableLookup(LookupStatus.MISSING, None, None)
+_MISSING = VariableLookup(LookupStatus.MISSING, None)
+_PRESENT_UNSET = VariableLookup(LookupStatus.PRESENT_UNSET, None)

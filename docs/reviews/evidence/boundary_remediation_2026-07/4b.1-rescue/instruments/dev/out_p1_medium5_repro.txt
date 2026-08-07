@@ -1,0 +1,42 @@
+P1 MEDIUM-5 reproduction — worktree /Users/pwilson/src/psh-r4b-1
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82
+python: 3.14.2
+==========================================================================
+psh imported from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+--- L1: _MISSING poisoning ---
+  lookup('unset_a').status              = MISSING
+  is the shared singleton?              = True
+  plain attribute assignment SUCCEEDED  = True
+  lookup('SOME_OTHER_UNSET').status     = VALUE
+  lookup('SOME_OTHER_UNSET').value      = 'POISON'
+  ...is_set (the ${x+w} authority)      = True
+FIRED
+  end-to-end: echo "${SOME_UNSET_NAME+FIRED}" rc=0
+  VERDICT L1 poisoning reproduces       = True
+--------------------------------------------------------------------------
+psh imported from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+--- L2: readonly bypass ---
+  normal write path `RO=viaShell` rc    = 1 (1 == refused)
+  value after refused write             = 'original'
+  lookup('RO').binding is a live cell   = True
+  binding.value = 'hacked' SUCCEEDED    = True
+  shell now reads RO                    = 'hacked'
+  VERDICT L2 readonly bypassed          = True
+  [stderr] psh: line 1: RO: readonly variable
+--------------------------------------------------------------------------
+psh imported from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+--- L3: observer/export desync ---
+  after `export EX=one`: shell reads    = 'one'
+  ...state.env['EX']                    = 'one'
+  after binding write: shell reads      = 'two'
+  ...state.env['EX'] (children see this)= 'one'
+  VERDICT L3 export desync              = True
+--------------------------------------------------------------------------
+psh imported from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+--- L4: nameref target mutation ---
+  lookup('ref').value                   = 'hi'
+  lookup('ref').binding.name            = 'target'   (deref'd to the TARGET, not the ref)
+  target now reads                      = 'clobbered'
+  ref now reads                         = 'clobbered'
+  VERDICT L4 nameref target mutated     = True
+--------------------------------------------------------------------------

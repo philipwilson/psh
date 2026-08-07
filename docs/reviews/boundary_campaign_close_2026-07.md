@@ -139,7 +139,7 @@ terminal adapter (§15.2).**
 | 20 | NormalizedCommandName | `psh/executor/command_resolution.py#NormalizedCommandName` | `executor/command.py`. |
 | 21 | CommandEnvOverlay | `psh/executor/command_resolution.py#CommandEnvOverlay` | `executor/command_assignments.py`, `command.py`. |
 | 22 | ResolvedCommand | `psh/executor/command_resolution.py#ResolvedCommand` | `executor/command.py`. |
-| 23 | VariableLookup | `psh/core/variable_lookup.py#VariableLookup` | `core/scope.py`, `executor/command_resolution.py`, `protocols/__init__.py`. |
+| 23 | VariableLookup | `psh/core/variable_lookup.py#VariableLookup` | `core/scope.py`, `executor/command_resolution.py`, `protocols/__init__.py`. *(Column grep-derived at close SHA 0215279c; the `command_resolution.py` mention was a docstring precedent citation removed by 4B.1's R2 doc-only extension, v0.770.0 — historical row, not re-derived.)* |
 | 24 | InputCursor | `psh/builtins/input_reader.py#InputCursor` | `builtins/{read_builtin,mapfile_builtin}.py`, `core/state.py`, `executor/command.py`, `io_redirect/input_cursor.py`, `scripting/input_sources.py`, `protocols/__init__.py`. |
 | 25 | ForegroundJobSession | `psh/executor/foreground_session.py#ForegroundJobSession` | `executor/{job_control,pipeline,strategies,subshell}.py`, `protocols/__init__.py`. |
 | 26 | AsyncJobPolicy | `psh/executor/process_launcher.py#AsyncJobPolicy.for_launch` | ProcessLauncher's per-member launch path (in-module; self-contained per-launch policy). |

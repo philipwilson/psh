@@ -1,3 +1,7 @@
+# FROZEN BASE ARTIFACT — runs at base v0.750.0 (0215279c) ONLY. It exercises
+# lookup().binding, REMOVED in v0.770.0 (slot 4B.1, ruling R1(b)); at any
+# later version the AttributeError it raises is this header, not a defect.
+# The version self-pin below enforces it.
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import psh.version

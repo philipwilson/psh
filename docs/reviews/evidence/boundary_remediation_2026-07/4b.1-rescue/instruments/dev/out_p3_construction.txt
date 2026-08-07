@@ -1,0 +1,38 @@
+P3 construction-cost benchmark — candidate representations
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82
+python: 3.14.2 (v3.14.2:df793163d58, Dec  5 2025, 12:18:06) [Clang 16.0.0 (clang-1600.0.26.6)]
+methodology: timeit repeat R=11, number N=200000, interleaved round-robin, GC on
+==============================================================================
+
+--- (i) bare construction  C(S.VALUE, 'v', B) ---
+    stmt: C(S.VALUE, 'v', B)
+    candidate                            min ns/op     median     spread    vs C0
+    C0 plain __slots__ (CURRENT)             59.29      61.47       6.91    1.00x
+    C1 frozen dataclass slots               188.17     191.24       5.32    3.17x
+    C2 NamedTuple                           126.69     129.80       4.13    2.14x
+    C3 slots + raising __setattr__          189.74     192.58       4.82    3.20x
+    C4 properties over slots                 59.09      61.17       3.37    1.00x
+
+--- (ii) FACTORY construction  C.of_value('v', B)  [production shape] ---
+    stmt: C.of_value('v', B)
+    candidate                            min ns/op     median     spread    vs C0
+    C0 plain __slots__ (CURRENT)             90.38      91.27       3.21    1.00x
+    C1 frozen dataclass slots               227.23     229.86       3.93    2.51x
+    C2 NamedTuple                           164.42     166.23       4.34    1.82x
+    C3 slots + raising __setattr__          226.33     229.27       4.54    2.50x
+    C4 properties over slots                 90.55      91.05       1.20    1.00x
+
+--- (iii) attribute read  r.is_set  [the ONE production read] ---
+    candidate                            min ns/op     median     spread    vs C0
+    C0 plain __slots__ (CURRENT)             26.29      27.08       1.23    1.00x
+    C1 frozen dataclass slots                25.78      26.96       1.66    0.98x
+    C2 NamedTuple                            30.50      31.91       6.38    1.16x
+    C3 slots + raising __setattr__           26.51      26.92       0.69    1.01x
+    C4 properties over slots                 26.41      27.19       1.54    1.00x
+
+--- mutation-rejection check (what each candidate actually does) ---
+    C0 plain __slots__ (CURRENT)       ACCEPTED the write -> value='MUTATED'
+    C1 frozen dataclass slots          rejected: FrozenInstanceError: cannot assign to field 'value'
+    C2 NamedTuple                      rejected: AttributeError: can't set attribute
+    C3 slots + raising __setattr__     rejected: AttributeError: VariableLookup is immutable: cannot set 'value'
+    C4 properties over slots           rejected: AttributeError: property 'value' of 'C4_Properties' object has no setter

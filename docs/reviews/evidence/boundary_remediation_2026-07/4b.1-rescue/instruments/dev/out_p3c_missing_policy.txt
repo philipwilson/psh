@@ -1,0 +1,22 @@
+P3c _MISSING policy — shared frozen singleton vs fresh-per-miss
+psh from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82   python: 3.14.2
+methodology: R=11, N=100000, interleaved round-robin
+====================================================================================
+
+--- MISSING        m.lookup('NOPE') ---
+    arm                                        min ns/op     median    spread   vs BASE   delta ns
+    BASE (today: mutable shared _MISSING)         511.21     514.50     56.46    1.000x      +0.00
+    S  frozen shared singletons                   514.66     517.12     26.76    1.007x      +3.45
+    F  fresh instance per miss                    579.72     583.89     15.67    1.134x     +68.51
+
+--- PRESENT_UNSET  m.lookup('DECL') ---
+    arm                                        min ns/op     median    spread   vs BASE   delta ns
+    BASE (today: mutable shared _MISSING)        1432.74    1446.94     64.68    1.000x      +0.00
+    S  frozen shared singletons                  1373.12    1392.59     59.87    0.958x     -59.62
+    F  fresh instance per miss                   1434.98    1451.33     90.83    1.002x      +2.24
+
+--- safety control: is a shared singleton safe once frozen? ---
+    BASE (today: mutable shared _MISSING)    mutation ACCEPTED; second miss poisoned=True
+    S  frozen shared singletons              mutation rejected (AttributeError); shared=True; second miss clean=True
+    F  fresh instance per miss               mutation rejected (AttributeError); shared=False; second miss clean=True

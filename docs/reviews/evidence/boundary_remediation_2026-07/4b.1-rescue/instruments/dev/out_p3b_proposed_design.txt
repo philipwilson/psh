@@ -1,0 +1,62 @@
+P3b PROPOSED design, end-to-end through the real ScopeManager.lookup()
+psh from: /Users/pwilson/src/psh-r4b-1/psh/__init__.py
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82   python: 3.14.2   GC on
+methodology: R=11, N=100000, interleaved round-robin
+====================================================================================
+
+--- VALUE          m.lookup('SET') ---
+    arm                                                  min ns/op     median    spread   vs BASE
+    BASE (plain __slots__, 3 fields)                       1377.36    1389.83     47.65    1.000x
+    D    (properties, binding omitted, 2 singletons)       1377.74    1396.08    113.79    1.000x
+    D3   (raising __setattr__, same shape)                 1489.01    1494.14     40.64    1.081x
+
+--- PRESENT_UNSET  m.lookup('DECL') ---
+    arm                                                  min ns/op     median    spread   vs BASE
+    BASE (plain __slots__, 3 fields)                       1431.26    1446.70     71.84    1.000x
+    D    (properties, binding omitted, 2 singletons)       1368.90    1384.95    114.75    0.956x
+    D3   (raising __setattr__, same shape)                 1366.15    1386.07     42.79    0.955x
+
+--- MISSING        m.lookup('NOPE') ---
+    arm                                                  min ns/op     median    spread   vs BASE
+    BASE (plain __slots__, 3 fields)                        510.16     515.40      8.72    1.000x
+    D    (properties, binding omitted, 2 singletons)        515.23     517.34     13.27    1.010x
+    D3   (raising __setattr__, same shape)                  515.85     517.84      4.87    1.011x
+
+--- is_set read    m.lookup('SET').is_set  [production shape] ---
+    arm                                                  min ns/op     median    spread   vs BASE
+    BASE (plain __slots__, 3 fields)                       1427.98    1443.75     94.43    1.000x
+    D    (properties, binding omitted, 2 singletons)       1431.67    1447.19     63.34    1.003x
+    D3   (raising __setattr__, same shape)                 1542.73    1550.47     45.59    1.080x
+
+--- correctness control (identical tri-state answers) ---
+    BASE (plain __slots__, 3 fields)                   (('VALUE', 'v', True, True), ('PRESENT_UNSET', None, False, True), ('MISSING', None, False, False))
+    D    (properties, binding omitted, 2 singletons)   (('VALUE', 'v', True, True), ('PRESENT_UNSET', None, False, True), ('MISSING', None, False, False))
+    D3   (raising __setattr__, same shape)             (('VALUE', 'v', True, True), ('PRESENT_UNSET', None, False, True), ('MISSING', None, False, False))
+
+--- immutability control (per field, per surface) ---
+    BASE (plain __slots__, 3 fields)
+        fresh VALUE.status=ACCEPTED
+        fresh VALUE.value=ACCEPTED
+        MISSING singleton.status=ACCEPTED
+        MISSING singleton.value=ACCEPTED
+        PRESENT_UNSET singleton.status=ACCEPTED
+        PRESENT_UNSET singleton.value=ACCEPTED
+    D    (properties, binding omitted, 2 singletons)
+        fresh VALUE.status=AttributeError
+        fresh VALUE.value=AttributeError
+        MISSING singleton.status=AttributeError
+        MISSING singleton.value=AttributeError
+        PRESENT_UNSET singleton.status=AttributeError
+        PRESENT_UNSET singleton.value=AttributeError
+    D3   (raising __setattr__, same shape)
+        fresh VALUE.status=AttributeError
+        fresh VALUE.value=AttributeError
+        MISSING singleton.status=AttributeError
+        MISSING singleton.value=AttributeError
+        PRESENT_UNSET singleton.status=AttributeError
+        PRESENT_UNSET singleton.value=AttributeError
+
+--- singleton-identity control (allocation behaviour) ---
+    BASE (plain __slots__, 3 fields)                   MISSING shared=True  PRESENT_UNSET shared=False
+    D    (properties, binding omitted, 2 singletons)   MISSING shared=True  PRESENT_UNSET shared=True
+    D3   (raising __setattr__, same shape)             MISSING shared=True  PRESENT_UNSET shared=True

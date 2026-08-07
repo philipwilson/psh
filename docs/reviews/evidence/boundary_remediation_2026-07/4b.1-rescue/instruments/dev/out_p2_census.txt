@@ -1,0 +1,74 @@
+P2 consumer census (AST) — worktree /Users/pwilson/src/psh-r4b-1
+SHA: 4f2facaf0eede0dacf926e6718a2c348c3d3ce82    python: 3.14.2
+==============================================================================
+[A] files parsed: 1095
+[A] `.lookup(` call sites: 15
+      hash-table (unrelated): 2
+      scope-manager (VariableLookup): 13
+
+[A] scope-manager lookup() call sites (the read authority):
+      PRODUCTION  psh/expansion/operators.py:207   receiver `self.state.scope_manager`
+      -> production call sites: 1
+      test        tests/unit/core/test_dynamic_special_masking.py:90   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:23   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:31   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:43   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:57   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:64   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:78   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:83   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:84   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:92   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:101   receiver `mgr`
+      test        tests/unit/core/test_variable_lookup.py:109   receiver `mgr`
+      -> test/tool call sites: 12
+
+[B] attribute reads on a lookup result: 29
+      PRODUCTION by field: {'is_set': 1}
+      test/tool  by field: {'binding': 5, 'is_present': 2, 'is_set': 5, 'status': 9, 'value': 7}
+      per-site detail:
+      PRODUCTION  psh/expansion/operators.py:207  .is_set   (chained)
+      test        tests/unit/core/test_dynamic_special_masking.py:90  .is_set   (chained)
+      test        tests/unit/core/test_variable_lookup.py:24  .status   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:25  .is_set   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:26  .value   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:27  .binding   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:27  .binding   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:32  .status   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:33  .is_set   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:34  .is_present   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:35  .value   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:36  .binding   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:44  .status   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:45  .is_set   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:46  .is_present   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:47  .value   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:48  .binding   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:48  .binding   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:58  .status   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:65  .status   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:66  .value   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:79  .status   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:80  .value   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:83  .status   (chained)
+      test        tests/unit/core/test_variable_lookup.py:84  .value   (chained)
+      test        tests/unit/core/test_variable_lookup.py:92  .status   (chained)
+      test        tests/unit/core/test_variable_lookup.py:102  .status   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:103  .value   (local `r`)
+      test        tests/unit/core/test_variable_lookup.py:109  .is_set   (chained)
+
+      >>> .binding readers in PRODUCTION: 0
+      >>> .binding readers in tests/tools: 5
+
+[C] identifier references:
+      VariableLookup: 12 total (6 in psh/)
+      LookupStatus: 18 total (6 in psh/)
+      _MISSING: 2 total (2 in psh/)
+          psh/core/variable_lookup.py:110
+          psh/core/variable_lookup.py:99
+
+[D] dynamic access with a literal lookup-field name: 4
+      psh/builtins/environment.py:706  getattr(..., 'value')
+      tests/unit/lexer/test_modular_lexer_integration.py:158  hasattr(..., 'value')
+      tests/harness/gen_census.py:58  getattr(..., 'value')
+      tests/regression/test_lexer_deprecation.py:40  hasattr(..., 'value')
