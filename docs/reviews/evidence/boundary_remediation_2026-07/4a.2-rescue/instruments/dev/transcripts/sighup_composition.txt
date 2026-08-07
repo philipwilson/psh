@@ -1,0 +1,16 @@
+### run 2026-08-07T07:33:43Z
+# oracle bash: /opt/homebrew/bin/bash
+# GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+# psh tree: /Users/pwilson/src/psh-r4a-2  tip: d1e4f1ae2d349813396f2c9c7ead9534cc5febac
+# construction: tmux 3.6a REAL terminal (J1 construction)
+# job_survived=True => NO fan-out reached the job
+
+bash  no-trap      {'job_survived': False, 'hist_written': True, 'hist_canary': True}
+psh   no-trap      {'job_survived': False, 'hist_written': True, 'hist_canary': True}
+
+bash  trap-noexit  {'job_survived': False, 'hist_written': True, 'hist_canary': True}
+psh   trap-noexit  {'job_survived': False, 'hist_written': True, 'hist_canary': True}
+
+bash  trap-exit7   {'job_survived': False, 'hist_written': True, 'hist_canary': True}
+psh   trap-exit7   {'job_survived': True, 'hist_written': False, 'hist_canary': False}
+

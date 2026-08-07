@@ -1,0 +1,7 @@
+### run 2026-08-07T07:35:13Z -- harness-faithful construction (10ms poll, no post-delay)
+# psh tree: /Users/pwilson/src/psh-r4a-2  tip: d1e4f1ae2d349813396f2c9c7ead9534cc5febac
+# iterations: 500 sentinel=redirect busy=False
+  LOSS #1 at iter 397: out='' rc=-15 delay_ms=0.00 ready_body='EXIT-TRAP-FIRED\n' err=''
+
+RESULT iters=500 wins=499 losses=1 harness_failures=0 elapsed=277.4s
+       losses whose trap output landed in the READY FILE: 1/1

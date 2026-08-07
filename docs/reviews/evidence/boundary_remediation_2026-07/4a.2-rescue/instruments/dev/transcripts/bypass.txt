@@ -1,0 +1,21 @@
+### run 2026-08-07T07:32:51Z
+# psh tree: /Users/pwilson/src/psh-r4a-2
+# psh tip:  d1e4f1ae2d349813396f2c9c7ead9534cc5febac
+# discriminator: psh/shell.py 42032 bytes
+
+reap      no-trap      {"raised": null, "reaped": true}
+reap      trap-noexit  {"raised": null, "reaped": true}
+reap      trap-exit7   {"raised": "SystemExit(7)", "reaped": false}
+
+history   no-trap      {"raised": null, "histfile_written": true, "has_canary": true}
+history   trap-noexit  {"raised": null, "histfile_written": true, "has_canary": true}
+history   trap-exit7   {"raised": "SystemExit(7)", "histfile_written": false, "has_canary": false}
+
+hangup    no-trap      {"raised": null, "hupped": true}
+hangup    trap-noexit  {"raised": null, "hupped": true}
+hangup    trap-exit7   {"raised": "SystemExit(7)", "hupped": false}
+
+steps     no-trap      {"raised": null, "steps": ["history", "hangup", "reap", "close"], "latched": "exit-builtin"}
+steps     trap-noexit  {"raised": null, "steps": ["history", "hangup", "reap", "close"], "latched": "exit-builtin"}
+steps     trap-exit7   {"raised": "SystemExit(7)", "steps": ["close"], "latched": "exit-builtin"}
+

@@ -1,0 +1,27 @@
+### PTY RED-ON-BASE at d1e4f1ae2d349813396f2c9c7ead9534cc5febac, 2026-08-07T07:59:09Z
+============================= test session starts ==============================
+collecting ... collected 3 items
+
+tests/system/interactive/test_pty_shutdown_phases_4a2.py::test_huponexit_hups_the_job_even_when_the_exit_trap_exits FAILED [ 33%]
+tests/system/interactive/test_pty_shutdown_phases_4a2.py::test_history_is_saved_even_when_the_exit_trap_exits FAILED [ 66%]
+tests/system/interactive/test_pty_shutdown_phases_4a2.py::test_trap_exit_status_still_overrides_on_the_interactive_routes PASSED [100%]
+
+=================================== FAILURES ===================================
+__________ test_huponexit_hups_the_job_even_when_the_exit_trap_exits ___________
+tests/system/interactive/test_pty_shutdown_phases_4a2.py:74: in test_huponexit_hups_the_job_even_when_the_exit_trap_exits
+    assert not marker.exists(), "bg child survived: the exit-time HUP was skipped"
+E   AssertionError: bg child survived: the exit-time HUP was skipped
+E   assert not True
+E    +  where True = exists()
+E    +    where exists = PosixPath('/private/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/pytest-of-pwilson/pytest-4915/test_huponexit_hups_the_job_ev0/mark').exists
+_____________ test_history_is_saved_even_when_the_exit_trap_exits ______________
+tests/system/interactive/test_pty_shutdown_phases_4a2.py:91: in test_history_is_saved_even_when_the_exit_trap_exits
+    assert histfile.exists(), "histfile never written under a trap that exits"
+E   AssertionError: histfile never written under a trap that exits
+E   assert False
+E    +  where False = exists()
+E    +    where exists = PosixPath('/private/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/pytest-of-pwilson/pytest-4915/test_history_is_saved_even_whe0/histfile').exists
+=========================== short test summary info ============================
+FAILED tests/system/interactive/test_pty_shutdown_phases_4a2.py::test_huponexit_hups_the_job_even_when_the_exit_trap_exits
+FAILED tests/system/interactive/test_pty_shutdown_phases_4a2.py::test_history_is_saved_even_when_the_exit_trap_exits
+========================= 2 failed, 1 passed in 3.23s ==========================

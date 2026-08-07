@@ -1,0 +1,15 @@
+### run 2026-08-07T07:44:38Z
+# psh tree: /Users/pwilson/src/psh-r4a-2  tip: d1e4f1ae2d349813396f2c9c7ead9534cc5febac
+# RED = assertion FAILS at base (the pin forces the fix)
+
+P1-hup-under-trap-exit         expected=RED   actual=RED      {'passed': False}
+P2-signal-hup-under-trap       expected=RED   actual=RED      {'passed': False}
+P3-history-under-trap-exit     expected=RED   actual=RED      {'passed': False}
+P4-reap-under-trap-exit        expected=RED   actual=RED      {'passed': False}
+M1-close-always-runs           expected=GREEN actual=GREEN    {'passed': True}
+M2-status-preserved            expected=GREEN actual=GREEN    {'passed': True}
+M3-close-error-wins            expected=GREEN actual=GREEN    {'passed': True}
+M4-second-shutdown-noop        expected=GREEN actual=GREEN    {'passed': True}
+M5-no-trap-control-hups        expected=GREEN actual=GREEN    {'passed': True}
+
+TOTAL pins=9 red=4 green=5 mispredicted=0

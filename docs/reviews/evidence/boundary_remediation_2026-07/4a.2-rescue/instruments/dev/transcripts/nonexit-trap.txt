@@ -1,0 +1,4 @@
+OK   trap "false; exit" USR1; kill -USR1 $$; sleep 0.2; exit 3      bash=(,1) psh=(,1)
+OK   trap "true; exit" USR1; false; kill -USR1 $$; sleep 0.2; exit 3 bash=(,0) psh=(,0)
+OK   trap "echo entry=\$?; false; exit" USR1; kill -USR1 $$; sleep 0.2; exit 3 bash=(entry=0,1) psh=(entry=0,1)
+OK   trap "false; exit" USR1; kill -USR1 $$; sleep 0.2              bash=(,1) psh=(,1)
