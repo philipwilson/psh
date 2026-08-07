@@ -522,7 +522,41 @@ class TestNamedReadCursorDeviation:
     on a docstring. bash keeps ONE global counter that a NAMED read overwrites,
     so a later `-n` on the DEFAULT file re-reads lines it had already consumed;
     psh keeps a per-default-file cursor and does not.
+
+    The single counter has TWO observables, and both are pinned here. The
+    FORWARD face is the one above. The MIRROR face is the same counter acting
+    the other way: because the startup load has already advanced it, bash's
+    `history -n OTHER` resumes at that offset INSIDE the named file and can
+    read nothing at all, while psh starts a named read at 0 and reads it. The
+    mirror face was found by the integrator's re-verify attack, not by this
+    suite — a deviation face that lives in one probe is one probe away from
+    being silent, so it is named in the register and pinned like its sibling.
     """
+
+    def test_named_read_new_resumes_at_the_global_offset_in_bash(self, tmp_path):
+        """MIRROR FACE. Default file seeded with ONE line, so bash's global
+        counter is at 1 after the startup load; the named file also has one
+        line, so bash resumes past its end and reads NOTHING. psh's
+        per-default-file cursor starts a named read at 0 and reads it."""
+        script = "history -n $OTHER/other\n" + OBSERVE + "exit\n"
+        (bs, _), (ps, _) = both(script, tmp_path, "b4mirror", seed=["D1"],
+                                named={"other": ["O1"]})
+        assert _listing(bs["MEM"]) == ["D1"], (
+            f"bash's global counter behaviour moved: {_listing(bs['MEM'])}")
+        assert _listing(ps["MEM"]) == ["D1", "O1"], (
+            f"psh's per-file named read moved: {_listing(ps['MEM'])}")
+
+    def test_an_unadvanced_counter_reads_the_whole_named_file_in_both(self, tmp_path):
+        """CONTROL for the mirror face: with an EMPTY default file the counter
+        is still 0, so bash reads the named file from the start and the two
+        shells AGREE. The deviation is an offset, not a blanket suppression of
+        named reads — without this cell the mirror pin would license the
+        over-broad reading."""
+        script = "history -n $OTHER/other\n" + OBSERVE + "exit\n"
+        (bs, _), (ps, _) = both(script, tmp_path, "b4mirrorctl", seed=[],
+                                named={"other": ["O1", "O2"]})
+        assert _listing(bs["MEM"]) == ["O1", "O2"]
+        assert _listing(ps["MEM"]) == _listing(bs["MEM"])
 
     def test_named_read_then_default_read_new(self, tmp_path):
         script = ("history -r $OTHER/other\n"
