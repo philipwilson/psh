@@ -125,26 +125,47 @@ def test_save_trims_to_max_history_size(histfile):
 
 
 def test_history_dash_c_does_not_lose_subsequent_commands(histfile):
-    """R14.B: `history -c` must reset the file-sync marker (via
+    """R14.B: `history -c` must clear the pending set along with the list (via
     HistoryManager.clear_history), so commands added AFTER the clear are still
     persisted. The builtin used to clear state.history directly, leaving the
-    marker stale — new commands fell outside the save slice and were lost."""
+    bookkeeping stale — new commands fell outside the save slice and were lost.
+
+    Stated against the OBSERVABLE (what reaches the file) plus the pending
+    accessor, not against a private index: slot 4B.3 replaced the
+    `_file_synced_len` prefix marker with a pending multiset view, and a pin
+    that names a field cannot survive the representation it pins.
+    """
     shell = Shell()
     shell.state.history_file = histfile
     m = shell.interactive_manager.history_manager
     for c in ("echo a", "echo b", "echo c"):
         m.add_to_history(c)
     m.save_to_file()
-    assert m._file_synced_len == 3
+    assert _read(histfile) == ["echo a", "echo b", "echo c"]
+    assert m._pending_entries() == []      # all three reached the file
 
     shell.run_command("history -c")
     assert len(shell.state.history) == 0
-    assert m._file_synced_len == 0  # marker reset (the fix)
+    assert m._pending_entries() == []      # nothing owed, nothing resurrected
 
     m.add_to_history("echo x")
     m.save_to_file()
     # The post-clear command survives (pre-fix it was dropped entirely).
     assert "echo x" in _read(histfile)
+
+
+def test_clear_does_not_resurrect_cleared_entries_on_save(histfile):
+    """Slot 4B.3 invariant 1 (pending is a view of memory): entries cleared
+    before they were ever written must NOT reappear in the file afterwards."""
+    shell = Shell()
+    shell.state.history_file = histfile
+    m = shell.interactive_manager.history_manager
+    for c in ("secret one", "secret two"):
+        m.add_to_history(c)
+    shell.run_command("history -c")          # cleared BEFORE any save
+    m.add_to_history("after clear")
+    m.save_to_file()
+    assert _read(histfile) == ["after clear"]
 
 
 def test_in_session_trim_does_not_lose_new_entries(histfile):

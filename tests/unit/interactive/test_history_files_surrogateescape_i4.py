@@ -46,21 +46,27 @@ def test_load_roundtrips_malformed_bytes(hist):
 
 def test_save_roundtrips_malformed_bytes(hist):
     sh, mgr, _ = hist
-    sh.state.history.append(DECODED)
+    # Recorded through the pipeline, not injected: only RECORDED entries are
+    # pending, and only pending entries are written (slot 4B.3 O3).
+    mgr.add_to_history(DECODED)
     mgr.save_to_file()  # RED on base: cannot encode the surrogate under default
     assert REENCODED in _read_bytes(sh.state.history_file)
 
 
 def test_write_history_w_roundtrips(hist):
     sh, mgr, _ = hist
-    sh.state.history.append(DECODED)
+    # Recorded through the pipeline, not injected: only RECORDED entries are
+    # pending, and only pending entries are written (slot 4B.3 O3).
+    mgr.add_to_history(DECODED)
     assert mgr.write_history() is True
     assert REENCODED in _read_bytes(sh.state.history_file)
 
 
 def test_append_history_a_roundtrips(hist):
     sh, mgr, _ = hist
-    sh.state.history.append(DECODED)
+    # Recorded through the pipeline, not injected: only RECORDED entries are
+    # pending, and only pending entries are written (slot 4B.3 O3).
+    mgr.add_to_history(DECODED)
     assert mgr.append_history() is True
     assert REENCODED in _read_bytes(sh.state.history_file)
 
@@ -83,7 +89,9 @@ def test_read_new_history_n_roundtrips(hist):
 
 def test_save_then_load_is_a_faithful_cycle(hist):
     sh, mgr, _ = hist
-    sh.state.history.append(DECODED)
+    # Recorded through the pipeline, not injected: only RECORDED entries are
+    # pending, and only pending entries are written (slot 4B.3 O3).
+    mgr.add_to_history(DECODED)
     mgr.save_to_file()
     # Fresh session loading the same file must recover the identical entry.
     sh2 = Shell(norc=True)
