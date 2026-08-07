@@ -303,11 +303,15 @@ class HistoryManager(InteractiveComponent):
                     f.write('\n'.join(self.state.history) + '\n')
         except OSError:
             return False
-        # The whole list is now flushed to a file, so the exit-time save and a
-        # subsequent `-a` won't re-emit it (bash marks it written regardless of
-        # which file). Only reads of the DEFAULT file move the read cursor.
-        self._file_synced_len = len(self.state.history)
+        # Only a write of the DEFAULT file makes the list "already persisted".
+        # Writing somewhere else leaves $HISTFILE's pending entries pending —
+        # advancing the marker for ANY target silently DROPPED them, so
+        # `history -w otherfile` made the session's commands never reach
+        # $HISTFILE at all (bash 5.2.26 still saves them; the previous claim
+        # that bash "marks it written regardless of which file" was measured
+        # false).
         if self._is_default_file(target):
+            self._file_synced_len = len(self.state.history)
             self._file_read_len = len(self.state.history)
         return True
 
