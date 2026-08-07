@@ -694,6 +694,53 @@ Batteries: `tests/unit/core/test_activation_transaction_4a1.py` (fault
 injection at every acquisition and restore boundary, the multi-shell
 poisoning scenarios, composition cells).
 
+### Shutdown phases: the EXIT trap gets no veto
+
+`shell.py#Shell.shutdown` is THE top-level cleanup path, and its phases are
+MANDATORY, not best-effort: EXIT trap, then the route's history policy, then
+job disposition (hangup plus the detached reap), then `close()`. That ordering
+is bash's own `exit_shell` order and predates this rule; what is new is that no
+phase may cancel a later one (`shell.py#Shell._run_shutdown_phases`).
+
+The EXIT trap is why the rule has to be enforced rather than assumed. A trap
+body's own `exit N` re-enters the `exit` builtin, which finds the shutdown
+latch already set, no-ops, and raises `SystemExit` — so the NORMAL way to
+write a cleanup trap used to abort the rest of shutdown. Job disposition,
+detached reaping and the history save were all skipped, and because the latch
+had already recorded the reason, `__main__`'s later funnel could not recover
+them: the skips were permanent, not deferred. Each phase now runs in its own
+frame, its terminal exception is HELD, and the held signal is re-raised once
+teardown has finished — the same hold-then-finish shape `Shell.close` uses for
+lease restores, one level up.
+
+Two invariants that are easy to get backwards:
+
+* **The ROUTE owns the history policy, not the trap.** `_HISTORY_SAVING_SHUTDOWNS`
+  still decides which routes persist history; "mandatory" means the phase RUNS,
+  not that its policy changed. A trap that exits no longer cancels a saving
+  route (bash saves there — PTY-probed on both the `exit` and EOF routes), and
+  it never makes a non-saving route start saving.
+* **`_terminate_from_signal` is NOT this path.** Untrapped fatal-signal death
+  (`interactive/signal_manager.py#SignalManager._terminate_from_signal`, slot
+  1.3b) fires the trap, restores redirections, and re-raises the signal; its
+  phases are the interactive-gated ones, which do not apply to the
+  non-interactive shell that path serves, and bash agrees. The interactive
+  received-SIGHUP route DOES route here (`shutdown('signal-hup')`) and so gets
+  the guarantees for free.
+
+Precedence when several things want to end the process: a `close()` failure
+wins outright (a loud internal defect must not be silenced by an exit status,
+and the held signal survives as its `__context__`); otherwise the trap's
+`SystemExit` wins (bash: `exit N` in the trap overrides the original status);
+otherwise a phase failure.
+
+Batteries: `tests/unit/core/test_shutdown_phases_4a2.py` (phase order,
+isolation, precedence, the must-hold guard rails),
+`tests/system/interactive/test_pty_shutdown_phases_4a2.py` (the two
+interactive-gated facts, which exist only at a terminal),
+`tests/unit/core/test_shutdown_f2.py` (idempotence, first-reason-wins),
+`tests/unit/tooling/test_shutdown_census_f2.py` (the call-site allowlist).
+
 ### Terminal Detection
 
 ```python
