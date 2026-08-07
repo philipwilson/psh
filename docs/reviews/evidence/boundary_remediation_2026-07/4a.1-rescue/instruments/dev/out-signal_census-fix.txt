@@ -1,0 +1,166 @@
+# instrument: /Users/pwilson/src/psh-r4a-1/tmp/w4a1-probes/signal_census.py
+# tree:       /Users/pwilson/src/psh-r4a-1
+# cells:      18
+
+--- C-10s ---
+CELL C-10s KEY=s1_leases VALUE=LOCALE
+CELL C-10s KEY=map_drained VALUE=True
+CELL C-10s KEY=s2_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=0,_components=[LOCALE_(libc_locale_(LC_CTYPE/LC_COLLATE))])
+CELL C-10s KEY=after_both_close.leaked_count VALUE=0
+CELL C-10s KEY=after_both_close.leaked VALUE=-
+CELL C-10s RESULT=SIBLING_REJECTED
+
+--- C-10i ---
+CELL C-10i KEY=s1_leases VALUE=LOCALE
+CELL C-10i KEY=map_drained VALUE=True
+CELL C-10i KEY=s2_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=0,_components=[LOCALE_(libc_locale_(LC_CTYPE/LC_COLLATE))])
+CELL C-10i KEY=after_both_close.leaked_count VALUE=0
+CELL C-10i KEY=after_both_close.leaked VALUE=-
+CELL C-10i RESULT=SIBLING_REJECTED
+
+--- C-11s ---
+CELL C-11s KEY=s1_leases VALUE=LOCALE,MANAGED_SIGNALS
+CELL C-11s KEY=map_drained VALUE=False
+CELL C-11s KEY=s2_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=0,_components=[LOCALE_(libc_locale_(LC_CTYPE/LC_COLLATE))
+CELL C-11s KEY=after_both_close.leaked_count VALUE=0
+CELL C-11s KEY=after_both_close.leaked VALUE=-
+CELL C-11s RESULT=SIBLING_REJECTED
+
+--- C-01 ---
+CELL C-01 KEY=installed_by_setup VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTTOU,SIGTTIN,SIGPIPE
+CELL C-01 KEY=installed_count VALUE=7
+CELL C-01 KEY=after_close.leaked_count VALUE=0
+CELL C-01 KEY=after_close.leaked VALUE=-
+CELL C-01 RESULT=RESTORED
+
+--- C-02 ---
+CELL C-02 KEY=installed_by_setup VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTSTP,SIGTTOU,SIGTTIN,SIGCHLD,SIGPIPE,SIGWINCH
+CELL C-02 KEY=installed_count VALUE=10
+CELL C-02 KEY=after_close.leaked_count VALUE=0
+CELL C-02 KEY=after_close.leaked VALUE=-
+CELL C-02 RESULT=RESTORED
+
+--- C-03s ---
+CELL C-03s KEY=after_teardown.leaked_count VALUE=0
+CELL C-03s KEY=after_teardown.leaked VALUE=-
+CELL C-03s KEY=after_close.leaked_count VALUE=0
+CELL C-03s KEY=after_close.leaked VALUE=-
+CELL C-03s RESULT=RESTORED
+
+--- C-03i ---
+CELL C-03i KEY=after_teardown.leaked_count VALUE=0
+CELL C-03i KEY=after_teardown.leaked VALUE=-
+CELL C-03i KEY=after_close.leaked_count VALUE=0
+CELL C-03i KEY=after_close.leaked VALUE=-
+CELL C-03i RESULT=RESTORED
+
+--- C-04s ---
+CELL C-04s KEY=after_close.leaked_count VALUE=0
+CELL C-04s KEY=after_close.leaked VALUE=-
+CELL C-04s KEY=teardown_raised VALUE=NOTHING
+CELL C-04s KEY=after_teardown.leaked_count VALUE=0
+CELL C-04s KEY=after_teardown.leaked VALUE=-
+CELL C-04s RESULT=RESTORED
+
+--- C-04i ---
+CELL C-04i KEY=after_close.leaked_count VALUE=0
+CELL C-04i KEY=after_close.leaked VALUE=-
+CELL C-04i KEY=teardown_raised VALUE=NOTHING
+CELL C-04i KEY=after_teardown.leaked_count VALUE=0
+CELL C-04i KEY=after_teardown.leaked VALUE=-
+CELL C-04i RESULT=RESTORED
+
+--- C-05s ---
+CELL C-05s KEY=after_close.leaked_count VALUE=0
+CELL C-05s KEY=after_close.leaked VALUE=-
+CELL C-05s KEY=original_handlers_len VALUE=0
+CELL C-05s RESULT=RESTORED
+
+--- C-05i ---
+CELL C-05i KEY=after_close.leaked_count VALUE=0
+CELL C-05i KEY=after_close.leaked VALUE=-
+CELL C-05i KEY=original_handlers_len VALUE=0
+CELL C-05i RESULT=RESTORED
+
+--- C-06s ---
+CELL C-06s KEY=post_close_run_rc VALUE=0
+CELL C-06s KEY=resetup_installed VALUE=7
+CELL C-06s KEY=after_second_close.leaked_count VALUE=0
+CELL C-06s KEY=after_second_close.leaked VALUE=-
+CELL C-06s RESULT=RESTORED
+
+--- C-06i ---
+CELL C-06i KEY=post_close_run_rc VALUE=0
+CELL C-06i KEY=resetup_installed VALUE=10
+CELL C-06i KEY=after_second_close.leaked_count VALUE=0
+CELL C-06i KEY=after_second_close.leaked VALUE=-
+CELL C-06i RESULT=RESTORED
+
+--- C-07s ---
+CELL C-07s KEY=after_shell1_close.leaked_count VALUE=0
+CELL C-07s KEY=after_shell1_close.leaked VALUE=-
+CELL C-07s KEY=after_shell2_close.leaked_count VALUE=0
+CELL C-07s KEY=after_shell2_close.leaked VALUE=-
+CELL C-07s RESULT=RESTORED
+
+--- C-07i ---
+CELL C-07i KEY=after_shell1_close.leaked_count VALUE=0
+CELL C-07i KEY=after_shell1_close.leaked VALUE=-
+CELL C-07i KEY=after_shell2_close.leaked_count VALUE=0
+CELL C-07i KEY=after_shell2_close.leaked VALUE=-
+CELL C-07i RESULT=RESTORED
+
+--- C-08s ---
+CELL C-08s KEY=trap_rc VALUE=0
+CELL C-08s KEY=usr1_installed VALUE=True
+CELL C-08s KEY=after_close.leaked_count VALUE=0
+CELL C-08s KEY=after_close.leaked VALUE=-
+CELL C-08s KEY=usr1_restored VALUE=True
+CELL C-08s KEY=managed_restored VALUE=True
+CELL C-08s RESULT=USR1:RESTORED|MANAGED:RESTORED
+
+--- C-08i ---
+CELL C-08i KEY=trap_rc VALUE=0
+CELL C-08i KEY=usr1_installed VALUE=True
+CELL C-08i KEY=after_close.leaked_count VALUE=0
+CELL C-08i KEY=after_close.leaked VALUE=-
+CELL C-08i KEY=usr1_restored VALUE=True
+CELL C-08i KEY=managed_restored VALUE=True
+CELL C-08i RESULT=USR1:RESTORED|MANAGED:RESTORED
+
+--- C-09 ---
+CELL C-09 KEY=platform VALUE=darwin
+CELL C-09 KEY=has.SIGINT VALUE=True
+CELL C-09 KEY=has.SIGTERM VALUE=True
+CELL C-09 KEY=has.SIGHUP VALUE=True
+CELL C-09 KEY=has.SIGQUIT VALUE=True
+CELL C-09 KEY=has.SIGTSTP VALUE=True
+CELL C-09 KEY=has.SIGTTOU VALUE=True
+CELL C-09 KEY=has.SIGTTIN VALUE=True
+CELL C-09 KEY=has.SIGCHLD VALUE=True
+CELL C-09 KEY=has.SIGPIPE VALUE=True
+CELL C-09 KEY=has.SIGWINCH VALUE=True
+CELL C-09 KEY=SIGCHLD_is_SIGCLD VALUE=False
+CELL C-09 KEY=managed_set_has_realtime VALUE=False
+CELL C-09 RESULT=RECORDED
+
+=== DERIVED SUMMARY ===
+C-10s    SIBLING_REJECTED
+C-10i    SIBLING_REJECTED
+C-11s    SIBLING_REJECTED
+C-01     RESTORED
+C-02     RESTORED
+C-03s    RESTORED
+C-03i    RESTORED
+C-04s    RESTORED
+C-04i    RESTORED
+C-05s    RESTORED
+C-05i    RESTORED
+C-06s    RESTORED
+C-06i    RESTORED
+C-07s    RESTORED
+C-07i    RESTORED
+C-08s    USR1:RESTORED|MANAGED:RESTORED
+C-08i    USR1:RESTORED|MANAGED:RESTORED
+C-09     RECORDED
+cells_requested=18 cells_with_result=18 broken=0

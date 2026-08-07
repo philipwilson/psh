@@ -1,0 +1,73 @@
+# baseline (unmutated)
+  94 passed in 2.72s
+
+## unwind-activate  (process_lease.py)
+   12 failed, 82 passed in 2.91s
+   killed 12 test(s): test_checkpoint_unwind_while_a_signals_lease_is_held, test_components_unwind_before_the_owner_rolls_back, test_failed_grant_runs_the_stranded_restore[LOCALE], test_failed_grant_runs_the_stranded_restore[MANAGED_SIGNALS], test_failed_grant_runs_the_stranded_restore[SIGNALS], test_failed_grant_runs_the_stranded_restore[STD_FDS] ...
+
+## unwind-acquire  (process_lease.py)
+   1 failed, 93 passed in 2.73s
+   killed 1 test(s): test_acquire_component_grant_failure_strands_nothing
+
+## unwind-order  (process_lease.py)
+   1 failed, 93 passed in 2.67s
+   killed 1 test(s): test_components_unwind_before_the_owner_rolls_back
+
+## ensure-owner-discrimination  (process_lease.py)
+   94 passed in 2.75s
+   killed 0 test(s): NONE  <-- UNPINNED ARM
+
+## ensure-owner-sweep  (process_lease.py)
+   1 failed, 93 passed in 2.75s
+   killed 1 test(s): test_dead_owner_releases_ownership_and_components
+
+## find-component-filter  (process_lease.py)
+   1 failed, 93 passed in 2.72s
+   killed 1 test(s): test_find_component_never_returns_another_owners_lease
+
+## release-owner-sweep  (process_lease.py)
+   1 failed, 93 passed in 2.84s
+   killed 1 test(s): test_release_owner_from_a_non_owner_restores_its_own_lease
+
+## aggregate-surfacing  (process_lease.py)
+   7 failed, 87 passed in 2.91s
+   killed 7 test(s): test_aggregate_carries_every_failure_as_a_note, test_every_restore_is_attempted_when_one_fails, test_failed_acquisition_while_quarantined_does_not_compound, test_fork_reset_clears_quarantine_too, test_quarantine_blocks_the_next_owner_and_names_the_reason, test_restore_failure_during_a_failed_grant_keeps_the_original_error ...
+
+## attempt-every-restore  (process_lease.py)
+   2 failed, 92 passed in 2.75s
+   killed 2 test(s): test_aggregate_carries_every_failure_as_a_note, test_every_restore_is_attempted_when_one_fails
+
+## quarantine-blocks  (process_lease.py)
+   2 failed, 92 passed in 2.62s
+   killed 2 test(s): test_failed_acquisition_while_quarantined_does_not_compound, test_quarantine_blocks_the_next_owner_and_names_the_reason
+
+## failed-exec-release  (file_redirect.py)
+   2 failed, 92 passed in 3.12s
+   killed 2 test(s): test_failing_exec_does_not_block_an_unrelated_shell, test_failing_exec_leaves_no_lease_no_parked_fds_no_baseline
+
+## failed-exec-discrimination  (file_redirect.py)
+   2 failed, 92 passed in 2.78s
+   killed 2 test(s): test_failing_exec_after_a_successful_one_keeps_the_first_lease, test_relocation_then_failure_keeps_the_earlier_lease_and_host_fds
+
+## errno-split  (file_redirect.py)
+   1 failed, 93 passed in 2.75s
+   killed 1 test(s): test_baseline_dup_failure_aborts_transactionally
+
+## weak-baseline-ref  (file_redirect.py)
+   1 failed, 93 passed in 3.02s
+   killed 1 test(s): test_dropped_shell_without_close_does_not_poison_the_next
+
+## managed-signals-kind  (signal_manager.py)
+   10 failed, 84 passed in 2.70s
+   killed 10 test(s): test_dropped_shell_without_close_is_recovered_when_handler_free, test_managed_and_trap_families_both_restore[interactive], test_managed_and_trap_families_both_restore[script], test_managed_lease_restore_references_no_shell, test_second_shell_rejected_while_first_holds_signal_lease, test_second_shell_runs_after_first_closes ...
+
+## managed-lease-acquired  (signal_manager.py)
+   20 failed, 74 passed in 2.62s
+   killed 20 test(s): test_close_restores_every_managed_disposition[interactive], test_close_restores_every_managed_disposition[script], test_close_then_teardown_is_idempotent[interactive], test_close_then_teardown_is_idempotent[script], test_double_setup_restores_the_pre_psh_dispositions[interactive], test_double_setup_restores_the_pre_psh_dispositions[script] ...
+
+=== DERIVED ===
+mutations run       = 16
+arms with a lock    = 15
+UNPINNED arms       = 1 ['ensure-owner-discrimination']
+stale patterns      = 0 []
+arms sharing an IDENTICAL kill set = 0

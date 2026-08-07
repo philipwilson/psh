@@ -1,0 +1,164 @@
+# instrument: /Users/pwilson/src/psh-r4a-1/tmp/w4a1-probes/real_shell_matrix.py
+# tree:       /Users/pwilson/src/psh-probe-4a1-base
+# cells:      15
+
+--- B-13a ---
+CELL B-13a KEY=rlimit_before VALUE=1048576/9223372036854775807
+CELL B-13a KEY=rlimit_set VALUE=32
+CELL B-13a KEY=exec_rc VALUE=0
+CELL B-13a KEY=leases_after VALUE=LOCALE,STD_FDS
+CELL B-13a KEY=baseline_registered VALUE=True
+CELL B-13a KEY=baseline_fds VALUE={0: None, 1: None, 2: None}
+CELL B-13a KEY=fds_recorded_as_closed VALUE=3
+CELL B-13a KEY=std_fds_open_before_close VALUE={0: True, 1: True, 2: True}
+CELL B-13a KEY=std_fds_open_after_close VALUE={0: False, 1: False, 2: False}
+CELL B-13a KEY=std_fds_closed_by_restore VALUE=0,1,2
+CELL B-13a RESULT=DUP_FAIL_CLOSES_STD_FDS:3
+
+--- B-13b ---
+CELL B-13b KEY=A_leases VALUE=STD_FDS
+CELL B-13b KEY=parked_before VALUE=63,64,65
+CELL B-13b KEY=b_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=0,_components=['STD_FDS'])
+CELL B-13b KEY=b_raised VALUE=LeaseError
+CELL B-13b KEY=parked_after VALUE=63,64,65
+CELL B-13b KEY=parked_leaked_by_B VALUE=0
+CELL B-13b KEY=b_baseline_registered VALUE=False
+CELL B-13b KEY=b_target_created VALUE=False
+CELL B-13b KEY=leases_after VALUE=STD_FDS
+CELL B-13b RESULT=LEAKED_FDS:0
+
+--- B-14 ---
+CELL B-14 KEY=failing_target_rc VALUE=1
+CELL B-14 KEY=failing_target_lease_taken VALUE=True
+CELL B-14 KEY=failing_target_parked VALUE=63,64,65
+CELL B-14 KEY=rejected_acquisition VALUE=REJECTED
+CELL B-14 KEY=rejected_target_created VALUE=False
+CELL B-14 RESULT=ACQUIRE_BEFORE_OPEN
+
+--- B-11 ---
+CELL B-11 KEY=failing_exec_rc VALUE=1
+CELL B-11 KEY=leases_held_by_A VALUE=STD_FDS
+CELL B-11 KEY=isolated_to_STD_FDS VALUE=True
+CELL B-11 KEY=b_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=0,_components=['STD_FDS'])
+CELL B-11 RESULT=B_REJECTED
+
+--- B-12 ---
+CELL B-12 KEY=failing_exec_rc VALUE=1
+CELL B-12 KEY=leases_held_by_A VALUE=STD_FDS
+CELL B-12 KEY=isolated_to_STD_FDS VALUE=True
+CELL B-12 KEY=b_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=0,_components=['STD_FDS'])
+CELL B-12 RESULT=B_REJECTED
+
+--- B-01 ---
+CELL B-01 KEY=leases_held VALUE=LOCALE,STD_FDS
+CELL B-01 KEY=owner_after_drop VALUE=ALIVE
+CELL B-01 KEY=leases_after_drop VALUE=LOCALE,STD_FDS
+CELL B-01 KEY=next_shell_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=0,_components=['LOCALE',_'STD_FDS'])
+CELL B-01 RESULT=POISONED
+
+--- B-02 ---
+CELL B-02 KEY=leases_held VALUE=LOCALE
+CELL B-02 KEY=owner_after_drop VALUE=COLLECTED
+CELL B-02 KEY=leases_after_drop VALUE=LOCALE
+CELL B-02 KEY=next_shell_rc VALUE=0
+CELL B-02 RESULT=CLEAN
+
+--- B-03 ---
+CELL B-03 KEY=leases_held VALUE=LOCALE,SIGNALS
+CELL B-03 KEY=owner_after_drop VALUE=ALIVE
+CELL B-03 KEY=leases_after_drop VALUE=LOCALE,SIGNALS
+CELL B-03 KEY=next_shell_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=0,_components=['LOCALE',_'SIGNALS'])
+CELL B-03 RESULT=POISONED
+
+--- B-04 ---
+CELL B-04 KEY=leases_held VALUE=LOCALE,STD_FDS
+CELL B-04 KEY=closed VALUE=True
+CELL B-04 KEY=owner_after_drop VALUE=COLLECTED
+CELL B-04 KEY=leases_after_drop VALUE=-
+CELL B-04 KEY=next_shell_rc VALUE=0
+CELL B-04 RESULT=CLEAN
+
+--- B-05 ---
+CELL B-05 KEY=parked_fds_before VALUE=-
+CELL B-05 KEY=leases_before VALUE=-
+CELL B-05 KEY=failing_exec_rc VALUE=1
+CELL B-05 KEY=parked_fds_after VALUE=63,64,65
+CELL B-05 KEY=leases_after VALUE=LOCALE,STD_FDS
+CELL B-05 KEY=baseline_registered VALUE=True
+CELL B-05 KEY=newly_parked VALUE=3
+CELL B-05 KEY=lease_newly_taken VALUE=True
+CELL B-05 KEY=fds_leaked_vs_pristine VALUE=3
+CELL B-05 RESULT=RETAINED
+
+--- B-06 ---
+CELL B-06 KEY=first_exec_rc VALUE=0
+CELL B-06 KEY=leases_after_first_exec VALUE=LOCALE,STD_FDS
+CELL B-06 KEY=parked_fds_before VALUE=63,64,65
+CELL B-06 KEY=leases_before VALUE=LOCALE,STD_FDS
+CELL B-06 KEY=failing_exec_rc VALUE=1
+CELL B-06 KEY=parked_fds_after VALUE=63,64,65
+CELL B-06 KEY=leases_after VALUE=LOCALE,STD_FDS
+CELL B-06 KEY=baseline_registered VALUE=True
+CELL B-06 KEY=newly_parked VALUE=0
+CELL B-06 KEY=lease_newly_taken VALUE=False
+CELL B-06 KEY=fds_leaked_vs_pristine VALUE=3
+CELL B-06 RESULT=FIRST_LEASE_INTACT
+
+--- B-07 ---
+CELL B-07 KEY=parked_fds_before VALUE=-
+CELL B-07 KEY=leases_before VALUE=-
+CELL B-07 KEY=failing_exec_rc VALUE=1
+CELL B-07 KEY=parked_fds_after VALUE=63,64,65
+CELL B-07 KEY=leases_after VALUE=LOCALE,STD_FDS
+CELL B-07 KEY=baseline_registered VALUE=True
+CELL B-07 KEY=newly_parked VALUE=3
+CELL B-07 KEY=lease_newly_taken VALUE=True
+CELL B-07 KEY=fds_leaked_vs_pristine VALUE=3
+CELL B-07 KEY=closed VALUE=True
+CELL B-07 KEY=leases_after_close VALUE=-
+CELL B-07 KEY=parked_fds_after_close VALUE=-
+CELL B-07 KEY=next_shell_rc VALUE=0
+CELL B-07 RESULT=CLEAN
+
+--- B-08 ---
+CELL B-08 KEY=rc VALUE=0
+CELL B-08 KEY=leases_held VALUE=LOCALE
+CELL B-08 KEY=baseline_registered VALUE=False
+CELL B-08 KEY=leases_after_close VALUE=-
+CELL B-08 RESULT=named_fd_only:NO_STD_FDS
+
+--- B-09 ---
+CELL B-09 KEY=rc VALUE=0
+CELL B-09 KEY=leases_held VALUE=LOCALE,STD_FDS
+CELL B-09 KEY=baseline_registered VALUE=True
+CELL B-09 KEY=leases_after_close VALUE=-
+CELL B-09 RESULT=explicit_fd_3:STD_FDS
+
+--- B-10 ---
+CELL B-10 KEY=first_exec_rc VALUE=0
+CELL B-10 KEY=parked_after_first VALUE=63,64,65
+CELL B-10 KEY=relocating_failing_exec_rc VALUE=1
+CELL B-10 KEY=parked_after VALUE=64,65,66
+CELL B-10 KEY=leases_after VALUE=LOCALE,STD_FDS
+CELL B-10 KEY=baseline_registered VALUE=True
+CELL B-10 KEY=leases_after_close VALUE=-
+CELL B-10 KEY=next_shell_rc VALUE=0
+CELL B-10 RESULT=CLEAN
+
+=== DERIVED SUMMARY ===
+B-13a    DUP_FAIL_CLOSES_STD_FDS:3
+B-13b    LEAKED_FDS:0
+B-14     ACQUIRE_BEFORE_OPEN
+B-11     B_REJECTED
+B-12     B_REJECTED
+B-01     POISONED
+B-02     CLEAN
+B-03     POISONED
+B-04     CLEAN
+B-05     RETAINED
+B-06     FIRST_LEASE_INTACT
+B-07     CLEAN
+B-08     named_fd_only:NO_STD_FDS
+B-09     explicit_fd_3:STD_FDS
+B-10     CLEAN
+cells_requested=15 cells_with_result=15 broken=0

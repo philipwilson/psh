@@ -1,0 +1,93 @@
+# instrument: /Users/pwilson/src/psh-r4a-1/tmp/w4a1-probes/design_probes.py
+# tree:       /Users/pwilson/src/psh-r4a-1
+# cells:      9
+
+--- D-01-locale ---
+CELL D-01-locale KEY=leases_held VALUE=LOCALE
+CELL D-01-locale KEY=state_alive_after_gc VALUE=False
+CELL D-01-locale KEY=owner_after_gc VALUE=COLLECTED
+CELL D-01-locale RESULT=PINS:False
+
+--- D-01-signals ---
+CELL D-01-signals KEY=leases_held VALUE=LOCALE,SIGNALS
+CELL D-01-signals KEY=state_alive_after_gc VALUE=True
+CELL D-01-signals KEY=owner_after_gc VALUE=ALIVE
+CELL D-01-signals KEY=restore_callables VALUE=LOCALE:function:ShellState._acquire_locale_lease.<locals>._restore;SIGNALS:function:TrapManager._register_signal_lease.<locals>.<lambda>
+CELL D-01-signals RESULT=PINS:True
+
+--- D-01-stdfds ---
+CELL D-01-stdfds KEY=leases_held VALUE=LOCALE,STD_FDS
+CELL D-01-stdfds KEY=state_alive_after_gc VALUE=False
+CELL D-01-stdfds KEY=owner_after_gc VALUE=COLLECTED
+CELL D-01-stdfds RESULT=PINS:False
+
+--- D-02 ---
+CELL D-02 KEY=self_state_uses_in_baseline VALUE=0
+CELL D-02 KEY=slots_has_state VALUE=False
+CELL D-02 KEY=state_use_is_only_stream_overrides VALUE=True
+CELL D-02 RESULT=USES:0
+
+--- D-03 ---
+CELL D-03 KEY=service_attrs VALUE=_deferred:bool,_applied:bool,profile:LocaleContext
+CELL D-03 KEY=service_directly_references_state VALUE=False
+CELL D-03 KEY=locale_lease_present VALUE=True
+CELL D-03 KEY=restore_closure_captures VALUE=-
+CELL D-03 KEY=restore_defaults VALUE=LocaleService,tuple
+CELL D-03 KEY=restore_captures_state VALUE=False
+CELL D-03 KEY=state_alive_after_close_and_gc VALUE=False
+CELL D-03 RESULT=NO_BACKREF
+
+--- D-04-managed-first ---
+CELL D-04-managed-first KEY=second_acquire_folded VALUE=True
+CELL D-04-managed-first KEY=lease_description VALUE=probe-managed
+CELL D-04-managed-first KEY=restores_that_ran VALUE=managed
+CELL D-04-managed-first KEY=families_restored VALUE=1
+CELL D-04-managed-first RESULT=RAN:managed
+
+--- D-04-trap-first ---
+CELL D-04-trap-first KEY=second_acquire_folded VALUE=True
+CELL D-04-trap-first KEY=lease_description VALUE=probe-trap
+CELL D-04-trap-first KEY=restores_that_ran VALUE=trap
+CELL D-04-trap-first KEY=families_restored VALUE=1
+CELL D-04-trap-first RESULT=RAN:trap
+
+--- D-05 ---
+CELL D-05 KEY=LeaseError.is_LeaseError VALUE=True
+CELL D-05 KEY=LeaseError.is_RuntimeError VALUE=True
+CELL D-05 KEY=LeaseError.is_PshError VALUE=False
+CELL D-05 KEY=LeaseError.is_OSError VALUE=False
+CELL D-05 KEY=LeaseError.classifies_internal VALUE=True
+CELL D-05 KEY=LeaseError.caught_by_pytest_raises_LeaseError VALUE=True
+CELL D-05 KEY=LeaseError_subclass.is_LeaseError VALUE=True
+CELL D-05 KEY=LeaseError_subclass.is_RuntimeError VALUE=True
+CELL D-05 KEY=LeaseError_subclass.is_PshError VALUE=False
+CELL D-05 KEY=LeaseError_subclass.is_OSError VALUE=False
+CELL D-05 KEY=LeaseError_subclass.classifies_internal VALUE=True
+CELL D-05 KEY=LeaseError_subclass.caught_by_pytest_raises_LeaseError VALUE=True
+CELL D-05 KEY=ExceptionGroup.is_LeaseError VALUE=False
+CELL D-05 KEY=ExceptionGroup.is_RuntimeError VALUE=False
+CELL D-05 KEY=ExceptionGroup.is_PshError VALUE=False
+CELL D-05 KEY=ExceptionGroup.is_OSError VALUE=False
+CELL D-05 KEY=ExceptionGroup.classifies_internal VALUE=True
+CELL D-05 KEY=ExceptionGroup.caught_by_pytest_raises_LeaseError VALUE=False
+CELL D-05 KEY=add_note_supported VALUE=True
+CELL D-05 KEY=python_version VALUE=3.14
+CELL D-05 RESULT=RECORDED
+
+--- D-06 ---
+CELL D-06 KEY=public_surface VALUE=acquire_component,activate,activation_depth,clear_quarantine,current_owner,find_component,is_clean,quarantine_report,release_owner
+CELL D-06 KEY=has_clean_predicate VALUE=True
+CELL D-06 KEY=find_component_needs_owner VALUE=True
+CELL D-06 RESULT=acquire_component|activate|activation_depth|clear_quarantine|current_owner|find_component|is_clean|quarantine_report|release_owner
+
+=== DERIVED SUMMARY ===
+D-01-locale PINS:False
+D-01-signals PINS:True
+D-01-stdfds PINS:False
+D-02     USES:0
+D-03     NO_BACKREF
+D-04-managed-first RAN:managed
+D-04-trap-first RAN:trap
+D-05     RECORDED
+D-06     acquire_component|activate|activation_depth|clear_quarantine|current_owner|find_component|is_clean|quarantine_report|release_owner
+cells_requested=9 cells_with_result=9 broken=0

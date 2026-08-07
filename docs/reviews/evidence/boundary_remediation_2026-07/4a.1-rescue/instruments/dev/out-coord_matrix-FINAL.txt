@@ -1,0 +1,525 @@
+# instrument: /Users/pwilson/src/psh-r4a-1/tmp/w4a1-probes/coord_matrix.py
+# tree:       /Users/pwilson/src/psh-r4a-1
+# cells:      22
+
+--- A-18 ---
+CELL A-18 KEY=B_quiescent.owner VALUE=B
+CELL A-18 KEY=B_quiescent.depth VALUE=0
+CELL A-18 KEY=B_quiescent.live_components VALUE=-
+CELL A-18 KEY=B_quiescent.owned_by_current VALUE=0
+CELL A-18 KEY=B_quiescent.orphans VALUE=0
+CELL A-18 KEY=B_quiescent.publicly_visible VALUE=0
+CELL A-18 KEY=B_quiescent.publicly_invisible VALUE=0
+CELL A-18 KEY=B_quiescent.misattributed VALUE=0
+CELL A-18 KEY=B_quiescent.views_agree VALUE=True
+CELL A-18 KEY=transfer VALUE=failed_as_injected:RuntimeError
+CELL A-18 KEY=after_A2_failure.owner VALUE=B
+CELL A-18 KEY=after_A2_failure.depth VALUE=0
+CELL A-18 KEY=after_A2_failure.live_components VALUE=-
+CELL A-18 KEY=after_A2_failure.owned_by_current VALUE=0
+CELL A-18 KEY=after_A2_failure.orphans VALUE=0
+CELL A-18 KEY=after_A2_failure.publicly_visible VALUE=0
+CELL A-18 KEY=after_A2_failure.publicly_invisible VALUE=0
+CELL A-18 KEY=after_A2_failure.misattributed VALUE=0
+CELL A-18 KEY=after_A2_failure.views_agree VALUE=True
+CELL A-18 KEY=orphan_owner_is_A2 VALUE=n/a
+CELL A-18 KEY=find_component_B_returns_a_lease VALUE=False
+CELL A-18 KEY=returned_lease_belongs_to_A2 VALUE=False
+CELL A-18 KEY=B_acquisition_folded_into_orphan VALUE=False
+CELL A-18 KEY=B_has_own_lease VALUE=True
+CELL A-18 KEY=B_own_restore_ran VALUE=True
+CELL A-18 KEY=end.owner VALUE=None
+CELL A-18 KEY=end.depth VALUE=0
+CELL A-18 KEY=end.live_components VALUE=-
+CELL A-18 KEY=end.owned_by_current VALUE=0
+CELL A-18 KEY=end.orphans VALUE=0
+CELL A-18 KEY=end.publicly_visible VALUE=0
+CELL A-18 KEY=end.publicly_invisible VALUE=0
+CELL A-18 KEY=end.misattributed VALUE=0
+CELL A-18 KEY=end.views_agree VALUE=True
+CELL A-18 RESULT=SEPARATE
+
+--- A-01 ---
+CELL A-01 KEY=activation VALUE=failed_as_injected:RuntimeError
+CELL A-01 KEY=after_A_failure.owner VALUE=None
+CELL A-01 KEY=after_A_failure.depth VALUE=0
+CELL A-01 KEY=after_A_failure.live_components VALUE=-
+CELL A-01 KEY=after_A_failure.owned_by_current VALUE=0
+CELL A-01 KEY=after_A_failure.orphans VALUE=0
+CELL A-01 KEY=after_A_failure.publicly_visible VALUE=0
+CELL A-01 KEY=after_A_failure.publicly_invisible VALUE=0
+CELL A-01 KEY=after_A_failure.misattributed VALUE=0
+CELL A-01 KEY=after_A_failure.views_agree VALUE=True
+CELL A-01 KEY=after_C.owner VALUE=C
+CELL A-01 KEY=after_C.depth VALUE=0
+CELL A-01 KEY=after_C.live_components VALUE=-
+CELL A-01 KEY=after_C.owned_by_current VALUE=0
+CELL A-01 KEY=after_C.orphans VALUE=0
+CELL A-01 KEY=after_C.publicly_visible VALUE=0
+CELL A-01 KEY=after_C.publicly_invisible VALUE=0
+CELL A-01 KEY=after_C.misattributed VALUE=0
+CELL A-01 KEY=after_C.views_agree VALUE=True
+CELL A-01 RESULT=CLEAN
+
+--- A-02 ---
+CELL A-02 KEY=activation VALUE=failed_as_injected:RuntimeError
+CELL A-02 KEY=after_A_failure.owner VALUE=None
+CELL A-02 KEY=after_A_failure.depth VALUE=0
+CELL A-02 KEY=after_A_failure.live_components VALUE=-
+CELL A-02 KEY=after_A_failure.owned_by_current VALUE=0
+CELL A-02 KEY=after_A_failure.orphans VALUE=0
+CELL A-02 KEY=after_A_failure.publicly_visible VALUE=0
+CELL A-02 KEY=after_A_failure.publicly_invisible VALUE=0
+CELL A-02 KEY=after_A_failure.misattributed VALUE=0
+CELL A-02 KEY=after_A_failure.views_agree VALUE=True
+CELL A-02 KEY=after_C.owner VALUE=C
+CELL A-02 KEY=after_C.depth VALUE=0
+CELL A-02 KEY=after_C.live_components VALUE=-
+CELL A-02 KEY=after_C.owned_by_current VALUE=0
+CELL A-02 KEY=after_C.orphans VALUE=0
+CELL A-02 KEY=after_C.publicly_visible VALUE=0
+CELL A-02 KEY=after_C.publicly_invisible VALUE=0
+CELL A-02 KEY=after_C.misattributed VALUE=0
+CELL A-02 KEY=after_C.views_agree VALUE=True
+CELL A-02 RESULT=CLEAN
+
+--- A-03 ---
+CELL A-03 KEY=activation VALUE=failed_as_injected:RuntimeError
+CELL A-03 KEY=after_A_failure.owner VALUE=None
+CELL A-03 KEY=after_A_failure.depth VALUE=0
+CELL A-03 KEY=after_A_failure.live_components VALUE=-
+CELL A-03 KEY=after_A_failure.owned_by_current VALUE=0
+CELL A-03 KEY=after_A_failure.orphans VALUE=0
+CELL A-03 KEY=after_A_failure.publicly_visible VALUE=0
+CELL A-03 KEY=after_A_failure.publicly_invisible VALUE=0
+CELL A-03 KEY=after_A_failure.misattributed VALUE=0
+CELL A-03 KEY=after_A_failure.views_agree VALUE=True
+CELL A-03 KEY=after_C.owner VALUE=C
+CELL A-03 KEY=after_C.depth VALUE=0
+CELL A-03 KEY=after_C.live_components VALUE=-
+CELL A-03 KEY=after_C.owned_by_current VALUE=0
+CELL A-03 KEY=after_C.orphans VALUE=0
+CELL A-03 KEY=after_C.publicly_visible VALUE=0
+CELL A-03 KEY=after_C.publicly_invisible VALUE=0
+CELL A-03 KEY=after_C.misattributed VALUE=0
+CELL A-03 KEY=after_C.views_agree VALUE=True
+CELL A-03 RESULT=CLEAN
+
+--- A-04 ---
+CELL A-04 KEY=B_quiescent.owner VALUE=B
+CELL A-04 KEY=B_quiescent.depth VALUE=0
+CELL A-04 KEY=B_quiescent.live_components VALUE=-
+CELL A-04 KEY=B_quiescent.owned_by_current VALUE=0
+CELL A-04 KEY=B_quiescent.orphans VALUE=0
+CELL A-04 KEY=B_quiescent.publicly_visible VALUE=0
+CELL A-04 KEY=B_quiescent.publicly_invisible VALUE=0
+CELL A-04 KEY=B_quiescent.misattributed VALUE=0
+CELL A-04 KEY=B_quiescent.views_agree VALUE=True
+CELL A-04 KEY=transfer VALUE=failed_as_injected:RuntimeError
+CELL A-04 KEY=after_A2_failure.owner VALUE=B
+CELL A-04 KEY=after_A2_failure.depth VALUE=0
+CELL A-04 KEY=after_A2_failure.live_components VALUE=-
+CELL A-04 KEY=after_A2_failure.owned_by_current VALUE=0
+CELL A-04 KEY=after_A2_failure.orphans VALUE=0
+CELL A-04 KEY=after_A2_failure.publicly_visible VALUE=0
+CELL A-04 KEY=after_A2_failure.publicly_invisible VALUE=0
+CELL A-04 KEY=after_A2_failure.misattributed VALUE=0
+CELL A-04 KEY=after_A2_failure.views_agree VALUE=True
+CELL A-04 KEY=orphan_owner_is_A2 VALUE=n/a
+CELL A-04 KEY=after_C2.owner VALUE=C2
+CELL A-04 KEY=after_C2.depth VALUE=0
+CELL A-04 KEY=after_C2.live_components VALUE=-
+CELL A-04 KEY=after_C2.owned_by_current VALUE=0
+CELL A-04 KEY=after_C2.orphans VALUE=0
+CELL A-04 KEY=after_C2.publicly_visible VALUE=0
+CELL A-04 KEY=after_C2.publicly_invisible VALUE=0
+CELL A-04 KEY=after_C2.misattributed VALUE=0
+CELL A-04 KEY=after_C2.views_agree VALUE=True
+CELL A-04 RESULT=CLEAN
+
+--- A-05 ---
+CELL A-05 KEY=B_quiescent.owner VALUE=B
+CELL A-05 KEY=B_quiescent.depth VALUE=0
+CELL A-05 KEY=B_quiescent.live_components VALUE=-
+CELL A-05 KEY=B_quiescent.owned_by_current VALUE=0
+CELL A-05 KEY=B_quiescent.orphans VALUE=0
+CELL A-05 KEY=B_quiescent.publicly_visible VALUE=0
+CELL A-05 KEY=B_quiescent.publicly_invisible VALUE=0
+CELL A-05 KEY=B_quiescent.misattributed VALUE=0
+CELL A-05 KEY=B_quiescent.views_agree VALUE=True
+CELL A-05 KEY=transfer VALUE=failed_as_injected:RuntimeError
+CELL A-05 KEY=after_A2_failure.owner VALUE=B
+CELL A-05 KEY=after_A2_failure.depth VALUE=0
+CELL A-05 KEY=after_A2_failure.live_components VALUE=-
+CELL A-05 KEY=after_A2_failure.owned_by_current VALUE=0
+CELL A-05 KEY=after_A2_failure.orphans VALUE=0
+CELL A-05 KEY=after_A2_failure.publicly_visible VALUE=0
+CELL A-05 KEY=after_A2_failure.publicly_invisible VALUE=0
+CELL A-05 KEY=after_A2_failure.misattributed VALUE=0
+CELL A-05 KEY=after_A2_failure.views_agree VALUE=True
+CELL A-05 KEY=orphan_owner_is_A2 VALUE=n/a
+CELL A-05 KEY=after_C2.owner VALUE=C2
+CELL A-05 KEY=after_C2.depth VALUE=0
+CELL A-05 KEY=after_C2.live_components VALUE=-
+CELL A-05 KEY=after_C2.owned_by_current VALUE=0
+CELL A-05 KEY=after_C2.orphans VALUE=0
+CELL A-05 KEY=after_C2.publicly_visible VALUE=0
+CELL A-05 KEY=after_C2.publicly_invisible VALUE=0
+CELL A-05 KEY=after_C2.misattributed VALUE=0
+CELL A-05 KEY=after_C2.views_agree VALUE=True
+CELL A-05 RESULT=CLEAN
+
+--- A-06 ---
+CELL A-06 KEY=B_quiescent.owner VALUE=B
+CELL A-06 KEY=B_quiescent.depth VALUE=0
+CELL A-06 KEY=B_quiescent.live_components VALUE=-
+CELL A-06 KEY=B_quiescent.owned_by_current VALUE=0
+CELL A-06 KEY=B_quiescent.orphans VALUE=0
+CELL A-06 KEY=B_quiescent.publicly_visible VALUE=0
+CELL A-06 KEY=B_quiescent.publicly_invisible VALUE=0
+CELL A-06 KEY=B_quiescent.misattributed VALUE=0
+CELL A-06 KEY=B_quiescent.views_agree VALUE=True
+CELL A-06 KEY=transfer VALUE=failed_as_injected:RuntimeError
+CELL A-06 KEY=after_A2_failure.owner VALUE=B
+CELL A-06 KEY=after_A2_failure.depth VALUE=0
+CELL A-06 KEY=after_A2_failure.live_components VALUE=-
+CELL A-06 KEY=after_A2_failure.owned_by_current VALUE=0
+CELL A-06 KEY=after_A2_failure.orphans VALUE=0
+CELL A-06 KEY=after_A2_failure.publicly_visible VALUE=0
+CELL A-06 KEY=after_A2_failure.publicly_invisible VALUE=0
+CELL A-06 KEY=after_A2_failure.misattributed VALUE=0
+CELL A-06 KEY=after_A2_failure.views_agree VALUE=True
+CELL A-06 KEY=orphan_owner_is_A2 VALUE=n/a
+CELL A-06 KEY=after_C2.owner VALUE=C2
+CELL A-06 KEY=after_C2.depth VALUE=0
+CELL A-06 KEY=after_C2.live_components VALUE=-
+CELL A-06 KEY=after_C2.owned_by_current VALUE=0
+CELL A-06 KEY=after_C2.orphans VALUE=0
+CELL A-06 KEY=after_C2.publicly_visible VALUE=0
+CELL A-06 KEY=after_C2.publicly_invisible VALUE=0
+CELL A-06 KEY=after_C2.misattributed VALUE=0
+CELL A-06 KEY=after_C2.views_agree VALUE=True
+CELL A-06 RESULT=CLEAN
+
+--- A-07 ---
+CELL A-07 KEY=nested_activation VALUE=succeeded
+CELL A-07 KEY=glue_ran VALUE=False
+CELL A-07 KEY=end.owner VALUE=None
+CELL A-07 KEY=end.depth VALUE=0
+CELL A-07 KEY=end.live_components VALUE=-
+CELL A-07 KEY=end.owned_by_current VALUE=0
+CELL A-07 KEY=end.orphans VALUE=0
+CELL A-07 KEY=end.publicly_visible VALUE=0
+CELL A-07 KEY=end.publicly_invisible VALUE=0
+CELL A-07 KEY=end.misattributed VALUE=0
+CELL A-07 KEY=end.views_agree VALUE=True
+CELL A-07 RESULT=GLUE_SKIPPED
+
+--- A-08a ---
+CELL A-08a KEY=acquire VALUE=failed_as_injected:RuntimeError
+CELL A-08a KEY=after_failure.owner VALUE=B
+CELL A-08a KEY=after_failure.depth VALUE=0
+CELL A-08a KEY=after_failure.live_components VALUE=-
+CELL A-08a KEY=after_failure.owned_by_current VALUE=0
+CELL A-08a KEY=after_failure.orphans VALUE=0
+CELL A-08a KEY=after_failure.publicly_visible VALUE=0
+CELL A-08a KEY=after_failure.publicly_invisible VALUE=0
+CELL A-08a KEY=after_failure.misattributed VALUE=0
+CELL A-08a KEY=after_failure.views_agree VALUE=True
+CELL A-08a KEY=after_C2.owner VALUE=C2
+CELL A-08a KEY=after_C2.depth VALUE=0
+CELL A-08a KEY=after_C2.live_components VALUE=-
+CELL A-08a KEY=after_C2.owned_by_current VALUE=0
+CELL A-08a KEY=after_C2.orphans VALUE=0
+CELL A-08a KEY=after_C2.publicly_visible VALUE=0
+CELL A-08a KEY=after_C2.publicly_invisible VALUE=0
+CELL A-08a KEY=after_C2.misattributed VALUE=0
+CELL A-08a KEY=after_C2.views_agree VALUE=True
+CELL A-08a RESULT=CLEAN
+
+--- A-08b ---
+CELL A-08b KEY=acquire VALUE=failed_as_injected:RuntimeError
+CELL A-08b KEY=after_failure.owner VALUE=B
+CELL A-08b KEY=after_failure.depth VALUE=0
+CELL A-08b KEY=after_failure.live_components VALUE=-
+CELL A-08b KEY=after_failure.owned_by_current VALUE=0
+CELL A-08b KEY=after_failure.orphans VALUE=0
+CELL A-08b KEY=after_failure.publicly_visible VALUE=0
+CELL A-08b KEY=after_failure.publicly_invisible VALUE=0
+CELL A-08b KEY=after_failure.misattributed VALUE=0
+CELL A-08b KEY=after_failure.views_agree VALUE=True
+CELL A-08b KEY=after_C2.owner VALUE=C2
+CELL A-08b KEY=after_C2.depth VALUE=0
+CELL A-08b KEY=after_C2.live_components VALUE=-
+CELL A-08b KEY=after_C2.owned_by_current VALUE=0
+CELL A-08b KEY=after_C2.orphans VALUE=0
+CELL A-08b KEY=after_C2.publicly_visible VALUE=0
+CELL A-08b KEY=after_C2.publicly_invisible VALUE=0
+CELL A-08b KEY=after_C2.misattributed VALUE=0
+CELL A-08b KEY=after_C2.views_agree VALUE=True
+CELL A-08b RESULT=CLEAN
+
+--- A-08c ---
+CELL A-08c KEY=acquire VALUE=failed_as_injected:RuntimeError
+CELL A-08c KEY=after_failure.owner VALUE=B
+CELL A-08c KEY=after_failure.depth VALUE=0
+CELL A-08c KEY=after_failure.live_components VALUE=-
+CELL A-08c KEY=after_failure.owned_by_current VALUE=0
+CELL A-08c KEY=after_failure.orphans VALUE=0
+CELL A-08c KEY=after_failure.publicly_visible VALUE=0
+CELL A-08c KEY=after_failure.publicly_invisible VALUE=0
+CELL A-08c KEY=after_failure.misattributed VALUE=0
+CELL A-08c KEY=after_failure.views_agree VALUE=True
+CELL A-08c KEY=after_C2.owner VALUE=C2
+CELL A-08c KEY=after_C2.depth VALUE=0
+CELL A-08c KEY=after_C2.live_components VALUE=-
+CELL A-08c KEY=after_C2.owned_by_current VALUE=0
+CELL A-08c KEY=after_C2.orphans VALUE=0
+CELL A-08c KEY=after_C2.publicly_visible VALUE=0
+CELL A-08c KEY=after_C2.publicly_invisible VALUE=0
+CELL A-08c KEY=after_C2.misattributed VALUE=0
+CELL A-08c KEY=after_C2.views_agree VALUE=True
+CELL A-08c RESULT=CLEAN
+
+--- A-10 ---
+CELL A-10 KEY=B_quiescent.owner VALUE=B
+CELL A-10 KEY=B_quiescent.depth VALUE=0
+CELL A-10 KEY=B_quiescent.live_components VALUE=-
+CELL A-10 KEY=B_quiescent.owned_by_current VALUE=0
+CELL A-10 KEY=B_quiescent.orphans VALUE=0
+CELL A-10 KEY=B_quiescent.publicly_visible VALUE=0
+CELL A-10 KEY=B_quiescent.publicly_invisible VALUE=0
+CELL A-10 KEY=B_quiescent.misattributed VALUE=0
+CELL A-10 KEY=B_quiescent.views_agree VALUE=True
+CELL A-10 KEY=transfer VALUE=failed_as_injected:RuntimeError
+CELL A-10 KEY=after_A2_failure.owner VALUE=B
+CELL A-10 KEY=after_A2_failure.depth VALUE=0
+CELL A-10 KEY=after_A2_failure.live_components VALUE=-
+CELL A-10 KEY=after_A2_failure.owned_by_current VALUE=0
+CELL A-10 KEY=after_A2_failure.orphans VALUE=0
+CELL A-10 KEY=after_A2_failure.publicly_visible VALUE=0
+CELL A-10 KEY=after_A2_failure.publicly_invisible VALUE=0
+CELL A-10 KEY=after_A2_failure.misattributed VALUE=0
+CELL A-10 KEY=after_A2_failure.views_agree VALUE=True
+CELL A-10 KEY=orphan_owner_is_A2 VALUE=n/a
+CELL A-10 KEY=after_release_owner_A2.owner VALUE=B
+CELL A-10 KEY=after_release_owner_A2.depth VALUE=0
+CELL A-10 KEY=after_release_owner_A2.live_components VALUE=-
+CELL A-10 KEY=after_release_owner_A2.owned_by_current VALUE=0
+CELL A-10 KEY=after_release_owner_A2.orphans VALUE=0
+CELL A-10 KEY=after_release_owner_A2.publicly_visible VALUE=0
+CELL A-10 KEY=after_release_owner_A2.publicly_invisible VALUE=0
+CELL A-10 KEY=after_release_owner_A2.misattributed VALUE=0
+CELL A-10 KEY=after_release_owner_A2.views_agree VALUE=True
+CELL A-10 RESULT=ORPHANS:0
+
+--- A-11 ---
+CELL A-11 KEY=B_quiescent.owner VALUE=B
+CELL A-11 KEY=B_quiescent.depth VALUE=0
+CELL A-11 KEY=B_quiescent.live_components VALUE=-
+CELL A-11 KEY=B_quiescent.owned_by_current VALUE=0
+CELL A-11 KEY=B_quiescent.orphans VALUE=0
+CELL A-11 KEY=B_quiescent.publicly_visible VALUE=0
+CELL A-11 KEY=B_quiescent.publicly_invisible VALUE=0
+CELL A-11 KEY=B_quiescent.misattributed VALUE=0
+CELL A-11 KEY=B_quiescent.views_agree VALUE=True
+CELL A-11 KEY=transfer VALUE=failed_as_injected:RuntimeError
+CELL A-11 KEY=after_A2_failure.owner VALUE=B
+CELL A-11 KEY=after_A2_failure.depth VALUE=0
+CELL A-11 KEY=after_A2_failure.live_components VALUE=-
+CELL A-11 KEY=after_A2_failure.owned_by_current VALUE=0
+CELL A-11 KEY=after_A2_failure.orphans VALUE=0
+CELL A-11 KEY=after_A2_failure.publicly_visible VALUE=0
+CELL A-11 KEY=after_A2_failure.publicly_invisible VALUE=0
+CELL A-11 KEY=after_A2_failure.misattributed VALUE=0
+CELL A-11 KEY=after_A2_failure.views_agree VALUE=True
+CELL A-11 KEY=orphan_owner_is_A2 VALUE=n/a
+CELL A-11 KEY=after_release_owner_B.owner VALUE=None
+CELL A-11 KEY=after_release_owner_B.depth VALUE=0
+CELL A-11 KEY=after_release_owner_B.live_components VALUE=-
+CELL A-11 KEY=after_release_owner_B.owned_by_current VALUE=0
+CELL A-11 KEY=after_release_owner_B.orphans VALUE=0
+CELL A-11 KEY=after_release_owner_B.publicly_visible VALUE=0
+CELL A-11 KEY=after_release_owner_B.publicly_invisible VALUE=0
+CELL A-11 KEY=after_release_owner_B.misattributed VALUE=0
+CELL A-11 KEY=after_release_owner_B.views_agree VALUE=True
+CELL A-11 KEY=after_C2.owner VALUE=C2
+CELL A-11 KEY=after_C2.depth VALUE=0
+CELL A-11 KEY=after_C2.live_components VALUE=-
+CELL A-11 KEY=after_C2.owned_by_current VALUE=0
+CELL A-11 KEY=after_C2.orphans VALUE=0
+CELL A-11 KEY=after_C2.publicly_visible VALUE=0
+CELL A-11 KEY=after_C2.publicly_invisible VALUE=0
+CELL A-11 KEY=after_C2.misattributed VALUE=0
+CELL A-11 KEY=after_C2.views_agree VALUE=True
+CELL A-11 RESULT=ORPHANS:0|C2:CLEAN
+
+--- A-12 ---
+CELL A-12 KEY=restores_attempted VALUE=STD_FDS,SIGNALS,LOCALE
+CELL A-12 KEY=all_three_attempted VALUE=True
+CELL A-12 KEY=raised_to_caller VALUE=LeaseRestoreError:process-global restore failed for 1 component (SIGNALS); the process cannot be proven clean and those components are QUARANTINED (see quarantine_report()). Every other restore was still attempted (campaign F2 / slot 4A.1)
+CELL A-12 KEY=after_release.owner VALUE=A
+CELL A-12 KEY=after_release.depth VALUE=0
+CELL A-12 KEY=after_release.live_components VALUE=-
+CELL A-12 KEY=after_release.owned_by_current VALUE=0
+CELL A-12 KEY=after_release.orphans VALUE=0
+CELL A-12 KEY=after_release.publicly_visible VALUE=0
+CELL A-12 KEY=after_release.publicly_invisible VALUE=0
+CELL A-12 KEY=after_release.misattributed VALUE=0
+CELL A-12 KEY=after_release.views_agree VALUE=True
+CELL A-12 RESULT=RAISED:LeaseRestoreError
+
+--- A-13 ---
+CELL A-13 KEY=restores_attempted VALUE=STD_FDS,SIGNALS,LOCALE
+CELL A-13 KEY=all_three_attempted VALUE=True
+CELL A-13 KEY=raised_to_caller VALUE=LeaseRestoreError:process-global restore failed for 3 components (LOCALE, SIGNALS, STD_FDS); the process cannot be proven clean and those components are QUARANTINED (see quarantine_report()). Every other restore was still attempted (campaign F2 / slot 4A.1)
+CELL A-13 KEY=after_release.owner VALUE=A
+CELL A-13 KEY=after_release.depth VALUE=0
+CELL A-13 KEY=after_release.live_components VALUE=-
+CELL A-13 KEY=after_release.owned_by_current VALUE=0
+CELL A-13 KEY=after_release.orphans VALUE=0
+CELL A-13 KEY=after_release.publicly_visible VALUE=0
+CELL A-13 KEY=after_release.publicly_invisible VALUE=0
+CELL A-13 KEY=after_release.misattributed VALUE=0
+CELL A-13 KEY=after_release.views_agree VALUE=True
+CELL A-13 RESULT=RAISED:LeaseRestoreError
+
+--- A-14 ---
+CELL A-14 KEY=after_owner_dropped.owner VALUE=None
+CELL A-14 KEY=after_owner_dropped.depth VALUE=0
+CELL A-14 KEY=after_owner_dropped.live_components VALUE=LOCALE
+CELL A-14 KEY=after_owner_dropped.owned_by_current VALUE=0
+CELL A-14 KEY=after_owner_dropped.orphans VALUE=0
+CELL A-14 KEY=after_owner_dropped.publicly_visible VALUE=0
+CELL A-14 KEY=after_owner_dropped.publicly_invisible VALUE=1
+CELL A-14 KEY=after_owner_dropped.misattributed VALUE=0
+CELL A-14 KEY=after_owner_dropped.views_agree VALUE=False
+CELL A-14 KEY=lease_error VALUE=process-global_restore_failed_for_1_component_(LOCALE)
+CELL A-14 KEY=restore_attempted VALUE=True
+CELL A-14 KEY=raised_to_caller VALUE=NOTHING
+CELL A-14 KEY=after_C.owner VALUE=None
+CELL A-14 KEY=after_C.depth VALUE=0
+CELL A-14 KEY=after_C.live_components VALUE=-
+CELL A-14 KEY=after_C.owned_by_current VALUE=0
+CELL A-14 KEY=after_C.orphans VALUE=0
+CELL A-14 KEY=after_C.publicly_visible VALUE=0
+CELL A-14 KEY=after_C.publicly_invisible VALUE=0
+CELL A-14 KEY=after_C.misattributed VALUE=0
+CELL A-14 KEY=after_C.views_agree VALUE=True
+CELL A-14 RESULT=POISONED:None
+
+--- A-15 ---
+CELL A-15 KEY=raised_to_caller VALUE=RuntimeError
+CELL A-15 KEY=lease_marked_released VALUE=True
+CELL A-15 KEY=popped_from_list VALUE=True
+CELL A-15 KEY=after_release.owner VALUE=A
+CELL A-15 KEY=after_release.depth VALUE=0
+CELL A-15 KEY=after_release.live_components VALUE=-
+CELL A-15 KEY=after_release.owned_by_current VALUE=0
+CELL A-15 KEY=after_release.orphans VALUE=0
+CELL A-15 KEY=after_release.publicly_visible VALUE=0
+CELL A-15 KEY=after_release.publicly_invisible VALUE=0
+CELL A-15 KEY=after_release.misattributed VALUE=0
+CELL A-15 KEY=after_release.views_agree VALUE=True
+CELL A-15 RESULT=PROPAGATED
+
+--- A-16a ---
+CELL A-16a KEY=out_of_order_raised VALUE=LeaseError
+CELL A-16a KEY=end.owner VALUE=None
+CELL A-16a KEY=end.depth VALUE=0
+CELL A-16a KEY=end.live_components VALUE=-
+CELL A-16a KEY=end.owned_by_current VALUE=0
+CELL A-16a KEY=end.orphans VALUE=0
+CELL A-16a KEY=end.publicly_visible VALUE=0
+CELL A-16a KEY=end.publicly_invisible VALUE=0
+CELL A-16a KEY=end.misattributed VALUE=0
+CELL A-16a KEY=end.views_agree VALUE=True
+CELL A-16a RESULT=RAISES
+
+--- A-16b ---
+CELL A-16b KEY=lease_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=1,_components=[none])
+CELL A-16b KEY=owner_unchanged VALUE=True
+CELL A-16b KEY=depth_unchanged VALUE=True
+CELL A-16b KEY=end.owner VALUE=None
+CELL A-16b KEY=end.depth VALUE=0
+CELL A-16b KEY=end.live_components VALUE=-
+CELL A-16b KEY=end.owned_by_current VALUE=0
+CELL A-16b KEY=end.orphans VALUE=0
+CELL A-16b KEY=end.publicly_visible VALUE=0
+CELL A-16b KEY=end.publicly_invisible VALUE=0
+CELL A-16b KEY=end.misattributed VALUE=0
+CELL A-16b KEY=end.views_agree VALUE=True
+CELL A-16b RESULT=REJECTED_AS_DESIGNED
+
+--- A-16d ---
+CELL A-16d KEY=depth VALUE=0
+CELL A-16d KEY=lease_owner_is_current_owner VALUE=True
+CELL A-16d KEY=owner_reachable VALUE=True
+CELL A-16d KEY=lease_error VALUE=competing_process_owner:_another_live_shell_holds_the_process_activation_(depth=0,_components=[STD_FDS_(probe-legit)])
+CELL A-16d KEY=owner_unchanged VALUE=True
+CELL A-16d KEY=end.owner VALUE=None
+CELL A-16d KEY=end.depth VALUE=0
+CELL A-16d KEY=end.live_components VALUE=-
+CELL A-16d KEY=end.owned_by_current VALUE=0
+CELL A-16d KEY=end.orphans VALUE=0
+CELL A-16d KEY=end.publicly_visible VALUE=0
+CELL A-16d KEY=end.publicly_invisible VALUE=0
+CELL A-16d KEY=end.misattributed VALUE=0
+CELL A-16d KEY=end.views_agree VALUE=True
+CELL A-16d RESULT=REJECTED_AS_DESIGNED
+
+--- A-16c ---
+CELL A-16c KEY=parent_restores_ran VALUE=False
+CELL A-16c KEY=child_owner VALUE=B
+CELL A-16c KEY=end.owner VALUE=None
+CELL A-16c KEY=end.depth VALUE=0
+CELL A-16c KEY=end.live_components VALUE=-
+CELL A-16c KEY=end.owned_by_current VALUE=0
+CELL A-16c KEY=end.orphans VALUE=0
+CELL A-16c KEY=end.publicly_visible VALUE=0
+CELL A-16c KEY=end.publicly_invisible VALUE=0
+CELL A-16c KEY=end.misattributed VALUE=0
+CELL A-16c KEY=end.views_agree VALUE=True
+CELL A-16c RESULT=DISCARDED_WITHOUT_RESTORE
+
+--- A-17 ---
+CELL A-17 KEY=orphan_owner_ref_alive VALUE=True
+CELL A-17 KEY=orphan_owner_is_a2 VALUE=True
+CELL A-17 KEY=current_owner_is_b VALUE=True
+CELL A-17 KEY=ref_is_weak VALUE=True
+CELL A-17 KEY=orphan_owner_ref_after_drop VALUE=DEAD
+CELL A-17 KEY=end.owner VALUE=B
+CELL A-17 KEY=end.depth VALUE=0
+CELL A-17 KEY=end.live_components VALUE=-
+CELL A-17 KEY=end.owned_by_current VALUE=0
+CELL A-17 KEY=end.orphans VALUE=0
+CELL A-17 KEY=end.publicly_visible VALUE=0
+CELL A-17 KEY=end.publicly_invisible VALUE=0
+CELL A-17 KEY=end.misattributed VALUE=0
+CELL A-17 KEY=end.views_agree VALUE=True
+CELL A-17 RESULT=DISCRIMINABLE
+
+=== DERIVED SUMMARY ===
+A-18     SEPARATE
+A-01     CLEAN
+A-02     CLEAN
+A-03     CLEAN
+A-04     CLEAN
+A-05     CLEAN
+A-06     CLEAN
+A-07     GLUE_SKIPPED
+A-08a    CLEAN
+A-08b    CLEAN
+A-08c    CLEAN
+A-10     ORPHANS:0
+A-11     ORPHANS:0|C2:CLEAN
+A-12     RAISED:LeaseRestoreError
+A-13     RAISED:LeaseRestoreError
+A-14     POISONED:None
+A-15     PROPAGATED
+A-16a    RAISES
+A-16b    REJECTED_AS_DESIGNED
+A-16d    REJECTED_AS_DESIGNED
+A-16c    DISCARDED_WITHOUT_RESTORE
+A-17     DISCRIMINABLE
+cells_requested=22 cells_with_result=22 broken=0
