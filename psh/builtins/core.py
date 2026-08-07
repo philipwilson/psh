@@ -28,8 +28,17 @@ class ExitBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Exit the shell with optional exit code (bash semantics)."""
-        # Bare `exit` uses the status of the last command ($?), not 0.
+        # Bare `exit` uses the status of the last command ($?), not 0 —
+        # EXCEPT inside an EXIT trap, where a bare `exit` means "leave the
+        # status alone" and resolves to the status at trap ENTRY (bash: the
+        # trap body cannot change the shell's exit status except through an
+        # explicit `exit N`). EXIT-only: a bare `exit` in a SIGNAL trap does
+        # use the current $?. An explicit operand below overrides either way.
+        # See core/trap_manager.py#TrapManager.exit_trap_entry_status.
         exit_code = shell.state.last_exit_code
+        entry_status = shell.trap_manager.exit_trap_entry_status
+        if entry_status is not None:
+            exit_code = entry_status
         if len(args) >= 2:
             # Validate the FIRST operand BEFORE checking the operand count.
             # bash: `exit abc 7` reports "abc: numeric argument required" and
@@ -64,10 +73,13 @@ class ExitBuiltin(Builtin):
         # Set the exit code in shell state for EXIT trap
         shell.state.last_exit_code = exit_code
 
-        # THE top-level cleanup path (campaign F2): EXIT trap, history save,
-        # then close() — releasing every process-global lease this shell
+        # THE top-level cleanup path (campaign F2): the mandatory phases —
+        # EXIT trap, history policy, job disposition (hangup + detached reap),
+        # then close(), which releases every process-global lease this shell
         # holds. Idempotent and shared with the REPL's EOF exit and
-        # __main__'s final funnel, so no route duplicates cleanup.
+        # __main__'s final funnel, so no route duplicates cleanup. No phase
+        # can cancel a later one, including this trap's own `exit N`
+        # (slot 4A.2).
         shell.shutdown('exit-builtin')
 
         sys.exit(exit_code)

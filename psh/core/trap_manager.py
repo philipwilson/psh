@@ -74,6 +74,30 @@ class TrapManager:
         # $BASH_COMMAND is frozen at the interrupted command (bash: "the
         # command executing at the time of the trap").
         self._trap_action_depth = 0
+        #: ``$?`` as of EXIT-trap entry; None when the innermost running trap
+        #: is not the EXIT trap. See :meth:`exit_trap_entry_status`.
+        self._exit_trap_entry_status: Optional[int] = None
+
+    @property
+    def exit_trap_entry_status(self) -> Optional[int]:
+        """``$?`` as of EXIT-trap entry, or None outside an EXIT trap action.
+
+        A BARE ``exit`` (no operand) inside an EXIT trap means "leave the
+        status alone", so bash resolves it to the status in effect when the
+        trap was ENTERED rather than to the current ``$?``: the trap body
+        cannot change the shell's exit status except through an explicit
+        ``exit N``. ``builtins/core.py#ExitBuiltin.execute`` is the sole
+        consumer. psh already honored this when an EXIT trap ends normally
+        (``trap 'false' EXIT; exit 3`` exits 3); the bare ``exit`` route used
+        to leak the body's status instead.
+
+        Deliberately EXIT-ONLY. A bare ``exit`` inside a SIGNAL trap resolves
+        to the current ``$?`` in bash, so this reads None there —
+        probe-verified against bash 5.2.26 (``trap 'echo entry=$?; false;
+        exit' USR1`` prints entry=0 and exits 1 in BOTH shells) and pinned, so
+        the mechanism cannot be generalized by a later edit.
+        """
+        return self._exit_trap_entry_status
 
     def set_trap(self, action: str, signals: List[str]) -> int:
         """Set trap handler for signals.
@@ -417,6 +441,14 @@ class TrapManager:
             # While the action runs, $BASH_COMMAND stays the interrupted
             # command (bash) — see set_bash_command.
             self._trap_action_depth += 1
+            # A bare `exit` in an EXIT action resolves to the status at trap
+            # ENTRY, not the body's current $? (exit_trap_entry_status). Set
+            # for EXIT and CLEARED for every other trap — a signal trap
+            # nested inside an EXIT action must take the signal rule — and
+            # saved/restored so nesting works in both directions.
+            previous_entry_status = self._exit_trap_entry_status
+            self._exit_trap_entry_status = (
+                saved_exit_code if signal_name == 'EXIT' else None)
             try:
                 # posix_syntax_exit=False: a parse failure of the ACTION
                 # string itself never triggers the POSIX-mode syntax exit
@@ -428,6 +460,7 @@ class TrapManager:
                                        posix_syntax_exit=False)
             finally:
                 self._trap_action_depth -= 1
+                self._exit_trap_entry_status = previous_entry_status
 
             # For most signals, restore the exit code
             # EXIT trap should preserve the exit code it sets
