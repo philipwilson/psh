@@ -488,39 +488,109 @@ class Shell:
     # ------------------------------------------------------------------
 
     def shutdown(self, reason: str) -> None:
-        """THE top-level cleanup path (idempotent; campaign F2).
+        """THE top-level cleanup path (idempotent; campaign F2, slot 4A.2).
 
         Every route out of a shell converges here: the ``exit`` builtin
         (``reason='exit-builtin'``), the REPL's EOF exit (``'repl-eof'``),
-        and ``__main__``'s final funnel (``'main-exit'`` — covering normal
-        source completion and startup failures alike). In order: fire the
-        EXIT trap (itself at-most-once, so a route that already fired it is
-        a no-op), save history for the routes that historically saved it
-        (explicit ``exit`` and REPL EOF; a ``SystemExit`` raised by the EXIT
-        trap's own ``exit N`` skips the save, as before), then ``close()``
-        — which releases every process-global lease this shell holds, so an
-        EMBEDDED shell hands the hosting process its locale, signal
-        dispositions, and standard fds back. The first caller's *reason* is
-        recorded (``_shutdown_reason``); later calls return immediately.
-        The static census in tests/unit/tooling/ keeps top-level cleanup
-        from growing bypasses.
+        a received SIGHUP (``'signal-hup'``), and ``__main__``'s final funnel
+        (``'main-exit'`` — covering normal source completion and startup
+        failures alike). The first caller's *reason* is recorded
+        (``_shutdown_reason``); later calls return immediately. The static
+        census in tests/unit/tooling/ keeps top-level cleanup from growing
+        bypasses.
+
+        The phases are MANDATORY: EXIT trap, then the route's history policy,
+        then job disposition (hangup plus the detached reap), then
+        ``close()``. That is bash's own ``exit_shell`` order, and no phase may
+        cancel a later one. The EXIT trap is why this must be enforced rather
+        than assumed: a trap body's own ``exit N`` re-enters the ``exit``
+        builtin, which no-ops on the latch above and then raises
+        ``SystemExit`` — the NORMAL route, not an edge case. Left to
+        propagate it skipped job disposition, detached reaping AND the history
+        save outright, and the latch made those skips PERMANENT rather than
+        deferred (slot 4A.2, MEDIUM-1). So a phase's terminal exception is
+        HELD, the remaining phases still run, and it is re-raised at the end —
+        the same hold-then-finish-teardown shape ``close()`` uses internally
+        for lease restores, one level up.
+
+        Precedence when more than one thing wants to end the process: a
+        ``close()`` failure wins outright (a loud internal defect must not be
+        silenced by an exit status, and the held signal survives as its
+        ``__context__``); otherwise the EXIT trap's ``SystemExit`` wins (bash:
+        the trap's ``exit N`` overrides the original status); otherwise a
+        phase failure. A second failure attaches to the first as a note.
+
+        ``close()`` itself releases every process-global lease this shell
+        holds, so an EMBEDDED shell hands the hosting process its locale,
+        signal dispositions, and standard fds back.
         """
         if getattr(self, '_shutdown_reason', None) is not None:
             return
         self._shutdown_reason = reason
-        try:
-            trap_manager = getattr(self, 'trap_manager', None)
-            if trap_manager is not None:
-                trap_manager.execute_exit_trap()
-            if reason in self._HISTORY_SAVING_SHUTDOWNS:
-                interactive_manager = getattr(self, 'interactive_manager', None)
-                if interactive_manager is not None:
-                    interactive_manager.history_manager.save_to_file()
-            # A received SIGHUP fans out unconditionally (bash's hangup_all_jobs);
-            # a normal exit keeps the interactive+huponexit gate.
-            self._dispose_jobs_at_exit(force_hup=(reason == 'signal-hup'))
-        finally:
-            self.close()
+        held = self._run_shutdown_phases(reason)
+        if held is not None:
+            # Re-raised INSIDE a try so a close() failure supersedes it the
+            # way it always did, keeping it as __context__ (precedence above).
+            try:
+                raise held
+            finally:
+                self.close()
+        self.close()
+
+    def _run_shutdown_phases(self, reason: str) -> Optional[BaseException]:
+        """Run every mandatory shutdown phase; return the signal to re-raise.
+
+        Each phase is isolated: its terminal exception is recorded and the
+        NEXT phase still runs, because a shell that could not save its history
+        still owes its jobs a SIGHUP and its detached children a reap. The
+        FIRST signal is the one re-raised, and since the phases run in bash's
+        order that is the EXIT trap's ``exit N`` whenever the trap raised one.
+        """
+        held: Optional[BaseException] = None
+        for name, phase in (('exit-trap', self._shutdown_fire_exit_trap),
+                            ('history', self._shutdown_save_history),
+                            ('jobs', self._shutdown_dispose_jobs)):
+            try:
+                phase(reason)
+            except BaseException as exc:  # noqa: BLE001 - held, then re-raised
+                if held is None:
+                    held = exc
+                else:
+                    held.add_note(f"shutdown phase {name!r} also failed: "
+                                  f"{type(exc).__name__}: {exc}")
+        return held
+
+    def _shutdown_fire_exit_trap(self, reason: str) -> None:
+        """Phase 1: fire the EXIT trap (at-most-once inside TrapManager, so a
+        route that already fired it — ``execute_as_main``, the exit builtin,
+        the fatal-signal path — finds this a no-op)."""
+        trap_manager = getattr(self, 'trap_manager', None)
+        if trap_manager is not None:
+            trap_manager.execute_exit_trap()
+
+    def _shutdown_save_history(self, reason: str) -> None:
+        """Phase 2: persist history for the routes whose policy saves it.
+
+        The ROUTE decides (``_HISTORY_SAVING_SHUTDOWNS``); the EXIT trap gets
+        no vote. A trap that ran ``exit N`` used to cancel this save, which
+        bash does not do — bash's ``exit_shell`` fires the trap first and
+        writes the histfile afterwards regardless (slot 4A.2 ruling (b),
+        PTY-probed against bash on both the ``exit`` and the EOF route).
+        """
+        if reason not in self._HISTORY_SAVING_SHUTDOWNS:
+            return
+        interactive_manager = getattr(self, 'interactive_manager', None)
+        if interactive_manager is not None:
+            interactive_manager.history_manager.save_to_file()
+
+    def _shutdown_dispose_jobs(self, reason: str) -> None:
+        """Phase 3: job disposition — the hangup policy plus the detached reap.
+
+        A received SIGHUP fans out unconditionally (bash's
+        ``hangup_all_jobs``); a normal exit keeps the interactive +
+        ``huponexit`` gate.
+        """
+        self._dispose_jobs_at_exit(force_hup=(reason == 'signal-hup'))
 
     def _dispose_jobs_at_exit(self, *, force_hup: bool = False) -> None:
         """Exit-time job disposition on THE shutdown path (campaign J1 / H19).
