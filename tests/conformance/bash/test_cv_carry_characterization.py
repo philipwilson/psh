@@ -274,9 +274,12 @@ class TestMixedValidMalformedExactCountHybrid:
     UTF-8 bash) and byte-per-character for a MALFORMED byte (one surrogate, like
     C-locale bash). Neither bash mode does both: UTF-8 bash lets an incomplete
     lead swallow the following byte, C bash counts every byte as a character.
-    The model is documented at ``psh/builtins/input_reader.py`` (the
-    "deliberate HYBRID" design note) and
-    ``docs/user_guide/17_differences_from_bash.md``.
+    The HYBRID model itself is documented at ``psh/builtins/input_reader.py``
+    (the "deliberate HYBRID" design note). The user guide's "Byte vs. character
+    model" section (``docs/user_guide/17_differences_from_bash.md``) documents
+    the GENERAL Unicode-native-vs-C-locale difference and the ``read -N1`` /
+    ``-n1`` character model; it does NOT describe this MIXED-input count
+    boundary, which lives only in the design note and in carry #21.
 
     RE-RULED **RE-CARRY** at slot 4B.2 (2026-08-07), which owns the decoder-seam
     fix that touches this code. The carry required fresh probes and forbade a

@@ -22,8 +22,11 @@ Structure of this file:
   both before and after, but they are **psh-CONTRACT cells, not bash parity**:
   bash assigns a stranded partial byte to the timed-out read and moves on, while
   psh holds it for the next read. That divergence is successor row D-4B.2-s1
-  (deferred to slot 4B.4, integrator ruling (c)) and is documented at
-  ``docs/user_guide/17_differences_from_bash.md:597``.
+  (deferred to slot 4B.4, integrator ruling (c)). It is **documented NOWHERE in
+  the user guide** — that ABSENCE is part of what s1 carries to 4B.4. The
+  adjacent prose at ``docs/user_guide/17_differences_from_bash.md:596-598``
+  documents the CHARACTER MODEL this fix PROTECTS ("a multibyte ``é`` arrives
+  whole, not split across two reads"), not the timeout divergence.
 * ``TestCursorStateCensus`` — the invariants the fix relies on, pinned so a
   later change cannot quietly invalidate them.
 
@@ -38,6 +41,7 @@ after it has expired. The genuine deadline-behaviour cells live in
 import codecs
 import os
 import time
+from typing import Optional
 
 import pytest
 
@@ -61,12 +65,27 @@ SPLIT_CASES = [
 SUFFIX = 'Z\n'     # trailing context: a merge-ORDER error would show up here
 
 
-def _strand_then_drain(head: bytes, tail: bytes, route: str = 'read_all') -> str:
+def _strand_then_drain(head: bytes, tail: bytes, route: str = 'read_all', *,
+                       expect_pending: Optional[bytes]) -> str:
     """Park ``head``'s trailing partial sequence in the decoder, then drain.
 
     Writes ``head``, lets a timed read expire mid-sequence (leaving the decoder
     holding the incomplete bytes), writes ``tail``, closes the writer and drains
     through ``route``. Returns everything the cursor yielded, in order.
+
+    ``expect_pending`` is the ANTI-VACUITY guard and is MANDATORY: it states the
+    exact bytes the decoder must hold when the drain begins, or ``None`` when the
+    head resolves to a surrogate immediately and the decoder stays clean
+    (``\\xa9``, ``\\xff`` and ``\\xc0`` are invalid as LEAD bytes, so they emit at
+    once instead of buffering — measured, not assumed). Asserting only that the
+    read TIMED OUT would let a cell pass without ever reaching the seam: the
+    timeout is guaranteed here, so a cell that stranded nothing would still go
+    green, silently and forever. With this assertion such a cell FAILS.
+
+    That guard is also why this module needs no ``serial`` marker. The timeout is
+    a setup step nothing can race — the completing bytes are written only after
+    it has expired — and any scheduler delay that prevented the intended
+    stranding now trips this assertion instead of passing vacuously.
     """
     r, w = os.pipe()
     w_open = True
@@ -78,6 +97,12 @@ def _strand_then_drain(head: bytes, tail: bytes, route: str = 'read_all') -> str
                                    deadline=time.monotonic() + SETUP_TIMEOUT)
         assert first.outcome is Outcome.TIMEOUT, (
             f"setup did not strand a partial sequence: {first!r}")
+        pending = (cursor._decoder.getstate()[0]
+                   if cursor._decoder is not None else None)
+        assert pending == expect_pending, (
+            f"cell did not reach the seam in its intended state: the decoder "
+            f"holds {pending!r}, expected {expect_pending!r}. A cell that "
+            f"strands nothing exercises no seam and would pass vacuously.")
         if tail:
             os.write(w, tail)
         os.close(w)
@@ -123,7 +148,8 @@ class TestSplitCharIdentityAcrossSeam:
     def test_split_character_survives_the_bulk_drain(self, ch, split):
         raw = ch.encode('utf-8')
         payload = raw + SUFFIX.encode('utf-8')
-        got = _strand_then_drain(payload[:split], payload[split:])
+        got = _strand_then_drain(payload[:split], payload[split:],
+                                 expect_pending=payload[:split])
         _assert_exact(got, ch + SUFFIX, payload)
 
 
@@ -133,7 +159,8 @@ class TestSeamControlsNoCompletion:
     @pytest.mark.parametrize("ch,split", SPLIT_CASES)
     def test_stranded_lead_at_eof_round_trips(self, ch, split):
         raw = ch.encode('utf-8')
-        got = _strand_then_drain(raw[:split], b'')
+        got = _strand_then_drain(raw[:split], b'',
+                                 expect_pending=raw[:split])
         _assert_exact(got, raw[:split].decode('utf-8', 'surrogateescape'),
                       raw[:split])
 
@@ -149,23 +176,34 @@ class TestSeamControlsNonContinuation:
     def test_non_continuation_after_stranded_lead(self, ch, split):
         raw = ch.encode('utf-8')
         payload = raw[:split] + SUFFIX.encode('utf-8')
-        got = _strand_then_drain(payload[:split], payload[split:])
+        got = _strand_then_drain(payload[:split], payload[split:],
+                                 expect_pending=payload[:split])
         _assert_exact(got, payload.decode('utf-8', 'surrogateescape'), payload)
 
 
 class TestSeamControlsMalformed:
     """surrogateescape POLICY for malformed bytes is settled; it must not move."""
 
-    @pytest.mark.parametrize("payload,split", [
-        pytest.param(b'\xc3A' + SUFFIX.encode('utf-8'), 1, id="lone-lead-then-ascii"),
-        pytest.param(b'\xa9' + SUFFIX.encode('utf-8'), 1, id="orphan-continuation"),
-        pytest.param(b'\xc3\xc3' + SUFFIX.encode('utf-8'), 1, id="two-leads"),
-        pytest.param(b'\xf0\x9fA' + SUFFIX.encode('utf-8'), 2, id="truncated-4byte-then-ascii"),
-        pytest.param(b'\xff' + SUFFIX.encode('utf-8'), 1, id="bare-ff"),
-        pytest.param(b'\xc0\x80' + SUFFIX.encode('utf-8'), 1, id="overlong-c0-80"),
+    # `pending` is MEASURED, not assumed: a byte that is invalid as a LEAD
+    # (\xa9 continuation, \xff, \xc0) emits its surrogate at once and leaves the
+    # decoder clean, while an incomplete-but-valid lead buffers.
+    @pytest.mark.parametrize("payload,split,pending", [
+        pytest.param(b'\xc3A' + SUFFIX.encode('utf-8'), 1, b'\xc3',
+                     id="lone-lead-then-ascii"),
+        pytest.param(b'\xa9' + SUFFIX.encode('utf-8'), 1, None,
+                     id="orphan-continuation"),
+        pytest.param(b'\xc3\xc3' + SUFFIX.encode('utf-8'), 1, b'\xc3',
+                     id="two-leads"),
+        pytest.param(b'\xf0\x9fA' + SUFFIX.encode('utf-8'), 2, b'\xf0\x9f',
+                     id="truncated-4byte-then-ascii"),
+        pytest.param(b'\xff' + SUFFIX.encode('utf-8'), 1, None, id="bare-ff"),
+        pytest.param(b'\xc0\x80' + SUFFIX.encode('utf-8'), 1, None,
+                     id="overlong-c0-80"),
     ])
-    def test_malformed_bytes_round_trip_across_the_seam(self, payload, split):
-        got = _strand_then_drain(payload[:split], payload[split:])
+    def test_malformed_bytes_round_trip_across_the_seam(self, payload, split,
+                                                        pending):
+        got = _strand_then_drain(payload[:split], payload[split:],
+                                 expect_pending=pending)
         _assert_exact(got, payload.decode('utf-8', 'surrogateescape'), payload)
 
 
@@ -176,10 +214,13 @@ class TestResumeRoutesArePshContract:
     NOT bash parity. bash assigns the stranded partial byte to the read that
     timed out and does not resume; psh holds it on the cursor for the next read.
     That divergence is successor row **D-4B.2-s1**, deferred to slot 4B.4 by
-    integrator ruling (c), and it is the behaviour
-    ``docs/user_guide/17_differences_from_bash.md:597`` documents ("a multibyte
-    ``é`` arrives whole, not split across two reads"). If 4B.4 rules the other
-    way, these cells must be revisited together with that doc line.
+    integrator ruling (c). It is **UNDOCUMENTED**: no user-guide line describes
+    it, and that absence travels with s1. What
+    ``docs/user_guide/17_differences_from_bash.md:596-598`` documents is the
+    adjacent CHARACTER MODEL ("a multibyte ``é`` arrives whole, not split across
+    two reads") — the property this fix PROTECTS, not the timeout behaviour. If
+    4B.4 rules the other way, these cells and that documentation gap move
+    together.
     """
 
     @pytest.mark.parametrize("ch,split", SPLIT_CASES)
@@ -187,7 +228,8 @@ class TestResumeRoutesArePshContract:
         raw = ch.encode('utf-8')
         payload = raw + SUFFIX.encode('utf-8')
         got = _strand_then_drain(payload[:split], payload[split:],
-                                 route='read_record')
+                                 route='read_record',
+                                 expect_pending=payload[:split])
         _assert_exact(got, ch + SUFFIX, payload)
 
     @pytest.mark.parametrize("ch,split", SPLIT_CASES)
@@ -195,7 +237,8 @@ class TestResumeRoutesArePshContract:
         raw = ch.encode('utf-8')
         payload = raw + SUFFIX.encode('utf-8')
         got = _strand_then_drain(payload[:split], payload[split:],
-                                 route='read_limited')
+                                 route='read_limited',
+                                 expect_pending=payload[:split])
         _assert_exact(got, ch + SUFFIX, payload)
 
 

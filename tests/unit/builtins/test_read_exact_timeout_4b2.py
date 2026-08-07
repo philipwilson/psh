@@ -240,19 +240,29 @@ class TestRiderRcParityWithDeclaredNew1Residue:
             tmp_path, "rc=142 bytes=61", self.S1, rc_matches=True)
 
 
-class TestNew2CountModelDivergesInStatusToo:
-    """The ``-N`` count model diverges from bash in the EXIT STATUS, not only
-    the value — a correction to this slot's own pre-registration.
+# --------------------------------------------------------------------------
+# CHARACTERIZATION (green on base AND at the tip): pre-existing divergences this
+# slot neither causes nor cures. Kept apart from the red-on-base classes above
+# so the per-class split stays an integrity check — a green cell filed among
+# reds lets two opposite registration errors cancel into a clean-looking total.
+# --------------------------------------------------------------------------
+
+class TestNew2CountModelDivergesInStatusTooCharacterization:
+    """CHARACTERIZATION, GREEN ON BASE. The ``-N`` count model diverges from
+    bash in the EXIT STATUS, not only the value — a correction to this slot's
+    own pre-registration (erratum E-1).
 
     D-4B.2-s2: bash counts POST-escape characters for ``-N``, psh counts raw
     characters. Over ``a\\b`` with ``-N 3`` bash still needs a third post-escape
     character and so times out (142); psh has already consumed its three raw
     characters and succeeds (0). The pre-registration recorded this as an
-    rc-parity cell with a value-only residue; that was wrong, and the cell is
-    pinned here in its measured shape. Visible with no ``-t`` at all (see
+    rc-parity cell with a value-only residue AND as red-on-base; both halves
+    were wrong, and the cell is pinned here in its measured shape. Visible with
+    no ``-t`` at all (see
     ``TestRiderMustHoldControls.test_raw_mode_keeps_the_backslash`` and the
     isolation cells in the Phase A instrument), so the rider fix neither causes
-    nor cures it.
+    nor cures it — which is exactly why it belongs in the characterization
+    section and not among the red-on-base classes.
     """
 
     def test_backslash_under_deadline_diverges_in_rc_and_value(self, tmp_path):

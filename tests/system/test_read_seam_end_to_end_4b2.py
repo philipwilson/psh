@@ -15,10 +15,13 @@ byte column is carried alongside only to show it does NOT move.
 ruling (c)). bash assigns the stranded partial byte to the read that timed out;
 psh holds it on the cursor, so the two shells legitimately split the same bytes
 at different points. That divergence is successor row **D-4B.2-s1**, deferred to
-slot 4B.4, and is the behaviour documented at
-``docs/user_guide/17_differences_from_bash.md:597``. Each cell asserts psh's
-value AND that bash's differs, so it fails loudly when 4B.4 rules — at which
-point this file and that doc line move together.
+slot 4B.4. It is **UNDOCUMENTED** — no user-guide line describes it, and that
+absence is part of what s1 carries. The adjacent prose at
+``docs/user_guide/17_differences_from_bash.md:596-598`` documents the CHARACTER
+MODEL this fix PROTECTS ("a multibyte ``é`` arrives whole, not split across two
+reads"), not the timeout behaviour. Each cell asserts psh's value AND that
+bash's differs, so it fails loudly when 4B.4 rules — at which point this file
+and that documentation gap move together.
 
 The rider legs run psh from a SCRIPT FILE rather than ``-c``: a ``-c``-only pin
 suite is mode-blind, and this slot's defect lives in a builtin that a script
@@ -44,17 +47,26 @@ SEAM_CASES = [
 ]
 
 
-def _write(tmp_path, name: str, data: bytes) -> str:
-    p = tmp_path / name
+def _write(tmp_path, arm: str, name: str, data: bytes) -> str:
+    p = tmp_path / f"{arm}.{name}"
     p.write_bytes(data)
     return str(p)
 
 
 def _run_both(args_builder, tmp_path):
+    """Run one cell under psh and bash; ``args_builder(arm)`` is called PER ARM.
+
+    Per-arm construction is not cosmetic: a FIFO is a mutable OS object, and a
+    producer or reader that outlives its arm can deliver bytes into the other
+    arm's run. Sharing one between the two shells produced exactly that
+    cross-arm leak in this slot's unit file. Read-only payload files could be
+    shared safely, but they are built per-arm too so the rule has no exceptions
+    to remember.
+    """
     kwargs = dict(cwd=str(tmp_path), timeout=KILL_AFTER,
                   env={"LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8"})
-    psh = run_psh(args_builder(), **kwargs)
-    bash = run_bash(args_builder(), **kwargs)
+    psh = run_psh(args_builder("psh"), **kwargs)
+    bash = run_bash(args_builder("oracle"), **kwargs)
     assert is_comparable(bash), f"bash oracle unusable: {bash}"
     assert is_comparable(psh), (
         f"psh did not complete within {KILL_AFTER}s: {psh}")
@@ -67,7 +79,16 @@ def _report(result) -> str:
     return lines[-1]
 
 
-def _seam_script(tmp_path, head: bytes, tail: bytes) -> str:
+def _control_script(payload: str) -> str:
+    """CONTROL: mapfile alone, with no timed read, so nothing is ever stranded."""
+    return (f"cat {payload} | {{ mapfile arr; "
+            f"printf 'rc=0 a0len=%s nelem=%s a0bytes=' "
+            f'"${{#arr[0]}}" "${{#arr[@]}}"; '
+            f"printf '%s' \"${{arr[0]}}\" | od -An -tx1 | tr -d ' \\n'; "
+            f"printf '\\n'; }}")
+
+
+def _seam_script(tmp_path, arm: str, head: bytes, tail: bytes) -> str:
     """A timed read strands a partial character; mapfile then drains the rest.
 
     ``mapfile`` with no count is the only production caller of the bulk drain,
@@ -77,8 +98,8 @@ def _seam_script(tmp_path, head: bytes, tail: bytes) -> str:
     — never from the shell's own ``printf``, whose octal escapes differ between
     the two shells.
     """
-    h = _write(tmp_path, "head.bin", b"a" + head)
-    t = _write(tmp_path, "tail.bin", tail + b"\n")
+    h = _write(tmp_path, arm, "head.bin", b"a" + head)
+    t = _write(tmp_path, arm, "tail.bin", tail + b"\n")
     return (
         f"{{ cat {h}; sleep {LATE}; cat {t}; }} | "
         f"{{ read -t {TIMEOUT} x; rc=$?; mapfile arr; "
@@ -95,7 +116,8 @@ class TestSeamEndToEndCharacterIdentity:
     def test_split_character_keeps_its_identity_through_mapfile(
             self, tmp_path, head, tail, surrogates_on_base):
         psh, bash = _run_both(
-            lambda: ["-c", _seam_script(tmp_path, head, tail)], tmp_path)
+            lambda arm: ["-c", _seam_script(tmp_path, arm, head, tail)],
+            tmp_path)
 
         # The whole character, plus its newline: two characters, not one per
         # stranded byte. (surrogates_on_base is what this cell reported before
@@ -111,21 +133,20 @@ class TestSeamEndToEndCharacterIdentity:
         assert psh != bash, (
             "D-4B.2-s1 (timeout-partial assignment, deferred to 4B.4): psh now "
             f"equals bash ({bash!r}). If that successor was ruled, update this "
-            "pin and docs/user_guide/17_differences_from_bash.md:597 together.")
+            "pin, and note the divergence is UNDOCUMENTED — 4B.4 owns writing "
+            "it up; :596-598 documents only the char model this fix protects.")
         assert bash.startswith("rc=142 xlen=2 "), (
             f"bash oracle shape changed: {bash!r}")
 
     def test_without_a_timeout_both_shells_agree(self, tmp_path):
         """CONTROL: no timed read, so nothing is ever stranded at the seam."""
-        payload = _write(tmp_path, "whole.bin", b"a\xc3\xa9\n")
-        script = (
-            f"cat {payload} | {{ mapfile arr; "
-            f"printf 'rc=0 a0len=%s nelem=%s a0bytes=' "
-            f'"${{#arr[0]}}" "${{#arr[@]}}"; '
-            f"printf '%s' \"${{arr[0]}}\" | od -An -tx1 | tr -d ' \\n'; "
-            f"printf '\\n'; }}")
-        psh, bash = _run_both(lambda: ["-c", script], tmp_path)
+        def build(arm):
+            payload = _write(tmp_path, arm, "whole.bin", b"a\xc3\xa9\n")
+            return ["-c", _control_script(payload)]
+
+        psh, bash = _run_both(build, tmp_path)
         assert psh == bash == "rc=0 a0len=3 nelem=1 a0bytes=61c3a90a"
+
 
 
 class TestRiderEndToEndFromAScriptFile:
@@ -137,11 +158,15 @@ class TestRiderEndToEndFromAScriptFile:
     process-group watchdog bounds.
     """
 
-    def _script_file(self, tmp_path, opts: str, data: bytes = b"") -> str:
-        fifo = str(tmp_path / "fifo")
+    def _script_file(self, tmp_path, arm: str, opts: str,
+                     data: bytes = b"") -> str:
+        # Per-arm fifo, feed and script: see _run_both for why a FIFO must never
+        # be shared between the two arms.
+        fifo = str(tmp_path / f"{arm}.fifo")
         if not os.path.exists(fifo):
             os.mkfifo(fifo)
-        feed = f"cat {_write(tmp_path, 'feed.bin', data)} >&3\n" if data else ""
+        feed = (f"cat {_write(tmp_path, arm, 'feed.bin', data)} >&3\n"
+                if data else "")
         body = (
             f"exec 3<>{fifo}\n"
             f"{feed}"
@@ -150,14 +175,17 @@ class TestRiderEndToEndFromAScriptFile:
             "printf 'rc=%s bytes=' \"$rc\"\n"
             "printf '%s' \"$x\" | od -An -tx1 | tr -d ' \\n'\n"
             "printf '\\n'\n")
-        return _write(tmp_path, "case.sh", body.encode())
+        return _write(tmp_path, arm, "case.sh", body.encode())
 
     def test_exact_count_honors_the_deadline_with_no_input(self, tmp_path):
-        path = self._script_file(tmp_path, f"-t {TIMEOUT} -N 3")
-        psh, bash = _run_both(lambda: [path], tmp_path)
+        psh, bash = _run_both(
+            lambda arm: [self._script_file(tmp_path, arm, f"-t {TIMEOUT} -N 3")],
+            tmp_path)
         assert psh == bash == "rc=142 bytes="
 
     def test_exact_count_honors_the_deadline_with_partial_input(self, tmp_path):
-        path = self._script_file(tmp_path, f"-t {TIMEOUT} -N 3", b"ab")
-        psh, bash = _run_both(lambda: [path], tmp_path)
+        psh, bash = _run_both(
+            lambda arm: [self._script_file(tmp_path, arm,
+                                           f"-t {TIMEOUT} -N 3", b"ab")],
+            tmp_path)
         assert psh == bash == "rc=142 bytes=6162"

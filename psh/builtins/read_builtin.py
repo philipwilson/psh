@@ -121,7 +121,10 @@ class ReadBuiltin(Builtin):
 
             # -N: read EXACTLY N characters, ignoring the delimiter and IFS.
             # The result (after backslash processing unless -r) is assigned
-            # whole to the first variable; rc is 1 only if EOF cut it short.
+            # whole to the first variable. rc is 1 when EOF cut it short and
+            # 142 when a -t deadline expired first; the partial read so far is
+            # assigned either way. (`-t 0` never reaches here — the
+            # non-consuming poll returned above.)
             if options['exact_chars'] is not None:
                 return self._read_exact(options, var_names, shell, reader)
 
