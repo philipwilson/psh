@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.769.0 (2026-08-07) - Mandatory shutdown phases (remediation slot 4A.2, MEDIUM-1)
+
+- **An EXIT trap can no longer cancel shutdown work**: `Shell.shutdown` runs as mandatory phases — the trap phase's terminal exception (a trap's own `exit N` is the normal case) is held while history policy, job disposition (huponexit HUP fan-out), and detached reaping all still run; `close()` runs unconditionally; the held exception then re-raises with specified precedence (a close() failure outranks the trap's status, which outranks a phase failure, with the losers chained as `__context__`). Phase order was already bash's own (trap → history → hangup); only the bypass is gone.
+- **History now saves under a trap-exit on the saving routes** (declared toward-bash delta): bash writes the histfile under `trap 'exit 7' EXIT` on both interactive exit routes — psh's documented skip had recorded a bash divergence as policy. The route still owns the policy: script/`-c` exits never save, unchanged.
+- **A bare `exit` in an EXIT trap now resolves to the trap-entry status, matching bash** (declared toward-bash delta): `trap 'cleanup; exit' EXIT; exit 3` exits 3 even when cleanup's last command fails — previously psh took the trap body's `$?`. This pre-existing divergence was found by the campaign's adversarial verification round after the slot's own precedence battery had certified the cell as parity through two non-discriminating rows; those rows are committed as labelled controls. EXIT-only by measurement: non-EXIT traps use the current `$?` in both shells (pinned).
+- Exit-status precedence is now specified IN THE TREE: a 39-row live-bash conformance table plus must-holds; 63 committed tests overall (unit phase battery, PTY battery incl. huponexit and anti-vacuity controls, the signal-composition cell).
+- The long-standing exit-trap test flake now has a recorded MECHANISM (1.3b redirect-restore residual window, successor row D-4A.2-s1) with reproduction density and published negatives.
+- Verification: adversarial-harness round (1 real blocker — the certified-parity divergence above — 0 false) + integrator-direct round (fresh-checkout leg 58/58); compare-bash 3,042 EXACT throughout.
+
 ## 0.768.0 (2026-08-07) - Activation/component transaction (remediation slot 4A.1, HIGH-8 + MEDIUM-8 + LOW)
 
 - **Process-global ownership is now a recoverable transaction** (`psh/core/process_lease.py`): a failed activation/acquisition grant unwinds every component it acquired (LIFO) BEFORE rolling back owner metadata; every `_components` consumer discriminates by per-lease owner, so an orphaned lease can never be misattributed to an innocent shell (the spurious "competing process owner" poisoning family is dead — multi-shell A5 battery committed); orphans are swept deterministically, and a shell dropped without `close()` no longer poisons later shells (the STD_FDS restore baseline holds shell state weakly).
