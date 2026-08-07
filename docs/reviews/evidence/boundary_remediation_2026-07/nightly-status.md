@@ -299,3 +299,15 @@ shutdown battery is serial and interactive-gated; its huponexit cells
 depend on job-control semantics that the nightly exercises on Linux for
 the first time. The exit-trap flake family now has a recorded MECHANISM
 (D-4A.2-s1): a recurrence is cited against A-8, not re-tallied blind.
+
+**v0.770.0 reading rules (slot 4B.1 — first Linux run after 2026-08-07):**
+internal-integrity slot — ZERO shell-observable change, so conformance and
+compare-bash counts must be UNCHANGED from v0.769.0; any movement there is
+NOT this slot's semantics but an environment signal (bash version or locale
+first). The +58 unit cells are pure-Python object semantics
+(`test_variable_lookup_immutability.py`) with no platform-divergent surface
+— a Linux-only failure among them would mean a CPython version/behavior
+difference (slots/properties/pickle), not a shell bug; check the runner's
+Python first. The labelled control cell ASSERTS circumvention succeeds
+(open-class boundary, D-4B.1-s2) — if it ever fails, someone narrowed the
+representation, which is a deliberate-edit signal, not a flake.
