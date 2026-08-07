@@ -74,6 +74,33 @@ def test_huponexit_hups_the_job_even_when_the_exit_trap_exits(tmp_path):
     assert not marker.exists(), "bg child survived: the exit-time HUP was skipped"
 
 
+def test_without_huponexit_the_job_survives_a_trap_that_exits(tmp_path):
+    """ANTI-VACUITY CONTROL for the cell above, carried in THIS file.
+
+    The huponexit cell asserts the marker is ABSENT — which a construction
+    that simply never created the marker would satisfy silently.  This is the
+    same construction with `huponexit` OFF: the marker MUST appear.  The pair
+    together show the observable moves in both directions, so the absence
+    above is the SIGHUP rather than a broken harness.  (The sibling file's
+    survival control runs WITHOUT a trap, so it does not cover this shape.)
+    """
+    marker = tmp_path / "mark"
+    child = _spawn(tmp_path / "histfile")
+    try:
+        child.send("trap 'exit 7' EXIT\r")        # no `shopt -s huponexit`
+        child.expect(PROMPT)
+        child.send('{ sleep 0.6; : > %s; } &\r' % marker)
+        child.expect(PROMPT)
+        child.send('\x04')
+        child.expect(pexpect.EOF)
+    finally:
+        child.close(force=True)
+    time.sleep(1.3)
+    assert marker.exists(), (
+        "control failed: the bg child never marked even WITHOUT huponexit, so "
+        "the huponexit cell's absent-marker assertion would prove nothing")
+
+
 def test_history_is_saved_even_when_the_exit_trap_exits(tmp_path):
     """Ruling (b): bash writes the histfile under a trap that runs `exit N`;
     the documented psh skip was a divergence, not a policy."""

@@ -8,8 +8,13 @@ and it used to propagate straight out of the try, so job disposition, detached
 reaping AND the history save were all skipped -- permanently, because the latch
 made a later `shutdown()` a no-op (MEDIUM-1).
 
-The phases now hold that signal, finish, and re-raise it.  Every red pin below
-was verified to FAIL at base tip d1e4f1ae before it was written, and the
+The phases now hold that signal, finish, and re-raise it.
+
+RED-ON-BASE as a MEASURED SPLIT, not a blanket claim: at base tip d1e4f1ae the
+original form of this file ran **7 failed / 8 passed**; at the fix it is all
+green.  The base-GREEN rows are the two named controls plus the must-hold /
+must-not-flip rows, which guard behavior that was already correct and has to
+stay correct -- so "red at base" describes the bypass-family cells only.  The
 `*_without_trap` controls prove each observable is reachable at all, so a red
 cell cannot be vacuous.
 
@@ -124,6 +129,25 @@ def test_history_save_survives_a_trap_that_exits(tmp_path):
         shell.close()
 
 
+def test_signal_hup_route_saves_history_under_a_trap_that_exits(tmp_path):
+    """The OTHER half of the received-SIGHUP composition.
+
+    `'signal-hup'` is in `_HISTORY_SAVING_SHUTDOWNS`, so that route's history
+    save was bypassed by a trap-exit exactly as its job fan-out was.  The
+    fan-out half is pinned above; this pins the half the sibling cell's
+    docstring names but does not assert.
+    """
+    histfile = tmp_path / "histfile"
+    shell = _shell(interactive=True, histfile=str(histfile), trap=TRAP_EXIT_7)
+    try:
+        shell.run_command('echo CANARY_CMD >/dev/null')
+        assert _shutdown(shell, 'signal-hup') == 7
+        assert histfile.exists()
+        assert 'CANARY_CMD' in histfile.read_text()
+    finally:
+        shell.close()
+
+
 def test_history_save_without_trap_is_the_control(tmp_path):
     histfile = tmp_path / "histfile"
     shell = _shell(interactive=True, histfile=str(histfile))
@@ -203,6 +227,66 @@ def test_a_failing_history_phase_does_not_cancel_job_disposition(monkeypatch):
             shell.shutdown('exit-builtin')
         assert (job.pgid, signal.SIGHUP) in sent
     finally:
+        shell.close()
+
+
+def test_a_non_systemexit_baseexception_is_held_and_phases_still_run(monkeypatch):
+    """The hold covers BaseException, not just SystemExit.
+
+    `_run_shutdown_phases` catches BaseException deliberately: an async
+    interrupt landing in the EXIT trap must not cost the shell its job
+    disposition either.  The other isolation cells inject an `OSError` (an
+    Exception), so this drives the non-Exception branch — a KeyboardInterrupt
+    out of the trap phase — and checks BOTH that the later phases ran and that
+    the interrupt is re-raised rather than swallowed.
+    """
+    shell = _shell(interactive=True, huponexit=True)
+    try:
+        def boom():
+            raise KeyboardInterrupt("INJECTED async interrupt")
+
+        monkeypatch.setattr(shell.trap_manager, 'execute_exit_trap', boom)
+        job = _make_job(shell.job_manager, 3141)
+        sent = _collect_killpg(monkeypatch)
+        with pytest.raises(KeyboardInterrupt, match="INJECTED"):
+            shell.shutdown('exit-builtin')
+        assert (job.pgid, signal.SIGHUP) in sent
+    finally:
+        shell.close()
+
+
+def test_close_runs_even_if_the_phase_bookkeeping_itself_fails(monkeypatch):
+    """`close()` is UNCONDITIONAL, including against a failure in the phase
+    loop's own bookkeeping.
+
+    The first phase-split shape called `close()` only after
+    `_run_shutdown_phases` RETURNED, so an exception escaping that method --
+    for instance rendering a SECOND failure whose `__str__` raises -- skipped
+    resource release entirely, narrowing the brief's `close() always runs`
+    must-hold.  Both halves are fixed: the note is rendered defensively, and
+    the phase loop sits under the `close()` finally.
+    """
+    class Unrenderable(Exception):
+        def __str__(self):
+            raise RuntimeError("str blows up")
+
+    shell = _shell(interactive=True, huponexit=True)
+    closed = []
+    try:
+        real_close = shell.close
+        shell.close = lambda: (closed.append(1), real_close())[1]  # type: ignore[method-assign]
+        monkeypatch.setattr(
+            shell.interactive_manager.history_manager, 'save_to_file',
+            lambda *a, **k: (_ for _ in ()).throw(ValueError("first failure")))
+        monkeypatch.setattr(
+            shell.job_manager, 'hangup_jobs',
+            lambda: (_ for _ in ()).throw(Unrenderable()))
+        _make_job(shell.job_manager, 2718)
+        with pytest.raises(ValueError, match="first failure"):
+            shell.shutdown('exit-builtin')
+        assert closed, "close() was skipped when phase bookkeeping failed"
+    finally:
+        shell.close = real_close
         shell.close()
 
 
