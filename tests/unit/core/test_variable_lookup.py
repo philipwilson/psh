@@ -4,7 +4,11 @@
 Before it, "no cell" and "cell declared but valueless" both collapsed to None,
 and ShellState.get_variable papered over the difference with an env fallback that
 resurrected an outer exported value under a declared-unset local. These pins lock
-the three states, the no-fallback contract, and the read-only binding.
+the three states and the no-fallback contract. The result carries no cell
+reference (slot 4B.1): cell-level facts are asserted here through the write
+engine's own surface, `get_variable_object` / `get_declared_variable_object`,
+and the result's immutability is pinned in
+`test_variable_lookup_immutability.py`.
 
 Probed against bash 5.2 (tmp/boundary-ledgers/R2-probes/matrix_base_9230699b.txt,
 family A/C); the behavioral half is pinned in
@@ -24,7 +28,8 @@ class TestTriStateStatus:
         assert r.status is LookupStatus.VALUE
         assert r.is_set is True
         assert r.value == 'v'
-        assert r.binding is not None and r.binding.name == 'X'
+        assert r.is_present is True
+        assert mgr.get_variable_object('X').name == 'X'
 
     def test_missing_name_is_missing_not_present(self):
         mgr = ScopeManager()
@@ -33,7 +38,7 @@ class TestTriStateStatus:
         assert r.is_set is False
         assert r.is_present is False
         assert r.value is None
-        assert r.binding is None
+        assert mgr.get_declared_variable_object('NOPE') is None
 
     def test_declared_unset_local_is_present_unset(self):
         """`local x` (no value) — a declared-unset cell, reads unset, shadows."""
@@ -45,7 +50,7 @@ class TestTriStateStatus:
         assert r.is_set is False
         assert r.is_present is True
         assert r.value is None
-        assert r.binding is not None and r.binding.is_unset
+        assert mgr.get_declared_variable_object('x').is_unset
         mgr.pop_scope()
 
     def test_tombstone_local_unset_is_present_unset(self):
@@ -130,13 +135,21 @@ class TestGetVariableProjection:
 
 
 class TestVariableLookupType:
-    def test_slots_closed_no_dict(self):
-        """VariableLookup is a plain __slots__ class (allocate-fresh-never-
-        mutate; W1's non-frozen FieldRun precedent — freezing roughly triples
-        construction cost on the shell's hottest read path). __slots__ keeps
-        instances CLOSED: no __dict__ to grow ad-hoc state on."""
+    def test_representation_is_closed_and_read_only(self):
+        """The three properties the representation guarantees (slot 4B.1):
+        state lives in PRIVATE slots, the public names reject assignment, and
+        instances stay CLOSED — no __dict__ to grow ad-hoc state on. The full
+        mutation-surface matrix is in test_variable_lookup_immutability.py."""
         r = VariableLookup.of_value('v')
+        assert VariableLookup.__slots__ == ('_status', '_value')
         assert not hasattr(r, '__dict__')
+        for name in ('status', 'value'):
+            try:
+                setattr(r, name, 'MUTATED')
+            except AttributeError:
+                pass
+            else:
+                raise AssertionError(f"VariableLookup.{name} must reject assignment")
         try:
             r.extra = 1  # type: ignore[attr-defined]
         except AttributeError:

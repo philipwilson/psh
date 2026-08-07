@@ -383,12 +383,15 @@ class ScopeManager:
         empty, status unchanged).
 
         Consumers ask ``result.is_set`` (VALUE only — ``${x+w}`` / ``${x-w}``
-        set-ness), ``result.value`` (the string when set), and ``result.binding``
-        (the resolved cell, read-only). See ``variable_lookup.py``.
+        set-ness) and ``result.value`` (the string when set). The result is
+        IMMUTABLE and holds no cell reference: a consumer needing attributes or
+        scope identity asks :meth:`get_variable_object` /
+        :meth:`get_declared_variable_object` — the write engine's own surface.
+        See ``variable_lookup.py``.
         """
         var, final_name = self._resolve_read(name)
         if var is not None:
-            return VariableLookup.of_value(var.as_string(), var)
+            return VariableLookup.of_value(var.as_string())
         # The walk found no readable cell: distinguish a genuinely MISSING name
         # from a declared-unset cell (tombstone / declared-but-unset) that shows
         # through get_declared_variable_object but reads as unset. Classified at
@@ -396,7 +399,7 @@ class ScopeManager:
         # target's declared state.
         declared = self.get_declared_variable_object(final_name)
         if declared is not None and declared.is_unset:
-            return VariableLookup.present_unset(declared)
+            return VariableLookup.present_unset()
         return VariableLookup.missing()
 
     def warn_nameref_cycle(self, name: str) -> None:
