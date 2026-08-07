@@ -90,3 +90,38 @@ freeze-chain proposal, both now standing).
   confirmations, the operand attack, and the 75bb0495 ledger
   snapshot that made D13's only-declared-sections-changed claim
   mechanically checkable).
+
+## Post-merge sign-off (D-4B.3-a1, 2026-08-08)
+
+dev-4b-3 SIX-LEG SIGN-OFF **PASS at TAG v0.772.0** (commit 13a5271a,
+recomputed by the dev before running; all legs at a detached checkout
+of the tag). Leg 0: the tag's committed instruments hash to the
+declared manifest f048c596 65/65 (zero mismatch/missing/unlisted —
+the ARTIFACT-VERIFICATION standard). Legs 1–5: chartered defect legs
++ rider + BL-3 suppression cells + b4 mirror all reproduce; A1′ 5
+MATCH / 6 declared-deviation (identical across rounds 1, 2, and the
+tag); must-hold 148; no-silent-change 121 with deviation classes
+10/10; M8 14/14 at a fresh checkout, tmp/ absent; ruff+mypy clean at
+the tag. **Leg 6 (falsification) PASSED WITH A DISCLOSED LIMITATION,
+led by the dev**: under a full revert of both production files, 12
+unit defect cells fail as required, but THREE BL-3 conformance cells
+survive — base rejected every cluster outright, so "file op
+suppressed" and "cluster refused" are the same observable there.
+Those three cells are therefore **MUTATION-PROVEN, not
+revert-proven**: their discriminating power rests on the
+`file-op-not-suppressed-after-clear-or-delete` M8 arm (present, green
+at leg 5 and in the integrator's independent R12 fresh-checkout
+certification). Zero flakes stated: every leg ran once, no re-runs,
+including the leg that produced the unwelcome figure. `psh/` restored
+byte-identical afterwards; sign-off worktree removed.
+
+Integrator ceremony fault register, same standard: (i) the first
+attestation-gate launch died on a fresh worktree with no `tmp/` for
+the shell redirect — the 4B.2 fresh-checkout lesson biting the
+integrator's own ceremony command (instant failure, no partial state,
+relaunched green); (ii) the R10 gap — a freeze-move claim accepted
+without a mechanical diff — was closed in-slot by the
+snapshot-every-freeze rule, whose first firing verified D13.
+
+Final inbox snapshot in this addendum: md5 `0f4fccae9994912ce71e54908f8b364d`
+(through R13; nothing appended after, per the snapshot-boundary rule).

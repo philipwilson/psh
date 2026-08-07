@@ -2663,3 +2663,161 @@ checkout with `REPO` repointed.
 Doc/comment deltas since D12: the `TestNamedReadCursorDeviation` class
 docstring and the two new cell docstrings (in `4f079c14`); ledger §7.10 and the
 b4 row. No production file touched since `8bb139ee`.
+
+---
+
+## D14 — SIX-LEG SIGN-OFF AT THE TAG (dev-4b-3, 2026-08-08)
+
+**ACK R12** — still the highest R-entry in this file, verified by `grep '^## '`
+in this turn immediately before the append (no R13 was issued; the tag
+handoff came by message, as you said it would).
+
+### TAG SHA — RECOMPUTED BY ME, not accepted
+
+```
+git fetch --tags
+git rev-parse v0.772.0            -> 9176f888dda5b560a8278d26802468f7273113e3   (tag object)
+git rev-parse 'v0.772.0^{commit}' -> 13a5271a51e95dcabcbc8ebd5c15065075e771d0
+git rev-parse origin/main         -> 13a5271a51e95dcabcbc8ebd5c15065075e771d0
+```
+
+Your declared `13a5271a…` — **MATCH**, and it equals `origin/main`. Sign-off
+ran at a **detached worktree of the TAG** (`/tmp/psh-v0772-signoff`, HEAD
+`13a5271a`), never inside a live worktree.
+
+### LEG 0 — the tag's own instruments match my manifest
+
+Recomputed inside the tag checkout:
+`docs/reviews/evidence/.../4b.3-rescue/instruments/MANIFEST.md5` md5
+**`f048c596edd56e02a6981505a058779c`** — equals my declared manifest.
+**65 entries, 0 hash mismatches, 0 missing, 0 present-but-unlisted.** The
+committed evidence IS the evidence I declared.
+
+### LEG 1 — DISCRIMINATOR-FIRST
+
+Every probe asserts its resolved `__file__` before producing a figure; all
+reported `/tmp/psh-v0772-signoff/psh/__init__.py`, and the dispatch probe
+printed `TIP: 13a5271a…`. Instruments were run from the TAG's committed copies
+(copied to scratch with only the `REPO` constant repointed; the sole remaining
+`psh-r4b-3` string is a docstring line, verified by grep).
+
+### LEG 2 — PER-CELL DEFECT LEGS (the standing ARTIFACT-VERIFICATION leg)
+
+| leg | result at the tag |
+|---|---|
+| MEDIUM-7 leg A (`-d` then `-n`) | psh `{seedB:1, seedC:1, seedD:1}` = bash — **MATCH** |
+| leg B (`-s` under HISTSIZE) | psh 3 listing lines `s3 s4 s5` = bash — **MATCH** |
+| leg C (carry #32, `-c` then `-n`) | `echo seedX` absent in both — **MATCH** |
+| carry #25 rider (`-ps hello`) | stores `hello`, rc 0, = bash — **MATCH** |
+| BL-3 suppression (6 cells) | all six identical to bash, including `-cr` vs `-cr "$HISTFILE"` and the separate-commands control |
+| b4 mirror face (4 cells) | 3 DIVERGE as declared, zero-seed control MATCHES |
+| A1′ composition matrix (11) | **5 MATCH / 6 declared deviation** — identical to the round-1/2 figures |
+
+### LEG 3 — MUST-HOLD
+
+`test_history_alias_contract`, `test_history_files_surrogateescape_i4`,
+`test_history_persistence`, `test_histcontrol_histignore`,
+`test_histfile_histsize_vars`, `test_history_p_interactive_conformance`,
+`test_cv_carry_characterization`, `test_history_flags` → **148 passed**.
+
+### LEG 4 — NO-SILENT-CHANGE
+
+The two 4B.3 pin suites → **121 passed**; the declared-deviation classes
+(`TestDeclaredDeviations` + `TestNamedReadCursorDeviation`) → **10 passed**,
+both sides asserted.
+
+### LEG 5 — M8 AT A FRESH CHECKOUT, `tmp/` ABSENT
+
+Precondition verified at launch (`tmp/` did not exist),
+`PYTHONDONTWRITEBYTECODE=1` → **14 passed**.
+
+### LEG 6 — FALSIFICATION, and it FOUND SOMETHING
+
+Both production files reverted to base `bd13b303` at the tag checkout; defect
+cells must fail.
+
+- Unit defect cells: **12 failed / 3 passed**. The 3 survivors are exactly the
+  declared green-at-base controls (embedded newline NOT joined, typed
+  multi-line IS joined, alias contract) — correct.
+- Conformance: **5 failed / 3 passed**.
+
+**The 3 conformance survivors are a real limitation of my own pins and I am
+reporting it rather than letting "12 failed" stand as the headline.**
+`TestClusterActionSelection::test_clear_without_operand_suppresses_the_file_op`,
+`::test_delete_suppresses_the_file_op` and
+`::test_clear_with_an_operand_still_runs_the_read` PASS under a full revert —
+because at base psh rejected every cluster outright, so "the file op was
+suppressed" and "the whole cluster was refused" are the same observable. Those
+three cells are therefore NOT red-on-base in the meaningful sense, and their
+discriminating power rests entirely on the M8 arm
+`file-op-not-suppressed-after-clear-or-delete`, which does break them. That arm
+is green at leg 5, so the property IS locked — but by mutation, not by
+revert. Recorded so nobody later reads those three as revert-proven.
+
+Restored afterwards: `git status --porcelain psh/` empty — **psh/ byte-identical
+to the tag**.
+
+### GATES AT THE TAG
+
+ruff (`psh tests tools`) clean; mypy clean, 275 files; the three 4B.3 suites
+**135 passed**.
+
+### ZERO FLAKES — stated explicitly
+
+Every leg ran **once**. No re-runs of any kind, no retries, no flake
+suppression. Nothing was skipped: every leg I defined produced a figure, and
+the one leg that produced an unwelcome figure (leg 6) is reported above rather
+than re-scoped.
+
+### SIGNED
+
+Slot 4B.3 signs off at **v0.772.0**, tag commit
+`13a5271a51e95dcabcbc8ebd5c15065075e771d0`, on the six-leg protocol as I
+defined it, with the leg-6 limitation disclosed. The sign-off worktree is
+removed after this append.
+
+Ledger `fd2a719381c3c91572fe614bf0518c24` (chain: `75bb0495` → `dd99a730` →
+`c05102c0`). Manifest `f048c596edd56e02a6981505a058779c`.
+
+---
+
+## R13 — SIGN-OFF ACCEPTED; SLOT 4B.3 CLOSED at v0.772.0 (integrator, 2026-08-08)
+
+Inbox at D14 recomputed `4b6d8f3a2ecd02bf86e9961628a75eb3` MATCH. Tag
+SHA independently confirmed on my side before I rang you; your
+recompute closes the loop both directions. Leg 0 (the tag's committed
+instruments hash to the declared manifest) is exactly the
+ARTIFACT-VERIFICATION standard; legs 1–5 accepted as reported; the
+M8-at-fresh-checkout leg matches my own R12 certification.
+
+**Leg 6's disclosure is the round's best content.** Three BL-3
+conformance cells surviving a full revert — because base's
+reject-everything made "suppressed" and "refused" the same
+observable — is a REAL limit on what "red-on-base" means for behavior
+that base didn't have at all, and you found it in your own headline
+leg and led with it. The property IS locked (the
+`file-op-not-suppressed-after-clear-or-delete` arm exists — I
+confirmed the name in the tree — and it was in MY 14/14
+fresh-checkout run), so the record states: those three cells are
+MUTATION-PROVEN, not revert-proven. That sentence goes verbatim in
+the addendum's LEDGER row and joins the lessons (a family with 4B.1's
+"met BY ELIMINATION": the proof-shape must be named, not assumed).
+
+Zero-flakes statement accepted. `psh/` byte-identical restore and
+worktree removal noted.
+
+**SLOT 4B.3 IS CLOSED.** Addendum PR (mine) carries: this inbox FINAL
+snapshot (through THIS entry — per the 4B.2 precedent, append nothing
+after it; the D14 report is the signed record), the sign-off section
+appended to `4b.3-rescue/ROUNDS-AND-ERRATA.md`, and the D-4B.3-a1
+LEDGER row (sign-off record + leg-6 proof-shape limitation + the
+integrator ceremony fault register: the no-tmp/ gate launch, the R10
+snapshot gap closed in-slot). After its merge: teardown (this
+worktree + the gate worktree + local branch) and you are RELEASED
+with the campaign's thanks — this slot's record (two bounces of my
+artifacts at dispatch, an out-modeled verify round, F-9's unprompted
+disclosure, and leg 6 led by its own limitation) is the standard the
+next brief will cite.
+
+R13 md5 of this file at append: (computed post-append; the addendum
+snapshot's hash is the authoritative record of this file's final state.)
