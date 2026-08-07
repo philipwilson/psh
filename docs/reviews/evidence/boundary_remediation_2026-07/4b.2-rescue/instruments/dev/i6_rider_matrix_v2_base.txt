@@ -1,0 +1,215 @@
+== DISCRIMINATOR ==
+bash oracle:    /opt/homebrew/bin/bash -> GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+resolved bash:  /opt/homebrew/bin/bash
+psh under test: /Users/pwilson/src/psh-r4b-2/psh/__init__.py
+HEAD:           21a23a4cdb8234de62d08727b62b6b95f587b7eb
+psh/ dirty:     0 lines
+LC_ALL:         en_US.UTF-8   kill bound: 8.0s
+producer:       separate python process over a FIFO (NOT the shell under test)
+value compared: raw bytes via external od -An -tx1 (NOT printf %q)
+
+CELL                     BASH                           dt     PSH                            dt     MATCH
+----------------------------------------------------------------------------------------------------------------
+N_none_hold              rc=142 bytes=                  1.04   rc=1 bytes=                    4.17   DIFFER
+N_partial_hold           rc=142 bytes=6162              1.05   rc=1 bytes=6162                4.27   DIFFER
+N_full_hold              rc=0 bytes=616263              0.14   rc=0 bytes=616263              0.23   SAME
+N_late_hold              rc=142 bytes=                  1.04   rc=0 bytes=616263              2.15   DIFFER
+N_eof_short_no_t         rc=1 bytes=6162                0.03   rc=1 bytes=6162                0.13   SAME
+N_eof_short_with_t       rc=1 bytes=6162                0.03   rc=1 bytes=6162                0.13   SAME
+N_eof_after_deadline     rc=142 bytes=6162              1.04   rc=1 bytes=6162                2.26   DIFFER
+N_zero_with_t            rc=0 bytes=                    0.02   rc=0 bytes=                    0.11   SAME
+N_t0_ready               rc=0 bytes=                    0.02   rc=0 bytes=                    0.11   SAME
+N_t0_notready            rc=1 bytes=                    0.02   rc=1 bytes=                    0.11   SAME
+N_delim_ignored          rc=0 bytes=613a62              0.13   rc=0 bytes=613a62              0.23   SAME
+N_backslash_no_t         rc=1 bytes=6162                0.02   rc=0 bytes=6162                0.11   DIFFER
+N_backslash4_no_t        rc=0 bytes=616263              0.02   rc=0 bytes=6162                0.11   DIFFER
+N_backslash_raw_no_t     rc=0 bytes=615c62              0.02   rc=0 bytes=615c62              0.11   SAME
+N_backslash_hold         rc=142 bytes=610162            1.03   rc=0 bytes=6162                0.22   DIFFER
+N_mb_split_hold          rc=142 bytes=61c3              1.04   rc=0 bytes=61c3                3.30   DIFFER
+N_mb_complete_hold       rc=0 bytes=61c3a9              0.35   rc=0 bytes=61c3a9              0.48   SAME
+N_mb_late_hold           rc=142 bytes=61c3              1.06   rc=0 bytes=61c3a9              2.18   DIFFER
+N_mb_eof                 rc=0 bytes=61c3                0.03   rc=0 bytes=61c3                0.11   SAME
+N_mb_3byte_split_hold    rc=142 bytes=61e2              1.03   rc=0 bytes=61e2                3.25   DIFFER
+n_none_hold              rc=142 bytes=                  1.03   rc=142 bytes=                  1.16   SAME
+n_partial_hold           rc=142 bytes=6162              1.03   rc=142 bytes=6162              1.16   SAME
+n_full_hold              rc=0 bytes=616263              0.14   rc=0 bytes=616263              0.23   SAME
+n_late_hold              rc=142 bytes=                  1.04   rc=142 bytes=                  1.18   SAME
+n_eof_short_with_t       rc=1 bytes=6162                0.03   rc=1 bytes=6162                0.13   SAME
+n_zero_with_t            rc=0 bytes=                    0.03   rc=0 bytes=                    0.14   SAME
+n_t0_ready               rc=0 bytes=                    0.03   rc=0 bytes=                    0.13   SAME
+n_t0_notready            rc=1 bytes=                    0.03   rc=1 bytes=                    0.13   SAME
+n_mb_split_hold          rc=142 bytes=61c3              1.04   rc=142 bytes=61                1.18   DIFFER
+n_mb_late_hold           rc=142 bytes=61c3              1.04   rc=142 bytes=61                1.16   DIFFER
+t_plain_none_hold        rc=142 bytes=                  1.04   rc=142 bytes=                  1.17   SAME
+t_plain_partial_hold     rc=142 bytes=6162              1.04   rc=142 bytes=6162              1.18   SAME
+t_plain_mb_split_hold    rc=142 bytes=61c3              1.03   rc=142 bytes=61                1.15   DIFFER
+
+== PER-CELL DETAIL ==
+
+### N_none_hold — -N 3 -t 1, no input and NO EOF (the true hang repro)  [DIFFER]
+    read opts: '-t 1 -N 3'   producer steps: []   hold: 4.0s
+    bash: rc=142 bytes=  (dt=1.04s)
+    psh : rc=1 bytes=  (dt=4.17s)
+
+### N_partial_hold — -N 3 -t 1, 2 of 3 chars then silence, NO EOF  [DIFFER]
+    read opts: '-t 1 -N 3'   producer steps: [(0.1, b'ab')]   hold: 4.0s
+    bash: rc=142 bytes=6162  (dt=1.05s)
+    psh : rc=1 bytes=6162  (dt=4.27s)
+
+### N_full_hold — -N 3 -t 1, all 3 chars early, NO EOF [CONTROL]  [SAME]
+    read opts: '-t 1 -N 3'   producer steps: [(0.1, b'abc')]   hold: 4.0s
+    bash: rc=0 bytes=616263  (dt=0.14s)
+    psh : rc=0 bytes=616263  (dt=0.23s)
+
+### N_late_hold — -N 3 -t 1, input arrives AFTER the deadline, NO EOF  [DIFFER]
+    read opts: '-t 1 -N 3'   producer steps: [(2.0, b'abc')]   hold: 2.0s
+    bash: rc=142 bytes=  (dt=1.04s)
+    psh : rc=0 bytes=616263  (dt=2.15s)
+
+### N_eof_short_no_t — -N 3, EOF before the count, no -t [CONTROL]  [SAME]
+    read opts: '-N 3'   producer steps: [(0.0, b'ab')]   hold: 0.0s
+    bash: rc=1 bytes=6162  (dt=0.03s)
+    psh : rc=1 bytes=6162  (dt=0.13s)
+
+### N_eof_short_with_t — -N 3 -t 1, EOF before the count (EOF vs timeout)  [SAME]
+    read opts: '-t 1 -N 3'   producer steps: [(0.0, b'ab')]   hold: 0.0s
+    bash: rc=1 bytes=6162  (dt=0.03s)
+    psh : rc=1 bytes=6162  (dt=0.13s)
+
+### N_eof_after_deadline — -N 3 -t 1, partial then EOF AFTER the deadline  [DIFFER]
+    read opts: '-t 1 -N 3'   producer steps: [(0.1, b'ab')]   hold: 2.0s
+    bash: rc=142 bytes=6162  (dt=1.04s)
+    psh : rc=1 bytes=6162  (dt=2.26s)
+
+### N_zero_with_t — -N 0 -t 1, count zero, NO EOF  [SAME]
+    read opts: '-t 1 -N 0'   producer steps: []   hold: 3.0s
+    bash: rc=0 bytes=  (dt=0.02s)
+    psh : rc=0 bytes=  (dt=0.11s)
+
+### N_t0_ready — -N 3 -t 0, data READY (poll)  [SAME]
+    read opts: '-t 0 -N 3'   producer steps: [(0.0, b'abc')]   hold: 1.0s
+    bash: rc=0 bytes=  (dt=0.02s)
+    psh : rc=0 bytes=  (dt=0.11s)
+
+### N_t0_notready — -N 3 -t 0, data NOT ready (poll)  [SAME]
+    read opts: '-t 0 -N 3'   producer steps: []   hold: 1.5s
+    bash: rc=1 bytes=  (dt=0.02s)
+    psh : rc=1 bytes=  (dt=0.11s)
+
+### N_delim_ignored — -N 3 -t 1 -d :, is the delimiter ignored for -N?  [SAME]
+    read opts: '-t 1 -d : -N 3'   producer steps: [(0.1, b'a:bc')]   hold: 3.0s
+    bash: rc=0 bytes=613a62  (dt=0.13s)
+    psh : rc=0 bytes=613a62  (dt=0.23s)
+
+### N_backslash_no_t — -N 3 over a\b, no -t, EOF (escape-vs-count, ISOLATED)  [DIFFER]
+    read opts: '-N 3'   producer steps: [(0.0, b'a\\b')]   hold: 0.0s
+    bash: rc=1 bytes=6162  (dt=0.02s)
+    psh : rc=0 bytes=6162  (dt=0.11s)
+
+### N_backslash4_no_t — -N 3 over a\bc, no -t, EOF (escape-vs-count)  [DIFFER]
+    read opts: '-N 3'   producer steps: [(0.0, b'a\\bc')]   hold: 0.0s
+    bash: rc=0 bytes=616263  (dt=0.02s)
+    psh : rc=0 bytes=6162  (dt=0.11s)
+
+### N_backslash_raw_no_t — -N 3 -r over a\b, no -t, EOF [CONTROL]  [SAME]
+    read opts: '-r -N 3'   producer steps: [(0.0, b'a\\b')]   hold: 0.0s
+    bash: rc=0 bytes=615c62  (dt=0.02s)
+    psh : rc=0 bytes=615c62  (dt=0.11s)
+
+### N_backslash_hold — -N 3 -t 1 over a\b, NO EOF  [DIFFER]
+    read opts: '-t 1 -N 3'   producer steps: [(0.1, b'a\\b')]   hold: 3.0s
+    bash: rc=142 bytes=610162  (dt=1.03s)
+    psh : rc=0 bytes=6162  (dt=0.22s)
+
+### N_mb_split_hold — -N 2 -t 1, multibyte SPLIT by the deadline, NO EOF  [DIFFER]
+    read opts: '-t 1 -N 2'   producer steps: [(0.1, b'a\xc3')]   hold: 3.0s
+    bash: rc=142 bytes=61c3  (dt=1.04s)
+    psh : rc=0 bytes=61c3  (dt=3.30s)
+
+### N_mb_complete_hold — -N 2 -t 1, multibyte completes before deadline [CONTROL]  [SAME]
+    read opts: '-t 1 -N 2'   producer steps: [(0.1, b'a\xc3'), (0.2, b'\xa9')]   hold: 3.0s
+    bash: rc=0 bytes=61c3a9  (dt=0.35s)
+    psh : rc=0 bytes=61c3a9  (dt=0.48s)
+
+### N_mb_late_hold — -N 2 -t 1, continuation byte arrives AFTER the deadline  [DIFFER]
+    read opts: '-t 1 -N 2'   producer steps: [(0.1, b'a\xc3'), (1.9, b'\xa9')]   hold: 2.0s
+    bash: rc=142 bytes=61c3  (dt=1.06s)
+    psh : rc=0 bytes=61c3a9  (dt=2.18s)
+
+### N_mb_eof — -N 2, multibyte truncated at EOF, no -t [CONTROL]  [SAME]
+    read opts: '-N 2'   producer steps: [(0.0, b'a\xc3')]   hold: 0.0s
+    bash: rc=0 bytes=61c3  (dt=0.03s)
+    psh : rc=0 bytes=61c3  (dt=0.11s)
+
+### N_mb_3byte_split_hold — -N 2 -t 1, 3-byte char split at byte 2, NO EOF  [DIFFER]
+    read opts: '-t 1 -N 2'   producer steps: [(0.1, b'a\xe2\x82')]   hold: 3.0s
+    bash: rc=142 bytes=61e2  (dt=1.03s)
+    psh : rc=0 bytes=61e2  (dt=3.25s)
+
+### n_none_hold — -n 3 -t 1, no input, NO EOF [REFERENCE]  [SAME]
+    read opts: '-t 1 -n 3'   producer steps: []   hold: 4.0s
+    bash: rc=142 bytes=  (dt=1.03s)
+    psh : rc=142 bytes=  (dt=1.16s)
+
+### n_partial_hold — -n 3 -t 1, 2 of 3 chars then silence, NO EOF [REFERENCE]  [SAME]
+    read opts: '-t 1 -n 3'   producer steps: [(0.1, b'ab')]   hold: 4.0s
+    bash: rc=142 bytes=6162  (dt=1.03s)
+    psh : rc=142 bytes=6162  (dt=1.16s)
+
+### n_full_hold — -n 3 -t 1, all 3 chars early, NO EOF [REFERENCE]  [SAME]
+    read opts: '-t 1 -n 3'   producer steps: [(0.1, b'abc')]   hold: 4.0s
+    bash: rc=0 bytes=616263  (dt=0.14s)
+    psh : rc=0 bytes=616263  (dt=0.23s)
+
+### n_late_hold — -n 3 -t 1, input after the deadline, NO EOF [REFERENCE]  [SAME]
+    read opts: '-t 1 -n 3'   producer steps: [(2.0, b'abc')]   hold: 2.0s
+    bash: rc=142 bytes=  (dt=1.04s)
+    psh : rc=142 bytes=  (dt=1.18s)
+
+### n_eof_short_with_t — -n 3 -t 1, EOF before the count [REFERENCE]  [SAME]
+    read opts: '-t 1 -n 3'   producer steps: [(0.0, b'ab')]   hold: 0.0s
+    bash: rc=1 bytes=6162  (dt=0.03s)
+    psh : rc=1 bytes=6162  (dt=0.13s)
+
+### n_zero_with_t — -n 0 -t 1, count zero, NO EOF [REFERENCE]  [SAME]
+    read opts: '-t 1 -n 0'   producer steps: []   hold: 3.0s
+    bash: rc=0 bytes=  (dt=0.03s)
+    psh : rc=0 bytes=  (dt=0.14s)
+
+### n_t0_ready — -n 3 -t 0, data READY [REFERENCE]  [SAME]
+    read opts: '-t 0 -n 3'   producer steps: [(0.0, b'abc')]   hold: 1.0s
+    bash: rc=0 bytes=  (dt=0.03s)
+    psh : rc=0 bytes=  (dt=0.13s)
+
+### n_t0_notready — -n 3 -t 0, data NOT ready [REFERENCE]  [SAME]
+    read opts: '-t 0 -n 3'   producer steps: []   hold: 1.5s
+    bash: rc=1 bytes=  (dt=0.03s)
+    psh : rc=1 bytes=  (dt=0.13s)
+
+### n_mb_split_hold — -n 2 -t 1, multibyte split by the deadline [REFERENCE]  [DIFFER]
+    read opts: '-t 1 -n 2'   producer steps: [(0.1, b'a\xc3')]   hold: 3.0s
+    bash: rc=142 bytes=61c3  (dt=1.04s)
+    psh : rc=142 bytes=61  (dt=1.18s)
+
+### n_mb_late_hold — -n 2 -t 1, continuation AFTER the deadline [REFERENCE]  [DIFFER]
+    read opts: '-t 1 -n 2'   producer steps: [(0.1, b'a\xc3'), (1.9, b'\xa9')]   hold: 2.0s
+    bash: rc=142 bytes=61c3  (dt=1.04s)
+    psh : rc=142 bytes=61  (dt=1.16s)
+
+### t_plain_none_hold — -t 1 plain, no input, NO EOF [REFERENCE]  [SAME]
+    read opts: '-t 1'   producer steps: []   hold: 3.0s
+    bash: rc=142 bytes=  (dt=1.04s)
+    psh : rc=142 bytes=  (dt=1.17s)
+
+### t_plain_partial_hold — -t 1 plain, partial line then silence [REFERENCE]  [SAME]
+    read opts: '-t 1'   producer steps: [(0.1, b'ab')]   hold: 3.0s
+    bash: rc=142 bytes=6162  (dt=1.04s)
+    psh : rc=142 bytes=6162  (dt=1.18s)
+
+### t_plain_mb_split_hold — -t 1 plain, multibyte split by the deadline [REFERENCE]  [DIFFER]
+    read opts: '-t 1'   producer steps: [(0.1, b'a\xc3')]   hold: 3.0s
+    bash: rc=142 bytes=61c3  (dt=1.03s)
+    psh : rc=142 bytes=61  (dt=1.15s)
+
+== MEASURED SPLIT ==
+  cells: 33   SAME: 20   DIFFER: 13   psh HUNG: 0   bash HUNG: 0

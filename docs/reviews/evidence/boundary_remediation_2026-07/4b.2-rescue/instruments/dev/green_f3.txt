@@ -1,0 +1,29 @@
+== DISCRIMINATOR ==
+label:      file3-e2e AFTER fixes
+HEAD:       21a23a4cdb8234de62d08727b62b6b95f587b7eb
+tree dirty: 6 entries (excluding the inbox)
+             M psh/builtins/input_reader.py
+             M psh/builtins/read_builtin.py
+            ?? tests/system/test_read_seam_end_to_end_4b2.py
+            ?? tests/unit/builtins/test_input_decoder_seam_4b2.py
+            ?? tests/unit/builtins/test_read_exact_timeout_4b2.py
+            ?? tests/unit/tooling/test_input_decoder_m8_locks_4b2.py
+paths:      tests/system/test_read_seam_end_to_end_4b2.py
+
+collected 6 nodes; running ONE INTERPRETER PER CELL
+
+NODE                                                                                             VERDICT
+------------------------------------------------------------------------------------------------------------
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_split_character_keeps_its_identity_through_mapfile[e_acute-2byte] PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_split_character_keeps_its_identity_through_mapfile[euro-3byte] PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_split_character_keeps_its_identity_through_mapfile[smile-4byte] PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_without_a_timeout_both_shells_agree PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestRiderEndToEndFromAScriptFile::test_exact_count_honors_the_deadline_with_no_input PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestRiderEndToEndFromAScriptFile::test_exact_count_honors_the_deadline_with_partial_input PASS
+
+== PER-CLASS MEASURED SPLIT ==
+  test_read_seam_end_to_end_4b2.py::TestRiderEndToEndFromAScriptFile           2 pass /   0 fail
+  test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity          4 pass /   0 fail
+  TOTAL                                                                        6 pass /   0 fail
+
+  (6 interpreters, 19.4s)

@@ -1,0 +1,47 @@
+== DISCRIMINATOR ==
+bash oracle: /opt/homebrew/bin/bash -> GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+HEAD:        21a23a4cdb8234de62d08727b62b6b95f587b7eb
+psh/ dirty:  0 lines
+stimulus:    written by THIS process to the shell's stdin (shell-neutral)
+observable:  raw bytes of the variable via external od
+
+PAYLOAD                -N  psh                    bash-UTF8              bash-C                 VERDICT
+------------------------------------------------------------------------------------------------------------------------
+valid_then_malformed   1   rc=0 bytes=c3a9        rc=0 bytes=c3a9        rc=0 bytes=c3          matches-UTF8
+valid_then_malformed   2   rc=0 bytes=c3a9c3      rc=0 bytes=c3a9c341    rc=0 bytes=c3a9        matches-NEITHER
+valid_then_malformed   3   rc=0 bytes=c3a9c341    rc=0 bytes=c3a9c3410a  rc=0 bytes=c3a9c3      matches-NEITHER
+valid_then_malformed   4   rc=0 bytes=c3a9c3410a  rc=1 bytes=c3a9c3410a  rc=0 bytes=c3a9c341    matches-NEITHER
+
+malformed_then_valid   1   rc=0 bytes=c3          rc=0 bytes=c341        rc=0 bytes=c3          matches-C
+malformed_then_valid   2   rc=0 bytes=c341        rc=0 bytes=c341c3a9    rc=0 bytes=c341        matches-C
+malformed_then_valid   3   rc=0 bytes=c341c3a9    rc=0 bytes=c341c3a90a  rc=0 bytes=c341c3      matches-NEITHER
+malformed_then_valid   4   rc=0 bytes=c341c3a90a  rc=1 bytes=c341c3a90a  rc=0 bytes=c341c3a9    matches-NEITHER
+
+ascii_valid_bare_ff    1   rc=0 bytes=61          rc=0 bytes=61          rc=0 bytes=61          matches-both
+ascii_valid_bare_ff    2   rc=0 bytes=61c3a9      rc=0 bytes=61c3a9      rc=0 bytes=61c3        matches-UTF8
+ascii_valid_bare_ff    3   rc=0 bytes=61c3a9ff    rc=0 bytes=61c3a9ff    rc=0 bytes=61c3a9      matches-UTF8
+ascii_valid_bare_ff    4   rc=0 bytes=61c3a9ff62  rc=0 bytes=61c3a9ff62  rc=0 bytes=61c3a9ff    matches-UTF8
+
+euro_then_lone_lead    1   rc=0 bytes=e282ac      rc=0 bytes=e282ac      rc=0 bytes=e2          matches-UTF8
+euro_then_lone_lead    2   rc=0 bytes=e282ace2    rc=0 bytes=e282ace25a  rc=0 bytes=e282        matches-NEITHER
+euro_then_lone_lead    3   rc=0 bytes=e282ace25a  rc=0 bytes=e282ace25a0a rc=0 bytes=e282ac      matches-NEITHER
+euro_then_lone_lead    4   rc=0 bytes=e282ace25a0a rc=1 bytes=e282ace25a0a rc=0 bytes=e282ace2    matches-NEITHER
+
+two_valid              1   rc=0 bytes=c3a9        rc=0 bytes=c3a9        rc=0 bytes=c3          matches-UTF8
+two_valid              2   rc=0 bytes=c3a9e282ac  rc=0 bytes=c3a9e282ac  rc=0 bytes=c3a9        matches-UTF8
+two_valid              3   rc=0 bytes=c3a9e282ac0a rc=0 bytes=c3a9e282ac0a rc=0 bytes=c3a9e2      matches-UTF8
+two_valid              4   rc=1 bytes=c3a9e282ac0a rc=1 bytes=c3a9e282ac0a rc=0 bytes=c3a9e282    matches-UTF8
+
+two_malformed          1   rc=0 bytes=c3          rc=0 bytes=c3c3        rc=0 bytes=c3          matches-C
+two_malformed          2   rc=0 bytes=c3c3        rc=0 bytes=c3c341      rc=0 bytes=c3c3        matches-C
+two_malformed          3   rc=0 bytes=c3c341      rc=0 bytes=c3c3410a    rc=0 bytes=c3c341      matches-C
+two_malformed          4   rc=0 bytes=c3c3410a    rc=1 bytes=c3c3410a    rc=0 bytes=c3c3410a    matches-C
+
+== MEASURED SPLIT (carry #21 re-derivation) ==
+  matches-both       1 / 24
+  matches-UTF8       9 / 24
+  matches-C          6 / 24
+  matches-NEITHER    8 / 24
+
+  carry #21 asserts a HYBRID model: cells matching NEITHER oracle.
+  cells matching NEITHER at this tip: 8

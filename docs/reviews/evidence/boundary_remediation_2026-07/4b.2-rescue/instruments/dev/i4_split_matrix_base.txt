@@ -1,0 +1,55 @@
+== DISCRIMINATOR ==
+module under test: /Users/pwilson/src/psh-r4b-2/psh/builtins/input_reader.py
+HEAD:              21a23a4cdb8234de62d08727b62b6b95f587b7eb
+psh/ dirty lines:  0
+python:            3.14.2
+
+MODE: whole matrix in ONE interpreter (exploratory table; the red-on-base COUNT is derived per-cell from the pytest pins)
+
+CELL                                         IDENT  RTRIP  OBSERVED
+----------------------------------------------------------------------------------------------------
+split.e_acute.1.read_all                     FAIL   PASS   '\udcc3\udca9Z\n'
+split.e_acute.1.read_record                  PASS   PASS   'éZ\n'
+split.e_acute.1.read_limited                 PASS   PASS   'éZ\n'
+split.euro.1.read_all                        FAIL   PASS   '\udce2\udc82\udcacZ\n'
+split.euro.1.read_record                     PASS   PASS   '€Z\n'
+split.euro.1.read_limited                    PASS   PASS   '€Z\n'
+split.euro.2.read_all                        FAIL   PASS   '\udce2\udc82\udcacZ\n'
+split.euro.2.read_record                     PASS   PASS   '€Z\n'
+split.euro.2.read_limited                    PASS   PASS   '€Z\n'
+split.smile.1.read_all                       FAIL   PASS   '\udcf0\udc9f\udc99\udc82Z\n'
+split.smile.1.read_record                    PASS   PASS   '🙂Z\n'
+split.smile.1.read_limited                   PASS   PASS   '🙂Z\n'
+split.smile.2.read_all                       FAIL   PASS   '\udcf0\udc9f\udc99\udc82Z\n'
+split.smile.2.read_record                    PASS   PASS   '🙂Z\n'
+split.smile.2.read_limited                   PASS   PASS   '🙂Z\n'
+split.smile.3.read_all                       FAIL   PASS   '\udcf0\udc9f\udc99\udc82Z\n'
+split.smile.3.read_record                    PASS   PASS   '🙂Z\n'
+split.smile.3.read_limited                   PASS   PASS   '🙂Z\n'
+notail.e_acute.1.read_all                    PASS   PASS   '\udcc3'
+notail.euro.1.read_all                       PASS   PASS   '\udce2'
+notail.euro.2.read_all                       PASS   PASS   '\udce2\udc82'
+notail.smile.1.read_all                      PASS   PASS   '\udcf0'
+notail.smile.2.read_all                      PASS   PASS   '\udcf0\udc9f'
+notail.smile.3.read_all                      PASS   PASS   '\udcf0\udc9f\udc99'
+noncont.e_acute.1.read_all                   PASS   PASS   '\udcc3Z\n'
+noncont.euro.1.read_all                      PASS   PASS   '\udce2Z\n'
+noncont.euro.2.read_all                      PASS   PASS   '\udce2\udc82Z\n'
+noncont.smile.1.read_all                     PASS   PASS   '\udcf0Z\n'
+noncont.smile.2.read_all                     PASS   PASS   '\udcf0\udc9fZ\n'
+noncont.smile.3.read_all                     PASS   PASS   '\udcf0\udc9f\udc99Z\n'
+malformed.lone_lead_then_ascii.read_all      PASS   PASS   '\udcc3AZ\n'
+malformed.orphan_continuation.read_all       PASS   PASS   '\udca9Z\n'
+malformed.two_leads.read_all                 PASS   PASS   '\udcc3\udcc3Z\n'
+malformed.overlong_lead.read_all             PASS   PASS   '\udcf0\udc9fAZ\n'
+malformed.bare_ff.read_all                   PASS   PASS   '\udcffZ\n'
+malformed.c0_80.read_all                     PASS   PASS   '\udcc0\udc80Z\n'
+
+== PER-CLASS MEASURED SPLIT (never 'all X except Y') ==
+  MALFORMED/read_all       6 cells:   6 pass /   0 fail  (identity-fail 0, round-trip-fail 0)  -> CONTROL (must-hold)
+  NONCONT/read_all         6 cells:   6 pass /   0 fail  (identity-fail 0, round-trip-fail 0)  -> CONTROL (must-hold)
+  NOTAIL/read_all          6 cells:   6 pass /   0 fail  (identity-fail 0, round-trip-fail 0)  -> CONTROL (must-hold)
+  SPLIT/read_all           6 cells:   0 pass /   6 fail  (identity-fail 6, round-trip-fail 0)  -> DEFECT EVIDENCE (red-on-base)
+  SPLIT/read_limited       6 cells:   6 pass /   0 fail  (identity-fail 0, round-trip-fail 0)  -> CONTROL (must-hold)
+  SPLIT/read_record        6 cells:   6 pass /   0 fail  (identity-fail 0, round-trip-fail 0)  -> CONTROL (must-hold)
+  TOTAL                   36 cells:  30 pass /   6 fail

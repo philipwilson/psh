@@ -1,0 +1,38 @@
+== DISCRIMINATOR ==
+bash oracle:    /opt/homebrew/bin/bash -> GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+HEAD:           21a23a4cdb8234de62d08727b62b6b95f587b7eb
+psh under test: /Users/pwilson/src/psh-r4b-2/psh
+producer:       separate python process over a FIFO
+
+### e2e_seam_mapfile — E2E: read -t times out mid-multibyte, then mapfile (no count) drains  [DIFFER]
+    bash: rc=142 x=61c3 n=1 all=a90a   (dt=2.17s)
+    psh : rc=142 x=61 n=1 all=c3a90a   (dt=2.29s)
+
+### e2e_seam_mapfile_3byte — E2E: same, 3-byte char split at byte 2  [DIFFER]
+    bash: rc=142 x=61e2 n=1 all=ac0a   (dt=2.15s)
+    psh : rc=142 x=61 n=1 all=e282ac0a   (dt=2.24s)
+
+### comp_timeout_then_read — COMP: read -t times out mid-multibyte, then a SECOND read on the same fd  [DIFFER]
+    bash: rc1=142 x=61c3 rc2=0 y=a962   (dt=1.66s)
+    psh : rc1=142 x=61 rc2=0 y=c3a962   (dt=1.78s)
+
+### comp_timeout_then_cat — COMP: read -t times out mid-multibyte, then cat drains the fd (byte view)  [DIFFER]
+    bash: rc=142 x=61c3 rest=a9620a   (dt=2.15s)
+    psh : rc=142 x=61 rest=a9620a   (dt=2.27s)
+
+### e2e_seam_no_timeout — CONTROL: no timeout at all — mapfile alone over a multibyte stream  [SAME]
+    bash: n=1 all=61c3a90a   (dt=0.66s)
+    psh : n=1 all=61c3a90a   (dt=0.77s)
+
+
+== ERR: does Outcome.ERROR strand pending decoder bytes? ==
+   (in-process census; there is NO bash analogue for this cell — an
+    fd error mid-character is not a shell-observable bash behaviour)
+   after read_limited(1): outcome=DATA data='a' decoder=None
+   after timed read:      outcome=TIMEOUT data='' pending=b'\xc3'
+   after fd CLOSED:       outcome=ERROR data='' pending=b'\xc3'
+   => ERROR strands pending bytes: YES
+   read_all after ERROR:  '\udcc3' (read_all swallows OSError by design, input_reader.py:203-205)
+
+== MEASURED SPLIT (shell-level cells) ==
+  cells: 5   SAME: 1   DIFFER: 4

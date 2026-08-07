@@ -1,0 +1,80 @@
+== DISCRIMINATOR ==
+cwd:  /Users/pwilson/src/psh-r4b-2
+HEAD: 21a23a4cdb8234de62d08727b62b6b95f587b7eb
+tree-dirty(psh/): 0
+bash: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+== _pushback — ALL sites (psh/ and tests/, *.py only) ==
+psh/builtins/input_reader.py:138:        self._pushback = bytearray()
+psh/builtins/input_reader.py:171:        if self._decoded or self._pushback:
+psh/builtins/input_reader.py:198:        chunks = [bytes(self._pushback)]
+psh/builtins/input_reader.py:199:        self._pushback.clear()
+psh/builtins/input_reader.py:287:        drained = bytes(self._pushback)
+psh/builtins/input_reader.py:288:        self._pushback.clear()
+psh/builtins/input_reader.py:291:            self._pushback = bytearray(drained[split + 1:])
+tests/unit/builtins/test_input_reader_record_bytes.py:160:        """If a prior read left a delimiter byte in _pushback, the byte
+tests/unit/builtins/test_input_reader_record_bytes.py:167:            reader._pushback = bytearray(b"x\ny")
+tests/unit/interactive/test_key_decoder.py:326:    def test_pushback_is_read_next(self, stream):
+-- grep exit: 0 (0=hits, 1=none, 2=ERROR) --
+== _pushback — WRITE sites only (assignment / mutating method) ==
+psh/builtins/input_reader.py:138:        self._pushback = bytearray()
+psh/builtins/input_reader.py:199:        self._pushback.clear()
+psh/builtins/input_reader.py:288:        self._pushback.clear()
+psh/builtins/input_reader.py:291:            self._pushback = bytearray(drained[split + 1:])
+tests/unit/builtins/test_input_reader_record_bytes.py:167:            reader._pushback = bytearray(b"x\ny")
+-- write-site grep exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== _decoder — ALL sites (psh/ and tests/, *.py only) ==
+psh/builtins/input_reader.py:130:        # mid-sequence — `_decoder is None` means "clean state", which lets
+psh/builtins/input_reader.py:133:        self._decoder: Optional[codecs.IncrementalDecoder] = None
+psh/builtins/input_reader.py:154:    def _get_decoder(self) -> codecs.IncrementalDecoder:
+psh/builtins/input_reader.py:155:        if self._decoder is None:
+psh/builtins/input_reader.py:156:            self._decoder = codecs.getincrementaldecoder('utf-8')(
+psh/builtins/input_reader.py:158:        return self._decoder
+psh/builtins/input_reader.py:212:        if self._decoder is not None:
+psh/builtins/input_reader.py:213:            pending = self._decoder.decode(b'', final=True)
+psh/builtins/input_reader.py:214:            self._decoder = None
+psh/builtins/input_reader.py:355:                if outcome is Outcome.EOF and self._decoder is not None:
+psh/builtins/input_reader.py:358:                    tail = self._decoder.decode(b'', final=True)
+psh/builtins/input_reader.py:359:                    self._decoder = None  # EOF may be transient (tty Ctrl-D)
+psh/builtins/input_reader.py:364:            if self._decoder is None and byte < 0x80:
+psh/builtins/input_reader.py:368:            decoder = self._get_decoder()
+psh/builtins/input_reader.py:375:                    self._decoder = None
+psh/interactive/line_editor.py:26:from .key_decoder import (
+tests/unit/interactive/test_line_editor_buffer.py:3:since R2 — see test_key_decoder.py for the pipe-fed byte-level tests).
+tests/unit/interactive/test_line_editor_buffer.py:16:from psh.interactive.key_decoder import ESCAPE, Key, KeyDecoder, Meta
+tests/unit/interactive/test_line_editor_buffer.py:258:    in test_key_decoder.py); these pin what each event MEANS per mode.
+tests/unit/interactive/test_line_editor_buffer.py:324:    def test_vi_meta_escape_hands_second_esc_back_to_decoder(self):
+tests/unit/interactive/test_key_decoder.py:21:from psh.interactive.key_decoder import (
+tests/unit/interactive/test_key_decoder.py:320:        with patch('psh.interactive.key_decoder.os.read',
+-- grep exit: 0 (0=hits, 1=none, 2=ERROR) --
+== _decoder — WRITE sites only (assignment / mutating method) ==
+psh/builtins/input_reader.py:156:            self._decoder = codecs.getincrementaldecoder('utf-8')(
+psh/builtins/input_reader.py:214:            self._decoder = None
+psh/builtins/input_reader.py:359:                    self._decoder = None  # EOF may be transient (tty Ctrl-D)
+psh/builtins/input_reader.py:375:                    self._decoder = None
+-- write-site grep exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== _decoded — ALL sites (psh/ and tests/, *.py only) ==
+psh/builtins/input_reader.py:35:  that disambiguated it). The surplus is held in :attr:`_decoded` and belongs to
+psh/builtins/input_reader.py:134:        self._decoded: Deque[str] = deque()
+psh/builtins/input_reader.py:171:        if self._decoded or self._pushback:
+psh/builtins/input_reader.py:196:        prefix = ''.join(self._decoded)
+psh/builtins/input_reader.py:197:        self._decoded.clear()
+psh/builtins/input_reader.py:348:        byte) leaves the surplus in :attr:`_decoded` for the next read.
+psh/builtins/input_reader.py:351:            if self._decoded:
+psh/builtins/input_reader.py:352:                return self._decoded.popleft(), Outcome.DATA, None
+psh/builtins/input_reader.py:361:                        self._decoded.extend(tail)
+psh/builtins/input_reader.py:362:                        return self._decoded.popleft(), Outcome.DATA, None
+psh/builtins/input_reader.py:371:                self._decoded.extend(emitted)
+tests/unit/expansion/test_subscript_evaluator.py:38:    def test_ansi_c_decoded_by_lexer(self, subscript):
+-- grep exit: 0 (0=hits, 1=none, 2=ERROR) --
+== _decoded — WRITE sites only (assignment / mutating method) ==
+psh/builtins/input_reader.py:197:        self._decoded.clear()
+psh/builtins/input_reader.py:352:                return self._decoded.popleft(), Outcome.DATA, None
+psh/builtins/input_reader.py:361:                        self._decoded.extend(tail)
+psh/builtins/input_reader.py:362:                        return self._decoded.popleft(), Outcome.DATA, None
+psh/builtins/input_reader.py:371:                self._decoded.extend(emitted)
+-- write-site grep exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== INSTRUMENT SELF-CHECK: any grep errored? 0 (0=no) ==

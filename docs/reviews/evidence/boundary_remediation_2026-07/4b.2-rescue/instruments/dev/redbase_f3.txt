@@ -1,0 +1,26 @@
+== DISCRIMINATOR ==
+label:      file3-e2e RED-ON-BASE at 21a23a4c
+HEAD:       21a23a4cdb8234de62d08727b62b6b95f587b7eb
+tree dirty: 3 entries (excluding the inbox)
+            ?? tests/system/test_read_seam_end_to_end_4b2.py
+            ?? tests/unit/builtins/test_input_decoder_seam_4b2.py
+            ?? tests/unit/builtins/test_read_exact_timeout_4b2.py
+paths:      tests/system/test_read_seam_end_to_end_4b2.py
+
+collected 6 nodes; running ONE INTERPRETER PER CELL
+
+NODE                                                                                             VERDICT
+------------------------------------------------------------------------------------------------------------
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_split_character_keeps_its_identity_through_mapfile[e_acute-2byte] FAIL
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_split_character_keeps_its_identity_through_mapfile[euro-3byte] FAIL
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_split_character_keeps_its_identity_through_mapfile[smile-4byte] FAIL
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_without_a_timeout_both_shells_agree PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestRiderEndToEndFromAScriptFile::test_exact_count_honors_the_deadline_with_no_input FAIL
+tests/system/test_read_seam_end_to_end_4b2.py::TestRiderEndToEndFromAScriptFile::test_exact_count_honors_the_deadline_with_partial_input FAIL
+
+== PER-CLASS MEASURED SPLIT ==
+  test_read_seam_end_to_end_4b2.py::TestRiderEndToEndFromAScriptFile           0 pass /   2 fail
+  test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity          1 pass /   3 fail
+  TOTAL                                                                        1 pass /   5 fail
+
+  (6 interpreters, 33.2s)

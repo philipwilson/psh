@@ -1,0 +1,82 @@
+== DISCRIMINATOR ==
+module under test: /Users/pwilson/src/psh-r4b-2/psh/builtins/input_reader.py
+repo root:         /Users/pwilson/src/psh-r4b-2
+HEAD:              21a23a4cdb8234de62d08727b62b6b95f587b7eb
+psh/ dirty lines:  0
+python:            3.14.2
+
+MODE: all cells in ONE interpreter (EXPLORATORY census; a red/green derivation runs one cell per interpreter)
+
+### r1_timeout_read_all
+-- R1: TIMEOUT mid-sequence, then read_all --
+    [after timed read] outcome=TIMEOUT data='' | decoder=LIVE pending=b'\xc3' decoded='' pushback=b''
+    [after read_all] out='\udcc3\udca9\n' | decoder=None pending=b'' decoded='' pushback=b''
+    CHAR-IDENTITY: got '\udcc3\udca9\n' want 'é\n' -> FAIL
+    ROUND-TRIP:    got b'\xc3\xa9\n' want b'\xc3\xa9\n' -> PASS
+
+### r2_timeout_resume
+-- R2: TIMEOUT mid-sequence, then another read_record (resume) --
+    [after timed read] outcome=TIMEOUT data='' | decoder=LIVE pending=b'\xe2\x82' decoded='' pushback=b''
+    [after resume read] outcome=DATA data='€\n' | decoder=None pending=b'' decoded='' pushback=b''
+    CHAR-IDENTITY: got '€\n' want '€\n' -> PASS
+
+### r3_timeout_read_limited
+-- R3: TIMEOUT mid-sequence, then read_limited (-N shape) --
+    [after timed read] outcome=TIMEOUT data='' | decoder=LIVE pending=b'\xf0\x9f\x99' decoded='' pushback=b''
+    [after read_limited] outcome=DATA data='🙂' | decoder=None pending=b'' decoded='' pushback=b''
+    CHAR-IDENTITY: got '🙂' want '🙂' -> PASS
+
+### r4_eof_mid_sequence
+-- R4: EOF mid-sequence (truncated char at EOF) --
+    [after read_record to EOF] outcome=EOF data='\udce2\udc82' | decoder=None pending=b'' decoded='' pushback=b''
+    ROUND-TRIP:    got b'\xe2\x82' want b'\xe2\x82' -> PASS
+    [after read_all] out='' | decoder=None pending=b'' decoded='' pushback=b''
+
+### r5_surplus_decoded
+-- R5: surplus in _decoded (malformed lead disambiguated) --
+    [after read_limited(1)] outcome=DATA data='\udcc3' | decoder=None pending=b'' decoded='A' pushback=b''
+    [after read_all] out='A€\n' | decoder=None pending=b'' decoded='' pushback=b''
+    ROUND-TRIP:    got b'\xc3A\xe2\x82\xac\n' want b'\xc3A\xe2\x82\xac\n' -> PASS
+
+### r6_count_boundary
+-- R6: can a -N count boundary strand a partial sequence? --
+    [after read_limited(1) #1] outcome=DATA data='a' | decoder=None pending=b'' decoded='' pushback=b''
+    [after read_limited(1) #2] outcome=DATA data='€' | decoder=None pending=b'' decoded='' pushback=b''
+    [after read_limited(1) #3] outcome=DATA data='b' | decoder=None pending=b'' decoded='' pushback=b''
+    [after read_all] out='' | decoder=None pending=b'' decoded='' pushback=b''
+
+### r7_pushback_census
+-- R7: _pushback population census (dynamic) --
+    [read_record_bytes x2 over 2 records rec#1] rec=b'one' | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes x2 over 2 records rec#2] rec=b'two' | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes x2 over 2 records rec#3] rec=None | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes, partial final record rec#1] rec=b'one' | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes, partial final record rec#2] rec=b'two' | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes, partial final record rec#3] rec=None | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes over multibyte record rec#1] rec=b'\xe2\x82\xac' | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes over multibyte record rec#2] rec=b'\xc3\xa9' | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes over multibyte record rec#3] rec=None | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes empty record rec#1] rec=b'' | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes empty record rec#2] rec=b'' | decoder=None pending=b'' decoded='' pushback=b''
+    [read_record_bytes empty record rec#3] rec=None | decoder=None pending=b'' decoded='' pushback=b''
+    (a non-empty pushback= above would REFUTE P1)
+
+### r8_stream_duality
+-- R8: stream (non-fd) source duality --
+    [after read_record] outcome=DATA data='é€\n' | decoder=None pending=b'' decoded='' pushback=b''
+    [after read_all] out='rest' | decoder=None pending=b'' decoded='' pushback=b''
+
+### r9_decoder_equivalence
+-- R9: incremental-final vs one-shot decode equivalence (clean decoder) --
+                 b'' one-shot='' incremental-final='' -> SAME
+            b'abc\n' one-shot='abc\n' incremental-final='abc\n' -> SAME
+    b'\xe2\x82\xac\n' one-shot='€\n' incremental-final='€\n' -> SAME
+    b'\xf0\x9f\x99\x82' one-shot='🙂' incremental-final='🙂' -> SAME
+            b'\xc3A' one-shot='\udcc3A' incremental-final='\udcc3A' -> SAME
+             b'\xa9' one-shot='\udca9' incremental-final='\udca9' -> SAME
+           b'a\xffb' one-shot='a\udcffb' incremental-final='a\udcffb' -> SAME
+         b'\xe2\x82' one-shot='\udce2\udc82' incremental-final='\udce2\udc82' -> SAME
+             b'\xf0' one-shot='\udcf0' incremental-final='\udcf0' -> SAME
+         b'\x80\x80' one-shot='\udc80\udc80' incremental-final='\udc80\udc80' -> SAME
+    DIFFERING PAYLOADS: 0 (0 = the fix's clean-decoder path is behaviour-preserving)
+

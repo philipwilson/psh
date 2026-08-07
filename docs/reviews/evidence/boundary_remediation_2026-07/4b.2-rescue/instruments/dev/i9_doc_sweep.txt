@@ -1,0 +1,340 @@
+== DISCRIMINATOR ==
+cwd:  /Users/pwilson/src/psh-r4b-2
+HEAD: 21a23a4cdb8234de62d08727b62b6b95f587b7eb
+tree-dirty: 0
+
+== T1 the FALSE claim's own words ('multibyte-boundary concern') ==
+   pattern: multibyte.boundary|boundary concern
+psh/builtins/input_reader.py:188:        at once, so there is no multibyte-boundary concern. Do NOT use this when
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== T2 'decoded at once' / 'whole byte run' bulk-drain claims ==
+   pattern: decoded at once|whole byte run|reads to EOF
+psh/builtins/mapfile_builtin.py:144:        With no count (``count == 0``) mapfile reads to EOF regardless, so a
+psh/builtins/input_reader.py:185:        no line count reads to EOF, leaving nothing for a later reader — bash
+psh/builtins/input_reader.py:187:        byte round-trips; because it reads to EOF the whole byte run is decoded
+docs/reviews/codebase_study_2026-06-05_phase1_correctness.md:289:- **Source:** `psh/scripting/source_processor.py` — `_has_unclosed_heredoc` regex `r'<<(-?)\s*([\'"]?)(\\\s*)?(\w+)\2'` (line 394) and `_collect_heredoc_content` (line 438) falsely match the trailing `<<` of `<<<` plus the operand as a heredoc delimiter. psh then reads to EOF for a delimiter that never comes, `_collect_heredoc_content` returns None, and the command is dropped. Tokenizer/parser/io_redirect are all correct (AST has `Redirect(type='<<<', target='hello')`).
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== T3 every mention of read_all (NAME, any form) ==
+   pattern: read_all
+psh/builtins/mapfile_builtin.py:150:            all_lines = self._split_lines(reader.read_all(), delim)
+psh/builtins/input_reader.py:181:    def read_all(self) -> str:
+psh/__main__.py:110:def _read_all_stdin() -> str:
+psh/__main__.py:263:            script_content = strip_nul_stream(_read_all_stdin())
+docs/reviews/evidence/boundary_remediation_2026-07/1.3-rescue/slot-ledger.md:691:### (c) malformed-bytes `mapfile_read_all` — NOT REPRODUCED, hardened
+docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md:139:| 1.2-era flake queue additions | `test_complex_pipeline_background` (1x under load); `TestExitTrapOnFatalSignal::test_command_mode_fires_exit_trap` (1x under load, 3/3 isolated); `timeformat %P` recurrence (= carry #8); malformed-bytes `mapfile_read_all` (1-of-9) | **1.3 — DISPOSED** v0.753.0: pipeline + exit-trap-command-mode NOT REPRODUCED (80-90 runs each incl. load), hardened not quarantined; %P root-caused (carry #8 row); mapfile not reproduced (80 runs), hardened w/ absolute expected-bytes pins; exit-trap family root-caused to the REAL race (row below → 1.3b) |
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a.py:8:print("=== Claim A: split C3 A9 at the read_all seam -> two surrogates, not 'e-acute' ===")
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a.py:30:# read_all consumer (mapfile with no line count) drains the same OFD cursor.
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a.py:34:out = cur.read_all()
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a.py:35:print("read_all() returned:", repr(out))
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_builtins.py:10:log("=== Claim A via REAL builtins: read -t (buffers C3) then mapfile (read_all) ===")
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_fifo.py:23:# mapfile (no -n) then drains the same cursor via read_all.
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_control.py:17:# No read -t here: mapfile reads the whole thing via read_all in one go.
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:124:mirrors this for stdin (`_read_all_stdin`, surrogateescape) and reconfigures
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:154:**Files:** `psh/__main__.py:273-291` (`_read_all_stdin`, which does
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:332:   non-over-consuming reader — replacing the `_read_all_stdin()` slurp +
+CHANGELOG.md:1525:- **Binary/undecodable stdin no longer tracebacks.** Both unguarded `sys.stdin.read()` sites in `__main__.py` (the non-interactive read and the visitor-mode read) now route through one `_read_all_stdin()` helper that reads raw bytes via `sys.stdin.buffer` and decodes with `errors='surrogateescape'` (matching the FileInput treatment in `input_sources.py`), with no newline translation (CR/CRLF byte-preserved, matching bash). All four channels — pipe, `-s`, `<`-redirect, visitor/analysis modes over stdin — stop tracebacking on garbage bytes; psh even matches bash's exit codes (127 command-not-found).
+tests/unit/tooling/test_variable_truth_guard.py:85:_ENV_NAME_READ_ALLOWLIST_SITES = {
+tests/unit/tooling/test_variable_truth_guard.py:114:                 if (rel, txt) not in _ENV_NAME_READ_ALLOWLIST_SITES]
+tests/unit/tooling/test_variable_truth_guard.py:120:        f"site in _ENV_NAME_READ_ALLOWLIST_SITES: {offenders}")
+tests/unit/tooling/test_variable_truth_guard.py:127:    stale = _ENV_NAME_READ_ALLOWLIST_SITES - live
+tests/unit/tooling/test_variable_truth_guard.py:144:        not in _ENV_NAME_READ_ALLOWLIST_SITES
+tests/unit/tooling/test_variable_truth_guard.py:148:        not in _ENV_NAME_READ_ALLOWLIST_SITES
+tests/unit/builtins/test_input_reader.py:192:            assert InputCursor(fd=fd).read_all() == "one\ntwö\n"
+tests/unit/builtins/test_input_reader.py:196:    def test_read_all_from_stream(self):
+tests/unit/builtins/test_input_reader.py:197:        assert InputCursor(stream=io.StringIO("xyz")).read_all() == "xyz"
+tests/unit/protocols/test_protocol_conformance_q1.py:145:    assert cursor.read_all() == "hello\n"
+tests/system/test_read_malformed_bytes_i1.py:77:    "mapfile_read_all": (
+tests/system/test_read_malformed_bytes_i1.py:96:# instead of comparing equal and passing. `mapfile_read_all` — the row that
+tests/system/test_read_malformed_bytes_i1.py:102:    "mapfile_read_all": b'<\xc3A\n><B\n>\n',
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== T4 incremental-decoder invariant prose (the thing the fix changes) ==
+   pattern: incremental (utf-8 )?decod|one incremental|ONE incremental
+psh/parser/session.py:1:"""The one incremental multiline-completeness engine (campaign I3, #20 H15).
+psh/builtins/read_builtin.py:250:        same ``reader`` is reused so its incremental decode state carries
+psh/builtins/input_reader.py:13:  fd byte stream is decoded through ONE incremental UTF-8 decoder with
+psh/builtins/input_reader.py:114:    the incremental decoder, the decoded-character queue, the raw byte pushback
+psh/builtins/input_reader.py:126:        # Char path (fd source): ONE incremental UTF-8 surrogateescape decoder
+psh/builtins/CLAUDE.md:394:description. The cursor decodes bytes through one incremental UTF-8
+docs/reviews/boundary_remediation_campaign_sequence_2026-07-21.md:352:2. Finalize incremental UTF-8 decoding by feeding remaining bytes through the
+docs/reviews/ground_up_reappraisal_22_correctness_textbook_2026-07-20.md:442:`psh/builtins/input_reader.py:181-216` finalizes the incremental decoder with
+docs/reviews/interactive_subsystem_appraisal_2026-07-06.md:498:- Use an incremental UTF-8 decoder across reads.
+docs/reviews/interactive_subsystem_appraisal_2026-07-06.md:739:1. Add incremental UTF-8 decoding.
+docs/reviews/boundary_remediation_integrator_plan_2026-07-21.md:333:- 4B.2 Input decoding: one incremental decoder across the cursor/bulk seam,
+docs/reviews/builtins_subsystem_appraisal_2026-07-06.md:1060:│   ├── incremental decoding
+docs/reviews/builtins_subsystem_appraisal_2026-07-06.md:1107:1. Introduce incremental decoding and monotonic deadlines.
+CHANGELOG.md:679:- **Input decoding is one surrogateescape byte cursor** (Boundary Integrity Campaign, package I1 [BOLD], opens the I-phase; closes #20 H16): the hand-rolled `errors='replace'` decode - which turned malformed bytes into U+FFFD and could eat record delimiters after a malformed lead - is DELETED. The renamed `InputCursor` decodes records through one incremental UTF-8 `surrogateescape` decoder, so malformed bytes round-trip byte-identically from `read` through variables to output, matching C-locale bash (byte matrix 23 -> 27 of 29 MATCH; the two residuals are documented deliberate divergences from UTF-8-locale libc `mbrtowc` quirks, pinned against `LC_ALL=C` bash).
+CHANGELOG.md:1182:- Builtins-appraisal findings 4+7: one record-oriented input service (`psh/builtins/input_reader.py` — incremental UTF-8 decoding, monotonic TOTAL `-t` deadline, injectable source/echo streams, typed DATA/EOF/TIMEOUT/ERROR outcomes) now backs both `read` and `mapfile` (the only stdin data consumers in builtins).
+tests/unit/builtins/test_input_reader.py:7:* incremental UTF-8 decoding (a multibyte character split across ``os.read``
+tests/system/test_read_malformed_bytes_i1.py:7:characters. It now decodes through one incremental UTF-8 ``surrogateescape``
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== T5 surrogateescape policy statements ==
+   pattern: surrogateescape
+psh/scripting/visitor_modes.py:116:    (``errors='surrogateescape'``, CRLF-normalized). A non-UTF-8-but-valid
+psh/scripting/program_source.py:31:  with ``errors='surrogateescape'`` so raw bytes round-trip (bash reads
+psh/scripting/input_sources.py:194:        # Use surrogateescape so a non-UTF-8 byte in a script does not crash
+psh/scripting/input_sources.py:202:                  errors='surrogateescape', newline='') as f:
+psh/scripting/input_sources.py:315:    Each physical line is decoded with ``errors='surrogateescape'`` (like the
+psh/scripting/input_sources.py:375:        return record.decode('utf-8', errors='surrogateescape')
+psh/scripting/input_sources.py:434:    then the line is decoded ``surrogateescape`` (non-UTF-8 script bytes
+psh/scripting/input_sources.py:584:        surrogateescape decode. NUL first (matching FileInput's global
+psh/scripting/input_sources.py:590:        return raw.decode('utf-8', errors='surrogateescape')
+psh/builtins/print_builtin.py:254:            self.write_all_fd(fd, text.encode('utf-8', errors='surrogateescape'))
+psh/builtins/input_reader.py:12:* **Byte-preserving, surrogateescape round-trip (campaign I1 / #20 H16).** The
+psh/builtins/input_reader.py:14:  ``errors='surrogateescape'``. A valid multibyte character split across
+psh/builtins/input_reader.py:17:  ``.encode('utf-8', 'surrogateescape')`` restores to the exact byte on output.
+psh/builtins/input_reader.py:107:      them incrementally as UTF-8 with ``errors='surrogateescape'`` (a malformed
+psh/builtins/input_reader.py:126:        # Char path (fd source): ONE incremental UTF-8 surrogateescape decoder
+psh/builtins/input_reader.py:157:                'surrogateescape')
+psh/builtins/input_reader.py:186:        does the same). Decoding is still ``surrogateescape`` so a non-UTF-8
+psh/builtins/input_reader.py:215:        tail = b''.join(chunks).decode('utf-8', errors='surrogateescape')
+psh/builtins/input_reader.py:260:        (incremental surrogateescape); ``StdinInput`` splits on the newline byte
+psh/builtins/input_reader.py:261:        here and batch-decodes each physical line, also with surrogateescape.
+psh/builtins/input_reader.py:268:            # char to the delimiter and re-encode with the surrogateescape
+psh/builtins/input_reader.py:283:            return ''.join(chars).encode('utf-8', errors='surrogateescape')
+psh/builtins/input_reader.py:339:    # -- fd path: incremental surrogateescape decode -------------------------
+psh/builtins/base.py:132:            # surrogateescape (not 'replace') so bytes carried in as surrogate
+psh/builtins/base.py:136:            self.write_all_fd(1, text.encode('utf-8', errors='surrogateescape'))
+psh/builtins/CLAUDE.md:156:stdout path (`write`) uses `write_all_fd` + `errors='surrogateescape'` so a
+psh/builtins/CLAUDE.md:395:`surrogateescape` decoder — a malformed byte round-trips as a lone surrogate
+psh/expansion/command_sub.py:194:            # via surrogateescape (not the U+FFFD replacement that
+psh/expansion/command_sub.py:199:            # surrogateescape decode already used for script input
+psh/expansion/command_sub.py:208:            output = output_bytes.decode('utf-8', errors='surrogateescape')
+psh/io_redirect/file_redirect.py:450:        # surrogateescape so a heredoc/here-string body carrying non-UTF-8
+psh/io_redirect/file_redirect.py:453:        tmp.write(content.encode('utf-8', errors='surrogateescape'))
+psh/io_redirect/file_redirect.py:476:        tmp.write(content.encode('utf-8', errors='surrogateescape'))
+psh/io_redirect/file_redirect.py:980:        surrogateescape keeps non-UTF-8 shell bytes transparent, matching the
+psh/io_redirect/file_redirect.py:985:                                      errors='surrogateescape'))
+psh/io_redirect/manager.py:151:        data = (text.encode('utf-8', 'surrogateescape')
+psh/io_redirect/manager.py:662:        # surrogateescape so a builtin can write shell values carrying
+psh/io_redirect/manager.py:666:        f = open(target, mode, errors='surrogateescape')
+psh/io_redirect/manager.py:671:        return cast(TextIO, os.fdopen(high_fd, mode, errors='surrogateescape'))
+psh/io_redirect/CLAUDE.md:505:`errors='surrogateescape'` so non-UTF-8 bytes reach the reader unchanged
+psh/interactive/history_manager.py:41:    ``encoding='utf-8', errors='surrogateescape'`` (campaign I4; I1 byte
+psh/interactive/history_manager.py:157:                          encoding='utf-8', errors='surrogateescape') as f:
+psh/interactive/history_manager.py:201:                           errors='surrogateescape') as f:
+psh/interactive/history_manager.py:264:                           errors='surrogateescape') as f:
+psh/interactive/history_manager.py:285:                           errors='surrogateescape') as f:
+psh/interactive/history_manager.py:344:                      errors='surrogateescape') as f:
+psh/interactive/CLAUDE.md:43:| `history_manager.py` | `HistoryManager` - command history storage/persistence. The five history-file paths (startup `load_from_file`, exit `save_to_file`, `-w` `write_history`, `-a` `append_history`, `-r`/`-n` `_read_file_lines`) all open with `encoding='utf-8', errors='surrogateescape'` (campaign I4; I1 byte doctrine) so arbitrary bytes round-trip — a lone `\xff` is `\udcff` in memory and re-encodes to `\xff` on write. |
+psh/executor/strategies.py:151:    # surrogateescape on the diagnostics: a command name carrying non-UTF-8
+psh/executor/strategies.py:152:    # bytes (from a non-UTF-8 script, read with surrogateescape) must not make
+psh/executor/strategies.py:156:    os.write(2, text.encode('utf-8', errors='surrogateescape'))
+psh/__main__.py:113:    Reads the raw bytes and decodes them with surrogateescape, mirroring
+psh/__main__.py:125:        return buffer.read().decode("utf-8", errors="surrogateescape")
+psh/__main__.py:135:    surrogateescape, so shell values can carry arbitrary bytes as lone
+psh/__main__.py:138:    crash). Reconfiguring the streams to surrogateescape makes the parent-path
+psh/__main__.py:149:            reconfigure(errors='surrogateescape')
+docs/reviews/evidence/boundary_remediation_2026-07/2.6-rescue/instruments/harness.py:85:        "stdout": proc.stdout.decode("utf-8", "surrogateescape"),
+docs/reviews/evidence/boundary_remediation_2026-07/2.6-rescue/instruments/harness.py:86:        "stderr": proc.stderr.decode("utf-8", "surrogateescape"),
+docs/reviews/evidence/boundary_remediation_2026-07/2.6-rescue/instruments/harness.py:102:        "stdout": proc.stdout.decode("utf-8", "surrogateescape"),
+docs/reviews/evidence/boundary_remediation_2026-07/2.6-rescue/instruments/harness.py:103:        "stderr": proc.stderr.decode("utf-8", "surrogateescape"),
+docs/reviews/evidence/boundary_remediation_2026-07/2.6-rescue/instruments/harness.py:152:                and mine["stdout"] == ref.stdout.decode("utf-8", "surrogateescape")
+docs/reviews/evidence/boundary_remediation_2026-07/2.6-rescue/instruments/harness.py:153:                and mine["stderr"] == ref.stderr.decode("utf-8", "surrogateescape"))
+docs/reviews/evidence/boundary_remediation_2026-07/1.2-rescue/slot-ledger.md:30:`test_read_malformed_bytes_i1.py` ruled RUNNER-CAPABLE (surrogateescape byte
+docs/reviews/evidence/boundary_remediation_2026-07/1.2-rescue/slot-ledger.md:73:  `.stdout.encode('utf-8','surrogateescape')` (lossless round-trip).
+docs/reviews/evidence/boundary_remediation_2026-07/1.2-rescue/slot-ledger.md:313:  (surrogateescape byte round-trip / close_fds fd isolation);
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a.py:43:      out.encode('utf-8', 'surrogateescape') == b'\xc3\xa9rest\n')
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_builtins.py:40:    bool(elem) and elem.encode('utf-8', 'surrogateescape') == b'\xc3\xa9rest\n')
+docs/reviews/reappraisal_19_campaign_briefs_2026-07-11.md:547:   errors='surrogateescape')` (one file description; verifier notes it's latent today — pin the
+docs/reviews/reappraisal_19_campaign_briefs_2026-07-11.md:694:(`\xff` via surrogateescape), embedded `'`, newline, tab, plain ASCII. Bash renders ONE shape
+docs/reviews/boundary_campaign_briefs_2026-07-16.md:208:`surrogateescape`, and a hermetic environment builder. An AST/static ratchet rejects bare `bash` and hard-coded
+docs/reviews/boundary_campaign_briefs_2026-07-16.md:544:Runtime shell data uses bytes plus UTF-8 `surrogateescape`; malformed bytes round-trip. Replacement decoding is
+docs/reviews/boundary_campaign_briefs_2026-07-16.md:551:owned-description identity type, designed for R1's later adoption. (2) The surrogateescape model is the clean
+docs/reviews/boundary_campaign_briefs_2026-07-16.md:610:explicit UTF-8 plus `surrogateescape` for startup, save, append, read-new, and rewrite paths.
+docs/reviews/ground_up_reappraisal_18_2026-07-04.md:185:binary stdin still tracebacks across 4 channels (the file path already has surrogateescape —
+docs/reviews/ground_up_reappraisal_18_2026-07-04.md:245:7. Binary-stdin surrogateescape (2 lines, kills a traceback class across 4 channels) +
+docs/reviews/boundary_remediation_campaign_sequence_2026-07-21.md:371:  character sequence; malformed bytes still round-trip under surrogateescape.
+docs/reviews/boundary_campaign_close_2026-07.md:98:| 0.742.0 | #488 | I1 | Surrogateescape `InputCursor`; replace-decode deleted (byte-identical round-trip); owned open-file-description identity + registry; closes #20 H16. |
+docs/reviews/boundary_campaign_close_2026-07.md:101:| 0.745.0 | #491 | I4 | Typed `HistoryExpansionResult`; `:p`→stderr, heredoc-body suppression, `history -p` wired; 5 byte paths surrogateescape. |
+docs/reviews/boundary_campaign_close_2026-07.md:247:| 20 | interactive `key_decoder` replace-decode | **CARRIED (registered by dev-cv).** The interactive line editor's `KeyDecoder` decodes stdin bytes with `errors='replace'` (a malformed byte becomes U+FFFD on screen), unlike the I1 surrogateescape READ path — a criterion-4 residual scoped as a terminal-UI NON-GOAL (a keystroke that can't be decoded is not data to round-trip; the fix would degrade the interactive editor with no bash-parity gain). Registered so the residual is not re-discovered; no pin (terminal-UI, PTY-only). |
+docs/reviews/ground_up_reappraisal_22_correctness_textbook_2026-07-20.md:657:| I1 input cursor | **Partial** | Same-fd cursor persistence and surrogateescape byte preservation are strong. | Valid UTF-8 is corrupted at the cursor/bulk-drain seam; cross-fd dup sharing and temporary-redirect isolation hooks remain absent. |
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:69:| Robustness | A− | Graceful on infinite `source` recursion where **bash segfaults**; surrogateescape byte-transparency; closed-fd handling; binary/FIFO sniff guards. |
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:120:`errors='surrogateescape'` and `newline=''`, then closes the fd *before any
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:124:mirrors this for stdin (`_read_all_stdin`, surrogateescape) and reconfigures
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:233:`errors='surrogateescape'` `FileInput`.
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:250:with `errors='surrogateescape'` (and ideally reuse `FileInput`'s reader) so
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:335:2. Preserve the surrogateescape byte model and the closed-fd guards already
+docs/reviews/scripting_subsystem_appraisal_2026-07-07.md:345:   uses (`errors='surrogateescape'`, `newline=''`), so `--validate` accepts
+docs/reviews/expansion_subsystem_improvement_plan_2026-07-05.md:166:   `surrogateescape`, not replacement.
+docs/reviews/ground_up_reappraisal_7_2026-06-14.md:141:surrogateescape change.
+CHANGELOG.md:663:- **History files round-trip bytes** via UTF-8 + surrogateescape on all five paths (startup, save, append, read-new, rewrite - the I1 doctrine). The user-guide compatibility table's self-contradicting rows (claiming -p/:q/:x/!# unsupported) were corrected with conformance backing in the CLAIM_TESTS-mapped file.
+CHANGELOG.md:679:- **Input decoding is one surrogateescape byte cursor** (Boundary Integrity Campaign, package I1 [BOLD], opens the I-phase; closes #20 H16): the hand-rolled `errors='replace'` decode - which turned malformed bytes into U+FFFD and could eat record delimiters after a malformed lead - is DELETED. The renamed `InputCursor` decodes records through one incremental UTF-8 `surrogateescape` decoder, so malformed bytes round-trip byte-identically from `read` through variables to output, matching C-locale bash (byte matrix 23 -> 27 of 29 MATCH; the two residuals are documented deliberate divergences from UTF-8-locale libc `mbrtowc` quirks, pinned against `LC_ALL=C` bash).
+CHANGELOG.md:777:- **One typed bash-oracle runner** (Boundary Integrity Campaign, package E2; continuation findings G + medium 12): new `tests/harness/shell_oracle.py` with `resolve_bash()` (BASH_PATH -> Homebrew -> PATH, version-recorded) and `run_shell_case()` returning `Completed | SpawnFailure | Timeout | DecodeFailure`. The runner owns process-group sessions with kill-on-timeout and an orphan sweep, byte-capped file-backed capture (a cap breach kills the group - the 80GB self-feeding-cat incident is now structurally impossible), per-case temp cwd, UTF-8+surrogateescape, and a hermetic env builder (strips all LC_*/LANG and DISPLAY). Harness failures are typed and rejected BEFORE comparison: two identical crashes can never classify IDENTICAL (synthetic-offender self-test proves it). All 73 bash-oracle offender files migrated (the hardcoded no-fallback trio included); `find_bash` deleted; a new tooling ratchet with an EMPTY test-file allowlist forbids bypasses.
+CHANGELOG.md:924:- **fd-behavior trio** (each bash-pinned red-on-base): `exec 0<&-; read x < f` reads the file instead of EBADF (stdin backup now uses the high-slot dup discipline the output path always had); the `<&-` close spelling is honored with direction-based defaults, so `echo hi 1<&-` reports the write error WITHOUT leaking 'hi' into the restored fd; the builtin `<` stdin path shares ONE file description (offset-sharing pinned; the last hand-rolled dup+fdopen now routes through `dup_sharing_stream`, gaining surrogateescape).
+CHANGELOG.md:1153:- The byte model is preserved: raw non-UTF-8 bytes on the command stream round-trip via surrogateescape (`café` as raw latin-1 echoes byte-identically to bash); the reader's two decode policies (incremental replace for `read`/`mapfile` records, batch surrogateescape for command lines) are deliberate and documented.
+CHANGELOG.md:1241:- Suite hygiene: conftest pins the suite to LC_ALL=C (ambient-deterministic — verified identical under en_US.UTF-8 and empty ambient); ~45 locale conformance tests control their own env; conformance-framework decode fixed to utf-8/surrogateescape (symmetric for psh and bash).
+CHANGELOG.md:1278:- **Command substitution byte policy**: NUL bytes are stripped before decode with one bash-style warning per substitution (`warning: command substitution: ignored null byte in input`); captured output decodes with `surrogateescape` instead of lossy replacement, and the output/exec/redirect boundaries re-encode symmetrically (forked-builtin `os.write`, stream reconfigure at entry, redirect/heredoc wrappers; `execve` already round-trips via `fsencode`). All 255 non-NUL byte values now round-trip byte-exactly through cmdsub → stdout / files / argv / env / here-strings, matching bash (verified per-byte across 5 sinks). Known residual (pre-existing, out of scope): psh's `printf '\xff'` renders a codepoint, not a raw byte; `read`/`mapfile` input paths still decode with replacement.
+CHANGELOG.md:1525:- **Binary/undecodable stdin no longer tracebacks.** Both unguarded `sys.stdin.read()` sites in `__main__.py` (the non-interactive read and the visitor-mode read) now route through one `_read_all_stdin()` helper that reads raw bytes via `sys.stdin.buffer` and decodes with `errors='surrogateescape'` (matching the FileInput treatment in `input_sources.py`), with no newline translation (CR/CRLF byte-preserved, matching bash). All four channels — pipe, `-s`, `<`-redirect, visitor/analysis modes over stdin — stop tracebacking on garbage bytes; psh even matches bash's exit codes (127 command-not-found).
+CHANGELOG.md:1766:  at `sys.stdin.read()` — the r12 surrogateescape fix covered `FileInput` only.
+CHANGELOG.md:4844:  Script files are read with `errors='surrogateescape'` and the command-not-found
+CHANGELOG.md:6212:  except M8 (NUL termination), deferred into the byte-model/surrogateescape work
+CHANGELOG.md:6531:  pending a dedicated output-encoding (surrogateescape) change.
+CHANGELOG.md:6605:  flipping psh's entire output-encoding contract to `surrogateescape` (11
+tests/unit/tooling/test_shell_oracle_harness.py:222:    assert len(r.stdout.encode("utf-8", "surrogateescape")) <= 64 * 1024
+tests/unit/tooling/test_shell_oracle_harness.py:395:    assert len(r.stderr.encode("utf-8", "surrogateescape")) <= 32 * 1024
+tests/unit/tooling/test_shell_oracle_harness.py:434:    assert len(r.stdout.encode("utf-8", "surrogateescape")) <= 1024
+tests/unit/tooling/test_shell_oracle_harness.py:457:def test_surrogateescape_round_trips_undecodable_bytes():
+tests/unit/tooling/test_shell_oracle_harness.py:460:    assert r.stdout.encode("utf-8", "surrogateescape") == b"a\xffb"
+tests/unit/tooling/test_shell_oracle_harness.py:529:    """DecodeFailure is unreachable via run_shell_case (surrogateescape) but
+tests/unit/tooling/test_input_cursor_guard_i1.py:10:2. The reader decodes with surrogateescape (malformed bytes round-trip), NOT
+tests/unit/tooling/test_input_cursor_guard_i1.py:84:class TestSurrogateescapeNotReplace:
+tests/unit/tooling/test_input_cursor_guard_i1.py:92:        assert data.encode("utf-8", "surrogateescape") == b"\xc3A"
+tests/unit/tooling/test_input_cursor_guard_i1.py:101:        assert got.encode("utf-8", "surrogateescape") != b"\xc3A"
+tests/unit/scripting/test_lazy_script_reader_unit_i2.py:6:These pins lock the reader's line semantics (CR/NUL/final-empty/surrogateescape)
+tests/unit/scripting/test_lazy_script_reader_unit_i2.py:72:def test_surrogateescape_roundtrip(tmp_path):
+tests/unit/scripting/test_lazy_script_reader_unit_i2.py:79:    assert line.encode("utf-8", "surrogateescape") == b"echo \xff"
+tests/unit/builtins/test_input_cursor_i1.py:3:The record reader owns an incremental UTF-8 surrogateescape decoder, a decoded
+tests/unit/builtins/test_input_cursor_i1.py:20:class TestSurrogateescapeRoundTrip:
+tests/unit/builtins/test_input_cursor_i1.py:30:        assert result.data.encode("utf-8", "surrogateescape") == b"\xc3A"
+tests/unit/builtins/test_input_cursor_i1.py:40:        assert result.data.encode("utf-8", "surrogateescape") == b"\xff\xfe"
+tests/unit/builtins/test_input_cursor_i1.py:64:        assert first.data.encode("utf-8", "surrogateescape") == b"\xc3A"
+tests/unit/builtins/test_input_cursor_i1.py:90:        assert first.data.encode("utf-8", "surrogateescape") == b"\xc3"
+tests/unit/builtins/test_input_reader.py:89:        # $'\303' in both C and UTF-8 locales), so surrogateescape's \udcc3
+tests/unit/builtins/test_input_reader.py:90:        # (which .encode('utf-8','surrogateescape') restores to \xc3) is
+tests/unit/builtins/test_input_reader.py:99:        assert result.data.encode("utf-8", "surrogateescape") == b"\xc3"
+tests/unit/builtins/test_read_mapfile_streaming.py:28:    # The runner decodes captures as UTF-8 + surrogateescape (lossless); recover
+tests/unit/builtins/test_read_mapfile_streaming.py:31:            r.stdout.encode("utf-8", "surrogateescape"),
+tests/unit/builtins/test_read_mapfile_streaming.py:32:            r.stderr.encode("utf-8", "surrogateescape"))
+tests/unit/builtins/test_input_reader_record_bytes.py:125:        the caller (StdinInput) owns the surrogateescape decode."""
+tests/unit/expansion/test_command_sub_bytes.py:8:surrogateescape, so bytes round-trip back out through builtin output, external
+tests/unit/interactive/test_history_files_surrogateescape_i4.py:1:"""History files round-trip arbitrary bytes via UTF-8 + surrogateescape (I4).
+tests/unit/interactive/test_history_files_surrogateescape_i4.py:7:five now use `encoding='utf-8', errors='surrogateescape'` (I1 byte doctrine), so
+tests/unit/interactive/test_history_files_surrogateescape_i4.py:44:    assert sh.state.history[-1].encode("utf-8", "surrogateescape") == REENCODED
+tests/integration/redirection/test_input_cursor_identity_i1.py:23:    # lossless surrogateescape capture.
+tests/integration/redirection/test_input_cursor_identity_i1.py:27:    return r.stdout.encode("utf-8", "surrogateescape")
+tests/integration/redirection/test_input_cursor_identity_i1.py:34:    return r.stdout.encode("utf-8", "surrogateescape")
+tests/integration/redirection/test_input_cursor_identity_i1.py:73:        bash = b.stdout.encode("utf-8", "surrogateescape")
+tests/integration/redirection/test_input_cursor_identity_i1.py:91:        bash = b.stdout.encode("utf-8", "surrogateescape")
+tests/behavioral/golden_cases.yaml:7065:# round-trip via surrogateescape through output, external argv, and env.
+tests/harness/shell_oracle.py:45:  (unreachable with surrogateescape, kept for totality).
+tests/harness/shell_oracle.py:72:* **Explicit decode policy** — UTF-8 + ``surrogateescape`` on both streams,
+tests/harness/shell_oracle.py:74:  surrogateescape, kept for totality) is a typed ``DecodeFailure``.
+tests/harness/shell_oracle.py:246:            timeout=10, encoding="utf-8", errors="surrogateescape",
+tests/harness/shell_oracle.py:475:        payload = (stdin_data.encode("utf-8", "surrogateescape")
+tests/harness/shell_oracle.py:572:                stdout=out_bytes.decode("utf-8", "surrogateescape"),
+tests/harness/shell_oracle.py:573:                stderr=err_bytes.decode("utf-8", "surrogateescape"),
+tests/harness/shell_oracle.py:589:                stdout=out_bytes.decode("utf-8", "surrogateescape"),
+tests/harness/shell_oracle.py:590:                stderr=err_bytes.decode("utf-8", "surrogateescape"),
+tests/harness/shell_oracle.py:611:            stdout = out_bytes.decode("utf-8", "surrogateescape")
+tests/harness/shell_oracle.py:612:            stderr = err_bytes.decode("utf-8", "surrogateescape")
+tests/harness/shell_oracle.py:614:            # surrogateescape makes this unreachable; kept for totality so the
+tests/harness/oracle_migration_census.md:267:  `surrogateescape`); `Completed.stdout.encode("utf-8", "surrogateescape")`
+tests/harness/oracle_migration_census.md:269:  facts" comment predated the surrogateescape capture and is corrected.
+tests/system/test_word_separator_bytes.py:34:    psh = _Result(p.returncode, p.stdout.encode('utf-8', 'surrogateescape'),
+tests/system/test_word_separator_bytes.py:35:                  p.stderr.encode('utf-8', 'surrogateescape'))
+tests/system/test_word_separator_bytes.py:36:    bash = _Result(b.returncode, b.stdout.encode('utf-8', 'surrogateescape'),
+tests/system/test_word_separator_bytes.py:37:                   b.stderr.encode('utf-8', 'surrogateescape'))
+tests/system/test_visitor_script_file_robustness.py:13:``validate_script_file`` and ``FileInput`` (``errors='surrogateescape'``) the
+tests/system/test_fifo_script_i2.py:69:    return out.decode("utf-8", "surrogateescape"), rc, state["saw"]
+tests/system/test_stdin_startup_robustness.py:8:    ``psh/__main__.py``.  psh now reads stdin with ``surrogateescape`` (matching
+tests/system/test_stdin_startup_robustness.py:86:        stdout=r.stdout.encode("utf-8", "surrogateescape"),
+tests/system/test_stdin_startup_robustness.py:87:        stderr=r.stderr.encode("utf-8", "surrogateescape"))
+tests/system/test_stdin_script_lazy_read.py:21:with UTF-8 + ``surrogateescape``, so the raw-byte rows recover their exact bytes
+tests/system/test_stdin_script_lazy_read.py:63:    return r.returncode, r.stdout.encode("utf-8", "surrogateescape")
+tests/system/test_stdin_script_lazy_read.py:145:        stdout (surrogateescape), matching bash."""
+tests/system/test_stdin_script_lazy_read.py:161:        rstderr = r.stderr.encode("utf-8", "surrogateescape")
+tests/system/source_service/test_nul_channel_matrix.py:32:  channel decodes surrogateescape, and the A3 rows pin the round-trip.
+tests/system/source_service/test_nul_channel_matrix.py:109:    # --- A3: invalid UTF-8 round-trips on every channel (surrogateescape) ---
+tests/system/test_r16_scripting.py:26:# surrogateescape; these tests compare against exact bytes).
+tests/system/test_r16_scripting.py:132:        # bytes psh emitted (the harness decodes with surrogateescape).
+tests/system/test_r16_scripting.py:135:        return r.stdout.encode('utf-8', 'surrogateescape')
+tests/system/test_r16_scripting.py:145:        bash = br.stdout.encode('utf-8', 'surrogateescape')
+tests/system/test_r16_scripting.py:154:        bash = br.stdout.encode('utf-8', 'surrogateescape')
+tests/system/test_r16_scripting.py:190:        psh = _BytesResult(p.stdout.encode('utf-8', 'surrogateescape'),
+tests/system/test_r16_scripting.py:192:        bash = _BytesResult(b.stdout.encode('utf-8', 'surrogateescape'),
+tests/system/test_read_malformed_bytes_i1.py:7:characters. It now decodes through one incremental UTF-8 ``surrogateescape``
+tests/system/test_read_malformed_bytes_i1.py:45:    # losslessly (surrogateescape); recover the exact bytes on the way out.
+tests/system/test_read_malformed_bytes_i1.py:53:    return r.stdout.encode("utf-8", "surrogateescape")
+tests/system/test_read_malformed_bytes_i1.py:58:    # surrogateescape), so the raw byte-level facts are preserved after all —
+tests/system/test_read_malformed_bytes_i1.py:63:    return r.stdout.encode("utf-8", "surrogateescape")
+tests/system/test_read_malformed_bytes_i1.py:138:    # decodes read/mapfile input as UTF-8 surrogateescape regardless of
+tests/conformance/conformance_framework.py:138:        layered on top.  Output decoding is UTF-8 + surrogateescape (lossless,
+tests/conformance/bash/test_ansi_c_control_escape_conformance.py:61:        assert result.stdout.encode('utf-8', 'surrogateescape') == b'a\x00b'
+tests/conformance/bash/test_cv_carry_characterization.py:62:        assert bash.stdout.encode("utf-8", "surrogateescape") == b"\xff", bash.stdout
+tests/conformance/bash/test_cv_carry_characterization.py:63:        assert psh.stdout.encode("utf-8", "surrogateescape") == b"\xc3\xbf", psh.stdout
+tests/conformance/bash/test_cv_carry_characterization.py:71:        assert bash.stdout.encode("utf-8", "surrogateescape") == b"\x80"
+tests/conformance/bash/test_cv_carry_characterization.py:72:        assert psh.stdout.encode("utf-8", "surrogateescape") == b"\xc2\x80"
+tests/conformance/bash/test_nested_substitution_timing_conformance.py:307:    """A non-UTF-8 byte survives command substitution (surrogateescape).
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== T6 read -N / -t documentation claims (the rider's doc surface) ==
+   pattern: read -N|read -t|exact_chars|-N count
+docs/user_guide/16_advanced_features.md:829:> **Note:** PSH supports `read -n` (character count), `read -t`
+docs/user_guide/17_differences_from_bash.md:257:# Options: -d delim, -n count, -O origin (no clear), -s skip, -t, -u fd.
+docs/user_guide/17_differences_from_bash.md:357:read -t 5 var           # Timeout
+docs/user_guide/17_differences_from_bash.md:358:read -n 4 var           # Read up to N characters
+docs/user_guide/17_differences_from_bash.md:359:read -N 4 var           # Read EXACTLY N characters
+docs/user_guide/17_differences_from_bash.md:597:  counts and delimiters: `read -N1`/`-n1` reads one *character* (a multibyte `é`
+docs/user_guide/13_shell_scripts.md:542:if read -t 5 -p "Quick! Enter something (5 seconds): " response; then
+docs/user_guide/13_shell_scripts.md:549:read -n 1 -p "Press any key to continue..."
+docs/user_guide/04_builtin_commands.md:729:psh$ read -t 5 -p "Quick! Enter something: " response
+docs/user_guide/04_builtin_commands.md:733:psh$ read -n 4 -p "Enter 4-digit PIN: " pin
+docs/user_guide/04_builtin_commands.md:1097: mapfile [-d delim] [-n count] [-O ...  parse-tree [-f FORMAT] [-p] COMMAND
+docs/user_guide/appendix_a_quick_reference.md:634:142         # Timeout (read -t)
+docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md:32:| MEDIUM-2 UTF-8 decoder seam | 4B.2 | CONFIRMED end-to-end: split é → two surrogates (FIFO + `read -t` timeout repro) | every 2/3/4-byte split pinned; char identity + byte round-trip |
+docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md:76:| 21 | `read -N` mixed valid+malformed hybrid | ATTACHED to slot 4B.2: the decoder-seam fix touches this code — 4B.2 must re-rule (close or re-carry) with fresh probes; silent behavior change forbidden. |
+docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md:129:| `read -t X -N n` hangs | `-N` path passes no deadline to `read_limited` (found 2026-07-21, verified end-to-end) | 4B.2 rider |
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_builtins.py:10:log("=== Claim A via REAL builtins: read -t (buffers C3) then mapfile (read_all) ===")
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_builtins.py:23:rc = sh.run_command(f"read -t 0.2 -n 5 -u {FD} x; echo read-rc=$?")
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_fifo.py:14:    os.write(wf, b'\xc3')      # lead byte only -> psh read -t times out here
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_fifo.py:22:# read -t times out mid-multibyte (C3 buffered in the shared fd-7 cursor);
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_fifo.py:28:    'read -t 0.2 -n 5 -u 7 x; echo "read-rc=$?"\n'
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_fifo.py:37:print("=== Claim A end-to-end: real psh subprocess, read -t then mapfile, FIFO ===")
+docs/reviews/evidence/boundary_remediation_2026-07/wave0-base-probes/claim_a_control.py:17:# No read -t here: mapfile reads the whole thing via read_all in one go.
+docs/reviews/boundary_campaign_briefs_2026-07-16.md:41:attached form, `read -N` combined with `-t`/`-s`, `pwd -L -P` ordering, `history` multi-option dispatch) and the
+docs/reviews/boundary_campaign_briefs_2026-07-16.md:553:`read -N` over-read on trailing incomplete lead) are libc/platform-dependent and are documented deliberate
+docs/reviews/ground_up_reappraisal_12_2026-06-16.md:90:- **Builtins — `read -u FD` unsupported** (`read_builtin.py:360`); `read -t 0` poll wrong.
+docs/reviews/ground_up_reappraisal_18_2026-07-04.md:70:- **1 new defect from positive-claim spot-checks:** `read -t` abandons its deadline once ≥1
+docs/reviews/ground_up_reappraisal_18_2026-07-04.md:187:directory/no-perm file returns 126 (bash: 1); `read -t` post-first-byte deadline (above).
+docs/reviews/ground_up_reappraisal_18_2026-07-04.md:241:5. `read -s` canonical-mode fix (H6) + `read -t` deadline threading (the two read defects
+docs/reviews/boundary_campaign_close_2026-07.md:176:| I1 | SCOPED byte-cursor deliberate-loss registry: (a) the malformed-multibyte count-boundary family — including the MIXED valid+malformed `read -N` case, whose count boundary matches NEITHER the UTF-8 nor the C-locale bash oracle (a HYBRID model, not merely "mbrtowc quirks"; carry #21) — and (b) inherited-fd 0/1/2 with unknowable aliases, are documented losses, not chased | I1.md §"Deliberate-loss registry"; `I1-probes/deliberate-loss-probes.txt`. |
+docs/reviews/boundary_campaign_close_2026-07.md:248:| 21 | I1 mixed valid+malformed `read -N` count-boundary | **CARRIED (registered by dev-cv).** A `read -N` spanning a mix of VALID and MALFORMED multibyte bytes lands on a count boundary that matches NEITHER the UTF-8 nor the C-locale bash oracle — a HYBRID model, not "just mbrtowc quirks" (the part (c) I1 row is corrected accordingly). Documented loss, not chased; `I1-probes/deliberate-loss-probes.txt`. |
+docs/reviews/boundary_remediation_integrator_plan_2026-07-21.md:100:- NEW bug (found during verification, not in #22): `read -t X -N n` ignores
+docs/reviews/boundary_remediation_integrator_plan_2026-07-21.md:334:  every 2/3/4-byte split pinned; `read -N` honors `-t` (A5 rider) (MEDIUM-2).
+docs/reviews/ground_up_reappraisal_7_2026-06-14.md:95:- **L5 `read -N count` unimplemented** (only `-n`). (Builtins)
+docs/reviews/codebase_appraisal_2026-07-04.md:74:- Bash: `read -t 0.1` returns 142 with partial value `x`.
+docs/reviews/codebase_appraisal_2026-07-04.md:80:- Bash reading `éz` with two `read -n 1` calls produces `é`, then `z`.
+docs/reviews/test_performance_appraisal_2026-07-07.md:155:(2.37 s), and golden `read -t` timeout cases (~1.1 s ×3, real timers). These are
+psh/builtins/CLAUDE.md:392:fd's owned open-file-description identity (campaign I1), so a `read -N` that
+psh/io_redirect/CLAUDE.md:40:| `input_cursor.py` | `OpenDescription` (owned open-file-description identity) + `InputCursorRegistry` (per-shell `ShellState.input_cursors`, campaign I1). `read`/`mapfile` borrow a persistent `InputCursor` (the reader in `builtins/input_reader.py`) keyed by description so a `read -N` count-boundary surplus survives across invocations. `exec 0<file` rebinds → new cursor (hook: `command.py#_rebind_input_cursors_after_exec`). SCOPED: dup-cross-fd sharing + temp-frame isolation are the deferred additive FULL fidelity; `OpenDescription` is the type R1 here-input can adopt |
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== T7 subsystem CLAUDE.md pointers into input_reader/read/mapfile ==
+   pattern: input_reader|InputCursor|read_builtin|mapfile
+psh/builtins/CLAUDE.md:32:| `read_builtin.py` | `read` |
+psh/builtins/CLAUDE.md:33:| `mapfile_builtin.py` | `mapfile` (alias `readarray`) |
+psh/builtins/CLAUDE.md:176:`ulimit`'s argv-ordered resource list, `read`/`mapfile`'s first-bad-value
+psh/builtins/CLAUDE.md:389:`InputCursor` (`psh/builtins/input_reader.py`) rather than reading the shell's
+psh/builtins/CLAUDE.md:390:stdin directly. `read`/`mapfile` obtain a PERSISTENT cursor from the per-shell
+psh/builtins/CLAUDE.md:398:for the next consumer; a bulk read drains the pipe — the historical `mapfile
+psh/io_redirect/CLAUDE.md:40:| `input_cursor.py` | `OpenDescription` (owned open-file-description identity) + `InputCursorRegistry` (per-shell `ShellState.input_cursors`, campaign I1). `read`/`mapfile` borrow a persistent `InputCursor` (the reader in `builtins/input_reader.py`) keyed by description so a `read -N` count-boundary surplus survives across invocations. `exec 0<file` rebinds → new cursor (hook: `command.py#_rebind_input_cursors_after_exec`). SCOPED: dup-cross-fd sharing + temp-frame isolation are the deferred additive FULL fidelity; `OpenDescription` is the type R1 here-input can adopt |
+psh/core/CLAUDE.md:399:  `ReadError` (a `read`/`mapfile` option-VALUE error carrying bash's exit
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== T8 doc drift-lock registries that might pin these lines ==
+   pattern: input_reader|read_all|InputCursor
+tests/unit/tooling/test_shell_consumer_ratchet_q1.py:101:    "psh/builtins/input_reader.py",       # holds migrated make_reader (Shell -> IOContext)
+tests/unit/tooling/test_shell_consumer_ratchet_q1.py:283:    """The Q1 IOContext migration narrowed InputCursorRegistry.cursor_for_fd
+tests/unit/tooling/test_shell_consumer_ratchet_q1.py:288:            "InputCursorRegistry.cursor_for_fd") not in live
+tests/unit/tooling/test_shell_consumer_ratchet_q1.py:289:    assert ("psh.builtins.input_reader", "make_reader") not in live
+tests/unit/tooling/test_broad_valueerror_catch_q2.py:159:    ("psh/builtins/input_reader.py", ("OSError", "AttributeError", "ValueError"),
+tests/unit/tooling/test_broad_valueerror_catch_q2.py:160:     ("InputCursor", "fstat")):
+tests/unit/tooling/test_input_cursor_guard_i1.py:5:1. The InputCursorRegistry is keyed by an owned open-file-description IDENTITY,
+tests/unit/tooling/test_input_cursor_guard_i1.py:17:from psh.builtins.input_reader import InputCursor
+tests/unit/tooling/test_input_cursor_guard_i1.py:18:from psh.io_redirect.input_cursor import InputCursorRegistry, OpenDescription
+tests/unit/tooling/test_input_cursor_guard_i1.py:46:        reg = InputCursorRegistry()
+tests/unit/tooling/test_input_cursor_guard_i1.py:62:        class FdKeyedOffender(InputCursorRegistry):
+tests/unit/tooling/test_input_cursor_guard_i1.py:88:            data = InputCursor(fd=fd).read_record(
+tests/unit/tooling/test_variable_truth_guard.py:85:_ENV_NAME_READ_ALLOWLIST_SITES = {
+tests/unit/tooling/test_variable_truth_guard.py:114:                 if (rel, txt) not in _ENV_NAME_READ_ALLOWLIST_SITES]
+tests/unit/tooling/test_variable_truth_guard.py:120:        f"site in _ENV_NAME_READ_ALLOWLIST_SITES: {offenders}")
+tests/unit/tooling/test_variable_truth_guard.py:127:    stale = _ENV_NAME_READ_ALLOWLIST_SITES - live
+tests/unit/tooling/test_variable_truth_guard.py:144:        not in _ENV_NAME_READ_ALLOWLIST_SITES
+tests/unit/tooling/test_variable_truth_guard.py:148:        not in _ENV_NAME_READ_ALLOWLIST_SITES
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== INSTRUMENT SELF-CHECK: any grep errored? 0 (0=no) ==
