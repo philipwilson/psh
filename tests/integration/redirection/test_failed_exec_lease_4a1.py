@@ -35,6 +35,15 @@ from shell_oracle import (
 TREE = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
+#: Scratch directory for the bash-oracle cells' redirect targets. `tmp/` is
+#: gitignored, so a FRESH checkout does not have it — and when the target
+#: directory is missing BOTH shells fail identically, so the parity assert
+#: still passes and only the `after=0` check trips. That makes the failure
+#: read as a psh defect when it is really a missing directory, which is why
+#: the helper creates it rather than assuming a developer's working tree
+#: (VF-1).
+SCRATCH = os.path.join(TREE, 'tmp')
+
 # ORACLE STATUS, PER GROUP. The earlier blanket claim — "no bash oracle for
 # any case in this file" — was FALSE, and it hid a real parity regression
 # (R8 BL-1: every permanent redirect failed under `ulimit -n <= 64` while
@@ -89,6 +98,7 @@ def _run_at_rlimit(limit: int, script: str, *, bash: bool = False) -> str:
     different situation than a user's `ulimit -n` does. Explicit argv
     throughout (the zsh unquoted-`$var` trap).
     """
+    os.makedirs(SCRATCH, exist_ok=True)
     oracle = resolve_bash().path
     inner_shell = (shlex.quote(oracle) if bash
                    else f"{shlex.quote(sys.executable)} -m psh")
@@ -103,7 +113,7 @@ def _run_at_rlimit(limit: int, script: str, *, bash: bool = False) -> str:
 
 def _assert_low_rlimit_parity(limit: int) -> None:
     """psh and bash must agree on a permanent redirect at *limit*."""
-    script = f'exec 3> {TREE}/tmp/rlimit-parity-{limit}.txt; echo after=$?'
+    script = f'exec 3> {SCRATCH}/rlimit-parity-{limit}.txt; echo after=$?'
     psh_out = _run_at_rlimit(limit, script)
     bash_out = _run_at_rlimit(limit, script, bash=True)
     assert psh_out == bash_out, (limit, psh_out, bash_out)
@@ -254,8 +264,8 @@ def test_low_rlimit_keeps_bash_named_fd_numbering():
     `_PARKING_FLOOR` constant encodes.
     """
     for limit in (24, 50, 70):
-        script = (f'exec 3> {TREE}/tmp/nf-a-{limit}.txt; '
-                  f'exec {{v}}> {TREE}/tmp/nf-b-{limit}.txt; echo v=$v')
+        script = (f'exec 3> {SCRATCH}/nf-a-{limit}.txt; '
+                  f'exec {{v}}> {SCRATCH}/nf-b-{limit}.txt; echo v=$v')
         psh_out = _run_at_rlimit(limit, script)
         bash_out = _run_at_rlimit(limit, script, bash=True)
         assert psh_out == bash_out, (limit, psh_out, bash_out)
@@ -282,7 +292,7 @@ def test_sub_16_rlimit_envelope_is_recorded_not_claimed():
     """
     parity, divergent = [], []
     for limit in (11, 12, 13, 14, 16):
-        script = f'exec 3> {TREE}/tmp/sub16-{limit}.txt; echo after=$?'
+        script = f'exec 3> {SCRATCH}/sub16-{limit}.txt; echo after=$?'
         psh_out = _run_at_rlimit(limit, script)
         bash_out = _run_at_rlimit(limit, script, bash=True)
         (parity if psh_out == bash_out else divergent).append(limit)
