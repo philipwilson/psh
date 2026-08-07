@@ -508,3 +508,38 @@ def test_dropped_shell_holding_a_trap_lease_still_rejects_the_next(
             nxt.close()
     finally:
         signal.signal(signal.SIGUSR1, usr1_before)
+
+
+def test_the_two_signal_families_hold_separate_leases(host_dispositions):
+    """Ruling (b)'s distinct kind, pinned by the ONE consequence that
+    survives the close() fallbacks.
+
+    Isolated from the "both families restore" cells on purpose. Those are
+    killed BOTH by folding the kinds together AND by not taking the managed
+    lease at all, so they cannot tell the two apart. And restoration itself
+    can no longer tell them apart either: since BL-2, `Shell.close()` drains
+    BOTH families unconditionally, so even a folded lease still ends with
+    every disposition restored. (I first wrote this cell asserting the trap
+    restore is lost under folding — it is not, and the cell passed under the
+    mutation, which made it a vacuous label.)
+
+    What folding DOES change is whose lease survives. Acquisition is
+    idempotent per (owner, kind), so a shared kind means the FIRST acquirer
+    keeps the lease and the second silently folds into it — here the managed
+    lease would absorb the trap's, and the single SIGNALS lease would carry
+    the MANAGED description. With separate kinds each family keeps its own.
+    """
+    usr1_before = signal.getsignal(signal.SIGUSR1)
+    try:
+        sh = _shell('script')
+        _setup_owned(sh)                             # managed acquires FIRST
+        assert sh.run_command("trap ':' USR1") == 0
+        coord = get_coordinator()
+        trap_lease = coord.find_component(sh.state, ComponentKind.SIGNALS)
+        assert trap_lease is not None, "the trap family lost its lease"
+        assert 'trap' in trap_lease.description, (
+            "the SIGNALS lease belongs to the managed family: the two "
+            "families folded into one — %r" % trap_lease.description)
+        sh.close()
+    finally:
+        signal.signal(signal.SIGUSR1, usr1_before)
