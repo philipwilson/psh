@@ -27,7 +27,7 @@ Manager            (arrays)    State    Manager
 | `command_hash.py` | `CommandHashTable` - remembered command locations (`hash` builtin; cleared via `ScopeManager.path_changed` on any PATH write) |
 | `scope.py` | `ScopeManager`, `VariableScope` - the scope stack (flat list, `scope_stack[0]` global) |
 | `variable_store.py` | `VariableStore` (`scope_manager.store`) - the single variable-WRITE transaction boundary (readonly/nameref/observer guards); see "Variable-mutation model" below |
-| `variable_lookup.py` | `LookupStatus` (MISSING/PRESENT_UNSET/VALUE) + `VariableLookup` - the typed tri-state result of `ScopeManager.lookup()`, the single variable-READ authority (appraisal #20 H13; see "Scope Stack" below) |
+| `variable_lookup.py` | `LookupStatus` (MISSING/PRESENT_UNSET/VALUE) + `VariableLookup` - the typed, IMMUTABLE tri-state result of `ScopeManager.lookup()`, the single variable-READ authority (appraisal #20 H13; see "Scope Stack" below) |
 | `getopts_state.py` | `GetoptsState` - typed `getopts` scan state (OPTIND tracking, restart detection) |
 | `special_registry.py` | `SPECIAL_REGISTRY` + `SpecialParameterState` - the single declarative table + typed lifecycle state for computed specials (RANDOM/SECONDS/LINENO/...); see "Computed Special Parameters" below |
 | `environment.py` | `is_environ_shell_name` - the one rule deciding which inherited env entries become shell variables vs stay opaque (appraisal H3) |
@@ -102,8 +102,13 @@ parent pointer; lookups walk the stack from the top down. Each scope holds
   (`VariableScope.__init__` takes only `name` — there is no `parent`).
 - `pop_scope()` removes the top scope on function exit (never the global).
 - `lookup(name)` (`scope.py#ScopeManager.lookup`, `variable_lookup.py`) is THE
-  tri-state read authority: it returns a `VariableLookup(MISSING |
-  PRESENT_UNSET | VALUE, binding)`, following namerefs. A declared-unset local
+  tri-state read authority: it returns an IMMUTABLE `VariableLookup(MISSING |
+  PRESENT_UNSET | VALUE)`, following namerefs. The result carries no cell
+  reference — a consumer needing attributes or scope identity asks
+  `get_variable_object` / `get_declared_variable_object`, so the read authority
+  can never hand out a way around the write engine's guards
+  (`variable_lookup.py#VariableLookup`, pinned by
+  `tests/unit/core/test_variable_lookup_immutability.py`). A declared-unset local
   (tombstone / bare `local x` / declared-but-unset export) stops the lookup at
   PRESENT_UNSET — it never falls through to an outer instance or the
   environment (appraisal #20 H13). `get_variable(name, default)` is its string
