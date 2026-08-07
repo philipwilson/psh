@@ -122,8 +122,12 @@ def _both(build, tmp_path):
     """
     kwargs = dict(cwd=str(tmp_path), timeout=KILL_AFTER,
                   env={"LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8"})
+    # Arm tags name the scratch files, so they must not be the word "bash":
+    # the oracle-resolution guard reads a bare 'bash' call argument as a
+    # hardcoded oracle binary, and it is right to — the tag is renamed rather
+    # than the guard allowlisted.
     psh = run_psh(["-c", build("psh")], **kwargs)
-    bash = run_bash(["-c", build("bash")], **kwargs)
+    bash = run_bash(["-c", build("oracle")], **kwargs)
     assert is_comparable(bash), f"bash oracle unusable: {bash}"
     assert is_comparable(psh), (
         f"psh did not complete within {KILL_AFTER}s — the deadline was ignored "
