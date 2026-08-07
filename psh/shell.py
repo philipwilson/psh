@@ -29,7 +29,11 @@ from .core.functions import FunctionManager
 # to psh/core/process_lease.py (campaign F2): raising it is a process-global
 # mutation, so it happens at activation-ownership grant — never at
 # construction. RECURSION_LIMIT stays re-exported from its historical home.
-from .core.process_lease import RECURSION_LIMIT, get_coordinator  # noqa: F401
+from .core.process_lease import (  # noqa: F401
+    RECURSION_LIMIT,
+    LeaseRestoreError,
+    get_coordinator,
+)
 from .executor.job_control import JobManager
 from .expansion import ExpansionManager
 from .expansion.aliases import AliasManager
@@ -588,14 +592,32 @@ class Shell:
         # its globals back, and a subsequent shell can take ownership.
         # Mid-own-execution (the exit builtin), components restore now and
         # the token releases when the activation stack unwinds.
+        # A restore that could not be proven clean surfaces as an aggregate
+        # LeaseRestoreError — but it must not cost the shell the REST of its
+        # teardown. Hold it, finish every remaining step, then raise: a
+        # quarantined locale is no reason to leak self-pipe fds or leave a
+        # trap handler installed in the host.
+        aggregate: Optional[BaseException] = None
         state = getattr(self, 'state', None)
         if state is not None:
-            get_coordinator().release_owner(state)
+            try:
+                get_coordinator().release_owner(state)
+            except LeaseRestoreError as exc:
+                aggregate = exc
 
         interactive_manager = getattr(self, 'interactive_manager', None)
         if interactive_manager is not None:
             signal_manager = getattr(interactive_manager, 'signal_manager', None)
             if signal_manager is not None:
+                # Managed-signal dispositions (mode setup) restore here
+                # UNCONDITIONALLY, whether or not this shell ever owned the
+                # process. The MANAGED_SIGNALS lease covers the owned case;
+                # a shell that installed handlers WITHOUT owning (an embedder
+                # calling setup on a never-activated shell) has no lease, and
+                # this drain is what still gives it MEDIUM-8's guarantee.
+                # Draining makes the two paths idempotent: whichever runs
+                # second finds the map empty.
+                signal_manager.restore_managed_dispositions()
                 signal_manager.close()
 
         # Restore any process-global signal dispositions this shell leased when
@@ -606,6 +628,9 @@ class Shell:
         trap_manager = getattr(self, 'trap_manager', None)
         if trap_manager is not None:
             trap_manager.restore_leased_dispositions()
+
+        if aggregate is not None:
+            raise aggregate
 
     def __enter__(self) -> 'Shell':
         return self

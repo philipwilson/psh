@@ -3,6 +3,7 @@ import copy
 import errno
 import fcntl
 import os
+import resource
 import stat
 import sys
 import weakref
@@ -73,6 +74,51 @@ class NonExecutableRedirectError(RuntimeError):
 #: relocation protocol below when a user redirect targets a parked slot.
 _PARKING_BASE = 63
 
+#: Lowest fd the lease may ever park in. bash's ``{v}>file`` returns 10 at
+#: EVERY RLIMIT_NOFILE (measured against bash 5.2.26 across limits 24-256:
+#: its named-fd numbering does NOT degrade), so parking into the >=10 save
+#: area would break a parity bash itself maintains.
+_PARKING_FLOOR = 10
+
+#: Slots the lease needs: CLOEXEC backups of fds 0, 1 and 2.
+_PARKING_SLOTS = 3
+
+#: Spare slots kept ABOVE the parked backups. The relocation protocol moves a
+#: backup out of the way when a user redirect claims its fd, and that move is
+#: a fresh ``F_DUPFD_CLOEXEC`` from the same base — so it needs somewhere to
+#: land. Parking flush against the limit left nowhere: measured at
+#: ``ulimit -n 50``, ``exec 3>f; exec 47>f2`` succeeds in bash and failed
+#: EMFILE in psh. Three spares let all three backups relocate once.
+_PARKING_SPARE = 3
+
+
+def _parking_base() -> int:
+    """The fd to park this process's std-fd backups at or above.
+
+    ``_PARKING_BASE`` whenever the fd table is big enough — every ordinary
+    process. Under a LOW ``RLIMIT_NOFILE`` there is no usable slot there:
+    measured, at soft <= 63 the dup fails EINVAL (minfd at or beyond the
+    limit) and at soft == 64 the first dup takes fd 63 and the next two fail
+    EMFILE, because that window holds exactly one slot. NEITHER errno means
+    the table is exhausted; both report that the parking base is too high
+    for this limit, which is a configuration fact.
+
+    Reading them as exhaustion made every permanent redirect fail under
+    ``ulimit -n <= 64`` while bash succeeded (R8 BL-1). Parking as high as
+    the limit allows, MINUS room for the relocation protocol to move a
+    displaced backup, preserves every parity at once: the redirect works,
+    user fds still start at 10, and a user redirect into the parking range
+    can still displace what it finds there.
+    """
+    try:
+        soft, _hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    except (OSError, ValueError):     # pragma: no cover - exotic platform
+        return _PARKING_BASE
+    if soft in (resource.RLIM_INFINITY, -1):
+        return _PARKING_BASE
+    return min(_PARKING_BASE,
+               max(_PARKING_FLOOR, soft - _PARKING_SLOTS - _PARKING_SPARE))
+
 
 class _StdStreamBaseline:
     """The restorable pre-permanent-redirect state of fds 0/1/2 + streams.
@@ -139,8 +185,12 @@ class _StdStreamBaseline:
         wanted = set(target_fds)
         for std_fd, saved in self.fds.items():
             if saved is not None and saved in wanted:
+                # Same adaptive base as acquisition: relocating under a low
+                # RLIMIT must land where a slot actually exists, or a user
+                # redirect into the parking range would fail where bash's
+                # succeeds.
                 moved = fcntl.fcntl(saved, fcntl.F_DUPFD_CLOEXEC,
-                                    _PARKING_BASE)
+                                    _parking_base())
                 self.fds[std_fd] = moved
                 try:
                     os.close(saved)
@@ -1014,33 +1064,36 @@ class FileRedirector:
         if coordinator.find_component(state, ComponentKind.STD_FDS) is not None:
             return False
         baseline_fds: Dict[int, Optional[int]] = {}
+        parking_base = _parking_base()
         try:
             for fd in (0, 1, 2):
                 try:
-                    # _PARKING_BASE (63), NOT 10: the per-command save area
-                    # starts at 10 and bash-pinned `{v}>file` allocations
-                    # expect the first free fd >= 10 — long-lived lease
-                    # backups parked at 10-12 would shift every later
-                    # named-fd number (bash similarly parks its own
-                    # long-lived internals high). F_DUPFD picks the first
-                    # FREE slot, so acquisition automatically avoids fds the
-                    # user already holds in the range; the reverse direction
-                    # (a LATER user redirect targeting a parked slot) is the
-                    # relocation protocol on _StdStreamBaseline.
+                    # High, NOT 10: the per-command save area starts at 10 and
+                    # bash-pinned `{v}>file` allocations expect the first free
+                    # fd >= 10 — long-lived lease backups parked at 10-12 would
+                    # shift every later named-fd number (bash similarly parks
+                    # its own long-lived internals high). F_DUPFD picks the
+                    # first FREE slot, so acquisition automatically avoids fds
+                    # the user already holds in the range; the reverse
+                    # direction (a LATER user redirect targeting a parked slot)
+                    # is the relocation protocol on _StdStreamBaseline. The
+                    # base ADAPTS to RLIMIT_NOFILE (see _parking_base): under a
+                    # low limit there is simply no slot at 63, and failing the
+                    # redirect there diverged from bash.
                     baseline_fds[fd] = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC,
-                                                   _PARKING_BASE)
+                                                   parking_base)
                 except OSError as exc:
                     # ONLY a genuinely closed descriptor records None. That
                     # encoding is what `restore` reads as "this fd was closed
                     # at baseline, close it again", so it must not double as
-                    # "we could not dup it": under fd exhaustion every dup
-                    # failed, all three recorded None, the exec still
-                    # reported success, and close() then closed the HOST's
-                    # fds 0/1/2 (slot 4A.1 probe B-13a). Any other errno —
-                    # EMFILE (table full), EINVAL (parking base above
-                    # RLIMIT_NOFILE) — means the baseline is unknowable, so
-                    # the acquisition aborts transactionally through the
-                    # handler below, exactly like a rejected acquisition.
+                    # "we could not dup it": otherwise every dup failing
+                    # recorded None, the exec still reported success, and
+                    # close() then closed the HOST's fds 0/1/2 (R8 BL-1's
+                    # predecessor defect). Any other errno means the baseline
+                    # is unknowable and the acquisition aborts transactionally
+                    # through the handler below — but only AFTER the adaptive
+                    # base has been tried, since EINVAL/EMFILE at a too-high
+                    # base is a configuration fact, not exhaustion.
                     if exc.errno != errno.EBADF:
                         raise
                     baseline_fds[fd] = None  # fd closed at baseline

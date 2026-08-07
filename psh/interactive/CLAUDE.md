@@ -364,13 +364,28 @@ keep only whichever family acquired FIRST and silently drop the other's
 restore. Both families on one shell, in both acquisition orders, are pinned
 in `tests/unit/interactive/test_managed_signal_lease_4a1.py`.
 
-**Behavior delta worth knowing when embedding**: because acquiring any
-component lease requires the owner token, `setup_signal_handlers()` now
-TAKES process ownership. The interactive path is unaffected —
-`run_interactive_loop()` calls `shell.activate()` immediately before setup
-— but an embedder calling setup directly on a never-activated shell while
-another shell owns the process now gets a loud `LeaseError` instead of
-silently installing handlers over it.
+**Installing mode handlers never takes process ownership.** The lease is
+acquired only when this shell ALREADY owns the process
+(`signal_manager.py#SignalManager._register_managed_signal_lease`), which
+every real psh process does: `psh/__main__.py` and
+`InteractiveManager.run_interactive_loop` both activate BEFORE calling
+setup. An embedder that calls `setup_signal_handlers()` on a
+never-activated shell installs LEASELESSLY, and `Shell.close()`'s
+unconditional drain (`#SignalManager.restore_managed_dispositions`) is what
+still gives it MEDIUM-8's guarantee.
+
+Acquiring the lease unconditionally was tried and RETRACTED (slot 4A.1
+R8 BL-2): it transferred ownership, the grant glue then took LOCALE too, and
+a shell that ran setup and was dropped without `close()` held both leases
+forever — the signal registry keeps its owner reachable, so no sweep ever
+classified it an orphan — leaving every later shell REJECTED. That is the
+poisoning this slot exists to end, reintroduced on its own new kind.
+
+**Documented limitation**, the same shape as the trap family's: a shell
+dropped WITHOUT `close()` leaks its managed dispositions, exactly as it did
+before this work. Nothing can sweep them, because the registry pins the
+owner. `close()` is the contract. What must NOT happen is the next shell
+being rejected, and that is pinned.
 
 ```python
 class SignalManager(InteractiveComponent):

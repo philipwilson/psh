@@ -456,6 +456,29 @@ def test_aggregate_carries_every_failure_as_a_note(coord):
     coord.clear_quarantine()
 
 
+def test_single_lease_release_quarantines_like_the_draining_paths(coord):
+    """EN-2: one failure meaning, however the release was reached.
+
+    `ComponentLease.release()` used to let a failing restore propagate
+    RAW and leave the coordinator reporting itself clean, while the very
+    same failing restore reached through `release_owner` quarantined and
+    surfaced an aggregate. The asymmetry was invisible: whether the process
+    counted as provably-clean depended on which release path a caller
+    happened to use.
+    """
+    a = _Owner("A")
+    coord.activate(a).release()
+    lease = coord.acquire_component(a, ComponentKind.LOCALE, restore=_boom,
+                                    description="libc locale")
+    with pytest.raises(LeaseRestoreError):
+        lease.release()
+    assert not coord.is_clean()
+    assert coord.quarantine_report()
+    assert "LOCALE" in coord.quarantine_report()[0]
+    coord.clear_quarantine()
+    coord.release_owner(a)
+
+
 def test_restore_failure_during_a_failed_grant_keeps_the_original_error(coord):
     """The caller asked why the GRANT failed; the glue's own exception is
     that answer, with the restore trouble attached rather than substituted."""

@@ -21,22 +21,33 @@ each case its own ProcessLeaseCoordinator singleton.
 """
 
 import os
+import shlex
 import sys
 
 from shell_oracle import (
     Completed,
     hermetic_shell_env,
     is_comparable,
+    resolve_bash,
     run_shell_case,
 )
 
 TREE = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
-# No bash oracle for any case in this file: bash has no analogue for
-# in-process multi-shell ownership of the standard descriptors. These are
-# embedding-semantics pins, and the compare-bash floor is the regression net
-# elsewhere, not an oracle here.
+# ORACLE STATUS, PER GROUP. The earlier blanket claim — "no bash oracle for
+# any case in this file" — was FALSE, and it hid a real parity regression
+# (R8 BL-1: every permanent redirect failed under `ulimit -n <= 64` while
+# bash succeeded, and no cell here could see it).
+#
+#   * OWNERSHIP cells (lease retained/released, sibling shells, GC handover)
+#     genuinely have NO bash oracle: bash has no analogue for in-process
+#     multi-shell ownership of the standard descriptors. There the
+#     compare-bash floor is a regression net, not an oracle.
+#   * RLIMIT cells DO have a bash oracle and are pinned BOTH SIDES against
+#     live bash. A permanent redirect under a low `ulimit -n` is ordinary
+#     shell behaviour that bash performs successfully; psh failing it was
+#     observable to any user, not an embedding detail.
 
 PRELUDE = """
 import os, sys, tempfile
@@ -67,6 +78,36 @@ def _run_embedded(code: str) -> Completed:
                        timeout=90)
     assert is_comparable(r), r
     return r
+
+
+def _run_at_rlimit(limit: int, script: str, *, bash: bool = False) -> str:
+    """Run *script* under `ulimit -n <limit>` in psh or bash; return stdout.
+
+    The limit must be imposed by an outer shell BEFORE the interpreter
+    starts. Lowering RLIMIT_NOFILE from inside the process under test would
+    leave descriptors already open above the new limit and measure a
+    different situation than a user's `ulimit -n` does. Explicit argv
+    throughout (the zsh unquoted-`$var` trap).
+    """
+    oracle = resolve_bash().path
+    inner_shell = (shlex.quote(oracle) if bash
+                   else f"{shlex.quote(sys.executable)} -m psh")
+    inner = (f"ulimit -n {limit}; exec {inner_shell} --norc -c "
+             f"{shlex.quote(script)}")
+    r = run_shell_case([oracle, '-c', inner], cwd=TREE,
+                       env=hermetic_shell_env({'PYTHONPATH': TREE}),
+                       timeout=90)
+    assert is_comparable(r), r
+    return r.stdout
+
+
+def _assert_low_rlimit_parity(limit: int) -> None:
+    """psh and bash must agree on a permanent redirect at *limit*."""
+    script = f'exec 3> {TREE}/tmp/rlimit-parity-{limit}.txt; echo after=$?'
+    psh_out = _run_at_rlimit(limit, script)
+    bash_out = _run_at_rlimit(limit, script, bash=True)
+    assert psh_out == bash_out, (limit, psh_out, bash_out)
+    assert 'after=0' in psh_out, (limit, psh_out)
 
 
 def test_failing_exec_leaves_no_lease_no_parked_fds_no_baseline():
@@ -147,26 +188,46 @@ print('protection-intact')
     assert 'protection-intact' in result.stdout
 
 
-def test_baseline_dup_failure_aborts_transactionally():
-    """Fault injection at the baseline-dup boundary.
+def test_low_rlimit_permanent_redirect_matches_bash():
+    """BOTH-SIDES bash pin, BELOW the old parking threshold (R8 BL-1).
 
-    With RLIMIT_NOFILE below the parking base every ``F_DUPFD_CLOEXEC``
-    fails. Recording ``None`` for those is what ``restore`` reads as "this
-    fd was CLOSED at baseline, close it again" — so at base the exec
-    reported SUCCESS and ``close()`` then closed the HOST's fds 0, 1 and 2.
-    Only a genuinely closed descriptor (EBADF) may record None; any other
-    errno means the baseline is unknowable, so the acquisition aborts
-    transactionally and the redirect fails."""
+    A permanent redirect under a low `ulimit -n` is ordinary shell
+    behaviour. psh parked its lease backups at a fixed fd 63, so under
+    RLIMIT_NOFILE <= 64 the dup failed — EINVAL below 64, EMFILE at 64,
+    neither of which means the table is exhausted — and treating that as
+    exhaustion made psh fail a redirect bash performs happily. The parking
+    base now adapts to the limit.
+    """
+    _assert_low_rlimit_parity(50)
+
+
+def test_normal_rlimit_permanent_redirect_matches_bash():
+    """The same pin ABOVE the threshold: the ordinary case is untouched."""
+    _assert_low_rlimit_parity(70)
+
+
+def test_low_rlimit_baseline_records_real_fds_and_close_keeps_host_fds():
+    """The transactional guarantee, restated for the case that now SUCCEEDS.
+
+    The old shape of this pin expected the redirect to FAIL under a low
+    limit; that expectation was itself the regression. What must hold is
+    that the baseline is REAL — actual parked descriptors, not the `None`
+    that `restore` reads as "was closed, close it again" — so `close()`
+    hands the host its fds back instead of closing them.
+    """
     result = _run_embedded(PRELUDE + """
 import resource
 soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-resource.setrlimit(resource.RLIMIT_NOFILE, (32, hard))
+resource.setrlimit(resource.RLIMIT_NOFILE, (50, hard))
 sh = Shell(norc=True)
 rc = sh.run_command('exec 3> %s' % os.path.join(d, 'out.txt'))
-resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
-assert rc != 0, 'exec reported success on an unknowable baseline'
-assert 'STD_FDS' not in leases(), 'half-acquired lease: %r' % leases()
-assert sh.io_manager.file_redirector._std_baseline is None
+assert rc == 0, 'a merely-low limit must not fail the redirect'
+baseline = sh.io_manager.file_redirector._std_baseline
+assert baseline is not None
+assert all(v is not None for v in baseline.fds.values()), (
+    'a dup failure was recorded as a CLOSED baseline: %r' % baseline.fds)
+assert all(v >= 10 for v in baseline.fds.values()), (
+    'parked below the named-fd save area: %r' % baseline.fds)
 
 def alive(fd):
     try:
@@ -176,21 +237,72 @@ def alive(fd):
         return False
 
 sh.close()
+resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
 assert all(alive(fd) for fd in (0, 1, 2)), 'close() closed the host std fds'
-print('transactional-abort-ok')
+print('low-limit-baseline-ok')
 """)
     assert result.returncode == 0, result.stderr
-    assert 'transactional-abort-ok' in result.stdout
+    assert 'low-limit-baseline-ok' in result.stdout
 
 
-def test_baseline_dup_failure_on_an_exhausted_fd_table_also_aborts():
-    """The other non-EBADF route: EMFILE.
+def test_low_rlimit_keeps_bash_named_fd_numbering():
+    """The floor under the adaptive base, pinned against bash.
 
-    The two failures reach ``F_DUPFD_CLOEXEC`` differently — EINVAL when the
-    parking base is above RLIMIT_NOFILE (the case above), EMFILE when the
-    table is full below it — and both mean the same thing: the baseline is
-    unknowable. Pinned separately so the rule is "not EBADF", not "not the
-    one errno I happened to reproduce"."""
+    bash's `{v}>file` returns 10 at EVERY limit — its named-fd numbering
+    does not degrade — so the lease must never park into the >=10 save
+    area, however low the limit goes. This is the measured fact the
+    `_PARKING_FLOOR` constant encodes.
+    """
+    for limit in (24, 50, 70):
+        script = (f'exec 3> {TREE}/tmp/nf-a-{limit}.txt; '
+                  f'exec {{v}}> {TREE}/tmp/nf-b-{limit}.txt; echo v=$v')
+        psh_out = _run_at_rlimit(limit, script)
+        bash_out = _run_at_rlimit(limit, script, bash=True)
+        assert psh_out == bash_out, (limit, psh_out, bash_out)
+        assert 'v=10' in psh_out, (limit, psh_out)
+
+
+def test_sub_16_rlimit_envelope_is_recorded_not_claimed():
+    """RECORD-ONLY: where the adaptive base runs out of room.
+
+    The floor refuses to park below fd 10, because bash's named-fd numbering
+    starts there at EVERY limit. Under a limit low enough that three backups
+    plus relocation headroom do not fit above 10, psh cannot park at all.
+    This cell RECORDS the measured envelope rather than asserting a parity
+    that does not hold there:
+
+      * limit >= 13 — full parity, psh and bash both succeed;
+      * limit <= 12 — bash succeeds; psh fails the redirect CLEANLY (clear
+        diagnostic, non-zero status, nothing half-acquired) instead of
+        recording a `None` baseline that would later close the host's std
+        fds, which is what it used to do.
+
+    A shell under `ulimit -n 12` has ~9 usable descriptors; the honest
+    statement is that psh declines rather than corrupts.
+    """
+    parity, divergent = [], []
+    for limit in (11, 12, 13, 14, 16):
+        script = f'exec 3> {TREE}/tmp/sub16-{limit}.txt; echo after=$?'
+        psh_out = _run_at_rlimit(limit, script)
+        bash_out = _run_at_rlimit(limit, script, bash=True)
+        (parity if psh_out == bash_out else divergent).append(limit)
+        if psh_out != bash_out:
+            # A divergence here may be a CLEAN refusal, never a silent
+            # success on an unknowable baseline.
+            assert 'after=1' in psh_out, (limit, psh_out)
+    assert parity, 'the envelope must have a parity region'
+    assert all(limit >= 13 for limit in parity), parity
+    assert all(limit <= 12 for limit in divergent), divergent
+
+
+def test_genuine_exhaustion_still_aborts_transactionally():
+    """The transactional abort survives — for REAL exhaustion only.
+
+    When the fd table is actually full there is no slot at any base, so the
+    baseline is genuinely unknowable and the acquisition must abort with
+    nothing half-acquired (the B-13b guarantee), rather than recording a
+    `None` that would later close the host's descriptors.
+    """
     result = _run_embedded(PRELUDE + """
 import resource
 soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -201,16 +313,10 @@ assert leases() == []                  # they need fds, and take no lease
 held = []
 try:
     while True:
-        held.append(os.dup(1))            # fill the table BELOW the limit
+        held.append(os.dup(1))            # fill the table COMPLETELY
 except OSError:
     pass
 assert len(held) > 100, 'the table did not fill'
-# Free a few LOW slots so any remaining import/allocation can proceed. They
-# cannot satisfy the lease's dup, which needs a free fd >= 63 (_PARKING_BASE)
-# — so F_DUPFD_CLOEXEC still fails EMFILE, which is the point of the cell.
-for fd in held[:8]:
-    os.close(fd)
-held = held[8:]
 rc = sh.run_command('exec 3> %s' % os.path.join(d, 'out.txt'))
 for fd in held:
     os.close(fd)
@@ -228,10 +334,53 @@ def alive(fd):
 
 sh.close()
 assert all(alive(fd) for fd in (0, 1, 2)), 'close() closed the host std fds'
-print('emfile-abort-ok')
+print('exhaustion-abort-ok')
 """)
     assert result.returncode == 0, result.stderr
-    assert 'emfile-abort-ok' in result.stdout
+    assert 'exhaustion-abort-ok' in result.stdout
+
+
+def test_relocation_protocol_at_the_adaptive_parking_base():
+    """COMPOSITION: adaptive parking x the relocation protocol.
+
+    The relocation protocol is base-agnostic in theory. Under a low limit
+    the backups park LOW (e.g. 21/22/23 at soft=24), so a user redirect
+    into that range must displace them there exactly as it does at 63 —
+    otherwise the shutdown restore would install the USER's file as a host
+    std fd, which is the F2 bounce blocker resurfacing at a new base.
+    """
+    result = _run_embedded(PRELUDE + """
+import resource
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+# 50, not 24: this cell lowers the limit from INSIDE a running interpreter,
+# which already holds descriptors, so the usable window is smaller than a
+# user's `ulimit -n` of the same number. 50 still moves the parking base well
+# below 63 (measured: base 47), which is what the cell is about.
+resource.setrlimit(resource.RLIMIT_NOFILE, (50, hard))
+
+def ident(fd):
+    st = os.fstat(fd)
+    return (st.st_dev, st.st_ino)
+
+host = {fd: ident(fd) for fd in (0, 1, 2)}
+sh = Shell(norc=True)
+assert sh.run_command('exec 3> %s' % os.path.join(d, 'a.txt')) == 0
+baseline = sh.io_manager.file_redirector._std_baseline
+parked = sorted(v for v in baseline.fds.values() if v is not None)
+assert parked and max(parked) < 63, 'not parked under the low limit: %r' % parked
+assert min(parked) >= 10, 'parked into the save area: %r' % parked
+target = parked[0]
+assert sh.run_command('exec %d> %s' % (target, os.path.join(d, 'b.txt'))) == 0
+moved = sorted(v for v in sh.io_manager.file_redirector._std_baseline.fds.values()
+               if v is not None)
+assert target not in moved, 'backup not displaced: %r' % moved
+sh.close()
+resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+assert {fd: ident(fd) for fd in (0, 1, 2)} == host, 'host std fds not restored'
+print('relocation-at-adaptive-base-ok')
+""")
+    assert result.returncode == 0, result.stderr
+    assert 'relocation-at-adaptive-base-ok' in result.stdout
 
 
 def test_closed_std_fd_still_records_a_closed_baseline():

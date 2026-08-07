@@ -679,7 +679,16 @@ weakly), but one that installed SIGNAL handlers stays reachable through the
 process-global signal registry, which retains every registration. That
 shell's dispositions really are still installed, so the next shell is
 rejected — `close()` is the contract there, pinned by
-`tests/unit/core/test_signal_lease_coordination_f2.py`.
+`test_managed_signal_lease_4a1.py#test_dropped_shell_holding_a_trap_lease_still_rejects_the_next`.
+
+The MANAGED-signal family (mode setup) is deliberately the other way round.
+Those dispositions are psh's OWN state rather than a user's, so installing
+them never takes ownership, and a shell dropped without `close()` must not
+block the next one. It still leaks them — nothing can sweep what the
+registry pins — so `close()` is the contract there too, but a later shell
+RUNS. Taking that lease unconditionally was tried and RETRACTED: it
+reintroduced exactly the poisoning described above, on this slot's own new
+kind.
 
 Batteries: `tests/unit/core/test_activation_transaction_4a1.py` (fault
 injection at every acquisition and restore boundary, the multi-shell

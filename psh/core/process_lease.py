@@ -538,10 +538,6 @@ class ProcessLeaseCoordinator:
         self._baselines = None
         self._relinquish_pending = False
 
-    def _force_release_components(self) -> None:
-        """Restore and drop EVERY component lease, innermost (LIFO) first."""
-        self._release_components(self._live_components())
-
     def _release_components(self, leases: List[ComponentLease]) -> None:
         """Restore and drop *leases*, innermost (LIFO) first.
 
@@ -618,6 +614,16 @@ class ProcessLeaseCoordinator:
             self._clear_owner()
 
     def _release_component(self, lease: ComponentLease) -> None:
+        """Release ONE lease by hand (``ComponentLease.release()``).
+
+        Unified with the draining paths (EN-2): a restore that raises here
+        quarantines its lease and surfaces the same aggregate
+        :class:`LeaseRestoreError`, so "this process may still be mutated"
+        means the same thing however the release was reached. The asymmetry
+        it replaces was invisible — the same failing restore left the
+        coordinator quarantined via ``release_owner`` but silently clean via
+        ``lease.release()``.
+        """
         self._check_fork()
         if lease.released:
             return
@@ -625,9 +631,7 @@ class ProcessLeaseCoordinator:
             raise LeaseError(
                 f"component lease ({lease.kind.name}) released out of order "
                 "(LIFO): release the innermost component first")
-        lease.released = True
-        self._components.pop()
-        lease._restore()
+        self._release_components([lease])
 
 
 _coordinator: Optional[ProcessLeaseCoordinator] = None
