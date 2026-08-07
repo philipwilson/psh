@@ -85,3 +85,12 @@ All both-sides pinned: each flips VISIBLY when a successor takes its row.
 | `TestDeclaredDivergences::test_invalid_regex_diagnostic_is_psh_only` | tests/conformance/bash/test_typed_expansion_errors_conformance.py | `[[ x =~ '(' ]]`: both shells rc 2, but psh prints `psh: [[: invalid regex: …` where bash is SILENT (wording/stream class) | D-3.5-s5 |
 
 Both pinned BOTH-SIDES in the divergent direction; each flips ONLY with a ruling.
+
+### 4A.1-declared divergence pin (v0.768.0)
+
+| pin | file | divergence | owner |
+|---|---|---|---|
+| `test_sub_16_rlimit_envelope_is_recorded_not_claimed` | tests/integration/redirection/test_failed_exec_lease_4a1.py | Permanent redirect under RLIMIT_NOFILE ≤ 12: bash succeeds; psh DECLINES CLEANLY (diagnostic, rc≠0, nothing half-acquired — the alternative was the pre-4A.1 silent `None` baseline that closed the HOST's fds 0/1/2 at close()). Parity measured and pinned at every threshold ≥ 13 (adaptive parking base) | D-4A.1-s4 |
+
+Pinned in the divergent direction; flips ONLY with a ruling (a sub-13
+parking strategy would need its own design round).

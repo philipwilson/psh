@@ -274,3 +274,19 @@ executor/job_control or the trap machinery) and the failing run's other
 23,405 tests passed; single re-run green (see the attested gate).
 Recurrence count 1 → 2 post-1.4; watch continues — a third instance
 warrants a dedicated flake investigation rather than another tally.
+
+**v0.768.0 reading rules (slot 4A.1 — first Linux run ~2026-08-08):**
+the three new suites are embedding-semantics (NO bash oracle) except the
+BL-1 parity cells in `test_failed_exec_lease_4a1.py`, which run BOTH
+shells under `ulimit -n` — on Linux they compare against LINUX bash, and
+the cells self-calibrate (psh_out == bash_out asserted before after=0),
+so a Linux-only failure there means a REAL platform divergence in the
+adaptive parking, not an oracle artifact; check the reported fd numbers
+first (Linux Python opens different startup fds). The managed-signal
+suite asserts `signal.getsignal` restore-exact-prior per mode — on Linux
+the SIGCHLD/SIGCLD alias resolves to one signum, already handled by
+number-keyed maps; a failure naming SIGCLD is a REAL bug, not an alias
+artifact. The fd-exhaustion cell (`test_genuine_exhaustion_still_aborts_
+transactionally`) is the most environment-sensitive cell of the slot:
+on a CI runner with a low default nofile hard limit, read its failure as
+ENVIRONMENT first (the cell's own header states the discrimination).

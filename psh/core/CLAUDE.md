@@ -311,7 +311,7 @@ paths in `scope.py`:
   idiom `declare -n ref=$1; declare -i ref`): declare/typeset/readonly create
   it in declare's target scope (LOCAL inside a function —
   `function_support.py#_declare_bare_name`), export creates it non-locally so
-  it survives the function (`environment.py#_export_existing`). A CYCLIC
+  it survives the function (`builtins/environment.py#_export_existing`). A CYCLIC
   chain under an attribute op warns TWICE and CONTINUES rc 0 (bash; unlike a
   value write, which rejects) — the catch lives in the
   `apply_attribute`/`remove_attribute` chokepoint and the two builtin
