@@ -527,15 +527,17 @@ class Shell:
         if getattr(self, '_shutdown_reason', None) is not None:
             return
         self._shutdown_reason = reason
-        held = self._run_shutdown_phases(reason)
-        if held is not None:
-            # Re-raised INSIDE a try so a close() failure supersedes it the
-            # way it always did, keeping it as __context__ (precedence above).
-            try:
+        # close() is UNCONDITIONAL: the phase loop and the re-raise both sit
+        # inside this try, so nothing — including a failure in the phase
+        # bookkeeping itself — can cost the shell its resource release. The
+        # held signal is re-raised INSIDE the try so that a close() failure
+        # supersedes it and keeps it as __context__ (precedence above).
+        try:
+            held = self._run_shutdown_phases(reason)
+            if held is not None:
                 raise held
-            finally:
-                self.close()
-        self.close()
+        finally:
+            self.close()
 
     def _run_shutdown_phases(self, reason: str) -> Optional[BaseException]:
         """Run every mandatory shutdown phase; return the signal to re-raise.
@@ -556,8 +558,15 @@ class Shell:
                 if held is None:
                     held = exc
                 else:
+                    # Rendering a SECOND failure must not itself cost us the
+                    # FIRST one: an exception whose __str__ raises would
+                    # otherwise replace the signal we are holding.
+                    try:
+                        detail = f"{type(exc).__name__}: {exc}"
+                    except BaseException:  # noqa: BLE001 - unrenderable
+                        detail = f"{type(exc).__name__} (unrenderable)"
                     held.add_note(f"shutdown phase {name!r} also failed: "
-                                  f"{type(exc).__name__}: {exc}")
+                                  f"{detail}")
         return held
 
     def _shutdown_fire_exit_trap(self, reason: str) -> None:
