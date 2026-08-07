@@ -312,6 +312,17 @@ class TestClusteredFlagsRider:
     """LEDGER carry #25. bash parses clustered flags with getopt (`-d` takes an
     ARGUMENT) and applies them in a FIXED INTERNAL ORDER, not left to right."""
 
+    def _rc_err(self, tmp_path, spec, name, seed=("S1", "S2", "S3")):
+        """rc AND stderr. The round-1 rc-only helper let a dropped diagnostic
+        through: a module claiming bash parity certified parity it never
+        measured on the stderr channel."""
+        script = (f'history {spec} 2>$OTHER/err\nrc=$?\n'
+                  'echo ===RC===\necho "$rc"\n'
+                  'echo ===ERR===\ncat $OTHER/err\nexit\n')
+        (bs, _), (ps, _) = both(script, tmp_path, name, seed=list(seed))
+        return (bs.get("RC", []), bs.get("ERR", [])), \
+               (ps.get("RC", []), ps.get("ERR", []))
+
     def _rc(self, tmp_path, spec, name, seed=("S1", "S2", "S3")):
         script = f'history {spec} >/dev/null 2>&1; rc=$?\necho ===RC===\necho "$rc"\nexit\n'
         (bs, _), (ps, _) = both(script, tmp_path, name, seed=list(seed))
@@ -394,8 +405,134 @@ class TestClusteredFlagsRider:
         assert _listing(ps["MEM"])[0].endswith(" STORED")
         assert (tmp_path / "out").read_text() == ""
 
+    def test_two_file_ops_report_the_bash_diagnostic(self, tmp_path):
+        """Two of `-a/-n/-r/-w` is rc 1 AND a message on stderr.
+
+        Round-1 bounce: the dispatcher returned a bare 1 under a comment
+        claiming bash was silent, so `history -wa` failed completely silently —
+        a diagnostic regression away from bash, in the direction the campaign's
+        error-prefix work exists to protect. The rc-only cell above could not
+        see it, which is why this one asserts the CHANNEL."""
+        for spec, name in (("-an", "d_an"), ("-rw", "d_rw"),
+                           ("-wa", "d_wa"), ("-nr", "d_nr")):
+            (brc, berr), (prc, perr) = self._rc_err(tmp_path, spec, name)
+            assert brc == ["1"] and prc == ["1"], f"{spec}: rc {brc} vs {prc}"
+            assert any("cannot use more than one of -anrw" in x for x in berr), \
+                f"bash's diagnostic moved: {berr}"
+            assert any("cannot use more than one of -anrw" in x for x in perr), \
+                f"{spec}: psh printed nothing on stderr: {perr}"
+
+    def test_per_letter_invalid_option_wording_matches_bash(self, tmp_path):
+        """An unknown letter INSIDE a cluster is reported by LETTER, as bash
+        does (`-x`), not by the whole cluster word (`-px`). Changed by the
+        rider rewrite and previously pinned on rc alone."""
+        (brc, berr), (prc, perr) = self._rc_err(tmp_path, "-px x", "letterword")
+        assert brc == ["2"] and prc == ["2"]
+        assert any("-x: invalid option" in x for x in berr), berr
+        assert any("-x: invalid option" in x for x in perr), perr
+        assert not any("-px: invalid option" in x for x in perr), perr
+
     def test_invalid_letter_in_a_cluster_is_still_rejected(self, tmp_path):
         """MUST-HOLD control: accepting clusters must not accept junk."""
         for spec, name in (("-pz x", "junk1"), ("-zs x", "junk2")):
             b, p = self._rc(tmp_path, spec, name)
             assert b == ["2"] and p == ["2"]
+
+
+class TestClusterActionSelection:
+    """Which ACTION a cluster actually performs (round-1 blocker 3).
+
+    bash does not simply run everything the letters name. A file operation is
+    SUPPRESSED when `-d` is present, or when `-c` is present WITHOUT a filename
+    operand — while `-s` and `-p` are not suppressed at all. The rule is not
+    guessable and the round-1 instrument could not see it: its `-cw` cell wrote
+    to a NAMED file created EMPTY, so "cleared then wrote an empty list" and
+    "the write never ran" produced the same observable. Every cell here seeds a
+    SENTINEL so untouched, written-empty and rewritten are three distinct
+    readings.
+    """
+
+    def test_clear_without_operand_suppresses_the_file_op(self, tmp_path):
+        """`history -cw` leaves $HISTFILE ALONE in bash. psh used to truncate
+        it — silent data destruction."""
+        script = ("history -cw\n"
+                  'echo ===FILE===\ncat "$HISTFILE"\nunset HISTFILE\nexit\n')
+        (bs, bf), (ps, pf) = both(script, tmp_path, "supp_cw",
+                                  seed=["S1", "S2"])
+        assert bs["FILE"] == ["S1", "S2"], "bash left the file untouched"
+        assert ps["FILE"] == bs["FILE"]
+
+    def test_clear_with_an_operand_still_runs_the_file_op(self, tmp_path):
+        """The counter-direction: with an explicit filename the write DOES run,
+        so the fix cannot be 'never run a file op after -c'."""
+        script = ('history -cw "$HISTFILE"\n'
+                  'echo ===FILE===\ncat "$HISTFILE"\nunset HISTFILE\nexit\n')
+        (bs, _), (ps, _) = both(script, tmp_path, "supp_cw_operand",
+                                seed=["S1", "S2"])
+        assert bs["FILE"] == [], "bash truncates when an operand is given"
+        assert ps["FILE"] == bs["FILE"]
+
+    def test_clear_without_operand_suppresses_a_read_too(self, tmp_path):
+        """`-cr` is the sharpest cell: a read that RUNS re-fills memory from the
+        file, one that is SUPPRESSED leaves it empty."""
+        script = "history -cr\n" + OBSERVE + "exit\n"
+        (bs, _), (ps, _) = both(script, tmp_path, "supp_cr", seed=["S1", "S2"])
+        assert _listing(bs["MEM"]) == [], "bash suppressed the re-read"
+        assert _listing(ps["MEM"]) == _listing(bs["MEM"])
+
+    def test_clear_with_an_operand_still_runs_the_read(self, tmp_path):
+        script = 'history -cr "$HISTFILE"\n' + OBSERVE + "exit\n"
+        (bs, _), (ps, _) = both(script, tmp_path, "supp_cr_operand",
+                                seed=["S1", "S2"])
+        assert _listing(bs["MEM"]) == ["S1", "S2"]
+        assert _listing(ps["MEM"]) == _listing(bs["MEM"])
+
+    def test_delete_suppresses_the_file_op(self, tmp_path):
+        """`-wd 3` deletes and does NOT write, even though `-w` is present."""
+        script = ("true KEEPME\nhistory -wd 3\n"
+                  'echo ===FILE===\ncat "$HISTFILE"\nunset HISTFILE\nexit\n')
+        (bs, _), (ps, _) = both(script, tmp_path, "supp_wd", seed=["S1", "S2"])
+        assert bs["FILE"] == ["S1", "S2"], "bash left the file untouched"
+        assert ps["FILE"] == bs["FILE"]
+
+    def test_store_is_not_suppressed_by_clear(self, tmp_path):
+        """`-s` and `-p` are NOT suppressed — the rule is specific to file
+        operations."""
+        script = "history -cs STORED\n" + OBSERVE + "exit\n"
+        (bs, _), (ps, _) = both(script, tmp_path, "supp_cs", seed=["S1"])
+        assert _listing(bs["MEM"]) == ["STORED"]
+        assert _listing(ps["MEM"]) == _listing(bs["MEM"])
+
+    def test_print_short_circuits_the_file_op(self, tmp_path):
+        """RN-4: `history -pw FILE` prints the expansion and does NOT write."""
+        script = ("echo ===OUT===\nhistory -pw $OTHER/out\n"
+                  "echo ===AFTER===\ncat $OTHER/out\nexit\n")
+        (bs, _), (ps, _) = both(script, tmp_path, "pw", seed=["S1"],
+                                named={"out": ["SENTINEL"]})
+        assert bs["AFTER"] == ["SENTINEL"], "bash did not write the file"
+        assert ps["AFTER"] == bs["AFTER"]
+        assert bs["OUT"] == ps["OUT"], f"stdout differs: {bs['OUT']} {ps['OUT']}"
+
+
+class TestNamedReadCursorDeviation:
+    """b4, BOTH SIDES (round-1 blocker 4 / RN-3).
+
+    b4 was declared in the register and in prose but only psh's half was ever
+    pinned, so the bash half — the whole point of a declared deviation — rested
+    on a docstring. bash keeps ONE global counter that a NAMED read overwrites,
+    so a later `-n` on the DEFAULT file re-reads lines it had already consumed;
+    psh keeps a per-default-file cursor and does not.
+    """
+
+    def test_named_read_then_default_read_new(self, tmp_path):
+        script = ("history -r $OTHER/other\n"
+                  'printf "D4\\n" >> "$HISTFILE"\n'
+                  "history -n\n" + OBSERVE + "exit\n")
+        (bs, _), (ps, _) = both(script, tmp_path, "b4both",
+                                seed=["D1", "D2", "D3"],
+                                named={"other": ["X1"]})
+        bash_mem, psh_mem = _listing(bs["MEM"]), _listing(ps["MEM"])
+        assert bash_mem == ["D1", "D2", "D3", "X1", "D2", "D3", "D4"], (
+            f"bash's global counter behaviour moved: {bash_mem}")
+        assert psh_mem == ["D1", "D2", "D3", "X1", "D4"], (
+            f"psh's per-default-file cursor moved: {psh_mem}")

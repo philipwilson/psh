@@ -169,10 +169,11 @@ class TestDelete:
         assert 'history position out of range' in captured_shell.get_stderr()
 
 
-class TestClearResetsMarkers:
+class TestClearResetsOwedEntries:
     def test_clear_then_append_saves_post_clear_entries(self, captured_shell, tmp_path):
-        # Regression guard: clearing must reset the file-sync marker so entries
-        # added after the clear still get written (mirrors the -c marker fix).
+        # Regression guard: clearing must drop the owed flags with the list so
+        # entries added AFTER the clear are still written. (`-c` resets only
+        # that quantity — the file READ cursor deliberately survives a clear.)
         target = str(tmp_path / 'h.txt')
         _run(captured_shell, 'history -s before')
         _run(captured_shell, f'history -a {target}')

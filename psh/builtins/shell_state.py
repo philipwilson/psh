@@ -125,8 +125,20 @@ class HistoryBuiltin(Builtin):
         in every observable. The order is `-d`, then `-c`, then `-s` (which
         stores ALL remaining operands as one entry and RETURNS — so a clustered
         `-ps` never prints and a clustered `-sw file` never writes), then `-p`,
-        then the single file operation, then the listing. Combining two of
-        `-a/-n/-r/-w` is an error in bash: rc 1, no message.
+        then the single file operation, then the listing.
+
+        Two of `-a/-n/-r/-w` together is an error: rc 1 AND the diagnostic
+        `cannot use more than one of -anrw` (bash prints it; an earlier version
+        of this dispatcher claimed bash was silent and failed silently, which
+        was a diagnostic regression away from bash).
+
+        A file operation is SUPPRESSED — the clear/delete still happen, the
+        file op simply never runs — when `-d` is present, or when `-c` is
+        present WITHOUT a filename operand. Measured, because the rule is not
+        guessable: `history -cr` leaves memory EMPTY in bash (the re-read never
+        happens) while `history -cr "$HISTFILE"` re-reads the same file, and
+        `history -cw` leaves $HISTFILE untouched while `history -cw "$HISTFILE"`
+        truncates it. `-s` and `-p` are NOT suppressed by `-c`/`-d`.
 
         `-c` SUPPRESSES `-d` — measured, not assumed. `history -cd 9` and
         `history -cd 0` both give rc 0 with no message in bash even though the
@@ -152,16 +164,18 @@ class HistoryBuiltin(Builtin):
 
         file_ops = [f for f in _HISTORY_FILE_OPS if f in flags]
         if len(file_ops) > 1:
-            return 1                       # bash: silent failure
+            self.error("cannot use more than one of -anrw", shell)
+            return 1
 
         if 'c' in flags:
-            # Route through the manager so the file-sync marker resets too —
-            # clearing state.history directly left it stale and dropped
-            # post-clear commands from HISTFILE on save (data loss).
+            # Route through the manager so the owed flags are cleared with the
+            # list — clearing state.history directly left them stale and
+            # dropped post-clear commands from HISTFILE on save (data loss).
+            # The READ cursor is deliberately NOT reset (see clear_history).
             hist_mgr.clear_history()
         elif 'd' in flags:
             assert delete_spec is not None  # the parse guarantees it
-            status = self._delete([delete_spec], shell, hist_mgr)
+            status = self._delete(delete_spec, shell, hist_mgr)
             if status != 0:
                 return status
 
@@ -186,7 +200,10 @@ class HistoryBuiltin(Builtin):
         if 'p' in flags:
             return self._expand_print(operands, shell)
 
-        if file_ops:
+        # bash suppresses the file op after a delete, and after a clear when
+        # no filename operand was given (see the docstring's measured rows).
+        if file_ops and not ('d' in flags
+                             or ('c' in flags and not operands)):
             path = operands[0] if operands else None
             method = {
                 'w': hist_mgr.write_history,
@@ -292,11 +309,11 @@ class HistoryBuiltin(Builtin):
                 self.write_line(result.text, shell)
         return status
 
-    def _delete(self, rest: List[str], shell: 'Shell',
+    def _delete(self, spec: str, shell: 'Shell',
                 hist_mgr: 'HistoryManager') -> int:
-        if not rest:
-            return self._usage_error("-d: option requires an argument", shell)
-        spec = rest[0]
+        """`history -d SPEC`. The missing-argument error belongs to
+        ``_parse_options``, which cannot reach here without a spec — so there
+        is deliberately no empty-argument arm to go stale."""
         n = len(shell.state.history)
 
         # Single offset (a positive position, or negative from the end).

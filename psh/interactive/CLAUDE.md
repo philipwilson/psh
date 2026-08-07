@@ -333,12 +333,21 @@ conflated until slot 4B.3 (MEDIUM-7):
   never move it: deleting something from memory does not un-read a file line.
   Moving it made `-d` followed by `-n` re-read consumed lines, and `-c`
   followed by `-n` re-materialise the whole file.
-- the PENDING set (`#HistoryManager._pending_entries`) is the entries RECORDED
-  this session and not yet written. Lines arriving from a file (load, `-r`,
-  `-n`) are never pending, for any target. It is a multiset VIEW of memory, so
-  an entry leaving `state.history` by ANY route — including the history
-  builtin's own CV3 strip, which deletes the list directly — thereby leaves
-  pending, and a save can never resurrect it.
+- the OWED flags (`#HistoryManager._owed`, read through
+  `#HistoryManager._pending_entries`) mark the entries RECORDED this session and
+  not yet written — one flag per `state.history` POSITION. Lines arriving from a
+  file (load, `-r`, `-n`) are never owed, for any target. The flags travel with
+  their entries through every mutation, so a deleted, cleared or trimmed-away
+  command cannot be resurrected by a later save.
+
+  They are positional rather than text-keyed, and that distinction is
+  load-bearing: an earlier design matched owed entries against memory BY TEXT,
+  so deleting a typed command whose text also appeared elsewhere in the list let
+  the surviving twin inherit the debt, and the deleted command was written to
+  $HISTFILE anyway. Identical command strings are ordinary, so text can never
+  identify an entry. The one editor outside this class — the history builtin's
+  CV3 strip, which deletes `state.history[-1]` directly — is reconciled by
+  `#HistoryManager._sync_owed`.
 
 This is a DECLARED deviation from bash on interleaved compositions: bash's
 `-a` writes the last N entries BY POSITION, so a read or a `-d` between

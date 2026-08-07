@@ -58,12 +58,11 @@ ARMS = [
         "delete-rewinds-the-read-cursor",
         MGR,
         "        del self.state.history[lo:hi]\n"
-        "        self._prune_pending()",
+        "        del self._owed[lo:hi]",
         "        del self.state.history[lo:hi]\n"
+        "        del self._owed[lo:hi]\n"
         "        before_read = max(0, min(hi, self._file_read_len) - lo)\n"
-        "        self._file_read_len = max(0, self._file_read_len - "
-        "before_read)\n"
-        "        self._prune_pending()",
+        "        self._file_read_len = max(0, self._file_read_len - before_read)",
         breaks=[f"{UNIT}::TestReadCursorPerOp::test_delete_does_not_move_it"],
         stays_green=[
             f"{UNIT}::TestReadCursorPerOp::test_clear_does_not_move_it"],
@@ -72,21 +71,20 @@ ARMS = [
         # MEDIUM-7 leg C / LEDGER carry #32
         "clear-resets-the-read-cursor",
         MGR,
-        "        # Nothing is left in memory, so nothing is pending (invariant: "
-        "pending\n        # is a view of memory). A cleared entry is not "
-        "resurrected on save.\n        self._pending = []",
-        "        self._pending = []\n        self._file_read_len = 0",
+        "        self._owed.clear()",
+        "        self._owed.clear()\n        self._file_read_len = 0",
         breaks=[f"{UNIT}::TestReadCursorPerOp::test_clear_does_not_move_it"],
         stays_green=[
             f"{UNIT}::TestReadCursorPerOp::test_delete_does_not_move_it"],
     ),
     Arm(
-        # MEDIUM-7 leg B, cap half
+        # MEDIUM-7 leg B: the filters and the cap alike
         "store-skips-the-recording-policy",
         MGR,
         "        if self._ignorespace_blocks(command):\n            return\n"
         "        self._record(command)",
-        "        self.state.history.append(command)",
+        "        self.state.history.append(command)\n"
+        "        self._owed.append(True)",
         breaks=[
             f"{UNIT}::TestReadPathsRespectHistsize::test_store_trims_to_histsize",
             f"{UNIT}::TestStoreUsesTheRecordingPolicy::test_ignoredups_applies",
@@ -96,22 +94,41 @@ ARMS = [
             "test_an_embedded_newline_is_NOT_joined"],
     ),
     Arm(
-        # The PRODUCER half of membership: if recording stops adding to pending,
-        # nothing is ever owed and nothing is ever saved. A different kill
-        # reason from the store arm above, which removes the POLICY.
+        # THE ROUND-1 BOUNCE REGRESSION ITSELF: detach the owed flag from the
+        # entry's POSITION on delete, so the debt slides onto whichever entry
+        # survives. That is exactly what text-keyed resolution did: delete the
+        # typed copy of a command and the untouched LOADED copy inherited the
+        # debt, resurrecting a deleted command into $HISTFILE as a duplicate.
         #
-        # (An earlier arm here removed `_prune_pending()` from the trim, on the
-        # assumption that the front-drop's eager maintenance was load-bearing.
-        # It was NOT CAUGHT — and correctly so: `_pending_entries` resolves
-        # against memory, so the eager prune is hygiene, not correctness. The
-        # arm was replaced rather than weakened, and the docstring that implied
-        # otherwise was corrected. The view is what carries the invariant, and
-        # the "pending-stops-being-a-view" arm below is what locks it.)
-        "recording-stops-marking-entries-pending",
+        # (A first version of this arm rewrote _pending_entries to a text
+        # multiset but still SOURCED it from the positional flags, so it was
+        # NOT CAUGHT — it did not reproduce the defect it was named for. The
+        # arm was re-pointed at the mechanism rather than the symptom.)
+        "owed-flag-detached-from-entry-position",
+        MGR,
+        "        del self.state.history[lo:hi]\n"
+        "        del self._owed[lo:hi]",
+        "        del self.state.history[lo:hi]\n"
+        "        del self._owed[:hi - lo]",
+        breaks=[
+            f"{UNIT}::TestPendingMultisetSemantics::"
+            "test_deleting_a_typed_copy_does_not_resurrect_it_via_a_twin",
+            f"{UNIT}::TestPendingMultisetSemantics::"
+            "test_a_foreign_line_is_not_resurrected_by_a_same_text_delete",
+        ],
+        stays_green=[
+            f"{UNIT}::TestPendingMembership::test_recorded_entries_are_pending"],
+    ),
+    Arm(
+        # The producer half of membership.
+        "recording-stops-marking-entries-owed",
         MGR,
         "        self.state.history.append(command)\n"
-        "        self._pending.append(command)",
-        "        self.state.history.append(command)",
+        "        self._owed.append(True)\n"
+        "        self._trim_to_max()",
+        "        self.state.history.append(command)\n"
+        "        self._owed.append(False)\n"
+        "        self._trim_to_max()",
         breaks=[
             f"{UNIT}::TestPendingMembership::test_recorded_entries_are_pending",
             f"{UNIT}::TestReadsDoNotSwallowPending::"
@@ -121,32 +138,26 @@ ARMS = [
             f"{UNIT}::TestPendingMembership::test_loaded_lines_are_not_pending"],
     ),
     Arm(
-        # The read paths re-marking everything as written: R2-F2's swallow.
-        "read-new-swallows-pending-entries",
+        # R2-F2's swallow: a read re-marking the whole list as written.
+        "read-new-swallows-owed-entries",
         MGR,
-        "        # Read lines are NEVER pending (see read_history), and the "
-        "in-memory\n        # list still respects $HISTSIZE: bash trims after "
-        "`-n` too.\n        self._trim_to_max()",
-        "        self._trim_to_max()\n        self._mark_written()",
+        "        self._owed.extend([False] * len(fresh))",
+        "        self._owed.extend([False] * len(fresh))\n"
+        "        self._mark_written()",
         breaks=[
             f"{UNIT}::TestReadsDoNotSwallowPending::"
             "test_read_new_does_not_swallow_a_pending_typed_entry",
-            f"{UNIT}::TestReadsDoNotSwallowPending::"
-            "test_the_typed_entry_reaches_the_file_after_an_interleaved_read",
         ],
         stays_green=[
             f"{UNIT}::TestReadsDoNotSwallowPending::"
             "test_read_does_not_swallow_a_pending_typed_entry"],
     ),
     Arm(
-        # The leak: lines read from another file treated as ours to save.
-        "read-marks-foreign-lines-as-pending",
+        # The leak: foreign lines treated as ours to save.
+        "read-marks-foreign-lines-as-owed",
         MGR,
-        "        self.state.history.extend(lines)\n"
-        "        # Read lines are NEVER pending",
-        "        self.state.history.extend(lines)\n"
-        "        self._pending.extend(lines)\n"
-        "        # Read lines are NEVER pending",
+        "        self._owed.extend([False] * len(lines))",
+        "        self._owed.extend([True] * len(lines))",
         breaks=[
             f"{UNIT}::TestPendingMembership::"
             "test_lines_read_from_a_NAMED_file_are_not_pending",
@@ -157,8 +168,8 @@ ARMS = [
             f"{UNIT}::TestPendingMembership::test_read_new_lines_are_not_pending"],
     ),
     Arm(
-        # P5: the named-target write consuming $HISTFILE's pending entries.
-        "write-to-any-file-consumes-pending",
+        # P5: a named-target write consuming $HISTFILE's owed entries.
+        "write-to-any-file-consumes-owed",
         MGR,
         "        if self._is_default_file(target):\n"
         "            self._mark_written()\n"
@@ -177,28 +188,20 @@ ARMS = [
             "test_write_to_the_default_file_consumes_pending"],
     ),
     Arm(
-        # The REPRESENTATION: pending as a raw list rather than a view of
-        # memory. Everything still "works" until an entry leaves memory by a
-        # route the manager does not own -- e.g. the builtin's CV3 strip.
-        "pending-stops-being-a-view-of-memory",
+        # The CV3-strip reconciliation: without it an outside tail delete
+        # leaves a phantom debt that a later save resurrects.
+        "outside-tail-delete-leaves-a-phantom-debt",
         MGR,
-        "        wanted = Counter(self._pending)\n"
-        "        out: List[str] = []\n"
-        "        for entry in self.state.history:\n"
-        "            if wanted[entry] > 0:\n"
-        "                wanted[entry] -= 1\n"
-        "                out.append(entry)\n"
-        "        return out",
-        "        return list(self._pending)",
+        "        if extra > 0:\n"
+        "            del self._owed[len(self.state.history):]",
+        "        if False:\n"
+        "            del self._owed[len(self.state.history):]",
         breaks=[
             f"{UNIT}::TestPendingIsAViewOfMemory::"
             "test_the_builtin_CV3_strip_removes_from_pending",
         ],
         stays_green=[
-            # Membership still works without the view; only the "left memory
-            # means left pending" property dies, which is the arm's own reason.
-            f"{UNIT}::TestPendingMembership::test_recorded_entries_are_pending",
-        ],
+            f"{UNIT}::TestPendingMembership::test_recorded_entries_are_pending"],
     ),
     Arm(
         # Rider #25: clustered flags rejected again.
@@ -212,7 +215,6 @@ ARMS = [
             f"{CONF}::TestClusteredFlagsRider::test_ps_stores_and_does_not_print",
         ],
         stays_green=[
-            # Single-flag spellings must be untouched by a cluster regression.
             f"{CONF}::TestSequenceParity::test_clear_then_read",
         ],
     ),
@@ -220,13 +222,8 @@ ARMS = [
         # Rider #25: the `-c` suppresses `-d` rule.
         "clear-no-longer-suppresses-delete",
         BUILTIN,
-        "        if 'c' in flags:\n"
-        "            # Route through the manager so the file-sync marker resets "
-        "too —\n            # clearing state.history directly left it stale and "
-        "dropped\n            # post-clear commands from HISTFILE on save (data "
-        "loss).\n            hist_mgr.clear_history()\n"
+        "            hist_mgr.clear_history()\n"
         "        elif 'd' in flags:",
-        "        if 'c' in flags:\n"
         "            hist_mgr.clear_history()\n"
         "        if 'd' in flags:",
         breaks=[
@@ -235,6 +232,40 @@ ARMS = [
         stays_green=[
             f"{CONF}::TestClusteredFlagsRider::"
             "test_cluster_exit_status_matches_bash[-ps hello-rcps]",
+        ],
+    ),
+    Arm(
+        # ROUND-1 BOUNCE-2: the two-of-anrw diagnostic going silent again.
+        "anrw-diagnostic-dropped",
+        BUILTIN,
+        '            self.error("cannot use more than one of -anrw", shell)\n'
+        "            return 1",
+        "            return 1",
+        breaks=[
+            f"{CONF}::TestClusteredFlagsRider::"
+            "test_two_file_ops_report_the_bash_diagnostic",
+        ],
+        stays_green=[
+            f"{CONF}::TestClusteredFlagsRider::"
+            "test_cluster_exit_status_matches_bash[-an-rcan]",
+        ],
+    ),
+    Arm(
+        # ROUND-1 BOUNCE-3: the file op running after a clear/delete again.
+        "file-op-not-suppressed-after-clear-or-delete",
+        BUILTIN,
+        "        if file_ops and not ('d' in flags\n"
+        "                             or ('c' in flags and not operands)):",
+        "        if file_ops:",
+        breaks=[
+            f"{CONF}::TestClusterActionSelection::"
+            "test_clear_without_operand_suppresses_the_file_op",
+            f"{CONF}::TestClusterActionSelection::"
+            "test_delete_suppresses_the_file_op",
+        ],
+        stays_green=[
+            f"{CONF}::TestClusterActionSelection::"
+            "test_clear_with_an_operand_still_runs_the_file_op",
         ],
     ),
 ]
@@ -265,10 +296,12 @@ def mutation_tree():
 
     Copied rather than edited in place so a crashed run can never leave the real
     worktree mutated. The scratch parent is the repo's ``tmp/``, which is
-    GITIGNORED and therefore ABSENT on a fresh clone or ``git worktree add`` —
-    diagnosed as loudly as every other precondition rather than quietly created,
-    because arms that die at fixture setup while the anchor check stays green
-    are exactly the silent-disarm failure this file exists to prevent.
+    GITIGNORED and therefore ABSENT on a fresh clone or ``git worktree add``, so
+    this fixture CREATES it (``exist_ok=True``) and fails LOUDLY if it cannot —
+    arms that die at fixture setup while the anchor check stays green are exactly
+    the silent-disarm failure this file exists to prevent. (An earlier docstring
+    here claimed the parent was diagnosed rather than created, which was the
+    opposite of the code beside it.)
     """
     scratch_parent = os.path.join(REPO, "tmp")
     try:

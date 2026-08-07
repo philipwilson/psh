@@ -1,7 +1,6 @@
 """Command history management."""
 import fcntl
 import os
-from collections import Counter
 from typing import TYPE_CHECKING, List, Optional
 
 from ..expansion.pattern import match_shell_pattern
@@ -39,17 +38,20 @@ class HistoryManager(InteractiveComponent):
     TWO INDEPENDENT QUANTITIES track our relationship to the history file, and
     conflating them was MEDIUM-7:
 
-    * ``_pending`` — the entries RECORDED this session and not yet written.
-      An entry is pending iff it entered memory through the recording pipeline
-      (a typed line, or a ``history -s`` store) and has not since been written
-      by ``-a``/``-w``/the exit save. Lines that entered via ``-r``/``-n`` or
-      the startup load are NEVER pending: they are already in a file, and
-      re-appending them was how another file's contents leaked into $HISTFILE.
-      Pending is a MULTISET VIEW of memory, resolved by ``_pending_entries``:
-      an entry that leaves ``state.history`` by ANY route — the HISTSIZE
-      front-drop, ``-d``, ``-c``, erasedups, or the builtin's own CV3 strip —
-      thereby leaves pending, so nothing is ever resurrected into the file
-      after it is gone from memory.
+    * ``_owed`` — a per-ENTRY flag, one bool per ``state.history`` position,
+      marking the entries RECORDED this session and not yet written. An entry
+      is owed iff it entered memory through the recording pipeline (a typed
+      line, or a ``history -s`` store) and has not since been written by
+      ``-a``/``-w``/the exit save. Lines that entered via ``-r``/``-n`` or the
+      startup load are NEVER owed: they are already in a file, and re-appending
+      them was how another file's contents leaked into $HISTFILE.
+
+      The flags are POSITIONAL, and that is the whole point: an earlier design
+      matched owed entries against memory BY TEXT, so a surviving entry with
+      the same text silently satisfied the debt of a deleted one and a
+      ``history -d``'d command was resurrected into $HISTFILE as a duplicate.
+      Identical command strings are ordinary, so text can never identify an
+      entry.
     * ``_file_read_len`` — how many lines of the DEFAULT file have been
       consumed into memory (startup load, ``-r``/``-n`` of that file).
       ``history -n`` resumes from here. It is a position in the FILE, so
@@ -73,9 +75,9 @@ class HistoryManager(InteractiveComponent):
 
     def __init__(self, shell: 'Shell') -> None:
         super().__init__(shell)
-        # Entries recorded this session and not yet written to any file.
-        # Resolved against memory by _pending_entries() before every write.
-        self._pending: List[str] = []
+        # One flag per state.history position: True = recorded this session and
+        # not yet written to any file. Kept in lockstep with the list.
+        self._owed: List[bool] = []
         # Count of the default history file's lines already consumed into the
         # in-memory list (startup load + `history -r`/`-n` of the default
         # file). `history -n` uses this to append only lines it hasn't read yet.
@@ -83,30 +85,41 @@ class HistoryManager(InteractiveComponent):
 
     # -- the pending set (the ONE maintenance site) --------------------------
 
-    def _pending_entries(self) -> List[str]:
-        """The pending entries that are STILL in memory, in memory order.
+    def _sync_owed(self) -> None:
+        """Realign the owed flags with ``state.history`` after an OUTSIDE edit.
 
-        Pending is a multiset view rather than an index, so it survives every
-        way an entry can leave ``state.history`` — including the history
-        builtin's own CV3 strip, which deletes directly. Two identical pending
-        entries resolve to two occurrences (and to one if only one survives),
-        which is what keeps duplicate command strings saved exactly once each.
+        Every mutation THIS class makes keeps the two in lockstep. One editor
+        does not go through this class: the history builtin's CV3 strip deletes
+        ``state.history[-1]`` directly, and that machinery is settled and must
+        not be modified. A tail deletion is exactly what truncating the flags
+        to the list's length repairs, so the strip cannot leave a phantom debt
+        that a later save would resurrect. An outside APPEND (no current caller)
+        is treated as not-owed: never inventing a debt is the safe direction.
         """
-        wanted = Counter(self._pending)
-        out: List[str] = []
-        for entry in self.state.history:
-            if wanted[entry] > 0:
-                wanted[entry] -= 1
-                out.append(entry)
-        return out
+        extra = len(self._owed) - len(self.state.history)
+        if extra > 0:
+            del self._owed[len(self.state.history):]
+        elif extra < 0:
+            self._owed.extend([False] * -extra)
 
-    def _prune_pending(self) -> None:
-        """Re-resolve pending against memory after a mutation drops entries."""
-        self._pending = self._pending_entries()
+    def _pending_entries(self) -> List[str]:
+        """The owed entries still in memory, in memory order.
+
+        Positional, so two identical command strings are two independent debts:
+        deleting one leaves the other owed, and deleting the ONLY owed copy
+        leaves nothing owed even when an unrelated entry with the same text
+        survives.
+        """
+        self._sync_owed()
+        # strict=True: _sync_owed() has just guaranteed equal lengths, so a
+        # mismatch here is a bug in this class rather than something to absorb.
+        return [entry for entry, owed
+                in zip(self.state.history, self._owed, strict=True) if owed]
 
     def _mark_written(self) -> None:
-        """Everything pending has just reached a file."""
-        self._pending = []
+        """Everything owed has just reached a file."""
+        self._sync_owed()
+        self._owed = [False] * len(self.state.history)
 
     def _histcontrol_options(self) -> set:
         """The effective HISTCONTROL value set (``ignoreboth`` expanded)."""
@@ -150,9 +163,11 @@ class HistoryManager(InteractiveComponent):
         must not be resurrected into the file by a later save. The file is
         append-only, so on-disk copies of erased dups remain: erasedups is
         in-session here."""
+        self._sync_owed()
         hist = self.state.history
-        hist[:] = [h for h in hist if h != command]
-        self._prune_pending()
+        keep = [i for i, h in enumerate(hist) if h != command]
+        hist[:] = [hist[i] for i in keep]
+        self._owed[:] = [self._owed[i] for i in keep]
 
     def _ignorespace_blocks(self, command: str) -> bool:
         """HISTCONTROL ``ignorespace``: a line beginning with a space is not
@@ -183,30 +198,29 @@ class HistoryManager(InteractiveComponent):
             # Drop a line identical to the immediately previous entry.
             if self.state.history and self.state.history[-1] == command:
                 return False
+        self._sync_owed()
         self.state.history.append(command)
-        self._pending.append(command)
+        self._owed.append(True)
         self._trim_to_max()
         return True
 
     def _trim_to_max(self) -> None:
         """Enforce $HISTSIZE on the in-memory list, dropping from the FRONT.
 
-        Dropped entries leave pending with them, so a trimmed-away command is
-        never written later. That holds because ``_pending_entries`` RESOLVES
-        against memory, not because of the ``_prune_pending`` call below: the
-        call keeps ``_pending`` from accumulating dead strings, and an M8 arm
-        that removed it changed no observable behaviour. The v0.447 regression
-        was the index form of this bookkeeping — a stale marker made the save
-        slice skip genuinely-new entries — and a view has no arithmetic to go
-        stale.
+        Dropped entries take their owed flags with them, so a trimmed-away
+        command is never written later. (The v0.447 regression was the index
+        form of this bookkeeping — a stale marker made the save slice skip
+        genuinely-new entries.)
+
         The READ cursor is deliberately NOT shifted: it is a position in the
         FILE, which a memory-side trim does not move (bash 5.2.26 leaves its
         file counter untouched across front-drops from either producer).
         """
         if len(self.state.history) > self.state.max_history_size:
             dropped = len(self.state.history) - self.state.max_history_size
+            self._sync_owed()
             del self.state.history[:dropped]
-            self._prune_pending()
+            del self._owed[:dropped]
 
     def add_to_history(self, command: str) -> bool:
         """Add a typed command to history; return True iff an entry was
@@ -247,8 +261,8 @@ class HistoryManager(InteractiveComponent):
         except OSError:
             # Silently ignore history file errors
             pass
-        # Everything loaded is already on disk, so nothing is pending.
-        self._pending = []
+        # Everything loaded is already on disk, so nothing is owed.
+        self._owed = [False] * len(self.state.history)
         # We have now consumed the whole file, so `history -n` starts from here.
         self._file_read_len = read
 
@@ -307,9 +321,9 @@ class HistoryManager(InteractiveComponent):
     def clear_history(self) -> None:
         """Clear command history (in-memory only — the FILE is untouched)."""
         self.state.history.clear()
-        # Nothing is left in memory, so nothing is pending (invariant: pending
-        # is a view of memory). A cleared entry is not resurrected on save.
-        self._pending = []
+        # Nothing is left in memory, so nothing is owed. A cleared entry is
+        # never resurrected on save.
+        self._owed.clear()
         # The READ cursor is NOT reset. It records how much of the FILE has
         # been consumed, and clearing memory does not un-read the file: bash
         # 5.2.26 leaves its counter across `-c`, so a following `history -n`
@@ -400,11 +414,12 @@ class HistoryManager(InteractiveComponent):
         lines = self._read_file_lines(target)
         if lines is None:
             return False
+        self._sync_owed()
         self.state.history.extend(lines)
-        # Read lines are NEVER pending — they already live in a file. Adding
-        # them to the pending set was how another file's contents leaked into
-        # $HISTFILE; marking the WHOLE list synced instead swallowed the typed
-        # commands that were still waiting to be saved.
+        # Read lines are NEVER owed — they already live in a file. Marking them
+        # owed leaked another file's contents into $HISTFILE; marking the WHOLE
+        # list written instead swallowed the typed commands still waiting.
+        self._owed.extend([False] * len(lines))
         self._trim_to_max()
         if self._is_default_file(target):
             self._file_read_len = len(lines)
@@ -420,9 +435,11 @@ class HistoryManager(InteractiveComponent):
         default = self._is_default_file(target)
         start = self._file_read_len if default else 0
         fresh = lines[start:]
+        self._sync_owed()
         self.state.history.extend(fresh)
-        # Read lines are NEVER pending (see read_history), and the in-memory
-        # list still respects $HISTSIZE: bash trims after `-n` too.
+        # Read lines are NEVER owed (see read_history); the in-memory list
+        # still respects $HISTSIZE, because bash trims after `-n` too.
+        self._owed.extend([False] * len(fresh))
         self._trim_to_max()
         if default:
             self._file_read_len = len(lines)
@@ -431,8 +448,10 @@ class HistoryManager(InteractiveComponent):
     def delete_entry(self, first: int, last: int) -> None:
         """`history -d`: delete the entries at 1-based positions [first, last].
 
-        Callers validate the range. Deleted entries leave the pending set with
-        them, so a deleted command is never written to the file afterwards.
+        Callers validate the range. Deleted entries take their owed flags with
+        them, so a deleted command is never written to the file afterwards —
+        and because the flags are positional, deleting one of two identical
+        command strings settles that entry's debt only.
 
         The READ cursor is deliberately NOT shifted. The two quantities are
         different: pending is a view of MEMORY, so a memory deletion prunes it;
@@ -443,8 +462,9 @@ class HistoryManager(InteractiveComponent):
         5.2.26 leaves its file counter untouched across `-d` for a single
         offset, a range, and a delete at the cursor alike."""
         lo, hi = first - 1, last  # 0-based half-open slice
+        self._sync_owed()
         del self.state.history[lo:hi]
-        self._prune_pending()
+        del self._owed[lo:hi]
 
     def _read_file_lines(self, path: str) -> Optional[List[str]]:
         """Non-empty, newline-stripped lines of *path*; None on OSError."""

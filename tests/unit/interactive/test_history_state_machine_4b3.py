@@ -47,6 +47,13 @@ def other_file(mgr, name, *lines):
 
 
 def read_file(path):
+    """The file's non-empty lines; [] when it does not exist.
+
+    "Never created" and "created empty" both mean nothing was written, which is
+    what every caller here is asserting about."""
+    import os
+    if not os.path.exists(path):
+        return []
     with open(path) as f:
         return [ln.rstrip("\n") for ln in f if ln.strip()]
 
@@ -237,8 +244,9 @@ class TestPendingIsAViewOfMemory:
 
     def test_the_builtin_CV3_strip_removes_from_pending(self, mgr):
         """The history builtin deletes ``state.history[-1]`` DIRECTLY (the CV3
-        strip, which this slot must not modify). Pending is a view precisely so
-        that such an outside deletion cannot leave a phantom pending entry."""
+        strip, which this slot must not modify). ``_sync_owed`` reconciles the
+        flags with the list precisely so that such an outside deletion cannot
+        leave a phantom debt for a later save to resurrect."""
         mgr.add_to_history("first")
         mgr.add_to_history("about to be stripped")
         del mgr.state.history[-1]                 # what _strip_own_invocation does
@@ -270,12 +278,57 @@ class TestPendingMultisetSemantics:
         mgr.save_to_file()
         assert read_file(mgr.state.history_file) == ["same"]
 
-    def test_a_read_copy_does_not_make_a_deleted_typed_copy_pending(self, mgr):
-        """A line with the same TEXT arriving from the file is not pending, so
-        the count — not merely the membership — is what is preserved."""
+    def test_a_loaded_copy_is_not_pending(self, mgr):
+        """A line arriving from the file is not owed."""
         seed_file(mgr, "same")
-        mgr.load_from_file()                       # 'same' present, not pending
+        mgr.load_from_file()
         assert mgr._pending_entries() == []
+
+    def test_deleting_a_typed_copy_does_not_resurrect_it_via_a_twin(self, mgr):
+        """A deleted command must NOT reach the file just because some OTHER
+        entry happens to have the same text.
+
+        Round-1 bounce regression. The owed set was matched against memory by
+        TEXT, so the surviving LOADED copy of 'same' satisfied the deleted TYPED
+        copy's debt and the save re-appended it: a duplicate file line, from a
+        command the user had explicitly deleted, where the base was correct.
+        Identical command strings are ordinary, so text can never identify an
+        entry — the flags are positional for exactly this reason.
+
+        The cell this replaces made this claim in its docstring but its body
+        only loaded a file and asserted nothing was owed; it never typed and
+        never deleted, so it could not have seen the bug it was named for
+        (NAME-VS-BODY, in my own pin suite).
+        """
+        seed_file(mgr, "same")
+        mgr.load_from_file()                  # memory ['same'], nothing owed
+        mgr.add_to_history("same")            # memory ['same','same'], 2nd owed
+        mgr.delete_entry(2, 2)                # delete the TYPED one
+        assert mgr._pending_entries() == []
+        mgr.save_to_file()
+        assert read_file(mgr.state.history_file) == ["same"]
+
+    def test_deleting_a_twin_leaves_the_other_owed(self, mgr):
+        """Counter-direction: deleting the LOADED copy must leave the TYPED copy
+        owed, so the fix cannot degenerate into 'never owe anything with a
+        twin'."""
+        seed_file(mgr, "same")
+        mgr.load_from_file()
+        mgr.add_to_history("same")
+        mgr.delete_entry(1, 1)                # delete the LOADED one
+        assert mgr._pending_entries() == ["same"]
+        mgr.save_to_file()
+        assert read_file(mgr.state.history_file) == ["same", "same"]
+
+    def test_a_foreign_line_is_not_resurrected_by_a_same_text_delete(self, mgr):
+        """The leak face of the same bug: a line read from ANOTHER file must not
+        be written into $HISTFILE because a typed entry with the same text was
+        deleted."""
+        assert mgr.read_history(other_file(mgr, "o", "secret_from_other")) is True
+        mgr.add_to_history("secret_from_other")
+        mgr.delete_entry(2, 2)                # delete the typed copy
+        mgr.save_to_file()
+        assert read_file(mgr.state.history_file) == []
 
 
 class TestWritesConsumePending:
