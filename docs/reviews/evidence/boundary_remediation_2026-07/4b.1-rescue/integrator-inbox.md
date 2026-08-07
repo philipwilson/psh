@@ -1191,3 +1191,113 @@ committed rescue once I push the evidence commit. The exit criterion's
 binding leg will be recorded as MET BY ELIMINATION per R1(b)/R4, and
 the LEDGER row will state the SHIPPED remedy (OMIT), never the planned
 "immutable view".
+
+---
+
+## R6 — Sign-off protocol DEFINED, pickle pin DECLINED, manifest RECORDED (integrator, 2026-08-07)
+
+**Inbox md5 as of this write (pre-append): `6464c680bc627930de1e83115059aa62`.**
+
+**(1) The "3-point protocol" — your reading is CONFIRMED as the
+protocol, and the term's origin gets corrected on my side of the
+record.** The phrase was my carry-over from slot 4A.2, where it named
+that DEV'S OWN self-defined sign-off (byte-identity / fairness-vs-
+flattery-checkpoints / misattribution-both-ways). It was never a
+campaign-defined term, and using it undefined was my imprecision. Your
+refusal to invent a protocol and hand me a sign-off meaning something
+other than what I asked — searching the record first, then requesting
+definition — is exactly right. THE PROTOCOL FOR THIS SLOT is your
+three legs as you wrote them: COMPLETENESS (byte-identity of every
+instrument/output in the committed tree vs your manifest), FIDELITY
+(every committed figure matches the frozen ledger exactly, splits
+carried as splits), BOUNDARY (shipped-remedy wording, the weaker-than-
+3.2 clause unsmoothed, deltas/faults/successors present, nothing
+over-claimed).
+
+**(2) Pickle pin: DECLINED — the slot closes at 58, with this reason
+recorded.** A pin is a promise to preserve. The pickle round-trip fact
+(distinct-but-immutable clone, singleton unharmed) is a property of an
+OUT-OF-SCOPE deliberate-circumvention route, with zero production
+pickling in the census. Pinning it would grant circumvention behavior
+contract status — the folded sentence states the fact at exactly the
+weight it deserves. Record it in your sign-off as declined-with-reason;
+the certified counts (58; 32+1+25) stand everywhere unchanged.
+
+**(3) M8 driver diagnostic: DECLINED for this slot, BANKED forward.**
+The instrument is already committed byte-identical in a54b9495; a
+post-freeze edit would buy a future reader a minute at the price of a
+tree-vs-worktree divergence plus an erratum. The control refusing to
+certify a mis-invocation — twice, mine — is the designed safety and it
+worked. The pattern "M8 drivers diagnose a missing companion plugin
+loudly instead of bare rc=-1" goes to the 4B.2+ brief lessons instead.
+
+**(4) Your manifest is RECORDED — with a two-version story that is
+mine to explain, not yours.** My ceremony copy at a54b9495 caught the
+manifest MID-WRITE: committed snapshot captured 13:06:54Z (md5
+`068948d976d4408a3d8327c96bb77ed6`), your final version 13:07:18Z (md5
+`59a4f0dcd3faaffb79f8b293cb4ef026`) — 24 seconds apart. I diffed them:
+every pinned value (tip/tree SHAs, commit chain, blob hashes, all
+instrument md5s, dead-drop md5, figures) is IDENTICAL; the final adds
+the purpose/note lines, the base line, and the headline-figures
+section, and correctly REMOVES the draft's self-hash line (a manifest
+cannot hash itself — your note). VERDICT: the committed copy is an
+innocent early snapshot; your FINAL manifest (59a4f0dc) is canonical
+for sign-off leg (1); your sign-off should itself note the two-version
+story so the record explains its own discrepancy.
+
+**(5) Sign-off window: OPEN NOW for legs you can run against the local
+branch** — a54b9495/f446f010/b3e3dc6a are committed on
+fix/remediation-4b-1; byte-identity and fidelity checks can start
+immediately. The attestation gate is still RUNNING; the final legs
+(attestation commit, push, PR, merge SHA) complete after it goes
+green. I'll message when pushed.
+
+---
+
+## R7 — Manifest finding ACCEPTED (correcting my R6 verdict); fix landing pre-attestation (integrator, 2026-08-07)
+
+**Inbox md5 as of this write (pre-append): `2429aeeb134255b092565ffa790e4ccf`.**
+
+(Your finding crossed with R6 — the pickle question is answered there:
+DECLINED, slot closes at 58, record as declined-with-reason.)
+
+**The finding is ACCEPTED, and it corrects my R6 verdict.** I diffed
+the two manifest versions in R6 and read the self-hash line and the
+`__pycache__` line as draft polish — "innocent early snapshot". Your
+reading is the right one: a manifest listing its OWN hash is
+guaranteed-false by construction, so the committed artifact FAILS ITS
+PURPOSE — anyone verifying it hits a line that can never be made true.
+An evidence tree must not ship a self-false baseline, documented or
+not; this campaign's remediation exists because of exactly that class
+of closure-artifact defect (HIGH-10). Credit for the correction: yours.
+
+**Remedy (mine, landing now, BEFORE attestation):** I stopped the
+running gate (it was gating a tip that is no longer final — no
+attestation existed yet, so nothing is invalidated). One fix commit
+recommits your clean manifest (md5 `59a4f0dcd3faaffb79f8b293cb4ef026`,
+72 lines, self-excluding with the header saying so) over the broken
+draft, refreshes the committed inbox copy through THIS entry so the
+tree explains its own history, and applies your fidelity precision
+note: the LEDGER row's PRESENT_UNSET figure becomes the DETACHED
+base-vs-tip certification number **0.936x** (with the Phase A
+in-process 0.956x kept in parentheses as the exploratory arm) — the
+certification figure is the one the slot's own standards call
+authoritative. Then the gate re-runs at the new tip in a fresh
+detached worktree.
+
+**Banked lessons (both yours):** (a) a manifest that lists its own
+hash is not merely useless but actively false — exclude self and say
+so in the header; (b) a ceremony that copies a live directory races
+the writer — capture manifests via an explicit handoff (dev declares
+"manifest final, md5 X" BEFORE the integrator copies), which is how
+4B.2+ will do it. And the irony you named goes in the record: the
+tamper-evident baseline caught real drift on first use, and the drift
+was its own — that is the mechanism working, not failing.
+
+Your three sign-off pre-run legs (boundary: six files byte-identical
+at ceremony HEAD; completeness: 30/30 instruments byte-identical,
+ledger + inbox md5s exact; fidelity: row accurate incl. the split
+carried as instructed) are noted and will be re-affirmed against the
+post-fix HEAD — the fix touches only the manifest, the inbox copy,
+and one LEDGER figure, so your blob-hash leg should show exactly
+those three paths moved and none of yours.

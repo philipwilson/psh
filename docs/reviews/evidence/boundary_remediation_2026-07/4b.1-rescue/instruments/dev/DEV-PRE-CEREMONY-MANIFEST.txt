@@ -1,10 +1,15 @@
 # 4B.1 DEV PRE-CEREMONY MANIFEST
-captured: 2026-08-07T13:06:54Z  (BEFORE integrator ceremony commits land on this branch)
+captured: 2026-08-07T13:07:18Z  (BEFORE integrator ceremony commits land on this branch)
+purpose:  tamper-evident baseline of the dev-side record. Ceremony commits
+          land on THIS branch, so this pins what existed beforehand.
+note:     this file excludes itself (a manifest cannot hash itself).
+
 tip:      2f08bd7a1b251066d68126cc5ad086ef2a1a664c
 branch:   fix/remediation-4b-1
 tree:     53a8ae10e4e875bf3244bdec0fc00bf61449b9b4
+base:     4f2facaf0eede0dacf926e6718a2c348c3d3ce82 (v0.769.0)
 
-## Commit chain (base 4f2facaf -> tip)
+## Commit chain (base -> tip, in order)
 ebff73db9f8ec433e1b30f183f1a97445281ca04  4B.1: make the variable-read result immutable (MEDIUM-5)
 a4ace33931f1ab0f8d535a4ab9d45e09b82e3fe8  4B.1 doc sweep: core/CLAUDE.md lookup prose
 c1c7b69a41d3fce2f8a9ca923fef88e5881eea47  4B.1 R2 SCOPE EXTENSION (doc-only): drop stale VariableLookup precedent
@@ -13,7 +18,7 @@ c1c7b69a41d3fce2f8a9ca923fef88e5881eea47  4B.1 R2 SCOPE EXTENSION (doc-only): dr
 7d42c79e369f37ecafe9758e8e0a539bf63dc51a  4B.1 fix-round F2: threat-model boundary becomes an OPEN CLASS (RN-1)
 2f08bd7a1b251066d68126cc5ad086ef2a1a664c  4B.1 fix-round F3: repair ruff B018 introduced by F2
 
-## Tracked files I changed, with blob hashes at tip
+## Files I changed, blob hash at tip
   7ec1de8593be7e91a87051f404a83ea4f150b026  psh/core/variable_lookup.py
   9b766c2b9d0285fd22d65ab3c4c1e762d000f2b7  psh/core/scope.py
   b5e7deaff9979f50078053a1b9ce352ad0d37e55  psh/core/CLAUDE.md
@@ -21,17 +26,15 @@ c1c7b69a41d3fce2f8a9ca923fef88e5881eea47  4B.1 R2 SCOPE EXTENSION (doc-only): dr
   c8644cc2fd88dc95104b2dfb377f00571f0fdc57  tests/unit/core/test_variable_lookup.py
   572156e625925644fa448249ac1ce62469839100  tests/unit/core/test_variable_lookup_immutability.py
 
-## Ledger
+## Ledger (RE-FROZEN)
   d70c4b79a8e1c5632cf5188c9f2e9514  SLOT-LEDGER-4b1.md (    1059 lines)
 
-## Instruments + outputs (md5)
-    __pycache__
+## Instruments + outputs (md5, files only)
   23120ad00041949434f4eefde83d2ceb  bench_p10_real_lookup.py
   b1e74ae0110337038ced39d9f99229f4  bench_p3_construction.py
   a94335ec6aceb4328bf632fdb0afabd3  bench_p3b_proposed_design.py
   c3c19c8235f530d8fa843aaa95222c52  bench_p3c_missing_policy.py
   f2bc7c7665094e43cafd5932b8bef150  bench_p4_lookup_path.py
-  78d75254902831b7c628d5b2a786187f  DEV-PRE-CEREMONY-MANIFEST.txt
   5cec98fb8c40520c0126b7b858a2701e  m8_mutation_locks.py
   6914cc2e3dec77fdfd24dba54fbe7a97  m8_plugin.py
   a9305e8d12f6b71c672068759fa457a4  out_m8_mutation_locks.txt
@@ -58,5 +61,12 @@ c1c7b69a41d3fce2f8a9ca923fef88e5881eea47  4B.1 R2 SCOPE EXTENSION (doc-only): dr
   cf0a5581243dd0e4716358a0ea081913  probe_p789_design_facts.py
   f6febb52bdd275161e8a25c272150393  redonbase_split.py
 
-## Dead-drop
+## Dead-drop at capture
   6464c680bc627930de1e83115059aa62  INTEGRATOR-INBOX.md (    1193 lines)
+
+## Headline figures (from the instruments above)
+  red-on-base        33 red / 25 green of 58 (32 defect-evidencing + 1 incidental control)
+  M8                 5/5 HOLD, red counts 37/1/10/1/2 (4 independent runs identical)
+  tip suites         108 pins+must-hold, 35 conformance
+  gate (at 0e9603e6) 23,604 passed / 1,618 skipped / 10 xfail; compare-bash 3,042/26 EXACT
+  perf base->tip     VALUE 0.989x, PRESENT_UNSET 0.936x, production .is_set 1.004x, control flat
