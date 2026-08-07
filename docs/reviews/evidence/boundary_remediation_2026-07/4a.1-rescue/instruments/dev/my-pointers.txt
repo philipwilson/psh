@@ -1,0 +1,6 @@
+`file_redirect.py#FileRedirector._release_permanent_stream_lease`
+`file_redirect.py#FileRedirector.apply_permanent_redirections`
+`process_lease.py#ProcessLeaseCoordinator.activate`
+`signal_manager.py#_restore_managed_dispositions`
+`signal_manager.py#SignalManager._register_managed_signal_lease`
+`state.py#ShellState._on_activation_grant`

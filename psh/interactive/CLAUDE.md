@@ -341,6 +341,52 @@ is idempotent (no double-close of a reused fd), and the self-pipes are
 recreated if the loop is re-entered after a restore. Pinned by the serial
 lifecycle tests added in v0.300.
 
+**Managed dispositions are LEASED (slot 4A.1).** That teardown was the ONLY
+path that restored them, so a shell which never ran the loop — every
+embedded and transient shell — left all of them installed in the host
+(`Shell.close()` freed the notifier fds and nothing else). The first
+install into a fresh map now registers a `MANAGED_SIGNALS` component lease
+(`signal_manager.py#SignalManager._register_managed_signal_lease`), so
+`close()` restores the exact prior dispositions like any other
+process-global the shell leases, and a shell re-used after `close()`
+re-acquires. One draining restore
+(`signal_manager.py#_restore_managed_dispositions`) serves BOTH triggers,
+which is what makes teardown-then-close and close-then-teardown idempotent
+in either order: whichever runs second finds the map already empty. It
+registers through the signal registry rather than calling `signal.signal`,
+so restores stay tracked, and it holds no reference to the shell, so lease
+bookkeeping can never keep a dropped shell alive.
+
+`MANAGED_SIGNALS` is a kind of its own, never `ComponentKind.SIGNALS`
+(which `trap_manager.py` owns for unmanaged trap installs): component
+acquisition is idempotent per `(owner, kind)`, so one shared kind would
+keep only whichever family acquired FIRST and silently drop the other's
+restore. Both families on one shell, in both acquisition orders, are pinned
+in `tests/unit/interactive/test_managed_signal_lease_4a1.py`.
+
+**Installing mode handlers never takes process ownership.** The lease is
+acquired only when this shell ALREADY owns the process
+(`signal_manager.py#SignalManager._register_managed_signal_lease`), which
+every real psh process does: `psh/__main__.py` and
+`InteractiveManager.run_interactive_loop` both activate BEFORE calling
+setup. An embedder that calls `setup_signal_handlers()` on a
+never-activated shell installs LEASELESSLY, and `Shell.close()`'s
+unconditional drain (`#SignalManager.restore_managed_dispositions`) is what
+still gives it MEDIUM-8's guarantee.
+
+Acquiring the lease unconditionally was tried and RETRACTED (slot 4A.1
+R8 BL-2): it transferred ownership, the grant glue then took LOCALE too, and
+a shell that ran setup and was dropped without `close()` held both leases
+forever — the signal registry keeps its owner reachable, so no sweep ever
+classified it an orphan — leaving every later shell REJECTED. That is the
+poisoning this slot exists to end, reintroduced on its own new kind.
+
+**Documented limitation**, the same shape as the trap family's: a shell
+dropped WITHOUT `close()` leaks its managed dispositions, exactly as it did
+before this work. Nothing can sweep them, because the registry pins the
+owner. `close()` is the contract. What must NOT happen is the next shell
+being rejected, and that is pinned.
+
 ```python
 class SignalManager(InteractiveComponent):
     def __init__(self, shell):

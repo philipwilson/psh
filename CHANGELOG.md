@@ -4,6 +4,16 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.768.0 (2026-08-07) - Activation/component transaction (remediation slot 4A.1, HIGH-8 + MEDIUM-8 + LOW)
+
+- **Process-global ownership is now a recoverable transaction** (`psh/core/process_lease.py`): a failed activation/acquisition grant unwinds every component it acquired (LIFO) BEFORE rolling back owner metadata; every `_components` consumer discriminates by per-lease owner, so an orphaned lease can never be misattributed to an innocent shell (the spurious "competing process owner" poisoning family is dead — multi-shell A5 battery committed); orphans are swept deterministically, and a shell dropped without `close()` no longer poisons later shells (the STD_FDS restore baseline holds shell state weakly).
+- **Restore failures surface instead of being swallowed**: every LIFO restore is still attempted, failing leases are QUARANTINED (observable via the new `is_clean` / `quarantine_report` / `clear_quarantine` coordinator surface — the only public additions) and one aggregate `LeaseRestoreError` is raised; `Shell.close()` completes its remaining teardown before re-raising it.
+- **Managed signal dispositions restore exactly on close** (MEDIUM-8): mode-setup handlers (7 script / 10 interactive dispositions previously leaked into the host) now live under a distinct `MANAGED_SIGNALS` component lease acquired only when the shell already owns the process — mode setup never transfers ownership — plus an unconditional drain in `close()`, so even a never-activated embedder gets exact-prior restoration.
+- **A failing `exec` releases the STD_FDS state it itself acquired** (LOW), an earlier successful `exec`'s lease is untouched, and the baseline-dup bookkeeping is now honest: `None` means "closed at baseline" (EBADF) only — the family where a failed dup was recorded as closed and `close()` then closed the HOST's stdin/stdout/stderr is dead and pinned.
+- **Low fd-limit parity with bash**: lease backups park ADAPTIVELY below the soft RLIMIT_NOFILE (`exec 3>f` under `ulimit -n 50` now behaves exactly like bash at every measured threshold; bash's first-free-≥10 named-fd numbering preserved); genuine fd-table exhaustion still aborts the acquisition transactionally. Declared divergence: at soft limits ≤ 12 psh declines cleanly where bash proceeds (FLIP-PINS row).
+- 77 committed pins across three new batteries (fault injection at every acquisition/restore boundary, the A5 poisoning matrix, restore-exact-prior signal censuses, both-sides bash-oracle RLIMIT cells), 16-arm mutation-lock suite with kill-set-collision checking, composition cells, all red-on-base except declared must-holds.
+- Verification: adversarial-harness round (5 real blockers, all fixed in-slot — including two regressions introduced by the slot's own first-draft fixes) + integrator-direct round (fresh-checkout portability finding, fixed); zero false findings; compare-bash 3,042 cases EXACT throughout.
+
 ## 0.767.0 (2026-08-06) - Typed expansion/arithmetic errors (remediation slot 3.5, MEDIUM-12b + A10.1)
 
 - Broad/VT exception nets on the expansion/arithmetic path removed or

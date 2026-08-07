@@ -1,0 +1,74 @@
+# baseline (unmutated)
+  110 passed in 5.00s
+
+## unwind-activate  (process_lease.py)
+   12 failed, 98 passed in 4.91s
+   killed 12 test(s): test_checkpoint_unwind_while_a_signals_lease_is_held, test_components_unwind_before_the_owner_rolls_back, test_failed_grant_runs_the_stranded_restore[LOCALE], test_failed_grant_runs_the_stranded_restore[MANAGED_SIGNALS], test_failed_grant_runs_the_stranded_restore[SIGNALS], test_failed_grant_runs_the_stranded_restore[STD_FDS] ...
+
+## unwind-acquire  (process_lease.py)
+   1 failed, 109 passed in 4.97s
+   killed 1 test(s): test_acquire_component_grant_failure_strands_nothing
+
+## unwind-order  (process_lease.py)
+   1 failed, 109 passed in 5.00s
+   killed 1 test(s): test_components_unwind_before_the_owner_rolls_back
+
+## ensure-owner-discrimination  (process_lease.py)
+   110 passed in 4.85s
+   killed 0 test(s): NONE  <-- UNPINNED ARM
+
+## ensure-owner-sweep  (process_lease.py)
+   1 failed, 109 passed in 4.90s
+   killed 1 test(s): test_dead_owner_releases_ownership_and_components
+
+## find-component-filter  (process_lease.py)
+   1 failed, 109 passed in 4.84s
+   killed 1 test(s): test_find_component_never_returns_another_owners_lease
+
+## release-owner-sweep  (process_lease.py)
+   1 failed, 109 passed in 4.86s
+   killed 1 test(s): test_release_owner_from_a_non_owner_restores_its_own_lease
+
+## aggregate-surfacing  (process_lease.py)
+   9 failed, 101 passed in 4.94s
+   killed 9 test(s): test_aggregate_carries_every_failure_as_a_note, test_aggregate_raise_still_restores_managed_dispositions, test_every_restore_is_attempted_when_one_fails, test_failed_acquisition_while_quarantined_does_not_compound, test_fork_reset_clears_quarantine_too, test_quarantine_blocks_the_next_owner_and_names_the_reason ...
+
+## attempt-every-restore  (process_lease.py)
+   2 failed, 108 passed in 4.92s
+   killed 2 test(s): test_aggregate_carries_every_failure_as_a_note, test_every_restore_is_attempted_when_one_fails
+
+## quarantine-blocks  (process_lease.py)
+   2 failed, 108 passed in 4.96s
+   killed 2 test(s): test_failed_acquisition_while_quarantined_does_not_compound, test_quarantine_blocks_the_next_owner_and_names_the_reason
+
+## failed-exec-release  (file_redirect.py)
+   2 failed, 108 passed in 4.95s
+   killed 2 test(s): test_failing_exec_does_not_block_an_unrelated_shell, test_failing_exec_leaves_no_lease_no_parked_fds_no_baseline
+
+## failed-exec-discrimination  (file_redirect.py)
+   2 failed, 108 passed in 4.84s
+   killed 2 test(s): test_failing_exec_after_a_successful_one_keeps_the_first_lease, test_relocation_then_failure_keeps_the_earlier_lease_and_host_fds
+
+## errno-split  (file_redirect.py)
+   2 failed, 108 passed in 4.88s
+   killed 2 test(s): test_genuine_exhaustion_still_aborts_transactionally, test_sub_16_rlimit_envelope_is_recorded_not_claimed
+
+## weak-baseline-ref  (file_redirect.py)
+   1 failed, 109 passed in 4.97s
+   killed 1 test(s): test_dropped_shell_without_close_does_not_poison_the_next
+
+## managed-signals-kind  (signal_manager.py)
+   5 failed, 105 passed in 4.92s
+   killed 5 test(s): test_managed_and_trap_families_both_restore[interactive], test_managed_and_trap_families_both_restore[script], test_managed_lease_restore_references_no_shell, test_teardown_drops_the_inert_lease_so_siblings_are_not_blocked, test_teardown_keeps_the_lease_when_a_later_one_covers_it
+
+## managed-lease-acquired  (signal_manager.py)
+   5 failed, 105 passed in 4.89s
+   killed 5 test(s): test_managed_and_trap_families_both_restore[interactive], test_managed_and_trap_families_both_restore[script], test_managed_lease_restore_references_no_shell, test_teardown_drops_the_inert_lease_so_siblings_are_not_blocked, test_teardown_keeps_the_lease_when_a_later_one_covers_it
+
+=== DERIVED ===
+mutations run       = 16
+arms with a lock    = 15
+UNPINNED arms       = 1 ['ensure-owner-discrimination']
+stale patterns      = 0 []
+arms sharing an IDENTICAL kill set = 1
+   ['managed-signals-kind', 'managed-lease-acquired'] -> ['test_managed_and_trap_families_both_restore[interactive]', 'test_managed_and_trap_families_both_restore[script]', 'test_managed_lease_restore_references_no_shell', 'test_teardown_drops_the_inert_lease_so_siblings_are_not_blocked']

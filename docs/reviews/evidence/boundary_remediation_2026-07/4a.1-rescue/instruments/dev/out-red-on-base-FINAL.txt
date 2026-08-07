@@ -1,0 +1,73 @@
+# base checkout: /Users/pwilson/src/psh-probe-4a1-base
+# base sha:      a64eb6e8507830975059c5f851fe4311368b7dff
+# worktree:      /Users/pwilson/src/psh-r4a-1
+
+## tests/unit/core/test_activation_transaction_4a1.py
+   base: 27 failed, 8 passed in 0.04s
+   RED at base (27):
+     - test_acquire_component_grant_failure_strands_nothing
+     - test_acquire_component_grant_window_also_unwinds
+     - test_aggregate_carries_every_failure_as_a_note
+     - test_checkpoint_unwind_while_a_signals_lease_is_held
+     - test_components_unwind_before_the_owner_rolls_back
+     - test_every_restore_is_attempted_when_one_fails
+     - test_failed_acquisition_while_quarantined_does_not_compound
+     - test_failed_grant_runs_the_stranded_restore[LOCALE]
+     - test_failed_grant_runs_the_stranded_restore[MANAGED_SIGNALS]
+     - test_failed_grant_runs_the_stranded_restore[SIGNALS]
+     - test_failed_grant_runs_the_stranded_restore[STD_FDS]
+     - test_failed_grant_strands_no_component[LOCALE]
+     - test_failed_grant_strands_no_component[MANAGED_SIGNALS]
+     - test_failed_grant_strands_no_component[SIGNALS]
+     - test_failed_grant_strands_no_component[STD_FDS]
+     - test_find_component_never_returns_another_owners_lease
+     - test_fork_reset_clears_quarantine_too
+     - test_is_clean_distinguishes_no_owner_from_no_state
+     - test_quarantine_blocks_the_next_owner_and_names_the_reason
+     - test_release_owner_from_a_non_owner_restores_its_own_lease
+     - test_release_owner_sweeps_the_callers_own_orphan
+     - test_restore_failure_during_a_failed_grant_keeps_the_original_error
+     - test_restore_failure_is_surfaced_not_swallowed
+     - test_transfer_rollback_does_not_poison_the_next_shell[LOCALE]
+     - test_transfer_rollback_does_not_poison_the_next_shell[MANAGED_SIGNALS]
+     - test_transfer_rollback_does_not_poison_the_next_shell[SIGNALS]
+     - test_transfer_rollback_does_not_poison_the_next_shell[STD_FDS]
+   GREEN at base (must-holds) = 8
+
+## tests/integration/redirection/test_failed_exec_lease_4a1.py
+   base: 5 failed, 4 passed in 1.12s
+   RED at base (5):
+     - test_baseline_dup_failure_aborts_transactionally
+     - test_baseline_dup_failure_on_an_exhausted_fd_table_also_aborts
+     - test_dropped_shell_without_close_does_not_poison_the_next
+     - test_failing_exec_does_not_block_an_unrelated_shell
+     - test_failing_exec_leaves_no_lease_no_parked_fds_no_baseline
+   GREEN at base (must-holds) = 4
+
+## tests/unit/interactive/test_managed_signal_lease_4a1.py
+   base: 18 failed, 2 passed in 0.05s
+   RED at base (18):
+     - test_close_restores_every_managed_disposition[interactive]
+     - test_close_restores_every_managed_disposition[script]
+     - test_close_then_teardown_is_idempotent[interactive]
+     - test_close_then_teardown_is_idempotent[script]
+     - test_double_setup_restores_the_pre_psh_dispositions[interactive]
+     - test_double_setup_restores_the_pre_psh_dispositions[script]
+     - test_managed_and_trap_families_both_restore[interactive]
+     - test_managed_and_trap_families_both_restore[script]
+     - test_managed_lease_restore_references_no_shell
+     - test_sequential_shells_never_leak_a_dead_handler[interactive]
+     - test_sequential_shells_never_leak_a_dead_handler[script]
+     - test_setup_on_a_second_shell_is_rejected_while_another_owns
+     - test_shell_reused_after_close_reacquires_and_restores[interactive]
+     - test_shell_reused_after_close_reacquires_and_restores[script]
+     - test_teardown_drops_the_inert_lease_so_siblings_are_not_blocked
+     - test_teardown_keeps_the_lease_when_a_later_one_covers_it
+     - test_trap_first_then_managed_also_restores_both[interactive]
+     - test_trap_first_then_managed_also_restores_both[script]
+   GREEN at base (must-holds) = 2
+
+=== DERIVED ===
+ 27 red /   8 green   tests/unit/core/test_activation_transaction_4a1.py
+  5 red /   4 green   tests/integration/redirection/test_failed_exec_lease_4a1.py
+ 18 red /   2 green   tests/unit/interactive/test_managed_signal_lease_4a1.py

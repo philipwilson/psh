@@ -358,6 +358,44 @@ image never inherits the backups (CLOEXEC — bash-pinned by
 named-fd redirects (`exec {v}>file`) takes no lease, keeping bash's
 first-free->=10 allocation numbering.
 
+The lease is taken from the redirect list's SHAPE, before the targets are
+opened — so acquisition can precede a redirect that then FAILS. When that
+happens fds 0/1/2 were never changed, and the acquisition must go back:
+`file_redirect.py#FileRedirector.apply_permanent_redirections` releases the
+lease through
+`file_redirect.py#FileRedirector._release_permanent_stream_lease` only when
+THIS command created it (`_acquire_permanent_stream_lease` returns whether
+it did). The discrimination is the whole point: an earlier successful
+`exec >f` legitimately owns fd 1 and a later failing `exec >/bad` must not
+release it. Leaving a lease behind for a redirect that changed nothing made
+the shell claim descriptors it did not hold, and unrelated shells were
+rejected on its behalf (slot 4A.1).
+
+`_StdStreamBaseline` records `None` for a descriptor that was CLOSED at
+baseline, and `restore` closes such a descriptor again. That encoding is
+reserved for `EBADF` alone: any other errno from the `F_DUPFD_CLOEXEC`
+baseline dup means the baseline is UNKNOWABLE, so the acquisition aborts
+transactionally instead of recording a `None` that would later close the
+host's standard descriptors.
+
+The parking base ADAPTS to `RLIMIT_NOFILE`
+(`file_redirect.py#_parking_base`). Under a low limit there is no free slot
+at 63 — EINVAL below 64, EMFILE at exactly 64 — and NEITHER reports an
+exhausted table; both report a base too high for the limit. Treating them
+as exhaustion made every permanent redirect fail under `ulimit -n <= 64`
+while bash succeeded. The base therefore drops to `soft - slots - spare`,
+never below fd 10 (bash's `{v}>file` returns 10 at every limit, so parking
+into the save area would break a parity bash itself keeps), and the spare
+slots exist so the relocation protocol still has somewhere to move a
+displaced backup — without them `exec 3>f; exec 47>f2` failed at
+`ulimit -n 50` where bash succeeds. Below roughly `ulimit -n 13` psh
+declines the redirect cleanly rather than corrupting the baseline; the
+envelope is recorded in the pin file. The baseline holds the owning state
+WEAKLY, per the `ComponentLease` contract — the fd and `sys.std*` restore
+the hosting process needs runs regardless, and only the shell's own stream
+overrides depend on the shell still being reachable. Pinned by
+`tests/integration/redirection/test_failed_exec_lease_4a1.py`.
+
 ## Common Tasks
 
 ### Per-Type Redirect Helpers

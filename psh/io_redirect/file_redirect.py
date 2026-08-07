@@ -1,9 +1,12 @@
 """File redirection implementation."""
 import copy
+import errno
 import fcntl
 import os
+import resource
 import stat
 import sys
+import weakref
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TextIO, Tuple, cast
 
 from ..ast_nodes import (
@@ -71,6 +74,51 @@ class NonExecutableRedirectError(RuntimeError):
 #: relocation protocol below when a user redirect targets a parked slot.
 _PARKING_BASE = 63
 
+#: Lowest fd the lease may ever park in. bash's ``{v}>file`` returns 10 at
+#: EVERY RLIMIT_NOFILE (measured against bash 5.2.26 across limits 24-256:
+#: its named-fd numbering does NOT degrade), so parking into the >=10 save
+#: area would break a parity bash itself maintains.
+_PARKING_FLOOR = 10
+
+#: Slots the lease needs: CLOEXEC backups of fds 0, 1 and 2.
+_PARKING_SLOTS = 3
+
+#: Spare slots kept ABOVE the parked backups. The relocation protocol moves a
+#: backup out of the way when a user redirect claims its fd, and that move is
+#: a fresh ``F_DUPFD_CLOEXEC`` from the same base — so it needs somewhere to
+#: land. Parking flush against the limit left nowhere: measured at
+#: ``ulimit -n 50``, ``exec 3>f; exec 47>f2`` succeeds in bash and failed
+#: EMFILE in psh. Three spares let all three backups relocate once.
+_PARKING_SPARE = 3
+
+
+def _parking_base() -> int:
+    """The fd to park this process's std-fd backups at or above.
+
+    ``_PARKING_BASE`` whenever the fd table is big enough — every ordinary
+    process. Under a LOW ``RLIMIT_NOFILE`` there is no usable slot there:
+    measured, at soft <= 63 the dup fails EINVAL (minfd at or beyond the
+    limit) and at soft == 64 the first dup takes fd 63 and the next two fail
+    EMFILE, because that window holds exactly one slot. NEITHER errno means
+    the table is exhausted; both report that the parking base is too high
+    for this limit, which is a configuration fact.
+
+    Reading them as exhaustion made every permanent redirect fail under
+    ``ulimit -n <= 64`` while bash succeeded (R8 BL-1). Parking as high as
+    the limit allows, MINUS room for the relocation protocol to move a
+    displaced backup, preserves every parity at once: the redirect works,
+    user fds still start at 10, and a user redirect into the parking range
+    can still displace what it finds there.
+    """
+    try:
+        soft, _hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    except (OSError, ValueError):     # pragma: no cover - exotic platform
+        return _PARKING_BASE
+    if soft in (resource.RLIM_INFINITY, -1):
+        return _PARKING_BASE
+    return min(_PARKING_BASE,
+               max(_PARKING_FLOOR, soft - _PARKING_SLOTS - _PARKING_SPARE))
+
 
 class _StdStreamBaseline:
     """The restorable pre-permanent-redirect state of fds 0/1/2 + streams.
@@ -97,7 +145,8 @@ class _StdStreamBaseline:
     relocates.
     """
 
-    __slots__ = ('fds', 'sys_streams', 'overrides', 'state', 'active')
+    __slots__ = ('fds', 'sys_streams', 'overrides', '_state_ref', 'active',
+                 '__weakref__')
 
     def __init__(self, fds: Dict[int, Optional[int]],
                  sys_streams: Tuple[Any, Any, Any],
@@ -106,7 +155,17 @@ class _StdStreamBaseline:
         self.fds = fds
         self.sys_streams = sys_streams
         self.overrides = overrides
-        self.state = state
+        # WEAK: ComponentLease requires a restore callable that does not pin
+        # the owning shell, and this baseline is reached from the coordinator
+        # through the lease's restore. Holding `state` strongly kept a shell
+        # dropped WITHOUT close() alive inside the coordinator's own
+        # component list, so it never collected and its leases rejected every
+        # later shell (slot 4A.1 probe B-01). The strong half was only ever
+        # needed for the shell's own stream OVERRIDES, which are moot once
+        # the shell is unreachable; the fd and sys.std* restore below is
+        # what the hosting process actually needs back, and it runs either
+        # way.
+        self._state_ref: 'weakref.ref[ShellState]' = weakref.ref(state)
         self.active = True
 
     def relocate_away_from(self, target_fds) -> None:
@@ -126,8 +185,12 @@ class _StdStreamBaseline:
         wanted = set(target_fds)
         for std_fd, saved in self.fds.items():
             if saved is not None and saved in wanted:
+                # Same adaptive base as acquisition: relocating under a low
+                # RLIMIT must land where a slot actually exists, or a user
+                # redirect into the parking range would fail where bash's
+                # succeeds.
                 moved = fcntl.fcntl(saved, fcntl.F_DUPFD_CLOEXEC,
-                                    _PARKING_BASE)
+                                    _parking_base())
                 self.fds[std_fd] = moved
                 try:
                     os.close(saved)
@@ -166,7 +229,13 @@ class _StdStreamBaseline:
                 os.close(saved)
             except OSError:
                 pass
-        self.state.streams.restore(self.overrides)
+        # The shell's own stream overrides, only if the shell is still
+        # reachable — restoring attributes of a collected shell is moot, and
+        # the fd/sys.std* work above (what the HOSTING process needs back)
+        # has already happened unconditionally.
+        state = self._state_ref()
+        if state is not None:
+            state.streams.restore(self.overrides)
 
 
 def _dup2_preserve_target(opened_fd: int, target_fd: int):
@@ -221,6 +290,10 @@ class FileRedirector:
         self.shell = shell
         self.state = shell.state
         self.planner = RedirectPlanner(self)
+        #: Live STD_FDS baseline while this shell holds the lease (None
+        #: otherwise): the relocation protocol's registry, cleared when a
+        #: failed exec releases a lease it had just acquired.
+        self._std_baseline: Optional[_StdStreamBaseline] = None
 
     def noclobber_blocks(self, target) -> bool:
         """True when noclobber forbids `>` to this target (bash semantics).
@@ -961,9 +1034,15 @@ class FileRedirector:
         self.shell.stdout, self.shell.stderr, self.shell.stdin = shell_streams
         self.state.stdout, self.state.stderr, self.state.stdin = state_streams
 
-    def _acquire_permanent_stream_lease(self) -> None:
+    def _acquire_permanent_stream_lease(self) -> bool:
         """Acquire the STD_FDS component lease before the first permanent
-        redirect (campaign F2).
+        redirect (campaign F2). Returns True iff THIS call created the lease.
+
+        The return value is the discrimination the failed-exec rollback needs
+        (slot 4A.1): only a lease this command newly took may be released
+        when the redirect then fails — an earlier successful ``exec >f``
+        legitimately holds one, and a later failing ``exec >/bad`` must not
+        release it.
 
         Captures the restorable baseline — CLOEXEC high dups of fds 0/1/2
         (``F_DUPFD_CLOEXEC``: a later successful ``os.exec`` must not leak
@@ -983,24 +1062,40 @@ class FileRedirector:
         coordinator = get_coordinator()
         state = self.state
         if coordinator.find_component(state, ComponentKind.STD_FDS) is not None:
-            return
+            return False
         baseline_fds: Dict[int, Optional[int]] = {}
+        parking_base = _parking_base()
         try:
             for fd in (0, 1, 2):
                 try:
-                    # _PARKING_BASE (63), NOT 10: the per-command save area
-                    # starts at 10 and bash-pinned `{v}>file` allocations
-                    # expect the first free fd >= 10 — long-lived lease
-                    # backups parked at 10-12 would shift every later
-                    # named-fd number (bash similarly parks its own
-                    # long-lived internals high). F_DUPFD picks the first
-                    # FREE slot, so acquisition automatically avoids fds the
-                    # user already holds in the range; the reverse direction
-                    # (a LATER user redirect targeting a parked slot) is the
-                    # relocation protocol on _StdStreamBaseline.
+                    # High, NOT 10: the per-command save area starts at 10 and
+                    # bash-pinned `{v}>file` allocations expect the first free
+                    # fd >= 10 — long-lived lease backups parked at 10-12 would
+                    # shift every later named-fd number (bash similarly parks
+                    # its own long-lived internals high). F_DUPFD picks the
+                    # first FREE slot, so acquisition automatically avoids fds
+                    # the user already holds in the range; the reverse
+                    # direction (a LATER user redirect targeting a parked slot)
+                    # is the relocation protocol on _StdStreamBaseline. The
+                    # base ADAPTS to RLIMIT_NOFILE (see _parking_base): under a
+                    # low limit there is simply no slot at 63, and failing the
+                    # redirect there diverged from bash.
                     baseline_fds[fd] = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC,
-                                                   _PARKING_BASE)
-                except OSError:
+                                                   parking_base)
+                except OSError as exc:
+                    # ONLY a genuinely closed descriptor records None. That
+                    # encoding is what `restore` reads as "this fd was closed
+                    # at baseline, close it again", so it must not double as
+                    # "we could not dup it": otherwise every dup failing
+                    # recorded None, the exec still reported success, and
+                    # close() then closed the HOST's fds 0/1/2 (R8 BL-1's
+                    # predecessor defect). Any other errno means the baseline
+                    # is unknowable and the acquisition aborts transactionally
+                    # through the handler below — but only AFTER the adaptive
+                    # base has been tried, since EINVAL/EMFILE at a too-high
+                    # base is a configuration fact, not exhaustion.
+                    if exc.errno != errno.EBADF:
+                        raise
                     baseline_fds[fd] = None  # fd closed at baseline
             baseline = _StdStreamBaseline(
                 fds=baseline_fds,
@@ -1015,6 +1110,7 @@ class FileRedirector:
             # Live registry for the relocation protocol: every redirect
             # application consults it before taking a user-chosen fd.
             self._std_baseline = baseline
+            return True
         except BaseException:
             # Failed acquisition rolls back completely: close the dups we
             # took so nothing is half-acquired (coordinator state untouched).
@@ -1025,6 +1121,29 @@ class FileRedirector:
                     except OSError:
                         pass
             raise
+
+    def _release_permanent_stream_lease(self) -> None:
+        """Release a STD_FDS lease THIS command acquired (failed exec).
+
+        The lease is taken from the redirect list's SHAPE, before anything is
+        known about whether the redirect can succeed (probe B-14: acquisition
+        precedes the target open). When the redirect then fails, fds 0/1/2
+        were never changed — but the lease, its parked backups and the
+        ``_std_baseline`` registration were all retained, so a shell that
+        redirected nothing still claimed the process's standard descriptors
+        and rejected unrelated shells (slot 4A.1 probes B-05 / B-11).
+
+        Only ever called with a lease this command created; an earlier
+        successful ``exec >f`` keeps its own (B-06/B-12). Releasing runs the
+        baseline restore, which closes the parked dups and puts the streams
+        back — harmless after the caller has already rolled the fds back,
+        since the baseline describes exactly that state.
+        """
+        lease = get_coordinator().find_component(self.state,
+                                                 ComponentKind.STD_FDS)
+        self._std_baseline = None
+        if lease is not None:
+            lease.release()
 
     @staticmethod
     def _fds_claimed_by_plan(plan: RedirectPlan) -> set:
@@ -1061,7 +1180,7 @@ class FileRedirector:
         exists in THIS process — a forked child's copied baseline is stale
         (its coordinator pid-reset the lease) and must not be shuffled.
         """
-        baseline = getattr(self, '_std_baseline', None)
+        baseline = self._std_baseline
         if baseline is None or not baseline.active:
             return
         if get_coordinator().find_component(
@@ -1111,8 +1230,9 @@ class FileRedirector:
         stays exactly bash's first-free->=10.
         """
         program = self.planner.plan_program(redirects)
+        lease_acquired_here = False
         if any(op.kind is not RedirectOpKind.VAR_FD for op in program):
-            self._acquire_permanent_stream_lease()
+            lease_acquired_here = self._acquire_permanent_stream_lease()
         # Pending buffered output belongs to the OLD destination; flush it
         # before the fd-level dup2 silently re-routes it to the new file.
         for stream in (self.state.stdout, self.state.stderr, sys.stdout, sys.stderr):
@@ -1183,6 +1303,13 @@ class FileRedirector:
         except Exception:
             self._rollback_std_streams(saved_streams)
             self.restore_redirections(saved_fds)
+            if lease_acquired_here:
+                # This command's own acquisition, and its redirect failed:
+                # fds 0/1/2 are back at the values the lease was meant to
+                # protect, so the lease describes nothing and must go
+                # (slot 4A.1 / charter item 5). A lease an EARLIER exec took
+                # is untouched — lease_acquired_here is False then.
+                self._release_permanent_stream_lease()
             raise
 
         # Success: the redirects are permanent. Close the fd backups so they

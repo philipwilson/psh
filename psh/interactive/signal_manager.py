@@ -1,8 +1,9 @@
 """Signal handling manager for interactive shell."""
 import os
 import signal
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
+from ..core.process_lease import ComponentKind, LeaseError, get_coordinator
 from ..executor.job_control import JobState
 from ..utils import SignalNotifier, get_signal_registry
 from ..utils.signal_utils import signal_number_to_name
@@ -10,6 +11,37 @@ from .base import InteractiveComponent
 
 if TYPE_CHECKING:
     from ..utils.signal_utils import SignalRegistry
+
+
+def _restore_managed_dispositions(registry: 'SignalRegistry',
+                                  saved: Dict[int, Any]) -> None:
+    """Drain *saved*, re-registering each signal's recorded prior disposition.
+
+    Module level, and closing over only the process-global signal registry
+    and a plain dict — no reference to the shell, so the MANAGED_SIGNALS
+    component lease that holds it cannot pin its owner (the ComponentLease
+    contract; the same shape ``trap_manager`` uses for the unmanaged
+    family).  Draining is what makes the two restore triggers — the
+    interactive loop's teardown and ``Shell.close()`` — idempotent in EITHER
+    order: whichever runs second finds nothing to do.
+
+    Registrations go through the REGISTRY rather than ``signal.signal``
+    directly so the restore is tracked like every other managed install
+    (this is why the unmanaged family's raw-``signal.signal`` helper is not
+    reused here: it would silently drop that tracking).
+    """
+    while saved:
+        signum, handler = saved.popitem()
+        try:
+            registry.register(signum, handler, "SignalManager:restore")
+        except (OSError, ValueError, TypeError):
+            # TypeError is REACHABLE here, not defensive padding: a prior
+            # disposition of None means the handler belongs to non-Python
+            # code, and ``signal.signal(sig, None)`` raises TypeError rather
+            # than restoring it. Such a disposition is not restorable from
+            # Python at all — skip it, exactly as the unmanaged trap family
+            # does for the same shape.
+            pass
 
 
 class SignalManager(InteractiveComponent):
@@ -100,9 +132,63 @@ class SignalManager(InteractiveComponent):
         loop re-runs setup). ``setdefault`` keeps the disposition saved by
         the FIRST setup, so restore_default_handlers() returns to the
         pre-psh state rather than to one of our own handlers.
+
+        The FIRST install of a fresh map also registers the MANAGED_SIGNALS
+        component lease WHEN THIS SHELL ALREADY OWNS THE PROCESS, so these
+        process-global dispositions are owned like every other global the
+        shell mutates and are restored when it deactivates — an embedded
+        shell used to leave all of them installed in the hosting process
+        (MEDIUM-8; 7 in script mode, 10 in interactive). A shell RE-USED
+        after close() re-populates the map and therefore re-acquires,
+        exactly like the unmanaged trap family.
         """
+        if not self._original_handlers:
+            self._register_managed_signal_lease()
         previous = self._signal_registry.register(sig, handler, component)
         self._original_handlers.setdefault(sig, previous)
+
+    def _register_managed_signal_lease(self) -> None:
+        """Register the MANAGED_SIGNALS lease — only if we already own.
+
+        A kind of its OWN, never ``ComponentKind.SIGNALS``: acquisition is
+        idempotent per (owner, kind), so sharing one kind with the
+        trap-installed unmanaged family would keep only whichever family
+        acquired FIRST and silently drop the other's restore — measured in
+        both orders (slot 4A.1 probe D-04).
+
+        Installing mode handlers must NEVER transfer process ownership.
+        Taking the lease unconditionally did exactly that, and the grant
+        glue then acquired LOCALE as well; a shell that ran mode setup and
+        was dropped without ``close()`` then held both leases forever (the
+        signal registry keeps its owner reachable, so no sweep ever
+        classified it an orphan) and every later shell was REJECTED — the
+        very poisoning this slot exists to end, reintroduced on its own new
+        kind (R8 BL-2). Both real entry points activate BEFORE mode setup
+        (``psh/__main__.py`` and ``InteractiveManager.run_interactive_loop``),
+        so every real psh process still gets full lease semantics; only the
+        never-activated embedder installs leaselessly, and for it
+        ``Shell.close()``'s unconditional drain is the guarantee.
+        """
+        if get_coordinator().current_owner() is not self.state:
+            return
+        saved = self._original_handlers
+        registry = self._signal_registry
+        get_coordinator().acquire_component(
+            self.state, ComponentKind.MANAGED_SIGNALS,
+            restore=lambda: _restore_managed_dispositions(registry, saved),
+            description='managed-signal dispositions (mode setup)')
+
+    def restore_managed_dispositions(self) -> None:
+        """Restore every managed disposition this shell installed.
+
+        Called unconditionally by ``Shell.close()``. For an OWNED shell the
+        MANAGED_SIGNALS lease has normally drained the map already and this
+        is a no-op; for a shell that installed handlers without owning the
+        process it is the ONLY restore, and it is what keeps MEDIUM-8's
+        guarantee independent of ownership. Idempotent by draining.
+        """
+        _restore_managed_dispositions(self._signal_registry,
+                                      self._original_handlers)
 
     def _setup_script_mode_handlers(self):
         """Set up simpler signal handling for script mode."""
@@ -138,15 +224,31 @@ class SignalManager(InteractiveComponent):
         self._install_handler(signal.SIGWINCH, self._handle_sigwinch, "SignalManager:interactive")
 
     def restore_default_handlers(self):
-        """Restore default signal handlers."""
-        # Restore all saved handlers
-        for sig, handler in self._original_handlers.items():
+        """Restore the saved dispositions (the interactive-loop teardown).
+
+        Shares ONE draining restore with the MANAGED_SIGNALS component lease
+        that ``Shell.close()`` releases, so the two triggers are idempotent
+        in either order — whichever runs second finds the map already
+        drained.
+
+        The now-inert lease is also dropped, so a shell that has genuinely
+        put every managed disposition back stops counting as a holder and no
+        longer rejects an unrelated second shell. LIFO forbids dropping it
+        when a LATER lease sits above it (a trap's unmanaged SIGNALS, a
+        permanent redirect's STD_FDS) — and leaving it there is right in
+        exactly that case, because the shell still holds that later global
+        and would rightly reject siblings anyway; ``close()`` then releases
+        both in order.
+        """
+        _restore_managed_dispositions(self._signal_registry,
+                                      self._original_handlers)
+        lease = get_coordinator().find_component(self.state,
+                                                 ComponentKind.MANAGED_SIGNALS)
+        if lease is not None:
             try:
-                self._signal_registry.register(sig, handler, "SignalManager:restore")
-            except (OSError, ValueError):
-                # Signal may not be valid on this platform
-                pass
-        self._original_handlers.clear()
+                lease.release()
+            except LeaseError:
+                pass  # a later lease is innermost; see the docstring
 
         # Clean up signal notifier resources (the fds are marked closed but the
         # objects are kept, so a re-setup on the same shell recreates them and

@@ -1,0 +1,258 @@
+# instrument: /Users/pwilson/src/psh-r4a-1/tmp/w4a1-probes/signal_census.py
+# tree:       /Users/pwilson/src/psh-probe-4a1-base
+# cells:      15
+
+--- C-01 ---
+CELL C-01 KEY=installed_by_setup VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTTOU,SIGTTIN,SIGPIPE
+CELL C-01 KEY=installed_count VALUE=7
+CELL C-01 KEY=after_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-01 KEY=after_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-01 KEY=after_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-01 KEY=after_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-01 KEY=after_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-01 KEY=after_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-01 KEY=after_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-01 KEY=after_close.leaked_count VALUE=7
+CELL C-01 KEY=after_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTTOU,SIGTTIN,SIGPIPE
+CELL C-01 RESULT=LEAKED:7
+
+--- C-02 ---
+CELL C-02 KEY=installed_by_setup VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTSTP,SIGTTOU,SIGTTIN,SIGCHLD,SIGPIPE,SIGWINCH
+CELL C-02 KEY=installed_count VALUE=10
+CELL C-02 KEY=after_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-02 KEY=after_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-02 KEY=after_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-02 KEY=after_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-02 KEY=after_close.SIGTSTP VALUE=SIG_DFL->SIG_IGN
+CELL C-02 KEY=after_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-02 KEY=after_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-02 KEY=after_close.SIGCHLD VALUE=SIG_DFL->SignalManager._handle_sigchld
+CELL C-02 KEY=after_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-02 KEY=after_close.SIGWINCH VALUE=SIG_DFL->SignalManager._handle_sigwinch
+CELL C-02 KEY=after_close.leaked_count VALUE=10
+CELL C-02 KEY=after_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTSTP,SIGTTOU,SIGTTIN,SIGCHLD,SIGPIPE,SIGWINCH
+CELL C-02 RESULT=LEAKED:10
+
+--- C-03s ---
+CELL C-03s KEY=after_teardown.leaked_count VALUE=0
+CELL C-03s KEY=after_teardown.leaked VALUE=-
+CELL C-03s KEY=after_close.leaked_count VALUE=0
+CELL C-03s KEY=after_close.leaked VALUE=-
+CELL C-03s RESULT=RESTORED
+
+--- C-03i ---
+CELL C-03i KEY=after_teardown.leaked_count VALUE=0
+CELL C-03i KEY=after_teardown.leaked VALUE=-
+CELL C-03i KEY=after_close.leaked_count VALUE=0
+CELL C-03i KEY=after_close.leaked VALUE=-
+CELL C-03i RESULT=RESTORED
+
+--- C-04s ---
+CELL C-04s KEY=after_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-04s KEY=after_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-04s KEY=after_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-04s KEY=after_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-04s KEY=after_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-04s KEY=after_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-04s KEY=after_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-04s KEY=after_close.leaked_count VALUE=7
+CELL C-04s KEY=after_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTTOU,SIGTTIN,SIGPIPE
+CELL C-04s KEY=teardown_raised VALUE=NOTHING
+CELL C-04s KEY=after_teardown.leaked_count VALUE=0
+CELL C-04s KEY=after_teardown.leaked VALUE=-
+CELL C-04s RESULT=RESTORED
+
+--- C-04i ---
+CELL C-04i KEY=after_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-04i KEY=after_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-04i KEY=after_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-04i KEY=after_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-04i KEY=after_close.SIGTSTP VALUE=SIG_DFL->SIG_IGN
+CELL C-04i KEY=after_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-04i KEY=after_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-04i KEY=after_close.SIGCHLD VALUE=SIG_DFL->SignalManager._handle_sigchld
+CELL C-04i KEY=after_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-04i KEY=after_close.SIGWINCH VALUE=SIG_DFL->SignalManager._handle_sigwinch
+CELL C-04i KEY=after_close.leaked_count VALUE=10
+CELL C-04i KEY=after_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTSTP,SIGTTOU,SIGTTIN,SIGCHLD,SIGPIPE,SIGWINCH
+CELL C-04i KEY=teardown_raised VALUE=NOTHING
+CELL C-04i KEY=after_teardown.leaked_count VALUE=0
+CELL C-04i KEY=after_teardown.leaked VALUE=-
+CELL C-04i RESULT=RESTORED
+
+--- C-05s ---
+CELL C-05s KEY=after_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-05s KEY=after_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-05s KEY=after_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-05s KEY=after_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-05s KEY=after_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-05s KEY=after_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-05s KEY=after_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-05s KEY=after_close.leaked_count VALUE=7
+CELL C-05s KEY=after_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTTOU,SIGTTIN,SIGPIPE
+CELL C-05s KEY=original_handlers_len VALUE=9
+CELL C-05s RESULT=LEAKED:7
+
+--- C-05i ---
+CELL C-05i KEY=after_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-05i KEY=after_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-05i KEY=after_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-05i KEY=after_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-05i KEY=after_close.SIGTSTP VALUE=SIG_DFL->SIG_IGN
+CELL C-05i KEY=after_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-05i KEY=after_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-05i KEY=after_close.SIGCHLD VALUE=SIG_DFL->SignalManager._handle_sigchld
+CELL C-05i KEY=after_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-05i KEY=after_close.SIGWINCH VALUE=SIG_DFL->SignalManager._handle_sigwinch
+CELL C-05i KEY=after_close.leaked_count VALUE=10
+CELL C-05i KEY=after_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTSTP,SIGTTOU,SIGTTIN,SIGCHLD,SIGPIPE,SIGWINCH
+CELL C-05i KEY=original_handlers_len VALUE=10
+CELL C-05i RESULT=LEAKED:10
+
+--- C-06s ---
+CELL C-06s KEY=post_close_run_rc VALUE=0
+CELL C-06s KEY=resetup_installed VALUE=7
+CELL C-06s KEY=after_second_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-06s KEY=after_second_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-06s KEY=after_second_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-06s KEY=after_second_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-06s KEY=after_second_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-06s KEY=after_second_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-06s KEY=after_second_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-06s KEY=after_second_close.leaked_count VALUE=7
+CELL C-06s KEY=after_second_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTTOU,SIGTTIN,SIGPIPE
+CELL C-06s RESULT=LEAKED:7
+
+--- C-06i ---
+CELL C-06i KEY=post_close_run_rc VALUE=0
+CELL C-06i KEY=resetup_installed VALUE=10
+CELL C-06i KEY=after_second_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-06i KEY=after_second_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-06i KEY=after_second_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-06i KEY=after_second_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-06i KEY=after_second_close.SIGTSTP VALUE=SIG_DFL->SIG_IGN
+CELL C-06i KEY=after_second_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-06i KEY=after_second_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-06i KEY=after_second_close.SIGCHLD VALUE=SIG_DFL->SignalManager._handle_sigchld
+CELL C-06i KEY=after_second_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-06i KEY=after_second_close.SIGWINCH VALUE=SIG_DFL->SignalManager._handle_sigwinch
+CELL C-06i KEY=after_second_close.leaked_count VALUE=10
+CELL C-06i KEY=after_second_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTSTP,SIGTTOU,SIGTTIN,SIGCHLD,SIGPIPE,SIGWINCH
+CELL C-06i RESULT=LEAKED:10
+
+--- C-07s ---
+CELL C-07s KEY=after_shell1_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-07s KEY=after_shell1_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07s KEY=after_shell1_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07s KEY=after_shell1_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07s KEY=after_shell1_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-07s KEY=after_shell1_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-07s KEY=after_shell1_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-07s KEY=after_shell1_close.leaked_count VALUE=7
+CELL C-07s KEY=after_shell1_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTTOU,SIGTTIN,SIGPIPE
+CELL C-07s KEY=after_shell2_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-07s KEY=after_shell2_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07s KEY=after_shell2_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07s KEY=after_shell2_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07s KEY=after_shell2_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-07s KEY=after_shell2_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-07s KEY=after_shell2_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-07s KEY=after_shell2_close.leaked_count VALUE=7
+CELL C-07s KEY=after_shell2_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTTOU,SIGTTIN,SIGPIPE
+CELL C-07s RESULT=LEAKED:7
+
+--- C-07i ---
+CELL C-07i KEY=after_shell1_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-07i KEY=after_shell1_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07i KEY=after_shell1_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07i KEY=after_shell1_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07i KEY=after_shell1_close.SIGTSTP VALUE=SIG_DFL->SIG_IGN
+CELL C-07i KEY=after_shell1_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-07i KEY=after_shell1_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-07i KEY=after_shell1_close.SIGCHLD VALUE=SIG_DFL->SignalManager._handle_sigchld
+CELL C-07i KEY=after_shell1_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-07i KEY=after_shell1_close.SIGWINCH VALUE=SIG_DFL->SignalManager._handle_sigwinch
+CELL C-07i KEY=after_shell1_close.leaked_count VALUE=10
+CELL C-07i KEY=after_shell1_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTSTP,SIGTTOU,SIGTTIN,SIGCHLD,SIGPIPE,SIGWINCH
+CELL C-07i KEY=after_shell2_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-07i KEY=after_shell2_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07i KEY=after_shell2_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07i KEY=after_shell2_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-07i KEY=after_shell2_close.SIGTSTP VALUE=SIG_DFL->SIG_IGN
+CELL C-07i KEY=after_shell2_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-07i KEY=after_shell2_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-07i KEY=after_shell2_close.SIGCHLD VALUE=SIG_DFL->SignalManager._handle_sigchld
+CELL C-07i KEY=after_shell2_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-07i KEY=after_shell2_close.SIGWINCH VALUE=SIG_DFL->SignalManager._handle_sigwinch
+CELL C-07i KEY=after_shell2_close.leaked_count VALUE=10
+CELL C-07i KEY=after_shell2_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTSTP,SIGTTOU,SIGTTIN,SIGCHLD,SIGPIPE,SIGWINCH
+CELL C-07i RESULT=LEAKED:10
+
+--- C-08s ---
+CELL C-08s KEY=trap_rc VALUE=0
+CELL C-08s KEY=usr1_installed VALUE=True
+CELL C-08s KEY=after_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-08s KEY=after_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-08s KEY=after_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-08s KEY=after_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-08s KEY=after_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-08s KEY=after_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-08s KEY=after_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-08s KEY=after_close.leaked_count VALUE=7
+CELL C-08s KEY=after_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTTOU,SIGTTIN,SIGPIPE
+CELL C-08s KEY=usr1_restored VALUE=True
+CELL C-08s KEY=managed_restored VALUE=False
+CELL C-08s RESULT=USR1:RESTORED|MANAGED:LEAKED:7
+
+--- C-08i ---
+CELL C-08i KEY=trap_rc VALUE=0
+CELL C-08i KEY=usr1_installed VALUE=True
+CELL C-08i KEY=after_close.SIGINT VALUE=default_int_handler->SignalManager._handle_signal_with_trap_check
+CELL C-08i KEY=after_close.SIGTERM VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-08i KEY=after_close.SIGHUP VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-08i KEY=after_close.SIGQUIT VALUE=SIG_DFL->SignalManager._handle_signal_with_trap_check
+CELL C-08i KEY=after_close.SIGTSTP VALUE=SIG_DFL->SIG_IGN
+CELL C-08i KEY=after_close.SIGTTOU VALUE=SIG_DFL->SIG_IGN
+CELL C-08i KEY=after_close.SIGTTIN VALUE=SIG_DFL->SIG_IGN
+CELL C-08i KEY=after_close.SIGCHLD VALUE=SIG_DFL->SignalManager._handle_sigchld
+CELL C-08i KEY=after_close.SIGPIPE VALUE=SIG_IGN->SIG_DFL
+CELL C-08i KEY=after_close.SIGWINCH VALUE=SIG_DFL->SignalManager._handle_sigwinch
+CELL C-08i KEY=after_close.leaked_count VALUE=10
+CELL C-08i KEY=after_close.leaked VALUE=SIGINT,SIGTERM,SIGHUP,SIGQUIT,SIGTSTP,SIGTTOU,SIGTTIN,SIGCHLD,SIGPIPE,SIGWINCH
+CELL C-08i KEY=usr1_restored VALUE=True
+CELL C-08i KEY=managed_restored VALUE=False
+CELL C-08i RESULT=USR1:RESTORED|MANAGED:LEAKED:10
+
+--- C-09 ---
+CELL C-09 KEY=platform VALUE=darwin
+CELL C-09 KEY=has.SIGINT VALUE=True
+CELL C-09 KEY=has.SIGTERM VALUE=True
+CELL C-09 KEY=has.SIGHUP VALUE=True
+CELL C-09 KEY=has.SIGQUIT VALUE=True
+CELL C-09 KEY=has.SIGTSTP VALUE=True
+CELL C-09 KEY=has.SIGTTOU VALUE=True
+CELL C-09 KEY=has.SIGTTIN VALUE=True
+CELL C-09 KEY=has.SIGCHLD VALUE=True
+CELL C-09 KEY=has.SIGPIPE VALUE=True
+CELL C-09 KEY=has.SIGWINCH VALUE=True
+CELL C-09 KEY=SIGCHLD_is_SIGCLD VALUE=False
+CELL C-09 KEY=managed_set_has_realtime VALUE=False
+CELL C-09 RESULT=RECORDED
+
+=== DERIVED SUMMARY ===
+C-01     LEAKED:7
+C-02     LEAKED:10
+C-03s    RESTORED
+C-03i    RESTORED
+C-04s    RESTORED
+C-04i    RESTORED
+C-05s    LEAKED:7
+C-05i    LEAKED:10
+C-06s    LEAKED:7
+C-06i    LEAKED:10
+C-07s    LEAKED:7
+C-07i    LEAKED:10
+C-08s    USR1:RESTORED|MANAGED:LEAKED:7
+C-08i    USR1:RESTORED|MANAGED:LEAKED:10
+C-09     RECORDED
+cells_requested=15 cells_with_result=15 broken=0
