@@ -80,7 +80,18 @@ def assert_intact(result, surface):
 
 class TestMutationSurfaceRejected:
     """Every public name, on every surface, rejects assignment and deletion —
-    and the instances stay closed."""
+    and the instances stay closed.
+
+    CARRIED SUCCESSORS (green at base — NOT defect evidence): the six
+    `test_new_attribute_rejected[*]` and `test_no_instance_dict[*]` cells were
+    already green before this slot, because `__slots__` closed instances then
+    too. They carry the retired `test_slots_closed_no_dict` guard forward from
+    `test_variable_lookup.py`, widened to all three surfaces. Labelled so this
+    class's red-on-base count is not read as though every cell in it evidenced
+    the defect: the twelve genuinely red-on-base cells are the assignment and
+    deletion attempts on `status`/`value`, which were plain writable slots at
+    base.
+    """
 
     @pytest.mark.parametrize("name", PUBLIC_NAMES)
     @pytest.mark.parametrize("surface", SURFACES)

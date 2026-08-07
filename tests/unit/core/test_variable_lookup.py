@@ -1,6 +1,6 @@
 """The tri-state variable-read authority — ScopeManager.lookup() (#20 H13).
 
-`lookup()` returns a `VariableLookup(MISSING | PRESENT_UNSET | VALUE, binding)`.
+`lookup()` returns a `VariableLookup(MISSING | PRESENT_UNSET | VALUE)`.
 Before it, "no cell" and "cell declared but valueless" both collapsed to None,
 and ShellState.get_variable papered over the difference with an env fallback that
 resurrected an outer exported value under a declared-unset local. These pins lock
