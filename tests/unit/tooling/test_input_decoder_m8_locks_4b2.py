@@ -178,12 +178,45 @@ def mutation_tree():
 
     Copied rather than edited in place so a crashed run can never leave the real
     worktree mutated.
+
+    The scratch parent is the repo's ``tmp/``, which is GITIGNORED and therefore
+    ABSENT on a fresh clone or ``git worktree add``. The test creates it — a test
+    owns the scratch dirs it needs. Before it did, all six arms died at fixture
+    setup with a bare ``FileNotFoundError`` on any fresh checkout while the
+    always-on anchor check stayed GREEN: the rot-detector read healthy precisely
+    because the arms could not run. The canonical gate masked it
+    (``run_tests.py`` creates ``tmp/`` first), so only a bare ``pytest`` on a
+    clean tree — which CLAUDE.md documents as supported — exposed it. That is
+    why the missing parent is diagnosed as LOUDLY as every other precondition
+    here rather than quietly created.
     """
-    root = tempfile.mkdtemp(prefix="m8-4b2-", dir=os.path.join(REPO, "tmp"))
+    scratch_parent = os.path.join(REPO, "tmp")
+    try:
+        os.makedirs(scratch_parent, exist_ok=True)
+    except OSError as exc:
+        pytest.fail(
+            f"M8 locks CANNOT RUN: scratch parent {scratch_parent!r} is absent "
+            f"and could not be created ({exc}). Every arm would die at setup "
+            f"while the anchor check stayed green — fix the scratch parent, "
+            f"never skip the arms.")
+    if not os.path.isdir(scratch_parent):
+        pytest.fail(
+            f"M8 locks CANNOT RUN: {scratch_parent!r} exists but is not a "
+            f"directory.")
+
+    root = tempfile.mkdtemp(prefix="m8-4b2-", dir=scratch_parent)
     tree = os.path.join(root, "tree")
-    ignore = shutil.ignore_patterns(".git", "tmp", "__pycache__", "*.pyc",
-                                    ".pytest_cache", ".mypy_cache")
+    # Skip the repo's untracked/derived junk: copying it is pure cost, and a
+    # stale cache carried into the copy could mask a mutation.
+    ignore = shutil.ignore_patterns(
+        ".git", "tmp", "__pycache__", "*.pyc", "*.pyo", ".pytest_cache",
+        ".mypy_cache", ".ruff_cache", "*.egg-info", "htmlcov", ".coverage",
+        "node_modules", "build", "dist", ".venv", "venv")
     shutil.copytree(REPO, tree, ignore=ignore, symlinks=True)
+    if not os.path.isfile(os.path.join(tree, READER)):
+        pytest.fail(
+            f"M8 locks CANNOT RUN: the tree copy at {tree!r} is missing "
+            f"{READER} — the copy or its ignore-globs are wrong.")
     try:
         yield tree
     finally:
