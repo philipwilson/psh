@@ -1,0 +1,40 @@
+==============================================================================
+SLOT 4B.2 DEV SIGN-OFF — ref 'v0.771.0' -> d5dcc587ecb944c723ec97f87dff13285f5a5c88
+detached checkout: /Users/pwilson/src/psh-r4b-2/tmp/signoff-wt   tmp/ present at creation: False
+==============================================================================
+LEG 1 — DISCRIMINATOR PRECONDITION (gates every other leg)
+    $ (cd /Users/pwilson/src/psh-r4b-2/tmp/signoff-wt && python -c 'import ...read_builtin; print(__file__)')
+      resolved: /Users/pwilson/src/psh-r4b-2/tmp/signoff-wt/psh/builtins/read_builtin.py
+      MATCHES the tag checkout — legs 2-6 may report numbers
+
+LEG 2 — DEFECT LEGS (the 22 cells red at base), per-cell
+    defect cells: 22 pass / 0 fail (22 interpreters, one per cell)
+
+LEG 3 — MUST-HOLD (control/characterization + named siblings)
+    $ pytest <13 must-hold targets> -q
+      exit=0  209 passed in 76.57s (0:01:16)
+
+LEG 4 — NO-SILENT-CHANGE (carry #21) vs the clean base baseline
+    $ (cd <tag> && python tmp/w4b2/i10_carry21.py) | diff vs i10_carry21_BASE_clean.txt
+      exit=0  diff EMPTY: True  (24/24 expected)
+
+LEG 5 — M8 AT THE FRESH CHECKOUT (tmp/ absent at creation)
+    $ pytest test_input_decoder_m8_locks_4b2.py -q
+      exit=0  7 passed in 24.56s
+
+LEG 6 — FALSIFICATION (revert the production hunks; legs must FAIL)
+    $ pytest test_split_character_survives_the_bulk_drain[e_acute-split1]  (production REVERTED)
+      exit=1  FAILS as required
+
+detached checkout removed; still present: False
+
+==============================================================================
+  leg1: PASS
+  leg2: PASS
+  leg3: PASS
+  leg4: PASS
+  leg5: PASS
+  leg6: PASS
+  VERDICT: SIGN-OFF PASS
+  (152.6s, tag d5dcc587ecb944c723ec97f87dff13285f5a5c88)
+==============================================================================
