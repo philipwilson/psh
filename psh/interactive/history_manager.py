@@ -225,12 +225,16 @@ class HistoryManager(InteractiveComponent):
             pass
 
     def clear_history(self) -> None:
-        """Clear command history (in-memory)."""
+        """Clear command history (in-memory only — the FILE is untouched)."""
         self.state.history.clear()
         # The list is now empty; nothing is "already on disk" relative to it,
         # so subsequent commands append from the start.
         self._file_synced_len = 0
-        self._file_read_len = 0
+        # The READ cursor is NOT reset. It records how much of the FILE has
+        # been consumed, and clearing memory does not un-read the file: bash
+        # 5.2.26 leaves its counter across `-c`, so a following `history -n`
+        # brings in only lines that arrived since, not the whole file again
+        # (LEDGER carry #32 / MEDIUM-7 leg C).
 
     # -- `history` file-sync operations -------------------------------------
     # These back the `history -w/-r/-a/-n` builtin flags. The two markers above
@@ -328,14 +332,21 @@ class HistoryManager(InteractiveComponent):
     def delete_entry(self, first: int, last: int) -> None:
         """`history -d`: delete the entries at 1-based positions [first, last].
 
-        Callers validate the range. Deletions before the sync/read cursors
-        shift them so the append/read slices still start at the right place."""
+        Callers validate the range. Deleting entries below the SYNC marker
+        shifts it, so save/append still slice from a genuinely-new entry.
+
+        The READ cursor is deliberately NOT shifted. The two markers are
+        different quantities: ``_file_synced_len`` counts in-memory entries, so
+        a memory deletion moves it; ``_file_read_len`` is a position in the
+        FILE, and deleting from memory does not un-read a file line. Shifting
+        it made `history -d` followed by `history -n` re-read lines that were
+        already consumed, duplicating them in the list (MEDIUM-7 leg A). bash
+        5.2.26 leaves its file counter untouched across `-d` for a single
+        offset, a range, and a delete at the cursor alike."""
         lo, hi = first - 1, last  # 0-based half-open slice
         del self.state.history[lo:hi]
         before_sync = max(0, min(hi, self._file_synced_len) - lo)
-        before_read = max(0, min(hi, self._file_read_len) - lo)
         self._file_synced_len = max(0, self._file_synced_len - before_sync)
-        self._file_read_len = max(0, self._file_read_len - before_read)
 
     def _read_file_lines(self, path: str) -> Optional[List[str]]:
         """Non-empty, newline-stripped lines of *path*; None on OSError."""
