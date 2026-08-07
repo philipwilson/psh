@@ -153,9 +153,11 @@ class REPLLoop(InteractiveComponent):
         # tests/system/interactive/test_pty_shutdown_route_f2.py.
         exit_code = self.state.last_exit_code
 
-        # THE top-level cleanup path (campaign F2): EXIT trap (e.g. on
-        # Ctrl-D), history save, lease release — idempotent and shared with
-        # the exit builtin (which, via SystemExit, never reaches here).
+        # THE top-level cleanup path (campaign F2): the mandatory phases —
+        # EXIT trap (e.g. on Ctrl-D), history policy, job disposition, then
+        # lease release — idempotent and shared with the exit builtin (which,
+        # via SystemExit, never reaches here). An EXIT trap that runs `exit N`
+        # cannot skip the later phases (slot 4A.2).
         self.shell.shutdown('repl-eof')
         return exit_code
 

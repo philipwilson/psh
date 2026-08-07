@@ -734,6 +734,23 @@ and the held signal survives as its `__context__`); otherwise the trap's
 `SystemExit` wins (bash: `exit N` in the trap overrides the original status);
 otherwise a phase failure.
 
+**Exit STATUS inside the EXIT trap** is a separate rule from that exception
+precedence. The trap's body cannot change the shell's exit status except
+through an explicit `exit N`: a BARE `exit` means "leave the status alone" and
+resolves to the status in effect when the trap was ENTERED, not the body's
+current `$?` — `trap 'false; exit' EXIT; exit 3` exits 3, not 1. `$?` READ
+inside the trap is still the current value; only what a bare `exit` RESOLVES
+to is pinned to entry. The mechanism is
+`trap_manager.py#TrapManager.exit_trap_entry_status`, consumed solely by
+`builtins/core.py#ExitBuiltin.execute`, and it is EXIT-ONLY by design: a bare
+`exit` in a SIGNAL trap does use the current `$?` in bash, so generalizing the
+saved status to every trap would open a new divergence while closing this one.
+Both directions are pinned in
+`tests/conformance/bash/test_exit_trap_status_precedence_conformance.py`,
+whose cells are labelled `disc-` / `control-` because the vacuous shapes
+(nothing changes `$?` before the bare `exit`) cannot tell the two rules apart
+— and once certified agreement while psh diverged.
+
 Batteries: `tests/unit/core/test_shutdown_phases_4a2.py` (phase order,
 isolation, precedence, the must-hold guard rails),
 `tests/system/interactive/test_pty_shutdown_phases_4a2.py` (the two
