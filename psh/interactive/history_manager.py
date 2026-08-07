@@ -102,29 +102,26 @@ class HistoryManager(InteractiveComponent):
         hist[:] = [h for h in hist if h != command]
         self._file_synced_len = max(0, self._file_synced_len - removed_before_sync)
 
-    def add_to_history(self, command: str) -> bool:
-        """Add a command to history; return True iff an entry was appended.
+    def _ignorespace_blocks(self, command: str) -> bool:
+        """HISTCONTROL ``ignorespace``: a line beginning with a space is not
+        recorded. Checked on the RAW line, before any multi-line join."""
+        return ('ignorespace' in self._histcontrol_options()
+                and command[:1] == ' ')
 
-        A multi-line command becomes ONE entry, joined into its
-        single-line ``; `` form like bash's cmdhist option (the joiner
-        itself preserves newlines inside quoted strings, heredocs and
-        command substitutions verbatim, also matching bash).
+    def _record(self, command: str) -> bool:
+        """The ONE recording policy: HISTIGNORE + dup filtering + append + the
+        HISTSIZE trim. Returns True iff an entry was appended.
 
-        HISTCONTROL / HISTIGNORE filtering matches bash: by default EVERY line
-        is recorded (no dedup); ``ignorespace`` drops a line beginning with a
-        space, ``ignoredups`` drops a line equal to the previous entry,
-        ``erasedups`` removes all prior copies first, and HISTIGNORE drops lines
-        matching its glob patterns. The False return (line was filtered out) is
-        what lets ``history -p``/``-s`` know NOT to strip a prior entry as if it
-        were their own invocation (CV3).
+        Both producers reach the list through here — a typed line (via
+        ``add_to_history``) and an explicit ``history -s`` store (via
+        ``store_entry``) — because bash applies the SAME policy to both:
+        ignorespace/ignoredups/erasedups, HISTIGNORE matched against the
+        STORED text, and the HISTSIZE cap all fire for ``-s`` exactly as they
+        do for a typed command (probed against bash 5.2.26; the pre-4B.3 claim
+        that ``-s`` was exempt was measured false). What ``-s`` does NOT get is
+        the cmdhist join — see ``store_entry``.
         """
         histcontrol = self._histcontrol_options()
-        # ignorespace: a line beginning with a space is not recorded (checked on
-        # the raw line, before the multi-line join).
-        if 'ignorespace' in histcontrol and command[:1] == ' ':
-            return False
-        if '\n' in command:
-            command = convert_multiline_to_single(command)
         # HISTIGNORE: drop lines matching any colon-separated glob pattern.
         if self._histignore_matches(command):
             return False
@@ -135,18 +132,46 @@ class HistoryManager(InteractiveComponent):
             if self.state.history and self.state.history[-1] == command:
                 return False
         self.state.history.append(command)
-        # Trim history if it exceeds max size. The trim drops entries from
-        # the FRONT, so the persisted-length marker (an index into the list)
-        # must shift by the same amount — otherwise save_to_file's
-        # history[_file_synced_len:] slice would skip genuinely-new entries
-        # (the v0.447 regression: a session exceeding max_history_size before
-        # saving silently lost the commands between the stale index and the
-        # tail).
+        self._trim_to_max()
+        return True
+
+    def _trim_to_max(self) -> None:
+        """Enforce $HISTSIZE on the in-memory list, dropping from the FRONT.
+
+        The persisted-length marker is an index into the list, so it must shift
+        by the same amount — otherwise save_to_file's
+        ``history[_file_synced_len:]`` slice would skip genuinely-new entries
+        (the v0.447 regression: a session exceeding max_history_size before
+        saving silently lost the commands between the stale index and the tail).
+        The READ cursor is deliberately NOT shifted: it is a position in the
+        FILE, which a memory-side trim does not move (bash 5.2.26 leaves its
+        file counter untouched across front-drops from either producer).
+        """
         if len(self.state.history) > self.state.max_history_size:
             dropped = len(self.state.history) - self.state.max_history_size
             del self.state.history[:dropped]
             self._file_synced_len = max(0, self._file_synced_len - dropped)
-        return True
+
+    def add_to_history(self, command: str) -> bool:
+        """Add a typed command to history; return True iff an entry was
+        appended.
+
+        A multi-line command becomes ONE entry, joined into its
+        single-line ``; `` form like bash's cmdhist option (the joiner
+        itself preserves newlines inside quoted strings, heredocs and
+        command substitutions verbatim, also matching bash).
+
+        Filtering matches bash: by default EVERY line is recorded (no dedup);
+        ``ignorespace`` drops a line beginning with a space and the rest of the
+        policy lives in ``_record``. The False return (line was filtered out) is
+        what lets ``history -p``/``-s`` know NOT to strip a prior entry as if it
+        were their own invocation (CV3).
+        """
+        if self._ignorespace_blocks(command):
+            return False
+        if '\n' in command:
+            command = convert_multiline_to_single(command)
+        return self._record(command)
 
     def load_from_file(self) -> None:
         """Load command history from file."""
@@ -253,10 +278,18 @@ class HistoryManager(InteractiveComponent):
     def store_entry(self, command: str) -> None:
         """`history -s`: add *command* as one entry without executing it.
 
-        Stored verbatim (no HISTCONTROL/HISTIGNORE filtering — bash keeps an
-        explicit `-s` entry) via in-place mutation to preserve the list-alias
+        Subject to the SAME recording policy as a typed line — ignorespace,
+        ignoredups, erasedups, HISTIGNORE (matched against the STORED text, not
+        the invocation) and the HISTSIZE cap — because that is what bash 5.2.26
+        does. It is NOT subject to the cmdhist join: bash stores an embedded
+        newline verbatim, so ``history -s $'a\\nb'`` stays one entry containing
+        a newline rather than becoming ``a; b``.
+
+        In-place mutation throughout (via ``_record``) preserves the list-alias
         contract."""
-        self.state.history.append(command)
+        if self._ignorespace_blocks(command):
+            return
+        self._record(command)
 
     def write_history(self, path: Optional[str] = None) -> bool:
         """`history -w`: write the ENTIRE in-memory list to *path* (default
