@@ -7,11 +7,12 @@ running jobs when it exits (via the one ``Shell.shutdown`` path), so a
 backgrounded child dies before it can leave a marker; without huponexit the
 child survives; ``disown -h`` exempts it even with huponexit set.
 
-Opt-in (marked ``interactive``; not in the run-by-default PTY allowlist),
-because it depends on a real HUP race — the DETERMINISTIC wiring is pinned in
-tests/unit/executor/test_boundary_j1_job_lifecycle.py
-(``test_dispose_jobs_at_exit_*``). Run with ``--run-interactive``. Follows the
-test_pty_shutdown_route_f2.py conventions.
+Marked ``interactive`` and admitted to the run-by-default PTY allowlist in
+tests/conftest.py, so it runs in the ordinary gate. It does depend on a real
+HUP race, so the DETERMINISTIC wiring is additionally pinned without a terminal
+in tests/unit/executor/test_boundary_j1_job_lifecycle.py
+(``test_dispose_jobs_at_exit_*``). Follows the test_pty_shutdown_route_f2.py
+conventions.
 """
 import os
 import sys

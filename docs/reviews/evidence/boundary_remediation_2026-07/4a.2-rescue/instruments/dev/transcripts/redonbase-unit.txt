@@ -1,0 +1,80 @@
+### RED-ON-BASE verification at d1e4f1ae2d349813396f2c9c7ead9534cc5febac, 2026-08-07T07:57:42Z
+============================= test session starts ==============================
+collecting ... collected 15 items
+
+tests/unit/core/test_shutdown_phases_4a2.py::test_huponexit_hangup_survives_a_trap_that_exits FAILED [  6%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_huponexit_hangup_without_trap_is_the_control PASSED [ 13%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_received_sighup_fanout_survives_a_trap_that_exits FAILED [ 20%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_history_save_survives_a_trap_that_exits FAILED [ 26%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_history_save_without_trap_is_the_control PASSED [ 33%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_detached_reap_survives_a_trap_that_exits FAILED [ 40%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_history_route_gating_is_unchanged_for_non_trap_exits PASSED [ 46%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_phases_run_in_bash_order_under_a_trap_that_exits FAILED [ 53%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_a_failing_history_phase_does_not_cancel_job_disposition FAILED [ 60%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_a_second_phase_failure_is_recorded_as_a_note FAILED [ 66%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_close_still_runs_and_releases_ownership_under_a_trap_that_exits PASSED [ 73%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_a_close_failure_outranks_the_held_trap_exit PASSED [ 80%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_the_latch_still_makes_a_later_shutdown_a_no_op PASSED [ 86%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_exit_trap_still_fires_at_most_once_across_the_phases PASSED [ 93%]
+tests/unit/core/test_shutdown_phases_4a2.py::test_a_substitution_abort_in_the_trap_is_still_swallowed PASSED [100%]
+
+=================================== FAILURES ===================================
+_______________ test_huponexit_hangup_survives_a_trap_that_exits _______________
+tests/unit/core/test_shutdown_phases_4a2.py:79: in test_huponexit_hangup_survives_a_trap_that_exits
+    assert (job.pgid, signal.SIGHUP) in sent
+E   assert (7007, <Signals.SIGHUP: 1>) in []
+____________ test_received_sighup_fanout_survives_a_trap_that_exits ____________
+tests/unit/core/test_shutdown_phases_4a2.py:107: in test_received_sighup_fanout_survives_a_trap_that_exits
+    assert (job.pgid, signal.SIGHUP) in sent
+E   assert (1414, <Signals.SIGHUP: 1>) in []
+_________________ test_history_save_survives_a_trap_that_exits _________________
+tests/unit/core/test_shutdown_phases_4a2.py:121: in test_history_save_survives_a_trap_that_exits
+    assert histfile.exists()
+E   AssertionError: assert False
+E    +  where False = exists()
+E    +    where exists = PosixPath('/private/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/pytest-of-pwilson/pytest-4913/test_history_save_survives_a_t0/histfile').exists
+________________ test_detached_reap_survives_a_trap_that_exits _________________
+tests/unit/core/test_shutdown_phases_4a2.py:147: in test_detached_reap_survives_a_trap_that_exits
+    assert shell.job_manager.reap_registry == {}
+E   assert {999999: 999999} == {}
+E     
+E     Left contains 1 more item:
+E     {999999: 999999}
+E     
+E     Full diff:
+E     - {}
+E     + {
+E     +     999999: 999999,
+E     + }
+____________ test_phases_run_in_bash_order_under_a_trap_that_exits _____________
+tests/unit/core/test_shutdown_phases_4a2.py:184: in test_phases_run_in_bash_order_under_a_trap_that_exits
+    assert steps == ['history', 'hangup', 'reap']
+E   AssertionError: assert [] == ['history', 'hangup', 'reap']
+E     
+E     Right contains 3 more items, first extra item: 'history'
+E     
+E     Full diff:
+E     + []
+E     - [
+E     -     'history',...
+E     
+E     ...Full output truncated (3 lines hidden), use '-vv' to show
+_________ test_a_failing_history_phase_does_not_cancel_job_disposition _________
+tests/unit/core/test_shutdown_phases_4a2.py:204: in test_a_failing_history_phase_does_not_cancel_job_disposition
+    assert (job.pgid, signal.SIGHUP) in sent
+E   assert (5150, <Signals.SIGHUP: 1>) in []
+______________ test_a_second_phase_failure_is_recorded_as_a_note _______________
+tests/unit/core/test_shutdown_phases_4a2.py:221: in test_a_second_phase_failure_is_recorded_as_a_note
+    assert any('INJECTED hangup failure' in note for note in notes), notes
+E   AssertionError: []
+E   assert False
+E    +  where False = any(<generator object test_a_second_phase_failure_is_recorded_as_a_note.<locals>.<genexpr> at 0x10c5be810>)
+=========================== short test summary info ============================
+FAILED tests/unit/core/test_shutdown_phases_4a2.py::test_huponexit_hangup_survives_a_trap_that_exits
+FAILED tests/unit/core/test_shutdown_phases_4a2.py::test_received_sighup_fanout_survives_a_trap_that_exits
+FAILED tests/unit/core/test_shutdown_phases_4a2.py::test_history_save_survives_a_trap_that_exits
+FAILED tests/unit/core/test_shutdown_phases_4a2.py::test_detached_reap_survives_a_trap_that_exits
+FAILED tests/unit/core/test_shutdown_phases_4a2.py::test_phases_run_in_bash_order_under_a_trap_that_exits
+FAILED tests/unit/core/test_shutdown_phases_4a2.py::test_a_failing_history_phase_does_not_cancel_job_disposition
+FAILED tests/unit/core/test_shutdown_phases_4a2.py::test_a_second_phase_failure_is_recorded_as_a_note
+========================= 7 failed, 8 passed in 0.06s ==========================

@@ -463,3 +463,24 @@ class TestExitTrapOnFatalSignal:
             signal.SIGTERM, ready_file=str(ready))
         assert out == "cleanup\n"
         assert rc == -signal.SIGTERM
+
+    def test_trap_exit_with_a_bg_job_matches_bash_under_sigterm(self, tmp_path):
+        """Slot 4A.2 ruling (c) must-hold: the fatal-signal death path is NOT
+        the shutdown-phase path, and stays as slot 1.3b left it.
+
+        4A.2 made `Shell.shutdown`'s phases mandatory so an EXIT trap's
+        `exit N` can no longer skip job disposition — but `_terminate_from_signal`
+        deliberately does not route through them: its phases are the
+        interactive-gated ones, which do not apply to a non-interactive shell,
+        and the process dies by the signal immediately afterwards. bash agrees
+        (its exit-time hangup is gated on an interactive login shell), so this
+        composition — trap-exit AND a live background job — must keep matching
+        bash rather than growing a fan-out.
+        """
+        script = ('trap "echo cleanup; exit 7" EXIT\n'
+                  'sleep 9 &\n'
+                  'sleep 0.5\n')
+        p = _psh_script_signal(tmp_path, script, signal.SIGTERM)
+        b = _bash_script_signal(tmp_path, script, signal.SIGTERM)
+        assert (p[0], p[2]) == (b[0], b[2])
+        assert p[2] == -signal.SIGTERM

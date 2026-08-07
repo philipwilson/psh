@@ -39,7 +39,10 @@ EXIT_TRAP_CALLS_ALLOWED = {
 
 #: Production call sites of history ``save_to_file``.
 SAVE_HISTORY_CALLS_ALLOWED = {
-    # shutdown()'s history-saving routes (exit builtin, REPL EOF).
+    # shutdown()'s history-saving routes -- whatever `_HISTORY_SAVING_SHUTDOWNS`
+    # lists: the exit builtin, the REPL's EOF, and a received SIGHUP. The ROUTE
+    # owns that policy; an EXIT trap running `exit N` no longer cancels it
+    # (slot 4A.2).
     "psh/shell.py",
     # The public InteractiveManager.save_history() convenience wrapper
     # (embedder API; no production caller routes through it).

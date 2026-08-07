@@ -1,0 +1,18 @@
+### run 2026-08-07T07:32:58Z
+# psh tree: /Users/pwilson/src/psh-r4a-2  tip: d1e4f1ae2d349813396f2c9c7ead9534cc5febac
+# oracle bash: /opt/homebrew/bin/bash | GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+== A/B/C in-process cells ==
+close_raises  no-trap      {"escaped": "LeaseRestoreError(INJECTED restore failure)", "context": null}
+close_raises  trap-noexit  {"escaped": "LeaseRestoreError(INJECTED restore failure)", "context": null}
+close_raises  trap-exit7   {"escaped": "LeaseRestoreError(INJECTED restore failure)", "context": "SystemExit(7)"}
+
+reentry       no-trap      {"first": null, "latch": "exit-builtin", "second": null, "exit_trap_flag": false, "steps": ["reap"]}
+reentry       trap-noexit  {"first": null, "latch": "exit-builtin", "second": null, "exit_trap_flag": true, "steps": ["reap"]}
+reentry       trap-exit7   {"first": "SystemExit(7)", "latch": "exit-builtin", "second": null, "exit_trap_flag": true, "steps": []}
+
+== D: non-interactive fatal signal (SIGTERM), psh vs bash ==
+OK   no-trap      bash={'out': '', 'rc': -15} psh={'out': '', 'rc': -15}
+OK   trap-noexit  bash={'out': 'T\n', 'rc': -15} psh={'out': 'T\n', 'rc': -15}
+OK   trap-exit7   bash={'out': 'T\n', 'rc': -15} psh={'out': 'T\n', 'rc': -15}
+OK   trap-bg-job  bash={'out': 'T\n', 'rc': -15} psh={'out': 'T\n', 'rc': -15}

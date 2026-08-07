@@ -185,8 +185,10 @@ class REPLLoop(InteractiveComponent):
 
         # THE top-level cleanup path (campaign F2): capture the EOF exit
         # status (bash: the last command's $?), then Shell.shutdown('repl-eof')
-        # — EXIT trap, history save, process-lease release, in one idempotent
-        # place shared with the exit builtin and __main__'s final funnel.
+        # — the mandatory phases (EXIT trap, history policy, job disposition,
+        # process-lease release), in one idempotent place shared with the exit
+        # builtin and __main__'s final funnel. No phase can cancel a later one
+        # (slot 4A.2).
         exit_code = self.state.last_exit_code
         self.shell.shutdown('repl-eof')
         return exit_code

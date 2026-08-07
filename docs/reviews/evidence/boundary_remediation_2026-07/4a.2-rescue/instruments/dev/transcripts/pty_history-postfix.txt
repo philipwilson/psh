@@ -1,0 +1,20 @@
+### POST-FIX run 2026-08-07T07:54:12Z
+# oracle bash: /opt/homebrew/bin/bash
+# GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+# psh tree: /Users/pwilson/src/psh-r4a-2  tip: d1e4f1ae2d349813396f2c9c7ead9534cc5febac
+# construction: pexpect 4.9.0 pty
+
+OK   ctrl-d  no-trap      bash={'status': 0, 'histfile_exists': True, 'has_canary': True}
+                          psh ={'status': 0, 'histfile_exists': True, 'has_canary': True}
+OK   ctrl-d  trap-noexit  bash={'status': 0, 'histfile_exists': True, 'has_canary': True}
+                          psh ={'status': 0, 'histfile_exists': True, 'has_canary': True}
+OK   ctrl-d  trap-exit7   bash={'status': 7, 'histfile_exists': True, 'has_canary': True}
+                          psh ={'status': 7, 'histfile_exists': True, 'has_canary': True}
+
+OK   exit-3  no-trap      bash={'status': 3, 'histfile_exists': True, 'has_canary': True}
+                          psh ={'status': 3, 'histfile_exists': True, 'has_canary': True}
+OK   exit-3  trap-noexit  bash={'status': 3, 'histfile_exists': True, 'has_canary': True}
+                          psh ={'status': 3, 'histfile_exists': True, 'has_canary': True}
+OK   exit-3  trap-exit7   bash={'status': 7, 'histfile_exists': True, 'has_canary': True}
+                          psh ={'status': 7, 'histfile_exists': True, 'has_canary': True}
+

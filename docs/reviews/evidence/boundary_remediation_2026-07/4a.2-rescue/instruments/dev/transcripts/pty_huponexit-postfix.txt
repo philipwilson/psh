@@ -1,0 +1,16 @@
+### POST-FIX run 2026-08-07T07:54:28Z
+# oracle bash: /opt/homebrew/bin/bash
+# GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+# psh tree: /Users/pwilson/src/psh-r4a-2  tip: d1e4f1ae2d349813396f2c9c7ead9534cc5febac
+# constructions: pexpect 4.9.0 | tmux 3.6a
+# survived=True  => child outlived the shell (NO exit-time HUP)
+
+bash  no-trap      pexpect={'status': None, 'survived': False} tmux={'status': None, 'survived': False}
+psh   no-trap      pexpect={'status': None, 'survived': False} tmux={'status': None, 'survived': False}
+
+bash  trap-noexit  pexpect={'status': None, 'survived': False} tmux={'status': None, 'survived': False}
+psh   trap-noexit  pexpect={'status': None, 'survived': False} tmux={'status': None, 'survived': False}
+
+bash  trap-exit7   pexpect={'status': None, 'survived': False} tmux={'status': None, 'survived': False}
+psh   trap-exit7   pexpect={'status': None, 'survived': False} tmux={'status': None, 'survived': False}
+

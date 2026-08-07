@@ -1,0 +1,25 @@
+### 2026-08-07T09:25:42Z
+# unmutated pin run: failures=none
+
+M8-a  drop the history phase from the phase list
+       kills (6): test_a_failing_history_phase_does_not_cancel_job_disposition, test_close_runs_even_if_the_phase_bookkeeping_itself_fails, test_history_save_survives_a_trap_that_exits, test_history_save_without_trap_is_the_control, test_phases_run_in_bash_order_under_a_trap_that_exits, test_signal_hup_route_saves_history_under_a_trap_that_exits
+M8-b  drop the job-disposition phase from the phase list
+       kills (9): test_a_failing_history_phase_does_not_cancel_job_disposition, test_a_non_systemexit_baseexception_is_held_and_phases_still_run, test_a_second_phase_failure_is_recorded_as_a_note, test_a_substitution_abort_in_the_trap_is_still_swallowed, test_detached_reap_survives_a_trap_that_exits, test_huponexit_hangup_survives_a_trap_that_exits, test_huponexit_hangup_without_trap_is_the_control, test_phases_run_in_bash_order_under_a_trap_that_exits, test_received_sighup_fanout_survives_a_trap_that_exits
+M8-c  stop HOLDING: let a phase exception propagate (the base defect)
+       kills (9): test_a_failing_history_phase_does_not_cancel_job_disposition, test_a_non_systemexit_baseexception_is_held_and_phases_still_run, test_a_second_phase_failure_is_recorded_as_a_note, test_detached_reap_survives_a_trap_that_exits, test_history_save_survives_a_trap_that_exits, test_huponexit_hangup_survives_a_trap_that_exits, test_phases_run_in_bash_order_under_a_trap_that_exits, test_received_sighup_fanout_survives_a_trap_that_exits, test_signal_hup_route_saves_history_under_a_trap_that_exits
+M8-d  hold only SystemExit, so a phase FAILURE still cancels the rest
+       kills (3): test_a_failing_history_phase_does_not_cancel_job_disposition, test_a_non_systemexit_baseexception_is_held_and_phases_still_run, test_a_second_phase_failure_is_recorded_as_a_note
+M8-e  re-raise the held signal OUTSIDE the close() finally
+       kills (1): test_a_close_failure_outranks_the_held_trap_exit
+M8-f  drop the second-failure note
+       kills (1): test_a_second_phase_failure_is_recorded_as_a_note
+M8-g  make history save on EVERY route (drop the route gate)
+       kills (1): test_history_route_gating_is_unchanged_for_non_trap_exits
+M8-h  restore the narrowed close() shape AND the unguarded note
+       kills (1): test_close_runs_even_if_the_phase_bookkeeping_itself_fails
+
+# unmutated seam pin run: failures=none
+M8-i  bare exit ignores the trap-entry status  [psh/builtins/core.py]
+       kills 21 precedence pin(s); collateral in the phase battery: 0
+M8-j  GENERALIZE the saved status to every trap (the ruled-out design)  [psh/core/trap_manager.py]
+       kills 4 precedence pin(s); collateral in the phase battery: 0

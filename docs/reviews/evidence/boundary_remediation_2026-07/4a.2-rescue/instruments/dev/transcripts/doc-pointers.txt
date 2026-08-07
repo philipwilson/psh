@@ -1,0 +1,16 @@
+### 2026-08-07T09:52:53Z at COMMITTED tip
+# tree: /Users/pwilson/src/psh-r4a-2  tip: 80042767facce202379f2482fb282f73625163b0
+ok  symbol shell.py#Shell.shutdown
+ok  symbol shell.py#Shell._run_shutdown_phases
+ok  symbol interactive/signal_manager.py#SignalManager._terminate_from_signal
+ok  symbol trap_manager.py#TrapManager.exit_trap_entry_status
+ok  symbol builtins/core.py#ExitBuiltin.execute
+ok  file   tests/conformance/bash/test_exit_trap_status_precedence_conformance.py
+ok  file   tests/unit/core/test_shutdown_phases_4a2.py
+ok  file   tests/system/interactive/test_pty_shutdown_phases_4a2.py
+ok  file   tests/unit/core/test_shutdown_f2.py
+ok  file   tests/unit/tooling/test_shutdown_census_f2.py
+ok  ident  '_HISTORY_SAVING_SHUTDOWNS' in psh/shell.py
+ok  ident  "shutdown('signal-hup')" in psh/interactive/signal_manager.py
+
+checked=12 failures=0
