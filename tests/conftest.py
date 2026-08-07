@@ -587,7 +587,16 @@ def pytest_runtest_setup(item):
                 # pinned separately.) It reads the prompt after each line
                 # rather than waiting out timeouts, so it stays deterministic
                 # and quick.
-                or "test_heredoc_detection_interactive_pty" in str(item.fspath)):
+                or "test_heredoc_detection_interactive_pty" in str(item.fspath)
+                # Slot 4A.2: the mandatory shutdown phases under an EXIT trap
+                # that itself runs `exit N`. Admitted on the same terms: both
+                # facts it pins (`huponexit`, the history save) are
+                # interactive-gated, so a -c pin for them is green on base and
+                # an opt-in pin for them is a pin that never runs. Prompt-synced
+                # rather than timeout-driven, so it stays deterministic; the
+                # phase wiring is pinned WITHOUT a terminal in
+                # tests/unit/core/test_shutdown_phases_4a2.py.
+                or "test_pty_shutdown_phases_4a2" in str(item.fspath)):
             return
         if not item.config.getoption("--run-interactive", default=False):
             pytest.skip("Interactive tests skipped (use --run-interactive to run)")
