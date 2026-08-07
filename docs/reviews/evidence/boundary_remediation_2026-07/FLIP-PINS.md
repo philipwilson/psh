@@ -96,3 +96,13 @@ Both pinned BOTH-SIDES in the divergent direction; each flips ONLY with a ruling
 
 Pinned in the divergent direction; flips ONLY with a ruling (a sub-13
 parking strategy would need its own design round).
+
+### 4B.3-declared divergence pins (v0.772.0; registered per R13-E(4) — none named `test_divergence_*`)
+
+| Pin | Owner |
+|---|---|
+| 4B.3 deviation family (bash's positional-tail `-a` loses/leaks; psh keeps/doesn't): `test_history_state_machine_conformance.py::TestDeclaredDeviations` (b1(i) no-dup-on-read, b2 `-w`-then-`-n`, b3 `-d`-while-pending, b5 default-file `-w`→`-a` + its no-`-w` control) and `::TestNamedReadCursorDeviation` (b4 FORWARD `test_named_read_then_default_read_new`; b4 MIRROR `test_named_read_new_resumes_at_the_global_offset_in_bash` + `test_an_unadvanced_counter_reads_the_whole_named_file_in_both` control). Every cell asserts BOTH shells with named failure messages; each flips ONLY with a ruling | 4B.3; flip = ruling |
+
+The bash-side cells are characterization of bash 5.2.26's measured tail-count
+mechanism — a "failure" there means the ORACLE's behavior moved (bash version),
+not psh; read per the nightly rules before touching.
