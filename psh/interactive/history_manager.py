@@ -192,9 +192,13 @@ class HistoryManager(InteractiveComponent):
         """Enforce $HISTSIZE on the in-memory list, dropping from the FRONT.
 
         Dropped entries leave pending with them, so a trimmed-away command is
-        never written later. (The v0.447 regression was the index form of this:
-        a stale marker made the save slice skip genuinely-new entries. Pending
-        being a view of memory removes the arithmetic that could go stale.)
+        never written later. That holds because ``_pending_entries`` RESOLVES
+        against memory, not because of the ``_prune_pending`` call below: the
+        call keeps ``_pending`` from accumulating dead strings, and an M8 arm
+        that removed it changed no observable behaviour. The v0.447 regression
+        was the index form of this bookkeeping — a stale marker made the save
+        slice skip genuinely-new entries — and a view has no arithmetic to go
+        stale.
         The READ cursor is deliberately NOT shifted: it is a position in the
         FILE, which a memory-side trim does not move (bash 5.2.26 leaves its
         file counter untouched across front-drops from either producer).
