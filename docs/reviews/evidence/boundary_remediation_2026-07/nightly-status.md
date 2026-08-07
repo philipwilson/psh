@@ -290,3 +290,12 @@ artifact. The fd-exhaustion cell (`test_genuine_exhaustion_still_aborts_
 transactionally`) is the most environment-sensitive cell of the slot:
 on a CI runner with a low default nofile hard limit, read its failure as
 ENVIRONMENT first (the cell's own header states the discrimination).
+
+**v0.769.0 reading rules (slot 4A.2 — first Linux run after 2026-08-07):**
+the 40-row exit-status precedence conformance table compares LIVE bash on
+the host; a Linux-only row failure there is a REAL platform divergence
+(bash version first — the table was built against 5.2.26). The PTY
+shutdown battery is serial and interactive-gated; its huponexit cells
+depend on job-control semantics that the nightly exercises on Linux for
+the first time. The exit-trap flake family now has a recorded MECHANISM
+(D-4A.2-s1): a recurrence is cited against A-8, not re-tallied blind.
