@@ -1,0 +1,16 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+ps_with_arg    bash: out=['    1  hello', '    2  history'] err=['\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r4b-3\x1b[0m$ history -ps hello', '\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r4b-3\x1b[0m$ history']
+ps_with_arg    psh : out=['    1  history -ps hello', '    2  history'] err=['psh: history: -ps: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
+sp_with_arg    bash: out=['    1  hello', '    2  history'] err=['\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r4b-3\x1b[0m$ history -sp hello', '\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r4b-3\x1b[0m$ history']
+sp_with_arg    psh : out=['    1  history -sp hello', '    2  history'] err=['psh: history: -sp: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
+p_alone        bash: out=['hello'] err=['\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r4b-3\x1b[0m$ history -p hello']
+p_alone        psh : out=['hello'] err=[]
+
+s_alone        bash: out=['    1  hello', '    2  history'] err=['\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r4b-3\x1b[0m$ history -s hello', '\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r4b-3\x1b[0m$ history']
+s_alone        psh : out=['    1  hello', '    2  history'] err=[]
+
+ps_rc          bash: out=['rc=0'] err=['\x1b[32mpwilson@philips-mbp\x1b[0m:\x1b[34m~/src/psh-r4b-3\x1b[0m$ history -ps hello; echo rc=$?']
+ps_rc          psh : out=['rc=2'] err=['psh: history: -ps: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+

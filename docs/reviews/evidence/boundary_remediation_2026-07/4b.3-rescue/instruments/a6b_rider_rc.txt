@@ -1,0 +1,22 @@
+========================================================================
+A6b — rider: rc per cluster (discriminating supplement)
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+ *history -ps hello       bash rc=['0']   psh rc=['2']
+ *history -sp hello       bash rc=['0']   psh rc=['2']
+ *history -ps             bash rc=['0']   psh rc=['2']
+ *history -an             bash rc=['1']   psh rc=['2']
+ *history -rw             bash rc=['1']   psh rc=['2']
+ *history -cw             bash rc=['0']   psh rc=['2']
+ *history -cd 1           bash rc=['0']   psh rc=['2']
+ *history -ca             bash rc=['0']   psh rc=['2']
+ *history -nr             bash rc=['1']   psh rc=['2']
+  history -p -s hello     bash rc=['0']   psh rc=['0']
+  history -s -- x         bash rc=['0']   psh rc=['0']
+  history -pz x           bash rc=['2']   psh rc=['2']
+  history -zs x           bash rc=['2']   psh rc=['2']
+
+(`*` = the rc discriminates: bash accepts the spelling, psh rejects it — or vice versa)

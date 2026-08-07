@@ -61,7 +61,11 @@ def test_histsize_trims_on_save(tmp_path):
     histfile = tmp_path / "h"
     shell.state.set_variable('HISTFILE', str(histfile))
     shell.state.set_variable('HISTSIZE', '3')
-    shell.state.history = ['c1', 'c2', 'c3', 'c4', 'c5']
+    # Recorded, not injected: only RECORDED entries are pending and only
+    # pending entries are written (slot 4B.3 O3). Injecting also rebound
+    # state.history, which the alias contract forbids.
+    for c in ['c1', 'c2', 'c3', 'c4', 'c5']:
+        shell.interactive_manager.history_manager.add_to_history(c)
     shell.interactive_manager.history_manager.save_to_file()
     saved = histfile.read_text().splitlines()
     assert saved == ['c3', 'c4', 'c5']
@@ -114,7 +118,8 @@ def test_histfilesize_trims_file_not_histsize(tmp_path):
     shell.state.set_variable('HISTFILE', str(histfile))
     shell.state.set_variable('HISTSIZE', '100')
     shell.state.set_variable('HISTFILESIZE', '2')
-    shell.state.history = ['c1', 'c2', 'c3', 'c4']
+    for c in ['c1', 'c2', 'c3', 'c4']:
+        shell.interactive_manager.history_manager.add_to_history(c)
     shell.interactive_manager.history_manager.save_to_file()
     saved = histfile.read_text().splitlines()
     assert saved == ['c3', 'c4']
@@ -129,6 +134,7 @@ def test_histfilesize_zero_empties_file(tmp_path):
     shell.state.set_variable('HISTFILE', str(histfile))
     shell.state.set_variable('HISTSIZE', '100')
     shell.state.set_variable('HISTFILESIZE', '0')
-    shell.state.history = ['a', 'b', 'c']
+    for c in ['a', 'b', 'c']:
+        shell.interactive_manager.history_manager.add_to_history(c)
     shell.interactive_manager.history_manager.save_to_file()
     assert histfile.read_text() == ''

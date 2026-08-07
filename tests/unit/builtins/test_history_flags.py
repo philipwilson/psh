@@ -88,12 +88,38 @@ class TestAppend:
         # e1 must not be duplicated by the second append.
         assert _lines(target) == ['e1', 'e2']
 
-    def test_write_then_append_no_duplication(self, captured_shell, tmp_path):
+    def test_write_then_append_to_a_named_file_re_appends(self, captured_shell,
+                                                          tmp_path):
+        """`-w FILE` then `-a FILE` on a NON-default file writes the entry
+        twice — which is what bash 5.2.26 does.
+
+        This pin previously asserted a single `x` and was named
+        "..._no_duplication". That was psh-only behaviour: `write_history`
+        advanced the persisted-length marker for ANY target, so the entry
+        looked already-saved. The same over-broad advance made
+        `history -w otherfile` drop the session's commands from $HISTFILE
+        entirely (slot 4B.3 P5), so the "no duplication" here was a symptom of
+        a data-loss bug, not a feature. Verified against bash 5.2.26 while
+        re-pinning: `history -s x; history -w F; history -a F` leaves F holding
+        `x` twice in bash, with and without a seeded $HISTFILE.
+        """
         target = str(tmp_path / 'wa.txt')
         _run(captured_shell, 'history -s x')
         _run(captured_shell, f'history -w {target}')
         _run(captured_shell, f'history -a {target}')
-        assert _lines(target) == ['x']
+        assert _lines(target) == ['x', 'x']
+
+    def test_write_then_append_to_the_DEFAULT_file_does_not_duplicate(
+            self, captured_shell, tmp_path):
+        """Counter-pin: for the DEFAULT file `-w` DOES mark the list persisted,
+        so a following `-a` adds nothing. Keeps the P5 fix honest — it must
+        narrow the marker advance to the default target, not delete it."""
+        histfile = str(tmp_path / '.psh_history')
+        captured_shell.state.history_file = histfile
+        _run(captured_shell, 'history -s x')
+        _run(captured_shell, 'history -w')
+        _run(captured_shell, 'history -a')
+        assert _lines(histfile) == ['x']
 
 
 class TestReadNew:
@@ -143,10 +169,11 @@ class TestDelete:
         assert 'history position out of range' in captured_shell.get_stderr()
 
 
-class TestClearResetsMarkers:
+class TestClearResetsOwedEntries:
     def test_clear_then_append_saves_post_clear_entries(self, captured_shell, tmp_path):
-        # Regression guard: clearing must reset the file-sync marker so entries
-        # added after the clear still get written (mirrors the -c marker fix).
+        # Regression guard: clearing must drop the owed flags with the list so
+        # entries added AFTER the clear are still written. (`-c` resets only
+        # that quantity — the file READ cursor deliberately survives a clear.)
         target = str(tmp_path / 'h.txt')
         _run(captured_shell, 'history -s before')
         _run(captured_shell, f'history -a {target}')

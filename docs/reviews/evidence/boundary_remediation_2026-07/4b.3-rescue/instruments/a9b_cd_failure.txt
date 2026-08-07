@@ -1,0 +1,18 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  history -cd 9; echo "RC=$?"; history
+      bash rc=0 mem=[] err=[]
+      (delete OUT OF RANGE + clear)
+
+  history -cd 1; echo "RC=$?"; history
+      bash rc=0 mem=[] err=[]
+      (delete valid + clear (control))
+
+  history -cd 0; echo "RC=$?"; history
+      bash rc=0 mem=[] err=[]
+      (offset 0 is invalid in both)
+
+  history -d 9; echo "RC=$?"; history
+      bash rc=1 mem=['S1', 'S2', 'S3'] err=['bash: history: 9: history position out of range']
+      (delete out of range alone)
+

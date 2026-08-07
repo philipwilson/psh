@@ -1,0 +1,198 @@
+========================================================================
+A2 — sequence battery (psh vs bash 5.2.26)
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+--- -d then -a (with a PENDING entry) ---
+    (does deleting a SYNCED entry corrupt the append slice?)
+   END_MEM          bash=['seed2', 'seed3', 'true NEW']
+                    psh =['seed2', 'seed3', 'true NEW']
+  *END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEW']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEW']
+  => DIVERGES
+
+--- -d the PENDING entry then -a ---
+    (delete ABOVE the sync marker)
+   END_MEM          bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  => MATCHES
+
+--- -d range spanning the sync marker then -a ---
+    (the SPANNING face)
+   END_MEM          bash=['seed1', 'seed2']
+                    psh =['seed1', 'seed2']
+   END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  => MATCHES
+
+--- -d then exit-save ---
+    (exit save after a delete)
+   END_MEM          bash=['seed2', 'seed3', 'true NEW']
+                    psh =['seed2', 'seed3', 'true NEW']
+   END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEW']
+  => DIVERGES
+
+--- -c then -a (with a PENDING entry) ---
+    (what does -a append after a clear?)
+   END_MEM          bash=[]
+                    psh =[]
+   END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  => MATCHES
+
+--- -c then -r ---
+    (re-read after clear)
+   END_MEM          bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  => MATCHES
+
+--- -c then -n (carry #32 / leg C) ---
+    (the carry #32 shape)
+  *END_MEM          bash=[]
+                    psh =['seed1', 'seed2', 'seed3']
+   END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  => DIVERGES
+
+--- -c then record then exit-save ---
+    (post-clear commands must still persist (psh R14.B guard))
+   END_MEM          bash=['true AFTER']
+                    psh =['true AFTER']
+   END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'true AFTER']
+                    psh =['seed1', 'seed2', 'seed3', 'true AFTER']
+  => MATCHES
+
+--- -n then -a (DUPLICATE face) ---
+    (bash re-appends what -n just read; psh does not)
+   END_MEM          bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *END_FILE         bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -r then -a ---
+    (control: -r's lines are NOT pending in either shell)
+   END_MEM          bash=['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+   END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  => MATCHES
+
+--- -n then exit-save (DUPLICATE face at exit) ---
+    (same question on the exit route)
+   END_MEM          bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   END_FILE         bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -r NAMED then -a default ---
+    (do the OTHER file's lines leak into $HISTFILE?)
+   END_MEM          bash=['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'oth3', 'oth4', 'oth5']
+                    psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'oth3', 'oth4', 'oth5']
+  *END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'oth3', 'oth4', 'oth5']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2', 'oth3', 'oth4', 'oth5']
+  => DIVERGES
+
+--- -w NAMED then exit-save ---
+    (does -w to another file consume the pending slice?)
+   END_MEM          bash=['seed1', 'seed2', 'seed3', 'true NEW']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEW']
+   END_FILE         bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'true NEW']
+                    psh =['seed1', 'seed2', 'seed3']
+  => DIVERGES
+
+--- -a NAMED then -n default ---
+    (bash's single global counter vs psh's per-default-file cursor)
+  *END_MEM          bash=['seed1', 'seed2', 'seed3', 'true NEW']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEW', 'EXT']
+   END_FILE         bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+   FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'EXT']
+  => DIVERGES
+
+--- -w then -n ---
+    (does -w advance the read cursor?)
+  *END_MEM          bash=['seed1', 'seed2', 'seed3', 'true NEW', 'true NEW', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEW', 'EXT']
+   END_FILE         bash=['seed1', 'seed2', 'seed3', 'true NEW', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEW', 'EXT']
+  *FILE_AFTER_EXIT  bash=['seed1', 'seed2', 'seed3', 'true NEW', 'EXT', 'true NEW', 'true NEW', 'EXT']
+                    psh =['seed1', 'seed2', 'seed3', 'true NEW', 'EXT']
+  => DIVERGES
+
+--- external-truncate then -n (underflow) ---
+    (file shrinks BELOW the counter)
+   END_MEM          bash=['seed1', 'seed2', 'seed3']
+                    psh =['seed1', 'seed2', 'seed3']
+   END_FILE         bash=['only1']
+                    psh =['only1']
+   FILE_AFTER_EXIT  bash=['only1']
+                    psh =['only1']
+  => MATCHES
+
+--- external-truncate then -n then grow then -n ---
+    (resume offset after an underflow)
+   END_MEM          bash=['seed1', 'seed2', 'seed3', 'g1', 'g2', 'g3', 'g4']
+                    psh =['seed1', 'seed2', 'seed3', 'g1', 'g2', 'g3', 'g4']
+   END_FILE         bash=['only1', 'g1', 'g2', 'g3', 'g4']
+                    psh =['only1', 'g1', 'g2', 'g3', 'g4']
+  *FILE_AFTER_EXIT  bash=['only1', 'g1', 'g2', 'g3', 'g4', 'g3', 'g4']
+                    psh =['only1', 'g1', 'g2', 'g3', 'g4']
+  => DIVERGES
+
+
+DIVERGING (10/17):
+  - -d then -a (with a PENDING entry)
+  - -d then exit-save
+  - -c then -n (carry #32 / leg C)
+  - -n then -a (DUPLICATE face)
+  - -n then exit-save (DUPLICATE face at exit)
+  - -r NAMED then -a default
+  - -w NAMED then exit-save
+  - -a NAMED then -n default
+  - -w then -n
+  - external-truncate then -n then grow then -n
+
+MATCHING:
+  - -d the PENDING entry then -a
+  - -d range spanning the sync marker then -a
+  - -c then -a (with a PENDING entry)
+  - -c then -r
+  - -c then record then exit-save
+  - -r then -a
+  - external-truncate then -n (underflow)

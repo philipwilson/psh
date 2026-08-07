@@ -34,8 +34,37 @@ class HistoryManager(InteractiveComponent):
     whatever other shells have written since we loaded — so several terminals
     sharing one history file no longer clobber each other (the old
     truncate-and-rewrite made the last shell to exit overwrite the rest).
-    ``_file_synced_len`` tracks how many of ``state.history``'s entries are
-    already on disk.
+
+    TWO INDEPENDENT QUANTITIES track our relationship to the history file, and
+    conflating them was MEDIUM-7:
+
+    * ``_owed`` — a per-ENTRY flag, one bool per ``state.history`` position,
+      marking the entries RECORDED this session and not yet written. An entry
+      is owed iff it entered memory through the recording pipeline (a typed
+      line, or a ``history -s`` store) and has not since been written by
+      ``-a``/``-w``/the exit save. Lines that entered via ``-r``/``-n`` or the
+      startup load are NEVER owed: they are already in a file, and re-appending
+      them was how another file's contents leaked into $HISTFILE.
+
+      The flags are POSITIONAL, and that is the whole point: an earlier design
+      matched owed entries against memory BY TEXT, so a surviving entry with
+      the same text silently satisfied the debt of a deleted one and a
+      ``history -d``'d command was resurrected into $HISTFILE as a duplicate.
+      Identical command strings are ordinary, so text can never identify an
+      entry.
+    * ``_file_read_len`` — how many lines of the DEFAULT file have been
+      consumed into memory (startup load, ``-r``/``-n`` of that file).
+      ``history -n`` resumes from here. It is a position in the FILE, so
+      memory-side operations (``-d``, ``-c``, the trim) never move it.
+
+    This DELIBERATELY diverges from bash on interleaved compositions. bash's
+    ``-a`` is not a marker at all: it writes the LAST N entries of the list by
+    POSITION, where N counts session-recorded lines plus ``-n``-read lines, so
+    a read or a ``-d`` between recording and saving makes bash write the wrong
+    entries — losing typed commands and leaking read ones (measured against
+    bash 5.2.26). psh keeps the v0.447 no-loss/no-duplicate guarantee instead;
+    the state-machine observables (the in-memory list, cursor behaviour, exit
+    status) still match bash.
 
     Every file path (load/save/-w/-a/-r/-n) opens with
     ``encoding='utf-8', errors='surrogateescape'`` (campaign I4; I1 byte
@@ -46,13 +75,51 @@ class HistoryManager(InteractiveComponent):
 
     def __init__(self, shell: 'Shell') -> None:
         super().__init__(shell)
-        # Count of state.history entries already persisted to the file
-        # (entries loaded from it at startup, plus whatever we've since saved).
-        self._file_synced_len = 0
+        # One flag per state.history position: True = recorded this session and
+        # not yet written to any file. Kept in lockstep with the list.
+        self._owed: List[bool] = []
         # Count of the default history file's lines already consumed into the
         # in-memory list (startup load + `history -r`/`-n` of the default
         # file). `history -n` uses this to append only lines it hasn't read yet.
         self._file_read_len = 0
+
+    # -- the pending set (the ONE maintenance site) --------------------------
+
+    def _sync_owed(self) -> None:
+        """Realign the owed flags with ``state.history`` after an OUTSIDE edit.
+
+        Every mutation THIS class makes keeps the two in lockstep. One editor
+        does not go through this class: the history builtin's CV3 strip deletes
+        ``state.history[-1]`` directly, and that machinery is settled and must
+        not be modified. A tail deletion is exactly what truncating the flags
+        to the list's length repairs, so the strip cannot leave a phantom debt
+        that a later save would resurrect. An outside APPEND (no current caller)
+        is treated as not-owed: never inventing a debt is the safe direction.
+        """
+        extra = len(self._owed) - len(self.state.history)
+        if extra > 0:
+            del self._owed[len(self.state.history):]
+        elif extra < 0:
+            self._owed.extend([False] * -extra)
+
+    def _pending_entries(self) -> List[str]:
+        """The owed entries still in memory, in memory order.
+
+        Positional, so two identical command strings are two independent debts:
+        deleting one leaves the other owed, and deleting the ONLY owed copy
+        leaves nothing owed even when an unrelated entry with the same text
+        survives.
+        """
+        self._sync_owed()
+        # strict=True: _sync_owed() has just guaranteed equal lengths, so a
+        # mismatch here is a bug in this class rather than something to absorb.
+        return [entry for entry, owed
+                in zip(self.state.history, self._owed, strict=True) if owed]
+
+    def _mark_written(self) -> None:
+        """Everything owed has just reached a file."""
+        self._sync_owed()
+        self._owed = [False] * len(self.state.history)
 
     def _histcontrol_options(self) -> set:
         """The effective HISTCONTROL value set (``ignoreboth`` expanded)."""
@@ -92,39 +159,36 @@ class HistoryManager(InteractiveComponent):
     def _erase_duplicates(self, command: str) -> None:
         """Remove every prior occurrence of *command* (HISTCONTROL erasedups).
 
-        Adjusts the persisted-length marker by however many removed entries
-        were before it, so save_to_file's ``history[_file_synced_len:]`` slice
-        still starts at a genuinely-new entry (the file is append-only, so the
-        on-disk copies of erased dups remain — erasedups is in-session here)."""
+        Erased copies leave memory, so they leave pending too — an erased entry
+        must not be resurrected into the file by a later save. The file is
+        append-only, so on-disk copies of erased dups remain: erasedups is
+        in-session here."""
+        self._sync_owed()
         hist = self.state.history
-        removed_before_sync = sum(
-            1 for i, h in enumerate(hist) if h == command and i < self._file_synced_len)
-        hist[:] = [h for h in hist if h != command]
-        self._file_synced_len = max(0, self._file_synced_len - removed_before_sync)
+        keep = [i for i, h in enumerate(hist) if h != command]
+        hist[:] = [hist[i] for i in keep]
+        self._owed[:] = [self._owed[i] for i in keep]
 
-    def add_to_history(self, command: str) -> bool:
-        """Add a command to history; return True iff an entry was appended.
+    def _ignorespace_blocks(self, command: str) -> bool:
+        """HISTCONTROL ``ignorespace``: a line beginning with a space is not
+        recorded. Checked on the RAW line, before any multi-line join."""
+        return ('ignorespace' in self._histcontrol_options()
+                and command[:1] == ' ')
 
-        A multi-line command becomes ONE entry, joined into its
-        single-line ``; `` form like bash's cmdhist option (the joiner
-        itself preserves newlines inside quoted strings, heredocs and
-        command substitutions verbatim, also matching bash).
+    def _record(self, command: str) -> bool:
+        """The ONE recording policy: HISTIGNORE + dup filtering + append + the
+        HISTSIZE trim. Returns True iff an entry was appended.
 
-        HISTCONTROL / HISTIGNORE filtering matches bash: by default EVERY line
-        is recorded (no dedup); ``ignorespace`` drops a line beginning with a
-        space, ``ignoredups`` drops a line equal to the previous entry,
-        ``erasedups`` removes all prior copies first, and HISTIGNORE drops lines
-        matching its glob patterns. The False return (line was filtered out) is
-        what lets ``history -p``/``-s`` know NOT to strip a prior entry as if it
-        were their own invocation (CV3).
+        Both producers reach the list through here — a typed line (via
+        ``add_to_history``) and an explicit ``history -s`` store (via
+        ``store_entry``) — because bash applies the SAME policy to both:
+        ignorespace/ignoredups/erasedups, HISTIGNORE matched against the
+        STORED text, and the HISTSIZE cap all fire for ``-s`` exactly as they
+        do for a typed command (probed against bash 5.2.26; the pre-4B.3 claim
+        that ``-s`` was exempt was measured false). What ``-s`` does NOT get is
+        the cmdhist join — see ``store_entry``.
         """
         histcontrol = self._histcontrol_options()
-        # ignorespace: a line beginning with a space is not recorded (checked on
-        # the raw line, before the multi-line join).
-        if 'ignorespace' in histcontrol and command[:1] == ' ':
-            return False
-        if '\n' in command:
-            command = convert_multiline_to_single(command)
         # HISTIGNORE: drop lines matching any colon-separated glob pattern.
         if self._histignore_matches(command):
             return False
@@ -134,19 +198,50 @@ class HistoryManager(InteractiveComponent):
             # Drop a line identical to the immediately previous entry.
             if self.state.history and self.state.history[-1] == command:
                 return False
+        self._sync_owed()
         self.state.history.append(command)
-        # Trim history if it exceeds max size. The trim drops entries from
-        # the FRONT, so the persisted-length marker (an index into the list)
-        # must shift by the same amount — otherwise save_to_file's
-        # history[_file_synced_len:] slice would skip genuinely-new entries
-        # (the v0.447 regression: a session exceeding max_history_size before
-        # saving silently lost the commands between the stale index and the
-        # tail).
+        self._owed.append(True)
+        self._trim_to_max()
+        return True
+
+    def _trim_to_max(self) -> None:
+        """Enforce $HISTSIZE on the in-memory list, dropping from the FRONT.
+
+        Dropped entries take their owed flags with them, so a trimmed-away
+        command is never written later. (The v0.447 regression was the index
+        form of this bookkeeping — a stale marker made the save slice skip
+        genuinely-new entries.)
+
+        The READ cursor is deliberately NOT shifted: it is a position in the
+        FILE, which a memory-side trim does not move (bash 5.2.26 leaves its
+        file counter untouched across front-drops from either producer).
+        """
         if len(self.state.history) > self.state.max_history_size:
             dropped = len(self.state.history) - self.state.max_history_size
+            self._sync_owed()
             del self.state.history[:dropped]
-            self._file_synced_len = max(0, self._file_synced_len - dropped)
-        return True
+            del self._owed[:dropped]
+
+    def add_to_history(self, command: str) -> bool:
+        """Add a typed command to history; return True iff an entry was
+        appended.
+
+        A multi-line command becomes ONE entry, joined into its
+        single-line ``; `` form like bash's cmdhist option (the joiner
+        itself preserves newlines inside quoted strings, heredocs and
+        command substitutions verbatim, also matching bash).
+
+        Filtering matches bash: by default EVERY line is recorded (no dedup);
+        ``ignorespace`` drops a line beginning with a space and the rest of the
+        policy lives in ``_record``. The False return (line was filtered out) is
+        what lets ``history -p``/``-s`` know NOT to strip a prior entry as if it
+        were their own invocation (CV3).
+        """
+        if self._ignorespace_blocks(command):
+            return False
+        if '\n' in command:
+            command = convert_multiline_to_single(command)
+        return self._record(command)
 
     def load_from_file(self) -> None:
         """Load command history from file."""
@@ -166,9 +261,8 @@ class HistoryManager(InteractiveComponent):
         except OSError:
             # Silently ignore history file errors
             pass
-        # Everything loaded is already on disk; only entries added after this
-        # point are new and need appending on save.
-        self._file_synced_len = len(self.state.history)
+        # Everything loaded is already on disk, so nothing is owed.
+        self._owed = [False] * len(self.state.history)
         # We have now consumed the whole file, so `history -n` starts from here.
         self._file_read_len = read
 
@@ -184,7 +278,7 @@ class HistoryManager(InteractiveComponent):
         Concurrent shells therefore serialize on the lock instead of
         overwriting one another.
         """
-        new_entries = self.state.history[self._file_synced_len:]
+        new_entries = self._pending_entries()
         if not new_entries:
             return
         # bash trims the FILE to $HISTFILESIZE (distinct from $HISTSIZE, which
@@ -219,26 +313,32 @@ class HistoryManager(InteractiveComponent):
                         f.write('\n'.join(combined) + '\n')
                 finally:
                     fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-            self._file_synced_len = len(self.state.history)
+            self._mark_written()
         except OSError:
             # Silently ignore history file errors
             pass
 
     def clear_history(self) -> None:
-        """Clear command history (in-memory)."""
+        """Clear command history (in-memory only — the FILE is untouched)."""
         self.state.history.clear()
-        # The list is now empty; nothing is "already on disk" relative to it,
-        # so subsequent commands append from the start.
-        self._file_synced_len = 0
-        self._file_read_len = 0
+        # Nothing is left in memory, so nothing is owed. A cleared entry is
+        # never resurrected on save.
+        self._owed.clear()
+        # The READ cursor is NOT reset. It records how much of the FILE has
+        # been consumed, and clearing memory does not un-read the file: bash
+        # 5.2.26 leaves its counter across `-c`, so a following `history -n`
+        # brings in only lines that arrived since, not the whole file again
+        # (LEDGER carry #32 / MEDIUM-7 leg C).
 
     # -- `history` file-sync operations -------------------------------------
-    # These back the `history -w/-r/-a/-n` builtin flags. The two markers above
-    # track our position relative to the DEFAULT history file ($HISTFILE):
-    # `_file_synced_len` = in-memory entries already written to it,
-    # `_file_read_len`   = its lines already read into memory. An operation on
-    # an explicitly-named other file leaves both markers alone (that file is
-    # unrelated to $HISTFILE's sync state).
+    # These back the `history -w/-r/-a/-n` builtin flags. Which of the two
+    # quantities each one may move depends on the TARGET:
+    #   `_pending`        is session-wide — `-a` consumes it whichever file it
+    #                     wrote, but `-w` only does so for the DEFAULT file
+    #                     (writing elsewhere leaves $HISTFILE's entries owed).
+    #   `_file_read_len`  is a position in the DEFAULT file, so ONLY reads of
+    #                     that file move it; a read of an explicitly-named
+    #                     other file leaves it alone.
 
     def _is_default_file(self, path: str) -> bool:
         try:
@@ -249,10 +349,18 @@ class HistoryManager(InteractiveComponent):
     def store_entry(self, command: str) -> None:
         """`history -s`: add *command* as one entry without executing it.
 
-        Stored verbatim (no HISTCONTROL/HISTIGNORE filtering — bash keeps an
-        explicit `-s` entry) via in-place mutation to preserve the list-alias
+        Subject to the SAME recording policy as a typed line — ignorespace,
+        ignoredups, erasedups, HISTIGNORE (matched against the STORED text, not
+        the invocation) and the HISTSIZE cap — because that is what bash 5.2.26
+        does. It is NOT subject to the cmdhist join: bash stores an embedded
+        newline verbatim, so ``history -s $'a\\nb'`` stays one entry containing
+        a newline rather than becoming ``a; b``.
+
+        In-place mutation throughout (via ``_record``) preserves the list-alias
         contract."""
-        self.state.history.append(command)
+        if self._ignorespace_blocks(command):
+            return
+        self._record(command)
 
     def write_history(self, path: Optional[str] = None) -> bool:
         """`history -w`: write the ENTIRE in-memory list to *path* (default
@@ -266,11 +374,15 @@ class HistoryManager(InteractiveComponent):
                     f.write('\n'.join(self.state.history) + '\n')
         except OSError:
             return False
-        # The whole list is now flushed to a file, so the exit-time save and a
-        # subsequent `-a` won't re-emit it (bash marks it written regardless of
-        # which file). Only reads of the DEFAULT file move the read cursor.
-        self._file_synced_len = len(self.state.history)
+        # Only a write of the DEFAULT file makes the list "already persisted".
+        # Writing somewhere else leaves $HISTFILE's pending entries pending —
+        # advancing the marker for ANY target silently DROPPED them, so
+        # `history -w otherfile` made the session's commands never reach
+        # $HISTFILE at all (bash 5.2.26 still saves them; the previous claim
+        # that bash "marks it written regardless of which file" was measured
+        # false).
         if self._is_default_file(target):
+            self._mark_written()
             self._file_read_len = len(self.state.history)
         return True
 
@@ -278,7 +390,7 @@ class HistoryManager(InteractiveComponent):
         """`history -a`: append entries added since the last write/append to
         *path* (default $HISTFILE)."""
         target = path or self.state.history_file
-        new_entries = self.state.history[self._file_synced_len:]
+        new_entries = self._pending_entries()
         try:
             fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
             with os.fdopen(fd, 'a', encoding='utf-8',
@@ -287,9 +399,10 @@ class HistoryManager(InteractiveComponent):
                     f.write('\n'.join(new_entries) + '\n')
         except OSError:
             return False
-        # Advance the written cursor for ANY target (bash's `-a` marker is
-        # session-global), so the next `-a`/exit-save won't duplicate them.
-        self._file_synced_len = len(self.state.history)
+        # `-a` consumes the pending set for ANY target (bash's `-a` likewise
+        # zeroes its counter whichever file it wrote), so the next
+        # `-a`/exit-save won't duplicate them.
+        self._mark_written()
         if self._is_default_file(target):
             self._file_read_len += len(new_entries)
         return True
@@ -301,11 +414,14 @@ class HistoryManager(InteractiveComponent):
         lines = self._read_file_lines(target)
         if lines is None:
             return False
+        self._sync_owed()
         self.state.history.extend(lines)
+        # Read lines are NEVER owed — they already live in a file. Marking them
+        # owed leaked another file's contents into $HISTFILE; marking the WHOLE
+        # list written instead swallowed the typed commands still waiting.
+        self._owed.extend([False] * len(lines))
+        self._trim_to_max()
         if self._is_default_file(target):
-            # These lines already live in the default file; don't re-append
-            # them on save, and advance the read cursor past them.
-            self._file_synced_len = len(self.state.history)
             self._file_read_len = len(lines)
         return True
 
@@ -319,23 +435,36 @@ class HistoryManager(InteractiveComponent):
         default = self._is_default_file(target)
         start = self._file_read_len if default else 0
         fresh = lines[start:]
+        self._sync_owed()
         self.state.history.extend(fresh)
+        # Read lines are NEVER owed (see read_history); the in-memory list
+        # still respects $HISTSIZE, because bash trims after `-n` too.
+        self._owed.extend([False] * len(fresh))
+        self._trim_to_max()
         if default:
-            self._file_synced_len = len(self.state.history)
             self._file_read_len = len(lines)
         return True
 
     def delete_entry(self, first: int, last: int) -> None:
         """`history -d`: delete the entries at 1-based positions [first, last].
 
-        Callers validate the range. Deletions before the sync/read cursors
-        shift them so the append/read slices still start at the right place."""
+        Callers validate the range. Deleted entries take their owed flags with
+        them, so a deleted command is never written to the file afterwards —
+        and because the flags are positional, deleting one of two identical
+        command strings settles that entry's debt only.
+
+        The READ cursor is deliberately NOT shifted. The two quantities are
+        different: pending is a view of MEMORY, so a memory deletion prunes it;
+        ``_file_read_len`` is a position in the FILE, and deleting from memory
+        does not un-read a file line. Shifting
+        it made `history -d` followed by `history -n` re-read lines that were
+        already consumed, duplicating them in the list (MEDIUM-7 leg A). bash
+        5.2.26 leaves its file counter untouched across `-d` for a single
+        offset, a range, and a delete at the cursor alike."""
         lo, hi = first - 1, last  # 0-based half-open slice
+        self._sync_owed()
         del self.state.history[lo:hi]
-        before_sync = max(0, min(hi, self._file_synced_len) - lo)
-        before_read = max(0, min(hi, self._file_read_len) - lo)
-        self._file_synced_len = max(0, self._file_synced_len - before_sync)
-        self._file_read_len = max(0, self._file_read_len - before_read)
+        del self._owed[lo:hi]
 
     def _read_file_lines(self, path: str) -> Optional[List[str]]:
         """Non-empty, newline-stripped lines of *path*; None on OSError."""

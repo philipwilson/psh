@@ -1,0 +1,22 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  -s x; -w (default); -a (default)
+      bash HISTFILE=['x', 'x']
+      psh  HISTFILE=['x']
+      => DIVERGE
+
+  -s x; -w; -a  with a seeded HISTFILE
+      bash HISTFILE=['S1', 'S2', 'x', 'x']
+      psh  HISTFILE=['S1', 'S2', 'x']
+      => DIVERGE
+
+  typed; -w; -a (default)
+      bash HISTFILE=['S1', 'true typed1', 'true typed1']
+      psh  HISTFILE=['S1', 'true typed1']
+      => DIVERGE
+
+  CONTROL -s x; -a; -a (no -w)
+      bash HISTFILE=['x']
+      psh  HISTFILE=['x']
+      => MATCH
+

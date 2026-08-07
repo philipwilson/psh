@@ -1,0 +1,22 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  seed 1 line, OTHER 1 line
+      bash mem=['D1']
+      psh  mem=['D1', 'O1']
+      => DIVERGE
+
+  seed 1 line, OTHER 2 lines (control: offset, not a block)
+      bash mem=['D1', 'O2']
+      psh  mem=['D1', 'O1', 'O2']
+      => DIVERGE
+
+  seed 2 lines, OTHER 3 lines (control: offset tracks the seed)
+      bash mem=['D1', 'D2', 'O3']
+      psh  mem=['D1', 'D2', 'O1', 'O2', 'O3']
+      => DIVERGE
+
+  seed 0 lines, OTHER 2 lines (control: counter at 0 reads all)
+      bash mem=['O1', 'O2']
+      psh  mem=['O1', 'O2']
+      => MATCH
+

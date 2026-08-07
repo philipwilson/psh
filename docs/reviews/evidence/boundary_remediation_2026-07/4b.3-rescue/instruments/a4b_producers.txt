@@ -1,0 +1,69 @@
+========================================================================
+A4b — producer x HISTSIZE cap (psh vs bash 5.2.26)
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+########## startup load (file longer than HISTSIZE) ##########
+
+--- load 10 lines, HISTSIZE=4 ---
+    (load_from_file trims in psh)
+   HISTSIZE=4: bash=4 entries ['L7', 'L8', 'L9', 'L10']
+                psh =4 entries ['L7', 'L8', 'L9', 'L10']
+  => MATCHES
+
+
+########## normal recording ##########
+
+--- 6 recorded commands, HISTSIZE=4 ---
+    (add_to_history trims in psh (the established producer))
+   HISTSIZE=4: bash=4 entries ['true r3', 'true r4', 'true r5', 'true r6']
+                psh =4 entries ['true r3', 'true r4', 'true r5', 'true r6']
+  => MATCHES
+
+
+########## history -s ##########
+
+--- 6x -s, HISTSIZE=4 ---
+    (store_entry: no cap in psh (leg B))
+   HISTSIZE=4: bash=4 entries ['s3', 's4', 's5', 's6']
+                psh =6 entries ['s1', 's2', 's3', 's4', 's5', 's6']
+  => DIVERGES   [psh OVER CAP]
+
+
+########## history -r (whole file into memory) ##########
+
+--- -r a 10-line file, HISTSIZE=4 ---
+    (read_history: extend() with no trim in psh)
+   HISTSIZE=4: bash=4 entries ['B7', 'B8', 'B9', 'B10']
+                psh =10 entries ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10']
+  => DIVERGES   [psh OVER CAP]
+
+
+########## history -n (unread tail into memory) ##########
+
+--- -n after an external 10-line append, HISTSIZE=4 ---
+    (read_new_history: extend() with no trim in psh)
+   HISTSIZE=4: bash=4 entries ['X7', 'X8', 'X9', 'X10']
+                psh =11 entries ['seed1', 'X1', 'X2', 'X3', 'X4', 'X5', 'X6', 'X7', 'X8', 'X9', 'X10']
+  => DIVERGES   [psh OVER CAP]
+
+
+########## composed: -r past the cap then a recorded command (does the next record repair it?) ##########
+
+--- -r 10 lines then 1 recorded command, HISTSIZE=4 ---
+    (psh: add_to_history trims only ONE entry per call)
+   HISTSIZE=4: bash=4 entries ['B8', 'B9', 'B10', 'true AFTER']
+                psh =4 entries ['B8', 'B9', 'B10', 'true AFTER']
+  => MATCHES
+
+
+########## HISTSIZE lowered AFTER the entries exist ##########
+
+--- 10 recorded, then HISTSIZE=3, then list ---
+    (does lowering the cap trim retroactively?)
+   HISTSIZE=50: bash=3 entries ['true r8', 'true r9', 'true r10']
+                psh =10 entries ['true r1', 'true r2', 'true r3', 'true r4', 'true r5', 'true r6', 'true r7', 'true r8', 'true r9', 'true r10']
+  => DIVERGES
+

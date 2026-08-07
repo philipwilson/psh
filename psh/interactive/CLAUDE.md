@@ -40,7 +40,7 @@ Tab completion is NOT a separate manager: it is `CompletionEngine`
 | `multiline_handler.py` | `MultiLineInputHandler` - PS2 loop; completeness decided by the shared `CommandAccumulator` (`psh/scripting/command_accumulator.py`) |
 | `tab_completion.py` | `CompletionEngine` - path completion (used by LineEditor) |
 | `terminal.py` | `TerminalManager` - raw-mode enter/exit context manager |
-| `history_manager.py` | `HistoryManager` - command history storage/persistence. The five history-file paths (startup `load_from_file`, exit `save_to_file`, `-w` `write_history`, `-a` `append_history`, `-r`/`-n` `_read_file_lines`) all open with `encoding='utf-8', errors='surrogateescape'` (campaign I4; I1 byte doctrine) so arbitrary bytes round-trip — a lone `\xff` is `\udcff` in memory and re-encodes to `\xff` on write. |
+| `history_manager.py` | `HistoryManager` - command history storage/persistence. The five history-file paths (startup `load_from_file`, exit `save_to_file`, `-w` `write_history`, `-a` `append_history`, `-r`/`-n` `_read_file_lines`) all open with `encoding='utf-8', errors='surrogateescape'` (campaign I4; I1 byte doctrine) so arbitrary bytes round-trip — a lone `\xff` is `\udcff` in memory and re-encodes to `\xff` on write. Two INDEPENDENT quantities track the file relationship (see "History: file position vs unsaved work" below). |
 | `history_result.py` | `HistoryExpansionResult(kind, text, error, spans)` + `HistoryExpansionKind` (NONE/EXPANDED/PRINT_ONLY/ERROR) — the typed outcome of `expand_history` (campaign I4) |
 | `history_expansion.py` | `HistoryExpander.expand_history(command) -> HistoryExpansionResult` — the SOLE history-expansion producer (`!!`, `!n`, `!string`, `!#`, `^old^new`, word designators, `:h :t :r :e :s :gs :& :p :q :x`). PURE: never prints, never records. Consumers branch on `result.kind`; the retired `contains_history_reference` regex and the `''`/`None` sentinels are gone from the inference path (guarded by `tests/unit/tooling/test_history_result_guard_i4.py`). Heredoc BODY spans are skipped (`heredoc_body_spans`). |
 | `prompt_manager.py` | `PromptManager` - PS1/PS2 retrieval and expansion |
@@ -314,6 +314,50 @@ holds the `state.history` list OBJECT for the whole session — every
 HistoryManager operation mutates it in place (slice assignment / `del`),
 never rebinds it, and the editor never substitutes a private list for an
 empty one. Pinned by `tests/unit/interactive/test_history_alias_contract.py`.
+
+`history -s` is NOT a second writer: it reaches the list through the same
+recording policy (`history_manager.py#HistoryManager._record`), so
+HISTCONTROL, HISTIGNORE and the `$HISTSIZE` cap apply to it exactly as to a
+typed line — which is what bash does. Its one exemption is the cmdhist join
+(bash stores an embedded newline verbatim), so it enters at
+`#HistoryManager.store_entry` rather than `#add_to_history`.
+
+### History: file position vs unsaved work
+
+`HistoryManager` keeps TWO quantities that are easy to conflate and were
+conflated until slot 4B.3 (MEDIUM-7):
+
+- `_file_read_len` is a position in the DEFAULT history FILE — how much of it
+  has been consumed into memory. Only reads of THAT file move it. Memory-side
+  operations (`history -d`, `history -c`, the `$HISTSIZE` front-drop) must
+  never move it: deleting something from memory does not un-read a file line.
+  Moving it made `-d` followed by `-n` re-read consumed lines, and `-c`
+  followed by `-n` re-materialise the whole file.
+- the OWED flags (`#HistoryManager._owed`, read through
+  `#HistoryManager._pending_entries`) mark the entries RECORDED this session and
+  not yet written — one flag per `state.history` POSITION. Lines arriving from a
+  file (load, `-r`, `-n`) are never owed, for any target. The flags travel with
+  their entries through every mutation, so a deleted, cleared or trimmed-away
+  command cannot be resurrected by a later save.
+
+  They are positional rather than text-keyed, and that distinction is
+  load-bearing: an earlier design matched owed entries against memory BY TEXT,
+  so deleting a typed command whose text also appeared elsewhere in the list let
+  the surviving twin inherit the debt, and the deleted command was written to
+  $HISTFILE anyway. Identical command strings are ordinary, so text can never
+  identify an entry. The one editor outside this class — the history builtin's
+  CV3 strip, which deletes `state.history[-1]` directly — is reconciled by
+  `#HistoryManager._sync_owed`.
+
+This is a DECLARED deviation from bash on interleaved compositions: bash's
+`-a` writes the last N entries BY POSITION, so a read or a `-d` between
+recording and saving makes it write the wrong ones, losing typed commands and
+leaking read ones. psh keeps v0.447's no-loss/no-duplicate guarantee; the
+state-machine observables still match bash. Both sides are pinned in
+`tests/conformance/bash/test_history_state_machine_conformance.py`, the marker
+model op-by-op in `tests/unit/interactive/test_history_state_machine_4b3.py`,
+and the regressions in
+`tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py`.
 
 ### Signal Handling
 

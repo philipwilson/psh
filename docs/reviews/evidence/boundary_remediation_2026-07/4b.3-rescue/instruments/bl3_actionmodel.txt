@@ -1,0 +1,69 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+TIP: bc280e8ff72351d26f911190d85440f1804d1d35
+
+Each cell lists the actions that DEMONSTRABLY fired, per shell.
+
+  -c alone           bash=['c(cleared)']
+                     psh =['c(cleared)']
+                     (baseline)
+  -w alone (NAMED)   bash=['w(rewrote)']
+                     psh =['w(rewrote)']
+                     (baseline)
+  -a alone (NAMED)   bash=['a(appended)']
+                     psh =['a(appended)']
+                     (baseline)
+  -r alone (NAMED)   bash=['r/n(read)']
+                     psh =['r/n(read)']
+                     (baseline)
+  -s alone           bash=['s(stored)']
+                     psh =['s(stored)']
+                     (baseline)
+  -cw NAMED          bash=['c(cleared)', 'w(rewrote)']
+                     psh =['c(cleared)', 'w(rewrote)']
+                     (DOES the write run after the clear?)
+* -cw DEFAULT        bash=['c(cleared)']
+                     psh =['c(cleared)', 'w(wrote-empty)']
+                     bash mem/hist/other=([], ['S1', 'S2'], ['SENTINEL_UNTOUCHED', 'MARK1', 'MARK2'])
+                     psh  mem/hist/other=([], [], ['SENTINEL_UNTOUCHED', 'MARK1', 'MARK2'])
+                     (the verifier cell: bash leaves the file untouched)
+  -ca NAMED          bash=['c(cleared)']
+                     psh =['c(cleared)']
+  -cr NAMED          bash=['d(deleted)', 'r/n(read)']
+                     psh =['d(deleted)', 'r/n(read)']
+  -cn DEFAULT        bash=['c(cleared)']
+                     psh =['c(cleared)']
+  -cs STORED         bash=['d(deleted)', 's(stored)']
+                     psh =['d(deleted)', 's(stored)']
+                     (does -s survive the clear?)
+  -cp PRINTME        bash=['c(cleared)', 'p(printed)']
+                     psh =['c(cleared)', 'p(printed)']
+                     (does -p survive the clear?)
+* -wd 1 NAMED        bash=['(none)']
+                     psh =['w(rewrote)']
+                     bash mem/hist/other=(['S2', 'true keep'], ['S1', 'S2'], ['SENTINEL_UNTOUCHED', 'MARK1', 'MARK2'])
+                     psh  mem/hist/other=(['S2', 'true keep'], ['S1', 'S2'], ['S2', 'true keep'])
+                     (delete plus write)
+* -ad 1 NAMED        bash=['(none)']
+                     psh =['a(appended)']
+                     bash mem/hist/other=(['S2', 'true keep'], ['S1', 'S2'], ['SENTINEL_UNTOUCHED', 'MARK1', 'MARK2'])
+                     psh  mem/hist/other=(['S2', 'true keep'], ['S1', 'S2'], ['SENTINEL_UNTOUCHED', 'MARK1', 'MARK2', 'true keep'])
+* -rd 1 NAMED        bash=['(none)']
+                     psh =['r/n(read)']
+                     bash mem/hist/other=(['S2', 'true keep'], ['S1', 'S2'], ['SENTINEL_UNTOUCHED', 'MARK1', 'MARK2'])
+                     psh  mem/hist/other=(['S2', 'true keep', 'SENTINEL_UNTOUCHED', 'MARK1', 'MARK2'], ['S1', 'S2'], ['SENTINEL_UNTOUCHED', 'MARK1', 'MARK2'])
+  -sd 1 STORED       bash=['s(stored)']
+                     psh =['s(stored)']
+  -pd 1 PRINTME      bash=['p(printed)']
+                     psh =['p(printed)']
+  -sw NAMED          bash=['(none)']
+                     psh =['(none)']
+                     (store plus write)
+  -pw NAMED          bash=['(none)']
+                     psh =['(none)']
+                     (print plus write)
+  -ps PRINTME        bash=['(none)']
+                     psh =['(none)']
+
+
+DIVERGENT CELLS (4): ['-cw DEFAULT', '-wd 1 NAMED', '-ad 1 NAMED', '-rd 1 NAMED']

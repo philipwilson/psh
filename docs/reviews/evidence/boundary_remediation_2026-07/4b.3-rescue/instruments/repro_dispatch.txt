@@ -1,0 +1,12 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+TIP: bd13b303567188246cc75e7fc5f02914a50f32ab
+A bash: {'seedA': 0, 'seedB': 1, 'seedC': 1, 'seedD': 1}
+A psh : {'seedA': 0, 'seedB': 1, 'seedC': 2, 'seedD': 1}
+
+B bash: {'s1': 0, 's2': 0, 's3': 1, 's4': 1, 's5': 1}  (listing lines: 3)
+B psh : {'s1': 1, 's2': 1, 's3': 1, 's4': 1, 's5': 1}  (listing lines: 5)
+
+C bash: 'echo seedX' in final listing: 0
+C psh : 'echo seedX' in final listing: 1
+

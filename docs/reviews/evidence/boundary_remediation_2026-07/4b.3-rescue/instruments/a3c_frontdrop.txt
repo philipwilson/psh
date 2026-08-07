@@ -1,0 +1,77 @@
+========================================================================
+A3c — front-drop vs read counter (A3b instrument defect fixed)
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+########## CONTROL: cap large enough that nothing trims — the instrument must read the known counter 3 ##########
+
+   bash: read-counter=3   (expected 3)
+   psh : read-counter=3   (expected 3)
+
+########## HISTSIZE=4, seed=3, sweeping `history -s` stores (2nd store = 1st front-drop) ##########
+
+--- 0 op(s) ---
+   bash: mem(3)=['seed1', 'seed2', 'seed3']
+         read-counter=3  append-slice=[]
+   psh : mem(3)=['seed1', 'seed2', 'seed3']
+         read-counter=3  append-slice=[]
+
+--- 1 op(s) ---
+   bash: mem(4)=['seed1', 'seed2', 'seed3', 'n1']
+         read-counter=3  append-slice=['n1']
+   psh : mem(4)=['seed1', 'seed2', 'seed3', 'n1']
+         read-counter=3  append-slice=['n1']
+
+--- 2 op(s) ---
+   bash: mem(4)=['seed2', 'seed3', 'n1', 'n2']
+         read-counter=3  append-slice=['n1', 'n2']
+   psh : mem(5)=['seed1', 'seed2', 'seed3', 'n1', 'n2']
+         read-counter=3  append-slice=['n1', 'n2']
+
+--- 3 op(s) ---
+   bash: mem(4)=['seed3', 'n1', 'n2', 'n3']
+         read-counter=3  append-slice=['n1', 'n2', 'n3']
+   psh : mem(6)=['seed1', 'seed2', 'seed3', 'n1', 'n2', 'n3']
+         read-counter=3  append-slice=['n1', 'n2', 'n3']
+
+--- 4 op(s) ---
+   bash: mem(4)=['n1', 'n2', 'n3', 'n4']
+         read-counter=3  append-slice=['n1', 'n2', 'n3', 'n4']
+   psh : mem(7)=['seed1', 'seed2', 'seed3', 'n1', 'n2', 'n3', 'n4']
+         read-counter=3  append-slice=['n1', 'n2', 'n3', 'n4']
+
+
+########## HISTSIZE=4, seed=3, sweeping NORMAL RECORDING (established producer) ##########
+
+--- 0 op(s) ---
+   bash: mem(3)=['seed1', 'seed2', 'seed3']
+         read-counter=3  append-slice=[]
+   psh : mem(3)=['seed1', 'seed2', 'seed3']
+         read-counter=3  append-slice=[]
+
+--- 1 op(s) ---
+   bash: mem(4)=['seed1', 'seed2', 'seed3', 'true r1']
+         read-counter=3  append-slice=['true r1']
+   psh : mem(4)=['seed1', 'seed2', 'seed3', 'true r1']
+         read-counter=3  append-slice=['true r1']
+
+--- 2 op(s) ---
+   bash: mem(4)=['seed2', 'seed3', 'true r1', 'true r2']
+         read-counter=3  append-slice=['true r1', 'true r2']
+   psh : mem(4)=['seed2', 'seed3', 'true r1', 'true r2']
+         read-counter=3  append-slice=['true r1', 'true r2']
+
+--- 3 op(s) ---
+   bash: mem(4)=['seed3', 'true r1', 'true r2', 'true r3']
+         read-counter=3  append-slice=['true r1', 'true r2', 'true r3']
+   psh : mem(4)=['seed3', 'true r1', 'true r2', 'true r3']
+         read-counter=3  append-slice=['true r1', 'true r2', 'true r3']
+
+--- 4 op(s) ---
+   bash: mem(4)=['true r1', 'true r2', 'true r3', 'true r4']
+         read-counter=3  append-slice=['true r1', 'true r2', 'true r3', 'true r4']
+   psh : mem(4)=['true r1', 'true r2', 'true r3', 'true r4']
+         read-counter=3  append-slice=['true r1', 'true r2', 'true r3', 'true r4']
+

@@ -1,0 +1,100 @@
+========================================================================
+A3 — `-s` cap semantics (psh vs bash 5.2.26)
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+########## 1. WHERE is the cap applied? ##########
+
+--- HISTSIZE=3, 5x -s, list ---
+    (the leg-B shape: cap visible in the listing?)
+  *OP_MEM       bash=['s3', 's4', 's5']
+                psh =['s1', 's2', 's3', 's4', 's5']
+  => DIVERGES
+
+--- HISTSIZE=3, 5x -s, RAISE to 10, list ---
+    (if entries survive the raise the trim was at LISTING, not at STORE)
+   OP_MEM       bash=['s4', 's5', 'HISTSIZE=10']
+                psh =['s4', 's5', 'HISTSIZE=10']
+  => MATCHES
+
+--- HISTSIZE=3, 2x -s then a RECORDED command ---
+    (does the cap fire at store, or only at the next record?)
+   OP_MEM       bash=['s1', 's2', 'true RECORDED']
+                psh =['s1', 's2', 'true RECORDED']
+  => MATCHES
+
+--- HISTSIZE=3, 4x -s, no other op ---
+    (first store PAST the cap)
+  *OP_MEM       bash=['s2', 's3', 's4']
+                psh =['s1', 's2', 's3', 's4']
+  => DIVERGES
+
+
+########## 2. -s argument joining and HISTCONTROL ##########
+
+--- -s multiple args ---
+    (one joined entry?)
+   OP_MEM       bash=['echo hello world']
+                psh =['echo hello world']
+  => MATCHES
+
+--- -s under ignoredups ---
+    (does HISTCONTROL apply to -s?)
+  *OP_MEM       bash=['dup']
+                psh =['dup', 'dup']
+  => DIVERGES
+
+--- -s under erasedups ---
+    (does erasedups apply to -s?)
+  *OP_MEM       bash=['bbb', 'aaa']
+                psh =['aaa', 'bbb', 'aaa']
+  => DIVERGES
+
+--- -s leading space under ignorespace ---
+    (does ignorespace apply to -s?)
+  *OP_MEM       bash=[]
+                psh =[' spaced']
+  => DIVERGES
+
+
+########## 3. HISTSIZE edge values ##########
+
+--- HISTSIZE=0, 3x -s ---
+    (zero cap)
+  *OP_MEM       bash=[]
+                psh =['s1', 's2', 's3']
+  => DIVERGES
+
+--- HISTSIZE=-1, 5x -s ---
+    (negative = unlimited (psh must-hold unless bash says no))
+   OP_MEM       bash=['s1', 's2', 's3', 's4', 's5']
+                psh =['s1', 's2', 's3', 's4', 's5']
+  => MATCHES
+
+--- HISTSIZE=1, 3x -s ---
+    (cap of one)
+  *OP_MEM       bash=['s3']
+                psh =['s1', 's2', 's3']
+  => DIVERGES
+
+
+########## 4. front-drop marker maintenance (the v0.447 face under a NEW producer) ##########
+
+--- HISTSIZE=4, seed3 + 3x -s (drops 2 from front) ---
+   bash: mem=['seed3', 'n1', 'n2', 'n3']
+         read counter=6  (pulled [])
+         append slice=['n1', 'n2', 'n3']
+   psh : mem=['seed1', 'seed2', 'seed3', 'n1', 'n2', 'n3']
+         read counter=3  (pulled ['M4', 'M5', 'M6'])
+         append slice=['n1', 'n2', 'n3']
+
+--- HISTSIZE=3, seed3 + 2x -s (drops 2 from front) ---
+   bash: mem=['seed3', 'n1', 'n2']
+         read counter=6  (pulled [])
+         append slice=['n1', 'n2']
+   psh : mem=['seed1', 'seed2', 'seed3', 'n1', 'n2']
+         read counter=3  (pulled ['M4', 'M5', 'M6'])
+         append slice=['n1', 'n2']
+

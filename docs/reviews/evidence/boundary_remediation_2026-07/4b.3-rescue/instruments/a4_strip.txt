@@ -1,0 +1,60 @@
+========================================================================
+A4 — CV3 strip x -s x HISTSIZE cap, plain spelling (no HISTIGNORE)
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+########## plain spelling, cap NOT reached (isolates the strip) ##########
+
+--- 2 commands then `history -s X` ---
+    (strip removes the `history -s STORED` line, then stores STORED)
+   bash=['true c1', 'true c2', 'STORED', 'echo ===OP_MEM===', 'history']
+   psh =['true c1', 'true c2', 'STORED', 'echo ===OP_MEM===', 'history']
+  => MATCHES
+
+--- `history -s X` as the FIRST line ---
+    (strip with an almost-empty history)
+   bash=['STORED', 'echo ===OP_MEM===', 'history']
+   psh =['STORED', 'echo ===OP_MEM===', 'history']
+  => MATCHES
+
+
+########## plain spelling, cap REACHED (strip x cap composition) ##########
+
+--- HISTSIZE=3, 2 commands then 3x `history -s` ---
+    (each -s: record invocation, strip it, store sN, cap)
+   bash=['s3', 'echo ===OP_MEM===', 'history']
+   psh =['s3', 'echo ===OP_MEM===', 'history']
+  => MATCHES
+
+--- HISTSIZE=2, 5x `history -s` ---
+    (tight cap, plain spelling)
+   bash=['echo ===OP_MEM===', 'history']
+   psh =['echo ===OP_MEM===', 'history']
+  => MATCHES
+
+--- HISTSIZE=3, alternating record and -s ---
+    (interleaved producers under one cap)
+   bash=['true c', 'echo ===OP_MEM===', 'history']
+   psh =['true c', 'echo ===OP_MEM===', 'history']
+  => MATCHES
+
+
+########## the same cells WITH suppression (labelled control: isolates the cap from the strip) ##########
+
+--- HISTSIZE=3, 2 commands then 3x -s  [HISTIGNORE control] ---
+    (control for the cell two above)
+   bash=['s1', 's2', 's3']
+   psh =['true c1', 'true c2', 's1', 's2', 's3']
+  => DIVERGES
+
+
+########## -p (the other strip consumer) x cap ##########
+
+--- HISTSIZE=3, commands then `history -p !!` ---
+    (-p strips but does not store; the cap must not disturb it)
+   bash=['true c', 'echo ===OP_MEM===', 'history']
+   psh =['true c', 'echo ===OP_MEM===', 'history']
+  => MATCHES
+

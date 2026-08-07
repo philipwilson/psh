@@ -1,0 +1,25 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  history -an          bash: ['RC=1']  stderr=['bash: cannot set terminal process group (90561): Inappropriate ioctl for device', 'bash: no job control in this shell']
+  history -an          psh : ['RC=2']  stderr=['psh: history: -an: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
+  history -rw          bash: ['RC=1']  stderr=['bash: cannot set terminal process group (90561): Inappropriate ioctl for device', 'bash: no job control in this shell']
+  history -rw          psh : ['RC=2']  stderr=['psh: history: -rw: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
+  history -nr          bash: ['RC=1']  stderr=['bash: cannot set terminal process group (90561): Inappropriate ioctl for device', 'bash: no job control in this shell']
+  history -nr          psh : ['RC=2']  stderr=['psh: history: -nr: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
+  history -ar          bash: ['RC=1']  stderr=['bash: cannot set terminal process group (90561): Inappropriate ioctl for device', 'bash: no job control in this shell']
+  history -ar          psh : ['RC=2']  stderr=['psh: history: -ar: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
+  history -aw          bash: ['RC=1']  stderr=['bash: cannot set terminal process group (90561): Inappropriate ioctl for device', 'bash: no job control in this shell']
+  history -aw          psh : ['RC=2']  stderr=['psh: history: -aw: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
+  history -cw          bash: ['RC=0']  stderr=['bash: cannot set terminal process group (90561): Inappropriate ioctl for device', 'bash: no job control in this shell']
+  history -cw          psh : ['RC=2']  stderr=['psh: history: -cw: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
+  history -ps hello    bash: ['RC=0']  stderr=['bash: cannot set terminal process group (90561): Inappropriate ioctl for device', 'bash: no job control in this shell']
+  history -ps hello    psh : ['RC=2']  stderr=['psh: history: -ps: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
+  history -ds 1 X      bash: ['RC=1']  stderr=['bash: cannot set terminal process group (90561): Inappropriate ioctl for device', 'bash: no job control in this shell']
+  history -ds 1 X      psh : ['RC=2']  stderr=['psh: history: -ds: invalid option', 'psh: history: usage: history [-c] [-d offset] [n] or history -anrw [filename] or history -ps arg [arg...]']
+
