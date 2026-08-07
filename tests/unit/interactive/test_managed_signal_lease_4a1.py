@@ -401,14 +401,20 @@ def test_dropped_without_close_leaves_next_shell_runnable(host_dispositions):
         nxt.close()
 
 
-def test_two_leaseless_shells_chain_as_at_base(host_dispositions):
+def test_two_leaseless_shells_restore_by_chaining(host_dispositions):
     """RECORD-ONLY (R9 point 3): two leaseless shells in sequence.
 
     Neither owns the process, so neither takes a lease, and shell B's
     "originals" are shell A's handlers. Restoration therefore CHAINS: B
-    restores to A's handlers, then A restores to the host's. This is the
-    base behaviour, recorded rather than claimed as a guarantee — the
-    ordering protection only exists for shells that own the process.
+    restores to A's handlers, then A restores to the host's.
+
+    RECORDED, not guaranteed. The coordinator's ordering protection exists
+    only for shells that OWN the process; leaseless installs are ordered by
+    nothing but the order they unwind in, so a different close order would
+    leave a different disposition. The bar this cell states is "no worse
+    than base" — and note base was WORSE: it restored nothing at all at
+    close(), so the host kept psh's handlers permanently. That is why this
+    cell fails at a64eb6e8 despite recording base-shaped ORDERING.
     """
     owner = Shell(norc=True)
     try:
