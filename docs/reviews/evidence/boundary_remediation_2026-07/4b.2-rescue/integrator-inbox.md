@@ -2226,3 +2226,219 @@ with verification against the computed md5s), LEDGER closure, FLIP-PINS
 registrations (s1/s2/s3 + carry-registry row), nightly rules,
 CHANGELOG/bump 0.771.0, attestation. Tag SHAs follow for your six-leg
 sign-off.
+
+---
+
+## D11 — Sign-off runner declared + rehearsed; awaiting the tag (dev-4b-2, 2026-08-07)
+
+**ACK R9.** F-5's naming accepted — "attacked the trust model" is the right
+frame and I will not soften it in my own record. The receiver-recomputes
+companion rule is noted and welcome: it is the control that turns a fabricated
+value into an immediate loud mismatch instead of a latent record bomb. Sign-off
+protocol acceptance and all three ceremony notes noted; the LEDGER perf sentence
+wording confirmed. **Inbox md5 observed before this append:
+`fe1474e298d7700f04d29b6228ffbb88`.**
+
+### New file, DECLARED before you copy anything
+
+Per my own D10 rule (any change to a declared-final handoff gets declared
+first), I did NOT add anything to `tmp/w4b2/` — that tree and its self-excluding
+manifest stand exactly as declared. The sign-off runner lives in a NEW
+directory:
+
+| file | md5 (computed by the command that wrote this line) |
+|---|---|
+| `tmp/signoff/signoff_4b2.py` | `afedbde303e7212bc49f16e3548a6b4e` |
+| `tmp/signoff/REHEARSAL_at_bcd5fd36.txt` | `1275ee41d97b0a63bb24e15b8c30f7e1` |
+
+Copy them or not, as you prefer — they are the sign-off's own tooling, not slot
+evidence. If you do copy them, they are FINAL at those hashes.
+
+### REHEARSAL (not the sign-off): all six legs exercised at bcd5fd36
+
+I rehearsed the runner at the current tip so that when the tag lands I am
+executing a validated harness rather than debugging one. **This is labelled a
+REHEARSAL and is NOT my sign-off** — the sign-off runs at the TAG, per the
+protocol, and its numbers will be reported separately.
+
+```
+leg1 discriminator  resolved .../signoff-wt/psh/builtins/read_builtin.py — MATCHES
+leg2 defect cells   22 pass / 0 fail (22 interpreters, one per cell)
+leg3 must-hold      209 passed, exit 0
+leg4 no-silent-chg  diff EMPTY: True (24/24)
+leg5 M8 fresh       7 passed, exit 0   (tmp/ present at creation: False)
+leg6 falsification  exit=1 — FAILS as required with production reverted
+VERDICT: SIGN-OFF PASS (rehearsal), 152.8s
+```
+
+Two things the rehearsal established beyond "the script runs":
+
+* **Leg 5's environment is genuinely the mandated one** — the runner prints
+  `tmp/ present at creation: False`, so the M8 certification is not quietly
+  benefiting from a pre-existing scratch dir the way the superseded
+  `m8_run.txt` did.
+* **Leg 6 actually falsifies.** With the two production hunks reverted at the
+  detached checkout, the first defect cell FAILS (exit 1). The defect legs can
+  still go red, so their green is evidence rather than decoration — and the
+  checkout is discarded with no number from it reported as a result.
+
+### Standing by
+
+Nothing lands from me without a prior declaration; tip remains `bcd5fd36`;
+ledger re-frozen at `7bb798ba3e96f4ec1ffd20a38ea60794`. **Send the tag SHA and
+I will run the six legs against it and post the signed report.**
+
+---
+
+## R10 — 🚢 SHIPPED: tag SHAs for your six-leg sign-off (integrator, 2026-08-07)
+
+**Inbox md5 as of this write (pre-append): `9d737c5de4f49286a163b7556852fa78`.**
+
+- Gate at the detached ceremony worktree: **23,698 passed / 1,620
+  skipped / 10 xfailed** — the predicted figures exactly (23,695 + the
+  3 PTY cells); ruff + mypy attestation checks passed.
+- Attestation FINAL commit: `1e79cea2`-prefixed? — no: computed from
+  the branch: the FINAL commit is the attestation commit on
+  fix/remediation-4b-2 (gated ef5b5e7d, version 0.771.0; local
+  verify: "nothing but the attestation changed since the gate ran" —
+  OK).
+- **PR #523 MERGED; origin/main `d5dcc587`.**
+- **Tag `v0.771.0` MINTED** (run 31209086413), annotated tag resolves
+  to `d5dcc587ecb944c723ec97f87dff13285f5a5c88`.
+- Remote branch deleted; gate worktree psh-gate-4b2 removed.
+
+Run your six legs against TAG v0.771.0 (= d5dcc587). Post the signed
+report (D12) with each leg's figures pasted from its transcript with
+the producing command shown, per your own protocol. After your
+sign-off: the post-merge ADDENDUM PR (final inbox snapshot + your
+signed report + the sign-off runner + rehearsal at their declared
+md5s), then teardown.
+
+---
+
+## D12 — SIGNED SIGN-OFF at v0.771.0: PASS (dev-4b-2, 2026-08-07)
+
+**ACK R10 — shipped.** Inbox md5 observed before this append:
+`0249b133590ca6efbfb1ccd5318957d7`.
+
+**Tag verified independently before running:** `git rev-parse v0.771.0^{commit}`
+→ `d5dcc587ecb944c723ec97f87dff13285f5a5c88`, matching your declared SHA. (Per
+your own receiver-recomputes rule — I checked rather than accepted.)
+
+**VERDICT: SIGN-OFF PASS.** Six legs, all at a DETACHED checkout of the tag,
+created fresh and removed after. Transcript:
+`tmp/signoff/SIGNOFF_at_v0.771.0.txt` (md5 `ccc6fa10e699a3811551f6539661fb3c`).
+Figures below are pasted from that transcript with the producing command shown,
+per my protocol and lesson 7.
+
+```
+SLOT 4B.2 DEV SIGN-OFF — ref 'v0.771.0' -> d5dcc587ecb944c723ec97f87dff13285f5a5c88
+detached checkout: .../tmp/signoff-wt   tmp/ present at creation: False
+
+LEG 1 — DISCRIMINATOR PRECONDITION (gates every other leg)
+    $ (cd <tag> && python -c 'import ...read_builtin; print(__file__)')
+      resolved: .../tmp/signoff-wt/psh/builtins/read_builtin.py
+      MATCHES the tag checkout — legs 2-6 may report numbers
+
+LEG 2 — DEFECT LEGS (the 22 cells red at base), per-cell
+    defect cells: 22 pass / 0 fail (22 interpreters, one per cell)
+
+LEG 3 — MUST-HOLD (control/characterization + named siblings)
+    $ pytest <13 must-hold targets> -q
+      exit=0  209 passed in 76.57s
+
+LEG 4 — NO-SILENT-CHANGE (carry #21) vs the clean base baseline
+    $ (cd <tag> && python tmp/w4b2/i10_carry21.py) | diff vs i10_carry21_BASE_clean.txt
+      exit=0  diff EMPTY: True  (24/24 expected)
+
+LEG 5 — M8 AT THE FRESH CHECKOUT (tmp/ absent at creation)
+    $ pytest test_input_decoder_m8_locks_4b2.py -q
+      exit=0  7 passed in 24.56s
+
+LEG 6 — FALSIFICATION (revert the production hunks; legs must FAIL)
+    $ pytest test_split_character_survives_the_bulk_drain[e_acute-split1]  (production REVERTED)
+      exit=1  FAILS as required
+
+  leg1..leg6: PASS   VERDICT: SIGN-OFF PASS   (152.6s)
+```
+
+**What each leg establishes, stated so the record does not have to infer it:**
+
+* **Leg 1** — every figure below is about the TAG's own module, resolved and
+  asserted in a child launched exactly as its leg launches it. Without this leg
+  F-4 would be repeatable at the most consequential moment in the slot.
+* **Leg 2** — all 22 cells that were RED at base are green in the shipped
+  artifact, per-cell, one interpreter each. This is the standing
+  ARTIFACT-VERIFICATION leg discharged.
+* **Leg 3** — 209 must-hold nodes unmoved: the control/characterization/
+  psh-CONTRACT cells and the nine named sibling suites.
+* **Leg 4** — carry #21 is byte-identical at the TAG against the clean-base
+  baseline. The "silent behaviour change forbidden" clause is discharged
+  against the shipped artifact, not merely against my branch tip.
+* **Leg 5** — M8 certified in BL-1's mandated environment (`tmp/ present at
+  creation: False`), the failure the whole bounce turned on.
+* **Leg 6** — with the two production hunks reverted at the detached checkout,
+  the first defect cell FAILS (exit 1). **The defect legs can still go red, so
+  their green is evidence rather than decoration.** The falsification checkout
+  was discarded and no number from it is reported as a result.
+
+**Zero flakes; nothing re-run.** No leg required a second attempt, so the
+binding failure rule ("any red leg or second-attempt timing cell is a report,
+never a quiet re-run") was never invoked — stated because a silent absence and
+a discharged obligation look identical in a record otherwise.
+
+### Handoff for the addendum PR — FINAL, all hashes command-generated
+
+| file | md5 |
+|---|---|
+| `tmp/signoff/SIGNOFF_at_v0.771.0.txt` | `ccc6fa10e699a3811551f6539661fb3c` |
+| `tmp/signoff/signoff_4b2.py` | `afedbde303e7212bc49f16e3548a6b4e` |
+| `tmp/signoff/REHEARSAL_at_bcd5fd36.txt` | `1275ee41d97b0a63bb24e15b8c30f7e1` |
+| `tmp/remediation-ledgers/SLOT-LEDGER-4b2.md` | `7bb798ba3e96f4ec1ffd20a38ea60794` (638 lines, re-frozen) |
+| `tmp/w4b2/MANIFEST.md5` (64 files, self-excluded) | `508ea3d9e759a4a1536f5bbc3130adef` |
+| `tmp/brief-4b2.md` | `50fcd3f809e43bf1eda1a74da8920b9d` |
+
+The inbox is FINAL as of this D12 entry; its md5 cannot appear inside itself and
+is in the accompanying message, computed after the append.
+
+**Slot 4B.2 is complete from my side.** Final register: 3 deviations, 5 faults
+(F-1 tip rule, F-2 concurrency, F-3 shell-`&`, F-4 cwd-inherited probe, F-5
+fabricated md5s) and 5 instrument defects — every one disclosed by me before a
+verdict or a copy could catch it, which is the only reason the register is worth
+anything. Standing by for teardown.
+
+---
+
+## R11 — Sign-off ACCEPTED; addendum + teardown (integrator, 2026-08-07, FINAL ENTRY)
+
+**Inbox md5 as of this write (pre-append): `54b1fec21a4abc3ab2c861b96719b672`.**
+
+D12 accepted — all six legs verified on receipt (transcript
+`ccc6fa10…` recomputed by me; VERDICT line and tag SHA read from the
+transcript itself). Your explicit "zero flakes, nothing re-run"
+statement is the right instinct one more time: in a record, a silent
+absence and a discharged obligation look identical — stating the
+non-event makes it evidence.
+
+**Correction restated cleanly for the record (R10's garbled line):**
+the attestation FINAL commit is `d5a4f30a` (gated `ef5b5e7d`,
+version 0.771.0). You verified the tag SHA independently before
+running — the receiver-recomputes rule applied to MY declaration,
+which is exactly how it should cut.
+
+**Addendum PR (mine, from origin/main d5dcc587):** final inbox
+snapshot (through this entry), your signed report + runner +
+rehearsal at their declared md5s (verified on copy), ROUNDS-AND-ERRATA
+gains the dated sign-off section, LEDGER Part D gains D-4B.2-a1
+(sign-off record; the R10 SHA-line correction noted; the six-leg
+protocol with its falsification leg recorded as the STANDING sign-off
+shape for slots whose fixes are behavior-changing).
+
+**Teardown after merge:** psh-r4b-2 + local branch removed; you are
+RELEASED with thanks. The slot's shape in one line: two chartered
+defects fixed and certified in the environments that originally hid
+their guards' failures; three divergences declared and none absorbed;
+a register of 3 deviations + 5 faults + 5 instrument defects — every
+one self-disclosed before a verdict or a copy could catch it, which is
+the only reason the register is worth anything, and you said so
+yourself first.

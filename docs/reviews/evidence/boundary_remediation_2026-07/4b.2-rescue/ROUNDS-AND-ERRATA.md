@@ -154,3 +154,37 @@ Companion to `slot-ledger.md` (re-frozen md5
 - Any perf figure ("no measurable cost expected; not measured").
 - Closure of carry #21 (RE-CARRIED: the hybrid is psh's documented
   model; both-sides characterization pins added).
+
+## Addendum (2026-08-07, post-merge — PR after #523): sign-off record
+
+Dev sign-off ran as SIX LEGS the dev defined (lesson 10), all at a
+detached checkout of TAG v0.771.0 (= d5dcc587), REHEARSED at the branch
+tip first so the tag run executed a validated harness:
+1. **Discriminator precondition** gating every other leg (F-4's lesson
+   as leg 1: resolve `read_builtin.__file__` in a child launched
+   exactly as each leg launches it).
+2. **Defect legs**: the 22 red-at-base cells, per-cell — 22/0 at the
+   tag (the standing artifact-verification leg, discharged).
+3. **Must-hold**: 209 passed.
+4. **No-silent-change**: carry #21 diff EMPTY (24/24) at the TAG vs
+   the clean-base baseline.
+5. **M8 at a checkout where `tmp/` was ABSENT at creation** — BL-1's
+   mandated environment: 7 passed.
+6. **FALSIFICATION**: production hunks reverted → the defect cell
+   FAILS (exit 1) — the defect legs' green is evidence, not
+   decoration. Checkout discarded, no number reported from it.
+
+Zero flakes, nothing re-run — stated explicitly because a silent
+absence and a discharged obligation look identical in a record.
+Transcript: `instruments/dev/signoff/SIGNOFF_at_v0.771.0.txt`
+(md5 `ccc6fa10…`, command-generated, receiver-recomputed); runner and
+rehearsal alongside at their declared hashes. The dev verified the tag
+SHA independently before running (receiver-recomputes applied to the
+INTEGRATOR'S declaration — the rule cutting both ways), which also
+covered the integrator's R10 record fault: the inbox entry's
+attestation-SHA line was garbled mid-draft; the correct value
+(restated in R11) is FINAL commit `d5a4f30a`, gated `ef5b5e7d`.
+
+**The six-leg shape — discriminator-first + falsification-last — is
+recorded as the STANDING sign-off template for behavior-changing
+slots.**
