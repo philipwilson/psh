@@ -29,8 +29,9 @@ integrator: main session. Dead-drop rulings R0–R13 (this directory's
 - **LOW closed**: a failing `exec` releases the STD_FDS state it itself
   acquired (newly-acquired-only discrimination); the baseline-dup arm's
   `None` encoding is EBADF-only; a merely-low RLIMIT_NOFILE parks
-  ADAPTIVELY (`min(63, max(10, soft − 3))`, constants carrying their
-  measured facts) instead of failing the user's exec — bash parity
+  ADAPTIVELY (`min(_PARKING_BASE, max(_PARKING_FLOOR, soft −
+  _PARKING_SLOTS − _PARKING_SPARE))` = `soft−6`; see the dated addendum —
+  the ceremony draft misquoted the pre-spare proposal) instead of failing the user's exec — bash parity
   restored at every measured threshold (24/40/50/63/64/70/256); genuine
   exhaustion still aborts transactionally. The B-13a family (a failed
   dup silently recorded as "closed at baseline", then `close()` closing
@@ -43,8 +44,9 @@ integrator: main session. Dead-drop rulings R0–R13 (this directory's
 - **Batteries**: `tests/unit/core/test_activation_transaction_4a1.py`
   (36), `tests/integration/redirection/test_failed_exec_lease_4a1.py`
   (14, incl. the slot's only bash-oracle cells), `tests/unit/
-  interactive/test_managed_signal_lease_4a1.py` (27, serial). 77 pins,
-  ALL red-on-base except the declared must-holds; M8 mutation locks 16
+  interactive/test_managed_signal_lease_4a1.py` (27, serial). 77 pins;
+  red-on-base split, re-derived at the declared tip: 57 red / 20 green
+  (see the dated addendum for the three green-at-base reasons); M8 mutation locks 16
   arms / 15 locked / 0 shared kill sets / 1 disclosed equivalent;
   composition cells X-1/X-2/X-3 filled (X-1 caught the dev's first BL-1
   implementation before it shipped).
@@ -163,3 +165,35 @@ from the MAIN checkout's `tmp/` during its own cleanup (self-disclosed;
 committed evidence unaffected; `tmp/v13b` confirmed lost). Standing rule
 adopted: **verifier agents never glob-delete outside their own mktemp
 scratch.**
+
+## Dated addendum (2026-08-07, post-sign-off — D-4A.1-a1)
+
+dev-4a-1's sign-off verification found three record inaccuracies in this
+ceremony document and the LEDGER, each measured and integrator-verified
+before this addendum landed:
+
+1. **The adaptive-parking formula was misquoted** as the original
+   `soft − 3` proposal; the shipped code is
+   `min(_PARKING_BASE, max(_PARKING_FLOOR, soft − _PARKING_SLOTS −
+   _PARKING_SPARE))` = `soft − 6` (verified at 9e2c3c0c,
+   file_redirect.py:119-120). The misquoted version is exactly the one
+   the relocation composition cell proved insufficient — the record was
+   citing the defect the cell caught.
+2. **D-4A.1-s6's premise was wrong**: a new owner's grant does NOT
+   proceed over quarantined state — it is REFUSED on every attempt
+   (LeaseRestoreError, then the quarantine LeaseError), reproduced by
+   both sides. The successor row is reframed to the genuinely open
+   question (is refuse-forever absent `clear_quarantine` the right
+   embedder contract?).
+3. **The red-on-base shape claim was overstated**: measured split at
+   the shipped files is 57 red / 20 green (activation 28/8,
+   failed-exec 7/7, managed-signal 22/5), and green-at-base has three
+   distinct reasons — must-holds by design; documented-limitation pins;
+   and regression pins against MID-SLOT defects, where base was green
+   by accident (the three bash-parity cells: base "passed" parity via
+   the corrupt-baseline silent success).
+
+Banked from this addendum: **red-on-base counts are re-derived at the
+declared tip, never carried forward** (this slot produced two
+independent stale-ratio instances), and "all red except X" is a shape
+claim that must be stated as a measured split.
