@@ -432,7 +432,21 @@ class TestRepresentationSemantics:
     def test_all_declared_unset_results_are_equal(self):
         """Declared representation-detail change: the binding used to
         differentiate two PRESENT_UNSET results. Nothing compared lookup
-        results whole, so this flips no behaviour — it is pinned forward."""
+        results whole, so this flips no behaviour — it is pinned forward.
+
+        The two instances are built through the constructor, not through
+        `lookup()`: `lookup()` hands back the shared constant, so a cell that
+        went through it would be comparing an object with ITSELF and would
+        stay green even under an identity `__eq__` — vacuous for the rule it
+        claims to pin. (Found by the M8-5 lock, which is what that lock is
+        for.) The `lookup()` pair is kept as the second assertion, where
+        sharing makes equality hold for the stronger reason.
+        """
+        first = VariableLookup(LookupStatus.PRESENT_UNSET, None)
+        second = VariableLookup(LookupStatus.PRESENT_UNSET, None)
+        assert first is not second
+        assert first == second
+
         manager = ScopeManager()
         manager.push_scope("f")
         try:
