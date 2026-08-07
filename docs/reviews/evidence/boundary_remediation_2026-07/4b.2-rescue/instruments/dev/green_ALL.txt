@@ -1,0 +1,120 @@
+== DISCRIMINATOR ==
+label:      ALL 4B.2 PINS at final tip 661b7b02
+HEAD:       661b7b0281219d21f8ac614ea251341631fcfeb8
+tree dirty: 0 entries (excluding the inbox)
+paths:      tests/unit/builtins/test_input_decoder_seam_4b2.py tests/unit/builtins/test_read_exact_timeout_4b2.py tests/system/test_read_seam_end_to_end_4b2.py tests/unit/tooling/test_input_decoder_m8_locks_4b2.py tests/conformance/bash/test_cv_carry_characterization.py::TestMixedValidMalformedExactCountHybrid
+
+collected 89 nodes; running ONE INTERPRETER PER CELL
+
+NODE                                                                                             VERDICT
+------------------------------------------------------------------------------------------------------------
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[lone-lead-then-ascii] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[orphan-continuation] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[two-leads] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[truncated-4byte-then-ascii] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[bare-ff] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[overlong-c0-80] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_read_all_merge_order_is_decoded_then_pushback_then_fd PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_pushback_is_never_populated_by_the_public_api PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_read_all_leaves_the_decoder_clean PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_byte_and_char_paths_never_share_a_cursor_by_construction PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestDecoderEquivalencePremise::test_incremental_final_matches_one_shot PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderParityFull::test_no_input_and_no_eof_times_out PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderParityFull::test_partial_input_and_no_eof_assigns_the_partial PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderParityFull::test_input_arriving_after_the_read_is_not_consumed PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderParityFull::test_deadline_wins_over_a_later_eof PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderRcParityWithDeclaredNew1Residue::test_two_byte_char_split_by_the_deadline PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderRcParityWithDeclaredNew1Residue::test_three_byte_char_split_by_the_deadline PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderRcParityWithDeclaredNew1Residue::test_continuation_byte_arrives_after_the_read PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestNew2CountModelDivergesInStatusToo::test_backslash_under_deadline_diverges_in_rc_and_value PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_count_satisfied_before_the_deadline PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_eof_before_the_count_without_t PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_eof_before_the_count_with_t PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_zero_count_with_t_returns_at_once PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_poll_with_data_ready_assigns_nothing PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_poll_with_no_data_reports_would_block PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_delimiter_is_ignored_under_exact_count PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_raw_mode_keeps_the_backslash PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_multibyte_completed_before_the_deadline PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_multibyte_truncated_at_eof_without_t PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_no_input_times_out PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_partial_input_assigns_the_partial PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_count_satisfied PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_eof_before_the_count PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_zero_count PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_poll_ready PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_poll_not_ready PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_plain_t_no_input PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_plain_t_partial_line PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_multibyte_split_is_psh_contract PASS
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_plain_t_multibyte_split_is_psh_contract PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_split_character_keeps_its_identity_through_mapfile[e_acute-2byte] PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_split_character_keeps_its_identity_through_mapfile[euro-3byte] PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_split_character_keeps_its_identity_through_mapfile[smile-4byte] PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity::test_without_a_timeout_both_shells_agree PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestRiderEndToEndFromAScriptFile::test_exact_count_honors_the_deadline_with_no_input PASS
+tests/system/test_read_seam_end_to_end_4b2.py::TestRiderEndToEndFromAScriptFile::test_exact_count_honors_the_deadline_with_partial_input PASS
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[seam-empty-finalize-reintroduced] PASS
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[seam-fresh-decoder-reintroduced] PASS
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[seam-merge-order-scrambled] PASS
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[seam-decoder-not-cleared] PASS
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[rider-deadline-dropped] PASS
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[rider-timeout-status-mismapped] PASS
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_every_arm_anchor_is_present_in_the_real_tree PASS
+tests/conformance/bash/test_cv_carry_characterization.py::TestMixedValidMalformedExactCountHybrid::test_hybrid_matches_neither_oracle[2-\xc3\xa9\xc3A\n-rc=0 c3a9c3-rc=0 c3a9c341-rc=0 c3a9] PASS
+tests/conformance/bash/test_cv_carry_characterization.py::TestMixedValidMalformedExactCountHybrid::test_hybrid_matches_neither_oracle[3-\xc3\xa9\xc3A\n-rc=0 c3a9c341-rc=0 c3a9c3410a-rc=0 c3a9c3] PASS
+tests/conformance/bash/test_cv_carry_characterization.py::TestMixedValidMalformedExactCountHybrid::test_hybrid_matches_neither_oracle[2-\xe2\x82\xac\xe2Z\n-rc=0 e282ace2-rc=0 e282ace25a-rc=0 e282] PASS
+tests/conformance/bash/test_cv_carry_characterization.py::TestMixedValidMalformedExactCountHybrid::test_hybrid_matches_neither_oracle[3-\xe2\x82\xac\xe2Z\n-rc=0 e282ace25a-rc=0 e282ace25a0a-rc=0 e282ac] PASS
+tests/conformance/bash/test_cv_carry_characterization.py::TestMixedValidMalformedExactCountHybrid::test_all_valid_input_matches_utf8_bash PASS
+tests/conformance/bash/test_cv_carry_characterization.py::TestMixedValidMalformedExactCountHybrid::test_all_malformed_input_matches_c_bash PASS
+
+== PER-CLASS MEASURED SPLIT ==
+  test_cv_carry_characterization.py::TestMixedValidMalformedExactCountHybrid   6 pass /   0 fail
+  test_input_decoder_m8_locks_4b2.py::<module>                                 7 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestCursorStateCensus                        4 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestDecoderEquivalencePremise                1 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract              12 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestSeamControlsMalformed                    6 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion                 6 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation              6 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam              6 pass /   0 fail
+  test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference            11 pass /   0 fail
+  test_read_exact_timeout_4b2.py::TestNew2CountModelDivergesInStatusToo        1 pass /   0 fail
+  test_read_exact_timeout_4b2.py::TestRiderMustHoldControls                   10 pass /   0 fail
+  test_read_exact_timeout_4b2.py::TestRiderParityFull                          4 pass /   0 fail
+  test_read_exact_timeout_4b2.py::TestRiderRcParityWithDeclaredNew1Residue     3 pass /   0 fail
+  test_read_seam_end_to_end_4b2.py::TestRiderEndToEndFromAScriptFile           2 pass /   0 fail
+  test_read_seam_end_to_end_4b2.py::TestSeamEndToEndCharacterIdentity          4 pass /   0 fail
+  TOTAL                                                                       89 pass /   0 fail
+
+  (89 interpreters, 119.9s)

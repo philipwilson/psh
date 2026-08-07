@@ -1,0 +1,15 @@
+== DISCRIMINATOR ==
+tree under test: /Users/pwilson/src/psh-r4b-2
+HEAD:            414473152bce651d7fc49f9e4cf5d2ed3f0026a4
+psh/ dirty:      1 lines
+bash oracle:     /opt/homebrew/bin/bash -> GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+pexpect:         4.9.0
+deadline 1.0s, kill bound 8.0s, stdin IS a tty
+
+resolved psh module: /Users/pwilson/src/psh-r4b-2/psh/builtins/read_builtin.py
+
+CELL                       PSH                                          dt     BASH                       dt     MATCH
+----------------------------------------------------------------------------------------------------------------------
+no-input                   rc=142 val=[]                                1.22   rc=142 val=[]              1.12   SAME
+partial-ab-at-deadline     rc=142 val=[ab]                              1.21   rc=142 val=[ab]            1.13   SAME
+full-abc-before-deadline   rc=0 val=[abc]                               0.33   rc=0 val=[abc]             0.31   SAME

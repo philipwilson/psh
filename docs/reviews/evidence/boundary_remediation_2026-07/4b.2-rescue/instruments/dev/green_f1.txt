@@ -1,0 +1,67 @@
+== DISCRIMINATOR ==
+label:      file1-seam AFTER seam fix
+HEAD:       21a23a4cdb8234de62d08727b62b6b95f587b7eb
+tree dirty: 4 entries (excluding the inbox)
+             M psh/builtins/input_reader.py
+            ?? tests/system/test_read_seam_end_to_end_4b2.py
+            ?? tests/unit/builtins/test_input_decoder_seam_4b2.py
+            ?? tests/unit/builtins/test_read_exact_timeout_4b2.py
+paths:      tests/unit/builtins/test_input_decoder_seam_4b2.py
+
+collected 41 nodes; running ONE INTERPRETER PER CELL
+
+NODE                                                                                             VERDICT
+------------------------------------------------------------------------------------------------------------
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[lone-lead-then-ascii] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[orphan-continuation] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[two-leads] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[truncated-4byte-then-ascii] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[bare-ff] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[overlong-c0-80] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[e_acute-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[euro-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[euro-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[smile-split1] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[smile-split2] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[smile-split3] PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_read_all_merge_order_is_decoded_then_pushback_then_fd PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_pushback_is_never_populated_by_the_public_api PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_read_all_leaves_the_decoder_clean PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_byte_and_char_paths_never_share_a_cursor_by_construction PASS
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestDecoderEquivalencePremise::test_incremental_final_matches_one_shot PASS
+
+== PER-CLASS MEASURED SPLIT ==
+  test_input_decoder_seam_4b2.py::TestCursorStateCensus                        4 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestDecoderEquivalencePremise                1 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract              12 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestSeamControlsMalformed                    6 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion                 6 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation              6 pass /   0 fail
+  test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam              6 pass /   0 fail
+  TOTAL                                                                       41 pass /   0 fail
+
+  (41 interpreters, 21.9s)

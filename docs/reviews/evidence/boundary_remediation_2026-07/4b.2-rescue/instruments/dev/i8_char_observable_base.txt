@@ -1,0 +1,31 @@
+== DISCRIMINATOR ==
+bash oracle:    /opt/homebrew/bin/bash -> GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+HEAD:           21a23a4cdb8234de62d08727b62b6b95f587b7eb
+LC_ALL:         en_US.UTF-8
+
+### char_len_after_seam — CHAR LENGTH across the seam: ${#x} and ${#arr[0]} (é split by the deadline)  [DIFFER]
+    bash: rc=142 xlen=2 a0len=2 nelem=1   (dt=2.14s)
+    psh : rc=142 xlen=1 a0len=3 nelem=1   (dt=2.28s)
+
+### char_len_after_seam_3byte — CHAR LENGTH across the seam, 3-byte char split at byte 2  [DIFFER]
+    bash: rc=142 xlen=2 a0len=2 nelem=1   (dt=2.14s)
+    psh : rc=142 xlen=1 a0len=4 nelem=1   (dt=2.28s)
+
+### char_len_after_seam_4byte — CHAR LENGTH across the seam, 4-byte char split at byte 3  [DIFFER]
+    bash: rc=142 xlen=2 a0len=2 nelem=1   (dt=2.15s)
+    psh : rc=142 xlen=1 a0len=5 nelem=1   (dt=2.29s)
+
+### char_slice_after_seam — CHAR SLICING across the seam: ${arr[0]:0:1} byte-dumped  [DIFFER]
+    bash: first=a9 len=2   (dt=2.16s)
+    psh : first=c3 len=3   (dt=2.27s)
+
+### char_len_no_timeout — CONTROL: no timeout — mapfile alone, the char never crosses a seam  [SAME]
+    bash: a0len=3 nelem=1   (dt=0.64s)
+    psh : a0len=3 nelem=1   (dt=0.76s)
+
+### char_len_malformed_control — CONTROL: a GENUINELY malformed byte across the seam stays one char each  [DIFFER]
+    bash: xlen=2 a0len=3   (dt=2.14s)
+    psh : xlen=1 a0len=4   (dt=2.25s)
+
+== MEASURED SPLIT ==
+  cells: 6   SAME: 1   DIFFER: 5

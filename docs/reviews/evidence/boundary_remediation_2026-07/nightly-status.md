@@ -311,3 +311,19 @@ difference (slots/properties/pickle), not a shell bug; check the runner's
 Python first. The labelled control cell ASSERTS circumvention succeeds
 (open-class boundary, D-4B.1-s2) — if it ever fails, someone narrowed the
 representation, which is a deliberate-edit signal, not a flake.
+
+**v0.771.0 reading rules (slot 4B.2 — first Linux run after 2026-08-07):**
+BEHAVIOR-CHANGING slot (decoder seam + `read -N`/`-t`). The new timing
+suites (rider unit cells, seam E2E, 3 PTY cells) are serial,
+bounded-kill, deadline ≥1s — a Linux-only failure there is FIRST read
+as scheduler/environment (check the cell's own margins and the runner's
+load) before as behavior; a HANG is a real regression (the base bug was
+a hang — tip must never hang). The PTY cells enter raw mode via the
+interactive gate — headless CI without a functional pty layer skips
+them by the gate's own rules, not silently. compare-bash expects
+3,046/26 (the +4 from the two promoted rider cases — count increase,
+not flips); the 24 carry-#21 characterization cells compare psh against
+the HOST's bash+libc — on Linux/glibc the matches-UTF8/matches-C split
+MAY legitimately differ from the recorded macOS split (1/9/6/8): the
+cells assert psh's OWN values, so only a psh-side change can redden
+them; a redline there = the no-silent-change guarantee firing for real.

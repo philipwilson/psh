@@ -6075,6 +6075,24 @@
   stderr: ""
   exit_code: 0
 
+# Slot 4B.2 (A5 rider): `read -N` must honor `-t` exactly as `-n` does. Before
+# the fix `-N` passed no deadline to the reader, so these blocked until EOF
+# (rc=1 at the producer's exit) instead of timing out at 0.3s. Same producer
+# shape as the `-t` cases above: the sleeping writer keeps EOF away from the
+# deadline. ASCII-only on purpose — a raw non-UTF-8 byte cannot be written
+# identically by both shells from inside a golden case.
+- name: r4b2_read_t_exact_count_timeout_empty
+  command: '{ sleep 1; } | { read -t 0.3 -N 3 x; printf "rc=%s [%s]" "$?" "$x"; }'
+  stdout: "rc=142 []"
+  stderr: ""
+  exit_code: 0
+
+- name: r4b2_read_t_exact_count_timeout_partial
+  command: '{ printf ab; sleep 1; } | { read -t 0.3 -N 3 x; printf "rc=%s [%s]" "$?" "$x"; }'
+  stdout: "rc=142 [ab]"
+  stderr: ""
+  exit_code: 0
+
 # =============================================================================
 
 - name: r18t1_bgtrap_exit_trap_bg_brace

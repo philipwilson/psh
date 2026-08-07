@@ -263,3 +263,78 @@ class TestExecutableSpecialFileEarlier:
             os.chdir(cwd0)
             s.close()
             shutil.rmtree(work, ignore_errors=True)
+
+
+class TestMixedValidMalformedExactCountHybrid:
+    """Carry #21 (I1): ``read -N`` over a MIX of valid and malformed multibyte
+    bytes lands on a count boundary that matches NEITHER the UTF-8 nor the
+    C-locale bash oracle — a deliberate HYBRID model, not "just mbrtowc quirks".
+
+    psh is Unicode-native for a VALID multibyte sequence (one character, like
+    UTF-8 bash) and byte-per-character for a MALFORMED byte (one surrogate, like
+    C-locale bash). Neither bash mode does both: UTF-8 bash lets an incomplete
+    lead swallow the following byte, C bash counts every byte as a character.
+    The HYBRID model itself is documented at ``psh/builtins/input_reader.py``
+    (the "deliberate HYBRID" design note). The user guide's "Byte vs. character
+    model" section (``docs/user_guide/17_differences_from_bash.md``) documents
+    the GENERAL Unicode-native-vs-C-locale difference and the ``read -N1`` /
+    ``-n1`` character model; it does NOT describe this MIXED-input count
+    boundary, which lives only in the design note and in carry #21.
+
+    RE-RULED **RE-CARRY** at slot 4B.2 (2026-08-07), which owns the decoder-seam
+    fix that touches this code. The carry required fresh probes and forbade a
+    silent behaviour change; the seam fix leaves every cell here byte-identical
+    because none of them involves a timed read, so nothing is ever stranded at
+    the drain seam. These pins are the standing guard for that.
+
+    Characterization only: psh's model AND both bash oracles are asserted, so an
+    accidental move on ANY of the three fails.
+    """
+
+    _CMD = ("read -N {n} x; printf 'rc=%s ' \"$?\"; "
+            "printf '%s' \"$x\" | od -An -tx1 | tr -d ' \\n'")
+
+    def _three_ways(self, n, payload):
+        cmd = self._CMD.format(n=n)
+        psh = run_psh(["-c", cmd], stdin_data=payload, stdin_mode="pipe",
+                      timeout=20, env={"LC_ALL": "en_US.UTF-8"})
+        utf8 = run_bash(["-c", cmd], stdin_data=payload, stdin_mode="pipe",
+                        timeout=20, env={"LC_ALL": "en_US.UTF-8"})
+        c = run_bash(["-c", cmd], stdin_data=payload, stdin_mode="pipe",
+                     timeout=20, env={"LC_ALL": "C", "LANG": "C"})
+        for r in (psh, utf8, c):
+            assert is_comparable(r), r
+        return psh.stdout.strip(), utf8.stdout.strip(), c.stdout.strip()
+
+    @pytest.mark.parametrize("n,payload,psh_out,utf8_out,c_out", [
+        # é then a lone lead C3 then A: at -N 2 psh takes é + the surrogate C3;
+        # UTF-8 bash lets the incomplete lead swallow the A; C bash counts bytes.
+        (2, b"\xc3\xa9\xc3A\n", "rc=0 c3a9c3", "rc=0 c3a9c341", "rc=0 c3a9"),
+        (3, b"\xc3\xa9\xc3A\n", "rc=0 c3a9c341", "rc=0 c3a9c3410a", "rc=0 c3a9c3"),
+        # € then a lone lead E2 then Z.
+        (2, b"\xe2\x82\xac\xe2Z\n", "rc=0 e282ace2", "rc=0 e282ace25a",
+         "rc=0 e282"),
+        (3, b"\xe2\x82\xac\xe2Z\n", "rc=0 e282ace25a", "rc=0 e282ace25a0a",
+         "rc=0 e282ac"),
+    ])
+    def test_hybrid_matches_neither_oracle(self, n, payload, psh_out, utf8_out,
+                                           c_out):
+        psh, utf8, c = self._three_ways(n, payload)
+        assert psh == psh_out, f"psh model moved: {psh!r}"
+        assert utf8 == utf8_out, f"UTF-8 bash oracle moved: {utf8!r}"
+        assert c == c_out, f"C bash oracle moved: {c!r}"
+        assert psh != utf8 and psh != c, (
+            "carry #21 asserts psh matches NEITHER oracle here; it now matches "
+            f"one (psh={psh!r} utf8={utf8!r} c={c!r}). Re-rule the carry.")
+
+    def test_all_valid_input_matches_utf8_bash(self):
+        """CONTROL: with no malformed byte, psh IS the UTF-8 oracle."""
+        psh, utf8, c = self._three_ways(2, b"\xc3\xa9\xe2\x82\xac\n")
+        assert psh == utf8 == "rc=0 c3a9e282ac"
+        assert c == "rc=0 c3a9", "C bash counts bytes, so it must differ here"
+
+    def test_all_malformed_input_matches_c_bash(self):
+        """CONTROL: with no valid sequence, psh IS the C-locale oracle."""
+        psh, utf8, c = self._three_ways(2, b"\xc3\xc3A\n")
+        assert psh == c == "rc=0 c3c3"
+        assert utf8 == "rc=0 c3c341", "UTF-8 bash swallows the byte after a lead"

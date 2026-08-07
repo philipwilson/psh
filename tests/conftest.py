@@ -596,7 +596,16 @@ def pytest_runtest_setup(item):
                 # rather than timeout-driven, so it stays deterministic; the
                 # phase wiring is pinned WITHOUT a terminal in
                 # tests/unit/core/test_shutdown_phases_4a2.py.
-                or "test_pty_shutdown_phases_4a2" in str(item.fspath)):
+                or "test_pty_shutdown_phases_4a2" in str(item.fspath)
+                # Slot 4B.2: `read -N` honoring `-t` at a terminal. Admitted on
+                # the same terms — `_read_exact` has a TTY arm that the rider fix
+                # also changed, and that arm enters raw mode, so no -c/pipe cell
+                # can reach it; an opt-in pin for it is a pin that never runs.
+                # Two of its three cells were a HANG at base. Single-spawn cells
+                # bounded at 8x the 1s deadline, no REPL driving, so it stays
+                # deterministic and quick; the non-tty arm is pinned separately
+                # in tests/unit/builtins/test_read_exact_timeout_4b2.py.
+                or "test_pty_read_exact_timeout_4b2" in str(item.fspath)):
             return
         if not item.config.getoption("--run-interactive", default=False):
             pytest.skip("Interactive tests skipped (use --run-interactive to run)")

@@ -1,0 +1,132 @@
+== DISCRIMINATOR ==
+cwd:  /Users/pwilson/src/psh-r4b-2
+HEAD: 21a23a4cdb8234de62d08727b62b6b95f587b7eb
+tree-dirty(psh/): 0
+
+== InputCursor CONSTRUCTION sites (production) ==
+psh/scripting/input_sources.py:69:    return InputCursor(fd=fd)
+psh/builtins/input_reader.py:106:    * ``InputCursor(fd=N)`` reads bytes from OS descriptor ``N`` and decodes
+psh/builtins/input_reader.py:109:    * ``InputCursor(stream=obj)`` reads already-decoded characters from a text
+psh/builtins/input_reader.py:420:        return InputCursor(fd=fd)
+psh/builtins/input_reader.py:424:        return InputCursor(stream=stream)
+psh/builtins/input_reader.py:427:        return InputCursor(fd=fd)
+psh/builtins/input_reader.py:429:        return InputCursor(stream=stream)
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== registry mediation: cursor_for_fd / make_reader (production) ==
+psh/builtins/read_builtin.py:112:            reader = shell.state.input_cursors.cursor_for_fd(shell, options['fd'])
+psh/builtins/mapfile_builtin.py:148:        reader = shell.state.input_cursors.cursor_for_fd(shell, fd)
+psh/builtins/input_reader.py:400:def make_reader(io_ctx: 'IOContext', fd: int) -> InputCursor:
+psh/io_redirect/input_cursor.py:38:from ..builtins.input_reader import make_reader
+psh/io_redirect/input_cursor.py:82:    def cursor_for_fd(self, io_ctx: "IOContext", fd: int) -> "InputCursor":
+psh/io_redirect/input_cursor.py:87:        ``make_reader``, not the whole shell.
+psh/io_redirect/input_cursor.py:101:        cursor = make_reader(io_ctx, fd)
+psh/io_redirect/input_cursor.py:114:        :meth:`cursor_for_fd` builds a fresh cursor over the rebound fd. Keying
+psh/protocols/__init__.py:26:                     ``builtins/input_reader.py#make_reader``) needs.
+psh/protocols/__init__.py:54:boundaries. ``IOContext`` — the reader boundary (``make_reader`` /
+psh/protocols/__init__.py:55:``InputCursorRegistry.cursor_for_fd`` took ``Shell``, used only ``.stdin``).
+psh/protocols/__init__.py:158:    MIGRATED consumers (Q1): ``builtins/input_reader.py#make_reader`` (reads
+psh/protocols/__init__.py:160:    ``io_redirect/input_cursor.py#InputCursorRegistry.cursor_for_fd`` (forwards
+psh/protocols/__init__.py:161:    to ``make_reader``). Both took ``Shell`` and used only ``.stdin``.
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== public-method CALL sites (production, all files incl. input_reader.py) ==
+psh/scripting/input_sources.py:356:        record = self._reader.read_record_bytes(delimiter_byte=self._NEWLINE)
+psh/scripting/input_sources.py:564:        record = cursor.read_record_bytes(  # type: ignore[attr-defined]
+psh/builtins/read_builtin.py:118:                return reader.poll_readable()
+psh/builtins/read_builtin.py:635:        result = reader.read_record(
+psh/builtins/read_builtin.py:655:                result = reader.read_limited(
+psh/builtins/read_builtin.py:672:                result = reader.read_record(
+psh/builtins/read_builtin.py:679:            result = reader.read_limited(
+psh/builtins/read_builtin.py:707:                    result = reader.read_limited(
+psh/builtins/read_builtin.py:711:                result = reader.read_limited(delimiter=None, max_chars=count)
+psh/builtins/read_builtin.py:753:                result = reader.read_limited(
+psh/builtins/read_builtin.py:770:                result = reader.read_record(
+psh/builtins/read_builtin.py:782:            result = reader.read_limited(
+psh/builtins/read_builtin.py:785:            result = reader.read_record(
+psh/builtins/mapfile_builtin.py:150:            all_lines = self._split_lines(reader.read_all(), delim)
+psh/builtins/mapfile_builtin.py:156:            result = reader.read_record(delimiter=delim, include_delimiter=True)
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== read_all NAME sweep (any syntactic form) over psh/ — collision check ==
+psh/builtins/mapfile_builtin.py:150:            all_lines = self._split_lines(reader.read_all(), delim)
+psh/builtins/input_reader.py:181:    def read_all(self) -> str:
+psh/__main__.py:110:def _read_all_stdin() -> str:
+psh/__main__.py:263:            script_content = strip_nul_stream(_read_all_stdin())
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== input_cursors registry references (production) ==
+psh/core/state.py:115:        self.input_cursors = self._new_input_cursor_registry()
+psh/core/state.py:602:        self.input_cursors = self._new_input_cursor_registry()
+psh/builtins/read_builtin.py:112:            reader = shell.state.input_cursors.cursor_for_fd(shell, options['fd'])
+psh/builtins/mapfile_builtin.py:148:        reader = shell.state.input_cursors.cursor_for_fd(shell, fd)
+psh/executor/command.py:1052:    def _rebind_input_cursors_after_exec(self, redirects: List['Redirect']) -> None:
+psh/executor/command.py:1061:        registry = self.state.input_cursors
+psh/executor/command.py:1098:                    self._rebind_input_cursors_after_exec(node.redirects)
+psh/executor/command.py:1115:                    self._rebind_input_cursors_after_exec(node.redirects)
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== InputCursor NAME sweep over tests/ (which suites touch the cursor) ==
+tests/unit/tooling/test_shell_consumer_ratchet_q1.py:283:    """The Q1 IOContext migration narrowed InputCursorRegistry.cursor_for_fd
+tests/unit/tooling/test_shell_consumer_ratchet_q1.py:288:            "InputCursorRegistry.cursor_for_fd") not in live
+tests/unit/tooling/test_broad_valueerror_catch_q2.py:160:     ("InputCursor", "fstat")):
+tests/unit/tooling/test_input_cursor_guard_i1.py:5:1. The InputCursorRegistry is keyed by an owned open-file-description IDENTITY,
+tests/unit/tooling/test_input_cursor_guard_i1.py:17:from psh.builtins.input_reader import InputCursor
+tests/unit/tooling/test_input_cursor_guard_i1.py:18:from psh.io_redirect.input_cursor import InputCursorRegistry, OpenDescription
+tests/unit/tooling/test_input_cursor_guard_i1.py:46:        reg = InputCursorRegistry()
+tests/unit/tooling/test_input_cursor_guard_i1.py:62:        class FdKeyedOffender(InputCursorRegistry):
+tests/unit/tooling/test_input_cursor_guard_i1.py:88:            data = InputCursor(fd=fd).read_record(
+tests/unit/builtins/test_input_cursor_i1.py:1:"""InputCursor type invariants (campaign I1).
+tests/unit/builtins/test_input_cursor_i1.py:9:from psh.builtins.input_reader import InputCursor, Outcome
+tests/unit/builtins/test_input_cursor_i1.py:24:            result = InputCursor(fd=fd).read_record(
+tests/unit/builtins/test_input_cursor_i1.py:36:            result = InputCursor(fd=fd).read_record(
+tests/unit/builtins/test_input_cursor_i1.py:46:            result = InputCursor(fd=fd).read_record(
+tests/unit/builtins/test_input_cursor_i1.py:59:            cur = InputCursor(fd=fd)
+tests/unit/builtins/test_input_cursor_i1.py:72:            InputCursor(fd=fd).read_record(delimiter="\n", include_delimiter=True)
+tests/unit/builtins/test_input_cursor_i1.py:85:            cur = InputCursor(fd=fd)
+tests/unit/builtins/test_input_cursor_i1.py:96:            result = InputCursor(fd=fd).read_record(
+tests/unit/builtins/test_input_cursor_i1.py:108:            cur = InputCursor(fd=fd)
+tests/unit/builtins/test_input_cursor_i1.py:120:            assert InputCursor(fd=fd).fd == fd
+tests/unit/builtins/test_input_cursor_i1.py:123:        assert InputCursor(stream=io.StringIO("x")).fd is None
+tests/unit/builtins/test_input_reader.py:26:from psh.builtins.input_reader import InputCursor, Outcome, ReadResult
+tests/unit/builtins/test_input_reader.py:59:            result = InputCursor(fd=fd).read_record(
+tests/unit/builtins/test_input_reader.py:69:            reader = InputCursor(fd=fd)
+tests/unit/builtins/test_input_reader.py:81:            result = InputCursor(fd=fd).read_limited(delimiter=None, max_chars=1)
+tests/unit/builtins/test_input_reader.py:94:            result = InputCursor(fd=fd).read_record(
+tests/unit/builtins/test_input_reader.py:107:            reader = InputCursor(fd=fd)
+tests/unit/builtins/test_input_reader.py:118:            result = InputCursor(fd=fd).read_limited(delimiter="\n", max_chars=10)
+tests/unit/builtins/test_input_reader.py:127:        result = InputCursor(stream=io.StringIO("abc\ndef\n")).read_record(
+tests/unit/builtins/test_input_reader.py:132:        result = InputCursor(stream=io.StringIO("tail")).read_record(
+tests/unit/builtins/test_input_reader.py:143:            result = InputCursor(fd=r).read_record(
+tests/unit/builtins/test_input_reader.py:178:            result = ir.InputCursor(fd=fd).read_limited(
+tests/unit/builtins/test_input_reader.py:192:            assert InputCursor(fd=fd).read_all() == "one\ntwö\n"
+tests/unit/builtins/test_input_reader.py:197:        assert InputCursor(stream=io.StringIO("xyz")).read_all() == "xyz"
+tests/unit/builtins/test_input_reader.py:203:            InputCursor()
+tests/unit/builtins/test_input_reader.py:205:            InputCursor(fd=0, stream=io.StringIO(""))
+tests/unit/builtins/test_input_reader_record_bytes.py:1:"""Unit pins for InputCursor.read_record_bytes — the byte-record drain.
+tests/unit/builtins/test_input_reader_record_bytes.py:17:from psh.builtins.input_reader import InputCursor
+tests/unit/builtins/test_input_reader_record_bytes.py:36:            reader = InputCursor(fd=r)
+tests/unit/builtins/test_input_reader_record_bytes.py:48:            reader = InputCursor(fd=fd)
+tests/unit/builtins/test_input_reader_record_bytes.py:55:        """A fresh InputCursor over the same fd continues where the first
+tests/unit/builtins/test_input_reader_record_bytes.py:59:            first = InputCursor(fd=r)
+tests/unit/builtins/test_input_reader_record_bytes.py:61:            second = InputCursor(fd=r)  # a different reader, same fd
+tests/unit/builtins/test_input_reader_record_bytes.py:72:            reader = InputCursor(fd=r)
+tests/unit/builtins/test_input_reader_record_bytes.py:85:            reader = InputCursor(fd=r)
+tests/unit/builtins/test_input_reader_record_bytes.py:95:            assert InputCursor(fd=r).read_record_bytes(delimiter_byte=NL) is None
+tests/unit/builtins/test_input_reader_record_bytes.py:103:            reader = InputCursor(fd=r)
+tests/unit/builtins/test_input_reader_record_bytes.py:114:            reader = InputCursor(fd=r)
+tests/unit/builtins/test_input_reader_record_bytes.py:128:            reader = InputCursor(fd=r)
+tests/unit/builtins/test_input_reader_record_bytes.py:138:            assert InputCursor(fd=r).read_record_bytes(delimiter_byte=NL) == euro
+tests/unit/builtins/test_input_reader_record_bytes.py:149:        assert InputCursor(fd=r).read_record_bytes(delimiter_byte=NL) is None
+tests/unit/builtins/test_input_reader_record_bytes.py:152:        reader = InputCursor(stream=io.StringIO("one\ntwo"))
+tests/unit/builtins/test_input_reader_record_bytes.py:165:            reader = InputCursor(fd=r)
+tests/unit/io_redirect/test_input_cursor_registry_drops_i2.py:14:from psh.builtins.input_reader import InputCursor
+tests/unit/io_redirect/test_input_cursor_registry_drops_i2.py:17:from psh.io_redirect.input_cursor import InputCursorRegistry, OpenDescription
+tests/unit/io_redirect/test_input_cursor_registry_drops_i2.py:32:    reg = InputCursorRegistry()
+tests/unit/io_redirect/test_input_cursor_registry_drops_i2.py:37:        reg._desc_to_cursor[desc] = InputCursor(fd=r)
+tests/unit/io_redirect/test_input_cursor_registry_drops_i2.py:52:    parent.input_cursors._desc_to_cursor[pdesc] = InputCursor(fd=0)
+tests/unit/protocols/test_protocol_conformance_q1.py:15:   / ``InputCursorRegistry.cursor_for_fd`` now take ``IOContext``) change ONLY
+tests/integration/redirection/test_input_cursor_identity_i1.py:3:The InputCursor is keyed to an owned open-file-description identity and persists
+-- exit: 0 (0=hits, 1=none, 2=ERROR) --
+
+== INSTRUMENT SELF-CHECK: any grep errored? 0 (0=no) ==

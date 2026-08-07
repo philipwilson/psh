@@ -121,7 +121,10 @@ class ReadBuiltin(Builtin):
 
             # -N: read EXACTLY N characters, ignoring the delimiter and IFS.
             # The result (after backslash processing unless -r) is assigned
-            # whole to the first variable; rc is 1 only if EOF cut it short.
+            # whole to the first variable. rc is 1 when EOF cut it short and
+            # 142 when a -t deadline expired first; the partial read so far is
+            # assigned either way. (`-t 0` never reaches here — the
+            # non-consuming poll returned above.)
             if options['exact_chars'] is not None:
                 return self._read_exact(options, var_names, shell, reader)
 
@@ -693,28 +696,39 @@ class ReadBuiltin(Builtin):
         or trim the result. Backslash processing still applies unless -r.
         The full (post-escape) text is assigned to the first variable; any
         further variables are cleared. Returns 1 when EOF arrived before
-        ``count`` characters were read (bash), 0 otherwise.
+        ``count`` characters were read, 142 when a ``-t`` deadline expired
+        first, 0 otherwise (bash); the partial input read so far is assigned in
+        every case.
         """
         count = options['exact_chars']
         fd = options['fd']
+        timeout = options['timeout']
         if count == 0:
             # bash: read -N 0 reads nothing and succeeds, clearing the var.
-            data, ok = '', True
+            data, status = '', 'ok'
         else:
-            # No delimiter stop: only the character count ends the read.
+            # -N shares ONE monotonic deadline across the whole read, exactly
+            # like -n (see _read_with_timeout). Without it the count could only
+            # be ended by enough input or by EOF, so `read -t 1 -N 3` on a
+            # source that never closes blocked forever. `read -t 0` never
+            # reaches here — the non-consuming poll returns earlier in
+            # execute().
+            deadline = (time.monotonic() + timeout
+                        if timeout is not None else None)
+            # No delimiter stop: only the character count (or the deadline)
+            # ends the read.
             if os.isatty(fd):
                 with self._terminal_raw_mode(fd, echo=True):
                     result = reader.read_limited(
-                        delimiter=None, max_chars=count,
+                        delimiter=None, max_chars=count, deadline=deadline,
                         on_char=self._echo(shell))
             else:
-                result = reader.read_limited(delimiter=None, max_chars=count)
-            if result.outcome is Outcome.ERROR:
-                raise result.error or OSError("read error")
+                result = reader.read_limited(delimiter=None, max_chars=count,
+                                             deadline=deadline)
             data = result.data
-            # rc 0 only when the full count was read (DATA); a short read (EOF)
-            # is failure.
-            ok = result.outcome is Outcome.DATA
+            # DATA = the full count arrived; EOF = a short read; TIMEOUT = the
+            # deadline expired (ERROR re-raises inside _status).
+            status = self._status(result)
 
         # Backslash processing (bash applies it for -N too, unless -r).
         chars = self._process_escapes(data, options['raw_mode'])
@@ -728,7 +742,9 @@ class ReadBuiltin(Builtin):
             for name in var_names[1:]:
                 shell.state.set_variable(name, '')
 
-        return 0 if ok else 1
+        if status == 'timeout':
+            return 142
+        return 1 if status == 'eof' else 0
 
     def _read_with_timeout(self, reader: InputCursor, fd: int, timeout: float,
                            delimiter: str, max_chars: Optional[int],

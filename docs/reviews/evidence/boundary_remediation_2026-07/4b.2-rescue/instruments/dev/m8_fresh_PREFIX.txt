@@ -1,0 +1,52 @@
+EEEEEE.                                                                  [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_mutation_is_caught_for_its_own_reason[seam-empty-finalize-reintroduced] _
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py:182: in mutation_tree
+    root = tempfile.mkdtemp(prefix="m8-4b2-", dir=os.path.join(REPO, "tmp"))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:385: in mkdtemp
+    _os.mkdir(file, 0o700)
+E   FileNotFoundError: [Errno 2] No such file or directory: '/Users/pwilson/src/psh-r4b-2/tmp/fresh-prefix/tmp/m8-4b2-3twz8rte'
+_ ERROR at setup of test_mutation_is_caught_for_its_own_reason[seam-fresh-decoder-reintroduced] _
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py:182: in mutation_tree
+    root = tempfile.mkdtemp(prefix="m8-4b2-", dir=os.path.join(REPO, "tmp"))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:385: in mkdtemp
+    _os.mkdir(file, 0o700)
+E   FileNotFoundError: [Errno 2] No such file or directory: '/Users/pwilson/src/psh-r4b-2/tmp/fresh-prefix/tmp/m8-4b2-3twz8rte'
+_ ERROR at setup of test_mutation_is_caught_for_its_own_reason[seam-merge-order-scrambled] _
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py:182: in mutation_tree
+    root = tempfile.mkdtemp(prefix="m8-4b2-", dir=os.path.join(REPO, "tmp"))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:385: in mkdtemp
+    _os.mkdir(file, 0o700)
+E   FileNotFoundError: [Errno 2] No such file or directory: '/Users/pwilson/src/psh-r4b-2/tmp/fresh-prefix/tmp/m8-4b2-3twz8rte'
+_ ERROR at setup of test_mutation_is_caught_for_its_own_reason[seam-decoder-not-cleared] _
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py:182: in mutation_tree
+    root = tempfile.mkdtemp(prefix="m8-4b2-", dir=os.path.join(REPO, "tmp"))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:385: in mkdtemp
+    _os.mkdir(file, 0o700)
+E   FileNotFoundError: [Errno 2] No such file or directory: '/Users/pwilson/src/psh-r4b-2/tmp/fresh-prefix/tmp/m8-4b2-3twz8rte'
+_ ERROR at setup of test_mutation_is_caught_for_its_own_reason[rider-deadline-dropped] _
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py:182: in mutation_tree
+    root = tempfile.mkdtemp(prefix="m8-4b2-", dir=os.path.join(REPO, "tmp"))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:385: in mkdtemp
+    _os.mkdir(file, 0o700)
+E   FileNotFoundError: [Errno 2] No such file or directory: '/Users/pwilson/src/psh-r4b-2/tmp/fresh-prefix/tmp/m8-4b2-3twz8rte'
+_ ERROR at setup of test_mutation_is_caught_for_its_own_reason[rider-timeout-status-mismapped] _
+tests/unit/tooling/test_input_decoder_m8_locks_4b2.py:182: in mutation_tree
+    root = tempfile.mkdtemp(prefix="m8-4b2-", dir=os.path.join(REPO, "tmp"))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:385: in mkdtemp
+    _os.mkdir(file, 0o700)
+E   FileNotFoundError: [Errno 2] No such file or directory: '/Users/pwilson/src/psh-r4b-2/tmp/fresh-prefix/tmp/m8-4b2-3twz8rte'
+=========================== short test summary info ============================
+ERROR tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[seam-empty-finalize-reintroduced]
+ERROR tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[seam-fresh-decoder-reintroduced]
+ERROR tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[seam-merge-order-scrambled]
+ERROR tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[seam-decoder-not-cleared]
+ERROR tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[rider-deadline-dropped]
+ERROR tests/unit/tooling/test_input_decoder_m8_locks_4b2.py::test_mutation_is_caught_for_its_own_reason[rider-timeout-status-mismapped]
+1 passed, 6 errors in 0.06s
