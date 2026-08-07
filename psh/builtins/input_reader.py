@@ -184,15 +184,27 @@ class InputCursor:
         For callers that will consume the entire input anyway (``mapfile`` with
         no line count reads to EOF, leaving nothing for a later reader — bash
         does the same). Decoding is still ``surrogateescape`` so a non-UTF-8
-        byte round-trips; because it reads to EOF the whole byte run is decoded
-        at once, so there is no multibyte-boundary concern. Do NOT use this when
-        input must be left for a later consumer.
+        byte round-trips. Do NOT use this when input must be left for a later
+        consumer.
+
+        The bulk bytes go through the cursor's OWN decoder, never a fresh one.
+        A read that ended mid-character (only TIMEOUT and ERROR can do that —
+        EOF flushes, and the character loop never returns mid-character) leaves
+        the incomplete sequence buffered in that decoder, and only the decoder
+        holding those bytes can finish the character. Finalizing it separately
+        and decoding the rest independently emitted one surrogate per stranded
+        byte and then read the completing bytes as a new sequence, so a
+        character split at this seam lost its IDENTITY — while still
+        round-tripping byte-for-byte, which is why only a character-level
+        observable ever saw it.
         """
         if self._stream is not None:
             return self._stream.read()
         assert self._fd is not None  # exactly one of fd/stream is set
         # Any characters already decoded on this cursor come first, then any raw
-        # pushback bytes, then the rest of the descriptor.
+        # pushback bytes, then the rest of the descriptor. That is the cursor's
+        # byte order and the merge below preserves it exactly: the decoder's own
+        # buffered bytes precede everything it is now fed.
         prefix = ''.join(self._decoded)
         self._decoded.clear()
         chunks = [bytes(self._pushback)]
@@ -205,15 +217,18 @@ class InputCursor:
             if not block:
                 break
             chunks.append(block)
-        # Drain any character the cursor's decoder was still assembling, then
-        # the bulk bytes, so a split multibyte at the seam is not lost. (A None
-        # decoder is clean state — nothing pending; see the __init__ invariant.)
-        pending = ''
+        raw = b''.join(chunks)
         if self._decoder is not None:
-            pending = self._decoder.decode(b'', final=True)
+            # Bytes are buffered mid-sequence: let THAT decoder consume the
+            # rest, so a character split across this seam completes instead of
+            # being surrogate-escaped a byte at a time.
+            tail = self._decoder.decode(raw, final=True)
             self._decoder = None
-        tail = b''.join(chunks).decode('utf-8', errors='surrogateescape')
-        return prefix + pending + tail
+        else:
+            # Clean state (the __init__ invariant), where a one-shot decode is
+            # equivalent — and skips building a decoder for the common path.
+            tail = raw.decode('utf-8', errors='surrogateescape')
+        return prefix + tail
 
     # -- public record reads -------------------------------------------------
 
