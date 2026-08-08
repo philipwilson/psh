@@ -4,6 +4,51 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.776.0 (2026-08-09) - Consumer migration + caps (remediation slot 5B.2)
+
+Closes LEDGER MEDIUM-14 (protocol boundaries): the consumer-migration half of
+Package 5B, executing the 5B.1 ruling-(b) surface. Internal-integrity slot —
+zero shell-observable change (compare-bash 3,046/26 EXACT +0; 30-cell both-SHA
+bash battery divergence-free).
+
+- **Protocol member narrowings (all seven ruled rows resolved)**:
+  - `CommandParsersProtocol.redirection: Any` → `Parser[Redirect]`, with the
+    in-idiom None-narrowing assert at its one affected call site
+  - `ExpansionRuntime.variable_expander`/`.word_expander` typed as READ-ONLY
+    PROPERTIES (`VariableExpanderProtocol` / `WordExpander`) — mutable protocol
+    attributes are invariant; the property form is mypy-load-bearing at the
+    new SubscriptEvaluator witness
+  - `LocaleAccess.collate_key` → new opaque `CollationKey` alias
+  - `JobRuntime.shell_state` DELETED for `publish_foreground_pgid(int)` (drop
+    route chosen by a 5-path caller census; behavior-identical publish)
+  - `VariableExpanderProtocol.state`/`.shell` kept with measured census
+    justifications (47 sites/11 members; reach 12→11, pinned by committed
+    census cells) — remainder registered as D-5B.2-s1/s2
+- **Witness adoptions — no protocol is defined-but-unused**: `ExpansionRuntime`
+  ← SubscriptEvaluator; `LocaleAccess` ← all SIX `state.locale` readers
+  (TYPE_CHECKING-only route for `core/scope.py`; `psh.protocols` proven absent
+  from `sys.modules` at full shell load); `VariableAccess` DELETED under a
+  ruled amendment (two-arm witness census found zero adoptable sites tree-wide;
+  grep-zero pin + guard-the-guard cell; its usage census preserved for future
+  design)
+- **12 campaign-added owner params dispositioned**: `iter_command_units`
+  annotated `'Shell'`; 11 justified-keep on per-param measurement
+- **Shell-consumer ratchet**: instance-assignment detector arm (D-5B.1-s3
+  discharged) keyed on the assignment TARGET (catches `self._shell = s`,
+  tuple/aliased/annotated variants, unannotated non-`shell` params); zero
+  ALLOWLIST growth (stays 9); ratchet 22 → 28 tests
+- **Deferred-import caps**: 5 dead entries swept (−18 cap) + 2 slack trims
+  (−3) → 66 entries, cap 177 == actual 177, slack 0 — now ENFORCED by a new
+  cap==actual exactness cell (SLACK/DEAD split, reason-asserted). The full
+  115-statement hoist (actual→62, import-verified) deliberately NOT landed:
+  stopped by the pre-ruled surprise-count stop line (stranded cycle-break
+  comments = false documentation); recorded as a measurement for the next owner
+- Verification: 4-agent adversarial round (all code substance reproduced;
+  narrow record-layer bounce fixed by ledger addendum + the exactness cell) +
+  integrator-direct re-verify with independent mutations. Fault register:
+  dev 12 / integrator 2 / zero false findings. Evidence:
+  `docs/reviews/evidence/boundary_remediation_2026-07/5b.2-rescue/`
+
 ## 0.775.0 (2026-08-08) - Boundary structure (remediation slot 5B.1)
 
 First Wave 5 slot (campaign sequence §11 Package 5B, Checkpoint R ruling
