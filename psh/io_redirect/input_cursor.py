@@ -55,7 +55,7 @@ and the scoping above is what makes it safe — the held bytes can no longer
 reach another source or be lost. See
 ``docs/user_guide/17_differences_from_bash.md``.
 """
-from typing import TYPE_CHECKING, Dict, Iterable, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple
 
 from ..builtins.input_reader import make_reader
 
@@ -138,6 +138,10 @@ class InputCursorRegistry:
     def __init__(self) -> None:
         self._fd_to_desc: Dict[int, OpenDescription] = {}
         self._desc_to_cursor: Dict[OpenDescription, "InputCursor"] = {}
+        # Open redirect frames, innermost last. Tracked (as well as returned to
+        # the caller) so an fd whose NUMBER only exists at apply time can still
+        # be scoped into the frame it belongs to — see `scope_fd`.
+        self._frames: List[Dict[int, Optional[OpenDescription]]] = []
 
     def cursor_for_fd(self, io_ctx: "IOContext", fd: int) -> "InputCursor":
         """Return the persistent cursor reading ``fd``'s current description.
@@ -174,17 +178,44 @@ class InputCursorRegistry:
         self._desc_to_cursor[desc] = cursor
         return cursor
 
+    def _release(self, desc: Optional[OpenDescription]) -> None:
+        """Drop ``desc``'s cursor IFF no fd still names ``desc``.
+
+        A description can wear several fds at once (that is what a dup IS), so
+        "this fd stopped naming it" and "this description is finished" are
+        different facts and only the second may destroy buffered bytes. Dropping
+        on the first is how a cursor holding a real byte gets destroyed while
+        another fd is still reading through it — the byte then reaches NO
+        reader, which is the exact defect class this registry exists to prevent.
+
+        Reference counting is done by asking the map rather than by keeping a
+        counter: ``_fd_to_desc`` IS the set of live references, so it cannot
+        drift out of step with itself the way a parallel count can.
+        """
+        if desc is None:
+            return
+        for live in self._fd_to_desc.values():
+            if live is desc:          # identity: OpenDescription is opaque
+                return
+        self._desc_to_cursor.pop(desc, None)
+
+    def _unbind(self, fd: int) -> None:
+        """Remove ``fd``'s binding, releasing its description if that was the
+        last fd naming it."""
+        self._release(self._fd_to_desc.pop(fd, None))
+
     def rebind(self, fd: int) -> None:
         """Note that ``fd`` now names a NEW open description (``exec 0<file``).
 
-        The old description's cursor is dropped, so the next
-        :meth:`cursor_for_fd` builds a fresh cursor over the rebound fd. Keying
-        by the description (not the bare fd) is what makes this correct: the old
-        cursor's decoder/queue state cannot leak into the new description.
+        The old description's cursor is dropped so the next
+        :meth:`cursor_for_fd` builds a fresh cursor over the rebound fd —
+        UNLESS another fd still names that description, in which case the
+        cursor is still live and dropping it would destroy bytes a reader can
+        still legitimately reach (``exec 3<&0; exec 3<&-`` is the ordinary
+        idiom that does this). Keying by the description rather than the bare
+        fd is what makes both halves correct.
         """
-        old = self._fd_to_desc.pop(fd, None)
-        if old is not None:
-            self._desc_to_cursor.pop(old, None)
+        self._unbind(fd)
 
     def bind_dup(self, new_fd: int, old_fd: int) -> None:
         """Note that ``new_fd`` now names the SAME description as ``old_fd``.
@@ -205,7 +236,14 @@ class InputCursorRegistry:
         if desc is None:
             desc = OpenDescription(f"fd{old_fd}")
             self._fd_to_desc[old_fd] = desc
+        # `new_fd` may already name something (`exec 3<f; exec 3<&0`). Take the
+        # binding away FIRST so the release below sees the true reference set,
+        # then install the alias — otherwise a description whose last fd this
+        # was would keep an unreachable cursor in `_desc_to_cursor` forever.
+        previous = self._fd_to_desc.get(new_fd)
         self._fd_to_desc[new_fd] = desc
+        if previous is not None and previous is not desc:
+            self._release(previous)
 
     def push_frame(self, fds: Iterable[int]) -> Dict[int, Optional[OpenDescription]]:
         """Enter a redirect frame that temporarily rebinds ``fds``.
@@ -218,24 +256,73 @@ class InputCursorRegistry:
         prepend itself to the outer source's next read.
 
         The outer bindings are set aside and returned; pass the result to
-        :meth:`pop_frame`. Returning the token rather than keeping an internal
-        stack matches the surrounding save/restore idiom (``saved_fds``) and
-        makes the pairing visible at the call site.
+        :meth:`pop_frame`. The token is ALSO tracked here, because not every fd
+        a frame re-points is knowable when the frame opens — see
+        :meth:`scope_fd`.
         """
-        return {fd: self._fd_to_desc.pop(fd, None) for fd in fds}
+        token: Dict[int, Optional[OpenDescription]] = {}
+        self._frames.append(token)
+        for fd in fds:
+            self._scope_into(token, fd)
+        return token
+
+    def _scope_into(self, token: Dict[int, Optional[OpenDescription]],
+                    fd: int) -> None:
+        """Set ``fd``'s binding aside into ``token``, first touch winning.
+
+        First-touch-wins mirrors the fd save/restore frames: an fd re-pointed
+        twice inside one frame must restore the OUTER binding, not the
+        intermediate one.
+        """
+        if fd in token:
+            return
+        token[fd] = self._fd_to_desc.pop(fd, None)
+
+    def scope_fd(self, fd: int) -> None:
+        """Scope ``fd`` into the innermost open frame, if there is one.
+
+        A named-fd redirect (``{v}<&0``, ``{v}<file``) does not know its fd
+        when the frame opens: the shell allocates a free descriptor >= 10 at
+        APPLY time and stores the number in the variable. Deriving a target
+        from the redirect node is therefore impossible for this spelling, and
+        guessing one is worse than not scoping at all — it scopes an fd the
+        redirect never touches (fd 0, by the input-default rule) while leaving
+        the fd it really created unscoped.
+
+        So the allocator calls this at the moment the number exists. Outside a
+        frame — a permanent ``exec {v}<&0``, or a forked child — there is
+        nothing to scope to and this is correctly a no-op.
+        """
+        if self._frames:
+            self._scope_into(self._frames[-1], fd)
 
     def pop_frame(self,
                   saved: Dict[int, Optional[OpenDescription]]) -> None:
         """Leave a frame entered by :meth:`push_frame`, restoring ``saved``.
 
-        Anything the frame bound is dropped together with its cursor (that
-        description is gone with the frame), then the outer bindings go back
-        untouched — so a surplus the outer cursor was holding is still there
-        for the next read on that description.
+        Anything the frame bound goes away and the outer bindings go back
+        untouched, so a surplus the outer cursor was holding is still there for
+        the next read on that description.
+
+        Restoring every binding before releasing any description is deliberate
+        but DEFENSIVE, not load-bearing: :meth:`_release` consults the live
+        binding map, and an alias a frame created always has its source fd
+        outside the frame (``bind_dup`` materializes a fresh description when
+        the source's own binding has been lifted), so no reachable state was
+        found in which the reverse order destroys a live cursor. The ordering
+        costs nothing and removes a class of reasoning; the REFERENCE CHECK is
+        what actually protects the bytes.
         """
+        for i in range(len(self._frames) - 1, -1, -1):
+            if self._frames[i] is saved:
+                del self._frames[i]
+                break
+        dropped = []
         for fd, desc in saved.items():
             inner = self._fd_to_desc.pop(fd, None)
             if inner is not None:
-                self._desc_to_cursor.pop(inner, None)
+                dropped.append(inner)
             if desc is not None:
                 self._fd_to_desc[fd] = desc
+        for inner in dropped:
+            self._release(inner)
