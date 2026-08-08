@@ -34,9 +34,10 @@ Protocol             Canonical producer (``file.py#symbol``)
 
 **Names are unique tree-wide.** ``ExpansionRuntime`` and ``LocaleAccess`` were
 ``ExpansionContext`` / ``LocaleContext`` until remediation 5B.1: each collided
-with a live CONCRETE class of the same name (``lexer/expansion_parser.py:387``
-and ``core/locale_service.py:90``), so a reader could not tell from a name which
-one a module meant. The protocol sides were renamed — they had zero consumers,
+with a live CONCRETE class of the same name
+(``lexer/expansion_parser.py#ExpansionContext`` and
+``core/locale_service.py#LocaleContext``), so a reader could not tell which one
+a module meant. The protocol sides were renamed — they had zero consumers,
 the concrete classes did not. ``tests/unit/tooling/test_protocol_name_collision
 _q5.py`` keeps the class from recurring.
 
@@ -78,8 +79,8 @@ Adoption is scheduled, not open-ended: remediation 5B.2 owns the migration, and
 its named first consumers are ``VariableAccess`` for
 ``expansion/_protocols.py#VariableExpanderProtocol.state``, ``ExpansionRuntime``
 for ``expansion/subscript.py#SubscriptEvaluator`` (which already reads
-``shell.expansion_manager``), and ``LocaleAccess`` for the three ``state.locale``
-readers named above.
+``shell.expansion_manager``), and ``LocaleAccess`` for the SIX ``state.locale``
+readers enumerated in its docstring below.
 """
 from __future__ import annotations
 
@@ -241,9 +242,15 @@ class LocaleAccess(Protocol):
     The one home for collation, locale-gated case mapping, and POSIX
     character-class membership (``core/locale_service.py``). A consumer that
     needs locale-correct comparison or case folding depends on this rather than
-    the whole ``ShellState``. ``LocaleService`` structurally satisfies it;
-    current callers (``expansion/glob.py``, ``expansion/parameter_expansion.py``,
-    ``executor/enhanced_test_evaluator.py``) read it as ``state.locale``.
+    the whole ``ShellState``. ``LocaleService`` structurally satisfies it.
+
+    Current callers reach it as ``state.locale``: SIX production files, 13
+    access sites (AST census, remediation 5B.1) — ``core/scope.py``,
+    ``executor/array.py``, ``executor/enhanced_test_evaluator.py``,
+    ``expansion/glob.py``, ``expansion/operators.py`` and
+    ``expansion/parameter_expansion.py`` (6 sites, the heaviest reader). An
+    earlier version of this docstring named only three; the omitted three are
+    part of 5B.2's migration set, so the count matters beyond prose.
 
     NAME (remediation 5B.1): this was ``LocaleContext`` until the collision with
     the CONCRETE frozen dataclass ``core/locale_service.py#LocaleContext`` was
