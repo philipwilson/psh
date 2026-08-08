@@ -4,6 +4,12 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.774.0 (2026-08-08) - TIMEFORMAT %P at real resolution (Checkpoint R quick rider)
+
+- `time`'s user/sys measurement moved from `os.times()` (10 ms accounting ticks) to `getrusage` self+children deltas (microseconds). `%P` is now a true CPU percentage for every span: sub-tick commands no longer print `0.00` (`time true`, `time sleep`, external children whose CPU sat below one tick), and the load-dependent absurd face (one tick over a sub-millisecond elapsed, measured 11934.31) is structurally impossible. Approved at Checkpoint R (ruling CR-R2); the LEDGER's %P row closes.
+- The deliberately magnitude-blind `%P` shape test from v0.753.0 is un-blinded: a new value-envelope class pins the zero face, the absurd face, the children-rusage route, and a CPU-bound control (red-on-base proven by stash replay).
+- Docs: the three reappraisal documents (#20, #20-continuation, #21) are indexed in `docs/reviews/README.md` (the reviews-index meta-test caught the gap on this release's gate — they had merged unindexed through an evidence-only consolidation).
+
 ## 0.773.0 (2026-08-08) - Input cursor contract closed: dup sharing, frame isolation, one lifecycle rule (remediation slot 4B.4; Wave 4 closes)
 
 - The record-reader cursor contract is closed on both deferred surfaces: a temporarily redirected fd now reads through its own frame-scoped description (no leak in either direction between stdin and a redirected file), and a duplicated descriptor shares its source's cursor across all four dup spellings (`exec n<&m`, per-command `n<&m`, `{v}<&n`, compound-command frames) — so a byte held mid-character can no longer contaminate another source, be lost across a dup, or reappear out of order. Measured against C-locale bash: 9 divergent compositions to 0.

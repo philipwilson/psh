@@ -329,13 +329,12 @@ class ExecutorVisitor(ASTVisitor[int]):
         """Run a `time`-prefixed pipeline, reporting real/user/sys afterwards.
 
         Times the WHOLE pipeline (bash). user/sys include forked children's CPU
-        (``os.times()`` children deltas). ``time`` with no command times an empty
-        pipeline (status 0). The report goes to the shell's stderr.
+        (``getrusage`` self+children deltas). ``time`` with no command times an
+        empty pipeline (status 0). The report goes to the shell's stderr.
         """
-        import os
         import time
         start_real = time.monotonic()
-        start = os.times()
+        start_user, start_system = self._cpu_seconds()
         status = 0
         try:
             # PipelineExecutor handles the empty pipeline (`time` alone
@@ -344,16 +343,29 @@ class ExecutorVisitor(ASTVisitor[int]):
             status = self.pipeline_executor.execute(node, self.context, self)
         finally:
             real = time.monotonic() - start_real
-            end = os.times()
-            # user/sys are process-wide os.times() children deltas. CAVEAT:
-            # a background job reaped concurrently during this pipeline
+            end_user, end_system = self._cpu_seconds()
+            # user/sys are process-wide self+children deltas. CAVEAT: a
+            # background job reaped concurrently during this pipeline
             # contaminates the deltas (its CPU is attributed here). Per-child
             # rusage via wait4() is a later phase (F15 covers the report
             # FORMAT only); the values may over-count under concurrent bg work.
-            user = (end.user - start.user) + (end.children_user - start.children_user)
-            system = (end.system - start.system) + (end.children_system - start.children_system)
+            user = end_user - start_user
+            system = end_system - start_system
             self._report_time(node, real, user, system)
         return status
+
+    @staticmethod
+    def _cpu_seconds() -> 'tuple[float, float]':
+        """(user, system) CPU seconds — self + reaped children — at
+        ``getrusage`` resolution (microseconds). ``os.times()`` quantizes to
+        the 10 ms accounting tick, which made ``%P`` read 0.00 for sub-tick
+        commands and absurd (one tick / a sub-millisecond elapsed ≈ 10000+%)
+        whenever a tick boundary landed inside the span (CR-R2)."""
+        import resource
+        self_ru = resource.getrusage(resource.RUSAGE_SELF)
+        child_ru = resource.getrusage(resource.RUSAGE_CHILDREN)
+        return (self_ru.ru_utime + child_ru.ru_utime,
+                self_ru.ru_stime + child_ru.ru_stime)
 
     @staticmethod
     def _fmt_time_directive(seconds: float, precision: int, long_form: bool) -> str:

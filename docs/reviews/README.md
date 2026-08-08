@@ -91,6 +91,9 @@ Live above.
 | [ground_up_reappraisal_17_2026-07-03](ground_up_reappraisal_17_2026-07-03.md) | #17 @ v0.600 |
 | [codebase_appraisal_2026-07-04](codebase_appraisal_2026-07-04.md) | Deep codebase appraisal @ v0.617 (2026-07-04) |
 | [ground_up_reappraisal_18_2026-07-04](ground_up_reappraisal_18_2026-07-04.md) | #18 @ v0.617 (**latest** — see Live) |
+| [ground_up_reappraisal_20_correctness_textbook_2026-07-11](ground_up_reappraisal_20_correctness_textbook_2026-07-11.md) | #20 @ v0.692 (correctness + textbook; continuation below completes it) |
+| [ground_up_reappraisal_20_correctness_continuation_2026-07-14](ground_up_reappraisal_20_correctness_continuation_2026-07-14.md) | #20 continuation @ v0.724 (correctness residuals after the r19 campaign) |
+| [ground_up_reappraisal_21_textbook_2026-07-12](ground_up_reappraisal_21_textbook_2026-07-12.md) | #21 @ v0.724 (textbook-quality edition; 232 confirmed findings — superseded by #22) |
 
 ## Historical — architecture & subsystem reviews
 
