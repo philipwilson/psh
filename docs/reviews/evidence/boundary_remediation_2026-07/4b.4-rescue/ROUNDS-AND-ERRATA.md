@@ -59,3 +59,23 @@ resource it governs, not just the sites that acquire it.**
 - The declared NOT-closed residue: I1 row (d) (builtin→external
   stranded lookahead) and the move-form (`3<&0-`) fd-lifetime
   divergence — both pinned both-sides, neither absorbed.
+
+## Post-merge sign-off (D-4B.4-a1, 2026-08-08)
+
+dev-4b-4 SEVEN-LEG SIGN-OFF **PASS at TAG v0.773.0** (919935d8, tag
+SHA recomputed by the dev; protocol PRE-REGISTERED in D10 before the
+tag existed, failure semantics stated up front). Legs: discriminator
+(parent+child), per-cell defect legs 13 MATCH / 1 declared-residue
+(the move form, pre-registered) + 12/12 original faces, must-hold
+152/152, no-silent-change (zero undeclared paths; version.py's last
+toucher = the integrator's ceremony commit), M8 19/19 with tmp/
+ASSERTED absent, falsification (each production hunk reverted alone →
+its cells fail), artifact verification (attestation reconciled
+against the dev's own gate: 22,775 + 1,117 = 23,892; manifest exact
+vs D9). Zero flakes stated. **Leg 7 found ITS OWN defect**: five
+manifest entries named gitignored tmp/ paths a tag-only reader cannot
+resolve — the RN-4 shape one level over, caught by the leg written to
+catch exactly this. RULED: the five transcripts are committed beside
+the instruments in this addendum (hash-verified), so every manifest
+line resolves in-tree. Final inbox snapshot md5
+`6c96d0147d3a9fb52637787fedcbddf7` (through R11; boundary held).
