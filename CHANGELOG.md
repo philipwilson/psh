@@ -4,6 +4,15 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.773.0 (2026-08-08) - Input cursor contract closed: dup sharing, frame isolation, one lifecycle rule (remediation slot 4B.4; Wave 4 closes)
+
+- The record-reader cursor contract is closed on both deferred surfaces: a temporarily redirected fd now reads through its own frame-scoped description (no leak in either direction between stdin and a redirected file), and a duplicated descriptor shares its source's cursor across all four dup spellings (`exec n<&m`, per-command `n<&m`, `{v}<&n`, compound-command frames) — so a byte held mid-character can no longer contaminate another source, be lost across a dup, or reappear out of order. Measured against C-locale bash: 9 divergent compositions to 0.
+- One ownership rule governs the registry: a description's cursor is released only when no fd still names it. Stating the rule (rather than patching symptoms) also fixed a pre-existing dup-then-dup loss.
+- Named-fd redirects (`{v}<&0`) are scoped at apply time to the fd they actually allocate, fixing a byte-reordering path.
+- The vestigial `_pushback` buffer is removed (provably unreachable), with a reintroduction guard.
+- The `read -t` mid-character timeout divergence is now a documented permanent psh contract (bash assigns the torn partial; psh holds and resumes it — no byte is lost either way), scoped in the user guide to the measured 18-cell table; at a terminal with plain `read -t`, bash holds too.
+- 61 new pin cells + 12 mutation-lock arms; suite 23,892; compare-bash 3,046/26 exact. Evidence: docs/reviews/evidence/boundary_remediation_2026-07/4b.4-rescue/.
+
 ## 0.772.0 (2026-08-08) - History state machine: independent cursors, one recording pipeline, bash-parity clusters (remediation slot 4B.3, MEDIUM-7)
 
 - History file-read cursor is now independent of in-memory operations: `history -d` and `history -c` no longer move it, so `history -n` neither duplicates surviving entries (leg A) nor re-materializes cleared ones (leg C / carry #32) — measured against live bash 5.2.26.
