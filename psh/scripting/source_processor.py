@@ -9,7 +9,7 @@ parser is active the execution path reuses its AST instead of parsing the
 same text twice.
 """
 import sys
-from typing import Optional, cast
+from typing import TYPE_CHECKING, Optional, cast
 
 from ..ast_nodes import ASTNode, Program
 from ..core import (
@@ -29,6 +29,9 @@ from ..utils.ast_debug import print_ast_debug
 from ..visitor.traversal import walk_ast
 from .base import ScriptComponent
 from .command_accumulator import CommandAccumulator, Complete, NeedMore
+
+if TYPE_CHECKING:
+    from ..shell import Shell
 
 
 def offset_line_numbers(node: ASTNode, delta: int) -> None:
@@ -60,7 +63,7 @@ def offset_line_numbers(node: ASTNode, delta: int) -> None:
         offset_line_numbers(child, delta)
 
 
-def iter_command_units(shell, input_source, base_line: int = 1,
+def iter_command_units(shell: 'Shell', input_source, base_line: int = 1,
                        trace: bool = True):
     """Yield ``(start_line, Complete)`` for each complete logical command.
 
@@ -84,6 +87,12 @@ def iter_command_units(shell, input_source, base_line: int = 1,
     may carry ``.error``: the unit is complete but INVALID, and the consumer
     decides what that means (execution reports and may abort; analysis reports
     it as the syntax error).
+
+    ``shell`` is the whole ``Shell`` and was UNANNOTATED until remediation
+    5B.2 — the boundary campaign's "smuggled reach" shape, a service-locator
+    parameter with no type to make it visible. It is annotated rather than
+    narrowed because it is forwarded whole to ``CommandAccumulator``, which
+    stores it; narrowing has to start there, not here.
     """
     accumulator = CommandAccumulator(shell)
     accumulator.history_expansion_eligible = getattr(

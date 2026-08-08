@@ -50,16 +50,21 @@ class CommandParsersProtocol(Protocol):
     # Per-call collected-heredoc map (id-keyed LexedHeredoc entries),
     # assigned by ParserCombinatorShellParser.parse before parsing.
     heredocs: "Optional[Mapping[int, LexedHeredoc]]"
-    # ``redirection`` and ``statement`` are typed loosely (``Any`` /
-    # ``Parser[Any]``) rather than pinned to their element type. The parse
-    # closures append ``redirection.parse().value`` to a ``List[Redirect]``
-    # and forward ``statement.parse()`` as a wider ``ParseResult[StatementList]``.
-    # In the pre-split single-module version mypy inferred both attributes as
-    # collapsed-``Any`` (the bound-method generic inference for
-    # ``Parser(self._parse_redirection)`` did not pin ``T``), so those usages
-    # type-checked. Declaring them loosely here reproduces that exactly,
-    # keeping the move behavior- and type-check-neutral.
-    redirection: Any
+    # ``statement`` stays ``Parser[Any]``: its closure forwards
+    # ``statement.parse()`` as a wider ``ParseResult[StatementList]``, so the
+    # element type genuinely varies at the use site.
+    #
+    # ``redirection`` was ``Any`` for the same inherited reason until
+    # remediation 5B.2 typed it. In the pre-split single-module version mypy
+    # inferred it as collapsed-``Any`` (bound-method generic inference for
+    # ``Parser(self._parse_redirection)`` did not pin ``T``), and declaring it
+    # loosely reproduced that — which kept the split type-check-neutral, but
+    # also meant nothing checked what the redirection parser produced. Pinning
+    # it surfaced exactly one site tree-wide: ``simple.py`` appending a
+    # possibly-``None`` ``.value`` to a ``List[Redirect]``, already
+    # ``success``-guarded but missing the None-narrowing its own sibling
+    # branch performs nine lines earlier.
+    redirection: "Parser[Redirect]"
     simple_command: "Parser[SimpleCommand]"
     pipeline: "Parser[Union[Pipeline, ASTNode]]"
     and_or_list: "Parser[Union[AndOrList, ASTNode]]"

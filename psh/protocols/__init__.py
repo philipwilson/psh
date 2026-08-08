@@ -101,6 +101,18 @@ if TYPE_CHECKING:
     from ..ast_nodes.words import Word
     from ..core.state import ShellState
     from ..executor.job_control import Job
+    from ..expansion._protocols import VariableExpanderProtocol
+    from ..expansion.word_expander import WordExpander
+
+
+#: The opaque sort key :meth:`LocaleAccess.collate_key` returns.
+#:
+#: A libc-derived value that callers only ever hand to ``sorted(key=...)`` or
+#: compare against another key from the same locale — never inspect, index, or
+#: do arithmetic on. The alias NAMES that opacity rather than dressing it up: a
+#: more precise annotation would claim a structure the value does not promise,
+#: while a bare ``Any`` says nothing about why it is opaque. Remediation 5B.2.
+CollationKey = Any
 
 
 @runtime_checkable
@@ -162,9 +174,25 @@ class ExpansionRuntime(Protocol):
         array-initializer engine."""
         ...
 
-    # Sub-expanders reachable for the lower-level string/escape helpers.
-    variable_expander: Any
-    word_expander: Any
+    # Sub-expanders reachable for the lower-level string/escape helpers. Both
+    # were ``Any`` until remediation 5B.2 typed them at their producers
+    # (``ExpansionManager.__init__`` builds a ``VariableExpander`` and a
+    # ``WordExpander``); the variable side is declared against the mixin
+    # PROTOCOL rather than the concrete class, because that protocol is already
+    # the shared surface its four mixins type-check against.
+    #
+    # READ-ONLY properties, not plain attributes, and that distinction is
+    # load-bearing: a mutable attribute in a Protocol is INVARIANT, so
+    # declaring ``variable_expander: VariableExpanderProtocol`` would demand
+    # that a producer's attribute be exactly that type — and
+    # ``ExpansionManager`` holds a concrete ``VariableExpander``, which is a
+    # subtype, not the same type. Nothing consumes these by assignment, so the
+    # covariant read surface is both correct and what the producers satisfy.
+    @property
+    def variable_expander(self) -> "VariableExpanderProtocol": ...
+
+    @property
+    def word_expander(self) -> "WordExpander": ...
 
 
 @runtime_checkable
@@ -205,9 +233,20 @@ class JobRuntime(Protocol):
     satisfies it (mypy-checked at the call site).
     """
 
-    #: The shell state, wired via ``JobManager.set_shell_state`` (read to publish
-    #: ``foreground_pgid`` on terminal handoff).
-    shell_state: "Optional[ShellState]"
+    def publish_foreground_pgid(self, pgid: int) -> None:
+        """Record *pgid* as the foreground process group after a handoff.
+
+        Until remediation 5B.2 this protocol instead exposed the whole
+        ``shell_state``, and its one consumer reached through it to assign
+        ``shell_state.foreground_pgid`` itself — a whole-state member on a
+        narrow protocol, for a single ``int`` write. The write moved into the
+        producer rather than into ``transfer_terminal_control``: a caller
+        census found FIVE paths through that method and only ONE that may
+        publish, so folding the write in would have given the other four
+        (``fg`` builtin, two SignalManager paths, JobManager's own restore) a
+        write they must not perform.
+        """
+        ...
 
     def terminal_pgid_if_owned(self) -> Optional[int]:
         """The terminal's foreground pgid if this shell owns it, else None."""
@@ -261,8 +300,12 @@ class LocaleAccess(Protocol):
     under.
     """
 
-    def collate_key(self, s: str) -> Any:
-        """A sort key under the effective ``LC_COLLATE`` (glob/case ranges)."""
+    def collate_key(self, s: str) -> "CollationKey":
+        """A sort key under the effective ``LC_COLLATE`` (glob/case ranges).
+
+        The key is opaque — see :data:`CollationKey`. Compare keys, sort by
+        them; never read inside one.
+        """
         ...
 
     def compare(self, a: str, b: str) -> int:

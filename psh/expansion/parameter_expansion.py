@@ -45,6 +45,7 @@ from .pattern_engine import (
 )
 
 if TYPE_CHECKING:
+    from ..protocols import LocaleAccess
     from ..shell import Shell
 
 # Sentinel marking "the matched text" in a prepared replacement template
@@ -501,35 +502,38 @@ class ParameterExpansionOps:
     def uppercase_first(self, value: str, pattern: str = '?') -> str:
         """Uppercase the first char if it matches the pattern."""
         if value and self._char_matches(value[0], pattern):
-            return self.state.locale.upper(value[0]) + value[1:]
+            loc: 'LocaleAccess' = self.state.locale
+            return loc.upper(value[0]) + value[1:]
         return value
 
     def uppercase_all(self, value: str, pattern: str = '?') -> str:
         """Uppercase every char matching the pattern."""
-        loc = self.state.locale
+        loc: 'LocaleAccess' = self.state.locale
         matches = self._char_predicate(pattern)
         return ''.join(loc.upper(c) if matches(c) else c for c in value)
 
     def lowercase_first(self, value: str, pattern: str = '?') -> str:
         """Lowercase the first char if it matches the pattern."""
         if value and self._char_matches(value[0], pattern):
-            return self.state.locale.lower(value[0]) + value[1:]
+            loc: 'LocaleAccess' = self.state.locale
+            return loc.lower(value[0]) + value[1:]
         return value
 
     def lowercase_all(self, value: str, pattern: str = '?') -> str:
         """Lowercase every char matching the pattern."""
-        loc = self.state.locale
+        loc: 'LocaleAccess' = self.state.locale
         matches = self._char_predicate(pattern)
         return ''.join(loc.lower(c) if matches(c) else c for c in value)
 
     def toggle_first(self, value: str, pattern: str = '?') -> str:
         """Toggle the case of the first char if it matches the pattern (${x~})."""
         if value and self._char_matches(value[0], pattern):
-            return self.state.locale.toggle(value[0]) + value[1:]
+            loc: 'LocaleAccess' = self.state.locale
+            return loc.toggle(value[0]) + value[1:]
         return value
 
     def toggle_all(self, value: str, pattern: str = '?') -> str:
         """Toggle the case of every char matching the pattern (${x~~})."""
-        loc = self.state.locale
+        loc: 'LocaleAccess' = self.state.locale
         matches = self._char_predicate(pattern)
         return ''.join(loc.toggle(c) if matches(c) else c for c in value)

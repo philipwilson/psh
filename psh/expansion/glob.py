@@ -7,6 +7,7 @@ from ..core.locale_service import posix_class_ranges
 from ..utils.posix_classes import POSIX_CLASSES
 
 if TYPE_CHECKING:
+    from ..protocols import LocaleAccess
     from ..shell import Shell
 
 
@@ -197,7 +198,8 @@ class GlobExpander:
 
     def _sorted(self, matches: List[str]) -> List[str]:
         """Sort glob matches in the active collation order (empty-safe)."""
-        return sorted(matches, key=self.state.locale.collate_key) if matches else []
+        loc: 'LocaleAccess' = self.state.locale
+        return sorted(matches, key=loc.collate_key) if matches else []
 
     def _glob_walk(self, pattern: str, dotglob: bool,
                    ignorecase: bool) -> List[str]:

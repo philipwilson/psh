@@ -21,6 +21,7 @@ from ..expansion.word_expander import WordExpander
 from ..utils.file_tests import file_newer_than, file_older_than, files_same
 
 if TYPE_CHECKING:
+    from ..protocols import LocaleAccess
     from ..shell import Shell
 
 
@@ -165,9 +166,11 @@ class TestExpressionEvaluator:
             # by codepoint in the C locale (byte order) and by locale.strcoll
             # in a UTF-8/OTHER locale (so `[[ a < B ]]` is true under en_US.UTF-8,
             # matching bash).
-            return self.state.locale.compare(left, right) < 0
+            loc: 'LocaleAccess' = self.state.locale
+            return loc.compare(left, right) < 0
         elif expr.operator == '>':
-            return self.state.locale.compare(left, right) > 0
+            loc = self.state.locale
+            return loc.compare(left, right) > 0
         elif expr.operator == '=~':
             # Regex matching; populate BASH_REMATCH with the full match and
             # capture groups (cleared to an empty array on no match), like bash.

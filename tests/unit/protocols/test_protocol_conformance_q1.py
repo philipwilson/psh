@@ -43,7 +43,11 @@ EXPECTED_MEMBERS = {
     "ExpansionRuntime": {"expand_string_variables", "expand_assignment_value_word",
                          "variable_expander", "word_expander"},
     "IOContext": {"stdin", "stdout", "stderr"},
-    "JobRuntime": {"shell_state", "terminal_pgid_if_owned", "create_job",
+    # Remediation 5B.2: `shell_state` — the whole ShellState carried on a
+    # narrow protocol, which its one consumer reached through for a single
+    # `foreground_pgid` write — was replaced by the narrow publish member.
+    "JobRuntime": {"publish_foreground_pgid", "terminal_pgid_if_owned",
+                   "create_job",
                    "set_foreground_job", "transfer_terminal_control",
                    "wait_for_job", "report_signal_death_at",
                    "finish_foreground_job", "remove_job"},
