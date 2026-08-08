@@ -256,11 +256,20 @@ class TestMustHold:
         byte is already gone from the shared kernel offset; the child, starting
         with an empty registry as it must, cannot see it and reads the next one.
 
-        That is I1 deliberate-loss row (d) — the stranded lookahead byte is
-        invisible to a child — which slot 4B.4 did NOT close and did not claim
-        to: closing it needs a replaying fd view for the child, which campaign
-        I1 considered and ruled out. Dup aliasing and frame scoping are
-        in-process description bookkeeping and cannot reach across a fork.
+        That is campaign I1 deliberate-loss row **(d)**, "builtin->external
+        stranded byte (same family; the replaying-fd-view answer)" — probed
+        there as ``read -N1 x; cat`` on ``\\xc3A``, where the byte read ahead to
+        classify the malformed lead is invisible to the child. Slot 4B.4 did
+        NOT close it and does not claim to: closing it needs a replaying fd
+        view for the child, which campaign I1 considered and ruled out. Dup
+        aliasing and frame scoping are in-process description bookkeeping and
+        cannot reach across a fork.
+
+        The row is enumerated in the I1 campaign ledger's "Deliberate-loss
+        registry" section, an excerpt of which is committed beside this slot's
+        evidence. Its WORDING is quoted here as well as its letter, because a
+        bare label is not a citation: a reader who cannot resolve the source
+        cannot tell a real row from a remembered one.
 
         Pinned in both-sides form so the divergence stays VISIBLE: if psh ever
         converges here, this cell fails and the registry row gets re-examined
@@ -272,7 +281,7 @@ class TestMustHold:
         assert psh == b"child=<B>\na=<\xc3>\n"     # child missed the eaten 'A'
         assert bash_c == b"child=<A>\na=<\xc3>\n"  # bash-C never read ahead
         assert psh != bash_c, (
-            "the builtin-to-child loss converged — re-examine the I1 registry "
+            "I1 deliberate-loss row (d) converged — re-examine the registry "
             "row, do not just update this pin")
 
     def test_never_over_read_to_external(self):
