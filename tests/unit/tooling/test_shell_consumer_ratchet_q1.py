@@ -6,8 +6,19 @@ protocol whenever its actual needs fit one. Some boundaries genuinely still need
 the full ``Shell`` (they FORWARD it to something that needs the whole shell, or
 they reach the trap/signal/executor machinery no protocol models). This ratchet
 freezes THAT set: every function/method in a boundary module whose parameter is
-the full ``Shell`` is recorded here WITH a one-line justification, and the
-recorded set may only SHRINK.
+the full ``Shell`` is recorded here WITH a one-line justification.
+
+**The contract on ``ALLOWLIST`` is shrink-only WITH ONE NARROW EXCEPTION.** The
+recorded set may only SHRINK, except that entries MAY be added when a module
+newly enters the scan scope — whether because the scope was extended or because
+the DETECTOR was taught a shape it previously missed — provided each addition
+lands in the SAME COMMIT as that extension and carries its own specific
+justification (integrator pre-ruling 5B.1-R0, extended to detector-shape by
+R1.6). Growth in any other circumstance is a contract breach, not a judgement
+call. The exception exists because the alternative is worse: a scope extension
+that cannot record what it finds either lands red or quietly narrows what it
+scans, and both defeat the ratchet. Remediation 5B.1 used it exactly once, for
+the three ``analysis_session`` consumers (6 entries -> 9).
 
 - A NEW full-``Shell`` consumer in a scanned module (not in ``ALLOWLIST``) fails
   ``test_no_unrecorded_full_shell_consumers`` — narrow it to a protocol or
@@ -52,11 +63,21 @@ two of them passed every test in this file. Two things keep the scope current:
   a parameter that is UNANNOTATED and named exactly ``shell`` (a smuggled reach
   with no type); or
 * a CLASS-LEVEL ANNOTATED ATTRIBUTE whose annotation mentions ``Shell``
-  (``class C: shell: 'Shell'``). Holding the whole shell as a field is the same
-  service-locator reach as taking it as a parameter, one indirection later.
-  Remediation 5B.1 found the parameter-only detector blind to this, which
+  (``class C: shell: 'Shell'``). Holding the whole shell as a declared field is
+  the same service-locator reach as taking it as a parameter, one indirection
+  later. Remediation 5B.1 found the parameter-only detector blind to this, which
   mattered because it is the exact shape of the "broad owner escape hatch" 5B's
   exit criterion names.
+
+**What the detector does NOT see.** It reads DECLARATIONS — parameters and
+annotated class-level attributes — so a shell stored by plain ASSIGNMENT in a
+method body (``self.shell = shell``, no annotation anywhere) is invisible to it.
+That shape is real: remediation 5B.1 removed exactly one instance of it from
+``scripting/analysis_session.py``, and what keeps it removed is a bespoke pin in
+``tests/unit/scripting/test_analysis_session.py``, NOT this detector. Teaching
+the detector instance-assignment is remediation 5B.2's (its sweep forces a
+disposition for every site it would newly reveal, which is migration work). Do
+not read the class-attribute extension as covering the assignment shape.
 
 Neither form ever matches ``ShellState`` (a distinct identifier — already a
 narrowing). ``ShellState`` is deliberately NOT counted in EITHER position
@@ -162,10 +183,14 @@ TOUCHED_MODULES = CREATED_MODULES + TOUCHED_PREEXISTING + POST_ENDPOINT_SCANNED
 
 
 # The frozen set of boundary-module defs that legitimately still take the full
-# ``Shell`` — (dotted-module, qualified-symbol) -> justification. MAY ONLY
-# SHRINK. Each forwards the shell to a whole-shell need or reaches a subsystem no
-# protocol (VariableAccess/ExpansionRuntime/IOContext/JobRuntime/LocaleAccess)
-# models.
+# ``Shell`` — (dotted-module, qualified-symbol) -> justification. Each forwards
+# the shell to a whole-shell need or reaches a subsystem no protocol
+# (VariableAccess/ExpansionRuntime/IOContext/JobRuntime/LocaleAccess) models.
+#
+# CONTRACT: shrink-only, EXCEPT entries added in the SAME COMMIT as a scan-scope
+# or detector-shape extension, each with its own justification (pre-ruling
+# 5B.1-R0, extended to detector-shape by R1.6). Any other growth is a breach.
+# See the module docstring for why the exception exists.
 ALLOWLIST = {
     ("psh.executor.command_resolution", "resolve_command"):
         "forwards `shell` to ExecutionStrategy.can_execute(name, shell), which "
@@ -352,6 +377,22 @@ def test_created_modules_match_enumeration():
     )
 
 
+def _endpoint_is_ancestor_of_head():
+    """True/False if git can answer, None if git cannot be consulted."""
+    try:
+        out = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", SCOPE_ENDPOINT, "HEAD"],
+            cwd=ROOT, capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode == 0:
+        return True
+    if out.returncode == 1:
+        return False
+    return None   # not a repo / unknown rev — indistinguishable from absent
+
+
 def test_post_endpoint_modules_are_all_dispositioned():
     """COVERAGE (5B.1): every psh/ module born after SCOPE_ENDPOINT is either
     scanned or explicitly declared out-of-scope.
@@ -360,10 +401,29 @@ def test_post_endpoint_modules_are_all_dispositioned():
     endpoint is pinned — exactly the Checkpoint R q5-F2 defect, where three
     modules created after the previous endpoint were invisible and a planted
     offender passed every test here.
+
+    ANCESTOR CHECK FIRST. ``SCOPE_ENDPOINT..HEAD`` is EMPTY — and this test
+    therefore vacuously green — whenever the endpoint is not an ancestor of
+    HEAD: a branch that predates it, a rewritten history, a fresh shallow
+    clone. That is the same silent-rot failure mode the test exists to prevent,
+    one level up, so it WARNS loudly instead of passing quietly.
+
+    KNOWN AND RECORD-ONLY: a module that exists in the working tree but is not
+    yet COMMITTED is invisible to the git enumeration and so is not
+    dispositioned here. That is inherent to enumerating by history, and gates
+    run on committed SHAs, so it cannot hide a landed module.
     """
+    ancestry = _endpoint_is_ancestor_of_head()
+    if ancestry is False:
+        _warn_selfcheck_unverified(
+            "POST_ENDPOINT coverage",
+            f"SCOPE_ENDPOINT {SCOPE_ENDPOINT} is NOT an ancestor of HEAD, so "
+            "the range is empty and this coverage check would pass VACUOUSLY",
+            f"{SCOPE_ENDPOINT}..HEAD")
+        pytest.skip(f"{SCOPE_ENDPOINT} is not an ancestor of HEAD")
     created = _enumerate_added(f"{SCOPE_ENDPOINT}..HEAD",
                               "POST_ENDPOINT_SCANNED")
-    if created is None:
+    if created is None or ancestry is None:
         pytest.skip("git/endpoint range unavailable in this checkout")
     # Only modules that still exist can be scanned; one created and later
     # deleted needs no disposition.
@@ -529,3 +589,36 @@ def test_every_out_of_scope_entry_has_justification():
     for path, reason in POST_ENDPOINT_OUT_OF_SCOPE.items():
         assert isinstance(reason, str) and len(reason.strip()) >= 20, (
             f"out-of-scope entry {path} needs a real justification")
+
+
+def test_a_non_ancestor_endpoint_warns_with_its_reason():
+    """The vacuous-pass window is LOUD, and the warning says WHY.
+
+    A RED arm that only checks "something was raised" would be satisfied by any
+    failure at all — the wrong-reason trap. This asserts the warning names the
+    vacuity, so a future edit that keeps warning but drops the explanation is
+    caught too.
+    """
+    with pytest.warns(UserWarning, match="VACUOUSLY") as caught:
+        _warn_selfcheck_unverified(
+            "POST_ENDPOINT coverage",
+            f"SCOPE_ENDPOINT {SCOPE_ENDPOINT} is NOT an ancestor of HEAD, so "
+            "the range is empty and this coverage check would pass VACUOUSLY",
+            f"{SCOPE_ENDPOINT}..HEAD")
+    text = str(caught[0].message)
+    assert "TRUSTED UNVERIFIED" in text        # the shared loud-warning shape
+    assert "NOT an ancestor" in text           # the specific cause
+    assert SCOPE_ENDPOINT in text              # which endpoint
+
+
+def test_ancestor_check_answers_true_for_the_pinned_endpoint():
+    """Control for the arm above: on a normal checkout the endpoint IS an
+    ancestor, so the coverage test runs for real rather than skipping. Without
+    this, the warn path could swallow every invocation and both cells would
+    still look healthy."""
+    ancestry = _endpoint_is_ancestor_of_head()
+    if ancestry is None:
+        pytest.skip("git unavailable")
+    assert ancestry is True, (
+        f"{SCOPE_ENDPOINT} is not an ancestor of HEAD — the coverage assertion "
+        "is skipping, not checking")

@@ -96,7 +96,7 @@ def test_state_satisfies_variableaccess(shell):
     assert isinstance(shell.state, VariableAccess)
 
 
-def test_expansion_manager_satisfies_expansioncontext(shell):
+def test_expansion_manager_satisfies_expansionruntime(shell):
     assert isinstance(shell.expansion_manager, ExpansionRuntime)
 
 
@@ -104,7 +104,7 @@ def test_job_manager_satisfies_jobruntime(shell):
     assert isinstance(shell.job_manager, JobRuntime)
 
 
-def test_locale_satisfies_localecontext(shell):
+def test_locale_satisfies_localeaccess(shell):
     assert isinstance(shell.state.locale, LocaleAccess)
 
 

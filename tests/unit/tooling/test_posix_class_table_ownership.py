@@ -126,3 +126,36 @@ def test_the_table_module_is_a_true_leaf():
     imports = [ast.unparse(n) for n in ast.walk(tree)
                if isinstance(n, (ast.Import, ast.ImportFrom))]
     assert imports == [], f"the table module must stay dependency-free: {imports}"
+
+
+def test_the_utils_package_init_stays_inside_psh_utils():
+    """The PACKAGE the table lives in must not drag psh code into psh.core.
+
+    Importing ``psh.utils.posix_classes`` executes ``psh/utils/__init__.py``
+    first, so that file sits on the ``core -> utils`` path even though nothing
+    names it. Its eager imports are intra-package today (``.ast_debug``,
+    ``.file_tests``, ``.heredoc_detection``, ``.signal_utils``). The moment one
+    reaches OUTSIDE ``psh.utils``, ``psh.core`` acquires that dependency
+    transitively and the cycle this move killed returns through the side door —
+    while the leaf module itself still looks innocent.
+    """
+    tree = ast.parse((ROOT / "psh/utils/__init__.py").read_text())
+    offenders = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if node.level == 0:
+                if mod.startswith("psh.") and not mod.startswith("psh.utils"):
+                    offenders.append(ast.unparse(node))
+            elif node.level >= 2:
+                # `from ..core import x` climbs out of psh.utils
+                offenders.append(ast.unparse(node))
+        elif isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name.startswith("psh.") and \
+                        not a.name.startswith("psh.utils"):
+                    offenders.append(ast.unparse(node))
+    assert not offenders, (
+        "psh/utils/__init__.py eagerly imports outside psh.utils, so importing "
+        "the POSIX table now drags that dependency into psh.core: "
+        f"{offenders}")
