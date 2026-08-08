@@ -21,22 +21,18 @@ def _psh_shape(script: str) -> str:
 
     An integer part collapses to a SINGLE 'N' however many digits it has;
     fractional digits stay one-for-one, so each directive's precision is
-    still pinned exactly.
+    still pinned exactly. The WIDTH of an integer part is not a property of
+    the format — it is a property of the machine (an elapsed %R can be 0.207
+    or 11.807), so shape tests stay width-blind by design.
 
-    The WIDTH of an integer part is not a property of the format — it is a
-    property of the machine. %P is (user+sys)/real*100, and psh's user time
-    is accounted in 10 ms ticks: when a tick lands inside a sub-millisecond
-    ``time true``, %P reads in the thousands (measured: R=0.000 U=0.010
-    S=0.000 P=11934.31). RARE and load-sensitive: my sampling saw it a
-    couple of times in 30 idle runs, an independent 120-run replay saw
-    0/120 idle and 1/120 under load. The RATE is not pinned here — the
-    mechanism is what matters, and one occurrence is enough to fail a
-    digit-width assertion.
-    Normalizing per digit turned that into a FAILURE — the flake carried as
-    #8 — while what the test exists to check, that %P is emitted with two
-    decimals, was never in doubt. (Recorded separately for the integrator:
-    bash reports ~2% for the same command and never explodes this way. That
-    divergence is a production question, not a test-shape one.)
+    HISTORY: this normalization was originally forced by a %P VALUE defect —
+    user/sys came from ``os.times()`` in 10 ms ticks, so a tick landing
+    inside a sub-millisecond ``time true`` printed P in the thousands
+    (measured: P=11934.31, the flake carried as #8) and sub-tick commands
+    printed P=0.00. That mechanism was FIXED (CR-R2: getrusage microsecond
+    deltas in ``_cpu_seconds``); %P magnitude is now pinned by
+    ``TestCpuPercentMagnitude`` below, and this helper's width-blindness
+    remains only for the machine-dependent integer widths of R/U/S.
     """
     r = subprocess.run([sys.executable, "-m", "psh", "-c", script],
                        capture_output=True, text=True, timeout=15)
@@ -66,16 +62,65 @@ def test_literal_percent():
 
 
 def test_cpu_percent_two_decimals():
-    # %P is (user+sys)/real*100; under parallel-test load `real` for `time
-    # true` can stretch or the percentage can exceed 9, so the INTEGER part
-    # may have 1+ digits (0.00, 12.50, even 100.00). What %P must guarantee is
-    # exactly TWO decimal places — assert that on the raw output rather than
-    # via _psh_shape's digit-normalized "cpu=N.NN" (which pins one integer
-    # digit and flaked under load).
+    # FORMAT leg: %P is emitted with exactly TWO decimal places whatever its
+    # value (the integer width is a property of the machine/load, not the
+    # format). The VALUE envelope is TestCpuPercentMagnitude's job.
     r = subprocess.run([sys.executable, "-m", "psh", "-c",
                         'TIMEFORMAT="cpu=%P"; { time true; } 2>&1'],
                        capture_output=True, text=True, timeout=15)
     assert re.fullmatch(r"cpu=\d+\.\d{2}\n", r.stdout), repr(r.stdout)
+
+
+def _cpu_percent(script: str) -> float:
+    """Run a TIMEFORMAT="cpu=%P" script in psh and return %P as a float."""
+    r = subprocess.run([sys.executable, "-m", "psh", "-c", script],
+                       capture_output=True, text=True, timeout=15)
+    m = re.fullmatch(r"cpu=(\d+\.\d{2})\n", r.stdout)
+    assert m, repr((r.stdout, r.stderr))
+    return float(m.group(1))
+
+
+class TestCpuPercentMagnitude:
+    """%P VALUE envelope (CR-R2 rider, v0.774.0).
+
+    user/sys now come from getrusage microsecond deltas (``_cpu_seconds``),
+    so %P is a true CPU percentage. RED at base (os.times() 10 ms tick):
+    sub-tick commands printed the ZERO face P=0.00 (measured 60/60 idle for
+    ``time true``) and a tick landing inside a sub-millisecond span printed
+    the ABSURD face in the thousands (measured 11934.31). The envelopes are
+    deliberately wide — load changes the values — but both defect faces sit
+    far outside every one of them. Probe transcripts:
+    checkpoint-r/instruments/qr/ (mechanism) + the rider's p01 battery.
+    """
+
+    def test_time_true_percentage_live_and_sane(self):
+        # Base zero face fails the lower bound; absurd face fails the upper.
+        # (psh's in-process `time true` span is Python machinery, so its true
+        # percentage sits near 100 — CPU ~= wall; measured 98.5-100.9.)
+        for _ in range(5):
+            p = _cpu_percent('TIMEFORMAT="cpu=%P"; { time true; } 2>&1')
+            assert 0.0 < p < 200.0, p
+
+    def test_sleep_percentage_near_zero_but_nonzero(self):
+        # A mostly-waiting span: tiny but NONZERO percentage (measured
+        # psh 1.69-2.20 vs bash 0.73-1.24). Base printed exactly 0.00.
+        p = _cpu_percent('TIMEFORMAT="cpu=%P"; { time sleep 0.2; } 2>&1')
+        assert 0.0 < p < 15.0, p
+
+    def test_external_child_cpu_counted(self):
+        # Children-rusage route: base printed 0.00 (child CPU invisible
+        # below the tick). Measured 87-91 at tip.
+        p = _cpu_percent('TIMEFORMAT="cpu=%P"; { time /usr/bin/true; } 2>&1')
+        assert 0.0 < p < 200.0, p
+
+    def test_cpu_bound_loop_near_100(self):
+        # MUST-HOLD CONTROL, green at base too: at ~0.3 s of pure CPU the
+        # old tick quantization was already fine (P~=100). Pins that the fix
+        # did not break the case that always worked.
+        p = _cpu_percent(
+            'TIMEFORMAT="cpu=%P"; { time eval '
+            "'i=0; while [ $i -lt 1500 ]; do i=$((i+1)); done'; } 2>&1")
+        assert 50.0 < p < 150.0, p
 
 
 def test_precision_zero():
