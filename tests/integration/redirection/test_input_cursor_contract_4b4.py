@@ -263,7 +263,7 @@ class TestMustHold:
         in-process description bookkeeping and cannot reach across a fork.
 
         Pinned in both-sides form so the divergence stays VISIBLE: if psh ever
-        converges here, this cell fails and the I1 (d) row gets re-examined
+        converges here, this cell fails and the registry row gets re-examined
         rather than quietly going stale.
         """
         script = (b"read -N 1 a; ( read -N 1 b; printf 'child=<%s>\\n' \"$b\" ); "
@@ -271,7 +271,9 @@ class TestMustHold:
         psh, bash_c = _psh(script, b"\xc3ABC\n"), _bash_c(script, b"\xc3ABC\n")
         assert psh == b"child=<B>\na=<\xc3>\n"     # child missed the eaten 'A'
         assert bash_c == b"child=<A>\na=<\xc3>\n"  # bash-C never read ahead
-        assert psh != bash_c, "I1 (d) — re-examine the row, do not just update it"
+        assert psh != bash_c, (
+            "the builtin-to-child loss converged — re-examine the I1 registry "
+            "row, do not just update this pin")
 
     def test_never_over_read_to_external(self):
         assert _psh(b"read x; cat", b"a\nb\nc\n") == b"b\nc\n"

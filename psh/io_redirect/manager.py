@@ -84,7 +84,7 @@ from .file_redirect import (
     FileRedirector,
     NonExecutableRedirectError,
 )
-from .input_cursor import dup_alias_fds
+from .input_cursor import OpenDescription, dup_alias_fds
 from .process_sub import ProcessSubstitutionHandler
 from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
 
@@ -306,11 +306,13 @@ class BuiltinRedirectFrame:
         # stops the signal path re-running a restore that is already past its
         # stream work — see IOManager.restore_active_builtin_redirections.
         self.streams_restored: bool = False
-        # Input-cursor bindings this frame set aside (InputCursorRegistry
+        # Input-cursor bindings this frame set aside (the InputCursorRegistry
         # push_frame token). Restored with the fds, so a `read` inside the
         # frame cannot see the outer cursor's buffered bytes and a `read`
-        # after it cannot see the frame's.
-        self.saved_input_cursors: Dict[int, object] = {}
+        # after it cannot see the frame's. Typed as the token really is:
+        # `object` would let any value through here, which is a poor trade in
+        # a slot whose whole subject is not losing type information at a seam.
+        self.saved_input_cursors: Dict[int, Optional[OpenDescription]] = {}
 
 
 class IOManager:
@@ -399,6 +401,13 @@ class IOManager:
         Also owns any process substitutions used as redirect targets
         (e.g. `while ...; done < <(cmd)`): their parent-side fds are
         closed and children reaped when the redirected region ends.
+
+        NOTE: nothing in ``psh/`` calls this today — every in-process compound
+        goes through :meth:`guarded_redirections`, which adds the redirect-error
+        diagnostic. It keeps the input-cursor scoping and dup aliasing anyway so
+        a future caller inherits them rather than silently losing them, but that
+        wiring is DEFENSIVE and has no mutation arm: an arm needs a cell that
+        fails when the hook stops firing, and no shell input reaches this path.
         """
         if not redirects:
             yield
