@@ -102,8 +102,15 @@ class InputCursorRegistry:
         if cursor.fd is None:
             # Stream-backed (test injection): do not persist.
             return cursor
-        desc = OpenDescription(f"fd{fd}")
-        self._fd_to_desc[fd] = desc
+        if desc is None:
+            desc = OpenDescription(f"fd{fd}")
+            self._fd_to_desc[fd] = desc
+        # else: REUSE the description already recorded for this fd rather than
+        # replacing it. :meth:`bind_dup` records a description for an fd BEFORE
+        # anything has read it, so the "have a description but no cursor yet"
+        # state is the normal state of a freshly dup'd fd. Overwriting it here
+        # would silently undo the alias — each fd would build its own cursor and
+        # a surplus held on one would be invisible to the other.
         self._desc_to_cursor[desc] = cursor
         return cursor
 
