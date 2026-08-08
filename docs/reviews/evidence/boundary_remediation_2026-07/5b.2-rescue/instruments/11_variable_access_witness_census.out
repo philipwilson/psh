@@ -1,0 +1,30 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=1c70dfbf
+VariableAccess surface: ['get_special_variable', 'get_variable', 'set_variable']
+
+==========================================================================
+CLEAN SITES — member usage strictly within the VariableAccess surface
+==========================================================================
+  *** ZERO CLEAN SITES *** -> R1 says STOP and report; R2 rules.
+
+  CLEAN COUNT: 0
+
+==========================================================================
+NEAR MISSES — touch the surface but ALSO reach outside it
+==========================================================================
+  psh/executor/strategies.py:131  report_exec_failure(state)  members=['error_location_prefix', 'get_variable']   outside=['error_location_prefix']
+  NEAR-MISS COUNT: 1
+
+==========================================================================
+ARM B — classes holding a ShellState-typed attribute
+==========================================================================
+  (no class keeps its ShellState attribute usage inside the surface)
+  ARM B CLEAN COUNT: 0
+
+==========================================================================
+CENSUS TOTAL — arm A (params): 0   arm B (attributes): 0
+==========================================================================
+  *** ZERO CLEAN SITES ACROSS BOTH ARMS ***
+  R1 (c1): STOP on this item, report the empty census, do NOT
+  execute a delete without R2.
+

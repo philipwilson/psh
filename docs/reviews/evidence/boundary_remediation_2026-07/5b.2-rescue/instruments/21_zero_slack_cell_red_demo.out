@@ -1,0 +1,22 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=403c8b01
+
+ARM C  unmodified control      : rc=0 -> PASS (green)
+ARM A  cap psh.utils.ast_debug 6->9 : rc=1
+       names module=True names 'slack 3'=True states 'cap 9 > actual 6'=True
+       expected RED naming the module + amount -> PASS
+ARM B  dead entry psh.protocols : rc=1
+       names module=True says 'defers NOTHING'=True
+       expected RED naming it DEAD -> PASS
+
+restored byte-identical: True   post-restore rc=0
+
+======================================================================
+  ARM C: PASS
+  ARM A: PASS
+  ARM B: PASS
+  3/3 arms as designed
+======================================================================
+
+NOTE: the worktree was never edited — all arms ran in the scratch
+copy at /Users/pwilson/src/psh-r5b-2/tmp/redslack.

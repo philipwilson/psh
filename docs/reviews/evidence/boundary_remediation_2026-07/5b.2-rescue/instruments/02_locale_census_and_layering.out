@@ -1,0 +1,75 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=1c70dfbf
+
+==========================================================================
+PART 1 — method 19 (chain[-2] == 'state'), the BINDING census
+==========================================================================
+  psh/core/scope.py  (1 site)
+  psh/executor/array.py  (2 sites)
+  psh/executor/enhanced_test_evaluator.py  (2 sites)
+  psh/expansion/glob.py  (1 site)
+  psh/expansion/operators.py  (1 site)
+  psh/expansion/parameter_expansion.py  (6 sites)
+  TOTAL: 6 files, 13 sites
+
+==========================================================================
+PART 2 — method 2: EVERY `.locale` access, no base filter
+==========================================================================
+  psh/core/scope.py  (1 site)
+  psh/core/state.py  (8 sites)
+  psh/executor/array.py  (2 sites)
+  psh/executor/enhanced_test_evaluator.py  (2 sites)
+  psh/expansion/glob.py  (1 site)
+  psh/expansion/operators.py  (1 site)
+  psh/expansion/parameter_expansion.py  (6 sites)
+  TOTAL: 7 files, 21 sites
+
+==========================================================================
+DIFFERENCE — accesses method 19 does NOT count (its blind spot)
+==========================================================================
+  psh/core/state.py:147   chain=self.locale
+      self.locale = LocaleService(self.env, deferred=True)
+  psh/core/state.py:518   chain=self.locale
+      service = self.locale
+  psh/core/state.py:619   chain=self.locale
+      self.locale = parent.locale
+  psh/core/state.py:619   chain=parent.locale
+      self.locale = parent.locale
+  psh/core/state.py:493   chain=self.locale
+      set_process_active_locale(self.locale)
+  psh/core/state.py:495   chain=self.locale
+      if self.locale.pending_libc:
+  psh/core/state.py:1165   chain=self.locale
+      if self.locale.pending_libc:
+  psh/core/state.py:1164   chain=self.locale
+      self.locale.reinit(snapshot, warn=warn)
+
+  files ONLY in method 2: ['psh/core/state.py']
+
+==========================================================================
+PART 3 — adoption-route layering probe (the guard's own analyzer)
+==========================================================================
+  CORE_MODULE_IMPORT_ALLOWLIST = ['psh.ast_nodes', 'psh.utils', 'psh.version']
+  'psh.protocols' in allowlist? False
+
+  A: RUNTIME module-level import (illegal shape)
+      runtime module-level psh edges : ['psh.protocols']
+      deferred (func-body) count     : 0
+      near-leaf rule OFFENDERS       : ['psh.protocols']
+      => test_core_is_near_leaf would FAIL; FUNC_IMPORT_CAPS impact: 0
+
+  B: TYPE_CHECKING-only import (candidate route)
+      runtime module-level psh edges : []
+      deferred (func-body) count     : 0
+      near-leaf rule OFFENDERS       : []
+      => test_core_is_near_leaf would PASS; FUNC_IMPORT_CAPS impact: 0
+
+  C: function-body deferred import (costs a cap)
+      runtime module-level psh edges : []
+      deferred (func-body) count     : 1
+      near-leaf rule OFFENDERS       : []
+      => test_core_is_near_leaf would PASS; FUNC_IMPORT_CAPS impact: 1
+
+  LIVE psh/core/scope.py: runtime psh edges=['psh.core.exceptions', 'psh.core.locale_service', 'psh.core.special_registry', 'psh.core.variable_lookup', 'psh.core.variable_store', 'psh.core.variables'], deferred count=2
+  existing TYPE_CHECKING block in core/scope.py:
+      (none — the route would ADD the block)

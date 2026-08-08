@@ -1,0 +1,27 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=1c70dfbf
+
+FREE set: 94 sites, 70 distinct edges, 46 modules
+
+==========================================================================
+REAL IMPORT of the FREE-only tree
+==========================================================================
+  ile "/Users/pwilson/src/psh-r5b-2/tmp/free-scratch/psh/parser/recursive_descent/parser.py", line 13, in <module>
+    from ..parse_outcome import ParseOutcome, outcome_from_parse
+ImportError: cannot import name 'ParseOutcome' from partially initialized module 'psh.parser.parse_outcome' (most likely due to a circular import) (/Users/pwilson/src/psh-r5b-2/tmp/free-scratch/psh/parser/parse_outcome.py)
+  returncode=1
+
+==========================================================================
+`import psh` CUMULATIVE COST (ms) — median of 5
+==========================================================================
+  base          :     67.6   [65.393, 66.004, 67.61, 79.89, 71.414]
+  FREE hoists   :    117.4   [158.039, 89.946, 144.82, 82.587, 146.043, 83.961, 144.99, 82.602, 147.0, 82.431]
+  ALL hoists    :    251.9   [252.699, 272.675, 250.978, 249.234, 251.907]
+
+  FREE vs base  : 1.74x
+  ALL  vs base  : 3.73x
+
+  PROVENANCE: measured in a scratch COPY of the tree under this
+  worktree, not at a detached checkout of a declared tip (B71). It
+  is a Phase A decision probe, not a certification figure; if the
+  ruling turns on it, it gets re-measured detached in Phase B.

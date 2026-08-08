@@ -1,0 +1,113 @@
+PER-MODULE CAP TABLE DIFF (analyzer-derived from the verified tree)
+======================================================================
+
+ENTRIES REMOVED (actual falls to 0): 36
+  - 'psh.__main__': 3  -> DELETE
+  - 'psh.builtins.declare_format': 1  -> DELETE
+  - 'psh.builtins.environment': 5  -> DELETE
+  - 'psh.builtins.function_support': 7  -> DELETE
+  - 'psh.builtins.hash_builtin': 1  -> DELETE
+  - 'psh.builtins.let_builtin': 1  -> DELETE
+  - 'psh.builtins.parse_tree': 4  -> DELETE
+  - 'psh.builtins.shell_state': 4  -> DELETE
+  - 'psh.core.trap_manager': 1  -> DELETE
+  - 'psh.core.variable_store': 2  -> DELETE
+  - 'psh.core.variables': 1  -> DELETE
+  - 'psh.executor.control_flow': 6  -> DELETE
+  - 'psh.executor.core': 8  -> DELETE
+  - 'psh.executor.process_launcher': 1  -> DELETE
+  - 'psh.expansion.manager': 5  -> DELETE
+  - 'psh.expansion.operands': 3  -> DELETE
+  - 'psh.expansion.word_expander': 2  -> DELETE
+  - 'psh.interactive.multiline_handler': 1  -> DELETE
+  - 'psh.interactive.prompt': 2  -> DELETE
+  - 'psh.interactive.rc_loader': 1  -> DELETE
+  - 'psh.io_redirect.file_redirect': 2  -> DELETE
+  - 'psh.lexer.expansion_parser': 1  -> DELETE
+  - 'psh.lexer.modular_lexer': 6  -> DELETE
+  - 'psh.lexer.recognizers.process_sub': 1  -> DELETE
+  - 'psh.parser': 1  -> DELETE
+  - 'psh.parser.array_flat_text': 1  -> DELETE
+  - 'psh.parser.parse_outcome': 1  -> DELETE
+  - 'psh.parser.recursive_descent.parsers.arrays': 1  -> DELETE
+  - 'psh.parser.recursive_descent.support.word_builder': 1  -> DELETE
+  - 'psh.scripting.input_preprocessing': 1  -> DELETE
+  - 'psh.scripting.input_sources': 1  -> DELETE
+  - 'psh.scripting.lex_parse': 1  -> DELETE
+  - 'psh.scripting.source_processor': 5  -> DELETE
+  - 'psh.scripting.visitor_modes': 7  -> DELETE
+  - 'psh.shell': 5  -> DELETE
+  - 'psh.visitor.enhanced_validator_visitor': 1  -> DELETE
+
+ENTRIES LOWERED: 14
+  - 'psh.builtins.command_builtin': 6 -> 5
+  - 'psh.builtins.declaration_engine': 2 -> 1
+  - 'psh.builtins.type_builtin': 3 -> 2
+  - 'psh.core.assignment_utils': 2 -> 1
+  - 'psh.core.scope': 2 -> 1
+  - 'psh.core.state': 3 -> 2
+  - 'psh.executor.pipeline': 2 -> 1
+  - 'psh.executor.subshell': 6 -> 2
+  - 'psh.expansion.extglob': 4 -> 3
+  - 'psh.io_redirect.process_sub': 4 -> 2
+  - 'psh.lexer': 2 -> 1
+  - 'psh.lexer.pure_helpers': 3 -> 2
+  - 'psh.lexer.recognizers.word_scanners': 4 -> 1
+  - 'psh.parser.recursive_descent.support.nested_parse': 2 -> 1
+
+ENTRIES UNCHANGED: 16
+    'psh.ast_nodes.syntax_templates': 1
+    'psh.builtins.core': 2
+    'psh.builtins.env_command': 1
+    'psh.builtins.print_builtin': 1
+    'psh.builtins.source_command': 1
+    'psh.core.locale_service': 3
+    'psh.executor.child_policy': 1
+    'psh.executor.strategies': 3
+    'psh.expansion.command_sub': 2
+    'psh.expansion.glob': 4
+    'psh.expansion.operators': 1
+    'psh.expansion.subscript': 1
+    'psh.interactive.base': 4
+    'psh.scripting.base': 3
+    'psh.utils.ast_debug': 6
+    'psh.utils.heredoc_detection': 3
+
+MODULES WITH actual>0 AND NO EXISTING ENTRY: []
+
+======================================================================
+BEFORE: entries 66, cap 177, actual 177, slack 0
+AFTER : entries 30, cap 62, actual 62, slack 0
+DELTA : entries -36, cap -115, actual -115
+
+NEW FUNC_IMPORT_CAPS VALUES:
+    'psh.ast_nodes.syntax_templates': 1,
+    'psh.builtins.command_builtin': 5,
+    'psh.builtins.core': 2,
+    'psh.builtins.declaration_engine': 1,
+    'psh.builtins.env_command': 1,
+    'psh.builtins.print_builtin': 1,
+    'psh.builtins.source_command': 1,
+    'psh.builtins.type_builtin': 2,
+    'psh.core.assignment_utils': 1,
+    'psh.core.locale_service': 3,
+    'psh.core.scope': 1,
+    'psh.core.state': 2,
+    'psh.executor.child_policy': 1,
+    'psh.executor.pipeline': 1,
+    'psh.executor.strategies': 3,
+    'psh.executor.subshell': 2,
+    'psh.expansion.command_sub': 2,
+    'psh.expansion.extglob': 3,
+    'psh.expansion.glob': 4,
+    'psh.expansion.operators': 1,
+    'psh.expansion.subscript': 1,
+    'psh.interactive.base': 4,
+    'psh.io_redirect.process_sub': 2,
+    'psh.lexer': 1,
+    'psh.lexer.pure_helpers': 2,
+    'psh.lexer.recognizers.word_scanners': 1,
+    'psh.parser.recursive_descent.support.nested_parse': 1,
+    'psh.scripting.base': 3,
+    'psh.utils.ast_debug': 6,
+    'psh.utils.heredoc_detection': 3,

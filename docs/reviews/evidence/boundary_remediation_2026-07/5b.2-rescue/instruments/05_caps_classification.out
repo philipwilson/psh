@@ -1,0 +1,285 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=1c70dfbf
+
+==========================================================================
+BASE FIGURES (re-derived with the guard's own analyzer)
+==========================================================================
+  FUNC_IMPORT_CAPS entries : 71
+  cap TOTAL                : 198
+  ACTUAL total             : 177 across 66 modules
+  SLACK (cap - actual)     : 21
+
+==========================================================================
+PER-SITE HOIST SIMULATION
+==========================================================================
+  HOISTABLE sites   : 119
+  CYCLE-FORCED sites: 58
+  (sum = 177; actual total = 177)
+
+  --- HOISTABLE (module-level edge keeps the lock green) ---
+    psh.__main__:230  -> psh.scripting.program_source   [_dispatch]
+    psh.__main__:262  -> psh.scripting.program_source   [_dispatch]
+    psh.__main__:301  -> psh.scripting.program_source   [_dispatch]
+    psh.builtins.command_builtin:111  -> psh.builtins.type_builtin   [_render_info]
+    psh.builtins.declaration_engine:290  -> psh.core.variables   [scalar_append_into_array]
+    psh.builtins.declare_format:111  -> psh.visitor.formatter_quoting   [format_assignment_reuse]
+    psh.builtins.environment:168  -> psh.builtins.registry   [execute_in_context]
+    psh.builtins.environment:209  -> psh.builtins.declaration_engine   [execute_in_context]
+    psh.builtins.environment:270  -> psh.visitor   [_export_functions]
+    psh.builtins.environment:306  -> psh.builtins.declare_format   [_print_exports]
+    psh.builtins.environment:365  -> psh.builtins.declare_format   [execute]
+    psh.builtins.function_support:243  -> psh.builtins.declaration_engine   [_is_valid_nameref_target]
+    psh.builtins.function_support:247  -> psh.builtins.declaration_engine   [_attributes_from_options]
+    psh.builtins.function_support:251  -> psh.builtins.declaration_engine   [_removed_attributes_from_options]
+    psh.builtins.function_support:347  -> psh.builtins.declare_format   [_list_namerefs]
+    psh.builtins.function_support:414  -> psh.builtins.declaration_engine   [_declare_assignment]
+    psh.builtins.function_support:519  -> psh.builtins.declaration_engine   [_declare_bare_name]
+    psh.builtins.function_support:662  -> psh.builtins.declare_format   [_print_simple_declaration]
+    psh.builtins.hash_builtin:103  -> psh.visitor.formatter_quoting   [execute]
+    psh.builtins.let_builtin:42  -> psh.expansion.arithmetic   [execute]
+    psh.builtins.parse_tree:97  -> psh.parser.visualization   [execute]
+    psh.builtins.parse_tree:105  -> psh.parser.visualization   [execute]
+    psh.builtins.parse_tree:113  -> psh.parser.visualization   [execute]
+    psh.builtins.parse_tree:117  -> psh.parser.visualization   [execute]
+    psh.builtins.shell_state:406  -> psh.version   [execute]
+    psh.builtins.shell_state:459  -> psh.builtins.declaration_engine   [execute_in_context]
+    psh.builtins.shell_state:534  -> psh.builtins.declaration_engine   [_declare_one_local]
+    psh.builtins.shell_state:557  -> psh.builtins.declaration_engine   [_declare_one_local]
+    psh.builtins.type_builtin:40  -> psh.visitor   [render_candidate_banner]
+    psh.core.assignment_utils:114  -> psh.core.variables   [resolve_append_assignment]
+    psh.core.scope:428  -> psh.core.exceptions   [resolve_nameref_name]
+    psh.core.state:930  -> psh.ast_nodes   [bash_command]
+    psh.core.trap_manager:488  -> psh.core.internal_errors   [execute_trap]
+    psh.core.variable_store:213  -> psh.core.exceptions   [set_element]
+    psh.core.variable_store:245  -> psh.core.exceptions   [unset_element]
+    psh.core.variables:166  -> psh.core.exceptions   [resolve_write_index]
+    psh.executor.control_flow:322  -> psh.expansion.brace_expansion   [execute_for]
+    psh.executor.control_flow:362  -> psh.executor.strategies   [execute_for]
+    psh.executor.control_flow:614  -> psh.expansion.brace_expansion   [execute_select]
+    psh.executor.control_flow:710  -> psh.executor.strategies   [_arith_step_error_status]
+    psh.executor.control_flow:763  -> psh.expansion.word_expansion_types   [_expand_loop_items]
+    psh.executor.control_flow:778  -> psh.expansion.pattern   [_match_shell_pattern]
+    psh.executor.core:503  -> psh.expansion.arithmetic   [visit_ArithmeticEvaluation]
+    psh.executor.core:526  -> psh.executor.strategies   [visit_ArithmeticEvaluation]
+    psh.executor.core:534  -> psh.executor.strategies   [visit_ArithmeticEvaluation]
+    psh.executor.core:551  -> psh.executor.strategies   [visit_CStyleForLoop]
+    psh.executor.core:562  -> psh.expansion.arithmetic   [visit_EnhancedTestStatement]
+    psh.executor.core:563  -> psh.executor.enhanced_test_evaluator   [visit_EnhancedTestStatement]
+    psh.executor.core:584  -> psh.executor.strategies   [visit_EnhancedTestStatement]
+    psh.executor.core:596  -> psh.executor.strategies   [visit_EnhancedTestStatement]
+    psh.executor.pipeline:488  -> psh.io_redirect   [_setup_pipeline_redirections]
+    psh.executor.process_launcher:325  -> psh.executor.child_policy   [_child_setup_and_exec]
+    psh.executor.subshell:137  -> psh.executor.child_policy   [_execute_foreground_subshell.execute_fn]
+    psh.executor.subshell:241  -> psh.executor.child_policy   [_reraise_child_signal_death]
+    psh.executor.subshell:260  -> psh.executor.child_policy   [_execute_background_subshell.execute_fn]
+    psh.executor.subshell:319  -> psh.executor.child_policy   [_execute_background_brace_group.execute_fn]
+    psh.expansion.extglob:372  -> psh.expansion.glob   [_bracket_to_regex_cached]
+    psh.expansion.glob:128  -> psh.expansion.pattern_engine   [_component_matcher]
+    psh.expansion.glob:150  -> psh.expansion.extglob   [expand]
+    psh.expansion.glob:334  -> psh.expansion.extglob   [_expand_globstar.is_pattern_comp]
+    psh.expansion.glob:454  -> psh.expansion.extglob   [_match_glob_component]
+    psh.expansion.manager:72  -> psh.expansion.evaluator   [evaluator]
+    psh.expansion.manager:264  -> psh.expansion.word_expansion_types   [expand_word_as_subject]
+    psh.expansion.manager:290  -> psh.expansion.operands   [expand_word_as_pattern]
+    psh.expansion.manager:390  -> psh.expansion.arithmetic   [execute_arithmetic_expansion]
+    psh.expansion.manager:402  -> psh.expansion.arithmetic   [arithmetic_expansion_value]
+    psh.expansion.operands:586  -> psh.lexer.pure_helpers   [_skip_dollar_construct]
+    psh.expansion.operands:627  -> psh.lexer.pure_helpers   [_expand_one_dollar]
+    psh.expansion.operands:755  -> psh.expansion.parameter_expansion   [_expand_replacement_operand]
+    psh.expansion.word_expander:647  -> psh.expansion.extglob   [_field_glob_eligible]
+    psh.expansion.word_expander:704  -> psh.expansion.pattern_engine   [_pattern_from_runs]
+    psh.interactive.multiline_handler:74  -> psh.scripting.input_preprocessing   [read_command]
+    psh.interactive.prompt:290  -> psh.version   [_get_version_short]
+    psh.interactive.prompt:299  -> psh.version   [_get_version_long]
+    psh.interactive.rc_loader:39  -> psh.scripting.program_source   [load_rc_file]
+    psh.io_redirect.file_redirect:416  -> psh.expansion.word_expansion_types   [expand_redirect_target]
+    psh.io_redirect.file_redirect:524  -> psh.expansion.operands   [_heredoc_expanded_content]
+    psh.io_redirect.process_sub:73  -> psh.io_redirect.fd_remap   [create_process_substitution._io_setup]
+    psh.io_redirect.process_sub:174  -> psh.io_redirect.fd_remap   [_create_write_process_substitution._io_setup]
+    psh.lexer:93  -> psh.lexer.word_fusion   [_post_lex]
+    psh.lexer.expansion_parser:285  -> psh.lexer.unicode_support   [_parse_simple_variable]
+    psh.lexer.modular_lexer:98  -> psh.lexer.recognizers.comment   [_setup_recognizers]
+    psh.lexer.modular_lexer:99  -> psh.lexer.recognizers.literal   [_setup_recognizers]
+    psh.lexer.modular_lexer:100  -> psh.lexer.recognizers.operator   [_setup_recognizers]
+    psh.lexer.modular_lexer:101  -> psh.lexer.recognizers.operator_debris   [_setup_recognizers]
+    psh.lexer.modular_lexer:102  -> psh.lexer.recognizers.process_sub   [_setup_recognizers]
+    psh.lexer.modular_lexer:447  -> psh.lexer.quote_parser   [_lex_quoted]
+    psh.lexer.pure_helpers:463  -> psh.lexer.unicode_support   [extract_variable_name]
+    psh.lexer.recognizers.process_sub:59  -> psh.lexer.cmdsub_scanner   [recognize]
+    psh.lexer.recognizers.word_scanners:79  -> psh.lexer.cmdsub_scanner   [skip_expansion_region]
+    psh.lexer.recognizers.word_scanners:80  -> psh.lexer.pure_helpers   [skip_expansion_region]
+    psh.lexer.recognizers.word_scanners:312  -> psh.lexer.constants   [can_start_expansion]
+    psh.parser:111  -> psh.parser.combinators.parser   [parse_with_inputs]
+    psh.parser.array_flat_text:83  -> psh.expansion.word_expander   [array_init_argv_key]
+    psh.parser.parse_outcome:109  -> psh.parser.recursive_descent.helpers   [outcome_from_parse]  (has cycle-break comment!)
+    psh.parser.recursive_descent.parsers.arrays:325  -> psh.parser.recursive_descent.support.word_builder   [_element_value_from_head]
+    psh.parser.recursive_descent.support.nested_parse:62  -> psh.parser.recursive_descent.helpers   [parse_nested_command]
+    psh.parser.recursive_descent.support.word_builder:90  -> psh.parser.recursive_descent.support.nested_parse   [_nested_program]
+    psh.scripting.input_preprocessing:59  -> psh.utils.heredoc_detection   [process_line_continuations]
+    psh.scripting.input_sources:68  -> psh.builtins.input_reader   [_make_input_cursor]  (has cycle-break comment!)
+    psh.scripting.lex_parse:78  -> psh.parser   [render_syntax_error_detail]
+    psh.scripting.source_processor:315  -> psh.scripting.lex_parse   [_report_syntax_error]
+    psh.scripting.source_processor:574  -> psh.scripting.input_preprocessing   [_preprocess_command]
+    psh.scripting.source_processor:666  -> psh.scripting.lex_parse   [_parse_command]
+    psh.scripting.source_processor:779  -> psh.builtins   [_classify_buffered_error]
+    psh.scripting.source_processor:803  -> psh.core   [_classify_buffered_error]
+    psh.scripting.visitor_modes:49  -> psh.scripting.lex_parse   [_report_syntax_error]
+    psh.scripting.visitor_modes:120  -> psh.scripting.program_source   [handle_visitor_mode_for_script]
+    psh.scripting.visitor_modes:145  -> psh.visitor   [_run_validate]
+    psh.scripting.visitor_modes:154  -> psh.visitor   [_run_format]
+    psh.scripting.visitor_modes:160  -> psh.visitor   [_run_metrics]
+    psh.scripting.visitor_modes:168  -> psh.visitor   [_run_security]
+    psh.scripting.visitor_modes:176  -> psh.visitor   [_run_lint]
+    psh.shell:272  -> psh.executor.command_resolver   [_init_shell_components]
+    psh.shell:275  -> psh.executor.process_launcher   [_init_shell_components]
+    psh.shell:280  -> psh.interactive.history_expansion   [_init_shell_components]
+    psh.shell:804  -> psh.executor   [_execute_with_visitor]
+    psh.shell:900  -> psh.scripting.program_source   [run_command]
+    psh.visitor.enhanced_validator_visitor:616  -> psh.visitor.constants   [_check_security_issues]
+
+  --- CYCLE-FORCED (module-level edge turns the lock red) ---
+    psh.ast_nodes.syntax_templates:179  -> psh.lexer.token_types   [absolute_spans]  package cycle: psh.ast_nodes <-> psh.core <-> psh.lexer  (cycle-break comment present)
+    psh.builtins.command_builtin:61  -> psh.executor.strategies   [execute]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.command_builtin:84  -> psh.executor.command_resolver   [_show_command_info]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.command_builtin:105  -> psh.executor.command_resolver   [_render_info]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.command_builtin:131  -> psh.executor   [_execute_external_command]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.command_builtin:195  -> psh.executor.strategies   [execute]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.core:274  -> psh.executor.strategies   [execute]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.core:297  -> psh.executor.strategies   [execute]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.declaration_engine:260  -> psh.executor.array   [build_array_init]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.env_command:88  -> psh.executor   [_exec_external]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.print_builtin:88  -> psh.interactive.prompt   [execute]  package cycle: psh.builtins <-> psh.executor <-> psh.interac
+    psh.builtins.source_command:87  -> psh.scripting.program_source   [execute]  package cycle: psh.builtins <-> psh.invocation <-> psh.scrip
+    psh.builtins.type_builtin:33  -> psh.executor.command_resolver   [render_candidate_banner]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.builtins.type_builtin:78  -> psh.executor.command_resolver   [execute]  package cycle: psh.builtins <-> psh.executor <-> psh.io_redi
+    psh.core.assignment_utils:84  -> psh.lexer.unicode_support   [is_valid_assignment]  package cycle: psh.core <-> psh.lexer
+    psh.core.locale_service:267  -> psh.lexer.unicode_support   [upper]  package cycle: psh.core <-> psh.lexer
+    psh.core.locale_service:273  -> psh.lexer.unicode_support   [lower]  package cycle: psh.core <-> psh.lexer
+    psh.core.locale_service:279  -> psh.lexer.unicode_support   [toggle]  package cycle: psh.core <-> psh.lexer
+    psh.core.scope:994  -> psh.expansion.arithmetic   [_evaluate_integer]  package cycle: psh.core <-> psh.expansion <-> psh.lexer
+    psh.core.state:540  -> psh.io_redirect.input_cursor   [_new_input_cursor_registry]  package cycle: psh.builtins <-> psh.core <-> psh.expansion <  (cycle-break comment present)
+    psh.core.state:931  -> psh.visitor   [bash_command]  package cycle: psh.core <-> psh.visitor
+    psh.executor.child_policy:548  -> psh.shell   [run_child_shell]  package cycle: psh.executor <-> psh.interactive <-> psh.shel
+    psh.executor.pipeline:169  -> psh.interactive.title   [_execute_pipeline]  package cycle: psh.executor <-> psh.interactive
+    psh.executor.strategies:490  -> psh.executor.core   [execute]  MODULE-level cycle: psh.executor.command -> psh.executor.com  (cycle-break comment present)
+    psh.executor.strategies:519  -> psh.executor.core   [_execute_function_in_background.execute_fn.body]  MODULE-level cycle: psh.executor.command -> psh.executor.com  (cycle-break comment present)
+    psh.executor.strategies:634  -> psh.interactive.title   [execute]  package cycle: psh.executor <-> psh.interactive  (cycle-break comment present)
+    psh.executor.subshell:136  -> psh.shell   [_execute_foreground_subshell.execute_fn]  package cycle: psh.executor <-> psh.interactive <-> psh.shel
+    psh.executor.subshell:259  -> psh.shell   [_execute_background_subshell.execute_fn]  package cycle: psh.executor <-> psh.interactive <-> psh.shel
+    psh.expansion.command_sub:64  -> psh.io_redirect   [_child_io_setup]  package cycle: psh.builtins <-> psh.expansion <-> psh.io_red
+    psh.expansion.command_sub:131  -> psh.executor   [execute]  package cycle: psh.builtins <-> psh.executor <-> psh.expansi
+    psh.expansion.extglob:466  -> psh.expansion.pattern_engine   [_extglob_consume]  MODULE-level cycle: psh.expansion.extglob -> psh.expansion.p
+    psh.expansion.extglob:474  -> psh.expansion.pattern_engine   [extglob_fullmatch]  MODULE-level cycle: psh.expansion.extglob -> psh.expansion.p
+    psh.expansion.extglob:487  -> psh.expansion.pattern_engine   [extglob_match_at]  MODULE-level cycle: psh.expansion.extglob -> psh.expansion.p
+    psh.expansion.operators:529  -> psh.interactive.prompt   [_apply_transform]  package cycle: psh.builtins <-> psh.executor <-> psh.expansi  (cycle-break comment present)
+    psh.expansion.subscript:236  -> psh.parser.recursive_descent.support.word_builder   [_segment_parts]  package cycle: psh.expansion <-> psh.parser  (cycle-break comment present)
+    psh.interactive.base:26  -> psh.interactive.history_manager   [__init__]  MODULE-level cycle: psh.interactive.base -> psh.interactive.
+    psh.interactive.base:27  -> psh.interactive.prompt_manager   [__init__]  MODULE-level cycle: psh.interactive.base -> psh.interactive.
+    psh.interactive.base:28  -> psh.interactive.repl_loop   [__init__]  MODULE-level cycle: psh.interactive -> psh.interactive.base 
+    psh.interactive.base:29  -> psh.interactive.signal_manager   [__init__]  MODULE-level cycle: psh.interactive.base -> psh.interactive.
+    psh.io_redirect.process_sub:61  -> psh.executor   [create_process_substitution]  package cycle: psh.executor <-> psh.io_redirect
+    psh.io_redirect.process_sub:143  -> psh.executor   [_create_write_process_substitution]  package cycle: psh.executor <-> psh.io_redirect
+    psh.lexer:148  -> psh.lexer.heredoc_lexer   [tokenize_with_heredocs]  MODULE-level cycle: psh.lexer -> psh.lexer.expansion_parser 
+    psh.lexer.pure_helpers:190  -> psh.lexer.cmdsub_scanner   [scan_double_paren_arithmetic]  MODULE-level cycle: psh.lexer.cmdsub_scanner -> psh.lexer.pu
+    psh.lexer.pure_helpers:561  -> psh.lexer.cmdsub_scanner   [validate_brace_expansion]  MODULE-level cycle: psh.lexer.cmdsub_scanner -> psh.lexer.pu
+    psh.lexer.recognizers.word_scanners:591  -> psh.lexer.quote_parser   [scan_inline_ansi_c]  MODULE-level cycle: psh.lexer -> psh.lexer.expansion_parser 
+    psh.parser.recursive_descent.support.nested_parse:63  -> psh.parser.recursive_descent.parser   [parse_nested_command]  MODULE-level cycle: psh.parser.recursive_descent.parser -> p
+    psh.scripting.base:37  -> psh.scripting.script_executor   [__init__]  MODULE-level cycle: psh.scripting.base -> psh.scripting.scri
+    psh.scripting.base:38  -> psh.scripting.script_validator   [__init__]  MODULE-level cycle: psh.scripting.base -> psh.scripting.scri
+    psh.scripting.base:39  -> psh.scripting.source_processor   [__init__]  MODULE-level cycle: psh.scripting.base -> psh.scripting.sour
+    psh.utils.ast_debug:24  -> psh.parser.visualization   [print_ast_debug]  package cycle: psh.core <-> psh.expansion <-> psh.lexer <-> 
+    psh.utils.ast_debug:34  -> psh.parser.visualization   [print_ast_debug]  package cycle: psh.core <-> psh.expansion <-> psh.lexer <-> 
+    psh.utils.ast_debug:43  -> psh.parser.visualization   [print_ast_debug]  package cycle: psh.core <-> psh.expansion <-> psh.lexer <-> 
+    psh.utils.ast_debug:48  -> psh.parser.visualization   [print_ast_debug]  package cycle: psh.core <-> psh.expansion <-> psh.lexer <-> 
+    psh.utils.ast_debug:60  -> psh.parser.visualization   [print_ast_debug]  package cycle: psh.core <-> psh.expansion <-> psh.lexer <-> 
+    psh.utils.ast_debug:80  -> psh.visitor   [print_ast_debug]  package cycle: psh.core <-> psh.utils <-> psh.visitor
+    psh.utils.heredoc_detection:190  -> psh.lexer.pure_helpers   [unquote_heredoc_delimiter]  package cycle: psh.core <-> psh.lexer <-> psh.utils  (cycle-break comment present)
+    psh.utils.heredoc_detection:420  -> psh.lexer.cmdsub_scanner   [_inside_closed_cmdsub]  package cycle: psh.core <-> psh.lexer <-> psh.utils
+    psh.utils.heredoc_detection:574  -> psh.lexer.recognizers.comment   [_comment_start]  package cycle: psh.core <-> psh.lexer <-> psh.utils
+
+==========================================================================
+PER-ENTRY TABLE (cap vs actual)
+==========================================================================
+  psh.__main__                                            cap=3   actual=3     hoistable:3
+  psh.ast_nodes.syntax_templates                          cap=1   actual=1   
+  psh.builtins.command_builtin                            cap=6   actual=6     hoistable:1
+  psh.builtins.core                                       cap=2   actual=2   
+  psh.builtins.declaration_engine                         cap=2   actual=2     hoistable:1
+  psh.builtins.declare_format                             cap=1   actual=1     hoistable:1
+  psh.builtins.env_command                                cap=1   actual=1   
+  psh.builtins.environment                                cap=5   actual=5     hoistable:5
+  psh.builtins.function_support                           cap=7   actual=7     hoistable:7
+  psh.builtins.hash_builtin                               cap=1   actual=1     hoistable:1
+  psh.builtins.let_builtin                                cap=1   actual=1     hoistable:1
+  psh.builtins.parse_tree                                 cap=4   actual=4     hoistable:4
+  psh.builtins.print_builtin                              cap=1   actual=1   
+  psh.builtins.shell_state                                cap=4   actual=4     hoistable:4
+  psh.builtins.source_command                             cap=2   actual=1   SLACK 1
+  psh.builtins.type_builtin                               cap=3   actual=3     hoistable:1
+  psh.core.assignment_utils                               cap=2   actual=2     hoistable:1
+  psh.core.locale_service                                 cap=3   actual=3   
+  psh.core.scope                                          cap=2   actual=2     hoistable:1
+  psh.core.state                                          cap=3   actual=3     hoistable:1
+  psh.core.trap_manager                                   cap=1   actual=1     hoistable:1
+  psh.core.variable_store                                 cap=2   actual=2     hoistable:2
+  psh.core.variables                                      cap=1   actual=1     hoistable:1
+  psh.executor.child_policy                               cap=1   actual=1   
+  psh.executor.control_flow                               cap=6   actual=6     hoistable:6
+  psh.executor.core                                       cap=8   actual=8     hoistable:8
+  psh.executor.pipeline                                   cap=4   actual=2   SLACK 2  hoistable:1
+  psh.executor.process_launcher                           cap=1   actual=1     hoistable:1
+  psh.executor.strategies                                 cap=3   actual=3   
+  psh.executor.subshell                                   cap=6   actual=6     hoistable:4
+  psh.expansion.command_sub                               cap=2   actual=2   
+  psh.expansion.extglob                                   cap=4   actual=4     hoistable:1
+  psh.expansion.glob                                      cap=4   actual=4     hoistable:4
+  psh.expansion.manager                                   cap=5   actual=5     hoistable:5
+  psh.expansion.operands                                  cap=3   actual=3     hoistable:3
+  psh.expansion.operators                                 cap=1   actual=1   
+  psh.expansion.parameter_expansion                       cap=12  actual=0   DEAD (delete entry)
+  psh.expansion.pattern                                   cap=2   actual=0   DEAD (delete entry)
+  psh.expansion.subscript                                 cap=1   actual=1   
+  psh.expansion.word_expander                             cap=2   actual=2     hoistable:2
+  psh.interactive.base                                    cap=4   actual=4   
+  psh.interactive.multiline_handler                       cap=1   actual=1     hoistable:1
+  psh.interactive.prompt                                  cap=2   actual=2     hoistable:2
+  psh.interactive.rc_loader                               cap=1   actual=1     hoistable:1
+  psh.io_redirect.file_redirect                           cap=2   actual=2     hoistable:2
+  psh.io_redirect.process_sub                             cap=4   actual=4     hoistable:2
+  psh.lexer                                               cap=2   actual=2     hoistable:1
+  psh.lexer.cmdsub_scanner                                cap=2   actual=0   DEAD (delete entry)
+  psh.lexer.expansion_parser                              cap=1   actual=1     hoistable:1
+  psh.lexer.heredoc_collector                             cap=1   actual=0   DEAD (delete entry)
+  psh.lexer.heredoc_lexer                                 cap=1   actual=0   DEAD (delete entry)
+  psh.lexer.modular_lexer                                 cap=6   actual=6     hoistable:6
+  psh.lexer.pure_helpers                                  cap=3   actual=3     hoistable:1
+  psh.lexer.recognizers.process_sub                       cap=1   actual=1     hoistable:1
+  psh.lexer.recognizers.word_scanners                     cap=4   actual=4     hoistable:3
+  psh.parser                                              cap=1   actual=1     hoistable:1
+  psh.parser.array_flat_text                              cap=1   actual=1     hoistable:1
+  psh.parser.parse_outcome                                cap=1   actual=1     hoistable:1
+  psh.parser.recursive_descent.parsers.arrays             cap=1   actual=1     hoistable:1
+  psh.parser.recursive_descent.support.nested_parse       cap=2   actual=2     hoistable:1
+  psh.parser.recursive_descent.support.word_builder       cap=1   actual=1     hoistable:1
+  psh.scripting.base                                      cap=3   actual=3   
+  psh.scripting.input_preprocessing                       cap=1   actual=1     hoistable:1
+  psh.scripting.input_sources                             cap=1   actual=1     hoistable:1
+  psh.scripting.lex_parse                                 cap=1   actual=1     hoistable:1
+  psh.scripting.source_processor                          cap=5   actual=5     hoistable:5
+  psh.scripting.visitor_modes                             cap=7   actual=7     hoistable:7
+  psh.shell                                               cap=5   actual=5     hoistable:5
+  psh.utils.ast_debug                                     cap=6   actual=6   
+  psh.utils.heredoc_detection                             cap=3   actual=3   
+  psh.visitor.enhanced_validator_visitor                  cap=1   actual=1     hoistable:1
+
+  DEAD entries (actual 0): 5 -> ['psh.expansion.parameter_expansion', 'psh.expansion.pattern', 'psh.lexer.cmdsub_scanner', 'psh.lexer.heredoc_collector', 'psh.lexer.heredoc_lexer']
+  SLACK entries          : 2, total slack 3
+  modules with actual>0 and NO cap entry (would be red): []
+
+==========================================================================
+PROPOSED TARGET TRIPLE (ruling (d) input)
+==========================================================================
+  actual : 177 - 119 hoisted = 58
+  cap    : set every surviving entry to its post-hoist actual => 58
+  slack  : 21 -> 0
+  entries: 71 - 5 dead - (entries whose actual falls to 0 by hoisting)

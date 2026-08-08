@@ -1,0 +1,16 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=56dd3401
+
+attempt 1: FAIL (51 modules / 119 stmt) -> blame psh.expansion.glob
+            ImportError: cannot import name 'PatternCompiler' from partially initialized module 'psh.expansion.p
+attempt 2: IMPORTS OK with 50 modules / 115 statements  (excluded 1)
+
+==========================================================================
+RESULT
+==========================================================================
+  feasible set : 50 modules, 115 statements
+  excluded     : ['psh.expansion.glob']
+  imports      : True
+  shell smoke  : rc=0 out='hi\n6\nq\nv'
+
+  actual deferred count would fall 177 -> 62
