@@ -41,13 +41,13 @@ All rows OPEN at Wave 0 close unless marked otherwise.
 | MEDIUM-11 parser lifecycle vs docs | 2.2 | CONFIRMED: second `.parse()` returns empty program | **CLOSED** v0.757.0: single-use ENFORCED (ruling (a)) — second `.parse()`/`.parse_outcome()` on an RD Parser instance and on any `create_parser` handle raises a loud RuntimeError (the strict-errors internal-defect class; the parser's own PshError taxonomy is the swallowed class — approved deviation, msg ae50a337); failed parse also consumes; combinator GRAMMAR instance stays reusable; classifier pinned not to soften the error to Invalid; docs (`parse_inputs.py`, `context.py`, parser CLAUDE.md) state the contract. Caller census (7 true base sites, all fresh+parse-once; census instrument corrected in-slot after a round-2 verifier find) |
 | MEDIUM-12 broad exception nets | 2.3 (subscript) **CLOSED v0.758.0**, 3.5 (expansion/arith), 5C (rest) | CONFIRMED: `except Exception` at subscript.py:129,144 (v0.750.0) — the broad catch was the K1 mis-key MASKING mechanism | Subscript half CLOSED v0.758.0: both catches deleted; typed `SubscriptSyntaxError` narrowed to the tokenize-level unclosed-quote class (8-route audit: 6/8 bash-parity measured, 2 declared builtin-wording faces); granted builtin translations (unset loud / -v quiet = bash). NOTE (amended intent): "Q2 masker ledger shrinks" was IMPOSSIBLE — no registry ever counted these sites (detector keys VT names); the slot BIRTHED the ratchet instead (`test_subscript_no_broad_except.py`, offender-proven). **Expansion/arith half CLOSED v0.767.0 (slot 3.5)**: the `arithmetic_expansion_value` VT net DELETED (VE leg forcing-proven dead; TE leg the masker); PS4 fallback `Exception`→`PshError` (observable byte-identical); four-site dead-VE class narrowed; substring failure typed at detection; `[[ ]]` net → `(TestExpressionError, OSError)` w/ can't-happen branches → RuntimeError; ratchet GROWN by manager.py + arithmetic/evaluator.py; Q2 ledger genuinely SHRUNK by 3 entries (two carried FALSE reasons, corrected in place). Only 5C (builtins/scripting rest — incl. the named let_builtin.py:52 residual, deadness argument transfers) remains open |
 | MEDIUM-13 race-dependent background test | 1.3 | CONFIRMED structurally (pass-without-assertion path; also 1 flake in #22's fresh run) | **CLOSED** v0.753.0: subprocess route + job-API `wait` + unconditional asserts (existence, exact bash bytes, clean stdout); vacuity replayed at base; 2 discriminating mutations; 50 seq + 25 shuffled green; state-guarded-assert census 1 → 0 tree-wide. Evidence: `1.3-rescue/` |
-| MEDIUM-14 protocol boundaries incomplete | 5B | CONFIRMED: 2 migrated, 3 defined-unused; both name collisions live | per Checkpoint R re-scope — **DONE 2026-08-08 (CR-R1)**: 5B backlog verified 100% intact at ae871a16 (both collisions live at recorded file:line; core-to-expansion private import live; 0 consumers for the 3 unused protocols; full-Shell surface GREW 251→255 Shell + 14→19 ShellState params); 3 reshapes incl. FIRST-deliverable ratchet-scope extension (q5-F2, mutation-proven blind to campaign-created modules). Fresh census = `checkpoint-r/report.md` |
+| MEDIUM-14 protocol boundaries incomplete | 5B | CONFIRMED: 2 migrated, 3 defined-unused; both name collisions live | per Checkpoint R re-scope — **DONE 2026-08-08 (CR-R1)**: 5B backlog verified 100% intact at ae871a16 (both collisions live at recorded file:line; core-to-expansion private import live; 0 consumers for the 3 unused protocols; full-Shell surface GREW 251→255 Shell + 14→19 ShellState params); 3 reshapes incl. FIRST-deliverable ratchet-scope extension (q5-F2, mutation-proven blind to campaign-created modules). Fresh census = `checkpoint-r/report.md`. **STRUCTURAL HALF LANDED v0.775.0 (slot 5B.1; row stays OPEN pending 5B.2 consumer migration)**: ratchet currency FIRST per CR-R1 — scan scope 16→19 modules closing BOTH gaps (protocols/__init__.py from v0.746..750 + procsub_render/analysis_session from the remediation range; three-list structure w/ POST_ENDPOINT_SCANNED/OUT_OF_SCOPE coverage assertion, ancestor-checked loud-vacuity path) + class-attribute detector extension (A2b, second independent blind spot, mutation-proven) + ALLOWLIST ×3 (analysis_session embedder-contract chain, 5B.1-R0); collisions RESOLVED (protocol side renamed `ExpansionRuntime`/`LocaleAccess`; red-on-base one-definition-per-protocol-name guard w/ concrete-concrete control); `_POSIX_CLASSES` → neutral `psh/utils/posix_classes.py` (byte-identity pinned) w/ the core→expansion private import GONE (grep-zero + layering lock); dead `AnalysisSession.shell` store removed. Zero shell-observable delta (compare-bash 3,046/26 EXACT +0). Verified: harness PASS 0 blockers/16 NITs + 9 required fixes + integrator-direct re-verify; dev +22 gate account independently reproduced. TRUE state.locale census for 5B.2 = SIX production readers incl. `core/scope.py` (13 sites, instrument 19). Evidence: `5b.1-rescue/` |
 | MEDIUM-15 complexity/hubs; O(k²) session | 5C (hubs); 5A DE-SCOPED (see ruling R1) | CONFIRMED: 54 fns ≥100 lines (exact) | hub decomposition per named transactions. **Checkpoint R census (CR-R1)**: tip = 60 fns ≥100 (base 54 reproduced EXACTLY, replayed by round 2); the six campaign growers explicitly in 5C scope; §11's named-transaction list still matches the hub census |
 | MEDIUM-16 incomplete boundary signatures | 5C | CONFIRMED magnitude (510–623 by methodology) | boundary seams annotated first, then per-package. **Checkpoint R census (CR-R1)**: 648 Method A / 488 Method B at tip (grew 625→648 during the campaign; both bases replayed exactly by round 2); the 2 campaign-created modules join the disallow-untyped ratchet in 5C |
 | LOW printf `%a/%A` precision + `#` flag | Wave 5 rider (declared here per sequence §13) | CONFIRMED: `%.2a` full-precision vs bash `0x1.92p+1` | float-format conformance rows |
 | LOW STD_FDS lease retained on failed exec | 4A.1 | CONFIRMED by injection (+ same poisoning consequence) | **CLOSED v0.768.0**: failing `exec` releases exactly the STD_FDS state it itself acquired (earlier legitimate lease untouched — discrimination cell must-hold); baseline-dup `None` encoding EBADF-only (the B-13a family — failed dup recorded as "closed at baseline", `close()` then closing HOST fds 0/1/2 — dead, pinned); ADAPTIVE parking base `min(_PARKING_BASE=63, max(_PARKING_FLOOR=10, soft − _PARKING_SLOTS(3) − _PARKING_SPARE(3)))` — i.e. `soft−6` in the adaptive regime (CORRECTED at sign-off, D-4A.1-a1: the ceremony record quoted the pre-spare `soft−3` proposal, exactly the version the relocation composition cell proved insufficient) — restores bash parity at every measured threshold (24/40/50/63/64/70/256; base+tip+bash three-way, harness BL-1 + integrator reproduction) with `_PARKING_SPARE=3` found by the relocation composition cell; genuine exhaustion still aborts transactionally (B-13b). Sub-13 envelope = declared divergence (FLIP-PINS row). Evidence: `4a.1-rescue/` |
 | LOW skip-on-failure tests | 1.3 | CONFIRMED verbatim in both cited files | **CLOSED** v0.753.0: both named sites + census (14 true instances fixed incl. a 100%-dead NameError-swallowing test; 13 env gates + 1 corpus filter stay, per-hit table); 9 silent-skip oracle modules loud (base: exit-0 w/ 191 differentials skipped); mutation-proven conversions. Evidence: `1.3-rescue/` |
-| LOW deferred-import/Q2 debt ledgers | 5B/5C | CONFIRMED (ratchets are inventories, not closures) | caps materially shrink |
+| LOW deferred-import/Q2 debt ledgers | 5B/5C | CONFIRMED (ratchets are inventories, not closures) | caps materially shrink. **5B.1 incidental (v0.775.0): −2 actual AND cap** (`psh.core.locale_service` 5→3 — the two deferred `expansion.glob` imports DISAPPEARED with the table move to `psh/utils/posix_classes.py`, not converted; layering-analyzer-derived, verifier-reproduced). Goal-shrink from 179/200 remains 5B.2's |
 
 ## Part B — Predecessor carry register (35 rows): dispositions
 
@@ -170,6 +170,38 @@ r18-lexer successor queue with a named owner.
 
 **CR-R7:** the bg-job reap-timing divergence (previously unregistered) is
 registered as CR-D1, attached to Part B carry #12.
+
+### Wave 5 rulings (2026-08-08, integrator; evidence `5b.1-rescue/`)
+
+**W5-R1 (Wave 5 slot map, per CR-R1):** Wave 5 = **5B.1** boundary
+structure (ratchet currency FIRST + collisions + zero-consumer protocol
+fates + POSIX-table neutral owner + private-import removal; SHIPPED
+v0.775.0) → **5B.2** consumer migration + caps (255 Shell / 19 ShellState
+incl. the 12 campaign-added owner params; escape-hatch protocol members
+per the 5B.1 ruling-(b) surface — BINDING, not re-litigated; caps
+goal-shrink from 179/200) → **5C.1** typed errors + boundary signatures
+(7 BROAD_MASKING + 24 terminal handlers; D-3.5-s2; campaign-created
+modules into disallow_untyped_defs; 648/488 census) → **5C.2** hub
+decomposition + dead API (60-hub census, six campaign growers;
+D-4B.4-s3) → **5R** printf %a/%A rider (standalone micro-slot, flexible
+order). One release per slot; campaign closure waits for all + Ceremony C.
+
+**5B.1-R0 (ALLOWLIST growth):** the shell-consumer ratchet's ALLOWLIST is
+shrink-only EXCEPT entries added in the SAME COMMIT as a scan-scope or
+detector-shape extension, each individually justified. Applied: +3
+(analysis_session embedder-contract chain — construction through the
+caller's own Shell subclass is not protocol-shaped).
+
+**5B.1 ruling (b) (protocol surface, BINDING for 5B.2):** all 9 protocols
+dispositioned — 3 zero-consumer protocols KEPT with named 5B.2 witnesses
+(`VariableAccess` ← VariableExpanderProtocol.state narrowing;
+`ExpansionRuntime` ← SubscriptEvaluator; `LocaleAccess` ← the SIX
+state.locale readers, corrected census incl. core/scope.py); renames
+executed in 5B.1; member-narrow targets for 5B.2 =
+VariableExpanderProtocol.shell/.state, CommandParsersProtocol.redirection,
+JobRuntime.shell_state, ExpansionRuntime's two Any attrs,
+LocaleAccess.collate_key → named opaque sort-key alias. 5B.2's brief
+carries the dev ledger §A6 table verbatim.
 
 ## Part D — New facts registered at Wave 0
 
@@ -349,3 +381,12 @@ registered as CR-D1, attached to Part B carry #12.
 | CR-D5 | Instrument-portability class (q3-F1 + atk-b-F1): `4b.4-rescue/instruments/instr12_three_way.py` hardcodes two retired worktree paths (REGRESSION axis not re-runnable from the record; successors write fresh divergence-axis equivalents citing committed transcripts for base); `checkpoint-r/instruments/q3/p05` requires a pre-existing `<worktree>/tmp` (fails LOUD in a fresh worktree; byte-identical after mkdir). Portability is part of the record for successor re-verifications | recorded |
 | CR-D6 | Dead-by-sweep retirement class (q2-F2 + atk-c-F3): retired authorities with no reintroduction ratchet (`arg_types`/`quote_types`, `_file_synced_len`, and the slot-internal deleted deciders — `visit_word_substitution_bodies`, utils `parse_with_heredocs` facade, `_substitute_scan`, `_seq_nullable`, `OperandResult` internals) verified ZERO resurrections at `ae871a16` by two independent sweeps. Structural retirements; a resurrection requires rewriting the mechanism — record-only, no guard added | recorded |
 | CR-watch | v0.773.0 (`ae871a16`) merged AFTER the 2026-08-08 scheduled nightly (which ran at `e3924ed3`); its first scheduled Linux exposure is pending ~2026-08-09 04:00 UTC. Six consecutive green scheduled nightlies 08-03..08-08; Wave-4 suites v0.768–772 passed their first Linux exposure; exit-trap recurrence tally 2 | integrator watch |
+
+### Part D — slot 5B.1 registrations (v0.775.0, ceremony 2026-08-08)
+
+| Row | Fact | Owner |
+|---|---|---|
+| D-5B.1-s1 | PRE-EXISTING test-order dependence: `tests/unit/core/test_activation_transaction_4a1.py::test_is_clean_distinguishes_no_owner_from_no_state` fails when run in ONE process after the analysis/locale/expansion selection — at BOTH 8af29e6d and dc843423 IDENTICALLY, green standalone (verifier-replayed per red-claim discipline). Passes in real gates (xdist distribution differs). Not 5B.1's subject | successor / 5C test-hygiene note |
+| D-5B.1-s2 | The mypy untyped-defs guard (`test_mypy_untyped_defs_coverage.py`) is the shell-consumer ratchet's TWIN — own private `_warn_selfcheck_unverified` copy, still pinned to the OLD endpoint `v0.724.0..75ab5625`. Same scope-staleness class 5B.1 fixed, and exactly the q5-F3 mechanism (the 2 campaign-created modules sit outside the mypy ratchet) | **5C.1** (charter pointer — do not absorb early) |
+| D-5B.1-s3 | The extended full-Shell detector covers params + class-level AnnAssign but NOT the `self.shell = s` instance-assignment shape (the exact shape commit iv removed; bespoke pin covers that one site). Extension forces a tree sweep + dispositions | **5B.2** (with the member-narrow work) |
+| D-5B.1-lessons | Banked from this slot (carried into 5B.2+ briefs): (1) `PYTHONDONTWRITEBYTECODE=1` in every mutation driver — same-length replacements defeat pyc mtime+size invalidation (a transcript LIED until chased); (2) a RED mutation arm must assert its failure REASON, not just its outcome (a wrong-reason NameError arm nearly survived); (3) every pre-registration term needs a SOURCE — the §B5 gate miss was a term reasoned-to, not measured; derive from per-file counts only (the +2 was two tests a phantom "−2 renamed-in-place" term had debited; gate right, pre-registration wrong, independently re-derived and verifier-reproduced) | standing |
