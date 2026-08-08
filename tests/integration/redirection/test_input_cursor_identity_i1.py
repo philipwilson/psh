@@ -2,10 +2,10 @@
 
 The InputCursor is keyed to an owned open-file-description identity and persists
 across read invocations (same-fd carryover). A permanent rebind (`exec 0<file`)
-assigns the fd a NEW description, dropping the old cursor. Cross-fd dup sharing
-and temp-redirect-frame isolation are the DEFERRED FULL fidelity; the two
-documented deliberate-loss rows below pin psh's current behavior AND assert it
-diverges from C-locale bash so the divergence is visible, not silent.
+assigns the fd a NEW description, dropping the old cursor. Slot 4B.4 completed
+the model: a dup ALIASES the description (both fds share one cursor) and a
+temporary redirect SCOPES it to the frame (in both directions), so the two rows
+below — previously documented deliberate losses — now hold C-locale-bash parity.
 
 `exec` permanent redirects rewrite fds, so every case runs psh in a subprocess.
 """
@@ -74,12 +74,16 @@ class TestTempRedirectComposition:
         assert out == bash == b"S1|F1|S2\n"
 
 
-# ---- Documented deliberate-loss rows (SCOPED): pin psh CURRENT + prove the
-# divergence from C-locale bash is real (not accidental parity). FULL fidelity
-# would close these; the divergence is the ultra-rare malformed-multibyte -N
-# count boundary crossing a dup alias / temp-redirect frame. ----
+# ---- The two former deliberate-loss rows, CLOSED in slot 4B.4.
+# Until 4B.4 these pinned psh's LOSS and asserted it DIFFERED from C-locale bash:
+# a dup got a fresh cursor (so a byte already consumed on fd 0 was readable
+# through NEITHER fd), and a temp frame reused fd 0's cursor (so a surplus
+# crossed into a different source's read). Both now hold exact C-locale-bash
+# parity. Each cell asserts psh == bash-C FIRST — agreement form, so the pin
+# survives a change of spelling — and then the value, so a cell where BOTH
+# shells moved together cannot pass silently. ----
 
-class TestDeliberateLossDupAlias:
+class TestDupAliasSharesTheCursor:
     def test_valid_dup_alias_is_parity(self):
         # The COMMON dup-alias case matches bash via the shared kernel offset.
         script = (b"exec 3<&0; read -u 0 a; read -u 3 b; read -u 0 c; "
@@ -91,35 +95,50 @@ class TestDeliberateLossDupAlias:
         bash = b.stdout.encode("utf-8", "surrogateescape")
         assert out == bash == b"one|two|three\n"
 
-    def test_malformed_dup_alias_documented_divergence(self):
-        # DELIBERATE LOSS (b): psh reads one byte ahead to classify the malformed
-        # lead; that byte is stranded in fd0's cursor, invisible to the fd3 alias
-        # (FULL cursor-sharing would carry it). Pin psh CURRENT; prove it differs
-        # from C-locale bash (which is byte-per-char and never looks ahead).
+    def test_malformed_dup_alias_shares_the_lookahead_byte(self):
+        # CLOSED (former deliberate loss (b)). psh reads one byte ahead to
+        # classify a malformed lead. That byte is ALREADY GONE from the shared
+        # kernel offset, so unless the dup ALIASES the cursor it is readable
+        # through neither fd — it reaches no consumer at all. `exec 3<&0` now
+        # aliases the OpenDescription instance, so fd 3 finds it.
         script = (b"exec 3<&0; read -N 1 -u 0 a; read -N 1 -u 3 b; "
                   b"printf 'a=<%s> b=<%s>\\n' \"$a\" \"$b\"")
         psh = _psh(script, b"\xc3A\n")
         bash_c = _bash_c(script, b"\xc3A\n")
-        assert psh == b"a=<\xc3> b=<\n>\n"       # psh: A stranded in fd0's cursor
-        assert bash_c == b"a=<\xc3> b=<A>\n"     # C bash: A read via kernel offset
-        assert psh != bash_c                     # the divergence is real
+        assert psh == bash_c
+        assert psh == b"a=<\xc3> b=<A>\n"
 
 
-class TestDeliberateLossTempFrame:
-    def test_malformed_surplus_leaks_across_temp_frame(self, tmp_path):
-        # DELIBERATE LOSS (c'): a malformed -N surplus in the persistent fd-0
-        # cursor leaks into a temp `read b < file`. The SAME persistence that
-        # fixes same-fd carryover causes this; hooking the temp frame = FULL.
+class TestTempFrameIsolatesTheCursor:
+    def test_malformed_surplus_does_not_cross_into_a_temp_frame(self, tmp_path):
+        # CLOSED (former deliberate loss (c')). A malformed -N surplus held on
+        # fd 0's cursor used to be prepended to a temp `read b < file` — one
+        # source's bytes appearing in another source's read. The frame now
+        # scopes fd 0's binding, so the file read is clean AND the surplus is
+        # still waiting for the next read on the original description (c).
         f = tmp_path / "f.txt"
         f.write_bytes(b"F1\nF2\n")
         script = (b"read -N 1 a; read b < " + str(f).encode()
                   + b"; read -N 1 c; printf 'a=<%s> b=%s c=<%s>\\n' \"$a\" \"$b\" \"$c\"")
         psh = _psh(script, b"\xc3A\nS2\n")
-        # psh leaks the stranded 'A' into b (AF1); bash-C keeps b=F1.
-        assert psh == b"a=<\xc3> b=AF1 c=<\n>\n"
         bash_c = _bash_c(script, b"\xc3A\nS2\n")
-        assert bash_c == b"a=<\xc3> b=F1 c=<A>\n"
-        assert psh != bash_c
+        assert psh == bash_c
+        assert psh == b"a=<\xc3> b=F1 c=<A>\n"
+
+    def test_temp_frame_surplus_does_not_escape_into_stdin(self, tmp_path):
+        # The MIRROR direction, found in slot 4B.4 and never previously pinned:
+        # a surplus stranded while fd 0 IS the temp file used to be prepended to
+        # the next read of REAL stdin — a file's bytes surfacing in a stdin read.
+        # Scoping the frame closes BOTH directions, so this cell fails if only
+        # the forward one is fixed.
+        g = tmp_path / "g.txt"
+        g.write_bytes(b"\xc3AGGG\nG2\n")
+        script = (b"read -N 1 a < " + str(g).encode()
+                  + b"; read b; printf 'a=<%s> b=<%s>\\n' \"$a\" \"$b\"")
+        psh = _psh(script, b"STDIN1\nSTDIN2\n")
+        bash_c = _bash_c(script, b"STDIN1\nSTDIN2\n")
+        assert psh == bash_c
+        assert psh == b"a=<\xc3> b=<STDIN1>\n"
 
 
 @pytest.mark.parametrize("script,stdin,expected", [
