@@ -34,9 +34,11 @@ Design notes (educational shell — clarity over micro-optimizations):
   character (a buffered malformed lead resolves to a surrogate PLUS the byte
   that disambiguated it). The surplus is held in :attr:`_decoded` and belongs to
   the cursor's lifetime, not one ``read`` call — so a ``read -N 1`` that split a
-  malformed multibyte leaves the surplus for the NEXT read on this cursor
-  (see :mod:`psh.io_redirect` for how a cursor is keyed to an open-file
-  description so ``exec 3<&0`` shares it).
+  malformed multibyte leaves the surplus for the NEXT read on this cursor.
+  :mod:`psh.io_redirect.input_cursor` keys cursors to the open file description
+  rather than the bare fd, which is what decides who that "next read" is: a dup
+  (``exec 3<&0``) shares this cursor, a temporary redirect gets its own, and a
+  rebind (``exec 0<file``) drops it.
 
 * **Injectable source and sinks.** The source is either a real fd or a text
   stream (e.g. a ``StringIO`` under test); neither the cursor nor its callers
@@ -111,10 +113,9 @@ class InputCursor:
       block, so a deadline is not enforced against them.
 
     The cursor owns per-open-description state that outlives one ``read`` call:
-    the incremental decoder, the decoded-character queue, the raw byte pushback
-    used by the byte-record path, and the last-delimiter flag. EOF is NOT cached
-    — a fresh attempt re-reads the fd, matching a terminal whose ``Ctrl-D`` is
-    one-shot rather than sticky.
+    the incremental decoder, the decoded-character queue, and the last-delimiter
+    flag. EOF is NOT cached — a fresh attempt re-reads the fd, matching a
+    terminal whose ``Ctrl-D`` is one-shot rather than sticky.
     """
 
     def __init__(self, *, fd: Optional[int] = None,
@@ -132,10 +133,11 @@ class InputCursor:
         # call) for the overwhelmingly common all-ASCII workload.
         self._decoder: Optional[codecs.IncrementalDecoder] = None
         self._decoded: Deque[str] = deque()
-        # Byte-record path (StdinInput): raw bytes read past a record boundary,
-        # held for the next byte-record read. The char path never touches this
-        # (a cursor is used for one path or the other; they are never mixed).
-        self._pushback = bytearray()
+        # NOTE: there is deliberately no raw-byte pushback buffer. The
+        # byte-record path never over-reads (it pulls one byte at a time and
+        # stops AT the delimiter), so there is never a raw byte to hold back.
+        # A `_pushback` bytearray existed until slot 4B.4 and was provably
+        # always empty; `tests/unit/tooling/` guards against its return.
         # Whether the most recent read_record_bytes record ended AT its
         # delimiter (True) or at EOF/error (False). StdinInput consults it to
         # tell a newline-terminated final line from an unterminated one.
@@ -168,8 +170,8 @@ class InputCursor:
         """
         if self._fd is None:
             return 0  # a text stream never blocks
-        if self._decoded or self._pushback:
-            return 0  # characters/bytes already buffered on this cursor
+        if self._decoded:
+            return 0  # characters already buffered on this cursor
         try:
             ready, _, _ = select.select([self._fd], [], [], 0)
         except (OSError, ValueError):
@@ -201,14 +203,13 @@ class InputCursor:
         if self._stream is not None:
             return self._stream.read()
         assert self._fd is not None  # exactly one of fd/stream is set
-        # Any characters already decoded on this cursor come first, then any raw
-        # pushback bytes, then the rest of the descriptor. That is the cursor's
-        # byte order and the merge below preserves it exactly: the decoder's own
-        # buffered bytes precede everything it is now fed.
+        # Any characters already decoded on this cursor come first, then the
+        # rest of the descriptor. That is the cursor's byte order and the merge
+        # below preserves it exactly: the decoder's own buffered bytes precede
+        # everything it is now fed.
         prefix = ''.join(self._decoded)
         self._decoded.clear()
-        chunks = [bytes(self._pushback)]
-        self._pushback.clear()
+        chunks = []
         while True:
             try:
                 block = os.read(self._fd, 65536)
@@ -297,16 +298,7 @@ class InputCursor:
                 chars.append(ch)
             return ''.join(chars).encode('utf-8', errors='surrogateescape')
         assert self._fd is not None  # exactly one of fd/stream is set
-        # Honor a delimiter already among the pushback and push the remainder
-        # back, so a record boundary can never be skipped.
-        drained = bytes(self._pushback)
-        self._pushback.clear()
-        split = drained.find(delimiter_byte)
-        if split != -1:
-            self._pushback = bytearray(drained[split + 1:])
-            self.last_record_hit_delimiter = True
-            return drained[:split]
-        buf = bytearray(drained)
+        buf = bytearray()
         while True:
             byte, outcome, _err = self._next_byte(None)
             if outcome is not Outcome.DATA:
