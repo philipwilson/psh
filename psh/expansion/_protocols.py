@@ -47,16 +47,19 @@ class VariableExpanderProtocol(Protocol):
     shell: "Shell"
 
     #: The whole ``ShellState``. Remediation 5B.2 measured whether this could
-    #: narrow to ``protocols.VariableAccess``, as the boundary campaign
-    #: intended: it cannot. The four mixins reach ELEVEN distinct state members
-    #: across 47 sites, and 44 of those sites use one of the EIGHT outside that
-    #: protocol's three-member surface — ``scope_manager`` (12),
+    #: narrow to the campaign's three-member variable value-surface protocol
+    #: (``get_variable``/``set_variable``/``get_special_variable``): it cannot.
+    #: The four mixins reach ELEVEN distinct state members across 47 sites, and
+    #: 44 of those sites use one of the EIGHT outside that surface —
+    #: ``scope_manager`` (12),
     #: ``last_exit_code`` (11), ``error_location_prefix`` (10),
     #: ``positional_params`` (5), ``stderr`` (3), ``options``,
-    #: ``ifs_star_separator``, ``last_bg_pid``. Widening ``VariableAccess`` to
-    #: fit would absorb most of ``ShellState`` into the protocol that exists
-    #: precisely to NOT be ``ShellState``, so the member stays and the census
-    #: is its justification (successor row D-5B.2-s1).
+    #: ``ifs_star_separator``, ``last_bg_pid``. Widening that protocol to fit
+    #: would have absorbed most of ``ShellState`` into a surface whose entire
+    #: point was NOT being ``ShellState``, so it was deleted instead and this
+    #: member stays as it is, with the census as its justification. A future
+    #: value-surface protocol designs against the 11 members above, not against
+    #: the deleted three (successor row D-5B.2-s1).
     state: "ShellState"
 
     param_expansion: "ParameterExpansionOps"

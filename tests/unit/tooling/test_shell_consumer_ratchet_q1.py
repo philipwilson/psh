@@ -196,7 +196,7 @@ TOUCHED_MODULES = CREATED_MODULES + TOUCHED_PREEXISTING + POST_ENDPOINT_SCANNED
 # The frozen set of boundary-module defs that legitimately still take the full
 # ``Shell`` — (dotted-module, qualified-symbol) -> justification. Each forwards
 # the shell to a whole-shell need or reaches a subsystem no protocol
-# (VariableAccess/ExpansionRuntime/IOContext/JobRuntime/LocaleAccess) models.
+# (ExpansionRuntime/IOContext/JobRuntime/LocaleAccess) models.
 #
 # CONTRACT: shrink-only, EXCEPT entries added in the SAME COMMIT as a scan-scope
 # or detector-shape extension, each with its own justification (pre-ruling

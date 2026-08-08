@@ -14,7 +14,8 @@ along), and it is why ``test_protocol_name_collision_q5.py`` exists.
 
 The zero-consumer register below is a RATCHET, not an excuse list: an entry
 must still be genuinely zero, so a protocol that gains a consumer fails the
-test until its entry is deleted.
+test until its entry is deleted. It is currently EMPTY — the one protocol that
+could not find a consumer was deleted rather than parked in it.
 """
 
 import ast
@@ -29,24 +30,12 @@ PSH = ROOT / "psh"
 #: adoption did not land. Shrink-only: remove an entry when it gains a
 #: consumer (the test below fails until you do).
 #:
-#: ``VariableAccess`` is the live case. Its named 5B.2 witness was the
-#: ``VariableExpanderProtocol.state`` narrowing, and that narrowing cannot
-#: land: the four expander mixins reach ELEVEN distinct ``ShellState`` members
-#: over 47 sites, 44 of which are outside this protocol's three-member
-#: surface. A tree-wide search for any other candidate — every function taking
-#: a ``ShellState``-typed parameter (19 of them, the campaign's own
-#: denominator) plus every class holding a ``ShellState``-typed attribute —
-#: found NO site whose usage stays inside the surface. Widening the protocol
-#: to fit would absorb most of ``ShellState`` into the protocol that exists
-#: precisely to not BE ``ShellState``, so the fate is a ruling, not a default.
-ZERO_CONSUMER_PENDING_RULING = {
-    "VariableAccess":
-        "witness route falsified by measurement: no production site reads "
-        "ShellState strictly within {get_variable, set_variable, "
-        "get_special_variable} (census over all 19 ShellState-typed params + "
-        "every ShellState-typed attribute). Fate deferred to a ruling; see "
-        "remediation 5B.2 and successor row D-5B.2-s1.",
-}
+#: EMPTY, and that is the point. 5B.2 briefly registered the variable
+#: value-surface protocol here while its fate was open; the fate was ruled
+#: DELETE, so the entry left with the protocol rather than becoming a
+#: permanent excuse. An empty register means every protocol this package
+#: exports is genuinely depended upon by production code.
+ZERO_CONSUMER_PENDING_RULING: dict = {}
 
 
 def _module_dotted(path):
@@ -213,3 +202,52 @@ def test_consumer_resolution_ignores_a_same_named_import_from_elsewhere():
     assert consumers == [], (
         "resolver matched on NAME rather than defining module: "
         f"{consumers}")
+
+
+# --- The deleted protocol stays deleted -------------------------------------
+
+#: The variable value-surface protocol the boundary campaign defined and
+#: remediation 5B.2 removed. Named here ONCE, in the pin that keeps it gone.
+DELETED_PROTOCOL = "VariableAccess"
+
+
+def test_the_deleted_value_surface_protocol_has_no_production_references():
+    """Grep-zero: the deleted protocol is absent from ``psh/`` entirely.
+
+    It modelled a three-member value surface and never gained a consumer,
+    because the boundary it was designed for reaches 11 distinct ``ShellState``
+    members and 44 of its 47 sites fall outside those three. Deleting it was a
+    ruled amendment to the campaign's own protocol-fate matrix; this cell stops
+    it being reintroduced by a well-meaning revert.
+
+    A future value-surface protocol is welcome — designed against the measured
+    11-member usage recorded in ``VariableExpanderProtocol.state``'s docstring,
+    not against the three-member guess. That is a new name and a new design,
+    which is exactly why this pin keys on the OLD one.
+    """
+    offenders = []
+    for path in sorted(PSH.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        if DELETED_PROTOCOL in path.read_text():
+            offenders.append(str(path.relative_to(ROOT)))
+    assert not offenders, (
+        f"{DELETED_PROTOCOL} was deleted by remediation 5B.2 but is "
+        f"referenced again in: {offenders}")
+
+
+def test_the_deleted_protocol_is_not_exported():
+    assert DELETED_PROTOCOL not in P.__all__
+    assert not hasattr(P, DELETED_PROTOCOL)
+
+
+def test_grep_zero_pin_would_notice_a_reintroduction():
+    """Guard the guard: the scan must be able to find the name.
+
+    A pin that greps for a string in a tree it is not really reading passes
+    forever. This proves the same scan finds a name that IS present.
+    """
+    present = [p for p in PSH.rglob("*.py")
+               if "__pycache__" not in p.parts
+               and "ExpansionRuntime" in p.read_text()]
+    assert present, "the scan found no file containing a live protocol name"

@@ -1,13 +1,12 @@
-"""Conformance pins for the five Q1 service protocols (§13).
+"""Conformance pins for the Q1 service protocols (§13).
 
 These prove two things at once:
 
 1. **Completeness / correct producer mapping.** Each protocol is STRUCTURALLY
    satisfied by the canonical producer named in its docstring — the ``Shell``
-   for ``IOContext``, ``ShellState`` for ``VariableAccess``, the
-   ``ExpansionManager`` for ``ExpansionRuntime``, the ``JobManager`` for
-   ``JobRuntime``, and ``ShellState.locale`` (``LocaleService``) for
-   ``LocaleAccess``. ``isinstance`` here checks member PRESENCE (the protocols
+   for ``IOContext``, the ``ExpansionManager`` for ``ExpansionRuntime``, the
+   ``JobManager`` for ``JobRuntime``, and ``ShellState.locale``
+   (``LocaleService``) for ``LocaleAccess``. ``isinstance`` here checks member PRESENCE (the protocols
    are ``@runtime_checkable``), which is exactly "does the producer expose this
    surface".
 
@@ -30,7 +29,6 @@ from psh.protocols import (
     IOContext,
     JobRuntime,
     LocaleAccess,
-    VariableAccess,
 )
 from psh.shell import Shell
 
@@ -39,7 +37,6 @@ from psh.shell import Shell
 # pass if a protocol GAINED or LOST a member the producer happens to have. This
 # freeze makes any change to a protocol's surface a deliberate edit here.
 EXPECTED_MEMBERS = {
-    "VariableAccess": {"get_variable", "set_variable", "get_special_variable"},
     "ExpansionRuntime": {"expand_string_variables", "expand_assignment_value_word",
                          "variable_expander", "word_expander"},
     "IOContext": {"stdin", "stdout", "stderr"},
@@ -94,10 +91,6 @@ def shell():
 
 def test_shell_satisfies_iocontext(shell):
     assert isinstance(shell, IOContext)
-
-
-def test_state_satisfies_variableaccess(shell):
-    assert isinstance(shell.state, VariableAccess)
 
 
 def test_expansion_manager_satisfies_expansionruntime(shell):
