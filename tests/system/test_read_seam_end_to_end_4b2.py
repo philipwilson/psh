@@ -11,17 +11,17 @@ bytes decode to: a 2-, 3- or 4-byte character came back as 2, 3 or 4 surrogates
 instead of 1. ``${#arr[0]}`` is therefore the discriminating observable, and the
 byte column is carried alongside only to show it does NOT move.
 
-**These seam cells are labelled psh-CONTRACT, not bash parity** (integrator
-ruling (c)). bash assigns the stranded partial byte to the read that timed out;
-psh holds it on the cursor, so the two shells legitimately split the same bytes
-at different points. That divergence is successor row **D-4B.2-s1**, deferred to
-slot 4B.4. It is **UNDOCUMENTED** — no user-guide line describes it, and that
-absence is part of what s1 carries. The adjacent prose at
-``docs/user_guide/17_differences_from_bash.md:596-598`` documents the CHARACTER
-MODEL this fix PROTECTS ("a multibyte ``é`` arrives whole, not split across two
-reads"), not the timeout behaviour. Each cell asserts psh's value AND that
-bash's differs, so it fails loudly when 4B.4 rules — at which point this file
-and that documentation gap move together.
+**These seam cells are labelled psh-CONTRACT, not bash parity.** bash assigns
+the stranded partial byte to the read that timed out; psh holds it on the
+cursor, so the two shells legitimately split the same bytes at different points.
+That was successor row **D-4B.2-s1**, and slot 4B.4 RULED it psh's permanent
+contract: the dup and temp-frame gaps that made holding a byte unsafe are
+closed, so a held byte can no longer reach another source or be lost, and the
+divergence is now DOCUMENTED in
+``docs/user_guide/17_differences_from_bash.md`` beside the CHARACTER MODEL
+prose this fix PROTECTS ("a multibyte ``é`` arrives whole, not split across two
+reads"). Each cell still asserts psh's value AND that bash's differs, so the
+declared divergence cannot drift silently in either shell.
 
 The rider legs run psh from a SCRIPT FILE rather than ``-c``: a ``-c``-only pin
 suite is mode-blind, and this slot's defect lives in a builtin that a script
@@ -131,9 +131,10 @@ class TestSeamEndToEndCharacterIdentity:
         # D-4B.2-s1: bash split the same bytes at a different point (it assigned
         # the stranded byte to x). Declared divergence — assert it is still real.
         assert psh != bash, (
-            "D-4B.2-s1 (timeout-partial assignment, deferred to 4B.4): psh now "
+            "D-4B.2-s1 (timeout-partial hold-and-resume, RULED psh's contract "
+            "in 4B.4): psh now "
             f"equals bash ({bash!r}). If that successor was ruled, update this "
-            "pin, and note the divergence is UNDOCUMENTED — 4B.4 owns writing "
+            "pin, and re-check the user-guide text that documents it — "
             "it up; :596-598 documents only the char model this fix protects.")
         assert bash.startswith("rc=142 xlen=2 "), (
             f"bash oracle shape changed: {bash!r}")

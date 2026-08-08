@@ -617,7 +617,12 @@ honours the effective locale for:
 
   The exit status is identical in both shells (142 on timeout) and no input is
   lost either way; the difference is only *which read* reports the partial
-  character. The held bytes belong to the input source they came from: a
+  character. It shows up only when the deadline lands **mid-character** — a
+  complete character, or plain ASCII, is reported identically by both shells —
+  and it applies to `read -t`, `read -t -n` and `read -t -N` reading a pipe or
+  file. Reading from a *terminal* with plain `read -t` (no `-n`/`-N`) is the one
+  combination where bash holds the partial too, so there the shells agree.
+  The held bytes belong to the input source they came from: a
   temporary redirect (`read x < file`) reads its own source and never sees
   them, a duplicated descriptor (`exec 3<&0`) shares them because it shares the
   source, and `exec 0<file` discards them along with the old source. At end of

@@ -19,14 +19,15 @@ Structure of this file:
   NON-continuation byte, and genuinely malformed input. These discriminate
   "fed through the existing decoder" from "swallowed" or "policy changed".
 * ``TestResumeRoutesArePshContract`` — the OTHER drain routes. These are green
-  both before and after, but they are **psh-CONTRACT cells, not bash parity**:
+  both before and after, and they are **psh-CONTRACT cells, not bash parity**:
   bash assigns a stranded partial byte to the timed-out read and moves on, while
-  psh holds it for the next read. That divergence is successor row D-4B.2-s1
-  (deferred to slot 4B.4, integrator ruling (c)). It is **documented NOWHERE in
-  the user guide** — that ABSENCE is part of what s1 carries to 4B.4. The
-  adjacent prose at ``docs/user_guide/17_differences_from_bash.md:596-598``
-  documents the CHARACTER MODEL this fix PROTECTS ("a multibyte ``é`` arrives
-  whole, not split across two reads"), not the timeout divergence.
+  psh holds it for the next read on the same description. That was successor row
+  D-4B.2-s1, and slot 4B.4 RULED it psh's permanent contract rather than
+  flipping it — the dup and temp-frame gaps that made holding a byte unsafe are
+  closed, so the held bytes can no longer reach another source or be lost. It is
+  now DOCUMENTED in ``docs/user_guide/17_differences_from_bash.md``, next to the
+  CHARACTER MODEL prose this fix PROTECTS ("a multibyte ``é`` arrives whole, not
+  split across two reads").
 * ``TestCursorStateCensus`` — the invariants the fix relies on, pinned so a
   later change cannot quietly invalidate them.
 
@@ -210,17 +211,12 @@ class TestSeamControlsMalformed:
 class TestResumeRoutesArePshContract:
     """The non-bulk drain routes resume a split character correctly.
 
-    GREEN both before and after the fix — but these are **psh-CONTRACT** cells,
+    GREEN both before and after the fix, and these are **psh-CONTRACT** cells,
     NOT bash parity. bash assigns the stranded partial byte to the read that
-    timed out and does not resume; psh holds it on the cursor for the next read.
-    That divergence is successor row **D-4B.2-s1**, deferred to slot 4B.4 by
-    integrator ruling (c). It is **UNDOCUMENTED**: no user-guide line describes
-    it, and that absence travels with s1. What
-    ``docs/user_guide/17_differences_from_bash.md:596-598`` documents is the
-    adjacent CHARACTER MODEL ("a multibyte ``é`` arrives whole, not split across
-    two reads") — the property this fix PROTECTS, not the timeout behaviour. If
-    4B.4 rules the other way, these cells and that documentation gap move
-    together.
+    timed out and does not resume; psh holds it on the cursor for the next read
+    of the same description.
+
+    **RULED in slot 4B.4 (integrator ruling R2 (b)): this is psh's PERMANENT contract, not a deferral.** psh holds the stranded partial and resumes it on the next read of the SAME description; bash assigns it to the read that timed out. Exit status agrees and no byte is lost either way (measured across -N/-n/plain x pipe/tty). It is DOCUMENTED at ``docs/user_guide/17_differences_from_bash.md``. 4B.4 closed the dup/temp-frame gaps that made holding the byte unsafe, so these cells are RE-AFFIRMED rather than flipped.
     """
 
     @pytest.mark.parametrize("ch,split", SPLIT_CASES)
