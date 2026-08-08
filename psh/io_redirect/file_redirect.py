@@ -641,14 +641,26 @@ class FileRedirector:
                 raise OSError(f"{dup_fd}: Bad file descriptor")
             newfd = fcntl.fcntl(dup_fd, fcntl.F_DUPFD, 10)
             self.shell.state.set_variable(name, str(newfd))
-            # The allocated fd names the SAME open file description as its
-            # source, so it shares that description's input cursor: a byte
-            # already consumed through the source is gone from the shared kernel
-            # offset, and giving this fd a fresh cursor would leave that byte
-            # reachable through neither. The fd NUMBER is only known here, which
-            # is why the alias is recorded at allocation rather than from the
-            # redirect node like the other two dup paths.
-            self.shell.state.input_cursors.bind_dup(newfd, dup_fd)
+            # The fd NUMBER only exists here, so both cursor facts about it are
+            # recorded here rather than from the redirect node like the other
+            # two dup paths.
+            registry = self.shell.state.input_cursors
+            # 1. If this allocation belongs to a temporary frame, it is the
+            #    frame's to clean up — nothing earlier could scope it, since
+            #    the redirect node carries no fd for a named-fd spelling.
+            #    HYGIENE, with no reachable shell-level observable and so no
+            #    M8 arm: a frame-scoped allocation cannot be READ inside its
+            #    own command (the variable holding the number is set at apply
+            #    time, after the command's words were expanded), so the stale
+            #    binding this prevents only becomes wrong bytes if a later
+            #    allocation reuses the number. Cheap, correct, and declared
+            #    rather than claimed to be load-bearing.
+            registry.scope_fd(newfd)
+            # 2. It names the SAME open file description as its source, so it
+            #    shares that description's cursor — a byte already consumed
+            #    through the source is gone from the shared kernel offset, and a
+            #    fresh cursor here would leave it reachable through neither fd.
+            registry.bind_dup(newfd, dup_fd)
             return
 
         # Here-document / here-string forms: `{v}<<EOF`, `{v}<<-EOF`, `{v}<<<w`.
@@ -679,6 +691,9 @@ class FileRedirector:
                        if rtype == '<<<' else self._heredoc_expanded_content(redirect))
             newfd = self._content_to_free_fd(content)
             self.shell.state.set_variable(name, str(newfd))
+            # A fresh description on a fd whose number only exists now: no
+            # alias, but still the frame's to scope if one is open.
+            self.shell.state.input_cursors.scope_fd(newfd)
             return
 
         # Open-a-file forms: allocate the lowest free fd >= 10 (F_DUPFD).
@@ -693,6 +708,7 @@ class FileRedirector:
         finally:
             os.close(opened)
         self.shell.state.set_variable(name, str(newfd))
+        self.shell.state.input_cursors.scope_fd(newfd)
 
     @staticmethod
     def _bad_dup_source_error(redirect: Redirect) -> OSError:

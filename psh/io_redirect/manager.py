@@ -346,9 +346,19 @@ class IOManager:
         a readable fd" is a classification this does not need to get right.
         A close (``>&-``) is included for the same reason — the fd's binding
         must not outlive it.
+
+        NAMED-fd redirects (``{v}<&0``, ``{v}<file``) are deliberately NOT
+        derived here. Their ``redirect.fd`` is ``None`` because the shell picks
+        a free descriptor >= 10 at APPLY time, so the input-default rule below
+        would silently claim fd 0 — scoping a descriptor the redirect never
+        re-points, while leaving the one it really creates unscoped. The
+        allocator scopes them instead, via ``InputCursorRegistry.scope_fd``,
+        at the moment the number exists.
         """
         fds = []
         for redirect in redirects:
+            if redirect.var_fd:
+                continue
             fd = redirect.fd
             if fd is None:
                 fd = 0 if redirect.type.startswith('<') else 1
@@ -366,6 +376,21 @@ class IOManager:
         finally:
             registry.pop_frame(saved)
 
+    def alias_dup_input_cursors(self, redirects: List[Redirect]) -> None:
+        """Alias the cursor of every DUP in ``redirects`` onto its source.
+
+        Called AFTER the redirects are applied, by the paths that apply a
+        redirect list wholesale (compound commands, functions, subshells)
+        rather than op-by-op. Scoping a dup'd fd without aliasing it is worse
+        than doing nothing to it: the frame hands the dup a FRESH cursor, so
+        bytes already buffered on the source are invisible through the dup and
+        resurface later on the source's own next read.
+        """
+        registry = self.state.input_cursors
+        for redirect in redirects:
+            alias = dup_alias_fds(redirect)
+            if alias is not None:
+                registry.bind_dup(*alias)
 
     @contextmanager
     def with_redirections(self, redirects: List[Redirect]):
@@ -381,6 +406,7 @@ class IOManager:
         with self.process_sub_handler.scope(), \
                 self._scoped_input_cursors(redirects):
             saved_fds = self.apply_redirections(redirects)
+            self.alias_dup_input_cursors(redirects)
             stream_restore = self._swap_closed_output_streams(redirects)
             try:
                 yield
@@ -415,6 +441,7 @@ class IOManager:
                 self._scoped_input_cursors(redirects):
             try:
                 saved_fds = self.apply_redirections(redirects)
+                self.alias_dup_input_cursors(redirects)
                 stream_restore = self._swap_closed_output_streams(redirects)
             except OSError as e:
                 # apply_redirections already rolled back its own partial state.
