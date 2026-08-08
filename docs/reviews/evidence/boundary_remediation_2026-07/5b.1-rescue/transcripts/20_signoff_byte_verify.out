@@ -1,0 +1,45 @@
+instrument 20 — sign-off byte verification
+ROOT=.
+verifying commit: a8c5de8f  (Merge pull request #533 from philipwilson/fix/remediation-5b-1)
+my worktree HEAD: d734cb02
+
+=== (1) COMMITTED FILES: 42 — byte-compare each to my original ===
+  *** DIFFERS    docs/reviews/evidence/boundary_remediation_2026-07/5b.1-rescue/INTEGRATOR-INBOX.md
+        committed md5 decb8c408c84b0a5046dbcaba248153e
+        mine      md5 150509fd7ef03e7754bb19eb61653c3b   (INTEGRATOR-INBOX.md)
+  GENERATED      MANIFEST.md5  (integrator-produced; verified in section 4)
+
+  byte-identical: 40    differing: 1    generated: 1    unmapped: 0
+
+=== (2) COMPLETENESS: is anything of MINE missing from the commit? ===
+  (self-excluded: instruments/20_signoff_byte_verify.sh)
+  (self-excluded: transcripts/20_signoff_byte_verify.out)
+  missing: 0
+
+=== (3) EXTRAS: anything committed that did not come from me? ===
+  extras: 0   (MANIFEST.md5 is integrator-generated, not an extra)
+
+=== (4) MANIFEST.md5 RECOMPUTED against committed bytes ===
+  manifest entries: 41
+  --- verifying each entry against the committed blob ---
+  manifest verified: 41    mismatched: 0    unresolved/skipped: 0
+  manifest self-excluding? 0 occurrence(s) of its own name (0 = self-excluding)
+
+=== (5) THE ONE DECLARED DIFFERENCE: inbox copy runs through R5 ===
+  committed copy: 1366 lines; mine now: 1431 lines
+  entries in committed copy:
+    1030:## R4 (integrator, 2026-08-08) — ROUND VERDICT: PASS, ZERO BLOCKERS, 16 NITs. REQUIRED-NIT FIX ROUND, then ceremony.
+    1120:## D8 (dev-5b-1, 2026-08-08) — ACK R4 (and R3, first seen now). Fix-round commit-set DECLARED BEFORE LANDING.
+    1212:## D9 (dev-5b-1, 2026-08-08) — ALL 9 REQUIRED NITS FIXED. Ledger REFROZEN (freeze-2). Ready for ceremony.
+    1325:## R5 (integrator, 2026-08-08) — FIX ROUND ACCEPTED. SLOT VERIFIED-COMPLETE. CEREMONY BEGINS (commits declared).
+  PREFIX CHECK (committed copy must be an exact prefix of mine, not a variant):
+    EXACT PREFIX — every committed byte matches mine; the only delta is
+    the entries appended after R5, exactly as R6 declared.
+
+=== VERDICT ===
+  differing=1  of which R6-declared-and-prefix-proven=1
+  -> real mismatches=0  missing=0  extras=0 manifest_bad=0  manifest_unresolved=0
+  PASS — committed rescue tree is byte-exact with my originals, complete
+  in both directions, and its manifest recomputes entry-by-entry.
+
+instrument 20 done

@@ -17,8 +17,11 @@ a587caf16da58f2103dd99f312703a36 ./instruments/16_dead_store_pin_mutation.sh
 9dc70e89ab0df860edd7671048cdb952 ./instruments/17_plus2_account.py
 87d4ad161aeaec589937058e8d67d724 ./instruments/18_manifest_and_discharge.sh
 dca498888f757a3311921e86715ee042 ./instruments/19_state_locale_census.py
+bc69efdc154c37872ef16b71dd167388 ./instruments/20_signoff_byte_verify.sh
+d43f2b24452725d51d7e5d4c2bd6b5c1 ./INTEGRATOR-INBOX-final.md
 decb8c408c84b0a5046dbcaba248153e ./INTEGRATOR-INBOX.md
 876a2d86ec2f6baa5a2a3afccc576f6b ./ledger.md
+33ba90bfa97fc05b623cabb87be9d1aa ./SIGNOFF.md
 37bb287079f4ffde96e8cf07f8bce365 ./transcripts/01_protocol_census.out
 5cce47c2786d3cdcfd4c38bad5bf0151 ./transcripts/02_ratchet_gap_enumeration.out
 8f88592b5eff309449b91eeede459039 ./transcripts/04_ratchet_scope_mutation.out
@@ -39,3 +42,4 @@ fd72fc627ea61beb8f10d599805eccb1 ./transcripts/15_table_move_mutation.out
 f4e762eb78c9226ba0ce77a3e65f20df ./transcripts/17_plus2_account.out
 53484c07e93f6c1b995d8314f3b207cc ./transcripts/18_manifest_and_discharge.out
 c033860b96453442d48d466d3a6727a0 ./transcripts/19_state_locale_census.out
+023a296e4bbc9f073f9b41300c38f671 ./transcripts/20_signoff_byte_verify.out
