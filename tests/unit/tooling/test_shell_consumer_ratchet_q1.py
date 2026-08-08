@@ -150,8 +150,7 @@ TOUCHED_PREEXISTING = [
 # contain them). Each entry is a module the coverage assertion below would
 # otherwise flag as undispositioned.
 POST_ENDPOINT_SCANNED: list = [
-    # (5B.1 commit iii adds psh/utils/posix_classes.py here, in the same commit
-    # that creates it — a scan list must never name a file that does not exist.)
+    "psh/utils/posix_classes.py",   # 5B.1: the shared POSIX class table (data leaf)
 ]
 
 # Modules born after SCOPE_ENDPOINT that are deliberately NOT scanned —

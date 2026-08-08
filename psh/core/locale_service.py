@@ -70,6 +70,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Callable, Dict, Mapping, Optional, Tuple
 
+from ..utils.posix_classes import POSIX_CLASSES
+
 
 class LocaleMode(Enum):
     """How a locale category is interpreted.
@@ -428,7 +430,9 @@ def restore_libc_locale(names: Tuple[str, str]) -> None:
 # The one class-interpretation chokepoint is the glob->regex converter
 # (extglob._bracket_to_regex), which substitutes a regex character-class body
 # for each ``[:name:]``. In C/OTHER mode that body is the fixed ASCII range
-# table (glob._POSIX_CLASSES) — byte-identical to psh's historical behaviour.
+# table (utils/posix_classes.py#POSIX_CLASSES, imported at module level — it
+# used to live in expansion/glob.py and be reached through a deferred import
+# that inverted the layering) — byte-identical to psh's historical behaviour.
 # In a UTF-8 locale stdlib ``re`` cannot express "Unicode letter", so we
 # instead compute the class's membership set ONCE per (locale, class) by
 # sweeping every codepoint through the host libc's ``iswctype`` (ctypes), then
@@ -574,8 +578,7 @@ def posix_class_ranges(name: str) -> Optional[str]:
     """
     loc = active_locale()
     if loc is None or loc.profile.ctype_mode is not LocaleMode.UTF8:
-        from ..expansion.glob import _POSIX_CLASSES
-        return _POSIX_CLASSES.get(name)
+        return POSIX_CLASSES.get(name)
     key = (loc.profile.ctype_name, name)
     if key not in _RANGE_CACHE:
         member = _class_member_fn(name)
@@ -589,8 +592,7 @@ _ASCII_CLASS_RE: Dict[str, Optional["re.Pattern[str]"]] = {}
 def _ascii_in_class(ch: str, name: str) -> bool:
     """C/OTHER-mode single-char membership, exact to the ASCII class table."""
     if name not in _ASCII_CLASS_RE:
-        from ..expansion.glob import _POSIX_CLASSES
-        body = _POSIX_CLASSES.get(name)
+        body = POSIX_CLASSES.get(name)
         _ASCII_CLASS_RE[name] = re.compile(f"[{body}]") if body else None
     pat = _ASCII_CLASS_RE[name]
     return bool(pat.match(ch)) if pat is not None else False

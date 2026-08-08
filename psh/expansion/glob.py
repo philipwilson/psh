@@ -4,41 +4,22 @@ import re
 from typing import TYPE_CHECKING, Callable, Iterator, List, Tuple
 
 from ..core.locale_service import posix_class_ranges
+from ..utils.posix_classes import POSIX_CLASSES
 
 if TYPE_CHECKING:
     from ..shell import Shell
 
 
-# POSIX character classes -> the character ranges to substitute *inside* an
-# existing bracket expression. Each range is written so it embeds safely both
-# in a Python ``re`` character class AND in stdlib ``fnmatch``: no leading
-# ``!``/``^`` (fnmatch reads those as negation) and no bare ``]``/``\`` (which
-# would close the class or escape). punct/graph/print/cntrl therefore appear as
-# reordered ranges rather than literal metacharacter lists.
-_POSIX_CLASSES = {
-    'alpha': 'a-zA-Z',
-    'digit': '0-9',
-    'alnum': 'a-zA-Z0-9',
-    'upper': 'A-Z',
-    'lower': 'a-z',
-    'xdigit': '0-9A-Fa-f',
-    'blank': ' \t',
-    'space': ' \t\n\r\x0b\x0c',
-    # 0x21-0x2f, 0x3a-0x40, 0x5b-0x60, 0x7b-0x7e (': ' first so no leading '!').
-    'punct': ':-@!-/[-`{-~',
-    'graph': '"-~!',            # 0x21-0x7e ('!' moved to the end)
-    'print': ' -~',             # 0x20-0x7e
-    'cntrl': '\x00-\x1f\x7f',   # 0x00-0x1f and 0x7f (literal control bytes)
-}
-
-# A slash-free variant of the class table: a pathname pattern is split on
-# ``/`` before per-component matching, so a bracket range must not carry a
-# literal ``/``. punct is the only class that spans ``/`` (0x2f): drop it
-# there — no filename can contain ``/``, so the matched set is identical.
+# A slash-free variant of the shared class table (``utils/posix_classes.py``,
+# which owns the table itself — it is also read by the locale service, so it
+# lives below both of us): a pathname pattern is split on ``/`` before
+# per-component matching, so a bracket range must not carry a literal ``/``.
+# punct is the only class that spans ``/`` (0x2f): drop it there — no filename
+# can contain ``/``, so the matched set is identical.
 # Production-DEAD after W3 (the engine resolves classes via the locale
 # service); the dependency of ``normalize_bracket_expressions`` below — the
 # PERMANENT fnmatch reference oracle (campaign Q3 ruling) — so it stays.
-_POSIX_CLASSES_PATHNAME = {**_POSIX_CLASSES, 'punct': ':-@!-.[-`{-~'}
+_POSIX_CLASSES_PATHNAME = {**POSIX_CLASSES, 'punct': ':-@!-.[-`{-~'}
 
 _POSIX_CLASS_RE = re.compile(r'\[:(\w+):\]')
 
