@@ -68,16 +68,23 @@ import os
 import sys
 from contextlib import contextmanager
 from typing import (
-    TYPE_CHECKING, Dict, List, NoReturn, Optional, TextIO, Tuple, cast,
+    TYPE_CHECKING,
+    Dict,
+    List,
+    NoReturn,
+    Optional,
+    TextIO,
+    Tuple,
+    cast,
 )
 
 from ..ast_nodes import Command, HeredocRedirect, Redirect
-from .input_cursor import dup_alias_fds
 from .file_redirect import (
     _ALIAS_HEREDOC_HINT,
     FileRedirector,
     NonExecutableRedirectError,
 )
+from .input_cursor import dup_alias_fds
 from .process_sub import ProcessSubstitutionHandler
 from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
 
