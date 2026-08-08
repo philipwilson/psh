@@ -1,0 +1,12 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  -s x; -w OTHER; -a OTHER  (the pin's shape)
+      bash OTHER=['x', 'x']
+      psh  OTHER=['x', 'x']
+      => MATCH
+
+  -s x; -w OTHER; -a OTHER  (with a seeded HISTFILE)
+      bash OTHER=['S1', 'S2', 'x', 'x']
+      psh  OTHER=['S1', 'S2', 'x', 'x']
+      => MATCH
+

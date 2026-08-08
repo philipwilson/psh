@@ -29,7 +29,7 @@ assert the psh-divergent result — the owning slot sweeps its own files.
 |---|---|
 | 2.3 lexer word-extent family: `test_divergence_lexer_splits_quoted_space_subscript`, `test_divergence_procsub_compound_dollar_body_lexer_blocked`, `test_divergence_doubled_open_unclosed_family`, `test_divergence_A1_doubled_open_unclosed_family` | successor lexer slot (LEDGER "2.3 carry: LEXER word-extent family"); the r18 NO-PROGRESS CRASH in the same area is UNPINNED by design — priority row |
 | 2.3 residual pins: `test_divergence_unset_nonbracket_arg_silent`, `test_divergence_assignment_prefix_element_split`, `test_divergence_procsub_separated_subshell_residual`, `test_divergence_procsub_compound_render_residual` (4 params), `test_divergence_pipe_amp_body_render`, `test_divergence_comment_in_body` | successor queue (LEDGER 2.3 carry rows; render residuals flip only with a faithful compound/`|&` re-render) |
-| 4B.2 declared divergences (NOT named `test_divergence_*` — registered here per R13-E(4) so the grep inventory stays honest): D-4B.2-s1 timeout-partial assignment = `test_input_decoder_seam_4b2.py::TestResumeAcrossReads` (`test_next_read_record_resumes_the_split_character` + `test_next_read_limited_resumes_the_split_character`, 12 params, I1-style assert-psh-AND-assert-bash-differs) + `test_read_exact_timeout_4b2.py::TestRiderRcParityWithDeclaredNew1Residue` (3 cells) | 4B.4 (deferred by 4B.2 ruling (c); doc + code move together) |
+| 4B.2 declared divergences (NOT named `test_divergence_*` — registered here per R13-E(4) so the grep inventory stays honest): D-4B.2-s1 timeout-partial assignment = `test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract` (class name CORRECTED at v0.773.0 — the original registration named a class that never existed, 4B.4 RN-7) — **RE-AFFIRMED at v0.773.0 (4B.4-R2): psh's PERMANENT contract, documented in the user guide at the measured 18-cell scope; these pins no longer await a ruling and flip only with a NEW ruling** (`test_next_read_record_resumes_the_split_character` + `test_next_read_limited_resumes_the_split_character`, 12 params, I1-style assert-psh-AND-assert-bash-differs) + `test_read_exact_timeout_4b2.py::TestRiderRcParityWithDeclaredNew1Residue` (3 cells) | 4B.4 (deferred by 4B.2 ruling (c); doc + code move together) |
 | 4B.2 s2/s3: D-4B.2-s2 `-N` count model (rc-reaching) = `test_read_exact_timeout_4b2.py::test_backslash_under_deadline_diverges_in_rc_and_value` (pinned to DEMAND reclassification if fixed); D-4B.2-s3 `read -s -N` tty echo = UNPINNED by design (report row, verifier probe in `4b.2-rescue/`). Carry-#21 characterization cells live in `test_cv_carry_characterization.py` (a must-NOT-flip file; +6 cells at v0.771.0) | successor queue |
 | `tests/parser_differential/test_input_contract_parity.py::test_CARRY_array_init_nested_substitution_still_diverges_on_combinator` + its redirect-target twin (combinator arrays.py word-builder seam — array init, element assignment, redirect targets) | successor (LEDGER "2.2 carry: arrays.py word-builder seam"); both co-flip ONLY when the whole seam is threaded at once |
 
@@ -96,3 +96,19 @@ Both pinned BOTH-SIDES in the divergent direction; each flips ONLY with a ruling
 
 Pinned in the divergent direction; flips ONLY with a ruling (a sub-13
 parking strategy would need its own design round).
+
+### 4B.3-declared divergence pins (v0.772.0; registered per R13-E(4) — none named `test_divergence_*`)
+
+| Pin | Owner |
+|---|---|
+| 4B.3 deviation family (bash's positional-tail `-a` loses/leaks; psh keeps/doesn't): `test_history_state_machine_conformance.py::TestDeclaredDeviations` (b1(i) no-dup-on-read, b2 `-w`-then-`-n`, b3 `-d`-while-pending, b5 default-file `-w`→`-a` + its no-`-w` control) and `::TestNamedReadCursorDeviation` (b4 FORWARD `test_named_read_then_default_read_new`; b4 MIRROR `test_named_read_new_resumes_at_the_global_offset_in_bash` + `test_an_unadvanced_counter_reads_the_whole_named_file_in_both` control). Every cell asserts BOTH shells with named failure messages; each flips ONLY with a ruling | 4B.3; flip = ruling |
+
+The bash-side cells are characterization of bash 5.2.26's measured tail-count
+mechanism — a "failure" there means the ORACLE's behavior moved (bash version),
+not psh; read per the nightly rules before touching.
+
+### 4B.4-declared divergence pins (v0.773.0; registered per R13-E(4))
+
+| Pin | Owner |
+|---|---|
+| I1 deliberate-loss row (d) both-sides cells in `test_input_cursor_contract_4b4.py` (builtin→external stranded lookahead — psh's child sees the kernel offset, bash-C's child sees the byte; citation resolves via `4b.4-rescue/I1-deliberate-loss-registry-excerpt.md`); the move-form (`n<&m-`) fd-lifetime cells (bash closes the source, psh does not — PRE-EXISTING, fence territory, D-4B.4-s2). Each asserts BOTH shells; flip = ruling | 4B.4; flip = ruling |

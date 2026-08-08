@@ -1,0 +1,43 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+
+--- LEG A  -d then external append then -n (PTY) ---
+   bash: listing=['seedB', 'seedC', 'seedD']
+         file-after-exit=['seedA', 'seedB', 'seedC', 'seedD']
+   psh : listing=['seedB', 'seedC', 'seedC', 'seedD']
+         file-after-exit=['seedA', 'seedB', 'seedC', 'seedD']
+  => DIVERGES
+
+--- LEG B  HISTSIZE=3, 5x history -s (PTY) ---
+   bash: listing=['s3', 's4', 's5']
+         file-after-exit=['s3', 's4', 's5']
+   psh : listing=['s1', 's2', 's3', 's4', 's5']
+         file-after-exit=['s3', 's4', 's5']
+  => DIVERGES
+
+--- LEG C  echo; -a; -c; -n (PTY) ---
+   bash: listing=['history -n', 'history']
+         file-after-exit=['echo seedX', 'history -a', 'history -n', 'history', 'exit']
+   psh : listing=['history -n', 'echo seedX', 'history -a', 'history']
+         file-after-exit=['echo seedX', 'history -a', 'history', 'exit']
+  => DIVERGES
+
+--- NEW-1  -r NAMED then -a default (PTY) ---
+   bash: listing=['seed1', 'seed2', 'seed3', 'oth1', 'oth2']
+         file-after-exit=['seed1', 'seed2', 'seed3']
+   psh : listing=['seed1', 'seed2', 'seed3', 'oth1', 'oth2']
+         file-after-exit=['seed1', 'seed2', 'seed3', 'oth1', 'oth2']
+  => DIVERGES
+
+--- NEW-2  -w NAMED then exit-save (PTY) ---
+   bash: listing=[]
+         file-after-exit=['seed1', 'seed2', 'seed3', 'true NEW']
+   psh : listing=[]
+         file-after-exit=['seed1', 'seed2', 'seed3']
+  => DIVERGES
+
+--- NEW-3  -r a 10-line file under HISTSIZE=4 (PTY) ---
+   bash: listing=['B7', 'B8', 'B9', 'B10']
+         file-after-exit=[]
+   psh : listing=['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10']
+         file-after-exit=['B7', 'B8', 'B9', 'B10']
+  => DIVERGES

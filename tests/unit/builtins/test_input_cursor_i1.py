@@ -1,8 +1,10 @@
 """InputCursor type invariants (campaign I1).
 
-The record reader owns an incremental UTF-8 surrogateescape decoder, a decoded
-character queue, and raw byte pushback across reads. These pin the type
-directly, over real pipes, independent of the read/mapfile builtins.
+The record reader owns an incremental UTF-8 surrogateescape decoder and a
+decoded character queue across reads. (It also carried a raw byte pushback
+buffer until slot 4B.4, which removed it as provably-always-empty dead state.)
+These pin the type directly, over real pipes, independent of the read/mapfile
+builtins.
 """
 import os
 

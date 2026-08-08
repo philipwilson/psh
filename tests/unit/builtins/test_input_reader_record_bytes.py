@@ -155,18 +155,32 @@ class TestErrorAndStreamPaths:
         assert reader.read_record_bytes(delimiter_byte=NL) is None
 
 
-class TestPartialDrainHonorsDelimiter:
-    def test_delimiter_buffered_in_partial_is_honored(self):
-        """If a prior read left a delimiter byte in _pushback, the byte
-        record must stop there and push the remainder back — never skip past a
-        record boundary. (StdinInput never mixes reads; this pins the guard.)"""
-        r = _pipe(b"AFTER\n")
+class TestNeverOverReadsAcrossRecords:
+    def test_record_stops_at_the_delimiter_leaving_the_rest_on_the_fd(self):
+        """The property the deleted ``_pushback`` guard was standing in for.
+
+        Slot 4B.4 removed the raw-byte pushback buffer and, with it, a cell
+        that injected ``reader._pushback = bytearray(b"x\\ny")`` to pin the
+        "honor a delimiter already in the pushback" branch. That branch was
+        unreachable: the buffer's only non-empty writer re-pushed the remainder
+        of what it had just drained, seeded from an empty buffer, so it was
+        provably always empty and the branch never ran. A cell that has to
+        construct impossible state to reach its subject pins the implementation,
+        not the contract.
+
+        The CONTRACT it was standing in for is real and is pinned here instead,
+        through the public API: a record read stops AT its delimiter and leaves
+        every later byte on the descriptor for the next reader.
+        """
+        r = _pipe(b"x\nyAFTER\nTAIL\n")
         try:
             reader = InputCursor(fd=r)
-            # Simulate a mixed prior read that buffered "x\ny" raw bytes.
-            reader._pushback = bytearray(b"x\ny")
             assert reader.read_record_bytes(delimiter_byte=NL) == b"x"
-            # The remainder "y" was pushed back, then the fd's "AFTER" follows.
             assert reader.read_record_bytes(delimiter_byte=NL) == b"yAFTER"
+            # Nothing was consumed past the record boundary: the rest is still
+            # readable, and readable from the DESCRIPTOR (a fresh cursor sees
+            # it), which is what "never over-reads" has to mean for the next
+            # consumer to work.
+            assert InputCursor(fd=r).read_record_bytes(delimiter_byte=NL) == b"TAIL"
         finally:
             os.close(r)

@@ -4,6 +4,24 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.773.0 (2026-08-08) - Input cursor contract closed: dup sharing, frame isolation, one lifecycle rule (remediation slot 4B.4; Wave 4 closes)
+
+- The record-reader cursor contract is closed on both deferred surfaces: a temporarily redirected fd now reads through its own frame-scoped description (no leak in either direction between stdin and a redirected file), and a duplicated descriptor shares its source's cursor across all four dup spellings (`exec n<&m`, per-command `n<&m`, `{v}<&n`, compound-command frames) — so a byte held mid-character can no longer contaminate another source, be lost across a dup, or reappear out of order. Measured against C-locale bash: 9 divergent compositions to 0.
+- One ownership rule governs the registry: a description's cursor is released only when no fd still names it. Stating the rule (rather than patching symptoms) also fixed a pre-existing dup-then-dup loss.
+- Named-fd redirects (`{v}<&0`) are scoped at apply time to the fd they actually allocate, fixing a byte-reordering path.
+- The vestigial `_pushback` buffer is removed (provably unreachable), with a reintroduction guard.
+- The `read -t` mid-character timeout divergence is now a documented permanent psh contract (bash assigns the torn partial; psh holds and resumes it — no byte is lost either way), scoped in the user guide to the measured 18-cell table; at a terminal with plain `read -t`, bash holds too.
+- 61 new pin cells + 12 mutation-lock arms; suite 23,892; compare-bash 3,046/26 exact. Evidence: docs/reviews/evidence/boundary_remediation_2026-07/4b.4-rescue/.
+
+## 0.772.0 (2026-08-08) - History state machine: independent cursors, one recording pipeline, bash-parity clusters (remediation slot 4B.3, MEDIUM-7)
+
+- History file-read cursor is now independent of in-memory operations: `history -d` and `history -c` no longer move it, so `history -n` neither duplicates surviving entries (leg A) nor re-materializes cleared ones (leg C / carry #32) — measured against live bash 5.2.26.
+- `history -s` routes through the one recording pipeline: the full recording policy (ignorespace, ignoredups, erasedups, HISTIGNORE matched against the stored text) and the HISTSIZE cap now apply, as bash does; `-r`/`-n` reads are cap-trimmed too.
+- The contiguous sync-marker index is retired for an explicit owed-per-position pending set: `history -w otherfile` no longer silently drops the session's commands from the exit save, reads no longer swallow pending typed entries, and a deleted command can never be resurrected into the history file by a same-text twin.
+- Where bash's own positional-tail `-a` mechanism loses typed commands or leaks read lines on interleaved compositions, psh deliberately keeps/omits them — a declared, both-sides-pinned deviation family (see the campaign LEDGER Part D and FLIP-PINS).
+- `history` accepts clustered option flags with bash's semantics (carry #25): fixed internal order (`-ps` ≡ `-sp`), at most one action per invocation with operand-sensitive `-c` suppression, `-d` argument-taking, `-s` short-circuit, `--`, separate option words, and bash's `cannot use more than one of -anrw` diagnostic.
+- 122 new pin cells + 14 mutation-lock arms; suite 23,835; compare-bash 3,046/26 exact. Evidence: docs/reviews/evidence/boundary_remediation_2026-07/4b.3-rescue/.
+
 ## 0.771.0 (2026-08-07) - Input decoding: one decoder across the seam; read -N honors -t (remediation slot 4B.2, MEDIUM-2)
 
 - **A multibyte character split across the cursor/bulk drain seam now keeps its identity**: `read_all` feeds its remaining bytes through the incremental decoder that already holds the pending prefix, instead of finalizing it empty and fresh-decoding the tail. At base, a `read -t` timeout mid-`é` followed by a bulk drain produced two surrogate characters (`\udcc3\udca9`); byte round-trip was never broken — character identity was. Every split of 2-, 3-, and 4-byte sequences is pinned across every stranding route (census-proven: TIMEOUT and ERROR are the only two), with the malformed-byte surrogateescape matrix held as must-hold controls.

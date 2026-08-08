@@ -1,0 +1,183 @@
+========================================================================
+A1b — precise counter measurement (psh vs bash 5.2.26)
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+Columns: read counter (position in the DEFAULT file that `-n` resumes from) | append slice (what `-a` writes)
+
+--- startup-load ---
+   mem after op : bash=['seed1', 'seed2', 'seed3']
+                  psh =['seed1', 'seed2', 'seed3']
+  read counter : bash=3                    psh=3
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- recording ---
+   mem after op : bash=['seed1', 'seed2', 'seed3', 'true RECORDED']
+                  psh =['seed1', 'seed2', 'seed3', 'true RECORDED']
+  read counter : bash=3                    psh=3
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  append slice : bash=['true RECORDED']
+                  psh =['true RECORDED']
+
+--- -r default ---
+   mem after op : bash=['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+                  psh =['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+  read counter : bash=3                    psh=3
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- -r default x2 ---
+   mem after op : bash=['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+                  psh =['seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3', 'seed1', 'seed2', 'seed3']
+  read counter : bash=3                    psh=3
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- -n default (no-op) ---
+   mem after op : bash=['seed1', 'seed2', 'seed3']
+                  psh =['seed1', 'seed2', 'seed3']
+  read counter : bash=3                    psh=3
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- -a default ---
+   mem after op : bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                  psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+  read counter : bash=4                    psh=4
+     pulled     : bash=['M5', 'M6']
+                  psh =['M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- -w default ---
+   mem after op : bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                  psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+  *read counter : bash=3                    psh=4
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M5', 'M6']
+  *append slice : bash=['true NEWENTRY']
+                  psh =[]
+
+--- -c ---
+   mem after op : bash=[]
+                  psh =[]
+  *read counter : bash=3                    psh=0
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M1', 'M2', 'M3', 'M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- -d 1 (below cursor) ---
+   mem after op : bash=['seed2', 'seed3']
+                  psh =['seed2', 'seed3']
+  *read counter : bash=3                    psh=2
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M3', 'M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- -d 1-2 (span) ---
+   mem after op : bash=['seed3']
+                  psh =['seed3']
+  *read counter : bash=3                    psh=1
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M2', 'M3', 'M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- -d 3 (at cursor) ---
+   mem after op : bash=['seed1', 'seed2']
+                  psh =['seed1', 'seed2']
+  *read counter : bash=3                    psh=2
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M3', 'M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- -s ---
+   mem after op : bash=['seed1', 'seed2', 'seed3', 'STORED']
+                  psh =['seed1', 'seed2', 'seed3', 'STORED']
+  read counter : bash=3                    psh=3
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  append slice : bash=['STORED']
+                  psh =['STORED']
+
+--- -r NAMED ---
+   mem after op : bash=['seed1', 'seed2', 'seed3', 'oth1', 'oth2']
+                  psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2']
+  *read counter : bash=2                    psh=3
+     pulled     : bash=['M3', 'M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  *append slice : bash=[]
+                  psh =['oth1', 'oth2']
+
+--- -n NAMED ---
+   mem after op : bash=['seed1', 'seed2', 'seed3']
+                  psh =['seed1', 'seed2', 'seed3', 'oth1', 'oth2']
+  *read counter : bash=2                    psh=3
+     pulled     : bash=['M3', 'M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  *append slice : bash=[]
+                  psh =['oth1', 'oth2']
+
+--- -a NAMED ---
+   mem after op : bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                  psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+  *read counter : bash=4                    psh=3
+     pulled     : bash=['M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+--- -w NAMED ---
+   mem after op : bash=['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+                  psh =['seed1', 'seed2', 'seed3', 'true NEWENTRY']
+  read counter : bash=3                    psh=3
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  *append slice : bash=['true NEWENTRY']
+                  psh =[]
+
+--- external-truncate ---
+   mem after op : bash=['seed1', 'seed2', 'seed3']
+                  psh =['seed1', 'seed2', 'seed3']
+  read counter : bash=3                    psh=3
+     pulled     : bash=['M4', 'M5', 'M6']
+                  psh =['M4', 'M5', 'M6']
+  append slice : bash=[]
+                  psh =[]
+
+
+========================================================================
+SUMMARY — read counter (bash | psh) and append slice agreement
+========================================================================
+  read=OK  append=OK   startup-load             bash_read=3                    psh_read=3
+  read=OK  append=OK   recording                bash_read=3                    psh_read=3
+  read=OK  append=OK   -r default               bash_read=3                    psh_read=3
+  read=OK  append=OK   -r default x2            bash_read=3                    psh_read=3
+  read=OK  append=OK   -n default (no-op)       bash_read=3                    psh_read=3
+  read=OK  append=OK   -a default               bash_read=4                    psh_read=4
+  read=DIV append=DIV  -w default               bash_read=3                    psh_read=4
+  read=DIV append=OK   -c                       bash_read=3                    psh_read=0
+  read=DIV append=OK   -d 1 (below cursor)      bash_read=3                    psh_read=2
+  read=DIV append=OK   -d 1-2 (span)            bash_read=3                    psh_read=1
+  read=DIV append=OK   -d 3 (at cursor)         bash_read=3                    psh_read=2
+  read=OK  append=OK   -s                       bash_read=3                    psh_read=3
+  read=DIV append=DIV  -r NAMED                 bash_read=2                    psh_read=3
+  read=DIV append=DIV  -n NAMED                 bash_read=2                    psh_read=3
+  read=DIV append=OK   -a NAMED                 bash_read=4                    psh_read=3
+  read=OK  append=DIV  -w NAMED                 bash_read=3                    psh_read=3
+  read=OK  append=OK   external-truncate        bash_read=3                    psh_read=3

@@ -1,0 +1,51 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+SINGLE letters:
+  -c     rc=0
+  -d 1   rc=0
+  -p X   rc=0
+  -s X   rc=0
+  -a     rc=0
+  -n     rc=0
+  -r     rc=0
+  -w     rc=0
+
+PAIRS (unordered; operands appended in letter order):
+  -cd 1       rc=0   
+  -cp X       rc=0   
+  -cs X       rc=0   
+  -ca         rc=0   
+  -cn         rc=0   
+  -cr         rc=0   
+  -cw         rc=0   
+  -dp 1 X     rc=1   
+  -ds 1 X     rc=1   
+  -da 1       rc=1   
+  -dn 1       rc=1   
+  -dr 1       rc=1   
+  -dw 1       rc=1   
+  -ps X X     rc=0   
+  -pa X       rc=0   
+  -pn X       rc=0   
+  -pr X       rc=0   
+  -pw X       rc=0   
+  -sa X       rc=0   
+  -sn X       rc=0   
+  -sr X       rc=0   
+  -sw X       rc=0   
+  -an         rc=1   [two file ops]
+  -ar         rc=1   [two file ops]
+  -aw         rc=1   [two file ops]
+  -nr         rc=1   [two file ops]
+  -nw         rc=1   [two file ops]
+  -rw         rc=1   [two file ops]
+
+ORDER CHECK (a few reversed pairs — should match):
+  -ps rc=0   -sp rc=0
+  -cw rc=0   -wc rc=0
+  -ds rc=1   -sd rc=0
+  -an rc=1   -na rc=1
+
+RULE CHECK — 'reject iff more than one of a/n/r/w':
+  counterexamples: ['-dp(rc=1)', '-ds(rc=1)', '-da(rc=1)', '-dn(rc=1)', '-dr(rc=1)', '-dw(rc=1)']

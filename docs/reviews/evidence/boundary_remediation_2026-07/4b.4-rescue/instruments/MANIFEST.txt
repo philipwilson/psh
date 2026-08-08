@@ -1,0 +1,43 @@
+# Slot 4B.4 instrument manifest (FINAL, round 2) — generated 2026-08-08T14:40:03Z at tip 05d416e5
+# SELF-EXCLUDING: MANIFEST.txt is not listed in itself.
+# __pycache__ excluded: derived, environment-dependent, not an instrument.
+# Every hash below was emitted by the md5 command that computed it.
+39a0132a5db5a428aa24a927df818ad3  tmp/w4b4/closesite/sitecustomize.py
+a6d1c86795222723b7ac1bc08c1cc284  tmp/w4b4/harness.py
+eac8a505d590a2056d35c9f70e557419  tmp/w4b4/ic_full.patch
+02b8e9093daed984dca47c9781aa071d  tmp/w4b4/ic_hunk1.patch
+5f8b8a3698b1ee26914027df6e0f8616  tmp/w4b4/instr01_reproduce_v2.py
+c2dc99561c4f0f30ea540f1ac7f12e71  tmp/w4b4/instr01.out
+d12d312ab8f5dd393c286ad355930831  tmp/w4b4/instr02_pushback_census.py
+4c08e051fe36ea649ca8cd68d282e748  tmp/w4b4/instr02.out
+b6368b27a753d686fb47c199b6b6f356  tmp/w4b4/instr03_census.py
+6678ccf308af38241b7a60f4dd6465b4  tmp/w4b4/instr03.out
+6461b1b1a2c1594bc366e871ba193508  tmp/w4b4/instr04_timeout_route.py
+e53cab0110821efb41c6d498e19efc0e  tmp/w4b4/instr04_tip.out
+f924d6eaa44ac46cc5757bb837104584  tmp/w4b4/instr04.out
+c79e7f7ae7eebff8136024ef36404d61  tmp/w4b4/instr05_s1_cost.out
+52383968add7b4ac19c65705f01ab231  tmp/w4b4/instr06_s1_effect.py
+40caa2c04fa0d2cfce53738c125dadfc  tmp/w4b4/instr06.out
+90bc020002a5427cb6d2a9ce8adb6eb8  tmp/w4b4/instr07_close_effect.py
+3a535dcab6a9df208e88923e7f91d46c  tmp/w4b4/instr07.out
+a6733fe2db06f584eb400fb662935abb  tmp/w4b4/instr08_close_timeout.py
+08eee57991c5181d701fbcefbefe564a  tmp/w4b4/instr08.out
+f71b47ee62695f5c8c0c51f0ae923e5f  tmp/w4b4/instr09_base.out
+064cfd8caea34f4d0877a39efe3c4651  tmp/w4b4/instr09_sites_census.py
+f7f8d812cb27e7e7f184e293117c33c9  tmp/w4b4/instr09_tip.out
+0e3eec3efdfa4867a7475573b1d2f966  tmp/w4b4/instr10_red_on_base.out
+394f228050c0eb1f4d07df3955eb2402  tmp/w4b4/instr11_bounce_repro.py
+5d8a9acb038d4237878bf2a085bc446a  tmp/w4b4/instr11_tip.out
+84bb066d21bfe7475002f7480fb937e1  tmp/w4b4/instr12_prefix.out
+05775ed30bbc722b16579bd268bd55a4  tmp/w4b4/instr12_three_way.py
+5c8a1ed36545f66db213135cc0c72fee  tmp/w4b4/instr13_arm_probe.py
+78275ef450ee7d350acb0e61b1eab528  tmp/w4b4/instr14_s1_table.out
+5264609c6c9b6fbd5fa8f8cdd71a04bd  tmp/w4b4/instr14_s1_table.py
+b3c54a499c960f48b58ec55a9a51e09c  tmp/w4b4/s1_flush_plugin.py
+b9ef7c78307ea8fbfd0f01bf257d0381  tmp/w4b4/s1site/sitecustomize.py
+# --- heavy-run transcripts ---
+67252fc627a1e69acd6449beb9dafd01  tmp/gate-1.txt
+38ac597a429cb38c8ad91d0f51029275  tmp/gate-2.txt
+59275f84950cf6d5852aa7c53acf5311  tmp/gate-3.txt
+51bbc8874cce74e3db849de217505a52  tmp/compare-bash-1.txt
+c8fa9c5c10b2a5614fa8a64ae7a901a4  tmp/compare-bash-2.txt

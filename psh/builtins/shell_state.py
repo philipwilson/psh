@@ -17,6 +17,12 @@ if TYPE_CHECKING:
 _HISTORY_USAGE = ("usage: history [-c] [-d offset] [n] or history -anrw "
                   "[filename] or history -ps arg [arg...]")
 
+# bash's `internal_getopt` option string for the history builtin: `d` takes an
+# argument, the rest are plain flags. Clustering and the fixed application
+# order live in HistoryBuiltin._parse_options / _dispatch_options.
+_HISTORY_FLAG_LETTERS = 'cdpsanrw'
+_HISTORY_FILE_OPS = ('a', 'n', 'r', 'w')
+
 
 @builtin
 class HistoryBuiltin(Builtin):
@@ -43,13 +49,16 @@ class HistoryBuiltin(Builtin):
         # Anything beginning with '-' (other than a bare '-') is an option;
         # bash even rejects '-5' as an invalid option rather than a count.
         if first.startswith('-') and first != '-':
-            return self._dispatch_flag(first, args[2:], shell)
+            return self._dispatch_options(args[1:], shell)
 
         # Otherwise a numeric operand: show the last N entries.
+        return self._display_operand(first, shell)
+
+    def _display_operand(self, spec: str, shell: 'Shell') -> int:
         try:
-            count = int(first)
+            count = int(spec)
         except ValueError:
-            self.error(f"{first}: numeric argument required", shell)
+            self.error(f"{spec}: numeric argument required", shell)
             return 1
         return self._display(shell, count)
 
@@ -68,61 +77,151 @@ class HistoryBuiltin(Builtin):
 
     # -- option dispatch ----------------------------------------------------
 
-    def _dispatch_flag(self, flag: str, rest: List[str], shell: 'Shell') -> int:
+    def _parse_options(self, argv: List[str], shell: 'Shell'):
+        """getopt-style parse of the history builtin's option words (bash).
+
+        Returns ``(flags, delete_spec, operands)`` or an ``int`` exit status
+        when the parse itself failed. Clustering follows bash's
+        ``internal_getopt`` over ``cdpsanrw`` with ``d`` taking an ARGUMENT:
+        the argument is the remainder of its own cluster when non-empty
+        (``-d1``, and ``-da`` therefore means ``-d a``, an invalid offset),
+        otherwise the next word (``-cd 1``, ``-ad 1``). ``--`` ends option
+        processing. Probed against bash 5.2.26.
+        """
+        flags: set = set()
+        delete_spec: Optional[str] = None
+        i = 0
+        while i < len(argv):
+            word = argv[i]
+            if word == '--':
+                i += 1
+                break
+            if not word.startswith('-') or word == '-':
+                break
+            i += 1
+            letters = word[1:]
+            for j, letter in enumerate(letters):
+                if letter not in _HISTORY_FLAG_LETTERS:
+                    return self._usage_error(f"-{letter}: invalid option", shell)
+                if letter == 'd':
+                    attached = letters[j + 1:]
+                    if attached:
+                        delete_spec = attached
+                    elif i < len(argv):
+                        delete_spec = argv[i]
+                        i += 1
+                    else:
+                        return self._usage_error(
+                            "-d: option requires an argument", shell)
+                    flags.add('d')
+                    break                      # `d` consumed the rest
+                flags.add(letter)
+        return flags, delete_spec, argv[i:]
+
+    def _dispatch_options(self, argv: List[str], shell: 'Shell') -> int:
+        """Apply the parsed flags in bash's FIXED INTERNAL ORDER.
+
+        bash does not act left-to-right: `-ps` and `-sp` are indistinguishable
+        in every observable. The order is `-d`, then `-c`, then `-s` (which
+        stores ALL remaining operands as one entry and RETURNS — so a clustered
+        `-ps` never prints and a clustered `-sw file` never writes), then `-p`,
+        then the single file operation, then the listing.
+
+        Two of `-a/-n/-r/-w` together is an error: rc 1 AND the diagnostic
+        `cannot use more than one of -anrw` (bash prints it; an earlier version
+        of this dispatcher claimed bash was silent and failed silently, which
+        was a diagnostic regression away from bash).
+
+        A file operation is SUPPRESSED — the clear/delete still happen, the
+        file op simply never runs — when `-d` is present, or when `-c` is
+        present WITHOUT a filename operand. Measured, because the rule is not
+        guessable: `history -cr` leaves memory EMPTY in bash (the re-read never
+        happens) while `history -cr "$HISTFILE"` re-reads the same file, and
+        `history -cw` leaves $HISTFILE untouched while `history -cw "$HISTFILE"`
+        truncates it. `-s` and `-p` are NOT suppressed by `-c`/`-d`.
+
+        `-c` SUPPRESSES `-d` — measured, not assumed. `history -cd 9` and
+        `history -cd 0` both give rc 0 with no message in bash even though the
+        offsets are invalid, while a bare `history -d 9` fails with
+        "9: history position out of range" and `history -c; history -d 1` as
+        two commands fails the same way on the emptied list. A clear-then-delete
+        reading would have to print those errors; a delete-then-clear reading
+        would have to print them for `-cd 9`. Only "the clear wins and the
+        delete never runs" fits every row.
+        """
+        parsed = self._parse_options(argv, shell)
+        if isinstance(parsed, int):
+            return parsed
+        flags, delete_spec, operands = parsed
+
         hist_mgr = self._history_manager(shell)
         if hist_mgr is None:
             # No interactive history manager available (unexpected); the only
             # thing we can still honor without one is clearing the raw list.
-            if flag == '-c':
+            if 'c' in flags:
                 shell.state.history.clear()
-                return 0
             return 0
 
-        if flag == '-c':
-            # Route through the manager so the file-sync markers reset too —
-            # clearing state.history directly left them stale and dropped
-            # post-clear commands from HISTFILE on save (data loss).
+        file_ops = [f for f in _HISTORY_FILE_OPS if f in flags]
+        if len(file_ops) > 1:
+            self.error("cannot use more than one of -anrw", shell)
+            return 1
+
+        if 'c' in flags:
+            # Route through the manager so the owed flags are cleared with the
+            # list — clearing state.history directly left them stale and
+            # dropped post-clear commands from HISTFILE on save (data loss).
+            # The READ cursor is deliberately NOT reset (see clear_history).
             hist_mgr.clear_history()
+        elif 'd' in flags:
+            assert delete_spec is not None  # the parse guarantees it
+            status = self._delete(delete_spec, shell, hist_mgr)
+            if status != 0:
+                return status
+
+        if 's' in flags:
+            # Store the operands as ONE entry, without executing them, and
+            # return: bash's `-s` short-circuits the print and the file op.
+            # bash strips the current line's last (unverified) entry first — so
+            # the stored line REPLACES the invocation — and the first `-s`
+            # CONSUMES the line's strip flag, blocking later strips on the same
+            # line (CV3). `-s`'s delete has NO single-physical-line restriction
+            # (R4) but IS gated on a RECORDING context (H1 — never strips inside
+            # eval/source/`-c`, though its store still consumes the line flag).
+            # If the strip is needed but the history is EMPTY (delete-failure,
+            # M3), bash stores NOTHING and does NOT consume the flag.
+            if operands:
+                if self._strip_own_invocation(shell, consume=True,
+                                              require_single_physical=False,
+                                              gate_on_recording=True):
+                    hist_mgr.store_entry(' '.join(operands))
             return 0
 
-        if flag in ('-w', '-r', '-a', '-n'):
-            path = rest[0] if rest else None
+        if 'p' in flags:
+            return self._expand_print(operands, shell)
+
+        # bash suppresses the file op after a delete, and after a clear when
+        # no filename operand was given (see the docstring's measured rows).
+        if file_ops and not ('d' in flags
+                             or ('c' in flags and not operands)):
+            path = operands[0] if operands else None
             method = {
-                '-w': hist_mgr.write_history,
-                '-r': hist_mgr.read_history,
-                '-a': hist_mgr.append_history,
-                '-n': hist_mgr.read_new_history,
-            }[flag]
+                'w': hist_mgr.write_history,
+                'r': hist_mgr.read_history,
+                'a': hist_mgr.append_history,
+                'n': hist_mgr.read_new_history,
+            }[file_ops[0]]
             if not method(path):
                 target = path or shell.state.history_file
                 self.error(f"{target}: cannot access history file", shell)
                 return 1
             return 0
 
-        if flag == '-d':
-            return self._delete(rest, shell, hist_mgr)
-
-        if flag == '-s':
-            # Store the args as one entry, without executing them. bash strips
-            # the current line's last (unverified) entry first — so the stored
-            # line REPLACES the invocation — and the first `-s` CONSUMES the
-            # line's strip flag, blocking later strips on the same line (CV3).
-            # `-s`'s delete has NO single-physical-line restriction (R4) but IS
-            # gated on a RECORDING context (H1 — never strips inside eval/source/
-            # `-c`, though its store still consumes the line flag). If the strip
-            # is needed but the history is EMPTY (delete-failure, M3), bash
-            # stores NOTHING and does NOT consume the flag.
-            if rest:
-                if self._strip_own_invocation(shell, consume=True,
-                                              require_single_physical=False,
-                                              gate_on_recording=True):
-                    hist_mgr.store_entry(' '.join(rest))
-            return 0
-
-        if flag == '-p':
-            return self._expand_print(rest, shell)
-
-        return self._usage_error(f"{flag}: invalid option", shell)
+        if flags:
+            return 0                       # `-c`/`-d` already applied
+        # Only `--` (or nothing) was given: fall through to the listing.
+        return self._display_operand(operands[0], shell) if operands \
+            else self._display(shell, None)
 
     @staticmethod
     def _strip_own_invocation(shell: 'Shell', consume: bool = False,
@@ -210,11 +309,11 @@ class HistoryBuiltin(Builtin):
                 self.write_line(result.text, shell)
         return status
 
-    def _delete(self, rest: List[str], shell: 'Shell',
+    def _delete(self, spec: str, shell: 'Shell',
                 hist_mgr: 'HistoryManager') -> int:
-        if not rest:
-            return self._usage_error("-d: option requires an argument", shell)
-        spec = rest[0]
+        """`history -d SPEC`. The missing-argument error belongs to
+        ``_parse_options``, which cannot reach here without a spec — so there
+        is deliberately no empty-argument arm to go stale."""
         n = len(shell.state.history)
 
         # Single offset (a positive position, or negative from the end).

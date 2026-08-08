@@ -19,14 +19,15 @@ Structure of this file:
   NON-continuation byte, and genuinely malformed input. These discriminate
   "fed through the existing decoder" from "swallowed" or "policy changed".
 * ``TestResumeRoutesArePshContract`` — the OTHER drain routes. These are green
-  both before and after, but they are **psh-CONTRACT cells, not bash parity**:
+  both before and after, and they are **psh-CONTRACT cells, not bash parity**:
   bash assigns a stranded partial byte to the timed-out read and moves on, while
-  psh holds it for the next read. That divergence is successor row D-4B.2-s1
-  (deferred to slot 4B.4, integrator ruling (c)). It is **documented NOWHERE in
-  the user guide** — that ABSENCE is part of what s1 carries to 4B.4. The
-  adjacent prose at ``docs/user_guide/17_differences_from_bash.md:596-598``
-  documents the CHARACTER MODEL this fix PROTECTS ("a multibyte ``é`` arrives
-  whole, not split across two reads"), not the timeout divergence.
+  psh holds it for the next read on the same description. That was successor row
+  D-4B.2-s1, and slot 4B.4 RULED it psh's permanent contract rather than
+  flipping it — the dup and temp-frame gaps that made holding a byte unsafe are
+  closed, so the held bytes can no longer reach another source or be lost. It is
+  now DOCUMENTED in ``docs/user_guide/17_differences_from_bash.md``, next to the
+  CHARACTER MODEL prose this fix PROTECTS ("a multibyte ``é`` arrives whole, not
+  split across two reads").
 * ``TestCursorStateCensus`` — the invariants the fix relies on, pinned so a
   later change cannot quietly invalidate them.
 
@@ -210,17 +211,12 @@ class TestSeamControlsMalformed:
 class TestResumeRoutesArePshContract:
     """The non-bulk drain routes resume a split character correctly.
 
-    GREEN both before and after the fix — but these are **psh-CONTRACT** cells,
+    GREEN both before and after the fix, and these are **psh-CONTRACT** cells,
     NOT bash parity. bash assigns the stranded partial byte to the read that
-    timed out and does not resume; psh holds it on the cursor for the next read.
-    That divergence is successor row **D-4B.2-s1**, deferred to slot 4B.4 by
-    integrator ruling (c). It is **UNDOCUMENTED**: no user-guide line describes
-    it, and that absence travels with s1. What
-    ``docs/user_guide/17_differences_from_bash.md:596-598`` documents is the
-    adjacent CHARACTER MODEL ("a multibyte ``é`` arrives whole, not split across
-    two reads") — the property this fix PROTECTS, not the timeout behaviour. If
-    4B.4 rules the other way, these cells and that documentation gap move
-    together.
+    timed out and does not resume; psh holds it on the cursor for the next read
+    of the same description.
+
+    **RULED in slot 4B.4 (integrator ruling R2 (b)): this is psh's PERMANENT contract, not a deferral.** psh holds the stranded partial and resumes it on the next read of the SAME description; bash assigns it to the read that timed out. Exit status agrees and no byte is lost either way (measured across -N/-n/plain x pipe/tty). It is DOCUMENTED at ``docs/user_guide/17_differences_from_bash.md``. 4B.4 closed the dup/temp-frame gaps that made holding the byte unsafe, so these cells are RE-AFFIRMED rather than flipped.
     """
 
     @pytest.mark.parametrize("ch,split", SPLIT_CASES)
@@ -245,14 +241,23 @@ class TestResumeRoutesArePshContract:
 class TestCursorStateCensus:
     """The invariants the seam fix rests on."""
 
-    def test_read_all_merge_order_is_decoded_then_pushback_then_fd(self):
-        """Order pin: already-decoded chars, then pushback bytes, then fd bytes.
+    def test_read_all_merge_order_is_decoded_then_fd(self):
+        """Order pin: already-decoded chars come before the fd's remaining bytes.
 
-        ``_pushback`` has no fd-side producer today (see
-        ``test_pushback_is_never_populated_by_the_public_api``), so this ordering
-        is not observable through the public API — which is exactly why it is
-        pinned here by constructing the state directly. The fix must not reorder
-        the merge; it changes only WHICH decoder consumes the tail.
+        Renamed and narrowed in slot 4B.4, which REMOVED the ``_pushback``
+        bytearray this cell used to place in the middle of the merge. That
+        buffer was provably always empty — its only non-empty writer re-pushed
+        the remainder of what it had just drained, and the seed was empty — so
+        the three-way order was never reachable through the public API, which is
+        why the old cell had to construct it directly. The two-way order that
+        remains is the real contract.
+
+        This cell keeps BOTH of its M8 roles unchanged: it BREAKS under
+        ``seam-merge-order-scrambled`` (the merge is exactly what it asserts),
+        and it STAYS GREEN under ``seam-fresh-decoder-reintroduced`` because the
+        cursor's decoder is CLEAN here — with nothing buffered mid-sequence,
+        "which decoder consumes the tail" cannot change the answer. That is
+        precisely the property that arm needs from its discrimination row.
         """
         r, w = os.pipe()
         try:
@@ -260,36 +265,9 @@ class TestCursorStateCensus:
             os.close(w)
             cursor = InputCursor(fd=r)
             cursor._decoded.extend('DE')          # already-decoded characters
-            cursor._pushback = bytearray(b'PB')   # raw bytes held by byte path
-            assert cursor.read_all() == 'DEPBFD'
+            assert cursor.read_all() == 'DEFD'
         finally:
             os.close(r)
-
-    def test_pushback_is_never_populated_by_the_public_api(self):
-        """P1: no public call sequence puts fd bytes into ``_pushback``.
-
-        ``read_record_bytes`` reads one byte at a time and never over-reads, so
-        the only write that could make ``_pushback`` non-empty re-pushes the
-        remainder of what it just drained — which is empty unless it was already
-        non-empty. Vestigial state; reported toward the 4B.4 contract review
-        rather than removed here.
-        """
-        payloads = [b'one\ntwo\n', b'one\ntwo', b'\xe2\x82\xac\n\xc3\xa9', b'\n\n']
-        for payload in payloads:
-            r, w = os.pipe()
-            try:
-                os.write(w, payload)
-                os.close(w)
-                cursor = InputCursor(fd=r)
-                for _ in range(6):
-                    record = cursor.read_record_bytes(delimiter_byte=ord('\n'))
-                    assert cursor._pushback == bytearray(), (
-                        f"pushback populated for {payload!r}: "
-                        f"{bytes(cursor._pushback)!r}")
-                    if record is None:
-                        break
-            finally:
-                os.close(r)
 
     def test_read_all_leaves_the_decoder_clean(self):
         """After a drain the cursor is back to the ``_decoder is None`` state."""

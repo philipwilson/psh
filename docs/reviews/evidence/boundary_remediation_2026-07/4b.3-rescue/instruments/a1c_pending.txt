@@ -1,0 +1,55 @@
+========================================================================
+A1c — pending-for-append after a read (psh vs bash 5.2.26)
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+--- -r default (re-reads 3) ---
+   bash: pulled-into-memory=['seed1', 'seed2', 'seed3']
+         pending-for-append =[]
+   psh : pulled-into-memory=['seed1', 'seed2', 'seed3']
+         pending-for-append =[]
+  => MATCHES
+
+--- -n default (pulls EXT) ---
+   bash: pulled-into-memory=['EXT']
+         pending-for-append =['EXT']
+   psh : pulled-into-memory=['EXT']
+         pending-for-append =[]
+  => DIVERGES
+
+--- -n default (pulls EXT1,EXT2) ---
+   bash: pulled-into-memory=['EXT1', 'EXT2']
+         pending-for-append =['EXT1', 'EXT2']
+   psh : pulled-into-memory=['EXT1', 'EXT2']
+         pending-for-append =[]
+  => DIVERGES
+
+--- -r NAMED (reads 5) ---
+   bash: pulled-into-memory=['oth1', 'oth2', 'oth3', 'oth4', 'oth5']
+         pending-for-append =[]
+   psh : pulled-into-memory=['oth1', 'oth2', 'oth3', 'oth4', 'oth5']
+         pending-for-append =['oth1', 'oth2', 'oth3', 'oth4', 'oth5']
+  => DIVERGES
+
+--- -n NAMED (offset 3 of 5 -> pulls oth4,oth5) ---
+   bash: pulled-into-memory=['oth4', 'oth5']
+         pending-for-append =['oth4', 'oth5']
+   psh : pulled-into-memory=['oth1', 'oth2', 'oth3', 'oth4', 'oth5']
+         pending-for-append =['oth1', 'oth2', 'oth3', 'oth4', 'oth5']
+  => DIVERGES
+
+--- recording (control: IS pending) ---
+   bash: pulled-into-memory=['true RECORDED']
+         pending-for-append =['true RECORDED']
+   psh : pulled-into-memory=['true RECORDED']
+         pending-for-append =['true RECORDED']
+  => MATCHES
+
+--- -s (control: IS pending) ---
+   bash: pulled-into-memory=['STORED']
+         pending-for-append =['STORED']
+   psh : pulled-into-memory=['STORED']
+         pending-for-append =['STORED']
+  => MATCHES
+

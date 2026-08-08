@@ -1,0 +1,74 @@
+========================================================================
+A3b — front-drop vs the read counter; HISTIGNORE vs -s
+  discriminator: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+  oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+  tip: bd13b303567188246cc75e7fc5f02914a50f32ab
+========================================================================
+
+########## HISTSIZE=4, seed=3 lines, sweeping the number of `-s` stores ##########
+(with a 4-entry cap and 3 seeded, the 2nd store is the first front-drop)
+
+--- 0 store(s) ---
+   bash: mem(3)=['seed1', 'seed2', 'seed3']
+         front-drops=0  read-counter=23  append-slice=[]
+   psh : mem(3)=['seed1', 'seed2', 'seed3']
+         front-drops=0  read-counter=3  append-slice=[]
+
+--- 1 store(s) ---
+   bash: mem(4)=['seed1', 'seed2', 'seed3', 'n1']
+         front-drops=0  read-counter=24  append-slice=['n1']
+   psh : mem(4)=['seed1', 'seed2', 'seed3', 'n1']
+         front-drops=0  read-counter=3  append-slice=['n1']
+
+--- 2 store(s) ---
+   bash: mem(4)=['seed2', 'seed3', 'n1', 'n2']
+         front-drops=1  read-counter=24  append-slice=['n1', 'n2']
+   psh : mem(5)=['seed1', 'seed2', 'seed3', 'n1', 'n2']
+         front-drops=1  read-counter=3  append-slice=['n1', 'n2']
+
+--- 3 store(s) ---
+   bash: mem(4)=['seed3', 'n1', 'n2', 'n3']
+         front-drops=2  read-counter=24  append-slice=['n1', 'n2', 'n3']
+   psh : mem(6)=['seed1', 'seed2', 'seed3', 'n1', 'n2', 'n3']
+         front-drops=2  read-counter=3  append-slice=['n1', 'n2', 'n3']
+
+--- 4 store(s) ---
+   bash: mem(4)=['n1', 'n2', 'n3', 'n4']
+         front-drops=3  read-counter=24  append-slice=['n1', 'n2', 'n3', 'n4']
+   psh : mem(7)=['seed1', 'seed2', 'seed3', 'n1', 'n2', 'n3', 'n4']
+         front-drops=3  read-counter=3  append-slice=['n1', 'n2', 'n3', 'n4']
+
+
+########## same sweep driven by NORMAL RECORDING (the established producer — control for the -s rows) ##########
+
+--- 0 recorded command(s) ---
+   bash: mem(3)=['seed1', 'seed2', 'seed3']
+         read-counter=23  append-slice=[]
+   psh : mem(3)=['seed1', 'seed2', 'seed3']
+         read-counter=3  append-slice=[]
+
+--- 2 recorded command(s) ---
+   bash: mem(4)=['seed2', 'seed3', 'true r1', 'true r2']
+         read-counter=24  append-slice=['true r1', 'true r2']
+   psh : mem(4)=['seed2', 'seed3', 'true r1', 'true r2']
+         read-counter=3  append-slice=['true r1', 'true r2']
+
+--- 4 recorded command(s) ---
+   bash: mem(4)=['true r1', 'true r2', 'true r3', 'true r4']
+         read-counter=24  append-slice=['true r1', 'true r2', 'true r3', 'true r4']
+   psh : mem(4)=['true r1', 'true r2', 'true r3', 'true r4']
+         read-counter=3  append-slice=['true r1', 'true r2', 'true r3', 'true r4']
+
+
+########## HISTIGNORE vs `history -s` (HISTCONTROL DOES apply per A3 — does HISTIGNORE?) ##########
+
+--- HISTIGNORE='s*', -s s1 ---
+   bash=[]
+   psh =['s1']
+  => DIVERGES
+
+--- HISTIGNORE='ign*', -s ignored + -s kept ---
+   bash=['kept']
+   psh =['ignoreme', 'kept']
+  => DIVERGES
+

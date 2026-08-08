@@ -1,0 +1,114 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+[pipe] -N    partial multibyte (lead only)
+          psh : rc1=142 rc2=0 v= w=c3a9
+          bash: rc1=142 rc2=0 v=c3 w=a9
+          VALIDITY (both rc1=142): True
+
+[pipe] -N    complete char, count unmet
+          psh : rc1=142 rc2=0 v=c3a9 w=5a
+          bash: rc1=142 rc2=0 v=c3a9 w=5a
+          VALIDITY (both rc1=142): True
+
+[pipe] -N    plain ASCII, count unmet
+          psh : rc1=142 rc2=0 v=41 w=5a
+          bash: rc1=142 rc2=0 v=41 w=5a
+          VALIDITY (both rc1=142): True
+
+[pipe] -n    partial multibyte (lead only)
+          psh : rc1=142 rc2=0 v= w=c3a9
+          bash: rc1=142 rc2=0 v=c3 w=a9
+          VALIDITY (both rc1=142): True
+
+[pipe] -n    complete char, count unmet
+          psh : rc1=142 rc2=0 v=c3a9 w=5a
+          bash: rc1=142 rc2=0 v=c3a9 w=5a
+          VALIDITY (both rc1=142): True
+
+[pipe] -n    plain ASCII, count unmet
+          psh : rc1=142 rc2=0 v=41 w=5a
+          bash: rc1=142 rc2=0 v=41 w=5a
+          VALIDITY (both rc1=142): True
+
+[pipe] plain partial multibyte (lead only)
+          psh : rc1=142 rc2=0 v= w=c3a9
+          bash: rc1=142 rc2=0 v=c3 w=a9
+          VALIDITY (both rc1=142): True
+
+[pipe] plain complete char, count unmet
+          psh : rc1=142 rc2=0 v=c3a9 w=5a
+          bash: rc1=142 rc2=0 v=c3a9 w=5a
+          VALIDITY (both rc1=142): True
+
+[pipe] plain plain ASCII, count unmet
+          psh : rc1=142 rc2=0 v=41 w=5a
+          bash: rc1=142 rc2=0 v=41 w=5a
+          VALIDITY (both rc1=142): True
+
+[tty ] -N    partial multibyte (lead only)
+          psh : rc1=142 rc2=0 v= w=c3a9
+          bash: rc1=142 rc2=0 v=c3 w=a9
+          VALIDITY (both rc1=142): True
+
+[tty ] -N    complete char, count unmet
+          psh : rc1=142 rc2=0 v=c3a9 w=5a
+          bash: rc1=142 rc2=0 v=c3a9 w=5a
+          VALIDITY (both rc1=142): True
+
+[tty ] -N    plain ASCII, count unmet
+          psh : rc1=142 rc2=0 v=41 w=5a
+          bash: rc1=142 rc2=0 v=41 w=5a
+          VALIDITY (both rc1=142): True
+
+[tty ] -n    partial multibyte (lead only)
+          psh : rc1=142 rc2=0 v= w=c3a9
+          bash: rc1=142 rc2=0 v=c3 w=a9
+          VALIDITY (both rc1=142): True
+
+[tty ] -n    complete char, count unmet
+          psh : rc1=142 rc2=0 v=c3a9 w=5a
+          bash: rc1=142 rc2=0 v=c3a9 w=5a
+          VALIDITY (both rc1=142): True
+
+[tty ] -n    plain ASCII, count unmet
+          psh : rc1=142 rc2=0 v=41 w=5a
+          bash: rc1=142 rc2=0 v=41 w=5a
+          VALIDITY (both rc1=142): True
+
+[tty ] plain partial multibyte (lead only)
+          psh : rc1=142 rc2=0 v= w=c3a9
+          bash: rc1=142 rc2=0 v= w=c3a9
+          VALIDITY (both rc1=142): True
+
+[tty ] plain complete char, count unmet
+          psh : rc1=142 rc2=0 v= w=c3a9
+          bash: rc1=142 rc2=0 v= w=c3a9
+          VALIDITY (both rc1=142): True
+
+[tty ] plain plain ASCII, count unmet
+          psh : rc1=142 rc2=0 v= w=41
+          bash: rc1=142 rc2=0 v= w=41
+          VALIDITY (both rc1=142): True
+
+==============================================================================
+SUMMARY — does psh's (v,w) split differ from bash, and is v+w conserved?
+==============================================================================
+pipe -N    partial multibyte (lead only)    split_differs=True  conserved=True
+pipe -N    complete char, count unmet       split_differs=False conserved=True
+pipe -N    plain ASCII, count unmet         split_differs=False conserved=True
+pipe -n    partial multibyte (lead only)    split_differs=True  conserved=True
+pipe -n    complete char, count unmet       split_differs=False conserved=True
+pipe -n    plain ASCII, count unmet         split_differs=False conserved=True
+pipe plain partial multibyte (lead only)    split_differs=True  conserved=True
+pipe plain complete char, count unmet       split_differs=False conserved=True
+pipe plain plain ASCII, count unmet         split_differs=False conserved=True
+tty  -N    partial multibyte (lead only)    split_differs=True  conserved=True
+tty  -N    complete char, count unmet       split_differs=False conserved=True
+tty  -N    plain ASCII, count unmet         split_differs=False conserved=True
+tty  -n    partial multibyte (lead only)    split_differs=True  conserved=True
+tty  -n    complete char, count unmet       split_differs=False conserved=True
+tty  -n    plain ASCII, count unmet         split_differs=False conserved=True
+tty  plain partial multibyte (lead only)    split_differs=False conserved=True
+tty  plain complete char, count unmet       split_differs=False conserved=True
+tty  plain plain ASCII, count unmet         split_differs=False conserved=True

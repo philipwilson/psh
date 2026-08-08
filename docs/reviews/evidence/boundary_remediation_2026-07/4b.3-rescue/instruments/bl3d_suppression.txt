@@ -1,0 +1,19 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+* -cr  (NO operand)      read runs => mem [S1,S2]
+    bash mem=[] FILE=['S1', 'S2']
+    psh  mem=['S1', 'S2'] FILE=['S1', 'S2']
+  -cr "$HISTFILE"       (operand)
+    bash mem=['S1', 'S2'] FILE=['S1', 'S2']
+    psh  mem=['S1', 'S2'] FILE=['S1', 'S2']
+  -cr $O                 (named operand)
+    bash mem=['O1', 'O2'] FILE=['S1', 'S2']
+    psh  mem=['O1', 'O2'] FILE=['S1', 'S2']
+  CONTROL -c ; -r        (separate commands)
+    bash mem=['S1', 'S2'] FILE=['S1', 'S2']
+    psh  mem=['S1', 'S2'] FILE=['S1', 'S2']
+  -dr 3 $O               (-d suppresses?)
+    bash mem=['S1', 'S2', 'true KEEPME'] FILE=['S1', 'S2']
+    psh  mem=['S1', 'S2', 'true KEEPME'] FILE=['S1', 'S2']
+  -dr 3                  (-d, no operand)
+    bash mem=['S1', 'S2', 'true KEEPME'] FILE=['S1', 'S2']
+    psh  mem=['S1', 'S2', 'true KEEPME'] FILE=['S1', 'S2']

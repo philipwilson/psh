@@ -1,0 +1,40 @@
+DISCRIMINATOR parent+child: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+========================================================================
+R-TIMEOUT x each surface (oracle = AMBIENT UTF-8 bash: the input
+is WELL-FORMED, merely incomplete at the deadline)
+========================================================================
+[DIVERGE] R-TIMEOUT x S-SAMEFD (this IS D-4B.2-s1)
+           psh      [OK]: b'0000000    v   =   <   >       w   =   <   >  \\n                        \n0000012\n'
+           bash-utf8[OK]: b'0000000    v   =   < 303   >       w   =   <   >  \\n                    \n0000013\n'
+           note: bash assigns the partial at timeout; psh holds it for the next read.
+
+[DIVERGE] R-TIMEOUT x S-TEMPFRAME forward (LEG A)
+           psh      [OK]: b'0000000    v   =   |   x   =   F   I   L   E   L   I   N   E  \\n        \n0000016\n'
+           bash-utf8[OK]: b'0000000    v   = 303   |   x   =   F   I   L   E   L   I   N   E  \\n    \n0000017\n'
+           note: the stranded stdin byte is PREPENDED to a read from a DIFFERENT FILE.
+
+[DIVERGE] R-TIMEOUT x S-DUP (LEG B)
+           psh      [OK]: b'0000000    v   =   |   y   = 303 251   Z   |   w   =  \\n                \n0000014\n'
+           bash-utf8[OK]: b'0000000    v   = 303   |   y   = 251   Z   |   w   =  \\n                \n0000014\n'
+           note: phase 2 lands inside the y-read window, anchored to the CHILD.
+
+[DIVERGE] R-TIMEOUT x S-EXECREBIND (must-hold: cursor dropped)
+           psh      [OK]: b'0000000    v   =   |   b   =   F   I   L   E   L   I   N   E  \\n        \n0000016\n'
+           bash-utf8[OK]: b'0000000    v   = 303   |   b   =   F   I   L   E   L   I   N   E  \\n    \n0000017\n'
+           note: rebind must drop the stranded decoder state.
+
+[DIVERGE] R-TIMEOUT x S-FORK (child registry fresh)
+           psh      [OK]: b'child=\xa9\n0000000    v   =  \\n                                                    \n0000003\n'
+           bash-utf8[OK]: b'child=\xa9\n0000000    v   = 303  \\n                                                \n0000004\n'
+           note: does the child see the byte the parent stranded?
+
+========================================================================
+R-TIMEOUT x S-TEMPFRAME **REVERSE** — strand while fd 0 IS the temp
+source (a FIFO, so the deadline can expire mid-character), then read
+real stdin. Mirror of the malformed reverse face in INSTR03.
+========================================================================
+           psh      : b'0000000    a   =   |   b   =   S   T   D   I   N   1  \\n                \n0000014\n'
+           bash-utf8: b'0000000    a   = 303   |   b   =   S   T   D   I   N   1  \\n            \n0000015\n'
+[DIVERGE] R-TIMEOUT x S-TEMPFRAME REVERSE

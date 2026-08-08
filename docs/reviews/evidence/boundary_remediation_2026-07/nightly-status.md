@@ -327,3 +327,39 @@ the HOST's bash+libc — on Linux/glibc the matches-UTF8/matches-C split
 MAY legitimately differ from the recorded macOS split (1/9/6/8): the
 cells assert psh's OWN values, so only a psh-side change can redden
 them; a redline there = the no-silent-change guarantee firing for real.
+
+**v0.772.0 reading rules (slot 4B.3 — history state machine):**
+BEHAVIOR-CHANGING slot (history cursors, `-s` policy, cluster dispatch).
+The new suites drive piped `--norc -i` subprocess shells against the
+HOST's live bash — on the Linux nightly that oracle is the distro's
+bash (5.2.21 at last census), not this host's 5.2.26. Two
+version-sensitive families: (1) the `-anrw` DIAGNOSTIC cells assert
+bash's `cannot use more than one of -anrw` wording — if the nightly's
+bash predates/rewords it, the failure is ORACLE-side (read as
+bash-version, not psh regression; the psh-side assertion in the same
+cell is the half that matters); (2) the `TestNamedReadCursorDeviation`
+and `TestDeclaredDeviations` bash-side cells characterize bash's
+global-counter/positional-tail mechanism — a redline there means
+bash's behavior moved, and the FLIP-PINS 4B.3 note applies. All
+history cells create their own scratch HISTFILE and scrub HIST* env —
+a collision-shaped failure (fixed path, shared file) would be a
+harness regression, not a flake. compare-bash stays 3,046/26 (+0 from
+this slot; no golden case added — the three history rows run at
+default HISTSIZE with no filters, measured unable to fire the new
+policy).
+
+**v0.773.0 reading rules (slot 4B.4 — InputCursor contract; Wave 4 CLOSES here):**
+BEHAVIOR-CHANGING slot (cursor sharing/isolation, `read`/`mapfile`
+surfaces). The new conformance/contract cells drive subprocess psh
+against the HOST's live bash under LC_ALL=C — on Linux the oracle is
+the distro's bash; the C-locale byte-per-char model is
+version-stable, so these cells should read platform-neutral. The
+timing cells (strand-by-timeout) use ≥1s deadlines with two-phase
+writer threads — a Linux-only failure there reads FIRST as
+scheduler/load (check the cell's margins), but a HANG is real (base
+never hung in this family). The s1 psh-contract cells assert psh's
+OWN hold-and-resume plus bash-differs — a redline on the bash half
+means the oracle's timeout assignment moved (bash version), not psh.
+M8 19/19 across two lock files; both run serial. compare-bash stays
+3,046/26 (+0 from this slot; the closed faces need a stranded surplus
+no golden case constructs).

@@ -42,6 +42,7 @@ from ..core import (
     report_internal_defect,
     special_builtin_usage_exit,
 )
+from ..io_redirect.input_cursor import dup_alias_fds
 from ..io_redirect.manager import format_redirect_error
 from ..parser.array_flat_text import array_init_argv_key
 from .array import ArrayOperationExecutor
@@ -1050,13 +1051,24 @@ class CommandExecutor:
         {'<', '<>', '<<', '<<-', '<<<', '<&', '<&-'})
 
     def _rebind_input_cursors_after_exec(self, redirects: List['Redirect']) -> None:
-        """After a successful `exec` redirect, drop input cursors on rebound fds.
+        """Re-key input cursors after a successful `exec` redirect.
 
-        `exec 0<file` gives fd 0 a new open description; the persistent cursor
-        keyed to the old one must not carry over (its decoder/queue state would
-        leak). We rebind the fd of every explicit-fd redirect and every
-        input-family default-stdin redirect; output-only fds hold no cursor, so
-        rebinding them is a harmless no-op.
+        Two different things can happen to an fd here, and they need opposite
+        treatment:
+
+        * An OPEN (`exec 0<file`) gives the fd a BRAND NEW open file
+          description, so the cursor keyed to the old one must be dropped — its
+          decoder/queue state belongs to a stream this fd no longer names.
+        * A DUP (`exec 3<&0`) creates no description at all; it makes a second
+          fd name the EXISTING one. Dropping there would be wrong in a way that
+          loses data: the two fds share one kernel offset, so a byte the cursor
+          already consumed through fd 0 is gone from the kernel, and giving fd 3
+          a fresh cursor would leave that byte reachable through neither fd.
+          The fds must ALIAS one cursor instead (campaign I1's deferred
+          fidelity, closed in slot 4B.4).
+
+        Output-only fds hold no cursor, so either operation on one is a
+        harmless no-op.
         """
         registry = self.state.input_cursors
         for redirect in redirects:
@@ -1066,7 +1078,11 @@ class CommandExecutor:
                     fd = 0
                 else:
                     continue
-            registry.rebind(fd)
+            alias = dup_alias_fds(redirect)
+            if alias is not None:
+                registry.bind_dup(*alias)
+            else:
+                registry.rebind(fd)
 
     def _handle_exec_builtin(self, node: 'SimpleCommand', command_args: List[str],
                             assignments: List[tuple]) -> int:

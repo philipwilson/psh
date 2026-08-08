@@ -1,0 +1,25 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-3/psh/__init__.py
+* -cw  (no operand)               
+    bash mem=[] FILE=['S1', 'S2']
+    psh  mem=[] FILE=[]
+  -cw "$HISTFILE"                 
+    bash mem=[] FILE=[]
+    psh  mem=[] FILE=[]
+* -wc  (reversed)                 
+    bash mem=[] FILE=['S1', 'S2']
+    psh  mem=[] FILE=[]
+  CONTROL -c ; -w                 
+    bash mem=[] FILE=[]
+    psh  mem=[] FILE=[]
+  CONTROL -w alone                
+    bash mem=['S1', 'S2'] FILE=['S1', 'S2']
+    psh  mem=['S1', 'S2'] FILE=['S1', 'S2']
+  -cd 3 (delete a TYPED entry)    
+    bash mem=[] FILE=['S1', 'S2']
+    psh  mem=[] FILE=['S1', 'S2']
+  -wd 3 (delete TYPED + write)    
+    bash mem=['S1', 'S2'] FILE=['S1', 'S2']
+    psh  mem=['S1', 'S2'] FILE=['S1', 'S2']
+  -d 3 alone (control)            
+    bash mem=['S1', 'S2'] FILE=['S1', 'S2']
+    psh  mem=['S1', 'S2'] FILE=['S1', 'S2']
