@@ -513,7 +513,7 @@ class LazyFileInput(InputSource):
         if not self._seekable:
             # The unseekable path's InputCursor holds the old fd. Relocation
             # only fires BETWEEN lines (during command execution), where a
-            # never-over-read record cursor has no pending pushback/decoder
+            # never-over-read record cursor has no pending decoder
             # state, so rebuilding it on the relocated fd is lossless.
             self._cursor = _make_input_cursor(new)
 
