@@ -67,9 +67,12 @@ import fcntl
 import os
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, List, NoReturn, Optional, TextIO, Tuple, cast
+from typing import (
+    TYPE_CHECKING, Dict, List, NoReturn, Optional, TextIO, Tuple, cast,
+)
 
 from ..ast_nodes import Command, HeredocRedirect, Redirect
+from .input_cursor import dup_alias_fds
 from .file_redirect import (
     _ALIAS_HEREDOC_HINT,
     FileRedirector,
@@ -296,6 +299,11 @@ class BuiltinRedirectFrame:
         # stops the signal path re-running a restore that is already past its
         # stream work — see IOManager.restore_active_builtin_redirections.
         self.streams_restored: bool = False
+        # Input-cursor bindings this frame set aside (InputCursorRegistry
+        # push_frame token). Restored with the fds, so a `read` inside the
+        # frame cannot see the outer cursor's buffered bytes and a `read`
+        # after it cannot see the frame's.
+        self.saved_input_cursors: Dict[int, object] = {}
 
 
 class IOManager:
@@ -314,6 +322,43 @@ class IOManager:
         # restore_builtin_redirections; the state itself lives in the frames.
         self._builtin_frame_stack: List[BuiltinRedirectFrame] = []
 
+    # -- input-cursor frame scoping -------------------------------------
+
+    @staticmethod
+    def cursor_scope_fds(redirects: List[Redirect]) -> List[int]:
+        """The fds a redirect list temporarily rebinds, for cursor scoping.
+
+        A ``read``/``mapfile`` reaches its byte cursor through
+        ``InputCursorRegistry`` keyed by fd, so any fd a frame re-points must
+        get a frame-scoped binding — otherwise the frame's read finds the outer
+        cursor (and its buffered bytes), or the outer source's next read finds
+        the frame's. Only the TARGET fd matters; what it is pointed at does not.
+
+        Output redirects are included rather than filtered out: an fd that never
+        holds a cursor makes push/pop a no-op, and "which redirects can produce
+        a readable fd" is a classification this does not need to get right.
+        A close (``>&-``) is included for the same reason — the fd's binding
+        must not outlive it.
+        """
+        fds = []
+        for redirect in redirects:
+            fd = redirect.fd
+            if fd is None:
+                fd = 0 if redirect.type.startswith('<') else 1
+            if fd not in fds:
+                fds.append(fd)
+        return fds
+
+    @contextmanager
+    def _scoped_input_cursors(self, redirects: List[Redirect]):
+        """Scope input-cursor bindings to a temporary redirect region."""
+        registry = self.state.input_cursors
+        saved = registry.push_frame(self.cursor_scope_fds(redirects))
+        try:
+            yield
+        finally:
+            registry.pop_frame(saved)
+
 
     @contextmanager
     def with_redirections(self, redirects: List[Redirect]):
@@ -326,7 +371,8 @@ class IOManager:
         if not redirects:
             yield
             return
-        with self.process_sub_handler.scope():
+        with self.process_sub_handler.scope(), \
+                self._scoped_input_cursors(redirects):
             saved_fds = self.apply_redirections(redirects)
             stream_restore = self._swap_closed_output_streams(redirects)
             try:
@@ -358,7 +404,8 @@ class IOManager:
         if not redirects:
             yield True
             return
-        with self.process_sub_handler.scope():
+        with self.process_sub_handler.scope(), \
+                self._scoped_input_cursors(redirects):
             try:
                 saved_fds = self.apply_redirections(redirects)
                 stream_restore = self._swap_closed_output_streams(redirects)
@@ -511,6 +558,12 @@ class IOManager:
                   file=sys.stderr)
 
         frame = BuiltinRedirectFrame()
+        # Scope the input-cursor bindings for every fd this frame re-points,
+        # BEFORE any redirect is applied: the builtin about to run may be
+        # `read`, and it must reach a cursor for the frame's description, not
+        # the one the outer source left behind (and vice versa on restore).
+        frame.saved_input_cursors = self.state.input_cursors.push_frame(
+            self.cursor_scope_fds(command.redirects))
         self._builtin_frame_stack.append(frame)
 
         # ONE typed, source-ordered program applied left-to-right, every
@@ -554,6 +607,13 @@ class IOManager:
                     self._builtin_redirect_dup(dup_step, frame)
                 else:
                     self._builtin_redirect_fd_level(dup_step, frame)
+                # The dup'd fd names the SAME description as its source, so it
+                # shares that description's cursor for as long as this frame
+                # lasts. The frame already set the target fd's binding aside,
+                # so this alias is frame-scoped and pop_frame undoes it.
+                alias = dup_alias_fds(dup_step)
+                if alias is not None:
+                    self.state.input_cursors.bind_dup(*alias)
                 if close_step is not None:
                     self._apply_builtin_close(close_step, frame)
             elif op.kind is RedirectOpKind.CLOSE_FD:
@@ -1000,6 +1060,13 @@ class IOManager:
                     except OSError:
                         pass
         finally:
+            # Put the outer input-cursor bindings back and drop whatever this
+            # frame bound, in the `finally` so a restore that raised part-way
+            # still cannot leave the frame's cursor reachable on a restored fd.
+            # Cleared afterwards so a second restore of the same frame is inert,
+            # exactly like `saved_fds` above.
+            self.state.input_cursors.pop_frame(frame.saved_input_cursors)
+            frame.saved_input_cursors = {}
             if (self._builtin_frame_stack
                     and self._builtin_frame_stack[-1] is frame):
                 self._builtin_frame_stack.pop()

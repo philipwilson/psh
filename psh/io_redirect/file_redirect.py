@@ -641,6 +641,14 @@ class FileRedirector:
                 raise OSError(f"{dup_fd}: Bad file descriptor")
             newfd = fcntl.fcntl(dup_fd, fcntl.F_DUPFD, 10)
             self.shell.state.set_variable(name, str(newfd))
+            # The allocated fd names the SAME open file description as its
+            # source, so it shares that description's input cursor: a byte
+            # already consumed through the source is gone from the shared kernel
+            # offset, and giving this fd a fresh cursor would leave that byte
+            # reachable through neither. The fd NUMBER is only known here, which
+            # is why the alias is recorded at allocation rather than from the
+            # redirect node like the other two dup paths.
+            self.shell.state.input_cursors.bind_dup(newfd, dup_fd)
             return
 
         # Here-document / here-string forms: `{v}<<EOF`, `{v}<<-EOF`, `{v}<<<w`.
