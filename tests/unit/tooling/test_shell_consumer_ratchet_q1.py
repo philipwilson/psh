@@ -67,28 +67,39 @@ two of them passed every test in this file. Two things keep the scope current:
   the same service-locator reach as taking it as a parameter, one indirection
   later. Remediation 5B.1 found the parameter-only detector blind to this, which
   mattered because it is the exact shape of the "broad owner escape hatch" 5B's
-  exit criterion names.
+  exit criterion names; or
+* an INSTANCE ATTRIBUTE named ``shell``/``_shell`` bound to a bare name inside a
+  method body (``def wire(self, s): self.shell = s``). Remediation 5B.2 added
+  this arm for the shape 5B.1 registered as its remaining blind spot: a shell
+  stored by plain assignment, with no annotation anywhere.
 
-**What the detector does NOT see.** It reads DECLARATIONS — parameters and
-annotated class-level attributes — so a shell stored by plain ASSIGNMENT in a
-method body (``self.shell = shell``, no annotation anywhere) is invisible to it.
-That shape is real: remediation 5B.1 removed exactly one instance of it from
-``scripting/analysis_session.py``, and what keeps it removed is a bespoke pin in
-``tests/unit/scripting/test_analysis_session.py``, NOT this detector. Teaching
-the detector instance-assignment is remediation 5B.2's (its sweep forces a
-disposition for every site it would newly reveal, which is migration work). Do
-not read the class-attribute extension as covering the assignment shape.
+  **It is keyed on the assignment TARGET, and that is the point.** Keying it on
+  the SOURCE instead — "an attribute assigned from a full-``Shell`` parameter" —
+  is the design that first suggests itself and it is worthless: to write
+  ``self.x = shell`` the value must BE a full-``Shell`` parameter, and every
+  function that has one is already flagged by the parameter arm, so a
+  source-keyed arm cannot report anything the detector did not already know. It
+  was measured doing precisely that (33 hits tree-wide, none of them new)
+  before being replaced. The shape the parameter arm genuinely cannot see is
+  the one where the parameter is unannotated AND not named ``shell``, so that
+  only the FIELD's name reveals what is being held.
 
-Neither form ever matches ``ShellState`` (a distinct identifier — already a
-narrowing). ``ShellState`` is deliberately NOT counted in EITHER position
+  The value must be a BARE NAME, deliberately: ``self.mgr =
+  shell.expansion_manager`` and ``self.state = shell.state`` are the narrowings
+  this campaign exists to produce, and both are attribute accesses. An arm that
+  flagged the migration target as the offender would fight its own purpose.
+
+No form ever matches ``ShellState`` (a distinct identifier — already a
+narrowing). ``ShellState`` is deliberately NOT counted in ANY position
 (``process_launcher`` / ``input_sources`` take it as a parameter; ``JobRuntime``
 carries it as a member): it is a state container, not a service locator, and
 counting it would flag the narrowings the campaign asked for as though they were
 debt.
 
 The ``test_detector_*`` self-tests prove the detector flags the bare, wrapped,
-unannotated and class-attribute shapes and ignores ``ShellState`` / protocol
-members in BOTH positions, so the ratchet cannot rot into a no-op.
+unannotated, class-attribute and instance-assignment shapes, and ignores
+``ShellState`` / protocol members / narrowings in every position, so the ratchet
+cannot rot into a no-op.
 """
 
 import ast
@@ -268,14 +279,57 @@ def _ann_mentions_shell(node) -> bool:
     return False
 
 
+#: Instance-attribute names that denote "the whole shell" when a method stores
+#: one. Kept explicit rather than inferred: the arm exists precisely for the
+#: case where nothing else in the signature says what is being held.
+SHELL_FIELD_NAMES = {"shell", "_shell"}
+
+
+def _stores_shell_by_assignment(fn) -> bool:
+    """True if *fn* binds ``self.shell`` / ``self._shell`` to a bare name.
+
+    See the module docstring for why this is keyed on the target rather than on
+    the assigned value's origin, and why a bare NAME (not an attribute access)
+    is the discriminator that keeps narrowings out.
+    """
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                targets = tgt.elts if isinstance(tgt, ast.Tuple) else [tgt]
+                values = (node.value.elts
+                          if isinstance(tgt, ast.Tuple)
+                          and isinstance(node.value, ast.Tuple)
+                          else [node.value] * len(targets))
+                for t, v in zip(targets, values, strict=False):
+                    if (isinstance(t, ast.Attribute)
+                            and isinstance(t.value, ast.Name)
+                            and t.value.id == "self"
+                            and t.attr in SHELL_FIELD_NAMES
+                            and isinstance(v, ast.Name)):
+                        return True
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            t = node.target
+            if (isinstance(t, ast.Attribute)
+                    and isinstance(t.value, ast.Name)
+                    and t.value.id == "self"
+                    and (t.attr in SHELL_FIELD_NAMES
+                         or _ann_mentions_shell(node.annotation))
+                    and isinstance(node.value, ast.Name)):
+                return True
+    return False
+
+
 def full_shell_consumers(src: str, module: str) -> set:
     """Return {(module, qualname)} for every full-``Shell`` consumer: a def with
-    a ``Shell`` parameter (annotated, or unannotated + named ``shell``), or a
-    class with a ``Shell``-annotated class-level attribute.
+    a ``Shell`` parameter (annotated, or unannotated + named ``shell``), a class
+    with a ``Shell``-annotated class-level attribute, or a method that STORES
+    the shell as ``self.shell``/``self._shell``.
 
     The attribute form (``class C: shell: 'Shell'``) is the same service-locator
     reach one indirection later — a parameter-only detector was blind to it
-    (remediation 5B.1). ``ShellState`` is never a hit in either position.
+    (remediation 5B.1) — and the instance-assignment form is the same reach with
+    no declaration anywhere (remediation 5B.2). ``ShellState`` is never a hit in
+    any position.
     """
     tree = ast.parse(src)
     found: set = set()
@@ -303,7 +357,7 @@ def full_shell_consumers(src: str, module: str) -> set:
                     _ann_mentions_shell(p.annotation)
                     or (p.annotation is None and p.arg == "shell")
                     for p in params
-                )
+                ) or _stores_shell_by_assignment(child)
                 if hit:
                     found.add(".".join(prefix + [child.name]))
                 visit(child, prefix + [child.name])
@@ -540,6 +594,76 @@ def test_detector_flags_wrapped_class_attribute_shell():
            "    b: 'Shell | None'\n")
     found = full_shell_consumers(src, "psh.fake")
     assert {("psh.fake", "Foo.a"), ("psh.fake", "Foo.b")} <= found
+
+
+def test_detector_flags_instance_assignment_with_an_undeclared_param():
+    """5B.2: the shape NO declaration reveals.
+
+    The parameter is unannotated AND not named ``shell``, so the parameter arm
+    is silent; only the field's name says the whole shell is being held. This
+    is the case the source-keyed design could not have caught.
+    """
+    src = ("class Foo:\n"
+           "    def wire(self, s):\n"
+           "        self.shell = s\n")
+    assert ("psh.fake", "Foo.wire") in full_shell_consumers(src, "psh.fake")
+
+
+def test_detector_flags_instance_assignment_to_underscore_shell():
+    """``self._shell = s`` is the same reach one underscore away — the live
+    spelling in ``core/scope.py#ScopeManager.set_shell``."""
+    src = ("class Foo:\n"
+           "    def set_shell(self, s):\n"
+           "        self._shell = s\n")
+    assert ("psh.fake", "Foo.set_shell") in full_shell_consumers(src, "psh.fake")
+
+
+def test_detector_ignores_a_narrowing_assignment():
+    """CONTROL, and the most important one in this file.
+
+    ``self.mgr = shell.expansion_manager`` / ``self.state = shell.state`` are
+    the migrations the campaign asks for. If the instance-assignment arm
+    flagged those, the ratchet would report the fix as the defect. Only the
+    ``shell`` parameter itself is a hit here.
+    """
+    src = ("class Foo:\n"
+           "    def __init__(self, other):\n"
+           "        self.mgr = other.expansion_manager\n"
+           "        self.state = other.state\n"
+           "        self.shell = other.shell\n")
+    assert full_shell_consumers(src, "psh.fake") == set()
+
+
+def test_detector_ignores_a_none_store():
+    """``self.shell = None`` holds no shell."""
+    src = ("class Foo:\n"
+           "    def reset(self):\n"
+           "        self.shell = None\n")
+    assert full_shell_consumers(src, "psh.fake") == set()
+
+
+def test_detector_ignores_a_non_shell_field_name():
+    """A bare-name store into an unrelated field is not this arm's business."""
+    src = ("class Foo:\n"
+           "    def wire(self, s):\n"
+           "        self.thing = s\n")
+    assert full_shell_consumers(src, "psh.fake") == set()
+
+
+def test_instance_assignment_arm_adds_no_allowlist_entries():
+    """The arm is PROPHYLACTIC: it closes the gap without conscripting the
+    tree.
+
+    Measured before it was written: across the scanned modules the arm reports
+    nothing the parameter/class-attribute arms did not already report, so
+    ``ALLOWLIST`` neither grew nor needed the 5B.1-R0 growth exception. If this
+    cell ever fails, a genuine smuggled store has appeared and needs a
+    disposition — narrow it, or record it with a justification.
+    """
+    live = _live_consumers()
+    assert live == set(ALLOWLIST), (
+        "the scanned set no longer equals ALLOWLIST exactly: "
+        f"new={sorted(live - set(ALLOWLIST))} stale={sorted(set(ALLOWLIST) - live)}")
 
 
 def test_detector_ignores_class_attribute_shellstate():
