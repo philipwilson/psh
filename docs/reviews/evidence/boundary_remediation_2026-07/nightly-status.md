@@ -347,3 +347,19 @@ harness regression, not a flake. compare-bash stays 3,046/26 (+0 from
 this slot; no golden case added — the three history rows run at
 default HISTSIZE with no filters, measured unable to fire the new
 policy).
+
+**v0.773.0 reading rules (slot 4B.4 — InputCursor contract; Wave 4 CLOSES here):**
+BEHAVIOR-CHANGING slot (cursor sharing/isolation, `read`/`mapfile`
+surfaces). The new conformance/contract cells drive subprocess psh
+against the HOST's live bash under LC_ALL=C — on Linux the oracle is
+the distro's bash; the C-locale byte-per-char model is
+version-stable, so these cells should read platform-neutral. The
+timing cells (strand-by-timeout) use ≥1s deadlines with two-phase
+writer threads — a Linux-only failure there reads FIRST as
+scheduler/load (check the cell's margins), but a HANG is real (base
+never hung in this family). The s1 psh-contract cells assert psh's
+OWN hold-and-resume plus bash-differs — a redline on the bash half
+means the oracle's timeout assignment moved (bash version), not psh.
+M8 19/19 across two lock files; both run serial. compare-bash stays
+3,046/26 (+0 from this slot; the closed faces need a stranded surplus
+no golden case constructs).

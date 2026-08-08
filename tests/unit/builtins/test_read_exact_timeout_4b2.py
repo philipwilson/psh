@@ -31,7 +31,7 @@ integrator ruling, and are pinned here as labelled psh-CONTRACT cells that
 assert psh's value AND that bash's differs — so they flip LOUDLY when the
 owning slot rules:
 
-* **D-4B.2-s1 (NEW-1, deferred to slot 4B.4):** on timeout bash ASSIGNS the
+* **D-4B.2-s1 (NEW-1, RULED a permanent psh contract in 4B.4):** on timeout bash ASSIGNS the
   stranded partial multibyte bytes; psh holds them on the cursor for the next
   read. rc agrees (142); only the value differs.
 * **D-4B.2-s2 (NEW-2, out of charter):** bash counts POST-escape characters for
@@ -213,13 +213,14 @@ class TestRiderParityFull:
 
 
 class TestRiderRcParityWithDeclaredNew1Residue:
-    """rc must match bash; the stranded partial byte is D-4B.2-s1 (slot 4B.4).
+    """rc must match bash; the stranded partial byte is D-4B.2-s1, ruled psh's permanent
+    contract in slot 4B.4 and documented in the user guide.
 
     A VALUE-ONLY divergence: bash assigns the stranded partial multibyte bytes
     to the timed-out read, psh holds them on the cursor for the next read.
     """
 
-    S1 = "D-4B.2-s1 (timeout-partial assignment, deferred to 4B.4)"
+    S1 = "D-4B.2-s1 (timeout-partial hold-and-resume: psh's RULED contract, 4B.4)"
 
     def test_two_byte_char_split_by_the_deadline(self, tmp_path):
         _assert_psh_contract(
@@ -343,7 +344,7 @@ class TestLowercaseNAndPlainTReference:
     cells for the same D-4B.2-s1 residue as the ``-N`` family.
     """
 
-    S1 = "D-4B.2-s1 (timeout-partial assignment, deferred to 4B.4)"
+    S1 = "D-4B.2-s1 (timeout-partial hold-and-resume: psh's RULED contract, 4B.4)"
 
     def test_n_no_input_times_out(self, tmp_path):
         assert _assert_parity(

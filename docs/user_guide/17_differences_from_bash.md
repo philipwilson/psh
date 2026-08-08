@@ -602,6 +602,32 @@ honours the effective locale for:
   stuck to the next field; PSH splits on the whole character. For the ordinary
   ASCII delimiters (newline, `:`, `,`, `;`, NUL) byte and character coincide, so
   this only surfaces with a multibyte `-d` delimiter.
+- **A `read -t` that times out mid-character keeps the partial character.**
+  The same character model governs a timeout. If a `-t` deadline expires when
+  only some bytes of a multibyte character have arrived, bash assigns those
+  bytes to the variable and moves on, tearing the character in half. PSH holds
+  them and resumes the character on the next read of the *same input source*,
+  so an `é` split by the deadline still arrives whole:
+
+  ```bash
+  # feed the first byte of é, let the deadline pass, then send the rest
+  read -t 1 -N 2 v      # bash: v holds the lone lead byte;  psh: v is empty
+  read -t 1 -N 1 w      # bash: w begins a NEW character;    psh: w is the é
+  ```
+
+  The exit status is identical in both shells (142 on timeout) and no input is
+  lost either way; the difference is only *which read* reports the partial
+  character. It shows up only when the deadline lands **mid-character** — a
+  complete character, or plain ASCII, is reported identically by both shells —
+  and it applies to `read -t`, `read -t -n` and `read -t -N` reading a pipe or
+  file. Reading from a *terminal* with plain `read -t` (no `-n`/`-N`) is the one
+  combination where bash holds the partial too, so there the shells agree.
+  The held bytes belong to the input source they came from: a
+  temporary redirect (`read x < file`) reads its own source and never sees
+  them, a duplicated descriptor (`exec 3<&0`) shares them because it shares the
+  source, and `exec 0<file` discards them along with the old source. At end of
+  input they are flushed as lone surrogates, so a genuinely truncated character
+  still round-trips byte for byte.
 - **PEP 538 residual (`PYTHONUTF8`).** In a bare or `LANG=C` environment
   CPython's PEP 538 coercion rewrites `LC_CTYPE` to a UTF-8 target before PSH
   starts; PSH detects and strips that phantom, so it presents bash's C locale

@@ -1,0 +1,54 @@
+/Users/pwilson/src/psh-r4b-4/psh/builtins/input_reader.py:138:        self._pushback = bytearray()
+/Users/pwilson/src/psh-r4b-4/psh/builtins/input_reader.py:171:        if self._decoded or self._pushback:
+/Users/pwilson/src/psh-r4b-4/psh/builtins/input_reader.py:210:        chunks = [bytes(self._pushback)]
+/Users/pwilson/src/psh-r4b-4/psh/builtins/input_reader.py:211:        self._pushback.clear()
+/Users/pwilson/src/psh-r4b-4/psh/builtins/input_reader.py:302:        drained = bytes(self._pushback)
+/Users/pwilson/src/psh-r4b-4/psh/builtins/input_reader.py:303:        self._pushback.clear()
+/Users/pwilson/src/psh-r4b-4/psh/builtins/input_reader.py:306:            self._pushback = bytearray(drained[split + 1:])
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+
+======================================================================
+STATIC HALF — every `_pushback` occurrence, classified
+======================================================================
+ 138:         self._pushback = bytearray()
+ 171:         if self._decoded or self._pushback:
+ 210:         chunks = [bytes(self._pushback)]
+ 211:         self._pushback.clear()
+ 302:         drained = bytes(self._pushback)
+ 303:         self._pushback.clear()
+ 306:             self._pushback = bytearray(drained[split + 1:])
+
+Occurrences OUTSIDE input_reader.py (whole psh/ tree):
+(empty above == none)
+
+======================================================================
+DYNAMIC HALF — tripwire on every mutation of _pushback
+======================================================================
+-- driving the byte-record path (script on stdin) --
+   [VALID] script-on-stdin: read consumes the FOLLOWING line
+     rc=0 stdout=b'got:DATALINE\n' stderr=b''
+     bash: rc=0 stdout=b'got:DATALINE\n'
+   [VALID] script-on-stdin: two reads, two data lines
+     rc=0 stdout=b'[L1][L2]\n' stderr=b''
+     bash: rc=0 stdout=b'[L1][L2]\n'
+   [VALID] script-on-stdin: malformed byte in the consumed data
+     rc=0 stdout=b'x=\xc3A|\n' stderr=b''
+     bash: rc=0 stdout=b'x=\xc3A|\n'
+   ALL STIMULI VALID: True
+
+NOTE: the subprocess runs in a CHILD, so the in-process tripwire
+above cannot see it. The in-process arm follows.
+
+-- in-process arm: drive InputCursor's byte path directly --
+   records: [b'alpha', b'beta', b'\xc3A', b'gamma']
+   _pushback after full drain: b''
+
+======================================================================
+RESULT
+======================================================================
+driven stimuli: 3
+  - script-on-stdin: read consumes the FOLLOWING line
+  - script-on-stdin: two reads, two data lines
+  - script-on-stdin: malformed byte in the consumed data
+in-place mutations recorded (append/extend/+=): []
+non-empty REBINDS recorded (`self._pushback = bytearray(...)`): []
