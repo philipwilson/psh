@@ -1,0 +1,110 @@
+
+=== CELL f2dec.d1_procsub_readN ===
+script:
+  | IFS= read -r -N 2 v < <(cat p1)
+  | printf '%s' "$v" | od -An -tx1 | tr -s ' '
+  | printf '#%s\n' "${#v}"
+--- psh: rc=0
+    out=b' 61 c3 a9 \n\n#2\n'
+    err=b''
+--- bash: rc=0
+    out=b' 61 c3 a9 \n\n#2\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f2dec.d2_split_seam_two_reads ===
+script:
+  | exec 6< <(cat pa; sleep 0.4; cat pb)
+  | IFS= read -r -N 2 x <&6
+  | IFS= read -r -N 2 y <&6
+  | exec 6<&-
+  | printf '%s' "$x" | od -An -tx1 | tr -s ' '
+  | printf '%s' "$y" | od -An -tx1 | tr -s ' '
+--- psh: rc=0
+    out=b' 61 c3 a9 \n\n 62 0a \n\n'
+    err=b''
+--- bash: rc=0
+    out=b' 61 c3 a9 \n\n 62 0a \n\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f2dec.d3_cmdsub_capture ===
+script:
+  | v=$(cat p1)
+  | printf '%s' "$v" | od -An -tx1 | tr -s ' '
+  | printf '#%s\n' "${#v}"
+--- psh: rc=0
+    out=b' 78 c3 a9 \n\n#2\n'
+    err=b''
+--- bash: rc=0
+    out=b' 78 c3 a9 \n\n#2\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f2dec.d4_subshell_fork_stranding ===
+script:
+  | exec 6< <(cat p2)
+  | ( IFS= read -r -N 1 a <&6; printf '%s' "$a" | od -An -tx1 | tr -s ' ' )
+  | IFS= read -r -N 2 b <&6
+  | printf '%s' "$b" | od -An -tx1 | tr -s ' '
+  | exec 6<&-
+--- psh: rc=0
+    out=b' c3 a9 \n\n 71 72 \n\n'
+    err=b''
+--- bash: rc=0
+    out=b' c3 a9 \n\n 71 72 \n\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f2dec.d5_loop_readN3 ===
+script:
+  | while IFS= read -r -N 3 c; do
+  |   printf '%s' "$c" | od -An -tx1 | tr -s ' '
+  | done < <(cat p3)
+--- psh: rc=0
+    out=b' 61 62 c3 a9 \n\n 63 64 c3 a9 \n\n'
+    err=b''
+--- bash: rc=0
+    out=b' 61 62 c3 a9 \n\n 63 64 c3 a9 \n\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f2dec.d6_pipeline_member ===
+script:
+  | cat p1 | { IFS= read -r -N 2 x; IFS= read -r -N 1 y; printf '%s' "$x$y" | od -An -tx1 | tr -s ' '; }
+--- psh: rc=0
+    out=b' 61 c3 a9 62 \n\n'
+    err=b''
+--- bash: rc=0
+    out=b' 61 c3 a9 62 \n\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f2dec.d7_split_single_char ===
+script:
+  | IFS= read -r -N 1 v < <(cat pa; sleep 0.4; cat pb)
+  | printf '%s' "$v" | od -An -tx1 | tr -s ' '
+--- psh: rc=0
+    out=b' c3 a9 \n\n'
+    err=b''
+--- bash: rc=0
+    out=b' c3 a9 \n\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f2dec.d8_builtin_then_external_declared ===
+script:
+  | exec 6< <(cat p4)
+  | IFS= read -r line <&6
+  | printf 'first<%s>\n' "$line"
+  | cat <&6
+  | exec 6<&-
+--- psh: rc=0
+    out=b'first<one>\ntwo\nthree\n'
+    err=b''
+--- bash: rc=0
+    out=b'first<one>\ntwo\nthree\n'
+    err=b''
+VERDICT: MATCH
+
+SUMMARY: {'MATCH': 8}

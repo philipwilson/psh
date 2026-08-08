@@ -1,0 +1,12 @@
+functions >=100 lines in psh/: 60
+    323  psh/core/state.py:__init__
+    263  psh/executor/command.py:_run_command
+    215  psh/executor/pipeline.py:_execute_pipeline
+    194  psh/interactive/history_expansion.py:expand_history
+    181  psh/builtins/read_builtin.py:execute
+    172  psh/core/scope.py:set_variable
+    165  psh/core/state.py:clone_for_child
+    155  psh/executor/strategies.py:execute
+    154  psh/parser/combinators/control_structures/conditionals.py:_build_case_statement
+    151  psh/builtins/function_support.py:_declare_assignment
+total defs: 3243 | defs without return annotation: 478

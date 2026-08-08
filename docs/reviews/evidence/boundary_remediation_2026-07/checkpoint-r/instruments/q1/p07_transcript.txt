@@ -1,0 +1,13 @@
+DISCRIMINATOR OK: 0.773.0
+fresh compile('a'): full_match('a') = True ; full_match('b') = False
+node type: Literal
+  node.char = 'b'                      -> REJECTED: FrozenInstanceError
+  node del char                        -> REJECTED: FrozenInstanceError
+  CompiledPattern.root = None          -> REJECTED: FrozenInstanceError
+  CompiledPattern new attr             -> REJECTED: TypeError
+  compile_cached('a', True) poison     -> REJECTED: FrozenInstanceError
+  compile_cached('a', False) poison    -> REJECTED: FrozenInstanceError
+live case after all poisoning attempts:
+no-match-b
+MATCHED-A
+HOLES: 0

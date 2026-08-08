@@ -1,0 +1,3 @@
+trial 0: rc=-15 stdout='' -> face=LOST_OUTPUT
+trial 1: rc=-15 stdout='' -> face=LOST_OUTPUT
+CONTROL PASS — classifier reports non-OK faces

@@ -1,0 +1,46 @@
+
+=== CELL f10rn2.mA_two_subshells ===
+script:
+  | RANDOM=5
+  | ( echo $RANDOM )
+  | ( echo $RANDOM )
+psh: run0=['10817', '23183'] run1=['13834', '18414'] rc=0/0 within_equal=False across_equal=False -> RESEEDED-STOCHASTIC
+bash: run0=['25977', '29972'] run1=['20090', '23668'] rc=0/0 within_equal=False across_equal=False -> RESEEDED-STOCHASTIC
+VERDICT: MECH-MATCH
+
+=== CELL f10rn2.mD1_two_cmdsubs ===
+script:
+  | RANDOM=5
+  | x=$(echo $RANDOM)
+  | y=$(echo $RANDOM)
+  | echo "$x $y"
+psh: run0=['1368', '25509'] run1=['14739', '10406'] rc=0/0 within_equal=False across_equal=False -> RESEEDED-STOCHASTIC
+bash: run0=['15811', '18832'] run1=['836', '18374'] rc=0/0 within_equal=False across_equal=False -> RESEEDED-STOCHASTIC
+VERDICT: MECH-MATCH
+
+=== CELL f10rn2.mD2_two_pipelines ===
+script:
+  | RANDOM=5
+  | echo $RANDOM | cat
+  | echo $RANDOM | cat
+psh: run0=['18498', '18498'] run1=['18498', '18498'] rc=0/0 within_equal=True across_equal=True -> SEQUENCE-DETERMINISTIC
+bash: run0=['1407', '29631'] run1=['4126', '18610'] rc=0/0 within_equal=False across_equal=False -> RESEEDED-STOCHASTIC
+VERDICT: MECH-DIVERGE(SEQUENCE-DETERMINISTIC vs RESEEDED-STOCHASTIC)
+
+=== CELL f10rn2.mC_parent_sequence_integrity ===
+script:
+  | RANDOM=42
+  | ( : $RANDOM )
+  | x=$(: ; echo x)
+  | a=$RANDOM
+  | b=$RANDOM
+  | echo "$a $b"
+--- psh: rc=0
+    out=b'17772 26794\n'
+    err=b''
+--- bash: rc=0
+    out=b'17772 26794\n'
+    err=b''
+VERDICT: MATCH
+
+SUMMARY: {'MECH-MATCH': 2, 'MECH-DIVERGE(SEQUENCE-DETERMINISTIC vs RESEEDED-STOCHASTIC)': 1, 'MATCH': 1}

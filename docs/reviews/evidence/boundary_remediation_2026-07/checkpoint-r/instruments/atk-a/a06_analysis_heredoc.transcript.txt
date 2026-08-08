@@ -1,0 +1,269 @@
+
+=== CELL f6ana.v1_directive_after_heredoc_exec ===
+script:
+  | cat <<EOF
+  | plain body
+  | EOF
+  | shopt -s extglob
+  | case ab in a@(b)) echo M;; *) echo N;; esac
+--- psh: rc=0
+    out=b'plain body\nM\n'
+    err=b''
+--- bash: rc=0
+    out=b'plain body\nM\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f6ana.v1_directive_after_heredoc_noexec ===
+script:
+  | cat <<EOF
+  | plain body
+  | EOF
+  | shopt -s extglob
+  | case ab in a@(b)) echo M;; *) echo N;; esac
+--- psh: rc=2
+    out=b''
+    err=b"psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v1_directive_after_heredoc_noexec/psh/cell.sh:5: Parse error (line 5, column 14): Expected ')', got '('\n\ncase ab in a@(b)) echo M;; *) echo N;; esac\n             ^\n\nSuggestions:\n  \xe2\x80\xa2 Add ')' to close parentheses\n\nContext: ab in a@ -> HERE <- b ) )\n"
+--- bash: rc=2
+    out=b''
+    err=b"/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v1_directive_after_heredoc_noexec/bash/cell.sh: line 5: syntax error near unexpected token `('\n/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v1_directive_after_heredoc_noexec/bash/cell.sh: line 5: `case ab in a@(b)) echo M;; *) echo N;; esac'\n"
+VERDICT: STDERR-ONLY
+
+=== CELL f6ana.v1_directive_after_heredoc_validate ===
+script:
+  | cat <<EOF
+  | plain body
+  | EOF
+  | shopt -s extglob
+  | case ab in a@(b)) echo M;; *) echo N;; esac
+--- psh: rc=0
+    out=b'No issues found - AST is valid!\n'
+    err=b''
+VERDICT: VALIDATE-rc=0
+
+=== CELL f6ana.v2_directive_inside_heredoc_body_exec ===
+script:
+  | cat <<EOF
+  | shopt -s extglob
+  | EOF
+  | case ab in a@(b)) echo M;; *) echo N;; esac
+--- psh: rc=2
+    out=b'shopt -s extglob\n'
+    err=b"psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v2_directive_inside_heredoc_body_exec/psh/cell.sh:4: Parse error (line 4, column 14): Expected ')', got '('\n\ncase ab in a@(b)) echo M;; *) echo N;; esac\n             ^\n\nSuggestions:\n  \xe2\x80\xa2 Add ')' to close parentheses\n\nContext: ab in a@ -> HERE <- b ) )\n"
+--- bash: rc=2
+    out=b'shopt -s extglob\n'
+    err=b"/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v2_directive_inside_heredoc_body_exec/bash/cell.sh: line 4: syntax error near unexpected token `('\n/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v2_directive_inside_heredoc_body_exec/bash/cell.sh: line 4: `case ab in a@(b)) echo M;; *) echo N;; esac'\n"
+VERDICT: STDERR-ONLY
+
+=== CELL f6ana.v2_directive_inside_heredoc_body_noexec ===
+script:
+  | cat <<EOF
+  | shopt -s extglob
+  | EOF
+  | case ab in a@(b)) echo M;; *) echo N;; esac
+--- psh: rc=2
+    out=b''
+    err=b"psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v2_directive_inside_heredoc_body_noexec/psh/cell.sh:4: Parse error (line 4, column 14): Expected ')', got '('\n\ncase ab in a@(b)) echo M;; *) echo N;; esac\n             ^\n\nSuggestions:\n  \xe2\x80\xa2 Add ')' to close parentheses\n\nContext: ab in a@ -> HERE <- b ) )\n"
+--- bash: rc=2
+    out=b''
+    err=b"/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v2_directive_inside_heredoc_body_noexec/bash/cell.sh: line 4: syntax error near unexpected token `('\n/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v2_directive_inside_heredoc_body_noexec/bash/cell.sh: line 4: `case ab in a@(b)) echo M;; *) echo N;; esac'\n"
+VERDICT: STDERR-ONLY
+
+=== CELL f6ana.v2_directive_inside_heredoc_body_validate ===
+script:
+  | cat <<EOF
+  | shopt -s extglob
+  | EOF
+  | case ab in a@(b)) echo M;; *) echo N;; esac
+--- psh: rc=2
+    out=b''
+    err=b"psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v2_directive_inside_heredoc_body_validate/psh/cell.sh:4: Parse error (line 4, column 14): Expected ')', got '('\n\ncase ab in a@(b)) echo M;; *) echo N;; esac\n             ^\n\nSuggestions:\n  \xe2\x80\xa2 Add ')' to close parentheses\n\nContext: ab in a@ -> HERE <- b ) )\n"
+VERDICT: VALIDATE-rc=2
+
+=== CELL f6ana.v3_balancing_class_in_body_exec ===
+script:
+  | cat <<'EOF'
+  | case x in
+  | if then
+  | $(
+  | ((
+  | [[
+  | `
+  | '
+  | "
+  | EOF
+  | echo done
+--- psh: rc=0
+    out=b'case x in\nif then\n$(\n((\n[[\n`\n\'\n"\ndone\n'
+    err=b''
+--- bash: rc=0
+    out=b'case x in\nif then\n$(\n((\n[[\n`\n\'\n"\ndone\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f6ana.v3_balancing_class_in_body_noexec ===
+script:
+  | cat <<'EOF'
+  | case x in
+  | if then
+  | $(
+  | ((
+  | [[
+  | `
+  | '
+  | "
+  | EOF
+  | echo done
+--- psh: rc=0
+    out=b''
+    err=b''
+--- bash: rc=0
+    out=b''
+    err=b''
+VERDICT: MATCH
+
+=== CELL f6ana.v3_balancing_class_in_body_validate ===
+script:
+  | cat <<'EOF'
+  | case x in
+  | if then
+  | $(
+  | ((
+  | [[
+  | `
+  | '
+  | "
+  | EOF
+  | echo done
+--- psh: rc=0
+    out=b'No issues found - AST is valid!\n'
+    err=b''
+VERDICT: VALIDATE-rc=0
+
+=== CELL f6ana.v4_nested_heredoc_in_cmdsub_exec ===
+script:
+  | cat <<OUTER
+  | before $(cat <<INNER
+  | inner
+  | INNER
+  | ) after
+  | OUTER
+  | echo done
+--- psh: rc=0
+    out=b'before inner after\ndone\n'
+    err=b''
+--- bash: rc=0
+    out=b'before inner after\ndone\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f6ana.v4_nested_heredoc_in_cmdsub_noexec ===
+script:
+  | cat <<OUTER
+  | before $(cat <<INNER
+  | inner
+  | INNER
+  | ) after
+  | OUTER
+  | echo done
+--- psh: rc=0
+    out=b''
+    err=b''
+--- bash: rc=0
+    out=b''
+    err=b''
+VERDICT: MATCH
+
+=== CELL f6ana.v4_nested_heredoc_in_cmdsub_validate ===
+script:
+  | cat <<OUTER
+  | before $(cat <<INNER
+  | inner
+  | INNER
+  | ) after
+  | OUTER
+  | echo done
+--- psh: rc=0
+    out=b'No issues found - AST is valid!\n'
+    err=b''
+VERDICT: VALIDATE-rc=0
+
+=== CELL f6ana.v5_escaped_heredoc_in_case_exec ===
+script:
+  | case x in x) echo \<<EOF;; esac
+  | echo done
+--- psh: rc=0
+    out=b'done\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v5_escaped_heredoc_in_case_exec/psh/cell.sh: line 1: EOF: No such file or directory\n'
+--- bash: rc=0
+    out=b'done\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f6ana/v5_escaped_heredoc_in_case_exec/bash/cell.sh: line 1: EOF: No such file or directory\n'
+VERDICT: MATCH
+
+=== CELL f6ana.v5_escaped_heredoc_in_case_noexec ===
+script:
+  | case x in x) echo \<<EOF;; esac
+  | echo done
+--- psh: rc=0
+    out=b''
+    err=b''
+--- bash: rc=0
+    out=b''
+    err=b''
+VERDICT: MATCH
+
+=== CELL f6ana.v5_escaped_heredoc_in_case_validate ===
+script:
+  | case x in x) echo \<<EOF;; esac
+  | echo done
+--- psh: rc=0
+    out=b'No issues found - AST is valid!\n'
+    err=b''
+VERDICT: VALIDATE-rc=0
+
+=== CELL f6ana.v6_quoted_delim_suppression_exec ===
+script:
+  | cat <<'EOF'
+  | literal $(echo X) stays
+  | EOF
+  | cat <<EOF2
+  | expanded $(echo X) runs
+  | EOF2
+--- psh: rc=0
+    out=b'literal $(echo X) stays\nexpanded X runs\n'
+    err=b''
+--- bash: rc=0
+    out=b'literal $(echo X) stays\nexpanded X runs\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f6ana.v6_quoted_delim_suppression_noexec ===
+script:
+  | cat <<'EOF'
+  | literal $(echo X) stays
+  | EOF
+  | cat <<EOF2
+  | expanded $(echo X) runs
+  | EOF2
+--- psh: rc=0
+    out=b''
+    err=b''
+--- bash: rc=0
+    out=b''
+    err=b''
+VERDICT: MATCH
+
+=== CELL f6ana.v6_quoted_delim_suppression_validate ===
+script:
+  | cat <<'EOF'
+  | literal $(echo X) stays
+  | EOF
+  | cat <<EOF2
+  | expanded $(echo X) runs
+  | EOF2
+--- psh: rc=0
+    out=b'No issues found - AST is valid!\n'
+    err=b''
+VERDICT: VALIDATE-rc=0
+
+SUMMARY: {'MATCH': 9, 'STDERR-ONLY': 3, 'VALIDATE-rc=0': 5, 'VALIDATE-rc=2': 1}

@@ -1,0 +1,55 @@
+
+=== CELL f1hist2.h1b_w_devfd_rc ===
+script:
+  | exec 3>hf3
+  | history -s AAA
+  | history -w /dev/fd/3
+  | echo wrc=$?
+  | exec 3>&-
+  | echo ===F===
+  | cat hf3
+  | exit
+--- psh: rc=0
+    out=b'wrc=0\n===F===\nAAA\n'
+    err=b''
+    artifact[hf3]=b'AAA\n'
+--- bash: rc=0
+    out=b'wrc=1\n===F===\n'
+    err=b'bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ exec 3>hf3\nbash-5.2$ history -s AAA\nbash-5.2$ history -w /dev/fd/3\nbash-5.2$ echo wrc=$?\nbash-5.2$ exec 3>&-\nbash-5.2$ echo ===F===\nbash-5.2$ cat hf3\nbash-5.2$ exit\nexit\n'
+    artifact[hf3]=b''
+VERDICT: DIVERGE
+
+=== CELL f1hist2.h3b_w_devstdout_rc ===
+script:
+  | history -s DDD
+  | history -w /dev/stdout > cap
+  | echo wrc=$?
+  | echo ===C===
+  | cat cap
+  | exit
+--- psh: rc=0
+    out=b'wrc=0\n===C===\nDDD\n'
+    err=b''
+    artifact[cap]=b'DDD\n'
+--- bash: rc=0
+    out=b'wrc=1\n===C===\n'
+    err=b'bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ history -s DDD\nbash-5.2$ history -w /dev/stdout > cap\nbash-5.2$ echo wrc=$?\nbash-5.2$ echo ===C===\nbash-5.2$ cat cap\nbash-5.2$ exit\nexit\n'
+    artifact[cap]=b''
+VERDICT: DIVERGE
+
+=== CELL f1hist2.h8_r_devstdin_tempframe ===
+script:
+  | history -r /dev/stdin < seed
+  | echo rrc=$?
+  | echo ===L===
+  | history | sed 's/^ *//'
+  | exit
+--- psh: rc=0
+    out=b'rrc=0\n===L===\n1  echo Z1\n2  echo Z2\n3  echo rrc=$?\n'
+    err=b''
+--- bash: rc=0
+    out=b'rrc=0\n===L===\n1  echo Z1\n2  echo Z2\n3  echo rrc=$?\n'
+    err=b"bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ history -r /dev/stdin < seed\nbash-5.2$ echo rrc=$?\nbash-5.2$ echo ===L===\nbash-5.2$ history | sed 's/^ *//'\nbash-5.2$ exit\nexit\n"
+VERDICT: MATCH
+
+SUMMARY: {'DIVERGE': 2, 'MATCH': 1}

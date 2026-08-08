@@ -1,0 +1,124 @@
+
+=== CELL f3pfx.p1_quoted_at_operand_prefix ===
+script:
+  | set -- a b
+  | v=${u:-"$@"} /usr/bin/env > eo
+  | grep '^v=' eo
+--- psh: rc=0
+    out=b'v=a b\n'
+    err=b''
+--- bash: rc=0
+    out=b'v=a b\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f3pfx.p2_quoted_at_embedded_space ===
+script:
+  | set -- a 'b  c'
+  | v=${u:-"$@"} /usr/bin/env > eo
+  | grep '^v=' eo
+--- psh: rc=0
+    out=b'v=a b  c\n'
+    err=b''
+--- bash: rc=0
+    out=b'v=a b  c\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f3pfx.p3_bare_at_operand_prefix ===
+script:
+  | set -- a b
+  | v=${u:-$@} /usr/bin/env > eo
+  | grep '^v=' eo
+--- psh: rc=0
+    out=b'v=a b\n'
+    err=b''
+--- bash: rc=0
+    out=b'v=a b\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f3pfx.p4_readonly_refuse_cmdsub_external ===
+script:
+  | readonly RX=1
+  | RX=${u:-$(touch m1; echo x)} /usr/bin/true
+  | echo rc=$?
+  | [ -e m1 ] && echo M1-PRESENT || echo M1-ABSENT
+  | echo after
+--- psh: rc=0
+    out=b'rc=0\nM1-ABSENT\nafter\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f3pfx/p4_readonly_refuse_cmdsub_external/psh/cell.sh: line 2: RX: readonly variable\n'
+--- bash: rc=0
+    out=b'rc=0\nM1-ABSENT\nafter\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f3pfx/p4_readonly_refuse_cmdsub_external/bash/cell.sh: line 2: RX: readonly variable\n'
+VERDICT: MATCH
+
+=== CELL f3pfx.p5_readonly_refuse_special_builtin_declared ===
+script:
+  | readonly RY=1
+  | RY=${u:-$(touch m2; echo x)} :
+  | echo rc=$?
+  | [ -e m2 ] && echo M2-PRESENT || echo M2-ABSENT
+  | echo after
+--- psh: rc=0
+    out=b'rc=0\nM2-ABSENT\nafter\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f3pfx/p5_readonly_refuse_special_builtin_declared/psh/cell.sh: line 2: RY: readonly variable\n'
+--- bash: rc=0
+    out=b'rc=0\nM2-ABSENT\nafter\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f3pfx/p5_readonly_refuse_special_builtin_declared/bash/cell.sh: line 2: RY: readonly variable\n'
+VERDICT: MATCH
+
+=== CELL f3pfx.p6_staged_chain_visibility ===
+script:
+  | A=7 B=${A}x /usr/bin/env > eo
+  | grep -E '^(A|B)=' eo | sort
+--- psh: rc=0
+    out=b'A=7\nB=7x\n'
+    err=b''
+--- bash: rc=0
+    out=b'A=7\nB=7x\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f3pfx.p7_bare_at_nondefault_ifs_assignment ===
+script:
+  | set -- aXq b
+  | IFS=X
+  | v=${u:-$@} /usr/bin/env > eo
+  | grep '^v=' eo
+--- psh: rc=0
+    out=b'v=aXq b\n'
+    err=b''
+--- bash: rc=0
+    out=b'v=aXq b\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f3pfx.p8_random_staged_feeds_prefix ===
+script:
+  | RANDOM=42 R=$RANDOM /usr/bin/env > eo
+  | grep -c '^R=[0-9]' eo
+--- psh: rc=0
+    out=b'1\n'
+    err=b''
+--- bash: rc=0
+    out=b'1\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f3pfx.p9_prefix_vs_word_same_line ===
+script:
+  | set -- a b
+  | v=${u:-"$@"} /usr/bin/env > eo
+  | grep '^v=' eo
+  | printf '<%s>' ${u:-"$@"}
+  | echo
+--- psh: rc=0
+    out=b'v=a b\n<a><b>\n'
+    err=b''
+--- bash: rc=0
+    out=b'v=a b\n<a><b>\n'
+    err=b''
+VERDICT: MATCH
+
+SUMMARY: {'MATCH': 9}

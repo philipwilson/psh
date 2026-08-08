@@ -1,0 +1,7 @@
+DISCRIMINATOR OK: 0.773.0
+after load:  history = ['A', 'B', 'C'] | _file_read_len = 3
+after -d 1:  history = ['B', 'C'] | _file_read_len = 3
+after -n:    history = ['B', 'C', 'D'] | _file_read_len = 4
+EXPECTED (bash): ['B', 'C', 'D']
+RESULT: PASS
+DUP-C BUG PRESENT: False

@@ -1,0 +1,32 @@
+caps@0215279c: 72 entries, sum 206
+caps@ae871a16: 71 entries, sum 200
+
+--- cap changes base -> tip ---
+  psh.ast_nodes.syntax_templates: None -> 1
+  psh.parser: 2 -> 1
+  psh.parser.recursive_descent.support.utils: 1 -> None
+  psh.scripting.command_accumulator: 2 -> None
+  psh.scripting.source_processor: 6 -> 5
+  psh.scripting.visitor_modes: 9 -> 7
+
+--- slack at BASE (actual < cap @0215279c) ---
+  psh.builtins.source_command: actual 1 < cap 2
+  psh.executor.pipeline: actual 2 < cap 4
+  psh.expansion.parameter_expansion: actual 1 < cap 12
+  psh.expansion.pattern: actual 0 < cap 2
+  psh.lexer.cmdsub_scanner: actual 0 < cap 2
+  psh.lexer.heredoc_collector: actual 0 < cap 1
+  psh.lexer.heredoc_lexer: actual 0 < cap 1
+  psh.scripting.command_accumulator: actual 0 < cap 2
+  psh.scripting.source_processor: actual 5 < cap 6
+  total slack: 23
+
+--- slack at TIP (actual < cap @ae871a16) ---
+  psh.builtins.source_command: actual 1 < cap 2
+  psh.executor.pipeline: actual 2 < cap 4
+  psh.expansion.parameter_expansion: actual 0 < cap 12
+  psh.expansion.pattern: actual 0 < cap 2
+  psh.lexer.cmdsub_scanner: actual 0 < cap 2
+  psh.lexer.heredoc_collector: actual 0 < cap 1
+  psh.lexer.heredoc_lexer: actual 0 < cap 1
+  total slack: 21

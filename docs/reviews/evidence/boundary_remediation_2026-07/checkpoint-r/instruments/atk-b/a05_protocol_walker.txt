@@ -1,0 +1,40 @@
+== q5/01 protocol census tail (collisions + usage)
+  def upper(s: str) -> str
+  def lower(s: str) -> str
+  def toggle(s: str) -> str
+  def in_class(ch: str, name: str) -> bool
+  SHELL-TYPED MEMBERS: none
+  ANY-TYPED MEMBERS: ['collate_key -> Any']
+
+== USAGE CENSUS (files under psh/ referencing each protocol name, excluding its defining file) ==
+
+CommandParsersProtocol: referenced in 5 psh files total; outside defining file(s) ['psh/parser/combinators/commands/_protocols.py']: ['psh/parser/combinators/commands/pipelines.py', 'psh/parser/combinators/commands/redirections.py', 'psh/parser/combinators/commands/simple.py', 'psh/parser/combinators/commands/statements.py']
+
+ControlStructureProtocol: referenced in 5 psh files total; outside defining file(s) ['psh/parser/combinators/control_structures/_protocols.py']: ['psh/parser/combinators/control_structures/__init__.py', 'psh/parser/combinators/control_structures/conditionals.py', 'psh/parser/combinators/control_structures/loops.py', 'psh/parser/combinators/control_structures/structures.py']
+
+ExpansionContext: referenced in 3 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: ['psh/lexer/expansion_parser.py', 'psh/lexer/modular_lexer.py']
+
+IOContext: referenced in 3 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: ['psh/builtins/input_reader.py', 'psh/io_redirect/input_cursor.py']
+
+JobRuntime: referenced in 2 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: ['psh/executor/foreground_session.py']
+
+LocaleContext: referenced in 2 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: ['psh/core/locale_service.py']
+
+VariableAccess: referenced in 1 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: []
+
+VariableExpanderProtocol: referenced in 5 psh files total; outside defining file(s) ['psh/expansion/_protocols.py']: ['psh/expansion/arrays.py', 'psh/expansion/fields.py', 'psh/expansion/operands.py', 'psh/expansion/operators.py']
+
+_TemplateCtx: referenced in 1 psh files total; outside defining file(s) ['psh/parser/recursive_descent/support/syntax_templates.py']: []
+
+== NAME-COLLISION CENSUS ==
+ExpansionContext: 2 class definitions: ['psh/lexer/expansion_parser.py:387', 'psh/protocols/__init__.py:119']
+LocaleContext: 2 class definitions: ['psh/core/locale_service.py:90', 'psh/protocols/__init__.py:216']
+== q4_01 walker TIP (expect 275 modules, 869 edges, 0 pkg cycles, deferred 179/66)
+tree: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-b/wt
+modules: 275  runtime psh->psh edges: 869
+MODULE-level cycles: 2  self-loops: 0
+  CYCLE: psh.lexer <-> psh.lexer.expansion_parser <-> psh.lexer.modular_lexer <-> psh.lexer.quote_parser
+  CYCLE: psh.interactive <-> psh.interactive.line_editor <-> psh.interactive.line_renderer <-> psh.interactive.multiline_handler <-> psh.interactive.repl_loop
+PACKAGE-level (depth-2) cycles: 0  self-loops: 0
+deferred psh imports: 179 across 66 modules
+json written: /Users/pwilson/src/psh/tmp/ckr-probes/atk-b/a05_walker_tip.json

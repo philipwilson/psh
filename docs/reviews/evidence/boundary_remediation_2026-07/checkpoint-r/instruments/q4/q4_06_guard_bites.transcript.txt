@@ -1,0 +1,23 @@
+=== offender A: utils leaf violation ===
+    assert not offenders, (
+E   AssertionError: psh.utils must import NOTHING from psh at module level (it is the leaf layer). Move the dependency out, or make the import deferred:
+E       psh.utils.zz_q4_offender -> ['psh.executor']
+E   assert not {'psh.utils.zz_q4_offender': ['psh.executor']}
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_import_layering.py::test_no_package_level_runtime_cycles
+FAILED tests/unit/tooling/test_import_layering.py::test_utils_is_a_runtime_leaf
+2 failed, 6 passed in 1.25s
+=== offender B: uncapped deferred import ===
+tests/unit/tooling/test_import_layering.py:374: in test_function_level_import_ratchet
+    assert not violations, (
+E   AssertionError: Function-level (deferred) psh imports exceeded their ratchet cap. If the import is genuinely cycle-forced, add a `# cycle-break:` comment and raise its cap in FUNC_IMPORT_CAPS; otherwise HOIST it to module level. The ratchet only moves down:
+E       psh.lexer.zz_q4_offender_b: 1 deferred psh import(s) > cap 0
+E   assert not ['psh.lexer.zz_q4_offender_b: 1 deferred psh import(s) > cap 0']
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_import_layering.py::test_function_level_import_ratchet
+1 failed, 7 passed in 1.26s
+=== clean re-run after removing offenders ===
+........                                                                 [100%]
+8 passed in 1.25s
+=== git status of worktree psh/ (must be clean) ===
+DONE

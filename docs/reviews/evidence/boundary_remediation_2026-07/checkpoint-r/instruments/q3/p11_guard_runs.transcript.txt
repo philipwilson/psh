@@ -1,0 +1,72 @@
+HEAD: ae871a16e2734e91983374063848e19f34d00a54
+
+==== tests/unit/lexer/test_lexical_value_graph_frozen.py ====
+........................................................................ [ 81%]
+................                                                         [100%]
+88 passed in 0.06s
+
+==== tests/unit/expansion/test_pattern_engine_immutability.py ====
+............                                                             [100%]
+12 passed in 0.05s
+
+==== tests/unit/core/test_variable_lookup_immutability.py ====
+..........................................................               [100%]
+58 passed in 0.07s
+
+==== tests/unit/tooling/test_operand_projection_guard.py ====
+..........                                                               [100%]
+10 passed in 1.43s
+
+==== tests/unit/io_redirect/test_input_cursor_registry_4b4.py ====
+..................                                                       [100%]
+18 passed in 0.02s
+
+==== tests/unit/tooling/test_input_cursor_m8_locks_4b4.py ====
+............                                                             [100%]
+12 passed in 21.80s
+
+==== tests/unit/tooling/test_input_cursor_guard_i1.py ====
+.....                                                                    [100%]
+5 passed in 0.02s
+
+==== tests/unit/tooling/test_input_decoder_m8_locks_4b2.py ====
+.......                                                                  [100%]
+7 passed in 24.86s
+
+==== tests/integration/redirection/test_input_cursor_contract_4b4.py ====
+...........................                                              [100%]
+27 passed in 13.49s
+
+==== tests/unit/interactive/test_history_state_machine_4b3.py ====
+..........................................................               [100%]
+58 passed in 0.12s
+
+==== tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py ====
+..............                                                           [100%]
+14 passed in 24.00s
+
+==== tests/unit/io_redirect/test_heredoc_executable_type.py ====
+..........................                                               [100%]
+26 passed in 1.12s
+
+==== tests/unit/scripting/test_heredoc_alias_route.py ====
+........................................................................ [ 78%]
+....................                                                     [100%]
+92 passed in 20.10s
+
+==== tests/unit/scripting/test_analysis_session.py ====
+........................................................................ [ 54%]
+...........................................................              [100%]
+131 passed in 6.05s
+
+==== tests/unit/tooling/test_resolution_timing_ratchet_3_4.py ====
+...........                                                              [100%]
+11 passed in 0.03s
+
+==== tests/conformance/bash/test_dynamic_special_scoping_conformance.py ====
+..................                                                       [100%]
+18 passed in 3.48s
+
+==== tests/conformance/bash/test_posixly_correct_conformance.py ====
+..............                                                           [100%]
+14 passed in 2.95s

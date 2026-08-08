@@ -1,0 +1,22 @@
+== git tag -l 'v0.76*' 'v0.77*' | sort -V (main repo, Sat  8 Aug 2026 16:28:43 BST)
+v0.760.0
+v0.761.0
+v0.762.0
+v0.763.0
+v0.764.0
+v0.765.0
+v0.768.0
+v0.769.0
+v0.770.0
+v0.771.0
+v0.772.0
+v0.773.0
+
+== nightly-status.md reading-rules headers
+252:## v0.767.0 reading rules (slot 3.5, first Linux run ~2026-08-08)
+278:**v0.768.0 reading rules (slot 4A.1 — first Linux run ~2026-08-08):**
+294:**v0.769.0 reading rules (slot 4A.2 — first Linux run after 2026-08-07):**
+303:**v0.770.0 reading rules (slot 4B.1 — first Linux run after 2026-08-07):**
+315:**v0.771.0 reading rules (slot 4B.2 — first Linux run after 2026-08-07):**
+331:**v0.772.0 reading rules (slot 4B.3 — history state machine):**
+351:**v0.773.0 reading rules (slot 4B.4 — InputCursor contract; Wave 4 CLOSES here):**

@@ -1,0 +1,6 @@
+release_owner raised: LeaseRestoreError
+after failed release_owner | owner: True | owner_is_D: True | depth: 0 | live: 0 | quarantined: 1 | is_clean: False
+cleared: ('STD_FDS: q1-test',)
+after clear_quarantine    | owner: True | owner_is_D: True | depth: 0 | live: 0 | quarantined: 0 | is_clean: False
+next shell activate after clear: SUCCEEDED
+after E activate          | owner: True | owner_is_D: False | depth: 1 | live: 0 | quarantined: 0 | is_clean: False

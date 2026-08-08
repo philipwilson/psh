@@ -1,0 +1,62 @@
+DISCRIMINATOR: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q3/wt/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+[matches ] BL1-R1  true 3<&0 between reads
+          tip : b'a=<\xc3> b=<A>\n'
+          bash: b'a=<\xc3> b=<A>\n'
+
+[matches ] BL1-R2  ':' instead of 'true'
+          tip : b'a=<\xc3> b=<A>\n'
+          bash: b'a=<\xc3> b=<A>\n'
+
+[DIVERGES] BL1-N4  move form true 3<&0- [DECLARED D-4B.4-s2]
+          tip : b'a=<\xc3> b=<A>\n'
+          bash: b'a=<\xc3> b=<>\n'
+
+[matches ] BL1-N5  mapfile after the frame
+          tip : b'L=<ABC>\n'
+          bash: b'L=<ABC>\n'
+
+[matches ] BL6-X3  output dup to a read fd: true >&0
+          tip : b'a=<\xc3> b=<A>\n'
+          bash: b'a=<\xc3> b=<A>\n'
+
+[matches ] BL6-X4  save/close idiom exec 3<&0; exec 3<&-
+          tip : b'a=<\xc3> b=<A>\n'
+          bash: b'a=<\xc3> b=<A>\n'
+
+[matches ] BL1-N9  aliasing across an intervening frame
+          tip : b'a=<\xc3> b=<A>\n'
+          bash: b'a=<\xc3> b=<A>\n'
+
+[matches ] BL2-P1  read -N 1 b {v}<&0
+          tip : b'a=<\xc3> b=<A> c=<B>\n'
+          bash: b'a=<\xc3> b=<A> c=<B>\n'
+
+[matches ] BL7-X8  { read -N 1 -u 3 b; } 3<&0
+          tip : b'a=<\xc3> b=<A> c=<B>\n'
+          bash: b'a=<\xc3> b=<A> c=<B>\n'
+
+[matches ] BL5     exec 3<&0; exec 4<&3; read -u 4
+          tip : b'a=<\xc3> b=<A>\n'
+          bash: b'a=<\xc3> b=<A>\n'
+
+[matches ] CTL-1   same-fd persistence
+          tip : b'x=<\xc3> y=<A>\n'
+          bash: b'x=<\xc3> y=<A>\n'
+
+[matches ] CTL-2   plain dup share (leg B face)
+          tip : b'a=<\xc3> b=<A>\n'
+          bash: b'a=<\xc3> b=<A>\n'
+
+[matches ] CTL-3   temp-frame forward isolation
+          tip : b'a=<\xc3> b=<F1> c=<A>\n'
+          bash: b'a=<\xc3> b=<F1> c=<A>\n'
+
+[matches ] CTL-4   temp-frame reverse isolation
+          tip : b'a=<\xc3> b=<STDIN1>\n'
+          bash: b'a=<\xc3> b=<STDIN1>\n'
+
+====================================================================
+cells: 14  undeclared divergences: 0  declared-deviation cells diverging as declared: 1
+P05-RESULT: HOLDS

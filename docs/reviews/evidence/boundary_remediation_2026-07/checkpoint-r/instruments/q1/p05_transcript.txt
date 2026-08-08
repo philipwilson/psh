@@ -1,0 +1,12 @@
+DISCRIMINATOR OK: 0.773.0
+=== Leg A: -d must not move the read cursor ===
+after load:  history = ['A', 'B', 'C'] | _file_read_len = 3
+history -d 1 rc = 0 | history = ['B', 'C', 'history -d 1'] | _file_read_len = 3
+history -n rc = 0 | history = ['B', 'C', 'history -d 1', 'history -n', 'D'] | _file_read_len = 4
+EXPECTED (bash): ['B', 'C', 'D']
+LEG-A RESULT: FAIL (dup bug or other): ['B', 'C', 'history -d 1', 'history -n', 'D']
+
+=== Leg S: history -s honors the HISTSIZE cap ===
+after 5x history -s: history = ['s3', 's4', 's5'] len = 3
+LEG-S RESULT: PASS (cap honored)
+tail is the last 3: ['s3', 's4', 's5']

@@ -1,0 +1,4 @@
+COLLECT tests/system/interactive/test_heredoc_detection_interactive_pty.py :: 70 tests collected in 0.02s
+-- run (tests/system/interactive/test_heredoc_detection_interactive_pty.py) --
+......................................................................   [100%]
+70 passed in 63.46s (0:01:03)

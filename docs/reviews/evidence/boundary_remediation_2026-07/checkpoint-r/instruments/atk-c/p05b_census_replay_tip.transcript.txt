@@ -1,0 +1,15 @@
+imports_shell_oracle UNION conformance      : 206
+guard scope (that UNION harness/)           : 210
+  ...of which SPAWN directly (modules)      : 5
+  ...total direct spawn SITES               : 9
+  ...spawners excluding harness/shell_oracle.py: 4
+  ...non-spawners in the imports∪conformance set: 202
+
+unit/tooling/oracle_spawn_fixtures/pty_offender_module.py:22: pexpect.spawn
+system/interactive/test_heredoc_detection_interactive_pty.py:217: pexpect.spawn
+system/interactive/test_heredoc_detection_interactive_pty.py:227: pexpect.spawn
+system/interactive/test_multiline_immediate_error_i3.py:83: pexpect.spawn
+system/interactive/test_multiline_immediate_error_i3.py:97: pexpect.spawn
+system/interactive/test_substitution_abort_interactive_pty.py:110: pexpect.spawn
+system/interactive/test_substitution_abort_interactive_pty.py:121: pexpect.spawn
+TOTAL non-subprocess spawn sites in the BEARING SET: 7

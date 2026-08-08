@@ -1,0 +1,74 @@
+=== (a) MEDIUM-12: broad except at the closed sites
+--- psh/expansion/subscript.py 'except Exception' hits:
+1
+57:    ``except Exception`` fallbacks that silently degraded the un-lexable text
+--- psh/expansion/manager.py 'except Exception' hits:
+337:        ``except Exception`` also swallowed genuine internal defects, so a psh
+--- arithmetic evaluator 'except Exception' hits:
+(none under psh/arithmetic/)
+--- ratchet files exist:
+tests/unit/tooling/test_subscript_no_broad_except.py
+
+=== (b) gate_attestation.json at ae871a16
+{
+  "schema": 1,
+  "version": "0.773.0",
+  "gated_commit": "cc476e913efe7e85c02e8cf2b31d8ba9ef972ea2",
+  "gated_tree": "23a62f9a2c6ffb6c609f66620bcd0e03be07f858",
+  "platform": {
+    "os": "Darwin 25.5.0",
+    "python": "3.14.2",
+    "arch": "arm64"
+  },
+  "phases": [
+    {
+      "description": "Phase 1: Regular tests (parallel, auto workers, -m 'not serial and not benchmark')",
+      "exit": 0,
+      "counts": {
+        "passed": 22775,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 1620,
+        "xfailed": 8,
+        "xpassed": 0,
+        "deselected": 1136
+      }
+    },
+    {
+      "description": "Phase 1b: serial tests (process/signal/forked-fd, no xdist)",
+      "exit": 0,
+      "counts": {
+        "passed": 1117,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 0,
+        "xfailed": 2,
+        "xpassed": 0,
+        "deselected": 24420
+      }
+    }
+  ],
+  "ruff": true,
+  "mypy_files": 275,
+  "timestamp": "2026-08-08T15:01:33+00:00",
+  "command": "run_tests.py --parallel --write-attestation"
+}
+gated commit field: cc476e913efe7e85c02e8cf2b31d8ba9ef972ea2
+gated commit IS an ancestor of ae871a16: YES
+
+=== (c) HIGH-10 closure artifacts exist at ae871a16
+  OK docs/reviews/boundary_remediation_campaign_sequence_2026-07-21.md
+  OK docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md
+  OK docs/reviews/evidence/boundary_remediation_2026-07/FLIP-PINS.md
+  OK tests/harness/oracle_migration_census.md
+  OK tests/harness/shell_oracle.py
+
+=== (d) MEDIUM-14/15/16 base-fact one-liners
+--- M14: Protocol classes in psh/ (count):
+9
+--- M14: ExpansionContext definitions (name collision — expect >=2):
+psh/lexer/expansion_parser.py:387:class ExpansionContext:
+psh/protocols/__init__.py:119:class ExpansionContext(Protocol):
+--- M14: LocaleContext definitions (name collision — expect >=2):
+psh/core/locale_service.py:90:class LocaleContext:
+psh/protocols/__init__.py:216:class LocaleContext(Protocol):

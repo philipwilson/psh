@@ -1,0 +1,37 @@
+files scanned: 828
+--- STATE-guarded asserts: 0 ---
+--- OTHER-guarded asserts: 34 ---
+[OTHER] tests/test_parser_visualization.py:238: test_tree_structure_integrity   if '├──' in line or '└──' in line:
+[OTHER] tests/unit/tooling/test_ast_child_schema_guard.py:367: test_every_template_carrier_field_is_declared   if reflect_child_shape(f.type) is ChildShape.TEMPLATE_SUBS:
+[OTHER] tests/unit/tooling/test_run_tests_hardening.py:422: test_run_command_timeout_kills_whole_process_group   if shutil.which('pgrep'):
+[OTHER] tests/unit/lexer/test_frozen_token_and_sourcemap.py:64: test_span_reconstructs_word_lexemes   if tok.type == TokenType.WORD:
+[OTHER] tests/unit/lexer/test_modular_lexer_integration.py:194: test_bracket_depth_context   if result is not None:
+[OTHER] tests/unit/lexer/test_token_recognizers_comprehensive.py:132: test_context_sensitive_operators   if result is not None:
+[OTHER] tests/unit/lexer/test_token_recognizers_comprehensive.py:372: test_registry_context_handling   if result is not None:
+[OTHER] tests/unit/parser/test_ast_canonical_invariants.py:293: test_no_canonical_field_is_none_anywhere   if isinstance(node, CasePattern):
+[OTHER] tests/unit/parser/test_function_def_as_pipeline_component.py:129: test_still_invalid_def_continuations_rejected   if p is rd:
+[OTHER] tests/unit/builtins/test_disown_builtin.py:85: test_disown_by_pid   if pid and pid.isdigit():
+[OTHER] tests/unit/builtins/test_disown_builtin.py:407: test_disown_job_spec_formats   if '[1]' in captured.out or '[2]' in captured.out:
+[OTHER] tests/unit/builtins/test_disown_builtin.py:410: test_disown_job_spec_formats   if fmt in ['%1', '%+'] and '[1]' in captured.out:
+[OTHER] tests/unit/builtins/test_getopts_builtin_broken.py:24: test_getopts_help   if 'getopts' in output.lower():
+[OTHER] tests/unit/builtins/test_getopts_builtin_broken.py:480: test_getopts_variable_name_validation   if result != 0:
+[OTHER] tests/unit/expansion/test_pattern_bash_composition_differential.py:645: test_extglob_enclosed_compile_invariant   if type(e) is Extglob:
+[OTHER] tests/unit/io_redirect/test_heredoc_executable_type.py:166: test_debug_ast_labels_the_executable_heredoc_by_its_type   if fmt != 'dot':
+[OTHER] tests/unit/visitor/test_formatter_roundtrip.py:85: test_nested_compound_keywords_are_indented   if stripped in ('else', 'fi', 'done') or stripped.startswith('while '):
+[OTHER] tests/unit/interactive/test_managed_signal_lease_4a1.py:345: test_late_activation_after_leaseless_setup_restores_exactly_once   if teardown_first:
+[OTHER] tests/unit/executor/test_executor_visitor_basic.py:185: test_builtin_command_execution   if expected_output:
+[OTHER] tests/integration/test_enhanced_test_word_operands.py:119: test_eval_results   if setup:
+[OTHER] tests/integration/test_enhanced_test_word_operands.py:165: test_regex_posix_classes   if setup:
+[OTHER] tests/integration/test_multiline_history.py:72: test_multiline_function_definition_in_history   if 'greet()' in cmd:
+[OTHER] tests/integration/redirection/test_failed_exec_lease_4a1.py:299: test_sub_16_rlimit_envelope_is_recorded_not_claimed   if psh_out != bash_out:
+[OTHER] tests/behavioral/test_golden_behavior.py:108: test_golden   if expected_stdout is not None:
+[OTHER] tests/behavioral/test_golden_behavior.py:116: test_golden   if expected_stderr is not None:
+[OTHER] tests/system/test_analysis_state_aware.py:506: test_every_unit_error_carries_a_line_prefix   if parser == 'rd':
+[OTHER] tests/system/invocation/test_invocation_matrix.py:205: test_matrix_row   if psh_stderr_contains is not None:
+[OTHER] tests/system/interactive/test_heredoc_detection_interactive_pty.py:314: test_interactive_heredoc_detection_matches_bash   if marker is not None:
+[OTHER] tests/system/source_service/test_nul_channel_matrix.py:186: test_nul_matrix_row   if psh_stderr_contains is not None:
+[OTHER] tests/system/source_service/test_source_service_matrix.py:195: test_source_service_row   if psh_stderr_contains is not None:
+[OTHER] tests/parser_differential/test_combinator_random_differential.py:356: test_random_rd_vs_combinator_parity   if rd_kind == 'ok':
+[OTHER] tests/performance/benchmarks/test_parsing_performance.py:226: test_tokenization_scaling   if size == 10000:
+[OTHER] tests/conformance/bash/test_history_expansion_conformance.py:64: _assert_expands   if not b_failed:
+[OTHER] tests/conformance/bash/test_reappraisal7_close_output_fd_conformance.py:149: test_close_stderr_or_normal_unaffected   if expect_out is not None:

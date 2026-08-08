@@ -1,0 +1,72 @@
+
+=== CELL recon.r1_history ===
+script:
+  | HISTFILE=$PWD/hist
+  | set -o history
+  | echo one
+  | echo two
+  | history -w
+  | wc -l < hist
+  | history | wc -l
+--- psh: rc=0
+    out=b'one\ntwo\n       0\n       0\n'
+    err=b''
+--- bash: rc=0
+    out=b'one\ntwo\n       3\n       5\n'
+    err=b''
+VERDICT: DIVERGE
+
+=== CELL recon.r2_readN ===
+script:
+  | printf 'abcdef' > d
+  | IFS= read -r -N 3 v < d
+  | printf '<%s>\n' "$v"
+--- psh: rc=0
+    out=b'<abc>\n'
+    err=b''
+--- bash: rc=0
+    out=b'<abc>\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL recon.r3_printf_hex ===
+script:
+  | printf 'a\xc3\xa9b' | od -An -tx1 | tr -s ' '
+--- psh: rc=0
+    out=b' 61 c3 83 c2 a9 62 \n\n'
+    err=b''
+--- bash: rc=0
+    out=b' 61 c3 a9 62 \n\n'
+    err=b''
+VERDICT: DIVERGE
+
+=== CELL recon.r4_devfd ===
+script:
+  | exec 3>f3
+  | echo hi > /dev/fd/3
+  | exec 3>&-
+  | cat f3
+--- psh: rc=0
+    out=b'hi\n'
+    err=b''
+--- bash: rc=0
+    out=b'hi\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL recon.r5_history_r ===
+script:
+  | printf 'echo A\necho B\n' > seed
+  | HISTFILE=$PWD/hist
+  | set -o history
+  | history -r seed
+  | history | sed 's/^ *//'
+--- psh: rc=0
+    out=b'1  echo A\n2  echo B\n'
+    err=b''
+--- bash: rc=0
+    out=b"1  history -r seed\n2  echo A\n3  echo B\n4  history | sed 's/^ *//'\n"
+    err=b''
+VERDICT: DIVERGE
+
+SUMMARY: {'DIVERGE': 3, 'MATCH': 2}

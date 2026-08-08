@@ -1,0 +1,3 @@
+psh.__file__ = /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/psh/__init__.py
+psh.version.__version__ = 0.773.0
+DISCRIMINATOR OK: worktree import, version 0.773.0

@@ -1,0 +1,7 @@
+total defs: 3080
+METHOD A incomplete (any def, missing param-ann or return-ann): 625
+METHOD B denominator (non-dunder, non-nested): 2773; incomplete: 466
+
+METHOD A by package: [('interactive', 102), ('parser', 86), ('core', 74), ('executor', 69), ('io_redirect', 66), ('expansion', 64), ('visitor', 52), ('builtins', 48), ('scripting', 25), ('utils', 17), ('lexer', 11), ('ast_nodes', 8), ('(top)', 3)]
+
+METHOD A top files: [('psh/interactive/line_editor.py', 47), ('psh/io_redirect/file_redirect.py', 30), ('psh/io_redirect/manager.py', 30), ('psh/core/state.py', 20), ('psh/visitor/enhanced_validator_visitor.py', 18), ('psh/interactive/signal_manager.py', 16), ('psh/executor/job_control.py', 15), ('psh/visitor/formatter_visitor.py', 15), ('psh/core/scope.py', 13), ('psh/interactive/history_expansion.py', 12), ('psh/core/exceptions.py', 11), ('psh/core/trap_manager.py', 11), ('psh/executor/strategies.py', 11), ('psh/scripting/source_processor.py', 11), ('psh/core/variables.py', 10)]

@@ -1,0 +1,147 @@
+
+=== CELL f7par.s1_assoc_subscript_redirect_target ===
+script:
+  | declare -A a
+  | a[k]=out1
+  | echo hi > "${a[k]}"
+  | cat out1
+--- rd: rc=0
+    out=b'hi\n'
+    err=b''
+--- pc: rc=0
+    out=b'hi\n'
+    err=b''
+--- bash: rc=0
+    out=b'hi\n'
+    err=b''
+VERDICT: PARSER-MATCH|MATCH
+
+=== CELL f7par.s2_procsub_redirect_source ===
+script:
+  | cat < <(echo hi)
+--- rd: rc=0
+    out=b'hi\n'
+    err=b''
+--- pc: rc=0
+    out=b'hi\n'
+    err=b''
+--- bash: rc=0
+    out=b'hi\n'
+    err=b''
+VERDICT: PARSER-MATCH|MATCH
+
+=== CELL f7par.s3_procsub_text_subscript_readback ===
+script:
+  | declare -A a
+  | a['<(x)']=v
+  | printf '<%s>\n' "${a[<(x)]}"
+--- rd: rc=0
+    out=b'<v>\n'
+    err=b''
+--- pc: rc=0
+    out=b'<v>\n'
+    err=b''
+--- bash: rc=0
+    out=b'<v>\n'
+    err=b''
+VERDICT: PARSER-MATCH|MATCH
+
+=== CELL f7par.s4_cmdsub_computed_redirect_target ===
+script:
+  | f=$(echo out4)
+  | echo hi > "$f"
+  | cat out4
+--- rd: rc=0
+    out=b'hi\n'
+    err=b''
+--- pc: rc=0
+    out=b'hi\n'
+    err=b''
+--- bash: rc=0
+    out=b'hi\n'
+    err=b''
+VERDICT: PARSER-MATCH|MATCH
+
+=== CELL f7par.s5_array_init_nested_substitution_declared ===
+script:
+  | a=( $(echo x y) )
+  | printf '<%s>' "${a[@]}"
+  | echo
+--- rd: rc=0
+    out=b'<x><y>\n'
+    err=b''
+--- pc: rc=0
+    out=b'<x><y>\n'
+    err=b''
+--- bash: rc=0
+    out=b'<x><y>\n'
+    err=b''
+VERDICT: PARSER-MATCH|MATCH
+
+=== CELL f7par.s6_heredoc_to_subscript_target ===
+script:
+  | declare -A m
+  | m[p]=5
+  | cat <<EOF > "${m[p]}.txt"
+  | body
+  | EOF
+  | cat 5.txt
+--- rd: rc=0
+    out=b'body\n'
+    err=b''
+    artifact[5.txt]=b'body\n'
+--- pc: rc=0
+    out=b'body\n'
+    err=b''
+    artifact[5.txt]=b'body\n'
+--- bash: rc=0
+    out=b'body\n'
+    err=b''
+    artifact[5.txt]=b'body\n'
+VERDICT: PARSER-MATCH|MATCH
+
+=== CELL f7par.s7_dbracket_with_fd_frame ===
+script:
+  | [[ -e /dev/fd/3 ]] 3</dev/null && echo Y || echo N
+--- rd: rc=0
+    out=b'Y\n'
+    err=b''
+--- pc: rc=0
+    out=b'Y\n'
+    err=b''
+--- bash: rc=0
+    out=b'Y\n'
+    err=b''
+VERDICT: PARSER-MATCH|MATCH
+
+=== CELL f7par.s8_heredoc_inside_procsub ===
+script:
+  | cat <(cat <<EOF
+  | via procsub
+  | EOF
+  | )
+--- rd: rc=0
+    out=b'via procsub\n'
+    err=b''
+--- pc: rc=0
+    out=b'via procsub\n'
+    err=b''
+--- bash: rc=0
+    out=b'via procsub\n'
+    err=b''
+VERDICT: PARSER-MATCH|MATCH
+
+=== CELL f7par.s9_security_parity ===
+script:
+  | eval "$x" > "${a[<(y)]}"
+  | rm -rf $unquoted
+  | for f in $(cat list); do echo $f; done
+--- rd: rc=1
+    out=b'Security Analysis Summary:\n\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\nTotal Issues: 4\n  High Risk:     2\n  Medium Risk:   2\n  Low Risk:      0\n\nHIGH RISK ISSUES:\n  \xe2\x80\xa2 eval: Dynamic code execution - high risk of injection\n  \xe2\x80\xa2 Unquoted variable in eval - potential command injection\n\nMEDIUM RISK ISSUES:\n  \xe2\x80\xa2 rm: File deletion\n  \xe2\x80\xa2 Iterating over unquoted command substitution - may break on spaces\n\n'
+    err=b''
+--- pc: rc=1
+    out=b'Security Analysis Summary:\n\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\nTotal Issues: 4\n  High Risk:     2\n  Medium Risk:   2\n  Low Risk:      0\n\nHIGH RISK ISSUES:\n  \xe2\x80\xa2 eval: Dynamic code execution - high risk of injection\n  \xe2\x80\xa2 Unquoted variable in eval - potential command injection\n\nMEDIUM RISK ISSUES:\n  \xe2\x80\xa2 rm: File deletion\n  \xe2\x80\xa2 Iterating over unquoted command substitution - may break on spaces\n\n'
+    err=b''
+VERDICT: SECURITY-PARSER-MATCH|rd-rc=1,issues-reported=True
+
+SUMMARY: {'PARSER-MATCH|MATCH': 8, 'SECURITY-PARSER-MATCH|rd-rc=1,issues-reported=True': 1}

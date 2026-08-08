@@ -1,0 +1,73 @@
+##### 1. anti-spawn guard: key logic + asserts
+6:modules USED to spawn bash/psh with raw ``subprocess`` and never touched the
+9:``tests/harness/shell_oracle.py`` (``run_shell_case`` via ``run_psh``/
+14:``tests/harness/``, or one whose source IMPORTS ``shell_oracle`` (a real
+27:1. *subprocess family* (``find_direct_spawns``):
+28:   ``subprocess.run/Popen/call/check_output/check_call/getoutput/
+30:2. *non-subprocess family* (``find_non_subprocess_spawns``):
+37:an unowned harness, invisible to a subprocess-only guard.  **PTY interactivity
+39:a module is not migrated; it is classified and registered (``PTY_REGISTRY``),
+43:attribute-access form on a module named exactly ``subprocess``/``os``/
+46:* a bare-name import — ``from subprocess import run; run(...)``;
+47:* an ALIASED import — ``import subprocess as sp; sp.run(...)`` (or
+50:* ``getattr(subprocess, 'run')(...)`` or a spawn assembled/``eval``-ed from
+56:  ``asyncio.create_subprocess_exec``/``create_subprocess_shell``. If a
+60:A tree audit at adoption found ZERO bare-name and ZERO aliased subprocess/os
+61:imports in the bearing set (``from subprocess import`` / ``import subprocess as``
+67:(a) ``NAMED_ALLOWLIST`` — the harness itself plus spawns that genuinely CANNOT
+79:entirely (they do not import shell_oracle and are not under conformance).
+90:# subprocess.<attr>(...) spawn methods and os.<attr>(...) shell launchers.
+97:# The NON-subprocess process-creation family.  These never reach
+126:# scanned modules): all 95 are DIFFERENTIAL (36 conformance + 59 shell_oracle
+129:# import shell_oracle nor live under conformance, so they are OUTSIDE this guard
+134:NAMED_ALLOWLIST = {
+135:    "harness/shell_oracle.py":
+137:        "subprocess.Popen (and the _bash_version probe). Removal: never.",
+182:ALLOWLIST = {**NAMED_ALLOWLIST, **PSH_ONLY_REGISTRY}
+190:_EXPECTED_NAMED_ALLOWLIST = frozenset({
+191:    "harness/shell_oracle.py",
+199:# NAMED_ALLOWLIST.  Reason it cannot simply join (a): the allowlist hygiene test
+203:# This registry is policed by ``find_non_subprocess_spawns`` instead, so every
+206:PTY_REGISTRY = {
+243:_EXPECTED_PTY_REGISTRY = frozenset(PTY_REGISTRY)
+248:# ``subprocess.run([resolve_bash().path, ...])`` bash-differential appended to an
+262:    "harness/shell_oracle.py": 3,
+274:def _imports_shell_oracle(tree):
+275:    """True iff *tree* really imports shell_oracle (not just mentions it).
+277:    Covers BOTH ``ImportFrom`` shapes: ``from shell_oracle import x`` (the name
+278:    is in ``node.module``) and ``from tests.harness import shell_oracle`` (the
+285:            if node.module and "shell_oracle" in node.module:
+288:                if "shell_oracle" in alias.name:
+292:                if "shell_oracle" in alias.name:
+
+##### 2. traversal battery: generation + assert
+10:1. **Generated sentinel battery** — for every concrete AST node class, every
+12:   test builds the parent node with sentinel children planted at that edge and
+13:   asserts the visitor's dispatch reaches every sentinel. The node inventory
+136:    """A benign value for a non-node field annotation, or MISSING sentinel."""
+184:def _template_with_sentinel(field_type):
+186:    parsed command-substitution sub; returns (template, sentinel_node)."""
+189:    assert isinstance(tmpl_cls, type) and issubclass(tmpl_cls, SyntaxTemplate)
+190:    sentinel = CommandSubstitution(program=Program(), source='sentinel')
+191:    text = '$(sentinel)'
+192:    return tmpl_cls(text=text, subs=(NestedSub(sentinel, 0, len(text)),)), sentinel
+195:def _plant_sentinels(node_cls, field_name, shape):
+196:    """Build a *node_cls* instance with sentinel children planted at
+197:    *field_name*; returns (parent, [sentinel nodes])."""
+203:        sentinel = _instance_of(inner)
+204:        object.__setattr__(parent, field_name, sentinel)
+205:        return parent, [sentinel]
+208:        sentinel = _instance_of(elem)
+209:        object.__setattr__(parent, field_name, [sentinel])
+210:        return parent, [sentinel]
+217:    template, sentinel = _template_with_sentinel(ftype)
+219:    return parent, [sentinel]
+263:def test_edge_inventory_is_alive():
+278:        assert expected in named, f"battery lost edge {expected}"
+279:    assert len(EDGES) >= 45
+282:@pytest.mark.parametrize(
+285:def test_every_visitor_reaches_every_child_edge_exactly_once(
+287:    """THE BATTERY: sentinels planted at this edge are dispatched by every
+291:        parent, sentinels = _plant_sentinels(node_cls, field_name, shape)
+292:        assert sentinels, f"builder planted nothing at {node_cls.__name__}.{field_name}"
+294:        bad = {counts[id(s)] for s in sentinels if counts[id(s)] != 1}

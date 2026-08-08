@@ -1,0 +1,13 @@
+PASS Sequence.elements[0] attr write            REJECTED (FrozenInstanceError)
+PASS Sequence.nullable flip                     REJECTED (FrozenInstanceError)
+PASS Sequence.has_extglob flip                  REJECTED (FrozenInstanceError)
+PASS Sequence.elements rebind                   REJECTED (FrozenInstanceError)
+PASS Sequence new attr                          REJECTED (TypeError)
+PASS Bracket.content write                      REJECTED (FrozenInstanceError)
+PASS Bracket.negated flip                       REJECTED (TypeError)
+PASS CompiledPattern.root rebind                REJECTED (FrozenInstanceError)
+PASS CompiledPattern new attr                   REJECTED (TypeError)
+PASS Extglob.enclosed flip (depth 2)            REJECTED (FrozenInstanceError)
+PASS Sequence.bash_quirk flip                   REJECTED (FrozenInstanceError)
+later identical shell command unchanged: True
+P02-RESULT: ALL-REJECTED

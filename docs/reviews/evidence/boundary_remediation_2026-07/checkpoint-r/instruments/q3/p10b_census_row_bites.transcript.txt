@@ -1,0 +1,15 @@
+17:@dataclass
+123:@dataclass
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_no_unfrozen_dataclass_is_reachable_from_a_lexed_unit[composites_and_heredoc]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_no_unfrozen_dataclass_is_reachable_from_a_lexed_unit[ansi_c_and_escapes]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_no_unfrozen_dataclass_is_reachable_from_a_lexed_unit[arrays_and_assoc]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_no_unfrozen_dataclass_is_reachable_from_a_lexed_unit[named_fd_and_herestring]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_no_unfrozen_dataclass_is_reachable_from_a_lexed_unit[case_and_nested_quotes]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_the_value_types_are_frozen
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_every_position_field_rejects_a_write[offset]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_every_position_field_rejects_a_write[line]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_every_position_field_rejects_a_write[column]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_the_base_probe_rewrites_are_now_impossible
+10 failed, 78 passed in 0.09s
+revert dirty-count: 0
+88 passed in 0.05s

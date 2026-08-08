@@ -1,0 +1,13 @@
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:03:11.9478567Z == 22729 passed, 1647 skipped, 8 xfailed, 657 warnings in 1291.74s (0:21:31) ===
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:03:11.9508692Z tests/integration/job_control/test_exit_trap_paths.py .................. [ 23%]
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:05:59.4054758Z = 1078 passed, 1 skipped, 24401 deselected, 2 xfailed, 8 warnings in 562.92s (0:09:22) =
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:05:59.4238604Z ================= 1510 passed, 26 skipped in 166.10s (0:02:46) =================
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:05:59.4256739Z Combined across 3 phase(s) (from phase manifests): 25317 passed, 1674 skipped, 10 xfailed
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:11:48.6837531Z ======================== 2 passed in 348.88s (0:05:48) =========================
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:15:20.0588684Z = 3 failed, 13 passed, 25465 deselected, 1 xfailed, 8 warnings in 209.71s (0:03:29) =
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:15:20.0589416Z ❌ phase manifest records 3 failed, 0 errored. FAILURE.
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:15:20.0590993Z Combined across 1 phase(s) (from phase manifests): 13 passed, 3 failed, 1 xfailed
+Full Conformance Suite	UNKNOWN STEP	2026-08-08T03:56:31.2297850Z =========== 3370 passed, 2 skipped, 8 xfailed in 1454.56s (0:24:14) ============
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:15:20.0585758Z FAILED tests/performance/benchmarks/test_parsing_performance.py::TestParsingPerformance::test_simple_command_performance - assert 0.011303730000008727 < 0.01
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:15:20.0586844Z FAILED tests/performance/benchmarks/test_parsing_performance.py::TestParsingPerformance::test_complex_structure_performance - assert 0.011140697000001865 < 0.01
+Full Parallel Suite + Bash Golden Comparison	UNKNOWN STEP	2026-08-08T04:15:20.0587899Z FAILED tests/performance/benchmarks/test_parsing_performance.py::TestTokenizationPerformance::test_tokenization_scaling - assert 0.003048010000000545 < 0.002

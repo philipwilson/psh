@@ -1,0 +1,17 @@
+== bash version: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+DIFF fmt=%.2a val=3.14 bash=[0x1.92p+1] rc=0 psh=[0x1.91eb851eb851fp+1] rc=0
+DIFF fmt=%.2a val=1.5 bash=[0x1.80p+0] rc=0 psh=[0x1.8p+0] rc=0
+DIFF fmt=%.2a val=0.1 bash=[0x1.9ap-4] rc=0 psh=[0x1.999999999999ap-4] rc=0
+SAME fmt=%a val=3.14 bash=[0x1.91eb851eb851fp+1] rc=0 psh=[0x1.91eb851eb851fp+1] rc=0
+SAME fmt=%a val=1.5 bash=[0x1.8p+0] rc=0 psh=[0x1.8p+0] rc=0
+SAME fmt=%a val=0.1 bash=[0x1.999999999999ap-4] rc=0 psh=[0x1.999999999999ap-4] rc=0
+DIFF fmt=%.3A val=3.14 bash=[0X1.91FP+1] rc=0 psh=[0X1.91EB851EB851FP+1] rc=0
+DIFF fmt=%.3A val=1.5 bash=[0X1.800P+0] rc=0 psh=[0X1.8P+0] rc=0
+DIFF fmt=%.3A val=0.1 bash=[0X1.99AP-4] rc=0 psh=[0X1.999999999999AP-4] rc=0
+SAME fmt=%#a val=3.14 bash=[0x1.91eb851eb851fp+1] rc=0 psh=[0x1.91eb851eb851fp+1] rc=0
+SAME fmt=%#a val=1.5 bash=[0x1.8p+0] rc=0 psh=[0x1.8p+0] rc=0
+SAME fmt=%#a val=0.1 bash=[0x1.999999999999ap-4] rc=0 psh=[0x1.999999999999ap-4] rc=0
+cmd=[printf '%#.0a
+' 2] bash=[0x1.p+1] psh=[0x1p+1]
+cmd=[printf '%#.0f
+' 3.7] bash=[4.] psh=[4]

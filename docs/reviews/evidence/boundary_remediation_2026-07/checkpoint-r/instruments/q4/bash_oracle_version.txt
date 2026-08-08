@@ -1,0 +1,1 @@
+GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)

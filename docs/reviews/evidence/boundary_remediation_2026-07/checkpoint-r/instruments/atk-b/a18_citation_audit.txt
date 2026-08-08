@@ -1,0 +1,80 @@
+== C1 q1-H6: test_subscript_keying_conformance.py:1708 (flipped pin) + :1771/:1797 exclusions
+def test_operand_at_preserves_fields(cmd, bash_out):
+def test_operand_bare_at_ifs_divergence(cmd, bash_out, psh_out):
+def test_case_pattern_multifield_operand_divergence(cmd, bash_out, psh_out):
+== C2 q1-H9: test_nested_substitution_timing_conformance.py:374
+    "a[$(if)]=v",                       # S3: element-assignment subscript
+])
+def test_c_mode_exit_code_is_127_like_bash(cmd):
+    """CLOSED S3->I3 divergence: a substitution-body syntax error under ``-c``
+    now exits 127 in psh too, for every spelling in the family.
+== C3 q3: resolve_command dispatch call at psh/executor/command.py:507
+            # the POSIX prefix-error branch are all driven by this one
+            # ``ResolvedCommand`` — never recomputed from raw names.
+            resolved = self.resolve_command(normalized, overlay, context)
+
+            # When the command resolves to a shell FUNCTION, temp-env prefix
+== C4 q2/qr: with_redirections def at io_redirect/manager.py:398 + caller count
+    def with_redirections(self, redirects: List[Redirect]):
+       0
+== C5 q5/qr: executor/CLAUDE.md:452 'no callers'
+  — the context manager every in-process compound actually uses (it turns a
+  redirect SETUP failure into bash's diagnostic and yields `False`);
+  `with_redirections` is the unguarded sibling and currently has no callers.
+  Or `apply_redirections()` / restore directly. Both scope input-cursor
+  bindings for the fds they re-point (slot 4B.4)
+== C6 qr: let_builtin.py:44-55 typed catch
+        result = 0
+        for expr in exprs:
+            try:
+                # `let` args are already shell-word-processed (quotes removed by
+                # the shell), so a source-spelled associative subscript gets NO
+                # extra dquote round — unlike `(( ))`/`$(( ))` (W2/CV1 B1).
+                result = evaluate_arithmetic(expr, shell,
+                                             arith_source_quotes=False)
+            except (ValueError, ArithmeticError) as e:
+                self.error(f"{expr}: {e}", shell)
+                return 1
+        # Like ((...)): success when the (last) value is non-zero.
+== C7 q3-F1: instr12 hardcoded retired paths (committed instrument)
+import tempfile
+
+TIP = "/Users/pwilson/src/psh-r4b-4"
+BASE = "/Users/pwilson/src/psh-4b4-base"
+BASH = ["/opt/homebrew/bin/bash"]
+== C8 q5: locale_service.py:577,592 private import + glob.py:6
+        from ..expansion.glob import _POSIX_CLASSES
+        from ..expansion.glob import _POSIX_CLASSES
+from ..core.locale_service import posix_class_ranges
+== C9 qr: test_timeformat.py:27-36 magnitude-blind docstring
+    property of the machine. %P is (user+sys)/real*100, and psh's user time
+    is accounted in 10 ms ticks: when a tick lands inside a sub-millisecond
+    ``time true``, %P reads in the thousands (measured: R=0.000 U=0.010
+    S=0.000 P=11934.31). RARE and load-sensitive: my sampling saw it a
+    couple of times in 30 idle runs, an independent 120-run replay saw
+    0/120 idle and 1/120 under load. The RATE is not pinned here — the
+    mechanism is what matters, and one occurrence is enough to fail a
+    digit-width assertion.
+    Normalizing per digit turned that into a FAILURE — the flake carried as
+    #8 — while what the test exists to check, that %P is emitted with two
+== C10 q1: test_input_decoder_seam_4b2.py:211
+
+
+class TestResumeRoutesArePshContract:
+    """The non-bulk drain routes resume a split character correctly.
+
+== C11 q2: input_reader.py:139 _pushback comment-only
+        # A `_pushback` bytearray existed until slot 4B.4 and was provably
+== C12 q3: iter_command_units def :63 / callers :245 + analysis_session.py:454
+def iter_command_units(shell, input_source, base_line: int = 1,
+        for command_start_line, result in iter_command_units(
+        for start_line, unit in iter_command_units(self.carrier, input_source,
+== C13 q3: OpenDescription construction sites input_cursor.py:170,237
+            desc = OpenDescription(f"fd{fd}")
+            desc = OpenDescription(f"fd{old_fd}")
+== C14 q1-M4: lexer-half carry pin :1077
+
+
+def test_divergence_lexer_splits_quoted_space_subscript():
+    """2.3-discovered CARRY (MEDIUM-4's LEXER half — out of slot 2.3's
+    boundary, ruled a ceremony carry row): psh's LEXER splits an element

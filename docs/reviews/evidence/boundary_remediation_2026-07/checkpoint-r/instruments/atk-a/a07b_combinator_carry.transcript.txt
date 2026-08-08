@@ -1,0 +1,35 @@
+
+=== CELL f7carry.c1_array_init_extglob_in_cmdsub_declared ===
+script:
+  | shopt -s extglob
+  | a=($(echo @(a|b)))
+  | printf '<%s>' "${a[@]}"
+  | echo
+--- rd: rc=0
+    out=b'<@(a|b)>\n'
+    err=b''
+--- pc: rc=2
+    out=b''
+    err=b"psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f7carry/c1_array_init_extglob_in_cmdsub_declared/pc/cell.sh:1: Parse error (line 1, column 7): syntax error near unexpected token '('\n\necho @(a|b)\n      ^\n\nContext: echo @ -> HERE <- a | b\n"
+--- bash: rc=0
+    out=b'<@(a|b)>\n'
+    err=b''
+VERDICT: PARSER-DIVERGE|MATCH
+
+=== CELL f7carry.c2_redirect_target_extglob_in_cmdsub_declared ===
+script:
+  | shopt -s extglob
+  | echo hi > $(echo @(a|b))
+  | ls
+--- rd: rc=0
+    out=b'@(a|b)\ncell.sh\n'
+    err=b''
+--- pc: rc=2
+    out=b''
+    err=b"psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f7carry/c2_redirect_target_extglob_in_cmdsub_declared/pc/cell.sh:1: Parse error (line 1, column 7): syntax error near unexpected token '('\n\necho @(a|b)\n      ^\n\nContext: echo @ -> HERE <- a | b\n"
+--- bash: rc=0
+    out=b'@(a|b)\ncell.sh\n'
+    err=b''
+VERDICT: PARSER-DIVERGE|MATCH
+
+SUMMARY: {'PARSER-DIVERGE|MATCH': 2}

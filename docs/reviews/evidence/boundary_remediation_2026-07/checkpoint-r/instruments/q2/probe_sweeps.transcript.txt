@@ -1,0 +1,171 @@
+
+######## S0: worktree identity ########
+ae871a16e2734e91983374063848e19f34d00a54
+8:__version__ = "0.773.0"
+
+######## S1: HIGH-1 raw spawns in oracle-bearing trees (conformance/ + harness/) ########
+--- subprocess/os spawn calls under tests/conformance + tests/harness ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/tests/harness/shell_oracle.py:243:        out = subprocess.run(
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/tests/harness/shell_oracle.py:343:        out = subprocess.run(["ps", "-eo", "pid=,ppid="],
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/tests/harness/shell_oracle.py:463:      non-seekable exactly as under ``subprocess.run(..., input=...)``.  The
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/tests/harness/shell_oracle.py:509:                proc = subprocess.Popen(
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/tests/harness/stdin_kind_audit.py:5:code used ``subprocess.run(..., input=...)`` the child had a PIPE, so such a
+--- pexpect/pty spawns under tests/conformance + tests/harness ---
+NONE
+--- shell_oracle-importing modules elsewhere that also mention subprocess. ---
+SPAWNER: tests/unit/tooling/test_bash_oracle_resolution.py
+9:harnesses; a raw ``subprocess.run([resolve_bash().path, ...])`` in a test — once
+28:  (``subprocess.run("bash" ...)``, ``shutil.which("bash")``);
+39:  (``subprocess.run('bash -c ...', shell=True)`` — arg0 is a multi-word
+41:* ``os.system('bash ...')`` / ``os.popen('bash ...')``.
+122:    """The called attribute name (``run`` for ``subprocess.run(...)``,
+SPAWNER: tests/unit/tooling/oracle_spawn_fixtures/pty_offender_module.py
+4:via ``pexpect.spawn`` — the NON-subprocess family the original subprocess-only
+22:    return pexpect.spawn("/bin/sh", ["-c", "echo nope"], encoding="utf-8")
+SPAWNER: tests/unit/tooling/oracle_spawn_fixtures/offender_module.py
+21:    return subprocess.run([sys.executable, "-c", "print('nope')"],
+SPAWNER: tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py
+31:   ``pexpect.spawn``/``spawnu``/``run``, ``pty.spawn``/``fork``/``openpty``,
+36:through ``pexpect.spawn`` — a genuine bash comparison whose verdict rested on
+48:  ``import os as _os; _os.system(...)``): the detector keys on the base NAME,
+101:# oracle through ``pexpect.spawn``, sitting invisibly inside the bearing set.
+210:        "through pexpect.spawn over a pseudo-terminal (TERM=xterm) and compares "
+SPAWNER: tests/integration/job_control/test_exit_trap_paths.py
+35:    # subprocess.run(input=...) — a real PIPE — and
+234:    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL,
+358:        proc = subprocess.Popen(
+SPAWNER: tests/system/test_stdin_startup_robustness.py
+69:        return subprocess.run(
+SPAWNER: tests/system/test_lazy_script_source_i2.py
+117:        f"subprocess.run([sys.executable,'-m','psh',{str(script_path)!r}],"
+SPAWNER: tests/system/interactive/test_pty_read_exact_timeout_4b2.py
+25:oracle-bearing and put a ``pexpect.spawn`` differential into the frozen
+69:    child = pexpect.spawn(
+SPAWNER: tests/system/interactive/test_multiline_immediate_error_i3.py
+83:    child = pexpect.spawn(
+97:    child = pexpect.spawn(
+SPAWNER: tests/system/interactive/test_substitution_abort_interactive_pty.py
+110:    child = pexpect.spawn(
+121:    child = pexpect.spawn(_ORACLE.path, ["--norc", "-i"], timeout=15,
+SPAWNER: tests/system/interactive/test_heredoc_detection_interactive_pty.py
+217:    child = pexpect.spawn(
+227:    child = pexpect.spawn(_ORACLE.path, ["--norc", "-i"], timeout=20,
+SPAWNER: tests/system/test_script_input_sources.py
+35:      pre-migration ``subprocess.run(..., input=...)``;
+80:        writer = subprocess.Popen([BASH, '-c', f'echo "echo fifod" > {fifo}'])
+94:        writer = subprocess.Popen([BASH, '-c', f'echo "echo sfifod" > {fifo}'])
+
+######## S2: HIGH-2 per-visitor child enumeration (def visit( overrides in psh/visitor) ########
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/visitor/traversal.py:277:    def visit(self, node: ASTNode) -> None:
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/visitor/base.py:29:    def visit(self, node: ASTNode) -> T:
+--- generic_visit overrides in psh/visitor ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/visitor/traversal.py:304:    def generic_visit(self, node: ASTNode) -> None:
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/visitor/debug_ast_visitor.py:415:    def generic_visit(self, node: ASTNode) -> str:
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/visitor/base.py:47:    def generic_visit(self, node: ASTNode) -> T:
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/visitor/formatter_visitor.py:826:    def generic_visit(self, node: ASTNode) -> str:
+
+######## S3: HIGH-5 facade wrappers ########
+--- _ParserWrapper anywhere ---
+NONE
+--- tests/support/utils.py ---
+ls: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/tests/support/utils.py: No such file or directory
+--- ParseInputs( construction sites in psh (sanctioned set = 4 + defn module) ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/scripting/lex_parse.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/parser/parse_inputs.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/parser/__init__.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/parser/combinators/parser.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/parser/recursive_descent/context.py
+
+######## S4: MEDIUM-3 heredoc detection outside the lexer-event authority ########
+--- completeness oracle asks the lexer ---
+310:            pending = _lexer_pending_heredocs(unit)
+455:def _lexer_pending_heredocs(unit: Any) -> "Tuple[Any, ...]":
+--- session.py must NOT use the text scanner for completeness ---
+NONE (good)
+--- '<<'-matching regexes compiled outside utils/heredoc_detection.py ---
+NONE
+--- text-scanner consumer modules (compare to declared list in heredoc_detection.py docstring) ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/scripting/lex_parse.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/scripting/input_preprocessing.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/utils/__init__.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/utils/heredoc_detection.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/interactive/history_expansion.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/interactive/line_editor_helpers.py
+
+######## S5: arg_types/quote_types parallel metadata ########
+NONE
+
+######## S6: retired members - _file_synced_len / _pushback / with_redirections ########
+--- _file_synced_len in psh ---
+NONE
+--- _pushback in psh (non-comment lines only) ---
+NONE (comment-only or absent)
+--- with_redirections CALL sites (definition excluded) ---
+NONE
+--- with_redirections definition still present (dead API) ---
+398:    def with_redirections(self, redirects: List[Redirect]):
+
+######## S7: broad except at the closed sites (subscript.py, param_parser.py, manager.py, arithmetic/evaluator.py) ########
+--- psh/expansion/subscript.py ---
+57:    ``except Exception`` fallbacks that silently degraded the un-lexable text
+--- psh/expansion/param_parser.py ---
+CLEAN
+--- psh/expansion/manager.py ---
+337:        ``except Exception`` also swallowed genuine internal defects, so a psh
+--- psh/expansion/arithmetic/evaluator.py ---
+CLEAN
+
+######## S8: OperandValue scalar projection census ########
+--- .as_scalar( call sites in psh ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/operands.py:129:            "vector; call .as_scalar() at a ruled terminal consumer "
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/operands.py:739:                out.append(expanded.as_scalar()
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/operands.py:805:                add_active(expanded.as_scalar()
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/variable.py:562:                result.append(expanded.as_scalar()
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/word_expander.py:826:                    result_parts.append(value.as_scalar()
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/operators.py:289:            msg = (self._expand_operand(operand).as_scalar()  # RULED: one message
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/operators.py:457:        expanded_default = self._expand_operand(operand, quote_ctx).as_scalar()
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/operators.py:491:        msg = (self._expand_operand(operand).as_scalar()  # RULED: one message
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/manager.py:304:                    expanded = expanded.as_scalar()
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/enhanced_test_evaluator.py:89:                out.append(expanded.as_scalar()
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/enhanced_test_evaluator.py:281:                    expanded = expanded.as_scalar()
+--- OperandResult (retired str-subclass) in psh ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/operands.py:16:(``OperandResult(str)``, carrying protection but no field dimension)
+--- ExpandedField( constructor sites by module (two named producers expected) ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/operands.py
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/expansion/word_expander.py
+
+######## S9: env materialization + command resolution ########
+--- direct os.environ writes in psh ---
+NONE
+--- _materialize_env_name definition + callers ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/core/state.py:1073:    def _materialize_env_name(self, name: str) -> None:
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/core/state.py:1105:        self._materialize_env_name(name)
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/core/state.py:1318:        self._materialize_env_name('SHELLOPTS')
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/core/state.py:1319:        self._materialize_env_name('BASHOPTS')
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/core/state.py:1373:            self._materialize_env_name(name)
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/core/state.py:1383:            self._materialize_env_name(name)
+--- get_function( reads in psh/executor outside resolver/resolution machinery ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/strategies.py:468:        return shell.function_manager.get_function(cmd_name) is not None
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/function.py:106:        func = self.function_manager.get_function(name)
+--- POSIX_SPECIAL_BUILTINS reads in psh/executor outside resolution machinery ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/strategies.py:325:POSIX_SPECIAL_BUILTINS = {
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/strategies.py:336:        return (cmd_name in POSIX_SPECIAL_BUILTINS and
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/strategies.py:377:                cmd_name not in POSIX_SPECIAL_BUILTINS)
+--- PATH-walk (os.access X_OK) sites in psh ---
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/builtins/test_command.py:349:            return 0 if os.access(arg, os.X_OK) else 1
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/builtins/source_command.py:111:        # READS the script (it is not exec'd, so the default X_OK gate is
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/builtins/core.py:240:            # (CV2 B3): an X_OK match wins over a non-executable earlier on PATH,
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/command_resolver.py:16:  ``X_OK`` gates a match). Every ``$PATH`` scan goes through it.
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/command_resolver.py:144:                    all_matches: bool = False, mode: int = os.X_OK) -> List[str]:
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/command_resolver.py:155:        ``os.X_OK`` is the executable search (the executor, ``type``, ``hash``,
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/command_resolver.py:179:        first ``X_OK``-executable REGULAR-FILE match wins; failing that, the
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/command_resolver.py:191:        ``access(X_OK)`` on ANY type, so an executable-bit FIFO or SOCKET earlier
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/command_resolver.py:205:                if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/command_resolver.py:290:        if verify and not (os.path.isfile(cached) and os.access(cached, os.X_OK)):
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/strategies.py:590:                # resolve_for_exec missed on the X_OK hash search (or, under
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/executor/strategies.py:592:                # variable-PATH search (CV2 B2): an X_OK match runs, a sole
+
+######## S10: retired heredoc plumbing identifiers (independent of guard) ########
+NONE
+
+######## SWEEPS COMPLETE ########

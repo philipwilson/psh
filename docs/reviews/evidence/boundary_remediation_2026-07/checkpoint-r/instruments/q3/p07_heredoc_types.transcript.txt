@@ -1,0 +1,7 @@
+PASS omitted body -> TypeError: HeredocRedirect.__init__() missing 1 required keyword-only argument: 'heredoc_content'
+PASS positional body -> TypeError: HeredocRedirect.__init__() takes from 3 to 12 positional arguments but 13 were given
+PASS valid kw construction, empty body == ''
+alias route: rc=2 stderr="psh: -c:1: Parse error (line 1, column 52): here document operator has no collected-body id\n\nshopt -s expand_aliases; alias foo='cat <<EOF'; foo\n                                                   ^\n\nContext: cat << EOF -> HERE <-"
+PASS alias route rejected loudly, no traceback
+PASS direct arm -> NonExecutableRedirectError: here-document `<<EOF` was never collected. psh could not collect the here-document body. The usual cause is an ALIAS whose expansion introduces the `<<` operator: aliases are substituted after the line is lexed, so the body was never gathered and its lines will be read as commands. Write the here-document directly rather than through an alias.
+P07-RESULT: HOLDS

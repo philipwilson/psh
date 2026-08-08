@@ -1,0 +1,56 @@
+== PART 1: register sweep (fixed strings, case-insensitive) ==
+-- /Users/pwilson/src/psh/docs/reviews/evidence/boundary_remediation_2026-07/FLIP-PINS.md --
+   'zombie': 0
+   'defunct': 0
+   'reap': 0
+   'background job': 0
+   'waitpid': 0
+   'WNOHANG': 0
+-- /Users/pwilson/src/psh/docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md --
+   'zombie': 2
+31:| MEDIUM-1 EXIT-trap bypasses shutdown work | 4A.2 | CONFIRMED structurally + measured live (trap-exit: recorded shutdown steps NONE vs both on control; latch made skips permanent) | **CLOSED v0.769.0**: mandatory phases in `Shell.shutdown` — trap phase's terminal exception HELD, history/dispose/reap all run, `close()` unconditional, re-raise with specified precedence (close-error > trap SystemExit > phase failure, `__context__` chaining); order unchanged (= bash's own exit_shell). Two declared toward-bash deltas: history saves under trap-exit on saving routes (route still owns policy); bare `exit` in an EXIT trap resolves to TRAP-ENTRY status (pre-existing divergence found by the round-1 HARNESS after the dev battery's vacuous cells certified parity — fixed in-slot per R4 scope extension, EXIT-only, USR1 must-hold; 39/39 discriminating battery). Exit-criterion widths stated exactly: HUP+history PTY-proven (pexpect+tmux); **reap leg UNIT-proven** (shutdown-path reap structurally unobservable end-to-end — reparent-to-init makes both worlds zombie-free); lease leg = direct ownership-release cell + 4A.1 composition for downstream restores. 63 committed tests; 2 rounds (harness BOUNCE 1/1/0 false → integrator-direct PASS); fresh-checkout 58/58. Evidence: `4a.2-rescue/` |
+156:| 1.4 carry: StopIteration one-off | `test_argument_less_builtin_has_no_trailing_space_script` StopIteration in 30143337081, never recurred; now reports the listing on failure. Procsub zombie rows: fixed `sleep 0.2` settle accepted; bounded reap-poll PRE-RULED APPROVED if either row flakes on a scheduled run | flake watch |
+   'defunct': 0
+   'reap': 8
+5:- **This is THE registry** (integrator plan amendment A2): it merges reappraisal
+14:## Part A — Reappraisal #22 findings
+31:| MEDIUM-1 EXIT-trap bypasses shutdown work | 4A.2 | CONFIRMED structurally + measured live (trap-exit: recorded shutdown steps NONE vs both on control; latch made skips permanent) | **CLOSED v0.769.0**: mandatory phases in `Shell.shutdown` — trap phase's terminal exception HELD, history/dispose/reap all run, `close()` unconditional, re-raise with specified precedence (close-error > trap SystemExit > phase failure, `__context__` chaining); order unchanged (= bash's own exit_shell). Two declared toward-bash deltas: history saves under trap-exit on saving routes (route still owns policy); bare `exit` in an EXIT trap resolves to TRAP-ENTRY status (pre-existing divergence found by the round-1 HARNESS after the dev battery's vacuous cells certified parity — fixed in-slot per R4 scope extension, EXIT-only, USR1 must-hold; 39/39 discriminating battery). Exit-criterion widths stated exactly: HUP+history PTY-proven (pexpect+tmux); **reap leg UNIT-proven** (shutdown-path reap structurally unobservable end-to-end — reparent-to-init makes both worlds zombie-free); lease leg = direct ownership-release cell + 4A.1 composition for downstream restores. 63 committed tests; 2 rounds (harness BOUNCE 1/1/0 false → integrator-direct PASS); fresh-checkout 58/58. Evidence: `4a.2-rescue/` |
+67:| 12 | general async reaper (H19 residual) | RE-CARRIED to successor (with #16); NOT owed by 4A (which owes EXIT-trap/lease paths only). |
+   'background job': 0
+   'waitpid': 0
+   'WNOHANG': 0
+-- /Users/pwilson/src/psh/docs/reviews/evidence/boundary_remediation_2026-07/nightly-status.md --
+   'zombie': 1
+23:      TestProcessSubReaping (zombie accumulation), plus child-fd inheritance
+   'defunct': 0
+   'reap': 7
+9:  through the entire boundary campaign (v0.725.0–v0.750.0), reappraisal #22,
+23:      TestProcessSubReaping (zombie accumulation), plus child-fd inheritance
+104:  LIVE BASH ORACLE raced. This command is a double-reap race on which bash
+106:  deterministic (rc=127). A reap race compared against a racy oracle is not a
+   'background job': 0
+   'waitpid': 0
+   'WNOHANG': 0
+-- /Users/pwilson/src/psh/tmp/remediation-ledgers/briefs/checkpoint-r.md --
+   'zombie': 1
+250:- **Process leaks**: orphan/zombie discipline — targeted probes: procsub reap,
+   'defunct': 0
+   'reap': 3
+1:# Checkpoint R charter — whole-tree boundary reappraisal (sequence §10)
+250:- **Process leaks**: orphan/zombie discipline — targeted probes: procsub reap,
+251:  background job reap on shutdown, lease orphan sweep (4A.1). Small scoped
+   'background job': 1
+251:  background job reap on shutdown, lease orphan sweep (4A.1). Small scoped
+   'waitpid': 0
+   'WNOHANG': 0
+
+== PART 2: fresh divergence cell (psh @ae871a16 vs bash 5.2.26) ==
+/Users/pwilson/src/psh/tmp/ckr-probes/atk-c/p08_bgjob_zombie.sh: line 27: /tmp_probe_cell.sh: Read-only file system
+-- psh --
+80232 80227 Z    <defunct>
+80269 80227 R    ps
+80270 80227 R    awk
+-- bash --
+80299 80271 R    ps
+80300 80271 S    awk
+(rows above are children of each shell at t=1.1s, past the ':' boundary; a 'Z' stat row = unreaped zombie)

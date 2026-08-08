@@ -1,0 +1,25 @@
+BASE discriminator: psh.__file__=/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wtbase/psh/__init__.py version=0.750.0
+BASE HEAD=0215279cdcf950dc6016522ff99b154d79dc5368
+--- BASE-psh B1_execfail_trap: rc=127
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wtbase/atkwork/B1_execfail_trap/cell.sh: line 2: /nonexistent_prog_xyz: No such file or directory\nT\n'
+--- BASE-psh B2_pipeline_random_0: rc=0
+    out=b'18498\n18498\n'
+    err=b''
+--- BASE-psh B2_pipeline_random_1: rc=0
+    out=b'18498\n18498\n'
+    err=b''
+--- BASE-psh B2b_subshell_random_0: rc=0
+    out=b'9799\n5135\n'
+    err=b''
+--- BASE-psh B2b_subshell_random_1: rc=0
+    out=b'17016\n27401\n'
+    err=b''
+--- BASE-psh B3_hist_w_devfd: rc=0
+    out=b'===F===\nAAA\nBBB\n'
+    err=b''
+    artifact[hf3]=b'AAA\nBBB\n'
+--- BASE-psh B4_move_form: rc=0
+    out=b'alive<L2>\na<L1>\n'
+    err=b''
+BASE-PROVENANCE-DONE

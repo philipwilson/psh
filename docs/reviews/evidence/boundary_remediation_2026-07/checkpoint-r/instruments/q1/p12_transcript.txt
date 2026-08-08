@@ -1,0 +1,5 @@
+DISCRIMINATOR OK: 0.773.0
+first parse -> Program
+second parse -> RuntimeError (enforced): parser handle is single-use: it binds one token list; build a new handle (create_parser) or call par
+bad-input first parse raised ParseError
+post-failure second parse -> RuntimeError (enforced): parser handle is single-use: it binds one token list; build a new handle (create_parser) or call par

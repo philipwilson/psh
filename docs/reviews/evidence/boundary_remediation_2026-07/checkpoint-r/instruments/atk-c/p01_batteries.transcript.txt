@@ -1,0 +1,20 @@
+== GAP 1: 4B.3 battery ==
+COLLECT tests/unit/builtins/test_history_flags.py :: 26 tests collected in 0.02s
+COLLECT tests/unit/interactive/test_history_state_machine_4b3.py :: 58 tests collected in 0.04s
+COLLECT tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py :: 14 tests collected in 0.01s
+COLLECT tests/conformance/bash/test_history_state_machine_conformance.py :: 63 tests collected in 0.05s
+-- run --
+........................................................................ [ 44%]
+........................................................................ [ 89%]
+.................                                                        [100%]
+161 passed in 37.38s
+
+== GAP 2: 4B.2 decoder seam + 4B.4 contract ==
+COLLECT tests/unit/builtins/test_input_decoder_seam_4b2.py :: 40 tests collected in 0.02s
+COLLECT tests/integration/redirection/test_input_cursor_contract_4b4.py :: 27 tests collected in 0.03s
+COLLECT tests/unit/io_redirect/test_input_cursor_registry_4b4.py :: 18 tests collected in 0.01s
+COLLECT tests/unit/tooling/test_input_cursor_m8_locks_4b4.py :: 12 tests collected in 0.01s
+-- run --
+........................................................................ [ 74%]
+.........................                                                [100%]
+97 passed in 45.13s

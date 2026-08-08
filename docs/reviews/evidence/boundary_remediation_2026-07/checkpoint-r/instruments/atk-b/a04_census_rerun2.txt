@@ -1,0 +1,66 @@
+== q1/p18 rerun (expect 60 fns; 478 untyped of 3243)
+    194  psh/interactive/history_expansion.py:expand_history
+    181  psh/builtins/read_builtin.py:execute
+    172  psh/core/scope.py:set_variable
+    165  psh/core/state.py:clone_for_child
+    155  psh/executor/strategies.py:execute
+    154  psh/parser/combinators/control_structures/conditionals.py:_build_case_statement
+    151  psh/builtins/function_support.py:_declare_assignment
+total defs: 3243 | defs without return annotation: 478
+== q5/05 sig census TIP (expect A 648/3243, B 488/2918)
+total defs: 3243
+METHOD A incomplete (any def, missing param-ann or return-ann): 648
+METHOD B denominator (non-dunder, non-nested): 2918; incomplete: 488
+
+METHOD A by package: [('interactive', 102), ('parser', 87), ('expansion', 78), ('core', 75), ('executor', 69), ('io_redirect', 68), ('visitor', 53), ('builtins', 49), ('scripting', 28), ('utils', 17), ('lexer', 11), ('ast_nodes', 8), ('(top)', 3)]
+
+METHOD A top files: [('psh/interactive/line_editor.py', 47), ('psh/io_redirect/file_redirect.py', 31), ('psh/io_redirect/manager.py', 31), ('psh/core/state.py', 20), ('psh/visitor/enhanced_validator_visitor.py', 19), ('psh/interactive/signal_manager.py', 16), ('psh/executor/job_control.py', 15), ('psh/visitor/formatter_visitor.py', 15), ('psh/core/scope.py', 13), ('psh/scripting/source_processor.py', 13), ('psh/core/exceptions.py', 12), ('psh/interactive/history_expansion.py', 12), ('psh/core/trap_manager.py', 11), ('psh/executor/strategies.py', 11), ('psh/core/variables.py', 10)]
+== q5/05 sig census BASE (expect A 625/3080, B 466/2773)
+total defs: 3080
+METHOD A incomplete (any def, missing param-ann or return-ann): 625
+METHOD B denominator (non-dunder, non-nested): 2773; incomplete: 466
+
+METHOD A by package: [('interactive', 102), ('parser', 86), ('core', 74), ('executor', 69), ('io_redirect', 66), ('expansion', 64), ('visitor', 52), ('builtins', 48), ('scripting', 25), ('utils', 17), ('lexer', 11), ('ast_nodes', 8), ('(top)', 3)]
+
+METHOD A top files: [('psh/interactive/line_editor.py', 47), ('psh/io_redirect/file_redirect.py', 30), ('psh/io_redirect/manager.py', 30), ('psh/core/state.py', 20), ('psh/visitor/enhanced_validator_visitor.py', 18), ('psh/interactive/signal_manager.py', 16), ('psh/executor/job_control.py', 15), ('psh/visitor/formatter_visitor.py', 15), ('psh/core/scope.py', 13), ('psh/interactive/history_expansion.py', 12), ('psh/core/exceptions.py', 11), ('psh/core/trap_manager.py', 11), ('psh/executor/strategies.py', 11), ('psh/scripting/source_processor.py', 11), ('psh/core/variables.py', 10)]
+== q5/01 protocol census TIP (expect 9 protocols, 2 collisions)
+== PROTOCOL DEFINITIONS UNDER psh/ ==
+
+psh/expansion/_protocols.py:27 class VariableExpanderProtocol(Protocol)
+  attr shell: 'Shell'
+  attr state: 'ShellState'
+  attr param_expansion: 'ParameterExpansionOps'
+  def expand_variable(var_expr: str, quote_ctx: Optional[str]) -> 'OperandOrStr'
+  def expand_string_variables(text: str, quote_ctx: Optional[str]) -> str
+  def split_subscript(name: str) -> Optional['tuple[str, str]']
+  def _resolve_array_name(array_name: str) -> str
+  def _eval_array_index(index_expr: str) -> int
+  def set_var_or_array_element(var_name: str, value: str) -> None
+  def array_fields(array_name: str, keys: bool) -> list
+  def _array_keyvalue_form(op: str, var: None) -> str
+  def _array_keyvalue_fields(var: None) -> list
+  def _expand_operand(operand: str, quote_ctx: Optional[str]) -> 'OperandValue'
+  def _expand_pattern_operand(operand: str) -> str
+  def _expand_replacement_operand(operand: str) -> list
+  def _split_pattern_replacement(operand: str) -> None
+  def _ifs_star_separator() -> str
+  def _var_attr_flags(var_name: str) -> str
+  def _shell_quote(s: str) -> str
+  def _apply_op_per_element(operator: None, value: None, operand: None, var_name: None) -> None
+  def _view_conditional(operator: str, elements: list, joiner: str, operand: None, qmark_subject: str, assign_error: str, quote_ctx: Optional[str]) -> list
+  def _positional_slice_elements() -> list
+  def _parse_slice_operand(operand: str, what: str) -> tuple
+  def _slice_elements(elements: list, offset: int, length: None, indices: None) -> list
+  def _slice_scalar_subscript(value: str, offset: int, length: None) -> list
+  def expand_to_fields(parameter: str, operator: None, operand: None, quote_ctx: Optional[str]) -> None
+  SHELL-TYPED MEMBERS: ["shell: 'Shell'", "state: 'ShellState'"]
+  ANY-TYPED MEMBERS: none
+
+psh/parser/combinators/commands/_protocols.py:42 class CommandParsersProtocol(Protocol)
+  attr config: 'ParserConfig'
+  attr tokens: 'TokenParsers'
+  attr expansions: 'ExpansionParsers'
+  attr arrays: 'ArrayParsers'
+  attr heredocs: 'Optional[Mapping[int, LexedHeredoc]]'
+  attr redirection: Any
+  attr simple_command: 'Parser[SimpleCommand]'

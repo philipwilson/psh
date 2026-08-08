@@ -1,0 +1,6 @@
+=== bash
+rc=0 out=[got:@(x|y)]
+=== psh --parser rd
+rc=0 out=[got:@(x|y)]
+=== psh --parser combinator
+rc=0 out=[got:@(x|y)]

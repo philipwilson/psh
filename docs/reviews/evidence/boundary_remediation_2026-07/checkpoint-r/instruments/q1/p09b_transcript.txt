@@ -1,0 +1,5 @@
+DISCRIMINATOR OK: 0.773.0
+legit exec 9>ok rc: 0 | lease present: True | fd 9 open: True
+psh: line 1: /no/such/dir/x: No such file or directory
+failing exec rc: 1 | earlier lease still present: True | same lease object: True | fd 9 still open: True | fd 8 open: False
+RESULT: PASS

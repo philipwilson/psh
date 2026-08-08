@@ -1,0 +1,113 @@
+
+=== CELL f5fat.t1_fatal_sub_with_exit_trap ===
+script:
+  | trap 'echo TRAP >&2' EXIT
+  | echo $(if)
+  | echo after
+--- psh: rc=2
+    out=b''
+    err=b'psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t1_fatal_sub_with_exit_trap/psh/cell.sh:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \nTRAP\n'
+--- bash: rc=2
+    out=b''
+    err=b"/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t1_fatal_sub_with_exit_trap/bash/cell.sh: line 2: syntax error near unexpected token `)'\n/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t1_fatal_sub_with_exit_trap/bash/cell.sh: line 2: `echo $(if)'\nTRAP\n"
+VERDICT: STDERR-ONLY
+
+=== CELL f5fat.t2_fatal_sub_after_exec_redirect ===
+script:
+  | exec > out.txt
+  | echo $(if)
+  | echo after
+--- psh: rc=2
+    out=b''
+    err=b'psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t2_fatal_sub_after_exec_redirect/psh/cell.sh:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    artifact[out.txt]=b''
+--- bash: rc=2
+    out=b''
+    err=b"/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t2_fatal_sub_after_exec_redirect/bash/cell.sh: line 2: syntax error near unexpected token `)'\n/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t2_fatal_sub_after_exec_redirect/bash/cell.sh: line 2: `echo $(if)'\n"
+    artifact[out.txt]=b''
+VERDICT: STDERR-ONLY
+
+=== CELL f5fat.t3_fatal_sub_errexit_trap ===
+script:
+  | trap 'echo T:$? >&2' EXIT
+  | set -e
+  | echo $(if)
+  | echo after
+--- psh: rc=2
+    out=b''
+    err=b'psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t3_fatal_sub_errexit_trap/psh/cell.sh:3: Parse error (line 3, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \nT:2\n'
+--- bash: rc=2
+    out=b''
+    err=b"/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t3_fatal_sub_errexit_trap/bash/cell.sh: line 3: syntax error near unexpected token `)'\nT:2\n"
+VERDICT: STDERR-ONLY
+
+=== CELL f5fat.t4_fatal_sub_inside_trap_body ===
+script:
+  | trap 'echo $(if)' EXIT
+  | echo main
+  | exit 3
+--- psh: rc=3
+    out=b'main\n'
+    err=b'psh: <command>:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+--- bash: rc=3
+    out=b'main\n'
+    err=b"/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t4_fatal_sub_inside_trap_body/bash/cell.sh: exit trap: line 1: syntax error near unexpected token `)'\n/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t4_fatal_sub_inside_trap_body/bash/cell.sh: exit trap: line 1: `echo $(if)'\n"
+VERDICT: STDERR-ONLY
+
+=== CELL f5fat.t5_trap_output_via_dup_fd_after_fatal ===
+script:
+  | exec 3>trace
+  | trap 'echo T >&3' EXIT
+  | echo $(if)
+--- psh: rc=2
+    out=b''
+    err=b'psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t5_trap_output_via_dup_fd_after_fatal/psh/cell.sh:3: Parse error (line 3, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \n'
+    artifact[trace]=b'T\n'
+--- bash: rc=2
+    out=b''
+    err=b"/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t5_trap_output_via_dup_fd_after_fatal/bash/cell.sh: line 3: syntax error near unexpected token `)'\n/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t5_trap_output_via_dup_fd_after_fatal/bash/cell.sh: line 3: `echo $(if)'\n"
+    artifact[trace]=b'T\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f5fat.t6_severed_child_status_errexit_trap ===
+script:
+  | trap 'echo T:$? >&2' EXIT
+  | set -e
+  | x=$(exit 42)
+  | echo after
+--- psh: rc=42
+    out=b''
+    err=b'T:42\n'
+--- bash: rc=42
+    out=b''
+    err=b'T:42\n'
+VERDICT: MATCH
+
+=== CELL f5fat.t7_fatal_sub_via_source_with_trap ===
+script:
+  | printf 'echo $(if)\necho inner-after\n' > f.sh
+  | trap 'echo T >&2' EXIT
+  | . ./f.sh
+  | echo outer-after
+--- psh: rc=1
+    out=b''
+    err=b'psh: ./f.sh:1: Parse error (line 1, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \nT\n'
+--- bash: rc=1
+    out=b''
+    err=b"./f.sh: line 1: syntax error near unexpected token `)'\n./f.sh: line 1: `echo $(if)'\nT\n"
+VERDICT: STDERR-ONLY
+
+=== CELL f5fat.t8_fatal_sub_in_cmdsub_redirect_target ===
+script:
+  | trap 'echo T >&2' EXIT
+  | echo hi > "$(if)"
+  | echo after
+--- psh: rc=2
+    out=b''
+    err=b'psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t8_fatal_sub_in_cmdsub_redirect_target/psh/cell.sh:2: Parse error (line 2, column 3): syntax error: unexpected end of file\n\nif\n  ^\n\nContext: if -> HERE <- \nT\n'
+--- bash: rc=2
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t8_fatal_sub_in_cmdsub_redirect_target/bash/cell.sh: line 2: syntax error near unexpected token `)\'\n/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f5fat/t8_fatal_sub_in_cmdsub_redirect_target/bash/cell.sh: line 2: `echo hi > "$(if)"\'\nT\n'
+VERDICT: STDERR-ONLY
+
+SUMMARY: {'STDERR-ONLY': 7, 'MATCH': 1}

@@ -1,0 +1,123 @@
+##### 3. command resolution ratchet
+7:such decision through ``command_resolution.resolve_command`` and the typed
+63:def test_command_py_has_no_raw_dispatch_reads():
+65:    resolve_command / ResolvedCommand (H10)."""
+67:    assert offenders == [], (
+69:        f"through resolve_command / ResolvedCommand instead: {offenders}")
+72:def test_ratchet_flags_get_function_offender():
+79:    assert any("get_function" in r for r, _ in dispatch_reads(src))
+82:def test_ratchet_flags_posix_special_membership_offender():
+88:    assert any("POSIX_SPECIAL_BUILTINS" in r for r, _ in dispatch_reads(src))
+91:def test_ratchet_flags_builtin_registry_has_offender():
+97:    assert any(".has" in r for r, _ in dispatch_reads(src))
+100:def test_ratchet_allows_exec_builtin_fetch():
+107:    assert dispatch_reads(src) == []
+110:def test_ratchet_ignores_comments_and_docstrings():
+118:    assert dispatch_reads(src) == []
+121:def test_resolver_is_the_sole_dispatch_reader():
+122:    """resolve_command is where the dispatch registry reads legitimately live:
+126:    assert "def resolve_command(" in src
+127:    assert "can_execute" in src
+138:# Allowlist = the executor files that ARE the resolution machinery resolve_command
+159:RESOLUTION_MACHINERY = {
+161:        "the ExecutionStrategy.can_execute delegates resolve_command selects "
+187:def test_no_dispatch_reads_outside_resolution_machinery():
+191:                 if name not in RESOLUTION_MACHINERY}
+192:    assert not offending, (
+194:        "the resolution machinery — route the decision through resolve_command / "
+196:        "add it to RESOLUTION_MACHINERY with a specific reason):\n  "
+200:def test_resolution_machinery_entries_still_read_registries():
+204:    for name in RESOLUTION_MACHINERY:
+205:        assert (EXECUTOR_DIR / name).exists(), f"machinery file missing: {name}"
+
+##### 4. shell consumer ratchet (TOUCHED set + allowlist + asserts)
+12:- A NEW full-``Shell`` consumer in a scanned module (not in ``ALLOWLIST``) fails
+20:``test_created_modules_match_enumeration``):
+24:``TOUCHED_PREEXISTING`` adds the pre-campaign files the campaign MIGRATED or that
+26:in an unscanned file, or a future offender there, would otherwise be invisible).
+58:# behavior (git + tag present) is unchanged: the assertion runs.
+96:# scanned so the ratchet can see them (each annotated with why).
+97:TOUCHED_PREEXISTING = [
+104:TOUCHED_MODULES = CREATED_MODULES + TOUCHED_PREEXISTING
+112:ALLOWLIST = {
+206:    for rel in TOUCHED_MODULES:
+208:        assert path.exists(), f"scanned module missing: {rel}"
+215:def test_scanned_modules_all_exist():
+216:    for rel in TOUCHED_MODULES:
+217:        assert (ROOT / rel).exists(), f"scanned module missing: {rel}"
+220:def test_created_modules_match_enumeration():
+240:    assert enumerated == set(CREATED_MODULES), (
+248:def test_selfcheck_warns_loudly_when_git_unavailable():
+256:def test_no_unrecorded_full_shell_consumers():
+258:    new = live - set(ALLOWLIST)
+259:    assert not new, (
+262:        "or (if it genuinely needs the whole shell) add it to ALLOWLIST with a "
+267:def test_ratchet_only_shrinks():
+269:    stale = set(ALLOWLIST) - live
+270:    assert not stale, (
+271:        "ALLOWLIST entries that no longer take `Shell` (migrated away). The "
+276:def test_every_allowlist_entry_has_justification():
+277:    for key, reason in ALLOWLIST.items():
+278:        assert isinstance(reason, str) and len(reason.strip()) >= 20, (
+282:def test_iocontext_migration_removed_input_cursor():
+287:    assert ("psh.io_redirect.input_cursor",
+289:    assert ("psh.builtins.input_reader", "make_reader") not in live
+294:def test_detector_flags_bare_shell():
+297:    assert ("psh.fake", "Foo.bar") in full_shell_consumers(src, "psh.fake")
+300:def test_detector_flags_wrapped_shell():
+311:    assert {("psh.fake", "Foo.a"), ("psh.fake", "Foo.b"),
+315:def test_detector_flags_unannotated_shell():
+318:    assert ("psh.fake", "Foo.sneaky") in full_shell_consumers(src, "psh.fake")
+321:def test_detector_ignores_state_and_protocol_and_other_names():
+331:    assert full_shell_consumers(src, "psh.fake") == set()
+
+##### 5. MEDIUM-13 test body
+def test_subshell_with_background_jobs(tmp_path):
+    """Test subshell with background job execution.
+
+    Runs psh in a SUBPROCESS: a backgrounded subshell writing through a
+    redirect is process-lifecycle behavior, which this project's test
+    guidelines put in a subprocess rather than the in-process fixture. The
+    in-process fixture additionally cannot observe it — under pytest's fd
+    capture the backgrounded subshell's output reaches the captured stream
+    instead of the redirect target, leaving the file empty. The shipped shell
+    redirects correctly, which is exactly what this test now pins.
+
+    ``wait`` is the deterministic hand-off: the shell's own job API blocks
+    until every background job has been reaped, so no sleep is involved and
+    the assertions below run on every execution. The marker bounds the wait,
+    turning a hung job into a loud failure instead of a stalled suite.
+
+    Regression pin (MEDIUM-13): this test used to read the output file only
+    ``if os.path.exists(...)`` after an empty "give it time" comment, so losing
+    the race made it pass having asserted nothing about the output.
+    """
+    result = subprocess.run(
+        [sys.executable, '-m', 'psh', '-c',
+         '(echo "background subshell"; echo "done") > bg_output.txt & wait'],
+        cwd=tmp_path, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+    # Unconditional: the file must exist, holding exactly bash's bytes
+    # (pinned against bash 5.2 — 'background subshell\ndone\n'), and the
+    # redirect must have taken that output OFF stdout.
+    out_file = tmp_path / 'bg_output.txt'
+    assert out_file.exists()
+    assert out_file.read_text() == "background subshell\ndone\n"
+    assert result.stdout == ""
+
+
+@pytest.mark.timeout(60)
+def test_background_subshell_redirect_inprocess_characterization(
+        isolated_shell_with_temp_dir):
+    """CHARACTERIZATION of a known anomaly — asserts what psh does TODAY.
+
+    This is not a statement that the behavior is correct. It pins the
+    in-process/under-capture behavior of a backgrounded subshell's redirect
+    so the anomaly cannot drift silently in EITHER direction: if it is fixed,
+    this test fails and should be deleted; if it worsens, this test fails too.
+
+
+##### anti-bypass guard location
+tests/unit/visitor/test_traversal_totality_battery.py:389:def test_analysis_visitor_cannot_bypass_the_sweep(visitor_cls):

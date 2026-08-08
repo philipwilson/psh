@@ -1,0 +1,65 @@
+== HEAD ==
+ae871a16e2734e91983374063848e19f34d00a54
+== C1: .as_scalar( call sites in psh/ (independent sweep vs RULED_PROJECTIONS) ==
+psh/expansion/operands.py:129:            "vector; call .as_scalar() at a ruled terminal consumer "
+psh/expansion/operands.py:739:                out.append(expanded.as_scalar()
+psh/expansion/operands.py:805:                add_active(expanded.as_scalar()
+psh/expansion/variable.py:562:                result.append(expanded.as_scalar()
+psh/expansion/word_expander.py:826:                    result_parts.append(value.as_scalar()
+psh/expansion/operators.py:289:            msg = (self._expand_operand(operand).as_scalar()  # RULED: one message
+psh/expansion/operators.py:457:        expanded_default = self._expand_operand(operand, quote_ctx).as_scalar()
+psh/expansion/operators.py:491:        msg = (self._expand_operand(operand).as_scalar()  # RULED: one message
+psh/expansion/manager.py:304:                    expanded = expanded.as_scalar()
+psh/executor/enhanced_test_evaluator.py:89:                out.append(expanded.as_scalar()
+psh/executor/enhanced_test_evaluator.py:281:                    expanded = expanded.as_scalar()
+count: 11
+== C2: _owed writers — everything touching _owed in psh/ ==
+psh/interactive/history_manager.py:41:    * ``_owed`` — a per-ENTRY flag, one bool per ``state.history`` position,
+psh/interactive/history_manager.py:80:        self._owed: List[bool] = []
+psh/interactive/history_manager.py:88:    def _sync_owed(self) -> None:
+psh/interactive/history_manager.py:99:        extra = len(self._owed) - len(self.state.history)
+psh/interactive/history_manager.py:101:            del self._owed[len(self.state.history):]
+psh/interactive/history_manager.py:103:            self._owed.extend([False] * -extra)
+psh/interactive/history_manager.py:113:        self._sync_owed()
+psh/interactive/history_manager.py:114:        # strict=True: _sync_owed() has just guaranteed equal lengths, so a
+psh/interactive/history_manager.py:117:                in zip(self.state.history, self._owed, strict=True) if owed]
+psh/interactive/history_manager.py:121:        self._sync_owed()
+psh/interactive/history_manager.py:122:        self._owed = [False] * len(self.state.history)
+psh/interactive/history_manager.py:166:        self._sync_owed()
+psh/interactive/history_manager.py:170:        self._owed[:] = [self._owed[i] for i in keep]
+psh/interactive/history_manager.py:201:        self._sync_owed()
+psh/interactive/history_manager.py:203:        self._owed.append(True)
+psh/interactive/history_manager.py:221:            self._sync_owed()
+psh/interactive/history_manager.py:223:            del self._owed[:dropped]
+psh/interactive/history_manager.py:265:        self._owed = [False] * len(self.state.history)
+psh/interactive/history_manager.py:326:        self._owed.clear()
+psh/interactive/history_manager.py:417:        self._sync_owed()
+psh/interactive/history_manager.py:422:        self._owed.extend([False] * len(lines))
+psh/interactive/history_manager.py:438:        self._sync_owed()
+psh/interactive/history_manager.py:442:        self._owed.extend([False] * len(fresh))
+psh/interactive/history_manager.py:465:        self._sync_owed()
+psh/interactive/history_manager.py:467:        del self._owed[lo:hi]
+files: psh/interactive/history_manager.py 
+== C3: _file_synced_len occurrences in psh/ (must be ZERO — retired) ==
+count: 0
+== C4: strict=True in the pending zip ==
+114:        # strict=True: _sync_owed() has just guaranteed equal lengths, so a
+117:                in zip(self.state.history, self._owed, strict=True) if owed]
+== C5: resolve_command call sites in psh/executor/ ==
+psh/executor/command.py:507:            resolved = self.resolve_command(normalized, overlay, context)
+psh/executor/command.py:778:    def resolve_command(self, normalized: NormalizedCommandName,
+psh/executor/command.py:800:        return resolve_command(
+psh/executor/command_resolution.py:225:def resolve_command(shell: 'Shell',
+== C6: iter_command_units definition + callers in psh/ ==
+psh/scripting/analysis_session.py:11:``source_processor.iter_command_units`` — parses each unit under the state
+psh/scripting/analysis_session.py:91:from .source_processor import iter_command_units, offset_line_numbers
+psh/scripting/analysis_session.py:454:        for start_line, unit in iter_command_units(self.carrier, input_source,
+psh/scripting/source_processor.py:63:def iter_command_units(shell, input_source, base_line: int = 1,
+psh/scripting/source_processor.py:239:        The gathering itself lives in module-level ``iter_command_units`` so
+psh/scripting/source_processor.py:245:        for command_start_line, result in iter_command_units(
+== C7: second-chunker sweep — other unit-splitting entry points in scripting ==
+psh/scripting/source_processor.py:63:def iter_command_units(shell, input_source, base_line: int = 1,
+== C8: OpenDescription construction sites (lifecycle rule owners) ==
+psh/io_redirect/input_cursor.py:120:        return f"OpenDescription({self.label!r}@{id(self):#x})"
+psh/io_redirect/input_cursor.py:170:            desc = OpenDescription(f"fd{fd}")
+psh/io_redirect/input_cursor.py:237:            desc = OpenDescription(f"fd{old_fd}")

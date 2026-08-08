@@ -1,0 +1,88 @@
+bash oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-b/wt/psh/__init__.py 0.773.0
+=== H3a-arith-prefix-posix
+  cmd : eval(){ echo FN; }; unset POSIXLY_CORRECT; A=$((POSIXLY_CORRECT=1)) eval "echo BUILTIN"
+  bash: rc=0 out=[BUILTIN]
+  psh : rc=0 out=[BUILTIN]
+  MATCH
+=== H3b-param-prefix-posix
+  cmd : eval(){ echo FN; }; unset POSIXLY_CORRECT; A=${POSIXLY_CORRECT:=1} eval "echo BUILTIN"
+  bash: rc=0 out=[BUILTIN]
+  psh : rc=0 out=[BUILTIN]
+  MATCH
+=== H4a-procsub-assoc-key
+  cmd : declare -A a; a[<(printf x)]=v; declare -p a
+  bash: rc=0 out=[declare -A a=(["<(printf x)"]="v" )]
+  psh : rc=0 out=[declare -A a=(["<(printf x)"]="v" )]
+  MATCH
+=== H4b-procsub-invalid-timing
+  cmd : declare -A a; echo before; a[<(if)]=x; echo after
+  bash: rc=127 out=[/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `)'
+/opt/homebrew/bin/bash: -c: line 1: `declare -A a; echo before; a[<(if)]=x; echo after']
+  psh : rc=127 out=[psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file
+
+if
+  ^
+
+Context: if -> HERE <- ]
+  DIVERGE
+=== H6-at-flatten-operand
+  cmd : unset x; set -- a b; printf "<%s>" "${x:-"$@"}"
+  bash: rc=0 out=[<a><b>]
+  psh : rc=0 out=[<a><b>]
+  MATCH
+=== H7a-nullable-extglob
+  cmd : shopt -s extglob; [[ "" == *@(a|*) ]]; echo rc=$?
+  bash: rc=0 out=[rc=1]
+  psh : rc=0 out=[rc=1]
+  MATCH
+=== H7b-neg-extglob-star
+  cmd : shopt -s extglob; [[ a == *!(a) ]]; echo rc=$?
+  bash: rc=0 out=[rc=1]
+  psh : rc=0 out=[rc=1]
+  MATCH
+=== H7c-neg-extglob-empty
+  cmd : shopt -s extglob; [[ "" == *!(*) ]]; echo rc=$?
+  bash: rc=0 out=[rc=0]
+  psh : rc=0 out=[rc=0]
+  MATCH
+=== H9a-substsyn-toplevel
+  cmd : echo $(if)
+  bash: rc=127 out=[/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `)'
+/opt/homebrew/bin/bash: -c: line 1: `echo $(if)']
+  psh : rc=127 out=[psh: -c:1: Parse error (line 1, column 3): syntax error: unexpected end of file
+
+if
+  ^
+
+Context: if -> HERE <- ]
+  DIVERGE
+=== H9b-substsyn-eval-frame
+  cmd : eval "echo \$(if)"; echo AFTER
+  bash: rc=127 out=[/opt/homebrew/bin/bash: eval: line 1: syntax error near unexpected token `)'
+/opt/homebrew/bin/bash: eval: line 1: `echo $(if)']
+  psh : rc=127 out=[psh: <command>:1: Parse error (line 1, column 3): syntax error: unexpected end of file
+
+if
+  ^
+
+Context: if -> HERE <- ]
+  DIVERGE
+=== M4-bracket-extent
+  cmd : declare -A a; a["]"]=ok; echo "${a[$(printf "]")]}"
+  bash: rc=0 out=[ok]
+  psh : rc=0 out=[ok]
+  MATCH
+=== M4b-bracket-mixed
+  cmd : declare -A a; a["a]b"]=v2; echo "${a[a]b]:-MISS}"; echo "${a[$(printf "a]b")]}"
+  bash: rc=1 out=[/opt/homebrew/bin/bash: line 1: ${a[a]b]:-MISS}: bad substitution]
+  psh : rc=1 out=[psh: line 1: ${a[a]b]:-MISS}: bad substitution]
+  MATCH-PREFIX-NORMALIZED
+--- next row is carry B#3: DECLARED deviation (must-NOT-flip); DIVERGE here is AS-DECLARED ---
+=== HIGH10c7-empty-arith-subscript-DECLARED
+  cmd : a=(x y); unset "a[]"; echo rc=$?; echo done
+  bash: rc=0 out=[rc=0
+done]
+  psh : rc=0 out=[rc=0
+done]
+  MATCH

@@ -1,0 +1,8 @@
+as_scalar(): 'ax y'
+PASS str(ov)              REJECTED (TypeError)
+PASS f-string             REJECTED (TypeError)
+PASS '%s' % ov            REJECTED (TypeError)
+PASS format(ov)           REJECTED (TypeError)
+PASS '' + ov              REJECTED (TypeError)
+PASS ''.join([ov])        REJECTED (TypeError)
+P04-RESULT: ALL-REJECTED

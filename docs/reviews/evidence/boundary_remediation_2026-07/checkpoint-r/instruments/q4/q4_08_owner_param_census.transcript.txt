@@ -1,0 +1,22 @@
+wave-touched .py files examined: 100
+owner-params at BASE: 147   at TIP: 157
+
+NEW owner-params at tip (not at base): 12
+  ... in functions NEW at tip: 11
+    psh/builtins/shell_state.py::HistoryBuiltin._dispatch_options(shell)  [annotated:'Shell']
+    psh/builtins/shell_state.py::HistoryBuiltin._display_operand(shell)  [annotated:'Shell']
+    psh/builtins/shell_state.py::HistoryBuiltin._parse_options(shell)  [annotated:'Shell']
+    psh/core/internal_errors.py::fatal_expansion_child_status(state)  [annotated:'ShellState']
+    psh/core/internal_errors.py::substitution_abort_status(state)  [annotated:'ShellState']
+    psh/core/internal_errors.py::substitution_child_abort_status(state)  [annotated:'ShellState']
+    psh/executor/child_policy.py::sync_child_status_for_exit_trap(state)  [annotated:'ShellState']
+    psh/scripting/analysis_session.py::AnalysisSession.__init__(shell)  [annotated:'Shell']
+    psh/scripting/analysis_session.py::AnalysisSession._build_carrier(shell)  [annotated:'Shell']
+    psh/scripting/analysis_session.py::parse_for_analysis(shell)  [annotated:'Shell']
+    psh/scripting/source_processor.py::iter_command_units(shell)  [name-based(unannotated)]
+  ... added to pre-existing functions: 1
+    psh/executor/child_policy.py::map_child_exception(state)  [annotated:'ShellState']
+
+REMOVED owner-params (at base, gone at tip): 2
+    psh/builtins/shell_state.py::HistoryBuiltin._dispatch_flag(shell)  [annotated:'Shell']
+    psh/scripting/visitor_modes.py::_parse_for_analysis(shell)  [annotated:'Shell']

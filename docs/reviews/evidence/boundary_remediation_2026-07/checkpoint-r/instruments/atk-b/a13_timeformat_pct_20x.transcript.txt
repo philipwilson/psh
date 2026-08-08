@@ -1,0 +1,6 @@
+DISCRIMINATOR-OK /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-b/wt/psh/__init__.py
+== psh x20
+  20 R=0.000 U=0.000 S=0.000 P=0.00
+== bash x20
+n=20 min=1.08 max=3.98
+nonzero=20

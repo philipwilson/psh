@@ -1,0 +1,13 @@
+A. table rows parsed: 95
+   per-dir split: {'conformance': 36, 'integration': 35, 'system': 12, 'unit': 12}
+   unique modules: 95
+   spawn-site total in table: 243 (doc claims 243)
+   allowlisted targets found in table: ['tests/integration/job_control/test_exit_trap_paths.py', 'tests/system/test_script_input_sources.py', 'tests/system/test_stdin_startup_robustness.py']
+B. modules from table missing at ae871a16: 0
+C. spot-check (migrated => imports shell_oracle, zero raw spawns):
+   tests/conformance/bash/test_ansi_c_control_escape_conformance.py: imports_shell_oracle=True raw_spawn_hits=0 -> OK
+   tests/integration/command_resolution/test_exec_failure_wording.py: imports_shell_oracle=True raw_spawn_hits=0 -> OK
+   tests/system/test_lazy_script_source_i2.py: imports_shell_oracle=True raw_spawn_hits=1 -> CHECK
+      :117: f"subprocess.run([sys.executable,'-m','psh',{str(script_path)!r}],"
+   tests/unit/builtins/test_bcontract_serialization.py: imports_shell_oracle=True raw_spawn_hits=0 -> OK
+   tests/system/test_read_malformed_bytes_i1.py: imports_shell_oracle=True raw_spawn_hits=0 -> OK

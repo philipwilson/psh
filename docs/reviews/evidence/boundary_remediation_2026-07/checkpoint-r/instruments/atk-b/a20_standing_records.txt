@@ -1,0 +1,13 @@
+== tags (expect 766/767 absent, 768-773 present)
+v0.768.0
+v0.769.0
+v0.770.0
+v0.771.0
+v0.772.0
+v0.773.0
+== gate_attestation.json
+{'version': '0.773.0', 'gated_commit': 'cc476e913efe7e85c02e8cf2b31d8ba9ef972ea2'}
+ANCESTRY OK: cc476e91 is ancestor of ae871a16
+== instr12 md5 (q3 claim 05775ed30bbc722b16579bd268bd55a4)
+05775ed30bbc722b16579bd268bd55a4
+05775ed30bbc722b16579bd268bd55a4

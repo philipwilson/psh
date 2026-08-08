@@ -1,0 +1,92 @@
+##### M1: raw spawn in a conformance module (HIGH-1) #####
+E   assert not ['tests/conformance/bash/test_q2res_offender.py:5: subprocess.run']
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py::test_no_direct_spawn_in_oracle_bearing_modules
+1 failed in 0.77s
+.                                                                        [100%]
+1 passed in 0.75s
+MUTATION-VERDICT M1-antispawn: BITES (red=1 on offender, green after revert)
+
+##### M2: analysis visitor overrides visit() (HIGH-2) #####
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/unit/visitor/test_traversal_totality_battery.py::test_analysis_visitor_cannot_bypass_the_sweep[LinterVisitor]
+1 failed, 4 passed in 0.03s
+.....                                                                    [100%]
+5 passed in 0.01s
+MUTATION-VERDICT M2-visitor-bypass: BITES (red=1 on offender, green after revert)
+
+##### M3: second production caller of heredoc_terminator_matches (MEDIUM-3) #####
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_heredoc_transaction_guards.py::TestOneCloseDecision::test_single_production_caller
+1 failed in 0.34s
+.                                                                        [100%]
+1 passed in 0.33s
+MUTATION-VERDICT M3-heredoc-close: BITES (red=1 on offender, green after revert)
+
+##### M4: except Exception back in subscript.py (MEDIUM-12a) #####
+E   assert not [('psh/expansion/subscript.py', 412, 'Exception')]
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_subscript_no_broad_except.py::test_guarded_modules_have_no_broad_except
+1 failed in 0.03s
+.                                                                        [100%]
+1 passed in 0.02s
+MUTATION-VERDICT M4-broad-except: BITES (red=1 on offender, green after revert)
+
+##### M5: as_scalar() outside the ruled consumer set (HIGH-6/3.3) #####
+E   assert not {('expansion/manager.py', '_q2res_offender')}
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_operand_projection_guard.py::test_projection_called_only_from_ruled_consumers
+1 failed in 0.58s
+.                                                                        [100%]
+1 passed in 0.57s
+MUTATION-VERDICT M5-projection: BITES (red=1 on offender, green after revert)
+
+##### M6: unsanctioned string surgery in analysis_session.py (2.6) #####
+E   assert not {('_q2res_offender', '.replace()', 1)}
+=========================== short test summary info ============================
+FAILED tests/unit/scripting/test_analysis_session.py::TestNoUnsanctionedStringSurgery::test_every_string_surgery_site_is_sanctioned
+1 failed in 0.04s
+.                                                                        [100%]
+1 passed in 0.02s
+MUTATION-VERDICT M6-surgery: BITES (red=1 on offender, green after revert)
+
+##### M7: raw get_function dispatch read in command.py (R3) #####
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_command_resolution_ratchet_r3.py::test_command_py_has_no_raw_dispatch_reads
+1 failed in 0.03s
+.                                                                        [100%]
+1 passed in 0.01s
+MUTATION-VERDICT M7-dispatch: BITES (red=1 on offender, green after revert)
+
+##### M8: _pushback name back in input_reader.py (4B.4 P1) #####
+E       FENDER = "_pushback"
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_input_cursor_m8_locks_4b4.py::test_pushback_buffer_is_not_reintroduced
+1 failed in 0.02s
+.                                                                        [100%]
+1 passed in 0.01s
+MUTATION-VERDICT M8-pushback: BITES (red=1 on offender, green after revert)
+
+##### M9: rogue ParseInputs construction site (HIGH-5) #####
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_parser_contract_guards_s4.py::test_parse_inputs_construction_sites
+1 failed in 0.07s
+.                                                                        [100%]
+1 passed in 0.06s
+MUTATION-VERDICT M9-parseinputs: BITES (red=1 on offender, green after revert)
+
+##### M10: third ExpandedField producer (3.3 producer census) #####
+E   assert not ['psh/expansion/variable.py']
+=========================== short test summary info ============================
+FAILED tests/unit/expansion/test_field_ir_guards.py::TestSoleChokepoint::test_expanded_word_constructed_only_in_engine
+1 failed in 0.10s
+.                                                                        [100%]
+1 passed in 0.09s
+MUTATION-VERDICT M10-field-producer: BITES (red=1 on offender, green after revert)
+
+##### worktree must be clean after all reverts #####
+status-exit=0 (empty output above = clean)

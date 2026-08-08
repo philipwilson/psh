@@ -1,0 +1,4 @@
+[base-0.750] psh -> /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q4/base0215/psh/__init__.py
+  base-0.750: zombies-at-t=1.4: 1 rc=0
+[base-0.749] psh -> /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q4/base0749/psh/__init__.py
+  base-0.749: zombies-at-t=1.4: 1 rc=0
