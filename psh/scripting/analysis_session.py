@@ -379,7 +379,10 @@ class AnalysisSession:
     """Parses an input unit by unit under evolving parse-relevant state."""
 
     def __init__(self, shell: 'Shell') -> None:
-        self.shell = shell
+        # The parent shell is NOT retained: the session reads it only here, to
+        # build the carrier and to settle `expand_aliases`. Keeping a `.shell`
+        # field would hand every later method the whole shell it deliberately
+        # does not use — the carrier is the one state the pipeline reads.
         #: The evolving state. A child shell rather than a bag of fields, so
         #: the pipeline reads it through the same attributes it reads for
         #: execution. Built through the shell's OWN type: ``psh.shell`` sits

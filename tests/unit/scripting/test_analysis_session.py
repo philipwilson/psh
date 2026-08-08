@@ -814,6 +814,21 @@ class TestSessionStateIsIsolatedFromTheShell:
         session = AnalysisSession(EmbedderShell(norc=True))
         assert type(session.carrier) is EmbedderShell
 
+    def test_the_session_does_not_retain_the_analyzed_shell(self):
+        """The session reads the parent shell only in ``__init__`` — to build
+        the carrier and settle ``expand_aliases`` — and keeps no reference.
+
+        It used to store ``self.shell`` and never read it back: a field handing
+        every later method the whole shell the session deliberately does not
+        use. Removed in remediation 5B.1; this pin keeps it removed, because
+        the natural way to reach for the shell from a NEW method is to
+        reintroduce exactly that field.
+        """
+        session = AnalysisSession(_shell("validate"))
+        assert not hasattr(session, "shell"), (
+            "AnalysisSession is holding the analyzed shell again — the carrier "
+            "is the state the pipeline is meant to read")
+
 
 class TestSingleAnalysisMode:
     """MEDIUM-9(b) at the constructor: the ambiguous state is unrepresentable."""

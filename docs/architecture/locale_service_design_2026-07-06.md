@@ -205,6 +205,16 @@ centralization, the surface is already fairly consolidated. Reference map (from
 a full-tree sweep; file:line):
 
 **Character-class tables (single source of truth):**
+
+> **Moved since this record was written (remediation 5B.1).** The ASCII table
+> now lives at `psh/utils/posix_classes.py#POSIX_CLASSES` and is imported at
+> module level by both readers. It was in `expansion/glob.py`, which put it
+> ABOVE its other consumer and forced `core/locale_service.py` to reach up
+> through a deferred import of a private name. The table's CONTENTS are
+> unchanged — byte-identity is pinned in
+> `tests/unit/tooling/test_posix_class_table_ownership.py`; only the owner
+> moved. Line numbers below are as of 2026-07-06 and are not maintained.
+
 - `psh/expansion/glob.py:18` `_POSIX_CLASSES` (ASCII ranges) — THE table.
 - `psh/expansion/glob.py:38` `_POSIX_CLASSES_PATHNAME` (punct minus `/`).
 - `psh/expansion/glob.py:63` `translate_posix_classes()` (shared with `[[ =~ ]]`).
