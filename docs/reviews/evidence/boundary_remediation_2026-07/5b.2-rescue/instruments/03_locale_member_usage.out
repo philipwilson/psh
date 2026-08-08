@@ -1,0 +1,61 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=1c70dfbf
+LocaleAccess declares: ['collate_key', 'compare', 'in_class', 'lower', 'toggle', 'upper']
+
+==========================================================================
+psh/core/scope.py   (1 site(s))
+==========================================================================
+  L973    .<the service itself>     BARE-IfExp   BARE
+         loc = (self._shell.state.locale if self._shell is not None
+
+==========================================================================
+psh/executor/array.py   (2 site(s))
+==========================================================================
+  L389    .upper                    CALL         in-surface
+         return self.state.locale.upper(value)
+  L391    .lower                    CALL         in-surface
+         return self.state.locale.lower(value)
+
+==========================================================================
+psh/executor/enhanced_test_evaluator.py   (2 site(s))
+==========================================================================
+  L168    .compare                  CALL         in-surface
+         return self.state.locale.compare(left, right) < 0
+  L170    .compare                  CALL         in-surface
+         return self.state.locale.compare(left, right) > 0
+
+==========================================================================
+psh/expansion/glob.py   (1 site(s))
+==========================================================================
+  L200    .collate_key              ATTR         in-surface
+         return sorted(matches, key=self.state.locale.collate_key) if matches else []
+
+==========================================================================
+psh/expansion/operators.py   (1 site(s))
+==========================================================================
+  L513    .<the service itself>     BARE-Assign  BARE
+         loc = self.shell.state.locale
+
+==========================================================================
+psh/expansion/parameter_expansion.py   (6 site(s))
+==========================================================================
+  L504    .upper                    CALL         in-surface
+         return self.state.locale.upper(value[0]) + value[1:]
+  L509    .<the service itself>     BARE-Assign  BARE
+         loc = self.state.locale
+  L516    .lower                    CALL         in-surface
+         return self.state.locale.lower(value[0]) + value[1:]
+  L521    .<the service itself>     BARE-Assign  BARE
+         loc = self.state.locale
+  L528    .toggle                   CALL         in-surface
+         return self.state.locale.toggle(value[0]) + value[1:]
+  L533    .<the service itself>     BARE-Assign  BARE
+         loc = self.state.locale
+
+==========================================================================
+VERDICT
+==========================================================================
+  members actually used by the six readers: ['collate_key', 'compare', 'lower', 'toggle', 'upper']
+  declared but UNUSED by them             : ['in_class']
+  used but NOT declared (fence if any)    : []
+  => every reader's usage fits LocaleAccess as declared.

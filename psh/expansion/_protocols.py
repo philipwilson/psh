@@ -27,9 +27,41 @@ if TYPE_CHECKING:
 class VariableExpanderProtocol(Protocol):
     """The attributes and cross-mixin methods the expander mixins use."""
 
-    # Attributes set in VariableExpander.__init__
+    #: The whole ``Shell``, reached at 11 sites: eight
+    #: ``self.shell.expansion_manager`` hops, and three that forward the shell
+    #: WHOLE (``evaluate_arithmetic(expr, self.shell)`` twice and
+    #: ``PromptExpander(self.shell)`` once, all in ``operators.py``).
+    #:
+    #: Remediation 5B.2 was chartered to REMOVE this member and did not.
+    #: Migrating the eight manager hops to ``protocols.ExpansionRuntime``
+    #: fails on measurement: they reach ``.subscript`` (4), ``.command_sub``
+    #: (2), ``.execute_arithmetic_expansion`` and ``.tilde_expander`` — and
+    #: ``ExpansionRuntime`` declares none of those. Its four members
+    #: (``expand_string_variables``, ``expand_assignment_value_word``,
+    #: ``variable_expander``, ``word_expander``) fit the SUBSCRIPT authority,
+    #: which consumes it, but not these mixins, whose reaches are to the
+    #: manager's sub-expanders. The twelfth site — a ``state.locale`` read —
+    #: did migrate, to the ``state`` member below. The census is pinned by
+    #: ``tests/unit/expansion/test_variable_expander_reach_5b2.py`` so the
+    #: remainder stays a measured quantity; successor row D-5B.2-s2.
     shell: "Shell"
+
+    #: The whole ``ShellState``. Remediation 5B.2 measured whether this could
+    #: narrow to the campaign's three-member variable value-surface protocol
+    #: (``get_variable``/``set_variable``/``get_special_variable``): it cannot.
+    #: The four mixins reach ELEVEN distinct state members across 47 sites, and
+    #: 44 of those sites use one of the EIGHT outside that surface —
+    #: ``scope_manager`` (12),
+    #: ``last_exit_code`` (11), ``error_location_prefix`` (10),
+    #: ``positional_params`` (5), ``stderr`` (3), ``options``,
+    #: ``ifs_star_separator``, ``last_bg_pid``. Widening that protocol to fit
+    #: would have absorbed most of ``ShellState`` into a surface whose entire
+    #: point was NOT being ``ShellState``, so it was deleted instead and this
+    #: member stays as it is, with the census as its justification. A future
+    #: value-surface protocol designs against the 11 members above, not against
+    #: the deleted three (successor row D-5B.2-s1).
     state: "ShellState"
+
     param_expansion: "ParameterExpansionOps"
 
     # --- variable.py entry points ---

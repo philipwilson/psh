@@ -345,6 +345,18 @@ class JobManager:
         """Set reference to shell state for option checking."""
         self.shell_state = state
 
+    def publish_foreground_pgid(self, pgid: int) -> None:
+        """Record *pgid* as the foreground process group after a handoff.
+
+        The ``JobRuntime`` publish surface (remediation 5B.2). The one consumer
+        used to reach through ``shell_state`` and assign the attribute itself,
+        which put the whole state on a narrow protocol for a single ``int``
+        write; the None-guard for a state-less manager lives here now rather
+        than at the call site.
+        """
+        if self.shell_state is not None:
+            self.shell_state.foreground_pgid = pgid
+
     def create_job(self, pgid: int, command: str) -> Job:
         """Create a new job.
 

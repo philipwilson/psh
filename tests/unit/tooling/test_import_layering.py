@@ -24,10 +24,17 @@ MODULE-LEVEL import graph (no imports executed) and asserts three invariants:
 (c) **Function-level import ratchet.** Deferred (function-body) ``psh`` imports
     are the escape hatch for the genuinely-forced cycles (see the
     ``# cycle-break:`` comments). Each is a small readability cost, so their
-    per-file count is capped at the post-P4 value and may only go DOWN. Lowering
-    a cap is free; raising one (a new lazy import) forces an explicit, reviewed
-    edit here — where the reviewer asks "is this really cycle-forced, or should
-    it be hoisted?"
+    per-file count is capped and may only go DOWN. Lowering a cap is free;
+    raising one (a new lazy import) forces an explicit, reviewed edit here —
+    where the reviewer asks "is this really cycle-forced, or should it be
+    hoisted?"
+
+    Since remediation 5B.2 every cap sits exactly ON its module's measured
+    count: total slack is ZERO. That is the property that makes the question
+    above unavoidable — while a cap carried headroom, a new lazy import could
+    slip in under it and nobody had to justify anything. Five entries had
+    drifted to a cap over NO deferred imports at all (18 cap between them),
+    which is a ratchet that had stopped touching the thing it was ratcheting.
 
 The counting/graph logic is guarded by its own ``test_guard_*`` self-tests
 below (synthetic offender sources must be flagged), so the guard cannot rot into
@@ -214,12 +221,13 @@ def find_cycles(pkg_edges):
     return cycles
 
 
-# --- Function-level import ratchet baseline (post-P4; direction: DOWN only) --
+# --- Function-level import ratchet (zero-slack since 5B.2; direction: DOWN) --
 #
 # Per-module cap on deferred (function-body) psh imports. A module absent here
 # must have ZERO. To ADD a lazy import you must justify it as cycle-forced (add
 # a `# cycle-break:` comment) AND bump its cap here — a visible, reviewed edit.
-# To hoist one, LOWER its cap. Regenerate with:
+# To hoist one, LOWER its cap. Every cap equals its module's measured actual, so
+# any new deferred import trips the ratchet immediately. Regenerate with:
 #     python tests/unit/tooling/test_import_layering.py
 FUNC_IMPORT_CAPS = {
     'psh.__main__': 3,
@@ -239,7 +247,7 @@ FUNC_IMPORT_CAPS = {
     'psh.builtins.parse_tree': 4,
     'psh.builtins.print_builtin': 1,
     'psh.builtins.shell_state': 4,
-    'psh.builtins.source_command': 2,
+    'psh.builtins.source_command': 1,
     'psh.builtins.type_builtin': 3,
     'psh.core.assignment_utils': 2,
     'psh.core.locale_service': 3,
@@ -251,7 +259,7 @@ FUNC_IMPORT_CAPS = {
     'psh.executor.child_policy': 1,
     'psh.executor.control_flow': 6,
     'psh.executor.core': 8,
-    'psh.executor.pipeline': 4,
+    'psh.executor.pipeline': 2,
     'psh.executor.process_launcher': 1,
     'psh.executor.strategies': 3,
     'psh.executor.subshell': 6,
@@ -261,8 +269,6 @@ FUNC_IMPORT_CAPS = {
     'psh.expansion.manager': 5,
     'psh.expansion.operands': 3,
     'psh.expansion.operators': 1,
-    'psh.expansion.parameter_expansion': 12,
-    'psh.expansion.pattern': 2,
     # cycle-break: the W2 subscript authority re-lexes raw subscript text via
     # the parser word-builder (parser.word_builder imports expansion at module
     # level, so the reverse edge must stay function-level). arrays.py's old
@@ -276,10 +282,7 @@ FUNC_IMPORT_CAPS = {
     'psh.io_redirect.file_redirect': 2,
     'psh.io_redirect.process_sub': 4,
     'psh.lexer': 2,
-    'psh.lexer.cmdsub_scanner': 2,
     'psh.lexer.expansion_parser': 1,
-    'psh.lexer.heredoc_collector': 1,
-    'psh.lexer.heredoc_lexer': 1,
     'psh.lexer.modular_lexer': 6,
     'psh.lexer.pure_helpers': 3,
     'psh.lexer.recognizers.process_sub': 1,
@@ -361,6 +364,45 @@ def test_core_is_near_leaf():
         "re-entangles the state layer with what runs above it — defer it or "
         "invert the dependency:\n  "
         + "\n  ".join(f"{m} -> {d}" for m, d in offenders.items())
+    )
+
+
+def test_every_cap_equals_its_modules_actual_count():
+    """ZERO SLACK, enforced — not merely claimed in prose.
+
+    The ratchet below only fires when a module EXCEEDS its cap, so a cap
+    sitting ABOVE its module's real count is invisible to it: a new deferred
+    import slips into the headroom and nobody has to justify anything. That is
+    exactly the drift remediation 5B.2 swept out (five entries capping modules
+    that deferred nothing at all, 18 cap between them), and this module's
+    docstring now states zero slack as a property of the table — so something
+    has to hold it. Prose claiming what no guard enforces is the failure mode
+    this campaign polices.
+
+    Two failure modes, each named in the message with its module and amount:
+
+    * SLACK — cap > actual: unreviewed headroom. Lower the cap to the actual
+      (free by the ratchet's own rules).
+    * DEAD — an entry whose module now defers nothing: delete the entry.
+
+    A cap BELOW its actual is deliberately not checked here; that is the
+    ratchet's own assertion below, which fails with the right diagnosis.
+    """
+    _, func_counts = build_graph()
+    slack, dead = [], []
+    for module, cap in sorted(FUNC_IMPORT_CAPS.items()):
+        actual = func_counts.get(module, 0)
+        if actual == 0:
+            dead.append(f"{module}: cap {cap}, but the module defers NOTHING "
+                        "— delete the entry")
+        elif cap > actual:
+            slack.append(f"{module}: cap {cap} > actual {actual} "
+                         f"(slack {cap - actual}) — lower the cap")
+    assert not (slack or dead), (
+        "FUNC_IMPORT_CAPS must sit exactly ON each module's measured count. A "
+        "cap above it is unreviewed headroom for the next lazy import, which "
+        "is the drift this table was swept to remove:\n  "
+        + "\n  ".join(dead + slack)
     )
 
 

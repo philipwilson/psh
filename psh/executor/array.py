@@ -19,6 +19,7 @@ from ..expansion.word_expansion_types import ARRAY_INIT_ELEMENT, ASSOC_INIT_ELEM
 
 if TYPE_CHECKING:
     from ..ast_nodes import ArrayElementAssignment, ArrayInitialization, Word, WordPart
+    from ..protocols import LocaleAccess
     from ..shell import Shell
 
 
@@ -385,10 +386,11 @@ class ArrayOperationExecutor:
         # declare -u/-l on array elements fold through the locale service:
         # length-safe (ß stays ß) AND locale-gated (ASCII-only under C, Unicode
         # under UTF-8) — the same policy as scalar declare -u/-l and ${x^^}.
+        loc: 'LocaleAccess' = self.state.locale
         if is_upper:
-            return self.state.locale.upper(value)
+            return loc.upper(value)
         if is_lower:
-            return self.state.locale.lower(value)
+            return loc.lower(value)
         return value
 
     # Helper methods

@@ -1,0 +1,62 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=73b78983
+
+=== INSTRUMENT MANIFEST (self-excluding) ===
+  01_protocol_consumer_census.py             d7a8a4b3e24fe86e5320bd5e9a1fd7f9   transcript 565cb740ab1d8b21ff31faccef600cc1
+  02_locale_census_and_layering.py           b3be3f64b06d8fad9b00e1868c895652   transcript 8eca20b1b4afbf5675efc4e9e5b99604
+  03_locale_member_usage.py                  c49f97204f926ca45b1f0cb1621383d1   transcript d41ab4e0d438361f045e25296e0ea3f7
+  04_instance_assign_sweep.py                93d3c3f598428916af9e838076a13885   transcript 146e6d6ddbc6beaab81386984f46508e
+  05_caps_classification.py                  07fe19f395c14074fd2f40e550a6e79b   transcript c0120c7ffde26e3aea4cd3236fd7c5fc
+  06_hoist_reality_check.py                  13859a0428b531c34bf11f7a765c0418   transcript c088d57658459638379145bd1204fdfd
+  07_free_hoist_set.py                       7661e6825e7ed00e0d95b4d39705c36c   transcript a467e2824bbeb20617ac0842e3f2f98d
+  08_free_set_demonstration.py               b4faefa9bf7964feb6410277989b0a2c   transcript d31338dd0630895993aa17d0777c0c83
+  09_caps_target_corrected.py                e49f5c00bd5c21e76af247a69c9b74dd   transcript e3d97ef32a73c1faa7d21049d32f36ba
+  10_twelve_param_matrix.py                  ee401fb5f7bdd5b89d6059a676bfb5d2   transcript 96f94b2cb4487d2db37421ac127c7846
+  11_variable_access_witness_census.py       45010ae55face5d5ff21ca3cccb79447   transcript 6f3c3be58d8bd00874847bb296663799
+  12_construction_order_proof.py             d40c9d8f21bad50a4034bc39f83f4aa9   transcript 1c0bb03edb95c3decc2d5b01af271740
+  13_detector_grammar_correction.py          db4d86c8250de1dafdeb4d024f7f63cb   transcript a4d0c04178be6671ed83741763a31842
+  14_detector_arm_mutation.py                6886c659ba9862c44da70776ecd38c05   transcript 084582fb7b2b42551943b761bded4d53
+  15_real_hoist_verification.py              95526d4bb5fd81a2094010e92057d17e   transcript 4842f5c9ff078e2d9168e9d67af24a39
+  16_per_module_hoist_feasibility.py         c5f15dab9549cb004e0008041b2d3df2   transcript a70a84fd30ed93b191ddafd815c9c6b6
+  17_maximal_feasible_hoist_set.py           ffff42a6246b73ad02a1ecd22d21692c   transcript f6d54bc6f92916099267fd408c6bb33b
+  18_apply_hoist_to_worktree.py              453e56aa41dbdb16e26daefb9e8eec13   (no transcript)
+  21_zero_slack_cell_red_demo.py             7ae40b6cabd5706e94113dace3a43e60   transcript c46c9e17eda145b82b5d26e7be433061
+  instruments (excluding self): 19
+
+=== TRANSCRIPTS ===
+  01_protocol_consumer_census.out
+  02_locale_census_and_layering.out
+  03_locale_member_usage.out
+  04_instance_assign_sweep.out
+  05_caps_classification.out
+  05_caps_regen.out
+  06_hoist_reality_check.out
+  07_free_hoist_set.out
+  08_free_set_demonstration.out
+  09_caps_target_corrected.out
+  10_twelve_param_matrix.out
+  11_mypy_tightening_probe.out
+  11_variable_access_witness_census.out
+  12_construction_order_proof.out
+  13_detector_grammar_correction.out
+  14_detector_arm_mutation.out
+  15_real_hoist_verification.out
+  16_per_module_hoist_feasibility.out
+  17_maximal_feasible_hoist_set.out
+  19_cap_diff_preregistration.out
+  20_manifest_and_discharge.out
+  21_zero_slack_cell_red_demo.out
+
+=== COMMITS (1c70dfbf..HEAD) ===
+  73b78983 caps: enforce the zero-slack property the docstring claims (5B.2 R3 RN-2)
+  403c8b01 protocols: delete the never-adopted variable value-surface protocol (5B.2)
+  56dd3401 ratchet: teach the full-Shell detector the instance-assignment shape (D-5B.1-s3)
+  862bfabc protocols: adopt the 5B witnesses and narrow the escape-hatch members (5B.2)
+  2fc6c46d caps: sweep dead FUNC_IMPORT_CAPS entries and trim slack to zero (5B.2 (i))
+  count: 5
+
+=== GATE LEGS ===
+  gate-1.txt        f1192da518be293ede75cdb6483cbedd
+  compare-bash-1.txt 3e69fba891321d0a6feeb771080123c6
+  Combined across 2 phase(s) (from phase manifests): 23940 passed, 1620 skipped, 10 xfailed
+  compare-bash: 3046 passed, 26 skipped in 44.17s

@@ -1,0 +1,141 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=1c70dfbf
+
+modules loaded by a base `import psh`: 231
+
+==========================================================================
+FREE hoists — target already loaded by a base `import psh`
+==========================================================================
+  psh.builtins.command_builtin:111 -> psh.builtins.type_builtin   [_render_info]
+  psh.builtins.declaration_engine:290 -> psh.core.variables   [scalar_append_into_array]   (importer itself lazy)
+  psh.builtins.declare_format:111 -> psh.visitor.formatter_quoting   [format_assignment_reuse]
+  psh.builtins.environment:306 -> psh.builtins.declare_format   [_print_exports]
+  psh.builtins.environment:365 -> psh.builtins.declare_format   [execute]
+  psh.builtins.environment:168 -> psh.builtins.registry   [execute_in_context]
+  psh.builtins.environment:270 -> psh.visitor   [_export_functions]
+  psh.builtins.function_support:347 -> psh.builtins.declare_format   [_list_namerefs]
+  psh.builtins.function_support:662 -> psh.builtins.declare_format   [_print_simple_declaration]
+  psh.builtins.hash_builtin:103 -> psh.visitor.formatter_quoting   [execute]
+  psh.builtins.let_builtin:42 -> psh.expansion.arithmetic   [execute]
+  psh.builtins.shell_state:406 -> psh.version   [execute]
+  psh.builtins.type_builtin:40 -> psh.visitor   [render_candidate_banner]
+  psh.core.assignment_utils:114 -> psh.core.variables   [resolve_append_assignment]
+  psh.core.scope:428 -> psh.core.exceptions   [resolve_nameref_name]
+  psh.core.state:930 -> psh.ast_nodes   [bash_command]
+  psh.core.trap_manager:488 -> psh.core.internal_errors   [execute_trap]
+  psh.core.variable_store:213 -> psh.core.exceptions   [set_element]
+  psh.core.variable_store:245 -> psh.core.exceptions   [unset_element]
+  psh.core.variables:166 -> psh.core.exceptions   [resolve_write_index]
+  psh.executor.control_flow:362 -> psh.executor.strategies   [execute_for]
+  psh.executor.control_flow:710 -> psh.executor.strategies   [_arith_step_error_status]
+  psh.executor.control_flow:322 -> psh.expansion.brace_expansion   [execute_for]
+  psh.executor.control_flow:614 -> psh.expansion.brace_expansion   [execute_select]
+  psh.executor.control_flow:778 -> psh.expansion.pattern   [_match_shell_pattern]
+  psh.executor.control_flow:763 -> psh.expansion.word_expansion_types   [_expand_loop_items]
+  psh.executor.core:563 -> psh.executor.enhanced_test_evaluator   [visit_EnhancedTestStatement]
+  psh.executor.core:526 -> psh.executor.strategies   [visit_ArithmeticEvaluation]
+  psh.executor.core:534 -> psh.executor.strategies   [visit_ArithmeticEvaluation]
+  psh.executor.core:551 -> psh.executor.strategies   [visit_CStyleForLoop]
+  psh.executor.core:584 -> psh.executor.strategies   [visit_EnhancedTestStatement]
+  psh.executor.core:596 -> psh.executor.strategies   [visit_EnhancedTestStatement]
+  psh.executor.core:503 -> psh.expansion.arithmetic   [visit_ArithmeticEvaluation]
+  psh.executor.core:562 -> psh.expansion.arithmetic   [visit_EnhancedTestStatement]
+  psh.executor.pipeline:488 -> psh.io_redirect   [_setup_pipeline_redirections]
+  psh.executor.process_launcher:325 -> psh.executor.child_policy   [_child_setup_and_exec]
+  psh.executor.subshell:137 -> psh.executor.child_policy   [_execute_foreground_subshell.execute_fn]
+  psh.executor.subshell:241 -> psh.executor.child_policy   [_reraise_child_signal_death]
+  psh.executor.subshell:260 -> psh.executor.child_policy   [_execute_background_subshell.execute_fn]
+  psh.executor.subshell:319 -> psh.executor.child_policy   [_execute_background_brace_group.execute_fn]
+  psh.expansion.extglob:372 -> psh.expansion.glob   [_bracket_to_regex_cached]
+  psh.expansion.glob:150 -> psh.expansion.extglob   [expand]
+  psh.expansion.glob:334 -> psh.expansion.extglob   [_expand_globstar.is_pattern_comp]
+  psh.expansion.glob:454 -> psh.expansion.extglob   [_match_glob_component]
+  psh.expansion.glob:128 -> psh.expansion.pattern_engine   [_component_matcher]
+  psh.expansion.manager:390 -> psh.expansion.arithmetic   [execute_arithmetic_expansion]
+  psh.expansion.manager:402 -> psh.expansion.arithmetic   [arithmetic_expansion_value]
+  psh.expansion.manager:290 -> psh.expansion.operands   [expand_word_as_pattern]
+  psh.expansion.manager:264 -> psh.expansion.word_expansion_types   [expand_word_as_subject]
+  psh.expansion.operands:755 -> psh.expansion.parameter_expansion   [_expand_replacement_operand]
+  psh.expansion.operands:586 -> psh.lexer.pure_helpers   [_skip_dollar_construct]
+  psh.expansion.operands:627 -> psh.lexer.pure_helpers   [_expand_one_dollar]
+  psh.expansion.word_expander:647 -> psh.expansion.extglob   [_field_glob_eligible]
+  psh.expansion.word_expander:704 -> psh.expansion.pattern_engine   [_pattern_from_runs]
+  psh.interactive.multiline_handler:74 -> psh.scripting.input_preprocessing   [read_command]
+  psh.interactive.prompt:290 -> psh.version   [_get_version_short]
+  psh.interactive.prompt:299 -> psh.version   [_get_version_long]
+  psh.io_redirect.file_redirect:524 -> psh.expansion.operands   [_heredoc_expanded_content]
+  psh.io_redirect.file_redirect:416 -> psh.expansion.word_expansion_types   [expand_redirect_target]
+  psh.io_redirect.process_sub:73 -> psh.io_redirect.fd_remap   [create_process_substitution._io_setup]
+  psh.io_redirect.process_sub:174 -> psh.io_redirect.fd_remap   [_create_write_process_substitution._io_setup]
+  psh.lexer.expansion_parser:285 -> psh.lexer.unicode_support   [_parse_simple_variable]
+  psh.lexer.modular_lexer:447 -> psh.lexer.quote_parser   [_lex_quoted]
+  psh.lexer.modular_lexer:98 -> psh.lexer.recognizers.comment   [_setup_recognizers]
+  psh.lexer.modular_lexer:99 -> psh.lexer.recognizers.literal   [_setup_recognizers]
+  psh.lexer.modular_lexer:100 -> psh.lexer.recognizers.operator   [_setup_recognizers]
+  psh.lexer.modular_lexer:101 -> psh.lexer.recognizers.operator_debris   [_setup_recognizers]
+  psh.lexer.pure_helpers:463 -> psh.lexer.unicode_support   [extract_variable_name]
+  psh.lexer.recognizers.process_sub:59 -> psh.lexer.cmdsub_scanner   [recognize]   (importer itself lazy)
+  psh.lexer.recognizers.word_scanners:79 -> psh.lexer.cmdsub_scanner   [skip_expansion_region]
+  psh.lexer.recognizers.word_scanners:312 -> psh.lexer.constants   [can_start_expansion]
+  psh.lexer.recognizers.word_scanners:80 -> psh.lexer.pure_helpers   [skip_expansion_region]
+  psh.parser.array_flat_text:83 -> psh.expansion.word_expander   [array_init_argv_key]
+  psh.parser.parse_outcome:109 -> psh.parser.recursive_descent.helpers   [outcome_from_parse]
+  psh.parser.recursive_descent.parsers.arrays:325 -> psh.parser.recursive_descent.support.word_builder   [_element_value_from_head]
+  psh.parser.recursive_descent.support.nested_parse:62 -> psh.parser.recursive_descent.helpers   [parse_nested_command]
+  psh.parser.recursive_descent.support.word_builder:90 -> psh.parser.recursive_descent.support.nested_parse   [_nested_program]
+  psh.scripting.input_preprocessing:59 -> psh.utils.heredoc_detection   [process_line_continuations]
+  psh.scripting.input_sources:68 -> psh.builtins.input_reader   [_make_input_cursor]   (importer itself lazy)
+  psh.scripting.lex_parse:78 -> psh.parser   [render_syntax_error_detail]
+  psh.scripting.source_processor:779 -> psh.builtins   [_classify_buffered_error]   (importer itself lazy)
+  psh.scripting.source_processor:803 -> psh.core   [_classify_buffered_error]   (importer itself lazy)
+  psh.scripting.source_processor:574 -> psh.scripting.input_preprocessing   [_preprocess_command]   (importer itself lazy)
+  psh.scripting.source_processor:315 -> psh.scripting.lex_parse   [_report_syntax_error]   (importer itself lazy)
+  psh.scripting.source_processor:666 -> psh.scripting.lex_parse   [_parse_command]   (importer itself lazy)
+  psh.scripting.visitor_modes:49 -> psh.scripting.lex_parse   [_report_syntax_error]   (importer itself lazy)
+  psh.scripting.visitor_modes:145 -> psh.visitor   [_run_validate]   (importer itself lazy)
+  psh.scripting.visitor_modes:154 -> psh.visitor   [_run_format]   (importer itself lazy)
+  psh.scripting.visitor_modes:160 -> psh.visitor   [_run_metrics]   (importer itself lazy)
+  psh.scripting.visitor_modes:168 -> psh.visitor   [_run_security]   (importer itself lazy)
+  psh.scripting.visitor_modes:176 -> psh.visitor   [_run_lint]   (importer itself lazy)
+  psh.shell:804 -> psh.executor   [_execute_with_visitor]
+  psh.shell:275 -> psh.executor.process_launcher   [_init_shell_components]
+  psh.visitor.enhanced_validator_visitor:616 -> psh.visitor.constants   [_check_security_issues]
+  FREE sites: 94  (distinct edges: 70)
+
+==========================================================================
+COSTLY hoists — target NOT on the startup graph (would be added)
+==========================================================================
+  psh.__main__:230 -> psh.scripting.program_source   [_dispatch]
+  psh.__main__:262 -> psh.scripting.program_source   [_dispatch]
+  psh.__main__:301 -> psh.scripting.program_source   [_dispatch]
+  psh.builtins.environment:209 -> psh.builtins.declaration_engine   [execute_in_context]
+  psh.builtins.function_support:243 -> psh.builtins.declaration_engine   [_is_valid_nameref_target]
+  psh.builtins.function_support:247 -> psh.builtins.declaration_engine   [_attributes_from_options]
+  psh.builtins.function_support:251 -> psh.builtins.declaration_engine   [_removed_attributes_from_options]
+  psh.builtins.function_support:414 -> psh.builtins.declaration_engine   [_declare_assignment]
+  psh.builtins.function_support:519 -> psh.builtins.declaration_engine   [_declare_bare_name]
+  psh.builtins.parse_tree:97 -> psh.parser.visualization   [execute]
+  psh.builtins.parse_tree:105 -> psh.parser.visualization   [execute]
+  psh.builtins.parse_tree:113 -> psh.parser.visualization   [execute]
+  psh.builtins.parse_tree:117 -> psh.parser.visualization   [execute]
+  psh.builtins.shell_state:459 -> psh.builtins.declaration_engine   [execute_in_context]
+  psh.builtins.shell_state:534 -> psh.builtins.declaration_engine   [_declare_one_local]
+  psh.builtins.shell_state:557 -> psh.builtins.declaration_engine   [_declare_one_local]
+  psh.expansion.manager:72 -> psh.expansion.evaluator   [evaluator]
+  psh.interactive.rc_loader:39 -> psh.scripting.program_source   [load_rc_file]
+  psh.lexer:93 -> psh.lexer.word_fusion   [_post_lex]
+  psh.lexer.modular_lexer:102 -> psh.lexer.recognizers.process_sub   [_setup_recognizers]
+  psh.parser:111 -> psh.parser.combinators.parser   [parse_with_inputs]
+  psh.scripting.visitor_modes:120 -> psh.scripting.program_source   [handle_visitor_mode_for_script]
+  psh.shell:272 -> psh.executor.command_resolver   [_init_shell_components]
+  psh.shell:280 -> psh.interactive.history_expansion   [_init_shell_components]
+  psh.shell:900 -> psh.scripting.program_source   [run_command]
+  COSTLY sites: 25  distinct targets added to startup: 9
+
+==========================================================================
+TARGET TRIPLE CANDIDATES (ruling (d) input)
+==========================================================================
+  base            : actual 177, cap 198, slack 21, entries 71
+  (i) bookkeeping : actual 177 (unchanged), cap 177, slack 0
+  (ii) + FREE     : actual 83, cap 83, slack 0   <-- zero startup cost
+  (iii) + ALL     : actual 58, ... but +9 modules on EVERY startup (measured ~66ms -> ~249ms)

@@ -44,8 +44,8 @@ from .param_parser import skip_quoted_run
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
+    from ..protocols import ExpansionRuntime
     from ..shell import Shell
-    from .manager import ExpansionManager
 
 
 class SubscriptSyntaxError(ExpansionError):
@@ -163,7 +163,16 @@ class SubscriptEvaluator:
         return self.shell.state
 
     @property
-    def _manager(self) -> "ExpansionManager":
+    def _manager(self) -> "ExpansionRuntime":
+        """The expansion orchestrator, as the narrow ``ExpansionRuntime``.
+
+        This boundary consumes exactly three of that protocol's members —
+        ``expand_assignment_value_word`` (the associative-key engine) and
+        ``variable_expander`` twice — so the narrow surface is the honest type
+        here, even though ``__init__`` still takes the whole ``Shell`` for its
+        ``evaluate_arithmetic`` forward (see the Q1 ratchet's entry for this
+        module, which stays for exactly that reason).
+        """
         return self.shell.expansion_manager
 
     # -- The re-lex bridge: raw subscript text -> one Word --------------------

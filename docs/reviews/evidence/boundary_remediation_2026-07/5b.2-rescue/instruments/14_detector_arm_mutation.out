@@ -1,0 +1,24 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=2fc6c46d
+
+BASELINE (unmutated): rc=0
+
+ARM A  plant smuggled store   : rc=1  reason_named=True
+       expected RED naming the def -> PASS
+ARM B  plant NARROWING        : rc=0
+       expected GREEN (must not flag the fix) -> PASS
+ARM C  arm neutered + offender: rc=0
+       expected GREEN (proves A's red came from THIS arm) -> PASS
+ARM D  underscore spelling    : rc=1  reason_named=True
+       expected RED -> PASS
+
+==========================================================================
+  ARM A: PASS
+  ARM B: PASS
+  ARM C: PASS
+  ARM D: PASS
+  4/4 arms as designed
+==========================================================================
+
+RESTORED byte-identical: True
+post-restore ratchet rc=0 (must be 0)

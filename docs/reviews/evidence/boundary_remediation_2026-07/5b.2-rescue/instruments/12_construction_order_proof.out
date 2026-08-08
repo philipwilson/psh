@@ -1,0 +1,10 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=2fc6c46d
+
+VariableExpander constructions observed: 1
+  #0: hasattr(shell,'expansion_manager')=False  non_none=False
+EAGER `self.expansion_runtime = shell.expansion_manager` viable: False
+bare-shell eager read raises AttributeError: 'Shell' object has no attribute 'expansion_manager'
+lazy shell.expansion_manager is the live manager: True
+PROBE_OK
+returncode=0

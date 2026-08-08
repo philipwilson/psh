@@ -1,0 +1,69 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=56dd3401
+
+scratch baseline imports: True
+
+==========================================================================
+FEASIBLE ALONE (module's hoists applied by themselves)
+==========================================================================
+  psh.__main__  (3 statement(s))
+  psh.builtins.command_builtin  (1 statement(s))
+  psh.builtins.declaration_engine  (1 statement(s))
+  psh.builtins.declare_format  (1 statement(s))
+  psh.builtins.environment  (5 statement(s))
+  psh.builtins.function_support  (7 statement(s))
+  psh.builtins.hash_builtin  (1 statement(s))
+  psh.builtins.let_builtin  (1 statement(s))
+  psh.builtins.parse_tree  (4 statement(s))
+  psh.builtins.shell_state  (4 statement(s))
+  psh.builtins.type_builtin  (1 statement(s))
+  psh.core.assignment_utils  (1 statement(s))
+  psh.core.scope  (1 statement(s))
+  psh.core.state  (1 statement(s))
+  psh.core.trap_manager  (1 statement(s))
+  psh.core.variable_store  (2 statement(s))
+  psh.core.variables  (1 statement(s))
+  psh.executor.control_flow  (6 statement(s))
+  psh.executor.core  (8 statement(s))
+  psh.executor.pipeline  (1 statement(s))
+  psh.executor.process_launcher  (1 statement(s))
+  psh.executor.subshell  (4 statement(s))
+  psh.expansion.extglob  (1 statement(s))
+  psh.expansion.glob  (4 statement(s))
+  psh.expansion.manager  (5 statement(s))
+  psh.expansion.operands  (3 statement(s))
+  psh.expansion.word_expander  (2 statement(s))
+  psh.interactive.multiline_handler  (1 statement(s))
+  psh.interactive.prompt  (2 statement(s))
+  psh.interactive.rc_loader  (1 statement(s))
+  psh.io_redirect.file_redirect  (2 statement(s))
+  psh.io_redirect.process_sub  (2 statement(s))
+  psh.lexer  (1 statement(s))
+  psh.lexer.expansion_parser  (1 statement(s))
+  psh.lexer.modular_lexer  (6 statement(s))
+  psh.lexer.pure_helpers  (1 statement(s))
+  psh.lexer.recognizers.process_sub  (1 statement(s))
+  psh.lexer.recognizers.word_scanners  (3 statement(s))
+  psh.parser  (1 statement(s))
+  psh.parser.array_flat_text  (1 statement(s))
+  psh.parser.recursive_descent.parsers.arrays  (1 statement(s))
+  psh.parser.recursive_descent.support.nested_parse  (1 statement(s))
+  psh.parser.recursive_descent.support.word_builder  (1 statement(s))
+  psh.scripting.input_preprocessing  (1 statement(s))
+  psh.scripting.input_sources  (1 statement(s))
+  psh.scripting.lex_parse  (1 statement(s))
+  psh.scripting.source_processor  (5 statement(s))
+  psh.scripting.visitor_modes  (7 statement(s))
+  psh.shell  (5 statement(s))
+  psh.visitor.enhanced_validator_visitor  (1 statement(s))
+  modules: 50   statements: 118
+
+==========================================================================
+INFEASIBLE ALONE — a real hoist here breaks the import
+==========================================================================
+  psh.parser.parse_outcome  (1 stmt)  ImportError: cannot import name 'ParseOutcome' from partially initialized module 'psh.pars
+  modules: 1   statements: 1
+
+NOTE: per-module success does NOT compose (a subset can fail where a
+superset passed — import order decides). This is an UPPER BOUND on a
+safe tranche, not a landing set.

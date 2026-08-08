@@ -124,8 +124,8 @@ def test_class_definitions_finds_protocols_and_concretes():
     assert len(defs) > 100, "scanner found implausibly few classes"
     protos = {n for n, sites in defs.items()
               if any(is_proto for _, _, is_proto in sites)}
-    # The five service protocols must be among them, under their current names.
-    assert {"VariableAccess", "ExpansionRuntime", "IOContext",
+    # The service protocols must be among them, under their current names.
+    assert {"ExpansionRuntime", "IOContext",
             "JobRuntime", "LocaleAccess"} <= protos
     # And the renamed-away names must no longer denote a Protocol anywhere.
     assert "ExpansionContext" not in protos

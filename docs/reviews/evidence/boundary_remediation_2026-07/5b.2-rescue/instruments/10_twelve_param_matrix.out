@@ -1,0 +1,135 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=1c70dfbf
+
+==========================================================================
+psh/builtins/shell_state.py::HistoryBuiltin._dispatch_options(shell)
+==========================================================================
+  line 121   annotation: 'Shell'
+  in ratchet ALLOWLIST: False
+  members reached (2 sites): {'state': 2}
+      L162   shell.state   [ATTR]
+      L215   shell.state   [ATTR]
+  WHOLE-object uses (9):
+      L152   passed to self._parse_options(...)
+      L157   passed to self._history_manager(...)
+      L167   passed to self.error(...)
+      L178   passed to self._delete(...)
+      L194   passed to self._strip_own_invocation(...)
+      L201   passed to self._expand_print(...)
+      L216   passed to self.error(...)
+      L223   passed to self._display_operand(...)
+      L224   passed to self._display(...)
+
+==========================================================================
+psh/builtins/shell_state.py::HistoryBuiltin._display_operand(shell)
+==========================================================================
+  line 57   annotation: 'Shell'
+  in ratchet ALLOWLIST: False
+  members reached (0 sites): {}
+  WHOLE-object uses (2):
+      L61    passed to self.error(...)
+      L63    passed to self._display(...)
+
+==========================================================================
+psh/builtins/shell_state.py::HistoryBuiltin._parse_options(shell)
+==========================================================================
+  line 80   annotation: 'Shell'
+  in ratchet ALLOWLIST: False
+  members reached (0 sites): {}
+  WHOLE-object uses (2):
+      L105   passed to self._usage_error(...)
+      L115   passed to self._usage_error(...)
+
+==========================================================================
+psh/core/internal_errors.py::fatal_expansion_child_status(state)
+==========================================================================
+  line 169   annotation: 'ShellState'
+  in ratchet ALLOWLIST: False
+  members reached (0 sites): {}
+  WHOLE-object uses (0):
+      (none — every use is a member reach)
+
+==========================================================================
+psh/core/internal_errors.py::substitution_abort_status(state)
+==========================================================================
+  line 199   annotation: 'ShellState'
+  in ratchet ALLOWLIST: False
+  members reached (2 sites): {'options': 2}
+      L236   state.options   [ATTR]
+      L238   state.options   [ATTR]
+  WHOLE-object uses (0):
+      (none — every use is a member reach)
+
+==========================================================================
+psh/core/internal_errors.py::substitution_child_abort_status(state)
+==========================================================================
+  line 243   annotation: 'ShellState'
+  in ratchet ALLOWLIST: False
+  members reached (1 sites): {'options': 1}
+      L286   state.options   [ATTR]
+  WHOLE-object uses (0):
+      (none — every use is a member reach)
+
+==========================================================================
+psh/executor/child_policy.py::sync_child_status_for_exit_trap(state)
+==========================================================================
+  line 145   annotation: 'ShellState'
+  in ratchet ALLOWLIST: False
+  members reached (1 sites): {'last_exit_code': 1}
+      L169   state.last_exit_code   [ATTR]
+  WHOLE-object uses (0):
+      (none — every use is a member reach)
+
+==========================================================================
+psh/executor/child_policy.py::map_child_exception(state)
+==========================================================================
+  line 72   annotation: 'ShellState'
+  in ratchet ALLOWLIST: False
+  members reached (0 sites): {}
+  WHOLE-object uses (3):
+      L125   passed to fatal_expansion_child_status(...)
+      L137   passed to fatal_expansion_child_status(...)
+      L141   passed to substitution_child_abort_status(...)
+
+==========================================================================
+psh/scripting/analysis_session.py::AnalysisSession.__init__(shell)
+==========================================================================
+  line 381   annotation: 'Shell'
+  in ratchet ALLOWLIST: True
+  members reached (1 sites): {'analysis_mode': 1}
+      L399   shell.analysis_mode   [ATTR]
+  WHOLE-object uses (1):
+      L393   passed to self._build_carrier(...)
+
+==========================================================================
+psh/scripting/analysis_session.py::AnalysisSession._build_carrier(shell)
+==========================================================================
+  line 402   annotation: 'Shell'
+  in ratchet ALLOWLIST: True
+  members reached (3 sites): {'state': 3}
+      L421   shell.state   [ATTR]
+      L433   shell.state   [ATTR]
+      L438   shell.state   [ATTR]
+  WHOLE-object uses (2):
+      L434   passed as parent_shell= to type(shell)(...)
+      L434   passed to type(...)
+
+==========================================================================
+psh/scripting/analysis_session.py::parse_for_analysis(shell)
+==========================================================================
+  line 562   annotation: 'Shell'
+  in ratchet ALLOWLIST: True
+  members reached (0 sites): {}
+  WHOLE-object uses (1):
+      L589   passed to AnalysisSession(...)
+
+==========================================================================
+psh/scripting/source_processor.py::iter_command_units(shell)
+==========================================================================
+  line 63   annotation: <UNANNOTATED>
+  in ratchet ALLOWLIST: False
+  members reached (1 sites): {'state': 1}
+      L95    shell.state   [ATTR]
+  WHOLE-object uses (1):
+      L88    passed to CommandAccumulator(...)
+

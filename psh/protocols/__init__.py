@@ -1,21 +1,15 @@
-"""The five narrow shell-service protocols (boundary campaign Q1, §13).
+"""The narrow shell-service protocols (boundary campaign Q1, §13).
 
 Dependency DIRECTION, made explicit and typed. Historically every component
 that needed *anything* from the shell took the whole ``Shell`` — a
 service-locator parameter that let a consumer reach any subsystem, so the real
 dependency (this expander needs to read a variable; this reader needs stdin)
-was invisible to both the reader and the type checker. Q1 names the FIVE
-service surfaces a migrated boundary can depend on instead of the complete
-``Shell``:
+was invisible to both the reader and the type checker. Q1 named the service
+surfaces a migrated boundary can depend on instead of the complete ``Shell``:
 
 ===================  =========================================================
 Protocol             Canonical producer (``file.py#symbol``)
 ===================  =========================================================
-``VariableAccess``   ``core/scope.py#ScopeManager.lookup`` (the tri-state read
-                     authority, ``core/variable_lookup.py#VariableLookup``) +
-                     ``core/variable_store.py#VariableStore`` (the write
-                     authority), surfaced as ``ShellState.get_variable`` /
-                     ``set_variable`` / ``get_special_variable``.
 ``ExpansionRuntime`` ``expansion/manager.py#ExpansionManager`` — the expansion
                      orchestrator (word/string expansion + its sub-expanders).
 ``IOContext``        the shell's three process I/O text streams
@@ -59,28 +53,30 @@ signatures), which is exactly the "does the producer expose this surface"
 question the pin asks. Consumers narrow via string (``TYPE_CHECKING``)
 annotations, so a migration adds NO runtime import edge to this package.
 
-Scope note (Q1 census, ``tmp/boundary-ledgers/Q1.md``): this slot MIGRATES two
-boundaries. ``IOContext`` — the reader boundary (``make_reader`` /
-``InputCursorRegistry.cursor_for_fd`` took ``Shell``, used only ``.stdin``).
-``JobRuntime`` — ``ForegroundJobSession`` took the concrete ``JobManager`` and
-now takes this protocol (mypy-checked: ``JobManager`` satisfies it structurally).
-``VariableAccess`` / ``ExpansionRuntime`` / ``LocaleAccess`` are DEFINED against
-their producers, member-frozen and conformance-pinned, but consumer adoption is
-POST-CAMPAIGN: their touched-set consumers genuinely retain ``Shell`` for a need
-no protocol covers (``subscript`` forwards ``shell`` to ``evaluate_arithmetic``;
-the ``child_policy`` runners reach the trap/signal/executor machinery;
-``resolve_command`` forwards ``shell`` to ``ExecutionStrategy.can_execute``;
-``execute_sourced_file`` owns the source-depth / positionals / RETURN-trap
-transaction) — each recorded, with its justification, in the shrink-only ratchet
-``tests/unit/tooling/test_shell_consumer_ratchet_q1.py``. Their exact member
-sets are frozen by ``tests/unit/protocols/test_protocol_conformance_q1.py``.
+**Every protocol here has at least one production consumer**, and that is a
+deliberate property rather than an accident of history: a protocol nothing
+depends on documents an intention, not a dependency. Q1 migrated ``IOContext``
+(the reader boundary — ``make_reader`` / ``InputCursorRegistry.cursor_for_fd``
+took ``Shell`` and used only ``.stdin``) and ``JobRuntime``
+(``ForegroundJobSession``, which took the concrete ``JobManager``). Remediation
+5B.2 adopted the rest: ``ExpansionRuntime`` by
+``expansion/subscript.py#SubscriptEvaluator``, and ``LocaleAccess`` by all SIX
+``state.locale`` readers. ``tests/unit/protocols/
+test_protocol_adoption_census_5b2.py`` keeps it true by census; the exact
+member sets are frozen by ``test_protocol_conformance_q1.py``.
 
-Adoption is scheduled, not open-ended: remediation 5B.2 owns the migration, and
-its named first consumers are ``VariableAccess`` for
-``expansion/_protocols.py#VariableExpanderProtocol.state``, ``ExpansionRuntime``
-for ``expansion/subscript.py#SubscriptEvaluator`` (which already reads
-``shell.expansion_manager``), and ``LocaleAccess`` for the SIX ``state.locale``
-readers enumerated in its docstring below.
+A SIXTH protocol — a three-member variable value-surface
+(``get_variable`` / ``set_variable`` / ``get_special_variable``) — was defined
+here by the campaign and DELETED by remediation 5B.2 without ever gaining a
+consumer. The boundary it was designed for,
+``expansion/_protocols.py#VariableExpanderProtocol.state``, reaches ELEVEN
+distinct ``ShellState`` members across 47 sites, 44 of them outside that
+surface; a tree-wide search (all 19 ``ShellState``-typed parameters, plus every
+class holding a ``ShellState`` attribute) found nothing else that could adopt
+it either. It was deleted rather than kept on speculation. **A future
+value-surface protocol should be designed against that measured 11-member
+usage, not against the three-member guess** — the census is recorded in
+``VariableExpanderProtocol.state``'s docstring and in successor row D-5B.2-s1.
 """
 from __future__ import annotations
 
@@ -101,34 +97,18 @@ if TYPE_CHECKING:
     from ..ast_nodes.words import Word
     from ..core.state import ShellState
     from ..executor.job_control import Job
+    from ..expansion._protocols import VariableExpanderProtocol
+    from ..expansion.word_expander import WordExpander
 
 
-@runtime_checkable
-class VariableAccess(Protocol):
-    """Read/write access to shell variables — the value surface, not the store.
-
-    The canonical READ authority is ``ScopeManager.lookup`` (returns the
-    tri-state ``VariableLookup`` — ``core/variable_lookup.py``); the canonical
-    WRITE authority is ``VariableStore`` (``core/variable_store.py``, the single
-    mutation transaction boundary). ``ShellState`` projects both as the ergonomic
-    accessors below and structurally satisfies this protocol. A consumer that
-    needs only to read/write named values depends on THIS, not on ``ShellState``
-    (which also carries options, execution state, streams, ...).
-    """
-
-    def get_variable(self, name: str, default: str = "") -> str:
-        """The string projection of ``lookup(name)`` (VALUE → its value, else
-        ``default``); no environment fallback (appraisal #20 H13)."""
-        ...
-
-    def set_variable(self, name: str, value: Any) -> None:
-        """Bind ``name`` through the write authority (readonly/nameref/observer
-        guards apply)."""
-        ...
-
-    def get_special_variable(self, name: str) -> str:
-        """Read a special parameter (``?`` ``$`` ``!`` ``#`` ``@`` ``*`` ...)."""
-        ...
+#: The opaque sort key :meth:`LocaleAccess.collate_key` returns.
+#:
+#: A libc-derived value that callers only ever hand to ``sorted(key=...)`` or
+#: compare against another key from the same locale — never inspect, index, or
+#: do arithmetic on. The alias NAMES that opacity rather than dressing it up: a
+#: more precise annotation would claim a structure the value does not promise,
+#: while a bare ``Any`` says nothing about why it is opaque. Remediation 5B.2.
+CollationKey = Any
 
 
 @runtime_checkable
@@ -162,9 +142,25 @@ class ExpansionRuntime(Protocol):
         array-initializer engine."""
         ...
 
-    # Sub-expanders reachable for the lower-level string/escape helpers.
-    variable_expander: Any
-    word_expander: Any
+    # Sub-expanders reachable for the lower-level string/escape helpers. Both
+    # were ``Any`` until remediation 5B.2 typed them at their producers
+    # (``ExpansionManager.__init__`` builds a ``VariableExpander`` and a
+    # ``WordExpander``); the variable side is declared against the mixin
+    # PROTOCOL rather than the concrete class, because that protocol is already
+    # the shared surface its four mixins type-check against.
+    #
+    # READ-ONLY properties, not plain attributes, and that distinction is
+    # load-bearing: a mutable attribute in a Protocol is INVARIANT, so
+    # declaring ``variable_expander: VariableExpanderProtocol`` would demand
+    # that a producer's attribute be exactly that type — and
+    # ``ExpansionManager`` holds a concrete ``VariableExpander``, which is a
+    # subtype, not the same type. Nothing consumes these by assignment, so the
+    # covariant read surface is both correct and what the producers satisfy.
+    @property
+    def variable_expander(self) -> "VariableExpanderProtocol": ...
+
+    @property
+    def word_expander(self) -> "WordExpander": ...
 
 
 @runtime_checkable
@@ -205,9 +201,20 @@ class JobRuntime(Protocol):
     satisfies it (mypy-checked at the call site).
     """
 
-    #: The shell state, wired via ``JobManager.set_shell_state`` (read to publish
-    #: ``foreground_pgid`` on terminal handoff).
-    shell_state: "Optional[ShellState]"
+    def publish_foreground_pgid(self, pgid: int) -> None:
+        """Record *pgid* as the foreground process group after a handoff.
+
+        Until remediation 5B.2 this protocol instead exposed the whole
+        ``shell_state``, and its one consumer reached through it to assign
+        ``shell_state.foreground_pgid`` itself — a whole-state member on a
+        narrow protocol, for a single ``int`` write. The write moved into the
+        producer rather than into ``transfer_terminal_control``: a caller
+        census found FIVE paths through that method and only ONE that may
+        publish, so folding the write in would have given the other four
+        (``fg`` builtin, two SignalManager paths, JobManager's own restore) a
+        write they must not perform.
+        """
+        ...
 
     def terminal_pgid_if_owned(self) -> Optional[int]:
         """The terminal's foreground pgid if this shell owns it, else None."""
@@ -256,13 +263,17 @@ class LocaleAccess(Protocol):
     the CONCRETE frozen dataclass ``core/locale_service.py#LocaleContext`` was
     resolved. The protocol side was renamed because it had zero consumers, while
     the dataclass is row 4 of the boundary campaign's canonical representation
-    set; ``Access`` follows ``VariableAccess`` — a read surface over a service,
+    set; ``Access`` marks a read surface over a service,
     not the value type. The dataclass keeps the ``Context`` name it is recorded
     under.
     """
 
-    def collate_key(self, s: str) -> Any:
-        """A sort key under the effective ``LC_COLLATE`` (glob/case ranges)."""
+    def collate_key(self, s: str) -> "CollationKey":
+        """A sort key under the effective ``LC_COLLATE`` (glob/case ranges).
+
+        The key is opaque — see :data:`CollationKey`. Compare keys, sort by
+        them; never read inside one.
+        """
         ...
 
     def compare(self, a: str, b: str) -> int:
@@ -281,7 +292,6 @@ class LocaleAccess(Protocol):
 
 
 __all__ = [
-    "VariableAccess",
     "ExpansionRuntime",
     "IOContext",
     "JobRuntime",

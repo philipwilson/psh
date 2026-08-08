@@ -1,6 +1,15 @@
 """Hierarchical variable scope management with attribute support."""
 
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+)
 
 from .exceptions import NamerefCycleError, ReadonlyVariableError
 from .locale_service import active_locale
@@ -12,6 +21,16 @@ from .special_registry import (
 from .variable_lookup import VariableLookup
 from .variable_store import VariableStore
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
+
+if TYPE_CHECKING:
+    # TYPE_CHECKING-only, and that is the whole point: ``psh.core`` is a
+    # NEAR-LEAF whose module-level psh imports are confined to
+    # ``CORE_MODULE_IMPORT_ALLOWLIST`` (ast_nodes / utils / version), which does
+    # NOT include ``psh.protocols``. An annotation-only import creates no
+    # runtime edge, so the layering lock's near-leaf rule is satisfied without
+    # widening that allowlist — verified against the lock's own analyzer rather
+    # than argued (remediation 5B.2).
+    from ..protocols import LocaleAccess
 
 
 class VariableScope:
@@ -970,8 +989,9 @@ class ScopeManager:
             # ASCII only under the C locale (`declare -u café` is CAFé), Unicode
             # under UTF-8 (CAFÉ). A shell-less ScopeManager (isolated tests)
             # falls back to the process-active locale, else leaves the value.
-            loc = (self._shell.state.locale if self._shell is not None
-                   else active_locale())
+            loc: Optional['LocaleAccess'] = (
+                self._shell.state.locale if self._shell is not None
+                else active_locale())
             if attributes & VarAttributes.UPPERCASE:
                 return loc.upper(str_value) if loc else str_value
             if attributes & VarAttributes.LOWERCASE:

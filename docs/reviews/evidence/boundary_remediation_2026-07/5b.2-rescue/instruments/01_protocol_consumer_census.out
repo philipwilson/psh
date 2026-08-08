@@ -1,0 +1,120 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+psh tree exists: True
+
+=== VariableExpanderProtocol  (defined in psh.expansion._protocols) ===
+    production consumers (per definition): 4
+      - psh/expansion/arrays.py: base of ArrayOpsMixin@L20
+      - psh/expansion/fields.py: base of FieldExpansionMixin@L18
+      - psh/expansion/operands.py: base of OperandOpsMixin@L207
+      - psh/expansion/operators.py: base of OperatorOpsMixin@L33
+
+=== CommandParsersProtocol  (defined in psh.parser.combinators.commands._protocols) ===
+    production consumers (per definition): 4
+      - psh/parser/combinators/commands/pipelines.py: base of PipelineMixin@L29
+      - psh/parser/combinators/commands/redirections.py: base of RedirectionMixin@L30
+      - psh/parser/combinators/commands/simple.py: base of SimpleCommandMixin@L24
+      - psh/parser/combinators/commands/statements.py: base of StatementMixin@L22
+
+=== ControlStructureProtocol  (defined in psh.parser.combinators.control_structures._protocols) ===
+    production consumers (per definition): 3
+      - psh/parser/combinators/control_structures/conditionals.py: base of ConditionalParserMixin@L58
+      - psh/parser/combinators/control_structures/loops.py: base of LoopParserMixin@L74
+      - psh/parser/combinators/control_structures/structures.py: base of StructureParserMixin@L59
+
+=== VariableAccess  (defined in psh.protocols) ===
+    production consumers (per definition): 0
+
+=== ExpansionRuntime  (defined in psh.protocols) ===
+    production consumers (per definition): 0
+
+=== IOContext  (defined in psh.protocols) ===
+    production consumers (per definition): 2
+      - psh/builtins/input_reader.py: annotation@L407
+      - psh/io_redirect/input_cursor.py: annotation@L146
+
+=== JobRuntime  (defined in psh.protocols) ===
+    production consumers (per definition): 1
+      - psh/executor/foreground_session.py: annotation@L51,63
+
+=== LocaleAccess  (defined in psh.protocols) ===
+    production consumers (per definition): 0
+
+=== MEMBER REACH: self.shell / self.state in each VariableExpanderProtocol consumer ===
+  psh/expansion/arrays.py  self.shell:  3 attr-access, 0 bare-use
+      attrs: {'expansion_manager': 3}
+        L86    self.shell.expansion_manager    [ArrayOpsMixin._eval_array_index]
+        L155   self.shell.expansion_manager    [ArrayOpsMixin._expand_array_subscript]
+        L217   self.shell.expansion_manager    [ArrayOpsMixin.set_var_or_array_element]
+  psh/expansion/arrays.py  self.state:  10 attr-access, 0 bare-use
+      attrs: {'options': 1, 'scope_manager': 7, 'set_variable': 1, 'stderr': 1}
+        L71    self.state.scope_manager    [ArrayOpsMixin._resolve_array_name]
+        L73    self.state.scope_manager    [ArrayOpsMixin._resolve_array_name]
+        L98    self.state.scope_manager    [ArrayOpsMixin._expand_array_indices]
+        L127   self.state.scope_manager    [ArrayOpsMixin._expand_array_subscript]
+        L147   self.state.stderr    [ArrayOpsMixin._expand_array_subscript]
+        L191   self.state.options    [ArrayOpsMixin._check_nounset_element]
+        L209   self.state.scope_manager    [ArrayOpsMixin.set_var_or_array_element]
+        L234   self.state.scope_manager    [ArrayOpsMixin.set_var_or_array_element]
+        L245   self.state.set_variable    [ArrayOpsMixin.set_var_or_array_element]
+        L329   self.state.scope_manager    [ArrayOpsMixin.array_fields]
+
+  psh/expansion/fields.py  self.shell:  0 attr-access, 0 bare-use
+  psh/expansion/fields.py  self.state:  4 attr-access, 0 bare-use
+      attrs: {'get_variable': 1, 'positional_params': 1, 'scope_manager': 2}
+        L59    self.state.get_variable    [FieldExpansionMixin.expand_to_fields]
+        L69    self.state.positional_params    [FieldExpansionMixin.expand_to_fields]
+        L103   self.state.scope_manager    [FieldExpansionMixin.expand_to_fields]
+        L136   self.state.scope_manager    [FieldExpansionMixin._slice_fields]
+
+  psh/expansion/operands.py  self.shell:  4 attr-access, 0 bare-use
+      attrs: {'expansion_manager': 4}
+        L634   self.shell.expansion_manager    [OperandOpsMixin._expand_one_dollar]
+        L641   self.shell.expansion_manager    [OperandOpsMixin._expand_one_dollar]
+        L646   self.shell.expansion_manager    [OperandOpsMixin._expand_one_dollar]
+        L690   self.shell.expansion_manager    [OperandOpsMixin._tilde_prefix]
+  psh/expansion/operands.py  self.state:  1 attr-access, 0 bare-use
+      attrs: {'positional_params': 1}
+        L256   self.state.positional_params    [OperandOpsMixin._operand_dollar_fields]
+
+  psh/expansion/operators.py  self.shell:  2 attr-access, 3 bare-use
+      attrs: {'expansion_manager': 1, 'state': 1}
+        L197   self.shell.expansion_manager    [OperatorOpsMixin._param_is_set]
+        L513   self.shell.state    [OperatorOpsMixin._apply_transform]
+        L83    BARE self.shell (parent Call)    [OperatorOpsMixin._parse_slice_operand]
+        L87    BARE self.shell (parent Call)    [OperatorOpsMixin._parse_slice_operand]
+        L530   BARE self.shell (parent Call)    [OperatorOpsMixin._apply_transform]
+  psh/expansion/operators.py  self.state:  32 attr-access, 0 bare-use
+      attrs: {'error_location_prefix': 10, 'get_special_variable': 1, 'ifs_star_separator': 1, 'last_bg_pid': 1, 'last_exit_code': 11, 'positional_params': 3, 'scope_manager': 3, 'stderr': 2}
+        L44    self.state.get_special_variable    [OperatorOpsMixin._positional_slice_elements]
+        L44    self.state.positional_params    [OperatorOpsMixin._positional_slice_elements]
+        L99    self.state.last_exit_code    [OperatorOpsMixin._parse_slice_operand]
+        L106   self.state.error_location_prefix    [OperatorOpsMixin._slice_negative_length_error]
+        L107   self.state.last_exit_code    [OperatorOpsMixin._slice_negative_length_error]
+        L154   self.state.error_location_prefix    [OperatorOpsMixin._slice_scalar_subscript]
+        L155   self.state.last_exit_code    [OperatorOpsMixin._slice_scalar_subscript]
+        L168   self.state.ifs_star_separator    [OperatorOpsMixin._ifs_star_separator]
+        L181   self.state.last_bg_pid    [OperatorOpsMixin._param_is_set]
+        L185   self.state.positional_params    [OperatorOpsMixin._param_is_set]
+        L187   self.state.positional_params    [OperatorOpsMixin._param_is_set]
+        L191   self.state.scope_manager    [OperatorOpsMixin._param_is_set]
+        L207   self.state.scope_manager    [OperatorOpsMixin._param_is_set]
+        L226   self.state.error_location_prefix    [OperatorOpsMixin._reject_nonassignable]
+        L227   self.state.last_exit_code    [OperatorOpsMixin._reject_nonassignable]
+        L280   self.state.error_location_prefix    [OperatorOpsMixin._view_conditional]
+        L281   self.state.last_exit_code    [OperatorOpsMixin._view_conditional]
+        L291   self.state.error_location_prefix    [OperatorOpsMixin._view_conditional]
+        L292   self.state.last_exit_code    [OperatorOpsMixin._view_conditional]
+        L410   self.state.error_location_prefix    [OperatorOpsMixin._apply_operator]
+        L411   self.state.last_exit_code    [OperatorOpsMixin._apply_operator]
+        L471   self.state.error_location_prefix    [OperatorOpsMixin._assign_default]
+        L473   self.state.stderr    [OperatorOpsMixin._assign_default]
+        L474   self.state.last_exit_code    [OperatorOpsMixin._assign_default]
+        L477   self.state.error_location_prefix    [OperatorOpsMixin._assign_default]
+        L478   self.state.stderr    [OperatorOpsMixin._assign_default]
+        L479   self.state.last_exit_code    [OperatorOpsMixin._assign_default]
+        L493   self.state.error_location_prefix    [OperatorOpsMixin._qmark_error]
+        L494   self.state.last_exit_code    [OperatorOpsMixin._qmark_error]
+        L557   self.state.error_location_prefix    [OperatorOpsMixin._bad_transform_error]
+        L558   self.state.last_exit_code    [OperatorOpsMixin._bad_transform_error]
+        L606   self.state.scope_manager    [OperatorOpsMixin._var_attr_flags]
+

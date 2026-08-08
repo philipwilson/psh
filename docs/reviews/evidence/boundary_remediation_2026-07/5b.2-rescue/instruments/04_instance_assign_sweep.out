@@ -1,0 +1,60 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=1c70dfbf
+
+==========================================================================
+GRAMMAR SELF-TESTS (offender arms fire; control arms do NOT)
+==========================================================================
+  [ok ] 1 direct         expect=HIT got=HIT
+  [ok ] 2 renamed attr   expect=HIT got=HIT
+  [ok ] 3 annotated      expect=HIT got=HIT
+  [ok ] 4 aliased        expect=HIT got=HIT
+  [ok ] 5 tuple          expect=HIT got=HIT
+  [ok ] A ShellState     expect=no  got=no 
+  [ok ] B narrowing      expect=no  got=no 
+  [ok ] C none           expect=no  got=no 
+  [ok ] D unrelated      expect=no  got=no 
+  self-test failures: 0
+
+==========================================================================
+SWEEP A — the ratchet's CURRENT scan scope (24 modules)
+==========================================================================
+  psh.expansion.subscript.SubscriptEvaluator.__init__  self.shell @L159  [direct]  ALREADY IN ALLOWLIST
+  hits: 1; NEW (unrecorded) defs: 0
+  new defs: []
+
+==========================================================================
+SWEEP B — TREE-WIDE (information: what a scope extension would meet)
+==========================================================================
+  psh.builtins.declaration_engine.DeclarationEngine.__init__  self.shell @L183  [direct]
+  psh.core.scope.ScopeManager.set_shell  self._shell @L149  [renamed]
+  psh.core.trap_manager.TrapManager.__init__  self.shell @L44  [direct]
+  psh.executor.array.ArrayOperationExecutor.__init__  self.shell @L38  [direct]
+  psh.executor.command.CommandExecutor.__init__  self.shell @L160  [direct]
+  psh.executor.command_assignments.CommandAssignments.__init__  self.shell @L145  [direct]
+  psh.executor.command_resolver.CommandResolver.__init__  self.shell @L139  [direct]
+  psh.executor.control_flow.ControlFlowExecutor.__init__  self.shell @L50  [direct]
+  psh.executor.core.ExecutorVisitor.__init__  self.shell @L121  [direct]
+  psh.executor.enhanced_test_evaluator.TestExpressionEvaluator.__init__  self.shell @L31  [direct]
+  psh.executor.function.FunctionOperationExecutor.__init__  self.shell @L34  [direct]
+  psh.executor.pipeline.PipelineExecutor.__init__  self.shell @L113  [direct]
+  psh.executor.subshell.SubshellExecutor.__init__  self.shell @L37  [direct]
+  psh.expansion.arithmetic.evaluator.ArithmeticEvaluator.__init__  self.shell @L73  [direct]
+  psh.expansion.command_sub.CommandSubstitutionExecutor.__init__  self.shell @L28  [direct]
+  psh.expansion.evaluator.ExpansionEvaluator.__init__  self.shell @L28  [direct]
+  psh.expansion.glob.GlobExpander.__init__  self.shell @L138  [direct]
+  psh.expansion.manager.ExpansionManager.__init__  self.shell @L50  [direct]
+  psh.expansion.parameter_expansion.ParameterExpansionOps.__init__  self.shell @L147  [direct]
+  psh.expansion.tilde.TildeExpander.__init__  self.shell @L14  [direct]
+  psh.expansion.variable.VariableExpander.__init__  self.shell @L43  [direct]
+  psh.interactive.base.InteractiveComponent.__init__  self.shell @L13  [direct]
+  psh.interactive.base.InteractiveManager.__init__  self.shell @L22  [direct]
+  psh.interactive.history_expansion.HistoryExpander.__init__  self.shell @L287  [direct]
+  psh.interactive.multiline_handler.MultiLineInputHandler.__init__  self.shell @L28  [direct]
+  psh.interactive.prompt.PromptExpander.__init__  self.shell @L27  [direct]
+  psh.io_redirect.file_redirect.FileRedirector.__init__  self.shell @L290  [direct]
+  psh.io_redirect.manager.IOManager.__init__  self.shell @L322  [direct]
+  psh.io_redirect.process_sub.ProcessSubstitutionHandler.__init__  self.shell @L271  [direct]
+  psh.scripting.base.ScriptComponent.__init__  self.shell @L18  [direct]
+  psh.scripting.base.ScriptManager.__init__  self.shell @L33  [direct]
+  psh.scripting.command_accumulator.CommandAccumulator.__init__  self.shell @L123  [direct]
+  tree-wide hits: 33  (in current scope: 1, outside: 32)

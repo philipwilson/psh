@@ -58,6 +58,7 @@ class SimpleCommandMixin(_Base):
                 # Try redirection (includes FD-prefixed redirects)
                 redir_result = self.redirection.parse(tokens, pos)
                 if redir_result.success:
+                    assert redir_result.value is not None
                     redirects.append(redir_result.value)
                     pos = redir_result.position
                     continue

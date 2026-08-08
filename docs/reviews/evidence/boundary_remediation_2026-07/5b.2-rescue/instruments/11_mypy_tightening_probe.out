@@ -1,0 +1,2 @@
+psh/parser/combinators/commands/simple.py:61: error: Argument 1 to "append" of "list" has incompatible type "Redirect | None"; expected "Redirect"  [arg-type]
+Found 1 error in 1 file (checked 276 source files)

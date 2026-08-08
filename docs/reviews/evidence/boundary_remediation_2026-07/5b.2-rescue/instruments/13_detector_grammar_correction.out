@@ -1,0 +1,37 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=2fc6c46d
+
+==========================================================================
+SUBSUMPTION DEMONSTRATION (why grammar A adds nothing)
+==========================================================================
+  source: `def wire(self, s): self.shell = s`  (param unannotated AND not named 'shell')
+    shipped param/class-attr detector : []
+    grammar A (source-keyed)          : []
+    grammar B (target-keyed)          : [('psh.fake', 'C.wire', 'shell', 3)]
+    => only grammar B sees it; A is silent because the param arm's own condition is absent
+
+  source: `def __init__(self, shell: 'Shell'): self.shell = shell`
+    shipped detector : [('psh.fake', 'C.__init__')]
+    grammar A        : [('psh.fake', 'C.__init__', 'shell', 3)]
+    => A fires, but the shipped detector ALREADY flagged this def: no new key
+
+==========================================================================
+GRAMMAR B CONTROLS (must NOT fire)
+==========================================================================
+  [ok ] narrowing (the thing we WANT): []
+  [ok ] state narrowing: []
+  [ok ] None store: []
+  [ok ] attribute source (not a bare name): []
+
+==========================================================================
+SWEEP — IN SCOPE (ratchet's scanned modules)
+==========================================================================
+  grammar A hits: 1   grammar B hits: 1
+  defs found by B but NOT by A: 0
+
+==========================================================================
+SWEEP — TREE-WIDE
+==========================================================================
+  grammar A hits: 33   grammar B hits: 33
+  defs found by B but NOT by A: 0
+

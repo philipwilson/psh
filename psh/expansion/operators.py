@@ -24,6 +24,7 @@ from .arithmetic import ArithmeticError, evaluate_arithmetic
 from .operands import OperandOrStr, OperandValue
 
 if TYPE_CHECKING:
+    from ..protocols import LocaleAccess
     from ._protocols import VariableExpanderProtocol
     _Base = VariableExpanderProtocol
 else:
@@ -510,7 +511,7 @@ class OperatorOpsMixin(_Base):
         # (ß stays ß, not "SS") and locale-gated (ASCII-only under C), exactly
         # like ^^ / ,, . Raw str.upper()/str.lower() grew ß -> "SS" and ignored
         # the locale — both wrong vs bash.
-        loc = self.shell.state.locale
+        loc: 'LocaleAccess' = self.state.locale
         if op == 'U':
             return loc.upper(value)
         if op == 'L':

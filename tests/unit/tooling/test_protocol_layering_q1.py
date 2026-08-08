@@ -130,12 +130,13 @@ def test_protocol_modules_have_no_runtime_impl_imports():
     )
 
 
-def test_protocols_package_exports_five():
+def test_protocols_package_exports_its_protocol_set():
     import psh.protocols as p
 
+    # Four since remediation 5B.2 deleted the never-adopted variable
+    # value-surface protocol; see the census pin in tests/unit/protocols/.
     assert set(p.__all__) == {
-        "VariableAccess", "ExpansionRuntime", "IOContext",
-        "JobRuntime", "LocaleAccess",
+        "ExpansionRuntime", "IOContext", "JobRuntime", "LocaleAccess",
     }
     for name in p.__all__:
         assert hasattr(p, name), f"psh.protocols does not export {name}"

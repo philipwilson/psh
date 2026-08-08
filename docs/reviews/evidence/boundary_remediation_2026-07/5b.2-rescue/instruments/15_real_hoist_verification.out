@@ -1,0 +1,24 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+HEAD=56dd3401
+
+REAL hoists applied: 119 statements across 51 modules
+
+==========================================================================
+REAL IMPORT (statements MOVED, not duplicated)
+==========================================================================
+
+--- STDERR (tail) ---
+    from .pattern_engine import (
+    ...<5 lines>...
+    )
+  File "/Users/pwilson/src/psh-r5b-2/tmp/real-hoist/psh/expansion/pattern_engine.py", line 95, in <module>
+    from .extglob import (
+    ...<6 lines>...
+    )
+  File "/Users/pwilson/src/psh-r5b-2/tmp/real-hoist/psh/expansion/extglob.py", line 12, in <module>
+    from .glob import _POSIX_CLASS_RE
+  File "/Users/pwilson/src/psh-r5b-2/tmp/real-hoist/psh/expansion/glob.py", line 2, in <module>
+    from .pattern_engine import PatternCompiler, pathname_profile
+ImportError: cannot import name 'PatternCompiler' from partially initialized module 'psh.expansion.pattern_engine' (most likely due to a circular import) (/Users/pwilson/src/psh-r5b-2/tmp/real-hoist/psh/expansion/pattern_engine.py)
+returncode=1
+

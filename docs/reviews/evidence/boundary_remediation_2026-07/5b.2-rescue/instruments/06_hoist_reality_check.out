@@ -1,0 +1,16 @@
+ROOT=/Users/pwilson/src/psh-r5b-2
+SCRATCH=/Users/pwilson/src/psh-r5b-2/tmp/hoist-scratch
+HEAD=1c70dfbf
+
+candidate MODULES: 51   distinct edges: 84
+
+==========================================================================
+REAL IMPORT with every candidate edge added at module level
+==========================================================================
+RESOLVED_PSH=/Users/pwilson/src/psh-r5b-2/tmp/hoist-scratch/psh
+IMPORT_OK
+  returncode=0   => ALL JOINTLY FEASIBLE
+
+  If feasible, the achievable ACTUAL reduction is 84 distinct edges across 51 modules.
+  NOTE: distinct EDGES, not sites — several sites in one module may
+  share a target, so the site-count reduction is >= the edge count.
