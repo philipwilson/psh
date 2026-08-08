@@ -367,6 +367,45 @@ def test_core_is_near_leaf():
     )
 
 
+def test_every_cap_equals_its_modules_actual_count():
+    """ZERO SLACK, enforced — not merely claimed in prose.
+
+    The ratchet below only fires when a module EXCEEDS its cap, so a cap
+    sitting ABOVE its module's real count is invisible to it: a new deferred
+    import slips into the headroom and nobody has to justify anything. That is
+    exactly the drift remediation 5B.2 swept out (five entries capping modules
+    that deferred nothing at all, 18 cap between them), and this module's
+    docstring now states zero slack as a property of the table — so something
+    has to hold it. Prose claiming what no guard enforces is the failure mode
+    this campaign polices.
+
+    Two failure modes, each named in the message with its module and amount:
+
+    * SLACK — cap > actual: unreviewed headroom. Lower the cap to the actual
+      (free by the ratchet's own rules).
+    * DEAD — an entry whose module now defers nothing: delete the entry.
+
+    A cap BELOW its actual is deliberately not checked here; that is the
+    ratchet's own assertion below, which fails with the right diagnosis.
+    """
+    _, func_counts = build_graph()
+    slack, dead = [], []
+    for module, cap in sorted(FUNC_IMPORT_CAPS.items()):
+        actual = func_counts.get(module, 0)
+        if actual == 0:
+            dead.append(f"{module}: cap {cap}, but the module defers NOTHING "
+                        "— delete the entry")
+        elif cap > actual:
+            slack.append(f"{module}: cap {cap} > actual {actual} "
+                         f"(slack {cap - actual}) — lower the cap")
+    assert not (slack or dead), (
+        "FUNC_IMPORT_CAPS must sit exactly ON each module's measured count. A "
+        "cap above it is unreviewed headroom for the next lazy import, which "
+        "is the drift this table was swept to remove:\n  "
+        + "\n  ".join(dead + slack)
+    )
+
+
 def test_function_level_import_ratchet():
     _, func_counts = build_graph()
     violations = []
