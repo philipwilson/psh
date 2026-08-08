@@ -1,0 +1,63 @@
+instrument 13 — post-extension mutation battery
+ROOT=.
+HEAD=8af29e6da525701416fe1f38752542a309030bd3
+
+=== PRE-STATE: production victims must be clean ===
+(empty above = clean; the ratchet file is expected MODIFIED — this slot's work)
+
+=== CONTROL: unmutated tree must be GREEN ===
+....................                                                     [100%]
+20 passed in 0.09s
+
+=== PARAMETER-SHAPE OFFENDER: all three must now BITE ===
+== arm A: psh/scripting/analysis_session.py (expect: FAILED)
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_no_unrecorded_full_shell_consumers
+1 failed, 19 passed in 0.11s
+   -> arm A: FAILED (expected FAILED)
+
+== arm B: psh/parser/session.py (expect: FAILED)
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_no_unrecorded_full_shell_consumers
+1 failed, 19 passed in 0.11s
+   -> arm B: FAILED (expected FAILED)
+
+== arm C: psh/expansion/procsub_render.py (expect: FAILED)
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_no_unrecorded_full_shell_consumers
+1 failed, 19 passed in 0.11s
+   -> arm C: FAILED (expected FAILED)
+
+=== D4: CLASS-ATTRIBUTE offender (the A2b shape) must BITE ===
+== arm D4: psh/parser/session.py (expect: FAILED)
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_no_unrecorded_full_shell_consumers
+1 failed, 19 passed in 0.11s
+   -> arm D4: FAILED (expected FAILED)
+
+=== ENUMERATION / COVERAGE DRIFT ARMS (edit the ratchet's own lists) ===
+== arm D1 (expect: FAILED)
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_scanned_modules_all_exist
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_created_modules_match_enumeration
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_no_unrecorded_full_shell_consumers
+5 failed, 15 passed in 0.11s
+   -> arm D1: FAILED (expected FAILED)
+
+== arm D2 (expect: FAILED)
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_created_modules_match_enumeration
+1 failed, 19 passed in 0.11s
+   -> arm D2: FAILED (expected FAILED)
+
+== arm D3 (expect: FAILED)
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_post_endpoint_modules_are_all_dispositioned
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_ratchet_only_shrinks
+2 failed, 18 passed in 0.11s
+   -> arm D3: FAILED (expected FAILED)
+
+=== POST-STATE: byte-identity after restore ===
+  RESTORED-IDENTICAL  psh/scripting/analysis_session.py
+  RESTORED-IDENTICAL  psh/parser/session.py
+  RESTORED-IDENTICAL  psh/expansion/procsub_render.py
+  RESTORED-IDENTICAL  tests/unit/tooling/test_shell_consumer_ratchet_q1.py
+
+final control (must be green again):
+....................                                                     [100%]
+20 passed in 0.10s
+
+instrument 13 done

@@ -6,8 +6,19 @@ protocol whenever its actual needs fit one. Some boundaries genuinely still need
 the full ``Shell`` (they FORWARD it to something that needs the whole shell, or
 they reach the trap/signal/executor machinery no protocol models). This ratchet
 freezes THAT set: every function/method in a boundary module whose parameter is
-the full ``Shell`` is recorded here WITH a one-line justification, and the
-recorded set may only SHRINK.
+the full ``Shell`` is recorded here WITH a one-line justification.
+
+**The contract on ``ALLOWLIST`` is shrink-only WITH ONE NARROW EXCEPTION.** The
+recorded set may only SHRINK, except that entries MAY be added when a module
+newly enters the scan scope — whether because the scope was extended or because
+the DETECTOR was taught a shape it previously missed — provided each addition
+lands in the SAME COMMIT as that extension and carries its own specific
+justification (integrator pre-ruling 5B.1-R0, extended to detector-shape by
+R1.6). Growth in any other circumstance is a contract breach, not a judgement
+call. The exception exists because the alternative is worse: a scope extension
+that cannot record what it finds either lands red or quietly narrows what it
+scans, and both defeat the ratchet. Remediation 5B.1 used it exactly once, for
+the three ``analysis_session`` consumers (6 entries -> 9).
 
 - A NEW full-``Shell`` consumer in a scanned module (not in ``ALLOWLIST``) fails
   ``test_no_unrecorded_full_shell_consumers`` — narrow it to a protocol or
@@ -19,24 +30,65 @@ recorded set may only SHRINK.
 campaign ADDED, defined by (and verified against, when the tag is present, by
 ``test_created_modules_match_enumeration``):
 
-    git log --diff-filter=A --pretty=format: --name-only v0.724.0..75ab5625 -- psh/
+    git log --diff-filter=A --pretty=format: --name-only v0.724.0..8af29e6d -- psh/
 
 ``TOUCHED_PREEXISTING`` adds the pre-campaign files the campaign MIGRATED or that
 carry a recorded consumer, so the ratchet actually SEES them (an allowlist entry
 in an unscanned file, or a future offender there, would otherwise be invisible).
 
-**Detector.** A parameter is a full-``Shell`` consumer when its annotation
-mentions ``Shell`` as an identifier — bare (``shell: Shell``), a string
-forward-ref (``'Shell'``), OR wrapped/nested (``Optional['Shell']``,
-``'Shell | None'``, ``Callable[['Shell'], int]``) — OR the parameter is
-UNANNOTATED and named exactly ``shell`` (a smuggled reach with no type). It never
-matches ``ShellState`` (a distinct identifier — already a narrowing).
-``ShellState`` parameters are deliberately NOT counted (``process_launcher`` /
-``input_sources`` take it; it is a state container, not a service locator).
+**Scope CURRENCY (remediation 5B.1).** The enumeration above is pinned to an
+ENDPOINT, so it says nothing about modules born after it — and a scan scope that
+silently stops covering new code is a ratchet in name only. Checkpoint R proved
+this concretely: three production modules created after the PREVIOUS endpoint
+(``75ab5625``) were unscanned, and a synthetic full-``Shell`` offender planted in
+two of them passed every test in this file. Two things keep the scope current:
+
+* ``POST_ENDPOINT_SCANNED`` — modules born AFTER the pinned endpoint that this
+  ratchet nonetheless scans. They cannot live in ``CREATED_MODULES``: that list
+  is asserted EQUAL to the pinned git enumeration, which by construction cannot
+  contain them.
+* ``test_post_endpoint_modules_are_all_dispositioned`` — the COVERAGE assertion.
+  Every ``psh/`` module created after the endpoint must be either scanned or
+  recorded in ``POST_ENDPOINT_OUT_OF_SCOPE`` with a justification, so a new
+  module forces an explicit disposition instead of vanishing into the gap. Its
+  decision logic is the pure function ``uncovered_post_endpoint_modules``,
+  self-tested against an INJECTED enumeration — never against real commits,
+  which would make the self-test's own subject move underneath it.
+
+**Detector.** A full-``Shell`` consumer is either:
+
+* a PARAMETER whose annotation mentions ``Shell`` as an identifier — bare
+  (``shell: Shell``), a string forward-ref (``'Shell'``), OR wrapped/nested
+  (``Optional['Shell']``, ``'Shell | None'``, ``Callable[['Shell'], int]``) — OR
+  a parameter that is UNANNOTATED and named exactly ``shell`` (a smuggled reach
+  with no type); or
+* a CLASS-LEVEL ANNOTATED ATTRIBUTE whose annotation mentions ``Shell``
+  (``class C: shell: 'Shell'``). Holding the whole shell as a declared field is
+  the same service-locator reach as taking it as a parameter, one indirection
+  later. Remediation 5B.1 found the parameter-only detector blind to this, which
+  mattered because it is the exact shape of the "broad owner escape hatch" 5B's
+  exit criterion names.
+
+**What the detector does NOT see.** It reads DECLARATIONS — parameters and
+annotated class-level attributes — so a shell stored by plain ASSIGNMENT in a
+method body (``self.shell = shell``, no annotation anywhere) is invisible to it.
+That shape is real: remediation 5B.1 removed exactly one instance of it from
+``scripting/analysis_session.py``, and what keeps it removed is a bespoke pin in
+``tests/unit/scripting/test_analysis_session.py``, NOT this detector. Teaching
+the detector instance-assignment is remediation 5B.2's (its sweep forces a
+disposition for every site it would newly reveal, which is migration work). Do
+not read the class-attribute extension as covering the assignment shape.
+
+Neither form ever matches ``ShellState`` (a distinct identifier — already a
+narrowing). ``ShellState`` is deliberately NOT counted in EITHER position
+(``process_launcher`` / ``input_sources`` take it as a parameter; ``JobRuntime``
+carries it as a member): it is a state container, not a service locator, and
+counting it would flag the narrowings the campaign asked for as though they were
+debt.
 
 The ``test_detector_*`` self-tests prove the detector flags the bare, wrapped,
-and unannotated shapes and ignores ``ShellState`` / protocol params, so the
-ratchet cannot rot into a no-op.
+unannotated and class-attribute shapes and ignores ``ShellState`` / protocol
+members in BOTH positions, so the ratchet cannot rot into a no-op.
 """
 
 import ast
@@ -58,27 +110,38 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 # behavior (git + tag present) is unchanged: the assertion runs.
 _SELFCHECK_UNVERIFIED = (
     "SELF-CHECK SKIPPED: cannot verify {name} against the git enumeration "
-    "(git log --diff-filter=A v0.724.0..75ab5625 -- psh/): {reason}. The "
+    "(git log --diff-filter=A {range} -- psh/): {reason}. The "
     "hardcoded list is TRUSTED UNVERIFIED here — drift between it and the "
     "actual campaign-created set will go UNDETECTED until this test runs in a "
     "full checkout with the base tag present."
 )
 
+#: The pinned scope endpoint. ``CREATED_MODULES`` is exactly the psh/ modules
+#: added in ``SCOPE_BASE..SCOPE_ENDPOINT``; everything born after
+#: ``SCOPE_ENDPOINT`` is dispositioned by the coverage assertion instead.
+#: Advancing the endpoint is a deliberate, reviewed edit — it re-baselines what
+#: "new" means, so it moves only together with the two lists below.
+SCOPE_BASE = "v0.724.0"
+SCOPE_ENDPOINT = "8af29e6d"
+SCOPE_RANGE = f"{SCOPE_BASE}..{SCOPE_ENDPOINT}"
 
-def _warn_selfcheck_unverified(list_name, reason):
+
+def _warn_selfcheck_unverified(list_name, reason, rng=None):
     warnings.warn(
-        _SELFCHECK_UNVERIFIED.format(name=list_name, reason=reason),
+        _SELFCHECK_UNVERIFIED.format(
+            name=list_name, reason=reason, range=rng or SCOPE_RANGE),
         stacklevel=2,
     )
 
 
-# Files the campaign ADDED (git --diff-filter=A v0.724.0..75ab5625 -- psh/).
+# Files the campaign ADDED (git --diff-filter=A v0.724.0..8af29e6d -- psh/).
 CREATED_MODULES = [
     "psh/ast_nodes/syntax_templates.py",
     "psh/core/process_lease.py",
     "psh/core/variable_lookup.py",
     "psh/executor/command_resolution.py",
     "psh/executor/foreground_session.py",
+    "psh/expansion/procsub_render.py",
     "psh/expansion/subscript.py",
     "psh/interactive/history_result.py",
     "psh/invocation.py",
@@ -89,6 +152,8 @@ CREATED_MODULES = [
     "psh/parser/recursive_descent/support/syntax_templates.py",
     "psh/parser/session.py",
     "psh/parser/unclosed_expansion.py",
+    "psh/protocols/__init__.py",
+    "psh/scripting/analysis_session.py",
     "psh/scripting/program_source.py",
 ]
 
@@ -101,14 +166,31 @@ TOUCHED_PREEXISTING = [
     "psh/builtins/input_reader.py",       # holds migrated make_reader (Shell -> IOContext)
 ]
 
-TOUCHED_MODULES = CREATED_MODULES + TOUCHED_PREEXISTING
+# Modules born AFTER SCOPE_ENDPOINT that this ratchet scans anyway. These cannot
+# go in CREATED_MODULES (asserted equal to the pinned enumeration, which cannot
+# contain them). Each entry is a module the coverage assertion below would
+# otherwise flag as undispositioned.
+POST_ENDPOINT_SCANNED: list = [
+    "psh/utils/posix_classes.py",   # 5B.1: the shared POSIX class table (data leaf)
+]
+
+# Modules born after SCOPE_ENDPOINT that are deliberately NOT scanned —
+# (path -> why). Kept honest by the coverage assertion: a new module must land
+# in one list or the other, never in neither.
+POST_ENDPOINT_OUT_OF_SCOPE: dict = {}
+
+TOUCHED_MODULES = CREATED_MODULES + TOUCHED_PREEXISTING + POST_ENDPOINT_SCANNED
 
 
 # The frozen set of boundary-module defs that legitimately still take the full
-# ``Shell`` — (dotted-module, qualified-symbol) -> justification. MAY ONLY
-# SHRINK. Each forwards the shell to a whole-shell need or reaches a subsystem no
-# protocol (VariableAccess/ExpansionContext/IOContext/JobRuntime/LocaleContext)
-# models.
+# ``Shell`` — (dotted-module, qualified-symbol) -> justification. Each forwards
+# the shell to a whole-shell need or reaches a subsystem no protocol
+# (VariableAccess/ExpansionRuntime/IOContext/JobRuntime/LocaleAccess) models.
+#
+# CONTRACT: shrink-only, EXCEPT entries added in the SAME COMMIT as a scan-scope
+# or detector-shape extension, each with its own justification (pre-ruling
+# 5B.1-R0, extended to detector-shape by R1.6). Any other growth is a breach.
+# See the module docstring for why the exception exists.
 ALLOWLIST = {
     ("psh.executor.command_resolution", "resolve_command"):
         "forwards `shell` to ExecutionStrategy.can_execute(name, shell), which "
@@ -126,13 +208,30 @@ ALLOWLIST = {
         "Shell (Shell.for_subshell) and reaches trap/signal/executor/streams",
     ("psh.expansion.subscript", "SubscriptEvaluator.__init__"):
         "forwards `shell` to evaluate_arithmetic(expr, shell) for indexed "
-        "subscript evaluation; also consumes ExpansionContext + state "
+        "subscript evaluation; also consumes ExpansionRuntime + state "
         "diagnostics, but the arithmetic forward forces the full Shell",
     ("psh.scripting.program_source", "execute_sourced_file"):
         "THE sourced-file executor (source/. + rc load): owns state.source_depth, "
         "the positional-params swap/restore, FunctionReturn handling, the RETURN "
         "trap, and drives the input source through the executor — a whole-shell "
         "transaction, not a protocol-shaped slice",
+    # --- entered scope with the 5B.1 scan-scope extension (pre-ruling 5B.1-R0:
+    # entries added ONLY for modules newly entering scope, in the SAME commit as
+    # the extension, each with a specific justification). All three are one
+    # forward-chain ending at a construction no protocol can model.
+    ("psh.scripting.analysis_session", "AnalysisSession._build_carrier"):
+        "builds the analysis carrier via `type(shell)(parent_shell=shell, "
+        "norc=True)` — construction through the caller's OWN Shell subclass with "
+        "the shell itself as parent; a protocol models a surface an object HAS, "
+        "never a constructible type, so this is irreducible (the EMBEDDER "
+        "CONTRACT the method's docstring declares)",
+    ("psh.scripting.analysis_session", "AnalysisSession.__init__"):
+        "forwards `shell` to _build_carrier (the type(shell)(parent_shell=...) "
+        "construction) and reads shell.analysis_mode; the forward forces the "
+        "full Shell",
+    ("psh.scripting.analysis_session", "parse_for_analysis"):
+        "THE one door into analysis parsing; forwards `shell` to "
+        "AnalysisSession(shell), whose carrier construction needs the whole Shell",
 }
 
 
@@ -170,15 +269,27 @@ def _ann_mentions_shell(node) -> bool:
 
 
 def full_shell_consumers(src: str, module: str) -> set:
-    """Return {(module, qualname)} for every def with a parameter that is the
-    full ``Shell`` (annotation mentions ``Shell``, or unannotated + named
-    ``shell``)."""
+    """Return {(module, qualname)} for every full-``Shell`` consumer: a def with
+    a ``Shell`` parameter (annotated, or unannotated + named ``shell``), or a
+    class with a ``Shell``-annotated class-level attribute.
+
+    The attribute form (``class C: shell: 'Shell'``) is the same service-locator
+    reach one indirection later — a parameter-only detector was blind to it
+    (remediation 5B.1). ``ShellState`` is never a hit in either position.
+    """
     tree = ast.parse(src)
     found: set = set()
 
     def visit(node, prefix):
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.ClassDef):
+                # Class-level annotated attributes holding the whole Shell.
+                for stmt in child.body:
+                    if (isinstance(stmt, ast.AnnAssign)
+                            and isinstance(stmt.target, ast.Name)
+                            and _ann_mentions_shell(stmt.annotation)):
+                        found.add(".".join(
+                            prefix + [child.name, stmt.target.id]))
                 visit(child, prefix + [child.name])
             elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 a = child.args
@@ -217,31 +328,114 @@ def test_scanned_modules_all_exist():
         assert (ROOT / rel).exists(), f"scanned module missing: {rel}"
 
 
-def test_created_modules_match_enumeration():
-    """CREATED_MODULES is exactly the campaign-added set. Verified against git
-    when the base tag is present; when git or the tag is absent the self-check
-    WARNS loudly (Q3 WP5) before skipping, never silently (shallow checkout)."""
+def _enumerate_added(rng, list_name):
+    """psh/ modules added in *rng*, or None when git/the range is unavailable
+    (warning loudly first — never a silent skip)."""
     try:
         out = subprocess.run(
             ["git", "log", "--diff-filter=A", "--pretty=format:",
-             "--name-only", "v0.724.0..75ab5625", "--", "psh/"],
+             "--name-only", rng, "--", "psh/"],
             cwd=ROOT, capture_output=True, text=True, timeout=30,
         )
     except (OSError, subprocess.SubprocessError) as e:
         _warn_selfcheck_unverified(
-            "CREATED_MODULES", f"git unavailable ({type(e).__name__})")
-        pytest.skip("git unavailable")
+            list_name, f"git unavailable ({type(e).__name__})", rng)
+        return None
     if out.returncode != 0:
         _warn_selfcheck_unverified(
-            "CREATED_MODULES", "base tag/range v0.724.0..75ab5625 not present")
-        pytest.skip("base tag/range unavailable in this checkout")
-    enumerated = {ln.strip() for ln in out.stdout.splitlines()
-                  if ln.strip().endswith(".py")}
+            list_name, f"base tag/range {rng} not present", rng)
+        return None
+    return {ln.strip() for ln in out.stdout.splitlines()
+            if ln.strip().endswith(".py")}
+
+
+def uncovered_post_endpoint_modules(created_after_endpoint, scanned,
+                                    out_of_scope):
+    """The post-endpoint modules that are neither scanned nor declared
+    out-of-scope — i.e. the ones that would silently fall outside the ratchet.
+
+    Pure, so the coverage assertion's logic can be self-tested against an
+    INJECTED enumeration rather than against real commits (which would move
+    under the test).
+    """
+    return sorted(set(created_after_endpoint) - set(scanned)
+                  - set(out_of_scope))
+
+
+def test_created_modules_match_enumeration():
+    """CREATED_MODULES is exactly the campaign-added set. Verified against git
+    when the base tag is present; when git or the tag is absent the self-check
+    WARNS loudly (Q3 WP5) before skipping, never silently (shallow checkout)."""
+    enumerated = _enumerate_added(SCOPE_RANGE, "CREATED_MODULES")
+    if enumerated is None:
+        pytest.skip("git/base range unavailable in this checkout")
     assert enumerated == set(CREATED_MODULES), (
         "CREATED_MODULES drifted from the git enumeration "
-        "(v0.724.0..75ab5625 --diff-filter=A -- psh/). Update the list.\n"
+        f"({SCOPE_RANGE} --diff-filter=A -- psh/). Update the list.\n"
         f"  only in git: {sorted(enumerated - set(CREATED_MODULES))}\n"
         f"  only in list: {sorted(set(CREATED_MODULES) - enumerated)}"
+    )
+
+
+def _endpoint_is_ancestor_of_head():
+    """True/False if git can answer, None if git cannot be consulted."""
+    try:
+        out = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", SCOPE_ENDPOINT, "HEAD"],
+            cwd=ROOT, capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode == 0:
+        return True
+    if out.returncode == 1:
+        return False
+    return None   # not a repo / unknown rev — indistinguishable from absent
+
+
+def test_post_endpoint_modules_are_all_dispositioned():
+    """COVERAGE (5B.1): every psh/ module born after SCOPE_ENDPOINT is either
+    scanned or explicitly declared out-of-scope.
+
+    Without this, the scan scope silently stops covering new code the moment the
+    endpoint is pinned — exactly the Checkpoint R q5-F2 defect, where three
+    modules created after the previous endpoint were invisible and a planted
+    offender passed every test here.
+
+    ANCESTOR CHECK FIRST. ``SCOPE_ENDPOINT..HEAD`` is EMPTY — and this test
+    therefore vacuously green — whenever the endpoint is not an ancestor of
+    HEAD: a branch that predates it, a rewritten history, a fresh shallow
+    clone. That is the same silent-rot failure mode the test exists to prevent,
+    one level up, so it WARNS loudly instead of passing quietly.
+
+    KNOWN AND RECORD-ONLY: a module that exists in the working tree but is not
+    yet COMMITTED is invisible to the git enumeration and so is not
+    dispositioned here. That is inherent to enumerating by history, and gates
+    run on committed SHAs, so it cannot hide a landed module.
+    """
+    ancestry = _endpoint_is_ancestor_of_head()
+    if ancestry is False:
+        _warn_selfcheck_unverified(
+            "POST_ENDPOINT coverage",
+            f"SCOPE_ENDPOINT {SCOPE_ENDPOINT} is NOT an ancestor of HEAD, so "
+            "the range is empty and this coverage check would pass VACUOUSLY",
+            f"{SCOPE_ENDPOINT}..HEAD")
+        pytest.skip(f"{SCOPE_ENDPOINT} is not an ancestor of HEAD")
+    created = _enumerate_added(f"{SCOPE_ENDPOINT}..HEAD",
+                              "POST_ENDPOINT_SCANNED")
+    if created is None or ancestry is None:
+        pytest.skip("git/endpoint range unavailable in this checkout")
+    # Only modules that still exist can be scanned; one created and later
+    # deleted needs no disposition.
+    live = {rel for rel in created if (ROOT / rel).exists()}
+    uncovered = uncovered_post_endpoint_modules(
+        live, TOUCHED_MODULES, POST_ENDPOINT_OUT_OF_SCOPE)
+    assert not uncovered, (
+        "psh/ module(s) created after the pinned scope endpoint "
+        f"({SCOPE_ENDPOINT}) with NO disposition: {uncovered}. Either add each "
+        "to POST_ENDPOINT_SCANNED (so the ratchet sees its full-`Shell` "
+        "consumers) or to POST_ENDPOINT_OUT_OF_SCOPE with a justification. "
+        "Leaving it in neither is how the scan scope silently rots."
     )
 
 
@@ -329,3 +523,102 @@ def test_detector_ignores_state_and_protocol_and_other_names():
         "    def e(self, other) -> None: ...\n"   # unannotated but NOT named 'shell'
     )
     assert full_shell_consumers(src, "psh.fake") == set()
+
+
+def test_detector_flags_class_attribute_shell():
+    """5B.1: holding the whole Shell as a FIELD is the same reach as taking it
+    as a parameter. The parameter-only detector returned nothing here."""
+    src = ("class Foo:\n"
+           "    shell: 'Shell'\n")
+    assert ("psh.fake", "Foo.shell") in full_shell_consumers(src, "psh.fake")
+
+
+def test_detector_flags_wrapped_class_attribute_shell():
+    src = ("from typing import Optional\n"
+           "class Foo:\n"
+           "    a: Optional['Shell']\n"
+           "    b: 'Shell | None'\n")
+    found = full_shell_consumers(src, "psh.fake")
+    assert {("psh.fake", "Foo.a"), ("psh.fake", "Foo.b")} <= found
+
+
+def test_detector_ignores_class_attribute_shellstate():
+    """``ShellState`` is a narrowing, not a service locator — it is not counted
+    as a PARAMETER and must not be counted as an ATTRIBUTE either, or the
+    ratchet would flag the very migrations the campaign asked for.
+    ``JobRuntime.shell_state`` is the live instance of this shape."""
+    src = ("from typing import Optional\n"
+           "class Foo:\n"
+           "    shell_state: 'Optional[ShellState]'\n"
+           "    state: 'ShellState'\n")
+    assert full_shell_consumers(src, "psh.fake") == set()
+
+
+# --- Coverage-assertion self-tests (INJECTED enumeration, never real commits) -
+
+def test_coverage_flags_an_undispositioned_post_endpoint_module():
+    """The offender case: a module born after the endpoint that is in neither
+    register must be reported."""
+    uncovered = uncovered_post_endpoint_modules(
+        {"psh/newpkg/newborn.py"}, scanned=[], out_of_scope={})
+    assert uncovered == ["psh/newpkg/newborn.py"]
+
+
+def test_coverage_accepts_a_scanned_post_endpoint_module():
+    assert uncovered_post_endpoint_modules(
+        {"psh/newpkg/newborn.py"},
+        scanned=["psh/newpkg/newborn.py"], out_of_scope={}) == []
+
+
+def test_coverage_accepts_a_declared_out_of_scope_module():
+    assert uncovered_post_endpoint_modules(
+        {"psh/newpkg/newborn.py"}, scanned=[],
+        out_of_scope={"psh/newpkg/newborn.py": "generated stub, no defs"}) == []
+
+
+def test_coverage_reports_only_the_undispositioned_one():
+    """Mixed input: the two dispositioned modules stay silent, the third does
+    not — so a passing coverage assertion cannot be passing vacuously."""
+    assert uncovered_post_endpoint_modules(
+        {"psh/a.py", "psh/b.py", "psh/c.py"},
+        scanned=["psh/a.py"],
+        out_of_scope={"psh/b.py": "declared"}) == ["psh/c.py"]
+
+
+def test_every_out_of_scope_entry_has_justification():
+    for path, reason in POST_ENDPOINT_OUT_OF_SCOPE.items():
+        assert isinstance(reason, str) and len(reason.strip()) >= 20, (
+            f"out-of-scope entry {path} needs a real justification")
+
+
+def test_a_non_ancestor_endpoint_warns_with_its_reason():
+    """The vacuous-pass window is LOUD, and the warning says WHY.
+
+    A RED arm that only checks "something was raised" would be satisfied by any
+    failure at all — the wrong-reason trap. This asserts the warning names the
+    vacuity, so a future edit that keeps warning but drops the explanation is
+    caught too.
+    """
+    with pytest.warns(UserWarning, match="VACUOUSLY") as caught:
+        _warn_selfcheck_unverified(
+            "POST_ENDPOINT coverage",
+            f"SCOPE_ENDPOINT {SCOPE_ENDPOINT} is NOT an ancestor of HEAD, so "
+            "the range is empty and this coverage check would pass VACUOUSLY",
+            f"{SCOPE_ENDPOINT}..HEAD")
+    text = str(caught[0].message)
+    assert "TRUSTED UNVERIFIED" in text        # the shared loud-warning shape
+    assert "NOT an ancestor" in text           # the specific cause
+    assert SCOPE_ENDPOINT in text              # which endpoint
+
+
+def test_ancestor_check_answers_true_for_the_pinned_endpoint():
+    """Control for the arm above: on a normal checkout the endpoint IS an
+    ancestor, so the coverage test runs for real rather than skipping. Without
+    this, the warn path could swallow every invocation and both cells would
+    still look healthy."""
+    ancestry = _endpoint_is_ancestor_of_head()
+    if ancestry is None:
+        pytest.skip("git unavailable")
+    assert ancestry is True, (
+        f"{SCOPE_ENDPOINT} is not an ancestor of HEAD — the coverage assertion "
+        "is skipping, not checking")

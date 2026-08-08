@@ -242,7 +242,7 @@ FUNC_IMPORT_CAPS = {
     'psh.builtins.source_command': 2,
     'psh.builtins.type_builtin': 3,
     'psh.core.assignment_utils': 2,
-    'psh.core.locale_service': 5,
+    'psh.core.locale_service': 3,
     'psh.core.scope': 2,
     'psh.core.state': 3,
     'psh.core.trap_manager': 1,

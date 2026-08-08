@@ -178,14 +178,14 @@ class TestClassMembership:
             posix_class_ranges,
             set_process_active_locale,
         )
-        from psh.expansion.glob import _POSIX_CLASSES
+        from psh.utils.posix_classes import POSIX_CLASSES
         saved = active_locale()
         try:
             # Campaign F2: construction never registers; install explicitly
             # (the activation glue's job in production).
             set_process_active_locale(LocaleService({"LC_ALL": "C"}, apply=False))
-            assert posix_class_ranges("alpha") == _POSIX_CLASSES["alpha"]
-            assert posix_class_ranges("digit") == _POSIX_CLASSES["digit"]
+            assert posix_class_ranges("alpha") == POSIX_CLASSES["alpha"]
+            assert posix_class_ranges("digit") == POSIX_CLASSES["digit"]
             assert posix_class_ranges("not_a_class") is None
         finally:
             set_process_active_locale(saved)

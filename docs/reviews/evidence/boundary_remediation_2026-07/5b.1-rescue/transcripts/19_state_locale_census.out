@@ -1,0 +1,58 @@
+ROOT=/Users/pwilson/src/psh-r5b-1
+HEAD=75cb9c67
+
+==========================================================================
+SITES: every `<...>.state.locale` access in psh/
+==========================================================================
+  psh/core/scope.py:973   self._shell.state.locale
+      loc = (self._shell.state.locale if self._shell is not None
+  psh/executor/array.py:389   self.state.locale
+      return self.state.locale.upper(value)
+  psh/executor/array.py:391   self.state.locale
+      return self.state.locale.lower(value)
+  psh/executor/enhanced_test_evaluator.py:168   self.state.locale
+      return self.state.locale.compare(left, right) < 0
+  psh/executor/enhanced_test_evaluator.py:170   self.state.locale
+      return self.state.locale.compare(left, right) > 0
+  psh/expansion/glob.py:200   self.state.locale
+      return sorted(matches, key=self.state.locale.collate_key) if matches else []
+  psh/expansion/operators.py:513   self.shell.state.locale
+      loc = self.shell.state.locale
+  psh/expansion/parameter_expansion.py:509   self.state.locale
+      loc = self.state.locale
+  psh/expansion/parameter_expansion.py:521   self.state.locale
+      loc = self.state.locale
+  psh/expansion/parameter_expansion.py:533   self.state.locale
+      loc = self.state.locale
+  psh/expansion/parameter_expansion.py:504   self.state.locale
+      return self.state.locale.upper(value[0]) + value[1:]
+  psh/expansion/parameter_expansion.py:516   self.state.locale
+      return self.state.locale.lower(value[0]) + value[1:]
+  psh/expansion/parameter_expansion.py:528   self.state.locale
+      return self.state.locale.toggle(value[0]) + value[1:]
+
+==========================================================================
+SUMMARY
+==========================================================================
+  total ACCESS SITES : 13
+  distinct FILES     : 6
+    psh/core/scope.py  (1 site)
+    psh/executor/array.py  (2 sites)
+    psh/executor/enhanced_test_evaluator.py  (2 sites)
+    psh/expansion/glob.py  (1 site)
+    psh/expansion/operators.py  (1 site)
+    psh/expansion/parameter_expansion.py  (6 sites)
+
+  The protocol docstring quantifies over FILES ('readers'), so the
+  prose number must be 6, not the site count 13.
+
+  Files named in the CURRENT prose (expansion/glob.py,
+  expansion/parameter_expansion.py, executor/enhanced_test_evaluator.py):
+    PRESENT  psh/executor/enhanced_test_evaluator.py
+    PRESENT  psh/expansion/glob.py
+    PRESENT  psh/expansion/parameter_expansion.py
+
+  Files the prose OMITS:
+    MISSING FROM PROSE  psh/core/scope.py
+    MISSING FROM PROSE  psh/executor/array.py
+    MISSING FROM PROSE  psh/expansion/operators.py

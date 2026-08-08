@@ -134,8 +134,8 @@ def test_protocols_package_exports_five():
     import psh.protocols as p
 
     assert set(p.__all__) == {
-        "VariableAccess", "ExpansionContext", "IOContext",
-        "JobRuntime", "LocaleContext",
+        "VariableAccess", "ExpansionRuntime", "IOContext",
+        "JobRuntime", "LocaleAccess",
     }
     for name in p.__all__:
         assert hasattr(p, name), f"psh.protocols does not export {name}"

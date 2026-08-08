@@ -1,0 +1,98 @@
+instrument 02 — ratchet gap enumeration
+ROOT=.
+HEAD=8af29e6da525701416fe1f38752542a309030bd3
+HEAD-short=8af29e6d
+git version: git version 2.49.0
+
+=== A. The SCANNED range (what the ratchet pins today) ===
+--- git log --diff-filter=A --name-only v0.724.0..75ab5625 -- psh/
+psh/ast_nodes/syntax_templates.py
+psh/core/process_lease.py
+psh/core/variable_lookup.py
+psh/executor/command_resolution.py
+psh/executor/foreground_session.py
+psh/expansion/subscript.py
+psh/interactive/history_result.py
+psh/invocation.py
+psh/io_redirect/input_cursor.py
+psh/io_redirect/redirect_program.py
+psh/parser/parse_inputs.py
+psh/parser/parse_outcome.py
+psh/parser/recursive_descent/support/syntax_templates.py
+psh/parser/session.py
+psh/parser/unclosed_expansion.py
+psh/scripting/program_source.py
+
+=== B. GAP RANGE 1: 75ab5625..0215279c (v0.746 -> v0.750) ===
+psh/protocols/__init__.py
+
+=== C. GAP RANGE 2: 0215279c..8af29e6d (remediation range, to tip) ===
+psh/expansion/procsub_render.py
+psh/scripting/analysis_session.py
+
+=== D. CONTINUOUS range v0.724.0..HEAD (the single-range option) ===
+psh/ast_nodes/syntax_templates.py
+psh/core/process_lease.py
+psh/core/variable_lookup.py
+psh/executor/command_resolution.py
+psh/executor/foreground_session.py
+psh/expansion/procsub_render.py
+psh/expansion/subscript.py
+psh/interactive/history_result.py
+psh/invocation.py
+psh/io_redirect/input_cursor.py
+psh/io_redirect/redirect_program.py
+psh/parser/parse_inputs.py
+psh/parser/parse_outcome.py
+psh/parser/recursive_descent/support/syntax_templates.py
+psh/parser/session.py
+psh/parser/unclosed_expansion.py
+psh/protocols/__init__.py
+psh/scripting/analysis_session.py
+psh/scripting/program_source.py
+
+=== E. SANITY: do all enumerated files still EXIST at tip? ===
+(a file created-then-deleted inside the range appears in --diff-filter=A
+ but must not be added to a scan list that asserts existence)
+  EXISTS   psh/ast_nodes/syntax_templates.py
+  EXISTS   psh/core/process_lease.py
+  EXISTS   psh/core/variable_lookup.py
+  EXISTS   psh/executor/command_resolution.py
+  EXISTS   psh/executor/foreground_session.py
+  EXISTS   psh/expansion/procsub_render.py
+  EXISTS   psh/expansion/subscript.py
+  EXISTS   psh/interactive/history_result.py
+  EXISTS   psh/invocation.py
+  EXISTS   psh/io_redirect/input_cursor.py
+  EXISTS   psh/io_redirect/redirect_program.py
+  EXISTS   psh/parser/parse_inputs.py
+  EXISTS   psh/parser/parse_outcome.py
+  EXISTS   psh/parser/recursive_descent/support/syntax_templates.py
+  EXISTS   psh/parser/session.py
+  EXISTS   psh/parser/unclosed_expansion.py
+  EXISTS   psh/protocols/__init__.py
+  EXISTS   psh/scripting/analysis_session.py
+  EXISTS   psh/scripting/program_source.py
+
+=== F. RECONCILE against the hardcoded CREATED_MODULES ===
+hardcoded CREATED_MODULES: 16
+git v0.724.0..75ab5625  : 16
+  identical? True
+  only in git : []
+  only in list: []
+
+GAP1 75ab5625..0215279c : 1  ['psh/protocols/__init__.py']
+GAP2 0215279c..HEAD     : 2  ['psh/expansion/procsub_render.py', 'psh/scripting/analysis_session.py']
+UNION of gaps           : 3  ['psh/expansion/procsub_render.py', 'psh/protocols/__init__.py', 'psh/scripting/analysis_session.py']
+
+CONTINUOUS v0.724.0..HEAD: 19
+  equals scanned|gap1|gap2 ? True
+  difference: []
+
+TOUCHED_PREEXISTING (unchanged by any range):
+  psh/executor/process_launcher.py  exists=True
+  psh/executor/child_policy.py  exists=True
+  psh/scripting/input_sources.py  exists=True
+  psh/builtins/input_reader.py  exists=True
+
+instrument 02 done

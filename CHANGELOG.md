@@ -4,6 +4,52 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.775.0 (2026-08-08) - Boundary structure (remediation slot 5B.1)
+
+First Wave 5 slot (campaign sequence §11 Package 5B, Checkpoint R ruling
+CR-R1). Internal-integrity release: zero shell-observable behavior change
+(compare-bash 3,046/26 exact, +0).
+
+- **Shell-consumer ratchet currency** (the CR-R1 first deliverable):
+  scan scope extended 16→19 modules, closing BOTH enumeration gaps
+  (`psh/protocols/__init__.py` from the v0.746–750 range plus
+  `psh/expansion/procsub_render.py` and `psh/scripting/analysis_session.py`
+  from the remediation range — the Checkpoint R q5-F2 blind spot, which a
+  planted offender proved live in BOTH unscanned modules). The scanned set
+  becomes three lists (pinned enumeration + touched-preexisting +
+  post-endpoint) with a NEW coverage assertion: every `psh/` module born
+  after the pinned endpoint must be scanned or explicitly dispositioned,
+  ancestry-checked with a loud vacuity path. The detector now also sees
+  class-level `shell: 'Shell'` attribute annotations (a second,
+  independent blind spot found in-slot, mutation-proven). Three justified
+  ALLOWLIST entries for `analysis_session`'s embedder-contract chain
+  (construction through the caller's own Shell subclass is not
+  protocol-shaped); the ALLOWLIST contract prose now states its real rule
+  (shrink-only except same-commit extension-coupled entries).
+- **Protocol name collisions resolved**: the zero-consumer protocol side
+  renamed — `psh/protocols` `ExpansionContext` → `ExpansionRuntime`,
+  `LocaleContext` → `LocaleAccess` (the concrete lexer/locale classes
+  keep their names and code). A new red-on-base guard forbids any class
+  name under `psh/` having >1 definition when one is a Protocol
+  (concrete-concrete duplicates deliberately unflagged).
+- **POSIX class table to a neutral owner**: `_POSIX_CLASSES` moved from
+  `psh/expansion/glob.py` to new `psh/utils/posix_classes.py`
+  (byte-identity pinned); the core→expansion private import in
+  `locale_service` is GONE (module-level import of a true leaf; deferred-
+  import count and cap for `psh.core.locale_service` fall 5→3). The
+  glob-only `_POSIX_CLASSES_PATHNAME` variant stays with its sole
+  consumer. Leaf-hood of the new module (and of `psh/utils/__init__`'s
+  eager imports) is pinned.
+- **Dead full-`Shell` store removed**: `AnalysisSession.shell` was
+  written and never read (AST-swept); reintroduction is pinned.
+- Verification: adversarial harness round PASS with zero blockers
+  (varied-shape offender replays, rename-revert guard bite, three-way
+  base/tip/bash POSIX-class differential rows, independent gate-count
+  re-derivation); nine record-hygiene nits fixed in-slot. The slot's
+  gate-count pre-registration was wrong by a phantom term and the gate
+  was right — accounted forward from phase manifests, never reconciled
+  backwards. Evidence: `docs/reviews/evidence/boundary_remediation_2026-07/5b.1-rescue/`.
+
 ## 0.774.0 (2026-08-08) - TIMEFORMAT %P at real resolution (Checkpoint R quick rider)
 
 - `time`'s user/sys measurement moved from `os.times()` (10 ms accounting ticks) to `getrusage` self+children deltas (microseconds). `%P` is now a true CPU percentage for every span: sub-tick commands no longer print `0.00` (`time true`, `time sleep`, external children whose CPU sat below one tick), and the load-dependent absurd face (one tick over a sub-millisecond elapsed, measured 11934.31) is structurally impossible. Approved at Checkpoint R (ruling CR-R2); the LEDGER's %P row closes.

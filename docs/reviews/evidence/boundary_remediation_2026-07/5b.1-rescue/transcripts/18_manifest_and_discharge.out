@@ -1,0 +1,96 @@
+instrument 18 — manifest + discharge audit
+ROOT=.
+HEAD=dc843423cecb1dd11e70f402183ba27c449dcc32
+HEAD-short=dc843423
+generated: 2026-08-08T19:44:28Z
+
+=== INSTRUMENT MANIFEST (self-excluding, md5 per file) ===
+INSTRUMENT                                     MD5                                TRANSCRIPT MD5
+01_protocol_census.py                          57139a8aee48c1b640e096873a34c6f1   37bb287079f4ffde96e8cf07f8bce365
+02_ratchet_gap_enumeration.sh                  03250a9a454b082dcc691ab065a18f5f   5cce47c2786d3cdcfd4c38bad5bf0151
+04_ratchet_scope_mutation.sh                   a8fad2d5c935ea7d76d532b5de1fcc15   8f88592b5eff309449b91eeede459039
+05_live_consumer_sweep.py                      68d79085b313b2d40afa8fcfc5fa4585   2fe54d5481ef9bb94ba16c0196547793
+06_narrowing_cost.py                           ed5465b472a1db185cb872a7a2d5bdff   f0e7abfa08a9b51f6cab75e271891a86
+07_collision_census.py                         3542324e8d97b2a04b83abdd9049f751   9ed0d041406685936b923a6f58537cc4
+08_table_move_design.py                        d8adee8554714062c9602fe9cb413a8a   fdfe7024d153e61f9323e02f78bf1ad2
+09_protocol_consumers.py                       7598148abdc34f6564f91b699354a671   7cbcda738bde95c3700fa843aae07679
+10_carry_sweep.sh                              dce8a190fa72d714c9b287966d99fa87   69d3f10bddf0ac8612155cb50dbd29db
+11_rename_targets_and_guard.py                 eef42fed726386d86916a0356819ccc8   ec8de1ed0b0dccf900816a55568aabc0
+12_extended_detector_readings.py               6d2600df1e3dcb212aa47689fe0981d4   d262b158277965f53c1fe46816d5923c
+13_post_extension_mutation.sh                  3a4b8c702a9ac91c8a4bce85e10c7520   545c559f493e747f22ebcd747d9e7623
+14_collision_guard_mutation.sh                 b139bd65f91369ee607659eda62cb30d   04ddbeed872670de2073eb34c89de5aa
+15_table_move_mutation.sh                      4fd2ddd84bfc9d1cbcf7bcdf10515ecf   fd72fc627ea61beb8f10d599805eccb1
+16_dead_store_pin_mutation.sh                  a587caf16da58f2103dd99f312703a36   8d3975d148c539adec20f51d59b07e99
+17_plus2_account.py                            9dc70e89ab0df860edd7671048cdb952   f4e762eb78c9226ba0ce77a3e65f20df
+19_state_locale_census.py                      dca498888f757a3311921e86715ee042   c033860b96453442d48d466d3a6727a0
+instrument count (excluding self): 17
+
+=== EXTRA TRANSCRIPTS (post-state re-runs, no 1:1 instrument stem) ===
+  05_live_consumer_sweep_POSTEXT.out                   04cbb2ef4e08aba77b055bae6fc8d84a
+  08_table_move_design_POST.out                        1f297f9ce204d1b629601431ff4c4aec
+
+=== COMMITS (this slot) ===
+dc843423 docs: de-line citations and correct the locale-reader census (5B.1 nit-round B)
+743159ab guard: state the contract shipped, close the vacuous window (5B.1 nit-round A)
+75cb9c67 scripting: drop the unread AnalysisSession.shell field (5B.1, commit iv)
+a6b65e96 core: move the POSIX class table below both readers (5B.1, commit iii)
+49e3f482 protocols: resolve the two name collisions (remediation 5B.1, commit ii)
+6698ae6e guard: ratchet scan-scope currency (remediation 5B.1, commit i)
+
+commit count: 6
+
+=== FILES CHANGED vs base, by commit (boundary check) ===
+ .../locale_service_design_2026-07-06.md            |  21 +-
+ psh/core/locale_service.py                         |  12 +-
+ psh/expansion/CLAUDE.md                            |   2 +-
+ psh/expansion/glob.py                              |  35 +-
+ psh/protocols/__init__.py                          |  57 +++-
+ psh/scripting/analysis_session.py                  |   5 +-
+ psh/utils/posix_classes.py                         |  43 +++
+ tests/unit/core/test_locale_service.py             |   6 +-
+ .../unit/protocols/test_protocol_conformance_q1.py |  20 +-
+ tests/unit/scripting/test_analysis_session.py      |  15 +
+ tests/unit/tooling/test_import_layering.py         |   2 +-
+ .../tooling/test_posix_class_table_ownership.py    | 161 +++++++++
+ tests/unit/tooling/test_protocol_layering_q1.py    |   4 +-
+ .../tooling/test_protocol_name_collision_q5.py     | 132 ++++++++
+ .../unit/tooling/test_shell_consumer_ratchet_q1.py | 369 ++++++++++++++++++---
+ 15 files changed, 782 insertions(+), 102 deletions(-)
+
+=== NEVER-TOUCH VERIFICATION (must all be UNCHANGED) ===
+  UNCHANGED  psh/version.py
+  UNCHANGED  CHANGELOG.md
+  UNCHANGED  README.md
+  UNCHANGED  ARCHITECTURE.md
+  UNCHANGED  docs/reviews/README.md
+  UNCHANGED  docs/reviews/evidence/boundary_remediation_2026-07/FLIP-PINS.md
+  UNCHANGED  docs/reviews/evidence/boundary_remediation_2026-07/LEDGER.md
+
+=== DISCHARGE AUDIT — every claim row, anchored ===
+(claim | instrument anchor | proof shape)
+  ratchet scope 16->19 modules          | 02 + test_created_modules_match_enumeration | re-derived by git
+  coverage assertion (post-endpoint)    | 13 arm D3 + 4 pure-fn self-tests            | mutation-proven
+  detector: class-attribute shape       | 09 part 2 + 13 arm D4 + 3 detector cells    | mutation-proven
+  detector: ShellState NOT counted      | 12 (six-shape control) + detector cell      | characterization
+  ALLOWLIST x3 (analysis_session)       | 06 (per-param use classification)           | characterization
+  arm-A offender now BITES              | 13 arms A/B/C (vs 04 pre-extension)         | mutation-proven
+  enumeration drift both directions     | 13 arms D1/D2                               | mutation-proven
+  collision: protocol side renamed      | 07 (per-definition import resolution)       | census
+  collision recurrence guard            | 11 (red-on-base) + 14 arms G1-G4            | mutation-proven
+  table moved to utils leaf             | 08 + test_posix_class_table_ownership        | measured
+  table content byte-identical          | 15 arm T3 + independent transcription pin   | mutation-proven
+  private import GONE                   | 15 arms T1/T2                               | mutation-proven
+  cap 5->3 (genuine -2)                 | 08 POST (guard's own analyzer)              | measured
+  dead store removed                    | 16 arms S1/S2                               | mutation-proven
+  +22 test delta accounted              | 17 (git-show AST vs gate manifests)         | two-source re-derivation
+  gate green                            | tmp/gate-1.txt                              | measured
+  compare-bash +0                       | tmp/compare-bash-1.txt                      | measured
+
+=== GATE / COMPARE-BASH EVIDENCE (hashes of the run logs) ===
+  tmp/gate-1.txt               fcb04e2a2226d74ebabfa2c6f0b94510
+  tmp/compare-bash-1.txt       47ef915372ca699c8c56dbeabdebc248
+
+=== LEDGER ===
+  tmp/w5b1-ledger.md           876a2d86ec2f6baa5a2a3afccc576f6b
+
+instrument 18 done

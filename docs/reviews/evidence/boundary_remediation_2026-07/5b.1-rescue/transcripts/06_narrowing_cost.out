@@ -1,0 +1,40 @@
+==========================================================================
+psh/scripting/analysis_session.py   (HEAD=8af29e6d)
+==========================================================================
+  STORE      L382   [AnalysisSession.__init__]
+             self.shell = shell
+             SRC: self.shell = shell
+  PASS       L390   [AnalysisSession.__init__]
+             self._build_carrier(shell)
+             SRC: self.carrier = self._build_carrier(shell)
+  ATTR       L396   [AnalysisSession.__init__]
+             shell.analysis_mode
+             SRC: self.expand_aliases = shell.analysis_mode != 'format'
+  ATTR       L418   [AnalysisSession._build_carrier]
+             shell.state
+             SRC: options = shell.state.options
+  ATTR       L430   [AnalysisSession._build_carrier]
+             shell.state
+             SRC: shell.state.scope_manager.enable_debug(False)
+  CONSTRUCT  L431   [AnalysisSession._build_carrier]
+             type(shell)(parent_shell=shell, norc=True)
+             SRC: return type(shell)(parent_shell=shell, norc=True)
+  PASS-KW    L431   [AnalysisSession._build_carrier]
+             type(shell)(parent_shell=shell)
+             SRC: return type(shell)(parent_shell=shell, norc=True)
+  PASS       L431   [AnalysisSession._build_carrier]
+             type(shell)
+             SRC: return type(shell)(parent_shell=shell, norc=True)
+  ATTR       L435   [AnalysisSession._build_carrier]
+             shell.state
+             SRC: shell.state.scope_manager.enable_debug(True)
+  PASS       L586   [parse_for_analysis]
+             AnalysisSession(shell)
+             SRC: return AnalysisSession(shell).analyze(
+
+  DISTINCT shell.<attr> touched:
+    shell.analysis_mode
+    shell.state
+  DISTINCT self.shell.<attr> reads: (none)
+  CONSTRUCTION sites (protocol-unmodelable): 1
+    L431 [AnalysisSession._build_carrier] type(shell)(parent_shell=shell, norc=True)

@@ -205,6 +205,16 @@ centralization, the surface is already fairly consolidated. Reference map (from
 a full-tree sweep; file:line):
 
 **Character-class tables (single source of truth):**
+
+> **Moved since this record was written (remediation 5B.1).** The ASCII table
+> now lives at `psh/utils/posix_classes.py#POSIX_CLASSES` and is imported at
+> module level by both readers. It was in `expansion/glob.py`, which put it
+> ABOVE its other consumer and forced `core/locale_service.py` to reach up
+> through a deferred import of a private name. The table's CONTENTS are
+> unchanged — byte-identity is pinned in
+> `tests/unit/tooling/test_posix_class_table_ownership.py`; only the owner
+> moved. Line numbers below are as of 2026-07-06 and are not maintained.
+
 - `psh/expansion/glob.py:18` `_POSIX_CLASSES` (ASCII ranges) — THE table.
 - `psh/expansion/glob.py:38` `_POSIX_CLASSES_PATHNAME` (punct minus `/`).
 - `psh/expansion/glob.py:63` `translate_posix_classes()` (shared with `[[ =~ ]]`).
@@ -212,7 +222,9 @@ a full-tree sweep; file:line):
 
 **The one class-interpretation chokepoint (all four match sites route here):**
 - `psh/expansion/extglob.py:307` `_bracket_to_regex(content, ic)` — substitutes
-  `_POSIX_CLASSES`, expands ranges, handles nocasematch. Reached from
+  the ASCII class table (then `glob._POSIX_CLASSES`; since 5B.1
+  `utils/posix_classes.py#POSIX_CLASSES`), expands ranges, handles
+  nocasematch. Reached from
   `_convert_pattern` (glob→regex, the default path for `case`/`[[ == ]]`/`${#}`)
   and from `_match_from`/`_bracket_match` (the per-char backtracking matcher used
   for negation/leftmost-longest).
@@ -256,7 +268,9 @@ keeps them C-locale/ASCII regardless of locale): the arithmetic tokenizer
 (`brace_expansion.py:559`), fd-number/option/keyword parsing, and all internal
 `.lower()` on option/token names. These classify *syntax*, not user data.
 
-**Already-centralized (v0.638):** the glob→regex converter and `_POSIX_CLASSES`
+**Already-centralized (v0.638):** the glob→regex converter and the ASCII
+class table (then `glob._POSIX_CLASSES`, now
+`utils/posix_classes.py#POSIX_CLASSES` — 5B.1 moved the owner, not the data)
 are the sole class-interpretation point, so a locale-aware fix has exactly one
 place to change per concern — a strong starting position.
 
@@ -440,7 +454,8 @@ Recommended **bash-faithful subset, staged**:
 
 ### 5.3 Modes
 
-- **C / POSIX** → ASCII class tables (exactly today's `_POSIX_CLASSES`),
+- **C / POSIX** → ASCII class tables (as of this record `_POSIX_CLASSES`;
+  now `utils/posix_classes.py#POSIX_CLASSES`, byte-identical),
   ASCII-only case mapping, codepoint collation. Byte-identical to current psh and
   to bash-C on all platforms. This is the fast path (no `setlocale` needed, no
   per-char libc/Unicode call).

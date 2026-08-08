@@ -1,0 +1,36 @@
+instrument 14 — collision guard mutation battery
+ROOT=.
+HEAD=6698ae6e7619ab96c2aa7369cd3c36bf93424721
+
+=== CONTROL: unmutated tree GREEN ===
+.......                                                                  [100%]
+7 passed in 0.60s
+
+== arm G1 (expect: FAILED)
+FAILED tests/unit/tooling/test_protocol_name_collision_q5.py::test_no_protocol_name_collisions
+FAILED tests/unit/tooling/test_protocol_name_collision_q5.py::test_class_definitions_finds_protocols_and_concretes
+2 failed, 5 passed in 0.62s
+   -> arm G1: FAILED (expected FAILED)
+
+== arm G2 (expect: FAILED)
+FAILED tests/unit/tooling/test_protocol_name_collision_q5.py::test_no_protocol_name_collisions
+1 failed, 6 passed in 0.60s
+   -> arm G2: FAILED (expected FAILED)
+
+== arm G3 (expect: PASSED)
+7 passed in 0.60s
+   -> arm G3: PASSED (expected PASSED)
+
+== arm G4 (expect: PASSED)
+7 passed in 0.59s
+   -> arm G4: PASSED (expected PASSED)
+
+=== POST-STATE ===
+  RESTORED-IDENTICAL  psh/protocols/__init__.py
+  RESTORED-IDENTICAL  psh/lexer/expansion_parser.py
+
+final control:
+.......                                                                  [100%]
+7 passed in 0.60s
+
+instrument 14 done

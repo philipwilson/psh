@@ -1,0 +1,112 @@
+ROOT=/Users/pwilson/src/psh-r5b-1
+HEAD=8af29e6d
+
+==========================================================================
+PER-PROTOCOL CONSUMER CENSUS
+==========================================================================
+
+VariableAccess   (defined in psh/protocols/__init__.py)
+  PRODUCTION consumers: 0
+    (NONE — 'defined but unused' by 5B's exit criterion)
+  TEST references: 1
+    tests/unit/protocols/test_protocol_conformance_q1.py   ['IMPORT', 'ISINSTANCE']
+
+ExpansionContext   (defined in psh/protocols/__init__.py)
+  PRODUCTION consumers: 1
+    psh/lexer/modular_lexer.py   ['IMPORT']
+        L7: IMPORT
+  TEST references: 1
+    tests/unit/protocols/test_protocol_conformance_q1.py   ['IMPORT', 'ISINSTANCE']
+
+IOContext   (defined in psh/protocols/__init__.py)
+  PRODUCTION consumers: 2
+    psh/builtins/input_reader.py   ['ANNOTATION', 'IMPORT']
+        L66: IMPORT
+        L407: ANNOTATION 'IOContext'
+    psh/io_redirect/input_cursor.py   ['ANNOTATION', 'IMPORT']
+        L65: IMPORT
+        L146: ANNOTATION 'IOContext'
+  TEST references: 1
+    tests/unit/protocols/test_protocol_conformance_q1.py   ['IMPORT', 'ISINSTANCE']
+
+JobRuntime   (defined in psh/protocols/__init__.py)
+  PRODUCTION consumers: 1
+    psh/executor/foreground_session.py   ['ANNOTATION', 'IMPORT']
+        L41: IMPORT
+        L51: ANNOTATION 'JobRuntime'
+        L63: ANNOTATION 'JobRuntime'
+  TEST references: 1
+    tests/unit/protocols/test_protocol_conformance_q1.py   ['IMPORT', 'ISINSTANCE']
+
+LocaleContext   (defined in psh/protocols/__init__.py)
+  PRODUCTION consumers: 1
+    psh/core/locale_service.py   ['ANNOTATION']
+        L139: ANNOTATION LocaleContext
+  TEST references: 1
+    tests/unit/protocols/test_protocol_conformance_q1.py   ['IMPORT', 'ISINSTANCE']
+
+VariableExpanderProtocol   (defined in psh/expansion/_protocols.py)
+  PRODUCTION consumers: 4
+    psh/expansion/arrays.py   ['IMPORT']
+        L14: IMPORT
+    psh/expansion/fields.py   ['IMPORT']
+        L12: IMPORT
+    psh/expansion/operands.py   ['IMPORT']
+        L62: IMPORT
+    psh/expansion/operators.py   ['IMPORT']
+        L27: IMPORT
+  TEST references: 0
+
+CommandParsersProtocol   (defined in psh/parser/combinators/commands/_protocols.py)
+  PRODUCTION consumers: 4
+    psh/parser/combinators/commands/pipelines.py   ['IMPORT']
+        L23: IMPORT
+    psh/parser/combinators/commands/redirections.py   ['IMPORT']
+        L24: IMPORT
+    psh/parser/combinators/commands/simple.py   ['IMPORT']
+        L18: IMPORT
+    psh/parser/combinators/commands/statements.py   ['IMPORT']
+        L16: IMPORT
+  TEST references: 0
+
+ControlStructureProtocol   (defined in psh/parser/combinators/control_structures/_protocols.py)
+  PRODUCTION consumers: 3
+    psh/parser/combinators/control_structures/conditionals.py   ['IMPORT']
+        L23: IMPORT
+    psh/parser/combinators/control_structures/loops.py   ['IMPORT']
+        L35: IMPORT
+    psh/parser/combinators/control_structures/structures.py   ['IMPORT']
+        L28: IMPORT
+  TEST references: 0
+
+_TemplateCtx   (defined in psh/parser/recursive_descent/support/syntax_templates.py)
+  PRODUCTION consumers: 0
+    (NONE — 'defined but unused' by 5B's exit criterion)
+  TEST references: 0
+
+==========================================================================
+SUMMARY (production consumers, test references)
+==========================================================================
+  VariableAccess               prod=0   tests=1  <<< ZERO PRODUCTION CONSUMERS
+  ExpansionContext             prod=1   tests=1
+  IOContext                    prod=2   tests=1
+  JobRuntime                   prod=1   tests=1
+  LocaleContext                prod=1   tests=1
+  VariableExpanderProtocol     prod=4   tests=0
+  CommandParsersProtocol       prod=4   tests=0
+  ControlStructureProtocol     prod=3   tests=0
+  _TemplateCtx                 prod=0   tests=0  <<< ZERO PRODUCTION CONSUMERS
+
+==========================================================================
+PART 2 — detector blind spot: class-level `shell: 'Shell'` attribute
+==========================================================================
+  A. PARAMETER form  `def bar(self, shell: 'Shell')`
+     detector result: [('psh.fake', 'Foo.bar')]
+  B. CLASS-ATTRIBUTE form  `shell: 'Shell'` (VariableExpanderProtocol:28)
+     detector result: []
+
+  => The ratchet detects PARAMETERS only. A full-`Shell` reference held
+     as a class ATTRIBUTE is invisible to it, in scanned modules too.
+     This is a SECOND blind spot, independent of the scan-scope gap:
+     widening scope alone would NOT catch VariableExpanderProtocol's
+     `shell: 'Shell'` member if expansion/_protocols.py entered scope.

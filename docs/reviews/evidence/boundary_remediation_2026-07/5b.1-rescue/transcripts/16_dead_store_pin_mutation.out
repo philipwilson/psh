@@ -1,0 +1,25 @@
+instrument 16 — dead-store pin mutation
+ROOT=.
+HEAD=a6b65e9627d1141d623935eb278fe11db47a9d62
+
+=== CONTROL: unmutated tree GREEN ===
+............................................................             [100%]
+132 passed in 5.81s
+
+== arm S1 (expect: FAILED) — reintroducing `self.shell = shell`
+FAILED tests/unit/scripting/test_analysis_session.py::TestSessionStateIsIsolatedFromTheShell::test_the_session_does_not_retain_the_analyzed_shell
+1 failed, 131 passed in 5.84s
+   -> arm S1: FAILED (expected FAILED)
+
+== arm S2 (expect: PASSED) — reintroducing `self.some_unrelated_field = shell`
+132 passed in 5.95s
+   -> arm S2: PASSED (expected PASSED)
+
+=== POST-STATE ===
+  RESTORED-IDENTICAL  psh/scripting/analysis_session.py
+
+final control:
+............................................................             [100%]
+132 passed in 5.95s
+
+instrument 16 done

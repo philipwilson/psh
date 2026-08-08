@@ -1,0 +1,34 @@
+instrument 04 — ratchet scope mutation (arm A / B / C)
+ROOT=.
+HEAD=8af29e6da525701416fe1f38752542a309030bd3
+backup dir=/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T//w5b1-mut.aqKWei
+
+=== PRE-STATE: victim files must be clean before mutating ===
+(empty above = clean)
+
+== arm A: offender in psh/scripting/analysis_session.py (expect: PASSED)
+...........                                                              [100%]
+11 passed in 0.06s
+   -> arm A result: PASSED   (expected: PASSED)
+
+== arm B: offender in psh/parser/session.py (expect: FAILED)
+E   assert not {('psh.parser.session', 'w5b1_synthetic_offender')}
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_no_unrecorded_full_shell_consumers
+1 failed, 10 passed in 0.07s
+   -> arm B result: FAILED   (expected: FAILED)
+
+== arm C: offender in psh/expansion/procsub_render.py (expect: PASSED)
+...........                                                              [100%]
+11 passed in 0.06s
+   -> arm C result: PASSED   (expected: PASSED)
+
+=== POST-STATE: byte-identity after restore ===
+  RESTORED-IDENTICAL  psh/scripting/analysis_session.py
+  RESTORED-IDENTICAL  psh/parser/session.py
+  RESTORED-IDENTICAL  psh/expansion/procsub_render.py
+
+git status for victims (must be empty):
+(empty above = clean)
+
+instrument 04 done
