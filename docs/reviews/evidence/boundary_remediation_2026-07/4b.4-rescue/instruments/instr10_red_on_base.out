@@ -1,0 +1,14 @@
+FFF.FFFFFF....FF                                                         [100%]
+=========================== short test summary info ============================
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestDupAliasesTheDescription::test_dup_spelling_shares_the_surplus[exec-permanent]
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestDupAliasesTheDescription::test_dup_spelling_shares_the_surplus[named-fd]
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestDupAliasesTheDescription::test_dup_spelling_shares_the_surplus[per-command]
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestTempFrameScopesTheCursor::test_surplus_does_not_leak_into_the_frame[builtin-redirect]
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestTempFrameScopesTheCursor::test_surplus_does_not_leak_into_the_frame[brace-group]
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestTempFrameScopesTheCursor::test_surplus_does_not_leak_into_the_frame[while-loop]
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestTempFrameScopesTheCursor::test_frame_surplus_does_not_escape_into_stdin[builtin-redirect]
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestTempFrameScopesTheCursor::test_frame_surplus_does_not_escape_into_stdin[brace-group]
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestTempFrameScopesTheCursor::test_nested_frames_restore_innermost_first
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestTimeoutStrandIsContainedNotLeaked::test_stranded_partial_does_not_contaminate_a_temp_frame
+FAILED tests/integration/redirection/test_input_cursor_contract_4b4.py::TestTimeoutStrandIsContainedNotLeaked::test_stranded_partial_is_not_lost_across_a_dup
+11 failed, 5 passed in 13.90s

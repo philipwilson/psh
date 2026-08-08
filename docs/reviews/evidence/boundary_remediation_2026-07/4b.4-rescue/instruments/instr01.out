@@ -1,0 +1,23 @@
+PARENT DISCRIMINATOR: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+CHILD  DISCRIMINATOR: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+== LEG A  temp-frame contamination (strand = lone \xc3) ==
+A bash: 0000000    v   = 303   |   x   =   F   I   L   E   L   I   N   E  \n    
+0000017
+A psh : 0000000    v   =   |   x   = 303   F   I   L   E   L   I   N   E  \n    
+0000017
+A-ctl bash: 0000000    v   =   A   B   |   x   =   F   I   L   E   L   I   N   E  \n
+0000020
+A-ctl psh : 0000000    v   =   A   B   |   x   =   F   I   L   E   L   I   N   E  \n
+0000020
+
+== LEG B  dup loss (two-phase: \xc3 then \xa9Z\n) ==
+B bash: 0000000    v   = 303   |   y   = 251   Z   |   w   =  \n                
+0000014
+B psh : 0000000    v   =   |   y   = 251   Z   |   w   =  \n                    
+0000013
+B-ctl bash: 0000000    v   = 303   |   y   =   Q   |   w   =   Z  \n                
+0000014
+B-ctl psh : 0000000    v   =   |   y   =   Q   Z   |   w   =  \n                    
+0000013

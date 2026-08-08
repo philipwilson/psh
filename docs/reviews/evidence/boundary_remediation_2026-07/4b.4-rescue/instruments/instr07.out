@@ -1,0 +1,46 @@
+DISCRIMINATOR parent+child: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+CLOSE emulation: /Users/pwilson/src/psh-r4b-4/tmp/w4b4/closesite/sitecustomize.py
+
+========================================================================
+CONTROLS — the common path must NOT move
+========================================================================
+### CTL temp-frame, no surplus   (oracle = bash utf8)
+    psh      : b'S1|F1|S2\n'   [MATCH]
+    psh+CLOSE: b'S1|F1|S2\n'   [MATCH]
+    bash-utf8: b'S1|F1|S2\n'
+    -> CLOSE holds
+
+### CTL dup alias, no surplus   (oracle = bash utf8)
+    psh      : b'one|two|three\n'   [MATCH]
+    psh+CLOSE: b'one|two|three\n'   [MATCH]
+    bash-utf8: b'one|two|three\n'
+    -> CLOSE holds
+
+### CTL same-fd carryover (I1 MUST-HOLD — must stay MATCH)   (oracle = bash C)
+    psh      : b'x=<\xc3> y=<A>\n'   [MATCH]
+    psh+CLOSE: b'x=<\xc3> y=<A>\n'   [MATCH]
+    bash-C   : b'x=<\xc3> y=<A>\n'
+    -> CLOSE holds
+
+========================================================================
+THE FACES
+========================================================================
+### R-MALFORMED x S-TEMPFRAME forward (I1 (c'))   (oracle = bash C)
+    psh      : b'a=<\xc3> b=<AF1> c=<\n>\n'   [DIVERGE]
+    psh+CLOSE: b'a=<\xc3> b=<F1> c=<A>\n'   [MATCH]
+    bash-C   : b'a=<\xc3> b=<F1> c=<A>\n'
+    -> CLOSE FIXES
+
+### R-MALFORMED x S-TEMPFRAME REVERSE (new face)   (oracle = bash C)
+    psh      : b'a=<\xc3> b=<ASTDIN1>\n'   [DIVERGE]
+    psh+CLOSE: b'a=<\xc3> b=<STDIN1>\n'   [MATCH]
+    bash-C   : b'a=<\xc3> b=<STDIN1>\n'
+    -> CLOSE FIXES
+
+### R-MALFORMED x S-DUP (I1 (b))   (oracle = bash C)
+    psh      : b'a=<\xc3> b=<\n>\n'   [DIVERGE]
+    psh+CLOSE: b'a=<\xc3> b=<A>\n'   [MATCH]
+    bash-C   : b'a=<\xc3> b=<A>\n'
+    -> CLOSE FIXES
+

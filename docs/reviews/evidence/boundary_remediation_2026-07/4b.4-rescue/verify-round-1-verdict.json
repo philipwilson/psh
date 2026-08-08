@@ -1,0 +1,403 @@
+{
+  "summary": "Adversarial verification of a Boundary Remediation Campaign dev branch before integration",
+  "agentCount": 4,
+  "logs": [
+    "fix/remediation-4b-4: 7 blockers, 17 nits"
+  ],
+  "result": {
+    "branch": "fix/remediation-4b-4",
+    "briefPath": "/Users/pwilson/src/psh/tmp/remediation-ledgers/briefs/4b.4.md",
+    "overall": "BOUNCE",
+    "blockers": [
+      {
+        "task": "diffAudit",
+        "severity": "BLOCKER",
+        "description": "NEW BYTE-LOSS REGRESSION (green on base, red at tip, mutation-proven): InputCursorRegistry.pop_frame (psh/io_redirect/input_cursor.py:236-239) unconditionally destroys the cursor of whatever description the frame left on the fd — but when the frame's binding was created by bind_dup it is an ALIAS to a description ANOTHER fd still names. Popping a per-command dup frame therefore destroys the live cursor of fd 0 (or of the dup source) and every byte it was holding vanishes. This is exactly the defect class the slot exists to close (leg B, 'reaches no reader at all'), reintroduced through a different door, and it FALSIFIES the user-guide text this same branch adds ('a duplicated descriptor (exec 3<&0) shares them because it shares the source'). Fix must not drop a description still present in _fd_to_desc. The dev's 96-node suite is blind to it: the per-command dup cell has no third read, and every timeout cell runs inside a pipeline, where this route is not taken.",
+        "evidence": "All rows REPLAYED at base e3924ed3 and tip 2f355fc3 in my own detached worktrees (discriminator asserted: psh.__file__ under the tree under test). Oracle = C-locale /opt/homebrew/bin/bash 5.2. Rows are NOT in the dev's suite.\n\nR1 (-c mode), stdin \\xc3ABC\\n, script: read -N 1 a; true 3<&0; read -N 1 b; printf \"a=<%s> b=<%s>\\n\" \"$a\" \"$b\"\n  BASE psh: a=<\\303> b=<A>   bash-C: a=<\\303> b=<A>  -> AGREE\n  TIP  psh: a=<\\303> b=<B>   bash-C: a=<\\303> b=<A>  -> DIVERGE (the held 'A' is destroyed)\nR2 same with ':' instead of 'true' — identical split.\nN5 mapfile: read -N 1 a; true 3<&0; mapfile -t -n 1 L  (stdin \\xc3ABC\\nX\\n)\n  BASE psh L=<ABC> == bash-C ; TIP psh L=<BC>  -> byte dropped out of mapfile's array element.\nN6 FILE input mode (same script as a script file): BASE b=<A> == bash-C ; TIP b=<B>.\npiped-stdin mode (printf ... | psh -c ...): BASE b=<A> ; TIP b=<B>.\nN4 move form 'true 3<&0-': BASE psh b=<A> ; TIP psh b=<B>.\nControls R6/N10 ('true 2>/dev/null', 'true </dev/null' between the reads): unchanged base->tip, so the trigger is specifically the dup.\n\nMUTATION PROOF of causation (copy of tip, one line changed in pop_frame):\n  'if inner is not None:' -> 'if inner is not None and inner not in self._fd_to_desc.values():'\n  R1/R2/N4/N5/N6 all go GREEN (b=<A>, L=<ABC>) while the slot's own leg-B row R3 stays GREEN.\n\nINCOMPLETENESS OF THE CLAIMED CLOSE from the same defect — N9: exec 3<&0; read -N 1 a; true 4<&3; read -N 1 -u 3 b (stdin \\xc3ABC\\n): BASE psh b=<B>, TIP psh b=<B>, bash-C b=<A>. Dup aliasing does not survive an intervening frame, so leg B is only closed when nothing dups in between.\n\nDev suite at tip: pytest tests/integration/redirection/test_input_cursor_contract_4b4.py tests/integration/redirection/test_input_cursor_identity_i1.py tests/unit/io_redirect/test_input_cursor_registry_4b4.py tests/unit/builtins/test_input_decoder_seam_4b2.py tests/unit/builtins/test_input_reader_record_bytes.py -q  =>  96 passed."
+      },
+      {
+        "task": "diffAudit",
+        "severity": "BLOCKER",
+        "description": "NEW BYTE-REORDERING REGRESSION, distinct root cause: IOManager.cursor_scope_fds (psh/io_redirect/manager.py:352-354) derives the frame's target fd as '0 if redirect.type.startswith(\"<\") else 1' whenever redirect.fd is None. For a named-fd redirect ({v}<&n, {v}<file) redirect.fd IS None because the fd number is only allocated at apply time — so the frame scopes fd 0, which the redirect never re-points, and never scopes the fd it actually creates. Consequence: a read carrying a {v}<&0 redirect is hidden from its OWN description's buffered bytes, which then resurface in the following read — the bytes are reordered. Secondary consequence: the allocated fd's binding is left unscoped and dangles in _fd_to_desc after the frame pops.",
+        "evidence": "Row P1 (not in the dev's suite), -c mode, stdin \\xc3ABCD\\n, script: read -N 1 a; read -N 1 b {v}<&0; read -N 1 c; printf \"a=<%s> b=<%s> c=<%s>\\n\" \"$a\" \"$b\" \"$c\"  — oracle C-locale /opt/homebrew/bin/bash 5.2:\n  BASE psh: a=<\\303> b=<A> c=<B>   bash-C: a=<\\303> b=<A> c=<B>  -> AGREE\n  TIP  psh: a=<\\303> b=<B> c=<A>   bash-C: a=<\\303> b=<A> c=<B>  -> DIVERGE (order swapped)\n\nDistinct-cause proof: replayed against the tip copy carrying the BLOCKER-1 pop_frame mutation — P1 is STILL RED there (b=<B> c=<A>), so it is not a symptom of the pop_frame defect.\n\nThe dev's only named-fd cell, test_dup_spelling_shares_the_surplus[named-fd], uses the PERMANENT 'exec {v}<&0' spelling, which never enters a builtin frame, so it passes."
+      },
+      {
+        "task": "diffAudit",
+        "severity": "BLOCKER",
+        "description": "BRIEF ITEM SILENTLY DROPPED + DANGLING REFERENCES: the brief requires 's1: whichever disposition, the I1-style pins get their DESIGNED flip or an explicit re-affirmation', and the FLIP-PINS row assigns the D-4B.2-s1 pins to this slot with 'doc + code move together'. The branch lands the user-guide documentation but leaves the s1 pin files asserting the opposite — that the divergence is still deferred to 4B.4 and still undocumented. Those statements are false at this tip, and they are baked into named failure messages. No re-affirmation text was added anywhere.",
+        "evidence": "tests/unit/builtins/test_input_decoder_seam_4b2.py (UNCHANGED in this branch outside TestCursorStateCensus):\n  :24-26  \"That divergence is successor row D-4B.2-s1 (deferred to slot 4B.4, integrator ruling (c)). It is **documented NOWHERE in the user guide** — that ABSENCE is part of what s1 carries to 4B.4.\"\n  :216-222 \"That divergence is successor row **D-4B.2-s1**, deferred to slot 4B.4 by integrator ruling (c). It is **UNDOCUMENTED**: no user-guide line describes it, and that absence travels with s1. ... If 4B.4 rules the other way, these cells and that documentation gap move together.\"\ntests/unit/builtins/test_read_exact_timeout_4b2.py (UNCHANGED):\n  :34   \"**D-4B.2-s1 (NEW-1, deferred to slot 4B.4):**\"\n  :216  \"the stranded partial byte is D-4B.2-s1 (slot 4B.4).\"\n  :222 and :346  S1 = \"D-4B.2-s1 (timeout-partial assignment, deferred to 4B.4)\"  <- inside the named failure messages.\nThe branch's own docs/user_guide/17_differences_from_bash.md hunk adds exactly the missing line ('A `read -t` that times out mid-character keeps the partial character.'), so every 'UNDOCUMENTED' claim above is now a false statement shipped in the suite."
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "BLOCKER",
+        "description": "Brief Phase A item 2 — 'The s1 bash table, completed' (timeout-partial assignment across -N/-n/plain x pipe/tty x complete-vs-partial chars x what bash assigns) — appears NOWHERE in the slot ledger: no table, no verdict, no evidence. D1 planned it as A2; D2 delivered no such section; the slot ledger relabels its §3 coupling measurement 'A2/A5'; every timeout cell in every instrument and pin suite uses -N only (no -n, no plain, no tty arm anywhere). The inbox R2 ruling (a) accepted 'Census, s1 table, matrix' as complete — accepting an artifact that does not exist — and the user-guide note (3d285b56) generalizes the divergence to ALL read -t forms on the strength of -N-only evidence. MITIGATION (my probes, fixed instrument with rc=142 validity control both shells): plain and -n 2 pipe arms both diverge in exactly the documented hold-and-resume shape with byte conservation intact, so the doc is not falsified on those arms; the tty arm remains unprobed by anyone.",
+        "evidence": "grep across tmp/w4b4/*.py|*.out and both new suites: every timed read is 'read -t ... -N n'; SLOT-LEDGER-4b4.md has no s1-table section; INTEGRATOR-INBOX.md:207 (planned) vs D2 (absent) vs R2 line ~538 ('s1 table ... complete'); my probe at tip 2f355fc3: plain arm psh 'rc1=142 rc2=0 v= w=c3a9' vs bash 5.2.26 'rc1=142 rc2=0 v=c3 w=a9', identical for -n 2"
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "BLOCKER",
+        "description": "Brief pin item 'strand x dup x dup-again' composition cell silently dropped: no chained-dup cell exists in any suite (contract, registry-unit, i1), the ledger never mentions it, and D6's done-criteria table rewords the brief's composition list to omit it ('nested frames; dup x strand; frame x strand; fork; exec-rebind'). MITIGATION (my probe): 'read -N 1 a; exec 3<&0; exec 4<&3; read -N 1 -u 4 b' with the malformed-strand stdin matches C-locale bash byte-for-byte (a=<\\303> b=<A> both shells) — transitive description aliasing works, so this is a pin-coverage gap, not a behavior gap; a one-cell addition closes it.",
+        "evidence": "grep -rn '4<&3|dup.?again|chained' over both worktree test trees, SLOT-LEDGER-4b4.md and INTEGRATOR-INBOX.md: zero hits; brief 4b.4.md lines 152-155 lists 'strand x dup x dup-again' explicitly; probe output at tip identical to /opt/homebrew/bin/bash LC_ALL=C"
+      },
+      {
+        "task": "reprobe",
+        "severity": "BLOCKER",
+        "description": "REGRESSION (green at base, byte-destroying at tip): the new alias bookkeeping made the registry's two cursor-drop sites reference-blind. InputCursorRegistry.pop_frame (input_cursor.py:227) and rebind (input_cursor.py:181) drop a description's cursor without checking whether ANOTHER fd still references that description. After bind_dup creates an alias, (a) any builtin carrying a per-command dup whose source fd holds buffered cursor state destroys that state at frame pop (manager.py:1075 restore path), and (b) `exec`-closing or rebinding the alias fd destroys the shared cursor via rebind (command.py:1085). Buffered bytes (malformed-split surplus or a held -t timeout partial) are then delivered to NO reader — precisely the 'no byte may reach no reader at all' property this slot's leg-B headline claims to close, and it falsifies the landed input_cursor.py docstring ('the held bytes can no longer reach another source or be lost') and the new user-guide sentence ('no input is lost either way'). Ordinary idioms trigger it: `true 3<&0` between two reads; `exec 3<&0; exec 3<&-` (the standard save/close-stdin pattern); `exec 4>&3; exec 4>&-`; output dups to a read fd (`>&0`). None of the 16 contract cells, 17 registry cells, or 5 M8 arms covers a pop/rebind of a still-referenced description (the dev's per-command dup cell consumes the surplus inside the frame, so pop always fires on an empty cursor).",
+        "evidence": "Probes vs live PATH bash 5.2.26 at tip 2f355fc35a2a0acb402589a59b6beab48756e331 / base e3924ed35ce5131f1cd23062f52acff6e010b18f, own detached worktrees, two-level discriminator asserted; harness /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/probe_4b4.py. Clean MATCH-at-base -> DIVERGE-at-tip regressions (C locale, stdin \\xc3AB\\n unless noted): X1 `read -N 1 a; true 3<&0; read -N 1 b; read -N 1 c` -> bash b=A c=B, tip b=B c=Z (byte A destroyed; base matched bash). X3 `read -N 1 a; true >&0; read -N 1 b` -> bash b=A, tip b=B (base matched). X4 `read -N 1 a; exec 3<&0; exec 3<&-; read -N 1 b` -> bash b=A, tip b=B (base matched). W6 `exec 3<h(\\xc3KLM); read -N1 -u3 a; exec 4>&3; exec 4>&-; read -N1 -u3 b` -> bash b=K, tip b=L (base matched). Conservation regressions (timeout route, UTF-8, r1=142 validity control both shells): X5 strand \\xc3 then `true 3<&0`, feed \\xa9Z -> bash total \\xc3\\xa9Z, tip total \\xa9Z (\\xc3 destroyed; base conserved \\xc3\\xa9Z); X6 strand; exec 3<&0; true 3<&0 -> tip loses \\xc3 (base conserved, reordered); X2 `read -N 2 -u 3 b 3<&0` leaving surplus on the shared cursor at pop -> bash c=B, tip c=\\n (B destroyed). Deterministic on re-run. Registry-level mechanism demo at tip: bind_dup(9,r) after cursor exists on r, push_frame([9])+pop_frame -> cursor_for_fd(r) is no longer the outer cursor (False); bind_dup(9,r)+rebind(9) -> same destruction (False). All 16 contract cells + both M8 lock files green at this same tip, i.e. the defect escapes the shipped suite.",
+        "confidence": null
+      },
+      {
+        "task": "reprobe",
+        "severity": "BLOCKER",
+        "description": "Dup-site census incomplete and the gap is UNDECLARED: compound-command per-command dups (`{ ...; } 3<&0`, `while ...; done 3<&0`) run through guarded_redirections -> apply_redirections, which got frame scoping (_scoped_input_cursors) but NO bind_dup call — dup_alias_fds is consulted only on the exec path (command.py), the builtin-frame path (manager.py DUP_FD branch), and the {v}<&n allocator (file_redirect.py). Inside such a frame the dup'd fd gets a FRESH frame-scoped cursor, so held/surplus bytes on the source fd are not visible through the dup — the same divergence class as the I1 (b) face this slot claims closed (bytes surface on the wrong read vs bash; conserved but reordered). This is pre-existing behavior (identical at base), so it is not a regression — but under the ruled CLOSE-both-surfaces outcome it is a divergent dup spelling left unfixed AND undeclared: the only registered open row is I1 (d), and the landed docs overclaim universal closure (io_redirect/CLAUDE.md: 'a DUP aliases the instance -> both fds share one cursor'; input_cursor.py docstring 'Dup — exec 3<&0 makes one description wear two fds ... both fds share one cursor'; user-guide: 'a duplicated descriptor (exec 3<&0) shares them because it shares the source'). Task check 3's rule — every dup spelling aliases the OpenDescription or carries a declared reason — fails for this spelling: no declared reason exists anywhere in the tree (grep for a compound-dup caveat comes back empty).",
+        "evidence": "At tip 2f355fc3 vs live bash 5.2.26: X7 (UTF-8, strand \\xc3 with r1=142 control, then `{ read -t 4 -u 3 y; } 3<&0`, feed \\xa9Q) -> bash v=\\xc3 y=\\xa9Q w='', psh v='' y=\\xa9Q w=\\xc3 — fd 3 never saw the held byte; it surfaced on fd 0's LATER read (bytes conserved, wrong stream position). X8 (C locale, stdin \\xc3ABZ\\n, `read -N 1 a; { read -N 1 -u 3 b; } 3<&0; read -N 1 c`) -> bash b=A c=B, psh b=B c=A (swapped). Identical psh output at base e3924ed3 (replayed both ends). Code: guarded_redirections manager.py:392-420 applies _scoped_input_cursors + apply_redirections; FileRedirector.apply_redirections has no dup_alias_fds/bind_dup call for plain n<&m (only the {v} named path, file_redirect.py:651). The dev's own suite covers brace-group/while-loop frames for OPEN redirects only, never a compound dup.",
+        "confidence": null
+      }
+    ],
+    "nits": [
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "Doc-sweep miss: a test docstring still describes state this branch deleted.",
+        "evidence": "tests/unit/builtins/test_input_cursor_i1.py:4 — \"The record reader owns an incremental UTF-8 surrogateescape decoder, a decoded character queue, and raw byte pushback across reads.\" _pushback was removed in commit feca9b60. The M8 ratchet test_pushback_buffer_is_not_reintroduced only scans psh/builtins/input_reader.py, so it cannot catch this."
+      },
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "The one new typed seam is untyped: BuiltinRedirectFrame.saved_input_cursors is declared Dict[int, object] while InputCursorRegistry.pop_frame takes Dict[int, Optional[OpenDescription]]. For a slot whose typology leg is 'lossless typed representation', erasing the token type at the only place it is stored is a step backwards; mypy passes only because 'object' accepts everything.",
+        "evidence": "psh/io_redirect/manager.py BuiltinRedirectFrame.__init__: 'self.saved_input_cursors: Dict[int, object] = {}' vs psh/io_redirect/input_cursor.py:227-228 'def pop_frame(self, saved: Dict[int, Optional[OpenDescription]]) -> None'."
+      },
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "bind_dup and _rebind_input_cursors_after_exec overwrite an fd's description without dropping the cursor of the description it previously named, so _desc_to_cursor accumulates unreachable cursors for the life of the shell. No correctness impact (nothing can reach them) but it is a leak in a per-shell map, and the exact mirror of the over-eager drop in BLOCKER 1.",
+        "evidence": "psh/io_redirect/input_cursor.py bind_dup: 'self._fd_to_desc[new_fd] = desc' with no pop of the description new_fd previously named. Reachable via e.g. 'read -N 1 a; exec 0<&3' — fd 0's old description/cursor becomes unreferenced but stays in _desc_to_cursor."
+      },
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "Unverifiable citation: the new contract suite cites an 'I1 deliberate-loss row (d)'. The committed campaign close report enumerates I1's deliberate-loss registry as (a) and (b); the identity_i1 suite labels its rows (b) and (c'). I1.md is not in the repo, so I could not confirm a row (d) exists. Integrator should confirm before a ruling record repeats the label.",
+        "evidence": "tests/integration/redirection/test_input_cursor_contract_4b4.py::TestMustHold::test_fork_child_gets_a_fresh_registry docstring: \"That is I1 deliberate-loss row (d) — the stranded lookahead byte is invisible to a child\". vs docs/reviews/boundary_campaign_close_2026-07.md:176 which lists only (a) and (b) and points at 'I1.md §\"Deliberate-loss registry\"' (absent from the tree)."
+      },
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "_scoped_input_cursors is wired into with_redirections, which the branch's own doc edit correctly states has no callers — so that hook is dead code with no M8 arm covering it. Also a stray double blank line follows _scoped_input_cursors (ruff-clean, cosmetic).",
+        "evidence": "psh/executor/CLAUDE.md hunk: \"with_redirections is the unguarded sibling and currently has no callers.\" Verified: grep -rn \"with_redirections\" psh/ tests/ finds no invocation (only guarded_redirections callers, docstrings, and unrelated test names). The 5 M8 arms in tests/unit/tooling/test_input_cursor_m8_locks_4b4.py cover cursor_for_fd reuse, exec dup, named-fd dup, builtin-frame push, and pop_frame restore — none covers the with_redirections/guarded_redirections hook."
+      },
+      {
+        "task": "diffAudit",
+        "severity": "NIT",
+        "description": "Clean legs, recorded for the integrator: integrator-owned files, never-touch files, goldens and must-NOT-flip pins are all untouched, and the gate legs are green at the tip.",
+        "evidence": "git diff origin/main...fix/remediation-4b-4 --stat touches 17 files, none of them psh/version.py, CHANGELOG.md, README.md, ARCHITECTURE.md, tests/behavioral/golden_cases.yaml, or any plan-§3 never-touch file (\" 1 \", b]y, bugs.txt, d/, decomment.py, docs/reviews/README.md, uncommitted docs/reviews/*.md). Must-NOT-flip files untouched: tests/conformance/bash/test_cv_carry_characterization.py, all 4B.3 history suites, TestResumeAcrossReads, tests/unit/builtins/test_read_exact_timeout_4b2.py. At tip 2f355fc3 in a detached worktree: 'ruff check psh tests tools' = All checks passed; 'mypy' = Success, no issues in 275 source files. The new user-guide claim '142 on timeout' REPLAYED against live bash: psh rc=142 vlen=0; /opt/homebrew/bin/bash rc=142 vlen=1 under both LC_ALL=C and en_US.UTF-8."
+      },
+      {
+        "task": "resurrection",
+        "severity": "NIT",
+        "description": "FLIP-PINS.md registers the D-4B.2-s1 pins under a class name that does not exist. Row 32 of docs/reviews/evidence/boundary_remediation_2026-07/FLIP-PINS.md names `test_input_decoder_seam_4b2.py::TestResumeAcrossReads`; the actual class is `TestResumeRoutesArePshContract`. This is a PRE-EXISTING 4B.2 registry defect (not introduced by this branch), but slot 4B.4 owns moving that row at ceremony under the KEEP-PSH ruling, so it should be corrected then rather than propagated.",
+        "evidence": "REPLAYED both sides. At tip 2f355fc3: `python -m pytest tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeAcrossReads -q --collect-only` -> `ERROR: not found: .../test_input_decoder_seam_4b2.py::TestResumeAcrossReads (no match in any of [<Module test_input_decoder_seam_4b2.py>])`, `no tests collected`. At base: `git show origin/main:tests/unit/builtins/test_input_decoder_seam_4b2.py | grep -n '^class '` -> line 210 `class TestResumeRoutesArePshContract:` (no TestResumeAcrossReads at either commit). The two METHODS the row names do exist and collect: `TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character` (line 227) and `::test_next_read_limited_resumes_the_split_character` (line 236)."
+      },
+      {
+        "task": "resurrection",
+        "severity": "NIT",
+        "description": "Two module-level constants in the new M8 lock file are dead: `FRAME_REV` and `UNIT` are defined but referenced by no Arm. Consequence: the REVERSE-direction temp-frame leak — the face this slot newly discovered and pins as `test_frame_surplus_does_not_escape_into_stdin` — has no mutation arm of its own (it rides implicitly on `builtin-frame-scoping-removed`, whose `breaks` list contains only FRAME_FWD), and the registry unit suite appears in no arm's break/green set. Either wire FRAME_REV into an arm (e.g. a pop_frame-drops-the-outer-binding-only mutation) or delete the dead names so the file does not read as an arm that was planned and dropped. Ruff does not flag module-level unused assignments, so nothing else catches this.",
+        "evidence": "tests/unit/tooling/test_input_cursor_m8_locks_4b4.py: line 41 `UNIT = ...`, line 47 `FRAME_REV = f\"{PINS}::TestTempFrameScopesTheCursor::test_frame_surplus_does_not_escape_into_stdin[builtin-redirect]\"`. grep for both names shows definition only, no use; the only ARMS references are FRAME_FWD (lines 79, 109, 122), DUP_PERCMD (93), DUP_NAMED (100), SAME_FD (123), DUP_EXEC. Executing the module and collecting every arm's breaks+stays_green yields 15 node IDs, none of which is the reverse-direction cell."
+      },
+      {
+        "task": "resurrection",
+        "severity": "NIT",
+        "description": "Archival prose now describes state that no longer exists. `docs/reviews/boundary_campaign_briefs_2026-07-16.md` lines 171 and 539 still list `InputCursor` as owning \"raw pushback\", and the frozen 4B.2 evidence instruments record `_pushback` line numbers and a census cell for it. These are dated, frozen records so no edit is warranted; flagged only so the integrator is not surprised by the grep hits and so the eventual completion report's instrument manifest does not read them as live references.",
+        "evidence": "`git grep -ni pushback fix/remediation-4b-4 -- docs/` hits are confined to docs/reviews/boundary_campaign_briefs_2026-07-16.md:57,171,539 and docs/reviews/evidence/boundary_remediation_2026-07/4b.2-rescue/{brief.md,ROUNDS-AND-ERRATA.md,instruments/dev/*}. No hit in psh/ CLAUDE.md files, ARCHITECTURE.md, README.md, docs/user_guide/, or docs/architecture/ (verified by a targeted grep for 'FULL fidelity|SCOPED realization|deferred additive|SCOPED:' across those trees: zero hits)."
+      },
+      {
+        "task": "resurrection",
+        "severity": "NIT",
+        "description": "The campaign closing report still registers the two I1 deliberate-loss rows this branch CLOSED, and LEDGER.md/FLIP-PINS.md carry the pre-ruling D-4B.2-s1 disposition. Per the brief this registration \"moves with the ruling at ceremony\", so it is not a branch defect — recorded here so the ceremony step is not lost, since the branch's own docstrings and test comments now assert the opposite of what those registries say.",
+        "evidence": "docs/reviews/boundary_campaign_close_2026-07.md:176 (\"I1 | SCOPED byte-cursor deliberate-loss registry ... are documented losses, not chased\"); LEDGER.md:103 (\"R2 (InputCursor gaps, plan 4B.4): cross-fd dup sharing and ...\") and LEDGER.md:269 (D-4B.2-s1 row still marked \"successor (4B.4)\"). Against branch tip psh/io_redirect/input_cursor.py: \"the previously documented I1 deliberate-loss cases (b) and (c') hold exact C-locale-bash parity\", and tests/integration/redirection/test_input_cursor_identity_i1.py now asserts psh == bash-C for both former loss rows (26 passed at tip)."
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "NIT",
+        "description": "Discharge audit row 12 claims '4B.2 seam suites untouched (70/70 file-scoped; whole set green in gate 2)' but at the tip the seam+rider set is 69 nodes (seam 40 after the -1 pushback-pin removal + rider 29); 70 was the Phase A pre-removal baseline. The set IS fully green (I ran both files at tip: 40+29 all passed), so this is a stale count in an audit whose header says counts are derived, never hand-tallied — not a false green.",
+        "evidence": "pytest --collect-only at 2f355fc3: seam 40, rider 29; both files 69/69 passed in my detached tip worktree"
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "NIT",
+        "description": "Slot ledger §9 'Freeze chain' still reads '(no freeze yet — Phase A report only)' while §15 declares the freeze; the freeze itself is real (D6 freeze md5 3449eefbccb1260c04a09027df601d27 matches the file on disk today) — §9 was never updated before freezing.",
+        "evidence": "md5 -q SLOT-LEDGER-4b4.md == the D6-declared freeze md5; §9 text vs §15 FREEZE block"
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "NIT",
+        "description": "The §1 instrument table omits instr09_sites_census.py, instr09_base.out/instr09_tip.out, instr10_red_on_base.out, instr04_tip.out and the two ic_*.patch files, all of which the discharge audit and manifest rely on (manifest itself is complete: 29 entries, md5 verified, 5 file hashes spot-checked matching).",
+        "evidence": "SLOT-LEDGER-4b4.md §1 vs tmp/w4b4/MANIFEST.txt"
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "NIT",
+        "description": "Slot-local ruling R2's binding P1 condition 'the 4B.2 lock set re-certifies 7/7 at a fresh checkout AFTER the rewrite' is not recorded as discharged anywhere in the ledger (only in-gate green from the dev worktree, where tmp/ exists). I certified it myself: test_input_decoder_m8_locks_4b2.py 7/7 at a pristine detached worktree with tmp/ ABSENT; the 4B.4 lock set also 7/7 under the same conditions. Substance holds; the record is missing.",
+        "evidence": "INTEGRATOR-INBOX.md R2 'The P1 call' conditions; my run after rm -rf <worktree>/tmp at 2f355fc3: 7 passed (both lock files)"
+      },
+      {
+        "task": "ledgerCheck",
+        "severity": "NIT",
+        "description": "Commit 3d285b56 also edits psh/executor/CLAUDE.md (with_redirections -> guarded_redirections pointer correction), which §7's doc-sweep table does not list; the change is disclosed in D3/R3 and the 'no callers' census claim it encodes is true (I verified: zero call sites; nine guarded_redirections callers; guarded does not delegate to with_redirections).",
+        "evidence": "git show --stat 3d285b56; grep -rn 'with_redirections(' psh/ at tip"
+      },
+      {
+        "task": "reprobe",
+        "severity": "NIT",
+        "description": "Frozen-ledger internal figure slip: discharge-audit row 12 states the 4B.2 seam pair as '70/70 file-scoped' at tip, but the pair measures 69 passed at tip (seam file went 41->40 with the pushback pin removal). The -1 is correctly declared and reconciled in the §10 collection-delta table, so this is an inconsistency between two ledger sections, not concealment — 70 was the BASE figure (base collects 70).",
+        "evidence": "Tip 2f355fc3: `pytest tests/unit/builtins/test_input_decoder_seam_4b2.py tests/unit/builtins/test_read_exact_timeout_4b2.py -q` -> 69 passed. Base e3924ed3: --collect-only -> 70. SLOT-LEDGER-4b4.md §14 row 12 vs §10 delta table (md5 3449eefbccb1260c04a09027df601d27 verified).",
+        "confidence": null
+      },
+      {
+        "task": "reprobe",
+        "severity": "NIT",
+        "description": "The brief's CLOSE pin list names 'strand x dup x dup-again' as a required composition cell; the landed suite has no dup-again cell in any form. This is exactly the missing row that would have caught BLOCKER 1's builtin-frame face (my X6 dup-again probe fails at tip). Subsumed by BLOCKER 1's fix, but the pin-list item was silently dropped.",
+        "evidence": "briefs/4b.4.md 'Pins YOU create' (strand x dup x dup-again); grep of tests/integration/redirection/test_input_cursor_contract_4b4.py and tests/unit/io_redirect/test_input_cursor_registry_4b4.py shows no dup-again/re-dup cell; probe row X6 at tip: bash total \\xc3\\xa9Q, psh total \\xa9Q.",
+        "confidence": null
+      }
+    ],
+    "verdicts": {
+      "diffAudit": {
+        "verdict": "FAIL",
+        "issues": [
+          {
+            "severity": "BLOCKER",
+            "description": "NEW BYTE-LOSS REGRESSION (green on base, red at tip, mutation-proven): InputCursorRegistry.pop_frame (psh/io_redirect/input_cursor.py:236-239) unconditionally destroys the cursor of whatever description the frame left on the fd — but when the frame's binding was created by bind_dup it is an ALIAS to a description ANOTHER fd still names. Popping a per-command dup frame therefore destroys the live cursor of fd 0 (or of the dup source) and every byte it was holding vanishes. This is exactly the defect class the slot exists to close (leg B, 'reaches no reader at all'), reintroduced through a different door, and it FALSIFIES the user-guide text this same branch adds ('a duplicated descriptor (exec 3<&0) shares them because it shares the source'). Fix must not drop a description still present in _fd_to_desc. The dev's 96-node suite is blind to it: the per-command dup cell has no third read, and every timeout cell runs inside a pipeline, where this route is not taken.",
+            "evidence": "All rows REPLAYED at base e3924ed3 and tip 2f355fc3 in my own detached worktrees (discriminator asserted: psh.__file__ under the tree under test). Oracle = C-locale /opt/homebrew/bin/bash 5.2. Rows are NOT in the dev's suite.\n\nR1 (-c mode), stdin \\xc3ABC\\n, script: read -N 1 a; true 3<&0; read -N 1 b; printf \"a=<%s> b=<%s>\\n\" \"$a\" \"$b\"\n  BASE psh: a=<\\303> b=<A>   bash-C: a=<\\303> b=<A>  -> AGREE\n  TIP  psh: a=<\\303> b=<B>   bash-C: a=<\\303> b=<A>  -> DIVERGE (the held 'A' is destroyed)\nR2 same with ':' instead of 'true' — identical split.\nN5 mapfile: read -N 1 a; true 3<&0; mapfile -t -n 1 L  (stdin \\xc3ABC\\nX\\n)\n  BASE psh L=<ABC> == bash-C ; TIP psh L=<BC>  -> byte dropped out of mapfile's array element.\nN6 FILE input mode (same script as a script file): BASE b=<A> == bash-C ; TIP b=<B>.\npiped-stdin mode (printf ... | psh -c ...): BASE b=<A> ; TIP b=<B>.\nN4 move form 'true 3<&0-': BASE psh b=<A> ; TIP psh b=<B>.\nControls R6/N10 ('true 2>/dev/null', 'true </dev/null' between the reads): unchanged base->tip, so the trigger is specifically the dup.\n\nMUTATION PROOF of causation (copy of tip, one line changed in pop_frame):\n  'if inner is not None:' -> 'if inner is not None and inner not in self._fd_to_desc.values():'\n  R1/R2/N4/N5/N6 all go GREEN (b=<A>, L=<ABC>) while the slot's own leg-B row R3 stays GREEN.\n\nINCOMPLETENESS OF THE CLAIMED CLOSE from the same defect — N9: exec 3<&0; read -N 1 a; true 4<&3; read -N 1 -u 3 b (stdin \\xc3ABC\\n): BASE psh b=<B>, TIP psh b=<B>, bash-C b=<A>. Dup aliasing does not survive an intervening frame, so leg B is only closed when nothing dups in between.\n\nDev suite at tip: pytest tests/integration/redirection/test_input_cursor_contract_4b4.py tests/integration/redirection/test_input_cursor_identity_i1.py tests/unit/io_redirect/test_input_cursor_registry_4b4.py tests/unit/builtins/test_input_decoder_seam_4b2.py tests/unit/builtins/test_input_reader_record_bytes.py -q  =>  96 passed."
+          },
+          {
+            "severity": "BLOCKER",
+            "description": "NEW BYTE-REORDERING REGRESSION, distinct root cause: IOManager.cursor_scope_fds (psh/io_redirect/manager.py:352-354) derives the frame's target fd as '0 if redirect.type.startswith(\"<\") else 1' whenever redirect.fd is None. For a named-fd redirect ({v}<&n, {v}<file) redirect.fd IS None because the fd number is only allocated at apply time — so the frame scopes fd 0, which the redirect never re-points, and never scopes the fd it actually creates. Consequence: a read carrying a {v}<&0 redirect is hidden from its OWN description's buffered bytes, which then resurface in the following read — the bytes are reordered. Secondary consequence: the allocated fd's binding is left unscoped and dangles in _fd_to_desc after the frame pops.",
+            "evidence": "Row P1 (not in the dev's suite), -c mode, stdin \\xc3ABCD\\n, script: read -N 1 a; read -N 1 b {v}<&0; read -N 1 c; printf \"a=<%s> b=<%s> c=<%s>\\n\" \"$a\" \"$b\" \"$c\"  — oracle C-locale /opt/homebrew/bin/bash 5.2:\n  BASE psh: a=<\\303> b=<A> c=<B>   bash-C: a=<\\303> b=<A> c=<B>  -> AGREE\n  TIP  psh: a=<\\303> b=<B> c=<A>   bash-C: a=<\\303> b=<A> c=<B>  -> DIVERGE (order swapped)\n\nDistinct-cause proof: replayed against the tip copy carrying the BLOCKER-1 pop_frame mutation — P1 is STILL RED there (b=<B> c=<A>), so it is not a symptom of the pop_frame defect.\n\nThe dev's only named-fd cell, test_dup_spelling_shares_the_surplus[named-fd], uses the PERMANENT 'exec {v}<&0' spelling, which never enters a builtin frame, so it passes."
+          },
+          {
+            "severity": "BLOCKER",
+            "description": "BRIEF ITEM SILENTLY DROPPED + DANGLING REFERENCES: the brief requires 's1: whichever disposition, the I1-style pins get their DESIGNED flip or an explicit re-affirmation', and the FLIP-PINS row assigns the D-4B.2-s1 pins to this slot with 'doc + code move together'. The branch lands the user-guide documentation but leaves the s1 pin files asserting the opposite — that the divergence is still deferred to 4B.4 and still undocumented. Those statements are false at this tip, and they are baked into named failure messages. No re-affirmation text was added anywhere.",
+            "evidence": "tests/unit/builtins/test_input_decoder_seam_4b2.py (UNCHANGED in this branch outside TestCursorStateCensus):\n  :24-26  \"That divergence is successor row D-4B.2-s1 (deferred to slot 4B.4, integrator ruling (c)). It is **documented NOWHERE in the user guide** — that ABSENCE is part of what s1 carries to 4B.4.\"\n  :216-222 \"That divergence is successor row **D-4B.2-s1**, deferred to slot 4B.4 by integrator ruling (c). It is **UNDOCUMENTED**: no user-guide line describes it, and that absence travels with s1. ... If 4B.4 rules the other way, these cells and that documentation gap move together.\"\ntests/unit/builtins/test_read_exact_timeout_4b2.py (UNCHANGED):\n  :34   \"**D-4B.2-s1 (NEW-1, deferred to slot 4B.4):**\"\n  :216  \"the stranded partial byte is D-4B.2-s1 (slot 4B.4).\"\n  :222 and :346  S1 = \"D-4B.2-s1 (timeout-partial assignment, deferred to 4B.4)\"  <- inside the named failure messages.\nThe branch's own docs/user_guide/17_differences_from_bash.md hunk adds exactly the missing line ('A `read -t` that times out mid-character keeps the partial character.'), so every 'UNDOCUMENTED' claim above is now a false statement shipped in the suite."
+          },
+          {
+            "severity": "NIT",
+            "description": "Doc-sweep miss: a test docstring still describes state this branch deleted.",
+            "evidence": "tests/unit/builtins/test_input_cursor_i1.py:4 — \"The record reader owns an incremental UTF-8 surrogateescape decoder, a decoded character queue, and raw byte pushback across reads.\" _pushback was removed in commit feca9b60. The M8 ratchet test_pushback_buffer_is_not_reintroduced only scans psh/builtins/input_reader.py, so it cannot catch this."
+          },
+          {
+            "severity": "NIT",
+            "description": "The one new typed seam is untyped: BuiltinRedirectFrame.saved_input_cursors is declared Dict[int, object] while InputCursorRegistry.pop_frame takes Dict[int, Optional[OpenDescription]]. For a slot whose typology leg is 'lossless typed representation', erasing the token type at the only place it is stored is a step backwards; mypy passes only because 'object' accepts everything.",
+            "evidence": "psh/io_redirect/manager.py BuiltinRedirectFrame.__init__: 'self.saved_input_cursors: Dict[int, object] = {}' vs psh/io_redirect/input_cursor.py:227-228 'def pop_frame(self, saved: Dict[int, Optional[OpenDescription]]) -> None'."
+          },
+          {
+            "severity": "NIT",
+            "description": "bind_dup and _rebind_input_cursors_after_exec overwrite an fd's description without dropping the cursor of the description it previously named, so _desc_to_cursor accumulates unreachable cursors for the life of the shell. No correctness impact (nothing can reach them) but it is a leak in a per-shell map, and the exact mirror of the over-eager drop in BLOCKER 1.",
+            "evidence": "psh/io_redirect/input_cursor.py bind_dup: 'self._fd_to_desc[new_fd] = desc' with no pop of the description new_fd previously named. Reachable via e.g. 'read -N 1 a; exec 0<&3' — fd 0's old description/cursor becomes unreferenced but stays in _desc_to_cursor."
+          },
+          {
+            "severity": "NIT",
+            "description": "Unverifiable citation: the new contract suite cites an 'I1 deliberate-loss row (d)'. The committed campaign close report enumerates I1's deliberate-loss registry as (a) and (b); the identity_i1 suite labels its rows (b) and (c'). I1.md is not in the repo, so I could not confirm a row (d) exists. Integrator should confirm before a ruling record repeats the label.",
+            "evidence": "tests/integration/redirection/test_input_cursor_contract_4b4.py::TestMustHold::test_fork_child_gets_a_fresh_registry docstring: \"That is I1 deliberate-loss row (d) — the stranded lookahead byte is invisible to a child\". vs docs/reviews/boundary_campaign_close_2026-07.md:176 which lists only (a) and (b) and points at 'I1.md §\"Deliberate-loss registry\"' (absent from the tree)."
+          },
+          {
+            "severity": "NIT",
+            "description": "_scoped_input_cursors is wired into with_redirections, which the branch's own doc edit correctly states has no callers — so that hook is dead code with no M8 arm covering it. Also a stray double blank line follows _scoped_input_cursors (ruff-clean, cosmetic).",
+            "evidence": "psh/executor/CLAUDE.md hunk: \"with_redirections is the unguarded sibling and currently has no callers.\" Verified: grep -rn \"with_redirections\" psh/ tests/ finds no invocation (only guarded_redirections callers, docstrings, and unrelated test names). The 5 M8 arms in tests/unit/tooling/test_input_cursor_m8_locks_4b4.py cover cursor_for_fd reuse, exec dup, named-fd dup, builtin-frame push, and pop_frame restore — none covers the with_redirections/guarded_redirections hook."
+          },
+          {
+            "severity": "NIT",
+            "description": "Clean legs, recorded for the integrator: integrator-owned files, never-touch files, goldens and must-NOT-flip pins are all untouched, and the gate legs are green at the tip.",
+            "evidence": "git diff origin/main...fix/remediation-4b-4 --stat touches 17 files, none of them psh/version.py, CHANGELOG.md, README.md, ARCHITECTURE.md, tests/behavioral/golden_cases.yaml, or any plan-§3 never-touch file (\" 1 \", b]y, bugs.txt, d/, decomment.py, docs/reviews/README.md, uncommitted docs/reviews/*.md). Must-NOT-flip files untouched: tests/conformance/bash/test_cv_carry_characterization.py, all 4B.3 history suites, TestResumeAcrossReads, tests/unit/builtins/test_read_exact_timeout_4b2.py. At tip 2f355fc3 in a detached worktree: 'ruff check psh tests tools' = All checks passed; 'mypy' = Success, no issues in 275 source files. The new user-guide claim '142 on timeout' REPLAYED against live bash: psh rc=142 vlen=0; /opt/homebrew/bin/bash rc=142 vlen=1 under both LC_ALL=C and en_US.UTF-8."
+          }
+        ]
+      },
+      "resurrection": {
+        "verdict": "PASS-WITH-NITS",
+        "issues": [
+          {
+            "severity": "NIT",
+            "description": "FLIP-PINS.md registers the D-4B.2-s1 pins under a class name that does not exist. Row 32 of docs/reviews/evidence/boundary_remediation_2026-07/FLIP-PINS.md names `test_input_decoder_seam_4b2.py::TestResumeAcrossReads`; the actual class is `TestResumeRoutesArePshContract`. This is a PRE-EXISTING 4B.2 registry defect (not introduced by this branch), but slot 4B.4 owns moving that row at ceremony under the KEEP-PSH ruling, so it should be corrected then rather than propagated.",
+            "evidence": "REPLAYED both sides. At tip 2f355fc3: `python -m pytest tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeAcrossReads -q --collect-only` -> `ERROR: not found: .../test_input_decoder_seam_4b2.py::TestResumeAcrossReads (no match in any of [<Module test_input_decoder_seam_4b2.py>])`, `no tests collected`. At base: `git show origin/main:tests/unit/builtins/test_input_decoder_seam_4b2.py | grep -n '^class '` -> line 210 `class TestResumeRoutesArePshContract:` (no TestResumeAcrossReads at either commit). The two METHODS the row names do exist and collect: `TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character` (line 227) and `::test_next_read_limited_resumes_the_split_character` (line 236)."
+          },
+          {
+            "severity": "NIT",
+            "description": "Two module-level constants in the new M8 lock file are dead: `FRAME_REV` and `UNIT` are defined but referenced by no Arm. Consequence: the REVERSE-direction temp-frame leak — the face this slot newly discovered and pins as `test_frame_surplus_does_not_escape_into_stdin` — has no mutation arm of its own (it rides implicitly on `builtin-frame-scoping-removed`, whose `breaks` list contains only FRAME_FWD), and the registry unit suite appears in no arm's break/green set. Either wire FRAME_REV into an arm (e.g. a pop_frame-drops-the-outer-binding-only mutation) or delete the dead names so the file does not read as an arm that was planned and dropped. Ruff does not flag module-level unused assignments, so nothing else catches this.",
+            "evidence": "tests/unit/tooling/test_input_cursor_m8_locks_4b4.py: line 41 `UNIT = ...`, line 47 `FRAME_REV = f\"{PINS}::TestTempFrameScopesTheCursor::test_frame_surplus_does_not_escape_into_stdin[builtin-redirect]\"`. grep for both names shows definition only, no use; the only ARMS references are FRAME_FWD (lines 79, 109, 122), DUP_PERCMD (93), DUP_NAMED (100), SAME_FD (123), DUP_EXEC. Executing the module and collecting every arm's breaks+stays_green yields 15 node IDs, none of which is the reverse-direction cell."
+          },
+          {
+            "severity": "NIT",
+            "description": "Archival prose now describes state that no longer exists. `docs/reviews/boundary_campaign_briefs_2026-07-16.md` lines 171 and 539 still list `InputCursor` as owning \"raw pushback\", and the frozen 4B.2 evidence instruments record `_pushback` line numbers and a census cell for it. These are dated, frozen records so no edit is warranted; flagged only so the integrator is not surprised by the grep hits and so the eventual completion report's instrument manifest does not read them as live references.",
+            "evidence": "`git grep -ni pushback fix/remediation-4b-4 -- docs/` hits are confined to docs/reviews/boundary_campaign_briefs_2026-07-16.md:57,171,539 and docs/reviews/evidence/boundary_remediation_2026-07/4b.2-rescue/{brief.md,ROUNDS-AND-ERRATA.md,instruments/dev/*}. No hit in psh/ CLAUDE.md files, ARCHITECTURE.md, README.md, docs/user_guide/, or docs/architecture/ (verified by a targeted grep for 'FULL fidelity|SCOPED realization|deferred additive|SCOPED:' across those trees: zero hits)."
+          },
+          {
+            "severity": "NIT",
+            "description": "The campaign closing report still registers the two I1 deliberate-loss rows this branch CLOSED, and LEDGER.md/FLIP-PINS.md carry the pre-ruling D-4B.2-s1 disposition. Per the brief this registration \"moves with the ruling at ceremony\", so it is not a branch defect — recorded here so the ceremony step is not lost, since the branch's own docstrings and test comments now assert the opposite of what those registries say.",
+            "evidence": "docs/reviews/boundary_campaign_close_2026-07.md:176 (\"I1 | SCOPED byte-cursor deliberate-loss registry ... are documented losses, not chased\"); LEDGER.md:103 (\"R2 (InputCursor gaps, plan 4B.4): cross-fd dup sharing and ...\") and LEDGER.md:269 (D-4B.2-s1 row still marked \"successor (4B.4)\"). Against branch tip psh/io_redirect/input_cursor.py: \"the previously documented I1 deliberate-loss cases (b) and (c') hold exact C-locale-bash parity\", and tests/integration/redirection/test_input_cursor_identity_i1.py now asserts psh == bash-C for both former loss rows (26 passed at tip)."
+          }
+        ]
+      },
+      "ledgerCheck": {
+        "issues": [
+          {
+            "severity": "BLOCKER",
+            "description": "Brief Phase A item 2 — 'The s1 bash table, completed' (timeout-partial assignment across -N/-n/plain x pipe/tty x complete-vs-partial chars x what bash assigns) — appears NOWHERE in the slot ledger: no table, no verdict, no evidence. D1 planned it as A2; D2 delivered no such section; the slot ledger relabels its §3 coupling measurement 'A2/A5'; every timeout cell in every instrument and pin suite uses -N only (no -n, no plain, no tty arm anywhere). The inbox R2 ruling (a) accepted 'Census, s1 table, matrix' as complete — accepting an artifact that does not exist — and the user-guide note (3d285b56) generalizes the divergence to ALL read -t forms on the strength of -N-only evidence. MITIGATION (my probes, fixed instrument with rc=142 validity control both shells): plain and -n 2 pipe arms both diverge in exactly the documented hold-and-resume shape with byte conservation intact, so the doc is not falsified on those arms; the tty arm remains unprobed by anyone.",
+            "evidence": "grep across tmp/w4b4/*.py|*.out and both new suites: every timed read is 'read -t ... -N n'; SLOT-LEDGER-4b4.md has no s1-table section; INTEGRATOR-INBOX.md:207 (planned) vs D2 (absent) vs R2 line ~538 ('s1 table ... complete'); my probe at tip 2f355fc3: plain arm psh 'rc1=142 rc2=0 v= w=c3a9' vs bash 5.2.26 'rc1=142 rc2=0 v=c3 w=a9', identical for -n 2"
+          },
+          {
+            "severity": "BLOCKER",
+            "description": "Brief pin item 'strand x dup x dup-again' composition cell silently dropped: no chained-dup cell exists in any suite (contract, registry-unit, i1), the ledger never mentions it, and D6's done-criteria table rewords the brief's composition list to omit it ('nested frames; dup x strand; frame x strand; fork; exec-rebind'). MITIGATION (my probe): 'read -N 1 a; exec 3<&0; exec 4<&3; read -N 1 -u 4 b' with the malformed-strand stdin matches C-locale bash byte-for-byte (a=<\\303> b=<A> both shells) — transitive description aliasing works, so this is a pin-coverage gap, not a behavior gap; a one-cell addition closes it.",
+            "evidence": "grep -rn '4<&3|dup.?again|chained' over both worktree test trees, SLOT-LEDGER-4b4.md and INTEGRATOR-INBOX.md: zero hits; brief 4b.4.md lines 152-155 lists 'strand x dup x dup-again' explicitly; probe output at tip identical to /opt/homebrew/bin/bash LC_ALL=C"
+          },
+          {
+            "severity": "NIT",
+            "description": "Discharge audit row 12 claims '4B.2 seam suites untouched (70/70 file-scoped; whole set green in gate 2)' but at the tip the seam+rider set is 69 nodes (seam 40 after the -1 pushback-pin removal + rider 29); 70 was the Phase A pre-removal baseline. The set IS fully green (I ran both files at tip: 40+29 all passed), so this is a stale count in an audit whose header says counts are derived, never hand-tallied — not a false green.",
+            "evidence": "pytest --collect-only at 2f355fc3: seam 40, rider 29; both files 69/69 passed in my detached tip worktree"
+          },
+          {
+            "severity": "NIT",
+            "description": "Slot ledger §9 'Freeze chain' still reads '(no freeze yet — Phase A report only)' while §15 declares the freeze; the freeze itself is real (D6 freeze md5 3449eefbccb1260c04a09027df601d27 matches the file on disk today) — §9 was never updated before freezing.",
+            "evidence": "md5 -q SLOT-LEDGER-4b4.md == the D6-declared freeze md5; §9 text vs §15 FREEZE block"
+          },
+          {
+            "severity": "NIT",
+            "description": "The §1 instrument table omits instr09_sites_census.py, instr09_base.out/instr09_tip.out, instr10_red_on_base.out, instr04_tip.out and the two ic_*.patch files, all of which the discharge audit and manifest rely on (manifest itself is complete: 29 entries, md5 verified, 5 file hashes spot-checked matching).",
+            "evidence": "SLOT-LEDGER-4b4.md §1 vs tmp/w4b4/MANIFEST.txt"
+          },
+          {
+            "severity": "NIT",
+            "description": "Slot-local ruling R2's binding P1 condition 'the 4B.2 lock set re-certifies 7/7 at a fresh checkout AFTER the rewrite' is not recorded as discharged anywhere in the ledger (only in-gate green from the dev worktree, where tmp/ exists). I certified it myself: test_input_decoder_m8_locks_4b2.py 7/7 at a pristine detached worktree with tmp/ ABSENT; the 4B.4 lock set also 7/7 under the same conditions. Substance holds; the record is missing.",
+            "evidence": "INTEGRATOR-INBOX.md R2 'The P1 call' conditions; my run after rm -rf <worktree>/tmp at 2f355fc3: 7 passed (both lock files)"
+          },
+          {
+            "severity": "NIT",
+            "description": "Commit 3d285b56 also edits psh/executor/CLAUDE.md (with_redirections -> guarded_redirections pointer correction), which §7's doc-sweep table does not list; the change is disclosed in D3/R3 and the 'no callers' census claim it encodes is true (I verified: zero call sites; nine guarded_redirections callers; guarded does not delegate to with_redirections).",
+            "evidence": "git show --stat 3d285b56; grep -rn 'with_redirections(' psh/ at tip"
+          }
+        ],
+        "verdict": "FAIL"
+      },
+      "reprobe": {
+        "issues": [
+          {
+            "severity": "BLOCKER",
+            "description": "REGRESSION (green at base, byte-destroying at tip): the new alias bookkeeping made the registry's two cursor-drop sites reference-blind. InputCursorRegistry.pop_frame (input_cursor.py:227) and rebind (input_cursor.py:181) drop a description's cursor without checking whether ANOTHER fd still references that description. After bind_dup creates an alias, (a) any builtin carrying a per-command dup whose source fd holds buffered cursor state destroys that state at frame pop (manager.py:1075 restore path), and (b) `exec`-closing or rebinding the alias fd destroys the shared cursor via rebind (command.py:1085). Buffered bytes (malformed-split surplus or a held -t timeout partial) are then delivered to NO reader — precisely the 'no byte may reach no reader at all' property this slot's leg-B headline claims to close, and it falsifies the landed input_cursor.py docstring ('the held bytes can no longer reach another source or be lost') and the new user-guide sentence ('no input is lost either way'). Ordinary idioms trigger it: `true 3<&0` between two reads; `exec 3<&0; exec 3<&-` (the standard save/close-stdin pattern); `exec 4>&3; exec 4>&-`; output dups to a read fd (`>&0`). None of the 16 contract cells, 17 registry cells, or 5 M8 arms covers a pop/rebind of a still-referenced description (the dev's per-command dup cell consumes the surplus inside the frame, so pop always fires on an empty cursor).",
+            "evidence": "Probes vs live PATH bash 5.2.26 at tip 2f355fc35a2a0acb402589a59b6beab48756e331 / base e3924ed35ce5131f1cd23062f52acff6e010b18f, own detached worktrees, two-level discriminator asserted; harness /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/probe_4b4.py. Clean MATCH-at-base -> DIVERGE-at-tip regressions (C locale, stdin \\xc3AB\\n unless noted): X1 `read -N 1 a; true 3<&0; read -N 1 b; read -N 1 c` -> bash b=A c=B, tip b=B c=Z (byte A destroyed; base matched bash). X3 `read -N 1 a; true >&0; read -N 1 b` -> bash b=A, tip b=B (base matched). X4 `read -N 1 a; exec 3<&0; exec 3<&-; read -N 1 b` -> bash b=A, tip b=B (base matched). W6 `exec 3<h(\\xc3KLM); read -N1 -u3 a; exec 4>&3; exec 4>&-; read -N1 -u3 b` -> bash b=K, tip b=L (base matched). Conservation regressions (timeout route, UTF-8, r1=142 validity control both shells): X5 strand \\xc3 then `true 3<&0`, feed \\xa9Z -> bash total \\xc3\\xa9Z, tip total \\xa9Z (\\xc3 destroyed; base conserved \\xc3\\xa9Z); X6 strand; exec 3<&0; true 3<&0 -> tip loses \\xc3 (base conserved, reordered); X2 `read -N 2 -u 3 b 3<&0` leaving surplus on the shared cursor at pop -> bash c=B, tip c=\\n (B destroyed). Deterministic on re-run. Registry-level mechanism demo at tip: bind_dup(9,r) after cursor exists on r, push_frame([9])+pop_frame -> cursor_for_fd(r) is no longer the outer cursor (False); bind_dup(9,r)+rebind(9) -> same destruction (False). All 16 contract cells + both M8 lock files green at this same tip, i.e. the defect escapes the shipped suite.",
+            "confidence": null
+          },
+          {
+            "severity": "BLOCKER",
+            "description": "Dup-site census incomplete and the gap is UNDECLARED: compound-command per-command dups (`{ ...; } 3<&0`, `while ...; done 3<&0`) run through guarded_redirections -> apply_redirections, which got frame scoping (_scoped_input_cursors) but NO bind_dup call — dup_alias_fds is consulted only on the exec path (command.py), the builtin-frame path (manager.py DUP_FD branch), and the {v}<&n allocator (file_redirect.py). Inside such a frame the dup'd fd gets a FRESH frame-scoped cursor, so held/surplus bytes on the source fd are not visible through the dup — the same divergence class as the I1 (b) face this slot claims closed (bytes surface on the wrong read vs bash; conserved but reordered). This is pre-existing behavior (identical at base), so it is not a regression — but under the ruled CLOSE-both-surfaces outcome it is a divergent dup spelling left unfixed AND undeclared: the only registered open row is I1 (d), and the landed docs overclaim universal closure (io_redirect/CLAUDE.md: 'a DUP aliases the instance -> both fds share one cursor'; input_cursor.py docstring 'Dup — exec 3<&0 makes one description wear two fds ... both fds share one cursor'; user-guide: 'a duplicated descriptor (exec 3<&0) shares them because it shares the source'). Task check 3's rule — every dup spelling aliases the OpenDescription or carries a declared reason — fails for this spelling: no declared reason exists anywhere in the tree (grep for a compound-dup caveat comes back empty).",
+            "evidence": "At tip 2f355fc3 vs live bash 5.2.26: X7 (UTF-8, strand \\xc3 with r1=142 control, then `{ read -t 4 -u 3 y; } 3<&0`, feed \\xa9Q) -> bash v=\\xc3 y=\\xa9Q w='', psh v='' y=\\xa9Q w=\\xc3 — fd 3 never saw the held byte; it surfaced on fd 0's LATER read (bytes conserved, wrong stream position). X8 (C locale, stdin \\xc3ABZ\\n, `read -N 1 a; { read -N 1 -u 3 b; } 3<&0; read -N 1 c`) -> bash b=A c=B, psh b=B c=A (swapped). Identical psh output at base e3924ed3 (replayed both ends). Code: guarded_redirections manager.py:392-420 applies _scoped_input_cursors + apply_redirections; FileRedirector.apply_redirections has no dup_alias_fds/bind_dup call for plain n<&m (only the {v} named path, file_redirect.py:651). The dev's own suite covers brace-group/while-loop frames for OPEN redirects only, never a compound dup.",
+            "confidence": null
+          },
+          {
+            "severity": "NIT",
+            "description": "Frozen-ledger internal figure slip: discharge-audit row 12 states the 4B.2 seam pair as '70/70 file-scoped' at tip, but the pair measures 69 passed at tip (seam file went 41->40 with the pushback pin removal). The -1 is correctly declared and reconciled in the §10 collection-delta table, so this is an inconsistency between two ledger sections, not concealment — 70 was the BASE figure (base collects 70).",
+            "evidence": "Tip 2f355fc3: `pytest tests/unit/builtins/test_input_decoder_seam_4b2.py tests/unit/builtins/test_read_exact_timeout_4b2.py -q` -> 69 passed. Base e3924ed3: --collect-only -> 70. SLOT-LEDGER-4b4.md §14 row 12 vs §10 delta table (md5 3449eefbccb1260c04a09027df601d27 verified).",
+            "confidence": null
+          },
+          {
+            "severity": "NIT",
+            "description": "The brief's CLOSE pin list names 'strand x dup x dup-again' as a required composition cell; the landed suite has no dup-again cell in any form. This is exactly the missing row that would have caught BLOCKER 1's builtin-frame face (my X6 dup-again probe fails at tip). Subsumed by BLOCKER 1's fix, but the pin-list item was silently dropped.",
+            "evidence": "briefs/4b.4.md 'Pins YOU create' (strand x dup x dup-again); grep of tests/integration/redirection/test_input_cursor_contract_4b4.py and tests/unit/io_redirect/test_input_cursor_registry_4b4.py shows no dup-again/re-dup cell; probe row X6 at tip: bash total \\xc3\\xa9Q, psh total \\xa9Q.",
+            "confidence": null
+          }
+        ],
+        "verdict": "FAIL"
+      }
+    }
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Verify"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "diff-audit:fix/remediation-4b-4",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "ae4e9ef324071adb6",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1786194767915,
+      "queuedAt": 1786194764228,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "FAIL",
+      "promptPreview": "You are an adversarial verifier for the psh Boundary REMEDIATION Campaign (integrator-side review of a dev branch BEFORE it is gated and merged). Repo: /Users/pwilson/src/psh (work read-only from the main repo — do NOT check out, commit, or modify anything there; use \"git -C /Users/pwilson/src/psh <cmd>\" forms that need no checkout: diff, log, show, grep with a <branch> ref; throwaway worktrees ar…",
+      "lastProgressAt": 1786195620199,
+      "tokens": 171356,
+      "toolCalls": 44,
+      "durationMs": 852284,
+      "resultPreview": "{\"verdict\":\"FAIL\",\"issues\":[{\"severity\":\"BLOCKER\",\"description\":\"NEW BYTE-LOSS REGRESSION (green on base, red at tip, mutation-proven): InputCursorRegistry.pop_frame (psh/io_redirect/input_cursor.py:236-239) unconditionally destroys the cursor of whatever description the frame left on the fd — but when the frame's binding was created by bind_dup it is an ALIAS to a description ANOTHER fd still nam…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "resurrect:fix/remediation-4b-4",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "a8d5deb17eb6c75a4",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1786194768523,
+      "queuedAt": 1786194764228,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "PASS-WITH-NITS",
+      "promptPreview": "You are an adversarial verifier for the psh Boundary REMEDIATION Campaign (integrator-side review of a dev branch BEFORE it is gated and merged). Repo: /Users/pwilson/src/psh (work read-only from the main repo — do NOT check out, commit, or modify anything there; use \"git -C /Users/pwilson/src/psh <cmd>\" forms that need no checkout: diff, log, show, grep with a <branch> ref; throwaway worktrees ar…",
+      "lastProgressAt": 1786195293496,
+      "tokens": 128326,
+      "toolCalls": 43,
+      "durationMs": 524973,
+      "resultPreview": "{\"verdict\":\"PASS-WITH-NITS\",\"issues\":[{\"severity\":\"NIT\",\"description\":\"FLIP-PINS.md registers the D-4B.2-s1 pins under a class name that does not exist. Row 32 of docs/reviews/evidence/boundary_remediation_2026-07/FLIP-PINS.md names `test_input_decoder_seam_4b2.py::TestResumeAcrossReads`; the actual class is `TestResumeRoutesArePshContract`. This is a PRE-EXISTING 4B.2 registry defect (not introdu…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "ledger:fix/remediation-4b-4",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "a6d7e32521279fe6a",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1786194768518,
+      "queuedAt": 1786194764228,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "FAIL",
+      "promptPreview": "You are an adversarial verifier for the psh Boundary REMEDIATION Campaign (integrator-side review of a dev branch BEFORE it is gated and merged). Repo: /Users/pwilson/src/psh (work read-only from the main repo — do NOT check out, commit, or modify anything there; use \"git -C /Users/pwilson/src/psh <cmd>\" forms that need no checkout: diff, log, show, grep with a <branch> ref; throwaway worktrees ar…",
+      "lastProgressAt": 1786195983927,
+      "tokens": 175110,
+      "toolCalls": 71,
+      "durationMs": 1215409,
+      "resultPreview": "{\"issues\":[{\"severity\":\"BLOCKER\",\"description\":\"Brief Phase A item 2 — 'The s1 bash table, completed' (timeout-partial assignment across -N/-n/plain x pipe/tty x complete-vs-partial chars x what bash assigns) — appears NOWHERE in the slot ledger: no table, no verdict, no evidence. D1 planned it as A2; D2 delivered no such section; the slot ledger relabels its §3 coupling measurement 'A2/A5'; every…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "reprobe:fix/remediation-4b-4",
+      "phaseIndex": 1,
+      "phaseTitle": "Verify",
+      "agentId": "ad14f1e614c074b8d",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1786194768336,
+      "queuedAt": 1786194764228,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "FAIL",
+      "promptPreview": "You are an adversarial verifier for the psh Boundary REMEDIATION Campaign (integrator-side review of a dev branch BEFORE it is gated and merged). Repo: /Users/pwilson/src/psh (work read-only from the main repo — do NOT check out, commit, or modify anything there; use \"git -C /Users/pwilson/src/psh <cmd>\" forms that need no checkout: diff, log, show, grep with a <branch> ref; throwaway worktrees ar…",
+      "lastProgressAt": 1786196144878,
+      "tokens": 176044,
+      "toolCalls": 49,
+      "durationMs": 1376542,
+      "resultPreview": "{\"issues\":[{\"severity\":\"BLOCKER\",\"description\":\"REGRESSION (green at base, byte-destroying at tip): the new alias bookkeeping made the registry's two cursor-drop sites reference-blind. InputCursorRegistry.pop_frame (input_cursor.py:227) and rebind (input_cursor.py:181) drop a description's cursor without checking whether ANOTHER fd still references that description. After bind_dup creates an alias…"
+    }
+  ],
+  "totalTokens": 650836,
+  "totalToolCalls": 207
+}

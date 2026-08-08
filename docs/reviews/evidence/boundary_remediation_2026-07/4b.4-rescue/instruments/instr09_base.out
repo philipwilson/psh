@@ -1,0 +1,78 @@
+DISCRIMINATOR parent+child: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+========================================================================
+DUP SPELLINGS
+========================================================================
+[DIVERGE] dup: exec 3<&0 (permanent)
+          psh   : b'a=<\xc3> b=<\n>\n' rc=0
+          bash-C: b'a=<\xc3> b=<A>\n' rc=0
+
+[DIVERGE] dup: {v}<&0 (named fd)
+          psh   : b'a=<\xc3> b=<\n>\n' rc=0
+          bash-C: b'a=<\xc3> b=<A>\n' rc=0
+
+[DIVERGE] dup: per-command 3<&0 on a builtin (temp)
+          psh   : b'a=<\xc3> b=<\n>\n' rc=0
+          bash-C: b'a=<\xc3> b=<A>\n' rc=0
+
+========================================================================
+FRAME KINDS — forward leak (stdin surplus INTO frame)
+========================================================================
+[DIVERGE] frame: builtin redirect  read b < F
+          psh   : b'a=<\xc3> b=<AF1> c=<\n>\n' rc=0
+          bash-C: b'a=<\xc3> b=<F1> c=<A>\n' rc=0
+
+[DIVERGE] frame: brace group  { read b; } < F
+          psh   : b'a=<\xc3> b=<AF1> c=<\n>\n' rc=0
+          bash-C: b'a=<\xc3> b=<F1> c=<A>\n' rc=0
+
+[DIVERGE] frame: while loop  while read b; do break; done < F
+          psh   : b'a=<\xc3> b=<AF1> c=<\n>\n' rc=0
+          bash-C: b'a=<\xc3> b=<F1> c=<A>\n' rc=0
+
+[DIVERGE] frame: function with redirect
+          psh   : b'b=<AF1>\na=<\xc3> c=<\n>\n' rc=0
+          bash-C: b'b=<F1>\na=<\xc3> c=<A>\n' rc=0
+
+========================================================================
+FRAME KINDS — REVERSE leak (frame surplus OUT into stdin)
+========================================================================
+[DIVERGE] reverse: builtin redirect  read -N 1 a < G
+          psh   : b'a=<\xc3> b=<ASTDIN1>\n' rc=0
+          bash-C: b'a=<\xc3> b=<STDIN1>\n' rc=0
+
+[DIVERGE] reverse: brace group  { read -N 1 a; } < G
+          psh   : b'a=<\xc3> b=<ASTDIN1>\n' rc=0
+          bash-C: b'a=<\xc3> b=<STDIN1>\n' rc=0
+
+========================================================================
+MUST-HOLDS (must stay MATCH after the fix)
+========================================================================
+[MATCH  ] must-hold: same-fd persistence
+          psh   : b'x=<\xc3> y=<A>\n' rc=0
+          bash-C: b'x=<\xc3> y=<A>\n' rc=0
+
+[MATCH  ] must-hold: exec rebind drops
+          psh   : b'a=<\xc3> b=<F1>\n' rc=0
+          bash-C: b'a=<\xc3> b=<F1>\n' rc=0
+
+[MATCH  ] must-hold: never-over-read to external
+          psh   : b'b\nc\n' rc=0
+          bash-C: b'b\nc\n' rc=0
+
+========================================================================
+DIVERGE  dup: exec 3<&0 (permanent)
+DIVERGE  dup: {v}<&0 (named fd)
+DIVERGE  dup: per-command 3<&0 on a builtin (temp)
+DIVERGE  frame: builtin redirect  read b < F
+DIVERGE  frame: brace group  { read b; } < F
+DIVERGE  frame: while loop  while read b; do break; done < F
+DIVERGE  frame: function with redirect
+DIVERGE  reverse: builtin redirect  read -N 1 a < G
+DIVERGE  reverse: brace group  { read -N 1 a; } < G
+MATCH    must-hold: same-fd persistence
+MATCH    must-hold: exec rebind drops
+MATCH    must-hold: never-over-read to external
+
+DIVERGE=9  MATCH=3

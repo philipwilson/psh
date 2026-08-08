@@ -1,0 +1,53 @@
+DISCRIMINATOR parent+child: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+s1 emulation injected via: /Users/pwilson/src/psh-r4b-4/tmp/w4b4/s1site/sitecustomize.py
+
+========================================================================
+CELL 0 — VALIDITY CONTROL: is the emulation live in the child?
+========================================================================
+### R-TIMEOUT x S-SAMEFD (the s1 divergence itself)
+    psh    : b'0000000    v   =   <   >       w   =   <   >  \\n                        \n0000012\n'   [DIVERGE]
+    psh+s1 : b'0000000    v   =   < 303   >       w   =   <   >  \\n                    \n0000013\n'   [MATCH]
+    bash   : b'0000000    v   =   < 303   >       w   =   <   >  \\n                    \n0000013\n'
+    -> s1 ALONE CLOSES this cell
+    note: psh+s1 MUST converge here or the injection failed.
+
+INJECTION PROVEN LIVE.
+
+========================================================================
+THE TIMEOUT ROUTE across the unhooked surfaces
+========================================================================
+### LEG A — R-TIMEOUT x S-TEMPFRAME forward
+    psh    : b'0000000    v   =   |   x   = 303   F   I   L   E   L   I   N   E  \\n    \n0000017\n'   [DIVERGE]
+    psh+s1 : b'0000000    v   = 303   |   x   =   F   I   L   E   L   I   N   E  \\n    \n0000017\n'   [MATCH]
+    bash   : b'0000000    v   = 303   |   x   =   F   I   L   E   L   I   N   E  \\n    \n0000017\n'
+    -> s1 ALONE CLOSES this cell
+
+### LEG B — R-TIMEOUT x S-DUP
+    psh    : b'0000000    v   =   |   y   = 251   Z   |   w   =  \\n                    \n0000013\n'   [DIVERGE]
+    psh+s1 : b'0000000    v   = 303   |   y   = 251   Z   |   w   =  \\n                \n0000014\n'   [MATCH]
+    bash   : b'0000000    v   = 303   |   y   = 251   Z   |   w   =  \\n                \n0000014\n'
+    -> s1 ALONE CLOSES this cell
+
+========================================================================
+THE MALFORMED ROUTE across the SAME surfaces — the residual that
+s1 cannot reach (no timeout is involved at all)
+========================================================================
+### R-MALFORMED x S-TEMPFRAME forward (I1 (c'))   (oracle = bash C, malformed model)
+    psh    : b'a=<\xc3> b=<AFILELINE> c=<\n>\n'   [DIVERGE]
+    psh+s1 : b'a=<\xc3> b=<AFILELINE> c=<\n>\n'   [DIVERGE]
+    bash-C : b'a=<\xc3> b=<FILELINE> c=<A>\n'
+    -> s1 ALONE DOES NOT CLOSE this cell
+
+### R-MALFORMED x S-TEMPFRAME REVERSE (new face)   (oracle = bash C, malformed model)
+    psh    : b'a=<\xc3> b=<ASTDIN1>\n'   [DIVERGE]
+    psh+s1 : b'a=<\xc3> b=<ASTDIN1>\n'   [DIVERGE]
+    bash-C : b'a=<\xc3> b=<STDIN1>\n'
+    -> s1 ALONE DOES NOT CLOSE this cell
+
+### R-MALFORMED x S-DUP (I1 (b))   (oracle = bash C, malformed model)
+    psh    : b'a=<\xc3> b=<\n>\n'   [DIVERGE]
+    psh+s1 : b'a=<\xc3> b=<\n>\n'   [DIVERGE]
+    bash-C : b'a=<\xc3> b=<A>\n'
+    -> s1 ALONE DOES NOT CLOSE this cell
+

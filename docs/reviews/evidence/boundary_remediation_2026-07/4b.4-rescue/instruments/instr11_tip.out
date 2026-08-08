@@ -1,0 +1,91 @@
+DISCRIMINATOR parent+child: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+==========================================================================
+BL-1 / BL-6 — a frame pop or rebind destroys a STILL-REFERENCED cursor
+==========================================================================
+[DIVERGE] BL1-R1  true 3<&0 between reads
+          psh   : b'a=<\xc3> b=<B>\n'
+          bash-C: b'a=<\xc3> b=<A>\n'
+
+[DIVERGE] BL1-R2  ':' instead of 'true'
+          psh   : b'a=<\xc3> b=<B>\n'
+          bash-C: b'a=<\xc3> b=<A>\n'
+
+[DIVERGE] BL1-N4  move form  true 3<&0-
+          psh   : b'a=<\xc3> b=<B>\n'
+          bash-C: b'a=<\xc3> b=<>\n'
+
+[DIVERGE] BL1-N5  mapfile after the frame
+          psh   : b'L=<BC>\n'
+          bash-C: b'L=<ABC>\n'
+
+[DIVERGE] BL6-X3  output dup to a read fd:  true >&0
+          psh   : b'a=<\xc3> b=<B>\n'
+          bash-C: b'a=<\xc3> b=<A>\n'
+
+[DIVERGE] BL6-X4  save/close idiom:  exec 3<&0; exec 3<&-
+          psh   : b'a=<\xc3> b=<B>\n'
+          bash-C: b'a=<\xc3> b=<A>\n'
+
+[DIVERGE] BL1-N9  dup aliasing across an intervening frame
+          psh   : b'a=<\xc3> b=<B>\n'
+          bash-C: b'a=<\xc3> b=<A>\n'
+
+==========================================================================
+BL-2 — named-fd redirect on a BUILTIN frame (fd known only at apply)
+==========================================================================
+[DIVERGE] BL2-P1  read -N 1 b {v}<&0
+          psh   : b'a=<\xc3> b=<B> c=<A>\n'
+          bash-C: b'a=<\xc3> b=<A> c=<B>\n'
+
+==========================================================================
+BL-7 — compound-command dup (guarded_redirections path, no aliasing)
+==========================================================================
+[DIVERGE] BL7-X8  { read -N 1 -u 3 b; } 3<&0
+          psh   : b'a=<\xc3> b=<B> c=<A>\n'
+          bash-C: b'a=<\xc3> b=<A> c=<B>\n'
+
+==========================================================================
+BL-5 / RN-17 — chained dup (verifier says already correct; confirm)
+==========================================================================
+[MATCH  ] BL5     exec 3<&0; exec 4<&3; read -u 4
+          psh   : b'a=<\xc3> b=<A>\n'
+          bash-C: b'a=<\xc3> b=<A>\n'
+
+==========================================================================
+MUST-HOLD controls — these were green and must STAY green
+==========================================================================
+[MATCH  ] CTL     same-fd persistence
+          psh   : b'x=<\xc3> y=<A>\n'
+          bash-C: b'x=<\xc3> y=<A>\n'
+
+[MATCH  ] CTL     plain dup share (the slot's leg-B face)
+          psh   : b'a=<\xc3> b=<A>\n'
+          bash-C: b'a=<\xc3> b=<A>\n'
+
+[MATCH  ] CTL     temp-frame forward isolation
+          psh   : b'a=<\xc3> b=<F1> c=<A>\n'
+          bash-C: b'a=<\xc3> b=<F1> c=<A>\n'
+
+[MATCH  ] CTL     non-dup frame between reads (true 2>/dev/null)
+          psh   : b'a=<\xc3> b=<A>\n'
+          bash-C: b'a=<\xc3> b=<A>\n'
+
+==========================================================================
+DIVERGE  BL1-R1  true 3<&0 between reads
+DIVERGE  BL1-R2  ':' instead of 'true'
+DIVERGE  BL1-N4  move form  true 3<&0-
+DIVERGE  BL1-N5  mapfile after the frame
+DIVERGE  BL6-X3  output dup to a read fd:  true >&0
+DIVERGE  BL6-X4  save/close idiom:  exec 3<&0; exec 3<&-
+DIVERGE  BL1-N9  dup aliasing across an intervening frame
+DIVERGE  BL2-P1  read -N 1 b {v}<&0
+DIVERGE  BL7-X8  { read -N 1 -u 3 b; } 3<&0
+MATCH    BL5     exec 3<&0; exec 4<&3; read -u 4
+MATCH    CTL     same-fd persistence
+MATCH    CTL     plain dup share (the slot's leg-B face)
+MATCH    CTL     temp-frame forward isolation
+MATCH    CTL     non-dup frame between reads (true 2>/dev/null)
+
+DIVERGE=9  MATCH=5

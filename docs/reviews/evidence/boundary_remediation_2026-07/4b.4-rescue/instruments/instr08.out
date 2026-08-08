@@ -1,0 +1,12 @@
+DISCRIMINATOR parent+child: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+### LEG A (temp-frame)
+    psh      : b'0000000    v   =   |   x   = 303   F   I   L   E   L   I   N   E  \\n    \n0000017\n'
+    psh+CLOSE: b'0000000    v   =   |   x   =   F   I   L   E   L   I   N   E  \\n        \n0000016\n'
+    bash     : b'0000000    v   = 303   |   x   =   F   I   L   E   L   I   N   E  \\n    \n0000017\n'
+
+### LEG B (dup)
+    psh      : b'0000000    v   =   |   y   = 251   Z   |   w   =  \\n                    \n0000013\n'
+    psh+CLOSE: b'0000000    v   =   |   y   = 303 251   Z   |   w   =  \\n                \n0000014\n'
+    bash     : b'0000000    v   = 303   |   y   = 251   Z   |   w   =  \\n                \n0000014\n'
+

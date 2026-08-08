@@ -1,0 +1,67 @@
+DISCRIMINATOR parent+child: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+========================================================================
+R-MALFORMED  x  each surface  (deterministic; oracle = bash C per
+DECISION 1, the hybrid malformed model)
+========================================================================
+[MATCH  ] R-MALFORMED x S-SAMEFD (must-hold: surplus carries)   (oracle = bash C)
+           psh     : b'x=<\xc3> y=<A>\n'
+           bash-utf8: b'x=<\xc3> y=<A>\n'
+           bash-C   : b'x=<\xc3> y=<A>\n'
+           note: I1 same-fd persistence — the designed behavior.
+
+[DIVERGE] R-MALFORMED x S-TEMPFRAME forward (I1 (c'), pinned)   (oracle = bash C)
+           psh     : b'a=<\xc3> b=<AF1> c=<\n>\n'
+           bash-utf8: b'a=<\xc3> b=<F1> c=<A>\n'
+           bash-C   : b'a=<\xc3> b=<F1> c=<A>\n'
+           note: stdin surplus leaks INTO the temp-frame file read.
+
+[DIVERGE] R-MALFORMED x S-TEMPFRAME REVERSE (new face)   (oracle = bash C)
+           psh     : b'a=<\xc3> b=<ASTDIN1>\n'
+           bash-utf8: b'a=<\xc3> b=<STDIN1>\n'
+           bash-C   : b'a=<\xc3> b=<STDIN1>\n'
+           note: does the FILE's surplus leak OUT into the next STDIN read?
+
+[DIVERGE] R-MALFORMED x S-DUP (I1 (b), pinned)   (oracle = bash C)
+           psh     : b'a=<\xc3> b=<\n>\n'
+           bash-utf8: b'a=<\xc3> b=<A>\n'
+           bash-C   : b'a=<\xc3> b=<A>\n'
+           note: lookahead byte stranded on fd0's cursor, invisible to fd3.
+
+[MATCH  ] R-MALFORMED x S-EXECREBIND (must-hold: cursor dropped)   (oracle = bash C)
+           psh     : b'a=<\xc3> b=<F1>\n'
+           bash-utf8: b'a=<\xc3> b=<F1>\n'
+           bash-C   : b'a=<\xc3> b=<F1>\n'
+           note: rebind() must drop the stale cursor — no surplus into the file read.
+
+[DIVERGE] R-MALFORMED x S-FORK (must-hold: child registry fresh)   (oracle = bash C)
+           psh     : b'child=<B>\na=<\xc3>\n'
+           bash-utf8: b'child=<A>\na=<\xc3>\n'
+           bash-C   : b'child=<A>\na=<\xc3>\n'
+           note: child must inherit no userspace buffer (only the kernel offset).
+
+[DIVERGE] R-MALFORMED x S-EXTERNAL (I1 (d), documented)   (oracle = bash C)
+           psh     : b'\nZ\n'
+           bash-utf8: b'A\nZ\n'
+           bash-C   : b'A\nZ\n'
+           note: stranded lookahead byte is invisible to an external child.
+
+========================================================================
+CONTROLS — the same surfaces with NO stranding (must be parity)
+========================================================================
+[MATCH  ] CTL temp-frame, no surplus   (oracle = bash utf8)
+           psh     : b'S1|F1|S2\n'
+           bash-utf8: b'S1|F1|S2\n'
+           bash-C   : b'S1|F1|S2\n'
+
+[MATCH  ] CTL dup alias, no surplus   (oracle = bash utf8)
+           psh     : b'one|two|three\n'
+           bash-utf8: b'one|two|three\n'
+           bash-C   : b'one|two|three\n'
+
+[MATCH  ] CTL temp-frame REVERSE, no surplus   (oracle = bash utf8)
+           psh     : b'a=<F1> b=<STDIN1>\n'
+           bash-utf8: b'a=<F1> b=<STDIN1>\n'
+           bash-C   : b'a=<F1> b=<STDIN1>\n'
+

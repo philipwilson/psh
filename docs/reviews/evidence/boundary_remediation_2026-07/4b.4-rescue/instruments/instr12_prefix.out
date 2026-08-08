@@ -1,0 +1,109 @@
+DISCRIMINATOR: /Users/pwilson/src/psh-r4b-4/psh/__init__.py
+DISCRIMINATOR: /Users/pwilson/src/psh-4b4-base/psh/__init__.py
+ORACLE: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+
+============================================================================
+BL-1 / BL-6 — reference-blind drops (claimed REGRESSIONS)
+============================================================================
+[REGRESSED  DIVERGES] BL1-R1  true 3<&0 between reads
+            base: b'a=<\xc3> b=<A>\n'
+            tip : b'a=<\xc3> b=<B>\n'
+            bash: b'a=<\xc3> b=<A>\n'
+
+[REGRESSED  DIVERGES] BL1-R2  ':' instead of 'true'
+            base: b'a=<\xc3> b=<A>\n'
+            tip : b'a=<\xc3> b=<B>\n'
+            bash: b'a=<\xc3> b=<A>\n'
+
+[REGRESSED  DIVERGES] BL1-N4  move form true 3<&0-
+            base: b'a=<\xc3> b=<A>\n'
+            tip : b'a=<\xc3> b=<B>\n'
+            bash: b'a=<\xc3> b=<>\n'
+
+[REGRESSED  DIVERGES] BL1-N5  mapfile after the frame
+            base: b'L=<ABC>\n'
+            tip : b'L=<BC>\n'
+            bash: b'L=<ABC>\n'
+
+[REGRESSED  DIVERGES] BL6-X3  output dup to a read fd: true >&0
+            base: b'a=<\xc3> b=<A>\n'
+            tip : b'a=<\xc3> b=<B>\n'
+            bash: b'a=<\xc3> b=<A>\n'
+
+[REGRESSED  DIVERGES] BL6-X4  save/close idiom exec 3<&0; exec 3<&-
+            base: b'a=<\xc3> b=<A>\n'
+            tip : b'a=<\xc3> b=<B>\n'
+            bash: b'a=<\xc3> b=<A>\n'
+
+[           DIVERGES] BL1-N9  aliasing across an intervening frame
+            base: b'a=<\xc3> b=<B>\n'
+            tip : b'a=<\xc3> b=<B>\n'
+            bash: b'a=<\xc3> b=<A>\n'
+
+============================================================================
+BL-2 — named-fd redirect on a builtin frame (claimed REGRESSION)
+============================================================================
+[REGRESSED  DIVERGES] BL2-P1  read -N 1 b {v}<&0
+            base: b'a=<\xc3> b=<A> c=<B>\n'
+            tip : b'a=<\xc3> b=<B> c=<A>\n'
+            bash: b'a=<\xc3> b=<A> c=<B>\n'
+
+============================================================================
+BL-7 — compound dup (claimed PRE-EXISTING, undeclared under CLOSE)
+============================================================================
+[           DIVERGES] BL7-X8  { read -N 1 -u 3 b; } 3<&0
+            base: b'a=<\xc3> b=<B> c=<A>\n'
+            tip : b'a=<\xc3> b=<B> c=<A>\n'
+            bash: b'a=<\xc3> b=<A> c=<B>\n'
+
+============================================================================
+BL-5 — chained dup (claimed already correct at tip)
+============================================================================
+[REGRESSED  matches ] BL5     exec 3<&0; exec 4<&3; read -u 4
+            base: b'a=<\xc3> b=<B>\n'
+            tip : b'a=<\xc3> b=<A>\n'
+            bash: b'a=<\xc3> b=<A>\n'
+
+============================================================================
+MUST-HOLD — the slot's own closed faces and I1 guarantees
+============================================================================
+[           matches ] CTL     same-fd persistence
+            base: b'x=<\xc3> y=<A>\n'
+            tip : b'x=<\xc3> y=<A>\n'
+            bash: b'x=<\xc3> y=<A>\n'
+
+[REGRESSED  matches ] CTL     plain dup share (leg B face)
+            base: b'a=<\xc3> b=<\n>\n'
+            tip : b'a=<\xc3> b=<A>\n'
+            bash: b'a=<\xc3> b=<A>\n'
+
+[REGRESSED  matches ] CTL     temp-frame forward isolation
+            base: b'a=<\xc3> b=<AF1> c=<\n>\n'
+            tip : b'a=<\xc3> b=<F1> c=<A>\n'
+            bash: b'a=<\xc3> b=<F1> c=<A>\n'
+
+[REGRESSED  matches ] CTL     temp-frame reverse isolation
+            base: b'a=<\xc3> b=<ASTDIN1>\n'
+            tip : b'a=<\xc3> b=<STDIN1>\n'
+            bash: b'a=<\xc3> b=<STDIN1>\n'
+
+============================================================================
+ROW                                          REGRESSED  vs bash
+============================================================================
+BL1-R1  true 3<&0 between reads              YES        DIVERGES
+BL1-R2  ':' instead of 'true'                YES        DIVERGES
+BL1-N4  move form true 3<&0-                 YES        DIVERGES
+BL1-N5  mapfile after the frame              YES        DIVERGES
+BL6-X3  output dup to a read fd: true >&0    YES        DIVERGES
+BL6-X4  save/close idiom exec 3<&0; exec 3<&- YES        DIVERGES
+BL1-N9  aliasing across an intervening frame -          DIVERGES
+BL2-P1  read -N 1 b {v}<&0                   YES        DIVERGES
+BL7-X8  { read -N 1 -u 3 b; } 3<&0           -          DIVERGES
+BL5     exec 3<&0; exec 4<&3; read -u 4      YES        matches
+CTL     same-fd persistence                  -          matches
+CTL     plain dup share (leg B face)         YES        matches
+CTL     temp-frame forward isolation         YES        matches
+CTL     temp-frame reverse isolation         YES        matches
+
+REGRESSIONS (base!=tip): 11
+DIVERGENCES at tip     : 9
