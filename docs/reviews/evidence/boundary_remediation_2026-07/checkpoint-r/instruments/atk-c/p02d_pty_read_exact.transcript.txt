@@ -1,0 +1,4 @@
+COLLECT tests/system/interactive/test_pty_read_exact_timeout_4b2.py :: 3 tests collected in 0.01s
+-- run (tests/system/interactive/test_pty_read_exact_timeout_4b2.py) --
+...                                                                      [100%]
+3 passed in 3.13s

@@ -1,0 +1,12 @@
+DISCRIMINATOR OK: 0.773.0
+shell_oracle from: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/tests/harness/shell_oracle.py
+psh outcome: type=OutputLimitExceeded
+   .returncode = -9
+   .signal = <Signals.SIGKILL: 9>
+bash outcome: type=OutputLimitExceeded
+   .returncode = -9
+   .signal = <Signals.SIGKILL: 9>
+is_comparable(psh): False
+is_comparable(bash): False
+FALSE-GREEN POSSIBLE: False
+control comparable: True | equal: True

@@ -1,0 +1,11 @@
+PASS part.end_pos.line = 999                    REJECTED (FrozenInstanceError)
+PASS part.end_pos.offset = 999                  REJECTED (FrozenInstanceError)
+PASS part.value = 'PWNED'                       REJECTED (FrozenInstanceError)
+PASS part.pwned = 1                             REJECTED (FrozenInstanceError)
+PASS tok.value = 'X'                            REJECTED (FrozenInstanceError)
+PASS tok.parts[0:1] = []                        REJECTED (AttributeError)
+PASS heredoc.spec rebind                        REJECTED (FrozenInstanceError)
+PASS heredocs.pop                               REJECTED (AttributeError)
+PASS heredocs.clear                             REJECTED (AttributeError)
+PASS heredoc.spec.id rebind                     REJECTED (FrozenInstanceError)
+P01-RESULT: ALL-REJECTED

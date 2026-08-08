@@ -1,0 +1,22 @@
+COLLECT tests/unit/visitor/test_traversal_totality_battery.py :: 78 tests collected in 0.02s
+-- node list (first 12 + last 3) --
+tests/unit/visitor/test_traversal_totality_battery.py::test_edge_inventory_is_alive
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[AndOrList.pipelines]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[ArithmeticEvaluation.redirects]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[ArithmeticEvaluation.arith_template]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[ArithmeticExpansion.arith_template]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[ArrayElementAssignment.value_word]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[ArrayElementAssignment.index_spec]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[ArrayInitialization.words]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[BinaryTestExpression.left_word]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[BinaryTestExpression.right_word]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[BraceGroup.statements]
+tests/unit/visitor/test_traversal_totality_battery.py::test_every_visitor_reaches_every_child_edge_exactly_once[BraceGroup.redirects]
+tests/unit/visitor/test_traversal_totality_battery.py::test_offender_prune_really_skips_and_battery_detects_it
+tests/unit/visitor/test_traversal_totality_battery.py::test_offender_handler_omission_is_neutralized_by_sweep
+
+78 tests collected in 0.01s
+-- run --
+........................................................................ [ 92%]
+......                                                                   [100%]
+78 passed in 0.07s

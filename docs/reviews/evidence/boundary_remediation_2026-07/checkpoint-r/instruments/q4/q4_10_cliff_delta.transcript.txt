@@ -1,0 +1,39 @@
+base ge100: 54  tip ge100: 60
+
+ENTERED the >=100 list at tip (7):
+   142  psh/executor/command_assignments.py::CommandAssignments.commit_prefix   [BRAND-NEW fn]
+   116  psh/executor/function.py::FunctionOperationExecutor._function_frame   [GREW 93 -> 116]
+   111  psh/builtins/environment.py::UnsetBuiltin._unset_array_element   [GREW 95 -> 111]
+   107  psh/expansion/pattern_engine.py::_BashMatcher._match   [BRAND-NEW fn]
+   107  psh/io_redirect/file_redirect.py::FileRedirector.apply_var_fd_redirect   [GREW 52 -> 107]
+   104  psh/builtins/shell_state.py::HistoryBuiltin._dispatch_options   [BRAND-NEW fn]
+   100  psh/builtins/parse_tree.py::ParseTreeBuiltin.execute   [GREW 96 -> 100]
+
+LEFT the list (1):
+   151  psh/executor/command_assignments.py::CommandAssignments.apply_prefix   [shrank 151 -> 18]
+
+Already >=100 and GREW further (12):
+  211 -> 263  (+52)  psh/executor/command.py::CommandExecutor._run_command
+  111 -> 130  (+19)  psh/invocation.py::parse_invocation
+  101 -> 119  (+18)  psh/parser/session.py::ParseSession.feed
+  200 -> 215  (+15)  psh/executor/pipeline.py::PipelineExecutor._execute_pipeline
+  125 -> 133  (+8)  psh/expansion/command_sub.py::CommandSubstitutionExecutor.execute
+  111 -> 119  (+8)  psh/io_redirect/file_redirect.py::FileRedirector.apply_permanent_redirections
+  124 -> 131  (+7)  psh/expansion/variable.py::VariableExpander._expand_array_parameter
+  132 -> 138  (+6)  psh/parser/combinators/commands/redirections.py::RedirectionMixin._parse_redirection
+  178 -> 181  (+3)  psh/builtins/read_builtin.py::ReadBuiltin.execute
+  115 -> 117  (+2)  psh/expansion/operators.py::OperatorOpsMixin._apply_operator
+  115 -> 117  (+2)  psh/interactive/repl_loop.py::REPLLoop.run
+  104 -> 105  (+1)  psh/scripting/source_processor.py::SourceProcessor._execute_buffered_command
+
+Top 10 at tip:
+   323  psh/core/state.py::ShellState.__init__ (base 323)
+   263  psh/executor/command.py::CommandExecutor._run_command (base 211)
+   215  psh/executor/pipeline.py::PipelineExecutor._execute_pipeline (base 200)
+   194  psh/interactive/history_expansion.py::HistoryExpander.expand_history (base 194)
+   181  psh/builtins/read_builtin.py::ReadBuiltin.execute (base 178)
+   172  psh/core/scope.py::ScopeManager.set_variable (base 172)
+   165  psh/core/state.py::ShellState.clone_for_child (base 165)
+   155  psh/executor/strategies.py::ExternalExecutionStrategy.execute (base 155)
+   154  psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement (base 154)
+   151  psh/builtins/function_support.py::DeclareBuiltin._declare_assignment (base 151)

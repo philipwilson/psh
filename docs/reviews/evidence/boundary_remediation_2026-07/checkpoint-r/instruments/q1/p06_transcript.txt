@@ -1,0 +1,18 @@
+DISCRIMINATOR OK: 0.773.0
+VALUE surface: VariableLookup status: LookupStatus.VALUE value: 'original'
+has .binding attr: False  (ruling R1(b): must be absent)
+MISSING is shared singleton: True
+post-attempts: second miss is_set = False status = X
+shell still reads RO = 'original'
+  VALUE set .value             -> REJECTED: AttributeError: property 'value' of 'VariableLookup' object has no setter
+  VALUE set ._value            -> MUTATED (HOLE)
+  VALUE del .value             -> REJECTED: AttributeError: property 'value' of 'VariableLookup' object has no deleter
+  VALUE set .status            -> REJECTED: AttributeError: property 'status' of 'VariableLookup' object has no setter
+  VALUE set arbitrary attr     -> REJECTED: AttributeError: 'VariableLookup' object has no attribute 'evil' and no __dict__ for setting new attributes
+  MISSING set .status          -> REJECTED: AttributeError: property 'status' of 'VariableLookup' object has no setter
+  MISSING set ._status         -> MUTATED (HOLE)
+  MISSING set .value           -> REJECTED: AttributeError: property 'value' of 'VariableLookup' object has no setter
+  PRESENT_UNSET set .status    -> REJECTED: AttributeError: property 'status' of 'VariableLookup' object has no setter
+  PRESENT_UNSET set .value     -> REJECTED: AttributeError: property 'value' of 'VariableLookup' object has no setter
+  PRESENT_UNSET del ._value    -> MUTATED (HOLE)
+HOLES: 3

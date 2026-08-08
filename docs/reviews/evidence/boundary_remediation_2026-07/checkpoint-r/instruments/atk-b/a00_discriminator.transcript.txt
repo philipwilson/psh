@@ -1,0 +1,4 @@
+cwd            : /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-b/wt
+psh.__file__   : /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-b/wt/psh/__init__.py
+psh.version    : 0.773.0
+DISCRIMINATOR OK: worktree import + 0.773.0

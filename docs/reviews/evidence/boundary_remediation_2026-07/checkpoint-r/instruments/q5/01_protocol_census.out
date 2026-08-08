@@ -1,0 +1,142 @@
+== PROTOCOL DEFINITIONS UNDER psh/ ==
+
+psh/expansion/_protocols.py:27 class VariableExpanderProtocol(Protocol)
+  attr shell: 'Shell'
+  attr state: 'ShellState'
+  attr param_expansion: 'ParameterExpansionOps'
+  def expand_variable(var_expr: str, quote_ctx: Optional[str]) -> 'OperandOrStr'
+  def expand_string_variables(text: str, quote_ctx: Optional[str]) -> str
+  def split_subscript(name: str) -> Optional['tuple[str, str]']
+  def _resolve_array_name(array_name: str) -> str
+  def _eval_array_index(index_expr: str) -> int
+  def set_var_or_array_element(var_name: str, value: str) -> None
+  def array_fields(array_name: str, keys: bool) -> list
+  def _array_keyvalue_form(op: str, var: None) -> str
+  def _array_keyvalue_fields(var: None) -> list
+  def _expand_operand(operand: str, quote_ctx: Optional[str]) -> 'OperandValue'
+  def _expand_pattern_operand(operand: str) -> str
+  def _expand_replacement_operand(operand: str) -> list
+  def _split_pattern_replacement(operand: str) -> None
+  def _ifs_star_separator() -> str
+  def _var_attr_flags(var_name: str) -> str
+  def _shell_quote(s: str) -> str
+  def _apply_op_per_element(operator: None, value: None, operand: None, var_name: None) -> None
+  def _view_conditional(operator: str, elements: list, joiner: str, operand: None, qmark_subject: str, assign_error: str, quote_ctx: Optional[str]) -> list
+  def _positional_slice_elements() -> list
+  def _parse_slice_operand(operand: str, what: str) -> tuple
+  def _slice_elements(elements: list, offset: int, length: None, indices: None) -> list
+  def _slice_scalar_subscript(value: str, offset: int, length: None) -> list
+  def expand_to_fields(parameter: str, operator: None, operand: None, quote_ctx: Optional[str]) -> None
+  SHELL-TYPED MEMBERS: ["shell: 'Shell'", "state: 'ShellState'"]
+  ANY-TYPED MEMBERS: none
+
+psh/parser/combinators/commands/_protocols.py:42 class CommandParsersProtocol(Protocol)
+  attr config: 'ParserConfig'
+  attr tokens: 'TokenParsers'
+  attr expansions: 'ExpansionParsers'
+  attr arrays: 'ArrayParsers'
+  attr heredocs: 'Optional[Mapping[int, LexedHeredoc]]'
+  attr redirection: Any
+  attr simple_command: 'Parser[SimpleCommand]'
+  attr pipeline: 'Parser[Union[Pipeline, ASTNode]]'
+  attr and_or_list: 'Parser[Union[AndOrList, ASTNode]]'
+  attr statement: 'Parser[Any]'
+  attr statement_list: 'Parser[StatementList]'
+  attr _pipeline_element: 'Parser'
+  attr _function_def: 'Parser'
+  def _parse_word_as_word(tokens: List['Token'], pos: int) -> 'ParseResult'
+  def _parse_redirection(tokens: List['Token'], pos: int) -> 'ParseResult[Redirect]'
+  def _parse_fd_dup_word(tok: 'Token') -> Optional['Redirect']
+  def _build_simple_command(word_tokens: List['Token'], redirects: List['Redirect'], array_assignments: Optional[List['ArrayAssignment']]) -> 'SimpleCommand'
+  def _build_simple_command_parser() -> 'Parser[SimpleCommand]'
+  def _build_pipeline_parser() -> 'Parser[Union[Pipeline, ASTNode]]'
+  def _build_and_or_list_parser() -> 'Parser[Union[AndOrList, ASTNode]]'
+  def _build_and_or_list_from_parts(parse_result: tuple) -> 'Union[AndOrList, ASTNode]'
+  def _build_statement_parser() -> 'Parser[Union[AndOrList, FunctionDef]]'
+  def build_statement_list(terminators: frozenset, terminator_types: frozenset) -> 'Parser[StatementList]'
+  SHELL-TYPED MEMBERS: none
+  ANY-TYPED MEMBERS: ['redirection: Any']
+
+psh/parser/combinators/control_structures/_protocols.py:29 class ControlStructureProtocol(Protocol)
+  attr commands: 'CommandParsers'
+  attr tokens: 'TokenParsers'
+  attr _compound_body: 'Parser'
+  def _parse_trailing_redirects(tokens: List['Token'], pos: int) -> Tuple[List['Redirect'], int]
+  SHELL-TYPED MEMBERS: none
+  ANY-TYPED MEMBERS: none
+
+psh/parser/recursive_descent/support/syntax_templates.py:44 class _TemplateCtx(Protocol)
+  def line_offset() -> int
+  def lexer_options() -> 'Optional[Mapping[str, object]]'
+  SHELL-TYPED MEMBERS: none
+  ANY-TYPED MEMBERS: none
+
+psh/protocols/__init__.py:91 class VariableAccess(Protocol)
+  def get_variable(name: str, default: str) -> str
+  def set_variable(name: str, value: Any) -> None
+  def get_special_variable(name: str) -> str
+  SHELL-TYPED MEMBERS: none
+  ANY-TYPED MEMBERS: ['set_variable.value: Any']
+
+psh/protocols/__init__.py:119 class ExpansionContext(Protocol)
+  def expand_string_variables(text: str, quote_ctx: Optional[str]) -> str
+  def expand_assignment_value_word(word: 'Word') -> str
+  attr variable_expander: Any
+  attr word_expander: Any
+  SHELL-TYPED MEMBERS: none
+  ANY-TYPED MEMBERS: ['variable_expander: Any', 'word_expander: Any']
+
+psh/protocols/__init__.py:149 class IOContext(Protocol)
+  def stdin() -> TextIO
+  def stdout() -> TextIO
+  def stderr() -> TextIO
+  SHELL-TYPED MEMBERS: none
+  ANY-TYPED MEMBERS: none
+
+psh/protocols/__init__.py:175 class JobRuntime(Protocol)
+  attr shell_state: 'Optional[ShellState]'
+  def terminal_pgid_if_owned() -> Optional[int]
+  def create_job(pgid: int, command: str) -> 'Job'
+  def set_foreground_job(job: 'Optional[Job]') -> None
+  def transfer_terminal_control(pgid: int, context: str) -> bool
+  def wait_for_job(job: 'Job', collect_all_statuses: 'Literal[False]') -> int
+  def wait_for_job(job: 'Job', collect_all_statuses: 'Literal[True]') -> List[int]
+  def report_signal_death_at(job: 'Job', index: int) -> None
+  def finish_foreground_job(terminal_transferred: bool, job: 'Optional[Job]') -> None
+  def remove_job(job_id: int) -> None
+  SHELL-TYPED MEMBERS: ["shell_state: 'Optional[ShellState]'"]
+  ANY-TYPED MEMBERS: none
+
+psh/protocols/__init__.py:216 class LocaleContext(Protocol)
+  def collate_key(s: str) -> Any
+  def compare(a: str, b: str) -> int
+  def upper(s: str) -> str
+  def lower(s: str) -> str
+  def toggle(s: str) -> str
+  def in_class(ch: str, name: str) -> bool
+  SHELL-TYPED MEMBERS: none
+  ANY-TYPED MEMBERS: ['collate_key -> Any']
+
+== USAGE CENSUS (files under psh/ referencing each protocol name, excluding its defining file) ==
+
+CommandParsersProtocol: referenced in 5 psh files total; outside defining file(s) ['psh/parser/combinators/commands/_protocols.py']: ['psh/parser/combinators/commands/pipelines.py', 'psh/parser/combinators/commands/redirections.py', 'psh/parser/combinators/commands/simple.py', 'psh/parser/combinators/commands/statements.py']
+
+ControlStructureProtocol: referenced in 5 psh files total; outside defining file(s) ['psh/parser/combinators/control_structures/_protocols.py']: ['psh/parser/combinators/control_structures/__init__.py', 'psh/parser/combinators/control_structures/conditionals.py', 'psh/parser/combinators/control_structures/loops.py', 'psh/parser/combinators/control_structures/structures.py']
+
+ExpansionContext: referenced in 3 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: ['psh/lexer/expansion_parser.py', 'psh/lexer/modular_lexer.py']
+
+IOContext: referenced in 3 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: ['psh/builtins/input_reader.py', 'psh/io_redirect/input_cursor.py']
+
+JobRuntime: referenced in 2 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: ['psh/executor/foreground_session.py']
+
+LocaleContext: referenced in 2 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: ['psh/core/locale_service.py']
+
+VariableAccess: referenced in 1 psh files total; outside defining file(s) ['psh/protocols/__init__.py']: []
+
+VariableExpanderProtocol: referenced in 5 psh files total; outside defining file(s) ['psh/expansion/_protocols.py']: ['psh/expansion/arrays.py', 'psh/expansion/fields.py', 'psh/expansion/operands.py', 'psh/expansion/operators.py']
+
+_TemplateCtx: referenced in 1 psh files total; outside defining file(s) ['psh/parser/recursive_descent/support/syntax_templates.py']: []
+
+== NAME-COLLISION CENSUS ==
+ExpansionContext: 2 class definitions: ['psh/lexer/expansion_parser.py:387', 'psh/protocols/__init__.py:119']
+LocaleContext: 2 class definitions: ['psh/core/locale_service.py:90', 'psh/protocols/__init__.py:216']

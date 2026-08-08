@@ -1,0 +1,10 @@
+== Arm A: offender in analysis_session.py (unscanned?) ==
+...........                                                              [100%]
+11 passed in 0.07s
+== Arm B: same offender in parser/session.py (scanned) ==
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_shell_consumer_ratchet_q1.py::test_no_unrecorded_full_shell_consumers
+1 failed, 10 passed in 0.07s
+arm-A-exit=0 (0 = ratchet BLIND to analysis_session.py, confirming q5-F2)
+arm-B-exit=0 (nonzero = ratchet bites in scanned module)
+clean-exit=0

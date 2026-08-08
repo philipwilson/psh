@@ -1,0 +1,98 @@
+
+=== CELL f9err.e1_bad_subscript_trap ===
+script:
+  | trap 'echo T >&2' EXIT
+  | echo "${a[b+]}"
+  | echo after
+--- psh: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e1_bad_subscript_trap/psh/cell.sh: line 2: Unexpected token:  at position 2\nT\n'
+--- bash: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e1_bad_subscript_trap/bash/cell.sh: line 2: b+: syntax error: operand expected (error token is "+")\nT\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f9err.e2_bad_subscript_errexit_trap ===
+script:
+  | set -e
+  | trap 'echo T >&2' EXIT
+  | echo "${a[b+]}"
+  | echo after
+--- psh: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e2_bad_subscript_errexit_trap/psh/cell.sh: line 3: Unexpected token:  at position 2\nT\n'
+--- bash: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e2_bad_subscript_errexit_trap/bash/cell.sh: line 3: b+: syntax error: operand expected (error token is "+")\nT\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f9err.e3_nounset_trap ===
+script:
+  | set -u
+  | trap 'echo T >&2' EXIT
+  | echo "$undef_xyz"
+  | echo after
+--- psh: rc=1
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e3_nounset_trap/psh/cell.sh: line 3: undef_xyz: unbound variable\nT\n'
+--- bash: rc=1
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e3_nounset_trap/bash/cell.sh: line 3: undef_xyz: unbound variable\nT\n'
+VERDICT: MATCH
+
+=== CELL f9err.e4_div_zero_trap ===
+script:
+  | trap 'echo T >&2' EXIT
+  | echo $((1/0))
+  | echo after
+--- psh: rc=0
+    out=b'after\n'
+    err=b'psh: arithmetic error: Division by zero\nT\n'
+--- bash: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e4_div_zero_trap/bash/cell.sh: line 2: 1/0: division by 0 (error token is "0")\nT\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f9err.e5_div_zero_errexit_trap ===
+script:
+  | set -e
+  | trap 'echo T >&2' EXIT
+  | echo $((1/0))
+  | echo after
+--- psh: rc=0
+    out=b'after\n'
+    err=b'psh: arithmetic error: Division by zero\nT\n'
+--- bash: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e5_div_zero_errexit_trap/bash/cell.sh: line 3: 1/0: division by 0 (error token is "0")\nT\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f9err.e6_bad_subscript_assign_errexit ===
+script:
+  | set -e
+  | trap 'echo T >&2' EXIT
+  | a[b+]=1
+  | echo after
+--- psh: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e6_bad_subscript_assign_errexit/psh/cell.sh: line 3: Unexpected token:  at position 2\nT\n'
+--- bash: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e6_bad_subscript_assign_errexit/bash/cell.sh: line 3: b+: syntax error: operand expected (error token is "+")\nT\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f9err.e7_nounset_in_arith_trap ===
+script:
+  | set -u
+  | trap 'echo T >&2' EXIT
+  | echo $((undef_xyz + 1))
+  | echo after
+--- psh: rc=1
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e7_nounset_in_arith_trap/psh/cell.sh: line 3: undef_xyz: unbound variable\nT\n'
+--- bash: rc=1
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f9err/e7_nounset_in_arith_trap/bash/cell.sh: line 3: undef_xyz: unbound variable\nT\n'
+VERDICT: MATCH
+
+SUMMARY: {'STDERR-ONLY': 5, 'MATCH': 2}

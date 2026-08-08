@@ -1,0 +1,9 @@
+=== execute (psh)
+MATCHED
+rc=0
+=== execute (bash oracle)
+MATCHED
+rc=0
+=== psh --validate
+No issues found - AST is valid!
+rc=0

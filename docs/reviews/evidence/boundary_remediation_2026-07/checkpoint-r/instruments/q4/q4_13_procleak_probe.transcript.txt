@@ -1,0 +1,33 @@
+=== pgrep snapshot BEFORE batch ===
+  [q4markerA]: []
+  [sleep 6.47]: []
+  [sleep 6.48]: []
+
+=== P1 procsub-zombie (mid-run Z census) ===
+  psh : zombies-at-check=0 (children seen: 1) rc=0
+  bash: zombies-at-check=0 (children seen: 0) rc=0
+
+=== P2 procsub-writer survivors after exit ===
+  psh : rc=0 survivors[q4markerA]=0
+  bash: rc=0 survivors[q4markerA]=0
+
+=== P3 bg-reap (mid-run Z census) ===
+  psh : zombies-at-check=1 (children seen: 2) rc=0
+    Z: ['62673', '62672', 'Z', '<defunct>']
+  bash: zombies-at-check=0 (children seen: 1) rc=0
+
+=== P4 bg job survives shell exit? (both shells; then cleaned) ===
+  psh : rc=0 survivors[sleep 6.47]=0
+  bash: rc=0 survivors[sleep 6.48]=0
+
+=== pgrep snapshot AFTER batch (post-cleanup) ===
+  [q4markerA]: []
+  [sleep 6.47]: []
+  [sleep 6.48]: []
+
+=== verdict lines ===
+P1 zombies psh=0 bash=0 (expect 0/0)
+P2 writer-survivors psh=0 bash=0 (expect 0/0)
+P3 zombies psh=1 bash=0 (expect 0/0)
+P4 bg-survives psh=0 bash=0 (bash norm: 1 — divergence only if psh differs)
+post-batch leftovers: 0

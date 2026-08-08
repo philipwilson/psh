@@ -1,0 +1,28 @@
+except-Exception handlers: 26
+  psh/core/locale_service.py:488
+  psh/core/locale_service.py:502
+  psh/core/process_lease.py:414
+  psh/core/trap_manager.py:442
+  psh/executor/child_policy.py:360
+  psh/executor/child_policy.py:442
+  psh/executor/child_policy.py:275
+  psh/executor/child_policy.py:283
+  psh/executor/command.py:289
+  psh/executor/function.py:188
+  psh/executor/process_launcher.py:374
+  psh/executor/strategies.py:270
+  psh/expansion/manager.py:327
+  psh/expansion/subscript.py:129
+  psh/expansion/subscript.py:144
+  psh/interactive/prompt.py:135
+  psh/interactive/rc_loader.py:48
+  psh/interactive/repl_loop.py:145
+  psh/io_redirect/file_redirect.py:685
+  psh/io_redirect/file_redirect.py:1052
+  psh/io_redirect/file_redirect.py:100
+  psh/io_redirect/manager.py:549
+  psh/lexer/recognizers/registry.py:78
+  psh/scripting/source_processor.py:410
+  psh/scripting/visitor_modes.py:98
+  psh/utils/signal_utils.py:258
+bare-except handlers: 0

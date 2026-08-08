@@ -1,0 +1,135 @@
+
+=== CELL f1hist.h1_w_devfd ===
+script:
+  | exec 3>hf3
+  | history -s AAA
+  | history -s BBB
+  | history -w /dev/fd/3
+  | exec 3>&-
+  | echo ===F===
+  | cat hf3
+  | exit
+--- psh: rc=0
+    out=b'===F===\nAAA\nBBB\n'
+    err=b''
+    artifact[hf3]=b'AAA\nBBB\n'
+--- bash: rc=0
+    out=b'===F===\n'
+    err=b'bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ exec 3>hf3\nbash-5.2$ history -s AAA\nbash-5.2$ history -s BBB\nbash-5.2$ history -w /dev/fd/3\nbash-5.2$ exec 3>&-\nbash-5.2$ echo ===F===\nbash-5.2$ cat hf3\nbash-5.2$ exit\nexit\n'
+    artifact[hf3]=b''
+VERDICT: DIVERGE
+
+=== CELL f1hist.h2_histfile_devfd ===
+script:
+  | exec 4>hf4
+  | HISTFILE=/dev/fd/4
+  | history -s CCC
+  | history -w
+  | exec 4>&-
+  | echo ===F===
+  | cat hf4
+  | exit
+--- psh: rc=0
+    out=b'===F===\nHISTFILE=/dev/fd/4\nCCC\n'
+    err=b''
+    artifact[hf4]=b'HISTFILE=/dev/fd/4\nCCC\n'
+--- bash: rc=0
+    out=b'===F===\n'
+    err=b'bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ exec 4>hf4\nbash-5.2$ HISTFILE=/dev/fd/4\nbash-5.2$ history -s CCC\nbash-5.2$ history -w\nbash-5.2$ exec 4>&-\nbash-5.2$ echo ===F===\nbash-5.2$ cat hf4\nbash-5.2$ exit\nexit\n'
+    artifact[hf4]=b''
+VERDICT: DIVERGE
+
+=== CELL f1hist.h3_w_devstdout_tempframe ===
+script:
+  | history -s DDD
+  | history -w /dev/stdout > cap
+  | echo ===C===
+  | cat cap
+  | exit
+--- psh: rc=0
+    out=b'===C===\nDDD\n'
+    err=b''
+    artifact[cap]=b'DDD\n'
+--- bash: rc=0
+    out=b'===C===\n'
+    err=b'bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ history -s DDD\nbash-5.2$ history -w /dev/stdout > cap\nbash-5.2$ echo ===C===\nbash-5.2$ cat cap\nbash-5.2$ exit\nexit\n'
+    artifact[cap]=b''
+VERDICT: DIVERGE
+
+=== CELL f1hist.h4_r_devfd ===
+script:
+  | exec 5<seed5
+  | history -r /dev/fd/5
+  | exec 5<&-
+  | echo ===L===
+  | history | sed 's/^ *//'
+  | exit
+--- psh: rc=0
+    out=b'===L===\n1  echo S1\n2  echo S2\n'
+    err=b''
+--- bash: rc=0
+    out=b'===L===\n1  echo S1\n2  echo S2\n'
+    err=b"bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ exec 5<seed5\nbash-5.2$ history -r /dev/fd/5\nbash-5.2$ exec 5<&-\nbash-5.2$ echo ===L===\nbash-5.2$ history | sed 's/^ *//'\nbash-5.2$ exit\nexit\n"
+VERDICT: MATCH
+
+=== CELL f1hist.h5_cursor_with_fd_appends ===
+script:
+  | history -r
+  | exec 6>>"$HISTFILE"
+  | printf 'echo C\n' >&6
+  | exec 6>&-
+  | history -n
+  | printf 'echo D\n' >> "$HISTFILE"
+  | history -n
+  | echo ===L===
+  | history | sed 's/^ *//'
+  | exit
+--- psh: rc=0
+    out=b'===L===\n1  echo A\n2  echo B\n3  echo A\n4  echo B\n5  echo C\n6  echo D\n'
+    err=b''
+--- bash: rc=0
+    out=b'===L===\n1  echo A\n2  echo B\n3  echo A\n4  echo B\n5  echo C\n6  echo D\n'
+    err=b'bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ history -r\nbash-5.2$ exec 6>>"$HISTFILE"\nbash-5.2$ printf \'echo C\\n\' >&6\nbash-5.2$ exec 6>&-\nbash-5.2$ history -n\nbash-5.2$ printf \'echo D\\n\' >> "$HISTFILE"\nbash-5.2$ history -n\nbash-5.2$ echo ===L===\nbash-5.2$ history | sed \'s/^ *//\'\nbash-5.2$ exit\nexit\n'
+VERDICT: MATCH
+
+=== CELL f1hist.h6_a_devfd_declared_adjacent ===
+script:
+  | exec 8>hf8
+  | history -s EEE
+  | history -a /dev/fd/8
+  | exec 8>&-
+  | echo ===F===
+  | cat hf8
+  | exit
+--- psh: rc=0
+    out=b'===F===\nEEE\n'
+    err=b''
+    artifact[hf8]=b'EEE\n'
+--- bash: rc=0
+    out=b'===F===\nEEE\n'
+    err=b'bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ exec 8>hf8\nbash-5.2$ history -s EEE\nbash-5.2$ history -a /dev/fd/8\nbash-5.2$ exec 8>&-\nbash-5.2$ echo ===F===\nbash-5.2$ cat hf8\nbash-5.2$ exit\nexit\n'
+    artifact[hf8]=b'EEE\n'
+VERDICT: MATCH
+
+=== CELL f1hist.h7_w_named_then_n_default ===
+script:
+  | history -s FFF
+  | history -w named_out
+  | printf 'echo G\n' >> "$HISTFILE"
+  | history -n
+  | echo ===L===
+  | history | sed 's/^ *//'
+  | echo ===F===
+  | cat named_out
+  | exit
+--- psh: rc=0
+    out=b'===L===\n1  FFF\n2  echo G\n===F===\nFFF\n'
+    err=b''
+    artifact[named_out]=b'FFF\n'
+--- bash: rc=0
+    out=b'===L===\n1  FFF\n2  echo G\n===F===\nFFF\n'
+    err=b'bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nbash-5.2$ history -s FFF\nbash-5.2$ history -w named_out\nbash-5.2$ printf \'echo G\\n\' >> "$HISTFILE"\nbash-5.2$ history -n\nbash-5.2$ echo ===L===\nbash-5.2$ history | sed \'s/^ *//\'\nbash-5.2$ echo ===F===\nbash-5.2$ cat named_out\nbash-5.2$ exit\nexit\n'
+    artifact[named_out]=b'FFF\n'
+VERDICT: MATCH
+
+SUMMARY: {'DIVERGE': 3, 'MATCH': 4}

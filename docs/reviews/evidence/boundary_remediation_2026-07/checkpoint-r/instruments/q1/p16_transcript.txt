@@ -1,0 +1,5 @@
+DISCRIMINATOR OK: 0.773.0
+dispositions changed while shell live: ['SIGUSR1', 'SIGUSR2']
+dispositions leaked after close(): []
+RESULT: PASS (restore-exact-prior)
+after double-close leaked: []

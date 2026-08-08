@@ -1,0 +1,16 @@
+== offender edit (match count must be exactly 1) ==
+matches in position.py: 1
+17:@dataclass
+123:@dataclass
+== guard run against the offender (EXPECT FAILURES) ==
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_every_position_field_rejects_a_write[offset]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_every_position_field_rejects_a_write[line]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_every_position_field_rejects_a_write[column]
+FAILED tests/unit/lexer/test_lexical_value_graph_frozen.py::test_the_base_probe_rewrites_are_now_impossible
+10 failed, 78 passed in 0.09s
+== revert ==
+revert clean: 0 dirty files
+== guard run after revert (EXPECT PASS) ==
+........................................................................ [ 81%]
+................                                                         [100%]
+88 passed in 0.06s

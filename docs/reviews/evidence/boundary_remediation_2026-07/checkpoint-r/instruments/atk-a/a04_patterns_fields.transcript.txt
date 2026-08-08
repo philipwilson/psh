@@ -1,0 +1,124 @@
+
+=== CELL f4pat.g1_extglob_from_positional_suffix ===
+script:
+  | shopt -s extglob
+  | set -- '?(a)'
+  | v=xa
+  | printf '<%s>\n' "${v%%$1}"
+--- psh: rc=0
+    out=b'<x>\n'
+    err=b''
+--- bash: rc=0
+    out=b'<x>\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f4pat.g2_extglob_from_var_both_ends ===
+script:
+  | shopt -s extglob
+  | p='+([0-9])'
+  | v=abc123
+  | printf '<%s><%s>\n' "${v%$p}" "${v##*([a-c])}"
+--- psh: rc=0
+    out=b'<abc12><123>\n'
+    err=b''
+--- bash: rc=0
+    out=b'<abc12><123>\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f4pat.g3_negation_from_positional_case ===
+script:
+  | shopt -s extglob
+  | set -- '!(*.txt)'
+  | case foo.txt in $1) echo M;; *) echo N;; esac
+  | case foo.log in $1) echo M;; *) echo N;; esac
+--- psh: rc=0
+    out=b'N\nM\n'
+    err=b''
+--- bash: rc=0
+    out=b'N\nM\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f4pat.g4_extglob_from_positional_dbracket ===
+script:
+  | shopt -s extglob
+  | set -- '@(x|y)'
+  | [[ x == $1 ]] && echo Y1 || echo N1
+  | [[ z == $1 ]] && echo Y2 || echo N2
+--- psh: rc=0
+    out=b'Y1\nN2\n'
+    err=b''
+--- bash: rc=0
+    out=b'Y1\nN2\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f4pat.g5_nullable_star_group_substitution ===
+script:
+  | shopt -s extglob
+  | p='*(o)'
+  | v=foo
+  | printf '<%s>\n' "${v//$p/X}"
+--- psh: rc=0
+    out=b'<XfX>\n'
+    err=b''
+--- bash: rc=0
+    out=b'<XfX>\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f4pat.g6_charclass_from_var_substitution ===
+script:
+  | p='[[:alpha:]]'
+  | v=a1b
+  | printf '<%s>\n' "${v//$p/_}"
+--- psh: rc=0
+    out=b'<_1_>\n'
+    err=b''
+--- bash: rc=0
+    out=b'<_1_>\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f4pat.g7_multifield_case_subject ===
+script:
+  | set -- 'a b' c
+  | case "$@" in 'a b c') echo M;; *) echo N;; esac
+--- psh: rc=0
+    out=b'M\n'
+    err=b''
+--- bash: rc=0
+    out=b'M\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f4pat.g8_multifield_case_pattern_declared ===
+script:
+  | shopt -s extglob
+  | set -- '@(a|b)' extra
+  | case a in "$@") echo M;; *) echo N;; esac
+--- psh: rc=0
+    out=b'N\n'
+    err=b''
+--- bash: rc=0
+    out=b'N\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f4pat.g9_pattern_from_operand_default ===
+script:
+  | shopt -s extglob
+  | set -- '@(hi|lo)'
+  | p=${u:-"$@"}
+  | [[ hi == $p ]] && echo Y || echo N
+--- psh: rc=0
+    out=b'Y\n'
+    err=b''
+--- bash: rc=0
+    out=b'Y\n'
+    err=b''
+VERDICT: MATCH
+
+SUMMARY: {'MATCH': 9}

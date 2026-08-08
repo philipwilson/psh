@@ -1,0 +1,5 @@
+DISCRIMINATOR-OK /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/qr/wt/psh/__init__.py version=0.773.0
+file-mode: n=80 OK=80
+stdin-mode: n=80 OK=80
+c-mode: n=40 OK=40
+TOTAL runs=200 elapsed=103s

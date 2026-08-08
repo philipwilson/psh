@@ -1,0 +1,20 @@
+base total: 183 across 67 modules
+tip  total: 179 across 66 modules
+
+--- per-module deltas (base -> tip), only changed ---
+psh.ast_nodes.syntax_templates: 0 -> 1  [GREW]
+psh.expansion.parameter_expansion: 1 -> 0  [shrank]
+psh.parser: 2 -> 1  [shrank]
+psh.parser.recursive_descent.support.utils: 1 -> 0  [shrank]
+psh.scripting.visitor_modes: 9 -> 7  [shrank]
+
+committed caps: 71 entries, sum 200
+modules OVER cap (walker-actual > cap): 0
+modules with slack (actual < cap): 7
+  psh.builtins.source_command: actual 1 < cap 2
+  psh.executor.pipeline: actual 2 < cap 4
+  psh.expansion.parameter_expansion: actual 0 < cap 12
+  psh.expansion.pattern: actual 0 < cap 2
+  psh.lexer.cmdsub_scanner: actual 0 < cap 2
+  psh.lexer.heredoc_collector: actual 0 < cap 1
+  psh.lexer.heredoc_lexer: actual 0 < cap 1

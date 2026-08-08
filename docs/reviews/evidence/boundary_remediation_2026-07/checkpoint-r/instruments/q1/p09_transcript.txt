@@ -1,0 +1,43 @@
+DISCRIMINATOR OK: 0.773.0
+STD_FDS lease BEFORE exec: None
+fd 7 open before: False | fd 8 open before: False
+psh: line 1: /no/such/dir/x: No such file or directory
+exec exit code: 1
+STD_FDS lease AFTER failed exec: None
+fd 7 open after (bash closes on full rollback): False
+fd 8 open after: False
+second shell activate: SUCCEEDED
+Traceback (most recent call last):
+  File "/Users/pwilson/src/psh/tmp/ckr-probes/q1/p09_low_stdfds.py", line 65, in <module>
+    sh2.run_command("exec 9>%s" % ok2)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/psh/shell.py", line 907, in run_command
+    return self.script_manager.execute_from_source(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        input_source, add_to_history, base_line=base_line)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/psh/scripting/base.py", line 56, in execute_from_source
+    return self.source_processor.execute_from_source(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        input_source, add_to_history, base_line=base_line)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/psh/scripting/source_processor.py", line 211, in execute_from_source
+    with self.shell.activation():
+         ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/psh/shell.py", line 480, in activation
+    lease = self.state.activate()
+  File "/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/psh/core/state.py", line 479, in activate
+    return get_coordinator().activate(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, on_grant=self._on_activation_grant)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/psh/core/process_lease.py", line 356, in activate
+    changed, rollback = self._ensure_owner(owner)
+                        ~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/psh/core/process_lease.py", line 501, in _ensure_owner
+    raise LeaseError(
+    ...<6 lines>...
+        "here: close() is the contract")
+psh.core.process_lease.LeaseError: competing process owner: another live shell holds the process activation (depth=1, components=[none]); simultaneous active shells are unsupported — close()/shutdown() the other shell first (campaign F2). A shell dropped WITHOUT close() that still holds a lease keeps its globals installed and is reported here: close() is the contract

@@ -1,0 +1,8 @@
+PASS inv1 -d then -a: psh='cmd1\n' bash='cmd1\n' expect=('cmd1\n',) parity=True
+PASS inv1b -c then -a: psh='' bash='<NO FILE>' expect=('<NO FILE>', '') parity=False
+PASS inv2 -r then -a: psh='readline1\ntyped\n' bash='readline1\ntyped\n' expect=('readline1\ntyped\n',) parity=True
+PASS inv4a dup debts save twice: psh='dup\ndup\n' bash='dup\ndup\n' expect=('dup\ndup\n',) parity=True
+PASS inv4b delete one dup: psh='dup\n' bash='dup\n' expect=('dup\n',) parity=True
+PASS inv1c -a twice: psh='once\n' bash='once\n' expect=('once\n',) parity=True
+PASS strict-loudness: drift with reconciler disabled raises ValueError = True
+P06-RESULT: HOLDS

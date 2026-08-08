@@ -1,0 +1,18 @@
+== Benchmark tier: nightly artifact evidence (gh run download, benchmark-transcript)
+runs: 31237400812 (2026-08-08, e3924ed3), 31145981907 (2026-08-07, d1e4f1ae), 31070163425 (2026-08-06, 241a923c)
+
+-- run 31237400812:
+FAILED tests/performance/benchmarks/test_parsing_performance.py::TestParsingPerformance::test_simple_command_performance - assert 0.011303730000008727 < 0.01
+FAILED tests/performance/benchmarks/test_parsing_performance.py::TestParsingPerformance::test_complex_structure_performance - assert 0.011140697000001865 < 0.01
+FAILED tests/performance/benchmarks/test_parsing_performance.py::TestTokenizationPerformance::test_tokenization_scaling - assert 0.003048010000000545 < 0.002
+= 3 failed, 13 passed, 25465 deselected, 1 xfailed, 8 warnings in 209.71s (0:03:29) =
+-- run 31145981907:
+FAILED tests/performance/benchmarks/test_parsing_performance.py::TestParsingPerformance::test_simple_command_performance - assert 0.012483505999995259 < 0.01
+FAILED tests/performance/benchmarks/test_parsing_performance.py::TestParsingPerformance::test_complex_structure_performance - assert 0.012585306999994827 < 0.01
+FAILED tests/performance/benchmarks/test_parsing_performance.py::TestTokenizationPerformance::test_tokenization_scaling - assert 0.0033763160000006565 < 0.002
+= 3 failed, 13 passed, 25111 deselected, 1 xfailed, 8 warnings in 216.51s (0:03:36) =
+-- run 31070163425:
+FAILED tests/performance/benchmarks/test_parsing_performance.py::TestParsingPerformance::test_simple_command_performance - assert 0.011429524999996943 < 0.01
+FAILED tests/performance/benchmarks/test_parsing_performance.py::TestParsingPerformance::test_complex_structure_performance - assert 0.011441582999992761 < 0.01
+FAILED tests/performance/benchmarks/test_parsing_performance.py::TestTokenizationPerformance::test_tokenization_scaling - assert 0.003100258000003464 < 0.002
+= 3 failed, 13 passed, 24642 deselected, 1 xfailed, 8 warnings in 214.86s (0:03:34) =

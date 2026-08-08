@@ -1,0 +1,61 @@
+=== --security s1_redirect_only
+Security Analysis Summary:
+══════════════════════════════
+Total Issues: 1
+  High Risk:     0
+  Medium Risk:   1
+  Low Risk:      0
+
+MEDIUM RISK ISSUES:
+  • rm: File deletion
+rc=1
+VERDICT: reports issues (fixed behavior)
+=== --security s2_redirect_target
+Security Analysis Summary:
+══════════════════════════════
+Total Issues: 1
+  High Risk:     0
+  Medium Risk:   1
+  Low Risk:      0
+
+MEDIUM RISK ISSUES:
+  • rm: File deletion
+rc=1
+VERDICT: reports issues (fixed behavior)
+=== --security s3_for_subject
+Security Analysis Summary:
+══════════════════════════════
+Total Issues: 2
+  High Risk:     0
+  Medium Risk:   2
+  Low Risk:      0
+
+MEDIUM RISK ISSUES:
+  • Iterating over unquoted command substitution - may break on spaces
+  • rm: File deletion
+rc=1
+VERDICT: reports issues (fixed behavior)
+=== --security s4_case_subject
+Security Analysis Summary:
+══════════════════════════════
+Total Issues: 1
+  High Risk:     0
+  Medium Risk:   1
+  Low Risk:      0
+
+MEDIUM RISK ISSUES:
+  • rm: File deletion
+rc=1
+VERDICT: reports issues (fixed behavior)
+=== --security s5_plain_cmdsub
+Security Analysis Summary:
+══════════════════════════════
+Total Issues: 1
+  High Risk:     0
+  Medium Risk:   1
+  Low Risk:      0
+
+MEDIUM RISK ISSUES:
+  • rm: File deletion
+rc=1
+VERDICT: reports issues (fixed behavior)

@@ -1,0 +1,4 @@
+DISCRIMINATOR-OK cwd=/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/qr/wt
+sys.path[:3]=['/Users/pwilson/src/psh/tmp/ckr-probes/qr', '/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/qr/wt', '/Library/Frameworks/Python.framework/Versions/3.14/lib/python314.zip']
+psh.__file__=/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/qr/wt/psh/__init__.py
+psh.version.__version__=0.773.0

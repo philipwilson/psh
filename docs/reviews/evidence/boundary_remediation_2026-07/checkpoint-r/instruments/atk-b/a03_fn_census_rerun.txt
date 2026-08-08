@@ -1,0 +1,26 @@
+== q5/04 fn-length census TIP (expect 60)
+files scanned: 275; total defs: 3243; total lines: 84009
+FUNCTIONS >= 100 LINES: 60
+   323  psh/core/state.py:101  ShellState.__init__
+   263  psh/executor/command.py:381  CommandExecutor._run_command
+   215  psh/executor/pipeline.py:140  PipelineExecutor._execute_pipeline
+   194  psh/interactive/history_expansion.py:294  HistoryExpander.expand_history
+   181  psh/builtins/read_builtin.py:57  ReadBuiltin.execute
+   172  psh/core/scope.py:538  ScopeManager.set_variable
+   165  psh/core/state.py:544  ShellState.clone_for_child
+   155  psh/executor/strategies.py:544  ExternalExecutionStrategy.execute
+   154  psh/parser/combinators/control_structures/conditionals.py:219  ConditionalParserMixin._build_case_statement
+   151  psh/builtins/function_support.py:354  DeclareBuiltin._declare_assignment
+== q5/04 fn-length census BASE 0215279c (expect 54)
+files scanned: 274; total defs: 3080; total lines: 77346
+FUNCTIONS >= 100 LINES: 54
+   323  psh/core/state.py:101  ShellState.__init__
+   211  psh/executor/command.py:380  CommandExecutor._run_command
+   200  psh/executor/pipeline.py:140  PipelineExecutor._execute_pipeline
+   194  psh/interactive/history_expansion.py:294  HistoryExpander.expand_history
+   178  psh/builtins/read_builtin.py:57  ReadBuiltin.execute
+   172  psh/core/scope.py:517  ScopeManager.set_variable
+   165  psh/core/state.py:539  ShellState.clone_for_child
+   155  psh/executor/strategies.py:538  ExternalExecutionStrategy.execute
+   154  psh/parser/combinators/control_structures/conditionals.py:219  ConditionalParserMixin._build_case_statement
+   151  psh/executor/command_assignments.py:347  CommandAssignments.apply_prefix

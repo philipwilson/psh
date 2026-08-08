@@ -1,0 +1,79 @@
+COLLECT tests/unit/builtins/test_read_exact_timeout_4b2.py :: 29 tests collected in 0.03s
+-- run --
+.............................                                            [100%]
+29 passed in 35.68s
+
+== decoder-seam collected node names (full set) ==
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[e_acute-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[euro-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[euro-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[smile-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[smile-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSplitCharIdentityAcrossSeam::test_split_character_survives_the_bulk_drain[smile-split3]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[e_acute-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[euro-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[euro-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[smile-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[smile-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNoCompletion::test_stranded_lead_at_eof_round_trips[smile-split3]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[e_acute-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[euro-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[euro-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[smile-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[smile-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsNonContinuation::test_non_continuation_after_stranded_lead[smile-split3]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[lone-lead-then-ascii]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[orphan-continuation]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[two-leads]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[truncated-4byte-then-ascii]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[bare-ff]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestSeamControlsMalformed::test_malformed_bytes_round_trip_across_the_seam[overlong-c0-80]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[e_acute-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[euro-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[euro-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[smile-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[smile-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_record_resumes_the_split_character[smile-split3]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[e_acute-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[euro-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[euro-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[smile-split1]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[smile-split2]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestResumeRoutesArePshContract::test_next_read_limited_resumes_the_split_character[smile-split3]
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_read_all_merge_order_is_decoded_then_fd
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_read_all_leaves_the_decoder_clean
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestCursorStateCensus::test_byte_and_char_paths_never_share_a_cursor_by_construction
+tests/unit/builtins/test_input_decoder_seam_4b2.py::TestDecoderEquivalencePremise::test_incremental_final_matches_one_shot
+
+40 tests collected in 0.01s
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderParityFull::test_no_input_and_no_eof_times_out
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderParityFull::test_partial_input_and_no_eof_assigns_the_partial
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderParityFull::test_input_arriving_after_the_read_is_not_consumed
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderParityFull::test_deadline_wins_over_a_later_eof
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderRcParityWithDeclaredNew1Residue::test_two_byte_char_split_by_the_deadline
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderRcParityWithDeclaredNew1Residue::test_three_byte_char_split_by_the_deadline
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderRcParityWithDeclaredNew1Residue::test_continuation_byte_arrives_after_the_read
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestNew2CountModelDivergesInStatusTooCharacterization::test_backslash_under_deadline_diverges_in_rc_and_value
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_count_satisfied_before_the_deadline
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_eof_before_the_count_without_t
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_eof_before_the_count_with_t
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_zero_count_with_t_returns_at_once
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_poll_with_data_ready_assigns_nothing
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_poll_with_no_data_reports_would_block
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_delimiter_is_ignored_under_exact_count
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_raw_mode_keeps_the_backslash
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_multibyte_completed_before_the_deadline
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestRiderMustHoldControls::test_multibyte_truncated_at_eof_without_t
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_no_input_times_out
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_partial_input_assigns_the_partial
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_count_satisfied
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_eof_before_the_count
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_zero_count
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_poll_ready
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_poll_not_ready
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_plain_t_no_input
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_plain_t_partial_line
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_n_multibyte_split_is_psh_contract
+tests/unit/builtins/test_read_exact_timeout_4b2.py::TestLowercaseNAndPlainTReference::test_plain_t_multibyte_split_is_psh_contract
+
+29 tests collected in 0.01s

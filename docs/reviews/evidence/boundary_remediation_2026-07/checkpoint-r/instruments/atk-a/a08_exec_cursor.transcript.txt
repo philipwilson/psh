@@ -1,0 +1,123 @@
+
+=== CELL f8cur.x1_pipe_dup_rebind_read ===
+script:
+  | exec 5<&0
+  | IFS= read -r a <&5
+  | exec </dev/null
+  | IFS= read -r b <&5
+  | printf '<%s><%s>\n' "$a" "$b"
+--- psh: rc=0
+    out=b'<L1><L2>\n'
+    err=b''
+--- bash: rc=0
+    out=b'<L1><L2>\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f8cur.x2_file_dup_rebind_read ===
+script:
+  | exec < d3
+  | exec 5<&0
+  | IFS= read -r a <&5
+  | exec </dev/null
+  | IFS= read -r b <&5
+  | printf '<%s><%s>\n' "$a" "$b"
+--- psh: rc=0
+    out=b'<L1><L2>\n'
+    err=b''
+--- bash: rc=0
+    out=b'<L1><L2>\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f8cur.x3_failed_exec_redirect_exits ===
+script:
+  | IFS= read -r a
+  | exec 3< nonexistent_file_xyz
+  | echo alive rc=$?
+  | IFS= read -r b
+  | printf '<%s><%s>\n' "$a" "$b"
+--- psh: rc=0
+    out=b'alive rc=1\n<L1><L2>\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x3_failed_exec_redirect_exits/psh/cell.sh: line 2: nonexistent_file_xyz: No such file or directory\n'
+--- bash: rc=0
+    out=b'alive rc=1\n<L1><L2>\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x3_failed_exec_redirect_exits/bash/cell.sh: line 2: nonexistent_file_xyz: No such file or directory\n'
+VERDICT: MATCH
+
+=== CELL f8cur.x4_subshell_failed_exec_redirect ===
+script:
+  | IFS= read -r a
+  | ( exec 3< nonexistent_file_xyz )
+  | echo rc=$?
+  | IFS= read -r b
+  | printf '<%s><%s>\n' "$a" "$b"
+--- psh: rc=0
+    out=b'rc=1\n<L1><L2>\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x4_subshell_failed_exec_redirect/psh/cell.sh: line 2: nonexistent_file_xyz: No such file or directory\n'
+--- bash: rc=0
+    out=b'rc=1\n<L1><L2>\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x4_subshell_failed_exec_redirect/bash/cell.sh: line 2: nonexistent_file_xyz: No such file or directory\n'
+VERDICT: MATCH
+
+=== CELL f8cur.x5_failed_exec_prog_trap_reads_dup ===
+script:
+  | exec 5<&0
+  | trap 'IFS= read -r t <&5; printf "T<%s>\n" "$t" >&2' EXIT
+  | IFS= read -r a <&5
+  | exec ./nonexistent_prog_xyz
+  | echo after
+--- psh: rc=127
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x5_failed_exec_prog_trap_reads_dup/psh/cell.sh: line 4: ./nonexistent_prog_xyz: No such file or directory\nT<L2>\n'
+--- bash: rc=127
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x5_failed_exec_prog_trap_reads_dup/bash/cell.sh: line 4: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x5_failed_exec_prog_trap_reads_dup/bash/nonexistent_prog_xyz: No such file or directory\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f8cur.x5f_failed_exec_prog_trap_file ===
+script:
+  | exec < d3
+  | exec 5<&0
+  | trap 'IFS= read -r t <&5; printf "T<%s>\n" "$t" >&2' EXIT
+  | IFS= read -r a <&5
+  | exec ./nonexistent_prog_xyz
+  | echo after
+--- psh: rc=127
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x5f_failed_exec_prog_trap_file/psh/cell.sh: line 5: ./nonexistent_prog_xyz: No such file or directory\nT<L2>\n'
+--- bash: rc=127
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x5f_failed_exec_prog_trap_file/bash/cell.sh: line 5: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x5f_failed_exec_prog_trap_file/bash/nonexistent_prog_xyz: No such file or directory\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f8cur.x6_move_form_lifetime_declared ===
+script:
+  | exec 6< d6
+  | exec 7<&6-
+  | IFS= read -r x <&7
+  | if IFS= read -r y <&6; then echo "6alive<$y>"; else echo "6dead rc=$?"; fi
+  | printf 'x<%s>\n' "$x"
+--- psh: rc=0
+    out=b'6dead rc=1\nx<m1>\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x6_move_form_lifetime_declared/psh/cell.sh: line 4: 6: Bad file descriptor\n'
+--- bash: rc=0
+    out=b'6dead rc=1\nx<m1>\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8cur/x6_move_form_lifetime_declared/bash/cell.sh: line 4: 6: Bad file descriptor\n'
+VERDICT: MATCH
+
+=== CELL f8cur.x7_subshell_stdin_rebind_isolated ===
+script:
+  | IFS= read -r a
+  | ( exec </dev/null; IFS= read -r z; echo "sub<$z> rc=$?" )
+  | IFS= read -r b
+  | printf '<%s><%s>\n' "$a" "$b"
+--- psh: rc=0
+    out=b'sub<> rc=1\n<L1><L2>\n'
+    err=b''
+--- bash: rc=0
+    out=b'sub<> rc=1\n<L1><L2>\n'
+    err=b''
+VERDICT: MATCH
+
+SUMMARY: {'MATCH': 6, 'STDERR-ONLY': 2}

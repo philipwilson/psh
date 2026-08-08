@@ -1,0 +1,4 @@
+COLLECT tests/system/interactive/test_pty_shutdown_route_f2.py :: 2 tests collected in 0.01s
+-- run (tests/system/interactive/test_pty_shutdown_route_f2.py) --
+..                                                                       [100%]
+2 passed in 0.88s

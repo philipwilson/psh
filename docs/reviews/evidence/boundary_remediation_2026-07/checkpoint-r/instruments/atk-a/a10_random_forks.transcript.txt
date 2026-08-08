@@ -1,0 +1,68 @@
+
+=== CELL f10rnd.r1_parent_sequence_control ===
+script:
+  | RANDOM=42
+  | a=$RANDOM
+  | b=$RANDOM
+  | echo "$a $b"
+--- psh: rc=0
+    out=b'17772 26794\n'
+    err=b''
+--- bash: rc=0
+    out=b'17772 26794\n'
+    err=b''
+VERDICT: MATCH
+
+=== CELL f10rnd.r2_subshell_then_parent ===
+script:
+  | RANDOM=42
+  | ( echo $RANDOM )
+  | echo $RANDOM
+--- psh: rc=0
+    out=b'17636\n17772\n'
+    err=b''
+--- bash: rc=0
+    out=b'4922\n17772\n'
+    err=b''
+VERDICT: DIVERGE
+
+=== CELL f10rnd.r3_cmdsub_then_parent ===
+script:
+  | RANDOM=42
+  | x=$(echo $RANDOM)
+  | echo "$x $RANDOM"
+--- psh: rc=0
+    out=b'14986 17772\n'
+    err=b''
+--- bash: rc=0
+    out=b'16441 17772\n'
+    err=b''
+VERDICT: DIVERGE
+
+=== CELL f10rnd.r4_pipeline_member_then_parent ===
+script:
+  | RANDOM=42
+  | echo $RANDOM | cat
+  | echo $RANDOM
+--- psh: rc=0
+    out=b'17772\n17772\n'
+    err=b''
+--- bash: rc=0
+    out=b'15346\n17772\n'
+    err=b''
+VERDICT: DIVERGE
+
+=== CELL f10rnd.r5_nested_subshell_chain ===
+script:
+  | RANDOM=7
+  | ( ( echo $RANDOM ); echo $RANDOM )
+  | echo $RANDOM
+--- psh: rc=0
+    out=b'21281\n11327\n19344\n'
+    err=b''
+--- bash: rc=0
+    out=b'5576\n20553\n19344\n'
+    err=b''
+VERDICT: DIVERGE
+
+SUMMARY: {'MATCH': 1, 'DIVERGE': 4}

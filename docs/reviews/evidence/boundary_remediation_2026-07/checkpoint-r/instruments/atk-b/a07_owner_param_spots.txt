@@ -1,0 +1,23 @@
+== spot 1: internal_errors trio
+169:def fatal_expansion_child_status(state: 'ShellState') -> int:
+199:def substitution_abort_status(state: 'ShellState', nested: bool,
+243:def substitution_child_abort_status(state: 'ShellState',
+169:def fatal_expansion_child_status(state: 'ShellState') -> int:
+170-    """The FORKED-CHILD half of :func:`fatal_expansion_status`'s shell-exit
+== spot 2: analysis_session Shell params
+348:    def __init__(self, error: BaseException, start_line: int) -> None:
+381:    def __init__(self, shell: 'Shell') -> None:
+399:    def _build_carrier(shell: 'Shell') -> 'Shell':
+559:def parse_for_analysis(shell: 'Shell', content: str,
+def parse_for_analysis(shell: 'Shell', content: str,
+                       drop_dangling_at_eof: bool = False) -> Program:
+    """Parse *content* into an AST for analysis, unit by unit.
+== spot 3: child_policy sync_child_status_for_exit_trap
+145:def sync_child_status_for_exit_trap(state: 'ShellState', exc: BaseException,
+146-                                    exit_code: int) -> None:
+== base check: absent at 0215279c?
+0
+0 (or file/fn absent)
+0
+internal_errors.py absent-or-0 at base
+analysis_session.py ABSENT at base

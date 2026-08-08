@@ -1,0 +1,8 @@
+tree: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q4/base0215
+modules: 274  runtime psh->psh edges: 837
+MODULE-level cycles: 2  self-loops: 0
+  CYCLE: psh.lexer <-> psh.lexer.expansion_parser <-> psh.lexer.modular_lexer <-> psh.lexer.quote_parser
+  CYCLE: psh.interactive <-> psh.interactive.line_editor <-> psh.interactive.line_renderer <-> psh.interactive.multiline_handler <-> psh.interactive.repl_loop
+PACKAGE-level (depth-2) cycles: 0  self-loops: 0
+deferred psh imports: 183 across 67 modules
+json written: /Users/pwilson/src/psh/tmp/ckr-probes/q4/q4_01_walker_base0750.json

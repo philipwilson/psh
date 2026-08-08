@@ -1,0 +1,4 @@
+COLLECT tests/system/interactive/test_pty_shutdown_phases_4a2.py :: 4 tests collected in 0.01s
+-- run (tests/system/interactive/test_pty_shutdown_phases_4a2.py) --
+....                                                                     [100%]
+4 passed in 5.03s

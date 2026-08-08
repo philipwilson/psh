@@ -1,0 +1,61 @@
+== psh/ (production) ==
+psh/  visit_word_substitution_bodies : 0
+psh/  parse_with_heredocs : 5
+psh/parser/__init__.py:32:    'parse', 'parse_with_inputs', 'parse_with_heredocs', 'create_parser',
+psh/parser/__init__.py:127:def parse_with_heredocs(tokens, heredocs, active_parser='rd',
+psh/parser/combinators/parser.py:268:    def parse_with_heredocs(
+psh/parser/combinators/parser.py:314:        only ``parse`` / ``parse_with_heredocs``). Kept as an educational probe
+psh/parser/combinators/parser.py:350:        only ``parse`` / ``parse_with_heredocs``). Kept as an educational
+psh/  _ParserWrapper : 0
+psh/  _substitute_scan : 0
+psh/  _seq_nullable : 1
+psh/expansion/pattern_engine.py:272:# ``_seq_nullable(seq)`` was RETIRED here: once the bit moved to construction
+psh/  OperandResult : 1
+psh/expansion/operands.py:16:(``OperandResult(str)``, carrying protection but no field dimension)
+psh/  _operand_runs : 0
+psh/  _value_segments_unquoted : 0
+psh/  _value_dq_text : 0
+psh/  _file_read_len : 10
+psh/interactive/history_manager.py:55:    * ``_file_read_len`` — how many lines of the DEFAULT file have been
+psh/interactive/history_manager.py:84:        self._file_read_len = 0
+psh/interactive/history_manager.py:267:        self._file_read_len = read
+psh/interactive/history_manager.py:339:    #   `_file_read_len`  is a position in the DEFAULT file, so ONLY reads of
+psh/interactive/history_manager.py:386:            self._file_read_len = len(self.state.history)
+psh/  _file_synced_len : 0
+psh/  heredoc_key : 0
+
+== tests/ + tools/ (live symbols; ledger/docs excluded by pathspec) ==
+tests+tools  visit_word_substitution_bodies : 0
+tests+tools  parse_with_heredocs : 35
+tests/test_parser_feature_parity.py:15:from psh.parser import ParseError, Parser, parse_with_heredocs
+tests/test_parser_feature_parity.py:57:        rd_ast = parse_with_heredocs(tokens_rd, heredoc_map_rd)
+tests/test_parser_feature_parity.py:61:        pc_ast = self.pc_parser.parse_with_heredocs(tokens_pc, heredoc_map_pc)
+tests/unit/tooling/test_parser_contract_guards_s4.py:47:def test_combinator_retains_nothing_after_parse_with_heredocs():
+tests/unit/tooling/test_parser_contract_guards_s4.py:51:    p.parse_with_heredocs(list(lu.tokens), lu.heredocs, lexer_options={"extglob": True})
+tests/unit/tooling/test_parser_contract_guards_s4.py:168:    # the combinator shell parser's per-call inputs (its parse_with_heredocs
+tests+tools  _ParserWrapper : 0
+tests+tools  _substitute_scan : 0
+tests+tools  _seq_nullable : 0
+tests+tools  OperandResult : 4
+tests/unit/tooling/test_operand_projection_guard.py:12:1. The retired ``OperandResult`` str-subclass stays deleted **within
+tests/unit/tooling/test_operand_projection_guard.py:97:RETIRED = ("OperandResult",)
+tests/unit/tooling/test_operand_projection_guard.py:251:    assert find_retired("class OperandResult(str):\n    pass\n") == {"OperandResult"}
+tests/unit/tooling/test_operand_projection_guard.py:252:    assert find_retired("x = OperandResult([])\n") == {"OperandResult"}
+tests+tools  _operand_runs : 0
+tests+tools  _value_segments_unquoted : 0
+tests+tools  _value_dq_text : 0
+tests+tools  _file_read_len : 20
+tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py:64:        "        before_read = max(0, min(hi, self._file_read_len) - lo)\n"
+tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py:65:        "        self._file_read_len = max(0, self._file_read_len - before_read)",
+tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py:75:        "        self._owed.clear()\n        self._file_read_len = 0",
+tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py:176:        "            self._file_read_len = len(self.state.history)",
+tests/unit/tooling/test_history_state_machine_m8_locks_4b3.py:179:        "            self._file_read_len = len(self.state.history)",
+tests/unit/interactive/test_history_state_machine_4b3.py:5:* ``_file_read_len`` — a position in the DEFAULT history FILE. Memory-side
+tests+tools  _file_synced_len : 1
+tests/unit/interactive/test_history_persistence.py:135:    `_file_synced_len` prefix marker with a pending multiset view, and a pin
+tests+tools  heredoc_key : 5
+tests/unit/tooling/test_heredoc_transaction_guards.py:6:   ``heredoc_key`` (token/AST field and map keys), the collector's
+tests/unit/tooling/test_heredoc_transaction_guards.py:28:    'heredoc_key',
+tests/unit/tooling/test_heredoc_transaction_guards.py:91:        assert _scan_text('x = redirect.heredoc_key') == ['heredoc_key']
+tests/unit/lexer/test_keyword_normalizer_golden.py:12:    "heredoc_keywords": "cat <<EOF\nif should not change\nfi\nEOF",
+tests/unit/parser/combinators/test_commands.py:163:        # heredoc_key and heredoc_quoted are not part of the AST node

@@ -1,0 +1,30 @@
+psh/scripting/visitor_modes.py:98:    except Exception as e:
+psh/scripting/source_processor.py:329:        ``_classify_buffered_error`` in the final ``except Exception`` clause
+psh/scripting/source_processor.py:410:        except Exception as e:
+psh/scripting/source_processor.py:630:        The body of ``_execute_buffered_command``'s final ``except Exception``
+psh/scripting/source_processor.py:655:                # (reached via the enclosing except Exception) forwards it
+psh/core/trap_manager.py:442:        except Exception as e:
+psh/core/process_lease.py:414:            except Exception:
+psh/core/exceptions.py:80:    executor's ``except Exception`` guards without being mistaken for an
+psh/core/locale_service.py:488:    except Exception:
+psh/core/locale_service.py:502:    except Exception:
+psh/lexer/recognizers/registry.py:78:            except Exception as e:
+psh/utils/signal_utils.py:258:        except Exception:
+psh/expansion/subscript.py:129:        except Exception:
+psh/expansion/subscript.py:144:            except Exception:
+psh/expansion/manager.py:327:        except Exception:
+psh/io_redirect/manager.py:549:        except Exception:
+psh/io_redirect/file_redirect.py:100:                    except Exception:
+psh/io_redirect/file_redirect.py:685:        except Exception:
+psh/io_redirect/file_redirect.py:1052:        except Exception:
+psh/interactive/repl_loop.py:145:            except Exception as e:
+psh/interactive/rc_loader.py:48:        except Exception as e:
+psh/executor/command.py:289:        except Exception as e:
+psh/interactive/prompt.py:135:            except Exception:
+psh/executor/strategies.py:270:    except Exception as e:
+psh/executor/process_launcher.py:374:        except Exception as e:
+psh/executor/child_policy.py:275:        except Exception:
+psh/executor/child_policy.py:283:        except Exception:
+psh/executor/child_policy.py:360:    except Exception:
+psh/executor/child_policy.py:442:    except Exception as e:
+psh/executor/function.py:188:            except Exception as e:

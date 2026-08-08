@@ -1,0 +1,26 @@
+===== q1/p00_transcript.txt =====
+psh.__file__ = /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/psh/__init__.py
+psh.version.__version__ = 0.773.0
+DISCRIMINATOR OK: worktree import, version 0.773.0
+===== q2/probe_discriminator.transcript.txt =====
+DISCRIMINATOR-OK psh.__file__=/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q2/wt/psh/__init__.py
+DISCRIMINATOR-OK __version__=0.773.0
+DISCRIMINATOR-OK python=3.14.2
+===== q3/p00_discriminator.transcript.txt =====
+DISCRIMINATOR-OK
+psh.__file__ = /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q3/wt/psh/__init__.py
+__version__ = 0.773.0
+===== q4/q4_00_discriminator.transcript.txt =====
+psh.__file__ = /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q4/wt/psh/__init__.py
+psh.version.__version__ = 0.773.0
+DISCRIMINATOR-OK
+===== q5/00_discriminator.out =====
+cwd: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q5/wt
+psh.__file__: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q5/wt/psh/__init__.py
+psh.version.__version__: 0.773.0
+DISCRIMINATOR-OK
+===== qr/p00_discriminator.transcript.txt =====
+DISCRIMINATOR-OK cwd=/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/qr/wt
+sys.path[:3]=['/Users/pwilson/src/psh/tmp/ckr-probes/qr', '/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/qr/wt', '/Library/Frameworks/Python.framework/Versions/3.14/lib/python314.zip']
+psh.__file__=/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/qr/wt/psh/__init__.py
+psh.version.__version__=0.773.0

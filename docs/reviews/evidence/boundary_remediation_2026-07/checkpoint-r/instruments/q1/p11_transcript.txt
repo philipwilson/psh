@@ -1,0 +1,26 @@
+=== M3 -c channel: echo \<<EOF
+  bash: rc=1 out=[/opt/homebrew/bin/bash: line 1: EOF: No such file or directory]
+  psh : rc=1 out=[psh: line 1: EOF: No such file or directory]
+=== M10 named-fd heredoc {v}<<HD (file channel)
+  bash: rc=0 out=[line=hello-from-heredoc v-set=yes]
+  psh : rc=0 out=[line=hello-from-heredoc v-set=yes]
+=== M10b named-fd here-string {w}<<< (file channel)
+  bash: rc=0 out=[line=here-string-body]
+  psh : rc=0 out=[line=here-string-body]
+=== H5-line heredoc-then-error line number (file channel)
+  bash: rc=2 out=[first
+text
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/tmp/q1ch/h5line.sh: line 5: syntax error near unexpected token `)'
+/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/tmp/q1ch/h5line.sh: line 5: `echo $(if)']
+  psh : rc=2 out=[first
+text
+psh: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q1/wt/tmp/q1ch/h5line.sh:5: Parse error (line 5, column 3): syntax error: unexpected end of file
+
+if
+  ^
+
+Context: if -> HERE <- ]
+=== LOW printf %a (expect still-divergent, OPEN row)
+  bash: rc=0 out=[0x1.92p+1]
+  psh : rc=0 out=[0x1.91eb851eb851fp+1]
+  DIVERGE (as recorded, row stays OPEN)

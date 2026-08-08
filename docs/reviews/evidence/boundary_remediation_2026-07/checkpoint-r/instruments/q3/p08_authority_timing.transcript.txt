@@ -1,0 +1,8 @@
+A  seeded sequence psh='17772 26794 1435 24388 11074' bash='17772 26794 1435 24388 11074'
+B  after 'RANDOM=42 true': psh='24250' bash='2412' (seeded-first would be '17772')
+C  RANDOM=1 eval: psh='10791' bash='1'
+D1 psh: out='RX=[UNSET]' err='psh: line 1: RX: readonly variable' rc=0
+D1 bash: out='RX=[UNSET]' err='/opt/homebrew/bin/bash: line 1: RX: readonly variable' rc=0
+D2 psh: 'ABSENT' err='psh: line 1: RX: readonly variable' rc=0
+D2 bash: 'ABSENT' err='/opt/homebrew/bin/bash: line 1: RX: readonly variable' rc=0
+P08-RESULT: HOLDS

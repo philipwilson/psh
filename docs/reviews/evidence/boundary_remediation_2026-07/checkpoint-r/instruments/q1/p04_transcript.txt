@@ -1,0 +1,17 @@
+DISCRIMINATOR OK: 0.773.0
+=== case: split (split seam)
+stdout:
+read-rc=142
+charcount=2
+           c3  a9  0a                                                    
+
+
+charcount=2 and bytes c3 a9 0a: True
+=== case: control (control, no split)
+stdout:
+read-rc=0
+charcount=0
+
+charcount=2 and bytes c3 a9 0a: False
+SPLIT-SEAM DECODE CORRECT: True
+CONTROL DECODE CORRECT: False

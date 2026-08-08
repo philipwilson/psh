@@ -1,0 +1,15 @@
+A acquired: live components = 1
+after B activate: orphan components visible = 0
+find_component(B, LOCALE) -> None (must be None, not A's orphan)
+after release_owner(B): live components = 0, is_clean = False
+Traceback (most recent call last):
+  File "/Users/pwilson/src/psh/tmp/ckr-probes/q4/q4_12_lease_orphan_probe.py", line 61, in <module>
+    assert coord.is_clean(), "coordinator not clean after release"
+           ~~~~~~~~~~~~~~^^
+AssertionError: coordinator not clean after release
+A acquired: live components = 1
+after strand: restore_log = [] (sweep must be at the ownership event, not GC)
+after B activate: restore_log = ['A-LOCALE-restored']
+find_component(B, LOCALE) -> None (must be None: A-18)
+end: restore_log = ['A-LOCALE-restored', 'B-LOCALE-restored'], live = 0, is_clean = True
+LEASE-ORPHAN-SWEEP-OK

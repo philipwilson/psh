@@ -1,0 +1,29 @@
+##### A: visit() override on SecurityVisitor (generated-battery guard) #####
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/unit/visitor/test_traversal_totality_battery.py::test_analysis_visitor_cannot_bypass_the_sweep[SecurityVisitor]
+1 failed, 4 passed in 0.02s
+.....                                                                    [100%]
+5 passed in 0.01s
+ATK-MUTATION-VERDICT A-visitor-bypass-security: BITES (red=1 on offender, green=0 after revert)
+
+##### B: TUPLE-form broad except in subscript.py #####
+E   assert not [('psh/expansion/subscript.py', 412, 'Exception')]
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_subscript_no_broad_except.py::test_guarded_modules_have_no_broad_except
+1 failed in 0.03s
+.                                                                        [100%]
+1 passed in 0.02s
+ATK-MUTATION-VERDICT B-subscript-tuple-broad-except: BITES (red=1 on offender, green=0 after revert)
+
+##### C: third ExpandedField producer in expansion/fields.py #####
+E   assert not ['psh/expansion/fields.py']
+=========================== short test summary info ============================
+FAILED tests/unit/expansion/test_field_ir_guards.py::TestSoleChokepoint::test_expanded_word_constructed_only_in_engine
+1 failed in 0.10s
+.                                                                        [100%]
+1 passed in 0.08s
+ATK-MUTATION-VERDICT C-third-field-producer-fields: BITES (red=1 on offender, green=0 after revert)
+
+##### worktree must be clean after all reverts #####
+status-exit=0 (empty output above = clean)

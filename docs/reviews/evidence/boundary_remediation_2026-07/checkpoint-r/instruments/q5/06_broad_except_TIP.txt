@@ -1,0 +1,31 @@
+psh/scripting/visitor_modes.py:90:    except Exception as e:
+psh/scripting/analysis_session.py:487:            except Exception as exc:
+psh/scripting/source_processor.py:463:        ``_classify_buffered_error`` in the final ``except Exception`` clause
+psh/scripting/source_processor.py:545:        except Exception as e:
+psh/scripting/source_processor.py:765:        The body of ``_execute_buffered_command``'s final ``except Exception``
+psh/scripting/source_processor.py:790:                # (reached via the enclosing except Exception) forwards it
+psh/core/trap_manager.py:480:        except Exception as e:
+psh/core/process_lease.py:565:            except Exception as exc:                     # noqa: BLE001
+psh/core/exceptions.py:80:    executor's ``except Exception`` guards without being mistaken for an
+psh/core/locale_service.py:488:    except Exception:
+psh/core/locale_service.py:502:    except Exception:
+psh/lexer/recognizers/registry.py:78:            except Exception as e:
+psh/utils/signal_utils.py:258:        except Exception:
+psh/expansion/subscript.py:57:    ``except Exception`` fallbacks that silently degraded the un-lexable text
+psh/expansion/CLAUDE.md:505:  broad `except Exception` fallbacks are deleted; anything outside the
+psh/expansion/manager.py:337:        ``except Exception`` also swallowed genuine internal defects, so a psh
+psh/io_redirect/manager.py:673:        except Exception:
+psh/io_redirect/file_redirect.py:212:                    except Exception:
+psh/io_redirect/file_redirect.py:913:        except Exception:
+psh/io_redirect/file_redirect.py:1327:        except Exception:
+psh/interactive/repl_loop.py:145:            except Exception as e:
+psh/interactive/rc_loader.py:48:        except Exception as e:
+psh/interactive/prompt.py:135:            except Exception:
+psh/executor/command.py:290:        except Exception as e:
+psh/executor/strategies.py:270:    except Exception as e:
+psh/executor/process_launcher.py:374:        except Exception as e:
+psh/executor/function.py:188:            except Exception as e:
+psh/executor/child_policy.py:366:        except Exception:
+psh/executor/child_policy.py:374:        except Exception:
+psh/executor/child_policy.py:452:    except Exception:
+psh/executor/child_policy.py:582:    except Exception as e:

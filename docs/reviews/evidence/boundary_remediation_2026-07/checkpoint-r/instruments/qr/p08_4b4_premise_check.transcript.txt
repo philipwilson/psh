@@ -1,0 +1,19 @@
+== QR item 4 (D-4A.2-s1 premise) evidence, worktree at ae871a16e2734e91983374063848e19f34d00a54
+
+-- files changed v0.772.0..ae871a16 (slot 4B.4):
+ psh/builtins/CLAUDE.md           |   6 +-
+ psh/builtins/input_reader.py     |  50 +++-----
+ psh/executor/CLAUDE.md           |   8 +-
+ psh/executor/command.py          |  32 +++--
+ psh/io_redirect/CLAUDE.md        |   2 +-
+ psh/io_redirect/file_redirect.py |  24 ++++
+ psh/io_redirect/input_cursor.py  | 270 ++++++++++++++++++++++++++++++++++-----
+ psh/io_redirect/manager.py       | 116 ++++++++++++++++-
+ psh/scripting/input_sources.py   |   2 +-
+ psh/version.py                   |   2 +-
+ 10 files changed, 435 insertions(+), 77 deletions(-)
+
+-- signal/trap/job files changed v0.769.0..ae871a16 (whole 4B wave):
+(none)
+
+-- restore ordering: restore_builtin_redirections finally-block adds input-cursor pop only (see p08 notes); death path drain-before-trap/streams_restored untouched (files unchanged since 4A.2)

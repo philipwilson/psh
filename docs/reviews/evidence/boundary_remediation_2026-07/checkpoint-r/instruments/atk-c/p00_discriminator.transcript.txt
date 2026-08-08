@@ -1,0 +1,5 @@
+psh.__file__ = /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-c/wt/psh/__init__.py
+psh.version.__version__ = 0.773.0
+bash oracle: GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+worktree HEAD: ae871a16e2734e91983374063848e19f34d00a54
+DISCRIMINATOR OK

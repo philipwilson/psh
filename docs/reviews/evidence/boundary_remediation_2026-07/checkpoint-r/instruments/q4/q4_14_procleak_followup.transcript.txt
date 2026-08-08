@@ -1,0 +1,17 @@
+=== (A) P3 provenance across trees: sleep 0.2 & sleep 1.4; : ===
+  [tip-0.773] psh -> /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q4/wt/psh/__init__.py
+  tip-0.773: zombies-at-t=0.9: 1 rc=0
+  [base-0.750] psh -> /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q4/base0215/psh/__init__.py
+  base-0.750: zombies-at-t=0.9: 1 rc=0
+  [base-0.749] psh -> /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/q4/base0749/psh/__init__.py
+  base-0.749: zombies-at-t=0.9: 1 rc=0
+  bash-oracle: zombies-at-t=0.9: 0 rc=0
+
+=== (B) P3b past-a-command-boundary: sleep 0.2 & sleep 0.9; :; sleep 0.9 ===
+  psh-tip: zombies-at-t=1.4: 1 rc=0
+  bash-oracle: zombies-at-t=1.4: 0 rc=0
+
+=== (C) P4 fixed: bg job survives shell exit? ===
+  psh-tip: rc=0 survivor-count=1
+  bash: rc=0 survivor-count=1
+post-cleanup leftovers: ''

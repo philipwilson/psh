@@ -1,0 +1,10 @@
+== collect count for the generated visitor battery (for the record) ==
+
+78 tests collected in 0.02s
+
+== guard baseline run (all expected GREEN) ==
+........................................................................ [ 35%]
+........................................................................ [ 71%]
+.........................................................                [100%]
+201 passed in 6.78s
+guard-baseline-exit=0

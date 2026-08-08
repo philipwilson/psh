@@ -1,0 +1,79 @@
+
+=== CELL f8exf.y1_execfail_trap_rel ===
+script:
+  | trap 'echo T >&2' EXIT
+  | exec ./nonexistent_prog_xyz
+  | echo after
+--- psh: rc=127
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8exf/y1_execfail_trap_rel/psh/cell.sh: line 2: ./nonexistent_prog_xyz: No such file or directory\nT\n'
+--- bash: rc=127
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8exf/y1_execfail_trap_rel/bash/cell.sh: line 2: /private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8exf/y1_execfail_trap_rel/bash/nonexistent_prog_xyz: No such file or directory\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f8exf.y2_execfail_trap_abs ===
+script:
+  | trap 'echo T >&2' EXIT
+  | exec /nonexistent_prog_xyz
+  | echo after
+--- psh: rc=127
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8exf/y2_execfail_trap_abs/psh/cell.sh: line 2: /nonexistent_prog_xyz: No such file or directory\nT\n'
+--- bash: rc=127
+    out=b''
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8exf/y2_execfail_trap_abs/bash/cell.sh: line 2: /nonexistent_prog_xyz: No such file or directory\n'
+VERDICT: STDERR-ONLY
+
+=== CELL f8exf.y4_control_ordinary_fail_trap ===
+script:
+  | trap 'echo T >&2' EXIT
+  | ./nonexistent_prog_xyz
+  | echo after
+--- psh: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8exf/y4_control_ordinary_fail_trap/psh/cell.sh: line 2: ./nonexistent_prog_xyz: No such file or directory\nT\n'
+--- bash: rc=0
+    out=b'after\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8exf/y4_control_ordinary_fail_trap/bash/cell.sh: line 2: ./nonexistent_prog_xyz: No such file or directory\nT\n'
+VERDICT: MATCH
+
+=== CELL f8exf.y5_control_successful_exec ===
+script:
+  | trap 'echo T >&2' EXIT
+  | exec /usr/bin/true
+  | echo after
+--- psh: rc=0
+    out=b''
+    err=b''
+--- bash: rc=0
+    out=b''
+    err=b''
+VERDICT: MATCH
+
+=== CELL f8exf.y6_move_form_temp_frame_declared ===
+script:
+  | IFS= read -r a
+  | true 3<&0-
+  | if IFS= read -r b; then echo "alive<$b>"; else echo "dead rc=$?"; fi
+  | printf 'a<%s>\n' "$a"
+--- psh: rc=0
+    out=b'alive<L2>\na<L1>\n'
+    err=b''
+--- bash: rc=0
+    out=b'dead rc=1\na<L1>\n'
+    err=b'/private/tmp/claude-501/-Users-pwilson-src-psh/05736dde-f3cd-4b98-98df-9708e107bca4/scratchpad/ckr/atk-a/wt/atkwork/f8exf/y6_move_form_temp_frame_declared/bash/cell.sh: line 3: read: read error: 0: Bad file descriptor\n'
+VERDICT: DIVERGE
+
+=== CELL f8exf.y3_cmode ===
+script:
+  | trap 'echo T >&2' EXIT; exec /nonexistent_prog_xyz; echo after
+--- psh: rc=127
+    out=b''
+    err=b'psh: line 1: /nonexistent_prog_xyz: No such file or directory\nT\n'
+--- bash: rc=127
+    out=b''
+    err=b'/opt/homebrew/bin/bash: line 1: /nonexistent_prog_xyz: No such file or directory\n'
+VERDICT: STDERR-ONLY
+
+SUMMARY: {'STDERR-ONLY': 3, 'MATCH': 2, 'DIVERGE': 1}

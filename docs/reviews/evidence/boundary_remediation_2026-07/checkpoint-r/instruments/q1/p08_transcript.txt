@@ -1,0 +1,25 @@
+########## scenario 1
+DISCRIMINATOR OK: 0.773.0 scenario 1
+pending_libc: True
+activate raised: RuntimeError
+live components after failed activate: 0
+after release_owner: live components: 0
+second shell activate: SUCCEEDED
+########## scenario 2
+DISCRIMINATOR OK: 0.773.0 scenario 2
+A quiescent owner: True depth: 0
+B pending_libc: True
+B.activate raised: RuntimeError
+live components after B failure: 0
+C.activate: SUCCEEDED (no poisoning)
+########## scenario 3
+DISCRIMINATOR OK: 0.773.0 scenario 3
+D quiescent owner: True
+is_clean before release: False
+release_owner raised: LeaseRestoreError
+isinstance LeaseRestoreError: True
+isinstance LeaseError: True
+is_clean after: False
+quarantine_report: ('STD_FDS: q1-test',)
+clear_quarantine returned: ('STD_FDS: q1-test',)
+is_clean after clear: False

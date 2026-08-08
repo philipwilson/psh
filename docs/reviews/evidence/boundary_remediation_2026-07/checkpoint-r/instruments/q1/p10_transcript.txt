@@ -1,0 +1,8 @@
+DISCRIMINATOR OK: 0.773.0
+line 'echo \\<<EOF'   -> Complete
+line 'cat <<EOF'      -> NeedMore hint.kind=HintKind.HEREDOC
+line 'echo \\\\<<EOF' -> NeedMore hint.kind=HintKind.HEREDOC
+
+expectations: 'echo \<<EOF' COMPLETE (escaped, no heredoc);
+              'cat <<EOF' NeedMore w/ heredoc hint (real heredoc);
+              'echo \\<<EOF' NeedMore (escaped backslash THEN <<EOF heredoc).
