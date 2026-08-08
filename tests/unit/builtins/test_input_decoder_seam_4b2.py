@@ -245,14 +245,23 @@ class TestResumeRoutesArePshContract:
 class TestCursorStateCensus:
     """The invariants the seam fix rests on."""
 
-    def test_read_all_merge_order_is_decoded_then_pushback_then_fd(self):
-        """Order pin: already-decoded chars, then pushback bytes, then fd bytes.
+    def test_read_all_merge_order_is_decoded_then_fd(self):
+        """Order pin: already-decoded chars come before the fd's remaining bytes.
 
-        ``_pushback`` has no fd-side producer today (see
-        ``test_pushback_is_never_populated_by_the_public_api``), so this ordering
-        is not observable through the public API — which is exactly why it is
-        pinned here by constructing the state directly. The fix must not reorder
-        the merge; it changes only WHICH decoder consumes the tail.
+        Renamed and narrowed in slot 4B.4, which REMOVED the ``_pushback``
+        bytearray this cell used to place in the middle of the merge. That
+        buffer was provably always empty — its only non-empty writer re-pushed
+        the remainder of what it had just drained, and the seed was empty — so
+        the three-way order was never reachable through the public API, which is
+        why the old cell had to construct it directly. The two-way order that
+        remains is the real contract.
+
+        This cell keeps BOTH of its M8 roles unchanged: it BREAKS under
+        ``seam-merge-order-scrambled`` (the merge is exactly what it asserts),
+        and it STAYS GREEN under ``seam-fresh-decoder-reintroduced`` because the
+        cursor's decoder is CLEAN here — with nothing buffered mid-sequence,
+        "which decoder consumes the tail" cannot change the answer. That is
+        precisely the property that arm needs from its discrimination row.
         """
         r, w = os.pipe()
         try:
@@ -260,36 +269,9 @@ class TestCursorStateCensus:
             os.close(w)
             cursor = InputCursor(fd=r)
             cursor._decoded.extend('DE')          # already-decoded characters
-            cursor._pushback = bytearray(b'PB')   # raw bytes held by byte path
-            assert cursor.read_all() == 'DEPBFD'
+            assert cursor.read_all() == 'DEFD'
         finally:
             os.close(r)
-
-    def test_pushback_is_never_populated_by_the_public_api(self):
-        """P1: no public call sequence puts fd bytes into ``_pushback``.
-
-        ``read_record_bytes`` reads one byte at a time and never over-reads, so
-        the only write that could make ``_pushback`` non-empty re-pushes the
-        remainder of what it just drained — which is empty unless it was already
-        non-empty. Vestigial state; reported toward the 4B.4 contract review
-        rather than removed here.
-        """
-        payloads = [b'one\ntwo\n', b'one\ntwo', b'\xe2\x82\xac\n\xc3\xa9', b'\n\n']
-        for payload in payloads:
-            r, w = os.pipe()
-            try:
-                os.write(w, payload)
-                os.close(w)
-                cursor = InputCursor(fd=r)
-                for _ in range(6):
-                    record = cursor.read_record_bytes(delimiter_byte=ord('\n'))
-                    assert cursor._pushback == bytearray(), (
-                        f"pushback populated for {payload!r}: "
-                        f"{bytes(cursor._pushback)!r}")
-                    if record is None:
-                        break
-            finally:
-                os.close(r)
 
     def test_read_all_leaves_the_decoder_clean(self):
         """After a drain the cursor is back to the ``_decoder is None`` state."""

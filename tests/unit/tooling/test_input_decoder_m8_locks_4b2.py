@@ -81,7 +81,7 @@ ARMS = [
         # drain with a CLEAN decoder, which this mutation cannot reach.
         stays_green=[
             f"{SEAM_PINS}::TestCursorStateCensus::"
-            "test_read_all_merge_order_is_decoded_then_pushback_then_fd",
+            "test_read_all_merge_order_is_decoded_then_fd",
         ],
     ),
     Arm(
@@ -91,7 +91,7 @@ ARMS = [
         "        return tail + prefix",
         breaks=[
             f"{SEAM_PINS}::TestCursorStateCensus::"
-            "test_read_all_merge_order_is_decoded_then_pushback_then_fd",
+            "test_read_all_merge_order_is_decoded_then_fd",
         ],
         stays_green=[
             f"{SEAM_PINS}::TestSplitCharIdentityAcrossSeam::"
