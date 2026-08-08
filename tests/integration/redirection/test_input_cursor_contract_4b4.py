@@ -143,6 +143,92 @@ class TestTempFrameScopesTheCursor:
         assert psh == bash_c
 
 
+class TestSharedDescriptionSurvivesItsOtherFds:
+    """A description wearing several fds must not be destroyed by ONE of them
+    going away. Every cell here was RED after verify round 1 (they are the
+    reference-blind-drop family: a frame pop or an `exec` rebind dropped a
+    cursor another fd was still reading through, so its buffered byte reached
+    NO reader — the very defect class this slot exists to close, reintroduced
+    through a different door).
+
+    The trigger is ordinary shell, not an exotic composition: any command
+    carrying a dup redirect opens and pops a frame, so `true 3<&0` between two
+    reads is enough.
+    """
+
+    @pytest.mark.parametrize("between,name", [
+        (b"true 3<&0", "builtin-frame-dup"),
+        (b": 3<&0", "colon-frame-dup"),
+        (b"true >&0", "output-dup-onto-read-fd"),
+        (b"exec 3<&0; exec 3<&-", "save-then-close-idiom"),
+        (b"exec 3<&0; exec 3<&0", "rebind-alias-onto-itself"),
+    ], ids=["builtin-frame-dup", "colon-frame-dup", "output-dup-onto-read-fd",
+            "save-then-close-idiom", "rebind-alias-onto-itself"])
+    def test_held_byte_survives_a_dup_going_away(self, between, name):
+        script = (b"read -N 1 a; " + between
+                  + b"; read -N 1 b; printf 'a=<%s> b=<%s>\\n' \"$a\" \"$b\"")
+        psh, bash_c = _psh(script, STRAND_IN), _bash_c(script, STRAND_IN)
+        assert psh == bash_c, f"{name}: the held byte was destroyed"
+        assert psh == b"a=<\xc3> b=<A>\n"
+
+    def test_mapfile_still_sees_the_held_byte_after_a_dup_frame(self):
+        # A different CONSUMER of the same cursor: the loss showed up as a byte
+        # missing from mapfile's array element, not just from `read`.
+        script = (b"read -N 1 a; true 3<&0; mapfile -t -n 1 L; "
+                  b"printf 'L=<%s>\\n' \"${L[0]}\"")
+        psh, bash_c = _psh(script, b"\xc3ABC\nX\n"), _bash_c(script, b"\xc3ABC\nX\n")
+        assert psh == bash_c
+        assert psh == b"L=<ABC>\n"
+
+    def test_alias_survives_an_intervening_frame(self):
+        # The dup'd fd must still share the cursor after an UNRELATED frame has
+        # opened and closed over it.
+        script = (b"exec 3<&0; read -N 1 a; true 4<&3; read -N 1 -u 3 b; "
+                  b"printf 'a=<%s> b=<%s>\\n' \"$a\" \"$b\"")
+        psh, bash_c = _psh(script, b"\xc3ABC\n"), _bash_c(script, b"\xc3ABC\n")
+        assert psh == bash_c
+        assert psh == b"a=<\xc3> b=<A>\n"
+
+    def test_chained_dup_shares_one_description(self):
+        # The brief's `strand x dup x dup-again` composition cell.
+        script = (b"read -N 1 a; exec 3<&0; exec 4<&3; read -N 1 -u 4 b; "
+                  b"printf 'a=<%s> b=<%s>\\n' \"$a\" \"$b\"")
+        psh, bash_c = _psh(script, b"\xc3ABC\n"), _bash_c(script, b"\xc3ABC\n")
+        assert psh == bash_c
+        assert psh == b"a=<\xc3> b=<A>\n"
+
+
+class TestNamedFdAndCompoundDups:
+    """The two dup spellings whose fd is not on the redirect node."""
+
+    def test_named_fd_dup_on_a_builtin_frame_does_not_reorder(self):
+        # `{v}<&0` allocates its fd at APPLY time, so redirect.fd is None. A
+        # frame that guesses a target from the node scopes fd 0 — which the
+        # redirect never re-points — hiding the read from its OWN description's
+        # buffered bytes; they then resurface on the NEXT read, reordered.
+        script = (b"read -N 1 a; read -N 1 b {v}<&0; read -N 1 c; "
+                  b"printf 'a=<%s> b=<%s> c=<%s>\\n' \"$a\" \"$b\" \"$c\"")
+        psh, bash_c = _psh(script, b"\xc3ABCD\n"), _bash_c(script, b"\xc3ABCD\n")
+        assert psh == bash_c
+        assert psh == b"a=<\xc3> b=<A> c=<B>\n"
+
+    def test_compound_command_dup_shares_the_cursor(self):
+        # Compound frames apply a redirect LIST wholesale rather than op by op,
+        # so they need their own aliasing call; scoping without aliasing is
+        # worse than neither, since the dup then gets a fresh cursor.
+        script = (b"read -N 1 a; { read -N 1 -u 3 b; } 3<&0; read -N 1 c; "
+                  b"printf 'a=<%s> b=<%s> c=<%s>\\n' \"$a\" \"$b\" \"$c\"")
+        psh, bash_c = _psh(script, b"\xc3ABZ\n"), _bash_c(script, b"\xc3ABZ\n")
+        assert psh == bash_c
+        assert psh == b"a=<\xc3> b=<A> c=<B>\n"
+
+    def test_while_loop_dup_shares_the_cursor(self):
+        script = (b"read -N 1 a; while read -N 1 -u 3 b; do break; done 3<&0; "
+                  b"read -N 1 c; printf 'a=<%s> b=<%s> c=<%s>\\n' \"$a\" \"$b\" \"$c\"")
+        psh, bash_c = _psh(script, b"\xc3ABZ\n"), _bash_c(script, b"\xc3ABZ\n")
+        assert psh == bash_c
+
+
 class TestMustHold:
     """The I1 guarantees the close must not have traded away."""
 

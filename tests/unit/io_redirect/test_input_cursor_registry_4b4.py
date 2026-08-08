@@ -131,6 +131,35 @@ class TestFrameScoping:
         finally:
             os.close(r)
 
+    def test_apply_time_scoped_fd_does_not_dangle_after_pop(self, ctx):
+        """An fd scoped at APPLY time is cleaned up by the frame that owns it.
+
+        A named-fd redirect ({v}<&0, {v}<file) picks its descriptor when it is
+        applied, so nothing could have scoped it when the frame opened. If the
+        allocator does not scope it then, its binding OUTLIVES the frame that
+        closed the fd — and the shell hands out the lowest free descriptor, so
+        the very next named-fd allocation reuses that number and inherits a
+        cursor belonging to a description that is gone.
+
+        The observable is registry state rather than shell output, which is why
+        this cell (not a shell-level one) is what the M8 arm for `scope_fd`
+        breaks: the stale binding only becomes wrong bytes once the number is
+        REUSED, and that is a second-order effect this pins at its source.
+        """
+        reg = InputCursorRegistry()
+        r = _pipe(b"x\n")
+        try:
+            saved = reg.push_frame([0])
+            reg.scope_fd(11)          # the allocator, at apply time
+            reg.bind_dup(11, r)
+            reg.cursor_for_fd(ctx, 11)
+            reg.pop_frame(saved)
+            assert 11 not in reg._fd_to_desc, (
+                "the frame's own allocation outlived it; the next allocation "
+                "of this fd number would inherit a stale cursor")
+        finally:
+            os.close(r)
+
     def test_pop_is_inert_a_second_time(self, ctx):
         # restore_builtin_redirections clears its token after popping; a frame
         # restored twice (the fatal-signal drain path) must not undo anything.

@@ -46,6 +46,14 @@ DUP_PERCMD = f"{PINS}::TestDupAliasesTheDescription::test_dup_spelling_shares_th
 FRAME_FWD = f"{PINS}::TestTempFrameScopesTheCursor::test_surplus_does_not_leak_into_the_frame[builtin-redirect]"
 FRAME_REV = f"{PINS}::TestTempFrameScopesTheCursor::test_frame_surplus_does_not_escape_into_stdin[builtin-redirect]"
 SAME_FD = f"{PINS}::TestMustHold::test_same_fd_persistence"
+SHARED = (f"{PINS}::TestSharedDescriptionSurvivesItsOtherFds::"
+          "test_held_byte_survives_a_dup_going_away[builtin-frame-dup]")
+SHARED_EXEC = (f"{PINS}::TestSharedDescriptionSurvivesItsOtherFds::"
+               "test_held_byte_survives_a_dup_going_away[save-then-close-idiom]")
+NAMED_FRAME = (f"{PINS}::TestNamedFdAndCompoundDups::"
+               "test_named_fd_dup_on_a_builtin_frame_does_not_reorder")
+COMPOUND = (f"{PINS}::TestNamedFdAndCompoundDups::"
+            "test_compound_command_dup_shares_the_cursor")
 
 
 class Arm:
@@ -95,9 +103,67 @@ ARMS = [
     Arm(
         "named-fd-dup-not-aliased",
         FILE_REDIRECT,
-        "            self.shell.state.input_cursors.bind_dup(newfd, dup_fd)\n",
+        "            registry.bind_dup(newfd, dup_fd)\n",
         "",
         breaks=[DUP_NAMED],
+        stays_green=[DUP_EXEC],
+    ),
+    Arm(
+        # RN-8: the REVERSE-direction leak had no arm of its own; it rode on
+        # the forward one. This mutation restores the outer binding but keeps
+        # the frame's, which breaks the reverse face specifically.
+        "pop-frame-keeps-the-frames-own-binding",
+        REGISTRY,
+        "            inner = self._fd_to_desc.pop(fd, None)",
+        "            inner = self._fd_to_desc.get(fd)",
+        breaks=[FRAME_REV],
+        stays_green=[SAME_FD],
+    ),
+    Arm(
+        # The verify-round-1 headline: a description wearing several fds must
+        # not be destroyed when ONE of them goes away.
+        "release-is-reference-blind",
+        REGISTRY,
+        "        for live in self._fd_to_desc.values():\n"
+        "            if live is desc:          # identity: OpenDescription is opaque\n"
+        "                return",
+        "        pass",
+        breaks=[SHARED],
+        stays_green=[FRAME_FWD],
+    ),
+    Arm(
+        # Same rule at the OTHER drop site: `exec 3<&0; exec 3<&-`.
+        "rebind-drops-a-still-referenced-description",
+        REGISTRY,
+        "        self._unbind(fd)",
+        "        old = self._fd_to_desc.pop(fd, None)\n"
+        "        if old is not None:\n"
+        "            self._desc_to_cursor.pop(old, None)",
+        breaks=[SHARED_EXEC],
+        stays_green=[FRAME_FWD],
+    ),
+    Arm(
+        # The half of the BL-2 fix that carries a shell-level observable:
+        # without the var_fd skip, a named-fd redirect's frame scopes fd 0 by
+        # the input-default rule — an fd the redirect never re-points — hiding
+        # the read from its own buffered bytes, which resurface reordered.
+        # (The companion `scope_fd` call is hygiene with no reachable shell
+        # observable; it is declared as such in file_redirect.py rather than
+        # armed here, since an arm nothing can catch is noise, not a lock.)
+        "named-fd-frame-scopes-the-guessed-default-fd",
+        MANAGER,
+        "            if redirect.var_fd:\n                continue\n",
+        "",
+        breaks=[NAMED_FRAME],
+        stays_green=[DUP_EXEC],
+    ),
+    Arm(
+        "compound-frame-dups-not-aliased",
+        MANAGER,
+        "            self.alias_dup_input_cursors(redirects)\n"
+        "                stream_restore",
+        "            stream_restore",
+        breaks=[COMPOUND],
         stays_green=[DUP_EXEC],
     ),
     Arm(
