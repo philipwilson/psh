@@ -1,0 +1,102 @@
+ROOT=/Users/pwilson/src/psh-r5b-1
+HEAD=49e3f482
+
+==========================================================================
+(1) DEFERRED-IMPORT COUNT — measured with the layering guard's analyzer
+==========================================================================
+  psh.core.locale_service
+    module-level psh imports (runtime): ['psh.utils.posix_classes']
+    ACTUAL deferred psh imports       : 3
+    CAP in FUNC_IMPORT_CAPS           : 3
+    slack (cap - actual)              : 0
+
+    ENUMERATED deferred imports (3):
+      L267   in upper                    from psh.lexer.unicode_support import ['simple_upper']
+      L273   in lower                    from psh.lexer.unicode_support import ['simple_lower']
+      L279   in toggle                   from psh.lexer.unicode_support import ['toggle_case']
+
+    imports the move REMOVES: 0
+    post-move ACTUAL        : 3
+    => EXPECTED CAP-TABLE DIFF: 'psh.core.locale_service': 3 -> 3   (a genuine -0 on the ACTUAL count; cap follows it down)
+
+==========================================================================
+(2) CONSUMER CENSUS — _POSIX_CLASSES / _POSIX_CLASSES_PATHNAME
+==========================================================================
+
+  _POSIX_CLASSES_PATHNAME:
+    psh/expansion/glob.py:22
+        _POSIX_CLASSES_PATHNAME = {**POSIX_CLASSES, 'punct': ':-@!-.[-`{-~'}
+    psh/expansion/glob.py:88
+        stay; ``_POSIX_CLASSES_PATHNAME`` stays as its dependency. (The
+    psh/expansion/glob.py:95
+        lambda m: _POSIX_CLASSES_PATHNAME.get(m.group(1), m.group(0)), pattern
+    tests/unit/tooling/test_posix_class_table_ownership.py:31
+        from psh.expansion.glob import _POSIX_CLASSES_PATHNAME
+    tests/unit/tooling/test_posix_class_table_ownership.py:67
+        if POSIX_CLASSES[k] != _POSIX_CLASSES_PATHNAME[k]}
+    tests/unit/tooling/test_posix_class_table_ownership.py:70
+        assert _POSIX_CLASSES_PATHNAME['punct'] == ':-@!-.[-`{-~'
+    tests/unit/tooling/test_posix_class_table_ownership.py:71
+        assert set(_POSIX_CLASSES_PATHNAME) == set(POSIX_CLASSES)
+    tmp/w5b1-instruments/08_table_move_design.py:8
+        (2) every consumer of _POSIX_CLASSES and _POSIX_CLASSES_PATHNAME
+    tmp/w5b1-instruments/08_table_move_design.py:114
+        print("(2) CONSUMER CENSUS — _POSIX_CLASSES / _POSIX_CLASSES_PATHNAME")
+    tmp/w5b1-instruments/08_table_move_design.py:116
+        for sym in ("_POSIX_CLASSES_PATHNAME", "_POSIX_CLASSES"):
+    tmp/w5b1-instruments/08_table_move_design.py:129
+        if sym == "_POSIX_CLASSES" and "_POSIX_CLASSES_PATHNAME" in line:
+    tmp/w5b1-instruments/08_table_move_design.py:187
+        "_POSIX_CLASSES_PATHNAME": G._POSIX_CLASSES_PATHNAME}
+    tmp/w5b1-instruments/08_table_move_design.py:195
+        if tables['_POSIX_CLASSES'][k] == tables['_POSIX_CLASSES_PATHNAME'][k]}
+    tmp/w5b1-instruments/08_table_move_design.py:200
+        f"pathname={tables['_POSIX_CLASSES_PATHNAME'][k]!r}")
+    total reference lines: 14
+
+  _POSIX_CLASSES:
+    psh/utils/posix_classes.py:14
+        _POSIX_CLASSES``). Deferring those imports hid a layering inversion rather than
+    tests/unit/tooling/test_posix_class_table_ownership.py:6
+        from ..expansion.glob import _POSIX_CLASSES     # locale_service.py:577, :592
+    tests/unit/tooling/test_posix_class_table_ownership.py:79
+        assert "_POSIX_CLASSES" not in src, (
+    tmp/w5b1-instruments/08_table_move_design.py:186
+        tables = {"_POSIX_CLASSES": G._POSIX_CLASSES,
+    tmp/w5b1-instruments/08_table_move_design.py:194
+        same = {k for k in tables['_POSIX_CLASSES']
+    tmp/w5b1-instruments/08_table_move_design.py:196
+        diff = set(tables['_POSIX_CLASSES']) - same
+    tmp/w5b1-instruments/08_table_move_design.py:199
+        print(f"    {k}: base={tables['_POSIX_CLASSES'][k]!r}  "
+    total reference lines: 7
+
+==========================================================================
+(3) CANDIDATE NEUTRAL OWNERS vs the layering rules that exist
+==========================================================================
+  CORE_MODULE_IMPORT_ALLOWLIST = ['psh.ast_nodes', 'psh.utils', 'psh.version']
+  PACKAGE_CYCLE_ALLOWLIST      = EMPTY (by design)
+
+  psh/utils/posix_classes.py
+    package: psh.utils
+    TRUE LEAF (imports nothing from psh). In CORE_MODULE_IMPORT_ALLOWLIST, so core may import it at MODULE level. expansion importing utils is downward. Pure data, zero deps.
+
+  psh/core/posix_classes.py
+    package: psh.core
+    intra-core import for locale_service (same package); expansion->core is already a live module-level edge (glob.py:6). Also legal.
+
+  psh/expansion/<stay>
+    package: psh.expansion
+    STATUS QUO — keeps the core->expansion deferred import. Rejected: this is the defect.
+
+  Does psh.utils currently import anything from psh at module level?
+    psh/utils/__init__.py: module-level=['psh.utils.ast_debug', 'psh.utils.file_tests', 'psh.utils.heredoc_detection', 'psh.utils.signal_utils'] deferred=0
+    psh/utils/ast_debug.py: module-level=[] deferred=6
+    psh/utils/heredoc_detection.py: module-level=[] deferred=3
+    psh/utils/printf_formatter.py: module-level=['psh.utils.escapes'] deferred=0
+    (blank above = psh.utils is a clean leaf)
+
+==========================================================================
+(4) TABLE CONTENT FINGERPRINT (the pin's reference value)
+==========================================================================
+  !! could not import psh.expansion.glob: AttributeError: module 'psh.expansion.glob' has no attribute '_POSIX_CLASSES'

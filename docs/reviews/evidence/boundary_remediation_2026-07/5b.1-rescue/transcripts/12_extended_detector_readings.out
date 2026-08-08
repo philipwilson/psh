@@ -1,0 +1,29 @@
+ROOT=/Users/pwilson/src/psh-r5b-1
+HEAD=8af29e6d
+scanned set (post-extension): 23 modules
+
+==========================================================================
+READING A — Shell only (parameter-consistent)
+==========================================================================
+
+  new class-attribute hits across the scanned set: 0
+  => matches R1's stated expectation of ZERO new hits
+
+==========================================================================
+READING B — Shell OR ShellState (literal-additive)
+==========================================================================
+  NEW ATTRIBUTE HIT  psh.protocols.__init__.JobRuntime.shell_state
+      psh/protocols/__init__.py:188   annotation: 'Optional[ShellState]'
+
+  new class-attribute hits across the scanned set: 1
+  => CONTRADICTS R1's stated expectation of ZERO new hits
+
+==========================================================================
+CONTROL — the shapes each reading must classify
+==========================================================================
+  param  shell: 'Shell'              params=HIT  A=-    B=-
+  param  state: 'ShellState'         params=-    A=-    B=-
+  attr   shell: 'Shell'              params=-    A=HIT  B=HIT
+  attr   state: 'ShellState'         params=-    A=-    B=HIT
+  attr   x: "Optional[ShellState]"   params=-    A=-    B=HIT
+  attr   y: "Optional['Shell']"      params=-    A=HIT  B=HIT

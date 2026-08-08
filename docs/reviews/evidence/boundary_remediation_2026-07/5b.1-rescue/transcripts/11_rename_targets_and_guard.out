@@ -1,0 +1,126 @@
+ROOT=/Users/pwilson/src/psh-r5b-1
+HEAD=8af29e6d
+
+==========================================================================
+(1) NAME AVAILABILITY for proposed rename targets
+==========================================================================
+  ExpansionRuntime       FREE
+  LocaleAccess           FREE
+  ExpansionServices      FREE
+  LocaleServices         FREE
+  ExpansionAccess        FREE
+  LocaleRuntime          FREE
+
+==========================================================================
+(2) RENAME TOUCH-SET per side (measured lines that must change)
+==========================================================================
+
+  ExpansionContext PROTOCOL (psh/protocols/__init__.py:119)
+      psh/lexer/expansion_parser.py: 1 line(s)
+      psh/lexer/modular_lexer.py: 2 line(s)
+      psh/protocols/__init__.py: 4 line(s)
+      tests/unit/protocols/test_protocol_conformance_q1.py: 4 line(s)
+      tests/unit/tooling/test_protocol_layering_q1.py: 1 line(s)
+      tests/unit/tooling/test_shell_consumer_ratchet_q1.py: 2 line(s)
+      docs/reviews/boundary_campaign_briefs_2026-07-16.md: 1 line(s)
+      docs/reviews/boundary_campaign_close_2026-07.md: 1 line(s)
+      docs/reviews/boundary_remediation_campaign_sequence_2026-07-21.md: 1 line(s)
+      docs/reviews/boundary_remediation_integrator_plan_2026-07-21.md: 1 line(s)
+      docs/reviews/code_quality_subsystem_assessment_2026-06-11.md: 1 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/ROUND1-DIGEST.md: 11 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/charter.md: 1 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/instruments/atk-b/01_protocol_census.py: 2 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/instruments/q5/01_protocol_census.py: 2 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/report.md: 2 line(s)
+      docs/reviews/expansion_subsystem_improvement_plan_2026-07-05.md: 2 line(s)
+      docs/reviews/ground_up_reappraisal_20_correctness_textbook_2026-07-11.md: 1 line(s)
+      docs/reviews/ground_up_reappraisal_22_correctness_textbook_2026-07-20.md: 2 line(s)
+      docs/reviews/reappraisal_19_campaign_briefs_2026-07-11.md: 1 line(s)
+      RAW total lines mentioning 'ExpansionContext': 43
+
+  ExpansionContext CONCRETE (psh/lexer/expansion_parser.py:387)
+      psh/lexer/expansion_parser.py: 1 line(s)
+      psh/lexer/modular_lexer.py: 2 line(s)
+      psh/protocols/__init__.py: 4 line(s)
+      tests/unit/protocols/test_protocol_conformance_q1.py: 4 line(s)
+      tests/unit/tooling/test_protocol_layering_q1.py: 1 line(s)
+      tests/unit/tooling/test_shell_consumer_ratchet_q1.py: 2 line(s)
+      docs/reviews/boundary_campaign_briefs_2026-07-16.md: 1 line(s)
+      docs/reviews/boundary_campaign_close_2026-07.md: 1 line(s)
+      docs/reviews/boundary_remediation_campaign_sequence_2026-07-21.md: 1 line(s)
+      docs/reviews/boundary_remediation_integrator_plan_2026-07-21.md: 1 line(s)
+      docs/reviews/code_quality_subsystem_assessment_2026-06-11.md: 1 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/ROUND1-DIGEST.md: 11 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/charter.md: 1 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/instruments/atk-b/01_protocol_census.py: 2 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/instruments/q5/01_protocol_census.py: 2 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/report.md: 2 line(s)
+      docs/reviews/expansion_subsystem_improvement_plan_2026-07-05.md: 2 line(s)
+      docs/reviews/ground_up_reappraisal_20_correctness_textbook_2026-07-11.md: 1 line(s)
+      docs/reviews/ground_up_reappraisal_22_correctness_textbook_2026-07-20.md: 2 line(s)
+      docs/reviews/reappraisal_19_campaign_briefs_2026-07-11.md: 1 line(s)
+      RAW total lines mentioning 'ExpansionContext': 43
+
+  LocaleContext PROTOCOL (psh/protocols/__init__.py:216)
+      psh/core/locale_service.py: 7 line(s)
+      psh/protocols/__init__.py: 4 line(s)
+      tests/unit/protocols/test_protocol_conformance_q1.py: 4 line(s)
+      tests/unit/tooling/test_protocol_layering_q1.py: 1 line(s)
+      tests/unit/tooling/test_shell_consumer_ratchet_q1.py: 1 line(s)
+      docs/reviews/boundary_campaign_briefs_2026-07-16.md: 4 line(s)
+      docs/reviews/boundary_campaign_close_2026-07.md: 3 line(s)
+      docs/reviews/boundary_remediation_campaign_sequence_2026-07-21.md: 1 line(s)
+      docs/reviews/boundary_remediation_integrator_plan_2026-07-21.md: 1 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/ROUND1-DIGEST.md: 11 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/charter.md: 1 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/instruments/atk-b/01_protocol_census.py: 2 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/instruments/q5/01_protocol_census.py: 2 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/report.md: 2 line(s)
+      docs/reviews/ground_up_reappraisal_20_correctness_textbook_2026-07-11.md: 1 line(s)
+      docs/reviews/ground_up_reappraisal_22_correctness_textbook_2026-07-20.md: 2 line(s)
+      RAW total lines mentioning 'LocaleContext': 47
+
+  LocaleContext CONCRETE (psh/core/locale_service.py:90)
+      psh/core/locale_service.py: 7 line(s)
+      psh/protocols/__init__.py: 4 line(s)
+      tests/unit/protocols/test_protocol_conformance_q1.py: 4 line(s)
+      tests/unit/tooling/test_protocol_layering_q1.py: 1 line(s)
+      tests/unit/tooling/test_shell_consumer_ratchet_q1.py: 1 line(s)
+      docs/reviews/boundary_campaign_briefs_2026-07-16.md: 4 line(s)
+      docs/reviews/boundary_campaign_close_2026-07.md: 3 line(s)
+      docs/reviews/boundary_remediation_campaign_sequence_2026-07-21.md: 1 line(s)
+      docs/reviews/boundary_remediation_integrator_plan_2026-07-21.md: 1 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/ROUND1-DIGEST.md: 11 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/charter.md: 1 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/instruments/atk-b/01_protocol_census.py: 2 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/instruments/q5/01_protocol_census.py: 2 line(s)
+      docs/reviews/evidence/boundary_remediation_2026-07/checkpoint-r/report.md: 2 line(s)
+      docs/reviews/ground_up_reappraisal_20_correctness_textbook_2026-07-11.md: 1 line(s)
+      docs/reviews/ground_up_reappraisal_22_correctness_textbook_2026-07-20.md: 2 line(s)
+      RAW total lines mentioning 'LocaleContext': 47
+
+==========================================================================
+(3) RECURRENCE-GUARD PROOF — must be RED on the current tree
+==========================================================================
+  classes defined in psh/: 500
+  names with >1 definition: 5
+  ... of which at least one is a Protocol (GUARD OFFENDERS): 2
+
+    OFFENDER: ExpansionContext
+      CONCRETE  psh/lexer/expansion_parser.py:387
+      PROTOCOL  psh/protocols/__init__.py:119
+
+    OFFENDER: LocaleContext
+      CONCRETE  psh/core/locale_service.py:90
+      PROTOCOL  psh/protocols/__init__.py:216
+
+  => GUARD IS RED ON BASE. It can fail; it is a real guard.
+     After the ruled renames it goes green, and any future
+     re-collision turns it red again.
+
+  CONTROL: all duplicate class names (protocol or not), for context —
+    CasePhase                          x2 [C,C]  ['psh/lexer/cmdsub_scanner.py:31', 'psh/lexer/state_context.py:50']
+    Complete                           x2 [C,C]  ['psh/parser/parse_outcome.py:53', 'psh/scripting/command_accumulator.py:84']
+    ExpansionContext                   x2 [C,P]  ['psh/lexer/expansion_parser.py:387', 'psh/protocols/__init__.py:119']
+    LocaleContext                      x2 [C,P]  ['psh/core/locale_service.py:90', 'psh/protocols/__init__.py:216']
+    Parser                             x2 [C,C]  ['psh/parser/combinators/core.py:121', 'psh/parser/recursive_descent/parser.py:29']

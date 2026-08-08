@@ -1,0 +1,125 @@
+ROOT=/Users/pwilson/src/psh-r5b-1
+PROTOCOL DEFINITIONS FOUND: 9
+========================================================================
+
+VariableExpanderProtocol  @ psh/expansion/_protocols.py:27
+  bases: ['Protocol']
+    attr   shell                              -> 'Shell'  <<< SHELL
+    attr   state                              -> 'ShellState'  <<< SHELLSTATE
+    attr   param_expansion                    -> 'ParameterExpansionOps'
+    method expand_variable                    -> 'OperandOrStr'
+    method expand_string_variables            -> str
+    method split_subscript                    -> Optional['tuple[str, str]']
+    method _resolve_array_name                -> str
+    method _eval_array_index                  -> int
+    method set_var_or_array_element           -> None
+    method array_fields                       -> list
+    method _array_keyvalue_form               -> str
+    method _array_keyvalue_fields             -> list
+    method _expand_operand                    -> 'OperandValue'
+    method _expand_pattern_operand            -> str
+    method _expand_replacement_operand        -> list
+    method _split_pattern_replacement         -> None
+    method _ifs_star_separator                -> str
+    method _var_attr_flags                    -> str
+    method _shell_quote                       -> str
+    method _apply_op_per_element              -> None
+    method _view_conditional                  -> list
+    method _positional_slice_elements         -> list
+    method _parse_slice_operand               -> tuple
+    method _slice_elements                    -> list
+    method _slice_scalar_subscript            -> list
+    method expand_to_fields                   -> None
+
+CommandParsersProtocol  @ psh/parser/combinators/commands/_protocols.py:42
+  bases: ['Protocol']
+    attr   config                             -> 'ParserConfig'
+    attr   tokens                             -> 'TokenParsers'
+    attr   expansions                         -> 'ExpansionParsers'
+    attr   arrays                             -> 'ArrayParsers'
+    attr   heredocs                           -> 'Optional[Mapping[int, LexedHeredoc]]'
+    attr   redirection                        -> Any  <<< ANY
+    attr   simple_command                     -> 'Parser[SimpleCommand]'
+    attr   pipeline                           -> 'Parser[Union[Pipeline, ASTNode]]'
+    attr   and_or_list                        -> 'Parser[Union[AndOrList, ASTNode]]'
+    attr   statement                          -> 'Parser[Any]'  <<< ANY
+    attr   statement_list                     -> 'Parser[StatementList]'
+    attr   _pipeline_element                  -> 'Parser'
+    attr   _function_def                      -> 'Parser'
+    method _parse_word_as_word                -> 'ParseResult'
+    method _parse_redirection                 -> 'ParseResult[Redirect]'
+    method _parse_fd_dup_word                 -> Optional['Redirect']
+    method _build_simple_command              -> 'SimpleCommand'
+    method _build_simple_command_parser       -> 'Parser[SimpleCommand]'
+    method _build_pipeline_parser             -> 'Parser[Union[Pipeline, ASTNode]]'
+    method _build_and_or_list_parser          -> 'Parser[Union[AndOrList, ASTNode]]'
+    method _build_and_or_list_from_parts      -> 'Union[AndOrList, ASTNode]'
+    method _build_statement_parser            -> 'Parser[Union[AndOrList, FunctionDef]]'
+    method build_statement_list               -> 'Parser[StatementList]'
+
+ControlStructureProtocol  @ psh/parser/combinators/control_structures/_protocols.py:29
+  bases: ['Protocol']
+    attr   commands                           -> 'CommandParsers'
+    attr   tokens                             -> 'TokenParsers'
+    attr   _compound_body                     -> 'Parser'
+    method _parse_trailing_redirects          -> Tuple[List['Redirect'], int]
+
+_TemplateCtx  @ psh/parser/recursive_descent/support/syntax_templates.py:44
+  bases: ['Protocol']
+    method line_offset                        -> int
+    method lexer_options                      -> 'Optional[Mapping[str, object]]'
+
+VariableAccess  @ psh/protocols/__init__.py:91
+  bases: ['Protocol']
+    method get_variable                       -> str
+    method set_variable                       -> None
+    method get_special_variable               -> str
+
+ExpansionContext  @ psh/protocols/__init__.py:119
+  bases: ['Protocol']
+    method expand_string_variables            -> str
+    method expand_assignment_value_word       -> str
+    attr   variable_expander                  -> Any  <<< ANY
+    attr   word_expander                      -> Any  <<< ANY
+
+IOContext  @ psh/protocols/__init__.py:149
+  bases: ['Protocol']
+    method stdin                              -> TextIO
+    method stdout                             -> TextIO
+    method stderr                             -> TextIO
+
+JobRuntime  @ psh/protocols/__init__.py:175
+  bases: ['Protocol']
+    attr   shell_state                        -> 'Optional[ShellState]'  <<< SHELLSTATE
+    method terminal_pgid_if_owned             -> Optional[int]
+    method create_job                         -> 'Job'
+    method set_foreground_job                 -> None
+    method transfer_terminal_control          -> bool
+    method wait_for_job                       -> int
+    method wait_for_job                       -> List[int]
+    method report_signal_death_at             -> None
+    method finish_foreground_job              -> None
+    method remove_job                         -> None
+
+LocaleContext  @ psh/protocols/__init__.py:216
+  bases: ['Protocol']
+    method collate_key                        -> Any  <<< ANY
+    method compare                            -> int
+    method upper                              -> str
+    method lower                              -> str
+    method toggle                             -> str
+    method in_class                           -> bool
+
+========================================================================
+NAME COLLISIONS AMONG PROTOCOL DEFINITIONS:
+
+DISTINCT PROTOCOL NAMES: 9
+  CommandParsersProtocol           ['psh/parser/combinators/commands/_protocols.py:42']
+  ControlStructureProtocol         ['psh/parser/combinators/control_structures/_protocols.py:29']
+  ExpansionContext                 ['psh/protocols/__init__.py:119']
+  IOContext                        ['psh/protocols/__init__.py:149']
+  JobRuntime                       ['psh/protocols/__init__.py:175']
+  LocaleContext                    ['psh/protocols/__init__.py:216']
+  VariableAccess                   ['psh/protocols/__init__.py:91']
+  VariableExpanderProtocol         ['psh/expansion/_protocols.py:27']
+  _TemplateCtx                     ['psh/parser/recursive_descent/support/syntax_templates.py:44']

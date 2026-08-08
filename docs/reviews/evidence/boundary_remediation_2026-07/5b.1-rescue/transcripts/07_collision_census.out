@@ -1,0 +1,63 @@
+ROOT=/Users/pwilson/src/psh-r5b-1
+HEAD=8af29e6d
+
+==========================================================================
+1. DEFINITIONS (all class defs, protocol AND concrete)
+==========================================================================
+
+ExpansionContext: 2 definition(s)
+   CONCRETE psh/lexer/expansion_parser.py:387   module=psh.lexer.expansion_parser  bases=[]
+   PROTOCOL psh/protocols/__init__.py:119   module=psh.protocols  bases=['Protocol']
+
+LocaleContext: 2 definition(s)
+   CONCRETE psh/core/locale_service.py:90   module=psh.core.locale_service  bases=[]
+   PROTOCOL psh/protocols/__init__.py:216   module=psh.protocols  bases=['Protocol']
+
+==========================================================================
+2. REFERENCE SITES, RESOLVED PER DEFINITION
+==========================================================================
+
+--- psh/core/locale_service.py  (module psh.core.locale_service)
+    IMPORTS: (none of the colliding names)
+    L91    STRING-ANN  LocaleContext     LOCAL definition => CONCRETE @ psh/core/locale_service.py:90
+             SRC: """The two effective locales a shell runs under (campaign contract).
+    L111   NAME        LocaleContext     LOCAL definition => CONCRETE @ psh/core/locale_service.py:90
+             SRC: LocaleProfile = LocaleContext
+    L139   NAME        LocaleContext     LOCAL definition => CONCRETE @ psh/core/locale_service.py:90
+             SRC: def _resolve_profile(env: Mapping[str, str]) -> LocaleContext:
+    L150   NAME        LocaleContext     LOCAL definition => CONCRETE @ psh/core/locale_service.py:90
+             SRC: return LocaleContext(ctype_name, collate_name,
+    L214   NAME        LocaleContext     LOCAL definition => CONCRETE @ psh/core/locale_service.py:90
+             SRC: self.profile = LocaleContext(ctype_name, collate_name,
+
+--- psh/lexer/modular_lexer.py  (module psh.lexer.modular_lexer)
+    IMPORTS: ExpansionContext  <-  psh.lexer.expansion_parser
+    L71    NAME        ExpansionContext  IMPORTED from psh.lexer.expansion_parser  => CONCRETE @ psh/lexer/expansion_parser.py:387
+             SRC: self.expansion_context = ExpansionContext(
+
+--- psh/protocols/__init__.py  (module psh.protocols)
+    IMPORTS: (none of the colliding names)
+    L1     STRING-ANN  ExpansionContext  LOCAL definition => PROTOCOL @ psh/protocols/__init__.py:119
+             SRC: """The five narrow shell-service protocols (boundary campaign Q1, §13).
+    L250   STRING-ANN  ExpansionContext  LOCAL definition => PROTOCOL @ psh/protocols/__init__.py:119
+             SRC: "ExpansionContext",
+    L1     STRING-ANN  LocaleContext     LOCAL definition => PROTOCOL @ psh/protocols/__init__.py:216
+             SRC: """The five narrow shell-service protocols (boundary campaign Q1, §13).
+    L253   STRING-ANN  LocaleContext     LOCAL definition => PROTOCOL @ psh/protocols/__init__.py:216
+             SRC: "LocaleContext",
+
+==========================================================================
+3. SUMMARY — importers per definition
+==========================================================================
+
+ExpansionContext:
+   CONCRETE psh/lexer/expansion_parser.py:387
+     importers (1): ['psh/lexer/modular_lexer.py']
+   PROTOCOL psh/protocols/__init__.py:119
+     importers (0): (NONE)
+
+LocaleContext:
+   CONCRETE psh/core/locale_service.py:90
+     importers (0): (NONE)
+   PROTOCOL psh/protocols/__init__.py:216
+     importers (0): (NONE)

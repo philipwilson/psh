@@ -1,0 +1,46 @@
+ROOT=/Users/pwilson/src/psh-r5b-1
+HEAD=8af29e6da525701416fe1f38752542a309030bd3
+detector source: /Users/pwilson/src/psh-r5b-1/tests/unit/tooling/test_shell_consumer_ratchet_q1.py
+
+========================================================================
+(a) BASELINE — the 20 currently-scanned modules
+========================================================================
+  ALLOWLISTED  psh.executor.command_resolution.resolve_command
+  ALLOWLISTED  psh.expansion.subscript.SubscriptEvaluator.__init__
+  ALLOWLISTED  psh.scripting.program_source.execute_sourced_file
+  ALLOWLISTED  psh.executor.child_policy.run_background_shell_child
+  ALLOWLISTED  psh.executor.child_policy.run_child_body
+  ALLOWLISTED  psh.executor.child_policy.run_child_shell
+
+  live consumers in scanned scope : 6
+  ALLOWLIST entries               : 6
+  live - ALLOWLIST (unrecorded)   : []
+  ALLOWLIST - live (stale)        : []
+  RATCHET GREEN TODAY             : True
+
+========================================================================
+(b) THE GAP — what extending the scope would FIND
+========================================================================
+
+  psh/protocols/__init__.py
+    full-Shell consumers found: 0
+      (none — nothing for the ratchet to record here)
+
+  psh/expansion/procsub_render.py
+    full-Shell consumers found: 0
+      (none — nothing for the ratchet to record here)
+
+  psh/scripting/analysis_session.py
+    full-Shell consumers found: 3
+      >>> psh.scripting.analysis_session.AnalysisSession.__init__
+      >>> psh.scripting.analysis_session.AnalysisSession._build_carrier
+      >>> psh.scripting.analysis_session.parse_for_analysis
+
+  TOTAL new consumers entering scope: 3
+
+========================================================================
+(c) PER-PARAM DETAIL for every hit (which param triggered, and how)
+========================================================================
+  psh/scripting/analysis_session.py:381  AnalysisSession.__init__  param=shell  ann='Shell'  [ANNOTATION-MENTIONS-Shell]
+  psh/scripting/analysis_session.py:399  AnalysisSession._build_carrier  param=shell  ann='Shell'  [ANNOTATION-MENTIONS-Shell]
+  psh/scripting/analysis_session.py:559  parse_for_analysis  param=shell  ann='Shell'  [ANNOTATION-MENTIONS-Shell]

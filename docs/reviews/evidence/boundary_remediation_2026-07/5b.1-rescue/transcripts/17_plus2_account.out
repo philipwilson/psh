@@ -1,0 +1,52 @@
+ROOT=/Users/pwilson/src/psh-r5b-1
+BASE=8af29e6d  TIP=75cb9c67
+
+==========================================================================
+(A) STATIC COUNT over the touched test files (git show vs worktree)
+==========================================================================
+  tests/unit/tooling/test_shell_consumer_ratchet_q1.py
+      base=11   tip=20   delta=+9
+  tests/unit/tooling/test_protocol_name_collision_q5.py
+      base=0    tip=7    delta=+7   (NEW FILE)
+  tests/unit/tooling/test_posix_class_table_ownership.py
+      base=0    tip=5    delta=+5   (NEW FILE)
+  tests/unit/protocols/test_protocol_conformance_q1.py
+      base=7    tip=7    delta=+0
+  tests/unit/tooling/test_protocol_layering_q1.py
+      base=5    tip=5    delta=+0
+  tests/unit/tooling/test_import_layering.py
+      base=8    tip=8    delta=+0
+  tests/unit/core/test_locale_service.py
+      base=34   tip=34   delta=+0
+  tests/unit/scripting/test_analysis_session.py
+      base=44   tip=45   delta=+1
+
+  TOTAL static delta over touched files: +22
+
+==========================================================================
+(B) THE GATE'S OWN PHASE MANIFESTS (node IDs actually collected)
+==========================================================================
+  phase-1.json: 24429 node IDs
+  phase-2.json: 1119 node IDs
+  UNION across manifests: 25548
+
+  node IDs in the touched files (tip side):
+    tests/unit/tooling/test_shell_consumer_ratchet_q1.py: 20
+    tests/unit/tooling/test_protocol_name_collision_q5.py: 7
+    tests/unit/tooling/test_posix_class_table_ownership.py: 5
+    tests/unit/protocols/test_protocol_conformance_q1.py: 7
+    tests/unit/tooling/test_protocol_layering_q1.py: 5
+    tests/unit/tooling/test_import_layering.py: 8
+    tests/unit/core/test_locale_service.py: 34
+    tests/unit/scripting/test_analysis_session.py: 132
+    total: 218
+
+==========================================================================
+(C) RECONCILIATION
+==========================================================================
+  pre-registered delta (ledger B5) : +20
+  gate-observed delta              : +22   (23896 -> 23918)
+  static delta over touched files  : +22
+
+  => The touched-file static delta EXACTLY equals the gate's delta.
+     The gate is right; the PRE-REGISTRATION was wrong.

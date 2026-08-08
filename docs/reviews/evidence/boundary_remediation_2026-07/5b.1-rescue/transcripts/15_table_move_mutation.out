@@ -1,0 +1,43 @@
+instrument 15 — table-move mutation battery
+ROOT=.
+HEAD=49e3f4821aaa7a95e4e998258dc09b5f9b704d4b
+
+=== CONTROL: unmutated tree GREEN ===
+.............                                                            [100%]
+13 passed in 1.26s
+
+== arm T1 (expect: FAILED)
+FAILED tests/unit/tooling/test_posix_class_table_ownership.py::test_core_no_longer_imports_the_table_from_expansion
+FAILED tests/unit/tooling/test_import_layering.py::test_function_level_import_ratchet
+2 failed, 11 passed in 1.28s
+   -> arm T1: FAILED (expected FAILED)
+
+== arm T2 (expect: FAILED)
+FAILED tests/unit/tooling/test_posix_class_table_ownership.py::test_locale_service_reaches_the_table_without_a_deferred_import
+FAILED tests/unit/tooling/test_import_layering.py::test_function_level_import_ratchet
+2 failed, 11 passed in 1.27s
+   -> arm T2: FAILED (expected FAILED)
+
+== arm T3 (expect: FAILED)
+FAILED tests/unit/tooling/test_posix_class_table_ownership.py::test_moved_table_is_byte_identical
+1 failed, 12 passed in 1.25s
+   -> arm T3: FAILED (expected FAILED)
+
+== arm T4 (expect: FAILED)
+FAILED tests/unit/tooling/test_posix_class_table_ownership.py::test_the_table_module_is_a_true_leaf
+1 failed, 12 passed in 1.30s
+   -> arm T4: FAILED (expected FAILED)
+
+== arm T5 (expect: PASSED)
+13 passed in 1.27s
+   -> arm T5: PASSED (expected PASSED)
+
+=== POST-STATE ===
+  RESTORED-IDENTICAL  psh/core/locale_service.py
+  RESTORED-IDENTICAL  psh/utils/posix_classes.py
+
+final control:
+.............                                                            [100%]
+13 passed in 1.27s
+
+instrument 15 done
