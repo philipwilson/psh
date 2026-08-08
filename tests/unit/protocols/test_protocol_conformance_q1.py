@@ -5,9 +5,9 @@ These prove two things at once:
 1. **Completeness / correct producer mapping.** Each protocol is STRUCTURALLY
    satisfied by the canonical producer named in its docstring — the ``Shell``
    for ``IOContext``, ``ShellState`` for ``VariableAccess``, the
-   ``ExpansionManager`` for ``ExpansionContext``, the ``JobManager`` for
+   ``ExpansionManager`` for ``ExpansionRuntime``, the ``JobManager`` for
    ``JobRuntime``, and ``ShellState.locale`` (``LocaleService``) for
-   ``LocaleContext``. ``isinstance`` here checks member PRESENCE (the protocols
+   ``LocaleAccess``. ``isinstance`` here checks member PRESENCE (the protocols
    are ``@runtime_checkable``), which is exactly "does the producer expose this
    surface".
 
@@ -26,10 +26,10 @@ import pytest
 
 from psh import protocols as P
 from psh.protocols import (
-    ExpansionContext,
+    ExpansionRuntime,
     IOContext,
     JobRuntime,
-    LocaleContext,
+    LocaleAccess,
     VariableAccess,
 )
 from psh.shell import Shell
@@ -40,14 +40,14 @@ from psh.shell import Shell
 # freeze makes any change to a protocol's surface a deliberate edit here.
 EXPECTED_MEMBERS = {
     "VariableAccess": {"get_variable", "set_variable", "get_special_variable"},
-    "ExpansionContext": {"expand_string_variables", "expand_assignment_value_word",
+    "ExpansionRuntime": {"expand_string_variables", "expand_assignment_value_word",
                          "variable_expander", "word_expander"},
     "IOContext": {"stdin", "stdout", "stderr"},
     "JobRuntime": {"shell_state", "terminal_pgid_if_owned", "create_job",
                    "set_foreground_job", "transfer_terminal_control",
                    "wait_for_job", "report_signal_death_at",
                    "finish_foreground_job", "remove_job"},
-    "LocaleContext": {"collate_key", "compare", "upper", "lower", "toggle",
+    "LocaleAccess": {"collate_key", "compare", "upper", "lower", "toggle",
                       "in_class"},
 }
 
@@ -97,7 +97,7 @@ def test_state_satisfies_variableaccess(shell):
 
 
 def test_expansion_manager_satisfies_expansioncontext(shell):
-    assert isinstance(shell.expansion_manager, ExpansionContext)
+    assert isinstance(shell.expansion_manager, ExpansionRuntime)
 
 
 def test_job_manager_satisfies_jobruntime(shell):
@@ -105,7 +105,7 @@ def test_job_manager_satisfies_jobruntime(shell):
 
 
 def test_locale_satisfies_localecontext(shell):
-    assert isinstance(shell.state.locale, LocaleContext)
+    assert isinstance(shell.state.locale, LocaleAccess)
 
 
 class _StreamsOnly:

@@ -165,7 +165,7 @@ TOUCHED_MODULES = CREATED_MODULES + TOUCHED_PREEXISTING + POST_ENDPOINT_SCANNED
 # The frozen set of boundary-module defs that legitimately still take the full
 # ``Shell`` — (dotted-module, qualified-symbol) -> justification. MAY ONLY
 # SHRINK. Each forwards the shell to a whole-shell need or reaches a subsystem no
-# protocol (VariableAccess/ExpansionContext/IOContext/JobRuntime/LocaleContext)
+# protocol (VariableAccess/ExpansionRuntime/IOContext/JobRuntime/LocaleAccess)
 # models.
 ALLOWLIST = {
     ("psh.executor.command_resolution", "resolve_command"):
@@ -184,7 +184,7 @@ ALLOWLIST = {
         "Shell (Shell.for_subshell) and reaches trap/signal/executor/streams",
     ("psh.expansion.subscript", "SubscriptEvaluator.__init__"):
         "forwards `shell` to evaluate_arithmetic(expr, shell) for indexed "
-        "subscript evaluation; also consumes ExpansionContext + state "
+        "subscript evaluation; also consumes ExpansionRuntime + state "
         "diagnostics, but the arithmetic forward forces the full Shell",
     ("psh.scripting.program_source", "execute_sourced_file"):
         "THE sourced-file executor (source/. + rc load): owns state.source_depth, "

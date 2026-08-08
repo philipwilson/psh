@@ -16,7 +16,7 @@ Protocol             Canonical producer (``file.py#symbol``)
                      ``core/variable_store.py#VariableStore`` (the write
                      authority), surfaced as ``ShellState.get_variable`` /
                      ``set_variable`` / ``get_special_variable``.
-``ExpansionContext`` ``expansion/manager.py#ExpansionManager`` — the expansion
+``ExpansionRuntime`` ``expansion/manager.py#ExpansionManager`` — the expansion
                      orchestrator (word/string expansion + its sub-expanders).
 ``IOContext``        the shell's three process I/O text streams
                      (``Shell.stdin`` / ``stdout`` / ``stderr``, backed by
@@ -27,10 +27,18 @@ Protocol             Canonical producer (``file.py#symbol``)
 ``JobRuntime``       ``executor/job_control.py#JobManager`` — the job-table /
                      terminal-transfer / wait surface the foreground-job
                      transaction (``executor/foreground_session.py``) drives.
-``LocaleContext``    ``core/locale_service.py#LocaleService`` (on
+``LocaleAccess``     ``core/locale_service.py#LocaleService`` (on
                      ``ShellState.locale``) — collation, locale-gated case
                      mapping, POSIX character-class membership.
 ===================  =========================================================
+
+**Names are unique tree-wide.** ``ExpansionRuntime`` and ``LocaleAccess`` were
+``ExpansionContext`` / ``LocaleContext`` until remediation 5B.1: each collided
+with a live CONCRETE class of the same name (``lexer/expansion_parser.py:387``
+and ``core/locale_service.py:90``), so a reader could not tell from a name which
+one a module meant. The protocol sides were renamed — they had zero consumers,
+the concrete classes did not. ``tests/unit/tooling/test_protocol_name_collision
+_q5.py`` keeps the class from recurring.
 
 **Import direction is one-way and enforced.** This module imports NOTHING from
 ``psh`` at runtime — every producer/value type it names in an annotation is
@@ -55,7 +63,7 @@ boundaries. ``IOContext`` — the reader boundary (``make_reader`` /
 ``InputCursorRegistry.cursor_for_fd`` took ``Shell``, used only ``.stdin``).
 ``JobRuntime`` — ``ForegroundJobSession`` took the concrete ``JobManager`` and
 now takes this protocol (mypy-checked: ``JobManager`` satisfies it structurally).
-``VariableAccess`` / ``ExpansionContext`` / ``LocaleContext`` are DEFINED against
+``VariableAccess`` / ``ExpansionRuntime`` / ``LocaleAccess`` are DEFINED against
 their producers, member-frozen and conformance-pinned, but consumer adoption is
 POST-CAMPAIGN: their touched-set consumers genuinely retain ``Shell`` for a need
 no protocol covers (``subscript`` forwards ``shell`` to ``evaluate_arithmetic``;
@@ -65,6 +73,13 @@ the ``child_policy`` runners reach the trap/signal/executor machinery;
 transaction) — each recorded, with its justification, in the shrink-only ratchet
 ``tests/unit/tooling/test_shell_consumer_ratchet_q1.py``. Their exact member
 sets are frozen by ``tests/unit/protocols/test_protocol_conformance_q1.py``.
+
+Adoption is scheduled, not open-ended: remediation 5B.2 owns the migration, and
+its named first consumers are ``VariableAccess`` for
+``expansion/_protocols.py#VariableExpanderProtocol.state``, ``ExpansionRuntime``
+for ``expansion/subscript.py#SubscriptEvaluator`` (which already reads
+``shell.expansion_manager``), and ``LocaleAccess`` for the three ``state.locale``
+readers named above.
 """
 from __future__ import annotations
 
@@ -116,7 +131,7 @@ class VariableAccess(Protocol):
 
 
 @runtime_checkable
-class ExpansionContext(Protocol):
+class ExpansionRuntime(Protocol):
     """The expansion-orchestrator surface (``ExpansionManager``).
 
     A consumer that must run shell expansions — string ``$``-expansion, an
@@ -127,6 +142,12 @@ class ExpansionContext(Protocol):
     ``shell.expansion_manager`` (it additionally forwards ``shell`` to
     ``evaluate_arithmetic``, which is why that boundary still takes ``Shell`` —
     see the Q1 ratchet).
+
+    NAME (remediation 5B.1): this was ``ExpansionContext`` until the collision
+    with the CONCRETE lexer class ``lexer/expansion_parser.py#ExpansionContext``
+    was resolved. The protocol side was renamed because it had zero consumers
+    while the lexer class is live; ``Runtime`` follows ``JobRuntime`` — this is
+    the machinery that RUNS expansions, not a bag of context data.
     """
 
     def expand_string_variables(self, text: str,
@@ -213,7 +234,7 @@ class JobRuntime(Protocol):
 
 
 @runtime_checkable
-class LocaleContext(Protocol):
+class LocaleAccess(Protocol):
     """The effective-locale service surface (``LocaleService`` on
     ``ShellState.locale``).
 
@@ -222,8 +243,15 @@ class LocaleContext(Protocol):
     needs locale-correct comparison or case folding depends on this rather than
     the whole ``ShellState``. ``LocaleService`` structurally satisfies it;
     current callers (``expansion/glob.py``, ``expansion/parameter_expansion.py``,
-    ``executor/enhanced_test_evaluator.py``) read it as ``state.locale`` and are
-    outside this slot's touched set.
+    ``executor/enhanced_test_evaluator.py``) read it as ``state.locale``.
+
+    NAME (remediation 5B.1): this was ``LocaleContext`` until the collision with
+    the CONCRETE frozen dataclass ``core/locale_service.py#LocaleContext`` was
+    resolved. The protocol side was renamed because it had zero consumers, while
+    the dataclass is row 4 of the boundary campaign's canonical representation
+    set; ``Access`` follows ``VariableAccess`` — a read surface over a service,
+    not the value type. The dataclass keeps the ``Context`` name it is recorded
+    under.
     """
 
     def collate_key(self, s: str) -> Any:
@@ -247,8 +275,8 @@ class LocaleContext(Protocol):
 
 __all__ = [
     "VariableAccess",
-    "ExpansionContext",
+    "ExpansionRuntime",
     "IOContext",
     "JobRuntime",
-    "LocaleContext",
+    "LocaleAccess",
 ]
