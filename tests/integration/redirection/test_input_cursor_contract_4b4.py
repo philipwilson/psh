@@ -39,10 +39,6 @@ that divergence must NOT be: never corruption, never loss. See
 `exec` rewrites process fds, so every case runs psh in a subprocess.
 """
 import os
-import subprocess
-import sys
-import threading
-import time
 
 import pytest
 from shell_oracle import is_comparable, run_bash, run_psh
@@ -204,76 +200,93 @@ LATE = 2.0           # 2x the deadline: when the completing bytes arrive
 KILL_AFTER = 8.0     # 8x the deadline: hang detection
 
 
-def _feed_late(argv, script, phase1, phase2=None):
-    """Run `argv -c script`, feeding phase2 only AFTER the deadline expired.
+def _write(tmp_path, arm: str, name: str, data: bytes) -> str:
+    p = tmp_path / f"{arm}.{name}"
+    p.write_bytes(data)
+    return str(p)
 
-    Nothing can race the deadline: phase 2 is written at 2x it. The writer is a
-    thread with a bounded join and the child has an 8x watchdog.
+
+def _run_both(script_builder, tmp_path):
+    """Run one cell under psh and bash; ``script_builder(arm)`` is called PER ARM.
+
+    Per-arm construction, not sharing: a producer that outlives its arm can
+    deliver bytes into the other arm's run (the cross-arm leak 4B.2 hit). Every
+    launch goes through the typed runner — a raw spawn would bypass the
+    ``is_comparable`` safety net, and the oracle is resolved by the harness
+    rather than named here.
     """
-    r, w = os.pipe()
-    p = subprocess.Popen(list(argv) + ['-c', script.decode()], stdin=r,
-                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                         cwd=PSH_ROOT)
-    os.close(r)
-    os.write(w, phase1)
-    t = None
-    if phase2 is not None:
-        def later():
-            time.sleep(LATE)
-            try:
-                os.write(w, phase2)
-            except OSError:
-                pass
-        t = threading.Thread(target=later, daemon=True)
-        t.start()
-    try:
-        out, _ = p.communicate(timeout=KILL_AFTER + LATE)
-    except subprocess.TimeoutExpired:
-        p.kill()
-        p.communicate()
-        raise AssertionError("shell hung on the timeout cell") from None
-    finally:
-        if t is not None:
-            t.join(KILL_AFTER)
-        try:
-            os.close(w)
-        except OSError:
-            pass
-    return out
+    kwargs = dict(cwd=str(tmp_path), timeout=KILL_AFTER,
+                  env={"LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8"})
+    psh = run_psh(["-c", script_builder("psh")], **kwargs)
+    bash = run_bash(["-c", script_builder("oracle")], **kwargs)
+    assert is_comparable(bash), f"bash oracle unusable: {bash}"
+    assert is_comparable(psh), (
+        f"psh did not complete within {KILL_AFTER}s: {psh}")
+    return _report(psh), _report(bash)
+
+
+def _report(result) -> str:
+    lines = [ln for ln in result.stdout.splitlines() if ln.startswith("rc=")]
+    assert lines, f"no report line in {result.stdout!r} / {result.stderr!r}"
+    return lines[-1]
 
 
 @pytest.mark.serial  # real deadlines: a starved clock would flake
 class TestTimeoutStrandIsContainedNotLeaked:
-    PSH = (sys.executable, '-m', 'psh')
-    BASH = ('/opt/homebrew/bin/bash',)
+    """A `-t` deadline expiring mid-character stands the partial on the
+    cursor. These cells assert what that must NOT cost: no byte may reach a
+    different source, and no byte may reach no reader at all.
+
+    The producer writes the head, HOLDS past the deadline, then (where a
+    completion is needed) writes the tail and exits. Bytes come from files via
+    ``cat``, never from the shell's own ``printf``, whose octal escapes differ
+    between the two shells. Nothing races the deadline: the tail is written at
+    2x it.
+    """
 
     def test_stranded_partial_does_not_contaminate_a_temp_frame(self, tmp_path):
-        """LEG A. A `-t` timeout mid-`é` used to prepend the held lead byte to a
-        read from a DIFFERENT FILE."""
-        f = tmp_path / "f.txt"
-        f.write_bytes(b"FILELINE\n")
-        script = (f"read -t {TIMEOUT} -N 2 v; read x < {f}; "
-                  'printf "v=%s|x=%s\\n" "$v" "$x"').encode()
-        out = _feed_late(self.PSH, script, b"\xc3")
-        # ANTI-VACUITY: v empty proves the read timed out MID-CHARACTER and psh
-        # held the partial. If v held the byte, nothing was stranded and the
-        # cell would pass without ever reaching its subject.
-        assert out.startswith(b"v=|"), f"cell stranded nothing: {out!r}"
-        # The file read is clean — no byte from stdin in it.
-        assert out == b"v=|x=FILELINE\n"
+        """LEG A. The held lead byte used to be PREPENDED to a read from a
+        different FILE — one source's bytes surfacing in another's read."""
+        def build(arm):
+            head = _write(tmp_path, arm, "head.bin", b"\xc3")
+            f = _write(tmp_path, arm, "f.txt", b"FILELINE\n")
+            return (
+                f"{{ cat {head}; sleep {LATE}; }} | "
+                f"{{ read -t {TIMEOUT} -N 2 v; rc=$?; read x < {f}; "
+                f"printf 'rc=%s vlen=%s xbytes=' \"$rc\" \"${{#v}}\"; "
+                f"printf '%s' \"$x\" | od -An -tx1 | tr -d ' \\n'; "
+                f"printf '\\n'; }}")
+
+        psh, bash = _run_both(build, tmp_path)
+        want = b"FILELINE".hex()
+        # The file read is CLEAN in both shells: no stdin byte in it.
+        assert f"xbytes={want}" in psh, psh
+        assert f"xbytes={want}" in bash, bash
+        # ANTI-VACUITY: psh must actually have STRANDED something, or this cell
+        # never reached its subject. vlen=0 is the hold; bash's vlen=1 is the
+        # declared D-4B.2-s1 divergence (it assigns the partial instead).
+        assert "vlen=0" in psh, f"cell stranded nothing: {psh}"
+        assert "vlen=1" in bash, f"oracle did not assign the partial: {bash}"
 
     def test_stranded_partial_is_not_lost_across_a_dup(self, tmp_path):
-        """LEG B. `exec 3<&0` used to give fd 3 a fresh cursor, so the held lead
-        byte reached NEITHER fd. Every fed byte must reach some reader."""
-        script = (f"read -t {TIMEOUT} -N 2 v; exec 3<&0; "
-                  f"read -t {TIMEOUT} -u 3 y; read -t {TIMEOUT} -N 1 w; "
-                  'printf "v=%s|y=%s|w=%s\\n" "$v" "$y" "$w"').encode()
-        out = _feed_late(self.PSH, script, b"\xc3", b"\xa9Z\n")
-        assert out.startswith(b"v=|"), f"cell stranded nothing: {out!r}"
-        # The é is delivered whole through the SHARED cursor. Before the fix
-        # y was b'\xa9Z' and the \xc3 appeared nowhere at all.
-        assert out == b"v=|y=\xc3\xa9Z|w=\n", out
-        # Byte-conservation, stated as its own property: everything fed came
-        # back out. This is the assertion the loss actually violated, and it
-        # holds independently of WHERE the shells split the character.
-        assert out.count(b"\xc3") == 1 and out.count(b"\xa9") == 1
+        """LEG B. `exec 3<&0` used to give fd 3 a FRESH cursor, so a byte
+        already consumed from the shared kernel offset reached NEITHER fd."""
+        def build(arm):
+            head = _write(tmp_path, arm, "head.bin", b"\xc3")
+            tail = _write(tmp_path, arm, "tail.bin", b"\xa9Z\n")
+            return (
+                f"{{ cat {head}; sleep {LATE}; cat {tail}; }} | "
+                f"{{ read -t {TIMEOUT} -N 2 v; exec 3<&0; "
+                f"read -t {LATE} -u 3 y; read -t {TIMEOUT} -N 1 w; "
+                f"printf 'rc=0 all='; "
+                f"printf '%s%s%s' \"$v\" \"$y\" \"$w\" "
+                f"| od -An -tx1 | tr -d ' \\n'; printf '\\n'; }}")
+
+        psh, bash = _run_both(build, tmp_path)
+        # BYTE CONSERVATION, the property the loss actually violated: the
+        # concatenation of everything the three reads delivered, in order, is
+        # byte-identical between the shells. Only WHERE the character is split
+        # differs (D-4B.2-s1), and a concatenation cannot see a split — but it
+        # sees a missing byte immediately. On base psh dropped the c3 entirely.
+        assert psh == bash, f"bytes lost or reordered: psh {psh} vs bash {bash}"
+        assert "all=c3a95a" in psh, psh
