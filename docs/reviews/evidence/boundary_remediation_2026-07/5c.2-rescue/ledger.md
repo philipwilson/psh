@@ -176,6 +176,30 @@ the early dead-drop entries said **58 of 60** below 100 executable, **2** rows
 and so is every conclusion. The guard's docstring now carries the canonical
 numbers and names the discrepancy.
 
+**The R4 widening (fix round, ruled at R16).** The blocker landed because the
+doc-pointer guard's R4 matched only a bare head with empty parens, so a dotted,
+argument-bearing cite was structurally invisible. Measured first (`C1`, using
+the guard's own tokenizer): 140 new hits, 11 would-fail, **1** of them real rot.
+Widened under ruling with `OS_CALLS` 25→31 and a structural shell-syntax filter,
+**red-on-rot proven** (`C3`) by transplanting the widened guard into the pre-fix
+tree — it goes RED naming the dangling cite, green on the fixed tree.
+
+A SECOND blind spot surfaced and was deliberately NOT closed:
+`captured_shell.clear_output()` is a real callable assigned as a lambda, so
+`def clear_output(` never exists. Closing that means changing what the corpus
+understands, not what the matcher matches. Exempted with its reason and
+registered as successor **D-5C.2-s1** — an exemption that hides a known class
+is honest only while it names the class.
+
+**Ordering deviations in the fix round, recorded rather than smoothed.** R16
+arrived after two of its constraints had already been overtaken: the one-word
+doc fix had landed in commit xviii, so the widening could not share its commit
+(constraint 2's *substance* — the red-on-rot proof — is delivered by `C3`
+instead); and the ledger had already been re-frozen as freeze-2, so this
+freeze-3 is the one that describes the final state. Both are consequences of
+working the ungated fixes in parallel with the ruling, which the integrator
+sanctioned; neither changes what was proven.
+
 **Environment note (verify round N4).** A verifier reproducing this branch in a
 worktree under system `/tmp` saw 16 failures that do not occur in a project-tree
 checkout. Recorded as an environment property, not a branch defect: psh's

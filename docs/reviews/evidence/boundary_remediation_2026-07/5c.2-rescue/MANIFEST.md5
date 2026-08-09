@@ -5,7 +5,7 @@ generator and `MANIFEST.md5` are deliberately absent — a manifest cannot
 contain its own hash). Regenerate and diff to verify nothing drifted.
 
 Tree: `docs/reviews/evidence/boundary_remediation_2026-07/5c.2-rescue/instruments`
-Tip: `adf109be5e40b48be0fba21cd94f5ad643a06cdf`
+Tip: `0098c6316c3ded1511dcf1cb85c8bf482daf57b5`
 
 | md5 | bytes | file |
 |---|---|---|
@@ -79,6 +79,8 @@ Tip: `adf109be5e40b48be0fba21cd94f5ad643a06cdf`
 | `b76dfc008e46b62f97e463a76da4ba00` | 3291 | `C1_guard_widening_measure.py` |
 | `17db0f0bcc394094c1afa3ebb783f4c7` | 331 | `C2_canonical_resource.out` |
 | `87ef17c09278c111603c72c5b9ef70e4` | 3167 | `C2_canonical_resource.py` |
+| `7a55fa5abf8005dfd4e957d8b6fcef8c` | 1317 | `C3_widened_guard_red_on_rot.out` |
+| `c52293a9bd197d544204d9cc3a5aef3c` | 2320 | `C3_widened_guard_red_on_rot.sh` |
 | `aed48b32dbfbf224b43545563c4c354d` | 5335 | `SEAM6_FENCED.patch` |
 
-**Files listed: 71** (derived by the loop above, not hand-counted.)
+**Files listed: 73** (derived by the loop above, not hand-counted.)
