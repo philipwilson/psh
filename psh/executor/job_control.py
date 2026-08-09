@@ -478,13 +478,6 @@ class JobManager:
         """Find the job containing the given PID (O(1) via the pid index)."""
         return self.pid_index.get(pid)
 
-    def get_job_by_pgid(self, pgid: int) -> Optional[Job]:
-        """Find job by process group ID."""
-        for job in self.jobs.values():
-            if job.pgid == pgid:
-                return job
-        return None
-
     def set_foreground_job(self, job: Optional[Job]):
         """Track the executing foreground job (terminal-mode handoff only).
 
@@ -820,16 +813,6 @@ class JobManager:
         # planted in the table without a real process.
         if reaped:
             job.update_state()
-
-    def list_jobs(self) -> List[str]:
-        """Get formatted list of all jobs."""
-        lines = []
-        for job_id in sorted(self.jobs.keys()):
-            job = self.jobs[job_id]
-            is_current = (job == self.current_job)
-            is_previous = (job == self.previous_job)
-            lines.append(job.format_status(is_current, is_previous))
-        return lines
 
     def resolve_job_spec(self, spec: str, *, bare: str = 'pid') -> JobSpecResult:
         """Resolve a jobspec into a typed result (bash get_job_spec semantics).

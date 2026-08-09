@@ -96,11 +96,6 @@ class FunctionManager:
             return True
         return False
 
-    def is_function_readonly(self, name: str) -> bool:
-        """Check if a function is readonly."""
-        func = self.functions.get(name)
-        return func.readonly if func else False
-
     def set_function_exported(self, name: str, exported: bool = True) -> bool:
         """Set/clear a function's export attribute (`export -f`/`export -fn`).
 
@@ -127,10 +122,6 @@ class FunctionManager:
     def list_functions(self) -> List[Tuple[str, Function]]:
         """List all defined functions."""
         return sorted(self.functions.items())
-
-    def clear_functions(self) -> None:
-        """Remove all function definitions."""
-        self.functions.clear()
 
     def copy(self) -> 'FunctionManager':
         """Independent copy of all functions for a child shell.
