@@ -1,0 +1,25 @@
+=== HEAD ===
+a35edb3f49c109dd394b386991fefeb651457c36
+
+=== FILES TOUCHED ON THE TEST SIDE (base -> now) ===
+  tests/harness/gen_census.py                                base=0    now=0    delta=+0
+  tests/harness/oracle_migration_census.md                   base=0    now=0    delta=+0
+  tests/harness/shell_oracle.py                              base=0    now=0    delta=+0
+  tests/integration/job_control/test_stopped_job_current_marker.py base=10   now=10   delta=+0
+  tests/integration/redirection/test_external_redirect_once.py base=10   now=10   delta=+0
+  tests/unit/builtins/test_parse_tree_options.py             base=4    now=5    delta=+1
+  tests/unit/core/test_execution_state.py                    base=5    now=5    delta=+0
+  tests/unit/protocols/test_protocol_conformance_q1.py       base=7    now=7    delta=+0
+  tests/unit/tooling/_hub_ledger_rows.py                     base=0    now=0    delta=+0
+  tests/unit/tooling/test_broad_valueerror_catch_q2.py       base=10   now=14   delta=+4
+  tests/unit/tooling/test_declared_field_access_q2.py        base=7    now=7    delta=+0
+  tests/unit/tooling/test_hub_ledger_5c2.py                  base=0    now=14   delta=+14
+  tests/unit/tooling/test_input_cursor_m8_locks_4b4.py       base=12   now=12   delta=+0
+  tests/unit/tooling/test_shell_oracle_harness.py            base=38   now=37   delta=-1
+
+=== NEW TEST FILES (added this slot) ===
+A	tests/unit/tooling/_hub_ledger_rows.py
+A	tests/unit/tooling/test_hub_ledger_5c2.py
+
+=== DELETED TEST FILES ===
+  (none)

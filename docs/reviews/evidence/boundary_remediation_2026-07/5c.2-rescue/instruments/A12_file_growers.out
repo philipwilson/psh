@@ -1,0 +1,25 @@
+######## psh/expansion/pattern_engine.py  (53253642 -> 3a3e0782)
+  added:   code=722 comment=190 blank= 94
+  removed: code= 57 comment=  9 blank=  1
+  NET:     code=+665 comment=+181 blank= +93
+
+######## psh/expansion/operands.py  (53253642 -> 3a3e0782)
+  added:   code=301 comment= 46 blank= 37
+  removed: code= 96 comment=  2 blank=  4
+  NET:     code=+205 comment= +44 blank= +33
+
+######## psh/io_redirect/file_redirect.py  (53253642 -> 3a3e0782)
+  added:   code=181 comment=117 blank= 24
+  removed: code= 30 comment= 10 blank=  0
+  NET:     code=+151 comment=+107 blank= +24
+
+######## psh/executor/command_assignments.py  (53253642 -> 3a3e0782)
+  added:   code=237 comment= 57 blank= 33
+  removed: code= 72 comment= 19 blank=  5
+  NET:     code=+165 comment= +38 blank= +28
+
+######## psh/io_redirect/manager.py  (53253642 -> 3a3e0782)
+  added:   code=167 comment= 79 blank= 18
+  removed: code= 33 comment= 25 blank=  5
+  NET:     code=+134 comment= +54 blank= +13
+

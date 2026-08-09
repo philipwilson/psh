@@ -1,0 +1,78 @@
+=== >=100 SET: old=v0.773.0-tip n=60  new=base-3a3e0782 n=60
+  changed-length: 4
+     181 ->  192  (+11)  psh/builtins/read_builtin.py::ReadBuiltin.execute
+     100 ->  106  (+6)  psh/builtins/parse_tree.py::ParseTreeBuiltin.execute
+     117 ->  118  (+1)  psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser
+     109 ->  110  (+1)  psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser.parse_simple_command
+  only-in-old: 0
+  only-in-new: 0
+
+=== FULL SET: old=v0.773.0-tip n=3187  new=base-3a3e0782 n=3195
+  changed-length: 31
+      21 ->   54  (+33)  psh/builtins/let_builtin.py::LetBuiltin.execute
+      81 ->   94  (+13)  psh/utils/ast_debug.py::print_ast_debug
+     181 ->  192  (+11)  psh/builtins/read_builtin.py::ReadBuiltin.execute
+       2 ->   12  (+10)  psh/expansion/subscript.py::SubscriptEvaluator._manager
+      27 ->   34  (+7)  psh/interactive/prompt.py::PromptExpander.__init__
+     100 ->  106  (+6)  psh/builtins/parse_tree.py::ParseTreeBuiltin.execute
+      73 ->   79  (+6)  psh/scripting/source_processor.py::iter_command_units
+       4 ->    9  (+5)  psh/interactive/prompt.py::PromptExpander._get_job_count
+      86 ->   90  (+4)  psh/builtins/directory_stack.py::DirsBuiltin.execute
+      21 ->   25  (+4)  psh/builtins/disown.py::DisownBuiltin._disown_job_spec
+       2 ->    6  (+4)  psh/expansion/subscript.py::SubscriptEvaluator.__init__
+       3 ->    7  (+4)  psh/expansion/parameter_expansion.py::ParameterExpansionOps.__init__
+       4 ->    7  (+3)  psh/expansion/variable.py::VariableExpander.__init__
+      16 ->   19  (+3)  psh/scripting/analysis_session.py::AnalysisSession.__init__
+      74 ->   77  (+3)  psh/builtins/directory_stack.py::PopdBuiltin.execute
+      86 ->   88  (+2)  psh/executor/enhanced_test_evaluator.py::TestExpressionEvaluator._evaluate_binary_test
+      38 ->   39  (+1)  psh/executor/array.py::ArrayOperationExecutor._compute_element_value
+       5 ->    6  (+1)  psh/expansion/parameter_expansion.py::ParameterExpansionOps.lowercase_first
+     117 ->  118  (+1)  psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser
+      39 ->   40  (+1)  psh/core/scope.py::ScopeManager._apply_attributes
+       5 ->    6  (+1)  psh/expansion/parameter_expansion.py::ParameterExpansionOps.uppercase_first
+       5 ->    6  (+1)  psh/expansion/parameter_expansion.py::ParameterExpansionOps.toggle_first
+      22 ->   23  (+1)  psh/scripting/analysis_session.py::_directive_commands
+       3 ->    4  (+1)  psh/expansion/glob.py::GlobExpander._sorted
+       8 ->    9  (+1)  psh/expansion/arithmetic/evaluator.py::ArithmeticEvaluator.__init__
+     109 ->  110  (+1)  psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser.parse_simple_command
+      21 ->   22  (+1)  psh/expansion/arithmetic/evaluator.py::_arith_preexpand
+      29 ->   28  (-1)  psh/executor/core.py::ExecutorVisitor._execute_timed_pipeline
+       8 ->    7  (-1)  psh/core/locale_service.py::_ascii_in_class
+      19 ->   18  (-1)  psh/core/locale_service.py::posix_class_ranges
+      20 ->   19  (-1)  psh/executor/foreground_session.py::ForegroundJobSession.register
+  only-in-old: 11
+       5  psh/protocols/__init__.py::ExpansionContext.expand_assignment_value_word
+       4  psh/protocols/__init__.py::ExpansionContext.expand_string_variables
+       3  psh/protocols/__init__.py::LocaleContext.collate_key
+       3  psh/protocols/__init__.py::LocaleContext.compare
+       3  psh/protocols/__init__.py::LocaleContext.in_class
+       1  psh/protocols/__init__.py::LocaleContext.lower
+       1  psh/protocols/__init__.py::LocaleContext.toggle
+       1  psh/protocols/__init__.py::LocaleContext.upper
+       3  psh/protocols/__init__.py::VariableAccess.get_special_variable
+       4  psh/protocols/__init__.py::VariableAccess.get_variable
+       4  psh/protocols/__init__.py::VariableAccess.set_variable
+  only-in-new: 19
+      11  psh/executor/core.py::ExecutorVisitor._cpu_seconds
+      11  psh/executor/job_control.py::JobManager.publish_foreground_pgid
+       3  psh/protocols/__init__.py::ExpansionHost.expansion_manager
+       3  psh/protocols/__init__.py::ExpansionHost.state
+       5  psh/protocols/__init__.py::ExpansionRuntime.expand_assignment_value_word
+       4  psh/protocols/__init__.py::ExpansionRuntime.expand_string_variables
+       1  psh/protocols/__init__.py::ExpansionRuntime.variable_expander
+       1  psh/protocols/__init__.py::ExpansionRuntime.word_expander
+       3  psh/protocols/__init__.py::ExpansionSubExpanders.command_sub
+       3  psh/protocols/__init__.py::ExpansionSubExpanders.execute_arithmetic_expansion
+       3  psh/protocols/__init__.py::ExpansionSubExpanders.subscript
+       3  psh/protocols/__init__.py::ExpansionSubExpanders.tilde_expander
+      14  psh/protocols/__init__.py::JobRuntime.publish_foreground_pgid
+       7  psh/protocols/__init__.py::LocaleAccess.collate_key
+       3  psh/protocols/__init__.py::LocaleAccess.compare
+       3  psh/protocols/__init__.py::LocaleAccess.in_class
+       1  psh/protocols/__init__.py::LocaleAccess.lower
+       1  psh/protocols/__init__.py::LocaleAccess.toggle
+       1  psh/protocols/__init__.py::LocaleAccess.upper
+
+totals: old total_functions=3230 ge100=60
+        new total_functions=3238 ge100=60
+        delta total_functions=+8 ge100=+0

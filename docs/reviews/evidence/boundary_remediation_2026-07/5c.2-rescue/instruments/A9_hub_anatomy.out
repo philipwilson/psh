@@ -1,0 +1,133 @@
+ len  exec  doc  cmt  blk  stmt  nest  file::fn
+ 323    94    0  191   38    57    -   psh/core/state.py::ShellState.__init__
+ 263    92   13  138   20     7    -   psh/executor/command.py::CommandExecutor._run_command
+ 215    95    1   89   30    16    -   psh/executor/pipeline.py::PipelineExecutor._execute_pipeline
+ 194   101   16   58   19    20    -   psh/interactive/history_expansion.py::HistoryExpander.expand_history
+ 192    81    1   93   17    10    -   psh/builtins/read_builtin.py::ReadBuiltin.execute
+ 172    86   22   56    8    10    -   psh/core/scope.py::ScopeManager.set_variable
+ 165    47   45   54   19    41    -   psh/core/state.py::ShellState.clone_for_child
+ 155    82   20   36   17    16    -   psh/executor/strategies.py::ExternalExecutionStrategy.execute
+ 154    87    1   42   24     2  PARENT psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement
+ 151    89    5   47   10    15    -   psh/builtins/function_support.py::DeclareBuiltin._declare_assignment
+ 150    69   23   40   18     2    -   psh/executor/process_launcher.py::ProcessLauncher._child_setup_and_exec
+ 150    84    1   42   23    20  CHILD psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement.parse_case_statement
+ 149    88    5   43   13     7    -   psh/lexer/recognizers/literal.py::LiteralRecognizer._collect_literal_value
+ 144   100    1   25   18     3    -   psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_if_statement
+ 142    91    6   38    7    13    -   psh/builtins/environment.py::ExportBuiltin.execute_in_context
+ 142    66   29   38    9    12    -   psh/executor/command_assignments.py::CommandAssignments.commit_prefix
+ 138    84    1   35   18    25    -   psh/builtins/positional.py::GetoptsBuiltin.execute
+ 138    83    9   32   14    18    -   psh/parser/combinators/commands/redirections.py::RedirectionMixin._parse_redirection
+ 136    99    1   36    0     1    -   psh/builtins/test_command.py::TestBuiltin.evaluate_unary
+ 135    85    1   38   11     2  PARENT psh/parser/combinators/control_structures/loops.py::LoopParserMixin._build_c_style_for_loop
+ 134    81    6   37   10     5    -   psh/builtins/job_control.py::WaitBuiltin._wait_for_specific
+ 133    64    1   59    9     6    -   psh/expansion/command_sub.py::CommandSubstitutionExecutor.execute
+ 131    71    1   45   14    12    -   psh/builtins/navigation.py::CdBuiltin.execute
+ 131    63    9   49   10    18    -   psh/executor/array.py::ArrayOperationExecutor.execute_array_element_assignment
+ 131    65   11   44   11     8    -   psh/expansion/variable.py::VariableExpander._expand_array_parameter
+ 131    82    1   38   10    18  CHILD psh/parser/combinators/control_structures/loops.py::LoopParserMixin._build_c_style_for_loop.parse_c_style_for
+ 130    93    7   23    7    10    -   psh/invocation.py::parse_invocation
+ 128    84   12   20   12    10    -   psh/lexer/pure_helpers.py::handle_ansi_c_escape
+ 125    73    4   47    1     4    -   psh/builtins/function_support.py::DeclareBuiltin._declare_bare_name
+ 124    62   11   48    3     7    -   psh/builtins/shell_state.py::LocalBuiltin._declare_one_local
+ 122    47    4   67    4    10    -   psh/core/scope.py::ScopeManager.create_local
+ 122    79   20   14    9    15    -   psh/expansion/glob.py::GlobExpander._expand_globstar
+ 120    57   10   40   13    12    -   psh/executor/job_control.py::JobManager.wait_for_job
+ 119    61   20   33    5    11    -   psh/io_redirect/file_redirect.py::FileRedirector.apply_permanent_redirections
+ 119    58   12   39   10    13    -   psh/parser/session.py::ParseSession.feed
+ 118    88    5   15   10     2  PARENT psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser
+ 117    74    8   34    1     2    -   psh/expansion/operators.py::OperatorOpsMixin._apply_operator
+ 117    47    1   58   11     7    -   psh/interactive/repl_loop.py::REPLLoop.run
+ 116    38   23   42   13    15    -   psh/executor/function.py::FunctionOperationExecutor._function_frame
+ 115    48    9   46   12     9    -   psh/executor/subshell.py::SubshellExecutor._execute_foreground_subshell
+ 113    66   11   26   10     4    -   psh/executor/control_flow.py::ControlFlowExecutor.execute_select
+ 112    51    7   43   11     6    -   psh/lexer/keyword_normalizer.py::KeywordNormalizer.normalize
+ 111    61    7   37    6    13    -   psh/builtins/environment.py::UnsetBuiltin._unset_array_element
+ 110    61    9   30   10     4    -   psh/parser/combinators/commands/pipelines.py::PipelineMixin._build_pipeline_parser
+ 110    85    1   15    9     8  CHILD psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser.parse_simple_command
+ 110    46   44   15    5    10    -   psh/scripting/input_preprocessing.py::process_line_continuations
+ 109    48   29   24    8     6    -   psh/lexer/token_stream.py::TokenStream.collect_arithmetic_expression
+ 107    83    0   24    0     6    -   psh/expansion/pattern_engine.py::_BashMatcher._match
+ 107    51   16   36    4    13    -   psh/io_redirect/file_redirect.py::FileRedirector.apply_var_fd_redirect
+ 107    67   12   17   11     7    -   psh/lexer/quote_parser.py::UnifiedQuoteParser.parse_quoted_string
+ 106    71    1   21   13     9    -   psh/builtins/parse_tree.py::ParseTreeBuiltin.execute
+ 106    42   13   46    5     7    -   psh/executor/function.py::FunctionOperationExecutor.execute_function_call
+ 105    43   23   31    8     7    -   psh/scripting/source_processor.py::SourceProcessor._execute_buffered_command
+ 104    46   30   21    7    13    -   psh/builtins/shell_state.py::HistoryBuiltin._dispatch_options
+ 103    48   11   33   11     1    -   psh/executor/control_flow.py::ControlFlowExecutor.execute_case
+ 102    86    1    9    6     5    -   psh/builtins/print_builtin.py::PrintBuiltin._parse_options
+ 102     6   96    0    0     1    -   psh/lexer/cmdsub_scanner.py::find_command_substitution_end
+ 101    44   21   33    3     4    -   psh/lexer/command_position.py::advance_lexical_state
+ 101    59    1   32    9     6    -   psh/lexer/recognizers/operator.py::OperatorRecognizer.recognize
+ 100    51   15   26    8     6    -   psh/expansion/extglob.py::_convert_pattern
+
+=== NESTED-PAIR DOUBLE COUNTING: 3 of 60 rows are a nested def inside ANOTHER >=100 row
+    psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement.parse_case_statement  (inside ConditionalParserMixin._build_case_statement)
+    psh/parser/combinators/control_structures/loops.py::LoopParserMixin._build_c_style_for_loop.parse_c_style_for  (inside LoopParserMixin._build_c_style_for_loop)
+    psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser.parse_simple_command  (inside SimpleCommandMixin._build_simple_command_parser)
+    => DISTINCT BODIES: 57 (census rows: 60)
+
+=== METRIC INFLATION: rows whose EXECUTABLE lines are < 100
+    len= 102 exec=   6 (doc 96, cmt 0, blk 0)  psh/lexer/cmdsub_scanner.py::find_command_substitution_end
+    len= 116 exec=  38 (doc 23, cmt 42, blk 13)  psh/executor/function.py::FunctionOperationExecutor._function_frame
+    len= 106 exec=  42 (doc 13, cmt 46, blk 5)  psh/executor/function.py::FunctionOperationExecutor.execute_function_call
+    len= 105 exec=  43 (doc 23, cmt 31, blk 8)  psh/scripting/source_processor.py::SourceProcessor._execute_buffered_command
+    len= 101 exec=  44 (doc 21, cmt 33, blk 3)  psh/lexer/command_position.py::advance_lexical_state
+    len= 110 exec=  46 (doc 44, cmt 15, blk 5)  psh/scripting/input_preprocessing.py::process_line_continuations
+    len= 104 exec=  46 (doc 30, cmt 21, blk 7)  psh/builtins/shell_state.py::HistoryBuiltin._dispatch_options
+    len= 165 exec=  47 (doc 45, cmt 54, blk 19)  psh/core/state.py::ShellState.clone_for_child
+    len= 122 exec=  47 (doc 4, cmt 67, blk 4)  psh/core/scope.py::ScopeManager.create_local
+    len= 117 exec=  47 (doc 1, cmt 58, blk 11)  psh/interactive/repl_loop.py::REPLLoop.run
+    len= 115 exec=  48 (doc 9, cmt 46, blk 12)  psh/executor/subshell.py::SubshellExecutor._execute_foreground_subshell
+    len= 109 exec=  48 (doc 29, cmt 24, blk 8)  psh/lexer/token_stream.py::TokenStream.collect_arithmetic_expression
+    len= 103 exec=  48 (doc 11, cmt 33, blk 11)  psh/executor/control_flow.py::ControlFlowExecutor.execute_case
+    len= 112 exec=  51 (doc 7, cmt 43, blk 11)  psh/lexer/keyword_normalizer.py::KeywordNormalizer.normalize
+    len= 107 exec=  51 (doc 16, cmt 36, blk 4)  psh/io_redirect/file_redirect.py::FileRedirector.apply_var_fd_redirect
+    len= 100 exec=  51 (doc 15, cmt 26, blk 8)  psh/expansion/extglob.py::_convert_pattern
+    len= 120 exec=  57 (doc 10, cmt 40, blk 13)  psh/executor/job_control.py::JobManager.wait_for_job
+    len= 119 exec=  58 (doc 12, cmt 39, blk 10)  psh/parser/session.py::ParseSession.feed
+    len= 101 exec=  59 (doc 1, cmt 32, blk 9)  psh/lexer/recognizers/operator.py::OperatorRecognizer.recognize
+    len= 119 exec=  61 (doc 20, cmt 33, blk 5)  psh/io_redirect/file_redirect.py::FileRedirector.apply_permanent_redirections
+    len= 111 exec=  61 (doc 7, cmt 37, blk 6)  psh/builtins/environment.py::UnsetBuiltin._unset_array_element
+    len= 110 exec=  61 (doc 9, cmt 30, blk 10)  psh/parser/combinators/commands/pipelines.py::PipelineMixin._build_pipeline_parser
+    len= 124 exec=  62 (doc 11, cmt 48, blk 3)  psh/builtins/shell_state.py::LocalBuiltin._declare_one_local
+    len= 131 exec=  63 (doc 9, cmt 49, blk 10)  psh/executor/array.py::ArrayOperationExecutor.execute_array_element_assignment
+    len= 133 exec=  64 (doc 1, cmt 59, blk 9)  psh/expansion/command_sub.py::CommandSubstitutionExecutor.execute
+    len= 131 exec=  65 (doc 11, cmt 44, blk 11)  psh/expansion/variable.py::VariableExpander._expand_array_parameter
+    len= 142 exec=  66 (doc 29, cmt 38, blk 9)  psh/executor/command_assignments.py::CommandAssignments.commit_prefix
+    len= 113 exec=  66 (doc 11, cmt 26, blk 10)  psh/executor/control_flow.py::ControlFlowExecutor.execute_select
+    len= 107 exec=  67 (doc 12, cmt 17, blk 11)  psh/lexer/quote_parser.py::UnifiedQuoteParser.parse_quoted_string
+    len= 150 exec=  69 (doc 23, cmt 40, blk 18)  psh/executor/process_launcher.py::ProcessLauncher._child_setup_and_exec
+    len= 131 exec=  71 (doc 1, cmt 45, blk 14)  psh/builtins/navigation.py::CdBuiltin.execute
+    len= 106 exec=  71 (doc 1, cmt 21, blk 13)  psh/builtins/parse_tree.py::ParseTreeBuiltin.execute
+    len= 125 exec=  73 (doc 4, cmt 47, blk 1)  psh/builtins/function_support.py::DeclareBuiltin._declare_bare_name
+    len= 117 exec=  74 (doc 8, cmt 34, blk 1)  psh/expansion/operators.py::OperatorOpsMixin._apply_operator
+    len= 122 exec=  79 (doc 20, cmt 14, blk 9)  psh/expansion/glob.py::GlobExpander._expand_globstar
+    len= 192 exec=  81 (doc 1, cmt 93, blk 17)  psh/builtins/read_builtin.py::ReadBuiltin.execute
+    len= 134 exec=  81 (doc 6, cmt 37, blk 10)  psh/builtins/job_control.py::WaitBuiltin._wait_for_specific
+    len= 155 exec=  82 (doc 20, cmt 36, blk 17)  psh/executor/strategies.py::ExternalExecutionStrategy.execute
+    len= 131 exec=  82 (doc 1, cmt 38, blk 10)  psh/parser/combinators/control_structures/loops.py::LoopParserMixin._build_c_style_for_loop.parse_c_style_for
+    len= 138 exec=  83 (doc 9, cmt 32, blk 14)  psh/parser/combinators/commands/redirections.py::RedirectionMixin._parse_redirection
+    len= 107 exec=  83 (doc 0, cmt 24, blk 0)  psh/expansion/pattern_engine.py::_BashMatcher._match
+    len= 150 exec=  84 (doc 1, cmt 42, blk 23)  psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement.parse_case_statement
+    len= 138 exec=  84 (doc 1, cmt 35, blk 18)  psh/builtins/positional.py::GetoptsBuiltin.execute
+    len= 128 exec=  84 (doc 12, cmt 20, blk 12)  psh/lexer/pure_helpers.py::handle_ansi_c_escape
+    len= 135 exec=  85 (doc 1, cmt 38, blk 11)  psh/parser/combinators/control_structures/loops.py::LoopParserMixin._build_c_style_for_loop
+    len= 110 exec=  85 (doc 1, cmt 15, blk 9)  psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser.parse_simple_command
+    len= 172 exec=  86 (doc 22, cmt 56, blk 8)  psh/core/scope.py::ScopeManager.set_variable
+    len= 102 exec=  86 (doc 1, cmt 9, blk 6)  psh/builtins/print_builtin.py::PrintBuiltin._parse_options
+    len= 154 exec=  87 (doc 1, cmt 42, blk 24)  psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement
+    len= 149 exec=  88 (doc 5, cmt 43, blk 13)  psh/lexer/recognizers/literal.py::LiteralRecognizer._collect_literal_value
+    len= 118 exec=  88 (doc 5, cmt 15, blk 10)  psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser
+    len= 151 exec=  89 (doc 5, cmt 47, blk 10)  psh/builtins/function_support.py::DeclareBuiltin._declare_assignment
+    len= 142 exec=  91 (doc 6, cmt 38, blk 7)  psh/builtins/environment.py::ExportBuiltin.execute_in_context
+    len= 263 exec=  92 (doc 13, cmt 138, blk 20)  psh/executor/command.py::CommandExecutor._run_command
+    len= 130 exec=  93 (doc 7, cmt 23, blk 7)  psh/invocation.py::parse_invocation
+    len= 323 exec=  94 (doc 0, cmt 191, blk 38)  psh/core/state.py::ShellState.__init__
+    len= 215 exec=  95 (doc 1, cmt 89, blk 30)  psh/executor/pipeline.py::PipelineExecutor._execute_pipeline
+    len= 136 exec=  99 (doc 1, cmt 36, blk 0)  psh/builtins/test_command.py::TestBuiltin.evaluate_unary
+    => 58 of 60 census rows fall below 100 EXECUTABLE lines
+
+=== rows that are >=100 EXECUTABLE lines AND not nested (the hard core)
+    len= 194 exec= 101 stmts= 20  psh/interactive/history_expansion.py::HistoryExpander.expand_history
+    len= 144 exec= 100 stmts=  3  psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_if_statement
+    => 2 rows

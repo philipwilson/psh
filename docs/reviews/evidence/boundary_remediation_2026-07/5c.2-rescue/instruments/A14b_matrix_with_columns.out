@@ -1,0 +1,114 @@
+census rows: 60   dispositioned: 60   (exact cover asserted)
+
+=== rows per NAMED TRANSACTION
+      9  state construction
+      8  input execution
+      8  lexical scanning
+      7  command prep/dispatch
+      7  builtin option/operand
+      6  expansion/pattern
+      5  job lifecycle
+      5  grammar construction
+      3  redirect acquisition
+      2  history expansion
+     60  TOTAL
+
+=== rows per DISPOSITION
+     51  JUSTIFIED-KEEP
+      6  DECOMPOSE
+      3  POINTER
+     60  TOTAL
+
+=== PROPOSED EXECUTED SET (disposition = DECOMPOSE)
+    [ 106] psh/builtins/parse_tree.py::ParseTreeBuiltin.execute
+           builtin option/operand / DISPATCH-HUB
+           71 exec; the CLEANEST cut in the census — two independent hubs (option scan, renderer dispatch), zero risk, direct unit test, and it is the SECOND named grower (E2), so decomposing it demonstrates the ledger on a row the brief cares about
+    [ 102] psh/builtins/print_builtin.py::PrintBuiltin._parse_options
+           builtin option/operand / DISPATCH-HUB
+           86 exec, PURE, zero deferred imports; -u and -f duplicate an attached-or-separate operand read VERBATIM, and that duplication is the only place the outer index is mutated from the inner loop — a real coupling defect, not cosmetics
+    [ 136] psh/builtins/test_command.py::TestBuiltin.evaluate_unary
+           builtin option/operand / CASE-TABLE
+           99 exec (2nd-highest in the census), PURE, zero deferred imports; TEN arms are the identical stat-and-predicate shape and THREE are the identical access-mode shape — a jump table written as a chain
+    [ 130] psh/invocation.py::parse_invocation
+           state construction / DISPATCH-HUB
+           93 exec, PURE (no Shell, never prints/exits), guarded by test_invocation_argv_guard.py; three tail InvocationConfig(...) constructions share ~10 kwargs — the forget-a-field-in-one-of-three defect class
+    [ 107] psh/io_redirect/file_redirect.py::FileRedirector.apply_var_fd_redirect
+           redirect acquisition / DISPATCH-HUB
+           NAMED GROWER. 50 exec; the allocate-and-record tail (F_DUPFD>=10 + set_variable + scope_fd) repeats VERBATIM in three arms — that triplication IS the named-fd allocation contract, and it has no single owner
+    [ 101] psh/lexer/recognizers/operator.py::OperatorRecognizer.recognize
+           lexical scanning / DISPATCH-HUB
+           59 exec, PURE, zero deferred imports, strong direct coverage (5 lexer suites); the ~35-line VETO block (extglob !, {} reserved-word rules) is unrelated to longest-match and has its own bash provenance
+
+=== POINTER rows (nested; body dispositioned at parent)
+    psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser.parse_simple_command
+    psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement.parse_case_statement
+    psh/parser/combinators/control_structures/loops.py::LoopParserMixin._build_c_style_for_loop.parse_c_style_for
+
+=== FULL MATRIX with exec/comment/nominal columns (R1 §3)
+ nom  exec  cmt  doc  disposition     file::fn
+ 194   101   58   16  JUSTIFIED-KEEP  psh/interactive/history_expansion.py::HistoryExpander.expand_history
+ 144   100   25    1  JUSTIFIED-KEEP  psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_if_statement
+ 136    99   36    1  DECOMPOSE       psh/builtins/test_command.py::TestBuiltin.evaluate_unary
+ 215    95   89    1  JUSTIFIED-KEEP  psh/executor/pipeline.py::PipelineExecutor._execute_pipeline
+ 323    94  191    0  JUSTIFIED-KEEP  psh/core/state.py::ShellState.__init__
+ 130    93   23    7  DECOMPOSE       psh/invocation.py::parse_invocation
+ 263    92  138   13  JUSTIFIED-KEEP  psh/executor/command.py::CommandExecutor._run_command
+ 142    91   38    6  JUSTIFIED-KEEP  psh/builtins/environment.py::ExportBuiltin.execute_in_context
+ 151    89   47    5  JUSTIFIED-KEEP  psh/builtins/function_support.py::DeclareBuiltin._declare_assignment
+ 118    88   15    5  JUSTIFIED-KEEP  psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser
+ 149    88   43    5  JUSTIFIED-KEEP  psh/lexer/recognizers/literal.py::LiteralRecognizer._collect_literal_value
+ 154    87   42    1  JUSTIFIED-KEEP  psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement
+ 172    86   56   22  JUSTIFIED-KEEP  psh/core/scope.py::ScopeManager.set_variable
+ 102    86    9    1  DECOMPOSE       psh/builtins/print_builtin.py::PrintBuiltin._parse_options
+ 110    85   15    1  POINTER         psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser.parse_simple_command
+ 135    85   38    1  JUSTIFIED-KEEP  psh/parser/combinators/control_structures/loops.py::LoopParserMixin._build_c_style_for_loop
+ 150    84   42    1  POINTER         psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement.parse_case_statement
+ 128    84   20   12  JUSTIFIED-KEEP  psh/lexer/pure_helpers.py::handle_ansi_c_escape
+ 138    84   35    1  JUSTIFIED-KEEP  psh/builtins/positional.py::GetoptsBuiltin.execute
+ 138    83   32    9  JUSTIFIED-KEEP  psh/parser/combinators/commands/redirections.py::RedirectionMixin._parse_redirection
+ 107    83   24    0  JUSTIFIED-KEEP  psh/expansion/pattern_engine.py::_BashMatcher._match
+ 155    82   36   20  JUSTIFIED-KEEP  psh/executor/strategies.py::ExternalExecutionStrategy.execute
+ 131    82   38    1  POINTER         psh/parser/combinators/control_structures/loops.py::LoopParserMixin._build_c_style_for_loop.parse_c_style_for
+ 134    81   37    6  JUSTIFIED-KEEP  psh/builtins/job_control.py::WaitBuiltin._wait_for_specific
+ 192    81   93    1  JUSTIFIED-KEEP  psh/builtins/read_builtin.py::ReadBuiltin.execute
+ 122    79   14   20  JUSTIFIED-KEEP  psh/expansion/glob.py::GlobExpander._expand_globstar
+ 117    74   34    8  JUSTIFIED-KEEP  psh/expansion/operators.py::OperatorOpsMixin._apply_operator
+ 125    73   47    4  JUSTIFIED-KEEP  psh/builtins/function_support.py::DeclareBuiltin._declare_bare_name
+ 131    71   45    1  JUSTIFIED-KEEP  psh/builtins/navigation.py::CdBuiltin.execute
+ 106    71   21    1  DECOMPOSE       psh/builtins/parse_tree.py::ParseTreeBuiltin.execute
+ 150    69   40   23  JUSTIFIED-KEEP  psh/executor/process_launcher.py::ProcessLauncher._child_setup_and_exec
+ 107    67   17   12  JUSTIFIED-KEEP  psh/lexer/quote_parser.py::UnifiedQuoteParser.parse_quoted_string
+ 142    66   38   29  JUSTIFIED-KEEP  psh/executor/command_assignments.py::CommandAssignments.commit_prefix
+ 113    66   26   11  JUSTIFIED-KEEP  psh/executor/control_flow.py::ControlFlowExecutor.execute_select
+ 131    65   44   11  JUSTIFIED-KEEP  psh/expansion/variable.py::VariableExpander._expand_array_parameter
+ 133    64   59    1  JUSTIFIED-KEEP  psh/expansion/command_sub.py::CommandSubstitutionExecutor.execute
+ 131    63   49    9  JUSTIFIED-KEEP  psh/executor/array.py::ArrayOperationExecutor.execute_array_element_assignment
+ 124    62   48   11  JUSTIFIED-KEEP  psh/builtins/shell_state.py::LocalBuiltin._declare_one_local
+ 110    61   30    9  JUSTIFIED-KEEP  psh/parser/combinators/commands/pipelines.py::PipelineMixin._build_pipeline_parser
+ 119    61   33   20  JUSTIFIED-KEEP  psh/io_redirect/file_redirect.py::FileRedirector.apply_permanent_redirections
+ 111    61   37    7  JUSTIFIED-KEEP  psh/builtins/environment.py::UnsetBuiltin._unset_array_element
+ 101    59   32    1  DECOMPOSE       psh/lexer/recognizers/operator.py::OperatorRecognizer.recognize
+ 119    58   39   12  JUSTIFIED-KEEP  psh/parser/session.py::ParseSession.feed
+ 120    57   40   10  JUSTIFIED-KEEP  psh/executor/job_control.py::JobManager.wait_for_job
+ 107    51   36   16  DECOMPOSE       psh/io_redirect/file_redirect.py::FileRedirector.apply_var_fd_redirect
+ 112    51   43    7  JUSTIFIED-KEEP  psh/lexer/keyword_normalizer.py::KeywordNormalizer.normalize
+ 100    51   26   15  JUSTIFIED-KEEP  psh/expansion/extglob.py::_convert_pattern
+ 115    48   46    9  JUSTIFIED-KEEP  psh/executor/subshell.py::SubshellExecutor._execute_foreground_subshell
+ 103    48   33   11  JUSTIFIED-KEEP  psh/executor/control_flow.py::ControlFlowExecutor.execute_case
+ 109    48   24   29  JUSTIFIED-KEEP  psh/lexer/token_stream.py::TokenStream.collect_arithmetic_expression
+ 165    47   54   45  JUSTIFIED-KEEP  psh/core/state.py::ShellState.clone_for_child
+ 122    47   67    4  JUSTIFIED-KEEP  psh/core/scope.py::ScopeManager.create_local
+ 117    47   58    1  JUSTIFIED-KEEP  psh/interactive/repl_loop.py::REPLLoop.run
+ 104    46   21   30  JUSTIFIED-KEEP  psh/builtins/shell_state.py::HistoryBuiltin._dispatch_options
+ 110    46   15   44  JUSTIFIED-KEEP  psh/scripting/input_preprocessing.py::process_line_continuations
+ 101    44   33   21  JUSTIFIED-KEEP  psh/lexer/command_position.py::advance_lexical_state
+ 105    43   31   23  JUSTIFIED-KEEP  psh/scripting/source_processor.py::SourceProcessor._execute_buffered_command
+ 106    42   46   13  JUSTIFIED-KEEP  psh/executor/function.py::FunctionOperationExecutor.execute_function_call
+ 116    38   42   23  JUSTIFIED-KEEP  psh/executor/function.py::FunctionOperationExecutor._function_frame
+ 102     6    0   96  JUSTIFIED-KEEP  psh/lexer/cmdsub_scanner.py::find_command_substitution_end
+
+  rows with >=100 EXECUTABLE lines: 2
+    exec=101 nominal=194  JUSTIFIED-KEEP  psh/interactive/history_expansion.py::HistoryExpander.expand_history
+    exec=100 nominal=144  JUSTIFIED-KEEP  psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_if_statement
+
+  rows where doc+comment lines EXCEED executable lines: 17 of 60
