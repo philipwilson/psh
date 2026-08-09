@@ -42,13 +42,6 @@ LEDGER = {
         ('JUSTIFIED-KEEP',
          "Clean seams, but cd's CDPATH/logical-path rules are "
          'conformance-pinned and the value is cosmetic'),
-    ('psh/builtins/parse_tree.py',
-     'ParseTreeBuiltin.execute'):
-        ('DECOMPOSE-PENDING',
-         'The CLEANEST cut in the census — two independent hubs (option '
-         'scan, renderer dispatch), zero risk, direct unit test, and it is '
-         'the SECOND named grower (E2), so decomposing it demonstrates the '
-         'ledger on a row the brief cares about'),
     ('psh/builtins/positional.py',
      'GetoptsBuiltin.execute'):
         ('JUSTIFIED-KEEP',
