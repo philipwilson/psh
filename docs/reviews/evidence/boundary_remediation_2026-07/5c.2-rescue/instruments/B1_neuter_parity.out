@@ -1,0 +1,35 @@
+
+===== ARM A (BASE, unmodified): pytest tests/integration/job_control (serial, no -n)
+  rc=0  passed=392  failed=0
+  tail: 392 passed in 177.98s (0:02:57)
+
+[arm B] all three production writes neutered; zero `self.shell_state.foreground_pgid` assignments remain
+
+===== ARM B (NEUTERED): pytest tests/integration/job_control (serial, no -n)
+  rc=0  passed=392  failed=0
+  tail: 392 passed in 180.59s (0:03:00)
+
+[arm C] _promote_to_current disabled (live path, NOT foreground_pgid)
+
+===== ARM C (RED CONTROL): pytest tests/integration/job_control (serial, no -n)
+  rc=1  passed=387  failed=5
+  tail: 5 failed, 387 passed in 180.36s (0:03:00)
+
+[restore] tree restored; git status --short:
+?? INTEGRATOR-INBOX.md
+
+================ VERDICT
+  A base    : passed=392 failed=0 rc=0
+  B neutered: passed=392 failed=0 rc=0
+  C red ctl : passed=387 failed=5 rc=1
+
+  PARITY (A == B): YES   <- the deadness claim
+  arm C failing names:
+      FAILED tests/integration/job_control/test_mixed_pipeline_job_state.py::test_completed_plus_stopped_pipeline_reports_stopped
+      FAILED tests/integration/job_control/test_stopped_job_current_marker.py::test_stopped_foreground_job_is_current
+      FAILED tests/integration/job_control/test_stopped_job_current_marker.py::test_stopped_job_notice_shows_plus_marker
+      FAILED tests/integration/job_control/test_stopped_job_current_marker.py::test_second_stopped_job_demotes_first_to_previous
+      FAILED tests/integration/job_control/test_stopped_job_current_marker.py::test_stopped_foreground_job_demotes_background_to_previous
+  SENSITIVITY (C red, for its SEEDED reason): YES   <- harness can detect a delta at all
+
+  CLAIM HOLDS
