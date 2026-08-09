@@ -18,6 +18,20 @@ Measurement discipline (v0.313.0): wall-clock timing flakes under load
 to preemption — and take the min over the sampled iterations to discard
 cache-cold or GC-interrupted runs. Algorithmic regressions (e.g. O(N^2)
 blowup) show identically in CPU time.
+
+Threshold provenance (CR-R4 discharge, Ceremony C 2026-08-09): the
+absolute thresholds are RUNNER-MEASURED ENVELOPES, not dev-machine
+numbers.  Three rows were measured across 3 consecutive nightly
+artifacts on the shared runner (checkpoint-r/instruments/qr/
+p07_benchmark_baselines.transcript.txt: 11.30/12.48/11.43 ms and
+11.14/12.59/11.44 ms against the old 10 ms budgets; 3.05/3.38/3.10 ms
+against the old 2 ms) and retuned to ~2x the runner median.  Sibling
+thresholds that sit BEHIND those first-failing asserts (so the runner
+never reached them) are scaled by the same factor — the linear-scaling
+ratio asserts in these tests pin that derivation.  Rows that PASSED on
+the runner for all 3 nightlies keep their measured-adequate constants.
+An algorithmic regression still fails these budgets by an order of
+magnitude, which is what they exist to catch.
 """
 
 import time
@@ -55,12 +69,12 @@ class TestParsingPerformance:
         # 100 simple commands
         script_100 = "\n".join(f"echo line{i}" for i in range(100))
         time_100 = self.measure_parse_time(script_100, iterations=10)
-        assert time_100 < 0.01  # Should parse in under 10ms
+        assert time_100 < 0.025  # runner-measured envelope (was 10ms; runner 11.3-12.5ms)
 
         # 1000 simple commands
         script_1000 = "\n".join(f"echo line{i}" for i in range(1000))
         time_1000 = self.measure_parse_time(script_1000, iterations=10)
-        assert time_1000 < 0.1  # Should parse in under 100ms
+        assert time_1000 < 0.25  # scaling-derived from time_100 (ratio assert below pins it)
 
         # Verify linear scaling
         ratio = time_1000 / time_100
@@ -81,12 +95,12 @@ if true; then
 fi
 """
         nested_time = self.measure_parse_time(nested_if * 10)
-        assert nested_time < 0.01  # Should handle nesting efficiently
+        assert nested_time < 0.025  # runner-measured envelope (was 10ms; runner 11.1-12.6ms)
 
         # Complex pipeline
         pipeline = "echo start | grep a | sed s/a/b/ | awk '{print}' | sort | uniq | tail -n 10"
         pipeline_time = self.measure_parse_time(pipeline * 10)
-        assert pipeline_time < 0.01
+        assert pipeline_time < 0.025  # same workload class as nested_time (behind its assert)
 
         # Large case statement
         case_stmt = """
@@ -96,7 +110,7 @@ case $x in
 esac
 """
         case_time = self.measure_parse_time(case_stmt)
-        assert case_time < 0.01
+        assert case_time < 0.025  # same workload class as nested_time (behind its assert)
 
     def test_string_parsing_performance(self):
         """Test performance of parsing strings with escapes."""
@@ -220,11 +234,11 @@ class TestTokenizationPerformance:
 
             # Verify reasonable absolute performance
             if size == 100:
-                assert avg_time < 0.002  # Allow up to 2ms for tokenization
+                assert avg_time < 0.007  # runner-measured envelope (was 2ms; runner 3.0-3.4ms)
             elif size == 1000:
-                assert avg_time < 0.02  # Allow up to 20ms for 1000 tokens
+                assert avg_time < 0.07  # scaling-derived from the size-100 row
             elif size == 10000:
-                assert avg_time < 0.2  # Allow up to 200ms for 10000 tokens
+                assert avg_time < 0.7  # scaling-derived from the size-100 row
 
         # Verify linear scaling
         ratio1 = times[1] / times[0]  # 1000 vs 100

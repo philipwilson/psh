@@ -1,0 +1,33 @@
+Persisting full run transcript to: tmp/benchmarks-ceremony-c.txt
+
+================================================================================
+MODE: Benchmark tier (serial) [parser: recursive_descent]
+  CPU/wall-time microbenchmarks (-m benchmark); excluded from
+  the standard gate. See docs/testing_source_of_truth.md.
+================================================================================
+
+================================================================================
+Running: Benchmark tier (serial)
+Command: /Library/Frameworks/Python.framework/Versions/3.14/bin/python -m pytest -p tools.pytest_phase_manifest tests/ -m benchmark --phase-manifest /Users/pwilson/src/psh/tmp/phase-manifests/phase-1.json
+(timeout: 1800s, own process group)
+================================================================================
+============================= test session starts ==============================
+platform darwin -- Python 3.14.7, pytest-9.0.2, pluggy-1.6.0
+rootdir: /Users/pwilson/src/psh
+configfile: pytest.ini
+plugins: anyio-4.12.1, mock-3.15.1, xdist-3.8.0, timeout-2.4.0, cov-7.0.0
+collected 25695 items / 25678 deselected / 17 selected
+
+tests/performance/benchmarks/test_command_accumulator_performance.py ..  [ 11%]
+tests/performance/benchmarks/test_locale_performance.py ..               [ 23%]
+tests/performance/benchmarks/test_parsing_performance.py .....x.         [ 64%]
+tests/performance/benchmarks/test_pattern_engine_performance.py ......   [100%]
+
+========= 16 passed, 25678 deselected, 1 xfailed in 117.64s (0:01:57) ==========
+
+================================================================================
+TEST RUN SUMMARY
+================================================================================
+Combined across 1 phase(s) (from phase manifests): 16 passed, 1 xfailed
+Full transcript saved to: tmp/benchmarks-ceremony-c.txt
+✅ All test phases PASSED
