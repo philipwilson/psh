@@ -3,7 +3,7 @@
 ``VariableExpander`` (variable.py) is composed from four mixins —
 ``ArrayOpsMixin`` (arrays.py), ``OperatorOpsMixin`` (operators.py),
 ``OperandOpsMixin`` (operands.py), and ``FieldExpansionMixin``
-(fields.py). Each mixin references ``self.state`` / ``self.shell`` /
+(fields.py). Each mixin references ``self.state`` / ``self.host`` /
 ``self.param_expansion`` (set in ``VariableExpander.__init__``) and
 methods defined on *sibling* mixins or on ``VariableExpander`` itself.
 mypy cannot see those when checking a mixin in isolation.

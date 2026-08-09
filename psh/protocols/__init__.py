@@ -24,6 +24,13 @@ Protocol             Canonical producer (``file.py#symbol``)
 ``LocaleAccess``     ``core/locale_service.py#LocaleService`` (on
                      ``ShellState.locale``) — collation, locale-gated case
                      mapping, POSIX character-class membership.
+``ExpansionHost``    ``shell.py#Shell`` — shell state plus the expansion
+                     machinery, and nothing else. The narrow replacement for
+                     handing round the whole ``Shell``: consumed by
+                     ``expansion/arithmetic/evaluator.py#evaluate_arithmetic``,
+                     ``interactive/prompt.py#PromptExpander`` and
+                     ``expansion/_protocols.py#VariableExpanderProtocol.host``
+                     (remediation 5C.1).
 ===================  =========================================================
 
 **Names are unique tree-wide.** ``ExpansionRuntime`` and ``LocaleAccess`` were
@@ -53,9 +60,20 @@ signatures), which is exactly the "does the producer expose this surface"
 question the pin asks. Consumers narrow via string (``TYPE_CHECKING``)
 annotations, so a migration adds NO runtime import edge to this package.
 
-**Every protocol here has at least one production consumer**, and that is a
-deliberate property rather than an accident of history: a protocol nothing
-depends on documents an intention, not a dependency. Q1 migrated ``IOContext``
+**Every EXPORTED protocol here has at least one production consumer**, and
+that is a deliberate property rather than an accident of history: a protocol
+nothing depends on documents an intention, not a dependency. The emphasis on
+*exported* is load-bearing, not a hedge: remediation 5C.1 added two protocols —
+``ExpansionSubExpanders`` and ``ExpansionSurface`` — that are consumed ONLY
+from inside this module, as ``ExpansionHost``'s member type and as
+``ExpansionSurface``'s own bases. They are deliberately absent from ``__all__``
+for exactly the reason this paragraph gives: exporting a surface nothing
+outside depends on would manufacture the defect the rule exists to prevent.
+They are the declared STRUCTURE of ``ExpansionHost``'s manager member, and the
+mutation arms in ``tests/unit/protocols/test_expansion_host_witness_5c1.py``
+bite THROUGH them, so they are observed rather than decorative. The census
+guard (``tests/unit/protocols/test_protocol_adoption_census_5b2.py``) checks
+``__all__``, which is the same line this paragraph draws. Q1 migrated ``IOContext``
 (the reader boundary — ``make_reader`` / ``InputCursorRegistry.cursor_for_fd``
 took ``Shell`` and used only ``.stdin``) and ``JobRuntime``
 (``ForegroundJobSession``, which took the concrete ``JobManager``). Remediation

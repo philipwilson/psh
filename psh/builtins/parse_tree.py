@@ -33,7 +33,7 @@ class ParseTreeBuiltin(Builtin):
       -h           Show this help
 
     Exit Status:
-    Returns success unless a parse or visualization error occurs."""
+    Returns success unless a parse error occurs."""
 
     def execute(self, args: List[str], shell) -> int:
         """Execute the parse-tree builtin."""
@@ -162,7 +162,7 @@ class ShowASTBuiltin(Builtin):
     Accepts the same options as parse-tree (except -f).
 
     Exit Status:
-    Returns success unless a parse or visualization error occurs."""
+    Returns success unless a parse error occurs."""
 
     def execute(self, args: List[str], shell) -> int:
         """Execute the show-ast builtin (alias for parse-tree -f pretty)."""
@@ -193,7 +193,7 @@ class ASTDotBuiltin(Builtin):
     in DOT format suitable for rendering with Graphviz.
 
     Exit Status:
-    Returns success unless a parse or visualization error occurs."""
+    Returns success unless a parse error occurs."""
 
     def execute(self, args: List[str], shell) -> int:
         """Execute the ast-dot builtin (alias for parse-tree -f dot)."""

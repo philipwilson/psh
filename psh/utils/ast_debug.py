@@ -5,9 +5,19 @@ import sys
 class UnknownASTFormat(ValueError):
     """The requested AST debug format is not one this module renders.
 
-    Raised by :func:`print_ast_debug` for an out-of-vocabulary format name
-    (``PSH_AST_FORMAT=bogus``, ``--debug-ast=bogus``) and caught by that same
-    function, which warns and falls back to ``DebugASTVisitor``. It is a
+    Raised by :func:`print_ast_debug` for an out-of-vocabulary format name and
+    caught by that same function, which warns and falls back to
+    ``DebugASTVisitor``.
+
+    The ONE reachable route is the SHELL variable: ``PSH_AST_FORMAT=bogus`` as
+    an assignment on a preceding line, with ``--debug-ast`` active. Two routes
+    that look plausible and are not: ``--debug-ast=bogus`` is rejected by the
+    invocation parser (``invocation.py`` holds a closed format vocabulary), and
+    ``PSH_AST_FORMAT`` in the process ENVIRONMENT is never consulted — this
+    module reads ``shell.state.scope_manager.get_variable``, so an env var
+    silently resolves to the default ``tree``. Both were replayed as
+    non-reaching; ``tests/unit/utils/test_ast_debug_format_fallback_5c1.py``
+    drives the real one. It is a
     distinct type so the fallback catches ONLY this — a ``TypeError`` or
     ``AttributeError`` from inside a formatter is a defect and must surface,
     not be downgraded to a warning (remediation 5C.1, MEDIUM-12).
