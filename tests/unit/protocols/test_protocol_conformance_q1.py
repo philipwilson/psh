@@ -39,6 +39,12 @@ from psh.shell import Shell
 EXPECTED_MEMBERS = {
     "ExpansionRuntime": {"expand_string_variables", "expand_assignment_value_word",
                          "variable_expander", "word_expander"},
+    # Remediation 5C.1: the narrow replacement for handing round the whole
+    # `Shell`. TWO members, the measured union of what its three consumers
+    # actually use (evaluate_arithmetic, PromptExpander, and the
+    # VariableExpanderProtocol mixins) — typing those signatures is what let
+    # the full-`Shell` escape-hatch member retire (successor D-5B.2-s2).
+    "ExpansionHost": {"state", "expansion_manager"},
     "IOContext": {"stdin", "stdout", "stderr"},
     # Remediation 5B.2: `shell_state` — the whole ShellState carried on a
     # narrow protocol, which its one consumer reached through for a single

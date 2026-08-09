@@ -7,7 +7,10 @@ import datetime
 import os
 import pwd
 import socket
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ..protocols import ExpansionHost
 
 
 class PromptExpander:
@@ -23,10 +26,17 @@ class PromptExpander:
         '\\': '\\',
     }
 
-    def __init__(self, shell):
-        self.shell = shell
-        self._hostname = None
-        self._username = None
+    def __init__(self, host: 'ExpansionHost') -> None:
+        #: The expansion host: shell state plus the expansion machinery. This
+        #: took the whole ``Shell`` until remediation 5C.1 — it was one of the
+        #: three whole-``Shell`` forwards that forced
+        #: ``VariableExpanderProtocol`` to keep a full-``Shell`` member.
+        self.host = host
+        # Lazily filled caches. Declared Optional[str] because typing
+        # __init__ (5C.1) makes mypy infer attribute types from it, and a bare
+        # `= None` would pin them to NoneType.
+        self._hostname: Optional[str] = None
+        self._username: Optional[str] = None
         # Escape char -> zero-arg thunk. Built ONCE per expander; a single
         # escape decodes by calling ONLY its thunk, so a `\w` never triggers
         # the strftime/ttyname/geteuid/... work the other escapes would do
@@ -131,7 +141,7 @@ class PromptExpander:
 
         if '$' in combined or '`' in combined:
             try:
-                combined = self.shell.expansion_manager.expand_string_variables(combined)
+                combined = self.host.expansion_manager.expand_string_variables(combined)
             except Exception:
                 # A prompt must never abort the caller; fall back to the
                 # escape-decoded form on any expansion error.
@@ -251,7 +261,12 @@ class PromptExpander:
 
     def _get_job_count(self) -> str:
         """Number of jobs currently managed by the shell (bash ``\\j``)."""
-        job_manager = getattr(self.shell, 'job_manager', None)
+        # `\\j` is OPTIONAL on the host: ExpansionHost declares only what
+        # prompt expansion REQUIRES (state + the expansion machinery), and a
+        # host without a job manager renders 0 rather than failing. The
+        # getattr already expressed that optionality before the signature
+        # was narrowed; narrowing did not create it.
+        job_manager = getattr(self.host, 'job_manager', None)
         return str(len(job_manager.jobs)) if job_manager is not None else '0'
 
     def _get_tty_basename(self) -> str:
@@ -316,8 +331,8 @@ class PromptExpander:
 
     def _get_history_number(self) -> str:
         """Get the current history number."""
-        return str(len(self.shell.state.history) + 1)
+        return str(len(self.host.state.history) + 1)
 
     def _get_command_number(self) -> str:
         """Get the current command number."""
-        return str(self.shell.state.command_number + 1)
+        return str(self.host.state.command_number + 1)

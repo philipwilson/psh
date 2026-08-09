@@ -134,9 +134,20 @@ def test_protocols_package_exports_its_protocol_set():
     import psh.protocols as p
 
     # Four since remediation 5B.2 deleted the never-adopted variable
-    # value-surface protocol; see the census pin in tests/unit/protocols/.
+    # value-surface protocol; FIVE since 5C.1 added `ExpansionHost`, the narrow
+    # replacement for handing round the whole `Shell`. See the census pin in
+    # tests/unit/protocols/.
+    #
+    # 5C.1 also added `ExpansionSubExpanders` and `ExpansionSurface`, which are
+    # deliberately NOT here. They are consumed only from inside
+    # psh/protocols/__init__.py (as ExpansionHost's member type, and as
+    # ExpansionSurface's own bases), so exporting them would manufacture
+    # exactly the defined-but-unused EXPORT the adoption census forbids. They
+    # are the declared structure of ExpansionHost's manager member, not
+    # independently consumable services.
     assert set(p.__all__) == {
-        "ExpansionRuntime", "IOContext", "JobRuntime", "LocaleAccess",
+        "ExpansionHost", "ExpansionRuntime", "IOContext", "JobRuntime",
+        "LocaleAccess",
     }
     for name in p.__all__:
         assert hasattr(p, name), f"psh.protocols does not export {name}"

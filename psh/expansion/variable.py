@@ -32,17 +32,20 @@ from .param_parser import parse_parameter_expansion, validate_parameter_expansio
 from .parameter_expansion import ParameterExpansionOps
 
 if TYPE_CHECKING:
-    from ..shell import Shell
+    from ..protocols import ExpansionHost
 
 
 class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                        FieldExpansionMixin):
     """Handles variable and parameter expansion."""
 
-    def __init__(self, shell: 'Shell'):
-        self.shell = shell
-        self.state = shell.state
-        self.param_expansion = ParameterExpansionOps(shell)
+    def __init__(self, host: 'ExpansionHost') -> None:
+        #: The expansion host, not the whole ``Shell`` (remediation 5C.1).
+        #: The ninth manager hop lived here, outside both the 5B.2 pin's scope
+        #: and the consumer ratchet's, which is why it survived that slot.
+        self.host = host
+        self.state = host.state
+        self.param_expansion = ParameterExpansionOps(host)
 
     def _reject_bad_substitution(self, node, content: Optional[str] = None) -> None:
         """Raise bash's "bad substitution" for an invalid ``${...}`` name.
@@ -179,7 +182,7 @@ class VariableExpander(ArrayOpsMixin, OperatorOpsMixin, OperandOpsMixin,
                 result = var.value.get(self._eval_array_index(index_expr))
                 return result if result is not None else ''
             elif var and isinstance(var.value, AssociativeArray):
-                expanded_key = self.shell.expansion_manager.subscript.associative_key(index_expr)
+                expanded_key = self.host.expansion_manager.subscript.associative_key(index_expr)
                 result = var.value.get(expanded_key)
                 return result if result is not None else ''
             else:

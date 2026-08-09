@@ -217,10 +217,19 @@ ALLOWLIST = {
     ("psh.executor.child_policy", "run_child_shell"):
         "substitution-child runner built on run_child_body: forks a child "
         "Shell (Shell.for_subshell) and reaches trap/signal/executor/streams",
-    ("psh.expansion.subscript", "SubscriptEvaluator.__init__"):
-        "forwards `shell` to evaluate_arithmetic(expr, shell) for indexed "
-        "subscript evaluation; also consumes ExpansionRuntime + state "
-        "diagnostics, but the arithmetic forward forces the full Shell",
+    # RETIRED by remediation 5C.1 — the ratchet SHRANK, 9 entries -> 8.
+    # ("psh.expansion.subscript", "SubscriptEvaluator.__init__") is gone. Its
+    # justification read "the arithmetic forward forces the full Shell", which
+    # was true until `evaluate_arithmetic` was typed to take
+    # `protocols.ExpansionHost` — after which the sentence was simply false.
+    # Leaving the entry would have parked a FALSE justification inside a
+    # ratchet, which is worse than a missing one, because the next reader has
+    # no way to tell it from a real one. Measured before removal: the module
+    # reaches `.state` (:163), `.expansion_manager` (:176) and the arithmetic
+    # forward (:383) — all ExpansionHost members, nothing else. The field is
+    # RENAMED to `self.host`, not merely retyped, because this file's
+    # instance-assignment arm keys on the FIELD NAME: a narrow `self.shell`
+    # would still read as a service locator here, and rightly so.
     ("psh.scripting.program_source", "execute_sourced_file"):
         "THE sourced-file executor (source/. + rc load): owns state.source_depth, "
         "the positional-params swap/restore, FunctionReturn handling, the RETURN "
