@@ -409,21 +409,26 @@ class _PrintfEngine:
         value = self._to_float(raw)
         conv = spec.conversion
         precision = 6 if spec.precision is None else spec.precision
+        # '#' (alternate form): keep the decimal point even with no digits
+        # after it; for %g also keep trailing zeros.  Python's format spec
+        # implements exactly the C behavior for f/e/g (and leaves inf/nan
+        # alone), so pass the flag through.
+        alt = '#' if '#' in spec.flags else ''
 
         if conv in 'fF':
-            body = f"{value:.{precision}f}"
+            body = f"{value:{alt}.{precision}f}"
             if conv == 'F':
                 body = body.upper()
         elif conv in 'eE':
-            body = f"{value:.{precision}e}"
+            body = f"{value:{alt}.{precision}e}"
             if conv == 'E':
                 body = body.upper()
         elif conv in 'gG':
-            body = f"{value:.{precision if precision else 1}g}"
+            body = f"{value:{alt}.{precision if precision else 1}g}"
             if conv == 'G':
                 body = body.upper()
-        else:  # aA — hexadecimal float (precision not implemented)
-            body = _hex_float(value)
+        else:  # aA — hexadecimal float
+            body = _hex_float(value, spec.precision, bool(alt))
             if conv == 'A':
                 body = body.upper()
 
@@ -435,7 +440,14 @@ class _PrintfEngine:
         elif ' ' in spec.flags:
             sign = ' '
         text = sign + body
-        return _pad(text, spec, zero_ok=True, sign_len=len(sign))
+        # The '0' flag pads after the sign and, for %a/%A, after the '0x'
+        # prefix ('%020.2a' -> 0x000000000001.92p+1); it is ignored for
+        # inf/nan (C: space padding).
+        finite = not (math.isinf(value) or math.isnan(value))
+        sign_len = len(sign)
+        if conv in 'aA' and finite:
+            sign_len += 2  # the '0x' / '0X' prefix stays leftmost
+        return _pad(text, spec, zero_ok=finite, sign_len=sign_len)
 
 
 def _scan_integer(text: str) -> Tuple[Optional[int], str, int]:
@@ -502,20 +514,56 @@ def _pad(text: str, spec: _Spec, *, zero_ok: bool, sign_len: int = 0) -> str:
     return text.rjust(width)
 
 
-def _hex_float(value: float) -> str:
-    """C-style %a for the common cases (precision unsupported)."""
+def _hex_float(value: float, precision: Optional[int] = None,
+               alt: bool = False) -> str:
+    """C-style %a: hexadecimal floating point with optional precision.
+
+    Pinned to the local bash oracle by tmp/5r-probes/ probe batteries:
+
+    - No precision: full mantissa with trailing zeros trimmed
+      ('0x1.0000...p+3' -> '0x1p+3').
+    - Precision P rounds the mantissa to P hex digits: exact halves
+      TRUNCATE (macOS libc; '%.1a' 0x1.18p+0 -> 0x1.1p+0), anything
+      above half rounds up, and a carry does NOT renormalize
+      ('%.1a' 0x1.ffp0 -> 0x2.0p+0).  P beyond the mantissa zero-pads.
+    - alt ('#' flag): the decimal point is kept even with no digits
+      after it ('%#a' 2 -> 0x1.p+1).
+
+    DECLARED DIVERGENCE (subnormals): psh keeps float.hex()'s
+    glibc-style denormalized form ('0x0.0000000000001p-1022'); macOS
+    libc renormalizes ('0x1p-1074') and its strtod warns ERANGE.  One
+    pure-Python rendering cannot match both hosts; conformance rows
+    exclude subnormal cells.
+    """
     if math.isnan(value):
         return 'nan'
     if math.isinf(value):
         return 'inf' if value > 0 else '-inf'
-    if value == 0:
-        return '-0x0p+0' if math.copysign(1.0, value) < 0 else '0x0p+0'
-    text = value.hex()  # e.g. '0x1.91eb851eb851fp+1'
-    # Trim a trailing '.0...0' mantissa like C does ('0x1.0000...p+3' -> '0x1p+3')
+    sign = '-' if math.copysign(1.0, value) < 0 else ''
+    text = abs(value).hex()  # e.g. '0x1.91eb851eb851fp+1', '0x0.0p+0'
     mantissa, _, exponent = text.partition('p')
-    if '.' in mantissa:
-        mantissa = mantissa.rstrip('0').rstrip('.')
-    return f"{mantissa}p{exponent}"
+    digits = mantissa[2:].replace('.', '')  # unit digit + 13 frac digits
+    unit, frac = digits[0], digits[1:]
+
+    if precision is None:
+        frac = frac.rstrip('0')
+    elif precision >= len(frac):
+        frac = frac.ljust(precision, '0')
+    else:
+        keep, rest = frac[:precision], frac[precision:]
+        half = 8 * 16 ** (len(rest) - 1)
+        if int(rest, 16) > half:  # ties truncate (see docstring)
+            bumped = format(int(unit + keep, 16) + 1, 'x').zfill(1 + len(keep))
+            unit, keep = bumped[0], bumped[1:]
+        frac = keep
+
+    if frac:
+        body = f"{unit}.{frac}"
+    elif alt:
+        body = f"{unit}."
+    else:
+        body = unit
+    return f"{sign}0x{body}p{exponent}"
 
 
 def _process_format_escape(fmt: str, start: int) -> Tuple[str, int]:

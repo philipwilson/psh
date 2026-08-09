@@ -164,6 +164,104 @@ class TestFloatConversion:
         assert fmt('%a\n', '3.14').output == '0x1.91eb851eb851fp+1\n'
 
 
+class TestHexFloatPrecisionAltForm:
+    """%a/%A precision + '#' flag (5R rider; tmp/5r-probes/ battery).
+
+    Every expectation below reproduces a SAME cell from the 2026-08-09
+    probe battery against bash 5.2.26 — except the subnormal cells,
+    which pin psh's DECLARED divergence (glibc-style denormalized form;
+    macOS libc renormalizes, so those cells stay out of conformance).
+    """
+
+    def test_precision_rounds_mantissa(self):
+        assert fmt('%.0a\n', '3.14').output == '0x2p+1\n'
+        assert fmt('%.1a\n', '3.14').output == '0x1.9p+1\n'
+        assert fmt('%.2a\n', '3.14').output == '0x1.92p+1\n'
+        assert fmt('%.3a\n', '3.14').output == '0x1.91fp+1\n'
+        assert fmt('%.13a\n', '3.14').output == '0x1.91eb851eb851fp+1\n'
+
+    def test_precision_beyond_mantissa_zero_pads(self):
+        assert fmt('%.20a\n', '3.14').output == '0x1.91eb851eb851f0000000p+1\n'
+        assert fmt('%.2a\n', '2').output == '0x1.00p+1\n'
+        assert fmt('%.2a\n', '100').output == '0x1.90p+6\n'
+
+    def test_carry_does_not_renormalize(self):
+        # bash: the rounded-up unit digit is printed as-is (0x2.0p+0),
+        # never renormalized back to 0x1.0p+1.
+        assert fmt('%.1a\n', '0x1.ffp0').output == '0x2.0p+0\n'
+        assert fmt('%.0a\n', '1.9999999999').output == '0x2p+0\n'
+        assert fmt('%.0A\n', '1.9999999999').output == '0X2P+0\n'
+
+    def test_ties_truncate(self):
+        # macOS libc rounds exact halves toward zero (NOT half-even:
+        # 0x1.18 keeps the odd digit).  Measured, not assumed.
+        assert fmt('%.1a\n', '0x1.08p+0').output == '0x1.0p+0\n'
+        assert fmt('%.1a\n', '0x1.18p+0').output == '0x1.1p+0\n'
+        assert fmt('%.1a\n', '0x1.28p+0').output == '0x1.2p+0\n'
+        assert fmt('%.1a\n', '0x1.38p+0').output == '0x1.3p+0\n'
+        assert fmt('%.2a\n', '0x1.118p+0').output == '0x1.11p+0\n'
+
+    def test_just_past_tie_rounds_up(self):
+        assert fmt('%.1a\n', '0x1.081p+0').output == '0x1.1p+0\n'
+        assert fmt('%.2a\n', '0.1').output == '0x1.9ap-4\n'
+        assert fmt('%.4a\n', '0.1').output == '0x1.999ap-4\n'
+
+    def test_precision_zero_and_negative_values(self):
+        assert fmt('%.2a\n', '0').output == '0x0.00p+0\n'
+        assert fmt('%.0a\n', '0').output == '0x0p+0\n'
+        assert fmt('%.2a\n', '-3.14').output == '-0x1.92p+1\n'
+        assert fmt('%.2a\n', '1e308').output == '0x1.1dp+1023\n'
+
+    def test_uppercase_a(self):
+        assert fmt('%.2A\n', '3.14').output == '0X1.92P+1\n'
+        assert fmt('%+.2A\n', '3.14').output == '+0X1.92P+1\n'
+
+    def test_alt_flag_keeps_point(self):
+        assert fmt('%#a\n', '2').output == '0x1.p+1\n'
+        assert fmt('%#.0a\n', '3.14').output == '0x2.p+1\n'
+        assert fmt('%#.0a\n', '2').output == '0x1.p+1\n'
+        assert fmt('%#a\n', '0').output == '0x0.p+0\n'
+        assert fmt('%#A\n', '2').output == '0X1.P+1\n'
+        # '#' is a no-op when digits follow the point anyway
+        assert fmt('%#a\n', '3.14').output == '0x1.91eb851eb851fp+1\n'
+        assert fmt('%#.2a\n', '2').output == '0x1.00p+1\n'
+
+    def test_alt_flag_other_float_conversions(self):
+        assert fmt('%#.0f\n', '3').output == '3.\n'
+        assert fmt('%#.0f\n', '3.7').output == '4.\n'
+        assert fmt('%#.0e\n', '3').output == '3.e+00\n'
+        assert fmt('%#g\n', '3').output == '3.00000\n'
+        assert fmt('%#g\n', '3.14').output == '3.14000\n'
+        assert fmt('%#.0g\n', '3').output == '3.\n'
+        assert fmt('%#.10g\n', '3.14').output == '3.140000000\n'
+        assert fmt('%#G\n', '0.0001234').output == '0.000123400\n'
+
+    def test_zero_padding_goes_after_0x_prefix(self):
+        assert fmt('%020.2a\n', '3.14').output == '0x000000000001.92p+1\n'
+        assert fmt('%#020.3a\n', '3.14').output == '0x00000000001.91fp+1\n'
+        assert fmt('%20.2a|\n', '3.14').output == '           0x1.92p+1|\n'
+
+    def test_nonfinite_ignore_precision_alt_and_zero_flag(self):
+        assert fmt('%.2a\n', 'inf').output == 'inf\n'
+        assert fmt('%#a\n', 'inf').output == 'inf\n'
+        assert fmt('%+a\n', 'inf').output == '+inf\n'
+        # C: the '0' flag is ignored for inf/nan — space padding.
+        assert fmt('%010a\n', 'inf').output == '       inf\n'
+        assert fmt('%010f\n', 'inf').output == '       inf\n'
+        assert fmt('%010.2f\n', 'nan').output == '       nan\n'
+        assert fmt('%010e\n', '-inf').output == '      -inf\n'
+
+    def test_length_modifier_ignored(self):
+        assert fmt('%.2La\n', '3.14').output == '0x1.92p+1\n'
+
+    def test_subnormal_declared_divergence(self):
+        # DECLARED divergence: glibc-style denormalized form (what
+        # float.hex() produces).  macOS bash prints 0x1p-1074 /
+        # 0x1.00p-1074 and warns 'Result too large' (strtod ERANGE).
+        assert fmt('%a\n', '5e-324').output == '0x0.0000000000001p-1022\n'
+        assert fmt('%.2a\n', '5e-324').output == '0x0.00p-1022\n'
+
+
 class TestPercentN:
     def test_assigns_count_so_far(self):
         r = fmt('%s %n %s\n', 'a', 'c', 'b')
