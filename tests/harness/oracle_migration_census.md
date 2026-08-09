@@ -12,6 +12,16 @@
 > authority for site counts is `_EXPECTED_SPAWN_SITES` in
 > `tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py`, which carries
 > the justification inline.
+>
+> **Second superseding change (remediation 5C.2, LEDGER L301):**
+> `try_resolve_bash` — named in the prose below and counted in the
+> imported-symbol table — **no longer exists**. After slots 1.2 and 1.3
+> converted every module to the loud module-scope `resolve_bash()`, it was left
+> with zero consumers outside its own `__all__` entry, its own self-test, and
+> two `gen_census.py` pattern strings that merely detected the spelling. It was
+> deleted, and those detection branches pruned with it. The rows below record
+> what was true at `e52957d4`, which is the point of a frozen census; they are
+> not a claim that the symbol is still importable.
 **Purpose:** freeze the offender list BEFORE any migration so the batches are
 mechanical and auditable. This file is the authority the anti-spawn guard
 (`tests/unit/tooling/test_no_direct_spawn_in_oracle_modules.py`) and its
