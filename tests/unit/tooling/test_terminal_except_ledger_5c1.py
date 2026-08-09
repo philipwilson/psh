@@ -110,7 +110,24 @@ def terminal_handlers(src, relpath):
         for h in node.handlers:
             if _mentions_exception(h.type):
                 out.append((relpath, enclosing(node), calls))
-    return out
+    # MULTIPLICITY (verify-round N-1/N-24). The caller sets() these, so two
+    # DISTINCT handlers sharing a key -- same file, same enclosing function,
+    # identical try-body call names -- would collapse into one entry, and a NEW
+    # unclassified handler that happened to collide with a classified one would
+    # be auto-classified and invisible to every cell here, the 24-count
+    # included. The shape is live-adjacent: run_background_shell_child already
+    # holds two of the 24, separated ONLY by their call names.
+    #
+    # Disambiguating by OCCURRENCE INDEX keeps the key line-independent (the
+    # property §A1.1's drift evidence bought) while making a collision visible:
+    # the second colliding handler keys as ...#1 and has no ledger entry.
+    seen: dict = {}
+    keyed = []
+    for rel, fn, calls in out:
+        n = seen.get((rel, fn, calls), 0)
+        seen[(rel, fn, calls)] = n + 1
+        keyed.append((rel, fn, calls) if n == 0 else (rel, fn, calls, n))
+    return keyed
 
 
 def _live_handlers():
@@ -394,6 +411,52 @@ def test_offender_unclassified_handler_is_detected():
     assert found == [("psh/fake.py", "f", ("risky",))]
     assert not set(found) <= set(TERMINAL_HANDLERS), (
         "the synthetic offender must NOT already be classified")
+
+
+def test_offender_a_colliding_second_handler_is_VISIBLE():
+    """N-1/N-24: the collapse this keying exists to prevent.
+
+    Two distinct terminal handlers in one function with identical try-body call
+    names used to collapse to a single set entry — so the second one was
+    auto-classified by the first one's ledger row and the census still read 24.
+    The occurrence index makes it a separate, unclassified key.
+    """
+    src = ("def f():\n"
+           "    try:\n"
+           "        risky()\n"
+           "    except Exception:\n"
+           "        pass\n"
+           "    try:\n"
+           "        risky()\n"          # identical call set, same function
+           "    except Exception:\n"
+           "        pass\n")
+    found = terminal_handlers(src, "psh/fake.py")
+    assert len(found) == 2, "both handlers must be reported"
+    assert len(set(found)) == 2, (
+        "the two handlers collapsed to one key — a colliding NEW handler would "
+        "be invisible to every cell in this file")
+    assert found[1] == ("psh/fake.py", "f", ("risky",), 1), (
+        f"the second occurrence should carry its index, got {found[1]}")
+
+
+def test_offender_a_stale_entry_is_detected():
+    """N-2: the brief's THIRD offender arm, which the first cut omitted.
+
+    A classified handler that is narrowed away, renamed, or moved must force
+    its entry out — otherwise the ledger drifts into describing a tree that no
+    longer exists, which is the failure mode the Q2 ledger's twin cell prevents.
+    Driven against a COPY of the registry so the real one is untouched.
+    """
+    fake_key = ("psh/zzz_not_a_real_module.py", "nope", ("x",))
+    registry = dict(TERMINAL_HANDLERS)
+    registry[fake_key] = ("FORK_BOUNDARY", "x" * 70)
+    live = _live_handlers()
+    stale = sorted(set(registry) - live)
+    assert stale == [fake_key], (
+        "a classified handler with no live counterpart must be reported as "
+        f"stale; got {stale}")
+    # CONTROL: the real registry has none.
+    assert not sorted(set(TERMINAL_HANDLERS) - live)
 
 
 def test_offender_bare_except_is_detected():

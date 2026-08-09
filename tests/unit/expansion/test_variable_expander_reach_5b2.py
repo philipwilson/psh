@@ -45,7 +45,21 @@ CONSUMERS = [
     "psh/expansion/operators.py",
 ]
 
-#: Per consumer: ``self.shell.<attr>`` hop count, keyed by attribute.
+#: Every holder whose field remediation 5C.1 renamed ``shell`` -> ``host``.
+#: The grep-zero cell sweeps ALL of them, not just the four mixin consumers:
+#: verify-round N-5 found prompt.py and parameter_expansion.py outside the
+#: original sweep, so a regrown ``self.shell`` in either would have passed
+#: every cell in this file. subscript.py is additionally covered by the
+#: consumer ratchet (it is a scanned module there); the other two are not
+#: covered anywhere else, which is precisely why they belong here.
+RENAMED_HOLDERS = CONSUMERS + [
+    "psh/expansion/variable.py",
+    "psh/expansion/subscript.py",
+    "psh/expansion/parameter_expansion.py",
+    "psh/interactive/prompt.py",
+]
+
+#: Per consumer: ``self.host.<attr>`` hop count, keyed by attribute.
 EXPECTED_HOPS = {
     "psh/expansion/arrays.py": {"expansion_manager": 3},
     "psh/expansion/fields.py": {},
@@ -133,7 +147,7 @@ def test_no_consumer_reaches_a_whole_shell():
     the service-locator reach the campaign set out to remove.
     """
     offenders = {}
-    for rel in CONSUMERS + ["psh/expansion/variable.py"]:
+    for rel in RENAMED_HOLDERS:
         hops, whole = _reach(rel, field="shell")
         if hops or whole:
             offenders[rel] = (hops, whole)
@@ -158,7 +172,7 @@ def test_whole_shell_forwards_are_zero():
         assert whole == EXPECTED_WHOLE_FORWARDS[rel], (
             f"{rel}: whole-`self.host` forwards changed — expected "
             f"{EXPECTED_WHOLE_FORWARDS[rel]}, found {whole}")
-    _, shell_forwards = 0, sum(_reach(rel, field="shell")[1] for rel in CONSUMERS)
+    shell_forwards = sum(_reach(rel, field="shell")[1] for rel in CONSUMERS)
     assert shell_forwards == 0, (
         f"{shell_forwards} whole-`self.shell` forward(s) remain; the "
         "retirement requires zero")

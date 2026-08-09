@@ -29,6 +29,23 @@ as VE; except VE``) — the name no longer reads ``ValueError``; and a
 NESTED-swallow re-raise (a ``raise`` inside an inner ``try`` in the handler that
 does not actually re-raise the outer error) — the ``raise``-anywhere check treats
 it conservatively as re-raising.
+
+THIRD out-of-scope shape, RECORDED because remediation 5C.1 created the first
+live instance of it (verify-round N-3): a catch of an in-tree SUBCLASS of
+``ValueError``/``TypeError``. ``_catches_vt`` matches literal NAMES, so
+``psh/utils/ast_debug.py``'s ``except UnknownASTFormat`` — where
+``UnknownASTFormat(ValueError)`` — is invisible to this detector even though its
+try body is broad by the ``>= 5`` call-target disjunct.
+
+That site's disposition is CORRECT and is not what is being flagged: the body
+has exactly one raise site, this module's own, and typing it is the 2.3/3.5
+model applied precisely. What is flagged is that the ratchet can no longer SEE
+the shape, so a future broad body caught behind a VE subclass would not be
+triaged. Resolving it means teaching the detector to follow in-tree subclass
+definitions, which is a detector rewrite and therefore a successor row rather
+than 5C.1's work — deliberately NOT done here, because widening a detector in
+the same slot that created its first instance is how a guard gets tuned to
+accept what its author just wrote.
 """
 
 import ast
