@@ -248,13 +248,6 @@ LEDGER = {
         ('JUSTIFIED-KEEP',
          'Every branch mutates the same three trackers and the branch ORDER '
          'is the semantics; separable sub-decisions already extracted'),
-    ('psh/lexer/recognizers/operator.py',
-     'OperatorRecognizer.recognize'):
-        ('DECOMPOSE-PENDING',
-         'PURE, zero deferred imports, strong direct coverage (5 lexer '
-         'suites); the ~35-line VETO block (extglob !, {} reserved-word '
-         'rules) is unrelated to longest-match and has its own bash '
-         'provenance'),
     ('psh/lexer/token_stream.py',
      'TokenStream.collect_arithmetic_expression'):
         ('JUSTIFIED-KEEP',

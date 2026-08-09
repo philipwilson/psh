@@ -1,5 +1,6 @@
 """Operator token recognizer."""
 
+import enum
 from typing import TYPE_CHECKING, Optional, Set, Tuple
 
 from ..state_context import LexerContext
@@ -10,6 +11,19 @@ from .literal import extglob_active
 
 if TYPE_CHECKING:
     from ..position import LexerConfig
+
+
+class _Veto(enum.Enum):
+    """What a veto rule says about a table hit in this position.
+
+    The two negative outcomes are NOT interchangeable, which is the reason
+    they are named: ABORT gives the text up entirely, SKIP only rejects this
+    LENGTH and lets the greedy walk try a shorter operator.
+    """
+
+    NONE = enum.auto()
+    SKIP = enum.auto()
+    ABORT = enum.auto()
 
 
 class OperatorRecognizer(ContextualRecognizer):
@@ -332,6 +346,67 @@ class OperatorRecognizer(ContextualRecognizer):
 
         return False
 
+    def _operator_veto(
+        self,
+        candidate: str,
+        input_text: str,
+        pos: int,
+        context: LexerContext
+    ) -> '_Veto':
+        """Decide whether a table hit should actually fire.
+
+        Separate from the longest-match walk because it answers a different
+        question — the walk asks "does this text spell an operator?", this
+        asks "does it MEAN one here?" — and because the two vetoes have
+        DIFFERENT control flow, which is easy to misread when they sit
+        inline among the matching code:
+
+        * ``ABORT`` — not an operator at all; let the word scanners have it.
+        * ``SKIP`` — not this operator at this length; try a shorter one.
+
+        Each rule below is bash-measured, and the NBSP cases are the reason
+        SHELL whitespace is used rather than ``str.isspace()``.
+        """
+        # Extglob: don't match ! as EXCLAMATION when followed by (
+        if (candidate == '!'
+                and extglob_active(self.config, context)
+                and pos + 1 < len(input_text)
+                and input_text[pos + 1] == '('):
+            return _Veto.ABORT
+
+        # '!' is a reserved-word operator only when it forms a standalone
+        # token (e.g. "! cmd"). Keep "!!" and "!name" as regular words for
+        # command lookup/history-disabled mode.
+        if candidate == '!' and pos + 1 < len(input_text):
+            if not self._is_shell_token_delimiter(input_text[pos + 1]):
+                return _Veto.SKIP
+
+        # { and } are reserved words only when standalone.
+        # Special case: {} is a single word, not LBRACE + RBRACE.
+        if candidate in ('{', '}'):
+            next_pos = pos + 1
+            if candidate == '{' and next_pos < len(input_text) and input_text[next_pos] == '}':
+                return _Veto.SKIP  # {} is a word, not brace group
+            # } is a reserved word (RBRACE) only at command position
+            if candidate == '}' and not context.command_position:
+                return _Veto.SKIP
+            # { is a brace-group token only when followed by whitespace or a
+            # command operator. Unlike the general delimiter check, '[' and
+            # ']' do NOT count here, so {[ab]} stays a single word (e.g. a
+            # glob) instead of being split into LBRACE + '[ab]}'.
+            if candidate == '{':
+                if next_pos < len(input_text):
+                    nxt = input_text[next_pos]
+                    # SHELL whitespace only (see _is_shell_token_delimiter):
+                    # `{` opens a brace group only when a real blank/newline
+                    # or a command operator follows. `{<NBSP>echo` is one word
+                    # in bash (not a brace group), so a Unicode non-blank must
+                    # NOT enable LBRACE here.
+                    if not (is_whitespace(nxt) or nxt in '|&;()<>\n'):
+                        return _Veto.SKIP
+
+        return _Veto.NONE
+
     def recognize(
         self,
         input_text: str,
@@ -379,45 +454,11 @@ class OperatorRecognizer(ContextualRecognizer):
                 candidate = input_text[pos:pos + length]
 
                 if candidate in self.OPERATORS[length]:
-                    # Extglob: don't match ! as EXCLAMATION when followed by (
-                    if (candidate == '!'
-                            and extglob_active(self.config, context)
-                            and pos + 1 < len(input_text)
-                            and input_text[pos + 1] == '('):
+                    veto = self._operator_veto(candidate, input_text, pos, context)
+                    if veto is _Veto.ABORT:
                         return None
-
-                    # '!' is a reserved-word operator only when it forms a
-                    # standalone token (e.g. "! cmd"). Keep "!!" and "!name"
-                    # as regular words for command lookup/history-disabled mode.
-                    if candidate == '!' and pos + 1 < len(input_text):
-                        if not self._is_shell_token_delimiter(input_text[pos + 1]):
-                            continue
-
-                    # { and } are reserved words only when standalone.
-                    # Special case: {} is a single word, not LBRACE + RBRACE.
-                    if candidate in ('{', '}'):
-                        next_pos = pos + 1
-                        if candidate == '{' and next_pos < len(input_text) and input_text[next_pos] == '}':
-                            continue  # {} is a word, not brace group
-                        # } is a reserved word (RBRACE) only at command position
-                        if candidate == '}' and not context.command_position:
-                            continue
-                        # { is a brace-group token only when followed by
-                        # whitespace or a command operator. Unlike the general
-                        # delimiter check, '[' and ']' do NOT count here, so
-                        # {[ab]} stays a single word (e.g. a glob) instead of
-                        # being split into LBRACE + '[ab]}'.
-                        if candidate == '{':
-                            if next_pos < len(input_text):
-                                nxt = input_text[next_pos]
-                                # SHELL whitespace only (see
-                                # _is_shell_token_delimiter): `{` opens a brace
-                                # group only when a real blank/newline or a
-                                # command operator follows. `{<NBSP>echo` is one
-                                # word in bash (not a brace group), so a Unicode
-                                # non-blank must NOT enable LBRACE here.
-                                if not (is_whitespace(nxt) or nxt in '|&;()<>\n'):
-                                    continue
+                    if veto is _Veto.SKIP:
+                        continue
 
                     # Check if operator is valid in current context
                     if self.is_valid_in_context(candidate, context):
