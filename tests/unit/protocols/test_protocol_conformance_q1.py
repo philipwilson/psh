@@ -25,6 +25,7 @@ import pytest
 
 from psh import protocols as P
 from psh.protocols import (
+    ExpansionHost,
     ExpansionRuntime,
     IOContext,
     JobRuntime,
@@ -101,6 +102,19 @@ def test_shell_satisfies_iocontext(shell):
 
 def test_expansion_manager_satisfies_expansionruntime(shell):
     assert isinstance(shell.expansion_manager, ExpansionRuntime)
+
+
+def test_shell_satisfies_expansionhost(shell):
+    """The behavioural-inertness pin for the 5C.1 migration.
+
+    ``evaluate_arithmetic``, ``PromptExpander``, ``SubscriptEvaluator`` and the
+    variable-expander mixins all narrowed from ``Shell`` to ``ExpansionHost``.
+    Those are annotation-only changes precisely BECAUSE the ``Shell`` handed to
+    them already IS an ``ExpansionHost`` — this asserts that at runtime rather
+    than trusting mypy alone, which is the same job the four pins above do for
+    their protocols.
+    """
+    assert isinstance(shell, ExpansionHost)
 
 
 def test_job_manager_satisfies_jobruntime(shell):

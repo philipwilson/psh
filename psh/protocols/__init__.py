@@ -355,6 +355,7 @@ class ExpansionSurface(ExpansionRuntime, ExpansionSubExpanders, Protocol):
     """
 
 
+@runtime_checkable
 class ExpansionHost(Protocol):
     """What a consumer needs from the object that owns the expansion machinery.
 
