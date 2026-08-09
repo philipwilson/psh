@@ -131,19 +131,34 @@ BROAD_MASKING = {
     # invalid-regex raiser is typed, and its three can't-happen branches raise
     # RuntimeError. The site is no longer a candidate at all, which is why the
     # entry had to go: test_classification_has_no_stale_entries forces it.
+    # JUSTIFIED-KEEP with a CORRECTED reason (remediation 5C.1, ruling (b)).
+    # The previous reason pleaded the combinator parser's quality bar, which is
+    # true of the module but is not why this catch is acceptable — it reads as
+    # an excuse for debt. The honest reason is the method's contract, and it is
+    # measured: `can_parse` has ZERO production callers (the shell entry points
+    # call only `parse`/`parse_with_heredocs`; the only callers in the tree are
+    # tests/unit/parser/combinators/test_parser_integration.py and
+    # tests/regression/test_parser_review_fixes.py). It is a test-facing
+    # can-this-parse PROBE whose whole contract is to answer False rather than
+    # raise, so a catch-and-return-False IS the correct implementation of what
+    # it promises, not a masked defect on a production path.
     ("psh/parser/combinators/parser.py",
      ("AttributeError", "IndexError", "TypeError", "ParseError"),
      ("_prepare_tokens", "len", "parse")):
-        "can_parse wraps a full parse and turns ANY AttributeError/TypeError bug "
-        "into 'not parseable'. The educational combinator parser is explicitly "
-        "outside the production quality bar (parser/CLAUDE.md) — flagged, low "
-        "priority.",
-    ("psh/utils/ast_debug.py", ("ValueError", "TypeError", "AttributeError"),
-     ("ASTDotGenerator", "ASTPrettyPrinter", "ValueError", "print", "render",
-      "to_dot", "visit")):
-        "the AST-formatter selection downgrades a TypeError/AttributeError in "
-        "ANY formatter to a warning + fallback; a single if/elif statement hides "
-        "many formatter calls (the compound-statement masker).",
+        "can_parse is a TEST-FACING probe with zero production callers, whose "
+        "documented contract is to return False rather than raise — the broad "
+        "catch IS that contract, not a masked defect. Verified by grep: the "
+        "shell entry points call only parse/parse_with_heredocs. If a "
+        "production caller ever appears, this entry must be re-triaged.",
+    # SHRUNK by remediation 5C.1: the utils/ast_debug.py formatter-selection
+    # net. Its VE leg was NOT dead — it was the module's OWN
+    # `raise ValueError("unknown AST format ...")`, reachable via
+    # PSH_AST_FORMAT=bogus — so the fix was to TYPE the raise
+    # (`UnknownASTFormat`) and catch only that, rather than delete the handler.
+    # Two-axis proven: the user-reachable unknown-format warning + fallback is
+    # byte-identical base vs tip, and a seeded TypeError inside
+    # ASTPrettyPrinter.visit that base downgraded to that same warning now
+    # SURFACES.
 }
 
 # --- Candidates that are actually NARROW/safe (single conversion or one -------
