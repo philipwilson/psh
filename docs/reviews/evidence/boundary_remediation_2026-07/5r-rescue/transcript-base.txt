@@ -1,0 +1,205 @@
+# 5R probe battery — label=base tree=/Users/pwilson/src/psh
+# oracle: /opt/homebrew/bin/bash
+# GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+# cells: 76
+
+[SAME] fmt='%a' args=['3.14']
+    bash: out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%.0a' args=['3.14']
+    bash: out='0x2p+1\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%.1a' args=['3.14']
+    bash: out='0x1.9p+1\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%.2a' args=['3.14']
+    bash: out='0x1.92p+1\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%.3a' args=['3.14']
+    bash: out='0x1.91fp+1\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1\n' rc=0
+[SAME] fmt='%.13a' args=['3.14']
+    bash: out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%.20a' args=['3.14']
+    bash: out='0x1.91eb851eb851f0000000p+1\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1\n' rc=0
+[SAME] fmt='%a' args=['2']
+    bash: out='0x1p+1\n' rc=0
+[SAME] fmt='%.0a' args=['2']
+    bash: out='0x1p+1\n' rc=0
+[DIFF] fmt='%.2a' args=['2']
+    bash: out='0x1.00p+1\n' rc=0
+    psh : out='0x1p+1\n' rc=0
+[DIFF] fmt='%.0a' args=['1.9999999999']
+    bash: out='0x2p+0\n' rc=0
+    psh : out='0x1.ffffffff920c8p+0\n' rc=0
+[DIFF] fmt='%.0a' args=['0x1.fp0']
+    bash: out='0x2p+0\n' rc=0
+    psh : out='0x1.fp+0\n' rc=0
+[DIFF] fmt='%.1a' args=['0x1.ffp0']
+    bash: out='0x2.0p+0\n' rc=0
+    psh : out='0x1.ffp+0\n' rc=0
+[DIFF] fmt='%.1a' args=['0x1.08p+0']
+    bash: out='0x1.0p+0\n' rc=0
+    psh : out='0x1.08p+0\n' rc=0
+[DIFF] fmt='%.1a' args=['0x1.18p+0']
+    bash: out='0x1.1p+0\n' rc=0
+    psh : out='0x1.18p+0\n' rc=0
+[DIFF] fmt='%.1a' args=['0x1.28p+0']
+    bash: out='0x1.2p+0\n' rc=0
+    psh : out='0x1.28p+0\n' rc=0
+[DIFF] fmt='%.1a' args=['0x1.38p+0']
+    bash: out='0x1.3p+0\n' rc=0
+    psh : out='0x1.38p+0\n' rc=0
+[DIFF] fmt='%.2a' args=['0x1.118p+0']
+    bash: out='0x1.11p+0\n' rc=0
+    psh : out='0x1.118p+0\n' rc=0
+[DIFF] fmt='%.2a' args=['0x1.128p+0']
+    bash: out='0x1.12p+0\n' rc=0
+    psh : out='0x1.128p+0\n' rc=0
+[DIFF] fmt='%.1a' args=['0x1.081p+0']
+    bash: out='0x1.1p+0\n' rc=0
+    psh : out='0x1.081p+0\n' rc=0
+[SAME] fmt='%a' args=['0']
+    bash: out='0x0p+0\n' rc=0
+[DIFF] fmt='%.2a' args=['0']
+    bash: out='0x0.00p+0\n' rc=0
+    psh : out='0x0p+0\n' rc=0
+[SAME] fmt='%.0a' args=['0']
+    bash: out='0x0p+0\n' rc=0
+[SAME] fmt='%a' args=['-0']
+    bash: out='-0x0p+0\n' rc=0
+[DIFF] fmt='%.2a' args=['-3.14']
+    bash: out='-0x1.92p+1\n' rc=0
+    psh : out='-0x1.91eb851eb851fp+1\n' rc=0
+[SAME] fmt='%a' args=['1e308']
+    bash: out='0x1.1ccf385ebc8ap+1023\n' rc=0
+[DIFF] fmt='%.2a' args=['1e308']
+    bash: out='0x1.1dp+1023\n' rc=0
+    psh : out='0x1.1ccf385ebc8ap+1023\n' rc=0
+[SAME] fmt='%a' args=['2.2250738585072014e-308']
+    bash: out='0x1p-1022\n' rc=0
+[DIFF] fmt='%a' args=['5e-324']
+    bash: out='0x1p-1074\n' rc=0 err='/opt/homebrew/bin/bash: line 1: printf: warning: 5e-324: Result too large\n'
+    psh : out='0x0.0000000000001p-1022\n' rc=0
+[DIFF] fmt='%a' args=['1e-310']
+    bash: out='0x1.2688b70e62bp-1030\n' rc=0 err='/opt/homebrew/bin/bash: line 1: printf: warning: 1e-310: Result too large\n'
+    psh : out='0x0.012688b70e62bp-1022\n' rc=0
+[DIFF] fmt='%.2a' args=['5e-324']
+    bash: out='0x1.00p-1074\n' rc=0 err='/opt/homebrew/bin/bash: line 1: printf: warning: 5e-324: Result too large\n'
+    psh : out='0x0.0000000000001p-1022\n' rc=0
+[SAME] fmt='%a' args=['inf']
+    bash: out='inf\n' rc=0
+[SAME] fmt='%a' args=['-inf']
+    bash: out='-inf\n' rc=0
+[SAME] fmt='%a' args=['nan']
+    bash: out='nan\n' rc=0
+[SAME] fmt='%.2a' args=['inf']
+    bash: out='inf\n' rc=0
+[SAME] fmt='%A' args=['3.14']
+    bash: out='0X1.91EB851EB851FP+1\n' rc=0
+[DIFF] fmt='%.2A' args=['3.14']
+    bash: out='0X1.92P+1\n' rc=0
+    psh : out='0X1.91EB851EB851FP+1\n' rc=0
+[SAME] fmt='%A' args=['inf']
+    bash: out='INF\n' rc=0
+[SAME] fmt='%A' args=['nan']
+    bash: out='NAN\n' rc=0
+[SAME] fmt='%A' args=['-0']
+    bash: out='-0X0P+0\n' rc=0
+[DIFF] fmt='%#A' args=['2']
+    bash: out='0X1.P+1\n' rc=0
+    psh : out='0X1P+1\n' rc=0
+[DIFF] fmt='%.0A' args=['1.9999999999']
+    bash: out='0X2P+0\n' rc=0
+    psh : out='0X1.FFFFFFFF920C8P+0\n' rc=0
+[DIFF] fmt='%#a' args=['2']
+    bash: out='0x1.p+1\n' rc=0
+    psh : out='0x1p+1\n' rc=0
+[SAME] fmt='%#a' args=['3.14']
+    bash: out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%#.0a' args=['3.14']
+    bash: out='0x2.p+1\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%#.0a' args=['2']
+    bash: out='0x1.p+1\n' rc=0
+    psh : out='0x1p+1\n' rc=0
+[DIFF] fmt='%#a' args=['0']
+    bash: out='0x0.p+0\n' rc=0
+    psh : out='0x0p+0\n' rc=0
+[DIFF] fmt='%#.2a' args=['2']
+    bash: out='0x1.00p+1\n' rc=0
+    psh : out='0x1p+1\n' rc=0
+[DIFF] fmt='%#.0f' args=['3']
+    bash: out='3.\n' rc=0
+    psh : out='3\n' rc=0
+[DIFF] fmt='%#.0f' args=['3.7']
+    bash: out='4.\n' rc=0
+    psh : out='4\n' rc=0
+[DIFF] fmt='%#.0e' args=['3']
+    bash: out='3.e+00\n' rc=0
+    psh : out='3e+00\n' rc=0
+[SAME] fmt='%#f' args=['3']
+    bash: out='3.000000\n' rc=0
+[DIFF] fmt='%#g' args=['3']
+    bash: out='3.00000\n' rc=0
+    psh : out='3\n' rc=0
+[DIFF] fmt='%#g' args=['3.14']
+    bash: out='3.14000\n' rc=0
+    psh : out='3.14\n' rc=0
+[SAME] fmt='%#.3g' args=['3.14159']
+    bash: out='3.14\n' rc=0
+[DIFF] fmt='%#.0g' args=['3']
+    bash: out='3.\n' rc=0
+    psh : out='3\n' rc=0
+[DIFF] fmt='%#.10g' args=['3.14']
+    bash: out='3.140000000\n' rc=0
+    psh : out='3.14\n' rc=0
+[DIFF] fmt='%#G' args=['0.0001234']
+    bash: out='0.000123400\n' rc=0
+    psh : out='0.0001234\n' rc=0
+[SAME] fmt='%#g' args=['123456789']
+    bash: out='1.23457e+08\n' rc=0
+[SAME] fmt='%20a|' args=['3.14']
+    bash: out='0x1.91eb851eb851fp+1|\n' rc=0
+[SAME] fmt='%-20a|' args=['3.14']
+    bash: out='0x1.91eb851eb851fp+1|\n' rc=0
+[SAME] fmt='%020a' args=['3.14']
+    bash: out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%020.2a' args=['3.14']
+    bash: out='0x000000000001.92p+1\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1\n' rc=0
+[SAME] fmt='%020a' args=['-3.14']
+    bash: out='-0x1.91eb851eb851fp+1\n' rc=0
+[SAME] fmt='%020A' args=['3.14']
+    bash: out='0X1.91EB851EB851FP+1\n' rc=0
+[SAME] fmt='%+a' args=['3.14']
+    bash: out='+0x1.91eb851eb851fp+1\n' rc=0
+[SAME] fmt='% a' args=['3.14']
+    bash: out=' 0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%+.2A' args=['3.14']
+    bash: out='+0X1.92P+1\n' rc=0
+    psh : out='+0X1.91EB851EB851FP+1\n' rc=0
+[DIFF] fmt='%#020.3a' args=['3.14']
+    bash: out='0x00000000001.91fp+1\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%20.2a|' args=['3.14']
+    bash: out='           0x1.92p+1|\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1|\n' rc=0
+[DIFF] fmt='%.2La' args=['3.14']
+    bash: out='0x1.92p+1\n' rc=0
+    psh : out='0x1.91eb851eb851fp+1\n' rc=0
+[DIFF] fmt='%.2a' args=['0.1']
+    bash: out='0x1.9ap-4\n' rc=0
+    psh : out='0x1.999999999999ap-4\n' rc=0
+[DIFF] fmt='%.4a' args=['0.1']
+    bash: out='0x1.999ap-4\n' rc=0
+    psh : out='0x1.999999999999ap-4\n' rc=0
+[SAME] fmt='%a' args=['0.1']
+    bash: out='0x1.999999999999ap-4\n' rc=0
+[DIFF] fmt='%.2a' args=['100']
+    bash: out='0x1.90p+6\n' rc=0
+    psh : out='0x1.9p+6\n' rc=0
+[SAME] fmt='%.1a' args=['0.375']
+    bash: out='0x1.8p-2\n' rc=0
+
+# TOTAL cells=76 DIFF=46

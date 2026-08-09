@@ -4,6 +4,30 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.779.0 (2026-08-09) - printf %a/%A precision + '#' flag (remediation rider 5R)
+- `printf %a/%A` now honors precision: the mantissa is rounded to P hex
+  digits with oracle-measured libc semantics (exact halves truncate —
+  macOS libc is not half-even, measured on five tie cells; above-half
+  rounds up; a carry never renormalizes, `%.1a` 0x1.ffp0 prints
+  `0x2.0p+0`; precision beyond the 13-digit mantissa zero-pads).
+  Previously `%.2a` printed the full mantissa.
+- The `#` (alternate form) flag now works for every float conversion:
+  `%#a` keeps the decimal point with no trailing digits (`0x1.p+1`),
+  and f/e/g gain C's alternate form (`%#.0f` prints `3.`, `%#g` keeps
+  trailing zeros: `3.00000`).
+- The `0` flag with `%a/%A` pads after the `0x` prefix
+  (`%020.2a` prints `0x000000000001.92p+1`), and is ignored for
+  inf/nan (space padding) — previously non-finite values were
+  zero-padded.
+- Declared divergence (LEDGER D-5R-d1): subnormals keep the glibc-style
+  denormalized form (`0x0.0000000000001p-1022`); macOS libc
+  renormalizes to `0x1p-1074`. One pure-Python rendering cannot match
+  both conformance hosts; conformance rows exclude subnormal cells.
+- Evidence: 83-cell probe battery vs bash 5.2.26 committed in
+  `docs/reviews/evidence/boundary_remediation_2026-07/5r-rescue/`
+  (base 46 DIFF → tip 3, all declared); 13 engine-direct unit pins +
+  9 libc-stable conformance rows, 22/22 red-on-base by stash replay.
+
 ## 0.778.0 (2026-08-09) - Hub decomposition + dead API (remediation slot 5C.2)
 - Dead API deleted, censuses committed first: `IOManager.with_redirections`
   (dead twin of `guarded_redirections` -- same six invariants line-for-line),
