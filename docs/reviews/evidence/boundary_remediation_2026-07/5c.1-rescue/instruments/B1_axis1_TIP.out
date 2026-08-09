@@ -1,0 +1,34 @@
+# TIP  tree=/Users/pwilson/src/psh-r5c-1  oracle=/opt/homebrew/bin/bash 5.2.26(1)-release
+=== AXIS 1: non-defect paths (valid AND invalid input) ===
+cd /tmp; pushd /usr >/dev/null; popd; echo rc=$?     ::: /tmp|rc=0|  rc=0|
+cd /tmp; pushd /usr >/dev/null; popd +0 >/dev/null; echo rc=$? ::: rc=0|  rc=0|
+cd /tmp; pushd /usr >/dev/null; popd -0 >/dev/null; echo rc=$? ::: rc=0|  rc=0|
+popd letters                                         ::: psh: line 1: popd: directory stack empty|  rc=1|
+popd +letters                                        ::: psh: line 1: popd: directory stack empty|  rc=1|
+popd -letters                                        ::: psh: line 1: popd: directory stack empty|  rc=1|
+popd +99                                             ::: psh: line 1: popd: directory stack empty|  rc=1|
+popd -99                                             ::: psh: line 1: popd: directory stack empty|  rc=1|
+popd ""                                              ::: psh: line 1: popd: directory stack empty|  rc=1|
+popd +                                               ::: psh: line 1: popd: directory stack empty|  rc=1|
+popd -                                               ::: psh: line 1: popd: directory stack empty|  rc=1|
+cd /tmp; pushd /usr >/dev/null; popd -n; echo rc=$?  ::: /usr|rc=0|  rc=0|
+popd -n letters                                      ::: psh: line 1: popd: invalid argument: letters|  rc=1|
+popd -n +99                                          ::: psh: line 1: popd: directory stack index out of range: +99|  rc=1|
+dirs                                                 ::: ~/src/psh-r5c-1/tmp/w5c1-neutral|  rc=0|
+dirs -v                                              :::  0  ~/src/psh-r5c-1/tmp/w5c1-neutral|  rc=0|
+dirs +0                                              ::: ~/src/psh-r5c-1/tmp/w5c1-neutral|  rc=0|
+dirs -0                                              ::: ~/src/psh-r5c-1/tmp/w5c1-neutral|  rc=0|
+dirs letters                                         ::: psh: line 1: dirs: invalid argument: letters|  rc=1|
+dirs +letters                                        ::: psh: line 1: dirs: invalid index argument: +letters|  rc=1|
+dirs +99                                             ::: psh: line 1: dirs: directory stack index out of range: +99|  rc=1|
+dirs -99                                             ::: psh: line 1: dirs: directory stack index out of range: -99|  rc=1|
+dirs +                                               ::: psh: line 1: dirs: invalid index argument: +|  rc=1|
+dirs -q                                              ::: psh: line 1: dirs: invalid option: -q|  rc=1|
+disown %bogus                                        ::: psh: line 1: disown: %bogus: no such job|  rc=1|
+disown notanumber                                    ::: psh: line 1: disown: notanumber: not a valid job specification or process id|  rc=1|
+disown 999999                                        ::: psh: line 1: disown: 999999: no such job|  rc=1|
+disown -h notanumber                                 ::: psh: line 1: disown: notanumber: not a valid job specification or process id|  rc=1|
+disown %1                                            ::: psh: line 1: disown: %1: no such job|  rc=1|
+disown                                               ::: psh: line 1: disown: no current job|  rc=1|
+sleep 0.2 & disown %1; jobs; echo rc=$?              ::: rc=0|  rc=0|
+sleep 0.2 & disown $!; jobs; echo rc=$?              ::: rc=0|  rc=0|

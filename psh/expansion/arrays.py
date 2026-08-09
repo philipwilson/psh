@@ -2,7 +2,7 @@
 
 Subscript/index/slice/length access on indexed and associative arrays,
 plus array-aware assignment. Mixed into VariableExpander (variable.py);
-methods use ``self.shell`` / ``self.state`` from the host class.
+methods use ``self.host`` / ``self.state`` from the host class.
 """
 from typing import TYPE_CHECKING, Optional, Tuple
 
@@ -83,7 +83,7 @@ class ArrayOpsMixin(_Base):
         subscript that fails to EVALUATE (``a[08]``, ``a[1//]``) is a fatal
         expansion error aborting the whole command (bash), not a silent 0.
         """
-        return self.shell.expansion_manager.subscript.indexed_index(index_expr)
+        return self.host.expansion_manager.subscript.indexed_index(index_expr)
 
     def _expand_array_indices(self, subscripted: str) -> str:
         """Handle ${!arr[@]} and ${!arr[*]} — *subscripted* is ``arr[@]``.
@@ -152,7 +152,7 @@ class ArrayOpsMixin(_Base):
                 return ''
             return result
         elif var and isinstance(var.value, AssociativeArray):
-            expanded_key = self.shell.expansion_manager.subscript.associative_key(index_expr)
+            expanded_key = self.host.expansion_manager.subscript.associative_key(index_expr)
             result = var.value.get(expanded_key)
             if result is None:
                 self._check_nounset_element(array_name, index_expr, check_nounset)
@@ -214,7 +214,7 @@ class ArrayOpsMixin(_Base):
             # resolution, create-if-absent, and observer notification — this
             # write never touches ``.value.set`` directly (core-state C2).
             key: "int | str"
-            subscript = self.shell.expansion_manager.subscript
+            subscript = self.host.expansion_manager.subscript
             if var is not None and isinstance(var.value, AssociativeArray):
                 key = subscript.associative_key(index_expr)
                 if key == "":

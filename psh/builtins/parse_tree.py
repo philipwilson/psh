@@ -33,7 +33,7 @@ class ParseTreeBuiltin(Builtin):
       -h           Show this help
 
     Exit Status:
-    Returns success unless a parse or visualization error occurs."""
+    Returns success unless a parse error occurs."""
 
     def execute(self, args: List[str], shell) -> int:
         """Execute the parse-tree builtin."""
@@ -130,10 +130,16 @@ class ParseTreeBuiltin(Builtin):
             return 0
 
         except ParseError as e:
+            # The ONE user-input error class here. A
+            # `(ValueError, TypeError, AttributeError)` net used to sit below
+            # this and turn any tokenizer/parser/visitor DEFECT into a bland
+            # "visualization error". It was measured unreachable from user
+            # input (remediation 5C.1: 124 cells = 4 formats x 31 inputs,
+            # including unclosed quotes, `$(((((`, `${x@Q}`, `;;` and `&&` --
+            # the handler body never executed) and removed, so a defect now
+            # surfaces under the strict-errors taxonomy instead of being
+            # reported to the user as a display problem.
             self.error(f"parse error: {e}", shell)
-            return 1
-        except (ValueError, TypeError, AttributeError) as e:
-            self.error(f"visualization error: {e}", shell)
             return 1
 
 
@@ -156,7 +162,7 @@ class ShowASTBuiltin(Builtin):
     Accepts the same options as parse-tree (except -f).
 
     Exit Status:
-    Returns success unless a parse or visualization error occurs."""
+    Returns success unless a parse error occurs."""
 
     def execute(self, args: List[str], shell) -> int:
         """Execute the show-ast builtin (alias for parse-tree -f pretty)."""
@@ -187,7 +193,7 @@ class ASTDotBuiltin(Builtin):
     in DOT format suitable for rendering with Graphviz.
 
     Exit Status:
-    Returns success unless a parse or visualization error occurs."""
+    Returns success unless a parse error occurs."""
 
     def execute(self, args: List[str], shell) -> int:
         """Execute the ast-dot builtin (alias for parse-tree -f dot)."""

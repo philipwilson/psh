@@ -1,0 +1,48 @@
+# Slot 5C.1 instrument manifest
+# generated: 2026-08-09T13:27:32Z by MANIFEST.sh (self-excluding)
+# tree: 3fe48475d704dbf59711195b41d13c2b9b994b5a
+
+FILE                                     MD5                                KIND
+00_discriminator_COPY.py                 dd3e1219245f4174c841a719f6789ea4   READ-ONLY copy of a committed instrument
+05_sig_census_COPY.py                    fbf3e7cf962861633bbe477201559788   READ-ONLY copy of a committed instrument
+06_broad_except_ast_COPY.py              73a08da75009840ae55be536978a3ff9   READ-ONLY copy of a committed instrument
+A1_broad_except_BASE_d0956bed.out        df00835e937529880efe1267c76e32d7   transcript
+A10_seam_census_BASE.out                 aff8e58c48004b5ff2d6ac780bdc658a   transcript
+A10_seam_census.py                       c8d0b42dce8f031618c319c1d77e0768   instrument
+A16_raw_arith_BASE.out                   cbc03a66211cc73c93a912a6b42d490f   transcript
+A16_raw_arith_escape.py                  2ce76de98b471bf9a6ca93187026b653   instrument
+A2_sig_census_BASE_d0956bed.out          483475c69d9fcf97e8b439376094ca67   transcript
+A4_let_leg_forcing_BASE.out              ae5840e32083a15548eb5d40c9a16cc5   transcript
+A4_let_leg_forcing.py                    8af7b993aa839d70fe870a702f4b2802   instrument
+A4b_let_bash_BASE.out                    568924a5fe396751ac8d5231ccb3774d   transcript
+A4b_let_bash_battery.sh                  29d1f9c2e5b81e3b22bbc2a8fb2521ad   instrument
+A4b_let_bash_TIP.out                     568924a5fe396751ac8d5231ccb3774d   transcript
+A5_shell_usage_BASE.out                  83d90c25bada8eee78ab632542cf4e33   transcript
+A5_shell_usage_census.py                 a718c24ce2e08ad96fc012271df78f7d   instrument
+A6_protocol_feasibility.py               bd0cc3b7cf6ae771b6d3e668d0665c04   instrument
+A6b_mutation_driver.py                   e8eee40aec2d6fec177e9d1b8886a4b5   instrument
+A7_bare_star_sweep.py                    29371ada9520b1ea6ab3aa3e9c6d7745   instrument
+A8_handler_dump_BASE.out                 8ed3000515a80142e13f52bb9009d3a7   transcript
+A8_handler_dump.py                       bedc575221b7f826d9c65d35ddc63330   instrument
+A9_masker_reach_BASE.out                 c1f48ad6f12c706e9d431db2f824d0a3   transcript
+A9_masker_reachability.py                fe25465951674cfbbcbdece647fed39a   instrument
+B1_axis1_BASE.out                        03cf4b0a83f11125c175b0d22c52eea0   transcript
+B1_axis1_TIP.out                         90c2effe7c15de7b2a3fea310766beac   transcript
+B1_masker_two_axis.sh                    60a38e23e432afa0a7b910db7f54edf2   instrument
+B2_axis2_BASE.out                        653d84d80c9ea8b2af9d906374b87829   transcript
+B2_axis2_TIP.out                         ed34955a02bcd8375aabffab62e3ff7b   transcript
+B2_forced_defect.py                      5e6b4b5a8a3b4f8e55fcdfa47c828014   instrument
+B3_astdebug_BASE.out                     b39a58d395bb68c331a7a4826627d3ff   transcript
+B3_astdebug_TIP.out                      679c5f801353ba08bef3d7c90bcbffc8   transcript
+B3_astdebug_two_axis.py                  558543dd70a8dc3eb4f3db469a9016dd   instrument
+B4_offender_TIP.out                      09348057747ac7cfd60696d8c0fa672e   transcript
+B4_terminal_ledger_offender.py           f457c41f9693f6ddb5ed5189c322c05c   instrument
+B5_census_delta.out                      885b76e47773f0eac1694896504c574d   transcript
+B5_census_delta.py                       738c9ea722aa4bead0000b78d09a9375   instrument
+COMPARE_BASH_gate2.out                   97a835005386cc141ac3b9d21b9bd72a   transcript
+COMPARE_BASH.out                         34b8c3d922142c56b5ac05e4f77ffe89   transcript
+GATE_tail.txt                            ae0e620edb1a97e9158da6042fe2fbb2   transcript
+GATE2_tail.txt                           02d1e28547cbd437f98683fa407a4689   transcript
+
+instruments: 18
+transcripts: 20

@@ -3,7 +3,7 @@
 ``VariableExpander`` (variable.py) is composed from four mixins —
 ``ArrayOpsMixin`` (arrays.py), ``OperatorOpsMixin`` (operators.py),
 ``OperandOpsMixin`` (operands.py), and ``FieldExpansionMixin``
-(fields.py). Each mixin references ``self.state`` / ``self.shell`` /
+(fields.py). Each mixin references ``self.state`` / ``self.host`` /
 ``self.param_expansion`` (set in ``VariableExpander.__init__``) and
 methods defined on *sibling* mixins or on ``VariableExpander`` itself.
 mypy cannot see those when checking a mixin in isolation.
@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Optional, Protocol
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
-    from ..shell import Shell
+    from ..protocols import ExpansionHost
     from .operands import OperandOrStr, OperandValue
     from .parameter_expansion import ParameterExpansionOps
 
@@ -27,24 +27,30 @@ if TYPE_CHECKING:
 class VariableExpanderProtocol(Protocol):
     """The attributes and cross-mixin methods the expander mixins use."""
 
-    #: The whole ``Shell``, reached at 11 sites: eight
-    #: ``self.shell.expansion_manager`` hops, and three that forward the shell
-    #: WHOLE (``evaluate_arithmetic(expr, self.shell)`` twice and
-    #: ``PromptExpander(self.shell)`` once, all in ``operators.py``).
+    #: The expansion HOST — shell state plus the expansion machinery, and
+    #: nothing else. This member was the campaign's "broad owner escape
+    #: hatch": until remediation 5C.1 it was declared ``shell: "Shell"``, the
+    #: whole shell, reached at 11 sites (eight ``expansion_manager`` hops plus
+    #: three whole-shell forwards in ``operators.py``).
     #:
-    #: Remediation 5B.2 was chartered to REMOVE this member and did not.
-    #: Migrating the eight manager hops to ``protocols.ExpansionRuntime``
-    #: fails on measurement: they reach ``.subscript`` (4), ``.command_sub``
-    #: (2), ``.execute_arithmetic_expansion`` and ``.tilde_expander`` — and
-    #: ``ExpansionRuntime`` declares none of those. Its four members
-    #: (``expand_string_variables``, ``expand_assignment_value_word``,
-    #: ``variable_expander``, ``word_expander``) fit the SUBSCRIPT authority,
-    #: which consumes it, but not these mixins, whose reaches are to the
-    #: manager's sub-expanders. The twelfth site — a ``state.locale`` read —
-    #: did migrate, to the ``state`` member below. The census is pinned by
-    #: ``tests/unit/expansion/test_variable_expander_reach_5b2.py`` so the
-    #: remainder stays a measured quantity; successor row D-5B.2-s2.
-    shell: "Shell"
+    #: Remediation 5B.2 was chartered to remove it and could not, for a reason
+    #: worth keeping: the mixins cannot be narrower than what they FORWARD to,
+    #: and ``evaluate_arithmetic`` and ``PromptExpander`` both took a whole
+    #: ``Shell``. Migrating the hops to ``ExpansionRuntime`` also failed on
+    #: measurement — they reach ``.subscript``, ``.command_sub``,
+    #: ``.execute_arithmetic_expansion`` and ``.tilde_expander``, and
+    #: ``ExpansionRuntime`` declares none of those.
+    #:
+    #: 5C.1 removed the obstacle rather than the symptom: those two signatures
+    #: now take ``ExpansionHost``, so the forwards no longer force a ``Shell``;
+    #: and the hop set became ``ExpansionSubExpanders``, composed with
+    #: ``ExpansionRuntime`` into the ``ExpansionSurface`` that
+    #: ``ExpansionHost.expansion_manager`` returns — a composition of two
+    #: MEASURED member sets, not a widening of either. The member is renamed
+    #: ``host`` deliberately: the consumer ratchet keys its
+    #: instance-assignment detector on the FIELD NAME, so a ``self.shell``
+    #: that merely changed type would still read as a service locator.
+    host: "ExpansionHost"
 
     #: The whole ``ShellState``. Remediation 5B.2 measured whether this could
     #: narrow to the campaign's three-member variable value-surface protocol

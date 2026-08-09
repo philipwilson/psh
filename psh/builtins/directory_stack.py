@@ -404,42 +404,45 @@ class PopdBuiltin(Builtin):
             self.error(f"invalid argument: {arg}", shell)
             return 1
 
+        # int(arg) is the ONLY documented ValueError source here, so it is the
+        # only thing under the net — the shape the sibling _popd_no_cd already
+        # used. The pop transaction below used to sit inside this try, which
+        # meant a defect in _chdir_or_error/update_pwd_vars/stack.pop was
+        # reported to the user as "invalid index argument" (remediation 5C.1,
+        # MEDIUM-12).
         try:
             index = int(arg)
-            if arg.startswith('-'):
-                # Bash-verified: -N means Nth from the RIGHT, 0-based
-                # (-0 is the bottom of the stack), so the left index is
-                # size-1-N.
-                index = stack.size() - 1 + index
-            else:
-                # +N means Nth from left
-                index = index
-
-            if index < 0 or index >= stack.size():
-                self.error(f"directory stack index out of range: {arg}", shell)
-                return 1
-
-            if index == 0:
-                # Popping the current directory - change to new top FIRST
-                # (transactional): chdir to stack[1], pop only on success.
-                target = stack.stack[1]
-                if not _chdir_or_error(self, target, shell):
-                    return 1
-                if not update_pwd_vars(self, shell, target, old_dir):
-                    # Same keep-the-entry semantics as the no-arg form.
-                    stack.update_current(target)
-                    return 1
-                stack.pop(0)
-            else:
-                # Popping non-current directory - don't change directories
-                stack.pop(index)
-
-            _print_stack(self, stack, shell)
-            return 0
-
         except ValueError:
             self.error(f"invalid index argument: {arg}", shell)
             return 1
+
+        if arg.startswith('-'):
+            # Bash-verified: -N means Nth from the RIGHT, 0-based
+            # (-0 is the bottom of the stack), so the left index is
+            # size-1-N.
+            index = stack.size() - 1 + index
+
+        if index < 0 or index >= stack.size():
+            self.error(f"directory stack index out of range: {arg}", shell)
+            return 1
+
+        if index == 0:
+            # Popping the current directory - change to new top FIRST
+            # (transactional): chdir to stack[1], pop only on success.
+            target = stack.stack[1]
+            if not _chdir_or_error(self, target, shell):
+                return 1
+            if not update_pwd_vars(self, shell, target, old_dir):
+                # Same keep-the-entry semantics as the no-arg form.
+                stack.update_current(target)
+                return 1
+            stack.pop(0)
+        else:
+            # Popping non-current directory - don't change directories
+            stack.pop(index)
+
+        _print_stack(self, stack, shell)
+        return 0
 
     def _popd_no_cd(self, args: List[str], stack: DirectoryStack,
                     shell: 'Shell') -> int:
@@ -541,20 +544,24 @@ class DirsBuiltin(Builtin):
                         self.error(f"invalid option: -{flag}", shell)
                         return 1
             elif arg.startswith('+') or arg.startswith('-'):
-                # Index argument
+                # Index argument. Only int(arg) can raise the documented
+                # ValueError; stack.size()/self.error sat inside the net until
+                # remediation 5C.1, so a defect in either was reported as
+                # "invalid index argument".
                 try:
                     show_index = int(arg)
-                    if arg.startswith('-'):
-                        # Bash-verified: -N means Nth from the RIGHT,
-                        # 0-based (-0 is the bottom of the stack), so the
-                        # left index is size-1-N.
-                        show_index = stack.size() - 1 + show_index
-
-                    if show_index < 0 or show_index >= stack.size():
-                        self.error(f"directory stack index out of range: {arg}", shell)
-                        return 1
                 except ValueError:
                     self.error(f"invalid index argument: {arg}", shell)
+                    return 1
+
+                if arg.startswith('-'):
+                    # Bash-verified: -N means Nth from the RIGHT,
+                    # 0-based (-0 is the bottom of the stack), so the
+                    # left index is size-1-N.
+                    show_index = stack.size() - 1 + show_index
+
+                if show_index < 0 or show_index >= stack.size():
+                    self.error(f"directory stack index out of range: {arg}", shell)
                     return 1
             else:
                 self.error(f"invalid argument: {arg}", shell)

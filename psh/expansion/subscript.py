@@ -44,8 +44,7 @@ from .param_parser import skip_quoted_run
 
 if TYPE_CHECKING:
     from ..core.state import ShellState
-    from ..protocols import ExpansionRuntime
-    from ..shell import Shell
+    from ..protocols import ExpansionHost, ExpansionRuntime
 
 
 class SubscriptSyntaxError(ExpansionError):
@@ -155,12 +154,16 @@ class SubscriptEvaluator:
     Lives on :class:`ExpansionManager` as ``shell.expansion_manager.subscript``.
     """
 
-    def __init__(self, shell: 'Shell'):
-        self.shell = shell
+    def __init__(self, host: 'ExpansionHost') -> None:
+        #: The expansion host. This took the whole ``Shell`` until remediation
+        #: 5C.1: it forwards to ``evaluate_arithmetic``, and while THAT took a
+        #: ``Shell`` this had to as well (the consumer ratchet's allowlist said
+        #: exactly that). Typing the arithmetic signature retired the reason.
+        self.host = host
 
     @property
     def state(self) -> "ShellState":
-        return self.shell.state
+        return self.host.state
 
     @property
     def _manager(self) -> "ExpansionRuntime":
@@ -169,11 +172,12 @@ class SubscriptEvaluator:
         This boundary consumes exactly three of that protocol's members —
         ``expand_assignment_value_word`` (the associative-key engine) and
         ``variable_expander`` twice — so the narrow surface is the honest type
-        here, even though ``__init__`` still takes the whole ``Shell`` for its
-        ``evaluate_arithmetic`` forward (see the Q1 ratchet's entry for this
-        module, which stays for exactly that reason).
+        here. Until remediation 5C.1 ``__init__`` still took the whole
+        ``Shell`` for its ``evaluate_arithmetic`` forward, and the Q1 ratchet
+        carried an allowlist entry saying so; typing that signature retired
+        both the forward and the entry.
         """
-        return self.shell.expansion_manager
+        return self.host.expansion_manager
 
     # -- The re-lex bridge: raw subscript text -> one Word --------------------
     def word_from_text(self, raw: str) -> Word:
@@ -380,7 +384,7 @@ class SubscriptEvaluator:
     def _evaluate_expanded_index(self, expanded: str) -> int:
         """Arithmetic-evaluate an already-``$``-expanded indexed subscript."""
         try:
-            return evaluate_arithmetic(expanded, self.shell)
+            return evaluate_arithmetic(expanded, self.host)
         except ArithmeticError as e:
             # Location-prefixed like every non-interactive runtime diagnostic
             # (v0.690 convention; bash: `bash: line 1: 08: value too great…`).

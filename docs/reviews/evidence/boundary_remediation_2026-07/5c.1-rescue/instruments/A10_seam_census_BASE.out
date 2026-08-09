@@ -1,0 +1,29 @@
+tree: /Users/pwilson/src/psh-r5c-1
+Method-A incomplete total (S1 only): 648
+BOUNDARY SEAMS (S1..S4):             80
+residue (incomplete, not a seam):    568
+
+SEAMS by package: [('core', 24), ('executor', 18), ('interactive', 11), ('io_redirect', 7), ('parser', 7), ('utils', 6), ('version.py', 2), ('scripting', 2), ('visitor', 2), ('expansion', 1)]
+
+SEAMS by file (all 21 files):
+    16  psh/core/state.py
+    11  psh/executor/job_control.py
+     7  psh/executor/strategies.py
+     7  psh/interactive/signal_manager.py
+     7  psh/io_redirect/manager.py
+     6  psh/core/variables.py
+     4  psh/parser/__init__.py
+     3  psh/parser/recursive_descent/support/word_builder.py
+     3  psh/utils/signal_utils.py
+     2  psh/version.py
+     2  psh/interactive/title.py
+     2  psh/scripting/base.py
+     2  psh/utils/heredoc_detection.py
+     1  psh/core/assignment_utils.py
+     1  psh/core/locale_service.py
+     1  psh/expansion/_protocols.py
+     1  psh/interactive/history_expansion.py
+     1  psh/interactive/prompt.py
+     1  psh/utils/ast_debug.py
+     1  psh/visitor/formatter_quoting.py
+     1  psh/visitor/traversal.py

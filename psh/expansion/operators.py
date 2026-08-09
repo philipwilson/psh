@@ -81,11 +81,11 @@ class OperatorOpsMixin(_Base):
             offset_str, length_str = operand, None
 
         try:
-            offset = evaluate_arithmetic(offset_str, self.shell) if offset_str.strip() else 0
+            offset = evaluate_arithmetic(offset_str, self.host) if offset_str.strip() else 0
             if length_str is None:
                 length = None
             elif length_str.strip():
-                length = evaluate_arithmetic(length_str, self.shell)
+                length = evaluate_arithmetic(length_str, self.host)
             else:
                 length = 0
         except ArithmeticError:
@@ -195,7 +195,7 @@ class OperatorOpsMixin(_Base):
             if isinstance(var.value, IndexedArray):
                 return var.value.get(self._eval_array_index(index_expr)) is not None
             if isinstance(var.value, AssociativeArray):
-                key = self.shell.expansion_manager.subscript.associative_key(index_expr)
+                key = self.host.expansion_manager.subscript.associative_key(index_expr)
                 return var.value.get(key) is not None
             # Scalar with a subscript: bash treats x[0] as set iff x is set
             # (a scalar acts as an array with one element at index 0).
@@ -528,7 +528,7 @@ class OperatorOpsMixin(_Base):
             # non-printing markers rather than emitting \001/\002 (bash).
             # cycle-break: interactive.prompt -> interactive (pkg) -> ... -> parser -> expansion.operators
             from ..interactive.prompt import PromptExpander
-            return PromptExpander(self.shell).expand_full(value, readline_markers=False)
+            return PromptExpander(self.host).expand_full(value, readline_markers=False)
         if op == 'a':
             return self._var_attr_flags(self._transform_name(var_name))
         if op == 'A':

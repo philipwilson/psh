@@ -1,0 +1,11 @@
+# tree=/Users/pwilson/src/psh-r5c-1/tmp/base-probe2
+=== AXIS 1: unknown format (USER-REACHABLE) — warning must be identical ===
+  warning line: Warning: AST formatting failed (unknown AST format 'bogus'), using default format
+  fallback rendered: True
+
+=== AXIS 2: defect inside the selected formatter ===
+  outcome: (returned normally)
+  masked-as-warning: Warning: AST formatting failed (seeded defect inside ASTPrettyPrinter.visit), using default format
+
+=== CONTROL: no seed, known format ===
+  outcome: (returned normally); rendered: True

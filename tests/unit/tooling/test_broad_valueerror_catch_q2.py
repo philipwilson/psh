@@ -29,6 +29,23 @@ as VE; except VE``) — the name no longer reads ``ValueError``; and a
 NESTED-swallow re-raise (a ``raise`` inside an inner ``try`` in the handler that
 does not actually re-raise the outer error) — the ``raise``-anywhere check treats
 it conservatively as re-raising.
+
+THIRD out-of-scope shape, RECORDED because remediation 5C.1 created the first
+live instance of it (verify-round N-3): a catch of an in-tree SUBCLASS of
+``ValueError``/``TypeError``. ``_catches_vt`` matches literal NAMES, so
+``psh/utils/ast_debug.py``'s ``except UnknownASTFormat`` — where
+``UnknownASTFormat(ValueError)`` — is invisible to this detector even though its
+try body is broad by the ``>= 5`` call-target disjunct.
+
+That site's disposition is CORRECT and is not what is being flagged: the body
+has exactly one raise site, this module's own, and typing it is the 2.3/3.5
+model applied precisely. What is flagged is that the ratchet can no longer SEE
+the shape, so a future broad body caught behind a VE subclass would not be
+triaged. Resolving it means teaching the detector to follow in-tree subclass
+definitions, which is a detector rewrite and therefore a successor row rather
+than 5C.1's work — deliberately NOT done here, because widening a detector in
+the same slot that created its first instance is how a guard gets tuned to
+accept what its author just wrote.
 """
 
 import ast
@@ -100,36 +117,29 @@ def _live_candidates():
 
 # --- The known broad maskers (DEBT — shrink-only). Each: what the try wraps. --
 BROAD_MASKING = {
-    ("psh/builtins/directory_stack.py", ("ValueError",),
-     ("_chdir_or_error", "_print_stack", "error", "int", "pop", "size",
-      "startswith", "update_current", "update_pwd_vars")):
-        "popd: only int(arg) should raise VE, but _chdir_or_error/pop/"
-        "update_pwd_vars sit inside the try — a defect there is reported as "
-        "'invalid index argument'. The sibling _popd_no_cd wraps ONLY int(arg) "
-        "(the codebase's own correct narrow form).",
-    ("psh/builtins/directory_stack.py", ("ValueError",),
-     ("error", "int", "size", "startswith")):
-        "dirs -N: intent is int(arg) but stack.size()/self.error inside the try "
-        "can mask a real VE as 'invalid index argument'.",
-    ("psh/builtins/disown.py", ("ValueError",),
-     ("_disown_job", "error", "get_job_by_pid", "int")):
-        "disown: intent is int(spec); get_job_by_pid/_disown_job are also "
-        "guarded, so a defect there reads as a bad job specification.",
-    ("psh/builtins/parse_tree.py", ("ValueError", "TypeError", "AttributeError"),
-     ("ASTDotGenerator", "ASTPrettyPrinter", "create_parser", "parse", "render",
-      "to_dot", "tokenize", "visit", "write_line")):
-        "debug builtin: wraps the whole tokenize->parse->format pipeline; a "
-        "parser/visitor VT/AttributeError defect becomes a bland "
-        "'visualization error'.",
-    ("psh/builtins/read_builtin.py", ("ValueError",),
-     ("_assign_to_array", "_assign_to_variables", "_process_escapes",
-      "_read_continuations", "_read_exact", "_read_normal", "_read_special",
-      "_read_with_timeout", "_split_with_ifs", "append", "cursor_for_fd",
-      "endswith", "get", "get_variable", "join", "len", "poll_readable",
-      "set_variable")):
-        "the whole `read` record engine under one VE net — no int()/documented-"
-        "VE source in the body; a VE from any helper bug is reported as a user "
-        "'read error'.",
+    # SHRUNK by remediation 5C.1 (MEDIUM-12, ruling (b)): the popd, `dirs -N`
+    # and disown entries are GONE. Each try body now wraps ONLY its int()
+    # conversion — the shape the sibling `_popd_no_cd` already used — so none
+    # of the three is a candidate any more, and
+    # test_classification_has_no_stale_entries is what forces the entries out
+    # rather than leaving them as decoration.
+    #
+    # Two-axis proven: 32 non-defect cells (valid AND invalid INPUT — invalid
+    # input is not a defect) byte-identical base vs tip; and a seeded defect in
+    # each former try body (DirectoryStack.pop / DirectoryStack.size /
+    # get_job_by_pid), which base reported to the user as "invalid index
+    # argument" / "not a valid job specification or process id", now SURFACES.
+    #
+    # Also SHRUNK by 5C.1: the parse_tree.py VT/AttributeError pipeline net and
+    # the read_builtin.py whole-record-engine VE net. Both were FORCED and
+    # measured DEFECT-ONLY before removal — 124 parse-tree cells (4 formats x
+    # 31 inputs) and 19 hostile `read` cells (7 malformed-UTF-8 shapes x the
+    # -N/-n/-d/-r/-a/IFS option axis) never reached either handler body, while
+    # a SEEDED defect did, so the zero is a property of the production path
+    # rather than of an inert probe. parse_tree keeps its `except ParseError`
+    # leg (the real user-input class) and read_builtin keeps its
+    # `except OSError` leg (the real `read error:` diagnostic).
+    #
     # SHRUNK by remediation 3.5 (MEDIUM-12b, ruling (b)): the `[[ ]]` entry
     # ("psh/executor/core.py", ("ValueError","TypeError","OSError"),
     #  ("TestExpressionEvaluator","evaluate")) is gone. Its reason read "it
@@ -138,19 +148,34 @@ BROAD_MASKING = {
     # invalid-regex raiser is typed, and its three can't-happen branches raise
     # RuntimeError. The site is no longer a candidate at all, which is why the
     # entry had to go: test_classification_has_no_stale_entries forces it.
+    # JUSTIFIED-KEEP with a CORRECTED reason (remediation 5C.1, ruling (b)).
+    # The previous reason pleaded the combinator parser's quality bar, which is
+    # true of the module but is not why this catch is acceptable — it reads as
+    # an excuse for debt. The honest reason is the method's contract, and it is
+    # measured: `can_parse` has ZERO production callers (the shell entry points
+    # call only `parse`/`parse_with_heredocs`; the only callers in the tree are
+    # tests/unit/parser/combinators/test_parser_integration.py and
+    # tests/regression/test_parser_review_fixes.py). It is a test-facing
+    # can-this-parse PROBE whose whole contract is to answer False rather than
+    # raise, so a catch-and-return-False IS the correct implementation of what
+    # it promises, not a masked defect on a production path.
     ("psh/parser/combinators/parser.py",
      ("AttributeError", "IndexError", "TypeError", "ParseError"),
      ("_prepare_tokens", "len", "parse")):
-        "can_parse wraps a full parse and turns ANY AttributeError/TypeError bug "
-        "into 'not parseable'. The educational combinator parser is explicitly "
-        "outside the production quality bar (parser/CLAUDE.md) — flagged, low "
-        "priority.",
-    ("psh/utils/ast_debug.py", ("ValueError", "TypeError", "AttributeError"),
-     ("ASTDotGenerator", "ASTPrettyPrinter", "ValueError", "print", "render",
-      "to_dot", "visit")):
-        "the AST-formatter selection downgrades a TypeError/AttributeError in "
-        "ANY formatter to a warning + fallback; a single if/elif statement hides "
-        "many formatter calls (the compound-statement masker).",
+        "can_parse is a TEST-FACING probe with zero production callers, whose "
+        "documented contract is to return False rather than raise — the broad "
+        "catch IS that contract, not a masked defect. Verified by grep: the "
+        "shell entry points call only parse/parse_with_heredocs. If a "
+        "production caller ever appears, this entry must be re-triaged.",
+    # SHRUNK by remediation 5C.1: the utils/ast_debug.py formatter-selection
+    # net. Its VE leg was NOT dead — it was the module's OWN
+    # `raise ValueError("unknown AST format ...")`, reachable via
+    # PSH_AST_FORMAT=bogus — so the fix was to TYPE the raise
+    # (`UnknownASTFormat`) and catch only that, rather than delete the handler.
+    # Two-axis proven: the user-reachable unknown-format warning + fallback is
+    # byte-identical base vs tip, and a seeded TypeError inside
+    # ASTPrettyPrinter.visit that base downgraded to that same warning now
+    # SURFACES.
 }
 
 # --- Candidates that are actually NARROW/safe (single conversion or one -------

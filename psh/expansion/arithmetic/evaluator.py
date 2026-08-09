@@ -1,7 +1,7 @@
 """Evaluator for shell arithmetic AST nodes, plus the public entry points."""
 
 import re
-from typing import Optional, Tuple, Union
+from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 from ...core import (
     ArraySubscriptError,
@@ -30,6 +30,9 @@ from .nodes import (
 from .parser import ArithParser
 from .tokenizer import ArithTokenizer
 from .tokens import ArithTokenType
+
+if TYPE_CHECKING:
+    from ...protocols import ExpansionHost
 
 # A plain (optionally signed) decimal integer with no leading-zero octal
 # ambiguity. Values matching this are safe to parse with int(); anything else
@@ -69,7 +72,8 @@ class ArithmeticEvaluator:
     # bound.
     MAX_EVAL_DEPTH = 1024
 
-    def __init__(self, shell, arith_source_quotes: bool = True):
+    def __init__(self, shell: 'ExpansionHost',
+                 arith_source_quotes: bool = True) -> None:
         self.shell = shell
         self._eval_depth = 0
         # True for `(( ))`/`$(( ))` (body not shell-processed → apply the extra
@@ -633,7 +637,7 @@ def _mask_arith_subscripts(expr: str) -> "Tuple[str, list]":
     return ''.join(out), regions
 
 
-def _arith_source_round1(region: str, shell) -> str:
+def _arith_source_round1(region: str, shell: 'ExpansionHost') -> str:
     """Round 1 of bash's TWO-round ``(( ))``/``$(( ))`` associative keying
     (W2/CV1 B1/M1), applied to a SOURCE ``[...]`` subscript region ONLY when it
     contains NO expansion (M1: a subscript with any ``$``/backtick gets round-2
@@ -651,7 +655,8 @@ def _arith_source_round1(region: str, shell) -> str:
     return '[' + processed + ']'
 
 
-def _arith_preexpand(expr: str, shell, arith_source_quotes: bool = True) -> str:
+def _arith_preexpand(expr: str, shell: 'ExpansionHost',
+                     arith_source_quotes: bool = True) -> str:
     """Run the arithmetic ``$``-substitution pre-pass, holding array-subscript
     regions RAW (see :func:`_mask_arith_subscripts`) so a subscript's ``$k``
     reaches the keying authority with provenance. For a SOURCE subscript in a
@@ -674,7 +679,7 @@ def _arith_preexpand(expr: str, shell, arith_source_quotes: bool = True) -> str:
     return expanded
 
 
-def evaluate_arithmetic(expr: str, shell, expand: bool = True,
+def evaluate_arithmetic(expr: str, shell: 'ExpansionHost', expand: bool = True,
                         arith_source_quotes: bool = True) -> int:
     """Evaluate an arithmetic expression with the given shell context.
 
@@ -705,7 +710,7 @@ def evaluate_arithmetic(expr: str, shell, expand: bool = True,
         shell.state._arith_recursion_depth = depth - 1
 
 
-def _evaluate_arithmetic_inner(expr: str, shell, expand: bool,
+def _evaluate_arithmetic_inner(expr: str, shell: 'ExpansionHost', expand: bool,
                                arith_source_quotes: bool = True) -> int:
     """Tokenize/parse/evaluate one arithmetic expression (no depth guard)."""
     try:
@@ -759,7 +764,7 @@ def _evaluate_arithmetic_inner(expr: str, shell, expand: bool,
         raise ShellArithmeticError(str(e)) from e
 
 
-def arithmetic_expansion_value(arith_expr: str, shell) -> int:
+def arithmetic_expansion_value(arith_expr: str, shell: 'ExpansionHost') -> int:
     """Evaluate a BARE arithmetic expression (no ``$(( ))`` wrapper) for the
     expansion pipeline, converting evaluation failures into the user-facing
     errors that stop command execution (like bash).
@@ -805,7 +810,7 @@ def arithmetic_expansion_value(arith_expr: str, shell) -> int:
         raise ExpansionError(f"arithmetic error: {e}") from e
 
 
-def execute_arithmetic_expansion(expr: str, shell) -> int:
+def execute_arithmetic_expansion(expr: str, shell: 'ExpansionHost') -> int:
     """Evaluate a ``$((expr))`` arithmetic-expansion string to its value.
 
     The adapter for callers that hold the full ``$((...))`` source text (e.g.

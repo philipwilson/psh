@@ -4,6 +4,43 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.777.0 (2026-08-09) - Typed errors + boundary signatures (remediation slot 5C.1)
+
+- **MEDIUM-12 CLOSED — every broad exception net dispositioned.** The seven
+  remaining `BROAD_MASKING` ledger entries: `popd`/`dirs -N`/`disown` narrowed
+  to the `int(arg)` conversion (the codebase's own `_popd_no_cd` form);
+  `parse_tree` and `read`'s defect-only nets DELETED (forcing-proven: the
+  handler bodies never execute on user input); `ast_debug` narrowed by TYPING
+  its own raise site (`UnknownASTFormat`) — at base a seeded formatter defect
+  and a bad format name produced the IDENTICAL warning, indistinguishable;
+  now the defect surfaces while the user-visible path is byte-identical
+  (committed two-axis pin); combinator `can_parse` justified-keep with an
+  honest corrected reason (zero production callers). Q2 ledger 7 → 1.
+- **The 24 terminal `except Exception` handlers classified, none narrowed**
+  (6 re-raise, 3 route to the internal-defect reporter, 15 terminal-by-design:
+  fork boundary, REPL survival, destructors, locale probes) under a new
+  self-maintaining ledger (`test_terminal_except_ledger_5c1.py`) with
+  line-independent, multiplicity-aware keys.
+- **`let` narrowed to the evaluator's contract** (`except
+  ShellArithmeticError`): the ValueError leg proven dead over 132 forced
+  cells + single-door static analysis; bash battery byte-identical
+  (BASE == TIP transcript md5).
+- **`VariableExpanderProtocol.shell` RETIRED — no expansion consumer holds a
+  whole `Shell`.** New `ExpansionHost` protocol (composition of the measured
+  hop surface with `ExpansionRuntime`; runtime_checkable, isinstance-pinned —
+  Shell already satisfies it, so every narrowing is annotation-only).
+  `evaluate_arithmetic` and `PromptExpander` typed via `ExpansionHost`.
+- **Signature census 648 → 633 (Method A) / 488 → 478 (Method B)**, beating
+  the ruled floor; 80 boundary seams enumerated by operational definition.
+  All three campaign-created modules under both mypy disallow flags; the
+  twin mypy-guard made current (stale endpoint + hand-patch retired); the
+  bare-vs-star override hole closed both halves.
+- Verified: 4-agent adversarial round (bounce on record-layer findings; all
+  code substance held incl. 350 fresh probe cells) → fix round →
+  integrator-direct re-verify with independent mutations. Zero
+  shell-observable delta on non-defect paths (compare-bash 3,046/26 exact,
+  both gates).
+
 ## 0.776.0 (2026-08-09) - Consumer migration + caps (remediation slot 5B.2)
 
 Closes LEDGER MEDIUM-14 (protocol boundaries): the consumer-migration half of

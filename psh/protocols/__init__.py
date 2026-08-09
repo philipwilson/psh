@@ -24,6 +24,13 @@ Protocol             Canonical producer (``file.py#symbol``)
 ``LocaleAccess``     ``core/locale_service.py#LocaleService`` (on
                      ``ShellState.locale``) — collation, locale-gated case
                      mapping, POSIX character-class membership.
+``ExpansionHost``    ``shell.py#Shell`` — shell state plus the expansion
+                     machinery, and nothing else. The narrow replacement for
+                     handing round the whole ``Shell``: consumed by
+                     ``expansion/arithmetic/evaluator.py#evaluate_arithmetic``,
+                     ``interactive/prompt.py#PromptExpander`` and
+                     ``expansion/_protocols.py#VariableExpanderProtocol.host``
+                     (remediation 5C.1).
 ===================  =========================================================
 
 **Names are unique tree-wide.** ``ExpansionRuntime`` and ``LocaleAccess`` were
@@ -53,9 +60,20 @@ signatures), which is exactly the "does the producer expose this surface"
 question the pin asks. Consumers narrow via string (``TYPE_CHECKING``)
 annotations, so a migration adds NO runtime import edge to this package.
 
-**Every protocol here has at least one production consumer**, and that is a
-deliberate property rather than an accident of history: a protocol nothing
-depends on documents an intention, not a dependency. Q1 migrated ``IOContext``
+**Every EXPORTED protocol here has at least one production consumer**, and
+that is a deliberate property rather than an accident of history: a protocol
+nothing depends on documents an intention, not a dependency. The emphasis on
+*exported* is load-bearing, not a hedge: remediation 5C.1 added two protocols —
+``ExpansionSubExpanders`` and ``ExpansionSurface`` — that are consumed ONLY
+from inside this module, as ``ExpansionHost``'s member type and as
+``ExpansionSurface``'s own bases. They are deliberately absent from ``__all__``
+for exactly the reason this paragraph gives: exporting a surface nothing
+outside depends on would manufacture the defect the rule exists to prevent.
+They are the declared STRUCTURE of ``ExpansionHost``'s manager member, and the
+mutation arms in ``tests/unit/protocols/test_expansion_host_witness_5c1.py``
+bite THROUGH them, so they are observed rather than decorative. The census
+guard (``tests/unit/protocols/test_protocol_adoption_census_5b2.py``) checks
+``__all__``, which is the same line this paragraph draws. Q1 migrated ``IOContext``
 (the reader boundary — ``make_reader`` / ``InputCursorRegistry.cursor_for_fd``
 took ``Shell`` and used only ``.stdin``) and ``JobRuntime``
 (``ForegroundJobSession``, which took the concrete ``JobManager``). Remediation
@@ -291,7 +309,111 @@ class LocaleAccess(Protocol):
         ...
 
 
+class ExpansionSubExpanders(Protocol):
+    """The sub-expanders reachable from the expansion manager.
+
+    ``ExpansionRuntime`` models the manager as an ORCHESTRATOR — run a string
+    expansion, run an assignment-value expansion. This models it as a
+    DIRECTORY: the four sub-expander members that the variable-expander mixins
+    reach through it. The two sets are disjoint, which is why this is a second
+    protocol rather than four more members on the first (widening a protocol to
+    cover an unrelated use is how a service surface becomes a service locator
+    again).
+
+    The membership is exactly the measured hop usage, nothing added "while we
+    are here": ``.subscript`` (5 sites), ``.command_sub`` (2),
+    ``.execute_arithmetic_expansion`` (1), ``.tilde_expander`` (1).
+
+    Read-only PROPERTIES, not plain attributes: a mutable attribute in a
+    Protocol is INVARIANT, so declaring ``subscript: SubscriptEvaluator`` would
+    demand a producer hold exactly that type. ``ExpansionManager`` holds
+    concrete subtypes and nothing assigns THROUGH these, so the covariant read
+    surface is both correct and what the producer satisfies (the 5B.2 lesson).
+
+    Deliberately NOT exported. See :class:`ExpansionSurface`.
+    """
+
+    @property
+    def subscript(self) -> Any:
+        """The array-subscript authority (indexed arithmetic / assoc key)."""
+        ...
+
+    @property
+    def command_sub(self) -> Any:
+        """The command-substitution executor."""
+        ...
+
+    @property
+    def tilde_expander(self) -> Any:
+        """The tilde expander."""
+        ...
+
+    def execute_arithmetic_expansion(self, expr: str) -> int:
+        """Evaluate an arithmetic expansion body."""
+        ...
+
+
+class ExpansionSurface(ExpansionRuntime, ExpansionSubExpanders, Protocol):
+    """The whole expansion-manager surface: orchestration AND sub-expanders.
+
+    Declares NOTHING of its own, and that is the point. Both halves were
+    measured independently; composing them is not a widening of either, so
+    neither protocol grows to serve a use it was not designed for.
+
+    Not exported, together with :class:`ExpansionSubExpanders`, and the reason
+    is a real invariant rather than tidiness: ``psh.protocols`` forbids a
+    defined-but-unused EXPORT (``tests/unit/protocols/
+    test_protocol_adoption_census_5b2.py``), and these two are consumed only
+    from inside this module — as ``ExpansionHost``'s member type and as this
+    class's own bases. Exporting them would manufacture the very
+    zero-consumer surface that guard exists to prevent. They are the declared
+    STRUCTURE of ``ExpansionHost``'s manager member, not independently
+    consumable services; a future slot that genuinely wants to consume one
+    should export it THEN, together with its consumer.
+    """
+
+
+@runtime_checkable
+class ExpansionHost(Protocol):
+    """What a consumer needs from the object that owns the expansion machinery.
+
+    The narrow replacement for handing round the whole ``Shell``. Three
+    consumers depend on it, and its membership is the measured union of exactly
+    what they use:
+
+    * ``expansion/arithmetic/evaluator.py#evaluate_arithmetic`` — ``.state``
+      (variables, scope manager, error-location prefix, the arithmetic
+      recursion depth) and ``.expansion_manager`` (``expand_string_variables``,
+      ``subscript``);
+    * ``interactive/prompt.py#PromptExpander`` — ``.state``
+      (``command_number``, ``history``) and
+      ``.expansion_manager.expand_string_variables``;
+    * ``expansion/_protocols.py#VariableExpanderProtocol.host`` — the four
+      mixins' sub-expander hops, plus forwarding to the two above.
+
+    Before remediation 5C.1 all three took the whole ``Shell``, which is why
+    ``VariableExpanderProtocol`` had to keep a full-``Shell`` member (the
+    campaign's "broad owner escape hatch"): the mixins could not be narrower
+    than what they forwarded to. Typing these two signatures is what let that
+    member retire — the successor step D-5B.2-s2 named.
+
+    ``Shell`` satisfies this structurally (it has both attributes); no producer
+    declares it as a base.
+    """
+
+    @property
+    def state(self) -> ShellState:
+        """The shell's variable/option state."""
+        ...
+
+    @property
+    def expansion_manager(self) -> ExpansionSurface:
+        """The expansion machinery, orchestration and sub-expanders."""
+        ...
+
+
 __all__ = [
+    "ExpansionHost",
     "ExpansionRuntime",
     "IOContext",
     "JobRuntime",

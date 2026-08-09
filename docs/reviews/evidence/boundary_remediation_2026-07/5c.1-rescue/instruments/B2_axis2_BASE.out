@@ -1,0 +1,16 @@
+psh: line 1: popd: invalid index argument: +0
+psh: line 1: dirs: invalid index argument: +0
+psh: line 1: disown: 123: not a valid job specification or process id
+# tree=/Users/pwilson/src/psh-r5c-1/tmp/base-probe
+=== AXIS 2: forced defect inside the FORMER try body ===
+popd +0 / DirectoryStack.pop       rc=1
+dirs +0 / DirectoryStack.size      rc=1
+disown 123 / get_job_by_pid        rc=1
+
+=== CONTROL: same cells with NO seed (must be ordinary user errors) ===
+/tmp
+popd +0 unseeded                   rc=0
+/private/tmp
+psh: line 1: disown: 123: no such job
+dirs +0 unseeded                   rc=0
+disown 123 unseeded                rc=1

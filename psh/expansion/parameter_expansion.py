@@ -45,8 +45,7 @@ from .pattern_engine import (
 )
 
 if TYPE_CHECKING:
-    from ..protocols import LocaleAccess
-    from ..shell import Shell
+    from ..protocols import ExpansionHost, LocaleAccess
 
 # Sentinel marking "the matched text" in a prepared replacement template
 # (bash 5.2 patsub_replacement: an unquoted & in the replacement).
@@ -144,9 +143,13 @@ class ParameterExpansionOps:
     (``ast_nodes/words.py``) whose operator/word it evaluates.
     """
 
-    def __init__(self, shell: 'Shell'):
-        self.shell = shell
-        self.state = shell.state
+    def __init__(self, host: 'ExpansionHost') -> None:
+        #: Narrowed from the whole ``Shell`` in remediation 5C.1. The field is
+        #: kept (nothing outside reads it, but a dead-field sweep is 5C.2's
+        #: subject, not this slot's) and renamed so it does not claim to hold
+        #: a shell it no longer holds.
+        self.host = host
+        self.state = host.state
 
     @property
     def _extglob(self) -> bool:

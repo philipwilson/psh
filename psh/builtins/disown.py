@@ -92,17 +92,21 @@ class DisownBuiltin(Builtin):
                 return 1
             return self._disown_job(job, mark_no_hup, job_manager, shell)
         else:
-            # Try as PID
+            # Try as PID. int(spec) is the only documented ValueError source;
+            # get_job_by_pid/_disown_job sat inside the net until remediation
+            # 5C.1, so a defect in the job table was reported as a bad job
+            # specification.
             try:
                 pid = int(spec)
-                job = job_manager.get_job_by_pid(pid)
-                if job is None:
-                    self.error(f"{pid}: no such job", shell)
-                    return 1
-                return self._disown_job(job, mark_no_hup, job_manager, shell)
             except ValueError:
                 self.error(f"{spec}: not a valid job specification or process id", shell)
                 return 1
+
+            job = job_manager.get_job_by_pid(pid)
+            if job is None:
+                self.error(f"{pid}: no such job", shell)
+                return 1
+            return self._disown_job(job, mark_no_hup, job_manager, shell)
 
     def _disown_job(self, job, mark_no_hup: bool, job_manager, shell: 'Shell') -> int:
         """Disown a specific job.

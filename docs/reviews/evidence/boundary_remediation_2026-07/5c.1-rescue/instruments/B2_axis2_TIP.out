@@ -1,0 +1,13 @@
+# tree=/Users/pwilson/src/psh-r5c-1
+=== AXIS 2: forced defect inside the FORMER try body ===
+popd +0 / DirectoryStack.pop       SURFACED ValueError: seeded defect in DirectoryStack.pop
+dirs +0 / DirectoryStack.size      SURFACED ValueError: seeded defect in DirectoryStack.size
+disown 123 / get_job_by_pid        SURFACED ValueError: seeded defect in get_job_by_pid
+
+=== CONTROL: same cells with NO seed (must be ordinary user errors) ===
+/tmp
+popd +0 unseeded                   rc=0
+/private/tmp
+psh: line 1: disown: 123: no such job
+dirs +0 unseeded                   rc=0
+disown 123 unseeded                rc=1

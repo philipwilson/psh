@@ -25,6 +25,7 @@ import pytest
 
 from psh import protocols as P
 from psh.protocols import (
+    ExpansionHost,
     ExpansionRuntime,
     IOContext,
     JobRuntime,
@@ -39,6 +40,12 @@ from psh.shell import Shell
 EXPECTED_MEMBERS = {
     "ExpansionRuntime": {"expand_string_variables", "expand_assignment_value_word",
                          "variable_expander", "word_expander"},
+    # Remediation 5C.1: the narrow replacement for handing round the whole
+    # `Shell`. TWO members, the measured union of what its three consumers
+    # actually use (evaluate_arithmetic, PromptExpander, and the
+    # VariableExpanderProtocol mixins) — typing those signatures is what let
+    # the full-`Shell` escape-hatch member retire (successor D-5B.2-s2).
+    "ExpansionHost": {"state", "expansion_manager"},
     "IOContext": {"stdin", "stdout", "stderr"},
     # Remediation 5B.2: `shell_state` — the whole ShellState carried on a
     # narrow protocol, which its one consumer reached through for a single
@@ -95,6 +102,19 @@ def test_shell_satisfies_iocontext(shell):
 
 def test_expansion_manager_satisfies_expansionruntime(shell):
     assert isinstance(shell.expansion_manager, ExpansionRuntime)
+
+
+def test_shell_satisfies_expansionhost(shell):
+    """The behavioural-inertness pin for the 5C.1 migration.
+
+    ``evaluate_arithmetic``, ``PromptExpander``, ``SubscriptEvaluator`` and the
+    variable-expander mixins all narrowed from ``Shell`` to ``ExpansionHost``.
+    Those are annotation-only changes precisely BECAUSE the ``Shell`` handed to
+    them already IS an ``ExpansionHost`` — this asserts that at runtime rather
+    than trusting mypy alone, which is the same job the four pins above do for
+    their protocols.
+    """
+    assert isinstance(shell, ExpansionHost)
 
 
 def test_job_manager_satisfies_jobruntime(shell):

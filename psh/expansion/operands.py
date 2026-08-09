@@ -631,19 +631,19 @@ class OperandOpsMixin(_Base):
             while j < n and text[j] != '`':
                 j += 2 if text[j] == '\\' and j + 1 < n else 1
             if j < n:
-                output = self.shell.expansion_manager.command_sub.execute(text[i:j + 1])
+                output = self.host.expansion_manager.command_sub.execute(text[i:j + 1])
                 return output, j + 1
             return '`', i + 1
         if text.startswith('$((', i):
             end, found = find_balanced_double_parentheses(
                 text, i + 3, track_quotes=True)
             if found:
-                result = self.shell.expansion_manager.execute_arithmetic_expansion(text[i:end])
+                result = self.host.expansion_manager.execute_arithmetic_expansion(text[i:end])
                 return str(result), end
         if text.startswith('$(', i):
             end, found = find_command_substitution_end(text, i + 2)
             if found:
-                return self.shell.expansion_manager.command_sub.execute(text[i:end]), end
+                return self.host.expansion_manager.command_sub.execute(text[i:end]), end
             return '$', i + 1
         if text.startswith('${', i):
             end, found = find_closing_delimiter(
@@ -687,7 +687,7 @@ class OperandOpsMixin(_Base):
             if ch in '\'"\\':
                 return '', 0
         tilde_word = operand[:end]
-        expanded = self.shell.expansion_manager.tilde_expander.expand(tilde_word)
+        expanded = self.host.expansion_manager.tilde_expander.expand(tilde_word)
         if expanded == tilde_word:
             return '', 0
         return expanded, end

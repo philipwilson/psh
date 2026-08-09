@@ -1,29 +1,36 @@
-"""Reach census for ``VariableExpanderProtocol.shell`` (remediation 5B.2).
+"""Adoption census for ``VariableExpanderProtocol.host`` (remediation 5C.1).
 
-The boundary campaign named this member the "broad owner escape hatch" and
-5B.2 was chartered to REMOVE it. It did not, and this file records exactly what
-survived so the remainder is a measured quantity rather than a memory.
+**This file used to pin the RETIREMENT DEBT; it now pins the RETIREMENT.**
 
-**What the member is reached for**, across its four consumers (arrays, fields,
-operands, operators):
+The boundary campaign named ``VariableExpanderProtocol.shell`` the "broad owner
+escape hatch". 5B.2 was chartered to remove it and could not, and the previous
+version of this file recorded exactly what survived: eight
+``self.shell.expansion_manager`` hops plus three whole-``Shell`` forwards, ELEVEN
+sites, with the count asserted so the remainder stayed a measured quantity.
 
-* EIGHT ``self.shell.expansion_manager`` hops, reaching the manager's
-  sub-expanders — ``.subscript`` (4), ``.command_sub`` (2),
-  ``.execute_arithmetic_expansion``, ``.tilde_expander``;
-* THREE that forward the shell WHOLE — ``evaluate_arithmetic(expr, self.shell)``
-  twice and ``PromptExpander(self.shell)`` once, all in ``operators.py``.
+5C.1 removed it. The obstacle was never the mixins — it was that the two things
+they FORWARD to (``evaluate_arithmetic`` and ``PromptExpander``) each took a
+whole ``Shell``, so the mixins could not be narrower than their callees. Typing
+those two signatures against ``protocols.ExpansionHost`` dissolved that, and the
+hop set became ``ExpansionSubExpanders``, composed with ``ExpansionRuntime``
+into the ``ExpansionSurface`` that ``ExpansionHost.expansion_manager`` returns.
 
-The eight hops could not migrate to ``protocols.ExpansionRuntime``: that
-protocol declares ``expand_string_variables``, ``expand_assignment_value_word``,
-``variable_expander`` and ``word_expander``, and the hops reach NONE of them.
-Its surface fits the subscript authority (which does consume it) but not these
-mixins. Widening it is a ruling, so the census is pinned here instead and the
-remainder is successor row D-5B.2-s2.
+The cells below are the SUCCESSORS of the four that pinned the debt, and they
+are deliberately not weaker:
 
-A twelfth site — a ``state.locale`` read spelled ``self.shell.state.locale`` —
-DID migrate, onto the ``state`` member as ``self.state.locale``. That is what
-the ``expansion_manager``-only assertion below protects: the member must not
-regrow a second hop kind.
+* the hop census still runs, now over ``self.host`` — the same per-file counts,
+  so a hop that quietly reappeared elsewhere would still show;
+* ``test_no_consumer_reaches_a_whole_shell`` is the grep-zero: ``self.shell``
+  must not exist in any of the four consumers at all;
+* the whole-``Shell`` forward count, previously pinned at exactly 3, is now
+  pinned at exactly **0**;
+* the headline total, previously 11, is now **0** whole-``Shell`` reach with
+  the 8 hops accounted for on the narrow member.
+
+The member is RENAMED as well as retyped, and that is load-bearing rather than
+cosmetic: the consumer ratchet's instance-assignment detector keys on the FIELD
+NAME, so a ``self.shell`` that merely changed type would still be — and should
+still be — reported as a service-locator reach.
 """
 
 import ast
@@ -38,7 +45,21 @@ CONSUMERS = [
     "psh/expansion/operators.py",
 ]
 
-#: Per consumer: ``self.shell.<attr>`` hop count, keyed by attribute.
+#: Every holder whose field remediation 5C.1 renamed ``shell`` -> ``host``.
+#: The grep-zero cell sweeps ALL of them, not just the four mixin consumers:
+#: verify-round N-5 found prompt.py and parameter_expansion.py outside the
+#: original sweep, so a regrown ``self.shell`` in either would have passed
+#: every cell in this file. subscript.py is additionally covered by the
+#: consumer ratchet (it is a scanned module there); the other two are not
+#: covered anywhere else, which is precisely why they belong here.
+RENAMED_HOLDERS = CONSUMERS + [
+    "psh/expansion/variable.py",
+    "psh/expansion/subscript.py",
+    "psh/expansion/parameter_expansion.py",
+    "psh/interactive/prompt.py",
+]
+
+#: Per consumer: ``self.host.<attr>`` hop count, keyed by attribute.
 EXPECTED_HOPS = {
     "psh/expansion/arrays.py": {"expansion_manager": 3},
     "psh/expansion/fields.py": {},
@@ -46,7 +67,10 @@ EXPECTED_HOPS = {
     "psh/expansion/operators.py": {"expansion_manager": 1},
 }
 
-#: Per consumer: how many times the shell is passed on WHOLE.
+#: Per consumer: how many times the HOST is passed on whole. All three of
+#: operators.py's forwards survive as forwards -- what changed is WHAT is
+#: forwarded: `ExpansionHost` rather than `Shell`. Forwarding a narrow surface
+#: is not the debt; forwarding the whole shell was.
 EXPECTED_WHOLE_FORWARDS = {
     "psh/expansion/arrays.py": 0,
     "psh/expansion/fields.py": 0,
@@ -55,8 +79,8 @@ EXPECTED_WHOLE_FORWARDS = {
 }
 
 
-def _reach(rel):
-    """(attr-hop counter, whole-forward count) for ``self.shell`` in *rel*."""
+def _reach(rel, field="host"):
+    """(attr-hop counter, whole-forward count) for ``self.<field>`` in *rel*."""
     tree = ast.parse((ROOT / rel).read_text())
     parents = {}
     for node in ast.walk(tree):
@@ -65,7 +89,7 @@ def _reach(rel):
 
     hops, whole = {}, 0
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Attribute) and node.attr == "shell"
+        if not (isinstance(node, ast.Attribute) and node.attr == field
                 and isinstance(node.value, ast.Name)
                 and node.value.id == "self"):
             continue
@@ -77,58 +101,100 @@ def _reach(rel):
     return hops, whole
 
 
-def test_shell_member_hop_census():
-    """Which sub-object each consumer reaches through ``self.shell``."""
+def test_host_member_hop_census():
+    """Which sub-object each consumer reaches through ``self.host``.
+
+    Successor to the ``self.shell`` hop census. The per-file counts are
+    UNCHANGED (3/0/4/1) because the hops did not move -- only the type of what
+    they hop through did. Keeping the counts means a hop that reappeared
+    somewhere new still shows up here.
+    """
     for rel in CONSUMERS:
         hops, _ = _reach(rel)
         assert hops == EXPECTED_HOPS[rel], (
-            f"{rel}: `self.shell.<attr>` reach changed — expected "
+            f"{rel}: `self.host.<attr>` reach changed — expected "
             f"{EXPECTED_HOPS[rel]}, found {hops}. A NEW attribute here widens "
-            "the escape hatch; a removed one is progress (update this table).")
+            "the host's use; a removed one is progress (update this table).")
 
 
-def test_shell_member_reaches_only_the_expansion_manager():
+def test_host_member_reaches_only_the_expansion_manager():
     """No hop kind other than ``expansion_manager`` survives.
 
-    The ``self.shell.state.locale`` read migrated onto the ``state`` member in
-    5B.2. Re-growing a second hop kind means the member is being used as a
-    service locator again, which is the thing the campaign is retiring.
+    ``ExpansionHost`` also carries ``.state``, but the mixins reach state
+    through their OWN ``state`` member, not through the host. A second hop kind
+    appearing here would mean the host is being used as a service locator
+    again, which is the thing this campaign retires.
     """
     kinds = set()
     for rel in CONSUMERS:
         hops, _ = _reach(rel)
         kinds |= set(hops)
     assert kinds == {"expansion_manager"}, (
-        f"`self.shell` is reached for {sorted(kinds)}; only "
-        "'expansion_manager' should remain (D-5B.2-s2 owns retiring that).")
+        f"`self.host` is reached for {sorted(kinds)}; only 'expansion_manager' "
+        "should appear.")
 
 
-def test_whole_shell_forwards_are_exactly_three():
-    """The irreducible remainder: two ``evaluate_arithmetic`` calls and one
-    ``PromptExpander`` construction, all in operators.py.
+def test_no_consumer_reaches_a_whole_shell():
+    """GREP-ZERO: the retirement itself.
 
-    These are why the member still exists at all. Removing it needs those two
-    callees to take narrower surfaces — 5C's boundary-signature work — so this
-    count going UP means a new whole-shell forward was added instead.
+    The predecessor of this cell asserted the member reached the whole ``Shell``
+    at ELEVEN sites and pinned that number so it could not grow. The successor
+    asserts the member does not exist: no consumer holds ``self.shell`` at all.
+
+    This is why the field was RENAMED rather than only retyped -- a
+    ``self.shell`` annotated ``ExpansionHost`` would satisfy every other cell in
+    this file while still reading, to the consumer ratchet and to a human, as
+    the service-locator reach the campaign set out to remove.
+    """
+    offenders = {}
+    for rel in RENAMED_HOLDERS:
+        hops, whole = _reach(rel, field="shell")
+        if hops or whole:
+            offenders[rel] = (hops, whole)
+    assert not offenders, (
+        "`self.shell` is still reached in a variable-expander consumer — the "
+        f"whole-Shell escape hatch has regrown: {offenders}")
+
+
+def test_whole_shell_forwards_are_zero():
+    """The three forwards that KEPT the escape hatch alive now forward a
+    narrow surface.
+
+    Previously: exactly 3 whole-``Shell`` forwards, all in operators.py
+    (``evaluate_arithmetic`` twice, ``PromptExpander`` once), and they were the
+    reason the member could not retire -- the mixins cannot be narrower than
+    what they forward to. Both callees now take ``ExpansionHost``, so the
+    forwards remain but carry the narrow type; what must be ZERO is forwards of
+    a whole ``Shell``, which is what the grep-zero cell above establishes.
     """
     for rel in CONSUMERS:
         _, whole = _reach(rel)
         assert whole == EXPECTED_WHOLE_FORWARDS[rel], (
-            f"{rel}: whole-`self.shell` forwards changed — expected "
+            f"{rel}: whole-`self.host` forwards changed — expected "
             f"{EXPECTED_WHOLE_FORWARDS[rel]}, found {whole}")
+    shell_forwards = sum(_reach(rel, field="shell")[1] for rel in CONSUMERS)
+    assert shell_forwards == 0, (
+        f"{shell_forwards} whole-`self.shell` forward(s) remain; the "
+        "retirement requires zero")
 
-    total = sum(_reach(rel)[1] for rel in CONSUMERS)
-    assert total == 3, f"total whole-shell forwards is {total}, expected 3"
 
+def test_total_host_reach_accounts_for_the_retired_eleven():
+    """The headline, restated for the post-retirement state.
 
-def test_total_reach_is_eleven_sites():
-    """The headline number, so a partial regression cannot hide inside a
-    per-file table that someone updated to match."""
-    total = sum(sum(_reach(rel)[0].values()) + _reach(rel)[1]
-                for rel in CONSUMERS)
-    assert total == 11, (
-        f"`VariableExpanderProtocol.shell` is reached at {total} sites, "
-        "expected 11 (8 expansion_manager hops + 3 whole forwards)")
+    The predecessor pinned 11 sites of whole-``Shell`` reach (8 hops + 3
+    forwards). The successor pins where those 11 went: 8 hops and 3 forwards
+    still exist, on the NARROW member, and whole-``Shell`` reach is 0. Pinning
+    the total rather than only the per-file table keeps a partial regression
+    from hiding inside a table someone updated to match.
+    """
+    hops = sum(sum(_reach(rel)[0].values()) for rel in CONSUMERS)
+    forwards = sum(_reach(rel)[1] for rel in CONSUMERS)
+    assert (hops, forwards) == (8, 3), (
+        f"host reach is {hops} hops + {forwards} forwards, expected 8 + 3")
+    shell_total = sum(sum(_reach(rel, field="shell")[0].values())
+                      + _reach(rel, field="shell")[1] for rel in CONSUMERS)
+    assert shell_total == 0, (
+        f"whole-`Shell` reach is {shell_total}, expected 0 after retirement")
 
 
 def test_the_locale_read_no_longer_goes_through_shell():
