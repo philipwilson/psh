@@ -41,5 +41,7 @@ ffff42a6246b73ad02a1ecd22d21692c ./instruments/17_maximal_feasible_hoist_set.py
 a09b416f4cd43a022a10fcd2916af37c ./instruments/20_manifest_and_discharge.sh
 c46c9e17eda145b82b5d26e7be433061 ./instruments/21_zero_slack_cell_red_demo.out
 7ae40b6cabd5706e94113dace3a43e60 ./instruments/21_zero_slack_cell_red_demo.py
+2415e9d167a13a084f53e41264435ad7 ./INTEGRATOR-INBOX-final.md
 d7770fadb516e34f0384f32d0ff4f1e7 ./INTEGRATOR-INBOX.md
 327a9bf270ce082878ef79ea823b0efc ./ledger.md
+499a1d3b425723f1db91fbe5c31db48b ./SIGNOFF.md
