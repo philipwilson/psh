@@ -198,11 +198,16 @@ LEDGER = {
          'reads; PTY-test cost, no unit net'),
     ('psh/invocation.py',
      'parse_invocation'):
-        ('DECOMPOSE-PENDING',
-         'PURE (no Shell, never prints/exits), guarded by '
-         'test_invocation_argv_guard.py; three tail InvocationConfig(...) '
-         'constructions share ~10 kwargs — the '
-         'forget-a-field-in-one-of-three defect class'),
+        ('DECOMPOSED-THIS-SLOT',
+         'Invocation-config construction. The three tail InvocationConfig '
+         'constructions shared ten kwargs and were folded into _config '
+         '(the forget-a-field-in-one-of-three class). It STAYS a row: what '
+         'remains is the option-transition walk plus the exclusivity and '
+         'parser validations, which are ordered rules over one accumulating '
+         'parse state, not separable responsibilities — and the ordering is '
+         'the contract (validate before any Shell can exist). PURE: no '
+         'Shell, never prints, never exits; guarded by '
+         'test_invocation_argv_guard.py'),
     ('psh/io_redirect/file_redirect.py',
      'FileRedirector.apply_permanent_redirections'):
         ('JUSTIFIED-KEEP',
