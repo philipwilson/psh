@@ -1,0 +1,9 @@
+# Slot 5C.1 rescue-tree manifest (root; command-generated, self-excluding)
+# generated at addendum time; instruments/ carries its own MANIFEST.md5
+brief.md                         ef2be2b93304d8452031f664c42cc985
+INTEGRATOR-INBOX-final.md        aaf9c403e82d8bb70854a92d6c6f4802
+INTEGRATOR-INBOX.md              d383b78a4a62460cb887557d3103a29f
+ledger.md                        e77a331390f86060b3481ff063248e94
+SIGNOFF.md                       6c1063eda8c76644eb7e053785760714
+verify-findings.md               ac46df3221b5fd75fb4cf7a142e59048
+instruments/: 42 files (see instruments/MANIFEST.md5)
