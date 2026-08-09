@@ -509,7 +509,7 @@ Three remediation-2.3 invariants on the re-lex bridge
   bash's wording; the per-route audit (four routes match bash, four are
   declared+pinned) is `test_unlexable_subscript_route_audit`.
 
-### Error typing on the expansion/arithmetic path (MEDIUM-12b, slot 3.5)
+### Error typing on the expansion/arithmetic path (MEDIUM-12b, slots 3.5 + 5C.1)
 
 A conversion net that catches a broad or raw-`ValueError`/`TypeError` class and
 reports it as a user error defeats `strict-errors` at that point: the defect
@@ -526,11 +526,19 @@ everything else propagates.
   `operators.py`'s slice-operand parse, `executor/core.py`'s `(( ))`, and
   `executor/control_flow.py`'s three `for(( ))` legs (init / condition /
   update); each now catches `ArithmeticError`, which `ShellArithmeticError`
-  subclasses. **One leg of the same shape survives OUTSIDE that scope**:
-  `builtins/let_builtin.py:52` still catches `(ValueError, ArithmeticError)`
-  around `evaluate_arithmetic`. That is MEDIUM-12's 5C half (the builtins
-  tree), deliberately untouched here — the deadness argument applies to it
-  equally, but the removal is 5C's to make.
+  subclasses. The last leg of that shape, `builtins/let_builtin.py`, was closed
+  by remediation 5C.1: it now catches `ShellArithmeticError` — the evaluator's
+  actual contract type — rather than `(ValueError, ArithmeticError)`. The
+  deadness transferred as predicted (0 hits across a 42-cell corpus varying
+  expression shape AND shell option), and the tighter form is measured too:
+  `_apply_binary_op` is the single door for raw arithmetic and guards every
+  operation, so no raw `ZeroDivisionError`/`OverflowError` can escape either
+  (90 further cells, zero non-`ShellArithmeticError` escapes). Nothing
+  user-visible moved — `ShellArithmeticError` subclasses both `PshError` and
+  `ArithmeticError`. **What does NOT reach that handler, and never did**: under
+  `set -u` an unset name raises `UnboundVariableError`, and a readonly target
+  raises `ReadonlyVariableError`; both are `PshError` but neither leg, so they
+  propagate past `let` to the top-level handler (bash agrees on exit status).
 - **The substring bound is typed at its detection point**:
   `parameter_expansion.py#extract_substring` raises `ExpansionError`, and
   `operators.py`'s two slice sites catch that and re-raise it after adding the
