@@ -48,13 +48,6 @@ LEDGER = {
          'ONE cursor transition — six exit arms each call advance() once '
          'with a different pair; splitting passes the whole state tuple to '
          'every helper'),
-    ('psh/builtins/print_builtin.py',
-     'PrintBuiltin._parse_options'):
-        ('DECOMPOSE-PENDING',
-         'PURE, zero deferred imports; -u and -f duplicate an '
-         'attached-or-separate operand read VERBATIM, and that duplication '
-         'is the only place the outer index is mutated from the inner loop — '
-         'a real coupling defect, not cosmetics'),
     ('psh/builtins/read_builtin.py',
      'ReadBuiltin.execute'):
         ('JUSTIFIED-KEEP',

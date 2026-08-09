@@ -1,0 +1,4 @@
+tmp/w5c2-instruments/B7_print_ab.sh: line 59: warning: command substitution: ignored null byte in input
+tmp/w5c2-instruments/B7_print_ab.sh: line 60: warning: command substitution: ignored null byte in input
+cases compared: 38
+VERDICT: byte-identical on all 38 cases (stdout+stderr+rc)

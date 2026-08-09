@@ -124,6 +124,24 @@ class PrintBuiltin(Builtin):
 
         return self._write(output, opts['fd'], shell)
 
+    @staticmethod
+    def _take_operand(flags: str, j: int, args: List[str], i: int,
+                      opt: str) -> Tuple[str, int]:
+        """Read an option's operand, attached (``-u2``) or separate (``-u 2``).
+
+        Returns ``(operand, new_i)``. ``-u`` and ``-f`` both take an operand
+        this way, and both used to advance the OUTER argv index from inside
+        the flag-cluster loop — the only place that happened, and invisible
+        when reading either arm on its own. The index now travels back through
+        the return value instead of being reached out and mutated.
+        """
+        attached = flags[j + 1:]
+        if attached:
+            return attached, i
+        if i + 1 >= len(args):
+            raise PrintOptionError(f"-{opt}: option requires an argument")
+        return args[i + 1], i + 1
+
     def _parse_options(self, args: List[str]) -> Tuple[dict, List[str]]:
         """Parse print options; returns (options dict, remaining args)."""
         opts = {
@@ -193,14 +211,7 @@ class PrintBuiltin(Builtin):
                     opts['match'] = True
                 elif c == 'u':
                     # -u takes a numeric fd: attached (-u2) or separate (-u 2).
-                    rest_of_arg = flags[j + 1:]
-                    if rest_of_arg:
-                        fd_str = rest_of_arg
-                    else:
-                        if i + 1 >= len(args):
-                            raise PrintOptionError("-u: option requires an argument")
-                        i += 1
-                        fd_str = args[i]
+                    fd_str, i = self._take_operand(flags, j, args, i, 'u')
                     try:
                         opts['fd'] = int(fd_str)
                     except ValueError:
@@ -208,14 +219,7 @@ class PrintBuiltin(Builtin):
                     break
                 elif c == 'f':
                     # -f takes a format string: attached (-f'%s') or separate.
-                    rest_of_arg = flags[j + 1:]
-                    if rest_of_arg:
-                        opts['format'] = rest_of_arg
-                    else:
-                        if i + 1 >= len(args):
-                            raise PrintOptionError("-f: option requires an argument")
-                        i += 1
-                        opts['format'] = args[i]
+                    opts['format'], i = self._take_operand(flags, j, args, i, 'f')
                     break
                 elif c in 'zcCDxXap':
                     raise PrintOptionError(f"-{c}: unsupported option")

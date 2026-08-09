@@ -338,3 +338,49 @@ def test_metric_does_not_read_hash_inside_a_string_as_a_comment():
 
 def test_sub_threshold_function_needs_no_row():
     assert _measure_source(_SUB_THRESHOLD) < THRESHOLD_EXECUTABLE
+
+
+# --- the @overload exclusion, and its control ------------------------------
+
+_OVERLOADED = '''
+from typing import overload
+
+class C:
+    @overload
+    def m(self, a: int) -> int: ...
+    @overload
+    def m(self, a: str) -> str: ...
+    def m(self, a):
+        return a
+'''
+
+_NOT_OVERLOAD = '''
+class C:
+    @property
+    def m(self):
+        return 1
+'''
+
+
+def test_overload_stubs_are_excluded_so_the_key_stays_unambiguous():
+    """``@overload`` declares a SIGNATURE, not a body.
+
+    ``JobManager.wait_for_job`` is the live instance — two stubs plus the real
+    implementation under one qualname. Counting the stubs would make the
+    ledger key ambiguous for a body that genuinely needs a row.
+    """
+    quals = [q for q, _ in iter_functions(_OVERLOADED, "<synthetic>")]
+    assert quals.count("C.m") == 1, (
+        "expected the two @overload stubs to be excluded and only the real "
+        f"body counted; got {quals}")
+
+
+def test_the_exclusion_is_narrow_and_does_not_swallow_other_decorators():
+    """CONTROL: only ``overload`` is excluded, not decorators in general.
+
+    An exclusion that quietly dropped every decorated function would hide
+    real hubs behind a ``@property`` or ``@staticmethod``.
+    """
+    quals = [q for q, _ in iter_functions(_NOT_OVERLOAD, "<synthetic>")]
+    assert quals == ["C.m"], (
+        f"a non-overload decorator was excluded from measurement: {quals}")
