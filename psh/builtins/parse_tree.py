@@ -1,11 +1,15 @@
 """Parse tree visualization builtin for interactive AST inspection."""
 
-from typing import List, NamedTuple, Optional
+from typing import TYPE_CHECKING, List, NamedTuple, Optional
 
+from ..ast_nodes import Program
 from ..lexer import tokenize
 from ..parser import ParseError, create_parser
 from .base import Builtin
 from .registry import builtin
+
+if TYPE_CHECKING:
+    from ..shell import Shell
 
 
 class _OptionScan(NamedTuple):
@@ -49,7 +53,7 @@ class ParseTreeBuiltin(Builtin):
     Exit Status:
     Returns success unless a parse error occurs."""
 
-    def _scan_options(self, args: List[str], shell) -> "_OptionScan":
+    def _scan_options(self, args: List[str], shell: 'Shell') -> "_OptionScan":
         """Scan the option cluster, stopping at the first operand.
 
         Owns every usage diagnostic and every early exit: ``-h`` prints help,
@@ -94,8 +98,8 @@ class ParseTreeBuiltin(Builtin):
 
         return _OptionScan(None, format_type, show_positions, command_args)
 
-    def _render(self, ast, format_type: str, show_positions: bool,
-                shell) -> str:
+    def _render(self, ast: Program, format_type: str, show_positions: bool,
+                shell: 'Shell') -> str:
         """Render ``ast`` in the requested format.
 
         One arm per format. The renderer imports stay deferred and stay in

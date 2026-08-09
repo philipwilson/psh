@@ -1,7 +1,7 @@
 """Test command builtin for conditionals."""
 import os
 import stat
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Callable, List
 
 from ..core import AssociativeArray, IndexedArray
 from ..expansion.subscript import SubscriptSyntaxError, SubscriptUse, TargetKind
@@ -346,7 +346,8 @@ class TestBuiltin(Builtin):
     }
 
     @staticmethod
-    def _stat_test(arg: str, predicate) -> int:
+    def _stat_test(arg: str,
+                   predicate: Callable[[os.stat_result], bool]) -> int:
         """Stat ``arg`` and apply ``predicate``; any stat failure is false.
 
         The predicate runs INSIDE the try deliberately: that is where it ran
