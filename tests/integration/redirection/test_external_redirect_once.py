@@ -1,9 +1,9 @@
 """
 Tests that external-command redirections are applied exactly once.
 
-Regression guards (verified against bash 5.2): the parent used to apply
-with_redirections AND the forked child applied setup_child_redirections
-over the same list, so:
+Regression guards (verified against bash 5.2): the parent used to apply a
+parent-side redirect window AND the forked child applied
+setup_child_redirections over the same list, so:
 - `cmd 2>&1 >f` resolved 2>&1 against the already-redirected fd 1, sending
   stderr into f (bash: to the original stdout);
 - command substitutions in heredoc bodies and redirect targets executed

@@ -616,7 +616,7 @@ class FileRedirector:
         (``manager.py#IOManager.setup_child_redirections``),
         the fd-level save/restore window
         (_apply_redirections here, via IOManager.apply_redirections /
-        with_redirections), and the exec path (apply_permanent_redirections
+        guarded_redirections), and the exec path (apply_permanent_redirections
         here).
         """
         name = redirect.var_fd

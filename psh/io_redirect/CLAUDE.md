@@ -145,21 +145,17 @@ word-expansion substitutions and the builtin path).
 
 ### 2. Context Manager for Temporary Redirections
 
-```python
-@contextmanager
-def with_redirections(self, redirects: List[Redirect]):
-    """Apply redirections temporarily, then restore."""
-    saved_fds = self.apply_redirections(redirects)
-    try:
-        yield
-    finally:
-        self.restore_redirections(saved_fds)
-```
+`manager.py#IOManager.guarded_redirections` is the ONE context manager for a
+temporarily-redirected region, and the redirect-error chokepoint for the
+in-process COMPOUND commands (brace group, `if`/`for`/`while`/`until`/`case`,
+`[[ ]]`, `(( ))`). Entering it applies the redirections, scopes input-cursor
+bindings for the fds it re-points, aliases dup'd cursors, and takes ownership
+of any process substitutions used as redirect targets; leaving it restores the
+saved fds and closed output streams and reaps those children — so every
+acquisition made on entry is released on exit, including when the body raises.
 
-`guarded_redirections` is the redirect-error chokepoint for the in-process
-COMPOUND commands (brace group, `if`/`for`/`while`/`until`/`case`, `[[ ]]`,
-`(( ))`). It wraps `with_redirections` but turns a redirect SETUP failure
-into bash's `<$0>: line N: TARGET: STRERROR` diagnostic and yields `False`
+It turns a redirect SETUP failure into bash's
+`<$0>: line N: TARGET: STRERROR` diagnostic and yields `False`
 (so the caller skips the body and returns 1 — `|| fallback` runs, `set -e`
 still aborts). The one message shape is `format_redirect_error(error, target,
 location=state.error_location_prefix())`, shared by the simple-command,
@@ -565,7 +561,7 @@ reached from all FOUR redirect-application paths:
 - `manager.py#IOManager.setup_child_redirections` (forked child);
 - `file_redirect.py#FileRedirector._apply_redirections` (fd-level
   save/restore window, via `IOManager.apply_redirections` /
-  `with_redirections`);
+  `guarded_redirections`);
 - `file_redirect.py#FileRedirector.apply_permanent_redirections` (`exec`).
 
 It owns all the redirect shapes of the form:
