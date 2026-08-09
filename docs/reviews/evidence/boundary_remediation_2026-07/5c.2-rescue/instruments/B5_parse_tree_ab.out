@@ -1,0 +1,20 @@
+  IDENTICAL (rc=0)  parse-tree echo hi
+  IDENTICAL (rc=0)  parse-tree -f tree echo hi
+  IDENTICAL (rc=0)  parse-tree -f pretty echo hi
+  IDENTICAL (rc=0)  parse-tree -f compact echo hi
+  IDENTICAL (rc=0)  parse-tree -f dot echo hi
+  IDENTICAL (rc=0)  parse-tree -p -f tree echo hi
+  IDENTICAL (rc=2)  parse-tree -f pretty if true; then echo a; fi
+  IDENTICAL (rc=2)  parse-tree -f compact for i in 1 2; do echo $i; done
+  IDENTICAL (rc=127)  parse-tree -f dot a | b && c
+  IDENTICAL (rc=2)  parse-tree
+  IDENTICAL (rc=2)  parse-tree -f
+  IDENTICAL (rc=2)  parse-tree -f bogus echo hi
+  IDENTICAL (rc=2)  parse-tree -z echo hi
+  IDENTICAL (rc=0)  parse-tree -h
+  IDENTICAL (rc=0)  parse-tree --help
+  IDENTICAL (rc=2)  parse-tree -p
+  IDENTICAL (rc=2)  parse-tree echo 'unclosed
+  IDENTICAL (rc=2)  parse-tree -f tree $((((((
+
+VERDICT: byte-identical on all 18 cases (stdout+stderr+rc)

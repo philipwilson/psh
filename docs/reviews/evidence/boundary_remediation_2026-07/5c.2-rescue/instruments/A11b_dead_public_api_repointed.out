@@ -1,0 +1,27 @@
+=== BOUNDED dead-public-API census (component managers + redirect boundary)
+
+## ExpansionManager (psh/expansion/manager.py) — 17 public defs
+
+## IOManager (psh/io_redirect/manager.py) — 16 public defs
+
+## JobManager (psh/executor/job_control.py) — 37 public defs
+   *** DEAD   JobManager.get_job_by_pgid  (def :493; 0 production refs, 0 test refs)
+   *** DEAD   JobManager.list_jobs  (def :836; 0 production refs, 0 test refs)
+
+## ProcessLauncher (psh/executor/process_launcher.py) — 2 public defs
+
+## FunctionManager (psh/core/functions.py) — 10 public defs
+   *** DEAD   FunctionManager.is_function_readonly  (def :99; 0 production refs, 0 test refs)
+   *** DEAD   FunctionManager.clear_functions  (def :131; 0 production refs, 0 test refs)
+
+## AliasManager (psh/expansion/aliases.py) — 8 public defs
+   TEST-ONLY  AliasManager.has_alias  (def :36; 4 test refs, 0 production) -> disposition: test-only API
+        tests/unit/core/test_shell_lifecycle.py:41: assert child.alias_manager.has_alias("ll")
+        tests/unit/core/test_shell_lifecycle.py:46: assert not captured_shell.alias_manager.has_alias("ca")
+        tests/unit/expansion/test_alias_token_transform.py:96: assert not am.has_alias('x')
+
+## FileRedirector (psh/io_redirect/file_redirect.py) — 18 public defs
+
+## ScriptManager (psh/scripting/base.py) — 4 public defs
+
+=== TOTALS: 112 public defs scanned; 4 zero-witness DEAD; 1 TEST-ONLY

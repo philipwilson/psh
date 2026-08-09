@@ -270,8 +270,8 @@ class ShellState:
         self.rcfile = rcfile
 
         # Execution state — one cohesive object (last_exit_code / last_bg_pid /
-        # foreground_pgid / command_number / pipestatus / errexit_eligible /
-        # last_cmdsub_status / in_forked_child delegate to it via properties).
+        # command_number / pipestatus / errexit_eligible / last_cmdsub_status /
+        # in_forked_child delegate to it via properties).
         self.execution = ExecutionState()
 
         # History settings — one cohesive object (history / history_file /
@@ -867,15 +867,6 @@ class ShellState:
     @last_bg_pid.setter
     def last_bg_pid(self, value: Optional[int]) -> None:
         self.execution.last_bg_pid = value
-
-    @property
-    def foreground_pgid(self) -> Optional[int]:
-        """Process group currently owning the terminal."""
-        return self.execution.foreground_pgid
-
-    @foreground_pgid.setter
-    def foreground_pgid(self, value: Optional[int]) -> None:
-        self.execution.foreground_pgid = value
 
     @property
     def command_number(self) -> int:

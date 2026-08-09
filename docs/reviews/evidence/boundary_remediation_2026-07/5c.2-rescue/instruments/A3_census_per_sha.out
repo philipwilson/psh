@@ -1,0 +1,20 @@
+### CRtip-ae871a16 (ae871a16) __version__ = "0.773.0"
+[CRtip-ae871a16] total functions: 3230; >=100 lines: 60
+### v0774-2cf9493b (2cf9493b) __version__ = "0.774.0"
+[v0774-2cf9493b] total functions: 3231; >=100 lines: 60
+### v0775-1cddebb5 (1cddebb5) __version__ = "0.775.0"
+[v0775-1cddebb5] total functions: 3231; >=100 lines: 60
+### v0776-d8166242 (d8166242) __version__ = "0.776.0"
+[v0776-d8166242] total functions: 3232; >=100 lines: 60
+### v0777-67261b29 (67261b29) __version__ = "0.777.0"
+[v0777-67261b29] total functions: 3238; >=100 lines: 60
+### base-3a3e0782 (3a3e0782) __version__ = "0.777.0"
+[base-3a3e0782] total functions: 3238; >=100 lines: 60
+
+=== drift of the four changed >=100 rows + the two publish fns, per SHA ===
+CRtip-ae871a16         total= 3230 ge100= 60  execute=181  execute=100  _build_simple_command_parser=117  publish_foreground_pgid=-
+v0774-2cf9493b         total= 3231 ge100= 60  execute=181  execute=100  _build_simple_command_parser=117  publish_foreground_pgid=-
+v0775-1cddebb5         total= 3231 ge100= 60  execute=181  execute=100  _build_simple_command_parser=117  publish_foreground_pgid=-
+v0776-d8166242         total= 3232 ge100= 60  execute=181  execute=100  _build_simple_command_parser=118  publish_foreground_pgid=11
+v0777-67261b29         total= 3238 ge100= 60  execute=192  execute=106  _build_simple_command_parser=118  publish_foreground_pgid=11
+base-3a3e0782          total= 3238 ge100= 60  execute=192  execute=106  _build_simple_command_parser=118  publish_foreground_pgid=11

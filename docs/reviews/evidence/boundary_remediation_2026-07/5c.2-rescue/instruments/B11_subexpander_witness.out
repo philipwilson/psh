@@ -1,0 +1,19 @@
+  subscript: mypy rc=1; errors at probe: 1
+      psh/expansion/_subexpander_witness_probe.py:8: error: Incompatible types in assignment (expression has type "SubscriptEvaluator", variable has type "int")  [assignment]
+  command_sub: mypy rc=1; errors at probe: 1
+      psh/expansion/_subexpander_witness_probe.py:8: error: Incompatible types in assignment (expression has type "CommandSubstitutionExecutor", variable has type "int")  [assignment]
+  tilde_expander: mypy rc=1; errors at probe: 1
+      psh/expansion/_subexpander_witness_probe.py:8: error: Incompatible types in assignment (expression has type "TildeExpander", variable has type "int")  [assignment]
+
+[restore] probe removed; git status --short:
+M psh/protocols/__init__.py
+?? INTEGRATOR-INBOX.md
+
+  post-restore mypy: rc=0 (Success: no issues found in 276 source files)
+
+  CONTROL (subscript back to `-> Any`): probe errors = 0 -> CLEAN, as predicted
+[restore] git status --short:
+M psh/protocols/__init__.py
+?? INTEGRATOR-INBOX.md
+
+  ALL THREE MEMBERS ARE MYPY-LOAD-BEARING (control confirms Any was not)

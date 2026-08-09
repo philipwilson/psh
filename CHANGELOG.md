@@ -4,6 +4,43 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.778.0 (2026-08-09) - Hub decomposition + dead API (remediation slot 5C.2)
+- Dead API deleted, censuses committed first: `IOManager.with_redirections`
+  (dead twin of `guarded_redirections` -- same six invariants line-for-line),
+  the write-only `state.foreground_pgid` full chain (field, property, three
+  writes, `publish_foreground_pgid` protocol member; three-arm neuter-parity
+  proof), four zero-witness manager members (`JobManager.get_job_by_pgid`,
+  `JobManager.list_jobs`, `FunctionManager.is_function_readonly`,
+  `FunctionManager.clear_functions`), and the harness-only `try_resolve_bash`
+  (detection branches pruned). `AliasManager.has_alias` kept as documented
+  test-seam API. Standing resurrection guard added
+  (`tests/unit/tooling/test_dead_api_not_resurrected_5c2.py`).
+- Hub ledger + growth ratchet (`tests/unit/tooling/test_hub_ledger_5c2.py`):
+  every function >=100 lines dispositioned (55 rows at tip = 51 justified-keep
+  + 1 decomposed-this-slot + 3 pointer); threshold on EXECUTABLE lines with
+  one canonical metric -- a comment-only change can never create a row nor
+  fire the growth arm. Headline: the nominal census substantially measured
+  documentation (`ShellState.__init__` 323 nominal = 95 executable lines).
+- Six responsibility-seam decompositions, behavior-identical (pure-move
+  discipline; per-seam A/B batteries): parse-tree (option scan / renderer
+  dispatch), test builtin (13 arms -> two predicate tables + one shared
+  except window), print (single operand reader owns the index), operator
+  recognizer (longest-match vs veto), parse_invocation (one config builder),
+  and `apply_var_fd_redirect` (named-fd allocate-and-record tail ->
+  `_publish_named_fd`, one owner on both sides of the fork; 4B.4 M8 lock arm
+  re-pointed, not weakened).
+- Q2 broad-catch detector follows in-tree ValueError-subclass edges
+  (D-5C.1-s1); `ExpansionSubExpanders` members typed at their producers
+  (D-5C.1-s2). Signature census 632/477 (deleted `with_redirections` was
+  itself incomplete).
+- Doc truth: `io_redirect/CLAUDE.md` dead-API sketch replaced (it was wrong,
+  not merely stale); `docs/architecture/ast_data_flow.md` compound-redirect
+  sentence corrected to `guarded_redirections`; doc-pointer guard widened to
+  dotted, argument-bearing cites (red-on-rot proven).
+- MEDIUM-15 CLOSED; D-4B.4-s3, D-5B.2-dead, D-5C.1-s1, D-5C.1-s2 discharged.
+  Full record: `docs/reviews/evidence/boundary_remediation_2026-07/`
+  (LEDGER + `5c.2-rescue/`).
+
 ## 0.777.0 (2026-08-09) - Typed errors + boundary signatures (remediation slot 5C.1)
 
 - **MEDIUM-12 CLOSED — every broad exception net dispositioned.** The seven

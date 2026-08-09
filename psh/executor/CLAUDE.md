@@ -447,9 +447,8 @@ python -m psh --debug-expansion # Variable and command substitution
 ### With I/O Manager (`psh/io_redirect/`)
 
 - Per-command / compound redirections: `io_manager.guarded_redirections(redirects)`
-  — the context manager every in-process compound actually uses (it turns a
-  redirect SETUP failure into bash's diagnostic and yields `False`);
-  `with_redirections` is the unguarded sibling and currently has no callers.
+  — the ONE context manager every in-process compound uses (it turns a
+  redirect SETUP failure into bash's diagnostic and yields `False`).
   Or `apply_redirections()` / restore directly. Both scope input-cursor
   bindings for the fds they re-point (slot 4B.4)
 - Builtin stream redirections: `io_manager.setup_builtin_redirections(command)`

@@ -39,7 +39,6 @@ from shell_oracle import (  # noqa: E402
     run_bash,
     run_psh,
     run_shell_case,
-    try_resolve_bash,
 )
 
 SH = "/bin/sh"  # POSIX sh for runner mechanics; the bash ORACLE is resolved
@@ -54,10 +53,6 @@ def test_resolve_bash_returns_executable_with_version():
     assert os.path.isfile(oracle.path) and os.access(oracle.path, os.X_OK)
     # A real recorded version, not a placeholder ("5.2.26(1)-release" style).
     assert oracle.version and oracle.version[0].isdigit()
-
-
-def test_try_resolve_bash_matches_resolve():
-    assert try_resolve_bash() == resolve_bash()
 
 
 # ---------------------------------------------------------------------------

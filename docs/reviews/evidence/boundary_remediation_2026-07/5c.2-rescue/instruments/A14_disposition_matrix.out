@@ -1,0 +1,45 @@
+census rows: 60   dispositioned: 60   (exact cover asserted)
+
+=== rows per NAMED TRANSACTION
+      9  state construction
+      8  input execution
+      8  lexical scanning
+      7  command prep/dispatch
+      7  builtin option/operand
+      6  expansion/pattern
+      5  job lifecycle
+      5  grammar construction
+      3  redirect acquisition
+      2  history expansion
+     60  TOTAL
+
+=== rows per DISPOSITION
+     51  JUSTIFIED-KEEP
+      6  DECOMPOSE
+      3  POINTER
+     60  TOTAL
+
+=== PROPOSED EXECUTED SET (disposition = DECOMPOSE)
+    [ 106] psh/builtins/parse_tree.py::ParseTreeBuiltin.execute
+           builtin option/operand / DISPATCH-HUB
+           71 exec; the CLEANEST cut in the census — two independent hubs (option scan, renderer dispatch), zero risk, direct unit test, and it is the SECOND named grower (E2), so decomposing it demonstrates the ledger on a row the brief cares about
+    [ 102] psh/builtins/print_builtin.py::PrintBuiltin._parse_options
+           builtin option/operand / DISPATCH-HUB
+           86 exec, PURE, zero deferred imports; -u and -f duplicate an attached-or-separate operand read VERBATIM, and that duplication is the only place the outer index is mutated from the inner loop — a real coupling defect, not cosmetics
+    [ 136] psh/builtins/test_command.py::TestBuiltin.evaluate_unary
+           builtin option/operand / CASE-TABLE
+           99 exec (2nd-highest in the census), PURE, zero deferred imports; TEN arms are the identical stat-and-predicate shape and THREE are the identical access-mode shape — a jump table written as a chain
+    [ 130] psh/invocation.py::parse_invocation
+           state construction / DISPATCH-HUB
+           93 exec, PURE (no Shell, never prints/exits), guarded by test_invocation_argv_guard.py; three tail InvocationConfig(...) constructions share ~10 kwargs — the forget-a-field-in-one-of-three defect class
+    [ 107] psh/io_redirect/file_redirect.py::FileRedirector.apply_var_fd_redirect
+           redirect acquisition / DISPATCH-HUB
+           NAMED GROWER. 50 exec; the allocate-and-record tail (F_DUPFD>=10 + set_variable + scope_fd) repeats VERBATIM in three arms — that triplication IS the named-fd allocation contract, and it has no single owner
+    [ 101] psh/lexer/recognizers/operator.py::OperatorRecognizer.recognize
+           lexical scanning / DISPATCH-HUB
+           59 exec, PURE, zero deferred imports, strong direct coverage (5 lexer suites); the ~35-line VETO block (extglob !, {} reserved-word rules) is unrelated to longest-match and has its own bash provenance
+
+=== POINTER rows (nested; body dispositioned at parent)
+    psh/parser/combinators/commands/simple.py::SimpleCommandMixin._build_simple_command_parser.parse_simple_command
+    psh/parser/combinators/control_structures/conditionals.py::ConditionalParserMixin._build_case_statement.parse_case_statement
+    psh/parser/combinators/control_structures/loops.py::LoopParserMixin._build_c_style_for_loop.parse_c_style_for

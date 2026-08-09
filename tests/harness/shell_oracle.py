@@ -102,7 +102,6 @@ __all__ = [
     "ShellRunResult",
     "is_comparable",
     "resolve_bash",
-    "try_resolve_bash",
     "hermetic_shell_env",
     "run_shell_case",
     "run_psh",
@@ -282,18 +281,6 @@ def resolve_bash() -> BashOracle:
     raise BashOracleUnavailable(
         "no bash oracle found: BASH_PATH unset/invalid, no Homebrew bash, "
         "no bash on PATH")
-
-
-def try_resolve_bash() -> Optional[BashOracle]:
-    """Like :func:`resolve_bash` but returns None when unavailable.
-
-    For module-level ``pytest.mark.skipif`` guards, where an unavailable
-    oracle should skip the file rather than error its collection.
-    """
-    try:
-        return resolve_bash()
-    except BashOracleUnavailable:
-        return None
 
 
 def hermetic_shell_env(case_env: Optional[Dict[str, str]] = None,

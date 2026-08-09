@@ -13,16 +13,16 @@ import sys
 SPAWN = {'run', 'Popen', 'call', 'check_output', 'check_call'}
 
 def bash_var_names(tree):
-    """Names bound to a bash oracle path (resolve_bash().path / _ORACLE.path / try_resolve_bash())."""
+    """Names bound to a bash oracle path (resolve_bash().path / _ORACLE.path)."""
     names=set(); oracle_objs=set()
     for n in ast.walk(tree):
         if isinstance(n,ast.Assign):
             txt=ast.unparse(n.value)
-            if re.search(r'resolve_bash\(\)', txt) or re.search(r'try_resolve_bash\(\)', txt):
+            if re.search(r'resolve_bash\(\)', txt):
                 for t in n.targets:
                     if isinstance(t,ast.Name):
                         names.add(t.id)
-                        if txt.strip().endswith('resolve_bash()') or 'try_resolve_bash()'==txt.strip():
+                        if txt.strip().endswith('resolve_bash()'):
                             oracle_objs.add(t.id)
     # second pass: X.path where X in oracle_objs
     for n in ast.walk(tree):

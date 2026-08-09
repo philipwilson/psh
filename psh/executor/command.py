@@ -105,7 +105,7 @@ class RedirectionMode(Enum):
     FD_LEVEL_WINDOW
         Everything else — functions, aliases, and FOREGROUND builtins that
         run in a pipeline or in a forked child. Redirections are applied at
-        the fd level via ``io_manager.with_redirections`` (a save/restore
+        the fd level via ``io_manager.guarded_redirections`` (a save/restore
         window) because in a forked child builtins use ``os.write()`` on raw
         fds, so ``os.dup2()`` redirection is required rather than
         Python-level ``sys.stdout`` replacement.

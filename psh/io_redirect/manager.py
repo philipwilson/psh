@@ -395,38 +395,14 @@ class IOManager:
                 registry.bind_dup(*alias)
 
     @contextmanager
-    def with_redirections(self, redirects: List[Redirect]):
-        """Context manager for applying redirections temporarily.
+    def guarded_redirections(self, redirects: List[Redirect]):
+        """Apply redirections for a region and restore them afterwards,
+        turning a redirect SETUP failure into bash's diagnostic instead of
+        letting an ``OSError`` escape.
 
         Also owns any process substitutions used as redirect targets
-        (e.g. `while ...; done < <(cmd)`): their parent-side fds are
-        closed and children reaped when the redirected region ends.
-
-        NOTE: nothing in ``psh/`` calls this today — every in-process compound
-        goes through :meth:`guarded_redirections`, which adds the redirect-error
-        diagnostic. It keeps the input-cursor scoping and dup aliasing anyway so
-        a future caller inherits them rather than silently losing them, but that
-        wiring is DEFENSIVE and has no mutation arm: an arm needs a cell that
-        fails when the hook stops firing, and no shell input reaches this path.
-        """
-        if not redirects:
-            yield
-            return
-        with self.process_sub_handler.scope(), \
-                self._scoped_input_cursors(redirects):
-            saved_fds = self.apply_redirections(redirects)
-            self.alias_dup_input_cursors(redirects)
-            stream_restore = self._swap_closed_output_streams(redirects)
-            try:
-                yield
-            finally:
-                stream_restore()
-                self.restore_redirections(saved_fds)
-
-    @contextmanager
-    def guarded_redirections(self, redirects: List[Redirect]):
-        """Like :meth:`with_redirections`, but a redirect SETUP failure is
-        turned into bash's diagnostic instead of an escaping ``OSError``.
+        (e.g. ``while ...; done < <(cmd)``): their parent-side fds are closed
+        and children reaped when the redirected region ends.
 
         This is the ONE chokepoint for the in-process COMPOUND commands
         (brace group, ``if``/``for``/``while``/``until``/``case``, ``[[ ]]``,
@@ -545,7 +521,7 @@ class IOManager:
 
         This is the stream-universe half of an output-fd close in the
         in-process compound path (brace groups, functions, control flow run
-        via ``with_redirections``). The fd-level close alone does not reach a
+        via ``guarded_redirections``). The fd-level close alone does not reach a
         builtin running inside, which writes through ``sys.stdout`` /
         ``sys.stderr``; without this it would keep writing to the still-open
         stream and leak (``{ echo a; } 1>&-`` printing ``a``). Mirrors

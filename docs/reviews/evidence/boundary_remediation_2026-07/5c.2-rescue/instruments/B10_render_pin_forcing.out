@@ -1,0 +1,11 @@
+  A baseline (raise present): rc=0
+  B neutered (raise -> return ''): rc=1
+[restore] byte-identity asserted; git status --short:
+M tests/unit/builtins/test_parse_tree_options.py
+ M tests/unit/tooling/test_broad_valueerror_catch_q2.py
+?? INTEGRATOR-INBOX.md
+
+  baseline GREEN: True
+  neutered RED for its own reason (DID NOT RAISE): True
+
+  PIN IS FORCING

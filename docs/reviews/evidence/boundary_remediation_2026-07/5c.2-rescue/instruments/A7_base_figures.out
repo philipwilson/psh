@@ -1,0 +1,57 @@
+=== HEAD ===
+3a3e0782e259c90323b3c437470f07467197be7e
+
+=== Q2 BROAD_MASKING ledger entries (brief: 1) ===
+BROAD_MASKING: 1 entries  (line 119)
+    ('psh/parser/combinators/parser.py', ('AttributeError', 'IndexError', 'TypeError', 'ParseError'), ('_prepare_tokens', 'len', 'parse'))
+NARROW_SAFE: 13 entries  (line 183)
+    ('psh/builtins/input_reader.py', ('OSError', 'AttributeError', 'ValueError'), ('InputCursor', 'fstat'))
+    ('psh/builtins/read_builtin.py', ('OSError', 'AttributeError', 'ValueError'), ('fstat',))
+    ('psh/builtins/read_builtin.py', ('OSError', 'ValueError', 'AttributeError'), ('_should_use_sys_stdin', 'bool', 'getattr', 'isatty'))
+    ('psh/builtins/test_command.py', ('ValueError', 'OSError'), ('int', 'isatty'))
+    ('psh/core/internal_errors.py', ('OSError', 'ValueError'), ('error_location_prefix', 'get', 'print', 'print_exc'))
+    ('psh/core/locale_service.py', ('ValueError', 'Error'), ('strcoll',))
+    ('psh/core/trap_manager.py', ('OSError', 'ValueError'), ('getsignal', 'signal'))
+    ('psh/executor/child_policy.py', ('OSError', 'ValueError'), ('getpid', 'kill', 'signal'))
+    ('psh/executor/core.py', ('OSError', 'ValueError'), ('flush', 'write'))
+    ('psh/executor/subshell.py', ('OSError', 'ValueError'), ('flush',))
+    ('psh/expansion/brace_expansion.py', ('ValueError',), ('int',))
+    ('psh/interactive/signal_manager.py', ('OSError', 'ValueError'), ('getsignal', 'signal'))
+    ('psh/utils/printf_formatter.py', ('ValueError', 'OverflowError'), ('float', 'fromhex', 'match'))
+
+=== terminal-handler ledger rows (brief: 24) ===
+CLASSES: 10 entries  (line 58)
+TERMINAL_HANDLERS: 24 entries  (line 144)
+
+=== consumer-ratchet ALLOWLIST (brief: 8) ===
+ALLOWLIST: 8 entries  (line 205)
+    ('psh.executor.child_policy', 'run_background_shell_child')
+    ('psh.executor.child_policy', 'run_child_body')
+    ('psh.executor.child_policy', 'run_child_shell')
+    ('psh.executor.command_resolution', 'resolve_command')
+    ('psh.scripting.analysis_session', 'AnalysisSession.__init__')
+    ('psh.scripting.analysis_session', 'AnalysisSession._build_carrier')
+    ('psh.scripting.analysis_session', 'parse_for_analysis')
+    ('psh.scripting.program_source', 'execute_sourced_file')
+#
+# CONTRACT: shrink-only, EXCEPT entries added in the SAME COMMIT as a scan-scope
+# or detector-shape extension, each with its own justification (pre-ruling
+# 5B.1-R0, extended to detector-shape by R1.6). Any other growth is a breach.
+# See the module docstring for why the exception exists.
+ALLOWLIST = {
+    ("psh.executor.command_resolution", "resolve_command"):
+        "forwards `shell` to ExecutionStrategy.can_execute(name, shell), which "
+        "reads the function/builtin registries — a whole-shell dispatch need, "
+        "not a protocol-shaped slice (it only reads shell.state.options itself)",
+    ("psh.executor.child_policy", "run_background_shell_child"):
+        "backgrounded compound-child runner: re-arms trap handlers via "
+        "trap_manager + interactive_manager.signal_manager and runs the child "
+
+=== caps floor (brief: 66/177/177/0) ===
+tests/unit/tooling/test_import_layering.py:232:FUNC_IMPORT_CAPS = {
+tests/unit/tooling/test_import_layering.py:393:    for module, cap in sorted(FUNC_IMPORT_CAPS.items()):
+tests/unit/tooling/test_import_layering.py:402:        "FUNC_IMPORT_CAPS must sit exactly ON each module's measured count. A "
+tests/unit/tooling/test_import_layering.py:413:        cap = FUNC_IMPORT_CAPS.get(module, 0)
+tests/unit/tooling/test_import_layering.py:419:        "and raise its cap in FUNC_IMPORT_CAPS; otherwise HOIST it to module "
+tests/unit/tooling/test_import_layering.py:471:    # Regenerate the FUNC_IMPORT_CAPS baseline from the live tree.
+tests/unit/tooling/test_import_layering.py:474:    print("FUNC_IMPORT_CAPS = {")

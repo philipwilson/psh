@@ -1,0 +1,160 @@
+=== R15 guard-widening measurement
+DOC_FILES scanned              : 14
+tokens ALREADY matched (R3/R4) : 361
+NEW HITS the widening sees     : 140
+of those, WOULD-FAIL           : 11
+
+--- WOULD-FAIL (callable resolves to no `def name(` anywhere)
+   ARCHITECTURE.md
+      `str(error)`   (callable: str)
+   CLAUDE.md
+      `captured_shell.clear_output()`   (callable: clear_output)
+   docs/architecture/ast_data_flow.md
+      `io_manager.with_redirections(node.redirects)`   (callable: with_redirections)
+   psh/builtins/CLAUDE.md
+      `print(..., file=sys.stderr)`   (callable: print)
+   psh/builtins/CLAUDE.md
+      `vars(instance)`   (callable: vars)
+   psh/core/CLAUDE.md
+      `execvpe(args, shell.env)`   (callable: execvpe)
+   psh/expansion/CLAUDE.md
+      `for(( ))`   (callable: for)
+   psh/expansion/CLAUDE.md
+      `sys.getrecursionlimit()`   (callable: getrecursionlimit)
+   psh/io_redirect/CLAUDE.md
+      `fcntl(F_DUPFD, 10)`   (callable: fcntl)
+   psh/io_redirect/CLAUDE.md
+      `fcntl.fcntl(fd, F_DUPFD, 10)`   (callable: fcntl)
+   psh/parser/CLAUDE.md
+      `str(error)`   (callable: str)
+
+--- NEW HITS THAT RESOLVE (would pass; listed for scale) [129]
+   ARCHITECTURE.md: `WordExpander.expand(word, policy)`
+   ARCHITECTURE.md: `advance_lexical_state(state, token_type, token_value)`
+   ARCHITECTURE.md: `clone(**overrides)`
+   ARCHITECTURE.md: `config.clone(**overrides)`
+   ARCHITECTURE.md: `error.render()`
+   CLAUDE.md: `self.error()`
+   CLAUDE.md: `subprocess.run([sys.executable, '-m', 'psh', '-c', script], ...)`
+   docs/architecture/ast_data_flow.md: `WordExpander.expand_to_word(word, policy)`
+   docs/architecture/ast_data_flow.md: `_split_explicit_element(word)`
+   docs/architecture/ast_data_flow.md: `expand_arguments(command)`
+   docs/architecture/ast_data_flow.md: `expand_assignment_value_word(word)`
+   docs/architecture/ast_data_flow.md: `expand_string_variables(text)`
+   docs/architecture/ast_data_flow.md: `expand_word_as_pattern(word)`
+   docs/architecture/ast_data_flow.md: `expand_word_to_fields(word, ARRAY_INIT_ELEMENT)`
+   docs/architecture/ast_data_flow.md: `expand_word_to_fields(word, ASSOC_INIT_ELEMENT)`
+   docs/architecture/ast_data_flow.md: `expand_word_to_fields(word, policy)`
+   psh/builtins/CLAUDE.md: `context.array_init(arg)`
+   psh/builtins/CLAUDE.md: `error(message)`
+   psh/builtins/CLAUDE.md: `registry.instances()`
+   psh/builtins/CLAUDE.md: `report_error(message)`
+   psh/builtins/CLAUDE.md: `resolver.resolve(name, query)`
+   psh/builtins/CLAUDE.md: `resolver.resolve_for_exec(name)`
+   psh/builtins/CLAUDE.md: `resolver.search_path(name, path)`
+   psh/builtins/CLAUDE.md: `self.error()`
+   psh/builtins/CLAUDE.md: `shell.state.get_variable()`
+   psh/builtins/CLAUDE.md: `shell.state.input_cursors.cursor_for_fd(shell, fd)`
+   psh/builtins/CLAUDE.md: `shell.state.set_variable()`
+   psh/builtins/CLAUDE.md: `usage(message)`
+   psh/builtins/CLAUDE.md: `write_error_line(text)`
+   psh/builtins/CLAUDE.md: `write_line(text)`
+   psh/core/CLAUDE.md: `Shell.for_subshell(parent)`
+   psh/core/CLAUDE.md: `Shell.for_subshell(parent)`
+   psh/core/CLAUDE.md: `ShellState.clone_for_child(parent_state, context)`
+   psh/core/CLAUDE.md: `_local_shadows_special(name)`
+   psh/core/CLAUDE.md: `_spec(...)`
+   psh/core/CLAUDE.md: `get_variable(name, default)`
+   psh/core/CLAUDE.md: `get_variable_object(name)`
+   psh/core/CLAUDE.md: `has_lifecycle(name)`
+   psh/core/CLAUDE.md: `lookup(name)`
+   psh/core/CLAUDE.md: `lookup(name)`
+   psh/core/CLAUDE.md: `push_scope(name)`
+   psh/core/CLAUDE.md: `report_internal_defect(state, exc, *, prefix, stream)`
+   psh/core/CLAUDE.md: `resolve_nameref_name(name)`
+   psh/core/CLAUDE.md: `shutdown('signal-hup')`
+   psh/core/CLAUDE.md: `state.get_special_variable()`
+   psh/core/CLAUDE.md: `state.get_variable()`
+   psh/core/CLAUDE.md: `state.options.get('errexit')`
+   psh/core/CLAUDE.md: `state.options.get('myoption')`
+   psh/core/CLAUDE.md: `time.monotonic()`
+   psh/executor/CLAUDE.md: `Shell.for_subshell(parent, norc=norc)`
+   psh/executor/CLAUDE.md: `_dispose_jobs_at_exit(force_hup)`
+   psh/executor/CLAUDE.md: `apply_child_signal_policy(..., is_shell_process=True)`
+   psh/executor/CLAUDE.md: `flush_child_streams(child.stdout, child.stderr, sys.stdout, sys.stderr)`
+   psh/executor/CLAUDE.md: `io_manager.guarded_redirections(redirects)`
+   psh/executor/CLAUDE.md: `io_manager.setup_builtin_redirections(command)`
+   psh/executor/CLAUDE.md: `io_manager.setup_child_redirections(command)`
+   psh/executor/CLAUDE.md: `restore_builtin_redirections(frame)`
+   psh/executor/CLAUDE.md: `run_child_body(child_shell, body, ...)`
+   psh/executor/CLAUDE.md: `signal_manager.reset_child_signals()`
+   psh/expansion/CLAUDE.md: `PatternCompiler.compile(pattern)`
+   psh/expansion/CLAUDE.md: `PatternCompiler.compile(pattern).full_match(...)`
+   psh/expansion/CLAUDE.md: `WordExpander.expand_to_word(word, policy)`
+   psh/expansion/CLAUDE.md: `WordExpander.materialize(expanded_word, policy)`
+   psh/expansion/CLAUDE.md: `_FieldBuilder.splice(fields)`
+   psh/expansion/CLAUDE.md: `__init__(self, shell)`
+   psh/expansion/CLAUDE.md: `_field_expansion_fields(part)`
+   psh/expansion/CLAUDE.md: `_resolve_plain_parameter(name)`
+   psh/expansion/CLAUDE.md: `arithmetic_expansion_value(expr)`
+   psh/expansion/CLAUDE.md: `expand_parameter_direct(op, name, operand)`
+   psh/expansion/CLAUDE.md: `full_match(text)`
+   psh/expansion/CLAUDE.md: `matching_ends(text, start)`
+   psh/expansion/CLAUDE.md: `matching_starts(text, end)`
+   psh/expansion/CLAUDE.md: `shell.state.get_special_variable()`
+   psh/expansion/CLAUDE.md: `shell.state.get_variable()`
+   psh/expansion/CLAUDE.md: `shell.state.options.get('noglob')`
+   psh/expansion/CLAUDE.md: `shell.state.set_variable()`
+   psh/expansion/CLAUDE.md: `span_at(text, pos)`
+   psh/expansion/CLAUDE.md: `spanner(text)`
+   psh/expansion/CLAUDE.md: `suffix_matcher(text)`
+   psh/interactive/CLAUDE.md: `JobManager.parse_job_spec(spec)`
+   psh/interactive/CLAUDE.md: `JobManager.resolve_job_spec(spec, *, bare='pid')`
+   psh/interactive/CLAUDE.md: `feed(char)`
+   psh/interactive/CLAUDE.md: `shell.add_history()`
+   psh/io_redirect/CLAUDE.md: `RedirectProgram.apply_in_order(apply_one)`
+   psh/io_redirect/CLAUDE.md: `_content_to_fd(content, target_fd)`
+   psh/io_redirect/CLAUDE.md: `_dup2_preserve_target(opened_fd, target_fd)`
+   psh/io_redirect/CLAUDE.md: `_rebind_output_stream(fd)`
+   psh/io_redirect/CLAUDE.md: `_redirect_clobber(target, redirect)`
+   psh/io_redirect/CLAUDE.md: `_redirect_close_fd(redirect)`
+   psh/io_redirect/CLAUDE.md: `_redirect_combined(target, redirect)`
+   psh/io_redirect/CLAUDE.md: `_redirect_dup_fd(redirect)`
+   psh/io_redirect/CLAUDE.md: `_redirect_output_to_file(target, redirect)`
+   psh/io_redirect/CLAUDE.md: `check_noclobber(target)`
+   psh/io_redirect/CLAUDE.md: `close_procsub(applied=)`
+   psh/io_redirect/CLAUDE.md: `dup_fd_valid(dup_fd)`
+   psh/io_redirect/CLAUDE.md: `dup_sharing_stream(fd, mode, *, buffering=-1)`
+   psh/io_redirect/CLAUDE.md: `expand_redirect_target(redirect)`
+   psh/io_redirect/CLAUDE.md: `hand_procsub_to_scope(handler)`
+   psh/io_redirect/CLAUDE.md: `noclobber_blocks(target)`
+   psh/io_redirect/CLAUDE.md: `noclobber_blocks(target)`
+   psh/io_redirect/CLAUDE.md: `plan_program(...).apply_in_order(apply_one)`
+   psh/io_redirect/CLAUDE.md: `planner.plan(redirect)`
+   psh/io_redirect/CLAUDE.md: `planner.plan_program(redirects)`
+   psh/io_redirect/CLAUDE.md: `redirect_heredoc(redirect)`
+   psh/io_redirect/CLAUDE.md: `redirect_herestring(redirect)`
+   psh/io_redirect/CLAUDE.md: `redirect_input_from_file(target, redirect)`
+   psh/io_redirect/CLAUDE.md: `redirect_procsub_node(redirect)`
+   psh/io_redirect/CLAUDE.md: `redirect_readwrite(target, redirect)`
+   psh/io_redirect/CLAUDE.md: `register_with(handler)`
+   psh/io_redirect/CLAUDE.md: `resolve_dynamic_dup(redirect)`
+   psh/io_redirect/CLAUDE.md: `resolve_procsub_resource(node)`
+   psh/io_redirect/CLAUDE.md: `resolve_procsub_resource(node)`
+   psh/io_redirect/CLAUDE.md: `self.planner.plan(redirect)`
+   psh/parser/CLAUDE.md: `ParserDriver.start_session(inputs)`
+   psh/parser/CLAUDE.md: `__init__(self, main_parser)`
+   psh/parser/CLAUDE.md: `config.clone(**overrides)`
+   psh/parser/CLAUDE.md: `error.render()`
+   psh/parser/CLAUDE.md: `feed(line)`
+   psh/parser/CLAUDE.md: `match(TokenType.IF)`
+   psh/parser/CLAUDE.md: `parse(tokens)`
+   psh/parser/CLAUDE.md: `self.parser.consume_if(TokenType.X)`
+   psh/parser/CLAUDE.md: `self.parser.error(message)`
+   psh/parser/CLAUDE.md: `self.parser.error(message, token)`
+   psh/parser/CLAUDE.md: `self.parser.peek()`
+   psh/parser/CLAUDE.md: `self.peek()`
+   psh/parser/CLAUDE.md: `statements.parse_command_list()`
+   psh/visitor/CLAUDE.md: `_visit_redirects(node)`
+   psh/visitor/CLAUDE.md: `visitor.visit(ast)`
+   psh/visitor/CLAUDE.md: `walk_ast_edges(node)`

@@ -5,6 +5,8 @@ AST ignored extglob/posix — `shopt -s extglob; parse-tree '@(a|b)'` printed a
 parse error instead of the extglob AST the executor would build.
 """
 
+import pytest
+
 
 def test_parse_tree_respects_extglob(captured_shell):
     captured_shell.run_command("shopt -s extglob")
@@ -42,3 +44,32 @@ def test_parse_tree_plain_command_unaffected(captured_shell):
     rc = captured_shell.run_command("parse-tree 'echo hi'")
     assert rc == 0
     assert "Program" in captured_shell.get_stdout()
+
+
+def test_render_rejects_an_unknown_format_as_a_defect(captured_shell):
+    """The unreachable arm of `_render` is an internal defect, and says so.
+
+    `_scan_options` rejects any format outside the four with rc 2, so nothing
+    a user can type reaches this. Before 5C.2 the same impossible state fell
+    through the format chain to a write with `output` UNBOUND — an
+    UnboundLocalError naming a variable and explaining nothing. Pinned by
+    direct call because no shell input can drive it (5C.1 lesson 3: a
+    TRUE-BUT-UNPINNED claim is still unpinned).
+    """
+    from psh.builtins.parse_tree import ParseTreeBuiltin
+    from psh.lexer import tokenize
+    from psh.parser import create_parser
+
+    # A REAL parsed Program, not None. The parameter is annotated `Program`,
+    # and a pin that violates the annotation it exists to protect would be
+    # driving the raise with the wrong input shape — the arm must fire on the
+    # FORMAT being unknown, not on the AST being absent.
+    program = create_parser(tokenize("echo hi"), source_text="echo hi").parse()
+
+    builtin = ParseTreeBuiltin()
+    with pytest.raises(ValueError) as excinfo:
+        builtin._render(ast=program, format_type="bogus", show_positions=False,
+                        shell=captured_shell)
+    # The message must name the offending format — a bare "unhandled format"
+    # would leave the next reader exactly where UnboundLocalError did.
+    assert "bogus" in str(excinfo.value)

@@ -1,0 +1,11 @@
+=== psh/builtins/parse_tree.py::ParseTreeBuiltin.execute: 4 deferred import(s) in body
+    :   97  [PSH] from ..parser.visualization import ASTPrettyPrinter
+    :  105  [PSH] from ..parser.visualization import AsciiTreeRenderer
+    :  113  [PSH] from ..parser.visualization import CompactAsciiTreeRenderer
+    :  117  [PSH] from ..parser.visualization import ASTDotGenerator
+=== psh/builtins/test_command.py::TestBuiltin.evaluate_unary: 0 deferred import(s) in body
+=== psh/io_redirect/file_redirect.py::FileRedirector.apply_var_fd_redirect: 0 deferred import(s) in body
+=== psh/lexer/recognizers/operator.py::OperatorRecognizer.recognize: 0 deferred import(s) in body
+=== psh/invocation.py::parse_invocation: 0 deferred import(s) in body
+=== psh/executor/command.py::CommandExecutor._run_command: 0 deferred import(s) in body
+=== psh/builtins/print_builtin.py::PrintBuiltin._parse_options: 0 deferred import(s) in body

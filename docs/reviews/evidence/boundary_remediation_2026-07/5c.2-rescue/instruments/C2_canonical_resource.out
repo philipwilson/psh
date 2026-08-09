@@ -1,0 +1,5 @@
+=== canonical metric (the guard's own executable_lines)
+base census rows: 60; below 100 EXECUTABLE: 57
+ShellState.__init__ (base): nominal=323 executable=95 comment=190
+read_builtin: nominal 181->192 (+11)  executable 84->81 (-3)  comment 79->93 (+14)
+parse_tree: nominal 100->106 (+6)  executable 74->71 (-3)  comment 12->21 (+9)

@@ -227,8 +227,6 @@ FROZEN_DECLARED_MEMBER_ACCESSES = sorted([
     ("psh/builtins/read_builtin.py", "getattr", "shell", "stdin"),
     ("psh/executor/control_flow.py", "hasattr", "self.shell", "stdin"),
     ("psh/executor/core.py", "getattr", "node", "background"),
-    ("psh/executor/job_control.py", "hasattr", "self.shell_state", "foreground_pgid"),
-    ("psh/executor/job_control.py", "hasattr", "self.shell_state", "foreground_pgid"),
     ("psh/executor/subshell.py", "getattr", "self.state", "in_forked_child"),
     ("psh/parser/combinators/arrays.py", "getattr", "tokens[pos]", "adjacent_to_previous"),
     ("psh/parser/combinators/commands/redirections.py", "getattr", "tokens[pos]", "adjacent_to_previous"),

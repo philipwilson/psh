@@ -1,0 +1,24 @@
+pre-fix tree materialised at 46776a83
+  the rot is present: 1
+
+===== ARM A: WIDENED guard vs PRE-FIX tree (must be RED, naming the cite)
+..F............                                                          [100%]
+=================================== FAILURES ===================================
+________ test_doc_pointers_resolve[docs/architecture/ast_data_flow.md] _________
+tests/unit/tooling/test_doc_pointers.py:299: in test_doc_pointers_resolve
+    assert not failures, (
+E   AssertionError: docs/architecture/ast_data_flow.md has stale pointers:
+E       R4 no `def with_redirections(` anywhere: `io_manager.with_redirections(node.redirects)`
+E   assert not ['R4 no `def with_redirections(` anywhere: `io_manager.with_redirections(node.redirects)`']
+=========================== short test summary info ============================
+FAILED tests/unit/tooling/test_doc_pointers.py::test_doc_pointers_resolve[docs/architecture/ast_data_flow.md]
+1 failed, 14 passed in 6.12s
+
+===== ARM B: WIDENED guard vs FIXED tree (must be GREEN)
+...............                                                          [100%]
+15 passed in 6.15s
+
+================ VERDICT
+  ARM A rc=1 (want non-zero); names the dangling cite: 1
+  ARM B rc=0 (want 0)
+  RED-ON-ROT PROVEN — the widening catches the real rot it was widened for

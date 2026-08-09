@@ -1,7 +1,7 @@
 """Test command builtin for conditionals."""
 import os
 import stat
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Callable, List
 
 from ..core import AssociativeArray, IndexedArray
 from ..expansion.subscript import SubscriptSyntaxError, SubscriptUse, TargetKind
@@ -317,6 +317,49 @@ class TestBuiltin(Builtin):
         self.error("missing ')'", shell)
         return 2
 
+    # Stat-based unary predicates. Every one of these is the same transaction
+    # — stat the path, test one property of the result, and treat ANY stat
+    # failure as false — so they are a table rather than ten copies of an
+    # identical try/except differing only in the predicate. Ten near-identical
+    # arms are where a drifted copy hides: it looks like its nine siblings.
+    _STAT_PREDICATES = {
+        '-b': lambda st: stat.S_ISBLK(st.st_mode),          # block device
+        '-c': lambda st: stat.S_ISCHR(st.st_mode),          # character device
+        '-p': lambda st: stat.S_ISFIFO(st.st_mode),         # named pipe (FIFO)
+        '-S': lambda st: stat.S_ISSOCK(st.st_mode),         # socket
+        '-k': lambda st: bool(st.st_mode & stat.S_ISVTX),   # sticky bit
+        '-u': lambda st: bool(st.st_mode & stat.S_ISUID),   # setuid bit
+        '-g': lambda st: bool(st.st_mode & stat.S_ISGID),   # setgid bit
+        '-O': lambda st: st.st_uid == os.geteuid(),         # owned by euid
+        '-G': lambda st: st.st_gid == os.getegid(),         # owned by egid
+        '-N': lambda st: st.st_mtime > st.st_atime,         # modified since read
+    }
+
+    # Access-mode unary predicates. bash defers to access(2) for ANY file
+    # type, including directories and special files: an `isfile` guard would
+    # wrongly fail `-r /dev/null`, or `-x` on a directory whose search bit is
+    # set. os.access already returns False for a nonexistent path.
+    _ACCESS_MODES = {
+        '-r': os.R_OK,
+        '-w': os.W_OK,
+        '-x': os.X_OK,
+    }
+
+    @staticmethod
+    def _stat_test(arg: str,
+                   predicate: Callable[[os.stat_result], bool]) -> int:
+        """Stat ``arg`` and apply ``predicate``; any stat failure is false.
+
+        The predicate runs INSIDE the try deliberately: that is where it ran
+        when these were ten separate arms, so a predicate that raised OSError
+        would still be caught rather than escaping through a narrowed window.
+        """
+        try:
+            st = os.stat(arg)
+            return 0 if predicate(st) else 1
+        except (OSError, IOError):
+            return 1
+
     def evaluate_unary(self, op: str, arg: str, shell: 'Shell') -> int:
         """Evaluate unary operators."""
         if op == '-z':
@@ -334,19 +377,6 @@ class TestBuiltin(Builtin):
         elif op == '-e':
             # True if file exists
             return 0 if os.path.exists(arg) else 1
-        elif op == '-r':
-            # True if the path is readable — for ANY file type, including
-            # directories and special files (bash defers to os.access; an
-            # `isfile` guard would wrongly fail `-r /dev/null`, `-r /usr/bin`).
-            # os.access already returns False for a nonexistent path.
-            return 0 if os.access(arg, os.R_OK) else 1
-        elif op == '-w':
-            # True if the path is writable (any file type; see -r).
-            return 0 if os.access(arg, os.W_OK) else 1
-        elif op == '-x':
-            # True if the path is executable/searchable (any file type — a
-            # directory with the search bit set is `-x`; see -r).
-            return 0 if os.access(arg, os.X_OK) else 1
         elif op == '-s':
             # True if the path exists and has a nonzero size — for ANY file
             # type, including a directory (bash uses stat, not isfile; an
@@ -359,76 +389,10 @@ class TestBuiltin(Builtin):
         elif op == '-L' or op == '-h':
             # True if file exists and is a symbolic link
             return 0 if os.path.islink(arg) else 1
-        elif op == '-b':
-            # True if file exists and is a block device
-            try:
-                st = os.stat(arg)
-                return 0 if stat.S_ISBLK(st.st_mode) else 1
-            except (OSError, IOError):
-                return 1
-        elif op == '-c':
-            # True if file exists and is a character device
-            try:
-                st = os.stat(arg)
-                return 0 if stat.S_ISCHR(st.st_mode) else 1
-            except (OSError, IOError):
-                return 1
-        elif op == '-p':
-            # True if file exists and is a named pipe (FIFO)
-            try:
-                st = os.stat(arg)
-                return 0 if stat.S_ISFIFO(st.st_mode) else 1
-            except (OSError, IOError):
-                return 1
-        elif op == '-S':
-            # True if file exists and is a socket
-            try:
-                st = os.stat(arg)
-                return 0 if stat.S_ISSOCK(st.st_mode) else 1
-            except (OSError, IOError):
-                return 1
-        elif op == '-k':
-            # True if file has sticky bit set
-            try:
-                st = os.stat(arg)
-                return 0 if st.st_mode & stat.S_ISVTX else 1
-            except (OSError, IOError):
-                return 1
-        elif op == '-u':
-            # True if file has setuid bit set
-            try:
-                st = os.stat(arg)
-                return 0 if st.st_mode & stat.S_ISUID else 1
-            except (OSError, IOError):
-                return 1
-        elif op == '-g':
-            # True if file has setgid bit set
-            try:
-                st = os.stat(arg)
-                return 0 if st.st_mode & stat.S_ISGID else 1
-            except (OSError, IOError):
-                return 1
-        elif op == '-O':
-            # True if file is owned by effective user ID
-            try:
-                st = os.stat(arg)
-                return 0 if st.st_uid == os.geteuid() else 1
-            except (OSError, IOError):
-                return 1
-        elif op == '-G':
-            # True if file is owned by effective group ID
-            try:
-                st = os.stat(arg)
-                return 0 if st.st_gid == os.getegid() else 1
-            except (OSError, IOError):
-                return 1
-        elif op == '-N':
-            # True if file was modified since it was last read
-            try:
-                st = os.stat(arg)
-                return 0 if st.st_mtime > st.st_atime else 1
-            except (OSError, IOError):
-                return 1
+        elif op in self._STAT_PREDICATES:
+            return self._stat_test(arg, self._STAT_PREDICATES[op])
+        elif op in self._ACCESS_MODES:
+            return 0 if os.access(arg, self._ACCESS_MODES[op]) else 1
         elif op == '-t':
             # True if file descriptor is open and refers to a terminal
             try:

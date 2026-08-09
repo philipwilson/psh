@@ -1,0 +1,21 @@
+
+===== ARM A — baseline, unmodified: rc=0
+  12 passed in 1.29s
+
+===== ARM B — NEW HUB with no ledger row: rc=1
+  1 failed, 11 passed in 1.28s
+
+===== ARM C — comment-only function (control): rc=0
+  12 passed in 1.31s
+
+[restore] byte-identity asserted; git status --short:
+?? INTEGRATOR-INBOX.md
+?? tests/unit/tooling/_hub_ledger_rows.py
+?? tests/unit/tooling/test_hub_ledger_5c2.py
+
+================ VERDICT
+  A baseline GREEN: True
+  B red: True; names the offender: True; fired the ENTRY arm: True
+  C comment-only GREEN: True
+
+  OFFENDER PROOF HOLDS

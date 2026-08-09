@@ -345,18 +345,6 @@ class JobManager:
         """Set reference to shell state for option checking."""
         self.shell_state = state
 
-    def publish_foreground_pgid(self, pgid: int) -> None:
-        """Record *pgid* as the foreground process group after a handoff.
-
-        The ``JobRuntime`` publish surface (remediation 5B.2). The one consumer
-        used to reach through ``shell_state`` and assign the attribute itself,
-        which put the whole state on a narrow protocol for a single ``int``
-        write; the None-guard for a state-less manager lives here now rather
-        than at the call site.
-        """
-        if self.shell_state is not None:
-            self.shell_state.foreground_pgid = pgid
-
     def create_job(self, pgid: int, command: str) -> Job:
         """Create a new job.
 
@@ -489,13 +477,6 @@ class JobManager:
     def get_job_by_pid(self, pid: int) -> Optional[Job]:
         """Find the job containing the given PID (O(1) via the pid index)."""
         return self.pid_index.get(pid)
-
-    def get_job_by_pgid(self, pgid: int) -> Optional[Job]:
-        """Find job by process group ID."""
-        for job in self.jobs.values():
-            if job.pgid == pgid:
-                return job
-        return None
 
     def set_foreground_job(self, job: Optional[Job]):
         """Track the executing foreground job (terminal-mode handoff only).
@@ -833,16 +814,6 @@ class JobManager:
         if reaped:
             job.update_state()
 
-    def list_jobs(self) -> List[str]:
-        """Get formatted list of all jobs."""
-        lines = []
-        for job_id in sorted(self.jobs.keys()):
-            job = self.jobs[job_id]
-            is_current = (job == self.current_job)
-            is_previous = (job == self.previous_job)
-            lines.append(job.format_status(is_current, is_previous))
-        return lines
-
     def resolve_job_spec(self, spec: str, *, bare: str = 'pid') -> JobSpecResult:
         """Resolve a jobspec into a typed result (bash get_job_spec semantics).
 
@@ -985,8 +956,6 @@ class JobManager:
 
         # Clear foreground job tracking and restore terminal modes
         self.set_foreground_job(None)
-        if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
-            self.shell_state.foreground_pgid = None
 
     def _promote_to_current(self, job: 'Job') -> None:
         """Make ``job`` the current job (``%+``), demoting the old ``%+`` to
@@ -1016,8 +985,6 @@ class JobManager:
             self.restore_shell_foreground()
         else:
             self.set_foreground_job(None)
-            if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
-                self.shell_state.foreground_pgid = None
 
         if job is not None and job.state == JobState.STOPPED:
             self._promote_to_current(job)

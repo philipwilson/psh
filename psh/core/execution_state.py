@@ -1,10 +1,10 @@
 """Per-command execution scratch state as one cohesive object.
 
-``ShellState`` exposes ``last_exit_code`` / ``last_bg_pid`` / ``foreground_pgid``
-/ ``command_number`` / ``pipestatus`` / ``errexit_eligible`` /
+``ShellState`` exposes ``last_exit_code`` / ``last_bg_pid`` /
+``command_number`` / ``pipestatus`` / ``errexit_eligible`` /
 ``last_cmdsub_status`` / ``in_forked_child`` as properties that delegate here.
 These are the values the executor reads and writes as it runs each command —
-grouping them turns eight loose ShellState fields into one named type that
+grouping them turns seven loose ShellState fields into one named type that
 ``ShellState.clone_for_child()`` can copy as a unit (the v0.453 ``$!``-in-subshell bug was
 a missed field in that copy; ``copy_into()`` makes such omissions structurally
 hard).
@@ -25,7 +25,6 @@ class ExecutionState:
     __slots__ = (
         "last_exit_code",
         "last_bg_pid",
-        "foreground_pgid",
         "command_number",
         "pipestatus",
         "errexit_eligible",
@@ -40,8 +39,6 @@ class ExecutionState:
         self.last_exit_code: int = 0
         # PID of the most recent background command ($!); inherited by subshells.
         self.last_bg_pid: Optional[int] = None
-        # Process group currently owning the terminal (job control).
-        self.foreground_pgid: Optional[int] = None
         # Monotonic command counter (\# / \! prompt escapes, history numbering).
         self.command_number: int = 0
         # Exit statuses of the most recent foreground pipeline (PIPESTATUS); a

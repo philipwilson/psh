@@ -37,7 +37,7 @@ reinvents the unsafe `dup2` + blanket-close recipe.
 | `process_sub.py` | `ProcessSubstitutionHandler` + `ProcessSubstitutionResource` - process substitution (`<()`, `>()`) |
 | `planner.py` | `RedirectPlanner`/`RedirectPlan` - the shared resolve→expand→procsub planning phase; `plan_program` classifies a command's redirects into one ordered `RedirectProgram` |
 | `redirect_program.py` | `RedirectProgram`/`RedirectOp`/`RedirectOpKind` - the typed, source-ordered redirect operation sequence and its one immediate applicator `apply_in_order` (campaign R1) |
-| `input_cursor.py` | `OpenDescription` (owned open-file-description identity) + `InputCursorRegistry` (per-shell `ShellState.input_cursors`, campaign I1). `read`/`mapfile` borrow a persistent `InputCursor` (the reader in `builtins/input_reader.py`) keyed by description so a `read -N` count-boundary surplus survives across invocations. The description, not the bare fd, decides who that "next read" is, and every operation re-pointing an fd says which it did: an OPEN rebinds → new cursor, a DUP aliases the instance → both fds share one cursor, a TEMPORARY redirect scopes the binding to its frame (both directions), a FORK starts empty. Hooks: `command.py#_rebind_input_cursors_after_exec` (open vs dup, via `input_cursor.py#dup_alias_fds`), `manager.py#setup_builtin_redirections`/`restore_builtin_redirections` + `guarded_redirections` (frame scoping), `file_redirect.py#apply_var_fd_redirect` (`{v}<&n`, where the fd number is only known at allocation). Slot 4B.4 closed the dup/temp-frame gap: keying by bare fd let a cursor's buffered bytes reach a DIFFERENT source's read, or reach no reader at all. `OpenDescription` is the type R1 here-input can adopt |
+| `input_cursor.py` | `OpenDescription` (owned open-file-description identity) + `InputCursorRegistry` (per-shell `ShellState.input_cursors`, campaign I1). `read`/`mapfile` borrow a persistent `InputCursor` (the reader in `builtins/input_reader.py`) keyed by description so a `read -N` count-boundary surplus survives across invocations. The description, not the bare fd, decides who that "next read" is, and every operation re-pointing an fd says which it did: an OPEN rebinds → new cursor, a DUP aliases the instance → both fds share one cursor, a TEMPORARY redirect scopes the binding to its frame (both directions), a FORK starts empty. Hooks: `command.py#_rebind_input_cursors_after_exec` (open vs dup, via `input_cursor.py#dup_alias_fds`), `manager.py#setup_builtin_redirections`/`restore_builtin_redirections` + `guarded_redirections` (frame scoping), `file_redirect.py#FileRedirector._publish_named_fd` (`{v}<&n`, where the fd number is only known at allocation, so every allocating form records its cursor facts through that one owner). Slot 4B.4 closed the dup/temp-frame gap: keying by bare fd let a cursor's buffered bytes reach a DIFFERENT source's read, or reach no reader at all. `OpenDescription` is the type R1 here-input can adopt |
 
 The lazy SCRIPT_FILE reader (`scripting/input_sources.py#LazyFileInput`, campaign
 I2) owns a high-CLOEXEC script descriptor registered on
@@ -145,21 +145,17 @@ word-expansion substitutions and the builtin path).
 
 ### 2. Context Manager for Temporary Redirections
 
-```python
-@contextmanager
-def with_redirections(self, redirects: List[Redirect]):
-    """Apply redirections temporarily, then restore."""
-    saved_fds = self.apply_redirections(redirects)
-    try:
-        yield
-    finally:
-        self.restore_redirections(saved_fds)
-```
+`manager.py#IOManager.guarded_redirections` is the ONE context manager for a
+temporarily-redirected region, and the redirect-error chokepoint for the
+in-process COMPOUND commands (brace group, `if`/`for`/`while`/`until`/`case`,
+`[[ ]]`, `(( ))`). Entering it applies the redirections, scopes input-cursor
+bindings for the fds it re-points, aliases dup'd cursors, and takes ownership
+of any process substitutions used as redirect targets; leaving it restores the
+saved fds and closed output streams and reaps those children — so every
+acquisition made on entry is released on exit, including when the body raises.
 
-`guarded_redirections` is the redirect-error chokepoint for the in-process
-COMPOUND commands (brace group, `if`/`for`/`while`/`until`/`case`, `[[ ]]`,
-`(( ))`). It wraps `with_redirections` but turns a redirect SETUP failure
-into bash's `<$0>: line N: TARGET: STRERROR` diagnostic and yields `False`
+It turns a redirect SETUP failure into bash's
+`<$0>: line N: TARGET: STRERROR` diagnostic and yields `False`
 (so the caller skips the body and returns 1 — `|| fallback` runs, `set -e`
 still aborts). The one message shape is `format_redirect_error(error, target,
 location=state.error_location_prefix())`, shared by the simple-command,
@@ -565,7 +561,7 @@ reached from all FOUR redirect-application paths:
 - `manager.py#IOManager.setup_child_redirections` (forked child);
 - `file_redirect.py#FileRedirector._apply_redirections` (fd-level
   save/restore window, via `IOManager.apply_redirections` /
-  `with_redirections`);
+  `guarded_redirections`);
 - `file_redirect.py#FileRedirector.apply_permanent_redirections` (`exec`).
 
 It owns all the redirect shapes of the form:
@@ -574,6 +570,14 @@ It owns all the redirect shapes of the form:
 - **duplicate** (`{v}>&N`, incl. dynamic `{v}>&$x`) — dup the source high;
 - **close** (`{v}>&-`/`{v}<&-`) — close the fd named by the variable (the
   variable keeps its value).
+
+Every form that ALLOCATES (open, duplicate, heredoc/here-string — all but
+close) finishes through ONE owner,
+`file_redirect.py#FileRedirector._publish_named_fd`: the fd NUMBER only exists
+at apply time, so the variable that publishes it and the cursor facts about it
+are recorded together rather than once per form. A new `{v}` form that
+allocates must go through it, or it will publish a number the cursor registry
+never hears about.
 
 Unlike a normal per-command redirect, a named-fd allocation is PERMANENT
 (parent-side, outside any save/restore window): the user closes it explicitly

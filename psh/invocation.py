@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .builtins.parser_experiment import PARSERS
 from .core.option_registry import OPTION_REGISTRY, SHORT_TO_LONG, OptionCategory
@@ -252,6 +252,33 @@ def _parse_cluster(argv: List[str], i: int, st: _ParseState) -> int:
     return i + 1
 
 
+def _config(st: "_ParseState", parser: Optional[str],
+            **per_source: Any) -> InvocationConfig:
+    """Build the frozen config from the fields every source kind shares.
+
+    The three source kinds (``-c``, script, stdin) agree on ten fields and
+    differ in a handful — ``source_kind``, where the program text comes from,
+    ``argv0`` and ``positionals``. Spelling the shared ten out three times is
+    how a newly added option gets wired into two of the three call sites and
+    silently dropped from the third, which is precisely the defect class this
+    module exists to make unrepresentable.
+    """
+    fields: Dict[str, Any] = dict(
+        interactive=st.interactive,
+        option_transitions=tuple(st.transitions),
+        option_listings=tuple(st.listings),
+        parser=parser,
+        analysis_modes=tuple(st.analysis),
+        norc=st.norc,
+        rcfile=st.rcfile,
+        ast_format=st.ast_format,
+        print_help=st.print_help,
+        print_version=st.print_version,
+    )
+    fields.update(per_source)
+    return InvocationConfig(**fields)
+
+
 def parse_invocation(argv: List[str]) -> InvocationConfig:
     """Parse psh's command line into a frozen :class:`InvocationConfig`.
 
@@ -350,35 +377,21 @@ def parse_invocation(argv: List[str]) -> InvocationConfig:
         command = operands[0]
         argv0 = operands[1] if len(operands) > 1 else "psh"
         positionals = tuple(operands[2:])
-        return InvocationConfig(
+        return _config(
+            st, parser,
             source_kind=SourceKind.COMMAND, command=command,
-            forced_stdin=st.forced_stdin, interactive=st.interactive,
-            option_transitions=tuple(st.transitions),
-            option_listings=tuple(st.listings), parser=parser,
-            analysis_modes=tuple(st.analysis), argv0=argv0,
-            positionals=positionals, norc=st.norc, rcfile=st.rcfile,
-            ast_format=st.ast_format, print_help=st.print_help,
-            print_version=st.print_version)
+            forced_stdin=st.forced_stdin, argv0=argv0,
+            positionals=positionals)
 
     if operands and not st.forced_stdin:
-        return InvocationConfig(
+        return _config(
+            st, parser,
             source_kind=SourceKind.SCRIPT, script_path=operands[0],
-            interactive=st.interactive,
-            option_transitions=tuple(st.transitions),
-            option_listings=tuple(st.listings), parser=parser,
-            analysis_modes=tuple(st.analysis), argv0=operands[0],
-            positionals=tuple(operands[1:]), norc=st.norc, rcfile=st.rcfile,
-            ast_format=st.ast_format, print_help=st.print_help,
-            print_version=st.print_version)
+            argv0=operands[0], positionals=tuple(operands[1:]))
 
     # Stdin (default, or forced by -s — under which any operands are the
     # positional parameters and $0 stays the shell name, bash).
-    return InvocationConfig(
+    return _config(
+        st, parser,
         source_kind=SourceKind.STDIN, forced_stdin=st.forced_stdin,
-        interactive=st.interactive,
-        option_transitions=tuple(st.transitions),
-        option_listings=tuple(st.listings), parser=parser,
-        analysis_modes=tuple(st.analysis), argv0="psh",
-        positionals=tuple(operands), norc=st.norc, rcfile=st.rcfile,
-        ast_format=st.ast_format, print_help=st.print_help,
-        print_version=st.print_version)
+        argv0="psh", positionals=tuple(operands))

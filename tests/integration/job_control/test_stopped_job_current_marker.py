@@ -22,7 +22,6 @@ class _FakeState:
         self.stdout = StringIO()
         self.stderr = StringIO()
         self.last_bg_pid = None
-        self.foreground_pgid = None
 
 
 def _manager():
