@@ -71,12 +71,6 @@ LEDGER = {
         ('JUSTIFIED-KEEP',
          'Arms are one-liners already, the length is the six-way declaration '
          'cross-product'),
-    ('psh/builtins/test_command.py',
-     'TestBuiltin.evaluate_unary'):
-        ('DECOMPOSE-PENDING',
-         '99 exec (2nd-highest in the census), PURE, zero deferred imports; '
-         'TEN arms are the identical stat-and-predicate shape and THREE are '
-         'the identical access-mode shape — a jump table written as a chain'),
     ('psh/core/scope.py',
      'ScopeManager.create_local'):
         ('JUSTIFIED-KEEP',
