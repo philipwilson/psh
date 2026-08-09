@@ -64,6 +64,11 @@ ALLOWED_SUBSTRING_SITES = {
     ("tests/unit/tooling/test_dead_api_not_resurrected_5c2.py", "*"),
     # The frozen oracle census records the retired spelling as history.
     ("tests/harness/oracle_migration_census.md", "try_resolve_bash"),
+    # The widened R4 comment quotes the dangling cite that MOTIVATED the
+    # widening. Naming the rot you were widened to catch is the comment doing
+    # its job; a guard that forbade it would force the next reader to take the
+    # reason on trust.
+    ("tests/unit/tooling/test_doc_pointers.py", "with_redirections"),
 }
 
 

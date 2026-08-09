@@ -26,8 +26,12 @@ Rules:
   R3  backticked ``ClassName.member`` (capitalized head): the class must
       be defined under psh/, and the member name must appear in a file
       defining that class
-  R4  backticked ``function()`` call: ``def function(`` must exist
-      somewhere under psh/ or tests/
+  R4  backticked call cite: ``def <callable>(`` must exist somewhere under
+      psh/, tests/ or tools/. Since remediation 5C.2 this covers DOTTED and
+      ARGUMENT-BEARING cites too (``io_manager.guarded_redirections(node.redirects)``,
+      not just ``function()``) — the narrow form let a deleted symbol sit in a
+      live orientation doc. Exemptions: ``OS_CALLS`` for stdlib/builtin heads,
+      and a structural filter for shell syntax (``for(( ))``, ``$(( ))``).
   R5  every ``**File**:`` / ``**Files**:`` marker path must resolve
       (tried as-is from the repo root, then under psh/)
   R6  ``def``/``class`` names in fenced code blocks that follow a
@@ -76,15 +80,38 @@ EXEMPT = {
     # "Adding a new expansion type" tutorial placeholder (psh/expansion/CLAUDE.md)
     "new_expander.py",
     "NewExpander.expand",
+    # A REAL callable this matcher structurally cannot see: `clear_output` is
+    # ASSIGNED as a lambda (tests/conftest.py, `shell.clear_output = lambda:`),
+    # so `def clear_output(` never exists. Surfaced by the 5C.2 R4 widening and
+    # deliberately NOT fixed here — assignment-defined callables are a SECOND
+    # blind spot, and closing it means changing what the CORPUS understands, not
+    # what the matcher matches. Named as successor row D-5C.2-s1 rather than
+    # half-fixed: an exemption that hides a known class is honest only while it
+    # says which class it is hiding.
+    "captured_shell.clear_output()",
 }
 
 # OS-level calls referenced in prose (`fork()`, `tcsetpgrp()`...) describe
 # syscalls/os-module functions, not psh definitions — R4 skips them.
+#
+# HONEST NOTE, because this list is itself a rot surface: it is HAND-CURATED.
+# Every entry is a decision to STOP checking a name, and nothing asserts that
+# an entry is still cited or still stdlib — a stale entry fails silently by
+# construction. It is the cheapest correct mechanism (the alternative, importing
+# and introspecting stdlib to classify every head, would make a documentation
+# guard depend on the runtime environment), but it is a budget, not a proof.
+#
+# Remediation 5C.2 extended it 25 -> 31 when R4 was widened to see dotted and
+# argument-bearing cites: the widening surfaced 8 stdlib/builtin cites that had
+# always been in the docs and had always been invisible to the matcher.
 OS_CALLS = {
     "fork", "exec", "execve", "execvp", "tcsetpgrp", "tcgetpgrp", "setpgid",
     "getpgid", "setsid", "waitpid", "wait", "kill", "killpg", "open", "close",
     "dup", "dup2", "pipe", "read", "write", "isatty", "sigprocmask", "_exit",
     "exit", "select",
+    # Added with the 5C.2 R4 widening — Python builtins and stdlib callables
+    # cited in prose, never psh definitions.
+    "str", "print", "vars", "execvpe", "getrecursionlimit", "fcntl",
 }
 
 # Common file extensions: `CLAUDE.md`, `ARCHITECTURE.llm` etc. are file
@@ -108,6 +135,29 @@ REL_PY_RE = re.compile(r"^[A-Za-z0-9_\-]+(?:/[A-Za-z0-9_\-]+)*\.py$")
 DOTTED_RE = re.compile(r"^([A-Z][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)(\(\))?$")
 # R4: bare function call with empty parens.
 CALL_RE = re.compile(r"^([a-z_][A-Za-z0-9_]*)\(\)$")
+# R4 WIDENED (remediation 5C.2): a cite may carry a DOTTED head and ARGUMENTS
+# — `io_manager.guarded_redirections(node.redirects)`. CALL_RE demanded a bare
+# name and EMPTY parens, so that whole shape was structurally invisible and a
+# deleted symbol could sit in a live orientation doc indefinitely. It did: the
+# 5C.2 verify round found `io_manager.with_redirections(node.redirects)` still
+# taught in docs/architecture/ast_data_flow.md after the symbol was deleted.
+# The callable is the LAST dotted segment, which is the name a `def` would
+# bind.
+# ONE pattern, so group(1) is ALWAYS the callable: an alternation with two
+# branches would leave group(1) None on the second and silently skip the check.
+WIDE_CALL_RE = re.compile(
+    r"^(?:[A-Za-z_][A-Za-z0-9_]*\.)*([a-z_][A-Za-z0-9_]*)\((.*)\)$")
+
+
+def _is_shell_syntax(token: str) -> bool:
+    """True for SHELL constructs that merely look like calls.
+
+    psh's docs are full of shell, and widening the matcher means it now sees
+    things like ``for(( ))`` and ``$(( ))``. A structural rule beats another
+    hand-list here: doubled parens are arithmetic/C-style-for syntax, and a
+    leading ``$`` is an expansion — neither is ever a Python callable.
+    """
+    return "((" in token or token.startswith("$")
 # R5/R6: **File**: markers and definitions inside fenced blocks.
 MARKER_RE = re.compile(r"^\*\*Files?\*\*:(.*)$", re.MULTILINE)
 DEF_RE = re.compile(r"^(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
@@ -182,10 +232,12 @@ def _check_inline_tokens(doc: Path, corpus):
                     f"class {cls}"
                 )
             continue
-        call = CALL_RE.match(token)
+        call = CALL_RE.match(token) or WIDE_CALL_RE.match(token)
         if call:
             name = call.group(1)
             if name in OS_CALLS:
+                continue
+            if _is_shell_syntax(token):
                 continue
             if not any(f"def {name}(" in text_ for text_ in corpus.values()):
                 failures.append(f"R4 no `def {name}(` anywhere: `{token}`")
@@ -265,3 +317,70 @@ def test_scanned_docs_exist():
     # + 9 psh CLAUDE.md (+ any tests/**/CLAUDE.md).
     assert len(DOC_FILES) >= 13
     assert (PROJECT_ROOT / "CLAUDE.md") in DOC_FILES
+
+
+# ---------------------------------------------------------------------------
+# Guard-the-guard for the 5C.2 R4 widening. Before it, R4 matched only a bare
+# name with EMPTY parens, so `obj.method(arg)` was structurally invisible — and
+# a symbol deleted in one commit sat in a live orientation doc until a human
+# happened to read it. These arms exist so the widening cannot silently regress
+# to that.
+# ---------------------------------------------------------------------------
+
+def _failures_for(text, corpus, tmp_path):
+    doc = tmp_path / "synthetic.md"
+    doc.write_text(text, encoding="utf-8")
+    return _check_inline_tokens(doc, corpus)
+
+
+def test_offender_widened_r4_catches_a_dangling_dotted_cite(
+        source_corpus, tmp_path):
+    """OFFENDER: a dotted, argument-bearing cite to a nonexistent callable.
+
+    This is the exact shape that produced the 5C.2 blocker.
+    """
+    failures = _failures_for(
+        "Executors apply it with `io_manager.no_such_member(node.redirects)`.",
+        source_corpus, tmp_path)
+    assert failures, "a dangling dotted cite must be caught"
+    # Reason asserted, not just the outcome: a failure for some OTHER rule
+    # would prove nothing about R4.
+    assert any("R4" in f and "no_such_member" in f for f in failures), failures
+
+
+def test_control_widened_r4_passes_a_REAL_dotted_cite(source_corpus, tmp_path):
+    """CONTROL: the corrected line itself must PASS.
+
+    Without this the widening could be 'satisfied' by a matcher that flags
+    every dotted call, which would fail the real doc and get reverted.
+    """
+    failures = _failures_for(
+        "Executors apply it with `io_manager.guarded_redirections(node.redirects)`.",
+        source_corpus, tmp_path)
+    assert not failures, failures
+
+
+def test_control_widened_r4_passes_a_stdlib_cite(source_corpus, tmp_path):
+    """CONTROL: an exempt stdlib/builtin cite must PASS.
+
+    The widening surfaced 8 of these that had always been in the docs. If the
+    exemption stopped working they would all fail at once and the pressure
+    would be to revert the widening rather than fix the list.
+    """
+    failures = _failures_for(
+        "It prints with `print(..., file=sys.stderr)` and `str(error)`.",
+        source_corpus, tmp_path)
+    assert not failures, failures
+
+
+def test_control_widened_r4_ignores_shell_syntax(source_corpus, tmp_path):
+    """CONTROL: shell constructs are not Python callables.
+
+    psh's docs are largely about shell, so the widened matcher sees things
+    like `for(( ))`. A structural rule (doubled parens, leading `$`) keeps
+    them out without another hand-list.
+    """
+    failures = _failures_for(
+        "The C-style form is `for(( ))` and arithmetic is `$(( ))`.",
+        source_corpus, tmp_path)
+    assert not failures, failures
