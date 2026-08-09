@@ -140,8 +140,26 @@ without hubs is the outcome decomposition aims at.
 
 ## Part 6 — gate and final figures
 
-Gate and compare-bash ran at **`a35edb3f`**; the fix round moved the tip
-afterwards and gate-2 re-ran (see the completion report for the final SHA).
+**GATE-1** ran at `a35edb3f`; the fix round then moved the tip, so **GATE-2 is
+the authoritative run**. Both transcripts of both runs are committed under
+`../transcripts/` — `gate-1.txt`, `compare-bash-1.txt`, `gate-2.txt`,
+`compare-bash-2.txt`.
+
+**GATE-2 — authoritative, at final tip `f937746c`.** Unlike gate-1 there is no
+evidence commit between the run and the declared tip, so the gated tip and the
+final tip are the SAME SHA.
+
+| cell | pre-registered | measured | verdict |
+|---|---|---|---|
+| gate passed | 24,026 | **24,026** | EXACT |
+| gate skipped / xfail | 1,620 / 10 | **1,620 / 10** | EXACT |
+| compare-bash | 3,046 / 26, +0 | **3,046 / 26** | EXACT |
+
+Phase split 22,909 parallel + 1,117 serial; `✅ All test phases PASSED`.
+
+The gate-1 table below is RETAINED as the record of the pre-fix-round run. Its
+figures are superseded by gate-2's, not contradicted by them: the +23 is the
+standing resurrection guard (+19) and the R4 widening arms (+4).
 
 | cell | pre-registered | measured | verdict |
 |---|---|---|---|
