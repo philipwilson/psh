@@ -1,0 +1,224 @@
+=== source-text anchors from tests/unit/tooling/ found inside the six seam files (literals >= 12 chars)
+
+## _hub_ledger_rows.py
+   :200  -> psh/invocation.py
+      'parse_invocation'
+
+## test_ast_child_schema_guard.py
+   :114  -> psh/io_redirect/file_redirect.py
+      'psh.ast_nodes'
+
+## test_broad_valueerror_catch_q2.py
+   :226  -> psh/builtins/parse_tree.py
+      'AttributeError'
+   :226  -> psh/io_redirect/file_redirect.py
+      'AttributeError'
+   :254  -> psh/builtins/parse_tree.py
+      'ASTDotGenerator'
+   :254  -> psh/builtins/parse_tree.py
+      'ASTPrettyPrinter'
+   :258  -> psh/builtins/parse_tree.py
+      'AttributeError'
+   :258  -> psh/io_redirect/file_redirect.py
+      'AttributeError'
+   :261  -> psh/builtins/parse_tree.py
+      'AttributeError'
+   :261  -> psh/io_redirect/file_redirect.py
+      'AttributeError'
+   :264  -> psh/builtins/parse_tree.py
+      'AttributeError'
+   :264  -> psh/io_redirect/file_redirect.py
+      'AttributeError'
+   :271  -> psh/builtins/test_command.py
+      'error_location_prefix'
+
+## test_declared_field_access_q2.py
+   :230  -> psh/builtins/print_builtin.py
+      'in_forked_child'
+   :237  -> psh/lexer/recognizers/operator.py
+      'combined_redirect'
+
+## test_doc_snippets.py
+   :55  -> psh/io_redirect/file_redirect.py
+      'psh/core/CLAUDE.md'
+   :83  -> psh/io_redirect/file_redirect.py
+      'psh/core/CLAUDE.md'
+
+## test_import_layering.py
+   :57  -> psh/io_redirect/file_redirect.py
+      'psh.ast_nodes'
+   :67  -> psh/builtins/parse_tree.py
+      'TYPE_CHECKING'
+   :67  -> psh/builtins/print_builtin.py
+      'TYPE_CHECKING'
+   :67  -> psh/builtins/test_command.py
+      'TYPE_CHECKING'
+   :67  -> psh/io_redirect/file_redirect.py
+      'TYPE_CHECKING'
+   :67  -> psh/lexer/recognizers/operator.py
+      'TYPE_CHECKING'
+   :69  -> psh/builtins/parse_tree.py
+      'TYPE_CHECKING'
+   :69  -> psh/builtins/print_builtin.py
+      'TYPE_CHECKING'
+   :69  -> psh/builtins/test_command.py
+      'TYPE_CHECKING'
+   :69  -> psh/io_redirect/file_redirect.py
+      'TYPE_CHECKING'
+   :69  -> psh/lexer/recognizers/operator.py
+      'TYPE_CHECKING'
+
+## test_input_cursor_guard_i1.py
+   :92  -> psh/builtins/print_builtin.py
+      'surrogateescape'
+   :92  -> psh/io_redirect/file_redirect.py
+      'surrogateescape'
+   :101  -> psh/builtins/print_builtin.py
+      'surrogateescape'
+   :101  -> psh/io_redirect/file_redirect.py
+      'surrogateescape'
+
+## test_input_cursor_m8_locks_4b4.py
+   :106  -> psh/io_redirect/file_redirect.py
+      '            registry.bind_dup(newfd, dup_fd)\n'
+
+## test_operand_projection_guard.py
+   :80  -> psh/io_redirect/file_redirect.py
+      'expand_string_variables'
+   :82  -> psh/io_redirect/file_redirect.py
+      'expand_assignment_value_word'
+
+## test_option_walker_ratchet_q2.py
+   :73  -> psh/builtins/parse_tree.py
+      'ParseTreeBuiltin'
+   :79  -> psh/builtins/print_builtin.py
+      'PrintBuiltin'
+
+## test_parser_contract_guards_s4.py
+   :20  -> psh/invocation.py
+      'recursive_descent'
+
+## test_protocol_layering_q1.py
+   :31  -> psh/builtins/parse_tree.py
+      'TYPE_CHECKING'
+   :31  -> psh/builtins/print_builtin.py
+      'TYPE_CHECKING'
+   :31  -> psh/builtins/test_command.py
+      'TYPE_CHECKING'
+   :31  -> psh/io_redirect/file_redirect.py
+      'TYPE_CHECKING'
+   :31  -> psh/lexer/recognizers/operator.py
+      'TYPE_CHECKING'
+   :33  -> psh/builtins/parse_tree.py
+      'TYPE_CHECKING'
+   :33  -> psh/builtins/print_builtin.py
+      'TYPE_CHECKING'
+   :33  -> psh/builtins/test_command.py
+      'TYPE_CHECKING'
+   :33  -> psh/io_redirect/file_redirect.py
+      'TYPE_CHECKING'
+   :33  -> psh/lexer/recognizers/operator.py
+      'TYPE_CHECKING'
+
+## test_redirect_program_guard_r1.py
+   :25  -> psh/io_redirect/file_redirect.py
+      'setup_builtin_redirections'
+   :25  -> psh/io_redirect/file_redirect.py
+      'setup_child_redirections'
+   :27  -> psh/io_redirect/file_redirect.py
+      '_apply_redirections'
+   :27  -> psh/io_redirect/file_redirect.py
+      'apply_permanent_redirections'
+   :54  -> psh/io_redirect/file_redirect.py
+      'apply_in_order'
+   :68  -> psh/io_redirect/file_redirect.py
+      'setup_builtin_redirections'
+   :69  -> psh/io_redirect/file_redirect.py
+      'apply_in_order'
+   :161  -> psh/io_redirect/file_redirect.py
+      'redirect_procsub_node'
+
+## test_resolution_timing_ratchet_3_4.py
+   :133  -> psh/io_redirect/file_redirect.py
+      're-expansion'
+   :228  -> psh/io_redirect/file_redirect.py
+      're-expansion'
+
+## test_shell_oracle_harness.py
+   :217  -> psh/builtins/print_builtin.py
+      'surrogateescape'
+   :217  -> psh/io_redirect/file_redirect.py
+      'surrogateescape'
+   :390  -> psh/builtins/print_builtin.py
+      'surrogateescape'
+   :390  -> psh/io_redirect/file_redirect.py
+      'surrogateescape'
+   :429  -> psh/builtins/print_builtin.py
+      'surrogateescape'
+   :429  -> psh/io_redirect/file_redirect.py
+      'surrogateescape'
+   :455  -> psh/builtins/print_builtin.py
+      'surrogateescape'
+   :455  -> psh/io_redirect/file_redirect.py
+      'surrogateescape'
+
+## test_subscript_no_broad_except.py
+   :60  -> psh/io_redirect/file_redirect.py
+      'BaseException'
+   :128  -> psh/io_redirect/file_redirect.py
+      'BaseException'
+
+## test_syntax_bearing_ast_fields_q2.py
+   :55  -> psh/io_redirect/file_redirect.py
+      'psh.ast_nodes'
+   :97  -> psh/io_redirect/file_redirect.py
+      'ProcessSubstitution'
+   :109  -> psh/io_redirect/file_redirect.py
+      'HeredocRedirect'
+   :109  -> psh/io_redirect/file_redirect.py
+      'heredoc_content'
+   :122  -> psh/io_redirect/file_redirect.py
+      'ExpansionPart'
+   :128  -> psh/io_redirect/file_redirect.py
+      'ProcessSubstitution'
+   :135  -> psh/io_redirect/file_redirect.py
+      'HeredocRedirect'
+   :136  -> psh/io_redirect/file_redirect.py
+      'HeredocRedirect'
+   :137  -> psh/io_redirect/file_redirect.py
+      'HeredocRedirect'
+   :138  -> psh/io_redirect/file_redirect.py
+      'HeredocRedirect'
+
+## test_terminal_except_ledger_5c1.py
+   :146  -> psh/io_redirect/file_redirect.py
+      'apply_redirections'
+   :147  -> psh/io_redirect/file_redirect.py
+      '_apply_redirections'
+   :153  -> psh/io_redirect/file_redirect.py
+      'apply_permanent_redirections'
+   :154  -> psh/io_redirect/file_redirect.py
+      'apply_in_order'
+   :160  -> psh/io_redirect/file_redirect.py
+      'setup_builtin_redirections'
+   :161  -> psh/io_redirect/file_redirect.py
+      'apply_in_order'
+   :175  -> psh/lexer/recognizers/operator.py
+      'can_recognize'
+   :238  -> psh/io_redirect/file_redirect.py
+      'guarded_redirections'
+   :316  -> psh/io_redirect/file_redirect.py
+      'expand_string_variables'
+
+=== TOTAL candidates: 87 across 18 tooling module(s)
+
+=== CLASSIFIED
+  SOURCE-LINE anchors (mutation-shaped, the at-risk category): 1
+      test_input_cursor_m8_locks_4b4.py:106 -> psh/io_redirect/file_redirect.py
+        '            registry.bind_dup(newfd, dup_fd)\n'
+  SYMBOL-NAME references (move WITH the symbol, not at risk): 86
+
+Arm FUNCTIONALITY is proven by EXECUTION, not by this listing: the full
+tests/unit/tooling suite runs every mutation lock at this commit, and a
+mutation that no longer applies fails there — which is how seam 6's gap
+surfaced in the first place.

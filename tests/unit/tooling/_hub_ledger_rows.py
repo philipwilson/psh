@@ -213,13 +213,6 @@ LEDGER = {
         ('JUSTIFIED-KEEP',
          'Exec-path fd transaction with lease acquire/rollback (4A.1 '
          'territory); terminal-handler ledger keys at :1327'),
-    ('psh/io_redirect/file_redirect.py',
-     'FileRedirector.apply_var_fd_redirect'):
-        ('DECOMPOSE-PENDING',
-         'NAMED GROWER. 50 exec; the allocate-and-record tail (F_DUPFD>=10 + '
-         'set_variable + scope_fd) repeats VERBATIM in three arms — that '
-         'triplication IS the named-fd allocation contract, and it has no '
-         'single owner'),
     ('psh/lexer/cmdsub_scanner.py',
      'find_command_substitution_end'):
         ('JUSTIFIED-KEEP',

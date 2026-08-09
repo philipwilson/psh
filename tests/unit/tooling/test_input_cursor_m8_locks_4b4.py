@@ -104,7 +104,17 @@ ARMS = [
         "named-fd-dup-not-aliased",
         FILE_REDIRECT,
         "            registry.bind_dup(newfd, dup_fd)\n",
-        "",
+        # RE-POINTED (remediation 5C.2): the seeded defect is "this statement
+        # does not run", and it used to be spelled by DELETING the line. That
+        # spelling depended on the line having a sibling statement — once the
+        # allocate-and-record tail moved into `_publish_named_fd`, the line
+        # became the sole statement of `if dup_fd is not None:` and deleting
+        # it left an empty block, so the arm failed with IndentationError
+        # instead of biting for its own reason. An indent-matched no-op seeds
+        # the IDENTICAL defect (no alias recorded on the named-fd path)
+        # regardless of what surrounds the line. Find, breaks and stays_green
+        # are unchanged: a re-point, not a weakening.
+        "            pass  # M8 MUTATION: alias suppressed\n",
         breaks=[DUP_NAMED],
         stays_green=[DUP_EXEC],
     ),
