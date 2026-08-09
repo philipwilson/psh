@@ -64,6 +64,7 @@ seam against a materialised base checkout.
 | seam | commit | nominal | ledger row | A/B cases |
 |---|---|---|---|---|
 | `ParseTreeBuiltin.execute` | `1dd4871b` | 106 → 44 | removed | 18 |
+| ↳ **the one NON-pure-move edit in the six** | | | | this seam also added a `ValueError` where the format chain previously fell through to a write with `output` UNBOUND. Unreachable through the shell (the scan rejects any other format with rc 2), so zero-delta holds vacuously on that arm — but it IS a semantic edit, not a move, and a discharge-audit reader must see it here rather than infer it. Pinned by a direct-call test (`e6d4cbc0`), forcing-proven by `B10`, and the pin was corrected in the fix round to pass a real `Program` |
 | `TestBuiltin.evaluate_unary` | `8f774d49` | 136 → 57 | removed | **525** |
 | `PrintBuiltin._parse_options` | `a683730c` | 102 → 88 | removed | 38 |
 | `OperatorRecognizer.recognize` | `31a760c0` | 101 → 67 | removed | 32 |
@@ -82,7 +83,13 @@ mutation's spelling of "this statement does not run" changed.
 
 ---
 
-## Part 4 — faults, all self-caught
+## Part 4 — faults: seven self-caught, two integrator-caught, one verifier-caught
+
+The original heading here read "all self-caught". That was false as written —
+rows 1 and 8 were caught by the integrator, and the blocker below by the verify
+round. Corrected rather than quietly softened, because a fault table that
+overstates its own self-discipline is the same class of defect as the ones it
+records.
 
 | # | fault | caught by | repair |
 |---|---|---|---|
@@ -95,8 +102,83 @@ mutation's spelling of "this statement does not run" changed.
 | 7 | `B14` counted base by grep and tip by collect-only — invented a `+9` | self, pre-table | one method both sides |
 | 8 | fn total omitted from the code-complete report | integrator | re-derived **3,236**, matching |
 | 9 | scratch file written to system `/tmp` | self | reported; project `tmp/` only |
+| 10 | **the gate-wait deadlocked on a `pgrep` that matched itself** — and the deeper error is that I waited on PROCESS ABSENCE when the STATE was in the file the whole time | integrator | bracket-form patterns that cannot self-match; verify from the summary line. **REPEAT OF A BANKED LESSON** (5B.2 lesson 5): carried in my own rules chain, quoted in D2.1, not applied at authoring time |
+| 11 | **BLOCKER: a dangling `with_redirections` cite left in a LIVE orientation doc** (`ast_data_flow.md:252`) — D1 called the residue "prose in `docs/`" and stopped, bucketing by DIRECTORY instead of dispositioning per file | **verify round** (3 of 4 verifiers, independently) | one-word fix, sentence verified TRUE at the code; both-sides fault — the integrator's R2 accepted the doc-set census without demanding per-file disposition |
 
 **Lesson candidates banked:** a guard that never bit its author is a guard
 nobody has tested · anchor-present ≠ arm-functional · a green instrument is
 not an observed property · an A/B whose arms share mutable state manufactures
-its finding · two methods on the two sides of a delta is the D-3.5 error.
+its finding · two methods on the two sides of a delta is the D-3.5 error ·
+**verify from STATE, not process absence — liveness is a proxy, and one that
+can self-match** · **a census bucketed by DIRECTORY is not a census: `docs/`
+holds both frozen records and live orientation docs, and only per-file
+disposition tells them apart.**
+
+---
+
+## Part 5 — the five FILE-growers (ruled in R2; the file half, discharged here)
+
+The fn-growers are dispositioned as ledger rows. The five grown FILES are
+dispositioned here, because a committed ledger must discharge that half on its
+own rather than by pointing at a dead-drop entry.
+
+Measured `53253642` (v0.750.0, campaign start) → base, by `A10b`:
+
+| file | at v0.750.0 | at base | net code | net comment | disposition |
+|---|---|---|---|---|---|
+| `pattern_engine.py` | 742 | 1,681 (+939) | **+665** | +181 | **COHESIVE AS-IS, ledger the fns.** The +665 is the glibc `sm_loop.c` matcher port that REPLACED a regex approximation — growth by design, not accretion. Its one ≥100 fn (`_BashMatcher._match`) is JUSTIFIED-KEEP: the control flow IS the ported semantics |
+| `operands.py` | 529 | 811 (+282) | **+205** | +44 | **COHESIVE AS-IS.** **ZERO** fns ≥100 — a large file of small functions, which is the shape decomposition produces |
+| `file_redirect.py` | 1,140 | 1,422 (+282) | **+151** | +107 | **COHESIVE AS-IS, ledger the fns.** Two ≥100 fns, one of them decomposed this slot (`apply_var_fd_redirect`), the other (`apply_permanent_redirections`) JUSTIFIED-KEEP as an fd transaction with lease rollback |
+| `command_assignments.py` | 592 | 823 (+231) | **+165** | +38 | **COHESIVE AS-IS, ledger the fns.** One ≥100 fn (`commit_prefix`), JUSTIFIED-KEEP: the `_pop_staging_scope` ordering is load-bearing |
+| `manager.py` | 1,003 | 1,204 (+201) | **+134** | +54 | **COHESIVE AS-IS.** **ZERO** fns ≥100 |
+
+Unlike the fn-growers, these grew in real CODE. File growth is not per se a
+defect, and the two files with zero ≥100 functions are the argument: size
+without hubs is the outcome decomposition aims at.
+
+---
+
+## Part 6 — gate and final figures
+
+Gate and compare-bash ran at **`a35edb3f`**; the fix round moved the tip
+afterwards and gate-2 re-ran (see the completion report for the final SHA).
+
+| cell | pre-registered | measured | verdict |
+|---|---|---|---|
+| gate passed / skipped / xfail | 24,003 / 1,620 / 10 | 24,003 / 1,620 / 10 | EXACT |
+| compare-bash | 3,046 / 26, +0 | 3,046 / 26 | EXACT |
+| fn total | 3,236 | 3,236 | EXACT |
+| fns ≥100 nominal | 55 | 55 | EXACT |
+| hub-ledger entries | 55 = 51 + 1 + 3 | 55 | EXACT |
+| sig census A / B | 632 / 477 | 632 / 477 | EXACT |
+| ALLOWLIST | 8 | 8 | EXACT |
+| caps floor | 66 / 177 | 66 / 177 | EXACT |
+| conformance · golden · never-touch ×7 | zero diff | zero diff | EXACT |
+
+---
+
+## Part 7 — corrections and environment notes
+
+**A10's first two cells are SUPERSEDED by `A10b`.** `A10_growth_kind.sh` piped
+a diff into `python - <<'PY'`, where the heredoc claims stdin — so the
+classifier read an EMPTY stream and printed all-zero counts. The committed
+`.out` retains those zeros: **an executed transcript is evidence and is never
+edited after the fact**. `A10b_diff_classify.py` is the corrected instrument
+(it runs `git diff` itself) and its figures are the ones every claim uses. The
+zeros are a record of the fault, not a measurement.
+
+**Canonical-metric correction (fix round, N13).** The Phase A survey
+instrument `A9` counted a code line carrying a TRAILING comment as a comment
+line. The guard's canonical `executable_lines` does not. Where this ledger and
+the early dead-drop entries said **58 of 60** below 100 executable, **2** rows
+≥100, and `ShellState.__init__` **94/191**, the canonical figures are **57 of
+60**, **3**, and **95/190**. Both grower deltas (−3/+14, −3/+9) are unchanged,
+and so is every conclusion. The guard's docstring now carries the canonical
+numbers and names the discrepancy.
+
+**Environment note (verify round N4).** A verifier reproducing this branch in a
+worktree under system `/tmp` saw 16 failures that do not occur in a project-tree
+checkout. Recorded as an environment property, not a branch defect: psh's
+suites create fixtures under the project tree and some resolve paths relative
+to it. The gate figures in Part 6 are from a project-tree run.
+

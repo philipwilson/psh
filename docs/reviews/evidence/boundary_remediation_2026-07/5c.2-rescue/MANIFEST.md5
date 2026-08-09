@@ -5,7 +5,7 @@ generator and `MANIFEST.md5` are deliberately absent — a manifest cannot
 contain its own hash). Regenerate and diff to verify nothing drifted.
 
 Tree: `docs/reviews/evidence/boundary_remediation_2026-07/5c.2-rescue/instruments`
-Tip: `a35edb3f49c109dd394b386991fefeb651457c36`
+Tip: `adf109be5e40b48be0fba21cd94f5ad643a06cdf`
 
 | md5 | bytes | file |
 |---|---|---|
@@ -75,6 +75,10 @@ Tip: `a35edb3f49c109dd394b386991fefeb651457c36`
 | `8ee98e0b52bb57abf3bc1a65ac108b3c` | 2041 | `B8_operator_veto_ab.sh` |
 | `6a02de6b9602552132c6af82b91c2138` | 104 | `B9_invocation_ab.out` |
 | `1cd695f95947f2267858e2179f45b86c` | 3647 | `B9_invocation_ab.py` |
+| `927cad29241a410cb6ea4e55231237d1` | 8859 | `C1_guard_widening_measure.out` |
+| `b76dfc008e46b62f97e463a76da4ba00` | 3291 | `C1_guard_widening_measure.py` |
+| `17db0f0bcc394094c1afa3ebb783f4c7` | 331 | `C2_canonical_resource.out` |
+| `87ef17c09278c111603c72c5b9ef70e4` | 3167 | `C2_canonical_resource.py` |
 | `aed48b32dbfbf224b43545563c4c354d` | 5335 | `SEAM6_FENCED.patch` |
 
-**Files listed: 67** (derived by the loop above, not hand-counted.)
+**Files listed: 71** (derived by the loop above, not hand-counted.)
