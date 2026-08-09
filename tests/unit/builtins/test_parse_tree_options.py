@@ -57,10 +57,18 @@ def test_render_rejects_an_unknown_format_as_a_defect(captured_shell):
     TRUE-BUT-UNPINNED claim is still unpinned).
     """
     from psh.builtins.parse_tree import ParseTreeBuiltin
+    from psh.lexer import tokenize
+    from psh.parser import create_parser
+
+    # A REAL parsed Program, not None. The parameter is annotated `Program`,
+    # and a pin that violates the annotation it exists to protect would be
+    # driving the raise with the wrong input shape — the arm must fire on the
+    # FORMAT being unknown, not on the AST being absent.
+    program = create_parser(tokenize("echo hi"), source_text="echo hi").parse()
 
     builtin = ParseTreeBuiltin()
     with pytest.raises(ValueError) as excinfo:
-        builtin._render(ast=None, format_type="bogus", show_positions=False,
+        builtin._render(ast=program, format_type="bogus", show_positions=False,
                         shell=captured_shell)
     # The message must name the offending format — a bare "unhandled format"
     # would leave the next reader exactly where UnboundLocalError did.

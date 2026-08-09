@@ -135,7 +135,9 @@ earlier single figure **107** was a grep of import-*like* lines: it matched
 in-string references while missing other mentions, so it equals neither the file
 set (108) nor the runtime surface (105) — superseded by this table.
 
-By imported symbol (import statements):
+By imported symbol (import statements) — **frozen at `e52957d4`; see the
+second superseding-change note in the header: `try_resolve_bash` no longer
+exists, so the rows naming it are history, not an importable surface**:
 
 | Import | Count |
 |---|---|

@@ -249,7 +249,7 @@ Every compound node (`IfConditional`, `WhileLoop`, `UntilLoop`,
 `SubshellGroup`, `BraceGroup`, `FunctionDef` bodies,
 `ArithmeticEvaluation`, `EnhancedTestStatement`) carries a
 `redirects: List[Redirect]` field; executors apply it with
-`io_manager.with_redirections(node.redirects)` around the body.
+`io_manager.guarded_redirections(node.redirects)` around the body.
 
 Totality is enforced mechanically:
 `tests/unit/visitor/test_ast_coverage_matrix.py` introspects the AST for

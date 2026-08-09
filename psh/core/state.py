@@ -270,8 +270,8 @@ class ShellState:
         self.rcfile = rcfile
 
         # Execution state — one cohesive object (last_exit_code / last_bg_pid /
-        # command_number / pipestatus / errexit_eligible /
-        # last_cmdsub_status / in_forked_child delegate to it via properties).
+        # command_number / pipestatus / errexit_eligible / last_cmdsub_status /
+        # in_forked_child delegate to it via properties).
         self.execution = ExecutionState()
 
         # History settings — one cohesive object (history / history_file /

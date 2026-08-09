@@ -9,17 +9,27 @@ rows are forced out, and a NEW hub cannot land silently.
 
 **WHAT THIS RATCHETS: COMPLEXITY, NOT DOCUMENTATION.** The threshold is
 EXECUTABLE lines, and that choice is load-bearing rather than incidental. The
-campaign's own function-length census counts raw source lines, and measured
-against the tree at the time this ledger landed, 58 of its 60 rows fell BELOW
-100 executable lines — ``ShellState.__init__`` scored 323 while carrying 94
-executable lines and 191 comment lines. Two of the census's named "campaign
-growers" had in fact SHRUNK in code and grown in provenance comments
-(``ReadBuiltin.execute`` −3 executable / +14 comment;
-``ParseTreeBuiltin.execute`` −3 / +9). A ratchet keyed on raw length would
-therefore have fired on the slot that narrowed an exception net and documented
-why — punishing precisely the practice this campaign enforces. It would be a
-documentation-suppression device. So: comments and docstrings are free, and the
-arms below PROVE that both ways rather than asserting it.
+campaign's own function-length census counts raw source lines; measured at the
+base tree this ledger was built from, **57 of its 60 rows fall BELOW 100
+executable lines** — ``ShellState.__init__`` scores 323 nominal while carrying
+**95 executable and 190 comment** lines, and only **3** rows reach 100
+executable. Both of the census's named "campaign growers" had in fact SHRUNK in
+code while growing in provenance comments (``ReadBuiltin.execute`` −3
+executable / +14 comment; ``ParseTreeBuiltin.execute`` −3 / +9). A ratchet keyed
+on raw length would therefore have fired on the slot that narrowed an exception
+net and documented why — punishing precisely the practice this campaign
+enforces. It would be a documentation-suppression device. So: comments and
+docstrings are free, and the arms below PROVE that both ways rather than
+asserting it.
+
+Every figure above is produced by ``executable_lines`` BELOW — this module's own
+metric — not by the Phase A survey instrument that motivated the design. The
+distinction is not pedantry: that instrument counted a code line carrying a
+TRAILING comment as a comment line, so it reported 58/2 and ``94/191`` where the
+canonical rule reports 57/3 and ``95/190``. Same conclusion, different margins —
+and the margins are exactly what the rules below exist to pin. A docstring
+quoting a different implementation's numbers than its body enforces is the
+NAME-VS-BODY defect this campaign brings against other people's work.
 
 **THE METRIC (one canonical implementation — ``executable_lines`` below).**
 EXECUTABLE = span − docstring lines − comment-only lines − blank lines. Two
