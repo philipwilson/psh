@@ -109,6 +109,11 @@ from typing import (
     runtime_checkable,
 )
 
+# Every producer/value type named in an annotation is imported HERE ONLY —
+# under TYPE_CHECKING — so this package stays a true leaf with no runtime
+# import edge into psh (the one-way rule in the module docstring, guarded by
+# test_protocol_layering_q1.py). The three psh.expansion value types are
+# ExpansionSubExpanders' member types (remediation 5C.2, D-5C.1-s2).
 if TYPE_CHECKING:
     from typing import Literal
 
@@ -116,6 +121,9 @@ if TYPE_CHECKING:
     from ..core.state import ShellState
     from ..executor.job_control import Job
     from ..expansion._protocols import VariableExpanderProtocol
+    from ..expansion.command_sub import CommandSubstitutionExecutor
+    from ..expansion.subscript import SubscriptEvaluator
+    from ..expansion.tilde import TildeExpander
     from ..expansion.word_expander import WordExpander
 
 
@@ -319,17 +327,17 @@ class ExpansionSubExpanders(Protocol):
     """
 
     @property
-    def subscript(self) -> Any:
+    def subscript(self) -> "SubscriptEvaluator":
         """The array-subscript authority (indexed arithmetic / assoc key)."""
         ...
 
     @property
-    def command_sub(self) -> Any:
+    def command_sub(self) -> "CommandSubstitutionExecutor":
         """The command-substitution executor."""
         ...
 
     @property
-    def tilde_expander(self) -> Any:
+    def tilde_expander(self) -> "TildeExpander":
         """The tilde expander."""
         ...
 
