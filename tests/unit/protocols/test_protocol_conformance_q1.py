@@ -47,10 +47,13 @@ EXPECTED_MEMBERS = {
     # the full-`Shell` escape-hatch member retire (successor D-5B.2-s2).
     "ExpansionHost": {"state", "expansion_manager"},
     "IOContext": {"stdin", "stdout", "stderr"},
-    # Remediation 5B.2: `shell_state` — the whole ShellState carried on a
-    # narrow protocol, which its one consumer reached through for a single
-    # `foreground_pgid` write — was replaced by the narrow publish member.
-    "JobRuntime": {"publish_foreground_pgid", "terminal_pgid_if_owned",
+    # Remediation 5B.2 replaced the whole-ShellState `shell_state` member with
+    # a narrow `publish_foreground_pgid`. 5C.2 retired that member too: a
+    # census showed the field it wrote is never read, and a three-arm parity
+    # run left the 392 job-control tests unchanged with every write disabled.
+    # That is D-5B.2-dead, 5B.2's OWN registered successor — not a re-open of
+    # the 5B.2 disposition.
+    "JobRuntime": {"terminal_pgid_if_owned",
                    "create_job",
                    "set_foreground_job", "transfer_terminal_control",
                    "wait_for_job", "report_signal_death_at",

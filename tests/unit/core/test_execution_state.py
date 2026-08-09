@@ -14,7 +14,6 @@ def test_defaults():
     e = ExecutionState()
     assert e.last_exit_code == 0
     assert e.last_bg_pid is None
-    assert e.foreground_pgid is None
     assert e.command_number == 0
     assert e.pipestatus == []
     assert e.errexit_eligible is True
@@ -48,7 +47,6 @@ def test_copy_into_carries_inheritable_fields():
     parent = ExecutionState()
     parent.last_exit_code = 3
     parent.last_bg_pid = 999
-    parent.foreground_pgid = 100
     parent.command_number = 12
     parent.pipestatus = [0, 2]
     parent.errexit_eligible = False
@@ -60,7 +58,6 @@ def test_copy_into_carries_inheritable_fields():
 
     assert child.last_exit_code == 3
     assert child.last_bg_pid == 999  # $! inherited (v0.453 regression)
-    assert child.foreground_pgid == 100
     assert child.command_number == 12
     assert child.pipestatus == [0, 2]
     assert child.errexit_eligible is False

@@ -843,4 +843,5 @@ Output example:
 ### With Job Control (`psh/executor/job_control.py`)
 
 - Terminal state: `state.is_terminal`, `state.supports_job_control`
-- Process groups: `state.foreground_pgid`
+- Process groups: owned by `JobManager` itself (`job.pgid` / `tcsetpgrp`);
+  `ShellState` carries no foreground-pgid field

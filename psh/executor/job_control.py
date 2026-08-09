@@ -345,18 +345,6 @@ class JobManager:
         """Set reference to shell state for option checking."""
         self.shell_state = state
 
-    def publish_foreground_pgid(self, pgid: int) -> None:
-        """Record *pgid* as the foreground process group after a handoff.
-
-        The ``JobRuntime`` publish surface (remediation 5B.2). The one consumer
-        used to reach through ``shell_state`` and assign the attribute itself,
-        which put the whole state on a narrow protocol for a single ``int``
-        write; the None-guard for a state-less manager lives here now rather
-        than at the call site.
-        """
-        if self.shell_state is not None:
-            self.shell_state.foreground_pgid = pgid
-
     def create_job(self, pgid: int, command: str) -> Job:
         """Create a new job.
 
@@ -985,8 +973,6 @@ class JobManager:
 
         # Clear foreground job tracking and restore terminal modes
         self.set_foreground_job(None)
-        if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
-            self.shell_state.foreground_pgid = None
 
     def _promote_to_current(self, job: 'Job') -> None:
         """Make ``job`` the current job (``%+``), demoting the old ``%+`` to
@@ -1016,8 +1002,6 @@ class JobManager:
             self.restore_shell_foreground()
         else:
             self.set_foreground_job(None)
-            if self.shell_state is not None and hasattr(self.shell_state, 'foreground_pgid'):
-                self.shell_state.foreground_pgid = None
 
         if job is not None and job.state == JobState.STOPPED:
             self._promote_to_current(job)

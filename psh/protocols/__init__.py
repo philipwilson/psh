@@ -219,21 +219,6 @@ class JobRuntime(Protocol):
     satisfies it (mypy-checked at the call site).
     """
 
-    def publish_foreground_pgid(self, pgid: int) -> None:
-        """Record *pgid* as the foreground process group after a handoff.
-
-        Until remediation 5B.2 this protocol instead exposed the whole
-        ``shell_state``, and its one consumer reached through it to assign
-        ``shell_state.foreground_pgid`` itself — a whole-state member on a
-        narrow protocol, for a single ``int`` write. The write moved into the
-        producer rather than into ``transfer_terminal_control``: a caller
-        census found FIVE paths through that method and only ONE that may
-        publish, so folding the write in would have given the other four
-        (``fg`` builtin, two SignalManager paths, JobManager's own restore) a
-        write they must not perform.
-        """
-        ...
-
     def terminal_pgid_if_owned(self) -> Optional[int]:
         """The terminal's foreground pgid if this shell owns it, else None."""
         ...

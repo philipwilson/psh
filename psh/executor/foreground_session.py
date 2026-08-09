@@ -87,7 +87,6 @@ class ForegroundJobSession:
         if self.original_pgid is not None:
             if jm.transfer_terminal_control(pgid, "ForegroundJobSession"):
                 self.terminal_transferred = True
-                jm.publish_foreground_pgid(pgid)
         return job
 
     def wait(self) -> int:
