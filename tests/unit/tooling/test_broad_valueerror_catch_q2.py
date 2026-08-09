@@ -30,22 +30,27 @@ NESTED-swallow re-raise (a ``raise`` inside an inner ``try`` in the handler that
 does not actually re-raise the outer error) — the ``raise``-anywhere check treats
 it conservatively as re-raising.
 
-THIRD out-of-scope shape, RECORDED because remediation 5C.1 created the first
-live instance of it (verify-round N-3): a catch of an in-tree SUBCLASS of
-``ValueError``/``TypeError``. ``_catches_vt`` matches literal NAMES, so
-``psh/utils/ast_debug.py``'s ``except UnknownASTFormat`` — where
-``UnknownASTFormat(ValueError)`` — is invisible to this detector even though its
-try body is broad by the ``>= 5`` call-target disjunct.
+THIRD shape, now CLOSED (D-5C.1-s1, remediation 5C.2): a catch of an in-tree
+SUBCLASS of ``ValueError``/``TypeError``. ``_catches_vt`` matched literal NAMES,
+so ``psh/utils/ast_debug.py``'s ``except UnknownASTFormat`` — where
+``UnknownASTFormat(ValueError)`` — was invisible even though its try body is
+broad by the ``>= 5`` call-target disjunct. 5C.1 created that first live
+instance and RECORDED the shape rather than widening the detector in the same
+slot, because a guard widened by the author of its first evasion gets tuned to
+accept what that author just wrote.
 
-That site's disposition is CORRECT and is not what is being flagged: the body
-has exactly one raise site, this module's own, and typing it is the 2.3/3.5
-model applied precisely. What is flagged is that the ratchet can no longer SEE
-the shape, so a future broad body caught behind a VE subclass would not be
-triaged. Resolving it means teaching the detector to follow in-tree subclass
-definitions, which is a detector rewrite and therefore a successor row rather
-than 5C.1's work — deliberately NOT done here, because widening a detector in
-the same slot that created its first instance is how a guard gets tuned to
-accept what its author just wrote.
+The detector now builds the TRANSITIVE closure of in-tree classes deriving from
+``ValueError``/``TypeError`` (tree-wide, since a subclass is usually defined in
+one module and caught in another) and treats a catch of any of them as a VT
+catch. The full-tree re-run surfaced exactly ONE new candidate — the ast_debug
+site above — which is classified NARROW_SAFE: the caught type is this module's
+own, raised at one site inside the body for one condition, so a formatter defect
+cannot present as it. The widening is deliberately SPECIFIC and has controls
+saying so: a subclass of a NON-VT exception is not flagged, and the subclass
+edge does not bypass the BROAD test.
+
+Still OUT OF SCOPE (no live instance): the IMPORT ALIAS shape above, and a
+subclass whose base is itself reached only through an alias.
 """
 
 import ast
@@ -74,9 +79,57 @@ def _exc_names(handler):
     return (n,) if n is not None else ()
 
 
-def _catches_vt(handler):
+VT_ROOTS = ("ValueError", "TypeError")
+
+
+def _class_bases(tree):
+    """{class name: [base names]} for every ClassDef in one parsed module."""
+    out = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ClassDef):
+            out[n.name] = [b for b in (_exc_name(b) for b in n.bases)
+                           if b is not None]
+    return out
+
+
+def _vt_subclass_closure(bases_by_name, seed=()):
+    """Names deriving TRANSITIVELY from ValueError/TypeError.
+
+    Transitive rather than direct because a two-hop subclass hides the shape
+    just as well as a one-hop one. Fixpoint rather than recursion so a cyclic
+    or forward-referencing definition cannot spin.
+    """
+    known = set(VT_ROOTS) | set(seed)
+    closure = set(seed)
+    changed = True
+    while changed:
+        changed = False
+        for name, bases in bases_by_name.items():
+            if name not in closure and any(b in known or b in closure
+                                           for b in bases):
+                closure.add(name)
+                known.add(name)
+                changed = True
+    return frozenset(closure)
+
+
+def _tree_vt_subclasses():
+    """Every in-tree class deriving from ValueError/TypeError, whole of psh/.
+
+    Tree-wide because a subclass is typically defined in one module and caught
+    in another; a per-module closure would miss exactly that split.
+    """
+    bases = {}
+    for path in sorted(PSH.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        bases.update(_class_bases(ast.parse(path.read_text())))
+    return _vt_subclass_closure(bases)
+
+
+def _catches_vt(handler, vt_names=frozenset(VT_ROOTS)):
     names = _exc_names(handler)
-    return "ValueError" in names or "TypeError" in names
+    return any(n in vt_names for n in names)
 
 
 def _call_name(call):
@@ -85,18 +138,27 @@ def _call_name(call):
         f.id if isinstance(f, ast.Name) else "?")
 
 
-def broad_vt_candidates(src, relpath):
+def broad_vt_candidates(src, relpath, vt_names=()):
     """Return [(relpath, exc_names, call_names)] for every broad,
-    non-re-raising VT catch (the candidate signature, line-independent)."""
+    non-re-raising VT catch (the candidate signature, line-independent).
+
+    ``vt_names`` supplies subclass names known from OUTSIDE this source (the
+    tree-wide set for a live scan). Classes defined in ``src`` itself are
+    folded in here, so a module that defines its own ``ValueError`` subclass
+    and catches it is seen without the caller having to pre-compute anything.
+    """
+    tree = ast.parse(src)
+    vt = _vt_subclass_closure(_class_bases(tree), seed=vt_names)
+    vt = frozenset(vt | set(VT_ROOTS))
     out = []
-    for n in ast.walk(ast.parse(src)):
+    for n in ast.walk(tree):
         if not isinstance(n, ast.Try):
             continue
         calls = sorted({_call_name(c) for st in n.body for c in ast.walk(st)
                         if isinstance(c, ast.Call)})
         broad = len(n.body) > 1 or len(calls) >= 5
         for h in n.handlers:
-            if not _catches_vt(h):
+            if not _catches_vt(h, vt):
                 continue
             if any(isinstance(x, ast.Raise) for x in ast.walk(h)):
                 continue
@@ -106,12 +168,13 @@ def broad_vt_candidates(src, relpath):
 
 
 def _live_candidates():
+    vt = _tree_vt_subclasses()
     found = []
     for path in sorted(PSH.rglob("*.py")):
         if "__pycache__" in path.parts:
             continue
         rel = path.relative_to(ROOT).as_posix()
-        found.extend(broad_vt_candidates(path.read_text(), rel))
+        found.extend(broad_vt_candidates(path.read_text(), rel, vt_names=vt))
     return set(found)
 
 
@@ -181,6 +244,17 @@ BROAD_MASKING = {
 # --- Candidates that are actually NARROW/safe (single conversion or one -------
 #     documented-signal primitive whose VT IS its contract). ------------------
 NARROW_SAFE = {
+    # First candidate visible only because the detector now follows in-tree
+    # ValueError-subclass edges (D-5C.1-s1). The body IS broad by the
+    # call-target disjunct, but the caught type is this module's OWN, raised
+    # at exactly one site inside that body for exactly one condition (an
+    # out-of-vocabulary PSH_AST_FORMAT). No formatter defect can present as
+    # this type, which is the whole point of 5C.1 having typed the raise.
+    ("psh/utils/ast_debug.py", ("UnknownASTFormat",),
+     ("ASTDotGenerator", "ASTPrettyPrinter", "UnknownASTFormat", "print",
+      "render", "to_dot", "visit")):
+        "module's own typed raise, one site in the body, one condition "
+        "(unknown PSH_AST_FORMAT) — a formatter defect cannot present as it",
     ("psh/builtins/input_reader.py", ("OSError", "AttributeError", "ValueError"),
      ("InputCursor", "fstat")):
         "os.fstat's OSError/ValueError is its documented signal (fd validity)",
@@ -321,6 +395,86 @@ def test_offender_qualified_except_is_flagged():
     )
     cands = broad_vt_candidates(src, "psh/fake.py")
     assert cands, "qualified except mod.ValueError must be caught"
+
+
+def test_offender_in_tree_subclass_except_is_flagged():
+    """D-5C.1-s1: `except MyErr` where `MyErr(ValueError)` is now caught.
+
+    The evasion the name-based matcher could not see: a broad body behind a
+    subclass-typed catch. 5C.1 created the first live instance and recorded
+    the shape rather than widening the detector in the slot that created it.
+    """
+    src = (
+        "class MyErr(ValueError):\n"
+        "    pass\n"
+        "def f(a):\n"
+        "    try:\n"
+        "        x = s1(a)\n"
+        "        s2(x)\n"
+        "        s3(x)\n"
+        "    except MyErr:\n"
+        "        return 1\n"
+    )
+    cands = broad_vt_candidates(src, "psh/fake.py")
+    assert cands, "a catch of an in-tree ValueError subclass must be caught"
+
+
+def test_offender_transitive_subclass_except_is_flagged():
+    """Two hops hide the shape as well as one, so the closure is transitive."""
+    src = (
+        "class Mid(ValueError):\n"
+        "    pass\n"
+        "class Leaf(Mid):\n"
+        "    pass\n"
+        "def f(a):\n"
+        "    try:\n"
+        "        x = s1(a)\n"
+        "        s2(x)\n"
+        "        s3(x)\n"
+        "    except Leaf:\n"
+        "        return 1\n"
+    )
+    cands = broad_vt_candidates(src, "psh/fake.py")
+    assert cands, "a two-hop ValueError subclass must be caught"
+
+
+def test_control_non_vt_subclass_except_is_not_flagged():
+    """CONTROL: the widening is SPECIFIC, not a blanket on custom exceptions.
+
+    Without this, a detector that flagged every ``except SomeClass`` would
+    pass the two offender arms above while drowning the ratchet in noise —
+    and the noise is what makes a ratchet get allowlisted into uselessness.
+    """
+    src = (
+        "class NotVT(RuntimeError):\n"
+        "    pass\n"
+        "def f(a):\n"
+        "    try:\n"
+        "        x = s1(a)\n"
+        "        s2(x)\n"
+        "        s3(x)\n"
+        "    except NotVT:\n"
+        "        return 1\n"
+    )
+    cands = broad_vt_candidates(src, "psh/fake.py")
+    assert not cands, (
+        "a subclass of a NON-VT exception must not be flagged: "
+        f"{cands}")
+
+
+def test_control_subclass_with_a_narrow_body_is_not_flagged():
+    """CONTROL: the subclass edge does not bypass the BROAD test."""
+    src = (
+        "class MyErr(ValueError):\n"
+        "    pass\n"
+        "def f(a):\n"
+        "    try:\n"
+        "        return int(a)\n"
+        "    except MyErr:\n"
+        "        return 1\n"
+    )
+    cands = broad_vt_candidates(src, "psh/fake.py")
+    assert not cands, f"a narrow body must stay unflagged: {cands}"
 
 
 def test_narrow_catch_is_not_flagged():
