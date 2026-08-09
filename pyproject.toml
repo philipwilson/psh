@@ -217,8 +217,24 @@ module = [
     "psh.parser.recursive_descent.support.syntax_templates",
     "psh.parser.session",
     "psh.parser.unclosed_expansion",
+    # STARRED, and the star is load-bearing (remediation 5C.1). This entry read
+    # `"psh.protocols"` — a BARE package name, which mypy resolves to the
+    # package __init__ ONLY. The same package is spelled `psh.protocols.*` in
+    # its check_untyped_defs override above, so a future psh/protocols/foo.py
+    # would have had its bodies checked while silently escaping BOTH disallow
+    # flags below: the TESTINF-1 defect, sitting inside the very config the
+    # TESTINF-1 guard exists to police.
+    # test_migrated_packages_cover_their_submodules now generalizes the check
+    # to every migrated package.
+    "psh.protocols.*",
+    # --- joined in remediation 5C.1, when the guard's scope endpoint advanced
+    # from the previous campaign's 75ab5625 to d0956bed (successor D-5B.1-s2).
+    "psh.expansion.procsub_render",
+    "psh.scripting.analysis_session",
+    # Zero function definitions today — a pure data table. The coverage is not
+    # pointless: it is here for the FIRST def anyone adds.
+    "psh.utils.posix_classes",
     "psh.scripting.program_source",
-    "psh.protocols",
 ]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true

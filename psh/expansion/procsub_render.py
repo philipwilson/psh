@@ -41,7 +41,7 @@ from ..ast_nodes import (
 )
 
 if TYPE_CHECKING:
-    from ..ast_nodes import Redirect
+    from ..ast_nodes import Command, Redirect, Statement, Word
 
 #: Redirect node types the key-render covers (word-target + fd-duplication).
 _WORD_TARGET_REDIRECTS = frozenset({'<', '>', '>>'})
@@ -54,7 +54,7 @@ def render_procsub_body(program: 'Program') -> Optional[str]:
     return _render_statements(program.statements)
 
 
-def _render_statements(statements) -> Optional[str]:
+def _render_statements(statements: 'List[Statement]') -> Optional[str]:
     parts: 'List[tuple[str, bool]]' = []
     for st in statements:
         if not isinstance(st, AndOrList):
@@ -120,7 +120,7 @@ def _render_pipeline(node: Pipeline) -> Optional[str]:
     return ' | '.join(out)
 
 
-def _render_command(node) -> Optional[str]:
+def _render_command(node: 'Command') -> Optional[str]:
     if isinstance(node, SimpleCommand):
         return _render_simple(node)
     if isinstance(node, SubshellGroup):
@@ -175,7 +175,8 @@ def _render_redirect(node: 'Redirect') -> Optional[str]:
         return f'{prefix}{node.type}{node.dup_fd}'
     return None
 
-def _render_word(word) -> str:
+
+def _render_word(word: 'Word') -> str:
     """A word's spelling with NESTED procsub parts key-rendered recursively.
 
     bash renders inner spellings too: ``a[<(cat  <(echo  z))]=v`` keys

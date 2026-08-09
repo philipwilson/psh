@@ -76,7 +76,15 @@ bash and makes ``--validate`` state-aware: they answer different questions —
 runs?". The divergence from ``bash -n`` is deliberate and pinned.
 """
 import re
-from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 from ..ast_nodes import Program
 from ..ast_nodes.commands import SimpleCommand
@@ -351,7 +359,8 @@ class AnalysisSyntaxError(Exception):
         self.start_line = start_line
 
 
-def _directive_commands(node: Any, isolated: bool = False):
+def _directive_commands(node: Any,
+                        isolated: bool = False) -> Iterator[SimpleCommand]:
     """Yield the SimpleCommands whose effects would outlive their unit.
 
     Walks the ONE schema-declared traversal (``visitor.traversal.walk_ast``),
