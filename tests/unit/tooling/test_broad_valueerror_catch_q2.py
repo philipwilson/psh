@@ -112,21 +112,17 @@ BROAD_MASKING = {
     # each former try body (DirectoryStack.pop / DirectoryStack.size /
     # get_job_by_pid), which base reported to the user as "invalid index
     # argument" / "not a valid job specification or process id", now SURFACES.
-    ("psh/builtins/parse_tree.py", ("ValueError", "TypeError", "AttributeError"),
-     ("ASTDotGenerator", "ASTPrettyPrinter", "create_parser", "parse", "render",
-      "to_dot", "tokenize", "visit", "write_line")):
-        "debug builtin: wraps the whole tokenize->parse->format pipeline; a "
-        "parser/visitor VT/AttributeError defect becomes a bland "
-        "'visualization error'.",
-    ("psh/builtins/read_builtin.py", ("ValueError",),
-     ("_assign_to_array", "_assign_to_variables", "_process_escapes",
-      "_read_continuations", "_read_exact", "_read_normal", "_read_special",
-      "_read_with_timeout", "_split_with_ifs", "append", "cursor_for_fd",
-      "endswith", "get", "get_variable", "join", "len", "poll_readable",
-      "set_variable")):
-        "the whole `read` record engine under one VE net — no int()/documented-"
-        "VE source in the body; a VE from any helper bug is reported as a user "
-        "'read error'.",
+    #
+    # Also SHRUNK by 5C.1: the parse_tree.py VT/AttributeError pipeline net and
+    # the read_builtin.py whole-record-engine VE net. Both were FORCED and
+    # measured DEFECT-ONLY before removal — 124 parse-tree cells (4 formats x
+    # 31 inputs) and 19 hostile `read` cells (7 malformed-UTF-8 shapes x the
+    # -N/-n/-d/-r/-a/IFS option axis) never reached either handler body, while
+    # a SEEDED defect did, so the zero is a property of the production path
+    # rather than of an inert probe. parse_tree keeps its `except ParseError`
+    # leg (the real user-input class) and read_builtin keeps its
+    # `except OSError` leg (the real `read error:` diagnostic).
+    #
     # SHRUNK by remediation 3.5 (MEDIUM-12b, ruling (b)): the `[[ ]]` entry
     # ("psh/executor/core.py", ("ValueError","TypeError","OSError"),
     #  ("TestExpressionEvaluator","evaluate")) is gone. Its reason read "it

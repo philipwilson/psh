@@ -229,11 +229,22 @@ class ReadBuiltin(Builtin):
             # bash's shape: "read: read error: 0: Bad file descriptor"
             # (e.g. reading after `exec 0<&-`) — never the raw Python
             # OSError repr ("[Errno 9] Bad file descriptor").
+            #
+            # A bare `except ValueError` used to follow this one, wrapping the
+            # WHOLE record engine with no int()/documented-VE source in the
+            # body, so a ValueError from any helper bug was printed to the user
+            # as a `read` error. The one plausible user-reachable source would
+            # be a decode failure (UnicodeDecodeError IS a ValueError), but the
+            # cursor decodes with `surrogateescape`
+            # (input_reader.py#InputCursor._get_decoder) and so cannot raise on
+            # malformed bytes — bash reads stdin bytes leniently and psh
+            # matches. Measured, not assumed: 19 hostile cells (7 malformed
+            # UTF-8 shapes x the -N/-n/-d/-r/-a/IFS option axis, plus NUL, CRLF
+            # and an EOF continuation) never reached the handler, while a
+            # seeded defect did (remediation 5C.1). Removed, so a real defect
+            # surfaces under the strict-errors taxonomy.
             self.error(
                 f"read error: {options['fd']}: {e.strerror or e}", shell)
-            return 1
-        except ValueError as e:
-            self.error(str(e), shell)
             return 1
 
     def _read_continuations(self, line: str, reader: InputCursor, delim: str,
