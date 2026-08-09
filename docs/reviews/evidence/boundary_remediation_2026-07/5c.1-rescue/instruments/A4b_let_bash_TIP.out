@@ -1,0 +1,92 @@
+oracle: /opt/homebrew/bin/bash
+GNU bash, version 5.2.26(1)-release (aarch64-apple-darwin23.2.0)
+tree:   /Users/pwilson/src/psh-r5c-1
+discriminator OK
+
+=== A. ArithmeticError-leg cells (the LIVE leg) ===
+arith/syntax-bare-op       RC-SAME/TEXT-DIFF
+    script: let "1+"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: let: 1+: syntax error: operand expected (error token is "+")\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: 1+: Unexpected token:  at position 2\nrc=1'
+arith/syntax-junk          RC-SAME/TEXT-DIFF
+    script: let "@@@"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: let: @@@: syntax error: operand expected (error token is "@@@")\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: @@@: Unexpected character \'@\' at position 0\nrc=1'
+arith/div-zero             RC-SAME/TEXT-DIFF
+    script: let "1/0"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: let: 1/0: division by 0 (error token is "0")\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: 1/0: Division by zero\nrc=1'
+arith/mod-zero             RC-SAME/TEXT-DIFF
+    script: let "1%0"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: let: 1%0: division by 0 (error token is "0")\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: 1%0: Division by zero\nrc=1'
+arith/exp-negative         RC-SAME/TEXT-DIFF
+    script: let "2**-1"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: let: 2**-1: exponent less than 0 (error token is "1")\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: 2**-1: exponent less than 0\nrc=1'
+arith/base-bad             RC-SAME/TEXT-DIFF
+    script: let "2#9"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: let: 2#9: value too great for base (error token is "2#9")\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: 2#9: 2#9: value too great for base (error token is "2#9")\nrc=1'
+arith/octal-bad            RC-SAME/TEXT-DIFF
+    script: let "099"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: let: 099: value too great for base (error token is "099")\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: 099: 099: value too great for base (error token is "099")\nrc=1'
+arith/bad-subscript        RC-SAME/TEXT-DIFF
+    script: let "a[]"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: a[]: bad array subscript\n/opt/homebrew/bin/bash: line 1: a[]: bad array subscript\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: a[]: a[]: bad array subscript\nrc=1'
+arith/unbalanced           RC-SAME/TEXT-DIFF
+    script: let "(1+2"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: let: (1+2: missing `)\' (error token is "2")\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: (1+2: Expected RPAREN, got EOF at position 4\nrc=1'
+
+=== B. cells that ESCAPE both legs (PshError propagates past let) ===
+escape/nounset             IDENTICAL 
+    script: set -u; let "nosuchvar+1"; echo rc=$?
+    bash rc=127  out=/opt/homebrew/bin/bash:\ line\ 1:\ nosuchvar:\ unbound\ variable
+    psh  rc=127  out=psh:\ line\ 1:\ nosuchvar:\ unbound\ variable
+escape/nounset-incr        IDENTICAL 
+    script: set -u; let "nosuchvar++"; echo rc=$?
+    bash rc=127  out=/opt/homebrew/bin/bash:\ line\ 1:\ nosuchvar:\ unbound\ variable
+    psh  rc=127  out=psh:\ line\ 1:\ nosuchvar:\ unbound\ variable
+escape/readonly            RC-SAME/TEXT-DIFF
+    script: readonly r=1; let "r=2"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: r: readonly variable\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: r: readonly variable\nrc=1'
+escape/readonly-incr       RC-SAME/TEXT-DIFF
+    script: readonly r2=1; let "r2++"; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: r2: readonly variable\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: r2: readonly variable\nrc=1'
+
+=== C. success/exit-status controls (let's own 0/1 contract) ===
+ok/nonzero-is-0            IDENTICAL 
+    script: let "1+1"; echo rc=$?
+    bash rc=0    out=rc=0
+    psh  rc=0    out=rc=0
+ok/zero-is-1               IDENTICAL 
+    script: let "0"; echo rc=$?
+    bash rc=0    out=rc=1
+    psh  rc=0    out=rc=1
+ok/assign-zero-is-1        IDENTICAL 
+    script: let "x=0"; echo rc=$?
+    bash rc=0    out=rc=1
+    psh  rc=0    out=rc=1
+ok/multi-last-wins         IDENTICAL 
+    script: let "1" "0"; echo rc=$?
+    bash rc=0    out=rc=1
+    psh  rc=0    out=rc=1
+ok/no-args                 IDENTICAL 
+    script: let; echo rc=$?
+    bash rc=0    out=$'/opt/homebrew/bin/bash: line 1: let: expression expected\nrc=1'
+    psh  rc=0    out=$'psh: line 1: let: expression expected\nrc=1'
+
+=== D. quote-provenance guard (W2/CV1 B1 — arith_source_quotes=False) ===
+quote/assoc-let            IDENTICAL 
+    script: declare -A m; m[a b]=7; let "v=m[a b]"; echo "v=$v rc=$?"
+    bash rc=0    out=v=7\ rc=0
+    psh  rc=0    out=v=7\ rc=0
+quote/assoc-arith          IDENTICAL 
+    script: declare -A m; m[a b]=7; echo $((m[a b]))
+    bash rc=0    out=7
+    psh  rc=0    out=7

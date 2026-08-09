@@ -1,0 +1,68 @@
+tree: /Users/pwilson/src/psh-r5c-1
+
+==========================================================================
+SUBJECT 1: evaluate_arithmetic + the whole arithmetic package
+==========================================================================
+
+carrier defs (take a shell param and use it): 6
+  psh/expansion/arithmetic/evaluator.py::_arith_preexpand(shell)
+  psh/expansion/arithmetic/evaluator.py::_arith_source_round1(shell)
+  psh/expansion/arithmetic/evaluator.py::_evaluate_arithmetic_inner(shell)
+  psh/expansion/arithmetic/evaluator.py::arithmetic_expansion_value(shell)
+  psh/expansion/arithmetic/evaluator.py::evaluate_arithmetic(shell)
+  psh/expansion/arithmetic/evaluator.py::execute_arithmetic_expansion(shell)
+
+DIRECT member usage (5 distinct chains):
+    4x  shell.state                                          psh/expansion/arithmetic/evaluator.py:800 (+3 more)
+    3x  shell.expansion_manager                              psh/expansion/arithmetic/evaluator.py:665 (+2 more)
+    3x  shell.expansion_manager.expand_string_variables      psh/expansion/arithmetic/evaluator.py:665 (+2 more)
+    3x  shell.state._arith_recursion_depth                   psh/expansion/arithmetic/evaluator.py:696 (+2 more)
+    1x  shell.state.error_location_prefix                    psh/expansion/arithmetic/evaluator.py:800
+
+FORWARDS of the shell to another callable (6 distinct callees):
+    1x  -> ArithmeticEvaluator                      psh/expansion/arithmetic/evaluator.py:733(arg0)
+    1x  -> _arith_preexpand                         psh/expansion/arithmetic/evaluator.py:719(arg1)
+    1x  -> _arith_source_round1                     psh/expansion/arithmetic/evaluator.py:672(arg1)
+    1x  -> _evaluate_arithmetic_inner               psh/expansion/arithmetic/evaluator.py:702(arg1)
+    1x  -> arithmetic_expansion_value               psh/expansion/arithmetic/evaluator.py:817(arg1)
+    1x  -> evaluate_arithmetic                      psh/expansion/arithmetic/evaluator.py:790(arg1)
+
+==========================================================================
+SUBJECT 2: PromptExpander
+==========================================================================
+
+carrier defs (take a shell param and use it): 0
+
+DIRECT member usage (0 distinct chains):
+
+FORWARDS of the shell to another callable (0 distinct callees):
+
+==========================================================================
+STORED-FIELD ARM — arithmetic package
+==========================================================================
+
+psh/expansion/arithmetic/evaluator.py::ArithmeticEvaluator stores the shell as self.shell
+  distinct member chains: 11
+     10x  .state                                          psh/expansion/arithmetic/evaluator.py:96
+      6x  .state.scope_manager                            psh/expansion/arithmetic/evaluator.py:227
+      2x  .state.scope_manager.get_variable_object        psh/expansion/arithmetic/evaluator.py:227
+      2x  .state.scope_manager.warn_nameref_cycle         psh/expansion/arithmetic/evaluator.py:166
+      1x  .expansion_manager                              psh/expansion/arithmetic/evaluator.py:229
+      1x  .expansion_manager.subscript                    psh/expansion/arithmetic/evaluator.py:229
+      1x  .state.get_variable                             psh/expansion/arithmetic/evaluator.py:97
+      1x  .state.scope_manager.resolve_nameref_name       psh/expansion/arithmetic/evaluator.py:195
+      1x  .state.scope_manager.store                      psh/expansion/arithmetic/evaluator.py:281
+      1x  .state.scope_manager.store.set_element          psh/expansion/arithmetic/evaluator.py:281
+      1x  .state.set_variable                             psh/expansion/arithmetic/evaluator.py:159
+
+==========================================================================
+STORED-FIELD ARM — PromptExpander
+==========================================================================
+
+psh/interactive/prompt.py::PromptExpander stores the shell as self.shell
+  distinct member chains: 5
+      2x  .state                                          psh/interactive/prompt.py:323
+      1x  .expansion_manager                              psh/interactive/prompt.py:134
+      1x  .expansion_manager.expand_string_variables      psh/interactive/prompt.py:134
+      1x  .state.command_number                           psh/interactive/prompt.py:323
+      1x  .state.history                                  psh/interactive/prompt.py:319

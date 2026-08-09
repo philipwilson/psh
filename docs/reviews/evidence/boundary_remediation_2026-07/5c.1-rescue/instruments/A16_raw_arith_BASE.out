@@ -1,0 +1,104 @@
+discriminator OK: /Users/pwilson/src/psh-r5c-1/psh
+
+CELL                               EXPR                           RAISED
+------------------------------------------------------------------------------------------------
+divide/plain/by-zero               1/0                            ShellArithmeticError  Division by zero
+divide/compound/by-zero            v=1, v/=0                      ShellArithmeticError  Division by zero
+divide/plain/zero-by-zero          0/0                            ShellArithmeticError  Division by zero
+divide/compound/zero-by-zero       v=0, v/=0                      ShellArithmeticError  Division by zero
+divide/plain/neg-by-zero           -1/0                           ShellArithmeticError  Division by zero
+divide/compound/neg-by-zero        v=-1, v/=0                     ShellArithmeticError  Division by zero
+divide/plain/min64-by-neg1         -9223372036854775808/-1        (no exception)  =-9223372036854775808
+divide/compound/min64-by-neg1      v=-9223372036854775808, v/=-   (no exception)  =-9223372036854775808
+divide/plain/neg-exponent          2/-1                           (no exception)  =-2
+divide/compound/neg-exponent       v=2, v/=-1                     (no exception)  =-2
+divide/plain/huge-exponent         9/9999999                      (no exception)  =0
+divide/compound/huge-exponent      v=9, v/=9999999                (no exception)  =0
+divide/plain/neg-shift             1/-1                           (no exception)  =-1
+divide/compound/neg-shift          v=1, v/=-1                     (no exception)  =-1
+divide/plain/huge-shift            1/100000                       (no exception)  =0
+divide/compound/huge-shift         v=1, v/=100000                 (no exception)  =0
+divide/plain/huge-by-huge          9999999999999999999999999999   (no exception)  =1
+divide/compound/huge-by-huge       v=99999999999999999999999999   (no exception)  =1
+modulo/plain/by-zero               1%0                            ShellArithmeticError  Division by zero
+modulo/compound/by-zero            v=1, v%=0                      ShellArithmeticError  Division by zero
+modulo/plain/zero-by-zero          0%0                            ShellArithmeticError  Division by zero
+modulo/compound/zero-by-zero       v=0, v%=0                      ShellArithmeticError  Division by zero
+modulo/plain/neg-by-zero           -1%0                           ShellArithmeticError  Division by zero
+modulo/compound/neg-by-zero        v=-1, v%=0                     ShellArithmeticError  Division by zero
+modulo/plain/min64-by-neg1         -9223372036854775808%-1        (no exception)  =0
+modulo/compound/min64-by-neg1      v=-9223372036854775808, v%=-   (no exception)  =0
+modulo/plain/neg-exponent          2%-1                           (no exception)  =0
+modulo/compound/neg-exponent       v=2, v%=-1                     (no exception)  =0
+modulo/plain/huge-exponent         9%9999999                      (no exception)  =9
+modulo/compound/huge-exponent      v=9, v%=9999999                (no exception)  =9
+modulo/plain/neg-shift             1%-1                           (no exception)  =0
+modulo/compound/neg-shift          v=1, v%=-1                     (no exception)  =0
+modulo/plain/huge-shift            1%100000                       (no exception)  =1
+modulo/compound/huge-shift         v=1, v%=100000                 (no exception)  =1
+modulo/plain/huge-by-huge          9999999999999999999999999999   (no exception)  =0
+modulo/compound/huge-by-huge       v=99999999999999999999999999   (no exception)  =0
+power/plain/by-zero                1**0                           (no exception)  =1
+power/compound/by-zero             v=1, v**=0                     ShellArithmeticError  Unexpected token: = at position 8
+power/plain/zero-by-zero           0**0                           (no exception)  =1
+power/compound/zero-by-zero        v=0, v**=0                     ShellArithmeticError  Unexpected token: = at position 8
+power/plain/neg-by-zero            -1**0                          (no exception)  =1
+power/compound/neg-by-zero         v=-1, v**=0                    ShellArithmeticError  Unexpected token: = at position 9
+power/plain/min64-by-neg1          -9223372036854775808**-1       ShellArithmeticError  exponent less than 0
+power/compound/min64-by-neg1       v=-9223372036854775808, v**=   ShellArithmeticError  Unexpected token: = at position 27
+power/plain/neg-exponent           2**-1                          ShellArithmeticError  exponent less than 0
+power/compound/neg-exponent        v=2, v**=-1                    ShellArithmeticError  Unexpected token: = at position 8
+power/plain/huge-exponent          9**9999999                     (no exception)  =-3427966577523535303
+power/compound/huge-exponent       v=9, v**=9999999               ShellArithmeticError  Unexpected token: = at position 8
+power/plain/neg-shift              1**-1                          ShellArithmeticError  exponent less than 0
+power/compound/neg-shift           v=1, v**=-1                    ShellArithmeticError  Unexpected token: = at position 8
+power/plain/huge-shift             1**100000                      (no exception)  =1
+power/compound/huge-shift          v=1, v**=100000                ShellArithmeticError  Unexpected token: = at position 8
+power/plain/huge-by-huge           9999999999999999999999999999   (no exception)  =-5076944270305263617
+power/compound/huge-by-huge        v=99999999999999999999999999   ShellArithmeticError  Unexpected token: = at position 37
+lshift/plain/by-zero               1<<0                           (no exception)  =1
+lshift/compound/by-zero            v=1, v<<=0                     (no exception)  =1
+lshift/plain/zero-by-zero          0<<0                           (no exception)  =0
+lshift/compound/zero-by-zero       v=0, v<<=0                     (no exception)  =0
+lshift/plain/neg-by-zero           -1<<0                          (no exception)  =-1
+lshift/compound/neg-by-zero        v=-1, v<<=0                    (no exception)  =-1
+lshift/plain/min64-by-neg1         -9223372036854775808<<-1       (no exception)  =0
+lshift/compound/min64-by-neg1      v=-9223372036854775808, v<<=   (no exception)  =0
+lshift/plain/neg-exponent          2<<-1                          (no exception)  =0
+lshift/compound/neg-exponent       v=2, v<<=-1                    (no exception)  =0
+lshift/plain/huge-exponent         9<<9999999                     (no exception)  =-9223372036854775808
+lshift/compound/huge-exponent      v=9, v<<=9999999               (no exception)  =-9223372036854775808
+lshift/plain/neg-shift             1<<-1                          (no exception)  =-9223372036854775808
+lshift/compound/neg-shift          v=1, v<<=-1                    (no exception)  =-9223372036854775808
+lshift/plain/huge-shift            1<<100000                      (no exception)  =4294967296
+lshift/compound/huge-shift         v=1, v<<=100000                (no exception)  =4294967296
+lshift/plain/huge-by-huge          9999999999999999999999999999   (no exception)  =-9223372036854775808
+lshift/compound/huge-by-huge       v=99999999999999999999999999   (no exception)  =-9223372036854775808
+rshift/plain/by-zero               1>>0                           (no exception)  =1
+rshift/compound/by-zero            v=1, v>>=0                     (no exception)  =1
+rshift/plain/zero-by-zero          0>>0                           (no exception)  =0
+rshift/compound/zero-by-zero       v=0, v>>=0                     (no exception)  =0
+rshift/plain/neg-by-zero           -1>>0                          (no exception)  =-1
+rshift/compound/neg-by-zero        v=-1, v>>=0                    (no exception)  =-1
+rshift/plain/min64-by-neg1         -9223372036854775808>>-1       (no exception)  =-1
+rshift/compound/min64-by-neg1      v=-9223372036854775808, v>>=   (no exception)  =-1
+rshift/plain/neg-exponent          2>>-1                          (no exception)  =0
+rshift/compound/neg-exponent       v=2, v>>=-1                    (no exception)  =0
+rshift/plain/huge-exponent         9>>9999999                     (no exception)  =0
+rshift/compound/huge-exponent      v=9, v>>=9999999               (no exception)  =0
+rshift/plain/neg-shift             1>>-1                          (no exception)  =0
+rshift/compound/neg-shift          v=1, v>>=-1                    (no exception)  =0
+rshift/plain/huge-shift            1>>100000                      (no exception)  =0
+rshift/compound/huge-shift         v=1, v>>=100000                (no exception)  =0
+rshift/plain/huge-by-huge          9999999999999999999999999999   (no exception)  =0
+rshift/compound/huge-by-huge       v=99999999999999999999999999   (no exception)  =0
+
+cells:                        90
+  no exception:               66
+  raised ShellArithmeticError:24
+  raised ANYTHING ELSE:       0
+
+  every raised error is ShellArithmeticError (a PshError AND a builtins.ArithmeticError)
+
+--- SEEDED CONTROL (can this probe observe a raw ArithmeticError?) ---
+  raw ZeroDivisionError observed; isinstance(ShellArithmeticError)=False  (must be False, else the classifier is vacuous)

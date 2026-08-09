@@ -1,0 +1,69 @@
+psh: line 1: warning: n1: circular name reference
+discriminator OK: psh -> /Users/pwilson/src/psh-r5c-1/psh
+
+CELL                   EXPR                   RAISED                       LEGS
+----------------------------------------------------------------------------------------------------
+ok/simple              1+1                    (no exception)               n/a (no exception raised)
+ok/zero                0                      (no exception)               n/a (no exception raised)
+ok/var                 x=5                    (no exception)               n/a (no exception raised)
+ok/compound            x+=2                   (no exception)               n/a (no exception raised)
+syntax/bare-op         1+                     ShellArithmeticError         ArithmeticError
+syntax/empty                                  (no exception)               n/a (no exception raised)
+syntax/junk            @@@                    ShellArithmeticError         ArithmeticError
+syntax/unbalanced      (1+2                   ShellArithmeticError         ArithmeticError
+syntax/double-op       1**/2                  ShellArithmeticError         ArithmeticError
+syntax/bad-token       1 2                    ShellArithmeticError         ArithmeticError
+syntax/lone-op         *                      ShellArithmeticError         ArithmeticError
+syntax/trailing-comma  1,                     ShellArithmeticError         ArithmeticError
+div/zero               1/0                    ShellArithmeticError         ArithmeticError
+div/mod-zero           1%0                    ShellArithmeticError         ArithmeticError
+div/assign-zero        x/=0                   ShellArithmeticError         ArithmeticError
+div/nested-zero        (4+4)/(2-2)            ShellArithmeticError         ArithmeticError
+exp/negative           2**-1                  ShellArithmeticError         ArithmeticError
+num/alpha-var          y=abc, y+1             (no exception)               n/a (no exception raised)
+num/hex-bad            0xZZ                   ShellArithmeticError         ArithmeticError
+num/base-bad           2#9                    ShellArithmeticError         ArithmeticError
+num/base-zero          0#1                    ShellArithmeticError         ArithmeticError
+num/octal-bad          099                    ShellArithmeticError         ArithmeticError
+num/huge-base          99#1                   ShellArithmeticError         ArithmeticError
+sub/bad-index          a[]                    ShellArithmeticError         ArithmeticError
+sub/bad-index2         a[ ]                   (no exception)               n/a (no exception raised)
+sub/assoc-missing      a[nosuch]              (no exception)               n/a (no exception raised)
+sub/nested             a[b[]]                 ShellArithmeticError         ArithmeticError
+sub/negative           a[-1]                  (no exception)               n/a (no exception raised)
+rec/self               z=z+1                  (no exception)               n/a (no exception raised)
+rec/deep               ((((((((((1)))))))))   (no exception)               n/a (no exception raised)
+unset/plain            nosuchvar+1            (no exception)               n/a (no exception raised)
+unset/increment        nosuchvar++            (no exception)               n/a (no exception raised)
+big/shift              1<<10000               (no exception)               n/a (no exception raised)
+big/pow                9**9**5                (no exception)               n/a (no exception raised)
+opt/nounset-unset      nosuchvar+1            UnboundVariableError         ESCAPES BOTH LEGS
+opt/nounset-incr       nosuchvar++            UnboundVariableError         ESCAPES BOTH LEGS
+opt/nounset-subscript  arr[nosuch]            UnboundVariableError         ESCAPES BOTH LEGS
+opt/readonly-assign    r=2                    ReadonlyVariableError        ESCAPES BOTH LEGS
+opt/readonly-incr      r2++                   ReadonlyVariableError        ESCAPES BOTH LEGS
+opt/readonly-compound  r3+=5                  ReadonlyVariableError        ESCAPES BOTH LEGS
+opt/nameref-cycle      n1+1                   (no exception)               n/a (no exception raised)
+opt/posix              1/0                    ShellArithmeticError         ArithmeticError
+
+corpus cells:                 42
+  no exception (control):     16
+  raised:                     26
+    -> ValueError leg ONLY:   0
+    -> ArithmeticError ONLY:  20
+    -> BOTH legs match:       0
+    -> ESCAPES both legs:     6
+
+  !! cells that escape the handler entirely (propagate past `let`):
+       opt/nounset-unset      nosuchvar+1            UnboundVariableError
+       opt/nounset-incr       nosuchvar++            UnboundVariableError
+       opt/nounset-subscript  arr[nosuch]            UnboundVariableError
+       opt/readonly-assign    r=2                    ReadonlyVariableError
+       opt/readonly-incr      r2++                   ReadonlyVariableError
+       opt/readonly-compound  r3+=5                  ReadonlyVariableError
+
+Distinct raised types: ReadonlyVariableError, ShellArithmeticError, UnboundVariableError
+
+--- SEEDED CONTROL (instrument must be able to see a live VE) ---
+  handler shape catches a bare VE: ValueError: seeded bare ValueError
+  (let_builtin imports evaluate_arithmetic lazily: module-level binding present = False)

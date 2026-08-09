@@ -1,0 +1,6 @@
+================================================================================
+TEST RUN SUMMARY
+================================================================================
+Combined across 2 phase(s) (from phase manifests): 23974 passed, 1620 skipped, 10 xfailed
+Full transcript saved to: /Users/pwilson/src/psh-r5c-1/tmp/last-test-run.txt
+✅ All test phases PASSED

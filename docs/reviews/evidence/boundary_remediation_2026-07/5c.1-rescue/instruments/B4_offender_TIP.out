@@ -1,0 +1,12 @@
+=== CONTROL: clean tree ===
+  clean suite: GREEN (13 passed in 2.45s)
+
+=== OFFENDER ARMS ===
+O1 unclassified handler planted in psh/              BITES (own reason)
+     E   AssertionError: NEW terminal `except Exception` (or bare `except:`) handler. Either narrow it to the error
+O2 stale ledger entry (site renamed)                 BITES (own reason)
+     E   AssertionError: classified terminal handlers with no live counterpart — narrowed or moved. Prune them so t
+
+=== POST-STATE ===
+  suite after restore: GREEN
+  arms biting for their own reason: 2/2

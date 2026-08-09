@@ -1,0 +1,35 @@
+BASE Method A incomplete: 642
+TIP  Method A incomplete: 627
+BASE Method B incomplete: 482
+TIP  Method B incomplete: 472
+
+--- COMPLETED (was incomplete, now complete): 15 [Method B: 10] ---
+  psh/expansion/arithmetic/evaluator.py:75  ArithmeticEvaluator.__init__
+  psh/expansion/arithmetic/evaluator.py:658  _arith_preexpand   [B]
+  psh/expansion/arithmetic/evaluator.py:640  _arith_source_round1   [B]
+  psh/expansion/arithmetic/evaluator.py:713  _evaluate_arithmetic_inner   [B]
+  psh/expansion/arithmetic/evaluator.py:767  arithmetic_expansion_value   [B]
+  psh/expansion/arithmetic/evaluator.py:682  evaluate_arithmetic   [B]
+  psh/expansion/arithmetic/evaluator.py:813  execute_arithmetic_expansion   [B]
+  psh/expansion/parameter_expansion.py:146  ParameterExpansionOps.__init__
+  psh/expansion/procsub_render.py:123  _render_command   [B]
+  psh/expansion/procsub_render.py:57  _render_statements   [B]
+  psh/expansion/procsub_render.py:179  _render_word   [B]
+  psh/expansion/subscript.py:157  SubscriptEvaluator.__init__
+  psh/expansion/variable.py:42  VariableExpander.__init__
+  psh/interactive/prompt.py:29  PromptExpander.__init__
+  psh/scripting/analysis_session.py:362  _directive_commands   [B]
+
+--- REMOVED while incomplete: 0 ---
+
+--- NEW defs, still incomplete: 0 ---
+
+--- NEW defs, complete (no census cost): 6 ---
+  psh/protocols/__init__.py:391  ExpansionHost.expansion_manager
+  psh/protocols/__init__.py:386  ExpansionHost.state
+  psh/protocols/__init__.py:324  ExpansionSubExpanders.command_sub
+  psh/protocols/__init__.py:333  ExpansionSubExpanders.execute_arithmetic_expansion
+  psh/protocols/__init__.py:319  ExpansionSubExpanders.subscript
+  psh/protocols/__init__.py:329  ExpansionSubExpanders.tilde_expander
+
+--- REGRESSED (was complete, now incomplete): 0 ---

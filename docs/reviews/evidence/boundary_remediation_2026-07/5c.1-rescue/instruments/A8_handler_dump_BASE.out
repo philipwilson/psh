@@ -1,0 +1,74 @@
+except-Exception handlers: 24
+
+--- psh/core/locale_service.py:492  in _load_libc()   try-body stmts=9  re-raises=False
+      try calls  : CDLL, find_library
+      handler does: calls=(none)  exits=Return
+--- psh/core/locale_service.py:506  in _ctypes_member_fn()   try-body stmts=1  re-raises=False
+      try calls  : encode, wctype
+      handler does: calls=(none)  exits=Return
+--- psh/core/process_lease.py:565  in _release_components()   try-body stmts=1  re-raises=False
+      try calls  : _restore
+      handler does: calls=append  exits=(falls through)
+--- psh/core/trap_manager.py:480  in execute_trap()   try-body stmts=7  re-raises=False
+      try calls  : get_current_line_number, run_command
+      handler does: calls=report_internal_defect  exits=(falls through)
+--- psh/executor/child_policy.py:366  in run_background_shell_child()   try-body stmts=1  re-raises=False
+      try calls  : run_pending_traps
+      handler does: calls=(none)  exits=Pass
+--- psh/executor/child_policy.py:374  in run_background_shell_child()   try-body stmts=1  re-raises=False
+      try calls  : execute_exit_trap
+      handler does: calls=(none)  exits=Pass
+--- psh/executor/child_policy.py:452  in run_child_body()   try-body stmts=1  re-raises=False
+      try calls  : execute_exit_trap
+      handler does: calls=(none)  exits=Pass
+--- psh/executor/child_policy.py:582  in run_child_shell()   try-body stmts=11  re-raises=False
+      try calls  : _exit, apply_child_signal_policy, flush_child_streams, for_subshell, io_setup, run_child_body
+      handler does: calls=_exit, encode, write  exits=Pass
+--- psh/executor/command.py:290  in _execute_command()   try-body stmts=11  re-raises=False
+      try calls  : _array_assignment_lhs, _run_background_assignment, _run_bare_array_assignment, _run_command, _run_pure_assignment, execute_debug_trap, extract, len, print, set_bash_command
+      handler does: calls=_handle_execution_error  exits=Return
+--- psh/executor/function.py:188  in execute_function_call()   try-body stmts=4  re-raises=False
+      try calls  : execute_debug_trap, execute_return_trap, guarded_redirections, visit
+      handler does: calls=report_internal_defect  exits=Return
+--- psh/executor/process_launcher.py:374  in _child_setup_and_exec()   try-body stmts=7  re-raises=False
+      try calls  : _job_control_off, apply, apply_child_signal_policy, close, execute_fn, for_launch, get, getpgrp, getpid, io_setup, isinstance, print …
+      handler does: calls=get, print, print_exc  exits=(falls through)
+--- psh/executor/strategies.py:270  in execute_builtin_guarded()   try-body stmts=1  re-raises=True
+      try calls  : execute_in_context
+      handler does: calls=arith_assignment_discard, isinstance, print, report_internal_defect  exits=Return
+--- psh/interactive/prompt.py:135  in expand_full()   try-body stmts=1  re-raises=False
+      try calls  : expand_string_variables
+      handler does: calls=(none)  exits=Pass
+--- psh/interactive/rc_loader.py:48  in load_rc_file()   try-body stmts=2  re-raises=False
+      try calls  : SourceRequest, execute_sourced_file
+      handler does: calls=print  exits=(falls through)
+--- psh/interactive/repl_loop.py:145  in run()   try-body stmts=9  re-raises=False
+      try calls  : _run_prompt_command, clear_exit_warning, confirm_exit_with_stopped_jobs, hasattr, idle_title, ignoreeof_limit, note_simple_command, notify_completed_jobs, notify_stopped_jobs, print, process_sigchld_notifications, read_command …
+      handler does: calls=print  exits=(falls through)
+--- psh/io_redirect/file_redirect.py:212  in restore()   try-body stmts=1  re-raises=False
+      try calls  : ?, getattr
+      handler does: calls=(none)  exits=Pass
+--- psh/io_redirect/file_redirect.py:913  in apply_redirections()   try-body stmts=1  re-raises=True
+      try calls  : _apply_redirections
+      handler does: calls=restore_redirections  exits=(falls through)
+--- psh/io_redirect/file_redirect.py:1327  in apply_permanent_redirections()   try-body stmts=1  re-raises=True
+      try calls  : apply_in_order
+      handler does: calls=_release_permanent_stream_lease, _rollback_std_streams, restore_redirections  exits=(falls through)
+--- psh/io_redirect/manager.py:673  in setup_builtin_redirections()   try-body stmts=1  re-raises=True
+      try calls  : apply_in_order
+      handler does: calls=restore_builtin_redirections  exits=(falls through)
+--- psh/lexer/recognizers/registry.py:78  in recognize()   try-body stmts=1  re-raises=True
+      try calls  : can_recognize, recognize
+      handler does: calls=RuntimeError  exits=(falls through)
+--- psh/scripting/analysis_session.py:490  in analyze()   try-body stmts=4  re-raises=True
+      try calls  : _absorb_transitions, expands_aliases_now, lex_and_expand, max, offset_line_numbers, parse_tokens
+      handler does: calls=AnalysisSyntaxError  exits=(falls through)
+--- psh/scripting/source_processor.py:554  in _execute_buffered_command()   try-body stmts=7  re-raises=False
+      try calls  : _dispatch_execution, _parse_command, _preprocess_command, get, getattr
+      handler does: calls=_classify_buffered_error  exits=Return
+--- psh/scripting/visitor_modes.py:90  in handle_visitor_mode_for_content()   try-body stmts=2  re-raises=False
+      try calls  : apply_visitor_mode, parse_for_analysis
+      handler does: calls=report_internal_defect  exits=Return
+--- psh/utils/signal_utils.py:258  in __del__()   try-body stmts=1  re-raises=False
+      try calls  : close
+      handler does: calls=(none)  exits=Pass

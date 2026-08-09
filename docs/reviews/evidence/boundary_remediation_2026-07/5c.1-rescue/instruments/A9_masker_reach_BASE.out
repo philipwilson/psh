@@ -1,0 +1,12 @@
+discriminator OK: /Users/pwilson/src/psh-r5c-1/psh
+
+=== read_builtin.py:235 — 19 user-input cells ===
+  handler psh/builtins/read_builtin.py:236 EXECUTED=False
+
+=== parse_tree.py:135 — 124 format x input cells ===
+  handler psh/builtins/parse_tree.py:136 EXECUTED=False
+
+=== SEEDED CONTROL: force the read VE leg with an injected defect ===
+  handler psh/builtins/read_builtin.py:236 EXECUTED=True   <- must be True
+  (seeded run's shell output: 'psh: line 1: read: seeded defect inside the read record engine')
+  seeded defect REMOVED from the tree (monkeypatch reverted)
