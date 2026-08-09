@@ -100,21 +100,18 @@ def _live_candidates():
 
 # --- The known broad maskers (DEBT — shrink-only). Each: what the try wraps. --
 BROAD_MASKING = {
-    ("psh/builtins/directory_stack.py", ("ValueError",),
-     ("_chdir_or_error", "_print_stack", "error", "int", "pop", "size",
-      "startswith", "update_current", "update_pwd_vars")):
-        "popd: only int(arg) should raise VE, but _chdir_or_error/pop/"
-        "update_pwd_vars sit inside the try — a defect there is reported as "
-        "'invalid index argument'. The sibling _popd_no_cd wraps ONLY int(arg) "
-        "(the codebase's own correct narrow form).",
-    ("psh/builtins/directory_stack.py", ("ValueError",),
-     ("error", "int", "size", "startswith")):
-        "dirs -N: intent is int(arg) but stack.size()/self.error inside the try "
-        "can mask a real VE as 'invalid index argument'.",
-    ("psh/builtins/disown.py", ("ValueError",),
-     ("_disown_job", "error", "get_job_by_pid", "int")):
-        "disown: intent is int(spec); get_job_by_pid/_disown_job are also "
-        "guarded, so a defect there reads as a bad job specification.",
+    # SHRUNK by remediation 5C.1 (MEDIUM-12, ruling (b)): the popd, `dirs -N`
+    # and disown entries are GONE. Each try body now wraps ONLY its int()
+    # conversion — the shape the sibling `_popd_no_cd` already used — so none
+    # of the three is a candidate any more, and
+    # test_classification_has_no_stale_entries is what forces the entries out
+    # rather than leaving them as decoration.
+    #
+    # Two-axis proven: 32 non-defect cells (valid AND invalid INPUT — invalid
+    # input is not a defect) byte-identical base vs tip; and a seeded defect in
+    # each former try body (DirectoryStack.pop / DirectoryStack.size /
+    # get_job_by_pid), which base reported to the user as "invalid index
+    # argument" / "not a valid job specification or process id", now SURFACES.
     ("psh/builtins/parse_tree.py", ("ValueError", "TypeError", "AttributeError"),
      ("ASTDotGenerator", "ASTPrettyPrinter", "create_parser", "parse", "render",
       "to_dot", "tokenize", "visit", "write_line")):
