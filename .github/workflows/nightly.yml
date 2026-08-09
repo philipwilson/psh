@@ -128,22 +128,19 @@ jobs:
           python -m pytest -p no:cacheprovider -o addopts="" \
             tests/parser_differential/test_combinator_random_differential.py
 
-      # Benchmark tier (campaign E1b, integrator ruling R2 at the E1 bounce):
-      # `benchmark`-marked timing microbenchmarks, serial, excluded from the
-      # standard gate. Nightly records the transcript as a build artifact
-      # ONLY — baseline-delta tracking is deferred to campaign exit.
-      # continue-on-error matches what this tier already says it is: the
-      # transcript is uploaded as an artifact and baseline-delta tracking is
-      # deferred, so a timing wobble on shared CI hardware must not fail the
-      # nightly. It was gating by accident, and nobody could see it: every run
-      # since 2026-07-02 failed at the suite step, which SKIPPED this one. The
-      # first run to reach it (30168712840) found three thresholds that are
-      # absolute wall-clock numbers tuned on a dev machine — 0.0124s against a
-      # 0.01s budget, ~24% over — and all three pass locally. Those are
-      # pre-existing and want real baselines, not a fudged constant; that is the
-      # deferred work, not this slot's.
-      - name: Benchmark Tier (serial; artifact-only, no baseline deltas)
-        continue-on-error: true
+      # Benchmark tier (campaign E1b): `benchmark`-marked timing
+      # microbenchmarks, serial, excluded from the standard gate. GATING
+      # since Ceremony C (CR-R4 discharge, 2026-08-09): the three
+      # dev-machine-tuned thresholds that failed on the shared runner were
+      # retuned to runner-measured envelopes harvested from 3 consecutive
+      # nightly artifacts (runs 31237400812/31145981907/31070163425;
+      # evidence: docs/reviews/evidence/boundary_remediation_2026-07/
+      # checkpoint-r/instruments/qr/p07_benchmark_baselines.transcript.txt),
+      # ~2x the runner median, with behind-the-failure siblings scaled by
+      # the tests' own pinned linear-scaling ratios. The transcript is
+      # still uploaded as an artifact every run, so any future miss comes
+      # with its measurement attached.
+      - name: Benchmark Tier (serial; gating since CR-R4 retune)
         run: python run_tests.py --benchmarks --results-file tmp/benchmarks-nightly.txt
 
       - name: Report disk after suite
