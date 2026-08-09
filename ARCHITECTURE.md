@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.776.0
+**Current Version**: 0.777.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -95,7 +95,7 @@ psh/
 ├── interactive/             # REPL, line editor, history, completion, signals
 ├── builtins/                # Builtin commands (registry + implementations)
 ├── visitor/                 # Formatter/validator/security/metrics/linter visitors
-├── protocols/               # Narrow runtime service protocols (Q1): ExpansionRuntime/IOContext/JobRuntime/LocaleAccess — a true leaf; implementations import protocols, never the reverse
+├── protocols/               # Narrow runtime service protocols (Q1): ExpansionRuntime/IOContext/JobRuntime/LocaleAccess/ExpansionHost — a true leaf; implementations import protocols, never the reverse
 └── utils/                   # Shared helpers (escapes.py dialect map, formatting)
 ```
 
@@ -122,7 +122,7 @@ Input → Preprocessing → Tokenization → Keyword Normalization → Parsing �
 6. **One Fork Helper, One Child Signal Policy, One Substitution-Child Runner**: every fork site forks via `fork_with_signal_window()` and every child applies `apply_child_signal_policy()`; *job-controlled* process creation (commands, pipelines, subshells) additionally goes through `ProcessLauncher`, while command/process substitution fork directly by design (they are not jobs) and run their child bodies through the shared `run_child_shell()` (child Shell construction, exception→exit-code mapping, `flush_child_streams()`, `os._exit`); all of this lives in `psh/executor/child_policy.py`
 7. **Exit Status Discipline**: every execution path returns an integer exit status
 8. **Fail Loudly**: internal errors raise; only user-facing shell errors map to exit codes (v0.300 policy)
-9. **Narrow Service Protocols (dependency direction)**: migrated boundaries depend on the narrow `psh/protocols` interfaces (`ExpansionRuntime`, `IOContext`, `JobRuntime`, `LocaleAccess`) rather than the whole `Shell`; the import edge is one-way — an implementation may import a protocol, a protocol never imports an implementation (campaign Q1; enforced by `tests/unit/tooling/test_protocol_layering_q1.py`, and the full-`Shell` consumer set only shrinks via `tests/unit/tooling/test_shell_consumer_ratchet_q1.py`)
+9. **Narrow Service Protocols (dependency direction)**: migrated boundaries depend on the narrow `psh/protocols` interfaces (`ExpansionRuntime`, `IOContext`, `JobRuntime`, `LocaleAccess`, `ExpansionHost`) rather than the whole `Shell`; the import edge is one-way — an implementation may import a protocol, a protocol never imports an implementation (campaign Q1; enforced by `tests/unit/tooling/test_protocol_layering_q1.py`, and the full-`Shell` consumer set — 8 modules as of v0.777.0 — only shrinks via `tests/unit/tooling/test_shell_consumer_ratchet_q1.py`)
 
 ### "Where do I change X?"
 
