@@ -6681,6 +6681,9 @@
   stderr: ""
   exit_code: 0
   psh_only: true
+  # D4: opens /dev/stdout by path — passes unsandboxed; a sandboxed run
+  # reports SKIP (not FAIL) via the probe in oracle_policy.dev_fd_skip_reason.
+  requires_dev_fd: true
 # R18 T2-F INTERACTIVE CLUSTER
 # =============================================================================
 # The monitor ('m') flag is on only for a genuinely interactive shell with

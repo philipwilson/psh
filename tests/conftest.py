@@ -562,7 +562,22 @@ def pytest_collection_modifyitems(config, items):
 
 # Skip interactive tests by default unless explicitly requested
 def pytest_runtest_setup(item):
-    """Skip interactive tests unless explicitly requested."""
+    """Skip interactive tests unless explicitly requested; honour ``oracle_min``."""
+    # D5 version classifier: @pytest.mark.oracle_min("5.3") skips (with the
+    # countable reason "oracle <version> < 5.3") when the resolved bash oracle
+    # is older. The version literal lives ONLY in the marker argument — the
+    # ratchet in tests/unit/tooling/test_no_version_literal_predicates.py
+    # forbids it in if/skipif predicates.
+    oracle_min = item.get_closest_marker("oracle_min")
+    if oracle_min is not None:
+        if len(oracle_min.args) != 1 or not isinstance(oracle_min.args[0], str):
+            pytest.fail("oracle_min takes exactly one version string, e.g. "
+                        "@pytest.mark.oracle_min('5.3')", pytrace=False)
+        from oracle_policy import oracle_min_skip_reason
+        reason = oracle_min_skip_reason(oracle_min.args[0])
+        if reason:
+            pytest.skip(reason)
+
     if item.get_closest_marker("interactive"):
         # The PTY smoke suite (test_pty_smoke.py) is deterministic and runs
         # by default — it is the interactive coverage the suite relies on —
