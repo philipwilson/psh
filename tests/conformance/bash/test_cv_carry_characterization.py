@@ -231,7 +231,7 @@ class TestExecutableSpecialFileEarlier:
     a FIFO HANGS, a socket fails 126. psh's tier-1 requires a REGULAR FILE, so it
     treats the special file as a stat-exists fallback and runs the later real
     executable instead (no hang, no spurious 126). Pinned via the socket face
-    (the FIFO face would hang bash). bash 5.2-verified."""
+    (the FIFO face would hang bash). bash 5.2- and 5.3.15-verified."""
 
     def test_socket_earlier_bash_126_psh_runs_later(self):
         import os
@@ -247,7 +247,15 @@ class TestExecutableSpecialFileEarlier:
             os.makedirs(os.path.join(work, "sock"))
             os.makedirs(os.path.join(work, "late"))
             os.chdir(os.path.join(work, "sock"))
-            s.bind("cvs")                        # relative bind → short path
+            try:
+                s.bind("cvs")                    # relative bind → short path
+            except PermissionError:
+                # macOS seatbelt `(deny network*)` covers an AF_UNIX bind, so
+                # a sandboxed gate cannot even build the fixture: neither
+                # shell has run and nothing was compared — SKIP, never FAIL
+                # (D4). Unsandboxed the bind succeeds and the row runs.
+                pytest.skip("AF_UNIX bind denied (sandboxed gate); the "
+                            "socket-on-PATH fixture cannot be created")
             os.chmod("cvs", 0o755)
             os.chdir(cwd0)
             late = os.path.join(work, "late", "cvs")

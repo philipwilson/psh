@@ -248,6 +248,18 @@ def test_output_cap_kills_whole_process_group():
             f"grandchild {bg_pid} survived the output-cap killpg sweep")
 
 
+def _ps_can_enumerate_processes() -> bool:
+    """``_descendant_pids`` walks ``ps -eo pid=,ppid=`` and, by design, finds
+    NOTHING when ``ps`` cannot be spawned (a cleanup helper never raises into
+    a test). Under a macOS seatbelt that denies ``ps`` the sweep therefore has
+    no table to walk and the escaped writer survives — an environment fact,
+    not a harness defect, so the row SKIPS there (D4). Probed through the
+    runner itself: this module is oracle-bearing and may not spawn directly.
+    """
+    r = run_shell_case(["ps", "-eo", "pid=,ppid="], timeout=10)
+    return isinstance(r, Completed) and bool(r.stdout.strip())
+
+
 def test_cap_kill_reaches_a_writer_that_left_the_process_group():
     """The escaped-pgroup offender: killpg on the leader is NOT enough.
 
@@ -267,6 +279,10 @@ def test_cap_kill_reaches_a_writer_that_left_the_process_group():
 
     RED before the descendant sweep in ``_killpg_sigkill``, green after.
     """
+    if not _ps_can_enumerate_processes():
+        pytest.skip("`ps -eo pid=,ppid=` cannot be spawned or prints nothing "
+                    "here (sandboxed gate), so the descendant sweep has no "
+                    "process table to walk")
     r = run_shell_case(
         [SH, "-c", "set -m; yes escaped & echo pid=$! >&2; wait"],
         timeout=30, byte_cap=64 * 1024)
