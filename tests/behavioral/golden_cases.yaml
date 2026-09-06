@@ -2374,8 +2374,10 @@
   exit_code: 0
 
 - name: shopt_query_unset_exit_1
+  # bash 5.3 pads a queried shopt name to 20 (Wave 0.2; 5.2 used 15)
+  min_bash: "5.3"
   command: "shopt nocasematch; echo $?"
-  stdout: "nocasematch    \toff\n1\n"
+  stdout: "nocasematch         \toff\n1\n"
   stderr: ""
   exit_code: 0
 
@@ -8921,8 +8923,10 @@
   exit_code: 0
 
 - name: shellopts_shopt_flag_after_operand
+  # bash 5.3 pads a queried shopt name to 20 (Wave 0.2; 5.2 used 15)
+  min_bash: "5.3"
   command: 'shopt extglob -s 2>/dev/null; echo rc=$?; shopt -q extglob; echo rc=$?'
-  stdout: "extglob        \toff\nrc=1\nrc=1\n"
+  stdout: "extglob             \toff\nrc=1\nrc=1\n"
   stderr: ""
   exit_code: 0
 
@@ -10698,4 +10702,190 @@
   command: 'unset PATH; command -p nosuchcmd_w03; echo rc=$?'
   stdout: "rc=127\n"
   stderr: "nosuchcmd_w03: command not found"
+# ---------------------------------------------------------------------------
+# Wave 0.2 (Improvement Program 2026-09) — presentation retunes to bash 5.3.
+# Each row names the gate-triage node it closes in `description`; rows carry
+# `min_bash: "5.3"` (D5) because an older oracle prints the 5.2 shape.
+# ---------------------------------------------------------------------------
+
+# trap -P (bash 5.3 CHANGES, 5.3-alpha "New Features in Bash" item j) and the
+# 5.3 usage line `trap [-Plp] [[action] signal_spec ...]`.
+- name: w0_2_trap_usage_line_is_bash53
+  description: "closes test_error_prefix_conformance::test_prefix_matches_bash_exactly[trap -x] / test_usage_line_stays_unprefixed_like_bash / test_multiline_line_number_matches_bash and test_trap_signal_spec_conformance::TestTrapPosixNumericForms::test_single_invalid_operand_usage_error"
+  min_bash: "5.3"
+  command: 'trap -x; echo rc=$?; trap NOTASIGNAL; echo rc=$?'
+  stdout: "rc=2\nrc=2\n"
+  stderr: "trap: usage: trap [-Plp] [[action] signal_spec ...]"
+  exit_code: 0
+
+- name: w0_2_trap_P_prints_bare_action_per_operand
+  description: "trap -P prints the raw action, one line per operand in query order (bash 5.3 CHANGES 5.3-alpha New Features j); gate family test_error_prefix_conformance"
+  min_bash: "5.3"
+  command: "trap 'echo hi' INT; trap 'echo bye' EXIT; trap -P INT EXIT; echo rc=$?"
+  stdout: "echo hi\necho bye\nrc=0\nbye\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_trap_P_unset_prints_nothing_ignored_prints_empty_line
+  description: "trap -P on an unset signal prints nothing; the ignored action prints an empty line (bash 5.3.15)"
+  min_bash: "5.3"
+  command: "trap -P INT; echo rc=$?; trap '' INT; trap -P INT | od -c | head -1"
+  stdout: "rc=0\n0000000   \\n                                                            \n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_trap_P_without_operand_rc2
+  description: "trap -P with no operand: `-P requires at least one signal name`, rc 2, no usage line (bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'trap -P; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "trap: -P requires at least one signal name"
+  exit_code: 0
+
+- name: w0_2_trap_p_and_P_together_rc2
+  description: "trap -pP: `cannot specify both -p and -P`, rc 2 (bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'trap -pP INT; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "trap: cannot specify both -p and -P"
+  exit_code: 0
+
+- name: w0_2_trap_lP_without_operand_rc2
+  description: "trap -lP with no operand: the -P usage check precedes -l (bash 5.3.15) — rc 2, no listing (Wave 0.2 pkg E bounce B1)"
+  min_bash: "5.3"
+  command: 'trap -lP; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "trap: -P requires at least one signal name"
+  exit_code: 0
+
+- name: w0_2_trap_lpP_conflict_rc2
+  description: "trap -lpP INT: -p with -P is refused before -l is honoured (bash 5.3.15) — rc 2, no listing (Wave 0.2 pkg E bounce B1)"
+  min_bash: "5.3"
+  command: 'trap -lpP INT; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "trap: cannot specify both -p and -P"
+  exit_code: 0
+
+- name: w0_2_trap_P_invalid_spec_rc1_valid_operand_still_printed
+  description: "trap -P INT NOSUCH: valid operand printed, invalid one diagnosed, rc 1 (bash 5.3.15)"
+  min_bash: "5.3"
+  command: "trap 'echo hi' INT; trap -P INT NOSUCH; echo rc=$?"
+  stdout: "echo hi\nrc=1\n"
+  stderr: "trap: NOSUCH: invalid signal specification"
+  exit_code: 0
+
+# shopt widths (empirical, bash 5.3.15; no CHANGES item): queried names and
+# bare shopt-table listings pad to 20; bare `shopt -o`/-so/-uo and `set -o`
+# stay at 15.
+- name: w0_2_shopt_query_pads_to_20
+  description: "closes test_nocasematch_conformance::TestShoptQueryExitCode::test_query_set_exits_0 / test_query_unset_exits_1 / test_query_after_unset_exits_1 and test_locale_conformance::TestRangesAndGlobasciiranges::test_shopt_globasciiranges_query"
+  min_bash: "5.3"
+  command: 'shopt -s nocasematch; shopt nocasematch; echo $?; shopt -u nocasematch; shopt nocasematch; echo $?; shopt globasciiranges'
+  stdout: "nocasematch         \ton\n0\nnocasematch         \toff\n1\nglobasciiranges     \ton\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_shopt_query_15_char_name_padded
+  description: "closes test_cmdsub_errexit_conformance::TestInheritErrexitShopt::test_shopt_query_states (a 15-char name was unpadded at width 15)"
+  min_bash: "5.3"
+  command: 'shopt inherit_errexit; echo rc=$?; shopt -s inherit_errexit; shopt inherit_errexit; echo rc=$?'
+  stdout: "inherit_errexit     \toff\nrc=1\ninherit_errexit     \ton\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_shopt_o_query_pads_to_20_bare_listing_stays_15
+  description: "shopt -o NAME query pads to 20 while bare shopt -o / set -o keep 15 (empirical, bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'shopt -o errexit; echo rc=$?; shopt -o | grep errexit; set -o | grep errexit; shopt -so | grep braceexpand'
+  stdout: "errexit             \toff\nrc=1\nerrexit        \toff\nerrexit        \toff\nbraceexpand    \ton\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_shopt_bare_listings_pad_to_20
+  description: "bare shopt / shopt -s / shopt -u listings pad to 20 (empirical, bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'shopt -s extglob; shopt | grep -c "^extglob             	on$"; shopt -s | grep -c "^extglob             	on$"; shopt -u | grep -c "^dotglob             	off$"'
+  stdout: "1\n1\n1\n"
+  stderr: ""
+  exit_code: 0
+
+# jobs listing: the status label is left-justified in 27 columns (empirical,
+# bash 5.3.15; 5.2 used 24 — no CHANGES item).
+- name: w0_2_jobs_status_column_27_running
+  description: "closes test_bash_compatibility::TestBashJobControl::test_job_control_commands (Running + 20 spaces)"
+  min_bash: "5.3"
+  command: 'sleep 1 & jobs'
+  stdout: "[1]+  Running                    sleep 1 &\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_jobs_l_status_column_27
+  description: "jobs -l keeps the 27-column status field after the PID (empirical, bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'sleep 1 & jobs -l | sed "s/^\[1\]+ [0-9]* /[1]+ PID /"'
+  stdout: "[1]+ PID Running                    sleep 1 &\n"
+  stderr: ""
+  exit_code: 0
+
+# -c mode lists a completed job once, then reaps it (bash 5.3 CHANGES,
+# 5.3-alpha "New Features in Bash" item d + "Changes to Bash" bbbb; 5.2 reaped
+# it eagerly so `jobs` printed nothing). The golden runner IS `-c` mode.
+- name: w0_2_jobs_completed_builtin_listed_once_c_mode
+  description: "closes test_jobs_completed_listing_modes::test_completed_builtin_listed_once_c_mode (C181 discharged)"
+  min_bash: "5.3"
+  command: 'false & sleep 0.3; echo A:; jobs; echo B:'
+  stdout: "A:\n[1]+  Exit 1                     false\nB:\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_jobs_completed_external_listed_once_c_mode
+  description: "closes test_jobs_completed_listing_modes::test_completed_external_listed_once_c_mode"
+  min_bash: "5.3"
+  command: 'sleep 0.1 & sleep 0.3; echo A:; jobs; echo B:'
+  stdout: "A:\n[1]+  Done                       sleep 0.1\nB:\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_jobs_c_mode_second_jobs_is_empty_and_wait_keeps_status
+  description: "the -c listing reaps the job (second `jobs` empty) and `wait $p` still returns the remembered status (bash 5.3.15)"
+  min_bash: "5.3"
+  command: '(exit 7)& p=$!; sleep 0.3; jobs >/dev/null; echo A:; jobs; echo B:; wait $p; echo rc=$?'
+  stdout: "A:\nB:\nrc=7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_jobs_c_mode_set_m_no_boundary_notice
+  description: "C181 ruling: `-c` + `set -m` prints the listing on stdout and no stderr notice (bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'set -m; false & sleep 0.3; echo A:; jobs; echo B:'
+  stdout: "A:\n[1]+  Exit 1                     false\nB:\n"
+  stderr: ""
+  exit_code: 0
+
+# hash -d against an EMPTY table reports the miss, rc 1 (bash 5.3 CHANGES,
+# 5.3-alpha "Changes to Bash" item ggggg; 5.2 silently returned 0).
+- name: w0_2_hash_d_empty_table_reports_miss
+  description: "closes test_hash_conformance::TestHashBuiltin::test_dash_d_deletes (third row)"
+  min_bash: "5.3"
+  command: 'hash -d nosuchcmd_xyz; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: "hash: nosuchcmd_xyz: not found"
+  exit_code: 0
+
+- name: w0_2_hash_d_empty_table_one_line_per_name
+  description: "hash -d a b on an empty table diagnoses each name, rc 1 (bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'hash -d a_zz9 b_zz9 2>/dev/null; echo rc=$?; hash -r; hash -d ls 2>/dev/null; echo rc=$?'
+  stdout: "rc=1\nrc=1\n"
+  stderr: ""
+  exit_code: 0
+
+# posix mode no longer restricts function NAMES (bash 5.3 CHANGES, 5.3-beta
+# "New Features in Bash" item p); ASCII shapes only here (golden runs LC_ALL=C).
+- name: w0_2_posix_function_names_unrestricted
+  description: "closes test_identifier_policy_conformance::TestPosixRestrictsUnicodeLikeBash::test_for_and_function_rejected_by_both (split; function half now agrees with bash 5.3)"
+  min_bash: "5.3"
+  command: 'set -o posix; 9x() { echo n; }; 9x; function a-b { echo h; }; a-b; readonly -f a-b; echo rc=$?; unset -f 9x; echo rc=$?'
+  stdout: "n\nh\nrc=0\nrc=0\n"
+  stderr: ""
   exit_code: 0

@@ -1,6 +1,7 @@
 """The ``hash`` builtin: remembered command locations (POSIX + bash extras).
 
-All behavior here is pinned to bash 5.2 probes (2026-06-13):
+All behavior here is pinned to bash 5.2 probes (2026-06-13), with the
+``-d`` empty-table rule re-pinned to bash 5.3.15 (Wave 0.2, 2026-09-06):
 
 - ``hash`` lists the table as a ``hits\\tcommand`` header plus ``%4d\\t%s``
   rows; an empty table prints ``hash: hash table empty`` on STDOUT, rc 0.
@@ -12,8 +13,10 @@ All behavior here is pinned to bash 5.2 probes (2026-06-13):
 - ``hash -t NAME...`` prints remembered paths WITHOUT a PATH search
   (an unhashed name is ``not found``, rc 1); one name prints the bare
   path, several print ``name\\tpath`` lines. The lookup counts as a hit.
-- ``hash -d NAME...`` forgets each name (missing: ``not found``, rc 1 —
-  except against an EMPTY table, which silently succeeds, rc 0).
+- ``hash -d NAME...`` forgets each name (missing: ``hash: NAME: not found``,
+  rc 1 — also against an EMPTY table: bash 5.3 CHANGES, 5.3-alpha "Changes
+  to Bash" item ggggg, "Fix `hash' to return 1 if -d is supplied and the
+  hash table is empty"; 5.2's silent rc 0 there was a bug).
 - ``hash -l`` prints ``builtin hash -p PATH NAME`` reusable lines (an
   empty table prints nothing).
 - ``hash -p PATHNAME NAME...`` remembers PATHNAME for each name without
@@ -77,10 +80,8 @@ class HashBuiltin(Builtin):
             return self._print_types(names, shell, table)
 
         if opts['d'] and names:
-            # bash quirk (probe-verified): -d against an EMPTY table
-            # silently succeeds; only a populated table reports misses.
-            if len(table) == 0:
-                return 0
+            # Every miss is reported, empty table included (bash 5.3 CHANGES
+            # 5.3-alpha ggggg; reproduce: `hash -d nosuch; echo $?` -> 1).
             status = 0
             for name in names:
                 if not table.remove(name):

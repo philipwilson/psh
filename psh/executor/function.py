@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Iterator, List, Optional
 
 from ..core import LoopBreak, LoopContinue, TopLevelAbort, UnboundVariableError, report_internal_defect
 from ..core.exceptions import FunctionDefinitionError, FunctionReturn
-from ..lexer.unicode_support import is_valid_name
 
 if TYPE_CHECKING:
     from psh.visitor import ASTVisitor
@@ -44,15 +43,13 @@ class FunctionOperationExecutor:
         Returns:
             Exit status code (0 for success)
         """
-        # Under ``set -o posix`` a function name must be a valid POSIX/ASCII
-        # identifier, exactly as bash restricts it. With posix mode OFF, psh
-        # (like bash) allows the lenient set — a Unicode-letter name such as
-        # ``é`` is accepted. Single authoritative policy: unicode_support.
-        if self.shell.state.options.get('posix', False):
-            if not is_valid_name(node.name, posix_mode=True):
-                print(f"psh: `{node.name}': not a valid identifier",
-                      file=self.shell.stderr)
-                return 1
+        # A function NAME is never identifier-checked here, in either mode:
+        # bash 5.3 CHANGES (5.3-beta, "New Features in Bash" item p) "Posix
+        # mode no longer requires function names to be valid shell
+        # identifiers" — `set -o posix; é() { :; }`, `9x() { :; }` and
+        # `a-b() { :; }` all define and run in bash 5.3.15 (5.2 parse-aborted
+        # them; psh used to reject them here with rc 1). Variable names keep
+        # the posix identifier policy at their own sites (unicode_support).
         try:
             self.function_manager.define_function(node.name, node.body,
                                                   redirects=node.redirects)

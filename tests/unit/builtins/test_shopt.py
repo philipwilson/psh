@@ -75,8 +75,9 @@ class TestShoptBasic:
         result = shell.run_command('shopt dotglob')
         assert result == 1
         output = shell.get_stdout().strip()
-        # bash left-justifies the option name in a 15-char field before the tab.
-        assert output == f"{'dotglob':<15}\toff"
+        # bash 5.3.15 left-justifies a shopt-table name in a 20-char field
+        # before the tab (5.2 used 15; empirical, no CHANGES item).
+        assert output == f"{'dotglob':<20}\toff"
 
     def test_shopt_invalid_option(self, captured_shell):
         """Test invalid option name."""
