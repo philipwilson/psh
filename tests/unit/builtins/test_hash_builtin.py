@@ -129,7 +129,7 @@ class TestHashOptions:
 
     def test_dash_d_on_empty_table_reports_miss(self, captured_shell):
         """...and so does an EMPTY table: `hash: NAME: not found`, rc 1.
-        bash 5.2 silently returned 0 here; bash 5.3 CHANGES (5.3-alpha,
+        5.2 silently returned 0 here; bash 5.3 CHANGES (5.3-alpha,
         "Changes to Bash" item ggggg: "Fix `hash' to return 1 if -d is
         supplied and the hash table is empty") calls that a bug. Verified
         against 5.3.15: one line per missing name, rc 1."""

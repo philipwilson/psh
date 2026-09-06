@@ -271,7 +271,7 @@ class TestShoptWidthsBash53:
         assert captured_shell.get_stdout() == "nocasematch         \toff\n"
 
     def test_shopt_query_15_char_name_gets_5_spaces(self, captured_shell):
-        # inherit_errexit is exactly 15 chars: bash 5.2 printed it unpadded.
+        # inherit_errexit is exactly 15 chars: 5.2 printed it unpadded.
         assert captured_shell.run_command('shopt inherit_errexit') == 1
         assert captured_shell.get_stdout() == "inherit_errexit     \toff\n"
 

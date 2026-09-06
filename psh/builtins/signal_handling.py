@@ -21,7 +21,7 @@ class TrapBuiltin(Builtin):
     @property
     def synopsis(self) -> str:
         # bash 5.3's exact usage string (also printed on usage errors);
-        # bash 5.2 printed `trap [-lp] [[arg] signal_spec ...]`.
+        # 5.2 printed `trap [-lp] [[arg] signal_spec ...]`.
         return "trap [-Plp] [[action] signal_spec ...]"
 
     @property

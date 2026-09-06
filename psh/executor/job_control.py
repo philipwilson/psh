@@ -275,7 +275,7 @@ class Job:
 
         # bash format: `[N]+  State                      command &` — the
         # status label left-justified in 27 columns (bash 5.3.15, empirical;
-        # bash 5.2 used 24), never truncated and with no minimum separator
+        # 5.2 used 24), never truncated and with no minimum separator
         # (a 27-char label runs straight into the command, as in bash).
         suffix = " &" if self.state == JobState.RUNNING and not self.foreground else ""
         if pid is not None:

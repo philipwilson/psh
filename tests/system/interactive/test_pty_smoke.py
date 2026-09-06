@@ -562,7 +562,7 @@ class TestPtyJobControl:
 
     def test_done_notice_status_column_is_27_wide(self, psh):
         """The async completion notice pads its status label to 27 columns:
-        `[1]+  Done` + 23 spaces + the command (bash 5.2 used 24). Empirical,
+        `[1]+  Done` + 23 spaces + the command (5.2 used 24). Empirical,
         5.3.15 — PTY-probed with `bash --norc --noprofile -i`: `sleep 0.2 &`
         then a prompt prints `[1]+  Done                       sleep 0.2`.
         Wave 0.2 (the jobs-width gate family), interactive leg (D6).

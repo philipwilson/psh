@@ -90,7 +90,7 @@ class TestJobsBuiltin:
     def test_jobs_status_column_is_27_wide(self, shell, capsys):
         """bash 5.3.15 left-justifies the status label in 27 columns
         (`[1]+  Running` + 20 spaces + `sleep 10 &`; `jobs -l` likewise after
-        the PID); bash 5.2 used 24. Empirical, 5.3.15 (no CHANGES item) —
+        the PID); 5.2 used 24. Empirical, 5.3.15 (no CHANGES item) —
         Wave 0.2 gate nodes test_bash_compatibility::TestBashJobControl::
         test_job_control_commands and test_jobs_completed_listing_modes x6.
         """
@@ -107,7 +107,7 @@ class TestJobsBuiltin:
     def test_jobs_lists_completed_job_once_in_command_mode(self, shell, capsys):
         """`-c` mode lists a finished job exactly once, like every other
         non-interactive read path (bash 5.3 CHANGES, 5.3-alpha "New Features
-        in Bash" item d: running `jobs` removes jobs from the list; bash 5.2
+        in Bash" item d: running `jobs` removes jobs from the list; 5.2
         reaped it eagerly in -c mode so psh filtered DONE jobs under
         command_mode). Wave 0.2, closes C181 and the two `_c_mode` nodes in
         test_jobs_completed_listing_modes.py.

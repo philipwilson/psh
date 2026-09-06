@@ -529,7 +529,7 @@ declare é=1                  # declare: `é=1': not a valid identifier (status 
 read é                       # read: `é': not a valid identifier (status 1)
 foo=1; echo $foo             # plain ASCII names still work (1)
 é() { echo hi; }; é          # hi in BOTH shells: function names are unrestricted
-9x() { echo n; }; 9x         # n (bash 5.3 and PSH; bash 5.2 parse-aborted)
+9x() { echo n; }; 9x         # n (bash 5.3 and PSH; 5.2 parse-aborted)
 ```
 
 So the *only* behavioral change `set -o posix` makes to names is switching

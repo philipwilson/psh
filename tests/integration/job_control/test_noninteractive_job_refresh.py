@@ -72,7 +72,7 @@ def test_jobs_lists_completed_job_once_in_c_mode():
     bash 5.3 lists it (`[1]+  Exit 1 ... false`, 27-column status field) and
     prints NO stderr notice, with or without `set -m` — bash 5.3 CHANGES,
     5.3-alpha "New Features in Bash" item d (running `jobs` removes jobs from
-    the list). bash 5.2 reaped it eagerly so stdout was empty; the mode matrix
+    the list). 5.2 reaped it eagerly so stdout was empty; the mode matrix
     lives in test_jobs_completed_listing_modes.py. The job is still reaped
     (next test).
     """

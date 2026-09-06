@@ -193,7 +193,7 @@ class ShoptBuiltin(Builtin):
         Empirical against bash 5.3.15 (no CHANGES item): queried names
         (``shopt NAME``, ``shopt -o NAME``) and bare shopt-table listings
         use 20; bare ``shopt -o``-family listings and ``set -o``
-        (environment.py) use 15. bash 5.2 used 15 everywhere.
+        (environment.py) use 15. 5.2 used 15 everywhere.
         """
         if reusable:
             if o_mode:

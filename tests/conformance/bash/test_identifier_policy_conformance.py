@@ -194,7 +194,7 @@ class TestPosixFunctionNamesUnrestricted:
     """Function names are NOT identifier-checked under ``set -o posix``.
 
     bash 5.3 CHANGES (5.3-beta, "New Features in Bash" item p): "Posix mode
-    no longer requires function names to be valid shell identifiers." bash 5.2
+    no longer requires function names to be valid shell identifiers." 5.2
     parse-aborted these; psh rejected them at execution. Verified against
     5.3.15 (Wave 0.2; gate node test_for_and_function_rejected_by_both, split).
     """
