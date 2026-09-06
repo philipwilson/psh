@@ -219,6 +219,20 @@ class TestTrapPrintActionsConformance(ConformanceTest):
         self.assert_identical_behavior(
             "trap 'echo hi' INT; trap -lP INT | grep -c SIGINT")
 
+    def test_l_does_not_rescue_P_usage_errors(self):
+        # bash 5.3.15 checks the -P usage errors before honouring -l: no
+        # listing, rc 2 (empirical; verifier round 1 of Wave 0.2 pkg E).
+        self.assert_identical_behavior(
+            "trap -lP 2>/dev/null; echo rc=$?; trap -lpP INT 2>/dev/null; "
+            "echo rc=$?; trap -l -p -P INT 2>/dev/null; echo rc=$?; "
+            "trap -Pl 2>/dev/null | grep -c SIGINT")
+
+    def test_l_with_P_usage_error_exits_posix_shell(self):
+        self.assert_identical_behavior(
+            "set -o posix; trap -lpP INT 2>/dev/null; echo not-reached")
+        self.assert_identical_behavior(
+            "set -o posix; trap -lP 2>/dev/null || echo caught; echo survived")
+
 
 class TestTrapSubstitutionExitConformance(ConformanceTest):
     """Substitution children run their own EXIT trap (bash)."""

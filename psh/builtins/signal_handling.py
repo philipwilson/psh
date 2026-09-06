@@ -99,8 +99,17 @@ EXIT STATUS
         print_flag = opts['p']
         action_flag = opts['P']
 
-        # -l dominates when present: bash's `trap -lp` / `-pl` / `-l INT`
-        # prints the signal listing and ignores -p/-P and any operands.
+        # bash 5.3 diagnoses the two -P usage errors BEFORE honouring -l
+        # (probe-verified against 5.3.15: `trap -lpP INT` and `trap -lP` are
+        # rc-2 usage errors with no listing, and a POSIX-mode non-interactive
+        # shell exits, suppressibly). Only after those checks does -l dominate
+        # -p and any operands (`trap -lp`, `-pl`, `-l INT`, `-lP INT` list).
+        if action_flag and print_flag:
+            self.error("cannot specify both -p and -P", shell)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
+        if action_flag and not operands:
+            self.error("-P requires at least one signal name", shell)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
         if list_flag:
             # (the listing string already ends with a newline)
             self.write(shell.trap_manager.list_signals(), shell)
@@ -152,19 +161,14 @@ EXIT STATUS
         """`trap -P SIG...`: print each operand's bare action (bash 5.3).
 
         bash 5.3 CHANGES (5.3-alpha, "New Features in Bash" item j). The two
-        usage errors — no operand, or -p combined with -P — are diagnosed
-        WITHOUT a usage line, rc 2, and exit a POSIX-mode non-interactive
-        shell suppressibly (probe-verified against bash 5.3.15: `set -o
-        posix; trap -P || echo caught` prints `caught`). A spec with no trap
+        usage errors — no operand, or -p combined with -P — are diagnosed in
+        execute() BEFORE -l is honoured, WITHOUT a usage line, rc 2, and exit a
+        POSIX-mode non-interactive shell suppressibly (probe-verified against
+        bash 5.3.15: `set -o posix; trap -P || echo caught` prints `caught`;
+        `trap -lpP INT` is the same error, not a listing). A spec with no trap
         set prints nothing; an invalid spec is reported and makes rc 1 while
         the valid operands are still printed.
         """
-        if print_flag:
-            self.error("cannot specify both -p and -P", shell)
-            raise SpecialBuiltinUsageError(2, suppressible=True)
-        if not operands:
-            self.error("-P requires at least one signal name", shell)
-            raise SpecialBuiltinUsageError(2, suppressible=True)
         actions, invalid = shell.trap_manager.trap_actions(operands)
         for action in actions:
             # One line per operand — an ignored ('') action is an empty line,

@@ -203,11 +203,39 @@ class TestTrapPrintActions:
         assert 'usage:' not in err
 
     @pytest.mark.parametrize("cmd", ['trap -lP INT', 'trap -Pl INT'])
-    def test_l_dominates_P(self, captured_shell, cmd):
+    def test_l_dominates_P_when_P_is_well_formed(self, captured_shell, cmd):
+        # With an operand and no -p, -l wins and prints the listing (bash 5.3.15).
         captured_shell.run_command("trap 'echo hi' INT")
         rc, out = _out(captured_shell, cmd)
         assert rc == 0
         assert 'SIGINT' in out and 'echo hi' not in out
+
+    @pytest.mark.parametrize("cmd", ['trap -lP', 'trap -Pl', 'trap -l -P'])
+    def test_l_does_not_rescue_P_without_operand(self, captured_shell, cmd):
+        # bash 5.3.15 checks the -P usage errors BEFORE honouring -l: no
+        # listing, rc 2, `-P requires at least one signal name`.
+        rc, out = _out(captured_shell, cmd)
+        assert rc == 2
+        assert out == ""
+        err = captured_shell.get_stderr()
+        assert 'trap: -P requires at least one signal name' in err
+        assert 'usage:' not in err
+
+    @pytest.mark.parametrize("cmd", ['trap -lpP INT', 'trap -pPl INT',
+                                     'trap -l -p -P INT'])
+    def test_l_does_not_rescue_p_with_P(self, captured_shell, cmd):
+        rc, out = _out(captured_shell, cmd)
+        assert rc == 2
+        assert out == ""
+        err = captured_shell.get_stderr()
+        assert 'trap: cannot specify both -p and -P' in err
+        assert 'usage:' not in err
+
+    def test_l_with_P_usage_error_still_exits_a_posix_shell(self, captured_shell):
+        captured_shell.run_command('set -o posix')
+        rc, out = _out(captured_shell,
+                       'trap -lpP INT || echo caught; echo survived')
+        assert out == "caught\nsurvived\n"
 
     def test_double_dash_then_operand(self, captured_shell):
         captured_shell.run_command("trap 'echo hi' INT")
