@@ -15,13 +15,19 @@ Determinism over realism: a child sends the signal to *itself*
 (``sh -c 'kill -N $$'``); no timing, no flake. The ``job_control`` path is
 auto-marked ``serial`` (spawn/kill/wait — xdist-unsafe).
 
-Two divergences from bash are deliberate and documented (not tested here):
-  * bash prefixes ``bash: line N: PID ... CMD`` for signals other than
-    SIGTERM; psh emits just the signal description.
-  * a signal death that is the shell's LAST action uses bash's
-    exec-optimization / column job-notification machinery that psh does not
-    replicate. (Pipeline-member deaths ARE announced since reappraisal #17
-    MED-2 — see test_pipeline_signal_death.py.)
+DECLARED FORMAT DIVERGENCE (both sides pinned below; the parity flip —
+bash-faithful job text — is owned by slot 4.12 (C065) through the program's
+FLIP-PINS.md): bash 5.3 announces every foreground signal death through its
+job-table printer — the status text left-justified in a 27-column field
+followed by the job's command text (its pre-expansion re-print: whitespace
+normalised, quotes verbatim, ``( … )`` for a subshell; see
+``bash_job_notice``), and for signals other than SIGTERM a ``bash: line N:
+PID`` prefix as well. The 5.2 oracle printed the bare ``Terminated: 15`` for
+SIGTERM, which was exact parity. psh emits just the signal description on
+every path. A second documented, untested divergence: a signal death that is
+the shell's LAST action uses bash's exec-optimization machinery that psh does
+not replicate. (Pipeline-member deaths ARE announced since reappraisal #17
+MED-2 — see test_pipeline_signal_death.py.)
 """
 
 import signal
@@ -44,21 +50,45 @@ def run_bash(cmd, timeout=15):
     return r
 
 
+def bash_job_notice(status_text, job_text):
+    """bash 5.3's foreground signal-death line: ``status_text`` left-justified
+    in a 27-column field, then the job's command text, then a newline.
+    Empirical, 5.3.15 — the field is a pure ``ljust(27)``: a 27-character
+    description (SIGFPE's on macOS) is followed by the text with NO
+    separator. Identical in -c, script-file and stdin modes."""
+    return status_text.ljust(27) + job_text + '\n'
+
+
+def _run_modes(cmd, tmp_path):
+    """(mode, psh, bash) for `cmd` in -c, script-file and stdin modes (D6)."""
+    script = tmp_path / 'job.sh'
+    script.write_text(cmd + '\n')
+    for mode, args, stdin in (('-c', ['-c', cmd], None),
+                              ('file', [str(script)], None),
+                              ('stdin', [], cmd + '\n')):
+        p = _run_psh(args, stdin_data=stdin, timeout=15)
+        b = _run_bash(args, stdin_data=stdin, timeout=15)
+        assert is_comparable(p) and is_comparable(b), (mode, p, b)
+        yield mode, p, b
+
+
 class TestAbnormalTerminationDiagnostic:
     """psh announces a signal-killed foreground command like bash does."""
 
-    def test_sigterm_prints_bare_signal_description(self):
-        """`sh -c "kill -TERM $$"; echo next` — psh prints the SIGTERM
-        description to stderr and still runs the next command. For SIGTERM
-        bash uses the same bare form, so this is exact parity."""
+    def test_sigterm_prints_bare_signal_description(self, tmp_path):
+        """`sh -c "kill -TERM $$"; echo next` — psh prints the bare SIGTERM
+        description to stderr and still runs the next command; bash 5.3
+        appends the padded job text (declared format divergence — module
+        docstring). Pinned in all three input modes because the shape of the
+        announcement is the subject (D6)."""
         cmd = 'sh -c "kill -TERM \\$\\$"; echo next'
-        psh = run_psh(cmd)
-        assert psh.stdout == 'next\n'
-        assert psh.returncode == 0
-        assert psh.stderr.strip() == signal.strsignal(signal.SIGTERM)
-        # bash on this host names the same signal (bare for SIGTERM).
-        bash = run_bash(cmd)
-        assert psh.stderr == bash.stderr
+        for mode, psh, bash in _run_modes(cmd, tmp_path):
+            assert psh.stdout == 'next\n' == bash.stdout, mode
+            assert psh.returncode == 0 == bash.returncode, mode
+            assert psh.stderr == signal.strsignal(signal.SIGTERM) + '\n', mode
+            assert bash.stderr == bash_job_notice(
+                signal.strsignal(signal.SIGTERM),
+                'sh -c "kill -TERM \\$\\$"'), (mode, bash.stderr)
 
     def test_diagnostic_names_the_signal(self):
         """A crash signal (SIGSEGV) is announced with its description. bash
@@ -98,14 +128,18 @@ class TestAbnormalTerminationDiagnostic:
             assert psh.stderr == ''
 
     def test_reported_in_explicit_subshell(self):
-        """A ( ) subshell announces its foreground child's signal death, like
-        bash (exact parity for SIGTERM)."""
+        """A ( ) subshell announces its foreground child's signal death in
+        both shells. bash 5.3 re-prints the subshell as `( … )` with inner
+        spaces in the padded job text (empirical, 5.3.15); psh's bare form
+        is unchanged (declared format divergence — module docstring)."""
         cmd = '(sh -c "kill -TERM \\$\\$"); echo next'
         psh = run_psh(cmd)
         bash = run_bash(cmd)
-        assert psh.stdout == 'next\n'
-        assert psh.stderr.strip() == signal.strsignal(signal.SIGTERM)
-        assert psh.stderr == bash.stderr
+        assert psh.stdout == 'next\n' == bash.stdout
+        assert psh.stderr == signal.strsignal(signal.SIGTERM) + '\n'
+        assert bash.stderr == bash_job_notice(
+            signal.strsignal(signal.SIGTERM),
+            '( sh -c "kill -TERM \\$\\$" )'), bash.stderr
 
     def test_suppressed_in_command_substitution(self):
         """bash suppresses the diagnostic inside a command substitution; psh

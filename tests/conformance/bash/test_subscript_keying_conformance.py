@@ -9,11 +9,14 @@ word/quote expansion under assignment-value semantics (no split, no glob, no
 bare-name dereference), indexed subscripts expand then lazily
 arithmetic-evaluate.
 
-Every parity row here was probed against bash 5.2 at base d4db9c57 (see
-tmp/boundary-ledgers/W2-probes/matrix_base.txt): the A/Q/K rows were DIVERGENT
-at base and are red-on-base pins; the I/S/V/R rows matched at base and are
-parity pins. Documented divergences live at the bottom as explicit both-sides
-tests (house style of test_nested_substitution_timing_conformance.py).
+Every row was first probed against the 5.2 oracle at base d4db9c57 and holds
+against bash 5.3.15 (Wave 0.1 re-verification, 2026-09-06; the rows that moved
+with the oracle — the `case` procsub render, the sq-in-dq read-back, the
+let_arith route, and HOME-via-environment for the tilde row — say so in
+place): the A/Q/K rows were DIVERGENT at base and are red-on-base pins; the
+I/S/V/R rows matched at base and are parity pins. Documented divergences live
+at the bottom as explicit both-sides tests (house style of
+test_nested_substitution_timing_conformance.py).
 """
 import re
 from pathlib import Path
@@ -48,6 +51,16 @@ def _oracle_version_tuple():
 # row against an oracle whose behaviour here is unknown. Earlier this compared
 # the patch field only when the version happened to be a 5.2, so anything else
 # fell through and ran.
+#
+# HOME reaches the row through the ENVIRONMENT, never an in-script assignment
+# (D14). The Homebrew bash 5.3.15 bottle is linked against the installed
+# readline, whose tilde expander resolves HOME from the process's STARTUP
+# environment (its getenv-based sh_get_env_value wins under the two-level
+# namespace), so `HOME=/probe-home; declare -A a; a[~]=v` keys the login home
+# there — every unquoted `~` does, even after `export HOME=…`, while bash's own
+# `cd` still honours the shell variable. That is an oracle-BINARY artefact, not
+# bash semantics (a GNU-readline bash prints /probe-home), so psh must NOT copy
+# it; with HOME supplied in the environment both shells print /probe-home.
 _TILDE_IN_SUBSCRIPT_VERSION = (5, 2, 24)
 _ORACLE_VERSION = _oracle_version_tuple()
 _OLD_BASH_NO_SUBSCRIPT_TILDE = (
@@ -459,8 +472,11 @@ class TestCompositeQuoting(ConformanceTest):
                "subscripts and psh implements the current behaviour "
                "(see _TILDE_IN_SUBSCRIPT_VERSION)")
     def test_tilde_expands_in_key(self):
+        # D14: HOME via env=, not in-script — see the comment block above
+        # _OLD_BASH_NO_SUBSCRIPT_TILDE (the installed-readline oracle bottle
+        # resolves `~` from the startup environment).
         self.assert_identical_behavior(
-            'HOME=/probe-home; declare -A a; a[~]=v; echo "${!a[@]}"')
+            'declare -A a; a[~]=v; echo "${!a[@]}"', env={'HOME': '/probe-home'})
 
 
 class TestTargetKindBeforeInterpretation(ConformanceTest):
@@ -1053,24 +1069,25 @@ def test_divergence_dq_ansi_bracket_read():
         assert _psh_comb(cmd).stdout == key_probe
 
 
-def test_divergence_sq_in_dq_readback_outcome():
-    """Round-1 verifier find (R1-6), base-verified PRE-EXISTING (base = tip,
-    both parsers; probe r16): with the assoc target DECLARED and the
-    sq-spelling key PRE-WRITTEN, `"${h[\'$(if)\']}"` is an OUTCOME
-    divergence, not wording-only: psh keys the single-quoted spelling
-    literally (key `$(if)`, reads back v rc 0 — consistent with its write
-    side), while bash treats the dq-context subscript as expansion-bearing
-    text at READ time, attempts the `$(if)` command substitution, and fails
-    rc 1 — bash cannot read back the key its own write stored (its write
-    keys `$(if)` literally too). The UNDECLARED-target half of this family
-    (runtime stage parity, wording-only residual) is
-    test_sq_inside_dq_subscript_runtime_stage_parity above. Disposition
-    pending integrator ruling (expected keep-with-pin carry)."""
+def test_sq_in_dq_readback_round_trips():
+    """PARITY — formerly the R1-6 declared divergence, CLOSED on the ORACLE
+    side (empirical, 5.3.15; the nearest NEWS item is 5.3 `t. array_expand_once:
+    new shopt option, replaces assoc_expand_once`): with the assoc target
+    DECLARED and the sq-spelling key PRE-WRITTEN, `"${h['$(if)']}"` reads
+    back v (rc 0) in BOTH shells and both psh parsers. The 5.2 oracle treated
+    the dq-context subscript as expansion-bearing text at READ time,
+    attempted the `$(if)` command substitution and failed rc 1 with a syntax
+    error — it could not read back the key its own write stored — while psh
+    keyed the single-quoted spelling literally in both directions; bash now
+    agrees with psh. The UNDECLARED-target half of this family (runtime
+    stage parity, wording-only residual) is
+    test_sq_inside_dq_subscript_runtime_stage_parity above. The oracle-side
+    flip is recorded in the program's FLIP-PINS.md (Wave 0.1)."""
     cmd = 'declare -A h; h[\'$(if)\']=v; echo "read=${h[\'$(if)\']}"; echo rc=$?'
     p, b = _both(cmd)
-    assert b.returncode == 1 and b.stdout == ''
-    assert 'syntax error' in b.stderr          # bash: runtime cmdsub attempt
-    assert p.returncode == 0 and p.stdout == 'read=v\nrc=0\n'
+    assert b.returncode == 0 and b.stdout == 'read=v\nrc=0\n', b
+    assert b.stderr == ''                      # no runtime cmdsub attempt
+    assert p.returncode == 0 and p.stdout == b.stdout
     assert _psh_comb(cmd).stdout == p.stdout
 
 
@@ -1248,14 +1265,16 @@ def test_divergence_procsub_separated_subshell_residual():
     ('if true; then echo x; fi', '<(if true; then\n    echo x;\nfi)'),
     ('for i in 1 2; do echo x; done', '<(for i in 1 2;\ndo\n    echo x;\ndone)'),
     ('while false; do :; done', '<(while false; do\n    :;\ndone)'),
-    ('case x in y) echo n;; esac', '<(case x in \n    y)\n        echo n\n    ;;\nesac)'),
+    ('case x in y) echo n;; esac', '<(case x in y)\n        echo n\n    ;;\nesac)'),
 ])
 def test_divergence_procsub_compound_render_residual(body, bash_key):
     """B2 residual, subfamily 2 (condition-4 both-sides pins): COMPOUND
     bodies — bash embeds its printer's MULTILINE byte-layout (4-space
-    indent, per-construct breaks, `case`'s trailing space, the expanded-
-    empty `$i` leaving `echo ;`); psh keeps the RAW spelling (the declared
-    normalization residual — HIGH-4 is closed WITH this residual)."""
+    indent, per-construct breaks, the first `case` pattern kept on the
+    `case x in` line — bash 5.3.15's layout, empirical; the 5.2 printer broke
+    after a trailing space and put the pattern on its own line — and the
+    expanded-empty `$i` leaving `echo ;`); psh keeps the RAW spelling (the
+    declared normalization residual — HIGH-4 is closed WITH this residual)."""
     cmd = ('declare -A a; a[<(%s)]=v; '
            'for k in "${!a[@]}"; do printf "%%s" "$k"; done' % body)
     p, b = _both(cmd)
@@ -1380,7 +1399,9 @@ def test_render_tiers():
 _UNLEXABLE_ROUTE_ROWS = [
     # (route, script, disposition) — the unclosed-QUOTE junk arg `a["]` per
     # route, MEASURED post-R4-2 (the whole-string extent rule reclassified
-    # several routes toward bash; probe battery in the slot ledger).
+    # several routes toward bash; probe battery in the slot ledger) and
+    # re-measured against bash 5.3.15 (Wave 0.1): only let_arith moved, on
+    # the bash side — see the declared_typed branch.
     # match = rc+stdout equal bash; rendering_only = equal modulo the
     # documented empty-assoc declare -p residual; declared = pinned
     # divergence (bash per-builtin rc/wording vs psh's uniform classes).
@@ -1416,7 +1437,16 @@ def test_unlexable_subscript_route_audit(route, cmd, disposition):
         assert 'not a valid identifier' in b.stderr
         assert 'not a valid identifier' in p.stderr
     else:  # declared_typed — the arith route still surfaces the typed class
-        assert b.returncode == 0 and 'rc=1' in b.stdout
+        # bash 5.3.15 (empirical): `let` DROPS the invalid-identifier
+        # assignment with a diagnostic, stores nothing, the line continues,
+        # and let's status is the truth of the expression VALUE (`=7` ->
+        # rc=0; `let 'a["]=0'` -> rc=1). The 5.2 oracle pinned `rc=1` from
+        # the let itself. psh keeps its typed abort of the line (rc 1,
+        # nothing printed, `bad array subscript`) — the divergence WIDENED
+        # on the oracle side; psh's disposition is unchanged.
+        assert b.returncode == 0 and 'rc=0' in b.stdout, (route, b)
+        assert 'declare -A a\n' in b.stdout, (route, b)      # nothing stored
+        assert 'not a valid identifier' in b.stderr, (route, b)
         assert p.returncode == 1 and p.stdout == ''
         assert 'bad array subscript' in p.stderr
 

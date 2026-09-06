@@ -624,9 +624,14 @@ class JobManager:
         inside a command/process substitution (bash announces only in the main
         shell and ``( )`` subshells).
 
-        (bash additionally prefixes a ``bash: line N: PID`` job header for
-        every signal except SIGTERM; psh emits just the signal description,
-        which is exact for SIGTERM and carries the same wording otherwise.)
+        (Declared format divergence: bash announces through its job-table
+        printer — the status text left-justified in a 27-column field
+        followed by the job's command text, and for every signal except
+        SIGTERM a ``bash: line N: PID`` header as well. psh emits just the
+        signal description: the same wording, no job text. Pinned both
+        sides in tests/integration/job_control/test_signal_killed_diagnostic.py
+        and test_pipeline_signal_death.py; the parity flip — a bash-faithful
+        job text — is slot 4.12 (C065).)
         """
         if self.shell_state is not None and self.shell_state.in_substitution:
             return
