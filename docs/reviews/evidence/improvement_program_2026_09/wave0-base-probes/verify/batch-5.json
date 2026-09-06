@@ -1,0 +1,37 @@
+{
+  "batch": 5,
+  "head": "6459f1a6 (v0.779.0)",
+  "oracle": "GNU bash 5.3.15(1)-release (/opt/homebrew/bin/bash)",
+  "python": "3.14.7",
+  "date": "2026-09-06",
+  "results": [
+    {
+      "cid": "C019",
+      "status": "live",
+      "bash53_output": "Variant '{ '*n + 'select x; do :; done' + '; }'*n (script file, stdin </dev/null): n=8 rc=0 27ms; n=12 rc=0 28ms; n=14 rc=0 28ms; n=16 rc=0 26ms. NOTE the report's literal generator ('}'*n, producing '}}}}}}}}') is a syntax error in bash 5.3.15 too: 'deep_8.sh: line 2: syntax error: unexpected end of file from `{' command on line 1' rc=2.",
+      "psh_output": "Same '; }' variant, script-file mode. RD: n=8..16 all rc=0 ~125ms (flat). --parser combinator: n=4 rc=2 138ms; n=8 181ms; n=12 806ms; n=14 2744ms; n=16 10489ms, every one 'Parse error (line 1, column 3): Expected 'in' after variable name at position 1: '{'' rc=2. In-process probe (tmp/program-2026-09/batch5/c019_patch.py) with fallback present: n=8 39.9ms, n=12 635.4ms, n=14 2546.1ms; with the parse_element fallback at pipelines.py:171-173 removed by monkeypatch: n=8 0.4ms, n=12 0.6ms, n=14 0.7ms, n=16 1.0ms, same ParseError.",
+      "note": "LIVE. Exponential curve (~3.5-4x per +2 nesting levels) reproduced in script-file mode with --parser combinator, and the one-line cause confirmed: the fallback is still present verbatim at psh/parser/combinators/commands/pipelines.py:166-173 ('result = self.pipeline.parse(...); if result.success or result.committed: return result; return self._pipeline_element.parse(tokens, pos)'). Removing it flattens the curve (n=14 2546ms -> 0.7ms). Two repro corrections vs the report: (a) the literal generator '}'*n yields '}}}}...' which is a syntax error in bash 5.3.15 AND both psh parsers (rc=2 ~120ms), so it cannot produce the stated 'RD 0.12s rc0'; (b) the spaced variant ' }'*n is accepted by bash 5.3.15 (rc0) but rejected by BOTH psh parsers -- psh cannot parse '{ { :; } }' (closing brace directly followed by another '}' without a separator): '{ { { :; } } }; echo rc=$?' -> bash 'rc=0', psh RD/COMB 'Parse error (line 1, column 12): syntax error near unexpected token '}'' rc=2. That is an INCIDENTAL pre-existing divergence outside this batch (both parsers, not r23-listed as far as I can see) worth registering separately. The '; }'*n variant sidesteps it and reproduces C019 faithfully. Also: the combinator's select-without-in failure is committed at top level in -c mode ('select x; do :; done' -> comb 'Expected 'in' after variable name' rc=2; bash/RD rc=0) but propagates as non-committed through enclosing brace groups, which is what the blowup requires."
+    },
+    {
+      "cid": "C020",
+      "status": "live",
+      "bash53_output": "-c mode: '[[ a == b ]] > /dev/null; echo rc=$?' -> 'rc=1'; '(( 0 )) > /dev/null; echo rc=$?' -> 'rc=1'; 'readonly r=5; (( r=9 )) 2>/dev/null; echo after=$?' -> 'after=1' stderr empty; '(( 0 )) > /dev/null; echo $?' -> '1'; 'if (( 0 )) > /dev/null; then echo T; else echo F; fi' -> 'F'; 'i=3;n=0;while (( i-- )) >/dev/null; do n=$((n+1)); [ $n -gt 6 ] && break; done; echo iters=$n i=$i' -> 'iters=3 i=-1'. Script-file c020.sh -> 'rc=1|rc=1|F'.",
+      "psh_output": "psh RD matches bash in all six -c cases and in script-file mode ('rc=1|rc=1|F'). psh --parser combinator: 'rc=0'; 'rc=0'; 'after=0' with stderr 'psh: line 1: r: readonly variable' (leak); '0'; 'T'; 'iters=7 i=-4'. Script-file mode comb -> 'rc=0|rc=0|T'; stdin mode comb -> 'rc=0|rc=0|T'. --debug-ast -c '(( 0 )) > /dev/null': RD emits one AndOrList whose ArithmeticEvaluation carries 'redirects: [1 items]'; combinator emits TWO AndOrList nodes -- ArithmeticEvaluation with no redirects, then a SimpleCommand with 'redirects: [1 items]'.",
+      "note": "LIVE, combinator parser only, in -c, script-file, and stdin modes. All six repro cases diverge exactly as the report describes, including the infinite-loop shape (while (( i-- )) >/dev/null never terminates without the break guard: iters=7 i=-4 vs bash iters=3 i=-1) and the readonly stderr leak with after=0. bash 5.3.15 unchanged from bash_expected."
+    },
+    {
+      "cid": "C021",
+      "status": "live",
+      "bash53_output": "-c '<(echo hi)' -> stderr '/opt/homebrew/bin/bash: line 1: /dev/fd/63: Permission denied' rc=126; '>(cat)' -> same rc=126; '<(echo hi)|cat' -> same message, rc=0; '<(echo hi) foo' -> same message, rc=126. Script-file c021.sh ('<(echo hi)' then 'echo rc=$?') -> 'rc=126'.",
+      "psh_output": "psh RD: '<(echo hi)' -> 'psh: line 1: /dev/fd/3: Permission denied' rc=126; '>(cat)' -> 'psh: line 1: /var/folders/.../psh-psub-xxxx/pipe: Permission denied' rc=126; '<(echo hi)|cat' -> rc=0; '<(echo hi) foo' -> rc=126 (parity). psh --parser combinator: '<(echo hi)' -> stderr 'ExecutorVisitor: Unimplemented node type: ProcessSubstitution' rc=1; '>(cat)' -> same rc=1; '<(echo hi)|cat' -> same message rc=0; '<(echo hi) foo' -> 'ExecutorVisitor: Unimplemented node type: ProcessSubstitution' then 'psh: line 1: foo: command not found' rc=127. Script-file comb -> 'rc=1' with the same message; stdin comb -> 'rc=1'.",
+      "note": "LIVE, combinator parser only, in -c, script-file, and stdin modes. All four family members produce the 'Unimplemented node type: ProcessSubstitution' executor message (psh/executor/core.py:634) instead of the rc=126 'Permission denied' path. Under PSH_STRICT_ERRORS=1 it did NOT escalate to a Python traceback -- the executor prints the message and returns rc=1 (so the 'likely surfaces under strict-errors' speculation in the notes is not borne out; it is a printed diagnostic, not an internal exception). Note the '<(echo hi) foo' case also runs 'foo' as a separate command (rc=127), i.e. the ProcessSubstitution node lands in the command slot and the following word becomes its own statement."
+    },
+    {
+      "cid": "C022",
+      "status": "live",
+      "bash53_output": "-c mode: 'echo hello | { cat & wait; }' -> 'hello'; 'seq 1 3 | { while read l; do echo \"L$l\"; done & wait; }' -> 'L1\\nL2\\nL3'; 'echo x > file; { cat & wait; } < file' -> 'x'; 'echo hello | ( cat & wait )' -> 'hello'. Controls: 'echo x > file; cat < file & wait' -> 'x'; 'echo x > file; exec < file; cat & wait' -> '' (empty); 'set -m; echo hello | { cat & wait; }' -> 'hello'. Script-file c022.sh -> 'hello|L1|L2|L3|x|hello|---controls|x|hello'; stdin mode identical.",
+      "psh_output": "psh RD -c mode: all four main probes -> '' (empty stdout, empty stderr, rc=0). Controls: 'cat < file & wait' -> 'x'; 'exec < file; cat & wait' -> '' ; 'set -m; echo hello | { cat & wait; }' -> 'hello'. Script-file c022.sh -> '---controls|x|hello' (the four main probes print nothing); stdin mode -> '---controls|x|hello'.",
+      "note": "LIVE in -c, script-file, and stdin modes (job control off). psh applies the POSIX async /dev/null stdin to the backgrounded command even when fd 0 was inherited from a pipeline or an enclosing compound redirect; bash 5.3.15 preserves the inherited stdin in all four shapes. All three controls (explicit '< file' wins, 'exec < file' then '&' is empty in both, 'set -m' gives hello in both) match between shells exactly as the report states. bash 5.3.15 unchanged from bash_expected."
+    }
+  ]
+}

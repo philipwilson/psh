@@ -1,0 +1,51 @@
+{
+  "batch": 12,
+  "head": "6459f1a6 (v0.779.0)",
+  "oracle": "GNU bash 5.3.15(1)-release /opt/homebrew/bin/bash",
+  "python": "3.14.7",
+  "scratch": "/Users/pwilson/src/psh/tmp/program-2026-09/batch12/ (cmode.sh/.out, direct_api.py/.out, extra.py/.out, frames.py/.out)",
+  "results": [
+    {
+      "cid": "C057",
+      "status": "live",
+      "bash53_output": "echo { -> `{` rc=0 | for x in { }; do echo \"<$x>\"; done -> `<{>` `<}>` rc=0 | case { in {) echo brace;; esac -> `brace` rc=0 | for f in <(echo a); do cat \"$f\"; done -> `a` rc=0 | f() { echo \"arg=$1\"; }; f { -> `arg={` rc=0 | ls { -> `ls: {: No such file or directory` rc=1",
+      "psh_output": "RD (default) matches bash on every shape. --parser combinator -c: echo { -> `psh: -c:1: Parse error (line 1, column 7): syntax error near unexpected token ''` rc=2 | for x in { } -> `Parse error (line 1, column 10): Expected 'do' in for loop` rc=2 | case { in {) -> `Parse error (line 1, column 6): Expected expression after 'case'` rc=2 | for f in <(echo a) -> `Expected 'do' in for loop` rc=2 | f { -> `syntax error near unexpected token ''` rc=2 | ls { -> rc=2. Note: `echo }` DOES work in the combinator (`}` rc=0); only `{` fails as a word.",
+      "note": "-c mode, --parser combinator. Every listed shape still rejected by the combinator; RD and bash 5.3.15 accept all. Code at HEAD unchanged: tokens.py word_like omits LBRACE/RBRACE, loops.py _LOOP_ITEM_TOKEN_TYPES and conditionals.py _CASE_EXPR_TYPES omit PROCESS_SUB_*, arrays.py _WORD_LIKE_TYPES omits braces, vs TokenGroups.WORD_LIKE in recursive_descent/helpers.py which has all."
+    },
+    {
+      "cid": "C058",
+      "status": "live",
+      "bash53_output": "All 7 rejected rc=2: f() { } -> `syntax error near unexpected token `}'` | if then echo x; fi -> `unexpected token `then'` | (echo a)(echo b) -> `unexpected token `('` | echo (ls) -> `unexpected token `ls'` | echo a; ; echo b -> `unexpected token `;'` | a= (x) -> `unexpected token `('` | [[ x =~ ; ]] -> `syntax error in conditional expression: unexpected token `;'`",
+      "psh_output": "Direct API ParserCombinatorShellParser().parse(tokenize(cmd)): all 7 ACCEPTED, e.g. f() { } -> Program(statements=[FunctionDef(name='f', body=StatementList(statements=[]) ...)]); if then echo x; fi -> IfConditional(condition=StatementList(statements=[]) ...); [[ x =~ ; ]] -> EnhancedTestStatement(BinaryTestExpression ...). Direct API RD Parser(tokenize(cmd)).parse(): all 7 raise ParseError (messages match bash's token). Via `--parser combinator -c`: all 7 rejected rc=2 with the RD trial-gate message (e.g. `psh: -c:1: Parse error (line 1, column 7): syntax error near unexpected token '}'`).",
+      "note": "Verified through the combinator's direct API as instructed. Over-acceptance is still complete and still latent: the RD trial parse in ParseSession._trial_parse (session.py:392) rejects them before the combinator sees them, so -c/script/stdin show RD's diagnostics."
+    },
+    {
+      "cid": "C059",
+      "status": "live",
+      "bash53_output": "n/a for the parser-internal defect. For context, bash 5.3.15 runs `{ `*n + echo x + `; }`*n at n=999, 1001 and 1500 all printing `x` rc=0.",
+      "psh_output": "Direct API, fresh process, default recursionlimit 1000: n=40 combinator OK, n=44 OK (report's n=40 figure does not reproduce in a fresh process); n=200 combinator RecursionError `maximum recursion depth exceeded` vs RD clean ParseError `Parse error (line 1, column 283): input too deeply nested to parse`. With sys.setrecursionlimit(40000) (psh's RECURSION_LIMIT, process_lease.py:79): n=999 both OK; n=1001 RD ParseError `commands nested too deeply (maximum depth 1000)` while combinator OK (no guard); n=1500 combinator RecursionError `Stack overflow (used 16353 kB) while calling a Python object` (Python 3.14.7 C-stack guard), RD clean ParseError. Frame sweep: combinator needs recursionlimit >=800 for n=40 and >=900 for n=44 (~20 frames/level), so under pytest's deeper stack n=40/44 trip at limit 1000 — that explains the reviewer-1 numbers. CLI: `--parser combinator -c` at n=1001/1500 gets the RD trial's clean ParseError, n=999 prints x — unreachable from -c as reviewer 2 said.",
+      "note": "Raw-API only. Core claim holds: the combinator has no MAX_NESTING_DEPTH guard and surfaces RecursionError (both the interpreter limit and the 3.14 C-stack overflow) where RD raises a clean ParseError. Exact trip depth is context-dependent (n=40 in the report was under pytest; n=200 in a fresh process). Side observation out of scope: RD's own depth-1000 cap rejects n=1001 that bash 5.3.15 accepts."
+    },
+    {
+      "cid": "C060",
+      "status": "live",
+      "bash53_output": "[[ /etc -ef /etc ]]; echo rc=$? -> `rc=0` | touch a; sleep 1; touch b; [[ b -nt a ]]; echo nt=$?; [[ a -ot b ]]; echo ot=$? -> `nt=0` `ot=0`",
+      "psh_output": "RD: identical to bash (`rc=0`; `nt=0` `ot=0`). --parser combinator -c: `psh: -c:1: Parse error (line 1, column 18): [[ ]] expression not supported by the combinator parser (boolean compounds '&&'/'||', grouping, or =~ regex with parens are educational-scope gaps; use the recursive descent parser)` rc=2; same message for -nt and -ot (column 39).",
+      "note": "-c mode, --parser combinator. special_commands.py:277-278 operator whitelist still lists only ==,!=,=,<,>,=~,-eq,-ne,-lt,-le,-gt,-ge; the diagnostic names three causes (boolean compounds, grouping, =~ with parens) none of which is present."
+    },
+    {
+      "cid": "C061",
+      "status": "live",
+      "bash53_output": "echo { -> `{` rc=0 | $'{\\n}' -> `bash: -c: line 2: syntax error near unexpected token `}'` rc=2",
+      "psh_output": "echo { via `--parser combinator -c`: `psh: -c:1: Parse error (line 1, column 7): syntax error near unexpected token ''` rc=2 (empty-string token for EOF; RD prints `{`). '{\\n}' direct API combinator: ParseError `Parse error (line 1, column 2): syntax error near unexpected token '\\n'` — a literal newline embedded in the message (repr shows '\\n'); RD: `Parse error (line 2, column 1): syntax error near unexpected token '}'` (matches bash's token and line). Same pattern for '(\\n)'. Via -c the '{\\n}' input shows RD's message because the trial gate rejects first.",
+      "note": "structures.py:363-366 and 404-407 still build the message by f-string on tokens[pos].value instead of the shared unexpected_token_message (helpers.py) which special-cases EOF and NEWLINE."
+    },
+    {
+      "cid": "C062",
+      "status": "live",
+      "bash53_output": "Reconstructed 13-line lineno.sh (if body echo on line 3, function body echo on line 6, `f` called on line 9, while body echo on line 11). Script mode and stdin: `in_if 3` `top 8` `in_fn 6` `in_while 11` rc=0",
+      "psh_output": "RD script/stdin: identical to bash. --parser combinator script AND stdin: `in_if 2` `top 8` `in_fn 9` `in_while 10` rc=0 — in_fn reports the call-site line (9), compound bodies report the construct's opening line. Direct API: RD stamps top-level .line [1,4,7,8] and nested FunctionDef body statement .line 5; combinator stamps .line None on every statement, top-level and nested. --debug-ast=tree/dot: RD renders `AndOrList @line1` / `@line2`; combinator renders no @line annotations.",
+      "note": "Script mode + stdin, --parser combinator. Divergence reproduces exactly as described (report's expected `in_fn 9` reflects its own script layout; the pattern — call site reported instead of body line — is identical). show_positions side-claim confirmed: silent no-op for combinator ASTs in tree and dot renderers because no .line is stamped."
+    }
+  ]
+}

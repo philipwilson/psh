@@ -1,0 +1,38 @@
+{
+  "batch": 4,
+  "head": "6459f1a6 (v0.779.0)",
+  "oracle": "GNU bash 5.3.15(1)-release (/opt/homebrew/bin/bash)",
+  "python": "3.14.7",
+  "date": "2026-09-06",
+  "probe_script": "/Users/pwilson/src/psh/tmp/program-2026-09/batch4-probes/probe.sh",
+  "results": [
+    {
+      "cid": "C015",
+      "status": "live",
+      "bash53_output": "for i in 1 2; { echo $i; } -> '1\\n2' rc=0 | for i; { echo $i; } -> '' rc=0 | for i in 1\\n{ echo $i; } -> '1' rc=0 | select v in a; { break; } </dev/null -> '1) a\\n#? ' rc=1 (parses; select hits EOF) | for i in 1; { echo $i; } >/dev/null -> '' rc=0 | while false; { echo x; } -> 'syntax error: unexpected end of file from `while' command on line 1' rc=2 | until true; { echo x; } -> same rc=2",
+      "psh_output": "for i in 1 2; { echo $i; } -> \"psh: -c:1: Parse error (line 1, column 15): Expected 'do', got '{'\" rc=2 | for i; { echo $i; } -> Parse error (col 8) Expected 'do', got '{' rc=2 | for i in 1\\n{ echo $i; } -> \"psh: -c:2: Parse error (line 2, column 1): Expected 'do', got '{'\" rc=2 | select v in a; { break; } -> Parse error (col 16) Expected 'do', got '{' rc=2 | for i in 1; { echo $i; } >/dev/null -> Parse error (col 13) rc=2 | while false; { echo x; } -> \"Expected 'do', got end of input\" rc=2 | until true; { echo x; } -> same rc=2",
+      "note": "Live in -c, script-file, and stdin modes (script: 'psh: s.sh:1: Parse error ... Expected do, got {' rc=2; bash prints 1/2 rc=0 in both). Exactly as described: gap is for/select only; while/until rc=2 in BOTH shells (bash 5.3.15 reports it as 'unexpected end of file from `while' command' rather than 5.2's wording, still rc=2). Control 'for i in 1 2; do echo $i; done' matches. control_structures.py:186 and :490 still do self.parser.expect(TokenType.DO) unconditionally; C-style for at :283 still has the LBRACE branch."
+    },
+    {
+      "cid": "C016",
+      "status": "live",
+      "bash53_output": "echo a=(1) -> \"/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `('\" rc=2 | true x=(1 2) -> rc=2 | /bin/echo v=(a b) -> rc=2 | echo pre a=(1) post -> rc=2 | command declare a=(1 2) -> rc=2 | builtin declare a=(1 2) -> rc=2 (extra). Controls OK rc=0 printing '1 2': declare -a a=(1 2); export e=(1 2); local l=(1 2) in fn; readonly r=(1 2); a=(1 2); typeset t=(1 2)",
+      "psh_output": "echo a=(1) -> 'a=(1)' rc=0 | true x=(1 2) -> '' rc=0 | /bin/echo v=(a b) -> 'v=(a b)' rc=0 | echo pre a=(1) post -> 'pre a=(1) post' rc=0 | command declare a=(1 2) -> '' rc=0 | builtin declare a=(1 2); echo \"${a[@]}\" -> '(1 2)' rc=0 (stored as scalar string). All six controls print '1 2' rc=0, matching bash",
+      "note": "Head list re-probed on 5.3.15 as the notes requested: all five forms are still rc=2 in bash 5.3.15, so the list can be hard-coded. Live in -c, script, and stdin modes (echo a=(1) prints 'a=(1)' rc=0 in psh every mode). Additional divergence surfaced: 'builtin declare a=(1 2)' is rc=2 in bash but psh accepts it and assigns the literal scalar '(1 2)'. Intended cases (declare/export/local/readonly/typeset/statement-position) all match. commands.py:182 _check_array_initialization path unchanged."
+    },
+    {
+      "cid": "C017",
+      "status": "live",
+      "bash53_output": "for\\ni in 1 2; do echo $i; done -> \"/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `newline'\\n/opt/homebrew/bin/bash: -c: line 1: `for'\" rc=2 | select\\nv in a; do break; done -> same 'syntax error near unexpected token `newline'' rc=2 | siblings: for i\\nin 1 2 -> '1\\n2' rc=0; case\\nx in x) echo y;; esac -> syntax error near newline rc=2; if\\ntrue; then echo y; fi -> 'y' rc=0; while\\nfalse; do :; done; echo w -> 'w' rc=0",
+      "psh_output": "for\\ni in 1 2; do echo $i; done -> '1\\n2' rc=0 | select\\nv in a; do break; done </dev/null -> '1) a\\n#? ' rc=1 (parsed and executed; bash rejects at parse) | siblings: for i\\nin 1 2 -> '1\\n2' rc=0 (match); case\\nx in ... -> \"psh: -c:1: Parse error (line 1, column 5): syntax error near unexpected token 'newline'\" rc=2 (match); if\\ntrue -> 'y' rc=0 (match); while\\nfalse -> 'w' rc=0 (match)",
+      "note": "Live for both for and select, in -c, script, and stdin modes (script: psh prints 1/2 rc=0; bash 's.sh: line 1: syntax error near unexpected token `newline'' rc=2). Sibling claims re-confirmed on 5.3.15: if/while accept the newline in both shells, case rejects in both, 'for i\\nin' accepted in both. control_structures.py:153 and :475 still call skip_newlines() right after the keyword."
+    },
+    {
+      "cid": "C018",
+      "status": "live",
+      "bash53_output": "if false; then a[0]=(1 2); fi; echo ok -> 'ok' rc=0 | f() { a[0]=(1 2); }; echo ok -> 'ok' rc=0 | a[0]=(1 2); echo after -> \"/opt/homebrew/bin/bash: line 1: a[0]: cannot assign list to array member\" rc=1 (echo after NOT run) | if false; then a[0]+=(1 2); fi; echo ok -> 'ok' rc=0 | a[0]+=(1 2); echo after -> 'cannot assign list to array member' rc=1 | declare -A h; h[k]=(1 2); echo after -> 'h[k]: cannot assign list to array member' rc=1",
+      "psh_output": "if false; then a[0]=(1 2); fi; echo ok -> \"psh: -c:1: Parse error (line 1, column 21): syntax error near unexpected token '('\" rc=2 | f() { a[0]=(1 2); }; echo ok -> Parse error (col 12) rc=2 | a[0]=(1 2); echo after -> Parse error (col 6) rc=2 | a[0]+=(1 2) forms -> Parse error rc=2 (both dead-branch and live) | declare -A h; h[k]=(1 2) -> Parse error (col 20) rc=2",
+      "note": "Live in -c, script, and stdin modes (script: bash 'ok' rc=0; psh 'psh: s.sh:1: Parse error (line 1, column 21) ...' rc=2). Confirmed for both '=' and '+=' and for assoc-array subscripts. bash 5.3.15 still defers to a runtime 'cannot assign list to array member' rc=1 (and in the live-statement case does not run the following 'echo after'; psh's whole-input parse failure also runs nothing, but rc differs 2 vs 1 and dead branches/function bodies fail in psh). arrays.py:149 _normalize_assignment_head still present; psh error text differs from the report's 'traceback at statements.py:140' framing but the divergence is identical."
+    }
+  ]
+}

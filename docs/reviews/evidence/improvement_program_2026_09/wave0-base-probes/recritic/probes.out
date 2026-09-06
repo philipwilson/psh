@@ -1,0 +1,322 @@
+bash: 5.3.15(1)-release
+##### P1 W0-N1 fd0 closed at START: -c 'read x' <&-
+--- bash:
+/opt/homebrew/bin/bash: line 1: read: 0: read error: Bad file descriptor
+rc=1
+rc=0
+--- psh :
+  File "/Users/pwilson/src/psh/psh/builtins/input_reader.py", line 124, in __init__
+    raise ValueError("InputCursor needs exactly one of fd or stream")
+ValueError: InputCursor needs exactly one of fd or stream
+rc=1
+--- psh script mode:
+    raise ValueError("InputCursor needs exactly one of fd or stream")
+ValueError: InputCursor needs exactly one of fd or stream
+rc=1
+##### P1b per-command read x <&-
+--- bash:
+/opt/homebrew/bin/bash: line 1: read: 0: read error: Bad file descriptor
+rc=1
+rc=0
+--- psh :
+psh: line 1: read: read error: 0: Bad file descriptor
+rc=1
+rc=0
+##### P2 W0-N2 job number after foreground external (stdin mode)
+--- bash:
+[1]+  Running                    sleep 0.3 &
+--- psh:
+[1]+  Running                 sleep 0.3 &
+##### P3 W0-N3 regex unbalanced brace
+--- bash:
+/opt/homebrew/bin/bash: line 1: [[: invalid regular expression `a{1': braces not balanced
+rc=2
+rc=0
+--- psh :
+rc=1
+rc=0
+##### P4 W0-N5 type under unset PATH
+--- bash:
+ls is /bin/ls
+rc=0
+rc=0
+--- psh :
+ls is ./ls
+rc=0
+rc=0
+##### P5 W0-N6 declare -c
+--- bash:
+[Hello] rc=0
+rc=0
+--- psh :
+psh: line 1: declare: invalid option: -c
+[] rc=2
+rc=0
+##### P6 W0-N7 stale PWD
+--- bash:
+/private/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/tmp.q8k9306aB4
+--- psh:
+/nonexistent/zz
+##### P7a exit abc (-c)
+--- bash:
+/opt/homebrew/bin/bash: line 1: exit: abc: numeric argument required
+after rc=2
+rc=0
+--- psh :
+psh: line 1: exit: abc: numeric argument required
+rc=2
+##### P7b exit 7 8 (-c)
+--- bash:
+/opt/homebrew/bin/bash: line 1: exit: too many arguments
+rc=1
+--- psh :
+psh: line 1: exit: too many arguments
+rc=1
+##### P7c cd a b (-c)
+--- bash:
+/opt/homebrew/bin/bash: line 1: cd: too many arguments
+after rc=2
+rc=0
+--- psh :
+psh: line 1: cd: too many arguments
+after rc=1
+rc=0
+##### P7d shift abc (-c)
+--- bash:
+/opt/homebrew/bin/bash: line 1: shift: abc: numeric argument required
+after rc=2
+rc=0
+--- psh :
+psh: line 1: shift: abc: numeric argument required
+after rc=1
+rc=0
+##### P7e break abc (-c)
+--- bash:
+/opt/homebrew/bin/bash: line 1: break: only meaningful in a `for', `while', or `until' loop
+after rc=0
+rc=0
+--- psh :
+psh: line 1: break: only meaningful in a `for', `while', or `until' loop
+after rc=0
+rc=0
+##### P7f script mode: exit abc / exit 7 8 / cd a b
+--- bash:
+e.sh: line 1: exit: abc: numeric argument required
+after1 rc=2
+e.sh: line 3: exit: too many arguments
+after2 rc=2
+e.sh: line 5: cd: too many arguments
+after3 rc=2
+rc=0
+--- psh:
+e.sh: line 1: exit: abc: numeric argument required
+rc=2
+##### P8a declare -i on readonly
+--- bash:
+/opt/homebrew/bin/bash: line 1: declare: r: readonly variable
+rc=1
+rc=0
+--- psh :
+rc=0
+rc=0
+##### P8b local -i on readonly local
+--- bash:
+/opt/homebrew/bin/bash: line 1: local: x: readonly variable
+rc=1
+rc=0
+--- psh :
+rc=0
+rc=0
+##### P8c declare -x on readonly (allowed?)
+--- bash:
+rc=0
+rc=0
+--- psh :
+rc=0
+rc=0
+##### P9a builtin declare a=(1)
+--- bash:
+/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `('
+/opt/homebrew/bin/bash: -c: line 1: `builtin declare a=(1); echo rc=$?'
+rc=2
+--- psh :
+rc=0
+rc=0
+##### P9b let a=(1)
+--- bash:
+rc=0
+rc=0
+--- psh :
+rc=0
+rc=0
+##### P9c eval a=(1 2)
+--- bash:
+2 rc=0
+rc=0
+--- psh :
+2 rc=0
+rc=0
+##### P9d alias a=(1)
+--- bash:
+/opt/homebrew/bin/bash: line 1: alias: a: not found
+rc=1
+rc=0
+--- psh :
+rc=0
+rc=0
+##### P9e echo a=(1)
+--- bash:
+/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `('
+/opt/homebrew/bin/bash: -c: line 1: `echo a=(1); echo rc=$?'
+rc=2
+--- psh :
+a=(1)
+rc=0
+rc=0
+##### P10a exec {v}>&- v unset
+--- bash:
+/opt/homebrew/bin/bash: line 1: v: ambiguous redirect
+rc=1
+rc=0
+--- psh :
+rc=0
+rc=0
+##### P10b move form per-command closes source in parent?
+--- bash:
+/opt/homebrew/bin/bash: line 1: 3: Bad file descriptor
+rc=1
+rc=0
+--- psh :
+rc=0
+rc=0
+##### P11 shopt widths
+--- bash [shopt nullglob]:
+cat: illegal option -- A
+usage: cat [-belnstuv] [file ...]
+--- psh  [shopt nullglob]:
+cat: illegal option -- A
+usage: cat [-belnstuv] [file ...]
+--- bash [shopt -o errexit]:
+cat: illegal option -- A
+usage: cat [-belnstuv] [file ...]
+--- psh  [shopt -o errexit]:
+cat: illegal option -- A
+usage: cat [-belnstuv] [file ...]
+--- bash [shopt -s nullglob; shopt -s | head -1]:
+cat: illegal option -- A
+usage: cat [-belnstuv] [file ...]
+--- psh  [shopt -s nullglob; shopt -s | head -1]:
+cat: illegal option -- A
+usage: cat [-belnstuv] [file ...]
+--- bash [set -o | head -1]:
+cat: illegal option -- A
+usage: cat [-belnstuv] [file ...]
+--- psh  [set -o | head -1]:
+cat: illegal option -- A
+usage: cat [-belnstuv] [file ...]
+##### P12 posix function names
+--- bash --posix [a.b() { echo ok; }; a.b]:
+ok
+rc=0
+--- psh --posix:
+psh: `a.b': not a valid identifier
+psh: line 1: a.b: command not found
+rc=127
+--- bash --posix [function a-b { echo ok; }; a-b]:
+ok
+rc=0
+--- psh --posix:
+psh: `a-b': not a valid identifier
+psh: line 1: a-b: command not found
+rc=127
+##### P13 RETURN trap return 3
+--- bash:
+rc=0
+rc=0
+--- psh :
+rc=0
+rc=0
+##### P17 printf %a 1: 0x1p+0
+##### P20 posix special-builtin exits
+--- bash --posix [export 1bad=x; echo after rc=$?]:
+/opt/homebrew/bin/bash: line 1: export: `1bad=x': not a valid identifier
+rc=1
+--- psh --posix:
+psh: line 1: export: `1bad=x': not a valid identifier
+after rc=1
+rc=0
+--- bash --posix [readonly 1bad=x; echo after rc=$?]:
+/opt/homebrew/bin/bash: line 1: readonly: `1bad=x': not a valid identifier
+rc=1
+--- psh --posix:
+psh: line 1: readonly: `1bad=x': not a valid identifier
+after rc=1
+rc=0
+--- bash --posix [readonly r=1; unset r; echo after rc=$?]:
+/opt/homebrew/bin/bash: line 1: unset: r: cannot unset: readonly variable
+rc=1
+--- psh --posix:
+psh: line 1: unset: r: cannot unset: readonly variable
+after rc=1
+rc=0
+--- bash --posix [export é=1; echo after rc=$?]:
+/opt/homebrew/bin/bash: line 1: export: `é=1': not a valid identifier
+rc=1
+--- psh --posix:
+psh: line 1: export: `é=1': not a valid identifier
+after rc=1
+rc=0
+--- bash --posix [eval "export 1bad=x" || echo caught; echo after]:
+/opt/homebrew/bin/bash: line 1: export: `1bad=x': not a valid identifier
+caught
+after
+rc=0
+--- psh --posix:
+psh: line 1: export: `1bad=x': not a valid identifier
+caught
+after
+rc=0
+--- bash --posix [. ./bad.sh; echo after]:
+./bad.sh: line 1: export: `1bad=x': not a valid identifier
+rc=1
+--- psh --posix:
+psh: line 1: export: `1bad=x': not a valid identifier
+in-dot-after
+after
+rc=0
+--- bash --posix [trap "export 1bad=x; echo in-trap-after" EXIT; echo main]:
+main
+/opt/homebrew/bin/bash: line 1: export: `1bad=x': not a valid identifier
+rc=1
+--- psh --posix:
+main
+psh: line 1: export: `1bad=x': not a valid identifier
+in-trap-after
+rc=0
+##### P21 trap entry status
+--- bash [trap "true; exit" EXIT; false]:
+rc=1
+--- psh:
+rc=1
+--- bash [trap "exit" ERR; false; echo notreached]:
+rc=1
+--- psh:
+rc=1
+--- bash [f(){ trap "exit" EXIT; false; }; f; echo x]:
+x
+rc=0
+--- psh:
+x
+rc=0
+--- bash [trap "if true; then exit; fi" EXIT; (exit 5)]:
+rc=5
+--- psh:
+rc=5
+--- bash [trap "eval exit" EXIT; (exit 5)]:
+rc=5
+--- psh:
+rc=5
+--- bash [g(){ exit; }; trap "false; g" EXIT; (exit 5)]:
+rc=5
+--- psh:
+rc=5

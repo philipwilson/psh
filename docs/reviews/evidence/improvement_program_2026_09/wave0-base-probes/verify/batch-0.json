@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "head": "6459f1a6e48b9f2cee4cda6d3b778f65ea2a417f",
+    "psh_version": "0.779.0",
+    "oracle": "GNU bash, version 5.3.15(1)-release (aarch64-apple-darwin25.4.0) at /opt/homebrew/bin/bash",
+    "python": "3.14.7",
+    "date": "2026-09-06",
+    "probe_harness": "/Users/pwilson/src/psh/tmp/program-2026-09/verify/probe.sh (fresh mktemp -d cwd, env -u PWD -u OLDPWD, PSH_STRICT_ERRORS=1)"
+  },
+  "results": [
+    {
+      "cid": "C001",
+      "status": "live",
+      "bash53_output": "f(){ /bin/echo A; echo B; }; f | cat -> 'A\\nB' rc=0 | f(){ echo A; /bin/echo B; echo C; }; f | cat -> 'A\\nB\\nC' | g(){ /bin/echo G; echo g2; }; f(){ g; echo F; }; f | cat -> 'G\\ng2\\nF' | echo x | eval \"/bin/echo A; echo B\" -> 'A\\nB' | echo x | . r23s.sh (content '/bin/echo A; echo B') -> 'A\\nB' | set -o pipefail; f(){ /bin/echo A; false; }; f | cat; echo rc=$? -> 'A\\nrc=1' | f(){ /usr/bin/false; echo B; }; f | cat -> 'B' | script-file mode f(){ /bin/echo A; echo B; }; f | cat -> 'A\\nB' | stdin mode -> 'A\\nB'",
+      "psh_output": "f(){ /bin/echo A; echo B; }; f | cat -> 'A' rc=0 | f(){ echo A; /bin/echo B; echo C; }; f | cat -> 'A\\nB' | g(){ /bin/echo G; echo g2; }; f(){ g; echo F; }; f | cat -> 'G' | echo x | eval \"/bin/echo A; echo B\" -> 'A' | echo x | . r23s.sh -> 'A' | pipefail case -> 'A\\nrc=0' | f(){ /usr/bin/false; echo B; }; f | cat -> '' (nothing) | script-file mode -> 'A' | stdin mode -> 'A'",
+      "note": "Live in all modes tested (-c, script file, stdin) and via eval and source. Every command after the first external command in a function/eval/source body running as a pipeline member is silently dropped, and the member's exit status is that command's (pipefail rc=0 instead of 1). Controls that clear in_pipeline still pass: { }|cat, ( )|cat, for-loop|cat all print 'A\\nB' in both shells. Source locations unchanged at HEAD: strategies.py:605 `if context.in_pipeline:`; only subshell.py:82-83 and control_flow.py:91-92 save/clear it; function.py _function_frame (line 196) does not. NOTE: /bin/false does not exist on macOS (both shells report 'No such file or directory'), so the last repro was re-run with /usr/bin/false: bash prints B, psh prints nothing. Oracle 5.3.15 matches the report's 5.2.26 expectations exactly."
+    },
+    {
+      "cid": "C002",
+      "status": "live",
+      "bash53_output": "((echo 3); echo 4) -> '3\\n4' rc=0 | ((ls /nonexistent) 2>/dev/null); echo rc=$? -> 'rc=1' rc=0 | positive controls: echo $((echo 3); echo 4) -> '3 4'; ((1+2)); echo rc=$? -> 'rc=0'; x=$(( 2 + 3 )); echo $x -> '5'",
+      "psh_output": "((echo 3); echo 4) -> stderr \"psh: -c:1: Parse error (line 1, column 10): Expected ')', got ';'\" rc=2 | ((ls /nonexistent) 2>/dev/null); echo rc=$? -> stderr \"psh: -c:1: Parse error (line 1, column 20): Expected ')', got '2>/dev/null'\" rc=2 | positive controls all match bash ('3 4', 'rc=0', '5'). tokenize('((echo 3)\\nx=1; echo \"a\"$x\"b\"') -> DOUBLE_LPAREN '((' | WORD 'echo 3' | RPAREN ')' | NEWLINE | WORD 'x=1' | SEMICOLON | WORD 'echo ' (trailing space) | STRING 'a' | VARIABLE 'x' | STRING 'b' | EOF; control tokenize('echo \"a\"$x\"b\"') alone -> WORD 'echo' | WORD '\"a\"$x\"b\"'",
+      "note": "Live, -c mode. Both shell-level repros still parse-error in psh exactly as reported; bash 5.3.15 behaves as the 5.2.26 oracle did. The cascade (unbalanced DOUBLE_LPAREN poisoning the rest of the stream: space no longer terminates words, quote fusion suppressed) reproduces verbatim via the tokenize() API. operator.py table at line 53 still maps '((' -> DOUBLE_LPAREN unconditionally; the $(( path and cmdsub scanner controls remain correct."
+    },
+    {
+      "cid": "C004",
+      "status": "live",
+      "bash53_output": "(echo a)#c -> 'a' rc=0 | f() (echo sub)#c -> '' rc=0 | echo a{#b -> 'a{#b' | echo {#c -> '{#c' | echo $( (echo a)#c\\n) -> 'a' | echo $( echo a{#b ) -> 'a{#b' | extglob control (shopt -s extglob; echo a@(b)#c) -> 'a@(b)#c' | sanity: echo a #c -> 'a'; echo a;#c -> 'a'",
+      "psh_output": "(echo a)#c -> stderr \"psh: -c:1: Parse error (line 1, column 9): syntax error near unexpected token '#c'\" rc=2 | f() (echo sub)#c -> \"Parse error (line 1, column 15): syntax error near unexpected token '#c'\" rc=2 | echo a{#b -> 'a{' | echo {#c -> '{' | echo $( (echo a)#c\\n) -> stderr \"psh: -c:1: Parse error (line 1, column 10): syntax error near unexpected token '#c'\" rc=127 | echo $( echo a{#b ) -> 'a{' | extglob control -> 'a@(b)#c' (matches bash) | sanity cases match bash",
+      "note": "Live, -c mode, both directions: ')' false negative (parse error) and '{' false positive (word truncated at '#'), and both reproduce inside $( ... ). comment.py:26 at HEAD still reads _COMMENT_PRECEDING_OPS = frozenset('|&;({<>') -- ')' absent, '{' present. The extglob justification (a@(b)#c) is verified real in both shells, so the fix must distinguish word-internal ')' from operator ')'. Minor: the cmdsub variant exits 127 in psh (cmdsub parse failure then command lookup) rather than 2. Oracle 5.3.15 matches the report's expectations."
+    },
+    {
+      "cid": "C005",
+      "status": "live",
+      "bash53_output": "echo \"x\"2>k3; cat k3 -> 'x2' (no k3 created; ls shows only k3? no: 'echo \"x\"2>k3; ls' -> 'k3' because bash prints x2 to fd2... see note) | echo ${u-x}2>k4; cat k4; ls -> 'x2\\nk4' | echo `echo x`2>k5; cat k5; ls -> 'x2\\nk5' | echo \"a\"{v}>g2; cat g2; ls -> 'a{v}\\ng2' | echo \"a\"2>&1 -> 'a2' | echo ${u-x}2>&1 -> 'x2' | boundary (same both shells): echo x2>k1; cat k1 -> 'x2'; echo 2>k2; cat k2 -> ''; echo x2>&1 -> 'x2'",
+      "psh_output": "echo \"x\"2>k3; cat k3 -> 'x' | echo ${u-x}2>k4; cat k4; ls -> 'x\\nk4' | echo `echo x`2>k5; cat k5; ls -> 'x\\nk5' | echo \"a\"{v}>g2; cat g2; ls -> 'a\\ng2' | echo \"a\"2>&1 -> 'a' | echo ${u-x}2>&1 -> 'x' | boundary cases match bash. Token dump echo \"a\"2>f: WORD 'echo' [0:4) | STRING 'a' [5:8) | REDIRECT_OUT '>' [8:10) fd=2 | WORD 'f' [10:11). Token dump echo x2>&1: WORD 'x2' [5:7) | REDIRECT_DUP '2>&1' [6:10) (overlapping spans, though runtime output still matches bash for that case)",
+      "note": "Live, -c mode, run from fresh temp dirs. In every mid-word case (after a double-quoted string, ${...} expansion, backtick cmdsub, and the {v} named-fd form) psh steals the trailing digit/{name} as an fd prefix and emits a redirect, while bash 5.3.15 treats it as word text and applies a plain '>' redirect (the file k3/k4/k5/g2 receives 'x2'/'a{v}'). Correction to bash53_output field: in bash, 'echo \"x\"2>k3; cat k3' prints 'x2' from cat (stdout of echo went to k3), and 'echo \"x\"2>k3; ls' prints only 'k3'; in psh 'echo \"x\"2>k3; ls' prints 'x\\nk3' (x to stdout, k3 empty). operator.py:438 at HEAD still checks input_text[pos].isdigit() with no word-start check, and the '{' named-fd path at :446 likewise. The >& sub-item (lexer2:F1b) is also still present: WORD 'x2' [5:7) and REDIRECT_DUP '2>&1' [6:10) overlap, though for the unquoted 'echo x2>&1' case the runtime result coincidentally matches bash ('x2'); the ${u-x}2>&1 variant diverges ('x' vs 'x2')."
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+bash 5.3.15: prompts=['1', '2', '3', '4', '5', '5']
+bash 5.3.15: standalone prompt-shaped lines (the ${PS1@P} echo + final prompt) = ['[5]$']
+psh: prompts=['1', '2', '3', '4', '5', '5']
+psh: standalone prompt-shaped lines (the ${PS1@P} echo + final prompt) = ['[1]$', '[2]$', '[3]$', '[4]$', '[5]$', '[5]$']

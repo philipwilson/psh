@@ -1,0 +1,4 @@
+bash 5.3.15: prompts=['1', '2', '3', '4', '5', '6', '7']
+bash 5.3.15: nested=['top:2', 'ev:3', 'src:4', 'cs:5', 'fn:6', 'end:7']
+psh: prompts=['1', '2', '4', '6', '7', '8', '9']
+psh: nested=['top:2', 'ev:4', 'src:6', 'cs:8', 'fn:8', 'end:9']

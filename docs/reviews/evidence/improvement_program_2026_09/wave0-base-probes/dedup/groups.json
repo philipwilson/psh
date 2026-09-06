@@ -1,0 +1,2636 @@
+{
+ "groups": [
+  {
+   "cid": "C001",
+   "member_ids": [
+    "executor:P0-1",
+    "r23:P0-1"
+   ],
+   "title": "Function/eval/source body as pipeline member drops every command after the first external command (silent data loss)",
+   "severity": "P0",
+   "subsystem": "executor",
+   "kind": "defect",
+   "overlap_note": "executor:1 (theme) cites the strategies.py:605 'nothing left to do' comment as one of its three drifted comments; r23:T4 theme cites this as an ordering/re-entry bug"
+  },
+  {
+   "cid": "C002",
+   "member_ids": [
+    "lexer:F1",
+    "r23:P0-2"
+   ],
+   "title": "`((` lexed as DOUBLE_LPAREN without checking for a matching `))` \u2014 `((cmd); cmd)` mis-lexed as arithmetic command",
+   "severity": "P0",
+   "subsystem": "lexer",
+   "kind": "defect",
+   "overlap_note": "r23:P0-2's 'poisons the rest of the token stream' clause restates the cascade split out as lexer:F1b (next group)"
+  },
+  {
+   "cid": "C003",
+   "member_ids": [
+    "lexer:F1b"
+   ],
+   "title": "Cascade hardening: unbalanced DOUBLE_LPAREN leaves arithmetic_depth > 0 for the rest of the stream",
+   "severity": "P0",
+   "subsystem": "lexer",
+   "kind": "design",
+   "overlap_note": "Consequence of the trigger in lexer:F1 (previous group) but a distinct fix site (advance_lexical_state / fuse_words counter); kept separate as hardening"
+  },
+  {
+   "cid": "C004",
+   "member_ids": [
+    "lexer:F2",
+    "r23:P0-3"
+   ],
+   "title": "is_comment_start keys on the preceding character: `)` missing (`(cmd)#c` rejected) and `{` wrongly present (`echo a{#b` truncated)",
+   "severity": "P0",
+   "subsystem": "lexer",
+   "kind": "defect"
+  },
+  {
+   "cid": "C005",
+   "member_ids": [
+    "lexer2:F1",
+    "r23:P0-4"
+   ],
+   "title": "fd-prefix redirect recognized mid-word: digit or `{` after a quote/expansion in the same word is stolen as IO_NUMBER",
+   "severity": "P0",
+   "subsystem": "lexer",
+   "kind": "defect",
+   "overlap_note": "lexer2:F1b (`>&` backtracks into previous token) is a sibling in the same operator recognizer region but a different branch; kept separate"
+  },
+  {
+   "cid": "C006",
+   "member_ids": [
+    "lexer2:F1b"
+   ],
+   "title": "`>&` branch backtracks INTO the previous token (overlapping spans) \u2014 a2>&1 treated as fd-2 redirect",
+   "severity": "P0",
+   "subsystem": "lexer",
+   "kind": "defect",
+   "overlap_note": "Sibling of lexer2:F1 / r23:P0-4 (operator.py:129-131 vs :438); distinct mechanism"
+  },
+  {
+   "cid": "C007",
+   "member_ids": [
+    "lexer2:F2",
+    "r23:P0-5"
+   ],
+   "title": "$((\u2026)) extent scan is quote-blind: quoted ')'/'(' inside arithmetic ends it early",
+   "severity": "P0",
+   "subsystem": "lexer",
+   "kind": "defect",
+   "overlap_note": "r23:T3 (theme) generalizes this together with the ${\u2026} scanner disagreement (lexer:F8 group)"
+  },
+  {
+   "cid": "C008",
+   "member_ids": [
+    "lexer2:F3",
+    "r23:P0-6"
+   ],
+   "title": "$'\\uXXXX'/$'\\UXXXXXXXX' call chr() with no surrogate/range guard \u2192 UnicodeEncodeError (internal defect under strict-errors)",
+   "severity": "P0",
+   "subsystem": "lexer",
+   "kind": "defect",
+   "overlap_note": "r23:T2 theme (stdlib semantics leak: chr()) cites this"
+  },
+  {
+   "cid": "C009",
+   "member_ids": [
+    "lexer2:F4",
+    "r23:P0-7"
+   ],
+   "title": "')' closing a function-definition header inside $(\u2026) drops command position \u2192 case in function body mis-scanned",
+   "severity": "P0",
+   "subsystem": "lexer",
+   "kind": "defect"
+  },
+  {
+   "cid": "C010",
+   "member_ids": [
+    "parser-rd:P0-1",
+    "r23:P0-8"
+   ],
+   "title": "for/select loop variable corrupted when the header comes from an alias",
+   "severity": "P0",
+   "subsystem": "parser-rd",
+   "kind": "defect"
+  },
+  {
+   "cid": "C011",
+   "member_ids": [
+    "lexer:F3"
+   ],
+   "title": "_is_shell_token_delimiter includes `{ } [ ]`, so `!` glued to a word (`![`, `![[`, `!{`) is promoted to the negation operator",
+   "severity": "P1",
+   "subsystem": "lexer",
+   "kind": "defect"
+  },
+  {
+   "cid": "C012",
+   "member_ids": [
+    "lexer:F4",
+    "r23:1"
+   ],
+   "title": "Heredoc-discovery loop re-lexes the entire pending logical command per additional line \u2014 O(N^2) on one multi-line command",
+   "severity": "P1",
+   "subsystem": "lexer",
+   "kind": "perf"
+  },
+  {
+   "cid": "C013",
+   "member_ids": [
+    "lexer2:F5",
+    "lexer:F7",
+    "toplevel:18",
+    "r23:21"
+   ],
+   "title": "ANSI-C octal/hex escapes ($'\\377', $'\\xff', $'\\303\\251') produce codepoints where bash produces raw bytes; user guide \u00a78.4 claims unqualified bash match",
+   "severity": "P1",
+   "subsystem": "lexer",
+   "kind": "defect",
+   "overlap_note": "lexer:F7 is the doc-facing statement of the same byte-vs-codepoint defect at pure_helpers.py:366-439; toplevel:18 and r23:21 are the LEDGER carry #19 restatement. behavioral:N3 (NUL retained in $'...') is a different defect; r23:T2 theme cites this"
+  },
+  {
+   "cid": "C014",
+   "member_ids": [
+    "lexer2:F6"
+   ],
+   "title": "Heredoc spec ids matched to << tokens positionally, but registration skips operators with unacceptable delimiter tokens \u2192 later bodies shift (latent)",
+   "severity": "P1",
+   "subsystem": "lexer",
+   "kind": "defect"
+  },
+  {
+   "cid": "C015",
+   "member_ids": [
+    "parser-rd:P1-2",
+    "r23:P1-parser-1"
+   ],
+   "title": "`{ list; }` rejected as the body of a traditional `for` and of `select`",
+   "severity": "P1",
+   "subsystem": "parser-rd",
+   "kind": "defect"
+  },
+  {
+   "cid": "C016",
+   "member_ids": [
+    "parser-rd:P1-3",
+    "r23:P1-parser-2"
+   ],
+   "title": "`name=(...)` accepted as an argument to any command, not just declaration builtins",
+   "severity": "P1",
+   "subsystem": "parser-rd",
+   "kind": "defect"
+  },
+  {
+   "cid": "C017",
+   "member_ids": [
+    "parser-rd2:P1-1",
+    "r23:P1-parser-3"
+   ],
+   "title": "Newline between `for`/`select` and the loop variable is accepted; bash rejects it",
+   "severity": "P1",
+   "subsystem": "parser-rd",
+   "kind": "defect"
+  },
+  {
+   "cid": "C018",
+   "member_ids": [
+    "parser-rd2:P1-2",
+    "r23:P1-parser-4"
+   ],
+   "title": "`a[0]=(1 2)` rejected at parse time; bash parses it and errors only at execution",
+   "severity": "P1",
+   "subsystem": "parser-rd",
+   "kind": "defect"
+  },
+  {
+   "cid": "C019",
+   "member_ids": [
+    "combinator:P1-1",
+    "r23:2"
+   ],
+   "title": "Exponential (~4^n) backtracking caused by one redundant pipeline-element retry (pipelines.py:170-173)",
+   "severity": "P1",
+   "subsystem": "combinator",
+   "kind": "perf"
+  },
+  {
+   "cid": "C020",
+   "member_ids": [
+    "combinator:P1-2",
+    "r23:P1-combinator-1"
+   ],
+   "title": "Trailing redirect on [[ ]] / (( )) silently split into a second statement, discarding exit status",
+   "severity": "P1",
+   "subsystem": "combinator",
+   "kind": "defect",
+   "overlap_note": "r23:T4 theme cites this"
+  },
+  {
+   "cid": "C021",
+   "member_ids": [
+    "combinator:P1-3"
+   ],
+   "title": "Bare process substitution at command position parses as a pipeline element, yielding a non-Command AST node",
+   "severity": "P1",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C022",
+   "member_ids": [
+    "executor:P1-1"
+   ],
+   "title": "Backgrounded command inside pipeline/redirected compound gets /dev/null stdin",
+   "severity": "P1",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C023",
+   "member_ids": [
+    "expansion:1",
+    "r23:P1-expansion-1"
+   ],
+   "title": "Unquoted $*/${a[*]} is join-then-split; diverges from bash under empty IFS",
+   "severity": "P1",
+   "subsystem": "expansion",
+   "kind": "defect"
+  },
+  {
+   "cid": "C024",
+   "member_ids": [
+    "expansion:2"
+   ],
+   "title": "\"${!x}\" where x names @ collapses positionals to one field under quoting",
+   "severity": "P1",
+   "subsystem": "expansion",
+   "kind": "defect"
+  },
+  {
+   "cid": "C025",
+   "member_ids": [
+    "expansion:3",
+    "r23:P1-expansion-2"
+   ],
+   "title": "Backslash-escaped } not unescaped in DQ context; escaped text stored into variable by :=",
+   "severity": "P1",
+   "subsystem": "expansion",
+   "kind": "defect",
+   "overlap_note": "Raw reviewer rated P2; r23 synthesis promoted to P1"
+  },
+  {
+   "cid": "C026",
+   "member_ids": [
+    "expansion:4",
+    "r23:P1-expansion-3"
+   ],
+   "title": "IFS whitespace hardcoded as ' \\t\\n' (missing \\v \\f \\r); literal duplicated in word_splitter, read builtin, word_expander",
+   "severity": "P1",
+   "subsystem": "expansion",
+   "kind": "defect",
+   "overlap_note": "Raw reviewer rated P2; r23 synthesis promoted to P1. r23:T2/T5 themes cite it"
+  },
+  {
+   "cid": "C027",
+   "member_ids": [
+    "core:1",
+    "r23:P1-core-1"
+   ],
+   "title": "set -u consults state.env, reinstating the env fallback the subsystem declares it removed",
+   "severity": "P1",
+   "subsystem": "core",
+   "kind": "defect"
+  },
+  {
+   "cid": "C028",
+   "member_ids": [
+    "core:2",
+    "r23:P1-core-2"
+   ],
+   "title": "set -a (allexport) applies only to plain assignments, missing all four declaration builtins",
+   "severity": "P1",
+   "subsystem": "core",
+   "kind": "defect"
+  },
+  {
+   "cid": "C029",
+   "member_ids": [
+    "builtins:F1",
+    "r23:4"
+   ],
+   "title": "printf hand-rolls option parsing; accepts any `-X` as the format string (rc 0); attached `-vVAR` unsupported",
+   "severity": "P1",
+   "subsystem": "builtins",
+   "kind": "defect",
+   "overlap_note": "builtins:F5 (seven builtins reject no invalid options) lists printf at the same io.py:143 site as one member of a broader family; kept separate"
+  },
+  {
+   "cid": "C030",
+   "member_ids": [
+    "builtins:F2",
+    "r23:P1-builtins-1"
+   ],
+   "title": "Python int() semantics (underscores, 0o prefix) leak into 8 builtins' numeric operands; umask/ulimit silently apply wrong values",
+   "severity": "P1",
+   "subsystem": "builtins",
+   "kind": "defect",
+   "overlap_note": "fresh:F13 (read -t inf / huge -u escape as OverflowError, read_builtin.py:543) is the neighbouring crash-shaped face of the same stdlib-leak family but a distinct defect; r23:T2 theme cites this"
+  },
+  {
+   "cid": "C031",
+   "member_ids": [
+    "io:P1-1",
+    "r23:P1-io-2"
+   ],
+   "title": "Redirect targets for fd >= 3 expanded twice for in-process builtins (cmdsubs run twice, procsubs fork twice, noclobber checks a different file)",
+   "severity": "P1",
+   "subsystem": "io",
+   "kind": "defect",
+   "overlap_note": "r23:T4 theme cites this"
+  },
+  {
+   "cid": "C032",
+   "member_ids": [
+    "io:P1-2",
+    "r23:P1-io-1",
+    "io:P1-2-doc"
+   ],
+   "title": "In every in-process compound, `1>&-` closing fd 1/2 defeats a LATER reopen in the same redirect list (EBADF, silent data loss)",
+   "severity": "P1",
+   "subsystem": "io",
+   "kind": "defect",
+   "overlap_note": "io:P1-2-doc is the docstring facet of the same defect at manager.py:518 (swap_output_stream_reopenable premise falsified by the same probe); r23:T4 theme cites this"
+  },
+  {
+   "cid": "C033",
+   "member_ids": [
+    "ast-visitor:1",
+    "r23:P1-ast-1",
+    "fresh:F03"
+   ],
+   "title": "Formatter drops ${v} braces before a brace expansion, changing which variables are read (declare -f \u2192 eval round-trip)",
+   "severity": "P1",
+   "subsystem": "ast-visitor",
+   "kind": "defect",
+   "overlap_note": "fresh:F03 is the fresh-appraisal counterpart (same sites words.py:143 / formatter_visitor.py); fresh:4 (design: no executable round-trip contract) and fresh:8 (design) generalize it"
+  },
+  {
+   "cid": "C034",
+   "member_ids": [
+    "interactive:F1",
+    "r23:P1-interactive-1"
+   ],
+   "title": "History numbers are list positions, not bash's absolute number; !n wrong after any trim",
+   "severity": "P1",
+   "subsystem": "interactive",
+   "kind": "defect"
+  },
+  {
+   "cid": "C035",
+   "member_ids": [
+    "interactive:F2",
+    "r23:P1-interactive-2",
+    "fresh:F11"
+   ],
+   "title": "Tab completion cannot round-trip its own escaping (2nd Tab on any path with a space fails); filenames not preserved as literal words",
+   "severity": "P1",
+   "subsystem": "interactive",
+   "kind": "defect",
+   "overlap_note": "fresh:F11 is the fresh-appraisal counterpart (tab_completion.py:33 / line_editor.py:770, repro `cat some\\ fi`)"
+  },
+  {
+   "cid": "C036",
+   "member_ids": [
+    "interactive:F3",
+    "r23:P1-interactive-3"
+   ],
+   "title": "Under set -o vi, Ctrl-D does nothing; ignoreeof path unreachable",
+   "severity": "P1",
+   "subsystem": "interactive",
+   "kind": "defect",
+   "overlap_note": "interactive:F3-aside (Ctrl-R also unbound in vi-insert) is a different key at the same table; kept separate"
+  },
+  {
+   "cid": "C037",
+   "member_ids": [
+    "interactive:F4",
+    "r23:P1-interactive-4"
+   ],
+   "title": "\\w/\\W read process HOME and match as bare string prefix",
+   "severity": "P1",
+   "subsystem": "interactive",
+   "kind": "defect",
+   "overlap_note": "interactive:F4-aside (PROMPT_DIRTRIM unimplemented) is a separate gap at the same site"
+  },
+  {
+   "cid": "C038",
+   "member_ids": [
+    "interactive:F5",
+    "r23:P1-interactive-5"
+   ],
+   "title": "Terminal title writes $PWD/command text into OSC 0 unsanitized (escape injection)",
+   "severity": "P1",
+   "subsystem": "interactive",
+   "kind": "defect",
+   "overlap_note": "Raw reviewer rated P2; r23 synthesis promoted to P1"
+  },
+  {
+   "cid": "C039",
+   "member_ids": [
+    "toplevel:1",
+    "r23:5"
+   ],
+   "title": "Diagnostics + $LINENO report wrong line inside any continuation-joined command",
+   "severity": "P1",
+   "subsystem": "toplevel",
+   "kind": "defect"
+  },
+  {
+   "cid": "C040",
+   "member_ids": [
+    "behavioral:N1",
+    "r23:P1-toplevel-1"
+   ],
+   "title": "`set -n` (noexec) inert in -c mode; commands after it still execute",
+   "severity": "P1",
+   "subsystem": "toplevel",
+   "kind": "defect"
+  },
+  {
+   "cid": "C041",
+   "member_ids": [
+    "behavioral:N2",
+    "r23:P1-behavioral-1"
+   ],
+   "title": "A bare command substitution does not set $?",
+   "severity": "P1",
+   "subsystem": "behavioral",
+   "kind": "defect"
+  },
+  {
+   "cid": "C042",
+   "member_ids": [
+    "behavioral:N4",
+    "r23:P1-behavioral-2"
+   ],
+   "title": "Tilde not expanded in case patterns \u2192 wrong branch silently taken",
+   "severity": "P1",
+   "subsystem": "behavioral",
+   "kind": "defect"
+  },
+  {
+   "cid": "C043",
+   "member_ids": [
+    "fresh:F01"
+   ],
+   "title": "Logical cd can enter a different directory from the one it reports",
+   "severity": "P1",
+   "subsystem": "builtins",
+   "kind": "defect",
+   "overlap_note": "fresh:1 (empty CDPATH component wrongly prints destination) is in the same cd implementation but a different symptom; kept separate"
+  },
+  {
+   "cid": "C044",
+   "member_ids": [
+    "fresh:F02"
+   ],
+   "title": "Returning from a function can leave executable resolution using its local PATH",
+   "severity": "P1",
+   "subsystem": "core",
+   "kind": "defect"
+  },
+  {
+   "cid": "C045",
+   "member_ids": [
+    "lexer:F5"
+   ],
+   "title": "WordShapeTracker advertises five forward properties but three and the WordShape enum have no production consumer",
+   "severity": "P2",
+   "subsystem": "lexer",
+   "kind": "design"
+  },
+  {
+   "cid": "C046",
+   "member_ids": [
+    "lexer:F6",
+    "lexer2:XV-1",
+    "r23:23"
+   ],
+   "title": "Lexer no-progress crash (RuntimeError) is CLI-reachable at v0.779.0; the guard comment asserts a now-false 'ZERO inputs reach this point' census [previously registered]",
+   "severity": "P2",
+   "subsystem": "lexer",
+   "kind": "defect",
+   "overlap_note": "lexer:F6 is the stale-comment facet at modular_lexer.py:264-271; lexer2:XV-1 and r23:23 confirm the crash still live"
+  },
+  {
+   "cid": "C047",
+   "member_ids": [
+    "lexer:F8",
+    "lexer2:F8",
+    "r23:8"
+   ],
+   "title": "Two ${\u2026} extent scanners disagree: find_closing_delimiter (via skip_expansion_region) nests a bare `{` (and mis-handles `\\` in single quotes); validate_brace_expansion is correct \u2014 `a[${x:-{}]=v` not recognised as assignment",
+   "severity": "P2",
+   "subsystem": "lexer",
+   "kind": "defect",
+   "overlap_note": "r23:T3 theme generalizes this with the $((\u2026)) scanner (lexer2:F2 group)"
+  },
+  {
+   "cid": "C048",
+   "member_ids": [
+    "lexer2:F7"
+   ],
+   "title": "Identifier-prefixed unmatched '[' triggers whole-line lookahead + full text[pos:] copy \u2192 O(n\u00b2) on one physical line",
+   "severity": "P2",
+   "subsystem": "lexer",
+   "kind": "perf",
+   "overlap_note": "fresh:F15 (quadratic literal collection at literal.py:190) is a different mechanism in the same recognizer"
+  },
+  {
+   "cid": "C049",
+   "member_ids": [
+    "lexer2:F9"
+   ],
+   "title": "Inside ((\u2026)) the lexer doesn't tokenize (whole expression is one WORD) and three downstream mechanisms compensate, including in-place token-list mutation",
+   "severity": "P2",
+   "subsystem": "lexer",
+   "kind": "design"
+  },
+  {
+   "cid": "C050",
+   "member_ids": [
+    "fresh:F15"
+   ],
+   "title": "Collecting one long unquoted literal has avoidable quadratic copying (literal.py:190)",
+   "severity": "P2",
+   "subsystem": "lexer",
+   "kind": "perf",
+   "overlap_note": "Distinct from lexer2:F7 (unmatched-'[' lookahead copy); fresh:D4 lists it as a demonstrated cost"
+  },
+  {
+   "cid": "C051",
+   "member_ids": [
+    "parser-rd:P2-4"
+   ],
+   "title": "Parse errors inside `$(...)` bodies mix two coordinate systems (file line, body-local column/source line)",
+   "severity": "P2",
+   "subsystem": "parser-rd",
+   "kind": "defect"
+  },
+  {
+   "cid": "C052",
+   "member_ids": [
+    "parser-rd:P2-5"
+   ],
+   "title": "`for ( (` (non-adjacent parens) and unbalanced `for ((\u2026) )` accepted as C-style for headers",
+   "severity": "P2",
+   "subsystem": "parser-rd",
+   "kind": "defect"
+  },
+  {
+   "cid": "C053",
+   "member_ids": [
+    "parser-rd:P2-6",
+    "parser-rd2:P2-3",
+    "r23:28"
+   ],
+   "title": "Dead grammar path: WORD-shaped fd duplication (parse_fd_dup_word / _is_fd_duplication) unreachable and duplicates _parse_dup_redirect",
+   "severity": "P2",
+   "subsystem": "parser-rd",
+   "kind": "design",
+   "overlap_note": "Cross-validated by both RD reviewers; parser-rd:15 refers the same question to the combinator's own _parse_fd_dup_word (separate group)"
+  },
+  {
+   "cid": "C054",
+   "member_ids": [
+    "parser-rd2:P2-4"
+   ],
+   "title": "parse_for_statement and parse_select_statement duplicate their whole tail",
+   "severity": "P2",
+   "subsystem": "parser-rd",
+   "kind": "design"
+  },
+  {
+   "cid": "C055",
+   "member_ids": [
+    "parser-rd2:P2-5"
+   ],
+   "title": "Three routes construct a ParseError, two through a private method on another class",
+   "severity": "P2",
+   "subsystem": "parser-rd",
+   "kind": "design"
+  },
+  {
+   "cid": "C056",
+   "member_ids": [
+    "combinator:P2-4"
+   ],
+   "title": "time -p ! cmd silently runs `!` as a command",
+   "severity": "P2",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C057",
+   "member_ids": [
+    "combinator:P2-5",
+    "r23:9"
+   ],
+   "title": "Four parallel word-like token sets drifted from TokenGroups.WORD_LIKE; `{`/`}` unusable as words, loops omit PROCESS_SUB",
+   "severity": "P2",
+   "subsystem": "combinator",
+   "kind": "defect",
+   "overlap_note": "r23:T5 theme cites this"
+  },
+  {
+   "cid": "C058",
+   "member_ids": [
+    "combinator:P2-6"
+   ],
+   "title": "Over-acceptance family (latent, shielded by RD trial gate): no separator required, `if` needs no condition, empty { }, [[ ]] swallows anything",
+   "severity": "P2",
+   "subsystem": "combinator",
+   "kind": "defect",
+   "overlap_note": "Shielding mechanism is the FRAMING theme combinator:23 / r23:22 (separate group)"
+  },
+  {
+   "cid": "C059",
+   "member_ids": [
+    "combinator:P2-7"
+   ],
+   "title": "No nesting-depth guard: deeply nested input raises RecursionError instead of a clean ParseError",
+   "severity": "P2",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C060",
+   "member_ids": [
+    "combinator:15"
+   ],
+   "title": "[[ ]] rejects -ef/-nt/-ot; diagnostic names three causes none of which is real",
+   "severity": "P2",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C061",
+   "member_ids": [
+    "combinator:16"
+   ],
+   "title": "Bash-style syntax messages built by f-string instead of shared unexpected_token_message: \"token ''\" for EOF, embedded literal newline",
+   "severity": "P2",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C062",
+   "member_ids": [
+    "combinator:17",
+    "r23:24"
+   ],
+   "title": "Combinator stamps no .line on statements: $LINENO wrong inside every compound body [previously registered]",
+   "severity": "P2",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C063",
+   "member_ids": [
+    "executor:P2-1"
+   ],
+   "title": "POSIX mode: `VAR=v exec` does not persist the assignment; persistence code inert",
+   "severity": "P2",
+   "subsystem": "executor",
+   "kind": "defect",
+   "overlap_note": "executor:1 (theme) cites the inert loop at command.py:1102-1109 as one of its drifted comments"
+  },
+  {
+   "cid": "C064",
+   "member_ids": [
+    "executor:P2-2"
+   ],
+   "title": "`select`: empty input line runs body instead of redisplaying menu",
+   "severity": "P2",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C065",
+   "member_ids": [
+    "executor:P2-3"
+   ],
+   "title": "Compound background jobs recorded under placeholder text, breaking %?str jobspecs",
+   "severity": "P2",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C066",
+   "member_ids": [
+    "executor:P2-4"
+   ],
+   "title": "Fifteen executor diagnostics bypass state.error_location_prefix()",
+   "severity": "P2",
+   "subsystem": "executor",
+   "kind": "defect",
+   "overlap_note": "Executor half of r23:T1 theme; expansion half is expansion:6 group. behavioral:5 ('environment:' prefix on FUNCNEST, by-design) touches the function.py FUNCNEST site listed here"
+  },
+  {
+   "cid": "C067",
+   "member_ids": [
+    "executor:P2-5"
+   ],
+   "title": "`wait` interrupted by trapped signal returns job status instead of 128+N",
+   "severity": "P2",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C068",
+   "member_ids": [
+    "expansion:5"
+   ],
+   "title": "\"${!arr[*]}\" joins indices/keys with a literal space instead of IFS[0]",
+   "severity": "P2",
+   "subsystem": "expansion",
+   "kind": "defect"
+  },
+  {
+   "cid": "C069",
+   "member_ids": [
+    "expansion:6",
+    "behavioral:N5"
+   ],
+   "title": "Expansion diagnostics (arith evaluator.py:808, operators.py:99, arrays.py:146) hardcode \"psh: \" with no location prefix",
+   "severity": "P2",
+   "subsystem": "expansion",
+   "kind": "defect",
+   "overlap_note": "behavioral:N5 is the behavioral-battery sighting of the same evaluator.py:808 / arrays.py:146 sites; expansion half of r23:T1 theme"
+  },
+  {
+   "cid": "C070",
+   "member_ids": [
+    "core:3"
+   ],
+   "title": "A temp-env prefix over eval/source/. is enumeration-invisible, but bash pushes a real scope there",
+   "severity": "P2",
+   "subsystem": "core",
+   "kind": "defect"
+  },
+  {
+   "cid": "C071",
+   "member_ids": [
+    "core:4"
+   ],
+   "title": "export -n through a nameref is a silent no-op",
+   "severity": "P2",
+   "subsystem": "core",
+   "kind": "defect"
+  },
+  {
+   "cid": "C072",
+   "member_ids": [
+    "core:5"
+   ],
+   "title": "${!prefix*} lists opaque non-identifier environment entries, breaking the H3 partition",
+   "severity": "P2",
+   "subsystem": "core",
+   "kind": "defect"
+  },
+  {
+   "cid": "C073",
+   "member_ids": [
+    "core:6"
+   ],
+   "title": "Half of every variable write is spent in enum.Flag arithmetic",
+   "severity": "P2",
+   "subsystem": "core",
+   "kind": "perf"
+  },
+  {
+   "cid": "C074",
+   "member_ids": [
+    "builtins:F3"
+   ],
+   "title": "cd treats an EMPTY HOME / OLDPWD as unset (errors rc 1 where bash no-ops rc 0)",
+   "severity": "P2",
+   "subsystem": "builtins",
+   "kind": "defect"
+  },
+  {
+   "cid": "C075",
+   "member_ids": [
+    "builtins:F4"
+   ],
+   "title": "source/. with no filename returns 1 not 2, skips the usage line and the POSIX-mode shell exit",
+   "severity": "P2",
+   "subsystem": "builtins",
+   "kind": "defect"
+  },
+  {
+   "cid": "C076",
+   "member_ids": [
+    "builtins:F5"
+   ],
+   "title": "Seven builtins (printf, times, eval, builtin, source, pushd, popd, dirs) do not reject invalid options at all",
+   "severity": "P2",
+   "subsystem": "builtins",
+   "kind": "defect",
+   "overlap_note": "printf member overlaps builtins:F1 / r23:4 (same io.py:143 site)"
+  },
+  {
+   "cid": "C077",
+   "member_ids": [
+    "builtins:F6"
+   ],
+   "title": "`kill -n SIGNUM` unimplemented; `-n` parsed as a signal NAME",
+   "severity": "P2",
+   "subsystem": "builtins",
+   "kind": "defect"
+  },
+  {
+   "cid": "C078",
+   "member_ids": [
+    "builtins:F7"
+   ],
+   "title": "wait returns 127 where bash returns 1 for a syntactically malformed id",
+   "severity": "P2",
+   "subsystem": "builtins",
+   "kind": "defect"
+  },
+  {
+   "cid": "C079",
+   "member_ids": [
+    "io:P2-3"
+   ],
+   "title": "Failing dup2 onto out-of-range target fd prints the errno number (builtin) or filename (external) where bash prints the fd number",
+   "severity": "P2",
+   "subsystem": "io",
+   "kind": "defect"
+  },
+  {
+   "cid": "C080",
+   "member_ids": [
+    "io:P2-4"
+   ],
+   "title": "fd prefix >= 2^31 escapes as a raw Python OverflowError (fcntl raises OverflowError, guards only catch OSError)",
+   "severity": "P2",
+   "subsystem": "io",
+   "kind": "defect",
+   "overlap_note": "io:P2-4-lexer (lexer accepts fd > INT_MAX as a redirect at all) is the upstream layer of the same probe; kept separate"
+  },
+  {
+   "cid": "C081",
+   "member_ids": [
+    "io:P2-5a",
+    "io:P2-5-doc",
+    "r23:29"
+   ],
+   "title": ">(cmd) is FIFO-backed on EVERY platform (no platform branch) although root CLAUDE.md/code call it a macOS-only /dev/fd fallback; bash yields /dev/fd/63",
+   "severity": "P2",
+   "subsystem": "io",
+   "kind": "defect",
+   "overlap_note": "io:P2-5-doc is the doc facet of the same unconditional-FIFO fact; r23:29 (needs Linux oracle) covers this and io:P2-5b together"
+  },
+  {
+   "cid": "C082",
+   "member_ids": [
+    "io:P2-5b"
+   ],
+   "title": ">(cmd) child gives up after a fixed 5s SIGALRM: opens /dev/null, unlinks the FIFO and exits 0 having processed NO data",
+   "severity": "P2",
+   "subsystem": "io",
+   "kind": "defect",
+   "overlap_note": "Same code region (process_sub.py:147-167) as the previously-registered write-side nightly race io:11; r23:29 covers both this and P2-5a"
+  },
+  {
+   "cid": "C083",
+   "member_ids": [
+    "ast-visitor:2"
+   ],
+   "title": "DebugASTVisitor silently drops redirects on 10 of 13 redirect-carrying node classes",
+   "severity": "P2",
+   "subsystem": "ast-visitor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C084",
+   "member_ids": [
+    "ast-visitor:3",
+    "fresh:F16"
+   ],
+   "title": "MetricsVisitor substitution counts are word-anchored not node-anchored; under-counts nested regions (${x:-$(\u2026)}, redirect targets, subscripts\u2026)",
+   "severity": "P2",
+   "subsystem": "ast-visitor",
+   "kind": "defect",
+   "overlap_note": "fresh:F16 (metrics_visitor.py:461, `${x:-$(true)}` undercount) is one instance of the same root cause"
+  },
+  {
+   "cid": "C085",
+   "member_ids": [
+    "ast-visitor:4"
+   ],
+   "title": "Validator '>&1' advisory is inverted: never fires on the mistake, always on the correct spelling",
+   "severity": "P2",
+   "subsystem": "ast-visitor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C086",
+   "member_ids": [
+    "toplevel:2",
+    "r23:6"
+   ],
+   "title": "Invocation -o/+o reads cluster remainder as option NAME; bash takes next argv element and keeps scanning",
+   "severity": "P2",
+   "subsystem": "toplevel",
+   "kind": "defect",
+   "overlap_note": "toplevel:15 (set -opipefail via the `set` builtin) is 'same root, different code'; kept separate"
+  },
+  {
+   "cid": "C087",
+   "member_ids": [
+    "toplevel:3",
+    "r23:12",
+    "r23:13"
+   ],
+   "title": "Ten in-code evidence citations point into gitignored tmp/ (five already gone) plus ~96 opaque campaign IDs in comments",
+   "severity": "P2",
+   "subsystem": "toplevel",
+   "kind": "doc",
+   "overlap_note": "r23:12 and r23:13 are the two halves of toplevel:3 restated; core:10 (campaign codenames in psh/core) and expansion:9 (changelog docstrings) are the same theme at other locations, kept separate; r23:T6 theme"
+  },
+  {
+   "cid": "C088",
+   "member_ids": [
+    "toplevel:4",
+    "r23:7"
+   ],
+   "title": "psh/__init__.py eager `from .shell import Shell` forces the entire module tree; 79% of `psh --version` startup avoidable",
+   "severity": "P2",
+   "subsystem": "toplevel",
+   "kind": "perf"
+  },
+  {
+   "cid": "C089",
+   "member_ids": [
+    "toplevel:5",
+    "r23:15"
+   ],
+   "title": "printf with any flag/width/precision/length before % prints a literal % and exits 0; comment at printf_formatter.py:152 asserts the opposite of the code",
+   "severity": "P2",
+   "subsystem": "builtins",
+   "kind": "defect",
+   "overlap_note": "r23:15 is the comment facet at the same printf_formatter.py:150-154 site; r23:T6 theme cites it"
+  },
+  {
+   "cid": "C090",
+   "member_ids": [
+    "fresh:F04"
+   ],
+   "title": "mapfile consumes input before rejecting its destination and can corrupt array attributes",
+   "severity": "P2",
+   "subsystem": "builtins",
+   "kind": "defect"
+  },
+  {
+   "cid": "C091",
+   "member_ids": [
+    "fresh:F05"
+   ],
+   "title": "Process-substitution acquisition leaks resources when fork fails",
+   "severity": "P2",
+   "subsystem": "io",
+   "kind": "defect"
+  },
+  {
+   "cid": "C092",
+   "member_ids": [
+    "fresh:F06"
+   ],
+   "title": "A script-file read error is silently converted to EOF (LazyFileInput._read_line_block)",
+   "severity": "P2",
+   "subsystem": "toplevel",
+   "kind": "defect",
+   "overlap_note": "fresh:13 is a perf finding in the same function; kept separate"
+  },
+  {
+   "cid": "C093",
+   "member_ids": [
+    "fresh:F07"
+   ],
+   "title": "Arithmetic promotion from scalar to array discards the scalar value",
+   "severity": "P2",
+   "subsystem": "core",
+   "kind": "defect"
+  },
+  {
+   "cid": "C094",
+   "member_ids": [
+    "fresh:F08"
+   ],
+   "title": "Explicit array indices incorrectly set a high-water mark for subsequent elements",
+   "severity": "P2",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C095",
+   "member_ids": [
+    "fresh:F09"
+   ],
+   "title": "Integer-array initialization applies attributes at the wrong phase",
+   "severity": "P2",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C096",
+   "member_ids": [
+    "fresh:F10"
+   ],
+   "title": "Associative initializers accept invalid empty keys and mixed forms",
+   "severity": "P2",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C097",
+   "member_ids": [
+    "fresh:F12",
+    "interactive:CN2",
+    "interactive:CN3",
+    "interactive:F9"
+   ],
+   "title": "Terminal input and layout conflate bytes, code points, and display columns: per-read decode destroys split multibyte / non-UTF-8 bytes (key_decoder.py:285-289); line_layout counts chars not columns",
+   "severity": "P2",
+   "subsystem": "interactive",
+   "kind": "defect",
+   "overlap_note": "fresh:F12 spans both halves; interactive:CN3 (split multibyte) and interactive:F9 (errors='replace' destroys non-UTF-8 bytes) are the same decode call at key_decoder.py:289; interactive:CN2 is the line_layout column half"
+  },
+  {
+   "cid": "C098",
+   "member_ids": [
+    "fresh:F13"
+   ],
+   "title": "Invalid read options escape through Python numeric/platform exceptions (read -t inf, huge -u \u2192 OverflowError)",
+   "severity": "P2",
+   "subsystem": "builtins",
+   "kind": "defect",
+   "overlap_note": "Neighbour of builtins:F2 / r23:P1-builtins-1 (int() leak) at read_builtin.py:543-545, but crash-shaped rather than wrong-value"
+  },
+  {
+   "cid": "C099",
+   "member_ids": [
+    "fresh:F14"
+   ],
+   "title": "Static security analysis loses the command behind assignment prefixes and wrappers (X=1 eval / command eval)",
+   "severity": "P2",
+   "subsystem": "ast-visitor",
+   "kind": "defect",
+   "overlap_note": "fresh:2 (quoted variable labelled unquoted) is a different defect in the same visitor"
+  },
+  {
+   "cid": "C100",
+   "member_ids": [
+    "lexer:F9"
+   ],
+   "title": "handle_ansi_c_escape repeats three near-identical 'read up to N hex digits' loops plus an octal loop",
+   "severity": "P3",
+   "subsystem": "lexer",
+   "kind": "design"
+  },
+  {
+   "cid": "C101",
+   "member_ids": [
+    "lexer:F10"
+   ],
+   "title": "Duplicated balanced-[ / ] matcher in _parse_dollar_bracket_arithmetic and _rewrite_dollar_brackets",
+   "severity": "P3",
+   "subsystem": "lexer",
+   "kind": "design"
+  },
+  {
+   "cid": "C102",
+   "member_ids": [
+    "lexer:F11"
+   ],
+   "title": "Recognizer registry converts EVERY recognizer exception into RuntimeError (latent misclassification of expected shell errors)",
+   "severity": "P3",
+   "subsystem": "lexer",
+   "kind": "design"
+  },
+  {
+   "cid": "C103",
+   "member_ids": [
+    "lexer:F12a"
+   ],
+   "title": "Every recognizer-produced token is rebuilt with dataclasses.replace \u2014 largest cost in a lexing profile",
+   "severity": "P3",
+   "subsystem": "lexer",
+   "kind": "perf"
+  },
+  {
+   "cid": "C104",
+   "member_ids": [
+    "lexer:F12b"
+   ],
+   "title": "WORD_TERMINATORS lists `{`/`}` while _is_word_terminator unconditionally returns False for them",
+   "severity": "P3",
+   "subsystem": "lexer",
+   "kind": "design"
+  },
+  {
+   "cid": "C105",
+   "member_ids": [
+    "lexer2:F10"
+   ],
+   "title": "Dead configuration: allows_newlines always True, QUOTE_RULES['`'] never selected, SourceMap.line_starts unused",
+   "severity": "P3",
+   "subsystem": "lexer",
+   "kind": "design"
+  },
+  {
+   "cid": "C106",
+   "member_ids": [
+    "lexer2:F11"
+   ],
+   "title": "psh/lexer/CLAUDE.md drift: '>>=' shown as operator but absent from OPERATORS table; stale line counts",
+   "severity": "P3",
+   "subsystem": "lexer",
+   "kind": "doc"
+  },
+  {
+   "cid": "C107",
+   "member_ids": [
+    "parser-rd:P3-7"
+   ],
+   "title": "Dead branch: `!` as a command argument (EXCLAMATION guard after args can never fire)",
+   "severity": "P3",
+   "subsystem": "parser-rd",
+   "kind": "design"
+  },
+  {
+   "cid": "C108",
+   "member_ids": [
+    "parser-rd:P3-8",
+    "r23:16"
+   ],
+   "title": "create_parser's docstring asserts ZERO production callers, but the parse-tree builtin calls it",
+   "severity": "P3",
+   "subsystem": "parser-rd",
+   "kind": "doc",
+   "overlap_note": "r23:T6 theme cites it"
+  },
+  {
+   "cid": "C109",
+   "member_ids": [
+    "parser-rd:P3-9",
+    "parser-rd2:P3-7",
+    "r23:14"
+   ],
+   "title": "arithmetic.py:26 comment claims 'legacy tokenization' for a live straddle-split close branch",
+   "severity": "P3",
+   "subsystem": "parser-rd",
+   "kind": "doc",
+   "overlap_note": "Both RD reviewers found it; r23:T6 theme cites it"
+  },
+  {
+   "cid": "C110",
+   "member_ids": [
+    "parser-rd:P3-10"
+   ],
+   "title": "_parse_c_style_for_brace_body duplicates parse_brace_group's brace-body rule",
+   "severity": "P3",
+   "subsystem": "parser-rd",
+   "kind": "design"
+  },
+  {
+   "cid": "C111",
+   "member_ids": [
+    "parser-rd:P3-11",
+    "parser-rd2:P3-11"
+   ],
+   "title": "Two diagnostic vocabularies (consume() 'Expected X' vs unexpected_token_message bash-style) \u2192 parse-error wording diverges from bash in a small closed set; Context-line doubled-space artifact",
+   "severity": "P3",
+   "subsystem": "parser-rd",
+   "kind": "defect",
+   "overlap_note": "Same root (two message vocabularies in helpers.py/context.py) described by both RD reviewers; behavioral:1 classifies the richer format as by-design (separate group)"
+  },
+  {
+   "cid": "C112",
+   "member_ids": [
+    "parser-rd2:P3-6"
+   ],
+   "title": "Truncated comment left mid-sentence in unclosed_expansion.py",
+   "severity": "P3",
+   "subsystem": "parser-rd",
+   "kind": "doc"
+  },
+  {
+   "cid": "C113",
+   "member_ids": [
+    "parser-rd2:P3-8"
+   ],
+   "title": "Defensive getattr on fields declared on the Token dataclass",
+   "severity": "P3",
+   "subsystem": "parser-rd",
+   "kind": "design"
+  },
+  {
+   "cid": "C114",
+   "member_ids": [
+    "parser-rd2:P3-9"
+   ],
+   "title": "Test-operator sets rebuilt per call, next to hoisted frozensets in the same file",
+   "severity": "P3",
+   "subsystem": "parser-rd",
+   "kind": "perf"
+  },
+  {
+   "cid": "C115",
+   "member_ids": [
+    "parser-rd2:P3-10"
+   ],
+   "title": "`materialize`'s docstring names call sites that do not exist",
+   "severity": "P3",
+   "subsystem": "parser-rd",
+   "kind": "doc"
+  },
+  {
+   "cid": "C116",
+   "member_ids": [
+    "combinator:P3-8"
+   ],
+   "title": "--debug-ast=dot silently drops EVERY scalar field",
+   "severity": "P3",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C117",
+   "member_ids": [
+    "combinator:P3-9"
+   ],
+   "title": "DOT labels are HTML-escaped, not DOT-escaped; backslash unescaped",
+   "severity": "P3",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C118",
+   "member_ids": [
+    "combinator:P3-10",
+    "combinator:21"
+   ],
+   "title": "Combinator error path (parser.py:229-241) builds its message from result.error alone: leaks token index, never renders context/suggestion or the merged `expected` channel",
+   "severity": "P3",
+   "subsystem": "combinator",
+   "kind": "defect",
+   "overlap_note": "combinator:21 is the second reviewer's statement of the same error-rendering gap at the same lines"
+  },
+  {
+   "cid": "C119",
+   "member_ids": [
+    "combinator:P3-11",
+    "combinator:18"
+   ],
+   "title": "Combinator algebra largely inert: .then/.map used at ONE site tree-wide; 11 of 12 keyword() parsers and ~19 built parsers unreferenced; matches_keyword() at 33 sites",
+   "severity": "P3",
+   "subsystem": "combinator",
+   "kind": "design",
+   "overlap_note": "combinator:18 is the second reviewer's census of the same inert-algebra observation (core.py:321 is the one .map/.then site)"
+  },
+  {
+   "cid": "C120",
+   "member_ids": [
+    "combinator:P3-12",
+    "r23:17"
+   ],
+   "title": "Constant 4-6x parse cost vs RD, and every input parsed twice under --parser combinator (deferred / by-design)",
+   "severity": "P3",
+   "subsystem": "combinator",
+   "kind": "perf",
+   "overlap_note": "Double-parse mechanism is also the subject of the FRAMING theme combinator:23 / r23:22"
+  },
+  {
+   "cid": "C121",
+   "member_ids": [
+    "combinator:19"
+   ],
+   "title": "16 sites construct a fresh Parser INSIDE a parse closure, contradicting the 'built exactly ONCE' contract",
+   "severity": "P3",
+   "subsystem": "combinator",
+   "kind": "design"
+  },
+  {
+   "cid": "C122",
+   "member_ids": [
+    "combinator:20"
+   ],
+   "title": "SExpressionRenderer loses all indentation inside &&/|| operator trees",
+   "severity": "P3",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C123",
+   "member_ids": [
+    "combinator:22"
+   ],
+   "title": "Doc drift in combinator_parser_guide.md contradicted by the code's own docstrings",
+   "severity": "P3",
+   "subsystem": "combinator",
+   "kind": "doc"
+  },
+  {
+   "cid": "C124",
+   "member_ids": [
+    "executor:P3-1"
+   ],
+   "title": "`( cmd ) | cat` emits signal-death diagnostic that bash omits",
+   "severity": "P3",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C125",
+   "member_ids": [
+    "executor:P3-2"
+   ],
+   "title": "Dead setpgid with misleading rationale inside exec-failure try",
+   "severity": "P3",
+   "subsystem": "executor",
+   "kind": "design",
+   "overlap_note": "executor:1 (theme) cites this comment"
+  },
+  {
+   "cid": "C126",
+   "member_ids": [
+    "executor:P3-3a"
+   ],
+   "title": "Pipeline rollback except-clause too narrow \u2014 non-OSError/ValueError exceptions leak sync pipes",
+   "severity": "P3",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C127",
+   "member_ids": [
+    "executor:P3-3b"
+   ],
+   "title": "all_statuses[-1] unguarded against mark_orphaned_completed empty-list state",
+   "severity": "P3",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C128",
+   "member_ids": [
+    "expansion:7",
+    "r23:3"
+   ],
+   "title": "Value-operand builder is quadratic in operand length",
+   "severity": "P3",
+   "subsystem": "expansion",
+   "kind": "perf"
+  },
+  {
+   "cid": "C129",
+   "member_ids": [
+    "expansion:8"
+   ],
+   "title": "Subscripted VariableExpansion in arithmetic rendered back to source text and re-parsed at runtime",
+   "severity": "P3",
+   "subsystem": "expansion",
+   "kind": "design"
+  },
+  {
+   "cid": "C130",
+   "member_ids": [
+    "core:7"
+   ],
+   "title": "readonly diagnostic for an array element through a nameref names the target, not the reference",
+   "severity": "P3",
+   "subsystem": "core",
+   "kind": "defect"
+  },
+  {
+   "cid": "C131",
+   "member_ids": [
+    "core:8"
+   ],
+   "title": "ShellState.__init__ is a 320-line ordered startup whose constraints live only in comments",
+   "severity": "P3",
+   "subsystem": "core",
+   "kind": "design",
+   "overlap_note": "fresh:D2 lists the same 323-line constructor among its coordinator examples (separate, broader design group)"
+  },
+  {
+   "cid": "C132",
+   "member_ids": [
+    "core:9"
+   ],
+   "title": "VariableStore is a fa\u00e7ade, not the transaction boundary it is documented as",
+   "severity": "P3",
+   "subsystem": "core",
+   "kind": "design",
+   "overlap_note": "fresh:D1 (enforce invariants at the write site) is the fresh-appraisal generalization"
+  },
+  {
+   "cid": "C133",
+   "member_ids": [
+    "core:10"
+   ],
+   "title": "Subsystem prose in psh/core is indexed by campaign codename rather than by behaviour",
+   "severity": "P3",
+   "subsystem": "core",
+   "kind": "doc",
+   "overlap_note": "Same theme as toplevel:3 (campaign IDs) at a different location; fresh:D3 generalizes"
+  },
+  {
+   "cid": "C134",
+   "member_ids": [
+    "builtins:F8"
+   ],
+   "title": "Six hand-rolled declaration-family parsers print bash's invalid-option message backwards and drop the usage line",
+   "severity": "P3",
+   "subsystem": "builtins",
+   "kind": "defect"
+  },
+  {
+   "cid": "C135",
+   "member_ids": [
+    "builtins:F9"
+   ],
+   "title": "builtins/CLAUDE.md's hand-rolled-parser inventory is wrong; the promised drift-lock would have caught F1",
+   "severity": "P3",
+   "subsystem": "builtins",
+   "kind": "doc"
+  },
+  {
+   "cid": "C136",
+   "member_ids": [
+    "builtins:F10",
+    "behavioral:N6"
+   ],
+   "title": "declare -p prints `=()` for a declared-but-never-assigned array where bash prints no value",
+   "severity": "P3",
+   "subsystem": "builtins",
+   "kind": "defect",
+   "overlap_note": "behavioral:N6 is the behavioral-battery sighting of the same declare_format.py defect (`declare -A h; declare -p h`)"
+  },
+  {
+   "cid": "C137",
+   "member_ids": [
+    "builtins:F11a"
+   ],
+   "title": "show-ast/ast-dot/parser-mode construct fresh builtin instances instead of registry.get(...), escaping the statelessness guard",
+   "severity": "P3",
+   "subsystem": "builtins",
+   "kind": "design"
+  },
+  {
+   "cid": "C138",
+   "member_ids": [
+    "builtins:F11b"
+   ],
+   "title": "parser-select writes primary output via shell.stdout.write instead of self.write_line",
+   "severity": "P3",
+   "subsystem": "builtins",
+   "kind": "design"
+  },
+  {
+   "cid": "C139",
+   "member_ids": [
+    "builtins:F11c"
+   ],
+   "title": "`test -v` bad-subscript diagnostic bypasses self.report_error, hand-inlining error_location_prefix()",
+   "severity": "P3",
+   "subsystem": "builtins",
+   "kind": "design"
+  },
+  {
+   "cid": "C140",
+   "member_ids": [
+    "builtins:F12a",
+    "r23:10"
+   ],
+   "title": "stdin-source decision duplicated verbatim: ReadBuiltin._should_use_sys_stdin vs input_reader.make_reader",
+   "severity": "P3",
+   "subsystem": "builtins",
+   "kind": "design",
+   "overlap_note": "r23:T5 theme cites it"
+  },
+  {
+   "cid": "C141",
+   "member_ids": [
+    "builtins:F12b",
+    "r23:11"
+   ],
+   "title": "_evaluate_binary repeats a five-line try/except six times for -eq/-ne/-lt/-le/-gt/-ge",
+   "severity": "P3",
+   "subsystem": "builtins",
+   "kind": "design",
+   "overlap_note": "r23:11 files it under 'expansion' but it is test_command.py:471-506; r23:T5 theme cites it"
+  },
+  {
+   "cid": "C142",
+   "member_ids": [
+    "io:P3-6"
+   ],
+   "title": "setup/restore_builtin_redirections is the one save/restore pair NOT expressed as a context manager",
+   "severity": "P3",
+   "subsystem": "io",
+   "kind": "design"
+  },
+  {
+   "cid": "C143",
+   "member_ids": [
+    "io:P3-7"
+   ],
+   "title": "Docstring mass has outgrown the code in manager.py (~half of 1,181 lines is prose)",
+   "severity": "P3",
+   "subsystem": "io",
+   "kind": "doc"
+  },
+  {
+   "cid": "C144",
+   "member_ids": [
+    "ast-visitor:5"
+   ],
+   "title": "MetricsVisitor counts each backtick as a separate command substitution in case subjects",
+   "severity": "P3",
+   "subsystem": "ast-visitor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C145",
+   "member_ids": [
+    "ast-visitor:6"
+   ],
+   "title": "Validator compound handlers pop context before traversing redirects; swept edges lose their context label",
+   "severity": "P3",
+   "subsystem": "ast-visitor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C146",
+   "member_ids": [
+    "ast-visitor:7"
+   ],
+   "title": "No analysis mode reports a source location; LintIssue.line/.column dead; ASTNode.line docstring overclaims",
+   "severity": "P3",
+   "subsystem": "ast-visitor",
+   "kind": "design"
+  },
+  {
+   "cid": "C147",
+   "member_ids": [
+    "ast-visitor:8"
+   ],
+   "title": "SecurityVisitor ARITHMETIC_INJECTION fires for (( )) command, never for $(( )) expansion",
+   "severity": "P3",
+   "subsystem": "ast-visitor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C148",
+   "member_ids": [
+    "ast-visitor:9"
+   ],
+   "title": "Dead branches in FormatterVisitor.visit_SimpleCommand",
+   "severity": "P3",
+   "subsystem": "ast-visitor",
+   "kind": "design"
+  },
+  {
+   "cid": "C149",
+   "member_ids": [
+    "ast-visitor:10"
+   ],
+   "title": "Comments-only visit_ArrayElementAssignment in ValidatorVisitor is dead weight",
+   "severity": "P3",
+   "subsystem": "ast-visitor",
+   "kind": "design"
+  },
+  {
+   "cid": "C150",
+   "member_ids": [
+    "ast-visitor:11"
+   ],
+   "title": "f-string without placeholders in DebugASTVisitor (ruff F541 not selected)",
+   "severity": "P3",
+   "subsystem": "ast-visitor",
+   "kind": "design"
+  },
+  {
+   "cid": "C151",
+   "member_ids": [
+    "interactive:F6"
+   ],
+   "title": "Meta-< and Ctrl-R accept skip cmdhist join \u2192 raw newlines in buffer, renderer desync",
+   "severity": "P3",
+   "subsystem": "interactive",
+   "kind": "defect"
+  },
+  {
+   "cid": "C152",
+   "member_ids": [
+    "interactive:F7"
+   ],
+   "title": "Prompt octal \\nnn requires exactly 3 digits; bash accepts 1-2 at prompt end",
+   "severity": "P3",
+   "subsystem": "interactive",
+   "kind": "defect"
+  },
+  {
+   "cid": "C153",
+   "member_ids": [
+    "interactive:F8"
+   ],
+   "title": "\\# is one greater than bash's command number",
+   "severity": "P3",
+   "subsystem": "interactive",
+   "kind": "defect"
+  },
+  {
+   "cid": "C154",
+   "member_ids": [
+    "interactive:F10"
+   ],
+   "title": "REPL sketch in interactive/CLAUDE.md drifted and not drift-locked",
+   "severity": "P3",
+   "subsystem": "interactive",
+   "kind": "doc"
+  },
+  {
+   "cid": "C155",
+   "member_ids": [
+    "interactive:F11"
+   ],
+   "title": "Emacs undo/redo unreachable; undo stack survives across reads",
+   "severity": "P3",
+   "subsystem": "interactive",
+   "kind": "defect"
+  },
+  {
+   "cid": "C156",
+   "member_ids": [
+    "interactive:F12"
+   ],
+   "title": "history -a/-w write without the lock save_to_file takes; docstring over-claims concurrency-safe",
+   "severity": "P3",
+   "subsystem": "interactive",
+   "kind": "defect"
+  },
+  {
+   "cid": "C157",
+   "member_ids": [
+    "toplevel:6"
+   ],
+   "title": "Bare `+` argument rejected; bash treats it as an empty flag cluster",
+   "severity": "P3",
+   "subsystem": "toplevel",
+   "kind": "defect"
+  },
+  {
+   "cid": "C158",
+   "member_ids": [
+    "toplevel:7"
+   ],
+   "title": "InvocationConfig.argv0 uses \"psh\" as the no-name sentinel; an explicitly empty $0 is silently replaced",
+   "severity": "P3",
+   "subsystem": "toplevel",
+   "kind": "defect"
+  },
+  {
+   "cid": "C159",
+   "member_ids": [
+    "toplevel:8"
+   ],
+   "title": "input_source parameter unannotated in ~29 signatures despite an import-safe InputSource ABC",
+   "severity": "P3",
+   "subsystem": "toplevel",
+   "kind": "design"
+  },
+  {
+   "cid": "C160",
+   "member_ids": [
+    "toplevel:9"
+   ],
+   "title": "psh/utils/__init__.py docstring describes 4 of 7 modules; partial facade reads as complete",
+   "severity": "P3",
+   "subsystem": "toplevel",
+   "kind": "design"
+  },
+  {
+   "cid": "C161",
+   "member_ids": [
+    "toplevel:10"
+   ],
+   "title": "psh rejects bash's -l/-r/-D/--login/--noprofile/--noediting/--verbose/--restricted with rc2; undocumented at CLI/--help/user guide",
+   "severity": "P3",
+   "subsystem": "toplevel",
+   "kind": "defect"
+  },
+  {
+   "cid": "C162",
+   "member_ids": [
+    "toplevel:11"
+   ],
+   "title": "has_unclosed_heredoc is public API with zero production callers",
+   "severity": "P3",
+   "subsystem": "toplevel",
+   "kind": "design"
+  },
+  {
+   "cid": "C163",
+   "member_ids": [
+    "toplevel:12"
+   ],
+   "title": "--rcfile with no value exits 2 where bash warns and continues",
+   "severity": "P3",
+   "subsystem": "toplevel",
+   "kind": "defect"
+  },
+  {
+   "cid": "C164",
+   "member_ids": [
+    "lexer:13"
+   ],
+   "title": "Bare `]]` outside `[[`: bash syntax error rc=2 vs psh ']]: command not found' rc=127",
+   "severity": "unrated",
+   "subsystem": "lexer",
+   "kind": "defect"
+  },
+  {
+   "cid": "C165",
+   "member_ids": [
+    "lexer:14",
+    "parser-rd:12",
+    "parser-rd2:15"
+   ],
+   "title": "coproc absent from the grammar (documented difference)",
+   "severity": "unrated",
+   "subsystem": "parser-rd",
+   "kind": "defect",
+   "overlap_note": "Lexer reviewer's sighting plus both RD reviewers' documented-difference rows"
+  },
+  {
+   "cid": "C166",
+   "member_ids": [
+    "lexer:15"
+   ],
+   "title": "`a=(1 2)x`: bash assigns the literal scalar \"(1 2)x\", psh errors and then runs `x`",
+   "severity": "unrated",
+   "subsystem": "parser-rd",
+   "kind": "defect"
+  },
+  {
+   "cid": "C167",
+   "member_ids": [
+    "lexer:16"
+   ],
+   "title": "[META] Lexer reviewer's declared coverage gaps: Linux-only paths, interactive/PTY lexing, posix_mode breadth",
+   "severity": "unrated",
+   "subsystem": "lexer",
+   "kind": "doc"
+  },
+  {
+   "cid": "C168",
+   "member_ids": [
+    "lexer2:XV-2"
+   ],
+   "title": "CRLF handling divergence (psh strips one trailing CR per line; bash keeps CR) absent from the user guide",
+   "severity": "unrated",
+   "subsystem": "lexer",
+   "kind": "doc"
+  },
+  {
+   "cid": "C169",
+   "member_ids": [
+    "lexer2:HK-1",
+    "interactive:HK1"
+   ],
+   "title": "Untracked junk files in repo root: f, f1, f2",
+   "severity": "unrated",
+   "subsystem": "repo",
+   "kind": "design",
+   "overlap_note": "Same housekeeping observation from two reviewers"
+  },
+  {
+   "cid": "C170",
+   "member_ids": [
+    "io:P2-4-lexer"
+   ],
+   "title": "Lexer accepts an fd prefix > INT_MAX as a redirect; bash re-lexes it as an ordinary word",
+   "severity": "unrated",
+   "subsystem": "lexer",
+   "kind": "defect",
+   "overlap_note": "Upstream layer of io:P2-4 (OverflowError) for the same probe `echo x 2147483648>f`"
+  },
+  {
+   "cid": "C171",
+   "member_ids": [
+    "parser-rd:13",
+    "parser-rd2:13",
+    "r23:25",
+    "fresh:12"
+   ],
+   "title": "ParseSession re-parses the growing non-heredoc logical command on every input line \u2014 O(k\u00b2) / RESUMABLE-PARSER [previously registered]",
+   "severity": "unrated",
+   "subsystem": "parser-rd",
+   "kind": "perf",
+   "overlap_note": "fresh:12 is the fresh-appraisal counterpart; fresh:D4 lists it among demonstrated costs"
+  },
+  {
+   "cid": "C172",
+   "member_ids": [
+    "parser-rd:14",
+    "parser-rd2:12"
+   ],
+   "title": "Nested command-substitution re-parse is mildly super-linear (capped at MAX_SUBSTITUTION_NESTING=100) [previously registered]",
+   "severity": "unrated",
+   "subsystem": "parser-rd",
+   "kind": "perf"
+  },
+  {
+   "cid": "C173",
+   "member_ids": [
+    "parser-rd:15"
+   ],
+   "title": "Combinator parser has its own _parse_fd_dup_word \u2014 same dead-path question as the RD one (referred)",
+   "severity": "unrated",
+   "subsystem": "combinator",
+   "kind": "design",
+   "overlap_note": "Combinator twin of the RD dead fd-dup WORD path group (parser-rd:P2-6)"
+  },
+  {
+   "cid": "C174",
+   "member_ids": [
+    "parser-rd2:14"
+   ],
+   "title": "`cat <<` INCOMPLETE-vs-bash classification [previously registered successor row]",
+   "severity": "unrated",
+   "subsystem": "parser-rd",
+   "kind": "defect"
+  },
+  {
+   "cid": "C175",
+   "member_ids": [
+    "parser-rd2:16",
+    "behavioral:7",
+    "r23:19"
+   ],
+   "title": "Aliases expanded in scripts/-c by default (documented divergence; escape hatch verified)",
+   "severity": "unrated",
+   "subsystem": "core",
+   "kind": "doc"
+  },
+  {
+   "cid": "C176",
+   "member_ids": [
+    "combinator:13"
+   ],
+   "title": "ascii_tree.py dead branch: elif always true, else unreachable",
+   "severity": "unrated",
+   "subsystem": "combinator",
+   "kind": "design"
+  },
+  {
+   "cid": "C177",
+   "member_ids": [
+    "combinator:14"
+   ],
+   "title": "sexp_renderer.py leaves quotes unescaped, producing malformed s-expressions",
+   "severity": "unrated",
+   "subsystem": "combinator",
+   "kind": "defect"
+  },
+  {
+   "cid": "C178",
+   "member_ids": [
+    "combinator:23",
+    "r23:22"
+   ],
+   "title": "FRAMING: _trial_parse always builds an RD Parser, so under --parser combinator RD validates and the combinator builds \u2014 over-acceptance invisible, under-acceptance exposed, every input parsed twice",
+   "severity": "unrated",
+   "subsystem": "combinator",
+   "kind": "theme",
+   "overlap_note": "Explains why combinator:P2-6 is latent; double-parse cost is combinator:P3-12 / r23:17"
+  },
+  {
+   "cid": "C179",
+   "member_ids": [
+    "executor:1"
+   ],
+   "title": "Three executor comments describe behavior the code does not produce (textbook drift)",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "theme",
+   "overlap_note": "Candidates are the comments in executor:P0-1 (strategies.py:605), executor:P2-1 (command.py:1102-1109) and executor:P3-2 (strategies.py:620-622)"
+  },
+  {
+   "cid": "C180",
+   "member_ids": [
+    "executor:2"
+   ],
+   "title": "Unverified: nested ( ) in a foreground pipeline member may transfer terminal control to its own grandchild",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C181",
+   "member_ids": [
+    "executor:3"
+   ],
+   "title": "-c + set -m job notice [previously registered divergence]",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C182",
+   "member_ids": [
+    "executor:4",
+    "io:10"
+   ],
+   "title": "Bare `wait` does not reach process-substitution children [previously registered divergence]",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "defect",
+   "overlap_note": "Executor and io reviewers registered the same carried divergence"
+  },
+  {
+   "cid": "C183",
+   "member_ids": [
+    "executor:5"
+   ],
+   "title": "PIPESTATUS collapse in brace groups [previously registered divergence]",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C184",
+   "member_ids": [
+    "executor:6"
+   ],
+   "title": "Pipeline member EXIT trap [previously registered divergence]",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C185",
+   "member_ids": [
+    "executor:7"
+   ],
+   "title": "TIMEFORMAT %P CPU-measure residue [previously registered divergence]",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C186",
+   "member_ids": [
+    "executor:8"
+   ],
+   "title": "%Q lenient divergence [previously registered, documented]",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C187",
+   "member_ids": [
+    "r23:26"
+   ],
+   "title": "Async-reaper family (CR-D1: bg-job reap-timing / absent general async reaper) [previously registered]",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "doc",
+   "overlap_note": "CR-D1 per LEDGER Part D = bg-job zombie until shell exit; not the same as executor:3-8 rows"
+  },
+  {
+   "cid": "C188",
+   "member_ids": [
+    "expansion:9"
+   ],
+   "title": "Docstrings in psh/expansion/ have grown into campaign changelogs (textbook deduction)",
+   "severity": "unrated",
+   "subsystem": "expansion",
+   "kind": "doc",
+   "overlap_note": "Same theme as toplevel:3 / core:10 at another location; fresh:D3 generalizes"
+  },
+  {
+   "cid": "C189",
+   "member_ids": [
+    "expansion:10"
+   ],
+   "title": "[Coverage note] Areas the expansion reviewer did NOT independently verify (pattern_engine, prompt, aliases)",
+   "severity": "unrated",
+   "subsystem": "expansion",
+   "kind": "theme"
+  },
+  {
+   "cid": "C190",
+   "member_ids": [
+    "behavioral:6",
+    "r23:18"
+   ],
+   "title": "$(< file) command-substitution shortcut unsupported (documented / deferred)",
+   "severity": "unrated",
+   "subsystem": "expansion",
+   "kind": "defect"
+  },
+  {
+   "cid": "C191",
+   "member_ids": [
+    "behavioral:N3",
+    "behavioral:8"
+   ],
+   "title": "NUL bytes retained in $'...' and by read/mapfile where bash drops them (read/mapfile face = registered 4B.2 residual; $'...' face new)",
+   "severity": "unrated",
+   "subsystem": "expansion",
+   "kind": "defect",
+   "overlap_note": "behavioral:8 is the previously-registered read/mapfile face; behavioral:N3 adds the $'...' face at the same symptom. Distinct from the byte-model group (lexer2:F5)"
+  },
+  {
+   "cid": "C192",
+   "member_ids": [
+    "r23:30"
+   ],
+   "title": "Locale/collation behavior needs a Linux oracle",
+   "severity": "unrated",
+   "subsystem": "expansion",
+   "kind": "doc"
+  },
+  {
+   "cid": "C193",
+   "member_ids": [
+    "core:11"
+   ],
+   "title": "[Coverage note] Lightly-probed core areas and un-re-verified carry '1.4 locale warn wider surface'",
+   "severity": "unrated",
+   "subsystem": "core",
+   "kind": "theme"
+  },
+  {
+   "cid": "C194",
+   "member_ids": [
+    "core:12"
+   ],
+   "title": "[Coverage note] executor/array.py alias-mutation write-ban gap (known Phase-4 P1, out of scope)",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "defect"
+  },
+  {
+   "cid": "C195",
+   "member_ids": [
+    "behavioral:N7"
+   ],
+   "title": "SHLVL never set",
+   "severity": "unrated",
+   "subsystem": "core",
+   "kind": "defect"
+  },
+  {
+   "cid": "C196",
+   "member_ids": [
+    "toplevel:17"
+   ],
+   "title": "BASH_SOURCE unset (already documented as missing)",
+   "severity": "unrated",
+   "subsystem": "core",
+   "kind": "defect",
+   "overlap_note": "behavioral:2 (shell-identity variables differ, by-design) bundles BASH_SOURCE with $0/BASH_VERSINFO/BASH_ARGV0; kept separate as it is the specific missing-feature row"
+  },
+  {
+   "cid": "C197",
+   "member_ids": [
+    "toplevel:15"
+   ],
+   "title": "set -opipefail: bash lists options then parses 'pipefail' as flags; psh rejects outright (set builtin, out of scope)",
+   "severity": "unrated",
+   "subsystem": "core",
+   "kind": "defect",
+   "overlap_note": "'Same root as' toplevel:2 / r23:6 (invocation -o) but different code"
+  },
+  {
+   "cid": "C198",
+   "member_ids": [
+    "toplevel:16",
+    "behavioral:4"
+   ],
+   "title": "set -o table diverges from bash: missing interactive-comments/keyword/onecmd/physical/privileged, extra strict-errors; emacs/history defaults differ",
+   "severity": "unrated",
+   "subsystem": "core",
+   "kind": "defect",
+   "overlap_note": "behavioral:4 classifies the smaller inventory as by-design; toplevel:16 adds the default-value divergences"
+  },
+  {
+   "cid": "C199",
+   "member_ids": [
+    "behavioral:2"
+   ],
+   "title": "Shell-identity variables $0 / BASH_SOURCE / BASH_VERSINFO / BASH_ARGV0 differ (by-design)",
+   "severity": "unrated",
+   "subsystem": "core",
+   "kind": "design",
+   "overlap_note": "Overlaps toplevel:17 (BASH_SOURCE) and toplevel:7 ($0 sentinel) partially"
+  },
+  {
+   "cid": "C200",
+   "member_ids": [
+    "builtins:G1"
+   ],
+   "title": "Several builtin usage strings do not match bash's (passing remark, no location)",
+   "severity": "unrated",
+   "subsystem": "builtins",
+   "kind": "defect"
+  },
+  {
+   "cid": "C201",
+   "member_ids": [
+    "builtins:G2"
+   ],
+   "title": "_declare_bare_name has a 125-line body (sprawl)",
+   "severity": "unrated",
+   "subsystem": "builtins",
+   "kind": "design"
+  },
+  {
+   "cid": "C202",
+   "member_ids": [
+    "builtins:G3"
+   ],
+   "title": "Stringly-typed option dicts in the declaration family",
+   "severity": "unrated",
+   "subsystem": "builtins",
+   "kind": "design"
+  },
+  {
+   "cid": "C203",
+   "member_ids": [
+    "builtins:NC1",
+    "r23:20"
+   ],
+   "title": "Deliberate/documented builtin divergences explicitly NOT counted (ulimit -p, declare -A key order, printf %a subnormal D-5R-d1, mapfile -C/-c)",
+   "severity": "unrated",
+   "subsystem": "builtins",
+   "kind": "doc",
+   "overlap_note": "r23:20 restates the printf %a subnormal member of NC1's bundle"
+  },
+  {
+   "cid": "C204",
+   "member_ids": [
+    "behavioral:3"
+   ],
+   "title": "declare -f / type function pretty-print formatting differs (by-design)",
+   "severity": "unrated",
+   "subsystem": "builtins",
+   "kind": "design"
+  },
+  {
+   "cid": "C205",
+   "member_ids": [
+    "behavioral:5"
+   ],
+   "title": "\"environment:\" prefix on FUNCNEST diagnostic differs from bash (by-design)",
+   "severity": "unrated",
+   "subsystem": "executor",
+   "kind": "design",
+   "overlap_note": "Touches the function.py FUNCNEST diagnostic site also listed in executor:P2-4"
+  },
+  {
+   "cid": "C206",
+   "member_ids": [
+    "io:D-5C.2-d2",
+    "r23:27"
+   ],
+   "title": "exec {v}>&- with v unset silently succeeds [previously registered D-5C.2-d2]",
+   "severity": "unrated",
+   "subsystem": "io",
+   "kind": "defect"
+  },
+  {
+   "cid": "C207",
+   "member_ids": [
+    "io:D-4B.4-s2"
+   ],
+   "title": "n<&m- move-form fd lifetime [previously registered]",
+   "severity": "unrated",
+   "subsystem": "io",
+   "kind": "defect"
+  },
+  {
+   "cid": "C208",
+   "member_ids": [
+    "io:11"
+   ],
+   "title": "Write-side process-substitution nightly race [previously registered]",
+   "severity": "unrated",
+   "subsystem": "io",
+   "kind": "defect",
+   "overlap_note": "Same process_sub.py write-side path as io:P2-5b's 5s alarm"
+  },
+  {
+   "cid": "C209",
+   "member_ids": [
+    "ast-visitor:12"
+   ],
+   "title": "SimpleCommand.args recomputed per access (36x in one visit_SimpleCommand)",
+   "severity": "unrated",
+   "subsystem": "ast-visitor",
+   "kind": "perf"
+  },
+  {
+   "cid": "C210",
+   "member_ids": [
+    "ast-visitor:13"
+   ],
+   "title": "Three visitors carry per-handler blind spots that no guard covers (coverage matrix parametrizes Security/Formatter/Metrics only)",
+   "severity": "unrated",
+   "subsystem": "ast-visitor",
+   "kind": "theme"
+  },
+  {
+   "cid": "C211",
+   "member_ids": [
+    "fresh:2"
+   ],
+   "title": "Security analysis baseline labels a quoted variable as unquoted (false positive)",
+   "severity": "unrated",
+   "subsystem": "ast-visitor",
+   "kind": "defect",
+   "overlap_note": "Same visitor as fresh:F14, different defect"
+  },
+  {
+   "cid": "C212",
+   "member_ids": [
+    "interactive:F3-aside"
+   ],
+   "title": "CTRL_R (reverse-i-search) missing from vi-insert bindings",
+   "severity": "unrated",
+   "subsystem": "interactive",
+   "kind": "defect",
+   "overlap_note": "Same keybinding table as interactive:F3 (Ctrl-D), different key"
+  },
+  {
+   "cid": "C213",
+   "member_ids": [
+    "interactive:F4-aside"
+   ],
+   "title": "PROMPT_DIRTRIM unimplemented for \\w",
+   "severity": "unrated",
+   "subsystem": "interactive",
+   "kind": "defect",
+   "overlap_note": "Same prompt.py:317-323 site as interactive:F4"
+  },
+  {
+   "cid": "C214",
+   "member_ids": [
+    "interactive:CN1"
+   ],
+   "title": "psh -i with piped stdin never enters the REPL (bash prompts there)",
+   "severity": "unrated",
+   "subsystem": "interactive",
+   "kind": "defect"
+  },
+  {
+   "cid": "C215",
+   "member_ids": [
+    "interactive:CN4"
+   ],
+   "title": "Real-terminal rendering not assessed (SIGWINCH repaint, completion column listing, Ctrl-R painting)",
+   "severity": "unrated",
+   "subsystem": "interactive",
+   "kind": "design"
+  },
+  {
+   "cid": "C216",
+   "member_ids": [
+    "toplevel:13"
+   ],
+   "title": "Three of five shell.py function-level imports defer modules that are already loaded (no-op deferrals)",
+   "severity": "unrated",
+   "subsystem": "toplevel",
+   "kind": "design"
+  },
+  {
+   "cid": "C217",
+   "member_ids": [
+    "toplevel:14"
+   ],
+   "title": "48% of in-scope top-level/scripting/utils lines are prose (comment/docstring density)",
+   "severity": "unrated",
+   "subsystem": "toplevel",
+   "kind": "design",
+   "overlap_note": "io:P3-7 is the same observation for manager.py"
+  },
+  {
+   "cid": "C218",
+   "member_ids": [
+    "behavioral:1"
+   ],
+   "title": "Richer parse-error message format than bash (by-design classification)",
+   "severity": "unrated",
+   "subsystem": "parser-rd",
+   "kind": "design",
+   "overlap_note": "The mechanism is the two-vocabulary finding parser-rd:P3-11 / parser-rd2:P3-11"
+  },
+  {
+   "cid": "C219",
+   "member_ids": [
+    "r23:T1"
+   ],
+   "title": "THEME: error_location_prefix() has drifted back with no guard (15 executor sites, 3 expansion sites, N5)",
+   "severity": "unrated",
+   "subsystem": "executor, expansion",
+   "kind": "theme",
+   "overlap_note": "Members: executor:P2-4 group and expansion:6/behavioral:N5 group"
+  },
+  {
+   "cid": "C220",
+   "member_ids": [
+    "r23:T2"
+   ],
+   "title": "THEME: Python stdlib semantics leaking where bash's C semantics are required (int(), chr(), IFS whitespace)",
+   "severity": "unrated",
+   "subsystem": "builtins, lexer, expansion",
+   "kind": "theme",
+   "overlap_note": "Members: builtins:F2, lexer2:F3, expansion:4 groups; fresh:F13 is a further instance"
+  },
+  {
+   "cid": "C221",
+   "member_ids": [
+    "r23:T3"
+   ],
+   "title": "THEME: Multiple ${\u2026}/$((\u2026)) extent scanners that disagree",
+   "severity": "unrated",
+   "subsystem": "lexer",
+   "kind": "theme",
+   "overlap_note": "Members: lexer2:F2 and lexer:F8/lexer2:F8 groups"
+  },
+  {
+   "cid": "C222",
+   "member_ids": [
+    "r23:T4"
+   ],
+   "title": "THEME: Silent data loss from ordering/re-entry bugs (second pass contradicts a correct first pass)",
+   "severity": "unrated",
+   "subsystem": "executor, io, combinator",
+   "kind": "theme",
+   "overlap_note": "Members: executor:P0-1, io:P1-1, io:P1-2, combinator:P1-2 groups"
+  },
+  {
+   "cid": "C223",
+   "member_ids": [
+    "r23:T5"
+   ],
+   "title": "THEME: Duplicated logic that has drifted",
+   "severity": "unrated",
+   "subsystem": "combinator, io, builtins, expansion",
+   "kind": "theme",
+   "overlap_note": "Members: combinator:P2-5, builtins:F12a/F12b, expansion:4, parser-rd:P2-6 groups"
+  },
+  {
+   "cid": "C224",
+   "member_ids": [
+    "r23:T6"
+   ],
+   "title": "THEME: Documentation/comment drift (the textbook-quality tax)",
+   "severity": "unrated",
+   "subsystem": "docs",
+   "kind": "theme",
+   "overlap_note": "Members: parser-rd:P3-9, toplevel:5/r23:15, parser-rd:P3-8/r23:16, toplevel:3 groups"
+  },
+  {
+   "cid": "C225",
+   "member_ids": [
+    "fresh:1"
+   ],
+   "title": "cd resolved through the empty CDPATH component wrongly prints the destination",
+   "severity": "unrated",
+   "subsystem": "builtins",
+   "kind": "defect",
+   "overlap_note": "Same navigation.py cd implementation as fresh:F01; different symptom"
+  },
+  {
+   "cid": "C226",
+   "member_ids": [
+    "fresh:D1"
+   ],
+   "title": "DESIGN: Enforce mutation invariants where the write happens (VariableStore/scope/array builders/declaration helpers)",
+   "severity": "unrated",
+   "subsystem": "core",
+   "kind": "design",
+   "overlap_note": "Generalizes core:9 and the fresh:F07-F10 array-builder defects"
+  },
+  {
+   "cid": "C227",
+   "member_ids": [
+    "fresh:D2"
+   ],
+   "title": "DESIGN: Preserve the good typed models; simplify large coordinators (_run_command, ShellState.__init__, scope.set_variable, file_redirect.py)",
+   "severity": "unrated",
+   "subsystem": "executor / core / io",
+   "kind": "design",
+   "overlap_note": "Includes the 323-line constructor also reported as core:8"
+  },
+  {
+   "cid": "C228",
+   "member_ids": [
+    "fresh:D3"
+   ],
+   "title": "DESIGN: Separate algorithm explanation from development history in code comments",
+   "severity": "unrated",
+   "subsystem": "cross-cutting",
+   "kind": "design",
+   "overlap_note": "Generalizes toplevel:3, core:10, expansion:9"
+  },
+  {
+   "cid": "C229",
+   "member_ids": [
+    "fresh:D4"
+   ],
+   "title": "DESIGN: Target demonstrated costs (literal.py:190, ParseSession, LazyFileInput, mapfile), not an indiscriminate performance rewrite",
+   "severity": "unrated",
+   "subsystem": "cross-cutting",
+   "kind": "design",
+   "overlap_note": "Names fresh:F15, the ParseSession group, fresh:13 and fresh:14"
+  },
+  {
+   "cid": "C230",
+   "member_ids": [
+    "fresh:3"
+   ],
+   "title": "Entry points: duplicate legacy configuration paths remain alongside the frozen invocation config",
+   "severity": "unrated",
+   "subsystem": "toplevel",
+   "kind": "design"
+  },
+  {
+   "cid": "C231",
+   "member_ids": [
+    "fresh:4"
+   ],
+   "title": "AST: no separate structural vs executable round-trip contracts (source provenance excluded from equality)",
+   "severity": "unrated",
+   "subsystem": "ast-visitor",
+   "kind": "design",
+   "overlap_note": "Design generalization of the ${v}{1,2} formatter defect group (ast-visitor:1 / fresh:F03)"
+  },
+  {
+   "cid": "C232",
+   "member_ids": [
+    "fresh:5"
+   ],
+   "title": "Lexer: command-position/quote-state ownership is hard to follow without historical context",
+   "severity": "unrated",
+   "subsystem": "lexer",
+   "kind": "design"
+  },
+  {
+   "cid": "C233",
+   "member_ids": [
+    "fresh:6"
+   ],
+   "title": "Parser: two grammar implementations (RD + combinator) impose real parity maintenance",
+   "severity": "unrated",
+   "subsystem": "parser-rd",
+   "kind": "design",
+   "overlap_note": "Related to the FRAMING theme combinator:23 / r23:22"
+  },
+  {
+   "cid": "C234",
+   "member_ids": [
+    "fresh:7"
+   ],
+   "title": "Builtins: behavior uneven; navigation, mapfile, numeric parsing, declaration/array interactions need shared contracts",
+   "severity": "unrated",
+   "subsystem": "builtins",
+   "kind": "design",
+   "overlap_note": "Umbrella over fresh:F01, F04, F13 and builtins:F2"
+  },
+  {
+   "cid": "C235",
+   "member_ids": [
+    "fresh:8"
+   ],
+   "title": "Visitors: formatting, command-head analysis, and feature counting each discard or reconstruct information incorrectly",
+   "severity": "unrated",
+   "subsystem": "ast-visitor",
+   "kind": "design",
+   "overlap_note": "Umbrella over fresh:F03, F14, F16 groups"
+  },
+  {
+   "cid": "C236",
+   "member_ids": [
+    "fresh:9"
+   ],
+   "title": "Protocols: some role protocols expose concrete ShellState and subsystem implementations",
+   "severity": "unrated",
+   "subsystem": "core",
+   "kind": "design"
+  },
+  {
+   "cid": "C237",
+   "member_ids": [
+    "fresh:10"
+   ],
+   "title": "Combinator parser: heterogeneous or_else returns a loose Parser instead of a typed union",
+   "severity": "unrated",
+   "subsystem": "combinator",
+   "kind": "design"
+  },
+  {
+   "cid": "C238",
+   "member_ids": [
+    "fresh:11"
+   ],
+   "title": "Documentation indexes carry stale claims of which appraisal/campaign is 'latest' or 'active'",
+   "severity": "unrated",
+   "subsystem": "docs",
+   "kind": "doc"
+  },
+  {
+   "cid": "C239",
+   "member_ids": [
+    "fresh:13"
+   ],
+   "title": "LazyFileInput._read_line_block repeatedly concatenates and rescans the tail of a very long physical line",
+   "severity": "unrated",
+   "subsystem": "toplevel",
+   "kind": "perf",
+   "overlap_note": "Same function as fresh:F06 (read error \u2192 EOF), different finding"
+  },
+  {
+   "cid": "C240",
+   "member_ids": [
+    "fresh:14"
+   ],
+   "title": "mapfile unbounded read path holds the whole input and then splits records",
+   "severity": "unrated",
+   "subsystem": "builtins",
+   "kind": "perf"
+  },
+  {
+   "cid": "C241",
+   "member_ids": [
+    "fresh:15"
+   ],
+   "title": "Many existing oracle comments target Bash 5.2 while the measured oracle is 5.3.15",
+   "severity": "unrated",
+   "subsystem": "tests",
+   "kind": "doc"
+  },
+  {
+   "cid": "C242",
+   "member_ids": [
+    "fresh:16"
+   ],
+   "title": "Local gate not green at 6459f1a6: 23,985 passed, 52 failed (oracle drift to bash 5.3.15 per memory, not psh regressions)",
+   "severity": "unrated",
+   "subsystem": "tests",
+   "kind": "theme"
+  },
+  {
+   "cid": "C243",
+   "member_ids": [
+    "fresh:17"
+   ],
+   "title": "docs/reviews index test fails on the pre-existing untracked reappraisal #23 report",
+   "severity": "unrated",
+   "subsystem": "docs",
+   "kind": "doc"
+  },
+  {
+   "cid": "C244",
+   "member_ids": [
+    "fresh:18"
+   ],
+   "title": "Test-suite limits: structural/setter/return-code tests miss executable round-trips, scope restoration, consumed input, wrong cwd",
+   "severity": "unrated",
+   "subsystem": "tests",
+   "kind": "theme"
+  },
+  {
+   "cid": "C245",
+   "member_ids": [
+    "fresh:19"
+   ],
+   "title": "No fast automated pre-merge smoke check alongside the local gate and nightly",
+   "severity": "unrated",
+   "subsystem": "tooling",
+   "kind": "design"
+  }
+ ]
+}

@@ -1,0 +1,49 @@
+{
+  "batch": 21,
+  "head": "6459f1a6",
+  "oracle": "GNU bash 5.3.15(1)-release",
+  "results": [
+    {
+      "cid": "C151",
+      "status": "live",
+      "bash53_output": "PTY bash --norc -i, after `history -s $'for i in 1 2\\ndo\\necho $i\\ndone'; echo zz`: Up-Up -> `$ for i in 1 2^Jdo^Jecho $i^Jdone`; Meta-< -> `$ for i in 1 2^Jdo^Jecho $i^Jdone`; Ctrl-R 'for' Enter -> `(reverse-i-search)`for': ... $ for i in 1 2^Jdo^Jecho $i^Jdone` (^J = embedded newline as readline renders it); all three then print 1,2. Same consistency for a typed for-loop (joined `for i in 1 2; do echo $i; done` on every path, lithist off) and for a heredoc entry (`cat <<EOF^Jhello^JEOF^J` on every path).",
+      "psh_output": "In-process (history_nav.py): up() x2 -> 'for i in 1 2; do echo $i; done'; first() on single-entry hist -> 'for i in 1 2\\ndo\\necho $i\\ndone'; HistorySearch.accept() line -> 'for i in 1 2\\ndo\\necho $i\\ndone' status accepted; feed('\\r') same, redispatch True. PTY psh --norc -i after the same `history -s` entry: Up-Up -> `$ for i in 1 2; do echo $i; done` ESC[32C; Meta-< -> `$ for i in 1 2\\ndo\\necho $i\\ndone` followed by ESC[30C (cursor moved 30 cols right on the LAST row, i.e. the renderer believes one 30-col row); Ctrl-R 'for' Enter -> raw newlines + ESC[30C. Heredoc entry: every path emits raw newlines + ESC[21C.",
+      "note": "history_nav.py unchanged at HEAD: first() returns self.history[0] raw (:88), accept()/_state() return history[pos] raw (:202-207, :264-270), only up()/down() go through _editable(). Typed multi-line commands are joined at record time (history_manager.py:242-243), so the asymmetry needs a raw-newline entry: reachable via `history -s $'..'` (PTY-verified) and via heredoc entries (join keeps their newlines). Renderer desync PTY-observed as ESC[nC after raw newlines (n = len(prompt+text) counting \\n as a column). Extra divergence: psh up() joins at RECALL time while bash 5.3.15 never joins at recall (shows ^J)."
+    },
+    {
+      "cid": "C152",
+      "status": "live",
+      "bash53_output": "od -An -c of ${PS1@P}, identical in -c / script-file / stdin modes: PS1='A\\1' -> `A 001`; 'A\\10' -> `A \\b`; 'A\\7' -> `A \\a`; 'A\\1B' -> `A \\ 1 B` (literal, mid-string); 'A\\10B' -> `A \\ 1 0 B`; 'A\\101' -> `A A`.",
+      "psh_output": "Identical in -c / script-file / stdin: 'A\\1' -> `A \\ 1`; 'A\\10' -> `A \\ 1 0`; 'A\\7' -> `A \\ 7`; 'A\\1B' -> `A \\ 1 B`; 'A\\10B' -> `A \\ 1 0 B`; 'A\\101' -> `A A`. rc=0 both shells.",
+      "note": "prompt.py:197 still requires `i + 3 < len(prompt)` and three octal digits. Only the prompt-end 1-2 digit case diverges; mid-string and 3-digit cases match bash 5.3.15 exactly as the report said."
+    },
+    {
+      "cid": "C153",
+      "status": "oracle_changed",
+      "bash53_output": "Script `PS1='\\#'; echo \"${PS1@P}\"; echo \"${PS1@P}\"; true; echo \"${PS1@P}\"` -> script-file mode: 3,4,6; stdin mode: 3,4,6; -c mode: 1,1,1. Live tty (PTY, bash --norc -i, PS1='[\\#]$ '): prompts [2]$,[3]$,[4]$,[5]$,[6]$; with PS1='\\# $ ' running `echo \"${PS1@P}\"` at prompt `2 $` prints `3 $`.",
+      "psh_output": "script-file: 3,4,6; stdin: 3,4,6; -c: 3,4,6. Live tty (PTY, psh --norc -i, PS1='[\\#]$ '): prompts [2]$,[3]$,[4]$,[5]$,[6]$.",
+      "note": "bash 5.3.15 no longer gives 2,3,5: /opt/homebrew/Cellar/bash/5.3.15/share/doc/bash/CHANGES, bash-5.3-alpha section, entry rrrrrr: 'Fix for history and command number expansion when expanding a prompt string that contains the @P variable transformation'. psh (unchanged since r23, prompt.py:338 / source_processor.py:528) now MATCHES 5.3.15 in script-file, stdin and live-tty modes. Residual NEW divergence not in the original finding: `-c` mode, bash 1,1,1 (no reader_loop increments) vs psh 3,4,6."
+    },
+    {
+      "cid": "C155",
+      "status": "live",
+      "bash53_output": "`bash -ic 'bind -p' | grep undo`: \"\\C-x\\C-u\": undo; \"\\C-_\": undo; \"\\e\\C-r\"/\"\\er\": revert-line. PTY: type `echo abc`, Ctrl-_ Ctrl-_, Enter -> line erased (`$ echo abc^M^M$         ^M^M$ ^G`), Enter runs an empty line. vi mode: `set -o vi; echo hi` Enter, then Esc u Enter at the fresh prompt -> `^G` bell, nothing executed.",
+      "psh_output": "In-process: EmacsKeyBindings().get_action('\\x1f') -> None; no emacs binding maps to undo/redo; vi normal 'u' -> undo. EditBuffer: insert 'echo hi' (undo depth 7), reset() (depth still 7), undo() -> True, text='echo h'. PTY emacs: `echo abc` Ctrl-_ Ctrl-_ Enter -> executes, prints `abc` (Ctrl-_ ignored). PTY vi: `set -o vi; echo hi` Enter, Esc u, Enter -> buffer becomes `echo h`, executes, prints `h`.",
+      "note": "keybindings.py:52 CTRL_UNDERSCORE still defined and never bound; edit_buffer.py:64-68 reset() keeps undo_stack by documented design. Both symptoms (unreachable emacs undo; stale undo restoring the previous line at a fresh prompt via vi Esc-u) PTY-verified against bash 5.3.15."
+    },
+    {
+      "cid": "C156",
+      "status": "live",
+      "bash53_output": "With another process holding fcntl.flock(LOCK_EX) on $HISTFILE: `bash -c 'set -o history; history -s fromA; history -a; echo rc=$?'` completed in 0.01s, rc=0, file appended; `history -w` completed in 0.01s rc=0. bash locks neither path, as the report expected.",
+      "psh_output": "Same held lock: `psh -c 'set -o history; history -s fromA; history -a'` completed in 0.12s rc=0, file appended; `history -w` completed in 0.12s rc=0, file truncated to 'fromW\\n' (both unlocked). HistoryManager.save_to_file() with the lock held did NOT return within 3s; returned immediately after LOCK_UN (3.01s total) and wrote 'seed\\nfromSave\\n' (it takes the lock).",
+      "note": "Code unchanged at HEAD: fcntl.flock LOCK_EX only in save_to_file (history_manager.py:296, LOCK_UN :315); write_history (:365-386) and append_history (:388-408) open/write with no lock; `history -w`/`-a` dispatch to them at psh/builtins/shell_state.py:209/211. Docstring :32-36 still opens 'Persistence is concurrency-safe (v0.447):' (its continuation does name save_to_file). Behavioral gap vs bash is nil since bash is unlocked on all paths; the substantive item remains the docstring/consistency claim."
+    },
+    {
+      "cid": "C157",
+      "status": "live",
+      "bash53_output": "`bash + -c 'echo hi'` -> hi rc=0; `echo 'echo fromstdin' | bash +` -> fromstdin rc=0; `bash + script.sh` -> runs the script (3,4,6) rc=0; `bash +x -c 'echo hi2'` -> hi2 rc=0; `bash - -c 'echo hi'` -> `bash: -c: No such file or directory` rc=127.",
+      "psh_output": "`psh + -c 'echo hi'` -> `psh: +: invalid option` / `Try 'psh --help' for more information.` rc=2; `echo 'echo fromstdin' | psh +` -> same error rc=2; `psh + script.sh` -> same error rc=2; `psh +x -c 'echo hi2'` -> hi2 rc=0; `psh - -c 'echo hi'` -> `psh: -c: No such file or directory` rc=127 (matches bash).",
+      "note": "invocation.py:295 terminates only on '--'/'-'; a bare '+' (len 1) misses the `len(arg) > 1` cluster branch at :335-338 and hits raise _invalid_option. Lone '-' and '+x' clusters match bash 5.3.15; only bare '+' diverges, in -c, stdin and script-operand forms."
+    }
+  ]
+}

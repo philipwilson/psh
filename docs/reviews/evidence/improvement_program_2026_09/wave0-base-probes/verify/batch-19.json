@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "head": "6459f1a6 (v0.779.0)",
+    "oracle": "/opt/homebrew/bin/bash GNU bash 5.3.15(1)-release",
+    "python": "3.14.7",
+    "date": "2026-09-06",
+    "scratch": "/Users/pwilson/src/psh/tmp/program-2026-09/batch19/ (psh.sh runner, c120_bench.py, c126_inject.py, c127_inject.py, c128_bench.py, *.out)"
+  },
+  "results": [
+    {
+      "cid": "C120",
+      "status": "live",
+      "bash53_output": "n/a (psh-only parser cost; no bash oracle)",
+      "psh_output": "Direct API parse_with_inputs on pre-lexed tokens (min of 30): simple 0.024/0.135ms 5.73x; pipeline6 6.15x; andor20 6.88x; if_for_while 4.47x; case_func 3.85x; nested_subshell4 5.06x; arith_cmdsub 1.84x. Linearity 'echo a; '*N: N=50..800 pc-per-doubling 2.01x/1.98x/2.00x/2.01x, pc/rd 5.57-5.77x. Nested parens D=8/16/32 pc/rd 4.91/4.78/4.56x; D=64 combinator raised RecursionError (rd=0.57ms ok). Parse-call count for run_command('x=1; echo $x >/dev/null'): [recursive_descent] {'rd_parse': 1, 'rd_parse_outcome': 1, 'pc_parse': 0}; [combinator] {'rd_parse': 1, 'rd_parse_outcome': 1, 'pc_parse': 1} (RD parse_outcome wraps parse, so RD=1 parse; combinator=1 RD trial + 1 combinator parse).",
+      "note": "Still as described: 3.85-6.88x RD on 6/7 shapes (1.84x on the cmdsub/arith-heavy shape), linear ~2.00x per doubling on flat lists, and every input is parsed twice under --parser combinator (RD trial in parser/session.py#_trial_parse + combinator execution parse), exactly as lex_parse.py's docstring documents. Extra observation: combinator hits RecursionError at 64 nested parens where RD parses fine. Per the finding's own notes this is DEFERRED/by-design (§7) — do not queue; 'live' here means the measurement reproduces, not that it is a defect."
+    },
+    {
+      "cid": "C122",
+      "status": "live",
+      "bash53_output": "n/a (psh-only AST tooling); tree format renders the same AST with correct nesting",
+      "psh_output": "psh --debug-ast=sexp -c 'a && b || c' ->\n(Program\n  :statements (AndOrList @line1\n      :expression (||\n        (&& (Pipeline @line1\n  :commands (SimpleCommand\n      :arguments (a))) (Pipeline @line1\n  :commands (SimpleCommand\n      :arguments (b))))\n        (Pipeline @line1\n          :commands (SimpleCommand\n              :arguments (c))))))",
+      "note": "Reproduced at HEAD via --debug-ast=sexp (PSH_AST_FORMAT is the shell-variable route to the same renderer). Inside the (&& ...) operator both Pipeline operands' ':commands' lines restart at column 2, while the || node's direct ASTNode child (Pipeline c) is indented correctly at column 8/10 — the asymmetry is exactly _render_sexp_list's operator branch calling _render_node(x, 0) (sexp_renderer.py:240-245). The same happens at every depth: 'a && { b && c; } || d' shows the inner BraceGroup subtree indented relative to column 0, not its parent. Tree format renders the identical AST correctly."
+    },
+    {
+      "cid": "C124",
+      "status": "live",
+      "bash53_output": "-c x3: rc=0 out=[] err=[] / rc=0 out=[] err=[] / rc=0 out=[] err=[]; script file: rc=0 err=[]; stdin: rc=0 err=[]. Controls: `sh -c \"kill -TERM \\$\\$\" | cat` rc=0 err=[]; `{ ...; } | cat` rc=0 err=[Terminated: 15             sh -c \"kill -TERM \\$\\$\"]; `( ( ... ) )` rc=143 err=[Terminated: 15 ...]; `( ... )` rc=143 err=[Terminated: 15 ...]",
+      "psh_output": "-c x3: rc=0 out=[] err=[Terminated: 15] (all 3 runs); script file: rc=0 err=[Terminated: 15]; stdin: rc=0 err=[Terminated: 15]. Controls: bare `cmd | cat` rc=0 err=[]; `{ ...; } | cat` rc=0 err=[Terminated: 15]; `( ( ... ) )` rc=143 err=[Terminated: 15]; `( ... )` rc=143 err=[Terminated: 15]",
+      "note": "Repro `( sh -c \"kill -TERM \\$\\$\" ) | cat`: bash 5.3.15 is silent in all three input modes (-c, script file, stdin); psh prints 'Terminated: 15' to stderr in all three (3/3 runs in -c). Exit status matches (0). All four controls from the notes reproduce: bare `cmd | cat` silent in both, `{ } | cat` announces in both, nested `( ( ) )` and plain `( )` announce in both. Mechanism unchanged: subshell.py's pipeline-member arm re-raises the signal (_reraise_child_signal_death) so the enclosing pipeline announces it (job_control.py#report_signal_death_at), whereas bash does not announce a subshell member's signal death."
+    },
+    {
+      "cid": "C126",
+      "status": "live",
+      "bash53_output": "n/a (internal fault-injection on psh's pipeline launch loop)",
+      "psh_output": "Injected on the 3rd ProcessLauncher.launch of 'sleep 30 | echo hi | cat' (in-process Shell, PSH_STRICT_ERRORS=1). [A: OSError] outcome: run_command returned rc=1 (stderr 'psh: line 1: <command>:1: unexpected error: [Errno 24] injected EMFILE'); fds leaked in parent: {}; member#1 ECHILD (already reaped); member#2 ECHILD (already reaped). [B: RuntimeError] outcome: EXCEPTION RuntimeError: injected non-OSError; fds leaked in parent: {3: 'fifo', 4: 'fifo', 6: 'fifo'}; member#1 pid RUNNING (waitpid WNOHANG -> (0,0)); member#2 RUNNING; after closing leaked fds: member#1 still RUNNING (sleep 30), member#2 exited, reaped now: status=13.",
+      "note": "Confirmed by fault injection (scratch c126_inject.py monkeypatching shell.process_launcher.launch). With an OSError (inside `except (OSError, ValueError)` at pipeline.py:344) the rollback works: no fds leaked, both forked members SIGKILLed and reaped. With a RuntimeError the rollback is skipped: three FIFO fds leak in the parent (sync pipe r/w + the carried boundary read end), the leader keeps running, and member#2 (`echo hi`, which would exit instantly if released) stays blocked on the sync-pipe read — it only ran/exited (SIGPIPE, its consumer was never forked) once the harness closed the leaked fds. Code argument from #23 holds at HEAD; no in-shell trigger constructed (launch() itself documents only OSError), so this remains an unproven-from-the-shell defensive gap."
+    },
+    {
+      "cid": "C127",
+      "status": "live",
+      "bash53_output": "n/a (internal fault-injection on psh's foreground pipeline wait)",
+      "psh_output": "control (PSH_TEST_FORCE_GROUPWAIT_ECHILD=1 seam, real per-pid reclaim): 'true | false' -> 'control: PIPESTATUS=0 1 rc=1', run_command rc=0. With JobManager._reclaim_orphaned_by_pid stubbed to a no-op: [default] EXCEPTION IndexError: list index out of range — trace ... pipeline.py line 342 _execute_pipeline -> pipeline.py line 439 _wait_for_foreground_pipeline; [pipefail] run_command('true | true') returned rc=0; PIPESTATUS=[]",
+      "note": "Confirmed by fault injection (scratch c127_inject.py): forcing the group wait to ECHILD via the existing PSH_TEST_FORCE_GROUPWAIT_ECHILD seam and making the per-pid reclaim find nothing drives wait_for_job through mark_orphaned_completed with every member status=None, so collect_all_statuses returns [] and pipeline.py:439 `all_statuses[-1]` raises IndexError (an internal-defect class under strict-errors); under pipefail the loop is simply skipped and the pipeline silently reports rc=0 with PIPESTATUS=[]. Reachability caveat: the natural path needs group-wait ECHILD AND per-pid ECHILD on every member AND no recorded status; the interactive SIGCHLD notifier does record statuses (signal_manager.py:590), so I could not construct it from the shell — same standing as in #23 (code argument, now injection-demonstrated)."
+    },
+    {
+      "cid": "C128",
+      "status": "live",
+      "bash53_output": "n/a (psh internal scaling; not a behavioural divergence)",
+      "psh_output": "run_command timing, min of 3 (ms; x = ratio vs previous N): N=4000 literal 1.1 | dq_value 2.8 | unq_value 3.1 | pattern 2.0; 8000 1.9(1.83x) | 5.7(2.02x) | 6.2(2.00x) | 3.9(1.92x); 16000 3.7(1.94x) | 11.8(2.05x) | 12.7(2.04x) | 7.5(1.95x); 32000 7.3(1.95x) | 26.7(2.26x) | 27.9(2.20x) | 14.4(1.91x); 64000 14.0(1.91x) | 71.4(2.68x) | 75.2(2.69x) | 28.5(1.98x); 128000 27.7(1.99x) | 275.9(3.86x) | 279.0(3.71x) | 56.6(1.99x). Instrumented operands._run on 5000-char operand: DQ value calls=5000 chars_copied=12502500 (n(n+1)/2=12502500); unquoted value calls=5000 chars_copied=12502500; pattern operand calls=0 chars_copied=0.",
+      "note": "Reproduced at HEAD. `: \"${u:-<128000 a's>}\"` takes 275.9ms with the per-doubling ratio climbing 2.02x -> 3.86x (reviewer: 252.8ms, 5.20x), while the plain-literal and `${y#...}` pattern-operand controls stay flat at ~1.9-2.0x. Instrumenting _run shows exactly 5000 calls and 12,502,500 chars copied = n(n+1)/2 for a 5000-char value operand (both DQ and unquoted contexts): _OperandFieldBuilder.emit (operands.py:162-169) rebuilds `runs[-1].text + text` on every per-character emit from the value-operand walkers (operands.py:373/470/485). The pattern path makes zero _run calls. Not a behavioural divergence; performance-only."
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+== identity
+tree=/Users/pwilson/src/psh-w0d  cwd=/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/tmp.869jSbX4aQ
+bash 5.3.15(1)-release
+psh discriminator: /Users/pwilson/src/psh-w0d/psh/__init__.py
+psh.__file__ = /Users/pwilson/src/psh-w0d/psh/__init__.py
+
+== C153: PS1='\#> ' via ${PS1@P} after a few commands
+-- -c mode
+bash: 1>  1>  1>  
+psh:  2>  2>  2>  
+-- script mode
+bash: 2>  2>  2>  
+psh:  2>  2>  2>  
+-- stdin mode
+bash: 2>  2>  2>  
+psh:  2>  2>  2>  
+
+== C181: -c + set -m, background job finishing before exit
+-- bash -c
+rc=0 stdout=end| stderr=
+-- psh -c
+rc=0 stdout=end| stderr=
+-- bash -c (jobs listing variant)
+rc=0 stdout=[1]+  Done                       sleep 0.1|end| stderr=
+-- psh -c (jobs listing variant)
+rc=0 stdout=end| stderr=
+-- bash script
+rc=0 stdout=end| stderr=
+-- psh script
+rc=0 stdout=end| stderr=

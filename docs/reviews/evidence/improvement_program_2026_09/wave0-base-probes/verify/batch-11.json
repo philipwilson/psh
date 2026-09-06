@@ -1,0 +1,46 @@
+{
+  "results": [
+    {
+      "cid": "C046",
+      "status": "live",
+      "bash53_output": "bash -c 'a[\"x`echo \"]\"`\"]=v' -> stderr: /opt/homebrew/bin/bash: line 1: x]: arithmetic syntax error: invalid arithmetic operator (error token is \"]\") rc=1. With declare -A: declare -A a=([\"x]\"]=\"v\" ) rc=0",
+      "psh_output": "Traceback ... psh/lexer/modular_lexer.py: RuntimeError: lexer made no progress at position 12 ('\"') \u2014 no recognizer or expansion parser consumed the character; this is a psh bug, please report the input  (both with and without PSH_STRICT_ERRORS=1; same with declare -A prefix)",
+      "note": "-c mode. RuntimeError still CLI-reachable at HEAD 6459f1a6. The guard comment at psh/lexer/modular_lexer.py:264-271 still reads 'found ZERO inputs that reach this point' \u2014 the census claim is still false (this input reaches it). bash_expected was blank in the report; recorded bash 5.3.15 behaviour above for reference."
+    },
+    {
+      "cid": "C047",
+      "status": "live",
+      "bash53_output": "bash -c 'x=q; a[${x:-{}]=v; echo \"${a[q]}\"' -> v rc=0. declare -A variant: declare -A a=([q]=\"v\" ). Prefix form 'a=${x:-{}b env | grep ^a=' -> a=qb",
+      "psh_output": "psh -c 'x=q; a[${x:-{}]=v; echo \"${a[q]}\"' -> stderr: psh: line 1: a[${x:-{}]=v: command not found; stdout empty line. declare -A variant -> declare -A a=(). Prefix form -> a=qb (matches). Python-level: find_closing_delimiter('a[${x:-{}]=v',4,'{','}') -> (12, False); validate_brace_expansion(same,4) -> ('x:-{', 9, True); skip_expansion_region(text,2) -> None. Single-quote case: find_closing_delimiter(\"${x:-'\\\\'}\",2) -> (9, False) vs validate_brace_expansion -> (\"x:-'\\\\'\", 9, True).",
+      "note": "-c mode. Both mechanisms confirmed at Python level: find_closing_delimiter (used via skip_expansion_region by _subscript_confirms_assignment/build_assignment_prefix_map) nests a bare '{' and applies backslash-escape before single-quote tracking; validate_brace_expansion handles both correctly. User-visible only for the subscript form: the assignment-prefix form a=${x:-{}b and the single-quote-backslash subscript declare -A a; a[${x:-'\\'}]=v both match bash at shell level (psh: declare -A a=([\"\\\\\"]=\"v\" ))."
+    },
+    {
+      "cid": "C048",
+      "status": "live",
+      "bash53_output": "bash -c \"echo $(python -c \\\"print('abcde[ '*2000)\\\")\" -> prints the 2000 literal words; wall 31 ms",
+      "psh_output": "Lexer tokenize() best-of-3, line = 'abcde[ '*n vs control 'abcde_ '*n: n=250 31.4ms vs 2.6ms (11.9x); n=500 119.4ms (3.80x per doubling) vs 5.3ms (2.02x); n=1000 465.8ms (3.90x) vs 10.7ms (2.01x); n=2000 len=14000 1843.4ms (3.96x) vs 22.0ms (2.05x) -> 83.8x. End-to-end psh -c same n=2000 line: 2019 ms wall (psh -c 'echo x' baseline 119 ms).",
+      "note": "Repro reconstructed: n identifier-prefixed unmatched '[' words ('abcde[ ') on one physical line, ~14KB at n=2000. Per-doubling ratios ~3.8-4.0x (quadratic) vs 2.0x for a bracket-free line of identical length; matches the report's 3.74/3.93/4.39x and ~95x. Mechanism unchanged: literal.py:232-234 calls _subscript_confirms_assignment(allow_whitespace=True) for every identifier-prefixed '[', which copies text[pos:] (word_scanners.py:446) and scans to end of line."
+    },
+    {
+      "cid": "C051",
+      "status": "live",
+      "bash53_output": "bash t6.sh -> one / t6.sh: line 2: syntax error near unexpected token `)' / t6.sh: line 2: `echo BBBBBBBBBB $(if)' rc=2. stdin mode identical with 'line 2' (no filename).",
+      "psh_output": "psh t6.sh -> one / psh: .../t6.sh:2: Parse error (line 2, column 3): syntax error: unexpected end of file / (blank) / if / '  ^' / Context: if -> HERE <-  rc=2. stdin mode: psh: <stdin>:2: Parse error (line 2, column 3) ... same body-local 'if' source line.",
+      "note": "Script-file and stdin modes both exercised. t6.sh reconstructed as 'echo one' / 'echo BBBBBBBBBB $(if)' (the 'if' is at file column 18). Line number (2) is correct in both modes; column 3 and the displayed source line 'if' are body-local, exactly as reported. Non-nested control check (3-line heredoc then 'if true; then' / 'fi'): psh reports line 6, column 1 with source line 'fi', matching bash's 'line 6' \u2014 non-nested path still correct. Message wording also differs (psh 'unexpected end of file' vs bash 'near unexpected token `)'') but that is secondary."
+    },
+    {
+      "cid": "C052",
+      "status": "live",
+      "bash53_output": "spaced: /opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `(' rc=2. unbalanced-close: /opt/homebrew/bin/bash: -c: line 1: syntax error near `;i++)' rc=2. restore check 'for (x) in a; do :; done': syntax error near unexpected token `(' rc=2.",
+      "psh_output": "spaced 'for ( (i=0;i<2;i++) ); do echo $i; done' -> 0 / 1 rc=0. unbalanced 'for ((i=0;i<2;i++) ); do echo $i; done' -> 0 / 1 rc=0. restore check -> psh: -c:1: Parse error (line 1, column 5): Expected variable name, got '(' rc=2.",
+      "note": "-c mode. psh still accepts both malformed headers and runs the loop. Minor oracle wording note: bash 5.3.15 reports the unbalanced-close form as \"syntax error near `;i++)'\" whereas the report (5.2.26) quoted \"syntax error near `)'\"; both rc=2 syntax errors, so the divergence classification is unaffected. Restore path (for (x) in ...) still errors in both shells rc=2."
+    },
+    {
+      "cid": "C056",
+      "status": "live",
+      "bash53_output": "bash -c 'time -p ! false; echo rc=$?' -> real 0.00 / user 0.00 / sys 0.00 / rc=0",
+      "psh_output": "RD parser: real 0.00 / user 0.00 / sys 0.00 / rc=0 (parity). Combinator (--parser combinator): stderr 'psh: line 1: !: command not found' then real 0.00 / user 0.00 / sys 0.00 / rc=127. Combinator without -p ('time ! false') -> rc=0 (parity).",
+      "note": "-c mode. Combinator-only divergence exactly as described: with -p the '!' arrives as a WORD and is executed as the command name (rc=127); RD parser and the no -p combinator form match bash."
+    }
+  ]
+}

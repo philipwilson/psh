@@ -1,0 +1,50 @@
+{
+  "batch": 27,
+  "head": "6459f1a6",
+  "version": "v0.779.0",
+  "oracle": "GNU bash 5.3.15(1)-release /opt/homebrew/bin/bash",
+  "results": [
+    {
+      "cid": "C207",
+      "status": "live",
+      "bash53_output": "file mode, stdin L1/L2/L3, script `IFS= read -r a; true 3<&0-; if IFS= read -r b; then echo \"alive<$b>\"; else echo \"dead rc=$?\"; fi; printf 'a<%s>\\n' \"$a\"`:\n/Users/pwilson/src/psh/tmp/program-2026-09/verify/c207.sh: line 3: read: 0: read error: Bad file descriptor\ndead rc=1\na<L1>\nrc=0\n-c mode: identical (`bash: line 3: read: 0: read error: Bad file descriptor` / dead rc=1 / a<L1>). Output-side variant `exec 5>f; true 6>&5-; echo x >&5` -> `line 3: 5: Bad file descriptor` / fd5 dead rc=1.",
+      "psh_output": "file mode: alive<L2>\\na<L1>\\nrc=0. -c mode: identical (alive<L2> / a<L1>). Output-side variant: `fd5 alive`, and `x` lands in f.",
+      "note": "Still diverges exactly as declared in D-4B.4-s2: for a per-command (temp-frame) move `n<&m-`/`n>&m-`, bash 5.3.15 closes the SOURCE fd permanently in the parent (fd 0 / fd 5 dead after the command), psh restores it. Both -c and script-file modes, both directions. Control: EXEC-level move `exec 6<&0; exec 7<&6-` is PARITY (both shells: `fd7<E1>`, `6: Bad file descriptor`, fd6 dead) \u2014 the divergence is temp-frame-only, matching the Checkpoint-R precision note. bash 5.3.15 behaves the same as the 5.2 record. Code: psh/io_redirect/manager.py:590-624 (_split_move_dup) + file_redirect.py:739-760/1199-1201."
+    },
+    {
+      "cid": "C208",
+      "status": "fixed",
+      "bash53_output": "Raw no-wait probe `exec 9>out9; echo data > >(sleep 0.4; cat >&9); echo parent-exit`: parent-exit / at-exit fd9=[] / after-0.8s fd9=[data]. Bare-wait by-catch `exec 9>out9; echo data > >(sleep 1; cat >&9); wait`: elapsed=1.04 fd9=[data].",
+      "psh_output": "Raw no-wait probe: parent-exit / at-exit fd9=[] / after-0.8s fd9=[data] (identical to bash). tests/integration/redirection/test_process_sub_closed_fds.py: `11 passed in 2.43s` x3 consecutive runs (incl. the 4 write-side cases). Bare-wait by-catch: elapsed=0.14 fd9=[] (diverges).",
+      "note": "The 'write-side procsub nightly race' is the 2026-07-27/-30 Linux-nightly intermittent on test_write_side_procsub_closed_fds_matches_bash (LEDGER.md:329): a TEST-HARNESS race (post-exit orphan sweep vs an un-waited `>(...)` child), not a shell divergence \u2014 neither shell waits for `>(cmd)` at command end, confirmed identical here on bash 5.3.15 and psh. Closed v0.759.0 (test-only completion barrier `_WRITE_BODY`, CHANGELOG.md:546) BEFORE r23 (v0.779.0); r23's io.md:69 lists it only for completeness. Test green 3/3 locally on macOS; the Linux nightly itself cannot be run here. The by-catch divergence (psh bare `wait` ignores procsub children: 0.14s/empty vs bash 1.04s/data) is STILL LIVE but is a separately registered successor-queue item (LEDGER.md:330), not this finding."
+    },
+    {
+      "cid": "C209",
+      "status": "live",
+      "bash53_output": "n/a (psh-internal efficiency finding; no bash oracle).",
+      "psh_output": "psh/ast_nodes/commands.py:32-47: `@property def args(self)` -> `return [word.display_text() for word in self.words]`, docstring 'Recomputed per access \u2014 do not mutate the returned list.' Static count: 36 `.args` sites in psh/visitor/enhanced_validator_visitor.py (3 in visit_SimpleCommand + 33 in helpers it calls: _handle_special_commands 11, _process_variable_assignments 9, _check_security_issues 4, _should_warn_undefined 4, _check_quoting_issues 3, ...). Monkeypatch probe (tmp/program-2026-09/verify/c209_probe.py), one visit_SimpleCommand on `echo \"hello $x\" > out.txt`: EnhancedValidatorVisitor computed args 17 times; Linter 3; Security 2; Metrics 3; Validator 3.",
+      "note": "Unchanged at HEAD: args is still a derived per-access property. The report's '36x' is the static site count in enhanced_validator_visitor.py's visit_SimpleCommand call tree; measured dynamic recomputation is 17 per visit for a two-word command (more helpers fire for longer/assignment-bearing commands). Executor (psh/executor/command.py:319, :667) touches node.args only 2-3 times per command and takes execution semantics from `words`, so it is unaffected as the report says. Efficiency-only; no behavioral divergence."
+    },
+    {
+      "cid": "C212",
+      "status": "live",
+      "bash53_output": "bash 5.3.15 under a Python pty (`bind -m vi-insert -p | grep C-r`): `\"\\C-r\": reverse-search-history`; vi-command: `\"\\C-r\": reverse-search-history`; emacs: `\"\\C-r\": reverse-search-history`. BASHVER=5.3.15(1)-release.",
+      "psh_output": "Probe of psh.interactive.keybindings: `vi-insert CTRL_R -> None`; `vi-normal CTRL_R -> redo`; `emacs CTRL_R -> reverse_search_history`. Source keybindings.py:138-148 ViKeyBindings.insert_bindings has no CTRL_R entry; :173 normal_bindings binds CTRL_R to 'redo'.",
+      "note": "Confirmed live via direct class probe (no PTY needed for psh side; bash side needed pty.fork because `script` has no tty in this sandbox). readline vi-insert binds C-r to reverse-search-history; psh vi-insert leaves it unbound. Precision extra beyond the report: psh vi-NORMAL binds C-r to `redo`, whereas readline's vi-command keymap also binds C-r to reverse-search-history (readline has no redo on C-r), so both vi keymaps diverge. Emacs mode is parity. The reverse-search machinery exists (history_nav.py:135, line_editor.py:388/603) \u2014 only the vi bindings are missing."
+    },
+    {
+      "cid": "C213",
+      "status": "live",
+      "bash53_output": "cwd /private/var/.../tmp.E9PRSSLqPi/a/b/c/d, `PS1='\\w'; PROMPT_DIRTRIM=n; echo \"${PS1@P}\"`: unset -> full path; 0 -> full path; 1 -> [.../d]; 2 -> [.../c/d]; 3 -> [.../b/c/d]; `\\W` DT=1 -> [d]. HOME-relative ~/a/b/c/d/e: DT=1 [~/.../e]; DT=2 [~/.../d/e]; DT=3 [~/a/b/c/d/e] (untrimmed when only <=2 leading components would be elided; ~/x/y/z DT=2 also untrimmed).",
+      "psh_output": "Same cells: every PROMPT_DIRTRIM value prints the full path, e.g. `DIRTRIM=2 w=[/private/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/tmp.E9PRSSLqPi/a/b/c/d]`; HOME-relative DT=1/2/3 all [~/a/b/c/d/e]. `\\W` DT=1 -> [d] (matches). `grep -rn PROMPT_DIRTRIM psh/ docs/user_guide/ tests/` -> no hits.",
+      "note": "Live: PROMPT_DIRTRIM is entirely unimplemented (zero references in the psh tree); prompt.py:317-330 `_get_cwd`/`_get_cwd_basename` do only ~ substitution. Verified non-interactively via ${PS1@P} in -c mode on both shells. Note for an eventual fix: bash 5.3.15 does not trim when the elision would drop only 1-2 leading components (observed ~/x/y/z DT=2 and ~/a/b/c/d/e DT=3 untrimmed) \u2014 pin that edge, not just the simple case. \\W is unaffected (parity)."
+    },
+    {
+      "cid": "C214",
+      "status": "live",
+      "bash53_output": "`printf 'echo hi\\nexit 3\\n' | bash --norc --noprofile -i`: rc=3, stdout=[hi], stderr=[bash: cannot set terminal process group (49273): Inappropriate ioctl for device\\nbash: no job control in this shell\\n<PS1 prompt>$ echo hi\\n<PS1 prompt>$ exit] (prompts printed and each input line echoed on stderr). Discriminators: dash=hiBHs, ps1set=yes, INTERACTIVE. `set -u; echo \"$nope\"; echo after rc=$?` -> rc=0 stdout=[after rc=1] (continues after the error).",
+      "psh_output": "`printf 'echo hi\\nexit 3\\n' | python -m psh --norc -i`: rc=3, stdout=[hi], stderr=[] (no prompt, no echo, no REPL). Discriminators: dash=hiBHs, ps1set=yes, INTERACTIVE (identical to bash). `set -u` cell: rc=0 stdout=[after rc=1] stderr=[psh: nope: unbound variable] (continues, identical to bash).",
+      "note": "Live as a deliberate, documented design choice: psh/__main__.py:268 gates the REPL on `stdin.isatty()`; the comment at :279-290 states that under -i piped input keeps the interactive flag, rc/history loading and interactive-family abort policy but 'no REPL'. Observed divergence is confined to the prompt/echo channel: bash -i on a pipe runs readline over the non-tty stdin, printing PS1 before each line and echoing the line to stderr; psh prints nothing. Exit status, stdout, $- flags, PS1 presence, and the set -u continue-after-error policy all match bash 5.3.15. Mode: stdin piped with -i (only mode that matters; -c/script are unaffected)."
+    }
+  ]
+}

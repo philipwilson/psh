@@ -1,0 +1,36 @@
+{
+  "batch": 9,
+  "head": "6459f1a6",
+  "psh_version": "0.779.0",
+  "oracle": "GNU bash 5.3.15(1)-release /opt/homebrew/bin/bash",
+  "results": [
+    {
+      "cid": "C035",
+      "status": "live",
+      "bash53_output": "PTY (bash 5.3.15 --norc, cwd has 'my dir/file1.txt'): 'cat my'<TAB><TAB> -> line reads `cat my\\ dir/file1.txt ` (readline completed THROUGH the escaped `my\\ dir/` it produced). Raw: b'P$ cat my\\\\ dir/file1.txt ^C'",
+      "psh_output": "In-process: get_completions('cat my',6) -> (4, ['my dir/']); editor after 1st Tab: 'cat my\\\\ dir/'; 2nd Tab: find_word_start -> 8, word='dir/', completions [] -> bell, line unchanged. _get_path_completions('my\\\\ dir/fi') -> [] while unescaped 'my dir/fi' -> ['my dir/file1.txt']. PTY (psh --norc): 1st Tab -> `cat my\\ dir/`, 2nd Tab -> \\x07 (bell), no change.",
+      "note": "LIVE at HEAD 6459f1a6. Code unchanged from finding: tab_completion.py find_word_start stops at ' \\t;|&<>' with no backslash check in the unquoted branch; _get_path_completions feeds the raw (escaped) word to os.path.split/listdir with no unescaping; escape_path() output cannot be consumed by the same engine. Verified both in-process (no PTY) and in a real PTY against bash 5.3.15; bash round-trips its own escaping, psh does not."
+    },
+    {
+      "cid": "C036",
+      "status": "live",
+      "bash53_output": "PTY (bash 5.3.15 --norc, hard timeout): `set -o vi` then Ctrl-D on empty line -> EXITED True status 0, output ends '...P$ \\r\\r\\nexit\\r\\n'. Emacs control: Ctrl-D -> EXITED True status 0.",
+      "psh_output": "PTY (psh --norc): `set -o vi` then Ctrl-D on empty line -> EXITED False (still alive after 10s, SIGKILLed); prompt redrawn, nothing else. Emacs control: Ctrl-D -> EXITED True status 0. In-process: LineEditor(edit_mode='vi')._dispatch_char('\\x04') -> None, _get_key_action('\\x04') -> None; emacs -> 'eof'. ViKeyBindings.insert_bindings has CTRL_D: False, normal_bindings: False; EmacsKeyBindings: True.",
+      "note": "LIVE at HEAD. keybindings.py ViKeyBindings binds CTRL_D in neither insert nor normal table (only emacs table line 85 -> 'delete_char', whose handler returns 'eof' on empty line). In vi mode _dispatch_char finds no action and drops the byte because ord('\\x04') < 32, so the repl's ignoreeof/EOF path (repl_loop.py:91-96) is unreachable under set -o vi. Driven both in a real PTY (both shells) and in-process."
+    },
+    {
+      "cid": "C037",
+      "status": "live",
+      "bash53_output": "(D = realpath'd temp dir; PS1='\\w', observed via ${PS1@P}, -c mode; script and stdin modes identical) T1 in-shell `export HOME=$D/home; cd $D/home/sub` -> w=~/sub W=sub. T2 HOME=$D/home in env at startup; cd $D/homeEVIL -> w=/private/var/.../tmp.9iytk8KhWs/homeEVIL W=homeEVIL. T3 startup HOME; cd $D/home/sub -> w=~/sub. T4 cd $D/home -> w=~ W=~.",
+      "psh_output": "T1 (in-shell export HOME) -> w=/private/var/.../tmp.9iytk8KhWs/home/sub W=sub (shell $HOME ignored; child processes and ~ DO see the new HOME: `export HOME=/nonexist/zz; echo ~` -> /nonexist/zz, so only prompt.py's expanduser path is stale). T2 (startup HOME; cd $D/homeEVIL) -> w=~EVIL W=~EVIL in -c, script AND stdin modes (bash: full path / homeEVIL). T3 -> w=~/sub (matches). T4 -> w=~ (matches).",
+      "note": "LIVE at HEAD; both sub-claims reproduce in -c, script-file and stdin modes. prompt.py _get_cwd (lines 317-323) still does home=os.path.expanduser('~') + cwd.startswith(home) with no path-separator check. Gotcha for repro: use a realpath'd $D on macOS \u2014 with a /var/... (symlinked) $D the psh full path is caused by os.getcwd() returning /private/var/... instead, masking the prefix bug. ASIDE (not the claim): psh \\w reports the PHYSICAL cwd (os.getcwd(), /private/var/...) where bash reports logical $PWD (/var/...)."
+    },
+    {
+      "cid": "C038",
+      "status": "live",
+      "bash53_output": "PTY (bash 5.3.15 --norc, cwd basename = 'proj\\x07\\x1b]0;OWNED\\x07'): output b'\\x1b[?2004hP$ exit\\r\\n\\x1b[?2004l\\rexit\\r\\n' \u2014 no OSC 0 / title write at all.",
+      "psh_output": "PTY (psh --norc, same cwd): first bytes b'\\x1b]0;proj\\x07\\x1b]0;OWNED\\x07 \\xe2\\x80\\x94 psh \\xe2\\x80\\x94 80\\xc3\\x9724\\x07P$ ...' \u2014 OSC closes at the first BEL after 'proj' and the attacker sequence \\x1b]0;OWNED\\x07 is emitted verbatim. In-process (stdout.isatty patched True, TERM=xterm): set_terminal_title(idle_title(shell)) -> '\\x1b]0;proj\\x07\\x1b]0;OWNED\\x07 \u2014 psh \u2014 80\u00d724\\x07'; command_title('ls \\x1b]0;CMD-OWNED\\x07') -> also unsanitized.",
+      "note": "LIVE at HEAD; SECURITY-RELEVANT (flag to user). title.py:21 still writes f'\\033]0;{title}\\007' with no sanitization of PWD basename or command text; emitted unconditionally on every idle prompt (repl_loop.py:84,87) and at command/pipeline launch (strategies.py:635, pipeline.py:170); no opt-out. Verified in a real PTY with a directory whose name contains BEL + an OSC sequence, and in-process."
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "batch": 17,
+  "head": "6459f1a6",
+  "psh_version": "0.779.0",
+  "oracle": "GNU bash, version 5.3.15(1)-release (aarch64-apple-darwin25.4.0) at /opt/homebrew/bin/bash",
+  "python": "3.14.7",
+  "results": [
+    {
+      "cid": "C088",
+      "status": "live",
+      "bash53_output": "N/A (psh-internal startup-cost finding; no bash oracle)",
+      "psh_output": "`psh --version` -> 'Python Shell (psh) version 0.779.0' rc=0. /usr/bin/time: psh --version real 0.09s x5; version.py loaded via spec_from_file_location (no package __init__) real 0.02-0.03s x3; bare `python -c pass` 0.02s. -X importtime cumulative: psh 65335us, psh.shell 65281us, psh.builtins 37092us, psh.version 46us self. 237 psh.* modules land in sys.modules on the --version path. Even `python -c 'import psh.version'` costs 65715us cumulative because psh/__init__.py runs first.",
+      "note": "Mechanism unchanged at HEAD: psh/__init__.py:3 `from .shell import Shell` and psh/__main__.py:26 `from .shell import Shell` both run before main() handles --version at __main__.py:169. Host-specific numbers: ~90ms wall vs ~25ms for version.py alone (~70% avoidable, vs report's 79%); psh.builtins is 37ms of psh.shell's 65ms (report: 42 of 74). Efficiency finding, not a behavioral divergence."
+    },
+    {
+      "cid": "C089",
+      "status": "live",
+      "bash53_output": "-c mode, each of '%-%' '%5%' '%.2%' '%05%' '%+%' '% %' '%#%' '%-5%' '%l%': stderr \"/opt/homebrew/bin/bash: line 1: printf: `%': invalid format character\", stdout '' rc=1. '%%' -> '%' rc=0. Output stops at the bad spec: printf 'A%-%B\\n' -> stdout 'A', rc=1. Script file s.sh: \"s.sh: line 1: printf: `%': invalid format character\" rc=1. stdin: same message, rc=1.",
+      "psh_output": "-c mode, all nine flag/width/precision/length-before-% formats: stdout '%' rc=0, no stderr. '%%' -> '%' rc=0 (matches). printf 'A%-%B\\n' -> stdout 'A%B\\n' rc=0 (does not stop). Script file: '% rc=0'. stdin: '% rc=0'.",
+      "note": "9/10 battery cases diverge in all three input modes (-c, script file, stdin); only '%%' matches. bash 5.3.15 message text is exactly \"printf: `%': invalid format character\" (same as 5.2). Code at psh/utils/printf_formatter.py:150-153 still has `if spec.conversion == '%': # e.g. '%-%' — bash prints '%'` and emits '%' — the comment asserts the opposite of bash 5.3.15."
+    },
+    {
+      "cid": "C097",
+      "status": "live",
+      "bash53_output": "PTY (pty.fork, LANG=LC_ALL=en_US.UTF-8, `bash --norc -i`): typed `echo -n `, then b'\\xc3' as one write, 0.4s pause, b'\\xa9' as a second write, then ` | od -An -tx1\\r`. od output: 'c3  a9' — readline assembled the split bytes into one U+00E9. (Column-width half: bash side not re-driven via PTY; readline's wcwidth-based measurement taken as the reference.)",
+      "psh_output": "Same PTY script against `python -m psh --norc`: od output 'ef  bf  bd  ef  bf  bd' — two U+FFFD; the OSC title even shows 'echo -n \\ufffd\\ufffd | od -An -tx1'. In-process probe (KeyDecoder(fd)._read_char on a pipe): write b'\\xc3' -> read '\\ufffd'; write b'\\xa9' -> read '\\ufffd' (['U+FFFD','U+FFFD']); control b'\\xc3\\xa9' in one write -> 'é' U+00E9; latin-1 b'\\xe9' -> U+FFFD (replaced, not surrogateescaped). line_layout.visible_prompt_length: '漢' (EAW=W) -> 1; 'e'+U+0301 -> 2; U+1F600 emoji (EAW=W) -> 1; 'ab$ ' -> 4.",
+      "note": "Driven both in-process (scratch script tmp/program-2026-09/batch17/c097_probe.py) and end-to-end in a PTY (tmp/program-2026-09/batch17/c097_pty.py) — the 'not reproducible via pipe' caveat from the report is closed: a PTY delivering the two bytes in separate reads reproduces it against a live bash 5.3.15 comparison. key_decoder.py:285-289 still does per-chunk data.decode('utf-8', errors='replace') (no incremental decoder); line_layout.py:43 still returns len(text); grep finds no wcwidth/east_asian_width/unicodedata anywhere in psh/interactive/. Last commits touching the files (cef2a384, d0f31beb) did not change this."
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "cid": "C158",
+      "status": "live",
+      "bash53_output": "bash -c 'echo \"[$0]\"' '' a -> stdout `[]` rc=0 | bash -c 'nosuch' '' -> stderr `: line 1: nosuch: command not found` rc=127 | control (name=myname): `[myname]` / `myname: line 1: nosuch: command not found` rc=127",
+      "psh_output": "psh -c 'echo \"[$0]\"' '' a -> stdout `[psh]` rc=0 | psh -c 'nosuch' '' -> stderr `psh: line 1: nosuch: command not found` rc=127 | control (name=myname): `[myname]` / `myname: line 1: nosuch: command not found` rc=127 (matches bash)",
+      "note": "Still diverges exactly as described at HEAD 6459f1a6 vs bash 5.3.15: an explicit empty-string $0 operand in -c mode is replaced by the 'psh' sentinel in both $0 and the error-location prefix. Non-empty name matches bash. Both cited sources unchanged: psh/invocation.py `argv0: str = \"psh\"` (dataclass default doubles as the no-name sentinel) and psh/core/state.py `self.script_name = script_name or \"psh\"` (falsy coercion swallows ''). Mode: -c only ($0 cannot be set via -s/script, so no other modes apply)."
+    },
+    {
+      "cid": "C161",
+      "status": "live",
+      "bash53_output": "Each of -l, -r, --login, --noprofile, --noediting, --restricted with -c 'echo \"hi from $0\"' -> stdout `hi from /opt/homebrew/bin/bash` rc=0; -D -> empty stdout rc=0 (lists $\"...\" strings only); --verbose -> stdout `echo \"hi from $0\"` + `hi from /opt/homebrew/bin/bash` rc=0. bash -v (short form) same as --verbose.",
+      "psh_output": "Each of the 8 options -> stderr `psh: <opt>: invalid option` + `Try 'psh --help' for more information.` rc=2 (all 8, -l -r -D --login --noprofile --noediting --verbose --restricted). Control: psh -v -c ... -> `echo \"hi from $0\"` + `hi from psh` rc=0 (short -v works, long --verbose does not).",
+      "note": "Still live at HEAD: all 8 bash invocation options hard-error rc2 in psh. Doc component also still open: `psh --help` option table lists -v only inside the -a..-x cluster line (no --verbose alias, and no mention that login/restricted/-D/--noprofile/--noediting are unsupported); docs/user_guide/ has no --login/--noprofile/--noediting/--restricted/--verbose mention (grep hits are only sample-script getopts examples + glossary 'Login Shell' + ch17 huponexit note); shell.py docstring still says 'psh has no login-shell concept' (lines ~617-619) so the scope decision remains invisible at CLI/--help/user-guide. --verbose remaining rc2 while -v works confirms that one is an omission, not scope."
+    },
+    {
+      "cid": "C163",
+      "status": "not_reproducible",
+      "bash53_output": "bash --rcfile </dev/null -> stderr `/opt/homebrew/bin/bash: rcfile: option requires an argument` rc=2. Same under a PTY (python pty.fork): rc=2, same message. Variant bash --rcfile -c 'echo ran' -> `-c` consumed as the rcfile value, then `echo ran` treated as script: `/opt/homebrew/bin/bash: echo ran: No such file or directory` rc=127. Control bash --rcfile ./myrc -i with stdin -> rc-file sourced (`rc-loaded`) rc=0.",
+      "psh_output": "psh --rcfile </dev/null -> stderr `psh: --rcfile requires an argument` rc=2. Variant psh --rcfile -c 'echo ran' -> `psh: echo ran: No such file or directory` rc=127 (same as bash). Control psh --rcfile ./myrc -i with stdin -> `rc-loaded` then `body` rc=0 (matches bash modulo prompt/job-control noise).",
+      "note": "The described divergence (bash rc0 + warning vs psh rc2) does not appear against bash 5.3.15: BOTH shells exit rc2 with an 'option requires an argument' diagnostic, in the exact repro mode (no -c, stdin=/dev/null) and also under a PTY. psh's invocation.py `_value_option` is unchanged (raises InvocationError status 2), so psh did not change; the bash_expected claim is what fails. Cannot confirm it as a 5.2->5.3 oracle change: no bash 5.2 binary remains (Cellar has only 5.3.15), the 5.3 NEWS has no relevant entry, and the r23 raw evidence (tmp/r23-reports/toplevel.md:84) is a bare 'bash -> rc0 warning' with no quoted output. Diagnostic only (NOT used as oracle): /bin/bash 3.2.57 also gives rc=2 `rcfile: option requires an argument`, which suggests the original 'rc0 warning' observation was a mis-read rather than a 5.2 behavior. Residual difference is message wording only (`rcfile: option requires an argument` vs `--rcfile requires an argument`), which was not the finding. No documented-difference entry is needed; ch17 has no rcfile mention and none is warranted on this evidence."
+    }
+  ]
+}

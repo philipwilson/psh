@@ -1,0 +1,52 @@
+{
+  "batch": 16,
+  "head": "6459f1a6e48b9f2cee4cda6d3b778f65ea2a417f",
+  "psh_version": "v0.779.0",
+  "oracle": "GNU bash, version 5.3.15(1)-release (aarch64-apple-darwin25.4.0) at /opt/homebrew/bin/bash",
+  "date": "2026-09-06",
+  "scratch": "/Users/pwilson/src/psh/tmp/program-2026-09/batch16/",
+  "results": [
+    {
+      "cid": "C081",
+      "status": "live",
+      "bash53_output": "bash -c 'echo >(true)' -> stdout '/dev/fd/63' rc=0 (same in script mode). Contrast bash -c 'echo <(true)' -> '/dev/fd/63'.",
+      "psh_output": "psh -c 'echo >(true)' -> stdout '/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/psh-psub-1n81zumz/pipe' rc=0 (script mode: '.../psh-psub-mrprazqq/pipe'). Contrast psh -c 'echo <(true)' -> '/dev/fd/3'.",
+      "note": "Write-side >(cmd) still yields a $TMPDIR FIFO path in -c and script modes; read-side <(cmd) yields /dev/fd/N. Code check at HEAD: process_sub.py:32-34 calls _create_write_process_substitution unconditionally; grep -i 'darwin|platform|uname' in process_sub.py -> 0 hits (only /dev/fd comment mentions). Platform-independence of the FIFO path confirmed by code; the Linux bash side is not measurable here but macOS bash 5.3.15 gives /dev/fd/63 as expected."
+    },
+    {
+      "cid": "C082",
+      "status": "live",
+      "bash53_output": "Late-open shape: cnt=$PWD/count.txt; bash -c 'sleep N; printf \"a\\nb\\nc\\nd\\ne\\n\" > \"$1\"' _ >(wc -l > \"$cnt\"); echo producer_rc=$?; sleep 1; wait; echo count=[$(cat $cnt)]. bash 5.3.15: N=2 -> 'producer_rc=0 / count=[5]'; N=6 -> 'producer_rc=0 / count=[5]' (re-run confirmed; tee-based late opener also count=[5]). No 'Permission denied' seen on macOS bash 5.3.15.",
+      "psh_output": "Same command under psh: N=2 -> 'producer_rc=0 / count=[5]'; N=6 -> 'producer_rc=1 / count=[0]' with stderr '_: line 1: /var/folders/8d/.../T/psh-psub-q7anpxce/pipe: No such file or directory' (tee variant: 'tee: .../psh-psub-qb2vnh59/pipe: No such file or directory', count=[0]).",
+      "note": "5s SIGALRM boundary reproduced exactly as described (2s ok, 6s -> FIFO already unlinked, consumer processed 0 lines, substitution exits 0). Repro reconstructed: the >(cmd) path must be handed to the consumer as a WORD and opened late; the simpler '{ sleep 6; printf ...; } > >(wc -l)' shape does NOT trigger it in either shell (the parent opens the FIFO at redirect setup, before the sleep) — both gave count=[5]. IMPORTANT ORACLE UPDATE: the report claimed macOS bash also fails the 6s case with 'Permission denied' and listed this as Linux-only/NOT ASSESSED; on bash 5.3.15 macOS the 6s late-open case SUCCEEDS (count=[5], rc 0), so the bash side is now measured locally and the divergence is proven without a Linux oracle. Code at HEAD unchanged: process_sub.py signal.alarm(5) / OpenTimeout -> os.open(os.devnull) -> _unlink_fifo_dir."
+    },
+    {
+      "cid": "C083",
+      "status": "live",
+      "bash53_output": "N/A (psh-internal debug output, not bash-comparable).",
+      "psh_output": "Direct probe (DebugASTVisitor().visit(parse(tokenize(src)))): 'echo hi >f' and '{ :; } > /dev/null' -> output contains 'Redirects:' / 'Redirect: type=>, target=...'; ALL of while/until/for/for((;;))/if/case/select/f(){}/(( ))/[[ ]] with '> /dev/null' -> NO 'Redirect' text at all. User route (script 'PSH_AST_FORMAT=bogus' then 'while true; do break; done > /dev/null' then 'echo hi >f' under --debug-ast): 'Warning: AST formatting failed (unknown AST format 'bogus'), using default format' then WhileLoop rendered with Condition/Body only and no redirect; the SimpleCommand shows 'Redirects: / Redirect: type=>, target='f''.",
+      "note": "Live, 10/10 named node classes still drop redirects in DebugASTVisitor (visit_WhileLoop 173, UntilLoop 187, ForLoop 225, CStyleForLoop 237, IfConditional 255, CaseConditional 281, SelectLoop 299, FunctionDef 313, ArithmeticEvaluation 324, EnhancedTestStatement 330 — none reference node.redirects; only visit_SimpleCommand:137-140 and _format_group:218-220 do). NOTE: the DEFAULT --debug-ast (tree format, ASTPrettyPrinter) DOES render 'redirects: [1 items]' on every one of those nodes, so the finding is confined to the DebugASTVisitor fallback as the report says. Coverage matrix tests/unit/visitor/test_ast_coverage_matrix.py:285-325 still parametrizes REDIRECT_SOURCES over Security/Formatter/Metrics only (DebugASTVisitor appears only at :452 exclusion set and :501 heredoc test). Probe: tmp/program-2026-09/batch16/c083_probe.py."
+    },
+    {
+      "cid": "C084",
+      "status": "live",
+      "bash53_output": "N/A (psh-only --metrics analysis mode, not bash-comparable).",
+      "psh_output": "psh --metrics FILE: baseline 'echo $(echo x)' -> 'Command Substitutions: 1'; control 'cat <(echo a)' -> 'Process Substitutions: 1'. All eight report constructs -> 'Command Substitutions: 0 / Process Substitutions: 0': 'cat > $(echo f)', '[[ x == $(echo x) ]]', 'a[$(echo 0)]=v', 'a=($(echo x))', 'case y in $(echo y)) :;; esac', 'echo ${x:-$(echo d)}' (Variables Used: 1), 'echo $(( $(echo 1) ))', 'cat < <(echo a)'.",
+      "note": "Reproduced exactly: substitution counting is word-anchored (SimpleCommand argument Words only, metrics_visitor.py _analyze_word_features ~:461); redirect targets, [[ ]] operands, subscripts, array initializers, case patterns, nested ${x:-...} defaults, arithmetic, and redirect-position process substitutions all count 0. Files: tmp/program-2026-09/batch16/m0.sh..m9.sh."
+    },
+    {
+      "cid": "C085",
+      "status": "live",
+      "bash53_output": "bash -c \"echo x > '&1'; ls; cat '&1'\" -> stdout '&1\\nx' rc=0 (quoted form legitimately writes a file named &1; no error). psh executes this identically ('&1\\nx', rc 0).",
+      "psh_output": "psh --validate -c 'echo x >&1' -> 'No issues found - AST is valid!' rc=0. psh --validate -c \"echo x > '&1'\" -> 'Found 1 issue(s): - 1 error(s) / ERRORS: [Redirect]: Invalid redirection syntax '>&1' - use '>&1' instead' rc=1 (same for '&2'; same in script mode via v1.sh). Unquoted-escaped 'echo x > \\&1' -> No issues.",
+      "note": "Inversion reproduced: the check at validator_visitor.py:446-453 (node.type == '>' and node.target in ['&1','&2']) never matches the unquoted >&1 (parsed as type '>&' fd=1) and only matches a QUOTED target literally named &1/&2, i.e. the legitimate case, and the advice string is byte-identical to the flagged text ('>&1' -> use '>&1')."
+    },
+    {
+      "cid": "C086",
+      "status": "live",
+      "bash53_output": "(1) bash -opipefail -c 'set -o|grep pipefail' -> rc=2 stderr '/opt/homebrew/bin/bash: line 0: /opt/homebrew/bin/bash: -c: invalid option name'. (2) bash -oe pipefail -c 'echo $-' -> stdout 'ehBc' rc=0. (3) bash -ox -c 'echo hi' -> rc=2 stderr '...: -c: invalid option name'. Control: bash -o pipefail -c 'set -o|grep pipefail' -> 'pipefail on' rc=0. Extra: bash +oe pipefail -c 'echo $-; set -o|grep pipefail' -> 'hBc' / 'pipefail off' rc=0.",
+      "psh_output": "(1) psh -opipefail -c ... -> stdout 'pipefail on' rc=0. (2) psh -oe pipefail -c 'echo $-' -> rc=2 stderr 'psh: e: invalid option name'. (3) psh -ox -c 'echo hi' -> rc=2 stderr 'psh: x: invalid option name'. Control -o pipefail matches ('pipefail on' rc=0). Extra +oe pipefail -> rc=2 'psh: e: invalid option name'.",
+      "note": "All three divergences reproduced verbatim against bash 5.3.15 (bash_expected unchanged from 5.2): psh accepts -opipefail (bash rejects, naming the NEXT argv element '-c'), rejects -oe pipefail (bash: pipefail via -o + errexit via trailing e), and names the cluster remainder ('x') instead of the next argv element ('-c'). Code at HEAD unchanged: invocation.py:231-248 takes arg[j+1:] as the option NAME when non-empty; docstring :29-31 still cites probes E3/E3b."
+    }
+  ]
+}
