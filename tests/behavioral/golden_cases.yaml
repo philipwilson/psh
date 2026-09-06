@@ -4133,6 +4133,8 @@
   stdout: "declare -ir x=\"1\"\n"
   stderr: ""
   exit_code: 0
+  psh_only: true
+  description: "psh-only pin (bash 5.3.15 REFUSES: 'local: x: readonly variable' rc 1, declare -r x=\"1\" -- CHANGES 5.3-alpha 1.llllll); FLIP-PINS owner slot 2.4; both-sides pin: tests/conformance/bash/test_export_env_sync_conformance.py::TestExportAttributeLifecycle::test_local_i_on_readonly_local_refused_by_bash_53"
 
 # The attrs-only merge can never CLEAR readonly (create_local ORs attributes),
 # so `local +r x` leaves x readonly (R1-extra safety). stdout + exit match bash
@@ -6232,6 +6234,8 @@
   stdout: "done\n"
   stderr: "not a valid identifier"
   exit_code: 0
+  psh_only: true
+  description: "psh-only pin (bash 5.3.15 EXITS rc 1 with no stdout, CHANGES 5.3-alpha 1.jj); FLIP-PINS owner slot 2.2; both-sides pin: tests/conformance/bash/test_identifier_policy_conformance.py::TestPosixRestrictsUnicodeLikeBash::test_export_readonly_unicode_exit_in_posix_declared_divergence"
 
 - name: r18t3_identifier_posix_read_unicode_rejected
   command: "set -o posix; read é <<< hi; echo done"
@@ -8110,6 +8114,8 @@
   stdout: ""
   stderr: "numeric argument required"
   exit_code: 2
+  psh_only: true
+  description: "psh-only pin (bash 5.3.15 prints survived rc 0: a non-numeric exit operand reports 'numeric argument required', sets $?=2 and CONTINUES in -c/script/stdin -- empirical, 5.3.15, no CHANGES item); W0-N4; FLIP-PINS owner slot 2.3; both-sides pin: tests/conformance/bash/test_exit_cd_options_conformance.py::TestExitStatus::test_exit_non_numeric_continues_declared_divergence"
 
 - name: bcontract_hash_l_quotes_path
   command: "hash -p '/tmp/a b' foo; hash -l"
@@ -8573,6 +8579,8 @@
   stdout: "rc=1\n"
   stderr: "not a valid identifier"
   exit_code: 0
+  psh_only: true
+  description: "psh-only pin (bash 5.3.15 EXITS rc 1 here, CHANGES 5.3-alpha 1.jj); FLIP-PINS owner slot 2.2; both-sides pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestPosixSpecialBuiltinExitDeclaredDivergence::test_export_bad_identifier_exits_in_posix"
 
 - name: posixexit_trap_badsig_survives
   command: "set -o posix; trap 'x' NOSUCHSIG; echo rc=$?"
@@ -8585,6 +8593,8 @@
   stdout: "rc=1\n"
   stderr: "cannot unset: readonly variable"
   exit_code: 0
+  psh_only: true
+  description: "psh-only pin (bash 5.3.15 EXITS rc 1 here, CHANGES 5.3-alpha 1.jj); FLIP-PINS owner slot 2.2; both-sides pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestPosixSpecialBuiltinExitDeclaredDivergence::test_unset_readonly_exits_in_posix"
 
 - name: posixexit_declare_readonly_survives
   command: 'set -o posix; readonly r=1; declare r=2; echo rc=$?'
@@ -8726,6 +8736,8 @@
   stdout: ""
   stderr: "invalid option"
   exit_code: 2
+  psh_only: true
+  description: "psh-only pin (bash 5.3.15 prints caught rc 0: the outer guard now suppresses across eval, CHANGES 5.3-alpha 1.nnnnn); FLIP-PINS owner slot 2.2; both-sides pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestPosixSpecialBuiltinExitDeclaredDivergence::test_outer_guard_suppresses_across_eval"
 
 - name: posixexit_suppress_inside_eval
   command: "set -o posix; eval 'set -q || echo in'; echo rc=$?"

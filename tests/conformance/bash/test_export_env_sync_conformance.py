@@ -1,4 +1,4 @@
-"""Exported-variable environment-sync conformance (pinned to bash 5.2).
+"""Exported-variable environment-sync conformance (pinned to bash 5.3.15).
 
 Probe battery: tmp/probe_env_sync.sh / tmp/probe2.sh / tmp/probe3.sh
 (2026-06-13, Tier B10b). The defining behavior: a plain reassignment of
@@ -10,10 +10,37 @@ add/remove, allexport interplay, and prefix-assignment restore.
 
 ``printenv NAME`` is the child's-eye view of the environment in every
 case (exit 1 when the entry is absent).
+
+READONLY ATTRIBUTE REFUSAL ON BASH 5.3 (CHANGES 5.3-alpha section 1 item
+llllll: "Fixed a bug that allowed attribute changes to readonly variables
+that changed the effects of attempted assignments").  Probed on 5.3.15 in
+-c, script-file and stdin modes: ``declare``/``local`` REFUSE adding or
+removing an attribute that changes how assignment behaves (``-i``, ``-l``,
+``-u``, ``-a``, ``-A``, ``-n`` and their ``+`` forms) on a readonly
+variable -- ``declare: R: readonly variable``, rc 1, attributes unchanged --
+while ``-x`` / ``-t`` / ``-r`` / ``export`` / bare ``declare R`` still
+succeed.  bash 5.2 accepted every attribute change on a readonly ("readonly
+forbids changing the value, not the metadata"), and psh still does
+(``psh/core/scope.py#ScopeManager.apply_attribute``).  The refused half is
+pinned BOTH SIDES in ``TestExportAttributeLifecycle`` as declared
+divergences: bash 5.3 semantics; psh to follow in slot 2.4, which flips
+each row to a parity pin; the allowed half is pinned as parity.  Gate
+triage node family C242 (Wave 0.3).
 """
 
 
 from conformance_framework import ConformanceTest
+from divergence_pins import assert_declared_divergence
+
+
+def _refused_by_bash_53(command, *, bash, psh, tmp_path):
+    """Slot 2.4 both-sides pin in -c, script-file and stdin modes (D6):
+    bash 5.3.15 refuses with a diagnostic, psh silently succeeds.  See
+    tests/conformance/divergence_pins.py.
+    """
+    assert_declared_divergence(command, bash=bash, psh=psh,
+                               tmp_path=tmp_path, slot="2.4",
+                               stderr="bash", stderr_has="readonly variable")
 
 
 class TestExportedAssignmentSync(ConformanceTest):
@@ -87,10 +114,54 @@ class TestExportAttributeLifecycle(ConformanceTest):
         self.assert_identical_behavior(
             'readonly R=1; export R; printenv R; declare -p R')
 
-    def test_declare_i_on_readonly_succeeds(self):
-        # readonly forbids changing the VALUE, not the metadata
+    # -- bash 5.3 readonly attribute refusal (CHANGES 5.3-alpha 1.llllll):
+    #    refused half = declared divergences (slot 2.4 flips), allowed
+    #    half = parity. Values are the 5.3.15 probes of 2026-09-06. -------
+
+    def test_declare_i_on_readonly_refused_by_bash_53(self, tmp_path):
+        # Was test_declare_i_on_readonly_succeeds ("readonly forbids
+        # changing the VALUE, not the metadata" -- the 5.2 premise).
+        # bash 5.3.15: rc 1, attribute NOT added; psh: rc 0, -i added.
+        _refused_by_bash_53(
+            'readonly R=1; declare -i R; echo "rc=$?"; declare -p R',
+            bash=('rc=1\ndeclare -r R="1"\n', 0),
+            psh=('rc=0\ndeclare -ir R="1"\n', 0), tmp_path=tmp_path)
+
+    def test_declare_l_on_readonly_refused_by_bash_53(self, tmp_path):
+        _refused_by_bash_53(
+            'readonly R=1; declare -l R; echo "rc=$?"; declare -p R',
+            bash=('rc=1\ndeclare -r R="1"\n', 0),
+            psh=('rc=0\ndeclare -rl R="1"\n', 0), tmp_path=tmp_path)
+
+    def test_declare_plus_i_on_readonly_integer_refused_by_bash_53(
+            self, tmp_path):
+        # Removing an assignment-affecting attribute is refused too.
+        _refused_by_bash_53(
+            'declare -ir R=1; declare +i R; echo "rc=$?"; declare -p R',
+            bash=('rc=1\ndeclare -ir R="1"\n', 0),
+            psh=('rc=0\ndeclare -r R="1"\n', 0), tmp_path=tmp_path)
+
+    def test_local_i_on_readonly_local_refused_by_bash_53(self, tmp_path):
+        # The `local` twin (unit pin: tests/unit/builtins/test_local_builtin
+        # .py::test_attrs_only_add_integer_allowed; golden
+        # local_readonly_attrs_only_add_integer_ok is psh_only).
+        _refused_by_bash_53(
+            'f(){ local -r x=1; local -i x; echo "rc=$?"; declare -p x; }; f',
+            bash=('rc=1\ndeclare -r x="1"\n', 0),
+            psh=('rc=0\ndeclare -ir x="1"\n', 0), tmp_path=tmp_path)
+
+    def test_declare_x_on_readonly_still_allowed(self):
+        # The allowed half: -x does not change assignment semantics.
         self.assert_identical_behavior(
-            'readonly R=1; declare -i R; echo "rc=$?"')
+            'readonly R=1; declare -x R; echo "rc=$?"; declare -p R')
+
+    def test_declare_t_on_readonly_still_allowed(self):
+        self.assert_identical_behavior(
+            'readonly R=1; declare -t R; echo "rc=$?"; declare -p R')
+
+    def test_local_x_on_readonly_local_still_allowed(self):
+        self.assert_identical_behavior(
+            'f(){ local -r x=1; local -x x; echo "rc=$?"; declare -p x; }; f')
 
 
 class TestLocalsShadowingExports(ConformanceTest):
