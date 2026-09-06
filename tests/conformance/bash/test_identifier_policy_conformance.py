@@ -157,13 +157,44 @@ class TestPosixRestrictsUnicodeLikeBash:
             assert "command not found" in _tail(psh.stderr), command
             assert _tail(psh.stderr) == _tail(bash.stderr), command
 
-    def test_declare_export_read_report_and_continue(self):
-        for builtin in ["declare é=1", "export é=1", "read é <<< hi"]:
+    def test_declare_read_report_and_continue(self):
+        # declare and read are NOT POSIX special builtins: bash 5.3.15 still
+        # reports "not a valid identifier" (status 1) and continues; psh is
+        # identical.  (export/readonly moved to the declared-divergence row
+        # below when bash 5.3 made them exit.)
+        for builtin in ["declare é=1", "read é <<< hi"]:
             command = f"set -o posix; {builtin}; echo done"
             bash = _run(BASH, command)
             psh = _run(PSH, command)
             assert psh.stdout == bash.stdout == "done\n", command
             assert psh.returncode == bash.returncode == 0, command
+            assert "not a valid identifier" in psh.stderr, command
+            assert "not a valid identifier" in bash.stderr, command
+
+    def test_export_readonly_unicode_exit_in_posix_declared_divergence(self):
+        """DECLARED DIVERGENCE, both sides pinned: bash 5.3 semantics; psh to
+        follow in slot 2.2.
+
+        bash 5.3 (CHANGES 5.3-alpha section 1 items jj / nnnnn) makes the
+        POSIX special builtins ``export`` and ``readonly`` EXIT a
+        non-interactive posix-mode shell on an invalid identifier: probed on
+        5.3.15 (C.UTF-8, -c / script / stdin alike) ``export é=1`` and
+        ``readonly é=1`` print nothing to stdout and exit 1, while psh still
+        reports and continues (``done``, rc 0).  Both sides diagnose "not a
+        valid identifier".  Same psh fix as the export/readonly rows of
+        tests/conformance/posix/test_posix_special_builtin_exit_conformance.py
+        (where the three-mode legs live; this module's runner is -c only).
+        """
+        for builtin in ["export é=1", "readonly é=1"]:
+            command = f"set -o posix; {builtin}; echo done"
+            bash = _run(BASH, command)
+            psh = _run(PSH, command)
+            assert (bash.stdout, bash.returncode) == ("", 1), (
+                f"ORACLE side moved: {command!r} -> {bash.stdout!r} "
+                f"rc={bash.returncode}")
+            assert (psh.stdout, psh.returncode) == ("done\n", 0), (
+                f"PSH side moved (slot 2.2 landed? flip this row): "
+                f"{command!r} -> {psh.stdout!r} rc={psh.returncode}")
             assert "not a valid identifier" in psh.stderr, command
             assert "not a valid identifier" in bash.stderr, command
 
