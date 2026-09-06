@@ -98,6 +98,28 @@ def _probe_x87_long_double(path: str) -> bool:
     return bool(re.match(r"^-?0x[89a-fA-F]", out))
 
 
+def _probe_long_double_wider_than_double(path: str) -> bool:
+    """The oracle's ``long double`` carries more than a double's 53
+    significand bits, so a FULL-precision ``%a`` prints digits a double
+    cannot hold.  Probe ``printf '%a' 0.1``:
+
+    * IEEE double (macOS, any host whose long double == double):
+      ``0x1.999999999999ap-4`` — 13 fraction digits, leading ``1``: False.
+    * x87 80-bit (x86-64 glibc): ``0xc.ccccccccccccccdp-7`` — the leading
+      digit is not ``1``: True (a superset of ``x87_long_double``).
+    * IEEE binary128 (aarch64/ppc64le/s390x/riscv64 glibc):
+      ``0x1.999999999999999999999999999ap-4`` — 28 fraction digits: True.
+
+    Unparseable output answers False, so a misbehaving oracle RUNS the
+    classified rows and fails loudly rather than skipping them silently.
+    """
+    out = _run_oracle(path, r"printf '%a\n' 0.1").stdout.strip()
+    m = re.match(r"^-?0[xX]([0-9a-fA-F])(?:\.([0-9a-fA-F]*))?[pP]", out)
+    if not m:
+        return False
+    return m.group(1) != "1" or len(m.group(2) or "") > 13
+
+
 def _probe_funsub(path: str) -> bool:
     """bash 5.3 function substitution ``${ cmd; }`` parses and runs."""
     return _run_oracle(path, "x=${ :; }").returncode == 0
@@ -105,6 +127,7 @@ def _probe_funsub(path: str) -> bool:
 
 _FEATURE_PROBES: Dict[str, Callable[[str], bool]] = {
     "x87_long_double": _probe_x87_long_double,
+    "long_double_wider_than_double": _probe_long_double_wider_than_double,
     "funsub": _probe_funsub,
 }
 _FEATURE_CACHE: Dict[Tuple[str, str], bool] = {}

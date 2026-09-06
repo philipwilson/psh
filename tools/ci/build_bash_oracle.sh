@@ -138,7 +138,9 @@ done
 command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 \
     || die "no C compiler (cc/gcc) found"
 
-mkdir -p "$WORKDIR" "$PREFIX"
+# PREFIX is created only once every download has verified (just before
+# configure), so a failed run never leaves an empty prefix directory behind.
+mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 log "workdir $WORKDIR, prefix $PREFIX, mirror $MIRROR"
 
@@ -182,6 +184,7 @@ done
 # Plain GNU defaults: the oracle must behave like a stock GNU bash, not like a
 # distribution's customised build.  The prefix is under the caller's control
 # (a $HOME path in CI, so no privileges are needed).
+mkdir -p "$PREFIX"
 log "configure --prefix=$PREFIX"
 ./configure --prefix="$PREFIX" >"$WORKDIR/configure.log" 2>&1 \
     || { tail -40 "$WORKDIR/configure.log" >&2; die "configure failed (log: $WORKDIR/configure.log)"; }

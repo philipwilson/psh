@@ -31,15 +31,22 @@ jobs:
       # runs against, so version drift between hosts is impossible. Ubuntu's
       # system bash (5.2.21) is deliberately NO LONGER the oracle; it stays on
       # PATH only for the runner's own steps and the instrumentation below.
-      # The prefix is cached by version+patch+platform; a miss builds from the
-      # GNU tarball + patches 001..015 with every download sha256-verified
-      # (tools/ci/build_bash_oracle.sh — runnable locally the same way).
-      - name: Cache the bash 5.3.15 oracle
+      # The prefix is cached by version+patch+platform+build-script hash; a
+      # miss builds from the GNU tarball + patches 001..015 with every download
+      # sha256-verified (tools/ci/build_bash_oracle.sh — runnable locally the
+      # same way). restore/save are split (not actions/cache) because the
+      # combined action saves only in its post step and only on a GREEN job;
+      # this job has been red for weeks at a time, which would mean a rebuild
+      # on every run. The save step sits AFTER the verify step and keeps the
+      # default `success()` condition, so a prefix that fails verification is
+      # never cached, while a red suite later in the job cannot prevent the
+      # save.
+      - name: Restore the bash 5.3.15 oracle from cache
         id: bash-oracle
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/bash-oracle-5.3.15
-          key: bash-5.3.15-${{ runner.os }}-${{ runner.arch }}
+          key: bash-5.3.15-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci/build_bash_oracle.sh') }}
 
       - name: Build the bash 5.3.15 oracle (cache miss only)
         if: steps.bash-oracle.outputs.cache-hit != 'true'
@@ -59,10 +66,22 @@ jobs:
             *) echo "::error::BASH_PATH=$BASH_PATH reports BASH_VERSION '$v', expected 5.3.15* (D1 oracle pin)"; exit 1 ;;
           esac
 
-      # `printf '%a' 1` identifies the oracle's long-double format: 0x8p-3 is
-      # the x87 explicit-integer-bit form (x86-64 glibc), 0x1p+0 is IEEE
-      # double. The seven %a conformance rows are classified on exactly this
-      # probe (oracle_feature('x87_long_double'), Park P-6).
+      - name: Save the bash 5.3.15 oracle to cache (fresh, verified build only)
+        if: steps.bash-oracle.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/bash-oracle-5.3.15
+          key: bash-5.3.15-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci/build_bash_oracle.sh') }}
+
+      # The two printf lines identify the oracle's `long double`, which is
+      # what the platform-classified %a conformance rows are probed on
+      # (tests/harness/oracle_policy.py, Park P-6): `printf '%a' 1` -> 0x8p-3
+      # is the x87 explicit-integer-bit form (x86-64 glibc; skips the seven
+      # x87-sensitive methods of test_printf_float_format_conformance.py);
+      # `printf '%a' 0.1` with more than 13 fraction digits or a leading digit
+      # other than 1 is a long double wider than double (x87 AND binary128,
+      # e.g. aarch64 glibc; skips the two full-mantissa methods). IEEE double
+      # prints 0x1p+0 and 0x1.999999999999ap-4 and skips nothing.
       - name: Show bash version
         run: |
           echo "--- system bash (runner PATH; NOT the oracle) ---"
@@ -71,6 +90,8 @@ jobs:
           "$BASH_PATH" --version | head -1
           echo "printf '%a' 1 on the oracle:"
           "$BASH_PATH" -c "printf '%a\n' 1"
+          echo "printf '%a' 0.1 on the oracle:"
+          "$BASH_PATH" -c "printf '%a\n' 0.1"
           echo "MACHTYPE (oracle) = $("$BASH_PATH" -c 'echo "$MACHTYPE"')"
           echo "MACHTYPE (runner shell) = $MACHTYPE"
 
@@ -263,15 +284,22 @@ jobs:
       # runs against, so version drift between hosts is impossible. Ubuntu's
       # system bash (5.2.21) is deliberately NO LONGER the oracle; it stays on
       # PATH only for the runner's own steps and the instrumentation below.
-      # The prefix is cached by version+patch+platform; a miss builds from the
-      # GNU tarball + patches 001..015 with every download sha256-verified
-      # (tools/ci/build_bash_oracle.sh — runnable locally the same way).
-      - name: Cache the bash 5.3.15 oracle
+      # The prefix is cached by version+patch+platform+build-script hash; a
+      # miss builds from the GNU tarball + patches 001..015 with every download
+      # sha256-verified (tools/ci/build_bash_oracle.sh — runnable locally the
+      # same way). restore/save are split (not actions/cache) because the
+      # combined action saves only in its post step and only on a GREEN job;
+      # this job has been red for weeks at a time, which would mean a rebuild
+      # on every run. The save step sits AFTER the verify step and keeps the
+      # default `success()` condition, so a prefix that fails verification is
+      # never cached, while a red suite later in the job cannot prevent the
+      # save.
+      - name: Restore the bash 5.3.15 oracle from cache
         id: bash-oracle
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/bash-oracle-5.3.15
-          key: bash-5.3.15-${{ runner.os }}-${{ runner.arch }}
+          key: bash-5.3.15-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci/build_bash_oracle.sh') }}
 
       - name: Build the bash 5.3.15 oracle (cache miss only)
         if: steps.bash-oracle.outputs.cache-hit != 'true'
@@ -291,10 +319,22 @@ jobs:
             *) echo "::error::BASH_PATH=$BASH_PATH reports BASH_VERSION '$v', expected 5.3.15* (D1 oracle pin)"; exit 1 ;;
           esac
 
-      # `printf '%a' 1` identifies the oracle's long-double format: 0x8p-3 is
-      # the x87 explicit-integer-bit form (x86-64 glibc), 0x1p+0 is IEEE
-      # double. The seven %a conformance rows are classified on exactly this
-      # probe (oracle_feature('x87_long_double'), Park P-6).
+      - name: Save the bash 5.3.15 oracle to cache (fresh, verified build only)
+        if: steps.bash-oracle.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/bash-oracle-5.3.15
+          key: bash-5.3.15-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ci/build_bash_oracle.sh') }}
+
+      # The two printf lines identify the oracle's `long double`, which is
+      # what the platform-classified %a conformance rows are probed on
+      # (tests/harness/oracle_policy.py, Park P-6): `printf '%a' 1` -> 0x8p-3
+      # is the x87 explicit-integer-bit form (x86-64 glibc; skips the seven
+      # x87-sensitive methods of test_printf_float_format_conformance.py);
+      # `printf '%a' 0.1` with more than 13 fraction digits or a leading digit
+      # other than 1 is a long double wider than double (x87 AND binary128,
+      # e.g. aarch64 glibc; skips the two full-mantissa methods). IEEE double
+      # prints 0x1p+0 and 0x1.999999999999ap-4 and skips nothing.
       - name: Show bash version
         run: |
           echo "--- system bash (runner PATH; NOT the oracle) ---"
@@ -303,6 +343,8 @@ jobs:
           "$BASH_PATH" --version | head -1
           echo "printf '%a' 1 on the oracle:"
           "$BASH_PATH" -c "printf '%a\n' 1"
+          echo "printf '%a' 0.1 on the oracle:"
+          "$BASH_PATH" -c "printf '%a\n' 0.1"
           echo "MACHTYPE (oracle) = $("$BASH_PATH" -c 'echo "$MACHTYPE"')"
           echo "MACHTYPE (runner shell) = $MACHTYPE"
 
