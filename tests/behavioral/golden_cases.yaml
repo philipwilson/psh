@@ -4133,6 +4133,8 @@
   stdout: "declare -ir x=\"1\"\n"
   stderr: ""
   exit_code: 0
+  psh_only: true
+  description: "psh-only pin (bash 5.3.15 REFUSES: 'local: x: readonly variable' rc 1, declare -r x=\"1\" -- CHANGES 5.3-alpha 1.llllll); FLIP-PINS owner slot 2.4; both-sides pin: tests/conformance/bash/test_export_env_sync_conformance.py::TestExportAttributeLifecycle::test_local_i_on_readonly_local_refused_by_bash_53"
 
 # The attrs-only merge can never CLEAR readonly (create_local ORs attributes),
 # so `local +r x` leaves x readonly (R1-extra safety). stdout + exit match bash
