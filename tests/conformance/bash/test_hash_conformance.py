@@ -18,6 +18,7 @@ Comparison caveats baked into the commands below:
 """
 
 
+import pytest
 from conformance_framework import ConformanceTest
 
 
@@ -67,6 +68,7 @@ class TestHashBuiltin(ConformanceTest):
         self.assert_identical_behavior(
             'hash -p /nonexistent/echo myecho; echo rc=$?; hash -t myecho')
 
+    @pytest.mark.oracle_min("5.3")
     def test_dash_d_deletes(self):
         self.assert_identical_behavior('hash ls cat; hash -d ls; hash')
         # populated table: a miss is reported, rc 1

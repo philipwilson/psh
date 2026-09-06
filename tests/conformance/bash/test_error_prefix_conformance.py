@@ -50,12 +50,14 @@ PREFIX_CELLS = [
 
 
 @pytest.mark.parametrize("cmd", PREFIX_CELLS)
+@pytest.mark.oracle_min("5.3")
 def test_prefix_matches_bash_exactly(cmd):
     p, b = _psh(cmd), _bash(cmd)
     assert p.stderr == b.stderr, f"{cmd!r}\n psh={p.stderr!r}\nbash={b.stderr!r}"
     assert p.returncode == b.returncode, cmd
 
 
+@pytest.mark.oracle_min("5.3")
 def test_multiline_line_number_matches_bash():
     # The `line N:` counter must track the failing command across lines.
     cmd = "echo a\necho b\ntrap -x\ncd /nonexistent_zz_99"
@@ -63,6 +65,7 @@ def test_multiline_line_number_matches_bash():
     assert p.stderr == b.stderr, f"psh={p.stderr!r}\nbash={b.stderr!r}"
 
 
+@pytest.mark.oracle_min("5.3")
 def test_usage_line_stays_unprefixed_like_bash():
     # The dual-line shape: prefixed runtime error, then the bare usage line.
     p, b = _psh("trap -x"), _bash("trap -x")

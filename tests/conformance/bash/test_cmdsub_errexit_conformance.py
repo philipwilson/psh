@@ -15,6 +15,7 @@ Verified against bash 5.2.
 """
 
 
+import pytest
 from conformance_framework import ConformanceTest
 
 
@@ -77,6 +78,7 @@ class TestInheritErrexitShopt(ConformanceTest):
     def test_shopt_recognized(self):
         self.assert_identical_behavior('shopt -s inherit_errexit; echo rc=$?')
 
+    @pytest.mark.oracle_min("5.3")
     def test_shopt_query_states(self):
         self.assert_identical_behavior('shopt inherit_errexit')
         self.assert_identical_behavior(

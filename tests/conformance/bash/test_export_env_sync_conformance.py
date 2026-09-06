@@ -29,6 +29,7 @@ triage node family C242 (Wave 0.3).
 """
 
 
+import pytest
 from conformance_framework import ConformanceTest
 from divergence_pins import assert_declared_divergence
 
@@ -118,6 +119,7 @@ class TestExportAttributeLifecycle(ConformanceTest):
     #    refused half = declared divergences (slot 2.4 flips), allowed
     #    half = parity. Values are the 5.3.15 probes of 2026-09-06. -------
 
+    @pytest.mark.oracle_min("5.3")
     def test_declare_i_on_readonly_refused_by_bash_53(self, tmp_path):
         # Was test_declare_i_on_readonly_succeeds ("readonly forbids
         # changing the VALUE, not the metadata" -- the 5.2 premise).
@@ -127,12 +129,14 @@ class TestExportAttributeLifecycle(ConformanceTest):
             bash=('rc=1\ndeclare -r R="1"\n', 0),
             psh=('rc=0\ndeclare -ir R="1"\n', 0), tmp_path=tmp_path)
 
+    @pytest.mark.oracle_min("5.3")
     def test_declare_l_on_readonly_refused_by_bash_53(self, tmp_path):
         _refused_by_bash_53(
             'readonly R=1; declare -l R; echo "rc=$?"; declare -p R',
             bash=('rc=1\ndeclare -r R="1"\n', 0),
             psh=('rc=0\ndeclare -rl R="1"\n', 0), tmp_path=tmp_path)
 
+    @pytest.mark.oracle_min("5.3")
     def test_declare_plus_i_on_readonly_integer_refused_by_bash_53(
             self, tmp_path):
         # Removing an assignment-affecting attribute is refused too.
@@ -141,6 +145,7 @@ class TestExportAttributeLifecycle(ConformanceTest):
             bash=('rc=1\ndeclare -ir R="1"\n', 0),
             psh=('rc=0\ndeclare -r R="1"\n', 0), tmp_path=tmp_path)
 
+    @pytest.mark.oracle_min("5.3")
     def test_local_i_on_readonly_local_refused_by_bash_53(self, tmp_path):
         # The `local` twin (unit pin: tests/unit/builtins/test_local_builtin
         # .py::test_attrs_only_add_integer_allowed; golden

@@ -181,6 +181,7 @@ def test_exit_trap_status_matches_bash(cell_id, script, discriminating, mode,
 @pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("cell_id,script,bash_expect,psh_expect",
                          [pytest.param(*c, id=c[0]) for c in DIVERGENCE_CELLS])
+@pytest.mark.oracle_min("5.3")
 def test_trap_entry_status_declared_divergence(cell_id, script, bash_expect,
                                                psh_expect, mode, tmp_path):
     """DECLARED DIVERGENCE, both sides pinned: bash 5.3 semantics (NEWS uu,
@@ -206,6 +207,7 @@ def test_trap_entry_status_declared_divergence(cell_id, script, bash_expect,
 
 
 @pytest.mark.parametrize("mode", MODES)
+@pytest.mark.oracle_min("5.3")
 def test_bare_exit_in_a_signal_trap_uses_entry_status_declared_divergence(
         mode, tmp_path):
     """MUST-HOLD, rewritten for bash 5.3 (slot 4A.2 ruling R4 is superseded).

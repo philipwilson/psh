@@ -20,6 +20,7 @@ C = {'LC_ALL': 'C', 'LANG': 'C'}
 MKFILES = "> a; > B; > e; > z; > é; > 3; > ٣; > _x;"
 
 
+import pytest
 from conformance_framework import ConformanceTest
 
 
@@ -234,6 +235,7 @@ class TestRangesAndGlobasciiranges(ConformanceTest):
     def test_range_B_not_in_az_utf8(self):
         self.assert_identical_behavior('[[ B == [a-z] ]]; echo $?', env=UTF8)
 
+    @pytest.mark.oracle_min("5.3")
     def test_shopt_globasciiranges_query(self):
         # bash reports it `on`; psh used to error "invalid shell option name".
         self.assert_identical_behavior('shopt globasciiranges', env=C)

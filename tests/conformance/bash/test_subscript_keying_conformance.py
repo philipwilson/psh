@@ -1062,6 +1062,7 @@ def test_divergence_dq_ansi_bracket_read():
         assert _psh_comb(cmd).stdout == key_probe
 
 
+@pytest.mark.oracle_min("5.3")
 def test_sq_in_dq_readback_round_trips():
     """PARITY — formerly the R1-6 declared divergence, CLOSED on the ORACLE
     side (empirical, 5.3.15; the nearest NEWS item is 5.3 `t. array_expand_once:
@@ -1260,6 +1261,7 @@ def test_divergence_procsub_separated_subshell_residual():
     ('while false; do :; done', '<(while false; do\n    :;\ndone)'),
     ('case x in y) echo n;; esac', '<(case x in y)\n        echo n\n    ;;\nesac)'),
 ])
+@pytest.mark.oracle_min("5.3")
 def test_divergence_procsub_compound_render_residual(body, bash_key):
     """B2 residual, subfamily 2 (condition-4 both-sides pins): COMPOUND
     bodies — bash embeds its printer's MULTILINE byte-layout (4-space
@@ -1411,6 +1413,7 @@ _UNLEXABLE_ROUTE_ROWS = [
 
 @pytest.mark.parametrize('route,cmd,disposition', _UNLEXABLE_ROUTE_ROWS,
                          ids=[r[0] for r in _UNLEXABLE_ROUTE_ROWS])
+@pytest.mark.oracle_min("5.3")
 def test_unlexable_subscript_route_audit(route, cmd, disposition):
     p, b = _both(cmd)
     pc = _psh_comb(cmd)

@@ -32,6 +32,7 @@ MED-2 — see test_pipeline_signal_death.py.)
 
 import signal
 
+import pytest
 from core_dump_env import signal_death_text
 from shell_oracle import is_comparable
 from shell_oracle import run_bash as _run_bash
@@ -75,6 +76,7 @@ def _run_modes(cmd, tmp_path):
 class TestAbnormalTerminationDiagnostic:
     """psh announces a signal-killed foreground command like bash does."""
 
+    @pytest.mark.oracle_min("5.3")
     def test_sigterm_prints_bare_signal_description(self, tmp_path):
         """`sh -c "kill -TERM $$"; echo next` — psh prints the bare SIGTERM
         description to stderr and still runs the next command; bash 5.3
@@ -127,6 +129,7 @@ class TestAbnormalTerminationDiagnostic:
             assert psh.stdout == 'next\n'
             assert psh.stderr == ''
 
+    @pytest.mark.oracle_min("5.3")
     def test_reported_in_explicit_subshell(self):
         """A ( ) subshell announces its foreground child's signal death in
         both shells. bash 5.3 re-prints the subshell as `( … )` with inner

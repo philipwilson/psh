@@ -39,6 +39,7 @@ Reproduce one divergence row by hand (oracle = the resolved bash 5.3.15)::
     python -m psh -c 'cd a b; echo rc=$?'              # rc=1
 """
 
+import pytest
 from conformance_framework import ConformanceTest
 from divergence_pins import MODES, assert_declared_divergence
 from shell_oracle import is_comparable, run_bash, run_psh
@@ -77,6 +78,7 @@ class TestExitStatus(ConformanceTest):
     def test_exit_explicit_code(self):
         self.assert_identical_behavior('exit 42')
 
+    @pytest.mark.oracle_min("5.3")
     def test_exit_too_many_args_does_not_exit(self, tmp_path):
         """DECLARED DIVERGENCE (W0-N9), both sides pinned; slot 2.3 flips.
 
@@ -106,6 +108,7 @@ class TestExitStatus(ConformanceTest):
         assert 'too many arguments' in psh.stderr
         assert 'too many arguments' in bash.stderr
 
+    @pytest.mark.oracle_min("5.3")
     def test_exit_non_numeric_continues_declared_divergence(self, tmp_path):
         """DECLARED DIVERGENCE (W0-N4), both sides pinned; slot 2.3 flips.
 
@@ -125,6 +128,7 @@ class TestExitStatus(ConformanceTest):
             stderr_has='numeric argument required')
 
 
+@pytest.mark.oracle_min("5.3")
 class TestUsageStatusDeclaredDivergence:
     """W0-N8 / W0-N9 / W0-N10: the usage-error status family on bash 5.3.15,
     both sides pinned; slot 2.3 flips every row.  Values are the 5.3.15
@@ -159,6 +163,7 @@ class TestUsageStatusDeclaredDivergence:
 
 
 class TestCdOptions(ConformanceTest):
+    @pytest.mark.oracle_min("5.3")
     def test_cd_empty_operand_is_null_directory(self):
         """``cd ""`` is "null directory", rc 1, cwd unchanged, even under CDPATH
         (bash 5.3.15, empirical; 5.2 was a no-op success). Wave 0.3 retune.
@@ -169,6 +174,7 @@ class TestCdOptions(ConformanceTest):
             'CDPATH=/tmp cd "" 2>/dev/null; echo "$?:$PWD"; '
             'cd -P "" 2>/dev/null; echo "$?"; x=; cd $x 2>/dev/null; echo "$?"')
 
+    @pytest.mark.oracle_min("5.3")
     def test_cd_too_many_arguments(self, tmp_path):
         """DECLARED DIVERGENCE, both sides pinned; slot 2.3 flips.
 

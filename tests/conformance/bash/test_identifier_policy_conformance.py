@@ -55,6 +55,7 @@ third twin cannot survive.
 
 import re
 
+import pytest
 from conformance_framework import ConformanceTest
 from shell_oracle import is_comparable, run_bash, run_psh
 
@@ -182,6 +183,7 @@ class TestPosixRestrictsUnicodeLikeBash:
             assert "not a valid identifier" in psh.stderr, command
             assert "not a valid identifier" in bash.stderr, command
 
+    @pytest.mark.oracle_min("5.3")
     def test_export_readonly_unicode_exit_in_posix_declared_divergence(self):
         """DECLARED DIVERGENCE, both sides pinned: bash 5.3 semantics; psh to
         follow in slot 2.2.
@@ -225,6 +227,7 @@ class TestPosixRestrictsUnicodeLikeBash:
             assert "body" not in psh.stdout, command  # body never runs
 
 
+@pytest.mark.oracle_min("5.3")
 class TestPosixFunctionNamesUnrestricted:
     """Function names are NOT identifier-checked under ``set -o posix``.
 

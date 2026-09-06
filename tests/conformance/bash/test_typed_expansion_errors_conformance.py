@@ -331,6 +331,7 @@ class TestDeclaredDivergences:
         assert p.returncode == 1 and p.stdout == ""        # psh discards
         assert "1//" in b.stderr or "syntax error" in b.stderr
 
+    @pytest.mark.oracle_min("5.3")
     def test_invalid_regex_diagnostic_wording_differs(self):
         """BOTH shells diagnose an uncompilable `[[ =~` regex and both give
         it status 2; only the WORDING differs (both sides pinned). bash 5.3

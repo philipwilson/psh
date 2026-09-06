@@ -13,6 +13,7 @@ name", and its ``shopt OPTION`` query form always exited 0. Both are fixed
 
 
 
+import pytest
 from conformance_framework import ConformanceTest
 
 
@@ -66,6 +67,7 @@ class TestNocasematchCase(ConformanceTest):
             'shopt -s nocasematch; case HELLO in h*) echo m;; *) echo no;; esac')
 
 
+@pytest.mark.oracle_min("5.3")
 class TestShoptQueryExitCode(ConformanceTest):
     """``shopt OPTION`` (query form) exit code reflects the option's state."""
 

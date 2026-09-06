@@ -40,6 +40,7 @@ import os
 import subprocess
 import sys
 
+import pytest
 from shell_oracle import is_comparable, resolve_bash, run_bash, run_psh
 
 PSH = [sys.executable, "-m", "psh"]
@@ -179,6 +180,7 @@ class TestBinaryStdinNoTraceback:
 BUFFERED_STREAM_ERROR = b"error creating buffered stream: Bad file descriptor"
 
 
+@pytest.mark.oracle_min("5.3")
 class TestClosedFd0Startup:
     """The four command channels with fd 0 CLOSED at startup (D6: the
     failure shape differs by input mode): plain stdin and ``-s`` read commands

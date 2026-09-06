@@ -28,6 +28,7 @@ Determinism over realism: the child signals itself. This path is auto-marked
 
 import signal
 
+import pytest
 from core_dump_env import signal_death_text
 from shell_oracle import is_comparable
 from shell_oracle import run_bash as _oracle_run_bash
@@ -70,6 +71,7 @@ def _run_modes(cmd, tmp_path):
 
 
 class TestPipelineLastMemberSignalDeath:
+    @pytest.mark.oracle_min("5.3")
     def test_sigterm_last_member_announced(self, tmp_path):
         """psh: the bare SIGTERM description; bash 5.3: the padded job-table
         line (declared format divergence — module docstring). Pinned in all
@@ -83,6 +85,7 @@ class TestPipelineLastMemberSignalDeath:
                 signal.strsignal(signal.SIGTERM),
                 'true | sh -c "kill -TERM \\$\\$"'), (mode, bash.stderr)
 
+    @pytest.mark.oracle_min("5.3")
     def test_sigterm_no_trailing_command(self):
         """The announcement is unchanged when the signal death is the
         shell's last command in a pipeline (no exec-optimisation for
@@ -136,6 +139,7 @@ class TestPipelineNonLastMemberSignalDeath:
         assert psh.stdout == 'rc=0\n' == bash.stdout
         assert psh.stderr == '' == bash.stderr
 
+    @pytest.mark.oracle_min("5.3")
     def test_pipefail_announces_status_determining_member(self):
         """Under pipefail the signal-killed member's 143 becomes the exit
         status and BOTH shells announce the job — the announce DECISION is

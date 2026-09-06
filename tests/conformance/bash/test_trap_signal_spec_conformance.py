@@ -17,6 +17,7 @@ the usage line is bash 5.3's `trap [-Plp] [[action] signal_spec ...]`, and
 `trap -P` is pinned in TestTrapPrintActionsConformance).
 """
 
+import pytest
 from conformance_framework import ConformanceTest
 from shell_oracle import is_comparable, run_bash, run_psh
 
@@ -168,6 +169,7 @@ class TestTrapDisplayConformance(ConformanceTest):
         assert 'NOSUCHSIG: invalid signal specification' in bash.stderr
 
 
+@pytest.mark.oracle_min("5.3")
 class TestTrapPrintActionsConformance(ConformanceTest):
     """`trap -P` prints the bare action per operand.
 

@@ -44,6 +44,7 @@ Reproduce one divergence row by hand (oracle = the resolved bash 5.3.15)::
 """
 
 
+import pytest
 from conformance_framework import ConformanceTest
 from divergence_pins import assert_declared_divergence
 
@@ -128,6 +129,7 @@ class TestPosixSpecialBuiltinExit(_StatusConformance):
             "set -o posix; f() { set -q; }; f; echo survived")
 
 
+@pytest.mark.oracle_min("5.3")
 class TestPosixSpecialBuiltinExitDeclaredDivergence:
     """DECLARED DIVERGENCES, both sides pinned in three input modes.
 

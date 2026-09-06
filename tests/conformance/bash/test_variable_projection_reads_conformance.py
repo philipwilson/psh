@@ -236,6 +236,7 @@ class TestPathSearchVariableTruth:
         _assert_same(cmd, cvtree)
 
 
+@pytest.mark.oracle_min("5.3")
 class TestNotFoundMessageVariableTruth:
     """The 127-message discriminator is PATH's tri-state SET-NESS, read from
     the variable: a SET PATH (even empty — bash 5.3 CHANGES 5.3-alpha item p

@@ -23,7 +23,11 @@ pin the exact mode-dependent text, including that an argument-less builtin lists
 as `false` with no trailing space. Subprocess + timeout; serial-by-path.
 """
 
+import pytest
 from shell_oracle import is_comparable, run_bash, run_psh
+
+# D5: every row in this module pins bash 5.3's -c completed-job listing (Wave 0.2).
+pytestmark = pytest.mark.oracle_min("5.3")
 
 TIMEOUT = 15
 
