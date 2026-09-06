@@ -4,6 +4,76 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.780.0 (2026-09-06) - bash 5.3.15 oracle adoption + green gate (Improvement Program 2026-09, Wave 0)
+- Oracle contract (program D1): the differential tests are pinned to bash
+  major.minor 5.3 (`tests/harness/oracle_policy.py`, `EXPECTED_BASH_MM`);
+  `run_tests.py` preflights the resolved oracle before any phase, prints
+  `oracle: <path> <version>`, and refuses to start on drift unless
+  `--oracle-override` is passed (logged); `gate_attestation.json` is schema 2
+  and records `oracle.{path,version}`; `tools/verify_gate_attestation.py`
+  (stdlib-only) refuses any other major.minor. Homebrew's 2026-08-18 upgrade
+  from 5.2.26 to 5.3.15 had turned 51 gate nodes red (evidence:
+  `docs/reviews/fresh_appraisal_2026-09-06.md`, `gate_triage.json`).
+- Classifiers (D5): `@pytest.mark.oracle_min("5.3")`, golden `min_bash:` and
+  `requires_dev_fd:` keys (skip with a reason on an older oracle or a
+  sandbox), and probed platform predicates `oracle_feature('x87_long_double')`
+  / `('long_double_wider_than_double')` / `('funsub')` — never a version or
+  OS literal in test code (ratchet `test_no_version_literal_predicates.py`);
+  `test_oracle_version_comments.py` freezes the "bash 5.2" provenance census
+  (599 lines / 370 files at 788ffe41, decrease-only).
+- Linux nightly pinned to a source-built bash 5.3.15 (`tools/ci/build_bash_oracle.sh`,
+  sha256-verified tarball + patches 001..015, cached per os/arch, version
+  asserted before any phase; `BASH_PATH` reaches every oracle phase). The
+  seven printf `%a` cells that had failed every nightly since 2026-08-10 are
+  x87 / wide-long-double platform forms, classified by the two probed
+  predicates (x86-64 glibc skips 9 methods, aarch64 glibc 2, macOS 0; proven
+  in real containers).
+- Presentation follows bash 5.3 (Wave 0.2): `trap` usage line
+  `trap [-Plp] [[action] signal_spec ...]` and `trap -P SIG...` (bare action
+  per operand; the `-p`+`-P` and no-operand usage errors precede `-l`, rc 2);
+  `shopt` queries and bare listings pad names to 20 columns (`shopt -o`-family
+  listings and `set -o` keep 15); `jobs`/`jobs -l` and the async notice
+  left-justify the status in 27 columns; a completed job is listed once in
+  `-c` mode too (bash 5.3 dropped the eager reap; the v0.692 "-c + monitor
+  boundary notice" deferral is DISCHARGED, C181); `hash -d NAME` on an empty
+  table reports `not found` rc 1; function names are no longer
+  identifier-checked under `set -o posix` (CHANGES 5.3-beta p).
+- Status/wording follows bash 5.3 (Wave 0.3): a set-but-empty PATH says
+  `command not found` (CHANGES 5.3-alpha p: NULL PATH is "."), only an UNSET
+  PATH says `No such file or directory`, and `command -p` always searches its
+  default list (`format_exec_failure(unset_path=)` replaces `empty_path=`);
+  psh started with fd 0 closed and no command source exits 126 with
+  `error creating buffered stream: Bad file descriptor` (silently if fd 2 is
+  closed too; `-c`, script, `-i` and `</dev/null` unchanged); `cd ""` is
+  `cd: null directory` rc 1 before any CDPATH search.
+- Declared divergences pinned BOTH sides and owned by Wave 2 slots
+  (`docs/reviews/evidence/improvement_program_2026_09/FLIP-PINS.md`): trap
+  entry status (`exit` in a signal/ERR trap uses the status from before the
+  trap, POSIX interp 1602) → 2.1; POSIX-mode special-builtin exits on the
+  first bad `export`/`readonly`/`unset` operand, suppressed across `eval`/`.`
+  by an outer guard → 2.2; usage-error status 2 for `cd`/`exit`/`shift`/
+  `return`/`break`/`continue` → 2.3; readonly attribute refusal (`declare -i`
+  on a readonly) → 2.4; signal-death job text → 4.12; `${ cmd; }` function
+  substitution → Park P-3. Shared helper `tests/conformance/divergence_pins.py`
+  runs every pin in `-c`, script-file and stdin modes.
+- Test-side retunes to the 5.3 oracle: the sq-in-dq subscript read-back is now
+  parity (oracle-side closure), the invalid-regex row pins both diagnostics,
+  `${ }` left the bad-substitution cases, four environment-sensitive tests
+  skip on a probed precondition instead of failing in a sandbox.
+- Evidence tree `docs/reviews/evidence/improvement_program_2026_09/`: the
+  245-row canonical inventory (reappraisal #23 ∪ fresh appraisal, re-verified
+  at HEAD vs 5.3.15), 51-node gate triage, LEDGER (245 + 51 + W0-N1..N35
+  rows, no TBD owner), FLIP-PINS, wave manifest, nightly status (red since
+  2026-08-10, 28 runs), Wave 0 rulings (C153 `\#` counts nested reads in every
+  mode → 4.24; C181 closed), oracle baseline. Program of record:
+  `docs/reviews/improvement_program_2026-09-06.md` (authorized scope Waves
+  0–3, mandatory checkpoint after Wave 3).
+- Process: every package was adversarially verified (bounce-to-zero: B, D, E,
+  F each bounced once on a real finding — arm64 binary128 cells, a
+  `__pycache__`-contaminated census, `trap -l` ordering, closed-fd-2
+  AttributeError); reports under `tmp/program-2026-09/verify/` are summarised
+  in the merge commits.
+
 ## 0.779.0 (2026-08-09) - printf %a/%A precision + '#' flag (remediation rider 5R)
 - `printf %a/%A` now honors precision: the mantissa is rounded to P hex
   digits with oracle-measured libc semantics (exact halves truncate —
