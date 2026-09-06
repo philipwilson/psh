@@ -10802,3 +10802,13 @@
   stdout: "rc=1\nrc=1\n"
   stderr: ""
   exit_code: 0
+
+# posix mode no longer restricts function NAMES (bash 5.3 CHANGES, 5.3-beta
+# "New Features in Bash" item p); ASCII shapes only here (golden runs LC_ALL=C).
+- name: w0_2_posix_function_names_unrestricted
+  description: "closes test_identifier_policy_conformance::TestPosixRestrictsUnicodeLikeBash::test_for_and_function_rejected_by_both (split; function half now agrees with bash 5.3)"
+  min_bash: "5.3"
+  command: 'set -o posix; 9x() { echo n; }; 9x; function a-b { echo h; }; a-b; readonly -f a-b; echo rc=$?; unset -f 9x; echo rc=$?'
+  stdout: "n\nh\nrc=0\nrc=0\n"
+  stderr: ""
+  exit_code: 0

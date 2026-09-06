@@ -2,7 +2,7 @@ r"""Conformance tests for the identifier policy (reappraisal #18, Tier-3 T3-5).
 
 psh routes every runtime name-validation site through one authoritative
 predicate (``unicode_support.is_valid_name``). The rules, pinned against
-bash 5.2:
+bash 5.2 and re-verified against bash 5.3.15 (Wave 0.2, 2026-09-06):
 
 * **Valid ASCII names** (``foo``, ``_bar``, ``x9``) behave IDENTICALLY to bash
   in both default and ``set -o posix`` mode — at assignment, ``declare``,
@@ -14,17 +14,24 @@ bash 5.2:
   are REJECTED just as bash rejects them — an assignment ``é=1`` becomes a
   command (``command not found``, 127); ``declare``/``export``/``read`` report
   "not a valid identifier" (status 1) and continue.
+* **Function NAMES are unrestricted in posix mode** in both shells (bash 5.3
+  CHANGES, 5.3-beta "New Features in Bash" item p: "Posix mode no longer
+  requires function names to be valid shell identifiers"): ``é``, ``9x`` and
+  ``a-b`` all define and run. bash 5.3 still validates the OPERAND of
+  ``declare -f``/``-F``/``typeset -f`` under posix; psh does not (declared
+  divergence, pinned both sides in TestPosixFunctionNamesUnrestricted).
 * **Without posix mode**, psh ACCEPTS those Unicode-letter names — a DELIBERATE,
   documented divergence from bash (see docs/user_guide/17_differences_from_bash.md).
   This class pins BOTH sides so the divergence is explicit and intentional.
 
-Note on ``for``/``function`` error flow: in DEFAULT mode both shells report
+Note on ``for``/``select`` error flow: in DEFAULT mode both shells report
 "not a valid identifier" (status 1) and CONTINUE — psh matches bash. The flow
 differs only under ``set -o posix``: bash then treats the invalid name as a
 PARSE error and aborts the whole input (exit 2), whereas psh rejects it at
 EXECUTION time (status 1, then continues). Both REJECT the name; only the
 posix abort-vs-continue flow differs, and the posix cases are pinned as "psh
-rejects, bash rejects" rather than identical.
+rejects, bash rejects" rather than identical. (bash 5.3 CHANGES 5.3-alpha
+"Changes to Bash" item hhhhh makes ``select`` behave like ``for`` here.)
 
 The REASON is not that psh parses everything up front — it does not, and the
 sentence that used to say so here was false at every commit. psh's execution
@@ -167,12 +174,12 @@ class TestPosixRestrictsUnicodeLikeBash:
             assert "not a valid identifier" in psh.stderr, command
             assert "not a valid identifier" in bash.stderr, command
 
-    def test_for_and_function_rejected_by_both(self):
+    def test_for_and_select_rejected_by_both(self):
         # Both shells REJECT; bash parse-aborts (exit 2), psh rejects at exec
-        # (status 1, then continues) — see module docstring.
+        # (status 1, then continues) — see module docstring. Function names
+        # left this loop in Wave 0.2 (bash 5.3 accepts them; class below).
         for construct in ["for é in a; do echo body; done",
-                          "function é { echo body; }",
-                          "é() { echo body; }"]:
+                          "select é in a; do echo body; done </dev/null"]:
             command = f"set -o posix; {construct}"
             bash = _run(BASH, command)
             psh = _run(PSH, command)
@@ -181,6 +188,72 @@ class TestPosixRestrictsUnicodeLikeBash:
             assert "not a valid identifier" in psh.stderr, command
             assert "not a valid identifier" in bash.stderr, command
             assert "body" not in psh.stdout, command  # body never runs
+
+
+class TestPosixFunctionNamesUnrestricted:
+    """Function names are NOT identifier-checked under ``set -o posix``.
+
+    bash 5.3 CHANGES (5.3-beta, "New Features in Bash" item p): "Posix mode
+    no longer requires function names to be valid shell identifiers." bash 5.2
+    parse-aborted these; psh rejected them at execution. Verified against
+    5.3.15 (Wave 0.2; gate node test_for_and_function_rejected_by_both, split).
+    """
+
+    def test_function_names_unrestricted_in_posix(self):
+        for name in ["é", "naïve", "9x", "a-b"]:
+            for construct in [f"function {name} {{ echo body; }}",
+                              f"{name}() {{ echo body; }}"]:
+                command = f"set -o posix; {construct}; {name}; echo rc=$?"
+                bash = _run(BASH, command)
+                psh = _run(PSH, command)
+                assert psh.stdout == bash.stdout == "body\nrc=0\n", command
+                assert psh.returncode == bash.returncode == 0, command
+                assert psh.stderr == bash.stderr == "", command
+
+    def test_posix_enabled_after_definition_still_calls(self):
+        # GREEN CONTROL (passes on the Wave 0 base): a function defined before
+        # `set -o posix` was always callable afterwards; lookup never checked.
+        command = "é() { echo body; }; set -o posix; é; echo rc=$?"
+        bash = _run(BASH, command)
+        psh = _run(PSH, command)
+        assert psh.stdout == bash.stdout == "body\nrc=0\n"
+        assert psh.stderr == bash.stderr == ""
+
+    def test_readonly_and_export_f_accept_any_defined_function(self):
+        # -f operands of readonly/export are function names, not identifiers:
+        # bash 5.3 accepts a defined `é` (rc 0) and reports an undefined one
+        # as `not a function` (psh says `not found` for readonly — pre-existing
+        # wording nit, not pinned here).
+        for builtin in ["readonly -f é", "export -f é"]:
+            command = f"set -o posix; é() {{ echo body; }}; {builtin}; echo rc=$?; é"
+            bash = _run(BASH, command)
+            psh = _run(PSH, command)
+            assert psh.stdout == bash.stdout == "rc=0\nbody\n", command
+            assert psh.stderr == bash.stderr == "", command
+
+    def test_unset_f_accepts_any_function_name_in_posix(self):
+        command = ("set -o posix; é() { echo body; }; unset -f é; echo rc=$?; "
+                   "é 2>/dev/null; echo rc=$?")
+        bash = _run(BASH, command)
+        psh = _run(PSH, command)
+        assert psh.stdout == bash.stdout == "rc=0\nrc=127\n"
+        assert psh.stderr == bash.stderr == ""  # the definition is silent
+
+    def test_declare_f_operand_check_is_a_declared_divergence(self):
+        """DECLARED DIVERGENCE (Wave 0.2 side finding; needs a ledger N-row
+        with an owner). bash 5.3 still identifier-checks the OPERAND of
+        `declare -f` / `declare -F` / `typeset -f` under posix — `declare:
+        `é': not a valid identifier`, rc 1 — even when é is defined; psh's
+        function path does not validate -f operands and prints the definition,
+        rc 0. Both sides pinned so the divergence is explicit; flip this pin
+        when psh adopts the operand check.
+        """
+        command = "set -o posix; é() { echo body; }; declare -f é; echo rc=$?"
+        bash = _run(BASH, command)
+        psh = _run(PSH, command)
+        assert bash.stdout == "rc=1\n" and "not a valid identifier" in bash.stderr
+        assert psh.stdout.endswith("rc=0\n") and "echo body" in psh.stdout
+        assert psh.stderr == ""
 
 
 class TestUnicodeAcceptedWithoutPosixDivergence:

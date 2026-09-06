@@ -503,11 +503,14 @@ vanishingly rare in practice.
 
 ### Identifier (Name) Rules — Unicode Extension
 
-A single policy decides what counts as a valid variable/function *name*
-everywhere it matters — assignments, `declare`/`export`/`readonly`/`local`,
-`read`, `for`, function definitions, and `${NAME}`. Bash restricts names to the
-POSIX/ASCII set `[A-Za-z_][A-Za-z0-9_]*` in every mode. PSH is more lenient by
-default:
+A single policy decides what counts as a valid *variable* name everywhere it
+matters — assignments, `declare`/`export`/`readonly`/`local`, `read`,
+`for`/`select`, and `${NAME}`. Bash restricts variable names to the POSIX/ASCII
+set `[A-Za-z_][A-Za-z0-9_]*` in every mode. Function *names* are the exception
+in both shells: since bash 5.3 ("Posix mode no longer requires function names
+to be valid shell identifiers", CHANGES 5.3-beta) a function may be defined
+under any name in either mode, and PSH follows. PSH is more lenient than bash
+for variable names by default:
 
 ```bash
 # DEFAULT MODE — PSH accepts Unicode-letter names (a deliberate extension):
@@ -525,19 +528,28 @@ set -o posix
 declare é=1                  # declare: `é=1': not a valid identifier (status 1)
 read é                       # read: `é': not a valid identifier (status 1)
 foo=1; echo $foo             # plain ASCII names still work (1)
+é() { echo hi; }; é          # hi in BOTH shells: function names are unrestricted
+9x() { echo n; }; 9x         # n (bash 5.3 and PSH; bash 5.2 parse-aborted)
 ```
 
 So the *only* behavioral change `set -o posix` makes to names is switching
-OFF the Unicode extension; ASCII names behave identically in both modes.
+OFF the Unicode extension for variables; ASCII names behave identically in both
+modes, and function names are never identifier-checked.
 
-Note on `for`/`function` error flow: in DEFAULT mode both shells simply report
+Note on `for`/`select` error flow: in DEFAULT mode both shells simply report
 "not a valid identifier" (status 1) and CONTINUE — PSH matches bash here. The
-flow differs only under `set -o posix`: bash then treats the invalid name as a
-*parse* error and aborts the whole input (exit 2), whereas PSH rejects it at
-*execution* time (status 1) and continues. (PSH parses one command at a time, so
-a `set -o posix` does affect how LATER commands are parsed — it just does not
-turn this particular rejection into a parse error.) Both reject the name; only
-the posix abort-vs-continue flow differs.
+flow differs only under `set -o posix`: bash then treats the invalid loop
+variable as a *parse* error and aborts the whole input (exit 2), whereas PSH
+rejects it at *execution* time (status 1) and continues. (PSH parses one command
+at a time, so a `set -o posix` does affect how LATER commands are parsed — it
+just does not turn this particular rejection into a parse error.) Both reject
+the name; only the posix abort-vs-continue flow differs.
+
+One residual difference on the `declare` side: under `set -o posix` bash 5.3
+still identifier-checks the *operand* of `declare -f`/`declare -F`/`typeset -f`
+(`declare -f é` → "not a valid identifier", status 1, even when `é` is
+defined), whereas PSH prints the definition (status 0). `readonly -f`,
+`export -f` and `unset -f` accept any defined function name in both shells.
 
 ### Case Modification and Unicode
 
