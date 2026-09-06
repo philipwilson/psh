@@ -10651,3 +10651,51 @@
   stdout: ""
   stderr: "substring expression < 0"
   exit_code: 1
+
+# --- Wave 0.3 (improvement program 2026-09, C242 gate triage): bash 5.3
+# PATH-miss WORDING. bash 5.3 CHANGES 5.3-alpha item p ("Treat a NULL value
+# for $PATH as equivalent to '.'"): a SET-but-empty PATH is a cwd search that
+# MISSES -> "command not found"; only an UNSET PATH (missing, or a
+# declared-unset `local PATH`) is "No such file or directory". rc 127 both;
+# each row carries the status of the NEXT command on stdout (D3), which is
+# what --compare-bash gates. The two set-empty rows are 5.3-only (min_bash).
+- name: w0_3_path_miss_empty_path_is_command_not_found
+  command: 'PATH= nosuchcmd_w03; echo rc=$?'
+  stdout: "rc=127\n"
+  stderr: "nosuchcmd_w03: command not found"
+  exit_code: 0
+  min_bash: "5.3"
+
+- name: w0_3_path_miss_local_empty_path_is_command_not_found
+  command: 'f(){ local PATH=; nosuchcmd_w03; echo rc=$?; }; f'
+  stdout: "rc=127\n"
+  stderr: "nosuchcmd_w03: command not found"
+  exit_code: 0
+  min_bash: "5.3"
+
+- name: w0_3_path_miss_unset_path_is_no_such_file
+  command: 'unset PATH; nosuchcmd_w03; echo rc=$?'
+  stdout: "rc=127\n"
+  stderr: "nosuchcmd_w03: No such file or directory"
+  exit_code: 0
+
+- name: w0_3_path_miss_local_unset_path_is_no_such_file
+  command: 'export PATH=/nope-w03; f(){ local PATH; nosuchcmd_w03; echo rc=$?; }; f'
+  stdout: "rc=127\n"
+  stderr: "nosuchcmd_w03: No such file or directory"
+  exit_code: 0
+
+- name: w0_3_path_miss_colon_path_is_command_not_found
+  command: 'PATH=: nosuchcmd_w03; echo rc=$?'
+  stdout: "rc=127\n"
+  stderr: "nosuchcmd_w03: command not found"
+  exit_code: 0
+
+# `command -p` searches its default path list whatever PATH's state, so an
+# UNSET PATH still yields a SEARCH miss ("command not found"); empirical,
+# 5.3.15 (pkg F verifier B2).
+- name: w0_3_path_miss_unset_path_command_p_is_command_not_found
+  command: 'unset PATH; command -p nosuchcmd_w03; echo rc=$?'
+  stdout: "rc=127\n"
+  stderr: "nosuchcmd_w03: command not found"
+  exit_code: 0
