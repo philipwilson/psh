@@ -254,7 +254,7 @@ class TestNotFoundMessageVariableTruth:
 
     def test_unset_path_is_no_such_file(self, cvtree):
         # A genuinely MISSING PATH: no search at all -> 'No such file or
-        # directory' (empirical, 5.3.15 — unchanged from 5.2).
+        # directory' (empirical, 5.3.15).
         _assert_same('unset PATH; nosuchcmd 2>&1; echo rc=$?', cvtree)
 
     def test_normal_path_is_command_not_found_message(self, cvtree):
@@ -264,7 +264,7 @@ class TestNotFoundMessageVariableTruth:
 
     def test_explicit_empty_path_is_command_not_found(self, cvtree):
         # bash 5.3 CHANGES 5.3-alpha item p: NULL PATH == "." -> a cwd search
-        # that missed -> 'command not found' (5.2 said 'No such file').
+        # that missed -> 'command not found'.
         # RED ON BASE (788ffe41): psh keyed the wording on emptiness.
         _assert_same('PATH= nosuchcmd 2>&1; echo rc=$?', cvtree)
 
@@ -280,6 +280,19 @@ class TestNotFoundMessageVariableTruth:
         # `export PATH=` (set, empty, exported) is the same "." search
         # (bash 5.3 CHANGES 5.3-alpha item p). RED ON BASE (788ffe41).
         _assert_same('export PATH=; nosuchcmd 2>&1; echo rc=$?', cvtree)
+
+    def test_unset_path_command_p_is_command_not_found(self, cvtree):
+        # `command -p` searches its default path list whatever PATH's state,
+        # so an UNSET PATH still yields a SEARCH miss: 'command not found'
+        # (empirical, 5.3.15). RED ON BASE (6c31871f).
+        _assert_same('unset PATH; command -p nosuchcmd 2>&1; echo rc=$?', cvtree)
+
+    def test_local_unset_path_command_p_is_command_not_found(self, cvtree):
+        # The declared-unset `local PATH` shadow does not suppress the
+        # `command -p` default-path search either. RED ON BASE (6c31871f).
+        cmd = (f'export PATH={cvtree}/bin; '
+               'f(){ local PATH; command -p nosuchcmd 2>&1; echo rc=$?; }; f')
+        _assert_same(cmd, cvtree)
 
 
 # --- CV2 scope extension (integrator ruling): the SAME class in the three

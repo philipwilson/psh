@@ -111,10 +111,14 @@ def format_exec_failure(cmd_name: str, exc: OSError,
     to '.'"), so ``PATH= cmd``, ``export PATH=`` and a function's ``local
     PATH=`` are cwd searches that miss → "command not found", exactly like
     ``PATH=:``. Only an UNSET PATH — genuinely missing, or a declared-unset
-    ``local PATH`` shadow (PRESENT_UNSET) — performs no search at all, and
-    bash reports the bare name as "No such file or directory" (``unset
-    PATH; cmd``; still 127). Reproduce in bash 5.3.15 and psh:
-    ``PATH= nosuchcmd`` vs ``unset PATH; nosuchcmd``.
+    ``local PATH`` shadow (PRESENT_UNSET) — with no ``command -p`` override
+    performs no search at all, and bash reports the bare name as "No such
+    file or directory" (``unset PATH; cmd``; still 127). ``command -p``
+    always searches its default path list, so its miss is "command not
+    found" whatever PATH's state (``unset PATH; command -p cmd``; empirical,
+    5.3.15) — :func:`report_exec_failure` folds that override into
+    ``unset_path``. Reproduce in bash 5.3.15 and psh: ``PATH= nosuchcmd`` vs
+    ``unset PATH; nosuchcmd`` vs ``unset PATH; command -p nosuchcmd``.
     """
     if isinstance(exc, FileNotFoundError):
         if resolved_path is not None:
@@ -136,7 +140,8 @@ def format_exec_failure(cmd_name: str, exc: OSError,
 
 def report_exec_failure(cmd_name: str, exc: OSError,
                         resolved_path: Optional[str] = None,
-                        *, state: 'ShellState') -> int:
+                        *, state: 'ShellState',
+                        search_override: Optional[str] = None) -> int:
     """Report a failed exec on fd 2 and return the exit status.
 
     Shared by the in-pipeline (inline exec) and fork execution paths so
@@ -145,15 +150,20 @@ def report_exec_failure(cmd_name: str, exc: OSError,
     fd level — both callers run in a forked child. ``state`` supplies the
     ``<$0>: [line N: ]`` location prefix bash prepends (matching a builtin
     runtime error); the child inherits the parent's script_name/line/options
-    at fork, so the prefix is correct.
+    at fork, so the prefix is correct. ``search_override`` is the
+    ``command -p`` default path list when that override drove the search
+    (see :meth:`ExternalExecutionStrategy.execute`).
     """
-    # The 127 wording keys on PATH's tri-state SET-NESS (bash 5.3): a SET
-    # PATH — even an empty one — searched and missed ("command not found");
-    # only MISSING or a declared-unset `local PATH` (PRESENT_UNSET) is "No
-    # such file or directory". Read through the tri-state authority (which
-    # also sees a `PATH=... cmd` temp-env prefix) so the shadow is honoured,
-    # never resurrected from the child-env projection (#20 H13 / CV2).
-    unset_path = not state.scope_manager.lookup('PATH').is_set
+    # The 127 wording keys on whether a search list was consulted: a SET
+    # PATH — even an empty one (bash 5.3) — or a `command -p` default path
+    # searched and missed ("command not found"); only MISSING or a
+    # declared-unset `local PATH` (PRESENT_UNSET) with no override is "No
+    # such file or directory". PATH is read through the tri-state authority
+    # (which also sees a `PATH=... cmd` temp-env prefix) so the shadow is
+    # honoured, never resurrected from the child-env projection (#20 H13 /
+    # CV2).
+    unset_path = (search_override is None
+                  and not state.scope_manager.lookup('PATH').is_set)
     message, status = format_exec_failure(
         cmd_name, exc, resolved_path, unset_path=unset_path)
     # surrogateescape on the diagnostics: a command name carrying non-UTF-8
@@ -634,7 +644,9 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                                             os.strerror(errno.ENOENT), cmd_name)
                 exec_external(full_args, shell.env, resolved_path)
             except OSError as e:
-                os._exit(report_exec_failure(full_args[0], e, resolved_path, state=shell.state))
+                os._exit(report_exec_failure(
+                    full_args[0], e, resolved_path, state=shell.state,
+                    search_override=path_override))
 
         # Set terminal title to show running command
         if not background and not context.in_pipeline and shell.state.options.get('interactive'):
@@ -670,7 +682,9 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                                             os.strerror(errno.ENOENT), cmd_name)
                 exec_external(full_args, shell.env, resolved_path)
             except OSError as e:
-                return report_exec_failure(full_args[0], e, resolved_path, state=shell.state)
+                return report_exec_failure(
+                    full_args[0], e, resolved_path, state=shell.state,
+                    search_override=path_override)
 
             # Not reached if exec succeeds
             return 127

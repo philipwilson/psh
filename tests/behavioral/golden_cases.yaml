@@ -10675,3 +10675,12 @@
   stdout: "rc=127\n"
   stderr: "nosuchcmd_w03: command not found"
   exit_code: 0
+
+# `command -p` searches its default path list whatever PATH's state, so an
+# UNSET PATH still yields a SEARCH miss ("command not found"); empirical,
+# 5.3.15 (pkg F verifier B2).
+- name: w0_3_path_miss_unset_path_command_p_is_command_not_found
+  command: 'unset PATH; command -p nosuchcmd_w03; echo rc=$?'
+  stdout: "rc=127\n"
+  stderr: "nosuchcmd_w03: command not found"
+  exit_code: 0

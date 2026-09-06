@@ -263,7 +263,7 @@ class TestEmptyPathNotFoundMessage:
         return p, b
 
     def test_empty_path_says_command_not_found(self):
-        # RED ON BASE (788ffe41): psh keyed the wording on emptiness (5.2).
+        # RED ON BASE (788ffe41): psh keyed the wording on emptiness.
         p, b = self._both('PATH= zzznope 2>&1; echo rc=$?')
         assert 'command not found' in p.stdout
         assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
@@ -286,6 +286,26 @@ class TestEmptyPathNotFoundMessage:
     def test_unset_path_says_no_such_file(self):
         p, b = self._both('unset PATH; zzznope 2>&1; echo rc=$?')
         assert 'No such file or directory' in p.stdout
+        assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
+
+    def test_unset_path_command_p_says_command_not_found(self):
+        # `command -p` searches its default path list whatever PATH's state,
+        # so the miss is a SEARCH miss (empirical, 5.3.15). RED ON BASE
+        # (6c31871f): psh keyed the wording on PATH alone.
+        p, b = self._both('unset PATH; command -p zzznope 2>&1; echo rc=$?')
+        assert 'command not found' in p.stdout
+        assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
+
+    def test_unset_path_command_p_cwd_hit_is_command_not_found(self, tmp_path):
+        # A cwd executable is NOT on the default path list: `command -p`
+        # misses it even though a bare `unset PATH; cmd` would run it.
+        (tmp_path / 'zzhit').write_text('#!/bin/sh\necho RAN\n')
+        (tmp_path / 'zzhit').chmod(0o755)
+        script = 'unset PATH; command -p zzhit 2>&1; echo rc=$?'
+        p = run_psh(['-c', script], cwd=str(tmp_path))
+        b = run_bash(['--norc', '--noprofile', '-c', script], cwd=str(tmp_path))
+        assert is_comparable(p) and is_comparable(b), (p, b)
+        assert 'zzhit: command not found' in p.stdout, p.stdout
         assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
 
     def test_nonempty_path_miss_still_command_not_found(self):
@@ -313,7 +333,14 @@ class TestPathMissWordingInputModes:
          'zzznope: command not found'),
         ('unset PATH; zzznope 2>&1; echo rc=$?',
          'zzznope: No such file or directory'),
+        # `command -p` searches the default path list regardless of PATH.
+        ('unset PATH; command -p zzznope 2>&1; echo rc=$?',
+         'zzznope: command not found'),
+        ('f(){ local PATH; command -p zzznope 2>&1; echo rc=$?; }; f',
+         'zzznope: command not found'),
     ]
+    IDS = ['empty', 'local_empty', 'unset', 'unset_command_p',
+           'local_unset_command_p']
 
     def _check(self, p, b, body):
         assert is_comparable(p), p
@@ -323,22 +350,19 @@ class TestPathMissWordingInputModes:
         assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
         assert p.returncode == b.returncode == 0
 
-    @pytest.mark.parametrize('script,body', ROWS, ids=['empty', 'local_empty',
-                                                       'unset'])
+    @pytest.mark.parametrize('script,body', ROWS, ids=IDS)
     def test_dash_c(self, script, body):
         self._check(run_psh(['-c', script]),
                     run_bash(['--norc', '--noprofile', '-c', script]), body)
 
-    @pytest.mark.parametrize('script,body', ROWS, ids=['empty', 'local_empty',
-                                                       'unset'])
+    @pytest.mark.parametrize('script,body', ROWS, ids=IDS)
     def test_stdin(self, script, body):
         data = script + '\n'
         self._check(run_psh([], stdin_data=data, stdin_mode='pipe'),
                     run_bash(['--norc', '--noprofile'], stdin_data=data,
                              stdin_mode='pipe'), body)
 
-    @pytest.mark.parametrize('script,body', ROWS, ids=['empty', 'local_empty',
-                                                       'unset'])
+    @pytest.mark.parametrize('script,body', ROWS, ids=IDS)
     def test_script_file(self, script, body, tmp_path):
         # Both shells name the script in the prefix (`s.sh: line 1: `), so the
         # normalized outputs must be byte-identical.
