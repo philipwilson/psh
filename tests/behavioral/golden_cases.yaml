@@ -10749,3 +10749,38 @@
   stdout: "[1]+ PID Running                    sleep 1 &\n"
   stderr: ""
   exit_code: 0
+
+# -c mode lists a completed job once, then reaps it (bash 5.3 CHANGES,
+# 5.3-alpha "New Features in Bash" item d + "Changes to Bash" bbbb; 5.2 reaped
+# it eagerly so `jobs` printed nothing). The golden runner IS `-c` mode.
+- name: w0_2_jobs_completed_builtin_listed_once_c_mode
+  description: "closes test_jobs_completed_listing_modes::test_completed_builtin_listed_once_c_mode (C181 discharged)"
+  min_bash: "5.3"
+  command: 'false & sleep 0.3; echo A:; jobs; echo B:'
+  stdout: "A:\n[1]+  Exit 1                     false\nB:\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_jobs_completed_external_listed_once_c_mode
+  description: "closes test_jobs_completed_listing_modes::test_completed_external_listed_once_c_mode"
+  min_bash: "5.3"
+  command: 'sleep 0.1 & sleep 0.3; echo A:; jobs; echo B:'
+  stdout: "A:\n[1]+  Done                       sleep 0.1\nB:\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_jobs_c_mode_second_jobs_is_empty_and_wait_keeps_status
+  description: "the -c listing reaps the job (second `jobs` empty) and `wait $p` still returns the remembered status (bash 5.3.15)"
+  min_bash: "5.3"
+  command: '(exit 7)& p=$!; sleep 0.3; jobs >/dev/null; echo A:; jobs; echo B:; wait $p; echo rc=$?'
+  stdout: "A:\nB:\nrc=7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_jobs_c_mode_set_m_no_boundary_notice
+  description: "C181 ruling: `-c` + `set -m` prints the listing on stdout and no stderr notice (bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'set -m; false & sleep 0.3; echo A:; jobs; echo B:'
+  stdout: "A:\n[1]+  Exit 1                     false\nB:\n"
+  stderr: ""
+  exit_code: 0

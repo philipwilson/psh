@@ -83,19 +83,18 @@ class JobsBuiltin(Builtin):
             jobs_to_list = [job for job in jobs_to_list
                             if job.state == state_filter]
 
-        # A completed job is listed by `jobs` exactly ONCE, then reaped —
-        # EXCEPT in `-c` mode. Verified vs bash 5.2 (stdout/stderr separated,
-        # all four read paths): script-file and stdin `jobs` list the finished
-        # job (`[1]+ Exit 1 false` / `Done`) on stdout; `-c` reaps it eagerly so
-        # `jobs` stdout is empty (bash announces it on stderr instead — the
-        # deferred -c+monitor boundary notice; see the jobsnx ledger); an
-        # interactive shell's prompt notice reaps it before `jobs` too (psh's
-        # REPL removes it, so nothing is left to list). So suppress the
-        # completed entry only under command_mode (the 'c' in $-); removal below
-        # is unconditional either way.
-        if shell.state.options.get('command_mode'):
-            jobs_to_list = [job for job in jobs_to_list
-                            if job.state != JobState.DONE]
+        # A completed job is listed by `jobs` exactly ONCE, then reaped, in
+        # EVERY non-interactive read path — `-c`, script-file and stdin alike
+        # (`[1]+ Exit 1 false` / `Done` on stdout). Verified vs bash 5.3.15
+        # with stdout/stderr separated: bash 5.3 dropped 5.2's eager `-c`
+        # reap (CHANGES, 5.3-alpha "New Features in Bash" item d — running
+        # `jobs` removes jobs from the list — and "Changes to Bash" bbbb), and
+        # prints NO stderr notice at the `-c`+`set -m` boundary either
+        # (`bash -c 'set -m; false & sleep 0.3; jobs'`: listing on stdout,
+        # empty stderr), so the v0.692 deferral of that notice is discharged.
+        # An interactive shell's prompt notice still reaps the job before
+        # `jobs` runs (psh's REPL removes it, so nothing is left to list).
+        # Reproduce: `psh -c 'false & sleep 0.3; jobs; jobs'` lists once.
 
         # -n: only jobs whose status changed since the user was last notified of
         # it (bash). `notified` is the shared J_NOTIFIED predicate — cleared on

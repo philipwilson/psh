@@ -12,7 +12,8 @@ substitution children stay in the shell's pgid, so the refresh can never reap
 a substitution child out from under its own wait. These pins run psh in a
 subprocess (job control + signals) with a hard timeout; serial-by-path.
 
-All behaviours verified against bash 5.2.26 (tmp/probes/probe_*.sh).
+All behaviours verified against bash 5.2.26 (tmp/probes/probe_*.sh); the
+-c completed-job rows re-pinned against 5.3.15 (Wave 0.2).
 """
 
 import subprocess
@@ -65,26 +66,27 @@ def test_jobs_reflects_external_continue():
     assert 'Stopped' not in cont_block
 
 
-def test_jobs_suppresses_completed_job_in_c_mode():
-    """In `-c` mode `jobs` does NOT list a completed job on stdout.
+def test_jobs_lists_completed_job_once_in_c_mode():
+    """In `-c` mode `jobs` lists a completed job on stdout exactly once.
 
-    bash reaps a finished job eagerly in `-c` (announcing it on stderr under
-    monitor — the deferred -c+monitor boundary notice), so `jobs` stdout is
-    empty. In script/stdin modes it IS listed once — see the mode matrix in
-    test_jobs_completed_listing_modes.py. Both `set -m` and plain -c runs match
-    bash's empty -c stdout here; the job is still reaped (next test).
+    bash 5.3 lists it (`[1]+  Exit 1 ... false`, 27-column status field) and
+    prints NO stderr notice, with or without `set -m` — bash 5.3 CHANGES,
+    5.3-alpha "New Features in Bash" item d (running `jobs` removes jobs from
+    the list). bash 5.2 reaped it eagerly so stdout was empty; the mode matrix
+    lives in test_jobs_completed_listing_modes.py. The job is still reaped
+    (next test).
     """
     for prefix in ('set -m; ', ''):
         r = _psh(prefix + 'false & sleep 0.3; echo "A:"; jobs; echo "B:"')
         lines = r.stdout.splitlines()
         between = lines[lines.index('A:') + 1:lines.index('B:')]
-        assert between == [], (prefix, r.stdout)
-        assert 'Exit' not in r.stdout and 'Done' not in r.stdout, (prefix, r.stdout)
+        assert between == ['[1]+  Exit 1                     false'], (prefix, r.stdout)
+        assert r.stderr == '', (prefix, r.stderr)
 
 
 def test_jobs_reaps_completion_for_later_wait():
-    """Although unlisted, a finished job IS reaped by `jobs`: it does not linger
-    as a stale Running entry and `wait` still returns its status."""
+    """Once listed, a finished job IS reaped by `jobs`: it does not linger as
+    a stale Running entry and `wait` still returns its status."""
     r = _psh('false & p=$!; sleep 0.3; jobs >/dev/null; '
              'wait "$p"; echo "w=$?"')
     assert 'w=1' in r.stdout
