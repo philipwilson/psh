@@ -22,10 +22,9 @@ version — the only literal it owns is the policy constant.
 from __future__ import annotations
 
 import re
-import subprocess
 from typing import Callable, Dict, Optional, Tuple
 
-from shell_oracle import BashOracle, resolve_bash
+from shell_oracle import BashOracle, Completed, is_comparable, resolve_bash, run_shell_case
 
 #: The contract: bash major.minor the pins are verified against.  Changing
 #: this is a Wave-0-shaped re-baseline slot, never an in-slot edit (D1).
@@ -83,11 +82,23 @@ def oracle_at_least(minimum: str, oracle: Optional[BashOracle] = None) -> bool:
 
 # --- probed platform features ------------------------------------------------
 
-def _run_oracle(path: str, script: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [path, "-c", script], stdin=subprocess.DEVNULL, capture_output=True,
-        timeout=10, encoding="utf-8", errors="surrogateescape",
-    )
+def _run_oracle(path: str, script: str) -> Completed:
+    """Run ``script`` on the oracle at ``path`` through the typed runner.
+
+    This module lives under ``tests/harness`` and is therefore oracle-bearing:
+    the anti-spawn guard (``test_no_direct_spawn_in_oracle_modules.py``)
+    forbids a raw ``subprocess`` here, and the typed runner is what gives the
+    probe its hermetic env, timeout and byte cap.  A non-comparable outcome
+    (spawn failure, timeout, capture overflow) is a HARNESS failure and
+    raises — a probe must never turn one into a silent ``False`` that skips
+    or runs a row for the wrong reason.  Tests exercise the probes through
+    this seam (monkeypatch it; do not depend on the host's platform).
+    """
+    result = run_shell_case([path, "-c", script], timeout=10)
+    if not is_comparable(result):
+        raise RuntimeError(
+            f"oracle probe {script!r} on {path} did not complete: {result!r}")
+    return result
 
 
 def _probe_x87_long_double(path: str) -> bool:
