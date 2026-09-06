@@ -8,14 +8,19 @@ treats as shadowed-unset (the #20 H13 class):
 - CD's CDPATH search (`builtins/navigation.py`)
 - external command PATH search (`executor/command_resolver.py` +
   `executor/strategies.py`, whose bare-name miss is now definitive)
-- the 127-message discriminator empty-vs-nonempty PATH (`executor/strategies.py`)
+- the 127-message discriminator set-vs-unset PATH (`executor/strategies.py`)
 
 Each command is run in BOTH shells against a SHARED temp tree (so absolute
 paths in the output are identical), and compared with the shell-name
 diagnostic prefix stripped (``bash: line 1: `` / ``psh: line 1: ``). Every
 declared-unset-shadow row was DIVERGENT before v0.750.0 (psh resurrected the
 export); the non-shadow rows matched at base and are kept-green parity.
-Probed against bash 5.2 (tmp/boundary-ledgers/CV-probes/cv2_matrix.sh).
+Probed against bash 5.3.15. The PATH-miss WORDING rows follow bash 5.3
+CHANGES (5.3-alpha item p: "Treat a NULL value for $PATH as equivalent to
+'.'"): a set-but-empty PATH is a cwd search that misses ("command not
+found"); only an UNSET PATH is "No such file or directory" (Wave 0.3 of the
+2026-09 improvement program, C242 gate triage). Everything else: empirical,
+5.3.15.
 """
 import os
 import re
@@ -232,23 +237,49 @@ class TestPathSearchVariableTruth:
 
 
 class TestNotFoundMessageVariableTruth:
-    """The 127-message discriminator (empty vs non-empty PATH) reads the
-    variable, so a `local PATH` shadow yields the empty-PATH wording."""
+    """The 127-message discriminator is PATH's tri-state SET-NESS, read from
+    the variable: a SET PATH (even empty — bash 5.3 CHANGES 5.3-alpha item p
+    makes a NULL PATH a "." search) that misses says "command not found";
+    only an UNSET PATH — missing, or a declared-unset `local PATH` shadow —
+    says "No such file or directory". rc 127 both; each row also pins the
+    status of the NEXT command (D3)."""
 
-    def test_local_unset_path_is_empty_path_message(self, cvtree):
-        # bash: 'nosuchcmd: No such file or directory' (empty PATH), not
-        # 'command not found'. RED ON BASE (psh saw the resurrected PATH).
+    def test_local_unset_path_is_unset_path_message(self, cvtree):
+        # bash: 'nosuchcmd: No such file or directory' (declared-UNSET PATH),
+        # not 'command not found'. RED ON BASE of v0.750.0 (psh saw the
+        # resurrected PATH); unchanged by bash 5.3.
         cmd = (f'export PATH={cvtree}/bin; '
                'f(){ local PATH; nosuchcmd 2>&1; echo rc=$?; }; f')
         _assert_same(cmd, cvtree)
+
+    def test_unset_path_is_no_such_file(self, cvtree):
+        # A genuinely MISSING PATH: no search at all -> 'No such file or
+        # directory' (empirical, 5.3.15 — unchanged from 5.2).
+        _assert_same('unset PATH; nosuchcmd 2>&1; echo rc=$?', cvtree)
 
     def test_normal_path_is_command_not_found_message(self, cvtree):
         cmd = (f'export PATH={cvtree}/bin; '
                'f(){ nosuchcmd 2>&1; echo rc=$?; }; f')
         _assert_same(cmd, cvtree)
 
-    def test_explicit_empty_path_is_no_such_file(self, cvtree):
+    def test_explicit_empty_path_is_command_not_found(self, cvtree):
+        # bash 5.3 CHANGES 5.3-alpha item p: NULL PATH == "." -> a cwd search
+        # that missed -> 'command not found' (5.2 said 'No such file').
+        # RED ON BASE (788ffe41): psh keyed the wording on emptiness.
         _assert_same('PATH= nosuchcmd 2>&1; echo rc=$?', cvtree)
+
+    def test_local_empty_path_is_command_not_found(self, cvtree):
+        # `local PATH=` is SET (empty), not declared-unset: the "." search
+        # misses -> 'command not found' (bash 5.3 CHANGES 5.3-alpha item p).
+        # RED ON BASE (788ffe41).
+        cmd = (f'export PATH={cvtree}/bin; '
+               'f(){ local PATH=; nosuchcmd 2>&1; echo rc=$?; }; f')
+        _assert_same(cmd, cvtree)
+
+    def test_exported_empty_path_is_command_not_found(self, cvtree):
+        # `export PATH=` (set, empty, exported) is the same "." search
+        # (bash 5.3 CHANGES 5.3-alpha item p). RED ON BASE (788ffe41).
+        _assert_same('export PATH=; nosuchcmd 2>&1; echo rc=$?', cvtree)
 
 
 # --- CV2 scope extension (integrator ruling): the SAME class in the three
@@ -279,8 +310,10 @@ class TestExecPathVariableTruth:
 
     exec replaces the process on success, so the rows compare stdout + status
     with stderr suppressed. The exec/external diagnostic WORDING is NOT pinned
-    identical here: for the empty-PATH / `local PATH` shadow corner bash prints
-    the resolved ABSOLUTE PATH ("<abs>: No such file or directory") while psh
+    identical here: for the UNSET / declared-unset `local PATH` shadow corner
+    bash prints the resolved ABSOLUTE PATH ("<abs>: No such file or
+    directory"; probed 5.3.15 — an EMPTY `PATH=` instead says `exec:
+    nosuchcmd: not found`, like psh) while psh
     names the bare command word — a pre-existing message-wording difference
     carried as register #24 (TestPermissionDeniedWording in
     test_cv_carry_characterization.py pins the abs-path-vs-bare-word divergence
