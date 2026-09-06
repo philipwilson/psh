@@ -40,54 +40,19 @@ Reproduce one divergence row by hand (oracle = the resolved bash 5.3.15)::
 """
 
 from conformance_framework import ConformanceTest
+from divergence_pins import MODES, assert_declared_divergence
 from shell_oracle import is_comparable, run_bash, run_psh
-
-MODES = ("command", "script", "stdin")
-
-
-def _run_mode(runner, mode, command, tmp_path, tag):
-    """One command in one input mode through the shell-oracle runner.
-
-    ``runner`` is ``run_psh`` / ``run_bash`` (a callable, never a shell-name
-    string); ``tag`` only names the temp script file.
-    """
-    if mode == "command":
-        return runner(["-c", command])
-    if mode == "script":
-        path = tmp_path / f"{tag}.sh"
-        path.write_text(command + "\n")
-        return runner([str(path)])
-    return runner([], stdin_data=command + "\n", stdin_mode="pipe")
 
 
 def _assert_declared_divergence(command, *, bash, psh, tmp_path,
                                 modes=MODES, stderr_has=None):
-    """Both-sides pin in the given input modes (D6; slot 2.3 flips it).
-
-    ``bash``/``psh`` are the expected ``(stdout, exit status)`` of each side.
-    Red the moment EITHER side moves: an oracle mismatch means the oracle
-    drifted (re-baseline, do not edit in place); a psh mismatch means the
-    slot 2.3 fix landed and the row must become a parity row.  Both sides
-    must diagnose; ``stderr_has`` additionally requires a wording fragment
-    in BOTH diagnostics (shell-name prefixes differ, so only the tail).
+    """Slot 2.3 both-sides pin in the given input modes (D6); both
+    shells must diagnose, ``stderr_has`` names the wording fragment
+    both diagnostics carry.  See tests/conformance/divergence_pins.py.
     """
-    for mode in modes:
-        b = _run_mode(run_bash, mode, command, tmp_path, "oracle")
-        p = _run_mode(run_psh, mode, command, tmp_path, "psh")
-        assert is_comparable(b), b
-        assert is_comparable(p), p
-        assert (b.stdout, b.returncode) == bash, (
-            f"[{mode}] ORACLE side moved for {command!r}: "
-            f"bash {b.stdout!r} rc={b.returncode}, expected {bash}")
-        assert (p.stdout, p.returncode) == psh, (
-            f"[{mode}] PSH side moved for {command!r} (slot 2.3 landed? flip "
-            f"this row): psh {p.stdout!r} rc={p.returncode}, expected {psh}")
-        assert b.stderr and p.stderr, (
-            f"[{mode}] a side stayed silent for {command!r}: "
-            f"psh={p.stderr!r} bash={b.stderr!r}")
-        if stderr_has is not None:
-            assert stderr_has in b.stderr, (mode, command, b.stderr)
-            assert stderr_has in p.stderr, (mode, command, p.stderr)
+    assert_declared_divergence(command, bash=bash, psh=psh,
+                               tmp_path=tmp_path, slot="2.3",
+                               modes=modes, stderr_has=stderr_has)
 
 
 class TestExitStatus(ConformanceTest):
