@@ -560,6 +560,21 @@ class TestPtyJobControl:
         assert 'Done' not in file_text, file_text
         assert not re.search(r'\[1\] \d+', file_text), file_text
 
+    def test_done_notice_status_column_is_27_wide(self, psh):
+        """The async completion notice pads its status label to 27 columns:
+        `[1]+  Done` + 23 spaces + the command (bash 5.2 used 24). Empirical,
+        5.3.15 — PTY-probed with `bash --norc --noprofile -i`: `sleep 0.2 &`
+        then a prompt prints `[1]+  Done                       sleep 0.2`.
+        Wave 0.2 (the jobs-width gate family), interactive leg (D6).
+        """
+        psh.send('sleep 0.2 &\r')
+        psh.expect(PROMPT)
+        psh.send('sleep 0.4\r')
+        psh.expect(PROMPT)
+        psh.send('\r')
+        psh.expect(r'\[1\]\+  Done {23}sleep 0\.2')
+        psh.expect(PROMPT)
+
     def test_set_o_notify_emits_bg_done_once_and_reaps(self, tmp_path):
         """`set -b` / `set -o notify` must NOT drop the bg-completion notice.
 
@@ -628,7 +643,8 @@ class TestPtyJobControl:
         # single bg job is the current job), two spaces, then the state word
         # left-justified in a 24-column field. F4 dropped the stray leading
         # blank line and pinned the marker.
-        assert re.search(r'\[1\]\+  Done {20}sleep 0\.2', text), text
+        # 27-column status field (bash 5.3.15; 5.2 used 24 -> ` {20}`).
+        assert re.search(r'\[1\]\+  Done {23}sleep 0\.2', text), text
         assert text.count('Done') == 1, text
         # The job was reaped: the bg command text appears exactly twice — once
         # in the `sleep 0.2 &` command echo and once in the Done notice — never
