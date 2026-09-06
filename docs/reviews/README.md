@@ -17,6 +17,15 @@ superseded by later work and kept for the record.
 > must be linked below, so a newly added review can't go unlisted. When you add
 > a review file, add a one-line row here in the right section.
 
+## Current appraisal
+
+| Document | Scope |
+|----------|-------|
+| [Improvement program feedback (2026-09-06)](improvement_program_feedback_2026-09-06.md) | Review of the proposed program: five corrections before launch, structural-guard guidance, and a mandatory post-Wave-3 checkpoint recommendation. |
+| [Improvement Program 2026-09 (plan of record, not launched)](improvement_program_2026-09-06.md) | Folds reappraisal #23 and the fresh appraisal into one wave program on the bash 5.3.15 oracle: 245-row canonical inventory re-verified at v0.779.0, 51-node gate triage, Wave 0 = oracle adoption + green gate, Waves 1–6 + Checkpoint R. Evidence in `evidence/improvement_program_2026_09/`. Owns the queue; both appraisals remain source documents. |
+| [Fresh correctness and textbook-quality appraisal (2026-09-06)](fresh_appraisal_2026-09-06.md) | Independent all-subsystem review at v0.779.0: grades, 16 reproduced findings, evidence runner, and prioritized improvements. Historical campaign classifications below are retained. |
+| [Ground-up reappraisal #23: correctness + textbook (2026-08-09)](ground_up_reappraisal_23_correctness_textbook_2026-08-09.md) | Twelve subsystem reviewers + behavioral battery at v0.779.0 (bash 5.2.26 oracle): 8 P0, ~30 P1; raw reports banked under `tmp/r23-reports/`. Source document for the improvement program. |
+
 ## Live references
 
 The few documents worth reading as current truth:
