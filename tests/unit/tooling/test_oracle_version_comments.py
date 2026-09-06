@@ -25,7 +25,9 @@ Two rows here are deliberate SYNTHETIC OFFENDERS, not claims:
 that names 5.2.26) and this ratchet's own pattern tests. They are in the
 baseline like any other file.
 
-Frozen 2026-09-06 at the Wave 0.1 tree: 659 occurrences in 387 files.
+Frozen 2026-09-06 at the Wave 0.1 tree: 658 occurrences in 387 files
+(the base tree 788ffe41 had 653; the 5 added are the synthetic offenders in
+test_gate_attestation.py).
 """
 import os
 import re
@@ -39,7 +41,7 @@ SCAN_ROOTS = ("tests", "psh")
 # (it is excluded from the walk anyway; this keeps the exclusion non-load-bearing).
 CLAIM = re.compile(r"(?i)" + "ba" + r"sh[ -]5\.2\b|5\.2\." + "26" + r"\b")
 
-BASELINE_TOTAL = 659
+BASELINE_TOTAL = 658
 #: file -> count of "bash 5.2" claims. MAY ONLY DECREASE (see module docstring).
 BASELINE = {
     "psh/builtins/core.py": 1,
@@ -165,7 +167,7 @@ BASELINE = {
     "tests/conformance/bash/test_resolution_timing_conformance.py": 2,
     "tests/conformance/bash/test_resolver_conformance.py": 1,
     "tests/conformance/bash/test_set_o_history_conformance.py": 1,
-    "tests/conformance/bash/test_subscript_keying_conformance.py": 9,
+    "tests/conformance/bash/test_subscript_keying_conformance.py": 8,
     "tests/conformance/bash/test_syntax_template_timing_conformance.py": 2,
     "tests/conformance/bash/test_temporary_env_conformance.py": 1,
     "tests/conformance/bash/test_trap_flags_conformance.py": 1,

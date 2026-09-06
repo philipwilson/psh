@@ -33,9 +33,9 @@ PSH_ROOT = Path(__file__).resolve().parents[3]
 # Linux box, so the flip is the bash VERSION and not the platform:
 #     5.2.22 -> ~     5.2.23 -> ~     5.2.24 -> /probe-home    5.2.25 -> /probe-home
 # psh implements the current (>=5.2.24) behaviour. An oracle that predates the
-# change (a distro bash 5.2.21, say) skips the row rather than "widening" it to
-# accept both answers, which would stop it proving anything on the hosts that
-# CAN check it.
+# change (a distro build at patch level 21, say) skips the row rather than
+# "widening" it to accept both answers, which would stop it proving anything on
+# the hosts that CAN check it.
 #
 # The classifier is the policy API (Improvement Program 2026-09, D5):
 # oracle_at_least fails CLOSED — an older series (5.1, say) skips instead of
