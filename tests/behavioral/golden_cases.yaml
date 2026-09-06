@@ -6351,12 +6351,15 @@
   stderr: ""
   exit_code: 7
 
-# `cd ""` (empty operand, not resolved via CDPATH) is a no-op success — bash
-# stays in the current directory; psh used to error on chdir("").
-- name: r18t2_glue_cd_empty_operand_noop
-  command: 'cd /usr; cd ""; echo "$?:$PWD"'
-  stdout: "0:/usr\n"
-  stderr: ""
+# `cd ""` (empty operand) is "cd: null directory", rc 1, on bash 5.3.15 — even
+# with CDPATH set (5.2 treated it as a no-op success; Wave 0.3 retune, the
+# unowned compare-bash red found by the package G verifier).
+- name: r18t2_glue_cd_empty_operand_null_directory
+  description: "cd \"\" is refused as a null directory, rc 1, cwd unchanged (bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'cd /usr; cd ""; echo "$?:$PWD"; CDPATH=/tmp cd ""; echo "$?:$PWD"'
+  stdout: "1:/usr\n1:/usr\n"
+  stderr: "cd: null directory"
   exit_code: 0
 
 # bash's `source` returns 126 after >256 stripped NULs (F3 model; was described as '126 for a binary file') (distinct from the 1 it

@@ -159,6 +159,16 @@ class TestUsageStatusDeclaredDivergence:
 
 
 class TestCdOptions(ConformanceTest):
+    def test_cd_empty_operand_is_null_directory(self):
+        """``cd ""`` is "null directory", rc 1, cwd unchanged, even under CDPATH
+        (bash 5.3.15, empirical; 5.2 was a no-op success). Wave 0.3 retune.
+        stderr prefixes differ, so stderr goes to /dev/null and stdout + $?
+        are compared."""
+        self.assert_identical_behavior(
+            'cd /usr; cd "" 2>/dev/null; echo "$?:$PWD"; '
+            'CDPATH=/tmp cd "" 2>/dev/null; echo "$?:$PWD"; '
+            'cd -P "" 2>/dev/null; echo "$?"; x=; cd $x 2>/dev/null; echo "$?"')
+
     def test_cd_too_many_arguments(self, tmp_path):
         """DECLARED DIVERGENCE, both sides pinned; slot 2.3 flips.
 
