@@ -12,8 +12,15 @@ reached the user:
   * Starting psh with fd 0 already closed (``exec 0<&-; psh``) left
     ``sys.stdin`` as ``None``, so ``sys.stdin.isatty()`` (in ``shell.py`` and,
     once that was guarded, in ``__main__.py``) raised ``AttributeError``.  A
-    closed/absent stdin is now simply non-interactive, exactly like bash
-    (exit 0).
+    closed fd 0 is now simply non-interactive with no stream to read commands
+    from: bash 5.3 exits 126 with ``error creating buffered stream: Bad file
+    descriptor`` (empirical, 5.3.15 — earlier bash releases exited 0; retuned
+    in Wave 0.3 of the 2026-09 improvement program, C242 gate triage), and psh
+    prints the same message under its ``psh:`` prefix.  Only the plain and
+    ``-s`` (read-commands-from-fd-0) invocations are affected: ``-c`` and a
+    script file never read fd 0 for commands and still run, an OPEN but empty
+    fd 0 (``< /dev/null``) still exits 0, and ``-i`` stays an
+    interactive-family shell that sees immediate EOF (exit 0).
 
 These drive the real CLI in a subprocess.  ``PSH_STRICT_ERRORS=1`` is on
 suite-wide (conftest.py), so any surviving internal defect would surface as a
@@ -161,7 +168,16 @@ class TestBinaryStdinNoTraceback:
 # Bug B: psh started with fd 0 already closed must not crash.
 # ---------------------------------------------------------------------------
 
+BUFFERED_STREAM_ERROR = b"error creating buffered stream: Bad file descriptor"
+
+
 class TestClosedFd0Startup:
+    """The four command channels with fd 0 CLOSED at startup (D6: the
+    failure shape differs by input mode): plain stdin and ``-s`` read commands
+    from fd 0 and cannot (126 + bash's diagnostic); ``-c`` and a script file
+    do not read fd 0 and run normally. The open-but-empty ``< /dev/null`` row
+    pins the discriminator (a CLOSED descriptor, not an EMPTY one)."""
+
     def test_dash_c_with_closed_fd0(self):
         """`exec 0<&-; psh -c 'echo hi'` prints hi and exits 0."""
         r = _run(PSH + ["-c", "echo hi"], close_fd0=True)
@@ -172,18 +188,51 @@ class TestClosedFd0Startup:
         assert (r.returncode, r.stdout) == (b.returncode, b.stdout)
 
     def test_plain_with_closed_fd0(self):
-        """`exec 0<&-; psh` (no -c): non-interactive, nothing to read, exit 0."""
+        """`exec 0<&-; psh` (no -c): no stream to read commands from -> bash
+        5.3's `error creating buffered stream: Bad file descriptor`, exit 126
+        (empirical, 5.3.15). RED ON BASE (788ffe41): psh exited 0 silently."""
         r = _run(PSH, close_fd0=True)
         assert TRACEBACK not in r.stderr, r.stderr
-        assert r.returncode == 0
+        assert r.returncode == 126
+        assert r.stdout == b""
+        assert r.stderr == b"psh: " + BUFFERED_STREAM_ERROR + b"\n"
         b = _run(BASH, close_fd0=True)
-        assert r.returncode == b.returncode
+        assert (r.returncode, r.stdout) == (b.returncode, b.stdout)
+        assert BUFFERED_STREAM_ERROR in b.stderr
 
     def test_dash_s_with_closed_fd0(self):
-        """`exec 0<&-; psh -s`: no stdin to read, exit 0, no crash."""
+        """`exec 0<&-; psh -s`: the same no-stream failure, exit 126 (bash 5.3
+        `-s <&-` is also 126; empirical, 5.3.15). RED ON BASE (788ffe41)."""
         r = _run(PSH + ["-s"], close_fd0=True)
         assert TRACEBACK not in r.stderr, r.stderr
+        assert r.returncode == 126
+        assert r.stderr == b"psh: " + BUFFERED_STREAM_ERROR + b"\n"
+        b = _run(BASH + ["-s"], close_fd0=True)
+        assert (r.returncode, r.stdout) == (b.returncode, b.stdout)
+        assert BUFFERED_STREAM_ERROR in b.stderr
+
+    def test_open_empty_fd0_still_exits_zero(self):
+        """`psh < /dev/null` (fd 0 OPEN, empty): no commands, exit 0 — only a
+        CLOSED descriptor triggers the 126 (bash 5.3 agrees; empirical,
+        5.3.15)."""
+        with open(os.devnull, "rb") as fh:
+            r = _run(PSH, stdin=fh)
+        assert TRACEBACK not in r.stderr, r.stderr
+        assert (r.returncode, r.stdout, r.stderr) == (0, b"", b"")
+        with open(os.devnull, "rb") as fh:
+            b = _run(BASH, stdin=fh)
+        assert (r.returncode, r.stdout) == (b.returncode, b.stdout)
+
+    def test_dash_i_with_closed_fd0_is_interactive_eof(self):
+        """`psh -i <&-`: an interactive-family shell that sees immediate EOF
+        exits 0 (bash 5.3 `-i <&-` prints its no-job-control notices, then
+        `exit`, status 0; empirical, 5.3.15). The 126 path is non-`-i` only."""
+        r = _run(PSH + ["-i"], close_fd0=True)
+        assert TRACEBACK not in r.stderr, r.stderr
         assert r.returncode == 0
+        assert BUFFERED_STREAM_ERROR not in r.stderr
+        b = _run(BASH + ["--norc", "-i"], close_fd0=True)
+        assert r.returncode == b.returncode
 
     def test_script_file_with_closed_fd0(self, tmp_path):
         """A script FILE still runs when fd 0 was closed at startup."""
