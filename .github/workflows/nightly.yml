@@ -26,8 +26,53 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # D1 (docs/reviews/improvement_program_2026-09-06.md §4): the differential
+      # oracle is bash 5.3 (5.3.15 recorded) — the SAME binary the local gate
+      # runs against, so version drift between hosts is impossible. Ubuntu's
+      # system bash (5.2.21) is deliberately NO LONGER the oracle; it stays on
+      # PATH only for the runner's own steps and the instrumentation below.
+      # The prefix is cached by version+patch+platform; a miss builds from the
+      # GNU tarball + patches 001..015 with every download sha256-verified
+      # (tools/ci/build_bash_oracle.sh — runnable locally the same way).
+      - name: Cache the bash 5.3.15 oracle
+        id: bash-oracle
+        uses: actions/cache@v4
+        with:
+          path: ~/bash-oracle-5.3.15
+          key: bash-5.3.15-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build the bash 5.3.15 oracle (cache miss only)
+        if: steps.bash-oracle.outputs.cache-hit != 'true'
+        run: sh tools/ci/build_bash_oracle.sh "$HOME/bash-oracle-5.3.15"
+
+      # tests/harness/shell_oracle.py#resolve_bash honours BASH_PATH first.
+      - name: Export BASH_PATH
+        run: echo "BASH_PATH=$HOME/bash-oracle-5.3.15/bin/bash" >> "$GITHUB_ENV"
+
+      # FAIL LOUDLY rather than silently test some other bash: a wrong binary
+      # here would retune every differential row in this run to it.
+      - name: Verify the oracle is bash 5.3.15
+        run: |
+          v=$("$BASH_PATH" -c 'echo "$BASH_VERSION"')
+          case "$v" in
+            5.3.15*) echo "oracle: $BASH_PATH $v" ;;
+            *) echo "::error::BASH_PATH=$BASH_PATH reports BASH_VERSION '$v', expected 5.3.15* (D1 oracle pin)"; exit 1 ;;
+          esac
+
+      # `printf '%a' 1` identifies the oracle's long-double format: 0x8p-3 is
+      # the x87 explicit-integer-bit form (x86-64 glibc), 0x1p+0 is IEEE
+      # double. The seven %a conformance rows are classified on exactly this
+      # probe (oracle_feature('x87_long_double'), Park P-6).
       - name: Show bash version
-        run: bash --version
+        run: |
+          echo "--- system bash (runner PATH; NOT the oracle) ---"
+          bash --version | head -1
+          echo "--- oracle (BASH_PATH=$BASH_PATH) ---"
+          "$BASH_PATH" --version | head -1
+          echo "printf '%a' 1 on the oracle:"
+          "$BASH_PATH" -c "printf '%a\n' 1"
+          echo "MACHTYPE (oracle) = $("$BASH_PATH" -c 'echo "$MACHTYPE"')"
+          echo "MACHTYPE (runner shell) = $MACHTYPE"
 
       # EXPIRY — this whole instrumentation block (core_pattern normalisation,
       # the disk sampler, the open-fd snapshots, and PSH_DISK_WATCH on the suite
@@ -213,8 +258,53 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # D1 (docs/reviews/improvement_program_2026-09-06.md §4): the differential
+      # oracle is bash 5.3 (5.3.15 recorded) — the SAME binary the local gate
+      # runs against, so version drift between hosts is impossible. Ubuntu's
+      # system bash (5.2.21) is deliberately NO LONGER the oracle; it stays on
+      # PATH only for the runner's own steps and the instrumentation below.
+      # The prefix is cached by version+patch+platform; a miss builds from the
+      # GNU tarball + patches 001..015 with every download sha256-verified
+      # (tools/ci/build_bash_oracle.sh — runnable locally the same way).
+      - name: Cache the bash 5.3.15 oracle
+        id: bash-oracle
+        uses: actions/cache@v4
+        with:
+          path: ~/bash-oracle-5.3.15
+          key: bash-5.3.15-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build the bash 5.3.15 oracle (cache miss only)
+        if: steps.bash-oracle.outputs.cache-hit != 'true'
+        run: sh tools/ci/build_bash_oracle.sh "$HOME/bash-oracle-5.3.15"
+
+      # tests/harness/shell_oracle.py#resolve_bash honours BASH_PATH first.
+      - name: Export BASH_PATH
+        run: echo "BASH_PATH=$HOME/bash-oracle-5.3.15/bin/bash" >> "$GITHUB_ENV"
+
+      # FAIL LOUDLY rather than silently test some other bash: a wrong binary
+      # here would retune every differential row in this run to it.
+      - name: Verify the oracle is bash 5.3.15
+        run: |
+          v=$("$BASH_PATH" -c 'echo "$BASH_VERSION"')
+          case "$v" in
+            5.3.15*) echo "oracle: $BASH_PATH $v" ;;
+            *) echo "::error::BASH_PATH=$BASH_PATH reports BASH_VERSION '$v', expected 5.3.15* (D1 oracle pin)"; exit 1 ;;
+          esac
+
+      # `printf '%a' 1` identifies the oracle's long-double format: 0x8p-3 is
+      # the x87 explicit-integer-bit form (x86-64 glibc), 0x1p+0 is IEEE
+      # double. The seven %a conformance rows are classified on exactly this
+      # probe (oracle_feature('x87_long_double'), Park P-6).
       - name: Show bash version
-        run: bash --version
+        run: |
+          echo "--- system bash (runner PATH; NOT the oracle) ---"
+          bash --version | head -1
+          echo "--- oracle (BASH_PATH=$BASH_PATH) ---"
+          "$BASH_PATH" --version | head -1
+          echo "printf '%a' 1 on the oracle:"
+          "$BASH_PATH" -c "printf '%a\n' 1"
+          echo "MACHTYPE (oracle) = $("$BASH_PATH" -c 'echo "$MACHTYPE"')"
+          echo "MACHTYPE (runner shell) = $MACHTYPE"
 
       # EXPIRY — this whole instrumentation block (core_pattern normalisation,
       # the disk sampler, the open-fd snapshots, and PSH_DISK_WATCH on the suite
