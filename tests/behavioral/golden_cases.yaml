@@ -8112,6 +8112,8 @@
   stdout: ""
   stderr: "numeric argument required"
   exit_code: 2
+  psh_only: true
+  description: "psh-only pin (bash 5.3.15 prints survived rc 0: a non-numeric exit operand reports 'numeric argument required', sets $?=2 and CONTINUES in -c/script/stdin -- empirical, 5.3.15, no CHANGES item); W0-N4; FLIP-PINS owner slot 2.3; both-sides pin: tests/conformance/bash/test_exit_cd_options_conformance.py::TestExitStatus::test_exit_non_numeric_continues_declared_divergence"
 
 - name: bcontract_hash_l_quotes_path
   command: "hash -p '/tmp/a b' foo; hash -l"
