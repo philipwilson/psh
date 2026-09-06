@@ -1,48 +1,57 @@
-"""C241 census ratchet: no NEW "bash 5.2" claims (Improvement Program 2026-09, D12).
+r"""C241 census ratchet: no NEW old-oracle claims (Improvement Program 2026-09, D12).
 
 The differential oracle is bash 5.3 (D1). Hundreds of docstrings and comments
-still say "verified against bash 5.2" — that is PROVENANCE (it was true when
-the pin was written) and D12 rules it is rewritten only when a slot touches
-the file, never in a tree-wide sweep. What must NOT happen is a NEW claim
-against the old oracle: a pin written today and stamped "bash 5.2" is either
-copy-paste or was verified against the wrong bash.
+still carry the previous oracle's stamp ("verified against the 5.2 series") —
+that is PROVENANCE (true when the pin was written) and D12 rules it is
+rewritten only when a slot touches the file, never in a tree-wide sweep. What
+must NOT happen is a NEW claim against the old oracle: a pin written today and
+stamped with the old series is either copy-paste or was verified against the
+wrong bash.
 
-Counted, per file under ``tests/`` and ``psh/`` (every text file, so YAML
-golden descriptions and CLAUDE.md files count too): the case-insensitive
-patterns ``bash 5.2`` / ``bash-5.2`` (``\b``-terminated, so ``bash 5.2.26``
-counts once and ``bash 5.20`` not at all) and the bare patch level
-``5.2.26``. This file excludes itself from the walk.
+THE RULE (integrator ruling, Wave 0.1): TRACKED TEXT ONLY, counted per
+matching LINE, with the exact pattern ``bash 5\.2`` (case-sensitive) — i.e.
+the census equals::
 
-RATCHET RULE: a file ABOVE its baseline count fails ("new bash 5.2 claim").
-A file BELOW its baseline (a slot rewrote provenance) updates nothing and
-passes — the baseline may then be LOWERED to the new count, and MAY ONLY EVER
-DECREASE; a baseline entry may never be raised and a new entry may never be
-added (a file with no entry has a baseline of 0). A baseline entry for a file
-that no longer exists must be pruned (also a decrease).
+    git grep -n 'bash 5\.2' <ref> -- tests psh      # lines
+    git grep -c 'bash 5\.2' <ref> -- tests psh      # per-file counts (BASELINE)
 
-Two rows here are deliberate SYNTHETIC OFFENDERS, not claims:
-``tests/unit/tooling/test_gate_attestation.py`` (the attestation-refusal test
-that names 5.2.26) and this ratchet's own pattern tests. They are in the
-baseline like any other file.
+Frozen at the Wave 0 base ``788ffe41``: 599 lines in 370 files. This module
+walks ``git ls-files -- tests psh`` (never ``__pycache__``, never an untracked
+scratch file, undecodable files skipped), counts lines matching ``CLAIM``, and
+excludes itself — an exclusion that is NOT load-bearing, because this file is
+written without the literal phrase (its pattern text carries the backslash).
 
-Frozen 2026-09-06 at the Wave 0.1 tree: 658 occurrences in 387 files
-(the base tree 788ffe41 had 653; the 5 added are the synthetic offenders in
-test_gate_attestation.py).
+RATCHET: a file ABOVE its baseline fails ("new old-oracle claim"). A file BELOW
+its baseline (a slot rewrote provenance) passes and updates nothing; the
+baseline may then be LOWERED to the new count and MAY ONLY EVER DECREASE — an
+entry is never raised, a new entry never added (no entry = baseline 0), and an
+entry whose file is gone must be pruned.
+
+VARIANT SPELLINGS: the brief also named case variants (``Bash 5.2``),
+``bash-5.2`` and the bare patch level ``5.2.26``. Lines matching ``VARIANT``
+but NOT the primary pattern are a SECOND census with the same decrease-only
+rule (``VARIANT_BASELINE``): 52 lines in 41 files at ``788ffe41``,
+57 in 42 at this tree — the difference is the synthetic-offender
+lines of ``test_gate_attestation.py`` (a 5.2.26 attestation that must be
+refused), which are named as such there and are not claims.
 """
-import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCAN_ROOTS = ("tests", "psh")
-# Built from pieces so this module's own source never matches its pattern
-# (it is excluded from the walk anyway; this keeps the exclusion non-load-bearing).
-CLAIM = re.compile(r"(?i)" + "ba" + r"sh[ -]5\.2\b|5\.2\." + "26" + r"\b")
+BASE_SHA = "788ffe41"
+# The ledger rule, verbatim: git grep 'bash 5\.2' (case-sensitive, per line).
+CLAIM = re.compile(r"bash 5\.2")
+# Variant spellings the brief named; frozen at zero lines outside CLAIM.
+VARIANT = re.compile(r"(?i)bash[ -]5\.2\b|5\.2\.26\b")
 
-BASELINE_TOTAL = 658
-#: file -> count of "bash 5.2" claims. MAY ONLY DECREASE (see module docstring).
+#: Sum of BASELINE — 599 at BASE_SHA; this package adds none.
+BASELINE_TOTAL = 599
+#: file -> matching LINES (== `git grep -c`). MAY ONLY DECREASE (see docstring).
 BASELINE = {
     "psh/builtins/core.py": 1,
     "psh/builtins/declaration_engine.py": 1,
@@ -64,7 +73,7 @@ BASELINE = {
     "psh/core/command_hash.py": 1,
     "psh/core/exceptions.py": 2,
     "psh/core/getopts_state.py": 1,
-    "psh/core/internal_errors.py": 8,
+    "psh/core/internal_errors.py": 7,
     "psh/core/scope.py": 3,
     "psh/core/state.py": 4,
     "psh/core/trap_manager.py": 6,
@@ -81,23 +90,21 @@ BASELINE = {
     "psh/expansion/arithmetic/evaluator.py": 1,
     "psh/expansion/arithmetic/tokenizer.py": 1,
     "psh/expansion/extglob.py": 1,
-    "psh/expansion/glob.py": 1,
     "psh/expansion/manager.py": 2,
-    "psh/expansion/operands.py": 5,
-    "psh/expansion/operators.py": 2,
+    "psh/expansion/operands.py": 2,
+    "psh/expansion/operators.py": 1,
     "psh/expansion/param_parser.py": 3,
-    "psh/expansion/parameter_expansion.py": 2,
-    "psh/expansion/pattern_engine.py": 6,
+    "psh/expansion/parameter_expansion.py": 1,
+    "psh/expansion/pattern_engine.py": 5,
     "psh/expansion/procsub_render.py": 1,
     "psh/expansion/subscript.py": 2,
     "psh/expansion/tilde.py": 1,
-    "psh/expansion/variable.py": 1,
     "psh/expansion/word_expander.py": 3,
     "psh/expansion/word_expansion_types.py": 3,
     "psh/interactive/CLAUDE.md": 1,
     "psh/interactive/edit_buffer.py": 1,
     "psh/interactive/eof_policy.py": 1,
-    "psh/interactive/history_manager.py": 7,
+    "psh/interactive/history_manager.py": 5,
     "psh/interactive/line_editor_helpers.py": 1,
     "psh/interactive/repl_loop.py": 1,
     "psh/invocation.py": 1,
@@ -109,21 +116,21 @@ BASELINE = {
     "psh/scripting/analysis_session.py": 3,
     "psh/scripting/input_preprocessing.py": 1,
     "psh/scripting/input_sources.py": 3,
-    "psh/scripting/program_source.py": 8,
+    "psh/scripting/program_source.py": 4,
     "psh/scripting/script_validator.py": 1,
     "psh/scripting/source_processor.py": 3,
     "psh/utils/escapes.py": 5,
-    "psh/utils/heredoc_detection.py": 3,
+    "psh/utils/heredoc_detection.py": 2,
     "psh/utils/printf_formatter.py": 3,
     "psh/utils/signal_utils.py": 1,
     "psh/visitor/formatter_quoting.py": 1,
     "psh/visitor/formatter_visitor.py": 1,
     "psh/visitor/security_visitor.py": 2,
-    "tests/behavioral/golden_cases.yaml": 19,
+    "tests/behavioral/golden_cases.yaml": 17,
     "tests/conformance/bash/test_absent_features.py": 2,
     "tests/conformance/bash/test_ansi_c_control_escape_conformance.py": 1,
     "tests/conformance/bash/test_array_case_attr_conformance.py": 1,
-    "tests/conformance/bash/test_array_init_conformance.py": 6,
+    "tests/conformance/bash/test_array_init_conformance.py": 3,
     "tests/conformance/bash/test_bad_substitution_conformance.py": 1,
     "tests/conformance/bash/test_bash_compatibility.py": 1,
     "tests/conformance/bash/test_case_toggle_conformance.py": 1,
@@ -149,7 +156,6 @@ BASELINE = {
     "tests/conformance/bash/test_identifier_policy_conformance.py": 1,
     "tests/conformance/bash/test_keyword_word_boundary_conformance.py": 1,
     "tests/conformance/bash/test_lineno_conformance.py": 1,
-    "tests/conformance/bash/test_locale_warn_trigger_conformance.py": 1,
     "tests/conformance/bash/test_nameref_array_append_conformance.py": 1,
     "tests/conformance/bash/test_nameref_attribute_conformance.py": 1,
     "tests/conformance/bash/test_nounset_arithmetic_conformance.py": 1,
@@ -167,12 +173,12 @@ BASELINE = {
     "tests/conformance/bash/test_resolution_timing_conformance.py": 2,
     "tests/conformance/bash/test_resolver_conformance.py": 1,
     "tests/conformance/bash/test_set_o_history_conformance.py": 1,
-    "tests/conformance/bash/test_subscript_keying_conformance.py": 8,
+    "tests/conformance/bash/test_subscript_keying_conformance.py": 7,
     "tests/conformance/bash/test_syntax_template_timing_conformance.py": 2,
     "tests/conformance/bash/test_temporary_env_conformance.py": 1,
     "tests/conformance/bash/test_trap_flags_conformance.py": 1,
     "tests/conformance/bash/test_trap_signal_spec_conformance.py": 2,
-    "tests/conformance/bash/test_typed_expansion_errors_conformance.py": 2,
+    "tests/conformance/bash/test_typed_expansion_errors_conformance.py": 1,
     "tests/conformance/bash/test_unset_nameref_conformance.py": 1,
     "tests/conformance/bash/test_v_array_conformance.py": 1,
     "tests/conformance/bash/test_variable_projection_reads_conformance.py": 1,
@@ -180,8 +186,6 @@ BASELINE = {
     "tests/conformance/bash/test_wait_unset_conformance.py": 1,
     "tests/conformance/posix/test_posix_special_builtin_exit_conformance.py": 1,
     "tests/conformance/posix/test_readonly_conformance.py": 2,
-    "tests/harness/oracle_migration_census.md": 1,
-    "tests/harness/shell_oracle.py": 1,
     "tests/integration/arrays/test_array_element_word_values.py": 4,
     "tests/integration/arrays/test_array_init_word_expansion.py": 1,
     "tests/integration/arrays/test_arrays_comprehensive.py": 2,
@@ -195,7 +199,7 @@ BASELINE = {
     "tests/integration/control_flow/test_c_style_for_loops.py": 2,
     "tests/integration/control_flow/test_case_subject_quoting.py": 1,
     "tests/integration/control_flow/test_eval_control_flow.py": 1,
-    "tests/integration/control_flow/test_for_select_item_expansion.py": 2,
+    "tests/integration/control_flow/test_for_select_item_expansion.py": 1,
     "tests/integration/control_flow/test_loop_control_scope_boundary.py": 1,
     "tests/integration/control_flow/test_tier3_executor_fixes.py": 1,
     "tests/integration/control_flow/test_while_loops.py": 1,
@@ -207,20 +211,19 @@ BASELINE = {
     "tests/integration/job_control/test_boundary_j1_lifecycle.py": 1,
     "tests/integration/job_control/test_debug_err_traps.py": 3,
     "tests/integration/job_control/test_exit_trap_paths.py": 3,
-    "tests/integration/job_control/test_fg_bg_check_order.py": 1,
-    "tests/integration/job_control/test_job_notice_channel.py": 5,
+    "tests/integration/job_control/test_job_notice_channel.py": 4,
     "tests/integration/job_control/test_jobs_completed_listing_modes.py": 1,
-    "tests/integration/job_control/test_jobs_n_changed.py": 2,
+    "tests/integration/job_control/test_jobs_n_changed.py": 1,
     "tests/integration/job_control/test_jobs_x_substitution.py": 1,
     "tests/integration/job_control/test_jobspec_operands.py": 1,
     "tests/integration/job_control/test_noninteractive_job_refresh.py": 1,
     "tests/integration/job_control/test_pending_signal_trap_eof.py": 1,
     "tests/integration/job_control/test_pipeline_signal_death.py": 1,
-    "tests/integration/job_control/test_signal_handling.py": 3,
+    "tests/integration/job_control/test_signal_handling.py": 2,
     "tests/integration/job_control/test_signal_killed_exit_status.py": 1,
     "tests/integration/job_control/test_stopped_job_current_marker.py": 1,
     "tests/integration/job_control/test_trap_actions.py": 2,
-    "tests/integration/job_control/test_wait_disown_bg_fg.py": 2,
+    "tests/integration/job_control/test_wait_disown_bg_fg.py": 1,
     "tests/integration/parser/test_heredoc_error_lineno.py": 1,
     "tests/integration/parsing/test_amp_command_position.py": 1,
     "tests/integration/parsing/test_bang_prefix_compound.py": 2,
@@ -242,19 +245,16 @@ BASELINE = {
     "tests/integration/redirection/test_fd_move_and_csh_redirect.py": 1,
     "tests/integration/redirection/test_here_string_tilde.py": 1,
     "tests/integration/redirection/test_here_string_word_quoting.py": 1,
-    "tests/integration/redirection/test_heredoc_shared_cursor_r1.py": 2,
+    "tests/integration/redirection/test_heredoc_shared_cursor_r1.py": 1,
     "tests/integration/redirection/test_noclobber_targets.py": 1,
     "tests/integration/redirection/test_process_sub_closed_fds.py": 1,
     "tests/integration/redirection/test_process_sub_embedded.py": 1,
-    "tests/integration/redirection/test_redirect_close_stdin_alive_r1.py": 1,
-    "tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py": 3,
+    "tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py": 1,
     "tests/integration/redirection/test_redirect_failure_paths.py": 2,
-    "tests/integration/redirection/test_redirect_order_r1.py": 2,
     "tests/integration/redirection/test_redirection_restore.py": 1,
     "tests/integration/redirection/test_self_dup_leniency_r1.py": 1,
     "tests/integration/shell_options/test_errexit_script_mode.py": 1,
     "tests/integration/shell_options/test_nounset_script_mode.py": 1,
-    "tests/integration/subshells/test_state_inheritance.py": 1,
     "tests/integration/subshells/test_subshell_basics.py": 1,
     "tests/integration/subshells/test_subshell_implementation.py": 1,
     "tests/integration/test_arith_readonly_continue.py": 2,
@@ -273,10 +273,10 @@ BASELINE = {
     "tests/parser_differential/test_input_contract_parity.py": 2,
     "tests/performance/benchmarks/test_pattern_engine_performance.py": 1,
     "tests/system/interactive/test_heredoc_detection_interactive_pty.py": 1,
-    "tests/system/interactive/test_pty_smoke.py": 5,
+    "tests/system/interactive/test_pty_smoke.py": 4,
     "tests/system/interactive/test_substitution_abort_interactive_pty.py": 1,
     "tests/system/invocation/test_invocation_matrix.py": 1,
-    "tests/system/source_service/test_nul_channel_matrix.py": 2,
+    "tests/system/source_service/test_nul_channel_matrix.py": 1,
     "tests/system/source_service/test_source_service_matrix.py": 2,
     "tests/system/test_analysis_mode_line_continuation.py": 1,
     "tests/system/test_analysis_state_aware.py": 7,
@@ -297,7 +297,6 @@ BASELINE = {
     "tests/unit/builtins/test_declaration_family_r19_t2.py": 3,
     "tests/unit/builtins/test_declare_bare_name_locality.py": 1,
     "tests/unit/builtins/test_directory_stack.py": 2,
-    "tests/unit/builtins/test_disown_builtin.py": 1,
     "tests/unit/builtins/test_exec_builtin.py": 1,
     "tests/unit/builtins/test_exec_flags.py": 1,
     "tests/unit/builtins/test_export_builtin.py": 2,
@@ -305,7 +304,6 @@ BASELINE = {
     "tests/unit/builtins/test_hash_builtin.py": 1,
     "tests/unit/builtins/test_history_flags.py": 3,
     "tests/unit/builtins/test_io_builtins.py": 1,
-    "tests/unit/builtins/test_jobs_filter_and_bg_marker.py": 1,
     "tests/unit/builtins/test_local_builtin.py": 4,
     "tests/unit/builtins/test_navigation.py": 1,
     "tests/unit/builtins/test_printf_enhanced.py": 2,
@@ -354,10 +352,7 @@ BASELINE = {
     "tests/unit/expansion/test_arithmetic_integration_advanced_todo.py": 1,
     "tests/unit/expansion/test_array_index_arith_errors.py": 1,
     "tests/unit/expansion/test_assignment_word_splitting.py": 3,
-    "tests/unit/expansion/test_brace_budget.py": 1,
-    "tests/unit/expansion/test_brace_pu_sentinels.py": 1,
     "tests/unit/expansion/test_braceexpand_option.py": 2,
-    "tests/unit/expansion/test_bracket_pattern_edge_cases.py": 1,
     "tests/unit/expansion/test_case_toggle.py": 1,
     "tests/unit/expansion/test_command_sub_bytes.py": 1,
     "tests/unit/expansion/test_command_sub_closed_fds.py": 1,
@@ -371,7 +366,7 @@ BASELINE = {
     "tests/unit/expansion/test_param_parser_differential.py": 1,
     "tests/unit/expansion/test_parameter_expansion.py": 4,
     "tests/unit/expansion/test_parameter_transform.py": 1,
-    "tests/unit/expansion/test_patsub_nocase_and_anchoring.py": 4,
+    "tests/unit/expansion/test_patsub_nocase_and_anchoring.py": 3,
     "tests/unit/expansion/test_pattern_bash_composition_differential.py": 3,
     "tests/unit/expansion/test_pattern_operand_expansion.py": 4,
     "tests/unit/expansion/test_pattern_relations.py": 3,
@@ -379,11 +374,10 @@ BASELINE = {
     "tests/unit/expansion/test_process_sub_quoting.py": 1,
     "tests/unit/expansion/test_slice_semantics.py": 1,
     "tests/unit/expansion/test_special_variables.py": 1,
-    "tests/unit/expansion/test_star_view_per_element_ops.py": 1,
     "tests/unit/expansion/test_subscript_evaluator.py": 2,
     "tests/unit/expansion/test_substitution_empty_match_pins.py": 1,
     "tests/unit/expansion/test_substring_lazy_arithmetic.py": 1,
-    "tests/unit/expansion/test_tilde_prefix_boundary.py": 3,
+    "tests/unit/expansion/test_tilde_prefix_boundary.py": 1,
     "tests/unit/expansion/test_value_operand_quoting.py": 1,
     "tests/unit/expansion/test_view_operators_joined_nullness.py": 1,
     "tests/unit/expansion/test_word_expansion_policy.py": 1,
@@ -411,7 +405,7 @@ BASELINE = {
     "tests/unit/parser/test_c_style_for_body_forms.py": 1,
     "tests/unit/parser/test_case_pattern_empty_alternatives.py": 1,
     "tests/unit/parser/test_case_subject.py": 1,
-    "tests/unit/parser/test_composite_headed_assignment_b1.py": 2,
+    "tests/unit/parser/test_composite_headed_assignment_b1.py": 1,
     "tests/unit/parser/test_escaped_dollar_syntax.py": 2,
     "tests/unit/parser/test_misplaced_case_terminators.py": 1,
     "tests/unit/parser/test_r18t2_lexparse_fixes.py": 1,
@@ -420,52 +414,127 @@ BASELINE = {
     "tests/unit/scripting/test_analysis_session.py": 2,
     "tests/unit/scripting/test_heredoc_alias_route.py": 1,
     "tests/unit/scripting/test_line_continuation_contexts.py": 1,
-    "tests/unit/scripting/test_program_source_unit.py": 3,
+    "tests/unit/scripting/test_program_source_unit.py": 2,
     "tests/unit/test_line_editor_helpers.py": 2,
     "tests/unit/test_parse_invocation.py": 2,
-    "tests/unit/tooling/test_gate_attestation.py": 5,
     "tests/unit/tooling/test_operand_projection_guard.py": 1,
-    "tests/unit/tooling/test_shell_oracle_harness.py": 1,
     "tests/unit/utils/test_escape_dialects.py": 3,
     "tests/unit/utils/test_heredoc_detection.py": 1,
     "tests/unit/utils/test_printf_formatter.py": 4,
     "tests/unit/utils/test_signal_listing.py": 2,
-    "tests/unit/visitor/test_security_missed_positions.py": 6,
+    "tests/unit/visitor/test_security_missed_positions.py": 5,
 }
 
 
-def census():
-    """``{relative file: count}`` for every text file under SCAN_ROOTS with
-    at least one claim; undecodable (binary) files are skipped."""
-    counts = {}
+def _tracked_text_files():
+    out = subprocess.run(["git", "ls-files", "-z", "--", *SCAN_ROOTS],
+                         cwd=REPO_ROOT, capture_output=True, check=True).stdout
     here = Path(__file__).resolve()
-    for root in SCAN_ROOTS:
-        for dirpath, dirnames, filenames in os.walk(REPO_ROOT / root):
-            dirnames[:] = sorted(d for d in dirnames if d != "__pycache__")
-            for fn in sorted(filenames):
-                path = Path(dirpath) / fn
-                if path == here or fn.endswith(".pyc"):
-                    continue
-                try:
-                    text = path.read_text(encoding="utf-8")
-                except (UnicodeDecodeError, OSError):
-                    continue
-                n = len(CLAIM.findall(text))
-                if n:
-                    counts[path.relative_to(REPO_ROOT).as_posix()] = n
+    for rel in out.decode("utf-8", "surrogateescape").split("\0"):
+        path = REPO_ROOT / rel
+        if not rel or path == here or not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        yield rel, text
+
+
+def census(pattern=CLAIM):
+    """``{relative file: matching-line count}`` over tracked text files."""
+    counts = {}
+    for rel, text in _tracked_text_files():
+        n = sum(1 for line in text.splitlines() if pattern.search(line))
+        if n:
+            counts[rel] = n
     return counts
 
 
-def test_no_new_bash_5_2_claims():
+def test_no_new_old_oracle_claims():
     """Ratchet: no file may exceed its frozen baseline."""
     grown = {f: (BASELINE.get(f, 0), n) for f, n in census().items()
              if n > BASELINE.get(f, 0)}
     assert not grown, (
-        "new " + "ba" + "sh 5.2 claim(s) — the oracle is bash 5.3 (D1); a NEW "
-        "provenance stamp must say 5.3.15 (or 'empirical, 5.3.15'), and a "
-        "synthetic version string belongs in a test that names it as such "
-        "(D12). {file: (baseline, now)}:\n  "
+        "new old-oracle claim(s) — the oracle is bash 5.3 (D1); a NEW provenance "
+        "stamp says 5.3.15 (or 'empirical, 5.3.15'), and a synthetic version "
+        "string belongs in a test that names it as such (D12). "
+        "{file: (baseline, now)}:\n  "
         + "\n  ".join(f"{f}: {was} -> {now}" for f, (was, now) in sorted(grown.items())))
+
+
+#: Sum of VARIANT_BASELINE — 52 at BASE_SHA plus the synthetic-offender
+#: lines this package added in test_gate_attestation.py.
+VARIANT_BASELINE_TOTAL = 57
+#: file -> lines matching VARIANT but not CLAIM. MAY ONLY DECREASE.
+VARIANT_BASELINE = {
+    "psh/core/internal_errors.py": 1,
+    "psh/expansion/glob.py": 1,
+    "psh/expansion/operands.py": 3,
+    "psh/expansion/operators.py": 1,
+    "psh/expansion/parameter_expansion.py": 1,
+    "psh/expansion/pattern_engine.py": 1,
+    "psh/expansion/variable.py": 1,
+    "psh/interactive/history_manager.py": 2,
+    "psh/scripting/program_source.py": 4,
+    "psh/utils/heredoc_detection.py": 1,
+    "tests/behavioral/golden_cases.yaml": 2,
+    "tests/conformance/bash/test_array_init_conformance.py": 2,
+    "tests/conformance/bash/test_locale_warn_trigger_conformance.py": 1,
+    "tests/conformance/bash/test_subscript_keying_conformance.py": 1,
+    "tests/conformance/bash/test_typed_expansion_errors_conformance.py": 1,
+    "tests/harness/oracle_migration_census.md": 1,
+    "tests/harness/shell_oracle.py": 1,
+    "tests/integration/job_control/test_fg_bg_check_order.py": 1,
+    "tests/integration/job_control/test_job_notice_channel.py": 1,
+    "tests/integration/job_control/test_jobs_n_changed.py": 1,
+    "tests/integration/job_control/test_signal_handling.py": 1,
+    "tests/integration/job_control/test_wait_disown_bg_fg.py": 1,
+    "tests/integration/redirection/test_heredoc_shared_cursor_r1.py": 1,
+    "tests/integration/redirection/test_redirect_close_stdin_alive_r1.py": 1,
+    "tests/integration/redirection/test_redirect_diagnostic_prefix_r1.py": 2,
+    "tests/integration/redirection/test_redirect_order_r1.py": 2,
+    "tests/integration/subshells/test_state_inheritance.py": 1,
+    "tests/system/interactive/test_pty_smoke.py": 1,
+    "tests/system/source_service/test_nul_channel_matrix.py": 1,
+    "tests/unit/builtins/test_disown_builtin.py": 1,
+    "tests/unit/builtins/test_jobs_filter_and_bg_marker.py": 1,
+    "tests/unit/expansion/test_brace_budget.py": 1,
+    "tests/unit/expansion/test_brace_pu_sentinels.py": 1,
+    "tests/unit/expansion/test_bracket_pattern_edge_cases.py": 1,
+    "tests/unit/expansion/test_patsub_nocase_and_anchoring.py": 1,
+    "tests/unit/expansion/test_star_view_per_element_ops.py": 1,
+    "tests/unit/expansion/test_tilde_prefix_boundary.py": 2,
+    "tests/unit/parser/test_composite_headed_assignment_b1.py": 1,
+    "tests/unit/scripting/test_program_source_unit.py": 1,
+    "tests/unit/tooling/test_gate_attestation.py": 5,
+    "tests/unit/tooling/test_shell_oracle_harness.py": 1,
+    "tests/unit/visitor/test_security_missed_positions.py": 1,
+}
+
+
+def variant_census():
+    """Lines the brief's wider spellings match that the ledger rule does not."""
+    counts = {}
+    for rel, text in _tracked_text_files():
+        n = sum(1 for line in text.splitlines()
+                if VARIANT.search(line) and not CLAIM.search(line))
+        if n:
+            counts[rel] = n
+    return counts
+
+
+def test_no_new_variant_spellings():
+    """Second ratchet: case/hyphen/bare-patch-level spellings may not grow."""
+    grown = {f: (VARIANT_BASELINE.get(f, 0), n) for f, n in variant_census().items()
+             if n > VARIANT_BASELINE.get(f, 0)}
+    assert not grown, "new old-oracle claim(s) in a variant spelling: " + str(grown)
+
+
+def test_variant_baseline_is_internally_consistent():
+    assert sum(VARIANT_BASELINE.values()) == VARIANT_BASELINE_TOTAL
+    stale = [f for f in VARIANT_BASELINE if not (REPO_ROOT / f).is_file()]
+    assert not stale, f"prune stale variant baseline entries: {stale}"
 
 
 def test_baseline_entries_refer_to_existing_files():
@@ -488,16 +557,25 @@ def test_census_scope_reaches_known_claim_sites():
         assert probe in files, f"census scope lost {probe}"
 
 
-@pytest.mark.parametrize("text, hits", [
-    ("verified against " + "ba" + "sh 5.2", 1),
-    ("Verified against " + "Ba" + "sh 5.2.26", 1),      # counted once, not twice
-    ("ba" + "sh-5.2 patch 21", 1),
-    ("5.2." + "26(1)-release", 1),
-    ("probed on " + "ba" + "sh 5.2.21 and 5.2." + "26", 2),
-    ("ba" + "sh 5.3.15", 0),
-    ("ba" + "sh 5.20", 0),
-    ("5.3.15(1)-release", 0),
-    ("ba" + "sh5.2", 0),
+def test_this_module_carries_no_literal_claim():
+    """The self-exclusion in the walk is not load-bearing: the ledger's own
+    `git grep` (which does not exclude this file) must count it as zero."""
+    assert not CLAIM.search(Path(__file__).read_text(encoding="utf-8"))
+
+
+_B = "ba" + "sh "     # assembled so these fixtures do not count as claims
+
+
+@pytest.mark.parametrize("text, claim, variant", [
+    (f"verified against {_B}5.2", True, True),
+    (f"Verified against {_B}5.2.26", True, True),
+    (f"{_B.upper()}5.2", False, True),            # case variant
+    ("ba" + "sh-5.2 patch 21", False, True),      # hyphen variant
+    ("5.2." + "26(1)-release", False, True),      # bare patch level
+    (f"{_B}5.3.15", False, False),
+    (f"{_B}5.20", True, False),                  # git grep's rule has no \b
+    ("5.3.15(1)-release", False, False),
 ])
-def test_claim_pattern(text, hits):
-    assert len(CLAIM.findall(text)) == hits
+def test_patterns(text, claim, variant):
+    assert bool(CLAIM.search(text)) is claim
+    assert bool(VARIANT.search(text)) is variant

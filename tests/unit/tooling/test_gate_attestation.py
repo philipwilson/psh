@@ -408,8 +408,8 @@ def test_run_attestation_checks_real_ruff_and_mypy_missing_tolerated(
 
 def test_attestation_claiming_bash_5_2_is_refused(tmp_path):
     """SYNTHETIC OFFENDER: an otherwise-perfect attestation whose oracle is
-    bash 5.2.26 — the pre-program oracle — must not tag. The message names
-    the rule (D1) and the drifted version."""
+    the pre-program 5.2.26 must not tag. The message names the rule (D1)
+    and the drifted version."""
     repo = _make_repo(tmp_path)
     data = _attestation_dict(repo, oracle={"path": FAKE_ORACLE_PATH,
                                            "version": "5.2.26(1)-release"})
@@ -506,7 +506,7 @@ def test_write_attestation_refuses_on_oracle_drift(tmp_path, monkeypatch):
     monkeypatch.setattr(run_tests, "_attestation_oracle",
                         lambda: (False, {"path": FAKE_ORACLE_PATH,
                                          "version": "5.2.26(1)-release"},
-                                 "oracle drift: resolved bash 5.2.26(1)-release"))
+                                 "oracle drift: resolved 5.2.26(1)-release"))
     repo = _make_repo(tmp_path)
     rc = run_tests.write_attestation(repo, phases=[], command="x")
     assert rc == 1
