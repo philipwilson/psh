@@ -620,6 +620,21 @@ def pytest_runtest_setup(item):
     # so skipping serial tests on non-gw0 workers silently dropped them.)
 
 
+def pytest_report_header(config):
+    """One oracle identity in every session header (D1): ``oracle: <path>
+    <version>`` — the same line ``run_tests.py`` prints at preflight and every
+    conformance failure message carries, so a transcript always says which
+    bash produced the reference side. A host with no oracle at all says so
+    here instead of crashing collection; the differential tests then fail on
+    their own terms."""
+    from oracle_policy import oracle_summary
+    from shell_oracle import BashOracleUnavailable
+    try:
+        return oracle_summary()
+    except BashOracleUnavailable as e:
+        return f"oracle: UNAVAILABLE ({e})"
+
+
 def pytest_addoption(parser):
     """Add custom command line options."""
     parser.addoption(

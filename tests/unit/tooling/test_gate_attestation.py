@@ -6,6 +6,10 @@ not tag unattested commits. ``run_tests.py --write-attestation`` writes
 ``tools/verify_gate_attestation.py`` BEFORE tagging and fails loudly unless
 
 * the attestation exists, parses, and has the expected schema/keys;
+* its ``oracle.version`` is a bash of the policy major.minor (schema 2,
+  Improvement Program 2026-09 rule D1) — the tool keeps its OWN
+  ``EXPECTED_BASH_MM`` because release-tag.yml runs it stdlib-only, and a
+  test here pins it equal to ``tests/harness/oracle_policy.EXPECTED_BASH_MM``;
 * its version equals ``psh/version.py`` at HEAD;
 * its gated_commit is an ancestor of HEAD with a matching tree hash;
 * NOTHING but the attestation file changed between gated_commit and HEAD.
@@ -14,15 +18,24 @@ The verifier's checks are exercised here against scratch git repositories, so
 the workflow's tagging guard is unit-tested rather than only prose.
 """
 
+import argparse
 import json
 import subprocess
 import sys
 from pathlib import Path
 
+import oracle_policy
 import pytest
 
 import run_tests
 from tools import verify_gate_attestation as vga
+
+# A policy-conformant fake oracle for the writer/verifier tests: derived from
+# the tool's constant so the fixtures follow a future re-baseline instead of
+# pinning today's patch level.
+FAKE_ORACLE_PATH = "/fake/oracle/sh"
+FAKE_ORACLE_VERSION = f"{vga.EXPECTED_BASH_MM}.15(1)-release"
+FAKE_ORACLE = {"path": FAKE_ORACLE_PATH, "version": FAKE_ORACLE_VERSION}
 
 GIT_ENV_ARGS = ["-c", "user.name=t", "-c", "user.email=t@t",
                 "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"]
@@ -61,9 +74,21 @@ def _attestation_dict(repo, version="1.2.3", **overrides):
         timestamp="2026-07-17T00:00:00+00:00",
         platform_info={"os": "Darwin 25.5.0", "python": "3.12.0",
                        "arch": "arm64"},
+        oracle=dict(FAKE_ORACLE),
     )
     data.update(overrides)
     return data
+
+
+@pytest.fixture
+def fake_oracle_ok(monkeypatch):
+    """Make the writer's oracle check host-independent: a policy-conformant
+    fake oracle, so these tests pin the WIRING (record written, refusal path)
+    rather than which bash this machine has. The real check is exercised by
+    the runner preflight and ``test_resolved_oracle_matches_policy``."""
+    monkeypatch.setattr(run_tests, "_attestation_oracle",
+                        lambda: (True, dict(FAKE_ORACLE),
+                                 f"oracle: {FAKE_ORACLE_PATH} {FAKE_ORACLE_VERSION}"))
 
 
 def _commit_attestation(repo, data):
@@ -80,8 +105,9 @@ def test_build_attestation_schema_matches_verifier_contract(tmp_path):
     repo = _make_repo(tmp_path)
     data = _attestation_dict(repo)
     assert set(data.keys()) == vga.REQUIRED_KEYS
-    assert data["schema"] == run_tests.ATTESTATION_SCHEMA == vga.ATTESTATION_SCHEMA
+    assert data["schema"] == run_tests.ATTESTATION_SCHEMA == vga.ATTESTATION_SCHEMA == 2
     assert set(data["platform"].keys()) == {"os", "python", "arch"}
+    assert set(data["oracle"].keys()) == {"path", "version"}
     assert isinstance(data["phases"], list) and data["phases"]
     for phase in data["phases"]:
         assert set(phase.keys()) == {"description", "exit", "counts"}
@@ -277,7 +303,8 @@ def test_write_attestation_refuses_dirty_tracked_tree(tmp_path, monkeypatch):
     assert not (repo / run_tests.ATTESTATION_FILENAME).exists()
 
 
-def test_write_attestation_green_path_writes_valid_file(tmp_path, monkeypatch):
+def test_write_attestation_green_path_writes_valid_file(tmp_path, monkeypatch,
+                                                        fake_oracle_ok):
     """On a clean tree with green checks, the writer produces a file the
     verifier accepts once committed (ruff/mypy stubbed — their real gating is
     the ceremony's; this pins the wiring and the file shape)."""
@@ -296,6 +323,7 @@ def test_write_attestation_green_path_writes_valid_file(tmp_path, monkeypatch):
     assert set(written.keys()) == vga.REQUIRED_KEYS
     assert written["version"] == "1.2.3"
     assert written["mypy_files"] == 258
+    assert written["oracle"] == FAKE_ORACLE
     # Commit it (the ceremony's final commit) and the verifier accepts.
     _git(repo, "add", vga.ATTESTATION_FILENAME)
     _git(repo, "commit", "-q", "-m", "attest")
@@ -304,7 +332,7 @@ def test_write_attestation_green_path_writes_valid_file(tmp_path, monkeypatch):
 
 
 def test_write_attestation_allows_unstaged_attestation_modification(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, fake_oracle_ok):
     """E1-bounce Blocker-1 pin (a): the attestation file itself sitting
     MODIFIED-UNSTAGED (porcelain ` M gate_attestation.json` — e.g. a repeated
     --write-attestation at the same SHA) is exactly the self-exempt case; the
@@ -344,7 +372,7 @@ def test_write_attestation_refusal_reports_exact_path(tmp_path, monkeypatch):
 
 
 def test_write_attestation_rewrite_over_committed_attestation_allowed(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, fake_oracle_ok):
     """Re-gating at a SHA where an OLD attestation is already tracked: the
     only 'dirty' file is the attestation being rewritten, which is exactly
     the intended update flow — the writer must not refuse."""
@@ -374,3 +402,221 @@ def test_run_attestation_checks_real_ruff_and_mypy_missing_tolerated(
     (scratch / "tools").mkdir()  # canonical lint scope incl. tools/ (R1)
     ok, _ruff, _mypy_files = run_tests._run_attestation_checks(scratch)
     assert ok in (True, False)  # must return, never raise
+
+
+# --- Schema 2: the oracle record (Improvement Program 2026-09, D1) -----------
+
+def test_attestation_claiming_bash_5_2_is_refused(tmp_path):
+    """SYNTHETIC OFFENDER: an otherwise-perfect attestation whose oracle is
+    bash 5.2.26 — the pre-program oracle — must not tag. The message names
+    the rule (D1) and the drifted version."""
+    repo = _make_repo(tmp_path)
+    data = _attestation_dict(repo, oracle={"path": FAKE_ORACLE_PATH,
+                                           "version": "5.2.26(1)-release"})
+    _commit_attestation(repo, data)
+    ok, messages = vga.verify_attestation(repo)
+    assert not ok
+    text = "\n".join(messages)
+    assert "5.2.26(1)-release" in text and "D1" in text
+    assert f"contract is bash {vga.EXPECTED_BASH_MM}" in text
+
+
+def test_missing_oracle_key_is_refused(tmp_path):
+    repo = _make_repo(tmp_path)
+    data = _attestation_dict(repo)
+    del data["oracle"]
+    _commit_attestation(repo, data)
+    ok, messages = vga.verify_attestation(repo)
+    assert not ok
+    assert "missing required keys" in messages[0] and "oracle" in messages[0]
+
+
+def test_schema_1_attestation_is_refused(tmp_path):
+    """A pre-Wave-0 (schema 1) attestation carries no oracle identity: the
+    verifier refuses it even when every other check would pass."""
+    repo = _make_repo(tmp_path)
+    data = _attestation_dict(repo, schema=1)
+    _commit_attestation(repo, data)
+    ok, messages = vga.verify_attestation(repo)
+    assert not ok
+    assert "schema is 1" in messages[0] and "expected 2" in messages[0]
+
+
+@pytest.mark.parametrize("bad_oracle", [
+    "5.3.15(1)-release",                    # not an object
+    {"path": FAKE_ORACLE_PATH},             # no version
+    {"version": FAKE_ORACLE_VERSION},       # no path
+    {"path": FAKE_ORACLE_PATH, "version": "unknown"},   # unparseable
+    {"path": FAKE_ORACLE_PATH, "version": None},
+])
+def test_malformed_oracle_record_is_refused(tmp_path, bad_oracle):
+    repo = _make_repo(tmp_path)
+    _commit_attestation(repo, _attestation_dict(repo, oracle=bad_oracle))
+    ok, messages = vga.verify_attestation(repo)
+    assert not ok
+    assert "oracle" in messages[0] and "D1" in messages[0]
+
+
+def test_good_schema_2_attestation_passes_and_names_the_oracle(tmp_path):
+    repo = _make_repo(tmp_path)
+    _commit_attestation(repo, _attestation_dict(repo))
+    ok, messages = vga.verify_attestation(repo)
+    assert ok, messages
+    assert f"against bash {FAKE_ORACLE_VERSION}" in messages[0]
+
+
+def test_patch_level_bump_is_allowed_by_the_verifier(tmp_path):
+    """D1: the contract is major.minor; a patch bump is recorded, not refused."""
+    repo = _make_repo(tmp_path)
+    bumped = {"path": FAKE_ORACLE_PATH,
+              "version": f"{vga.EXPECTED_BASH_MM}.99(1)-release"}
+    _commit_attestation(repo, _attestation_dict(repo, oracle=bumped))
+    ok, messages = vga.verify_attestation(repo)
+    assert ok, messages
+
+
+def test_tools_expected_bash_mm_pins_the_harness_policy():
+    """release-tag.yml runs the tool with bare python3, so it cannot import
+    tests/harness; its local constant must equal the harness policy."""
+    assert vga.EXPECTED_BASH_MM == oracle_policy.EXPECTED_BASH_MM
+
+
+def test_committed_attestation_carries_the_policy_oracle():
+    """The COMMITTED gate_attestation.json records the policy oracle. Until
+    the Wave 0 release gate rewrites it, the committed file is still the
+    pre-program schema-1 document, which this test SKIPS (never fails) — the
+    schema-1 refusal itself is pinned synthetically above."""
+    committed = Path(run_tests.__file__).resolve().parent / vga.ATTESTATION_FILENAME
+    data = json.loads(committed.read_text(encoding="utf-8"))
+    if data.get("schema") == 1:
+        pytest.skip("pre-Wave-0 schema-1 attestation; rewritten by the Wave 0 "
+                    "release gate")
+    assert data["schema"] == vga.ATTESTATION_SCHEMA
+    assert vga._check_oracle(data["oracle"]) is None, data["oracle"]
+
+
+# --- Writer refuses on oracle drift; --oracle-override does not help ---------
+
+def test_write_attestation_refuses_on_oracle_drift(tmp_path, monkeypatch):
+    emitted = []
+    monkeypatch.setattr(run_tests, "emit",
+                        lambda *a, **k: emitted.append(a[0] if a else ""))
+    monkeypatch.setattr(run_tests, "_run_attestation_checks",
+                        lambda repo_root: (True, True, 258))
+    monkeypatch.setattr(run_tests, "_attestation_oracle",
+                        lambda: (False, {"path": FAKE_ORACLE_PATH,
+                                         "version": "5.2.26(1)-release"},
+                                 "oracle drift: resolved bash 5.2.26(1)-release"))
+    repo = _make_repo(tmp_path)
+    rc = run_tests.write_attestation(repo, phases=[], command="x")
+    assert rc == 1
+    assert not (repo / run_tests.ATTESTATION_FILENAME).exists()
+    text = "\n".join(emitted)
+    assert "oracle drift" in text and "D1" in text
+    assert "--oracle-override does NOT bypass" in text
+
+
+def test_attestation_oracle_uses_the_harness_policy(monkeypatch):
+    """The writer's record and verdict come from tests/harness/oracle_policy
+    (the SAME resolver the suite uses), not from a private re-derivation."""
+    fake = argparse.Namespace(
+        oracle_matches_policy=lambda: (True, "oracle: /fake/oracle/sh 5.3.15(1)-release"),
+        resolve_bash=lambda: argparse.Namespace(path=FAKE_ORACLE_PATH,
+                                                version=FAKE_ORACLE_VERSION))
+    monkeypatch.setattr(run_tests, "_oracle_policy", lambda: fake)
+    assert run_tests._attestation_oracle() == (
+        True, FAKE_ORACLE, "oracle: /fake/oracle/sh 5.3.15(1)-release")
+    fake.oracle_matches_policy = lambda: (False, "oracle drift: ...")
+    ok, record, message = run_tests._attestation_oracle()
+    assert ok is False and record == FAKE_ORACLE and message.startswith("oracle drift")
+
+
+def test_attestation_oracle_unavailable_is_a_refusal(monkeypatch):
+    def boom():
+        raise RuntimeError("no bash anywhere")
+    monkeypatch.setattr(run_tests, "_oracle_policy", boom)
+    ok, record, message = run_tests._attestation_oracle()
+    assert ok is False and record is None
+    assert "oracle unavailable" in message and "no bash anywhere" in message
+
+
+# --- Runner PREFLIGHT (D1): refuses before any phase; override logs loudly ---
+
+def _policy_stub(ok, message, summary=f"oracle: {FAKE_ORACLE_PATH} {FAKE_ORACLE_VERSION}"):
+    return argparse.Namespace(oracle_matches_policy=lambda: (ok, message),
+                              oracle_summary=lambda: summary)
+
+
+def _capture_emit(monkeypatch):
+    emitted = []
+    monkeypatch.setattr(run_tests, "emit",
+                        lambda *a, **k: emitted.append(a[0] if a else ""))
+    return emitted
+
+
+def test_preflight_prints_the_oracle_line_and_proceeds(monkeypatch):
+    emitted = _capture_emit(monkeypatch)
+    monkeypatch.setattr(run_tests, "_oracle_policy",
+                        lambda: _policy_stub(True, "oracle: ..."))
+    assert run_tests.oracle_preflight() == 0
+    assert emitted == [f"oracle: {FAKE_ORACLE_PATH} {FAKE_ORACLE_VERSION}"]
+
+
+def test_preflight_refuses_on_drift_with_exit_2(monkeypatch):
+    emitted = _capture_emit(monkeypatch)
+    monkeypatch.setattr(run_tests, "_oracle_policy",
+                        lambda: _policy_stub(False, "oracle drift: resolved bash X"))
+    assert run_tests.oracle_preflight() == run_tests.ORACLE_PREFLIGHT_EXIT == 2
+    text = "\n".join(emitted)
+    assert text.startswith("oracle: ")            # identity printed first
+    assert "refused the run (D1)" in text and "oracle drift: resolved bash X" in text
+    assert "ORACLE OVERRIDE" not in text
+
+
+def test_preflight_override_logs_loudly_and_continues(monkeypatch):
+    emitted = _capture_emit(monkeypatch)
+    monkeypatch.setattr(run_tests, "_oracle_policy",
+                        lambda: _policy_stub(False, "oracle drift: resolved bash X"))
+    assert run_tests.oracle_preflight(override=True) == 0
+    text = "\n".join(emitted)
+    assert "ORACLE OVERRIDE: oracle drift: resolved bash X" in text
+    assert "Wave-0-shaped retune slot only" in text
+
+
+def test_preflight_refuses_when_no_oracle_resolves(monkeypatch):
+    emitted = _capture_emit(monkeypatch)
+
+    def boom():
+        raise RuntimeError("no bash oracle found")
+    monkeypatch.setattr(run_tests, "_oracle_policy", boom)
+    assert run_tests.oracle_preflight() == 2
+    assert any("oracle unavailable: no bash oracle found" in m for m in emitted)
+
+
+def test_run_refuses_before_launching_any_phase(monkeypatch, tmp_path):
+    """The preflight runs in _run() ahead of EVERY mode's phase dispatch: with
+    a drifted oracle and no override, run_command is never reached."""
+    _capture_emit(monkeypatch)
+    monkeypatch.setattr(run_tests, "_oracle_policy",
+                        lambda: _policy_stub(False, "oracle drift: resolved bash X"))
+
+    def never(*a, **k):
+        raise AssertionError("a test phase was launched despite the refusal")
+    monkeypatch.setattr(run_tests, "run_command", never)
+    for mode in ("quick", "benchmarks", "all_nocapture", None):
+        args = argparse.Namespace(
+            combinator=False, shuffle_seed=None, verbose=False, census=False,
+            coverage=False, pytest_args=[], timeout=5, parallel=None,
+            compare_bash=False, write_attestation=False, oracle_override=False,
+            quick=mode == "quick", benchmarks=mode == "benchmarks",
+            all_nocapture=mode == "all_nocapture")
+        assert run_tests._run(args, tmp_path / "results.txt") == 2, mode
+
+
+def test_runner_help_documents_the_override():
+    proc = subprocess.run(
+        [sys.executable, str(Path(run_tests.__file__)), "--help"],
+        capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0
+    assert "--oracle-override" in proc.stdout
+    assert "Wave-0-shaped retune" in proc.stdout
