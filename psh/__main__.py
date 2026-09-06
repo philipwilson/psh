@@ -308,10 +308,17 @@ def _dispatch(shell: Shell, config: InvocationConfig) -> None:
             # script file never read fd 0 for commands and still run, and
             # `-i` stays an interactive-family shell that sees immediate EOF
             # (exit 0, like `bash -i <&-`). Reproduce: `psh <&-; echo $?` -> 126.
+            # fd 2 may be closed as well (`psh <&- 2>&-`; sys.stderr is then
+            # None): bash still exits 126, silently. The status is
+            # unconditional; the diagnostic goes ONLY to a live stderr — never
+            # to stdout (bash writes nothing there), never as a traceback.
             if not config.interactive and (stdin is None or stdin.closed):
-                sys.stderr.write(
-                    "psh: error creating buffered stream: Bad file descriptor\n")
-                sys.stderr.flush()
+                if sys.stderr is not None:
+                    try:
+                        print("psh: error creating buffered stream: "
+                              "Bad file descriptor", file=sys.stderr, flush=True)
+                    except (OSError, ValueError):
+                        pass
                 sys.exit(126)
             from .scripting.program_source import ProgramSource
             stdin_source = ProgramSource.stdin_script().make_input_source()

@@ -47,12 +47,15 @@ BASH = [resolve_bash().path]
 TRACEBACK = b"Traceback (most recent call last)"
 
 
-def _run(argv, *, stdin_bytes=None, stdin=None, close_fd0=False, timeout=10):
+def _run(argv, *, stdin_bytes=None, stdin=None, close_fd0=False,
+         close_fd2=False, timeout=10):
     """Run *argv* and capture bytes.
 
     ``close_fd0`` closes fd 0 in the child before exec (portable stand-in for
-    ``exec 0<&-``); ``stdin_bytes`` supplies raw bytes on stdin; ``stdin``
-    passes an open file object (for a real ``< file`` redirect).
+    ``exec 0<&-``); ``close_fd2`` additionally closes fd 2 (``2>&-``: the
+    child has no stderr at all, so ``r.stderr`` reads back empty); ``stdin_bytes``
+    supplies raw bytes on stdin; ``stdin`` passes an open file object (for a
+    real ``< file`` redirect).
 
     TWO ENVIRONMENT REGIMES LIVE IN THIS HELPER — know which branch a new row
     lands on: the runner branch gets the HERMETIC env (every inherited
@@ -69,7 +72,12 @@ def _run(argv, *, stdin_bytes=None, stdin=None, close_fd0=False, timeout=10):
     is not expressible through the runner and stays a direct spawn.
     """
     if close_fd0 or stdin is not None:
-        preexec = (lambda: os.close(0)) if close_fd0 else None
+        def _close_fds():
+            if close_fd0:
+                os.close(0)
+            if close_fd2:
+                os.close(2)
+        preexec = _close_fds if (close_fd0 or close_fd2) else None
         kwargs = {}
         if stdin is not None:
             kwargs["stdin"] = stdin
@@ -226,13 +234,49 @@ class TestClosedFd0Startup:
     def test_dash_i_with_closed_fd0_is_interactive_eof(self):
         """`psh -i <&-`: an interactive-family shell that sees immediate EOF
         exits 0 (bash 5.3 `-i <&-` prints its no-job-control notices, then
-        `exit`, status 0; empirical, 5.3.15). The 126 path is non-`-i` only."""
+        `exit`, status 0; empirical, 5.3.15). The 126 path is non-`-i` only.
+        Status-only row: the stderr SHAPES differ (bash's notices vs psh's
+        silence) and are not pinned here."""
         r = _run(PSH + ["-i"], close_fd0=True)
         assert TRACEBACK not in r.stderr, r.stderr
         assert r.returncode == 0
         assert BUFFERED_STREAM_ERROR not in r.stderr
         b = _run(BASH + ["--norc", "-i"], close_fd0=True)
         assert r.returncode == b.returncode
+
+    def test_plain_with_closed_fd0_and_fd2(self):
+        """`psh <&- 2>&-`: fd 2 closed too (sys.stderr is None). bash 5.3 still
+        exits 126, silently (empirical, 5.3.15); psh must exit 126 with EMPTY
+        stdout — the diagnostic goes only to a live stderr, never to stdout
+        and never as a traceback. RED ON BASE (6c31871f): AttributeError on
+        `sys.stderr.write`, rc 1."""
+        r = _run(PSH, close_fd0=True, close_fd2=True)
+        assert (r.returncode, r.stdout, r.stderr) == (126, b"", b"")
+        b = _run(BASH, close_fd0=True, close_fd2=True)
+        assert (r.returncode, r.stdout, r.stderr) == (b.returncode, b.stdout, b.stderr)
+
+    def test_dash_s_with_closed_fd0_and_fd2(self):
+        """`psh -s <&- 2>&-`: same silent 126 (empirical, 5.3.15)."""
+        r = _run(PSH + ["-s"], close_fd0=True, close_fd2=True)
+        assert (r.returncode, r.stdout, r.stderr) == (126, b"", b"")
+        b = _run(BASH + ["-s"], close_fd0=True, close_fd2=True)
+        assert (r.returncode, r.stdout, r.stderr) == (b.returncode, b.stdout, b.stderr)
+
+    def test_dash_c_with_closed_fd0_and_fd2(self):
+        """`psh -c 'echo hi' <&- 2>&-` still runs: `-c` never reads fd 0."""
+        r = _run(PSH + ["-c", "echo hi"], close_fd0=True, close_fd2=True)
+        assert (r.returncode, r.stdout) == (0, b"hi\n")
+        b = _run(BASH + ["-c", "echo hi"], close_fd0=True, close_fd2=True)
+        assert (r.returncode, r.stdout) == (b.returncode, b.stdout)
+
+    def test_script_file_with_closed_fd0_and_fd2(self, tmp_path):
+        """A script FILE still runs with fd 0 and fd 2 both closed."""
+        script = tmp_path / "s.sh"
+        script.write_text("echo fromscript\n")
+        r = _run(PSH + [str(script)], close_fd0=True, close_fd2=True)
+        assert (r.returncode, r.stdout) == (0, b"fromscript\n")
+        b = _run(BASH + [str(script)], close_fd0=True, close_fd2=True)
+        assert (r.returncode, r.stdout) == (b.returncode, b.stdout)
 
     def test_script_file_with_closed_fd0(self, tmp_path):
         """A script FILE still runs when fd 0 was closed at startup."""
