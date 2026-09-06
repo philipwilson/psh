@@ -1104,7 +1104,7 @@ Use 'debug OPTION on/off' or 'debug-ast' for dedicated debug control.
  shift [n]                              shopt
  show-ast [-p] COMMAND                  signals [-v]
  source FILENAME [ARGS]                 test [EXPRESSION]
- times                                  trap [-lp] [[arg] signal_spec ...]
+ times                                  trap [-Plp] [[action] signal_spec ...]
  true                                   type [-afptP] name [name ...]
  typeset                                ulimit [-SHacdefilmnpqrstuvx] [limit]
  umask [-p] [-S] [mode]                 unalias [-a] name [name ...]

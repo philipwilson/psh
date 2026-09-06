@@ -36,7 +36,7 @@ class TestBuiltinErrorPrefix:
         captured_shell.run_command('trap -x')
         lines = captured_shell.get_stderr().splitlines()
         assert lines[0] == 'psh: line 1: trap: -x: invalid option'
-        assert lines[1] == 'trap: usage: trap [-lp] [[arg] signal_spec ...]'
+        assert lines[1] == 'trap: usage: trap [-Plp] [[action] signal_spec ...]'
 
     def test_bad_operand_is_prefixed(self, captured_shell):
         captured_shell.run_command('cd /nonexistent_zz_99')

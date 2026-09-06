@@ -10636,3 +10636,59 @@
   stdout: ""
   stderr: "substring expression < 0"
   exit_code: 1
+
+# ---------------------------------------------------------------------------
+# Wave 0.2 (Improvement Program 2026-09) — presentation retunes to bash 5.3.
+# Each row names the gate-triage node it closes in `description`; rows carry
+# `min_bash: "5.3"` (D5) because an older oracle prints the 5.2 shape.
+# ---------------------------------------------------------------------------
+
+# trap -P (bash 5.3 CHANGES, 5.3-alpha "New Features in Bash" item j) and the
+# 5.3 usage line `trap [-Plp] [[action] signal_spec ...]`.
+- name: w0_2_trap_usage_line_is_bash53
+  description: "closes test_error_prefix_conformance::test_prefix_matches_bash_exactly[trap -x] / test_usage_line_stays_unprefixed_like_bash / test_multiline_line_number_matches_bash and test_trap_signal_spec_conformance::TestTrapPosixNumericForms::test_single_invalid_operand_usage_error"
+  min_bash: "5.3"
+  command: 'trap -x; echo rc=$?; trap NOTASIGNAL; echo rc=$?'
+  stdout: "rc=2\nrc=2\n"
+  stderr: "trap: usage: trap [-Plp] [[action] signal_spec ...]"
+  exit_code: 0
+
+- name: w0_2_trap_P_prints_bare_action_per_operand
+  description: "trap -P prints the raw action, one line per operand in query order (bash 5.3 CHANGES 5.3-alpha New Features j); gate family test_error_prefix_conformance"
+  min_bash: "5.3"
+  command: "trap 'echo hi' INT; trap 'echo bye' EXIT; trap -P INT EXIT; echo rc=$?"
+  stdout: "echo hi\necho bye\nrc=0\nbye\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_trap_P_unset_prints_nothing_ignored_prints_empty_line
+  description: "trap -P on an unset signal prints nothing; the ignored action prints an empty line (bash 5.3.15)"
+  min_bash: "5.3"
+  command: "trap -P INT; echo rc=$?; trap '' INT; trap -P INT | od -c | head -1"
+  stdout: "rc=0\n0000000   \\n                                                            \n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_trap_P_without_operand_rc2
+  description: "trap -P with no operand: `-P requires at least one signal name`, rc 2, no usage line (bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'trap -P; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "trap: -P requires at least one signal name"
+  exit_code: 0
+
+- name: w0_2_trap_p_and_P_together_rc2
+  description: "trap -pP: `cannot specify both -p and -P`, rc 2 (bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'trap -pP INT; echo rc=$?'
+  stdout: "rc=2\n"
+  stderr: "trap: cannot specify both -p and -P"
+  exit_code: 0
+
+- name: w0_2_trap_P_invalid_spec_rc1_valid_operand_still_printed
+  description: "trap -P INT NOSUCH: valid operand printed, invalid one diagnosed, rc 1 (bash 5.3.15)"
+  min_bash: "5.3"
+  command: "trap 'echo hi' INT; trap -P INT NOSUCH; echo rc=$?"
+  stdout: "echo hi\nrc=1\n"
+  stderr: "trap: NOSUCH: invalid signal specification"
+  exit_code: 0
