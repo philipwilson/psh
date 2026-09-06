@@ -27,6 +27,8 @@ The result is cross-checked against §16 and every disagreement is printed in
 Part E; the only expected one is C153 (§16 lists it under Wave 0, the 4.24
 heading takes it "only if Wave 0 ruled it still divergent" — ruling R-C153).
 
+The C241 census block is `git grep` over tracked text at BASE_SHA (never the worktree).
+
 The script rewrites only the text between ``<!-- generated:NAME:start -->``
 and ``<!-- generated:NAME:end -->`` markers; the hand-written header, Part C
 (N-rows) and Part D (rulings) are preserved.
@@ -47,6 +49,8 @@ PROGRAM = os.path.join(ROOT, 'docs', 'reviews', 'improvement_program_2026-09-06.
 INVENTORY = os.path.join(EVID, 'INVENTORY.json')
 TRIAGE = os.path.join(EVID, 'gate_triage.json')
 LEDGER = os.path.join(EVID, 'LEDGER.md')
+BASE_SHA = '788ffe41'   # Wave 0 branch base (fix/wave0-oracle-5.3); the C241 census is pinned here
+CENSUS_PATTERN = r'bash 5\.2'
 
 CID = re.compile(r'\bC\d{3}\b')
 SLOT_HEADING = re.compile(r'^- \*\*(\d+\.\d+)\s+(.*?)\*\*(.*)$')
@@ -205,8 +209,8 @@ SLOT_META = {
              'PTY pin'),
     '4.23': ('user-guide §17 row "no REPL with non-tty stdin (deliberate, `__main__.py:279-290`)"',
              'No-row probe in `test_claims_have_tests.py`'),
-    '4.24': ('the command-number increment (`psh/interactive/prompt.py`, `psh/scripting/source_processor.py`): `-c` mode must hold `\\#` at 1 like bash 5.3 (ruling R-C153)',
-             '`${PS1@P}` pins in `-c`/script/stdin + a PTY leg'),
+    '4.24': ('one command-number owner (the main-input reader in `psh/scripting/source_processor.py`; `psh/interactive/prompt.py` only renders it): one increment per top-level command read from the main input; `-c` strings never; nested reads (`eval`, `.`/`source`, `$(…)`, subshell/function/loop bodies) never (ruling R-C153)',
+             '`${PS1@P}` pins in `-c`/script/stdin with nested-read rows (eval/source/cmdsub/function/loop) + a PTY leg with the same nested rows'),
     '5.1': ('`psh/lexer/modular_lexer.py#emit_token` builds the frozen `Token` once; literal collector segment accumulation; cursor-indexed `[` lookahead',
             'scaling pins (one long word; 2000 `[`-words on a line); replace-count = 0 per recognizer token; `tools/regen_lexer_corpus.py` diff reviewed in the ledger'),
     '5.2': ('`psh/lexer/heredoc_lexer.py` — skip the re-lex while the failure is `UnclosedQuoteError`',
@@ -265,7 +269,7 @@ GATE_ROUTES = [
      'skip when `ps -eo pid=,ppid=` cannot spawn',
      'ENV skip (D4)'),
     (r'test_variable_projection_reads_conformance\.py|test_command_resolution_r3\.py', '0.3',
-     '`psh/executor/strategies.py#format_exec_failure` — `unset_path = not state.scope_manager.lookup(\'PATH\').is_set` (bash 5.3 CHANGES p: NULL PATH ≡ ".")',
+     '`psh/executor/strategies.py#format_exec_failure` — `unset_path = not state.scope_manager.lookup(\'PATH\').is_set` (bash 5.3.15 CHANGES line 848, 5.3-alpha item p: a NULL `$PATH` is treated as `.`)',
      'renamed `…_is_command_not_found` twins + `local PATH=` row; W0-N5 registered → 4.9'),
     (r'test_hash_conformance\.py', '0.2',
      '`psh/builtins/hash_builtin.py:80-83` empty-table short-circuit deleted (bash 5.3 CHANGES calls 5.2 a bug)',
@@ -307,7 +311,7 @@ GATE_ROUTES = [
      'PREMISE S-edit: 4th tuple → bash 5.3\'s `\'<(case x in y)\\n        echo n\\n    ;;\\nesac)\'`; trailing-space docstring phrase dropped',
      'pin retuned in place'),
     (r'test_divergence_sq_in_dq_readback_outcome', '0.1',
-     'PREMISE: parity pin renamed `test_sq_in_dq_readback_round_trips` (bash 5.3 CHANGES k: subscripts expanded once)',
+     'PREMISE: parity pin renamed `test_sq_in_dq_readback_round_trips` (CHANGES line 1382 is 5.2-alpha item k, "subscripts expanded only once" — cited as a 5.2 item; the read-back change between 5.2.26 and 5.3.15 is empirical)',
      'oracle-side closure recorded in FLIP-PINS (no flip)'),
     (r'test_unlexable_subscript_route_audit\[let_arith\]', '0.1',
      'PREMISE S-edit: bash branch → rc 0 / `declare -A a` / `not a valid identifier`',
@@ -454,7 +458,7 @@ def derive_owner(cid, slots, heading_owner, owned, r_cids, park, excluded):
         return ' / '.join(sorted(bodies)), 'CONFLICT', 'named in more than one slot body of its wave'
     if len(waves) == 1:
         w = next(iter(waves))
-        return f'{w} (wave charter)', 'wave', f'§{ {"0":6,"1":7,"2":8,"3":9,"4":10,"5":11,"6":13}[w] } Owned findings only'
+        return f'{w} (design input, wave charter, no slot by design)', 'wave', f'§{ {"0":6,"1":7,"2":8,"3":9,"4":10,"5":11,"6":13}[w] } Owned findings only'
     return 'UNOWNED', 'NONE', 'not found in any heading, body, park, excluded, R or Owned findings'
 
 
@@ -479,8 +483,8 @@ def meta_for(owner):
         return R_META
     if owner in SLOT_META:
         return SLOT_META[owner]
-    if owner.endswith('(wave charter)'):
-        return ('every slot of the wave (design input; no single owner symbol)', 'wave exit criteria (§11: before/after numbers + scaling/counter pin per row)')
+    if owner.endswith('no slot by design)'):
+        return ('every slot of the wave — a design input the program deliberately places at wave level, not a slot (§11 Owned findings; §16 wave 5)', 'wave exit criteria (§11: before/after numbers + scaling/counter pin per row)')
     return ('—', '—')
 
 
@@ -494,7 +498,7 @@ def part_a(rows, slots, heading_owner, owned, r_cids, park, excluded):
         sym, guard = WAVE0_META.get(r['cid']) or meta_for(owner)
         status = r['status']
         if r['cid'] == 'C153':
-            status = 'oracle_changed → still divergent in `-c` (R-C153)'
+            status = 'oracle_changed → still divergent: `-c` always, nested reads in every mode (R-C153)'
         elif r['cid'] == 'C181':
             status = 'oracle_changed → closed by 0.2 (R-C181)'
         elif r['cid'] == 'C169':
@@ -569,18 +573,25 @@ def part_e(derived, s16, slots):
 
 
 def c241_census():
-    """Per-file counts of the literal 'bash 5.2' under tests/ and psh/ (C241 baseline)."""
+    """Per-file counts of the regex CENSUS_PATTERN over TRACKED TEXT at BASE_SHA (C241 baseline).
+
+    `git grep` at the pinned commit: build artifacts (`__pycache__/*.pyc`) and
+    untracked files can never leak in, and the figure is reproducible from a clean
+    clone (the bounce-B1 lesson: a BSD `grep -rn` over the worktree counted 46
+    "Binary file … matches" rows).
+    """
     try:
-        res = subprocess.run(['grep', '-rn', 'bash 5\\.2', 'tests/', 'psh/'], cwd=ROOT,
-                             capture_output=True, text=True)
-    except OSError as e:
+        res = subprocess.run(['git', 'grep', '-n', CENSUS_PATTERN, BASE_SHA, '--', 'tests', 'psh'],
+                             cwd=ROOT, capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError) as e:
         return f'(census unavailable: {e})'
-    files = Counter(line.split(':', 1)[0] for line in res.stdout.splitlines() if line)
-    head = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    # lines look like `788ffe41:tests/x.py:12:...`
+    files = Counter(line.split(':', 2)[1] for line in res.stdout.splitlines() if line)
     total = sum(files.values())
     multi = {f: n for f, n in files.items() if n > 1}
     single = sorted(f for f, n in files.items() if n == 1)
-    out = [f'`grep -rn "bash 5\\.2" tests/ psh/` at `{head}`: **{total} lines in {len(files)} files** '
+    out = [f"`git grep -n '{CENSUS_PATTERN}' {BASE_SHA} -- tests psh` (tracked text only, pattern = the "
+           f"regex `{CENSUS_PATTERN}`): **{total} lines in {len(files)} files** at `{BASE_SHA}` "
            f'(the D12 ratchet baseline; only decreases; rewritten only in files a slot touches). '
            f'Files with ≥ 2 lines are tabled; the {len(single)} single-line files follow as a list.', '',
            '| file | lines |', '|---|---:|']

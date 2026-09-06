@@ -1,0 +1,50 @@
+{
+  "batch": 20,
+  "head": "6459f1a6",
+  "psh_version": "0.779.0",
+  "oracle": "GNU bash 5.3.15(1)-release /opt/homebrew/bin/bash",
+  "results": [
+    {
+      "cid": "C130",
+      "status": "live",
+      "bash53_output": "declare -ra A=(1 2); declare -n r=A; r[0]=9  -> stderr: 'bash: line 1: r: readonly variable', rc=1. Scalar control (declare -r S=1; declare -n r=S; r=9) -> 'S: readonly variable' rc=1. Direct A[0]=9 -> 'A: readonly variable' rc=1.",
+      "psh_output": "same cmd -> stderr: 'psh: line 1: A: readonly variable', rc=1. Scalar control -> 'S: readonly variable' rc=1 (matches). Direct A[0]=9 -> 'A: readonly variable' rc=1 (matches).",
+      "note": "Mode -c, fresh mktemp cwd, env -u PWD -u OLDPWD. bash 5.3.15 still names the reference ('r') for the array-element-through-nameref path and the target ('S') for the scalar path, exactly as bash_expected says; psh names the target ('A') in both. rc 1 matches. Divergence is stderr text only."
+    },
+    {
+      "cid": "C134",
+      "status": "live",
+      "bash53_output": "declare -q x -> 'bash: line 1: declare: -q: invalid option' + 'declare: usage: declare [-aAfFgiIlnrtux] [name[=value] ...] or declare -p [-aAfFilnrtux] [name ...]' rc=2. Same two-line shape for typeset -q x (rc2), readonly -q x (rc2), local -q x inside a function (rc2, 'local: usage: local [option] name[=value] ...'), set -Q (rc2, 'set: usage: set [-abefhkmnptuvxBCEHPT] [-o option-name] [--] [-] [arg ...]'), export -q x (rc2, 'export: usage: export [-fn] [name[=value] ...] or export -p [-f]'). dirs -q -> 'dirs: -q: invalid number' + 'dirs: usage: dirs [-clpv] [+N] [-N]' rc=2 (dirs -x likewise 'invalid number').",
+      "psh_output": "declare -q x -> 'psh: line 1: declare: invalid option: -q' (no usage line) rc=2. typeset/readonly/local/set: same backwards wording 'NAME: invalid option: -q' (set: '-Q'), no usage line, rc=2. export -q x -> 'psh: line 1: export: -q: invalid option' (wording right, no usage line) rc=2. dirs -q -> 'psh: line 1: dirs: invalid option: -q' rc=1.",
+      "note": "Mode -c. All six hand-rolled parsers still print the reversed 'invalid option: -q' form and omit bash's usage line; export has the wording right but still drops the usage line, exactly as the notes describe. Additional detail observed: for dirs, bash 5.3.15 reports '-q: invalid number' (dirs parses -N numerically) and exits 2, while psh says 'invalid option: -q' and exits 1 \u2014 a wording AND rc divergence on the dirs row (overlaps F5 as noted)."
+    },
+    {
+      "cid": "C136",
+      "status": "live",
+      "bash53_output": "declare -a x; declare -p x / declare -A y; declare -p y -> stdout 'declare -a x' / 'declare -A y' rc=0. Controls: x=(); declare -p x -> 'declare -a x=()'; declare -A h=(); declare -p h -> 'declare -A h=()'; declare -i n; declare -p n -> 'declare -i n'; declare s; declare -p s -> 'declare -- s'.",
+      "psh_output": "stdout 'declare -a x=()' / 'declare -A y=()' rc=0. Controls all identical to bash: 'declare -a x=()', 'declare -A h=()', 'declare -i n', 'declare -- s'.",
+      "note": "Mode -c. psh still prints '=()' for a declared-but-never-assigned indexed or associative array where bash 5.3.15 prints no value; the assigned-empty forms and the never-assigned scalar forms match bash exactly, so the never-assigned ARRAY cell is the only divergent state, as described."
+    },
+    {
+      "cid": "C144",
+      "status": "live",
+      "bash53_output": "n/a (psh-only --metrics analysis mode; no bash oracle).",
+      "psh_output": "python -m psh --metrics on 'case `echo x` in x) :;; esac' -> 'Command Substitutions:      2'. On 'case $(echo x) in x) :;; esac' -> 'Command Substitutions:      1'. Control 'echo `echo x`' (word-anchored path) -> 'Command Substitutions:      1'.",
+      "note": "Script-file mode via --metrics. psh/visitor/metrics_visitor.py:491-493 still uses the string heuristic (text.count('$(') + text.count('`')) for CaseConditional.expr, so each backtick character counts once -> 2 for one backtick substitution. Word-bearing sites go through _analyze_word_features and count correctly (control = 1)."
+    },
+    {
+      "cid": "C145",
+      "status": "live",
+      "bash53_output": "n/a (psh-only --validate analysis mode; no bash oracle).",
+      "psh_output": "Direct probe (parse+EnhancedValidatorVisitor, printing ValidationIssue.context): 'while cd a b; do :; done' -> context='while loop'; 'for i in $(cd a b); do :; done' -> context=None; 'case $(cd a b) in x) :;; esac' -> context=None; 'if true; then :; fi > $(cd a b)' -> context=None; extra 'while true; do :; done > $(cd a b)' -> context=None. All carry msg 'cd: too many arguments (got 2, expected 0 or 1)'. CLI --validate agrees: only the while case prints '[SimpleCommand] in while loop: ...', the others print '[SimpleCommand]: ...' with no 'in <context>' suffix.",
+      "note": "Verified both via python -m psh --validate on script files and via a scratch Python probe (tmp/program-2026-09/verify/b20/c145_probe.py) reading issue.context. Code inspection confirms every compound handler in psh/visitor/validator_visitor.py (visit_WhileLoop, visit_UntilLoop, visit_ForLoop, visit_CStyleForLoop, visit_IfConditional, visit_CaseConditional, ...) calls self._pop_context() BEFORE self._visit_redirects(node), and visit_ForLoop never visits node.items, so for-items / case expr / compound redirects are swept by the framework after the context is popped and their issues carry context None."
+    },
+    {
+      "cid": "C147",
+      "status": "live",
+      "bash53_output": "n/a (psh-only --security analysis mode; no bash oracle).",
+      "psh_output": "python -m psh --security on '(( x[$(id)] ))' -> 'Total Issues: 1 / Medium Risk: 1' with 'Injectable expansion in arithmetic - a command substitution or expansion-bearing subscript can execute code; validate inputs'. On 'echo $(( x[$(id)] ))' -> 'No security issues found!'. Controls with rm -rf /: '(( x[$(rm -rf /)] ))' -> ARITHMETIC_INJECTION + 'rm of / (recursive, force): Extremely dangerous operation' + 'rm: File deletion'; 'echo $(( x[$(rm -rf /)] ))' -> only the two rm findings, no arithmetic-injection line.",
+      "note": "Script-file mode via --security. ARITHMETIC_INJECTION still fires only for the (( )) command form and never for the $(( )) expansion form; the nested command IS still swept in both forms (DANGEROUS_RM fires for both), so the gap remains advisory-only as described."
+    }
+  ]
+}

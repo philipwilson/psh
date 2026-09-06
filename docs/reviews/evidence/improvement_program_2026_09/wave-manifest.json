@@ -27,7 +27,7 @@
     "note": "Waves 4-6 are re-authorized and re-estimated from the Checkpoint R tree; their slot briefs are sketches until then (program §5)."
   },
   "rulings": {
-    "R-C153": "\\# still divergent in -c mode only (bash 5.3 holds it at 1; psh counts) -> slot 4.24; script/stdin/PTY parity",
+    "R-C153": "\\# still divergent -> slot 4.24. Rule (bash 5.3.15, every mode): one increment per top-level command read from the main input; -c strings never (stay at 1); nested reads (eval, ./source, $(...), subshell/function/loop bodies) never. psh increments per executed command from any reader; flat lists agree by coincidence, -c and every nested-read row diverge in script, stdin and PTY modes.",
     "R-C181": "-c + set -m notice: bash 5.3.15 prints none; psh matches on the notice; the -c jobs-listing suppression is the residual -> closed by 0.2",
     "R-C169": "f, f1, f2 absent and untracked at 788ffe41 -> closed as already-gone",
     "R-C215": "listed in both §12 and §15 P-5: Checkpoint R owns the PTY scope, P-5 the remainder (matches §16)",
@@ -141,7 +141,7 @@
         {"id": "4.21", "title": "Incremental decoder + columns"},
         {"id": "4.22", "title": "cat << classification"},
         {"id": "4.23", "title": "-i with piped stdin"},
-        {"id": "4.24", "title": "\\# command number in -c mode (C153; ruled still divergent by R-C153)"}
+        {"id": "4.24", "title": "\\# command number (C153; R-C153 rule: one increment per top-level command read from the main input, -c strings never, nested reads never)"}
       ],
       "releases": []
     },

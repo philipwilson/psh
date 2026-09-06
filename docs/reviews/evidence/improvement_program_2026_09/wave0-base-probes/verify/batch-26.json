@@ -1,0 +1,51 @@
+{
+  "batch": 26,
+  "head": "6459f1a6 (v0.779.0)",
+  "oracle": "GNU bash 5.3.15(1)-release (aarch64-apple-darwin25.4.0) at /opt/homebrew/bin/bash",
+  "python": "3.14.7",
+  "scratch": "/Users/pwilson/src/psh/tmp/program-2026-09/batch26/",
+  "results": [
+    {
+      "cid": "C195",
+      "status": "live",
+      "bash53_output": "env -u SHLVL bash -c 'echo \"[${SHLVL-UNSET}]\"' -> [1]; SHLVL=1 -> [2]; SHLVL=2 -> [3]; SHLVL=abc -> [1]; script file & stdin -> same as -c (inherited zsh SHLVL=2 gives [3])",
+      "psh_output": "env -u SHLVL psh -c 'echo \"[${SHLVL-UNSET}]\"' -> [UNSET]; SHLVL=1 -> [1]; SHLVL=2 -> [2]; SHLVL=abc -> [abc]; script file & stdin -> same ([2] with inherited zsh SHLVL=2)",
+      "note": "psh never sets/increments SHLVL; it only passes through the inherited env value (grep -rn SHLVL psh/ -> no hits). Exact report repro reproduced once SHLVL is scrubbed from the env (my zsh exports SHLVL=2, which masks the bug as an off-by-one). Modes -c, script, stdin all identical."
+    },
+    {
+      "cid": "C196",
+      "status": "live",
+      "bash53_output": "-c: '[UNSET] [UNSET] n=0' at top level, 'in f: [/opt/homebrew/bin/bash] [UNSET]' inside a function; script main.sh: '[main.sh] n=1', 'in f: [main.sh] [main.sh]', sourced lib: 'in lib: [./lib.sh] [main.sh]'; stdin: '[UNSET] n=0'",
+      "psh_output": "-c: '[UNSET] [UNSET] n=0', 'in f: [UNSET] [UNSET]'; script main.sh: '[UNSET] n=0', 'in f: [UNSET] [UNSET]', 'in lib: [UNSET] [UNSET]'; stdin: '[UNSET] n=0'",
+      "note": "Repro reconstructed (report gave none): ${BASH_SOURCE-UNSET}, ${BASH_SOURCE[0]}, ${#BASH_SOURCE[@]} at top level, in a function, and in a sourced file. psh never sets BASH_SOURCE in any mode; only the top-level stdin/-c cell coincidentally matches (both UNSET). Still recorded in docs/missing_features.md section 1 as deliberately missing; psh source mentions BASH_SOURCE only in psh/visitor/constants.py:105 (validator whitelist)."
+    },
+    {
+      "cid": "C197",
+      "status": "live",
+      "bash53_output": "bash -c 'set -opipefail; echo rc=$?' -> prints the full 27-row 'set -o' table on stdout, then stderr 'set: -l: invalid option' + 'set: usage: set [-abefhkmnptuvxBCEHPT] [-o option-name] [--] [-] [arg ...]'; the trailing echo does NOT run and the shell exits rc=1 (errexit was consumed from the p-i-p-e-f-a-i-l cluster before -l failed). Cluster proof: 'set -oxu; echo flags=$-; set -o|grep -E nounset|xtrace' -> '+ echo ...' 'flags=huxBc' nounset on, xtrace on",
+      "psh_output": "psh -c 'set -opipefail; echo rc=$?' -> stderr 'psh: line 1: set: invalid option: -o', then 'rc=2' (shell continues); 'set -oxu' -> 'set: invalid option: -o', flags=hBc, nounset off, xtrace off. 'set -oerrexit' and 'set +opipefail' likewise 'invalid option: -o'/'+o' rc=2. 'set -o pipefail' (spaced) matches bash.",
+      "note": "bash 5.3.15 behaves exactly as bash_expected: lists table, treats the attached letters as a flag cluster, fails on -l with rc 1 (and exits because -e got set). psh rejects '-o<attached>' outright with rc 2 and continues. Verified under -c in both shells."
+    },
+    {
+      "cid": "C198",
+      "status": "live",
+      "bash53_output": "bash -c 'set -o' -> 27 rows incl. 'emacs off', 'history off', 'interactive-comments on', 'keyword off', 'onecmd off', 'physical off', 'privileged off'; stdin mode identical; bash -ic -> emacs on, history on",
+      "psh_output": "psh -c 'set -o' -> 23 rows: 'emacs off', 'history on', 'strict-errors on' (with PSH_STRICT_ERRORS=1; 'strict-errors off' without it, row still present); interactive-comments/keyword/onecmd/physical/privileged absent; script-file mode identical; psh -i -c -> emacs on, history on",
+      "note": "diff of set -o (-c mode): bash-only rows interactive-comments, keyword, onecmd, physical, privileged; psh-only row strict-errors; history off(bash)/on(psh). Same diff for 'set +o' (bash 'set +o history' vs psh 'set -o history', etc.). ONE CELL OF THE REPORT DOES NOT REPRODUCE: the 'emacs' default is 'off' in BOTH shells non-interactively under 5.3.15 (report claimed bash emacs on) - so the divergent cells are the 5 missing names, the extra strict-errors row, and history; emacs matches. Raw tables: tmp/program-2026-09/batch26/c198_{bash,psh}.txt."
+    },
+    {
+      "cid": "C200",
+      "status": "live",
+      "bash53_output": "Bad-option sweep over the 52 builtins common to both shells ('<b> --badopt' and '<b> -Z' under -c): bash always emits '<b>: --: invalid option' + '<b>: usage: ...' rc=2, e.g. 'cd: usage: cd [-L|[-P [-e]]] [-@] [dir]', 'read: usage: read [-Eers] [-a array] [-d delim] [-i text] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [-u fd] [name ...]', 'trap: usage: trap [-Plp] [[action] signal_spec ...]', 'ulimit: usage: ulimit [-SHabcdefiklmnpqrstuvxPRT] [limit]', 'exec: usage: exec [-cl] [-a name] [command [argument ...]] [redirection ...]', 'printf: usage: printf [-v var] format [arguments]' rc=2, 'times: usage: times' rc=2",
+      "psh_output": "40 of 104 probes (20 of 52 builtins) differ. Literal usage-line mismatches (6): 'cd: usage: cd [-L|-P] [dir]'; 'read: usage: read [-rs] [-a array] [-d delim] [-n nchars] [-N nchars] [-p prompt] [-t timeout] [-u fd] [var ...]'; 'trap: usage: trap [-lp] [[arg] signal_spec ...]'; 'ulimit: usage: ulimit [-SHacdefilmnpqrstuvx] [limit]'; 'exec: usage: exec [-cl] [-a name] [command [argument ...]]' (no [redirection ...]); 'readarray --badopt' reports as 'mapfile: --: invalid option | mapfile: usage: mapfile ...'. No usage line where bash prints one (14): declare/typeset/export/readonly/set -> '<b>: invalid option: --' (no usage); dirs '--badopt' -> 'dirs: invalid option: --' rc=1; pushd -> 'pushd: invalid rotation argument: --badopt' rc=1; popd -> 'popd: directory stack empty' rc=1; . /source -> '.: --badopt: No such file or directory' rc=1; builtin -> 'builtin: --badopt: not a shell builtin' rc=1; eval -> '--badopt: command not found' rc=127; printf --badopt -> prints '--badopt' to stdout rc=0 (bash rc=2 usage); times --badopt -> prints times rc=0 (bash rc=2 usage). 28 builtins match bash's bad-option stderr+rc byte-for-byte: : alias bg break command continue disown echo exit false fg hash help history jobs let local mapfile pwd return shopt test true type umask unalias unset wait",
+      "note": "Repro reconstructed as instructed (per-builtin --badopt/-Z sweep, script tmp/program-2026-09/batch26/c200_sweep.py, raw tmp/program-2026-09/batch26/c200_raw.json). The remark is confirmed: several usage strings differ from bash 5.3.15 (cd, read, trap, ulimit, exec, readarray-as-mapfile), and a further 14 builtins emit no usage line at all on a bad option. A second reading of 'usage strings' via 'help -s <b>' also diverges for 28 builtins (e.g. psh 'declare', 'set', 'export', 'history', 'local', 'shopt' print only the bare name; '.' -> '. FILENAME [ARGS]'; 'help -s readarray' -> 'no help topics match'). Likely overlaps F1/F4/F5/F8 usage-line omissions."
+    },
+    {
+      "cid": "C206",
+      "status": "live",
+      "bash53_output": "exec {v}>&- (v unset) -> 'bash: line 1: v: ambiguous redirect', rc=1, v stays UNSET; exec {v}<&- -> same; v=abc; exec {v}>&- -> 'v: ambiguous redirect' rc=1; per-command '{v}>&- echo hi' -> 'v: ambiguous redirect', echo not run; v=99; exec {v}>&- -> rc=0 silently (fd already closed); set -u; exec {w}>&- -> 'w: ambiguous redirect' rc=1",
+      "psh_output": "exec {v}>&- (v unset) -> rc=0, no message, v=[UNSET]; exec {v}<&- -> rc=0; v=abc; exec {v}>&- -> rc=0; '{v}>&- echo ...' -> runs echo, 'cmd-level rc=0 v=[UNSET]'; v=99 -> rc=0 (matches); set -u; exec {w}>&- -> rc=0 (matches nothing bash prints)",
+      "note": "bash side (not stated in report) is 'NAME: ambiguous redirect' rc=1 whenever the variable is unset or non-numeric. psh silently succeeds in all those cases, in both exec (permanent) and per-command forms. Root cause still present at psh/io_redirect/file_redirect.py:659-663: 'try: fdnum = int(self.shell.state.get_variable(name)) except (TypeError, ValueError): return' swallows the error. Remediation-ledger id D-5C.2-d2 remains open. The valid-fd paths ({v}>/dev/null then {v}>&-, {v}>&0, {v}>&99) match bash."
+    }
+  ]
+}

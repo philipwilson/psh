@@ -1,0 +1,38 @@
+{
+  "batch": 3,
+  "head": "6459f1a6 (v0.779.0)",
+  "oracle": "GNU bash 5.3.15(1)-release (/opt/homebrew/bin/bash)",
+  "python": "3.14.7",
+  "date": "2026-09-06",
+  "scratch": "/Users/pwilson/src/psh/tmp/program-2026-09/batch3-scratch/",
+  "results": [
+    {
+      "cid": "C011",
+      "status": "live",
+      "bash53_output": "'![ -n x ]' -> stderr 'bash: line 1: ![: command not found' rc=127 | '![[ -n x ]]' -> '![[: command not found' rc=127 | '!]' -> '!]: command not found' rc=127 | '!{ echo a; }' -> 'syntax error near unexpected token `}'' rc=2 | 'echo before; ![ -n x ]; echo \"rc=$?\"' -> stdout 'before\\nrc=127' | script-file and stdin modes of '![ -n x ]; echo rc=$?' -> 's.sh: line 1: ![: command not found' / 'rc=127'",
+      "psh_output": "'![ -n x ]' -> no output rc=1 | '![[ -n x ]]' -> rc=1 | '!]' -> stderr 'psh: line 1: ]: command not found' rc=0 | '!{ echo a; }' -> stdout 'a' rc=1 | 'echo before; ![ -n x ]; echo \"rc=$?\"' -> 'before\\nrc=1' | script-file and stdin modes -> 'rc=1' | tokenize('![ -n x ]') -> [EXCLAMATION '!', LBRACKET '[', WORD '-n', WORD 'x', WORD ']', EOF]; '!]' -> [EXCLAMATION, RBRACKET]; '!{ echo a; }' -> [EXCLAMATION, LBRACE, ...]",
+      "note": "Exactly as described; diverges in all three input modes (-c, script file, stdin). Code unchanged: psh/lexer/recognizers/operator.py:104 still `return is_whitespace(char) or char in '|&;(){}[]<>'`, sole call site :381. Controls that already match bash: '!( echo a )' rc=1/1, '!;' rc=1/1, '!|cat' rc=2/2. bash 5.3.15 behaves identically to the report's 5.2.26 expectations."
+    },
+    {
+      "cid": "C012",
+      "status": "live",
+      "bash53_output": "bash big.sh -> stdout '45389'; time: 0.00s user 0.007 total",
+      "psh_output": "python -m psh big.sh -> stdout '45389'; time: 4.31s user 4.340 total (baseline trivial 'echo 1' script: 0.117 total). Ratio instrument (chars_lexed/len(source), bound K=3): shape A (N complete `echo x` lines + heredoc) = 2.0 / 2.0 / 2.0 / 2.0 at N=100/200/400/800; shape B (ONE command x='...N lines...') = 50.3 / 97.4 / 196.0 / 395.4 — doubles per doubling of N (quadratic)",
+      "note": "Reproduced with tmp/r23-lexer/big.sh (45405 bytes, 1501 lines; copied to scratch). Output is correct in both shells (45389), only time differs ~600x. Code unchanged: psh/lexer/heredoc_lexer.py:207 rebuilds `text = ('\\n' if committed_lines else '') + '\\n'.join(pending_lines)` per line and :213-222 `except SyntaxError: continue` keeps pending_lines growing while the full accumulated text is re-lexed each retry. tests/unit/lexer/test_heredoc_scaling.py only exercises shape A (still passes at 2.0), so the guard cannot see shape B. Instrument: tmp/program-2026-09/batch3-scratch/ratio.py."
+    },
+    {
+      "cid": "C013",
+      "status": "live",
+      "bash53_output": "echo $'\\377' | xxd -p -> ff0a | echo $'\\xff' -> ff0a | echo $'\\303\\251' -> c3a90a | echo $'\\udcff' -> edb3bf0a | printf '\\377' -> ff | echo -e '\\xff' -> ff0a",
+      "psh_output": "echo $'\\377' -> c3bf0a | echo $'\\xff' -> c3bf0a | echo $'\\303\\251' -> c383c2a90a | echo $'\\udcff' -> ff0a | printf '\\377' -> c3bf | echo -e '\\xff' -> c3bf0a",
+      "note": "Divergence unchanged vs bash 5.3.15 (oracle behaves as 5.2 did). Code unchanged: psh/lexer/pure_helpers.py:380 `chr(int(hex_str, 16))`, :397 `chr(int(octal_str, 8) & 0xFF)`. Unqualified doc claim persists, now at docs/user_guide/08_quoting_and_escaping.md:267 ('... matching bash.'; was :263). Still registered as deferred in docs/missing_features.md:376 ('Byte-model \\xff -> UTF-8 (reappraisal M8) — architectural; deferred'). The 'two representations of byte 255' point is confirmed: $'\\udcff' emits raw 0xff in psh (bash emits ed b3 bf). printf '\\377' and echo -e '\\xff' take the same codepoint path. The report itself classes this as by-design/deferred and flags only the doc claim; classification 'live' means both the behaviour and the unqualified claim persist."
+    },
+    {
+      "cid": "C014",
+      "status": "live",
+      "bash53_output": "Every shape with an unacceptable delimiter is a syntax error rc=2 in bash: 'cat <<; cat <<EOF' -> 'syntax error near unexpected token `;''; 'cat << #c' and 'cat <<' at EOL -> 'near unexpected token `newline''; 'cat << (echo x)' -> 'near unexpected token `(''; 'cat << <(a(b)c); cat <<EOF' -> 'syntax error near unexpected token `b' while looking for matching `)''; 'cat << ((' and 'cat << ;;' -> syntax errors. Acceptable shapes run identically in both shells: 'cat << <(echo x); cat <<EOF' (two EOF-delimited warnings, body echoed), and '}', ']', '!', '[[' delimiters print body1/body2/after.",
+      "psh_output": "Same unacceptable shapes -> 'Parse error ... Expected delimiter after here document operator' rc=2 in BOTH the rd and combinator parsers. Direct probe HeredocLexer('cat << <(a(b)c); cat <<EOF\\nbody\\nEOF\\n').tokenize_with_heredocs(): 'HEREDOC at pos 4: heredoc_id=0 / HEREDOC at pos 21: heredoc_id=None / spec 0: raw=EOF body=body\\n' — the FIRST (skipped) operator carries the SECOND operator's spec id: positional shift confirmed at code level.",
+      "note": "LATENT, unchanged. Code at psh/lexer/heredoc_lexer.py:325-331 (`_mark_heredoc_tokens` assigns sorted spec ids positionally to every HEREDOC/HEREDOC_STRIP token) and :283-286 (`_register_from_tokens` skips an operator whose next token fails delimiter_token_acceptable). Still no user-visible input: both parsers (recursive_descent/parsers/redirections.py:109-112, combinators/commands/redirections.py:77-83) gate on the identical `delimiter_token_acceptable` predicate, so the first skipped operator raises a parse error in source order before any later heredoc could consume a shifted body. 12 constructed shapes tried on bash/rd/combinator (tmp/program-2026-09/batch3-scratch/c014.sh, c014b.sh); direct probe c014_probe.py. INCIDENTAL NEW DIVERGENCE observed (not C014's claim, note for triage): bash 5.3.15 accepts `{` as a heredoc delimiter — 'cat << {; cat <<EOF ... { ... EOF' prints body1/body2/after rc=0 and 'cat <<{' prints body rc=0 — while psh lexes `{` after `<<` as LBRACE (not in _DELIMITER_PART_TYPES) and fails with 'Expected delimiter after here document operator' rc=2 in both parsers. '}', ']', '[', '!', '[[', ']]', 'do', '-' are lexed as WORD and accepted; '((' and ';;' are rejected by both shells."
+    }
+  ]
+}

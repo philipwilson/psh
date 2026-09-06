@@ -1,0 +1,32 @@
+{
+  "results": [
+    {
+      "cid": "C031",
+      "status": "live",
+      "bash53_output": "case1 `echo hi 3> \"$(echo x >> ctr; echo o3)\"; wc -l < ctr` -> hi / 1 (rc 0); case2 `: 9> ...` -> 1; case3 `read v 5< \"$(...)\"` (stdin=/dev/null) -> 1; case4 `read v 3< <(echo x >> ctr; echo data)` -> 1; wrong-file case `echo 0 > c; echo hi 3> \"$(n=$(cat c); n=$((n+1)); echo $n > c; echo f$n)\"; ls` -> hi / c / f1 (same with `set -C` and `>| c`); noclobber variant with pre-existing f2 -> rc=0, ls: c f1 f2, f2=[OLD]. Controls `{ } 3>`, `f() 3>`, `/bin/echo 3>`, `echo >` all -> 1.",
+      "psh_output": "case1 -> hi / 2 (rc 0); case2 -> 2; case3 -> 2 (v=[]); case4 -> 2; wrong-file case -> hi / c / f2 (both without and with `set -C`); noclobber variant with pre-existing f2 -> `psh: line 1: f2: cannot overwrite existing file` rc=1, ls: c f2 (f1 never created), f2=[OLD]. Controls all -> 1 (match bash). Same 2-vs-1 result in -c, script-file, and stdin modes.",
+      "note": "Live at HEAD 6459f1a6 vs bash 5.3.15. Reconstructed the elided cmdsub bodies as `echo x >> ctr; echo o9` / `echo x >> ctr; echo src` (redirect target file for read's fd 5) and the wrong-file body as an increment-and-write-back of c. Repro of case3 needs stdin=/dev/null since `read v 5<` still reads fd 0. Mechanism still present: manager.py:607 `plan = self.file_redirector.planner.plan(redirect)` then :664/:686/:827 call `_builtin_redirect_fd_level` (manager.py:944) whose body is `saved_fds = self.file_redirector.apply_redirections([redirect])` -- a second full plan/expansion. Noclobber twist confirmed with a stronger variant: psh's noclobber check runs against the 2nd expansion (f2) while bash opens the 1st (f1)."
+    },
+    {
+      "cid": "C032",
+      "status": "live",
+      "bash53_output": "a) `{ echo hi; } 1>&- 1>f` -> rc=0 f=[hi]; b) `f(){ echo hi; }; f 1>&- 1>ff` -> rc=0 ff=[hi]; c) `{ echo hi; } 1>&- 1>&2` -> prints hi (on stderr), rc=0; d) `if true; then echo hi; fi 1>&- 1>f` -> rc=0 f=[hi]; e) while form -> rc=0 f=[hi]; g) `{ cd /nonexistent_zz; } 2>&- 2>f` -> rc=1 f=[/opt/homebrew/bin/bash: line 1: cd: /nonexistent_zz: No such file or directory]. Controls: `echo hi 1>&- 1>f` -> f=[hi]; `exec 1>&- 1>f; echo hi` -> f=[hi]; reverse order `{ echo hi; } 1>f 1>&-` -> `echo: write error: Bad file descriptor` rc=1 f=[].",
+      "psh_output": "a) -> `psh: line 1: echo: write error: Bad file descriptor` rc=1 f=[]; b) -> same error, rc=1 ff=[]; c) -> same error, rc=1, nothing printed; d) -> same error rc=1 f=[]; e) while form -> same error, rc=0 (loop status), f=[]; g) `{ cd /nonexistent_zz; } 2>&- 2>f` -> rc=1 but f=[] (cd's diagnostic lost). Controls: simple builtin -> f=[hi]; exec -> f=[hi]; reverse-order -> EBADF rc=1 f=[] (matches bash). Script-file mode for a) -> `script.sh: line 1: echo: write error: Bad file descriptor` rc=1 f=[].",
+      "note": "Live at HEAD 6459f1a6 vs bash 5.3.15 for brace-group, function, if, while forms and for both fd 1 and fd 2. Note `{ echo err >&2; } 2>&- 2>f` DID match bash (f=[err]) because the body's own `>&2` re-dups; the pure-builtin-stderr case g) shows the fd-2 half is affected too. Mechanism still present: manager.py:430 `stream_restore = self._swap_closed_output_streams(redirects)` inside guarded_redirections (:398), with _swap_closed_output_streams at :518 and swap_output_stream_reopenable at :496. Only compound/in-process paths affected; simple-builtin and exec controls match bash as the report said."
+    },
+    {
+      "cid": "C033",
+      "status": "live",
+      "bash53_output": "`f() { echo ${v}{1,2}; }; v=1; v1=A; v2=B; f` -> 11 12; `declare -f f` -> `f () \\n{ \\n    echo ${v}{1,2}\\n}` (braces kept); `eval \"$(declare -f f)\"; f` -> 11 12; suffix battery `g() { echo ${v}{a,b} ${v}{1..3}; }` declare -f keeps `${v}{a,b} ${v}{1..3}`, after eval g -> 1a 1b 11 12 13.",
+      "psh_output": "direct call -> 11 12; `declare -f f` -> `f() {\\n  echo $v{1,2}\\n}` (braces DROPPED); `eval \"$(declare -f f)\"; f` -> A B; suffix battery declare -f -> `echo $v{a,b} $v{1..3}`, after eval g -> X Y A B C; `psh --format s.sh` on the same definition -> `echo $v{1,2}`.",
+      "note": "Live at HEAD 6459f1a6 vs bash 5.3.15, in both `declare -f` and `--format` serialization modes, for all three brace-expansion suffix shapes ({1,2}, {a,b}, {1..3}). Mechanism still present: formatter_visitor.py:120 `_needs_brace_disambiguation` only restores braces when the next unquoted literal starts with [A-Za-z0-9_] (`{` fails that test), and words.py:143 `braced: bool = field(default=False, compare=False, repr=False)` is excluded from equality so AST-equality round trips cannot catch it."
+    },
+    {
+      "cid": "C034",
+      "status": "live",
+      "bash53_output": "Non-interactive differential (`HISTSIZE=3; history -s c1..c5; history; history -p '!5'; history -p '!1'; history -p '!3'; PS1='\\!'; echo \"${PS1@P}\"`), with `set -o history`, identical in -c and stdin modes: history lists `    3  c3 / 4  c4 / 5  c5`; `!5` -> c5 rc=0; `!1` -> `history: !1: history expansion failed` rc=1; `!3` -> c3; `${PS1@P}` -> 6 (without `set -o history` bash prints 1 for `\\!`, list/!n results unchanged).",
+      "psh_output": "history lists `    1  c3 / 2  c4 / 3  c5`; `!5` -> `psh: line 1: history: !5: event not found` rc=1; `!1` -> c3 rc=0; `!3` -> c5 rc=0; `${PS1@P}` with PS1='\\!' -> 4. Identical with/without `set -o history` and in -c vs stdin modes.",
+      "note": "Live at HEAD 6459f1a6 vs bash 5.3.15; reproduced without a PTY via history -s / history -p / ${PS1@P} as the report's coverage note described, so no PTY needed. bash 5.3.15 still numbers absolutely (3..5 after trim), so the oracle has not changed for the listing/!n rows. The report's expected `\\!`->8 came from a different command count; in this exact battery bash gives 6 (next absolute event) vs psh 4 (len(list)+1) -- same mechanism, different constant. Mechanism still present: history_expansion.py:571-579 indexes `history[num - 1]` by list position; prompt.py:332-334 `_get_history_number` returns `str(len(self.host.state.history) + 1)`."
+    }
+  ]
+}
