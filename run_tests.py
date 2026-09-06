@@ -15,7 +15,21 @@ Usage:
     python run_tests.py --benchmarks       # Benchmark tier only (serial)
     python run_tests.py --shuffle-seed 7   # Deterministic collection shuffle
     python run_tests.py --parallel --write-attestation  # Gate + attestation
+    python run_tests.py --oracle-override  # Wave-0 retune slot ONLY (see below)
     python run_tests.py --help             # Show help
+
+Oracle preflight (Improvement Program 2026-09, standing rule D1):
+    * The differential tests are pinned to ONE bash oracle identity — major.minor
+      ``EXPECTED_BASH_MM`` in ``tests/harness/oracle_policy.py``, resolved by
+      ``tests/harness/shell_oracle.py#resolve_bash`` (BASH_PATH -> Homebrew ->
+      PATH). Before ANY test phase, in every mode, the runner resolves the
+      oracle, prints ``oracle: <path> <version>``, and REFUSES to start (exit
+      2) when the resolved major.minor differs from the policy — one loud
+      failure instead of hundreds of pins going red one at a time.
+    * ``--oracle-override`` bypasses that refusal for a Wave-0-shaped
+      re-baseline slot only; the override is logged loudly. It never bypasses
+      the attestation: ``--write-attestation`` records the resolved oracle
+      (schema 2, ``oracle: {path, version}``) and refuses on the same mismatch.
 
 Failure-safety guarantees (reappraisal #18 Tier-3 hardening; boundary campaign
 E1 structured gate results):
@@ -96,8 +110,13 @@ MANIFEST_OUTCOME_FIELDS = ('passed', 'failed', 'errored', 'skipped',
 
 # The same-SHA release attestation written by --write-attestation (campaign
 # E4) and verified by tools/verify_gate_attestation.py before release tagging.
+# Schema 2 (Improvement Program 2026-09, D1) adds the bash oracle identity the
+# gate ran against: `oracle: {path, version}`.
 ATTESTATION_FILENAME = 'gate_attestation.json'
-ATTESTATION_SCHEMA = 1
+ATTESTATION_SCHEMA = 2
+# Exit status of a run the oracle preflight refused (distinct from 1 = phases
+# failed and from argparse's usage errors, which also use 2 but print usage).
+ORACLE_PREFLIGHT_EXIT = 2
 # Patterns that indicate a lost/crashed xdist worker (an incomplete run whose
 # surviving summary must NOT be trusted as all-green). Anchored to xdist's real
 # line formats — matched at line start (optionally behind a "[gwN]" prefix) —
@@ -451,15 +470,66 @@ def pytest_base_cmd():
     return [sys.executable, '-m', 'pytest', '-p', 'tools.pytest_phase_manifest']
 
 
+# --- Oracle preflight (Improvement Program 2026-09, D1) -----------------------
+
+
+def _oracle_policy():
+    """Import ``tests/harness/oracle_policy`` for this top-level script.
+
+    The harness directory goes on ``sys.path`` exactly as ``tests/conftest.py``
+    does for the suite, so the policy module (and the resolver it imports) is
+    the SAME code the tests run — never a copy of the ladder or the constant.
+    Only the runner process is affected; every pytest phase is a separate
+    interpreter that does its own conftest setup.
+    """
+    harness_dir = str(Path(__file__).parent / 'tests' / 'harness')
+    if harness_dir not in sys.path:
+        sys.path.insert(0, harness_dir)
+    import oracle_policy
+    return oracle_policy
+
+
+def oracle_preflight(override=False):
+    """Resolve the bash oracle BEFORE any test phase; return 0 to proceed.
+
+    Prints ``oracle: <path> <version>`` into the runner output (and so into
+    the persisted transcript). When the resolved major.minor differs from the
+    policy — or no oracle resolves at all — the run is REFUSED with
+    ``ORACLE_PREFLIGHT_EXIT`` and the drift message, unless ``override`` is
+    set, in which case the override is logged loudly and the run continues.
+    The override exists for a Wave-0-shaped retune slot only; the attestation
+    writer performs its own, non-overridable check (``_attestation_oracle``).
+    """
+    try:
+        policy = _oracle_policy()
+        ok, message = policy.oracle_matches_policy()
+        summary = policy.oracle_summary()
+    except Exception as e:  # BashOracleUnavailable, ImportError: no oracle
+        ok, message, summary = False, f"oracle unavailable: {e}", None
+    if summary:
+        emit(summary)
+    if ok:
+        return 0
+    if override:
+        emit(f"⚠️  ORACLE OVERRIDE: {message}")
+        emit("   (--oracle-override: continuing against a drifted oracle; "
+             "valid for a Wave-0-shaped retune slot only — D1)")
+        return 0
+    emit(f"❌ oracle preflight refused the run (D1): {message}")
+    return ORACLE_PREFLIGHT_EXIT
+
+
 # --- Same-SHA release attestation (campaign E4) -------------------------------
 
 
 def build_attestation(version, gated_commit, gated_tree, phases, ruff,
-                      mypy_files, command, timestamp, platform_info):
+                      mypy_files, command, timestamp, platform_info, oracle):
     """Assemble the attestation document (PURE — all inputs injected).
 
     The shape is verified by tools/verify_gate_attestation.py before release
     tagging and pinned by tests/unit/tooling/test_gate_attestation.py.
+    ``oracle`` is ``{'path': ..., 'version': ...}`` — the bash the gate's
+    differential tests actually ran against (schema 2, D1).
     """
     return {
         'schema': ATTESTATION_SCHEMA,
@@ -467,6 +537,7 @@ def build_attestation(version, gated_commit, gated_tree, phases, ruff,
         'gated_commit': gated_commit,
         'gated_tree': gated_tree,
         'platform': platform_info,
+        'oracle': oracle,
         'phases': phases,
         'ruff': ruff,
         'mypy_files': mypy_files,
@@ -515,6 +586,23 @@ def _read_tree_version(repo_root):
     if not m:
         raise ValueError('could not parse __version__ from psh/version.py')
     return m.group(1)
+
+
+def _attestation_oracle():
+    """Resolve the oracle the attestation records; return (ok, record, message).
+
+    ``record`` is ``{'path', 'version'}`` for the resolved oracle (None when
+    none resolves); ``ok`` is False on a major.minor mismatch with the policy
+    (D1). This check is deliberately NOT bypassed by ``--oracle-override``:
+    an attestation must never testify that a drifted oracle gated a release.
+    """
+    try:
+        policy = _oracle_policy()
+        ok, message = policy.oracle_matches_policy()
+        oracle = policy.resolve_bash()
+    except Exception as e:  # BashOracleUnavailable, ImportError: no oracle
+        return False, None, f"oracle unavailable: {e}"
+    return ok, {'path': oracle.path, 'version': oracle.version}, message
 
 
 def _run_attestation_checks(repo_root):
@@ -572,6 +660,14 @@ def write_attestation(repo_root, phases, command):
             emit(f"    {p}")
         return 1
 
+    oracle_ok, oracle_record, oracle_message = _attestation_oracle()
+    if not oracle_ok:
+        emit("❌ oracle drift — no attestation written (D1: the attestation "
+             "records the bash oracle the gate ran against, and "
+             "--oracle-override does NOT bypass this check):")
+        emit(f"    {oracle_message}")
+        return 1
+
     checks_ok, ruff_ok, mypy_files = _run_attestation_checks(repo_root)
     if not checks_ok:
         return 1
@@ -590,6 +686,7 @@ def write_attestation(repo_root, phases, command):
             'python': platform_mod.python_version(),
             'arch': platform_mod.machine(),
         },
+        oracle=oracle_record,
     )
     out_path = repo_root / ATTESTATION_FILENAME
     with open(out_path, 'w', encoding='utf-8') as f:
@@ -597,7 +694,8 @@ def write_attestation(repo_root, phases, command):
         f.write('\n')
     emit(f"\n✅ Attestation written: {out_path} "
          f"(gated_commit {attestation['gated_commit'][:12]}, "
-         f"version {attestation['version']}). Commit it as the FINAL commit "
+         f"version {attestation['version']}, oracle "
+         f"{oracle_record['version']}). Commit it as the FINAL commit "
          "before pushing — release-tag.yml refuses to tag without it.")
     return 0
 
@@ -614,6 +712,7 @@ Examples:
   python run_tests.py --all-nocapture    # All tests with -s (simpler but noisy)
   python run_tests.py --quick            # Curated fast smoke subset (parallel)
   python run_tests.py --verbose          # Verbose output
+  python run_tests.py --oracle-override  # Wave-0 retune slot only (D1)
         """
     )
 
@@ -702,7 +801,15 @@ Examples:
         help='On a fully green run, also run ruff+mypy and write '
              f'{ATTESTATION_FILENAME} at the repo root (campaign E4). '
              'release-tag.yml refuses to tag a version bump without a '
-             'matching attestation.'
+             'matching attestation (schema 2 records the bash oracle).'
+    )
+
+    parser.add_argument(
+        '--oracle-override',
+        action='store_true',
+        help='Continue even though the resolved bash oracle is not the policy '
+             'major.minor (D1). Logged loudly; for a Wave-0-shaped retune '
+             'slot ONLY. Does not bypass the --write-attestation refusal.'
     )
 
     parser.add_argument(
@@ -821,6 +928,11 @@ def _run(args, results_path):
 
     if _RESULTS_FH is not None:
         emit(f"Persisting full run transcript to: {results_path}")
+
+    # D1: one oracle identity, checked ONCE, before any phase in every mode.
+    preflight_rc = oracle_preflight(override=args.oracle_override)
+    if preflight_rc:
+        return preflight_rc
 
     if args.benchmarks:
         # Benchmark tier: timing-threshold microbenchmarks, serial by design

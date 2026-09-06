@@ -14,7 +14,7 @@ cause the shell to exit").  Probed on 5.3.15 in -c, script-file and stdin
 modes: ``export``/``readonly`` with an invalid identifier and ``unset`` of a
 readonly variable or function now EXIT (status 1, at the FIRST bad operand),
 and the exit is SUPPRESSIBLE by a guard OUTSIDE an ``eval`` or ``.`` boundary
-(``eval 'set -q' || echo caught`` now prints ``caught``).  Under bash 5.2
+(``eval 'set -q' || echo caught`` now prints ``caught``).  Under the 5.2 series
 those operand errors continued (status 1) and the eval/dot boundary reset
 suppression; the matrix doc rows 48/49/51 and its "eval/dot boundaries
 reset suppression" sentence describe 5.2.  psh still implements the 5.2

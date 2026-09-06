@@ -19,8 +19,8 @@
 USAGE-ERROR STATUS ON BASH 5.3.  The status-1 -> status-2 shift for `cd`,
 `exit`, `shift`, `return`, `break` and `continue` usage errors has NO
 CHANGES/NEWS item in the 5.3.15 documentation -- it is empirical, probed on
-5.3.15 (2026-09-06) in -c, script-file and stdin modes.  bash 5.2 returned 1
-for the same cells (the 2026-08-09 gate was green on 5.2.26).  psh still
+5.3.15 (2026-09-06) in -c, script-file and stdin modes.  The 5.2 series returned 1
+for the same cells (the 2026-08-09 gate was green on that day's 5.2 oracle).  psh still
 returns 1 (and exits 128 for a non-numeric `break`/`continue` operand where
 bash 5.3.15 exits the shell with 2).  Those rows are pinned BOTH SIDES as
 declared divergences: bash 5.3 semantics; psh to follow in slot 2.3, which
@@ -111,7 +111,7 @@ class TestExitStatus(ConformanceTest):
 
         bash 5.3.15: ``exit abc`` prints "exit: abc: numeric argument
         required", sets ``$?`` to 2 and CONTINUES with the next command, in
-        every input mode (empirical, 5.3.15; bash 5.2 exited 2).  psh exits
+        every input mode (empirical, 5.3.15; the 5.2 series exited 2).  psh exits
         the shell with status 2.  The second row is the shape of golden
         ``bcontract_exit_bad_first_operand_exits_two`` (now ``psh_only``).
         """

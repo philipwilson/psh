@@ -157,7 +157,7 @@ class TestLocalReadonlyRedeclare:
     and the function CONTINUES. A bare attribute-only redeclare (`local x`,
     no value) is a no-op in both shells. Merging an attribute that changes
     assignment semantics (`-i`, `-l`, `-u`, `-a`, `-A`, `-n`) onto a readonly
-    local was accepted by bash 5.2 and is REFUSED by bash 5.3 (CHANGES
+    local was accepted by the 5.2 series and is REFUSED by bash 5.3 (CHANGES
     5.3-alpha section 1 item llllll); psh still accepts it -- see
     ``test_attrs_only_add_integer_allowed``. All expectations verified against
     bash 5.2 and re-checked against bash 5.3.15 (2026-09-06); only that one

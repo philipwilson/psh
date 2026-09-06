@@ -562,7 +562,22 @@ def pytest_collection_modifyitems(config, items):
 
 # Skip interactive tests by default unless explicitly requested
 def pytest_runtest_setup(item):
-    """Skip interactive tests unless explicitly requested."""
+    """Skip interactive tests unless explicitly requested; honour ``oracle_min``."""
+    # D5 version classifier: @pytest.mark.oracle_min("5.3") skips (with the
+    # countable reason "oracle <version> < 5.3") when the resolved bash oracle
+    # is older. The version literal lives ONLY in the marker argument — the
+    # ratchet in tests/unit/tooling/test_no_version_literal_predicates.py
+    # forbids it in if/skipif predicates.
+    oracle_min = item.get_closest_marker("oracle_min")
+    if oracle_min is not None:
+        if len(oracle_min.args) != 1 or not isinstance(oracle_min.args[0], str):
+            pytest.fail("oracle_min takes exactly one version string, e.g. "
+                        "@pytest.mark.oracle_min('5.3')", pytrace=False)
+        from oracle_policy import oracle_min_skip_reason
+        reason = oracle_min_skip_reason(oracle_min.args[0])
+        if reason:
+            pytest.skip(reason)
+
     if item.get_closest_marker("interactive"):
         # The PTY smoke suite (test_pty_smoke.py) is deterministic and runs
         # by default — it is the interactive coverage the suite relies on —
@@ -618,6 +633,21 @@ def pytest_runtest_setup(item):
     # pass; a bare `pytest -n auto` should pass `-m "not serial"`. (The old
     # gw0-only skip was removed: under xdist each test runs on exactly one worker,
     # so skipping serial tests on non-gw0 workers silently dropped them.)
+
+
+def pytest_report_header(config):
+    """One oracle identity in every session header (D1): ``oracle: <path>
+    <version>`` — the same line ``run_tests.py`` prints at preflight and every
+    conformance failure message carries, so a transcript always says which
+    bash produced the reference side. A host with no oracle at all says so
+    here instead of crashing collection; the differential tests then fail on
+    their own terms."""
+    from oracle_policy import oracle_summary
+    from shell_oracle import BashOracleUnavailable
+    try:
+        return oracle_summary()
+    except BashOracleUnavailable as e:
+        return f"oracle: UNAVAILABLE ({e})"
 
 
 def pytest_addoption(parser):

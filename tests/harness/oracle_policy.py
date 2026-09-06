@@ -22,10 +22,16 @@ version — the only literal it owns is the policy constant.
 from __future__ import annotations
 
 import re
-import subprocess
 from typing import Callable, Dict, Optional, Tuple
 
-from shell_oracle import BashOracle, resolve_bash
+from shell_oracle import (
+    BashOracle,
+    BashOracleUnavailable,
+    Completed,
+    is_comparable,
+    resolve_bash,
+    run_shell_case,
+)
 
 #: The contract: bash major.minor the pins are verified against.  Changing
 #: this is a Wave-0-shaped re-baseline slot, never an in-slot edit (D1).
@@ -83,11 +89,23 @@ def oracle_at_least(minimum: str, oracle: Optional[BashOracle] = None) -> bool:
 
 # --- probed platform features ------------------------------------------------
 
-def _run_oracle(path: str, script: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [path, "-c", script], stdin=subprocess.DEVNULL, capture_output=True,
-        timeout=10, encoding="utf-8", errors="surrogateescape",
-    )
+def _run_oracle(path: str, script: str) -> Completed:
+    """Run ``script`` on the oracle at ``path`` through the typed runner.
+
+    This module lives under ``tests/harness`` and is therefore oracle-bearing:
+    the anti-spawn guard (``test_no_direct_spawn_in_oracle_modules.py``)
+    forbids a raw ``subprocess`` here, and the typed runner is what gives the
+    probe its hermetic env, timeout and byte cap.  A non-comparable outcome
+    (spawn failure, timeout, capture overflow) is a HARNESS failure and
+    raises — a probe must never turn one into a silent ``False`` that skips
+    or runs a row for the wrong reason.  Tests exercise the probes through
+    this seam (monkeypatch it; do not depend on the host's platform).
+    """
+    result = run_shell_case([path, "-c", script], timeout=10)
+    if not is_comparable(result):
+        raise RuntimeError(
+            f"oracle probe {script!r} on {path} did not complete: {result!r}")
+    return result
 
 
 def _probe_x87_long_double(path: str) -> bool:
@@ -146,6 +164,54 @@ def oracle_feature(name: str, oracle: Optional[BashOracle] = None) -> bool:
     if key not in _FEATURE_CACHE:
         _FEATURE_CACHE[key] = _FEATURE_PROBES[name](oracle.path)
     return _FEATURE_CACHE[key]
+
+
+# --- classifiers (D4/D5): skip REASONS for version- and host-sensitive rows --
+#
+# Each returns None when the row may run, else the exact skip reason. They are
+# consumed by the ``oracle_min`` marker hook (tests/conftest.py) and by the
+# golden runner's ``min_bash`` / ``requires_dev_fd`` keys
+# (tests/behavioral/test_golden_behavior.py), so a row that cannot be judged on
+# this host reports SKIP with a countable reason — never FAIL, never a silent
+# pass.
+
+def oracle_min_skip_reason(minimum: str, oracle: Optional[BashOracle] = None) -> Optional[str]:
+    """``None`` when the oracle is at least ``minimum``, else
+    ``'oracle <version> < <minimum>'``.  No oracle at all is reported as such
+    (the row needs one to mean anything) rather than raising out of setup."""
+    try:
+        oracle = oracle or resolve_bash()
+    except BashOracleUnavailable as e:
+        return f"oracle unavailable ({e}); row needs bash >= {minimum}"
+    if oracle_at_least(minimum, oracle):
+        return None
+    return f"oracle {oracle.version} < {minimum}"
+
+
+def _probe_dev_stdout_writable() -> Optional[str]:
+    """Open ``/dev/stdout`` for writing; return the OSError text, or None."""
+    try:
+        with open("/dev/stdout", "w"):
+            pass
+    except OSError as e:
+        return str(e)
+    return None
+
+
+_HOST_CACHE: Dict[str, Optional[str]] = {}
+
+
+def dev_fd_skip_reason() -> Optional[str]:
+    """``None`` when ``/dev/stdout`` can be opened for writing (probed once
+    per process), else the skip reason.  A sandboxed run (seatbelt denies
+    ``/dev/stdout`` by path — D4) thereby reports SKIP for the rows that need
+    it; the unsandboxed gate runs them."""
+    if "dev_fd" not in _HOST_CACHE:
+        error = _probe_dev_stdout_writable()
+        _HOST_CACHE["dev_fd"] = (
+            None if error is None
+            else f"/dev/stdout not openable for writing ({error})")
+    return _HOST_CACHE["dev_fd"]
 
 
 if __name__ == "__main__":  # pragma: no cover - manual check

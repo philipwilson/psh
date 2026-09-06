@@ -11,6 +11,9 @@ this script proves the attestation vouches for THIS tag:
 1. ``gate_attestation.json`` exists at the repo root (absence = loud failure
    naming the campaign decision — the bootstrap case);
 2. it is valid JSON with the expected schema and keys;
+2b. its ``oracle.version`` (schema 2, Improvement Program 2026-09 rule D1) is
+   a bash whose major.minor equals :data:`EXPECTED_BASH_MM` — the gate must
+   have run against the pinned oracle, never a drifted one;
 3. its ``version`` equals ``psh/version.py`` at HEAD (the version being
    tagged);
 4. its ``gated_commit`` exists and is an ancestor of HEAD;
@@ -34,11 +37,21 @@ import sys
 from pathlib import Path
 
 ATTESTATION_FILENAME = "gate_attestation.json"
-ATTESTATION_SCHEMA = 1
+ATTESTATION_SCHEMA = 2
 REQUIRED_KEYS = frozenset({
-    "schema", "version", "gated_commit", "gated_tree", "platform", "phases",
-    "ruff", "mypy_files", "timestamp", "command",
+    "schema", "version", "gated_commit", "gated_tree", "platform", "oracle",
+    "phases", "ruff", "mypy_files", "timestamp", "command",
 })
+
+# The bash oracle contract (Improvement Program 2026-09, D1): the gate's
+# differential tests are pinned to this major.minor. release-tag.yml runs this
+# tool under bare ``python3`` with NO test dependencies, so the constant is a
+# LOCAL duplicate of ``tests/harness/oracle_policy.EXPECTED_BASH_MM`` rather
+# than an import from tests/; tests/unit/tooling/test_gate_attestation.py pins
+# the two equal so they cannot drift apart. Changing it is a Wave-0-shaped
+# re-baseline slot, never an in-slot edit.
+EXPECTED_BASH_MM = "5.3"
+_BASH_VERSION_RE = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
 
 BOOTSTRAP_MESSAGE = (
     f"{ATTESTATION_FILENAME} is ABSENT at the repository root.\n"
@@ -56,6 +69,28 @@ def _git(repo_root, *args):
     proc = subprocess.run(["git", *args], cwd=repo_root,
                           capture_output=True, text=True)
     return proc.returncode, proc.stdout.strip()
+
+
+def _check_oracle(oracle):
+    """Return a FAIL message for a bad ``oracle`` record, or None if OK."""
+    if (not isinstance(oracle, dict)
+            or not isinstance(oracle.get("path"), str)
+            or not isinstance(oracle.get("version"), str)):
+        return ("FAIL: attestation 'oracle' must be an object with string "
+                "'path' and 'version' (schema 2, D1).")
+    m = _BASH_VERSION_RE.match(oracle["version"])
+    if not m:
+        return (f"FAIL: attestation oracle.version {oracle['version']!r} is "
+                "not a parseable bash version (D1).")
+    found = f"{m.group(1)}.{m.group(2)}"
+    if found != EXPECTED_BASH_MM:
+        return (f"FAIL: attestation oracle is bash {oracle['version']} "
+                f"(major.minor {found}) at {oracle['path']}, but the "
+                f"differential contract is bash {EXPECTED_BASH_MM} "
+                "(Improvement Program 2026-09, D1). The gate ran against a "
+                "drifted oracle — re-baseline in a Wave-0-shaped slot; do not "
+                "tag.")
+    return None
 
 
 def _read_tree_version(repo_root):
@@ -98,6 +133,10 @@ def verify_attestation(repo_root, attestation_path=None):
                         f"expected {ATTESTATION_SCHEMA}.")
     if messages:
         return False, messages
+
+    oracle_problem = _check_oracle(data["oracle"])
+    if oracle_problem:
+        return False, [oracle_problem]
 
     head_version = _read_tree_version(repo_root)
     if head_version is None:
@@ -146,8 +185,9 @@ def verify_attestation(repo_root, attestation_path=None):
         return False, messages
     return True, [
         f"OK: {ATTESTATION_FILENAME} attests version {data['version']} at "
-        f"gated_commit {gated_commit[:12]}; nothing but the attestation "
-        "changed since the gate ran."
+        f"gated_commit {gated_commit[:12]} against bash "
+        f"{data['oracle']['version']}; nothing but the attestation changed "
+        "since the gate ran."
     ]
 
 

@@ -16,7 +16,7 @@ hosts have been run, each with a transcript:
 - **x86-64 glibc** (x87 80-bit ``long double`` with an EXPLICIT integer
   bit, so the leading hex digit is 8..f: ``printf '%a' 1`` -> ``0x8p-3``):
   every finite non-zero ``%a``/``%A`` cell differs.  Nightly run
-  34008477403 (2026-09-06, bash 5.2.21 x86_64-pc-linux-gnu) reported seven
+  34008477403 (2026-09-06, the 5.2.21 system bash, x86_64-pc-linux-gnu) reported seven
   red methods, each stopping at its first differing cell:
   ``printf '%.2a' 3.14`` -> bash ``0xc.8fp-2`` vs psh ``0x1.92p+1``;
   ``'%.2a' 0.1`` -> ``0xc.cdp-7`` vs ``0x1.9ap-4``; ``'%.20a' 3.14`` ->
@@ -36,7 +36,7 @@ hosts have been run, each with a transcript:
   ``0x1.91eb851eb851eb851eb8p+1`` vs psh ``0x1.91eb851eb851f0000000p+1``,
   and ``printf '%A' 3.14`` -> bash ``0X1.91EB851EB851EB851EB851EB851FP+1``
   vs psh ``0X1.91EB851EB851FP+1``.  w0-verify-b, ubuntu:24.04 arm64
-  container, bash 5.2.21 aarch64-unknown-linux-gnu, 2026-09-06 (the
+  container, the 5.2.21 system bash, aarch64-unknown-linux-gnu, 2026-09-06 (the
   previous revision of this module: 2 failed, 7 passed, 0 skipped).
 
 Why the low-precision cells match on binary128 but not on x87: 3.14 is
@@ -58,7 +58,7 @@ Two predicates follow:
   cells, one method each.
 
 Skips by oracle host, THIS revision run against the real binaries
-(w0-pkg-b, 2026-09-06, colima ubuntu:24.04 containers, bash 5.2.21):
+(w0-pkg-b, 2026-09-06, colima ubuntu:24.04 containers, their 5.2.21 system bash):
 macOS 12 passed, 0 skipped; x86-64 glibc (``printf '%a' 0.1`` ->
 ``0xc.ccccccccccccccdp-7``) 3 passed, 9 skipped — both predicates hold;
 aarch64 glibc 10 passed, 2 skipped.  The predicates are evaluated at
