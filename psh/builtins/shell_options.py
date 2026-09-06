@@ -162,23 +162,39 @@ class ShoptBuiltin(Builtin):
             if not enabled:
                 status = 1
             if not quiet:
-                self._print_option(name, enabled, shell, reusable, o_mode)
+                # A QUERIED name pads to 20 in both tables (bash 5.3).
+                self._print_option(name, enabled, shell, reusable, o_mode,
+                                   width=20)
         return status
 
     def _list(self, shell: 'Shell', o_mode: bool, reusable: bool,
               state_filter: Optional[bool]) -> None:
         """List options (all, or only the enabled/disabled subset)."""
         names = SET_O_OPTION_NAMES if o_mode else tuple(sorted(SHOPT_OPTION_NAMES))
+        # Bare `shopt -o` / `-so` / `-uo` listings keep `set -o`'s 15-column
+        # name field; bare `shopt` / `-s` / `-u` listings use 20 (bash 5.3).
+        width = 15 if o_mode else 20
         for name in names:
             key = name
             enabled = bool(shell.state.options.get(key, False))
             if state_filter is not None and enabled is not state_filter:
                 continue
-            self._print_option(name, enabled, shell, reusable, o_mode)
+            self._print_option(name, enabled, shell, reusable, o_mode,
+                               width=width)
 
     def _print_option(self, name: str, enabled: bool, shell: 'Shell',
-                      reusable: bool, o_mode: bool = False) -> None:
-        """Print a single option's status."""
+                      reusable: bool, o_mode: bool = False, *,
+                      width: int = 20) -> None:
+        """Print a single option's status.
+
+        The non-reusable form is ``name<pad>\\ton|off`` with the name
+        left-justified in ``width`` columns (a longer name is never padded
+        or truncated — f-string width never truncates, matching bash).
+        Empirical against bash 5.3.15 (no CHANGES item): queried names
+        (``shopt NAME``, ``shopt -o NAME``) and bare shopt-table listings
+        use 20; bare ``shopt -o``-family listings and ``set -o``
+        (environment.py) use 15. bash 5.2 used 15 everywhere.
+        """
         if reusable:
             if o_mode:
                 # Reusable via `set` (bash: shopt -po emits set-style lines).
@@ -188,11 +204,8 @@ class ShoptBuiltin(Builtin):
                 flag = '-s' if enabled else '-u'
                 self.write_line(f"shopt {flag} {name}", shell)
         else:
-            # bash left-justifies the option name in a 15-char field, then a
-            # tab, then on/off (a name >= 15 chars is not padded — f-string
-            # width never truncates, matching bash).
             status = 'on' if enabled else 'off'
-            self.write_line(f"{name:<15}\t{status}", shell)
+            self.write_line(f"{name:<{width}}\t{status}", shell)
 
     @property
     def help(self) -> str:

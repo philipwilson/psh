@@ -1,7 +1,10 @@
 """shopt -o mode and the bash-faithful shopt flag grammar (task #10).
 
 Every behaviour here was probe-pinned against /opt/homebrew/bin/bash 5.2.26
-(tmp/optreflect probe batteries, 2026-07-09):
+(tmp/optreflect probe batteries, 2026-07-09) and re-pinned against 5.3.15
+(Wave 0.2, 2026-09-06: bash 5.3 pads a QUERIED name to 20 columns in both
+tables and a bare shopt-table listing to 20, while the bare `shopt -o`/-so/-uo
+listings and `set -o` stay at 15 — empirical, no CHANGES item):
 
 - `shopt -o NAME` queries the SET-O option table (`set -o` names), printing
   `name<pad>\ton/off` with exit status reflecting the state (0 on / 1 off).
@@ -20,13 +23,14 @@ class TestShoptSetOQuery:
     def test_query_off_prints_state_rc1(self, captured_shell):
         result = captured_shell.run_command('shopt -o errexit')
         assert result == 1
-        assert captured_shell.get_stdout() == f"{'errexit':<15}\toff\n"
+        # queried -o names are padded to 20 in bash 5.3 (bare `shopt -o` stays 15)
+        assert captured_shell.get_stdout() == f"{'errexit':<20}\toff\n"
 
     def test_query_on_rc0(self, captured_shell):
         captured_shell.run_command('set -e')
         result = captured_shell.run_command('shopt -o errexit')
         assert result == 0
-        assert captured_shell.get_stdout() == f"{'errexit':<15}\ton\n"
+        assert captured_shell.get_stdout() == f"{'errexit':<20}\ton\n"
 
     def test_query_multiple_mixed_rc1(self, captured_shell):
         captured_shell.run_command('set -e')
@@ -188,7 +192,7 @@ class TestShoptFlagGrammar:
         # option NAME, and extglob is queried, not set.
         result = captured_shell.run_command('shopt extglob -s')
         assert result == 1
-        assert f"{'extglob':<15}\toff" in captured_shell.get_stdout()
+        assert f"{'extglob':<20}\toff" in captured_shell.get_stdout()
         assert '-s: invalid shell option name' in captured_shell.get_stderr()
         assert captured_shell.state.options['extglob'] is False
 
@@ -204,13 +208,13 @@ class TestShoptFlagGrammar:
         captured_shell.clear_output()
         assert captured_shell.run_command('shopt -s') == 0
         out = captured_shell.get_stdout()
-        assert f"{'extglob':<15}\ton" in out
+        assert f"{'extglob':<20}\ton" in out
         assert 'dotglob' not in out  # disabled options filtered out
 
     def test_bare_u_lists_disabled(self, captured_shell):
         assert captured_shell.run_command('shopt -u') == 0
         out = captured_shell.get_stdout()
-        assert f"{'dotglob':<15}\toff" in out
+        assert f"{'dotglob':<20}\toff" in out
         assert 'expand_aliases' not in out  # enabled-by-default, filtered
 
     def test_bare_so_lists_enabled_set_o(self, captured_shell):
@@ -246,4 +250,58 @@ class TestShoptFlagGrammar:
         """GREEN CONTROL (passes on base a0fbca20): `--` handling survived
         the flag-parser rewrite."""
         assert captured_shell.run_command('shopt -- extglob') == 1
-        assert f"{'extglob':<15}\toff" in captured_shell.get_stdout()
+        assert f"{'extglob':<20}\toff" in captured_shell.get_stdout()
+
+
+class TestShoptWidthsBash53:
+    """Name-column widths, empirical against bash 5.3.15 (Wave 0.2; gate
+    nodes test_cmdsub_errexit_conformance::TestInheritErrexitShopt::
+    test_shopt_query_states, test_locale_conformance::TestRangesAndGlobasciiranges::
+    test_shopt_globasciiranges_query, test_nocasematch_conformance::
+    TestShoptQueryExitCode x3). No CHANGES item names the change.
+
+    - `shopt NAME` and `shopt -o NAME` queries: 20
+    - bare `shopt` / `shopt -s` / `shopt -u` listings: 20
+    - bare `shopt -o` / `shopt -so` / `shopt -uo` listings and `set -o`: 15
+    - a name at/over the width is never padded or truncated
+    """
+
+    def test_shopt_query_width_20(self, captured_shell):
+        assert captured_shell.run_command('shopt nocasematch') == 1
+        assert captured_shell.get_stdout() == "nocasematch         \toff\n"
+
+    def test_shopt_query_15_char_name_gets_5_spaces(self, captured_shell):
+        # inherit_errexit is exactly 15 chars: bash 5.2 printed it unpadded.
+        assert captured_shell.run_command('shopt inherit_errexit') == 1
+        assert captured_shell.get_stdout() == "inherit_errexit     \toff\n"
+
+    def test_set_o_query_via_shopt_o_width_20(self, captured_shell):
+        assert captured_shell.run_command('shopt -o nounset vi') == 1
+        assert captured_shell.get_stdout() == (
+            "nounset             \toff\nvi                  \toff\n")
+
+    def test_bare_shopt_listing_width_20(self, captured_shell):
+        assert captured_shell.run_command('shopt') == 0
+        lines = captured_shell.get_stdout().splitlines()
+        assert lines and all(
+            len(ln.split('\t')[0]) == max(20, len(ln.split('\t')[0].rstrip()))
+            for ln in lines), lines
+
+    def test_bare_shopt_o_listing_stays_15(self, captured_shell):
+        assert captured_shell.run_command('shopt -o') == 0
+        lines = captured_shell.get_stdout().splitlines()
+        assert lines and all(
+            len(ln.split('\t')[0]) == max(15, len(ln.split('\t')[0].rstrip()))
+            for ln in lines), lines
+        assert "errexit        \toff" in lines
+
+    def test_bare_so_and_uo_listings_stay_15(self, captured_shell):
+        assert captured_shell.run_command('shopt -so') == 0
+        assert "braceexpand    \ton" in captured_shell.get_stdout()
+        captured_shell.clear_output()
+        assert captured_shell.run_command('shopt -uo') == 0
+        assert "allexport      \toff" in captured_shell.get_stdout()
+
+    def test_set_o_stays_15(self, captured_shell):
+        assert captured_shell.run_command('set -o') == 0
+        assert "allexport      \toff" in captured_shell.get_stdout()

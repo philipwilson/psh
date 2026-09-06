@@ -2374,8 +2374,10 @@
   exit_code: 0
 
 - name: shopt_query_unset_exit_1
+  # bash 5.3 pads a queried shopt name to 20 (Wave 0.2; 5.2 used 15)
+  min_bash: "5.3"
   command: "shopt nocasematch; echo $?"
-  stdout: "nocasematch    \toff\n1\n"
+  stdout: "nocasematch         \toff\n1\n"
   stderr: ""
   exit_code: 0
 
@@ -8906,8 +8908,10 @@
   exit_code: 0
 
 - name: shellopts_shopt_flag_after_operand
+  # bash 5.3 pads a queried shopt name to 20 (Wave 0.2; 5.2 used 15)
+  min_bash: "5.3"
   command: 'shopt extglob -s 2>/dev/null; echo rc=$?; shopt -q extglob; echo rc=$?'
-  stdout: "extglob        \toff\nrc=1\nrc=1\n"
+  stdout: "extglob             \toff\nrc=1\nrc=1\n"
   stderr: ""
   exit_code: 0
 
@@ -10691,4 +10695,39 @@
   command: "trap 'echo hi' INT; trap -P INT NOSUCH; echo rc=$?"
   stdout: "echo hi\nrc=1\n"
   stderr: "trap: NOSUCH: invalid signal specification"
+  exit_code: 0
+
+# shopt widths (empirical, bash 5.3.15; no CHANGES item): queried names and
+# bare shopt-table listings pad to 20; bare `shopt -o`/-so/-uo and `set -o`
+# stay at 15.
+- name: w0_2_shopt_query_pads_to_20
+  description: "closes test_nocasematch_conformance::TestShoptQueryExitCode::test_query_set_exits_0 / test_query_unset_exits_1 / test_query_after_unset_exits_1 and test_locale_conformance::TestRangesAndGlobasciiranges::test_shopt_globasciiranges_query"
+  min_bash: "5.3"
+  command: 'shopt -s nocasematch; shopt nocasematch; echo $?; shopt -u nocasematch; shopt nocasematch; echo $?; shopt globasciiranges'
+  stdout: "nocasematch         \ton\n0\nnocasematch         \toff\n1\nglobasciiranges     \ton\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_shopt_query_15_char_name_padded
+  description: "closes test_cmdsub_errexit_conformance::TestInheritErrexitShopt::test_shopt_query_states (a 15-char name was unpadded at width 15)"
+  min_bash: "5.3"
+  command: 'shopt inherit_errexit; echo rc=$?; shopt -s inherit_errexit; shopt inherit_errexit; echo rc=$?'
+  stdout: "inherit_errexit     \toff\nrc=1\ninherit_errexit     \ton\nrc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_shopt_o_query_pads_to_20_bare_listing_stays_15
+  description: "shopt -o NAME query pads to 20 while bare shopt -o / set -o keep 15 (empirical, bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'shopt -o errexit; echo rc=$?; shopt -o | grep errexit; set -o | grep errexit; shopt -so | grep braceexpand'
+  stdout: "errexit             \toff\nrc=1\nerrexit        \toff\nerrexit        \toff\nbraceexpand    \ton\n"
+  stderr: ""
+  exit_code: 0
+
+- name: w0_2_shopt_bare_listings_pad_to_20
+  description: "bare shopt / shopt -s / shopt -u listings pad to 20 (empirical, bash 5.3.15)"
+  min_bash: "5.3"
+  command: 'shopt -s extglob; shopt | grep -c "^extglob             	on$"; shopt -s | grep -c "^extglob             	on$"; shopt -u | grep -c "^dotglob             	off$"'
+  stdout: "1\n1\n1\n"
+  stderr: ""
   exit_code: 0
