@@ -1,7 +1,9 @@
 """Unit tests for the ``hash`` builtin and the command hash table.
 
 Every behavior here is pinned to bash 5.2 probes (2026-06-13) — see the
-probe ledger in psh/builtins/hash_builtin.py. The executor-side pieces
+probe ledger in psh/builtins/hash_builtin.py — with the `-d` empty-table
+row re-pinned against bash 5.3.15 (Wave 0.2; CHANGES 5.3-alpha "Changes to
+Bash" item ggggg). The executor-side pieces
 (table population on execution, hit counts, the checkhash re-verify and
 the default stale-path 127) are covered in
 tests/integration/command_resolution/test_hash_execution.py.
@@ -125,12 +127,22 @@ class TestHashOptions:
         assert rc == 1
         assert 'hash: nosuchcmd_zz9: not found' in captured_shell.get_stderr()
 
-    def test_dash_d_on_empty_table_silently_succeeds(self, captured_shell):
-        """...but -d against an EMPTY table is rc 0, no message (bash
-        quirk, probe-verified)."""
+    def test_dash_d_on_empty_table_reports_miss(self, captured_shell):
+        """...and so does an EMPTY table: `hash: NAME: not found`, rc 1.
+        bash 5.2 silently returned 0 here; bash 5.3 CHANGES (5.3-alpha,
+        "Changes to Bash" item ggggg: "Fix `hash' to return 1 if -d is
+        supplied and the hash table is empty") calls that a bug. Verified
+        against 5.3.15: one line per missing name, rc 1."""
         rc = captured_shell.run_command('hash -d nosuchcmd_zz9')
-        assert rc == 0
-        assert captured_shell.get_stderr() == ''
+        assert rc == 1
+        assert captured_shell.get_stderr() == (
+            'psh: line 1: hash: nosuchcmd_zz9: not found\n')
+        captured_shell.clear_output()
+        rc = captured_shell.run_command('hash -d a_zz9 b_zz9')
+        assert rc == 1
+        assert captured_shell.get_stderr().splitlines() == [
+            'psh: line 1: hash: a_zz9: not found',
+            'psh: line 1: hash: b_zz9: not found']
 
     def test_dash_l_reusable_format(self, captured_shell):
         captured_shell.run_command('hash ls')
