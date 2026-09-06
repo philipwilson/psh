@@ -1327,7 +1327,10 @@ def test_redirect_procsub_suppression_is_a_declared_divergence():
     # deletes it first and settles with a BOUNDED poll rather than `wait`,
     # which does not cover a procsub child in every shell — an earlier version
     # of this probe read a LEFTOVER file and reported a parser split that was
-    # not there.
+    # not there. The poll is 30 x 0.1 s (it was 10 x 0.1 s): under a loaded or
+    # sandboxed gate the psh child's write can land after the first second,
+    # which turned WROTE into NOWRITE and reported the DECLARED divergence as
+    # closed — an environment artefact, not a shell verdict (Wave 0.1, D4).
     # The observation file lives in a PRIVATE temp dir the script makes and
     # removes: the helpers run with cwd=<repo root>, so a relative name here
     # would drop a file in the working tree (it did, once) and would collide
@@ -1335,8 +1338,8 @@ def test_redirect_procsub_suppression_is_a_declared_divergence():
     write = ("d=$(mktemp -d)\nset -e\n"
              "if : > >(false; echo A > \"$d/w.txt\"); then echo ok;"
              " else echo F:$?; fi\n"
-             "for i in 1 2 3 4 5 6 7 8 9 10; do [ -f \"$d/w.txt\" ] && break;"
-             " sleep 0.1; done\n"
+             "n=0; while [ \"$n\" -lt 30 ]; do [ -f \"$d/w.txt\" ] && break;"
+             " sleep 0.1; n=$((n+1)); done\n"
              "if [ -f \"$d/w.txt\" ]; then echo WROTE; else echo NOWRITE; fi\n"
              "rm -rf \"$d\"\necho END")
     for channel in ("c", "file"):
