@@ -59,9 +59,14 @@
    step also prints `printf '%a\n' 1` and `$MACHTYPE` so the platform form is visible in
    every log. This is package B's workflow change; run once via `workflow_dispatch` at
    the 0.3 tree and recorded here.
-2. **Classify, never leave red.** The seven `%a`/`%A` rows are classified with
-   `skipif(oracle_feature('x87_long_double'))` — a predicate probed on the ORACLE
-   (`printf '%a\n' 1` printing the explicit-integer-bit form), never an OS or version
+2. **Classify, never leave red.** The `%a`/`%A` cells are classified by TWO predicates
+   probed on the ORACLE, never an OS or version literal: `oracle_feature('x87_long_double')`
+   (`printf '%a\n' 1` prints the explicit-integer-bit form; 7 methods, 21 cells) and
+   `oracle_feature('long_double_wider_than_double')` (`printf '%a\n' 0.1` carries more than
+   13 fraction digits or a leading digit other than 1; the 2 full-precision cells `%.20a`
+   and `%A` of 3.14, which also differ on aarch64 glibc binary128 — package B's verifier
+   proved this in real containers). Expected skips: x86-64 glibc 9 methods, aarch64 glibc
+   2, macOS 0; three collateral cells that match everywhere stay unmarked. Predicate probed
    literal (D5). Expected steady state: SKIPPED with the x87 reason on Linux, RUN on
    macOS; D5 version-skip count 0 on both hosts.
 3. **Intended coverage change:** the pinned nightly **no longer exercises Ubuntu's
@@ -79,5 +84,5 @@
 |---|---|---|---|---|---|
 | 2026-08-10 | 31353065020 | `6459f1a6` | both RED | 25514 passed / 7 failed / 1683 skipped / 10 xfailed | first red at the launch base: 7 `%a` x87 rows vs unpinned bash 5.2.21 |
 | 2026-09-06 | 34008477403 | `6459f1a6` | both RED | 25514 passed / 7 failed / 1683 skipped / 10 xfailed | identical census, 28th consecutive red |
-| (0.3 tree) | `workflow_dispatch` — PENDING | | | | package B: expect both jobs green, `BASH_VERSION 5.3.15`, 7 `%a` rows SKIPPED (x87), phase censuses reconciled with the local gate |
+| (0.3 tree) | `workflow_dispatch` — PENDING | | | | package B: expect both jobs green, `BASH_VERSION 5.3.15`, 9 `%a` methods SKIPPED on x86-64 (7 x87 + 2 wide long double), phase censuses reconciled with the local gate by the explained platform delta |
 | (first scheduled after Wave 0 merges) | PENDING | | | | Wave 0 exit criterion (§6) |

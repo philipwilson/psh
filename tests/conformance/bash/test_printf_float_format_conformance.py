@@ -45,8 +45,7 @@ not dyadic, so ``strtold`` yields a DIFFERENT number in a 64-bit (x87) or
 precision of at most three hex digits rounds both to the same digits
 (``0x1.92``), while the x87 explicit integer bit changes the leading
 digit and exponent at every precision.  Only the dyadic inputs (2, 100,
-0, 1e308's double) and the non-finite ones are "the same value" on every
-host.
+0) and the non-finite ones are "the same value" on every host.
 
 Two predicates follow:
 
