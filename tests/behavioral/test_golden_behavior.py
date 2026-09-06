@@ -127,7 +127,7 @@ def test_golden(case):
     expected_stderr = case.get("stderr", "")
     expected_exit = case.get("exit_code", 0)
 
-    stdout, stderr, exit_code = _run_psh(command)
+    stdout, stderr, exit_code = _run_psh(command, env=case.get("env"))
 
     if expected_stdout is not None:
         assert stdout == expected_stdout, (
@@ -184,8 +184,12 @@ def test_golden_bash_comparison(case, request):
     _apply_case_classifiers(case)
     command = case["command"]
 
-    psh_stdout, psh_stderr, psh_exit = _run_psh(command)
-    bash_stdout, bash_stderr, bash_exit = _run_bash(command)
+    # ``env:`` (D14): variables the row needs in the STARTUP environment of
+    # both shells (e.g. HOME for tilde rows — the Homebrew bash bottle links the
+    # installed readline, which resolves ``~`` from the process environment and
+    # ignores an in-script ``HOME=`` assignment).
+    psh_stdout, psh_stderr, psh_exit = _run_psh(command, env=case.get("env"))
+    bash_stdout, bash_stderr, bash_exit = _run_bash(command, env=case.get("env"))
 
     if bool(psh_stderr) != bool(bash_stderr):
         warnings.warn(

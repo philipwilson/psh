@@ -199,7 +199,10 @@ KNOWN_GOLDEN_KEYS = {"name", "command", "stdout", "stderr", "exit_code",
                      "psh_only", "min_bash", "requires_dev_fd",
                      # inert metadata: names the gate node / FLIP-PINS owner
                      # of a retuned row (Wave 0 packages E, F, G)
-                     "description"}
+                     "description",
+                     # D14: variables placed in BOTH shells' startup environment
+                     # (str -> str); used by rows whose result depends on HOME
+                     "env"}
 _VERSION = re.compile(r"^\d+\.\d+(\.\d+)?$")
 
 
@@ -228,3 +231,11 @@ def test_golden_classifier_values_are_well_formed():
 def test_history_write_to_dev_stdout_row_is_classified():
     row = next(c for c in _cases() if c["name"] == "r18t2_builtins_history_write_to_stdout")
     assert row["requires_dev_fd"] is True and row["psh_only"] is True
+
+
+def test_golden_env_key_is_a_string_mapping():
+    """``env:`` rows carry a flat str -> str mapping (D14: HOME via the environment)."""
+    bad = [(c["name"], c["env"]) for c in _cases() if "env" in c
+           and not (isinstance(c["env"], dict) and c["env"]
+                    and all(isinstance(k, str) and isinstance(v, str) for k, v in c["env"].items()))]
+    assert not bad, bad

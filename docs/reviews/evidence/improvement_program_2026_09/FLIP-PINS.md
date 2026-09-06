@@ -50,6 +50,9 @@ result — the owning slot sweeps its own files (2.3: `tests/unit/builtins/test_
 | `tests/conformance/bash/test_exit_cd_options_conformance.py::TestUsageStatusDeclaredDivergence::test_shift_non_numeric_status_2` (W0-N8), `::test_too_many_args_next_line_status_2` (W0-N9), `::test_break_continue_non_numeric_exit_2` (W0-N10) (package G) | `shift abc` rc=2; script/stdin next line rc=2; `break abc` in a loop EXITS rc 2 in every mode | rc=1; rc=1; psh exits 128 | 2.3 |  |
 | `…::TestExportAttributeLifecycle::test_declare_l_on_readonly_refused_by_bash_53`, `::test_declare_plus_i_on_readonly_integer_refused_by_bash_53`, `::test_local_i_on_readonly_local_refused_by_bash_53` (package G) | rc 1 `readonly variable`, attributes unchanged | rc 0, attribute applied | 2.4 |  |
 
+| golden `r18t2_corestate_tempenv_export_survives` (`psh_only: true`; found by the Wave 0 compare-bash leg) | `X=outer; f() { export X=2; }; X=1 f; declare -p X` → `declare -- X="outer"` (CHANGES 5.3-alpha jjjj: exporting a temporary-environment variable no longer propagates it back) | `declare -x X="2"` | 4.9 |  |
+| golden `read_bseof_keeps_trailing_space`, `read_bseof_multivar_last_field_keeps_ws`, `read_bseof_ifs_colon_keeps_trailing_delim` (`psh_only: true`; Wave 0 compare-bash leg) | `printf 'a \\' \| { read x; … }` → `[a]` / `[a][b]` / `[a][b]` (CHANGES 5.3-alpha uuuu: read with an unescaped backslash before EOF) | `[a ]` / `[a][b ]` / `[a][b:]` | 1.19 |  |
+
 ## Declared, NOT flipped by this program (noted; flips only with a written ruling)
 
 | pin (test node) | bash 5.3.15 side | psh side | owner | note |

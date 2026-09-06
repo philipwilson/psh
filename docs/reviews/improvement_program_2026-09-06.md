@@ -339,7 +339,7 @@ Per integrator-plan §7 and sequence-doc §12 with the D15 compare-bash form: at
 
 | Wave / slot | Owned cids |
 |---|---|
-| 0 | C242, C241, C243, C238, C169, C245, C153, C181 (+ 51 gate-triage nodes; W0-N1..N35 registered and routed in the ledger) |
+| 0 | C242, C241, C243, C238, C169, C245, C153, C181 (+ 51 gate-triage nodes; W0-N1..N37 registered and routed in the ledger) |
 | 1 | C001, C032, C031, C043, C225, C074, C044, C033, C231, C010, C004, C005, C006, C011, C164, C170, C020, C040, C041, C042, C022, C082, C091, C081, C030, C098, C141, C027, C072, C028, C090, C093, C094, C095, C096, C136, C194, C226, C023, C024, C025, C026, C068, C179 (+ W0-N7) |
 | 2 | (gate SEMANTIC flip-pins; W0-N4, W0-N8, W0-N9, W0-N10) |
 | 3 | C008, C100, C191, C013, C046, C102, C080, C002, C003, C007, C047, C009, C014, C221, C021, C059, C038, C126, C127, C092, C180 (+ W0-N1) |

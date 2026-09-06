@@ -351,7 +351,7 @@ C243 in Part A, not a triage node.
 ## Part C — Side findings registered at Wave 0 (D9 N-rows)
 
 Registered on the day they were found (2026-09-06, gate triage / 0.3 probe matrix, then the
-Wave 0 package handoffs and verifier reports, W0-N11..N35); text per program §6 0.3 and §8 2.3. Each has an owning slot named in that slot's heading
+Wave 0 package handoffs, verifier reports and the compare-bash ceremony leg, W0-N11..N37); text per program §6 0.3 and §8 2.3. Each has an owning slot named in that slot's heading
 (W0-N1 → 3.8, N2 → 4.12, N3 → 4.6, N5 → 4.9, N6 → 4.7) or brief body (N4, N8, N9, N10 →
 2.3; N7 → 1.4). Status: OPEN unless a closure is named.
 
@@ -393,6 +393,9 @@ Wave 0 package handoffs and verifier reports, W0-N11..N35); text per program §6
 | W0-N33 | 2.4 cells from the G verifier: bash 5.3.15 also refuses `-u`/`-n`/`typeset -i`/`local -l`/`-n` on a readonly, refuses `declare -i` on an already `-ir` variable, refuses a mixed `-ix` WHOLE (no `-x` applied) and continues to later operands; `declare -a/-A` on a readonly scalar rc 1 in both; bash quirk `local -a x` on a readonly local (rc 1 yet becomes `declare -ar x=()`) is NOT to be adopted | P3 / bash-5.3 semantic (attribute refusal) | OPEN | 2.4 | `ScopeManager.apply_attribute` refusal set | 2.4 rows |  |
 | W0-N34 | Family-1 novel cells from the G verifier: `while`-body / `\|\|` / `&&`+brace resolve `exit` from the ENTRY status (bash 0 / psh 1); an external child exiting 9 before `exit` → bash 9 / psh 0; a function body with entry 5 → both 0 | P3 / trap entry status | OPEN | 2.1 | `TrapManager` entry-status top-level boundary | 2.1 rows |  |
 | W0-N35 | `cd ""` was a no-op success (5.2) — bash 5.3.15 says `cd: null directory` rc 1 before any CDPATH search; surfaced as the unowned compare-bash red golden `r18t2_glue_cd_empty_operand_noop` by the package G verifier | P3 / conformance (cd) | CLOSED by 0.3 (integrator b8332a3a: `navigation.py` rejects the empty operand; golden row retuned to `…_null_directory` with `min_bash: "5.3"`; `TestCdEmptyOperand` re-pinned; conformance row) | 0.3 | `psh/builtins/navigation.py` empty-operand branch | conformance `TestCdOptions::test_cd_empty_operand_is_null_directory` | release v0.780.0 |
+
+| W0-N36 | bash 5.3 no longer propagates `export X=2` inside a function back over the call-time temporary `X` (`X=outer; f() { export X=2; }; X=1 f; declare -p X` → bash `declare -- X="outer"`, psh `declare -x X="2"`; CHANGES 5.3-alpha jjjj) — surfaced by the Wave 0 compare-bash leg (golden row now `psh_only`) | P3 / bash-5.3 semantic (temporary environment) | OPEN (FLIP-PINS row) | 4.9 | temp-env scope teardown vs `export` (`psh/core/scope.py` temp-env layer) | golden row flips to parity |  |
+| W0-N37 | `read` with an unescaped backslash before EOF: bash 5.3 drops the trailing IFS whitespace / delimiter (`printf 'a \\' \| read x` → `[a]`; `[a][b]`; `[a][b]`), psh keeps the 5.2 shape (`[a ]`, `[a][b ]`, `[a][b:]`; CHANGES 5.3-alpha uuuu) — Wave 0 compare-bash leg (three golden rows now `psh_only`) | P3 / bash-5.3 semantic (read builtin) | OPEN (FLIP-PINS row) | 1.19 | `psh/builtins/input_reader.py` backslash-EOF handling + IFS trailing-delimiter rule | golden rows flip to parity |  |
 
 Also registered by §6 0.3 without an N-number: the readonly-function `unset -f` wording
 (psh `unset: f: readonly function` vs bash 5.3.15 `unset: f: cannot unset: readonly

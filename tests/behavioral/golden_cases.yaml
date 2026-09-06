@@ -5100,7 +5100,9 @@
   exit_code: 0
 
 - name: tilde_prefix_colon_terminated
-  command: 'HOME=/h; echo ~:x'
+  description: "D14: HOME reaches both shells through the ENVIRONMENT (the Homebrew bash bottle's readline resolves ~ from the startup env and ignores an in-script HOME=); same result as the old in-script form"
+  env: {HOME: /h}
+  command: 'echo ~:x'
   stdout: "/h:x\n"
   stderr: ""
   exit_code: 0
@@ -5130,7 +5132,9 @@
   exit_code: 0
 
 - name: tilde_slash_bounded_before_quoted_expands
-  command: 'HOME=/h; echo ~/"x" ~/x"y"'
+  description: "D14: HOME reaches both shells through the ENVIRONMENT (the Homebrew bash bottle's readline resolves ~ from the startup env and ignores an in-script HOME=); same result as the old in-script form"
+  env: {HOME: /h}
+  command: 'echo ~/"x" ~/x"y"'
   stdout: "/h/x /h/xy\n"
   stderr: ""
   exit_code: 0
@@ -5148,25 +5152,33 @@
   exit_code: 0
 
 - name: value_operand_tilde_colon_expands
-  command: 'HOME=/h; echo ${u:-~:y}'
+  description: "D14: HOME reaches both shells through the ENVIRONMENT (the Homebrew bash bottle's readline resolves ~ from the startup env and ignores an in-script HOME=); same result as the old in-script form"
+  env: {HOME: /h}
+  command: 'echo ${u:-~:y}'
   stdout: "/h:y\n"
   stderr: ""
   exit_code: 0
 
 - name: value_operand_tilde_word_rest_verbatim
-  command: 'HOME=/h; X=hello; set --; printf "[%s]" ${u:-~:$X}; echo'
+  description: "D14: HOME reaches both shells through the ENVIRONMENT (the Homebrew bash bottle's readline resolves ~ from the startup env and ignores an in-script HOME=); same result as the old in-script form"
+  env: {HOME: /h}
+  command: 'X=hello; set --; printf "[%s]" ${u:-~:$X}; echo'
   stdout: "[/h:$X]\n"
   stderr: ""
   exit_code: 0
 
 - name: value_operand_tilde_word_unsplit
-  command: 'HOME=/h; set --; printf "[%s]" ${u:-~:a b}; echo'
+  description: "D14: HOME reaches both shells through the ENVIRONMENT (the Homebrew bash bottle's readline resolves ~ from the startup env and ignores an in-script HOME=); same result as the old in-script form"
+  env: {HOME: /h}
+  command: 'set --; printf "[%s]" ${u:-~:a b}; echo'
   stdout: "[/h:a b]\n"
   stderr: ""
   exit_code: 0
 
 - name: pattern_operand_tilde_colon_expands
-  command: 'HOME=/h; p=/h:q; echo "${p#~:}"'
+  description: "D14: HOME reaches both shells through the ENVIRONMENT (the Homebrew bash bottle's readline resolves ~ from the startup env and ignores an in-script HOME=); same result as the old in-script form"
+  env: {HOME: /h}
+  command: 'p=/h:q; echo "${p#~:}"'
   stdout: "q\n"
   stderr: ""
   exit_code: 0
@@ -5178,13 +5190,17 @@
   exit_code: 0
 
 - name: replacement_operand_tilde_colon_expands
-  command: 'HOME=/h; w=qX; echo "${w/q/~:z}"'
+  description: "D14: HOME reaches both shells through the ENVIRONMENT (the Homebrew bash bottle's readline resolves ~ from the startup env and ignores an in-script HOME=); same result as the old in-script form"
+  env: {HOME: /h}
+  command: 'w=qX; echo "${w/q/~:z}"'
   stdout: "/h:zX\n"
   stderr: ""
   exit_code: 0
 
 - name: replacement_operand_tilde_word_amp_literal
-  command: 'HOME=/h; w=qX; echo "${w/q/~:&}"'
+  description: "D14: HOME reaches both shells through the ENVIRONMENT (the Homebrew bash bottle's readline resolves ~ from the startup env and ignores an in-script HOME=); same result as the old in-script form"
+  env: {HOME: /h}
+  command: 'w=qX; echo "${w/q/~:&}"'
   stdout: "/h:&X\n"
   stderr: ""
   exit_code: 0
@@ -6532,6 +6548,8 @@
   exit_code: 0
 
 - name: r18t2_corestate_tempenv_export_survives
+  description: "DECLARED DIVERGENCE (psh_only; FLIP-PINS -> slot 4.9): bash 5.3 no longer propagates `export X=2` inside a function back over the call-time temporary X (CHANGES 5.3-alpha jjjj) — bash prints `declare -- X=\"outer\"`; psh keeps the 5.2 shape pinned here (W0-N36)"
+  psh_only: true
   command: 'X=outer; f() { export X=2; }; X=1 f; declare -p X'
   stdout: "declare -x X=\"2\"\n"
   stderr: ""
@@ -9027,6 +9045,8 @@
 # Probed vs bash 5.2 (2026-07-09).
 
 - name: read_bseof_keeps_trailing_space
+  description: "DECLARED DIVERGENCE (psh_only; FLIP-PINS -> slot 1.19): bash 5.3 drops trailing IFS whitespace before a backslash at EOF (`printf 'a \\' | read x` -> [a]; CHANGES 5.3-alpha uuuu); psh keeps the 5.2 shape pinned here (W0-N37)"
+  psh_only: true
   command: 'printf ''a \\'' | { read x; printf "[%s]" "$x"; }'
   stdout: "[a ]"
   stderr: ""
@@ -9039,12 +9059,16 @@
   exit_code: 0
 
 - name: read_bseof_multivar_last_field_keeps_ws
+  description: "DECLARED DIVERGENCE (psh_only; FLIP-PINS -> slot 1.19): bash 5.3 prints [a][b] (CHANGES 5.3-alpha uuuu); psh keeps the 5.2 shape (W0-N37)"
+  psh_only: true
   command: 'printf ''a b \\'' | { read x y; printf "[%s][%s]" "$x" "$y"; }'
   stdout: "[a][b ]"
   stderr: ""
   exit_code: 0
 
 - name: read_bseof_ifs_colon_keeps_trailing_delim
+  description: "DECLARED DIVERGENCE (psh_only; FLIP-PINS -> slot 1.19): bash 5.3 prints [a][b] (CHANGES 5.3-alpha uuuu); psh keeps the 5.2 shape (W0-N37)"
+  psh_only: true
   command: 'printf ''a:b:\\'' | { IFS=: read x y; printf "[%s][%s]" "$x" "$y"; }'
   stdout: "[a][b:]"
   stderr: ""
