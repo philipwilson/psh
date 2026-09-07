@@ -45,14 +45,15 @@ from shell_oracle import is_comparable, run_bash, run_psh
 
 
 def _assert_parity(command, *, expected, tmp_path, modes=MODES,
-                   stderr_has=None):
+                   stderr_has=None, stderr=True):
     """Slot 2.3 parity pin in the given input modes (D6): the two shells must
-    agree AND agree on ``expected``; both must diagnose, and ``stderr_has``
-    names the wording fragment both diagnostics carry.  See
+    agree AND agree on ``expected``.  With ``stderr`` (the default) both must
+    diagnose and ``stderr_has`` names the wording fragment both diagnostics
+    carry; with ``stderr=False`` both must stay silent.  See
     tests/conformance/divergence_pins.py.
     """
     assert_mode_parity(command, expected=expected, tmp_path=tmp_path,
-                       modes=modes, stderr_has=stderr_has)
+                       modes=modes, stderr_has=stderr_has, stderr=stderr)
 
 
 class TestExitStatus(ConformanceTest):
@@ -120,21 +121,87 @@ class TestExitStatus(ConformanceTest):
                 modes=("script", "stdin"), stderr_has='too many arguments')
 
     @pytest.mark.oracle_min("5.3")
-    def test_discard_is_contained_by_a_substitution_but_not_a_subshell(
+    def test_discard_status_depends_on_the_fork_shape(self, tmp_path):
+        """The discard's forked-child status is FORK-SHAPE dependent.
+
+        bash reports **1** from a fork whose body is a bare SIMPLE command and
+        **2** from a forked compound/function -- the same severing rule bash
+        applies to an ignored ``set -e``
+        (``psh/executor/context.py#errexit_suppress_deferred``).  The rule and
+        every probe live on
+        ``psh/core/internal_errors.py#usage_discard_child_status``.  Script and
+        stdin modes: under ``-c`` the whole string is abandoned with 1 either
+        way, so the shapes are indistinguishable there.
+        """
+        simple = (
+            'exit 1 2 | cat\necho ps=${PIPESTATUS[0]}',
+            'set -- a b c; shift 1 2 | cat\necho ps=${PIPESTATUS[0]}',
+            'eval "exit 1 2" | cat\necho ps=${PIPESTATUS[0]}',
+            'command exit 1 2 | cat\necho ps=${PIPESTATUS[0]}',
+            'builtin exit 1 2 | cat\necho ps=${PIPESTATUS[0]}',
+            'x=1 exit 1 2 | cat\necho ps=${PIPESTATUS[0]}',
+            '! exit 1 2 | cat\necho ps=${PIPESTATUS[0]}',
+            # A compound INSIDE an eval'd simple member is still simple: the
+            # MEMBER's own command is the eval.
+            'eval "( exit 1 2 )" | cat\necho ps=${PIPESTATUS[0]}',
+            'eval "{ exit 1 2; }" | cat\necho ps=${PIPESTATUS[0]}',
+            # ... and so is a function reached through one.
+            'f(){ exit 1 2; }\neval "f" | cat\necho ps=${PIPESTATUS[0]}',
+        )
+        for command in simple:
+            _assert_parity(command, expected=('ps=1\n', 0),
+                           tmp_path=tmp_path, modes=("script", "stdin"),
+                           stderr_has='too many arguments')
+        compound = (
+            '{ exit 1 2; } | cat\necho ps=${PIPESTATUS[0]}',
+            '( exit 1 2 ) | cat\necho ps=${PIPESTATUS[0]}',
+            'f(){ exit 1 2; }\nf | cat\necho ps=${PIPESTATUS[0]}',
+            'if true; then exit 1 2; fi | cat\necho ps=${PIPESTATUS[0]}',
+            'for i in 1; do break 1 2; done | cat\necho ps=${PIPESTATUS[0]}',
+        )
+        for command in compound:
+            _assert_parity(command, expected=('ps=2\n', 0),
+                           tmp_path=tmp_path, modes=("script", "stdin"),
+                           stderr_has='too many arguments')
+
+    @pytest.mark.oracle_min("5.3")
+    def test_discard_fork_shape_holds_for_background_jobs(self, tmp_path):
+        """Same split at the OTHER fork site: a backgrounded bare simple
+        command reports 1, a backgrounded compound or function reports 2."""
+        for command, status in (
+                ('exit 1 2 & wait $!\necho after=$?', 1),
+                ('set -- a b c; shift 1 2 & wait $!\necho after=$?', 1),
+                ('eval "( exit 1 2 )" & wait $!\necho after=$?', 1),
+                ('( exit 1 2 ) & wait $!\necho after=$?', 2),
+                ('{ exit 1 2; } & wait $!\necho after=$?', 2),
+                ('f(){ exit 1 2; }\nf & wait $!\necho after=$?', 2)):
+            _assert_parity(command, expected=(f'after={status}\n', 0),
+                           tmp_path=tmp_path, modes=("script", "stdin"),
+                           stderr_has='too many arguments')
+
+    @pytest.mark.oracle_min("5.3")
+    def test_discard_is_contained_by_a_substitution_at_any_depth(
             self, tmp_path):
-        """The discard's status is channel-dependent at a fork: a command
-        substitution child exits 1 where the ``( )`` subshell beside it exits
-        with the family's 2 (empirical, 5.3.15).  Backticks behave as ``$( )``.
+        """The second "1" shape: anything under a substitution, however deep,
+        where the ``( )`` subshell beside it in the main shell is 2.
+        Backticks behave as ``$( )``.
         """
         _assert_parity(
             '( exit 1 2 )\necho after=$?',
             expected=('after=2\n', 0), tmp_path=tmp_path,
             modes=("script", "stdin"), stderr_has='too many arguments')
-        for spelling in ('x=$(exit 1 2)', 'x=`exit 1 2`'):
+        for spelling in ('x=$(exit 1 2)', 'x=`exit 1 2`',
+                         'x=$( ( exit 1 2 ) )',
+                         'x=$(eval "( exit 1 2 )")'):
             _assert_parity(
                 f'{spelling}\necho after=$?',
                 expected=('after=1\n', 0), tmp_path=tmp_path,
                 modes=("script", "stdin"), stderr_has='too many arguments')
+        _assert_parity(
+            'f(){ ( exit 1 2 ); echo in=$?; }\nx=$(f)\necho "x=[$x]"',
+            expected=('x=[in=1]\n', 0), tmp_path=tmp_path,
+            modes=("script", "stdin"), stderr_has='too many arguments')
+
 
     def test_exit_too_many_args_abandons_c_string_in_both(self):
         # Parity control for the row above: -c mode abandons the string with
@@ -292,6 +359,100 @@ class TestUsageStatusMatchesBash:
         _assert_parity(
             'set -e\nset -- a b\nshift 1 2\necho after=$?',
             expected=('after=2\n', 0), tmp_path=tmp_path,
+            modes=("script", "stdin"), stderr_has='too many arguments')
+
+    def test_rejected_numeric_operands_take_the_operand_cell(self, tmp_path):
+        """W0-N30: bash's operand parser is not Python's int().
+
+        A PEP 515 underscore, a non-ASCII decimal digit and anything past
+        int64 are REJECTED operands, so each takes the cell its builtin's
+        rejection takes -- continue for exit/shift/history, exit the shell for
+        break -- rather than being silently accepted as a value.  psh used to
+        take `exit 5_0` as 50 and `exit 99999999999999999999` as an exit 255.
+        (`psh/builtins/numeric.py#legal_number`.)
+        """
+        arabic_five = "\u0665"
+        rejected = ("5_0", arabic_five, "99999999999999999999",
+                    "9223372036854775808", "-9223372036854775809")
+        for operand in rejected:
+            _assert_parity(
+                f'exit {operand}; echo rc=$?',
+                expected=('rc=2\n', 0), tmp_path=tmp_path,
+                stderr_has='numeric argument required')
+            _assert_parity(
+                f'set -- a b; shift {operand}; echo "rc=$? n=$#"',
+                expected=('rc=2 n=2\n', 0), tmp_path=tmp_path,
+                stderr_has='numeric argument required')
+            _assert_parity(
+                f'f(){{ return {operand}; }}\nf\necho rc=$?',
+                expected=('rc=2\n', 0), tmp_path=tmp_path,
+                stderr_has='numeric argument required')
+            _assert_parity(
+                f'for i in 1 2; do break {operand}; done\necho rc=$?',
+                expected=('', 2), tmp_path=tmp_path,
+                stderr_has='numeric argument required')
+        # `history` reads a leading dash as an OPTION before any operand
+        # parsing (both shells: `history -1_0` is "-1: invalid option"), so
+        # only the sign-free rejections reach its numeric cell.
+        for operand in (o for o in rejected if not o.startswith('-')):
+            _assert_parity(
+                f'history {operand}; echo rc=$?',
+                expected=('rc=2\n', 0), tmp_path=tmp_path,
+                stderr_has='numeric argument required')
+
+    def test_a_rejected_first_operand_still_beats_the_extra_one(self, tmp_path):
+        """The operand ORDER holds for the newly-rejected shapes too:
+        `exit 99999999999999999999 7` is the numeric cell, not the discard."""
+        _assert_parity(
+            'exit 99999999999999999999 7; echo rc=$?',
+            expected=('rc=2\n', 0), tmp_path=tmp_path,
+            stderr_has='numeric argument required')
+
+    def test_legal_but_extreme_operands_are_still_values(self, tmp_path):
+        """The other side of W0-N30: an int64-range operand is a VALUE, so
+        each builtin's ordinary semantics apply (wrap for exit/return, out of
+        range for shift, break every loop for break)."""
+        # Silent in default mode: an out-of-range shift reports only under
+        # `set -o posix`, and this is NOT a usage error.
+        _assert_parity(
+            'set -- a b; shift 9223372036854775807; echo "rc=$? n=$#"',
+            expected=('rc=1 n=2\n', 0), tmp_path=tmp_path, stderr=False)
+        _assert_parity(
+            'for i in 1 2; do break 9223372036854775807; echo body; done\n'
+            'echo rc=$?',
+            expected=('rc=0\n', 0), tmp_path=tmp_path, stderr=False)
+        _assert_parity(
+            'f(){ return 9223372036854775807; }\nf\necho rc=$?',
+            expected=('rc=255\n', 0), tmp_path=tmp_path, stderr=False)
+        _assert_parity(
+            'exit 9223372036854775807',
+            expected=('', 255), tmp_path=tmp_path, stderr=False)
+
+    def test_exit_trap_sees_the_status_each_cell_exits_with(self, tmp_path):
+        """Every cell that ENDS the shell must publish its status before it
+        goes, because the EXIT trap runs afterwards and reads ``$?``.
+
+        Three exits, three sources of the status: the POSIX operand exit, the
+        bad-count break exit, and the ``-c`` abandon (whose status is 1, not
+        the family's 2).  psh reported 0 for the first and the third.
+        """
+        for command in ('set -o posix\nexit abc',
+                        'set -o posix\nset -- a b\nshift abc',
+                        'for i in 1; do break abc; done',
+                        'exit abc'):
+            _assert_parity(
+                f'trap \'echo trapped=$?\' EXIT\n{command}',
+                expected=('trapped=2\n', 2), tmp_path=tmp_path,
+                stderr_has='required')
+        # The -c leg of the discard exits 1, so its trap sees 1; script and
+        # stdin discard the line and exit with the family status instead.
+        _assert_parity(
+            "trap 'echo trapped=$?' EXIT\nexit 1 2; echo in",
+            expected=('trapped=1\n', 1), tmp_path=tmp_path,
+            modes=("command",), stderr_has='too many arguments')
+        _assert_parity(
+            "trap 'echo trapped=$?' EXIT\nexit 1 2; echo in",
+            expected=('trapped=2\n', 2), tmp_path=tmp_path,
             modes=("script", "stdin"), stderr_has='too many arguments')
 
     def test_break_out_of_range_and_out_of_loop_cells_are_unchanged(

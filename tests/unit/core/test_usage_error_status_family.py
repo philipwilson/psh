@@ -55,15 +55,60 @@ class TestTooManyArgumentsDiscard:
             special_builtin_usage_discard(shell.state)
         assert exc.value.code == 1
 
-    def test_abort_is_stamped_for_the_substitution_channel(self, shell):
-        """x=$(exit 1 2) exits 1 where ( exit 1 2 ) exits 2, so the abort must
-        carry the channel stamp the buffered boundary keys on."""
+    def test_abort_is_stamped_for_the_fork_shape_channel(self, shell):
+        """The discard's forked-child status depends on the fork SHAPE, so the
+        abort must carry the stamp both boundaries key on."""
         shell.state.options['command_mode'] = False
         with pytest.raises(TopLevelAbort) as exc:
             special_builtin_usage_discard(shell.state)
         assert exc.value.usage_discard_channel is True
-        assert usage_discard_child_status() == 1
-        assert usage_discard_child_status() != USAGE_ERROR_STATUS
+
+    def test_command_mode_abandon_publishes_its_status(self, shell):
+        """The EXIT trap runs after the abandon and reads $?, so the status
+        must be recorded before the raise (bash: `trap 'echo $?' EXIT;
+        exit 1 2` under -c prints 1)."""
+        shell.state.options['command_mode'] = True
+        shell.state.last_exit_code = 0
+        with pytest.raises(SystemExit):
+            special_builtin_usage_discard(shell.state)
+        assert shell.state.last_exit_code == 1
+
+
+class TestForkShapeStatus:
+    """usage_discard_child_status: 1 for a bare-simple fork or anything under
+    a substitution, 2 for a forked compound/function. Same severing rule bash
+    applies to an ignored `set -e`."""
+
+    def test_main_shell_keeps_the_family_status(self, shell):
+        shell.state.forked_simple_command = False
+        shell.state.in_substitution = False
+        assert usage_discard_child_status(shell.state) == USAGE_ERROR_STATUS
+
+    def test_bare_simple_fork_reports_one(self, shell):
+        shell.state.forked_simple_command = True
+        shell.state.in_substitution = False
+        assert usage_discard_child_status(shell.state) == 1
+
+    def test_pending_shape_reads_as_simple(self, shell):
+        """None is the PENDING stamp: a SimpleCommand node was forked and no
+        dispatch reclassified it, which is the backgrounded-builtin route
+        (`exit 1 2 &` never reaches command.py's dispatch chokepoint)."""
+        shell.state.forked_simple_command = None
+        shell.state.in_substitution = False
+        assert usage_discard_child_status(shell.state) == 1
+
+    def test_substitution_reports_one_whatever_the_shape(self, shell):
+        shell.state.in_substitution = True
+        for shape in (False, True, None):
+            shell.state.forked_simple_command = shape
+            assert usage_discard_child_status(shell.state) == 1
+
+    def test_only_a_function_dispatch_writes_false(self, shell):
+        """`f | cat` is 2 because the member names a compound body; the flag
+        that says so is the ONLY way to get 2 out of a simple-node fork."""
+        shell.state.in_substitution = False
+        shell.state.forked_simple_command = False
+        assert usage_discard_child_status(shell.state) == USAGE_ERROR_STATUS
 
 
 class TestNumericArgumentOperandCell:
@@ -101,10 +146,27 @@ class TestBadCountBreakContinueExit:
         assert exc.value.code == USAGE_ERROR_STATUS == 2
         assert shell.state.last_exit_code == 2
 
-    def test_interactive_records_the_status_and_returns(self, shell):
-        """bash -i does not exit on `break abc`: the next prompt shows $? = 2.
-        The owner therefore RETURNS here -- it is not NoReturn."""
+
+    def test_interactive_discards_the_line(self, shell):
+        """bash -i does not exit on `break abc` -- and it does not carry on
+        either. Verified over a PTY: it drops the REST OF THE LINE and the
+        next prompt shows $? = 2 (no loop body, no same=). So the interactive
+        leg is the DISCARD cell, which is why this is NoReturn in both legs.
+        The PTY pin is
+        tests/system/interactive/test_usage_status_interactive_pty.py.
+        """
         shell.state.is_script_mode = False
+        shell.state.options['command_mode'] = False
         shell.state.last_exit_code = 0
-        assert special_builtin_usage_exit_shell(shell) is None
+        with pytest.raises(TopLevelAbort) as exc:
+            special_builtin_usage_exit_shell(shell)
+        assert exc.value.status == USAGE_ERROR_STATUS == 2
+        assert exc.value.usage_discard_channel is True
+        assert shell.state.last_exit_code == USAGE_ERROR_STATUS
+
+    def test_the_exit_publishes_its_status_for_the_exit_trap(self, shell):
+        shell.state.is_script_mode = True
+        shell.state.last_exit_code = 0
+        with pytest.raises(SystemExit):
+            special_builtin_usage_exit_shell(shell)
         assert shell.state.last_exit_code == USAGE_ERROR_STATUS == 2
