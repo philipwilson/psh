@@ -255,7 +255,8 @@
         },
         {
           "id": "2.4",
-          "title": "Readonly attribute refusal"
+          "title": "Readonly attribute refusal",
+          "release": "0.785.0"
         }
       ],
       "releases": [
@@ -279,6 +280,28 @@
             "W1-N24"
           ],
           "verification": "r1 BOUNCE, r2 PASS (tmp/program-2026-09/verify/slot-2.1-r2.md)"
+        },
+        {
+          "version": "0.785.0",
+          "date": "2026-09-07",
+          "slots": [
+            "2.4"
+          ],
+          "closes": [
+            "G17"
+          ],
+          "flips": "FLIP-PINS 2.4 rows",
+          "registers": [
+            "W1-N15 (declared)",
+            "W1-N16",
+            "W1-N17",
+            "W1-N18",
+            "W1-N19",
+            "W1-N20",
+            "W1-N21",
+            "W1-N47"
+          ],
+          "verification": "r1 BOUNCE (2 pin gaps), r2 PASS at the rebased tip 62ed943e (tmp/program-2026-09/verify/slot-2.4*.md)"
         }
       ]
     },
