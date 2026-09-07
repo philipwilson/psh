@@ -74,7 +74,8 @@ class ControlFlowExecutor:
         under ``set -e`` the failing construct still aborts). Yields ``True``
         when redirects applied cleanly.
         """
-        with self.io_manager.guarded_redirections(node.redirects) as applied:
+        with self.io_manager.guarded_redirections(
+                node.redirects, compound=True) as applied:
             yield applied
 
     @contextmanager

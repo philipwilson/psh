@@ -26,6 +26,7 @@ from .option_registry import (
 from .process_lease import ComponentKind, get_coordinator
 from .scope import ScopeManager
 from .special_registry import SPECIAL_REGISTRY
+from .stdin_binding import StdinBinding
 from .stream_bindings import StreamBindings
 from .terminal_state import TerminalState
 from .trap_manager import TrapManager
@@ -113,6 +114,13 @@ class ShellState:
         # count-boundary surplus survives across invocations. Process-local (a
         # forked child starts empty), like the stream bindings above.
         self.input_cursors = self._new_input_cursor_registry()
+
+        # Where fd 0 came from: the shell's own stdin, or the pipe / compound
+        # redirect an enclosing frame supplied. The ONE input to the POSIX
+        # async /dev/null-stdin rule (see StdinBinding). A fresh shell owns
+        # its stdin; a forked child inherits the parent's binding along with
+        # the descriptor itself (clone_for_child).
+        self.stdin_binding = StdinBinding()
 
         # Owned script-file descriptors (campaign I2): fd -> LazyFileInput. A
         # lazy SCRIPT_FILE reader registers its relocated high-CLOEXEC fd here
@@ -600,6 +608,11 @@ class ShellState:
         # Input cursors are process-local too: a forked child inherits no
         # userspace read buffer (campaign I1; bash carries none across a fork).
         self.input_cursors = self._new_input_cursor_registry()
+
+        # The fd-0 binding IS inherited: the child holds the same descriptor,
+        # so a pipeline member's pipe or an enclosing compound's `< file` is
+        # still what its own background reader must read.
+        self.stdin_binding = parent.stdin_binding.copy_for_child()
 
         # A forked child does not own the parent's script reader (campaign I2):
         # start with a fresh empty reserved-fd map. The child inherits the

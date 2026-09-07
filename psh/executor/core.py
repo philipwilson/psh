@@ -512,7 +512,8 @@ class ExecutorVisitor(ASTVisitor[int]):
         # Error handling sits INSIDE the redirection scope so diagnostics
         # honour `(( ... )) 2>/dev/null` like bash (and like the
         # visit_EnhancedTestStatement sibling).
-        with self.io_manager.guarded_redirections(node.redirects) as applied:
+        with self.io_manager.guarded_redirections(
+                node.redirects, compound=True) as applied:
             if not applied:
                 return 1
             try:
@@ -571,7 +572,8 @@ class ExecutorVisitor(ASTVisitor[int]):
         # redirect targets (cleaned up when the statement finishes). A bad
         # redirect target prints bash's diagnostic and yields False, so the
         # test does not run — status 1, `|| fallback` runs.
-        with self.io_manager.guarded_redirections(node.redirects) as applied:
+        with self.io_manager.guarded_redirections(
+                node.redirects, compound=True) as applied:
             if not applied:
                 return 1
             try:

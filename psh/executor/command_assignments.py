@@ -387,7 +387,8 @@ class CommandAssignments:
             # Applied after the assignments (bash order, above). A setup
             # failure prints the one `psh: TARGET: STRERROR` shape and
             # fails the command with status 1 — never the raw OSError repr.
-            with self.io_manager.guarded_redirections(node.redirects) as ok:
+            with self.io_manager.guarded_redirections(
+                    node.redirects, compound=False) as ok:
                 if not ok:
                     return 1
 

@@ -413,10 +413,20 @@ class IOManager:
                 registry.bind_dup(*alias)
 
     @contextmanager
-    def guarded_redirections(self, redirects: List[Redirect]):
+    def guarded_redirections(self, redirects: List[Redirect], *,
+                             compound: bool):
         """Apply redirections for a region and restore them afterwards,
         turning a redirect SETUP failure into bash's diagnostic instead of
         letting an ``OSError`` escape.
+
+        *compound* says which kind of region this list belongs to, and every
+        caller must answer it: ``True`` for a COMPOUND command (brace group,
+        ``if``/``for``/``while``/``until``/``case``, ``[[ ]]``, ``(( ))``, and
+        a function's definition-attached redirects), whose fd 0 is inherited
+        by everything the body runs — see
+        :meth:`apply_compound_redirections`; ``False`` for a SIMPLE command's
+        own list (a function CALL's ``f < file``, an alias's, a builtin's),
+        which reaches only that command.
 
         Also owns any process substitutions used as redirect targets
         (e.g. ``while ...; done < <(cmd)``): their parent-side fds are closed
@@ -443,7 +453,9 @@ class IOManager:
         with self.process_sub_handler.scope(), \
                 self._scoped_input_cursors(redirects):
             try:
-                saved_fds = self.apply_redirections(redirects)
+                saved_fds = (self.apply_compound_redirections(redirects)
+                             if compound
+                             else self.apply_redirections(redirects))
                 self.alias_dup_input_cursors(redirects)
                 stream_restore = self._swap_closed_output_streams(redirects)
             except OSError as e:
@@ -457,7 +469,10 @@ class IOManager:
                 yield True
             finally:
                 stream_restore()
-                self.restore_redirections(saved_fds)
+                if compound:
+                    self.restore_compound_redirections(saved_fds)
+                else:
+                    self.restore_redirections(saved_fds)
 
     @staticmethod
     def output_close_fd(redirect: Redirect) -> Optional[int]:
@@ -590,6 +605,32 @@ class IOManager:
     def restore_redirections(self, saved_fds: List[Tuple[int, int | None]]):
         """Restore file descriptors from saved list."""
         self.file_redirector.restore_redirections(saved_fds)
+
+    def apply_compound_redirections(
+            self, redirects: List[Redirect]) -> List[Tuple[int, int | None]]:
+        """Apply a COMPOUND command's redirects and record the fd-0 binding.
+
+        A compound command's redirect list supplies fd 0 to EVERYTHING its
+        body runs, including a command the body backgrounds — so a reader in
+        ``{ cat & wait; } < file`` reads the file instead of the POSIX async
+        ``/dev/null`` (bash 5.3.15 `execute_cmd.c` sets its ``stdin_redir``
+        flag at the same point). A SIMPLE command's own redirect list has no
+        such reach — ``f() { cat & wait; }; f < file`` prints nothing in both
+        shells — so it uses :meth:`apply_redirections` instead.
+
+        Paired with :meth:`restore_compound_redirections`; a forked child that
+        runs its whole body under the redirect (a subshell) simply never
+        restores.
+        """
+        saved_fds = self.apply_redirections(redirects)
+        self.state.stdin_binding.note_compound_applied(saved_fds)
+        return saved_fds
+
+    def restore_compound_redirections(
+            self, saved_fds: List[Tuple[int, int | None]]) -> None:
+        """Undo :meth:`apply_compound_redirections`, ending its fd-0 binding."""
+        self.state.stdin_binding.note_compound_restored(saved_fds)
+        self.restore_redirections(saved_fds)
 
     def apply_permanent_redirections(self, redirects: List[Redirect]):
         """Apply redirections permanently (for exec builtin)."""

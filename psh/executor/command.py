@@ -368,7 +368,8 @@ class CommandExecutor:
                 # executor): first-failure stop + discard the current command.
                 arith_assignment_discard(self.state)
         if node.redirects:
-            with self.io_manager.guarded_redirections(node.redirects) as ok:
+            with self.io_manager.guarded_redirections(
+                    node.redirects, compound=False) as ok:
                 if not ok:
                     return 1
         if self.state.last_cmdsub_status is not None:
@@ -425,7 +426,7 @@ class CommandExecutor:
                 # and fails with 1, like bash.
                 if node.redirects:
                     with self.io_manager.guarded_redirections(
-                            node.redirects) as ok:
+                            node.redirects, compound=False) as ok:
                         if not ok:
                             return 1
                 return 0
@@ -895,7 +896,8 @@ class CommandExecutor:
         # `psh: TARGET: STRERROR` message shape and fails with status 1,
         # instead of leaking the raw Python OSError repr — the same policy
         # as the builtin, external, and compound dispatch sites.
-        with self.io_manager.guarded_redirections(node.redirects) as ok:
+        with self.io_manager.guarded_redirections(
+                node.redirects, compound=False) as ok:
             if not ok:
                 return ExecutionResult(status=1,
                                        prefix_assignments_persist=persist)
