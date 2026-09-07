@@ -286,6 +286,24 @@ class TestTildeWordBoundaryIsLiteral:
     answered `M` where bash and psh at base `b6ec6f95` answer `o`.
     """
 
+    def test_the_two_boundaries_differ(self):
+        """`prefix_end` and `word_end` are different functions, and the
+        discriminating input is a `:`-bounded tilde word.
+
+        The PREFIX (what expands) stops at the `:`; the WORD (what becomes
+        literal) runs past it to the `/`. If these two ever collapse into one
+        call, this row says so.
+        """
+        from psh.expansion.tilde import TildeExpander
+        assert TildeExpander.prefix_end("~:*/y") == 1     # stops at the ':'
+        assert TildeExpander.word_end("~:*/y") == 3       # stops at the '/'
+        # With no ':' the two agree, which is why the bug hid for a round.
+        assert TildeExpander.prefix_end("~/a*") == 1
+        assert TildeExpander.word_end("~/a*") == 1
+        # With neither, both run to the end.
+        assert TildeExpander.prefix_end("~abc") == 4
+        assert TildeExpander.word_end("~abc") == 4
+
     def test_colon_remainder_is_escaped(self, pat):
         assert pat("~:*") == r"/h/me:\*"
 

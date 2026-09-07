@@ -45,15 +45,28 @@ class TildeExpander:
     def word_end(path: str) -> int:
         """End index of the tilde WORD in *path*: the first ``/``, or its end.
 
-        Distinct from :meth:`prefix_end`, and the distinction is load-bearing.
-        The tilde PREFIX — the part that expands — ends at the first ``/`` OR
-        ``:``. The tilde WORD is wider: it runs to the first ``/`` only, so a
-        ``:`` sits INSIDE it. bash makes the whole tilde word literal in a
-        pattern, which is why the two boundaries cannot be the same call
-        (probed against bash 5.3.15, ``HOME=/h/me``)::
+        bash has TWO tilde boundaries and they are NOT the same; the
+        distinction is load-bearing and this method is the second one.
 
-            case '/h/me:XX' in ~:*)  esac   # no match  -- the * is INSIDE
-            case '/h/me/XX' in ~/*)  esac   # MATCHES   -- the * is OUTSIDE
+        - The tilde PREFIX — the part that EXPANDS — ends at the first ``/``
+          **or** ``:`` (:meth:`prefix_end`).
+        - The tilde WORD is wider: it ends at the first ``/`` **only**, so a
+          ``:`` sits INSIDE it, and bash makes the whole WORD literal when the
+          word is a pattern.
+
+        The discriminating pair, probed against bash 5.3.15 with
+        ``HOME=/h/me`` — same leading ``~:``, and the only difference is which
+        side of the ``/`` the metacharacter falls on::
+
+            case '/h/me:XX'   in ~:*)   esac   # no match: the * is INSIDE the
+                                               #           word, so it is literal
+            case '/h/me:*/YY' in ~:*/*) esac   # MATCHES:  the first * is inside
+                                               #           and literal, the
+                                               #           second is past the
+                                               #           '/' and still globs
+
+        Round 2 of slot 1.11 escaped only the replacement and left the
+        remainder live, which is exactly the first row printing ``M``.
         """
         cut = path.find('/', 1)
         return len(path) if cut == -1 else cut
@@ -82,9 +95,12 @@ class TildeExpander:
             return path
         replacement, rest = split
         # The tilde WORD continues past the prefix's ':' boundary to the first
-        # '/' (word_end); everything up to there is literal, the tail is live.
-        cut = rest.find('/')
-        inside, outside = (rest, '') if cut == -1 else (rest[:cut], rest[cut:])
+        # '/'. `word_end` indexes into `path`; `rest` starts where the prefix
+        # ended, so shift by the prefix length to split `rest` at the same
+        # character. Everything up to there is literal, the tail stays live.
+        prefix_len = len(path) - len(rest)
+        cut = self.word_end(path) - prefix_len
+        inside, outside = rest[:cut], rest[cut:]
         return escape(replacement + inside) + outside
 
     def expand_split(self, path: str):
