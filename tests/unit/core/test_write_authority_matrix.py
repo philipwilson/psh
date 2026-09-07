@@ -672,31 +672,32 @@ _FLIP_CHILD_CELLS: Tuple[Cell, ...] = (
          'set -a; readonly R=1; printenv R; echo "rc=$?"', '1\nrc=0\n',
          owner="C028 → slot 1.16"),
 
-    # C044 — the effective PATH binding changes when the function scope pops,
-    # but nothing tells the command hash table, so the NEXT dispatch still runs
-    # the function's executable.
-    Cell("scope-exit", "dispatch", "local-PATH-restored-on-return-C044-slot1.5",
+    # C044 (closed by slot 1.5) — the effective PATH binding changes when the
+    # function scope pops, and the command hash table is told, so the NEXT
+    # dispatch resolves through the restored PATH instead of re-running the
+    # executable the discarded scope selected.
+    Cell("scope-exit", "dispatch", "local-PATH-restored-on-return",
          _TWO_PROBES + 'f(){ local PATH=$PWD/b; probe; }\nf\nprobe\n',
-         'B\nA\n', owner="C044 → slot 1.5"),
-    Cell("scope-exit", "dispatch", "temp-env-PATH-restored-after-command-C044-slot1.5",
-         _TWO_PROBES + 'f(){ probe; }\nPATH=$PWD/b f\nprobe\n', 'B\nA\n',
-         owner="C044 → slot 1.5"),
-    Cell("scope-exit", "dispatch", "nested-local-PATH-restored-C044-slot1.5",
+         'B\nA\n'),
+    Cell("scope-exit", "dispatch", "temp-env-PATH-restored-after-command",
+         _TWO_PROBES + 'f(){ probe; }\nPATH=$PWD/b f\nprobe\n', 'B\nA\n'),
+    Cell("scope-exit", "dispatch", "nested-local-PATH-restored",
          _TWO_PROBES + 'g(){ local PATH=$PWD/b; probe; }\n'
-         'f(){ g; probe; }\nf\nprobe\n', 'B\nA\nA\n',
-         owner="C044 → slot 1.5"),
+         'f(){ g; probe; }\nf\nprobe\n', 'B\nA\nA\n'),
     # Declaring the local and assigning it are two statements, so the effective
     # binding changes at the assignment rather than at the declaration.
-    Cell("scope-exit", "dispatch", "local-PATH-without-value-then-assigned-C044-slot1.5",
+    Cell("scope-exit", "dispatch", "local-PATH-without-value-then-assigned",
          _TWO_PROBES + 'f(){ local PATH; PATH=$PWD/b; probe; }\nf\nprobe\n',
-         'B\nA\n', owner="C044 → slot 1.5"),
+         'B\nA\n'),
     # `declare -g` writes the GLOBAL while the local still shadows it, so the
-    # effective binding does not change here — the value the next dispatch must
-    # resolve through is the one `declare -g` left behind.  The case slot 1.5's
-    # observer counter must NOT count as an effective-binding change.
-    Cell("scope-exit", "dispatch", "declare-g-PATH-under-local-C044-slot1.5",
+    # value the next dispatch must resolve through is the one `declare -g` left
+    # behind, and the change becomes visible only at the pop.  bash empties the
+    # table at the `declare -g` as well (it rebinds the name PATH), which is
+    # what slot 1.5's observer counter records — see its `declare-g-under-local`
+    # row and the slot handoff's deviation D-1.
+    Cell("scope-exit", "dispatch", "declare-g-PATH-under-local",
          _TWO_PROBES + 'f(){ local PATH=$PWD/b; declare -g PATH=$PWD/a; probe; }\n'
-         'f\nprobe\n', 'B\nA\n', owner="C044 → slot 1.5"),
+         'f\nprobe\n', 'B\nA\n'),
 )
 
 CHILD_CELLS: Tuple[Cell, ...] = _GREEN_CHILD_CELLS + _FLIP_CHILD_CELLS
@@ -806,10 +807,11 @@ SPAWN_CELLS: Tuple[Cell, ...] = (
          'printf "%s %s\\n" "${PWD##*/}" "${p##*/}"\n',
          'logical logical\n', owner="C043 → slot 1.4"),
 
-    # C044 in every input mode: the executable dispatched after the scope pops.
-    Cell("scope-exit", "dispatch", "restored-PATH-dispatches-C044-slot1.5",
+    # C044 (closed by slot 1.5) in every input mode: the executable dispatched
+    # after the scope pops.
+    Cell("scope-exit", "dispatch", "restored-PATH-dispatches",
          _TWO_PROBES + 'f(){ local PATH=$PWD/b; probe; }\nf\nprobe\n',
-         'B\nA\n', owner="C044 → slot 1.5"),
+         'B\nA\n'),
 
     # C027 in every input mode.  bash's own status for an unbound variable
     # differs between `-c` (127) and a script (1) — a bash property, not a psh
@@ -913,7 +915,7 @@ def test_child_cell(tmp_path, cell: Cell) -> None:
     """What a real child process receives, and which executable is dispatched.
 
     Closes C226 instances for the cross-process observers; the flip cells
-    record C028 and C044.
+    record C028, and the green `scope-exit.dispatch` rows record C044.
     """
     result = _run_case(cell.script, str(tmp_path))
     assert is_comparable(result), f"cell {cell.id}: {result!r}"
@@ -960,7 +962,8 @@ def test_spawn_cell(tmp_path, cell: Cell, mode: str) -> None:
     Lives out of process because a permanent fd redirection must not run in the
     test runner, and because input mode is itself the variable for the cwd,
     lookup and environment families.  Closes C226 instances; the flip cells
-    record C027, C028, C043, C044 and C090.
+    record C027, C028, C043 and C090, and the green
+    `scope-exit.dispatch.restored-PATH-dispatches` row records C044.
     """
     result = _run_case(cell.script, str(tmp_path), mode)
     assert is_comparable(result), f"cell {cell.id} in {mode}: {result!r}"

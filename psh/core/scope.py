@@ -39,6 +39,13 @@ READONLY_LOCKED_ATTRIBUTES = (
     | VarAttributes.NAMEREF
 )
 
+#: What PATH resolves through right now: the cell itself (not its ``id()``, so
+#: the reference keeps a popped cell alive for the comparison) and its string
+#: value.  ``(None, None)`` when PATH is unset or tombstoned.  Compared
+#: before/after a scope pop by
+#: :meth:`ScopeManager._effective_binding_changed`.
+_PathBinding = Tuple[Optional[Variable], Optional[str]]
+
 if TYPE_CHECKING:
     # TYPE_CHECKING-only, and that is the whole point: ``psh.core`` is a
     # NEAR-LEAF whose module-level psh imports are confined to
@@ -102,10 +109,12 @@ class ScopeManager:
         # boundary. See psh/core/variable_store.py.
         self.store = VariableStore(self)
 
-        # Observer fired whenever PATH is assigned, declared local, or
-        # unset — installed by ShellState to empty the command hash table
-        # (bash empties it on ANY PATH write, even ``PATH=$PATH``; the
-        # one string compare per write is the whole cost of the hook).
+        # Observer fired whenever the EFFECTIVE binding of PATH is rebound —
+        # installed by ShellState to empty the command hash table, its only
+        # subscriber. Fired by :meth:`_effective_binding_changed`, which owns
+        # the whole staleness decision: no other reader may judge the hash
+        # stale. A pop is a rebinding too, which is the part a name-keyed
+        # observer could never see (C044).
         self.path_changed: Optional[Callable[[], None]] = None
 
         # Observer fired with the (nameref-resolved) variable name after
@@ -170,10 +179,54 @@ class ScopeManager:
         ]
         return new
 
-    def _notify_path_changed(self, name: str) -> None:
-        """Fire the PATH observer when *name* is PATH (post-nameref)."""
-        if name == 'PATH' and self.path_changed is not None:
-            self.path_changed()
+    def _effective_path_binding(self) -> '_PathBinding':
+        """The instance PATH currently resolves through, and its value.
+
+        The cell object itself is kept in the tuple (not its ``id()``): a
+        popped scope's Variable can be collected the moment the scope dies and
+        a later object can reuse the address, so identity is only meaningful
+        while a reference is held.
+        """
+        var, _ = self._resolve_read('PATH')
+        return var, (var.as_string() if var is not None else None)
+
+    def _effective_binding_changed(
+            self, name: str, before: Optional['_PathBinding'] = None) -> None:
+        """THE staleness authority for PATH: fire the observer on a rebinding.
+
+        ``CommandHashTable`` is the single subscriber (installed by
+        ``ShellState``); nothing else decides that a remembered command
+        location is stale.  Two kinds of event reach this method.
+
+        A **write** under the name PATH — assignment, ``export PATH=``,
+        ``declare -g PATH=``, a ``local PATH`` declaration, ``unset``, a
+        temp-env prefix — passes no ``before``: it rebinds PATH by
+        construction, and bash 5.3.15 empties the table for every one of them
+        even when the value is unchanged.  Reproduce (in a directory holding
+        ``a/probe``)::
+
+            PATH=$PWD/a; probe; PATH=$PATH; hash -t probe   # bash: status 1
+
+        A **pop** — a function scope, a function-prefix temp-env scope, a
+        command temp-env layer — writes no name at all, so it passes the
+        binding captured BEFORE the pop and fires only when the cell PATH
+        resolves through, or its value, actually changed.  That comparison is
+        the C044 fix and it is load-bearing in both directions: without it an
+        ordinary function return would clear the table (bash does not), and
+        without the pop-time call the next dispatch keeps running the
+        executable the discarded scope selected::
+
+            PATH=$PWD/a; f(){ local PATH=$PWD/b; probe; }; f; probe
+            # bash 5.3.15: B then A
+        """
+        if name != 'PATH' or self.path_changed is None:
+            return
+        if before is not None:
+            cell, value = before
+            after_cell, after_value = self._effective_path_binding()
+            if after_cell is cell and after_value == value:
+                return
+        self.path_changed()
 
     def _notify_variable_changed(self, name: str) -> None:
         """Fire the per-variable observer (post-nameref name)."""
@@ -275,7 +328,7 @@ class ScopeManager:
             raise ReadonlyVariableError(name)
         self.current_scope.variables[name] = Variable(
             name=name, value=value, attributes=VarAttributes.EXPORT)
-        self._notify_path_changed(name)
+        self._effective_binding_changed(name)
         self._notify_variable_changed(name)
 
     # ------------------------------------------------------------------
@@ -299,10 +352,13 @@ class ScopeManager:
         true`` to the pre-command ``E``)."""
         if not self.command_temp_env:
             return
+        before = (self._effective_path_binding()
+                  if 'PATH' in self.command_temp_env[-1] else None)
         layer = self.command_temp_env.pop()
         for name in layer:
-            self._notify_path_changed(name)
             self._notify_variable_changed(name)
+        if before is not None:
+            self._effective_binding_changed('PATH', before)
 
     def set_command_temp_env_var(self, name: str, value: Any) -> None:
         """Bind one prefix variable in the innermost command temp-env layer.
@@ -325,7 +381,7 @@ class ScopeManager:
             raise ReadonlyVariableError(name)
         self.command_temp_env[-1][name] = Variable(
             name=name, value=value, attributes=VarAttributes.EXPORT)
-        self._notify_path_changed(name)
+        self._effective_binding_changed(name)
         self._notify_variable_changed(name)
 
     def _command_temp_env_lookup(self, name: str) -> Optional['Variable']:
@@ -346,8 +402,21 @@ class ScopeManager:
         return None
 
     def pop_scope(self) -> Optional[VariableScope]:
-        """Remove scope on function exit."""
+        """Remove scope on function exit.
+
+        A pop is a WRITE to the effective binding of every name the scope
+        held, made by nobody and named by nothing, which is why the observers
+        are driven from here rather than from a write site.  For PATH that
+        matters beyond the visible value: the command hash table remembers
+        where a name resolved, so a pop that reveals the outer PATH must
+        invalidate it or the next dispatch runs the executable the DISCARDED
+        scope selected (C044).  The PATH binding is sampled before the pop and
+        compared after it, so an ordinary return -- a scope that never bound
+        PATH -- costs one resolver walk and clears nothing, matching bash.
+        """
         if len(self.scope_stack) > 1:
+            before = (self._effective_path_binding()
+                      if 'PATH' in self.scope_stack[-1].variables else None)
             scope = self.scope_stack.pop()
             if scope.variables:
                 var_names = ', '.join(scope.variables.keys())
@@ -360,6 +429,8 @@ class ScopeManager:
             # reverts to the outer value, or disappears, on return).
             for name in scope.variables:
                 self._notify_variable_changed(name)
+            if before is not None:
+                self._effective_binding_changed('PATH', before)
             return scope
         else:
             raise RuntimeError("Cannot pop global scope")
@@ -625,7 +696,7 @@ class ScopeManager:
                 layer[name] = Variable(
                     name=name, value=value,
                     attributes=prior.attributes | attributes)
-                self._notify_path_changed(name)
+                self._effective_binding_changed(name)
                 self._notify_variable_changed(name)
                 return
 
@@ -741,7 +812,7 @@ class ScopeManager:
             target_scope.variables[name] = var
             self._debug_print(f"Setting variable in scope '{scope_name}': {name} = {var.value}")
 
-        self._notify_path_changed(name)
+        self._effective_binding_changed(name)
         self._notify_variable_changed(name)
 
     def _function_prefix_binding(self, name: str) -> Optional[Variable]:
@@ -915,7 +986,7 @@ class ScopeManager:
             self.current_scope.variables[name] = var
             self._debug_print(f"Creating unset local variable: {name}")
 
-        self._notify_path_changed(name)
+        self._effective_binding_changed(name)
 
     def unset_variable(self, name: str):
         """Unset the innermost instance of *name* (bash dynamic scoping).
@@ -940,7 +1011,7 @@ class ScopeManager:
             layer = self._command_temp_env_layer_with(name)
             if layer is not None:
                 del layer[name]
-                self._notify_path_changed(name)
+                self._effective_binding_changed(name)
                 self._notify_variable_changed(name)
                 return
 
@@ -979,7 +1050,7 @@ class ScopeManager:
                 del scope.variables[name]
                 self._debug_print(
                     f"Unsetting variable in scope '{scope.name}': {name}")
-            self._notify_path_changed(name)
+            self._effective_binding_changed(name)
             self._notify_variable_changed(name)
             return
 

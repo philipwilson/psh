@@ -24,7 +24,7 @@ Manager            (arrays)    State    Manager
 | `history_state.py` | `HistoryState` - command history list + persistence settings (ShellState delegates) |
 | `terminal_state.py` | `TerminalState` - terminal capabilities (`is_terminal`/`supports_job_control`; ShellState delegates) |
 | `stream_bindings.py` | `StreamBindings` - stdin/stdout/stderr overrides (ShellState delegates) |
-| `command_hash.py` | `CommandHashTable` - remembered command locations (`hash` builtin; cleared via `ScopeManager.path_changed` on any PATH write) |
+| `command_hash.py` | `CommandHashTable` - remembered command locations (`hash` builtin; emptied by `ScopeManager._effective_binding_changed` on any rebinding of PATH, scope pops included) |
 | `scope.py` | `ScopeManager`, `VariableScope` - the scope stack (flat list, `scope_stack[0]` global) |
 | `variable_store.py` | `VariableStore` (`scope_manager.store`) - the single variable-WRITE transaction boundary (readonly/nameref/observer guards); see "Variable-mutation model" below |
 | `variable_lookup.py` | `LookupStatus` (MISSING/PRESENT_UNSET/VALUE) + `VariableLookup` - the typed, IMMUTABLE tri-state result of `ScopeManager.lookup()`, the single variable-READ authority (appraisal #20 H13; see "Scope Stack" below) |
@@ -156,6 +156,13 @@ store.unset(name)
 - `set_element`/`unset_element` own the ONE negative-subscript formula
   (`IndexedArray.resolve_write_index`), validate readonly BEFORE mutating, and
   fire the observers.
+- `scope.py#ScopeManager._effective_binding_changed` is the ONE authority on
+  when a remembered command location is stale, and `CommandHashTable` is its
+  only subscriber: it fires on every rebinding of PATH's EFFECTIVE binding,
+  including the scope and temp-env POPS that write no name at all, so a
+  function's `local PATH` cannot outlive its scope in the dispatcher. Repro:
+  `PATH=$PWD/a; f(){ local PATH=$PWD/b; probe; }; f; probe` runs B then A
+  (bash 5.3.15) — before the observer owned pops it ran B twice (C044).
 - The four declaration builtins (`declare`/`export`/`readonly`, with
   `readonly` delegating to `declare -r`) run their SCALAR path through one
   `DeclarationEngine` (`builtins/declaration_engine.py`) that commits via the
