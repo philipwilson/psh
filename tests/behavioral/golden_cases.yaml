@@ -11061,3 +11061,146 @@
   stdout: "three\none\ntwo\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# PLAN ONCE: A REDIRECT TARGET IS EXPANDED EXACTLY ONCE (C031, slot 1.3)
+#
+# Planning a redirect expands its target word and creates its process
+# substitution, so resolving one twice is observable: the target's command
+# substitutions run twice, its process substitutions fork twice, and -- the
+# wrong-target harm -- the noclobber check sees a DIFFERENT name from the one
+# the fd ends up opening.  psh planned twice for an in-process builtin with a
+# redirect on fd >= 3; every other path (compound, function, external, fd 1/2,
+# exec, named fd) already planned once and is pinned here as a control.
+# Verified against bash 5.3.15.
+# =============================================================================
+
+- name: c031_builtin_fd3_target_expanded_once
+  description: "C031: echo hi 3> \"$(cmd)\" runs the target's command substitution exactly once"
+  command: 'echo hi 3> "$(echo x >> ctr; echo o3)"; wc -l < ctr'
+  stdout: "hi\n       1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_builtin_fd9_target_expanded_once
+  description: "C031: a builtin that writes nothing (: 9> target) still expands its target once"
+  command: ': 9> "$(echo x >> ctr; echo o9)"; wc -l < ctr'
+  stdout: "       1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_builtin_fd3_input_target_expanded_once
+  description: "C031: an INPUT redirect on fd 3 expands once, and the fd carries that file's bytes"
+  command: 'printf "L\n" > src; read -u 3 v 3< "$(echo x >> ctr; echo src)"; echo "v=$v $(wc -l < ctr)"'
+  stdout: "v=L        1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_two_redirects_expand_once_each
+  description: "C031: two operations on one command expand once each, in source order"
+  command: 'echo hi 3> "$(echo a >> ctr; echo o3)" 4> "$(echo b >> ctr; echo o4)"; cat ctr'
+  stdout: "hi\na\nb\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_nested_eval_expands_each_once
+  description: "C031: a builtin redirect inside a redirected eval -- each operation expands once"
+  command: 'eval ''echo inner 3> "$(echo x >> ctr; echo i3)"'' 3> "$(echo y >> ctr; echo o3)"; cat ctr'
+  stdout: "inner\ny\nx\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_fd3_points_at_the_single_expansion
+  description: "C031: the bytes written to fd 3 land in the file the ONE expansion named"
+  command: 'eval "echo payload >&3" 3> "$(echo x >> ctr; echo o3)"; wc -l < ctr; cat o3'
+  stdout: "       1\npayload\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_procsub_target_forks_once
+  description: "C031: a process substitution as a redirect target forks exactly one child (read fd 3 to synchronize)"
+  command: 'read -u 3 v 3< <(echo x >> ctr; echo data); echo "v=$v $(wc -l < ctr)"'
+  stdout: "v=data        1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_mapfile_procsub_target_forks_once
+  description: "C031: mapfile -u 3 from a process substitution target forks one child"
+  command: 'mapfile -t -u 3 arr 3< <(echo x >> ctr; echo L1; echo L2); echo "${arr[0]}-${arr[1]} $(wc -l < ctr)"'
+  stdout: "L1-L2        1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_first_expansion_is_the_file_created
+  description: "C031 wrong target: with a target that changes per expansion, the FIRST name is the file created"
+  command: 'echo 0 > c; echo hi 3> "$(n=$(cat c); n=$((n+1)); echo $n > c; echo f$n)"; ls'
+  stdout: "hi\nc\nf1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_noclobber_does_not_refuse_a_name_it_never_opens
+  description: "C031 wrong target: set -C with the SECOND expansion's name pre-existing must not block opening the first"
+  command: 'echo 0 > c; echo OLD > f2; set -C; echo hi 3> "$(n=$(cat c); n=$((n+1)); echo $n >| c; echo f$n)"; ls; cat f2'
+  stdout: "hi\nc\nf1\nf2\nOLD\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_noclobber_refuses_the_name_it_would_open
+  description: "C031 control: set -C still refuses when the name actually being opened exists"
+  command: 'echo OLD > t; set -C; { echo hi 3> t; } 2>/dev/null; echo "rc=$?"; cat t'
+  stdout: "rc=1\nOLD\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_move_split_derives_both_halves_from_one_plan
+  description: "C031: a move (4>&3-) dups then closes the source, both halves from the one resolved plan"
+  command: 'eval "echo v4 >&4" 3> t3 4>&3-; cat t3'
+  stdout: "v4\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_heredoc_on_fd3_materialized_once
+  description: "C031: a here-document body on fd 3 is materialized once and readable through the fd"
+  command: |
+    read -u 3 v 3<<EOF
+    hello
+    EOF
+    echo "v=$v"
+  stdout: "v=hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_control_brace_group_expands_once
+  description: "C031 control: a brace group's fd-3 target already expanded once"
+  command: '{ echo hi; } 3> "$(echo x >> ctr; echo o3)"; wc -l < ctr'
+  stdout: "hi\n       1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_control_external_command_expands_once
+  description: "C031 control: an external command's fd-3 target is planned in the child, once"
+  command: '/bin/echo hi 3> "$(echo x >> ctr; echo o3)"; wc -l < ctr'
+  stdout: "hi\n       1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_control_stdout_stream_path_expands_once
+  description: "C031 control: the fd 1 stream path expands its target once and receives the output"
+  command: 'echo hi > "$(echo x >> ctr; echo o1)"; wc -l < ctr; cat o1'
+  stdout: "       1\nhi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_control_permanent_exec_expands_once
+  description: "C031 control: exec 3> target is permanent and already expanded once"
+  command: 'exec 3> "$(echo x >> ctr; echo o3)"; echo permanent >&3; exec 3>&-; wc -l < ctr; cat o3'
+  stdout: "       1\npermanent\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c031_control_named_fd_expands_once
+  description: "C031 control: a named fd ({v}> target) is self-contained and expands once"
+  command: 'echo hi {v}> "$(echo x >> ctr; echo ov)"; wc -l < ctr'
+  stdout: "hi\n       1\n"
+  stderr: ""
+  exit_code: 0
