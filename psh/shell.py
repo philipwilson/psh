@@ -394,7 +394,11 @@ class Shell:
             config.forced_stdin or config.source_kind is SourceKind.STDIN)
 
         for name, enable in config.option_transitions:
-            apply_set_o_option(self, name, enable)
+            # from_invocation: these ARE the command line. bash honours
+            # `-n` from the command line even for `bash -i` (it parses the
+            # flags before it decides the shell is interactive), while a
+            # runtime `set -n` at a prompt is refused (C040).
+            apply_set_o_option(self, name, enable, from_invocation=True)
 
         # bash drops -m when the terminal cannot support job control
         # ("cannot set terminal process group"; probes C5/E17: no `m` in $-).
