@@ -52,6 +52,14 @@ class StdinBinding:
     (``ShellState.clone_for_child``): the reader inside
     ``echo hi | ( cat & wait )`` is two forks below the pipe.
 
+    The binding is SCOPED to the frame that made it — it ends when that
+    compound's redirects are undone, and an inner construct never releases an
+    outer one's. bash approximates the same fact with a single global flag that
+    the innermost redirect-bearing construct overwrites, so a few deeply nested
+    shapes differ; psh keeps the binding in every one of them, which is the
+    direction that does not lose the input (the divergences are pinned as
+    declared, psh-only behavioral rows).
+
     Reproduce (bash 5.3.15 vs psh, C022)::
 
         echo hello | { cat & wait; }      # hello

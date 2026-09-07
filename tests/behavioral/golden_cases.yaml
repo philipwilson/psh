@@ -11455,3 +11455,34 @@
   stdout: "ok\n"
   stderr: ""
   exit_code: 0
+
+# --- C022 declared divergences: psh SCOPES the fd-0 binding to the frame that
+# supplied it, where bash 5.3.15 approximates it with ONE global flag that the
+# innermost redirect-bearing construct overwrites (execute_cmd.c:828/1733/1739,
+# cleared per top-level command in eval.c:181). Every shape below is one where
+# bash DROPS a binding psh keeps; psh's answer is the safe direction in each
+# (bash loses the pipe's bytes, or lets a background reader eat the script's
+# stdin). psh_only: these deliberately do NOT claim bash parity.
+- name: c022_divergence_nested_subshell_keeps_the_pipe
+  description: "C022 declared divergence: a doubly-nested subshell keeps the pipeline member's stdin in psh; bash 5.3.15 prints nothing (its global stdin_redir is reassigned by the inner subshell)"
+  command: 'echo hello | ( ( cat & wait ) )'
+  stdout: "hello\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: c022_divergence_inner_output_redirect_keeps_the_binding
+  description: "C022 declared divergence: an inner compound that redirects only stdout does not release the outer compound's fd 0 in psh; bash 5.3.15 prints nothing"
+  command: 'printf "X\n" > in; { { cat & wait; } > out; } < in; cat out'
+  stdout: "X\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: c022_divergence_binding_ends_with_its_compound
+  description: "C022 declared divergence: after the compound's redirect is undone the POSIX /dev/null applies again in psh; bash 5.3.15 keeps suppressing for the rest of the top-level command, so its background reader steals the shell's stdin"
+  command: 'printf "X\n" > in; { true; } < in; cat & wait; echo end'
+  stdout: "end\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
