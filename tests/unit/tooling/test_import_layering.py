@@ -266,7 +266,7 @@ FUNC_IMPORT_CAPS = {
     'psh.expansion.command_sub': 2,
     'psh.expansion.extglob': 4,
     'psh.expansion.glob': 4,
-    'psh.expansion.manager': 5,
+    'psh.expansion.manager': 4,   # slot 1.11 r2: the pattern-word import hoisted
     'psh.expansion.operands': 3,
     'psh.expansion.operators': 1,
     # cycle-break: the W2 subscript authority re-lexes raw subscript text via

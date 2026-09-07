@@ -268,3 +268,169 @@ def test_tilde_pattern_does_not_glob_the_filesystem(tmp_path):
         assert is_comparable(run), f"harness failure: {run!r}"
         assert run.stdout == "tilde\n", f"{runner.__name__}: {run.stdout!r}"
     assert not os.path.exists(HOME)
+
+
+# ---------------------------------------------------------------------------
+# The tilde REPLACEMENT is literal — rows that vary the VALUE of HOME/PWD.
+#
+# Round 1 of this slot shipped the replacement RAW, so a HOME carrying a glob
+# metacharacter became a live pattern. Every pin in round 1 used HOME=/h/me,
+# so none of them could see it: a corpus that never varies the value cannot
+# catch a value-shape bug. bash quotes the result of tilde expansion in a
+# pattern word and does NOT quote the result of parameter expansion —
+# the `_control_dollar_home_is_live` rows below are that other half, and they
+# are what stops this suite from over-escaping in the opposite direction.
+# ---------------------------------------------------------------------------
+
+#: HOME values whose text carries a pattern (or regex) metacharacter.
+METACHAR_HOMES = ["/a*b", "/a?b", "/a[b]", "/a.b", "/a(b", "/a)b", "/a]b",
+                  "/a b", "/a{b", "/a+b", "/a^b", "/a$b"]
+
+#: (id, command) run once per metacharacter HOME. Each prints the branch
+#: taken; a live-pattern replacement takes the WRONG one.
+METACHAR_ROWS = [
+    # The subject differs from HOME by one character, so it matches only if
+    # the replacement is a live pattern. bash: no match.
+    ("case_literal_subject_x",
+     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
+     "case $s in ~) echo tilde;; *) echo other;; esac"),
+    ("case_path_literal_subject_x",
+     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2')/z; "
+     "case $s in ~/z) echo tilde;; *) echo other;; esac"),
+    ("case_assignment_value_literal_subject_x",
+     "s=x=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
+     "case $s in x=~) echo tilde;; *) echo other;; esac"),
+    ("test_eq_literal_subject_x",
+     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
+     "if [[ $s == ~ ]]; then echo eq; else echo ne; fi"),
+    ("test_ne_literal_subject_x",
+     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
+     "if [[ $s != ~ ]]; then echo T; else echo F; fi"),
+    ("test_regex_literal_subject_x",
+     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
+     "if [[ $s =~ ~ ]]; then echo eq; else echo ne; fi"),
+    # The subject IS the home, so it must match — a mis-escaped replacement
+    # (or a regex that fails to compile) takes the wrong branch or errors.
+    ("case_exact_subject",
+     'case $HOME in ~) echo tilde;; *) echo other;; esac'),
+    ("case_exact_subject_path",
+     'case $HOME/z in ~/z) echo tilde;; *) echo other;; esac'),
+    ("test_eq_exact_subject",
+     'if [[ $HOME == ~ ]]; then echo eq; else echo ne; fi'),
+    ("test_regex_exact_subject_rc",
+     '[[ $HOME =~ ~ ]]; echo rc=$?'),
+    ("param_remove_prefix_exact",
+     'v=$HOME/z; echo "[${v#~/}]"'),
+    # The CONTROL for the other half of bash's rule: a parameter expansion in
+    # a pattern word stays LIVE, so this one DOES match where the tilde does
+    # not. If a future change over-escapes, this row goes red.
+    ("control_dollar_home_is_live",
+     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
+     "case $s in $HOME) echo live;; *) echo other;; esac"),
+    # The tail of the word keeps its glob power even though the replacement
+    # does not: `~/a*` still globs on the `a*` the SOURCE supplied.
+    ("source_glob_tail_still_live",
+     'case $HOME/abc in ~/a*) echo tilde;; *) echo other;; esac'),
+]
+
+METACHAR_IDS = [f"{name}-{home}" for home in METACHAR_HOMES
+                for name, _ in METACHAR_ROWS]
+METACHAR_CASES = [(command, home) for home in METACHAR_HOMES
+                  for _, command in METACHAR_ROWS]
+
+
+class TestTildeReplacementIsLiteral(ConformanceTest):
+    """A metacharacter-bearing HOME is matched literally (C042, round-2 B1)."""
+
+    @pytest.mark.parametrize("command,home", METACHAR_CASES, ids=METACHAR_IDS)
+    def test_matches_bash(self, command, home):
+        self.assert_identical_behavior(command, env={"HOME": home})
+
+
+@pytest.mark.parametrize("command,home", METACHAR_CASES, ids=METACHAR_IDS)
+def test_metachar_home_all_three_input_modes(command, home, tmp_path):
+    """D6: the replacement rule holds in -c, script-file and stdin mode."""
+    env = {"HOME": home}
+    bash_dir = tmp_path / "bash"
+    bash_dir.mkdir()
+    bash = run_bash(["-c", command], cwd=str(bash_dir), env=dict(env))
+    assert is_comparable(bash), f"bash harness failure: {bash!r}"
+
+    for mode in ("dash_c", "script", "stdin"):
+        mode_dir = tmp_path / mode
+        mode_dir.mkdir()
+        if mode == "dash_c":
+            run = run_psh(["-c", command], cwd=str(mode_dir), env=dict(env))
+        elif mode == "script":
+            script = mode_dir / "case.sh"
+            script.write_text(command + "\n")
+            run = run_psh([str(script)], cwd=str(mode_dir), env=dict(env))
+        else:
+            run = run_psh([], stdin_data=command + "\n", cwd=str(mode_dir),
+                          env=dict(env))
+        assert is_comparable(run), f"harness failure in {mode}: {run!r}"
+        assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode), (
+            f"psh diverges from bash in {mode} mode, HOME={home!r}, "
+            f"{command!r}: psh={(run.stdout, run.returncode)!r} "
+            f"bash={(bash.stdout, bash.returncode)!r}")
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+@pytest.mark.parametrize("home", METACHAR_HOMES)
+def test_metachar_home_both_parsers(parser, home, tmp_path):
+    """Both parsers build the same pattern Word, so both get the same rule."""
+    command = ("s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
+               "case $s in ~) echo tilde;; *) echo other;; esac; "
+               "case $HOME in ~) echo exact;; *) echo miss;; esac; "
+               "[[ $HOME =~ ~ ]]; echo rc=$?")
+    env = {"HOME": home}
+    bash_dir = tmp_path / "bash"
+    bash_dir.mkdir()
+    bash = run_bash(["-c", command], cwd=str(bash_dir), env=dict(env))
+    assert is_comparable(bash), f"bash harness failure: {bash!r}"
+
+    run = run_psh(["--parser", parser, "-c", command], cwd=str(tmp_path),
+                  env=dict(env))
+    assert is_comparable(run), f"harness failure: {run!r}"
+    assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode), (
+        f"{parser} parser, HOME={home!r}: psh="
+        f"{(run.stdout, run.returncode)!r} "
+        f"bash={(bash.stdout, bash.returncode)!r}")
+
+
+@pytest.mark.parametrize("dirname", ["a*b", "a.b", "a[b]", "a?b", "a(b"])
+def test_tilde_plus_replacement_is_literal(dirname, tmp_path):
+    """``~+`` is ``$PWD``, and an ordinary directory name carries `.` or `[`.
+
+    This is the realistic shape of round-2 B1: no HOME games, just a working
+    directory called ``my.project`` or ``a[1]``.
+    """
+    workdir = tmp_path / dirname
+    workdir.mkdir()
+    command = ("s=$(printf '%s' \"$PWD\" | sed 's/.$/X/'); "
+               "case $s in ~+) echo tilde;; *) echo other;; esac; "
+               "case $PWD in ~+) echo exact;; *) echo miss;; esac; "
+               "[[ $PWD =~ ~+ ]]; echo rc=$?")
+    bash = run_bash(["-c", command], cwd=str(workdir))
+    run = run_psh(["-c", command], cwd=str(workdir))
+    assert is_comparable(bash) and is_comparable(run), (bash, run)
+    assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode), (
+        f"cwd={dirname!r}: psh={(run.stdout, run.returncode)!r} "
+        f"bash={(bash.stdout, bash.returncode)!r}")
+
+
+@pytest.mark.parametrize("home", ["/a[b", "/a(b", "/a)b", "/a*b", "/a+b"])
+def test_regex_operand_replacement_compiles(home, tmp_path):
+    """B2: a metacharacter home must not reach ``re.compile`` as regex source.
+
+    At round-1 tip these were ``psh: [[: invalid regex …``, rc 2, where bash
+    matches with rc 0 — a script that ran silently at base started erroring.
+    """
+    command = '[[ $HOME =~ ~ ]]; echo rc=$?'
+    env = {"HOME": home}
+    bash = run_bash(["-c", command], cwd=str(tmp_path), env=dict(env))
+    run = run_psh(["-c", command], cwd=str(tmp_path), env=dict(env))
+    assert is_comparable(bash) and is_comparable(run), (bash, run)
+    assert run.stdout == "rc=0\n", (home, run.stdout, run.stderr)
+    assert "invalid regex" not in run.stderr, run.stderr
+    assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode)

@@ -18,6 +18,7 @@ from .brace_expansion_words import WordBraceExpander
 from .command_sub import CommandSubstitutionExecutor
 from .glob import GlobExpander
 from .operands import OperandOrStr
+from .pattern_words import expand_pattern_word
 from .subscript import SubscriptEvaluator
 from .tilde import TildeExpander
 from .variable import VariableExpander
@@ -280,7 +281,6 @@ class ExpansionManager:
         ``case`` does not perform process substitution in a pattern, so a
         ``<(cmd)`` part stays its own literal source text.
         """
-        from .pattern_words import expand_pattern_word
         return expand_pattern_word(
             word,
             manager=self,

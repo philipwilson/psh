@@ -39,22 +39,34 @@ def _pattern_words(source_pattern: str):
     return [p.word for p in case_stmt.items[0].patterns]
 
 
+#: Homes whose VALUE carries a pattern metacharacter. Round-1 B1 shipped
+#: because every pin used a metacharacter-free home, so no pin could see
+#: whether the tilde replacement was escaped. bash makes a tilde replacement
+#: LITERAL in a pattern word; these are the values that prove it.
+METACHAR_HOMES = ["/a*b", "/a?b", "/a[b]", "/a.b", "/a(b", "/a)b",
+                  "/a]b", "/a\\b", "/a b"]
+
+
 @pytest.fixture()
 def pat(captured_shell):
     """Expand a source pattern the way ``case`` does, with HOME pinned.
 
     HOME is set on the shell rather than in the script (D14: a script that
     assigns HOME before expanding ``~`` measures the assignment, not the
-    tilde rule).
+    tilde rule). Pass ``home=`` to vary the VALUE — a corpus that never
+    varies it cannot see whether the replacement is escaped (round-1 B1).
     """
     captured_shell.state.set_variable("HOME", HOME)
     manager = captured_shell.expansion_manager
 
-    def expand(source_pattern: str, *, index: int = 0) -> str:
+    def expand(source_pattern: str, *, index: int = 0, home=None,
+               escape=None) -> str:
+        if home is not None:
+            captured_shell.state.set_variable("HOME", home)
         return expand_pattern_word(
             _pattern_words(source_pattern)[index],
             manager=manager,
-            escape=manager.variable_expander.glob_escape,
+            escape=escape or manager.variable_expander.glob_escape,
             procsub_literal=True,
         )
 
@@ -186,6 +198,19 @@ class TestEscapeHookIsTheOnlyLiteralRule:
         assert expand_pattern_word(
             word, manager=manager, escape=re.escape) == f"{HOME}/" + re.escape("a.c")
 
+    @pytest.mark.parametrize("home", METACHAR_HOMES)
+    def test_regex_consumer_escapes_the_tilde_replacement(self, pat, home):
+        """The ``=~`` consumer escapes the replacement with ``re.escape``.
+
+        Round-1 B2: the raw replacement reached ``re.compile`` as regex
+        SOURCE, so ``HOME='/a[b'; [[ '/a[b' =~ ~ ]]`` raised
+        ``invalid regex`` (rc 2) where bash matches (rc 0). One hook, per
+        consumer — never an ad-hoc escape at the call site.
+        """
+        assert pat("~", home=home, escape=re.escape) == re.escape(home)
+        # And it is a VALID regex that matches the home literally.
+        assert re.fullmatch(pat("~", home=home, escape=re.escape), home)
+
 
 class TestOperandSiblingAgrees:
     """The raw-operand sibling (``${var#pat}``) answers the same tilde forms.
@@ -193,7 +218,12 @@ class TestOperandSiblingAgrees:
     ``expansion/operands._expand_pattern_operand`` takes a pattern STRING
     (the parser builds no Word for a ``${var#pat}`` operand), so it cannot
     consume the owner. It must still agree on the tilde rule, which both
-    reach through ``TildeExpander.prefix_end``/``expand``.
+    reach through ``TildeExpander.prefix_end``/``expand_split`` — INCLUDING
+    the escaping of the replacement, which is where round 1 diverged: the
+    sibling glob-escaped its tilde prefix (``operands.py``'s
+    ``_tilde_prefix`` call site) and the owner did not, so a
+    metacharacter-bearing HOME became a live pattern in ``case`` but not in
+    ``${v#~}``. The metacharacter rows below are the cells that discriminate.
     """
 
     @pytest.mark.parametrize("source,expected", [
@@ -207,6 +237,25 @@ class TestOperandSiblingAgrees:
     def test_same_answer_as_the_word_owner(self, pat, captured_shell,
                                            source, expected):
         assert pat(source) == expected
+        operand = captured_shell.expansion_manager.variable_expander
+        assert operand._expand_pattern_operand(source) == expected
+
+    @pytest.mark.parametrize("home", METACHAR_HOMES)
+    @pytest.mark.parametrize("source", ["~", "~/x", "~:x"])
+    def test_metachar_home_is_escaped_by_both(self, pat, captured_shell,
+                                              home, source):
+        """The discriminating cell: the replacement must be LITERAL in both.
+
+        bash: ``HOME='/a*b'; case '/aXb' in ~)`` does NOT match, while
+        ``case '/aXb' in $HOME)`` does — a tilde replacement is quoted in a
+        pattern word, a parameter expansion is not.
+        """
+        captured_shell.state.set_variable("HOME", home)
+        glob_escape = (captured_shell.expansion_manager
+                       .variable_expander.glob_escape)
+        expected = glob_escape(home) + source[1:]
+
+        assert pat(source, home=home) == expected
         operand = captured_shell.expansion_manager.variable_expander
         assert operand._expand_pattern_operand(source) == expected
 
