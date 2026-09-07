@@ -183,6 +183,9 @@ TOUCHED_PREEXISTING = [
 # otherwise flag as undispositioned.
 POST_ENDPOINT_SCANNED: list = [
     "psh/utils/posix_classes.py",   # 5B.1: the shared POSIX class table (data leaf)
+    # slot 1.9 (C020): the one trailing-redirection helper. Parser-only — it
+    # touches a CommandParsers, never a Shell — so it is scanned, not exempted.
+    "psh/parser/combinators/trailing_redirects.py",
 ]
 
 # Modules born after SCOPE_ENDPOINT that are deliberately NOT scanned —

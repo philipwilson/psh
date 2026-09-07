@@ -60,7 +60,9 @@ parser. Parity regression tests (`tests/integration/parser/
 test_combinator_parity_regressions.py` and friends) pin known-good
 behavior against drift, but remaining gaps (e.g. composite words in some
 list contexts, `select` without `in`) are documented rather than tracked
-as defects; reviews should not count them as findings. Revisit if/when
+as defects; reviews should not count them as findings. A gap that makes
+the combinator silently WRONG (rather than merely narrower) is still a
+defect — C020, the dropped trailing redirect below, was one. Revisit if/when
 dedicated time is available.
 
 See [Combinator Parser Guide](../../docs/guides/combinator_parser_guide.md)
@@ -76,6 +78,7 @@ try it interactively.
 | `commands.py` | Simple commands, pipelines, and-or lists, statement lists |
 | `control_structures/` | Package of mixins: `conditionals.py` (if, case), `loops.py` (while, until, for, select), `structures.py` (functions, subshell/brace groups) |
 | `special_commands.py` | `(( ))`, `[[ ]]`, process substitution (NOT arrays — those live in `arrays.py`) |
+| `trailing_redirects.py` | `TrailingRedirectMixin` — the ONE trailing-redirection helper every redirect-bearing production consumes |
 | `utils.py` | Shared combinator helpers |
 | `parser.py` | `ParserCombinatorShellParser` integration class |
 
@@ -90,6 +93,20 @@ recursion *is* the nesting tracker, and a terminator keyword is only ever
 recognised at command-start position (so `while echo do; …` / `if echo then; …`
 treat the keyword-spelled argument as a plain word — matching bash and rd).
 Prefer it over token-slice-and-reparse for any new body or header.
+
+**Trailing redirections have exactly one owner.** Every combinator production
+that builds an AST node with a `redirects` field consumes its trailing
+redirection list through
+`trailing_redirects.py#TrailingRedirectMixin._parse_trailing_redirects` —
+loops, conditionals, subshell/brace groups, function definitions, and (since
+the C020 fix) `(( ))` and `[[ ]]`; there is no
+per-production collection and no `redirects=[]` literal. A production that
+forgets is not a cosmetic AST difference: the statement-list engine above
+absorbs the orphaned redirect as a SECOND statement, dropping both the
+redirection and the compound's exit status, so
+`python -m psh --parser combinator -c 'i=3; while (( i-- )) >/dev/null; do :; done'`
+never terminated. The invariant is guarded for every redirect-bearing AST class
+by `tests/unit/parser/test_combinator_redirect_matrix.py`.
 
 > Note: AST validation/linting/security analysis is performed by the visitor
 > validators in `psh/visitor/` (e.g. `EnhancedValidatorVisitor`), not by the

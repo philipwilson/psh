@@ -17,7 +17,7 @@ from ....lexer.constants import KEYWORDS
 from ....lexer.keyword_defs import matches_keyword
 from ....lexer.token_types import Token
 from ...recursive_descent.helpers import ParseError
-from ..core import Parser, ParseResult, many
+from ..core import Parser, ParseResult
 from ..diagnostics import (
     error_context_for_token,
     is_missing_nested_terminator,
@@ -63,22 +63,6 @@ class StructureParserMixin(_Base):
     # compound command as the body; mirrors the recursive descent parser's
     # parse_compound_command).
     _COMPOUND_BODY_KEYWORDS = ('if', 'while', 'until', 'for', 'case', 'select')
-
-    def _collect_definition_redirects(self, tokens: List[Token], pos: int):
-        """Collect redirections trailing a function body.
-
-        Redirections on the definition (``f() { ...; } > file``) belong to
-        the function and are applied at each call (bash) — same semantics
-        as the recursive descent parser's ``parse_function_def``.
-
-        Returns:
-            Tuple of (redirects list, new position)
-        """
-        # Zero or more redirections trailing the body — a plain ``many``: it
-        # applies ``redirection`` until it stops matching and returns the list
-        # gathered (never failing, so an empty list is a valid parse).
-        result = many(self.commands.redirection).parse(tokens, pos)
-        return list(result.value or []), result.position
 
     def _build_function_name(self) -> Parser[str]:
         """Parse a function name (possibly spanning several adjacent tokens).
@@ -197,7 +181,10 @@ class StructureParserMixin(_Base):
                 return ParseResult(success=False, error=body_result.error, position=body_result.position)
 
             assert body_result.value is not None
-            redirects, end_pos = self._collect_definition_redirects(
+            # Redirections on a definition (``f() { ...; } > file``) belong to
+            # the function and are applied at each call (bash) — same as the
+            # recursive descent parser's ``parse_function_def``.
+            redirects, end_pos = self._parse_trailing_redirects(
                 tokens, body_result.position)
             return ParseResult(
                 success=True,
@@ -235,7 +222,10 @@ class StructureParserMixin(_Base):
                 return ParseResult(success=False, error=body_result.error, position=body_result.position)
 
             assert body_result.value is not None
-            redirects, end_pos = self._collect_definition_redirects(
+            # Redirections on a definition (``f() { ...; } > file``) belong to
+            # the function and are applied at each call (bash) — same as the
+            # recursive descent parser's ``parse_function_def``.
+            redirects, end_pos = self._parse_trailing_redirects(
                 tokens, body_result.position)
             return ParseResult(
                 success=True,
@@ -278,7 +268,10 @@ class StructureParserMixin(_Base):
                 return ParseResult(success=False, error=body_result.error, position=body_result.position)
 
             assert body_result.value is not None
-            redirects, end_pos = self._collect_definition_redirects(
+            # Redirections on a definition (``f() { ...; } > file``) belong to
+            # the function and are applied at each call (bash) — same as the
+            # recursive descent parser's ``parse_function_def``.
+            redirects, end_pos = self._parse_trailing_redirects(
                 tokens, body_result.position)
             return ParseResult(
                 success=True,
