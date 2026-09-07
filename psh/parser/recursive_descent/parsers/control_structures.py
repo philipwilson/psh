@@ -209,8 +209,16 @@ class ControlStructureParser(ParserSubcomponent):
         executor's existing check in ``control_flow.py``). So a quoted or
         expansion-bearing subject (``for "in" ...``, ``for $v ...``,
         ``for $(cmd) ...``) must parse — only a non-word (``for ;``) is a
-        syntax error. The stored variable is the word's exact SOURCE LEXEME
-        so the diagnostic prints the raw spelling, matching bash.
+        syntax error.
+
+        The stored variable is the word's own LEXEME — for an unquoted word,
+        the token's ``value``. ``ctx.source_text`` may only refine the
+        SPELLING of a span that verifiably renders this very token; it can
+        never supply a different NAME. When the header comes from an alias
+        the tokens carry alias-body positions while ``source_text`` is the
+        pre-expansion line, and the raw slice bound the wrong variable
+        (C010). ``token_lexeme`` enforces that — see
+        ``token_types.py#slice_renders_token`` for the reproducing command.
         """
         if not self.parser.match_any(TokenGroups.WORD_LIKE):
             raise self.parser.error(
