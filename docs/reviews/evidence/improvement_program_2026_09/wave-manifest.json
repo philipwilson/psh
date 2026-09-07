@@ -127,7 +127,8 @@
         },
         {
           "id": "1.7",
-          "title": "Alias loop variable"
+          "title": "Alias loop variable",
+          "release": "0.787.0"
         },
         {
           "id": "1.8",
@@ -247,6 +248,23 @@
             "W1-N48"
           ],
           "verification": "r1 (tmp/program-2026-09/verify/slot-1.9.md)"
+        },
+        {
+          "version": "0.787.0",
+          "date": "2026-09-07",
+          "slots": [
+            "1.7"
+          ],
+          "closes": [
+            "C010"
+          ],
+          "registers": [
+            "W1-N44",
+            "W1-N45",
+            "W1-N49",
+            "W1-N50"
+          ],
+          "verification": "r1 (tmp/program-2026-09/verify/slot-1.7.md)"
         }
       ]
     },

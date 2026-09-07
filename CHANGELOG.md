@@ -4,6 +4,33 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.787.0 (2026-09-07) - Alias-supplied loop headers bind the right variable (Improvement Program 2026-09, Wave 1 slot 1.7)
+- P0 WRONG TARGET (C010; slot 1.7): a `for`/`select` header expanded from an
+  alias took its loop variable from a source slice of the PRE-EXPANSION line,
+  so `alias beg='for i in 1 2; do'; beg echo "i=[$i]"; done` silently bound
+  the wrong name and the body saw an empty `$i`, in all three input modes
+  (`beg :; done` also produced a spurious `not a valid identifier`). A
+  semantic name now comes from the token itself; a source span may only
+  refine the spelling of a diagnostic, and only when it verifiably renders
+  that same token (`psh/lexer/token_types.py#slice_renders_token`;
+  `token_lexeme` falls back to the token's own fields otherwise). The heredoc
+  bare-parse delimiter span, the only other slice-derived name in the
+  recursive-descent parser, is gated the same way; the audit found no others.
+  43 pins red on base (30 conformance rows in three modes, 10 golden rows,
+  3 unit assertions); the guard's offender mutation reddens 6.
+- Test repair outside the slot's files: the analysis whole-file parse's
+  "corruption after a heredoc body" was this same mechanism, so
+  `tests/unit/scripting/test_analysis_session.py`'s mutation proof (which had
+  used that corruption as its discriminator) now discriminates on an ordered
+  `shopt -u expand_aliases` change instead, and the heredoc shape joined the
+  parity corpus as a positive row.
+- Ledger: W1-N44 (`for $'if' in …` diagnostics show the raw `$'…'` spelling
+  where bash shows the ANSI-C-processed value re-quoted; wording → 4.5) and
+  W1-N45 (a heredoc operator introduced by an alias is refused with a loud,
+  explanatory error where bash runs it; the referred half of C010 → the
+  alias/heredoc lex seam owner) registered.
+- Verification: round 1 — harm class closed on 62 novel rows × 3 modes; bounced on a one-token discriminator defect in the out-of-slot test repair (format mode never expands aliases) and an unpinned second consumer, both fixed and re-checked; report `tmp/program-2026-09/verify/slot-1.7.md`.
+
 ## 0.786.0 (2026-09-07) - Combinator parser keeps trailing redirects (Improvement Program 2026-09, Wave 1 slot 1.9)
 - P1 WRONG TARGET / lost status (C020; slot 1.9; combinator parser only — the
   recursive-descent parser was already correct): a trailing redirect on
