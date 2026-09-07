@@ -8137,13 +8137,13 @@
   stderr: "too many arguments"
   exit_code: 1
 
-- name: bcontract_exit_bad_first_operand_exits_two
+- name: bcontract_exit_bad_first_operand_continues_two
   command: 'exit abc 7; echo survived'
   stdout: "survived\n"
   stderr: "numeric argument required"
   exit_code: 0
   min_bash: "5.3"
-  description: "W0-N4 CLOSED by slot 2.3 (the row name is the historical 5.2 label, kept so the FLIP-PINS row closes by name): a non-numeric exit operand reports 'numeric argument required', sets $?=2 and CONTINUES on the same line in -c/script/stdin, and a bad FIRST operand is diagnosed before the operand count -- empirical, 5.3.15, no CHANGES item. Parity pin: tests/conformance/bash/test_exit_cd_options_conformance.py::TestExitStatus::test_exit_non_numeric_continues"
+  description: "W0-N4 CLOSED by slot 2.3 (renamed from bcontract_exit_bad_first_operand_exits_two, the historical 5.2 label, on the integrator's round-1 ruling): a non-numeric exit operand reports 'numeric argument required', sets $?=2 and CONTINUES on the same line in -c/script/stdin, and a bad FIRST operand is diagnosed before the operand count -- empirical, 5.3.15, no CHANGES item. Parity pin: tests/conformance/bash/test_exit_cd_options_conformance.py::TestExitStatus::test_exit_non_numeric_continues"
 
 - name: bcontract_break_bad_count_exits_shell_two
   command: 'for i in 1; do break abc; done; echo survived'

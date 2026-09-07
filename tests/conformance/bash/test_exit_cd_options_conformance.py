@@ -224,7 +224,8 @@ class TestExitStatus(ConformanceTest):
         ``exit abc`` prints "exit: abc: numeric argument required", sets ``$?``
         to 2 and CONTINUES with the next command ON THE SAME LINE, in every
         input mode (empirical, 5.3.15; the 5.2 series exited 2).  The second
-        row is the shape of golden ``bcontract_exit_bad_first_operand_exits_two``
+        row is the shape of golden
+        ``bcontract_exit_bad_first_operand_continues_two``
         and also pins the operand ORDER: a bad first operand is diagnosed
         before the operand count, so ``exit abc 7`` is NOT "too many
         arguments".
