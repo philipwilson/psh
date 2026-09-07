@@ -488,6 +488,17 @@ def meta_for(owner):
     return ('—', '—')
 
 
+# Closures recorded by the integrator at each release (D10: the pin must exist in tests/).
+# cid -> (release, closure note).  A closed row keeps its derived owner.
+CLOSURES = {
+    'C032': ('v0.781.0', 'slot 1.2: `_swap_closed_output_streams` installs `_RawFdStream`; pins `tests/integration/redirection/test_close_then_reopen_c032.py`, `tests/unit/io_redirect/test_close_reopen_stream_shapes_c032.py`, `tests/conformance/bash/test_close_then_reopen_conformance.py`, golden `c032_*`; verify round 1 PASS'),
+}
+# G-id -> (release, closure note) for the Part B gate nodes.
+GATE_CLOSURES = {
+    'C032': ('v0.781.0', 'slot 1.2: `_swap_closed_output_streams` installs `_RawFdStream`; pins `tests/integration/redirection/test_close_then_reopen_c032.py`, `tests/unit/io_redirect/test_close_reopen_stream_shapes_c032.py`, `tests/conformance/bash/test_close_then_reopen_conformance.py`, golden `c032_*`; verify round 1 PASS'),
+}
+
+
 def part_a(rows, slots, heading_owner, owned, r_cids, park, excluded):
     out = ['| id | title | sev / kind | status | owner slot | owner symbol | guard | closure |',
            '|---|---|---|---|---|---|---|---|']
@@ -503,9 +514,14 @@ def part_a(rows, slots, heading_owner, owned, r_cids, park, excluded):
             status = 'oracle_changed → closed by 0.2 (R-C181)'
         elif r['cid'] == 'C169':
             status = 'n/a → already gone (R-C169)'
-        out.append('| {} | {} | {} {} | {} | {} | {} | {} |  |'.format(
+        closure = ''
+        if r['cid'] in CLOSURES:
+            rel, note = CLOSURES[r['cid']]
+            status = '{} → closed {}'.format(status, rel)
+            closure = note
+        out.append('| {} | {} | {} {} | {} | {} | {} | {} | {} |'.format(
             r['cid'], esc(short(r['title'])), r['severity'], r['kind'], esc(status),
-            esc(owner), esc(sym), esc(guard)))
+            esc(owner), esc(sym), esc(guard), esc(closure)))
     return '\n'.join(out), derived
 
 
@@ -525,8 +541,14 @@ def part_b(nodes):
         slot, sym, guard = hit
         routes[slot] += 1
         short_node = nid.replace('tests/', '', 1)
-        out.append('| G{:02d} | `{}` | {} / {} | RED @6459f1a6 | {} | {} | {} |  |'.format(
-            k, esc(short_node), n['category'], n['effort'], slot, esc(sym), esc(guard)))
+        gid = 'G{:02d}'.format(k)
+        gstatus, closure = 'RED @6459f1a6', ''
+        if gid in GATE_CLOSURES:
+            rel, note = GATE_CLOSURES[gid]
+            gstatus, closure = 'RED @6459f1a6 → closed {}'.format(rel), note
+        out.append('| {} | `{}` | {} / {} | {} | {} | {} | {} | {} |'.format(
+            gid, esc(short_node), n['category'], n['effort'], gstatus, slot, esc(sym), esc(guard),
+            esc(closure)))
     return '\n'.join(out), routes
 
 

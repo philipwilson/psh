@@ -10916,3 +10916,148 @@
   stdout: "n\nh\nrc=0\nrc=0\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# CLOSE-THEN-REOPEN IN A PER-COMMAND REDIRECT LIST (C032, slot 1.2)
+#
+# The fd universe applies a redirect list in source order, so `1>&- 1>f` leaves
+# fd 1 OPEN on `f`.  The stream half of the close (installed by an UNORDERED
+# list-wide scan, after the fact) must follow the fd NUMBER and let that
+# settled state decide.  psh installed an opaque always-EBADF stream instead,
+# severing the reopen and losing the body's output in EVERY in-process compound
+# (silent data loss).  EBADF is correct only when the fd is still closed at the
+# END of the list.  Verified against bash 5.3.15.
+# =============================================================================
+
+- name: c032_brace_close_then_reopen_file
+  description: "C032: { echo hi; } 1>&- 1>f -- the later reopen wins, f gets the body's output"
+  command: '{ echo hi; } 1>&- 1>f; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_function_close_then_reopen_file
+  description: "C032: a function body's output reaches the fd reopened after 1>&-"
+  command: 'g() { echo hi; }; g 1>&- 1>f; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_if_close_then_reopen_file
+  description: "C032: if-compound close-then-reopen of fd 1"
+  command: 'if true; then echo hi; fi 1>&- 1>f; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_while_close_then_reopen_file
+  description: "C032: while-loop close-then-reopen of fd 1"
+  command: 'i=0; while [ $i -lt 1 ]; do echo hi; i=1; done 1>&- 1>f; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_until_close_then_reopen_file
+  description: "C032: until-loop close-then-reopen of fd 1"
+  command: 'i=0; until [ $i -gt 0 ]; do echo hi; i=1; done 1>&- 1>f; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_for_close_then_reopen_file
+  description: "C032: for-loop close-then-reopen of fd 1"
+  command: 'for x in 1; do echo hi; done 1>&- 1>f; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_case_close_then_reopen_file
+  description: "C032: case-compound close-then-reopen of fd 1"
+  command: 'case x in x) echo hi;; esac 1>&- 1>f; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_nested_brace_close_then_reopen
+  description: "C032: the inner brace group's own list closes and reopens fd 1"
+  command: '{ { echo hi; } 1>&- 1>f; }; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_close_then_reopen_append
+  description: "C032: the reopen may be an append (1>>f), not only a truncating open"
+  command: 'printf "old\n" > f; { echo hi; } 1>&- 1>>f; cat f'
+  stdout: "old\nhi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_close_then_dup_fd1_from_fd2
+  description: "C032: close fd 1 then dup it from fd 2 -- the body follows fd 2's target"
+  command: '{ echo hi; } 2>f 1>&- 1>&2; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_fd2_close_then_reopen_keeps_diagnostic
+  description: "C032: a builtin's own diagnostic reaches fd 2's reopened target (cd's message is not lost)"
+  command: '{ cd /nonexistent_zz; } 2>&- 2>f; grep -c nonexistent_zz f'
+  stdout: "1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_both_fds_closed_then_reopened
+  description: "C032: one list closing and reopening BOTH fd 1 and fd 2"
+  command: '{ echo out; echo err >&2; } 1>&- 2>&- 1>o 2>e; cat o; cat e'
+  stdout: "out\nerr\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_external_command_close_then_reopen
+  description: "C032: an external command in the body also lands in the reopened file"
+  command: '{ /bin/echo hi; } 1>&- 1>f; cat f'
+  stdout: "hi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_body_open_cannot_steal_reopened_fd1
+  description: "C032: a body redirect that opens a file must not capture the reopened low fd 1"
+  command: 'printf "L\n" > src; { read v < src; echo "got=$v"; } 1>&- 1>f; cat f'
+  stdout: "got=L\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_reverse_order_still_bad_fd
+  description: "C032 control: reopen THEN close leaves fd 1 dead at the END of the list -- EBADF, rc 1, file empty"
+  command: '{ echo hi; } 1>f 1>&- 2>/dev/null; rc=$?; if [ -s f ]; then echo "rc=$rc nonempty"; else echo "rc=$rc empty"; fi'
+  stdout: "rc=1 empty\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_close_only_still_bad_fd
+  description: "C032 control: a close with no reopen still fails the builtin's write with EBADF"
+  command: '{ echo hi; } 1>&- 2>/dev/null; echo "rc=$?"'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_close_reopen_close_still_bad_fd
+  description: "C032 control: close, reopen, close again -- the LAST state of fd 1 decides, so EBADF"
+  command: '{ echo hi; } 1>&- 1>f 1>&- 2>/dev/null; rc=$?; if [ -s f ]; then echo "rc=$rc nonempty"; else echo "rc=$rc empty"; fi'
+  stdout: "rc=1 empty\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_stdout_restored_after_reopen
+  description: "C032: after the compound, the displaced stdout stream is back -- echo after reaches the real stdout"
+  command: '{ echo hi; } 1>&- 1>f; echo after; cat f'
+  stdout: "after\nhi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c032_two_compounds_in_a_row
+  description: "C032: consecutive close-then-reopen compounds each write their own file; the restore is not stale"
+  command: '{ echo one; } 1>&- 1>f1; { echo two; } 1>&- 1>f2; echo three; cat f1 f2'
+  stdout: "three\none\ntwo\n"
+  stderr: ""
+  exit_code: 0

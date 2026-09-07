@@ -21,9 +21,19 @@
     "contract": "major.minor 5.3 (patch bump allowed and logged; D1)"
   },
   "authorization": {
-    "authorized": ["0", "1", "2", "3"],
+    "authorized": [
+      "0",
+      "1",
+      "2",
+      "3"
+    ],
     "mandatory_checkpoint": "R",
-    "provisional": ["4", "5", "6", "C"],
+    "provisional": [
+      "4",
+      "5",
+      "6",
+      "C"
+    ],
     "note": "Waves 4-6 are re-authorized and re-estimated from the Checkpoint R tree; their slot briefs are sketches until then (program §5)."
   },
   "rulings": {
@@ -37,43 +47,151 @@
     {
       "id": "0",
       "title": "Oracle identity, green gate, green nightly",
-      "status": "in-progress",
+      "status": "shipped",
       "branch": "fix/wave0-oracle-5.3",
       "release_plan": "ONE release (v0.780.0) at the 0.3 tree; 0.1/0.2/0.3 are commit boundaries",
       "slots": [
-        {"id": "0.1", "title": "Oracle identity, evidence bootstrap, ENV hardening, PREMISE/FORMAT S-edits, nightly pin", "status": "in-progress"},
-        {"id": "0.2", "title": "Presentation retunes to bash 5.3", "status": "planned"},
-        {"id": "0.3", "title": "Status retunes + declared-divergence flip-pins", "status": "planned"}
+        {
+          "id": "0.1",
+          "title": "Oracle identity, evidence bootstrap, ENV hardening, PREMISE/FORMAT S-edits, nightly pin",
+          "status": "in-progress"
+        },
+        {
+          "id": "0.2",
+          "title": "Presentation retunes to bash 5.3",
+          "status": "planned"
+        },
+        {
+          "id": "0.3",
+          "title": "Status retunes + declared-divergence flip-pins",
+          "status": "planned"
+        }
       ],
-      "releases": []
+      "releases": [
+        {
+          "version": "0.780.0",
+          "date": "2026-09-07",
+          "slots": [
+            "0.1",
+            "0.2",
+            "0.3"
+          ],
+          "merge_commit": "ccc0e694",
+          "closes": [
+            "C241",
+            "C242",
+            "C243",
+            "C245",
+            "C181",
+            "C169"
+          ],
+          "note": "Wave 0 shipped as ONE release (§6); tag v0.780.0"
+        }
+      ]
     },
     {
       "id": "1",
       "title": "Silent data loss and wrong-target",
-      "status": "planned",
+      "status": "in progress",
       "slots": [
-        {"id": "1.0", "title": "Write-authority matrix"},
-        {"id": "1.1", "title": "Pipeline-member one-shot"},
-        {"id": "1.2", "title": "Close-then-reopen"},
-        {"id": "1.3", "title": "Plan once"},
-        {"id": "1.4", "title": "cd destination rule"},
-        {"id": "1.5", "title": "PATH effective-binding observer"},
-        {"id": "1.6", "title": "Executable round-trip"},
-        {"id": "1.7", "title": "Alias loop variable"},
-        {"id": "1.8", "title": "Lexer word-start authority"},
-        {"id": "1.9", "title": "Combinator trailing redirects"},
-        {"id": "1.10", "title": "noexec per statement + bare-cmdsub status"},
-        {"id": "1.11", "title": "Pattern words"},
-        {"id": "1.12", "title": "Async stdin"},
-        {"id": "1.13", "title": "Process-substitution lifetime"},
-        {"id": "1.14", "title": "legal_number"},
-        {"id": "1.15", "title": "Lookup truth"},
-        {"id": "1.16", "title": "allexport at the write site"},
-        {"id": "1.17", "title": "mapfile preflight"},
-        {"id": "1.18", "title": "Array write invariants"},
-        {"id": "1.19", "title": "Expansion field integrity"}
+        {
+          "id": "1.0",
+          "title": "Write-authority matrix"
+        },
+        {
+          "id": "1.1",
+          "title": "Pipeline-member one-shot"
+        },
+        {
+          "id": "1.2",
+          "title": "Close-then-reopen",
+          "release": "0.781.0"
+        },
+        {
+          "id": "1.3",
+          "title": "Plan once"
+        },
+        {
+          "id": "1.4",
+          "title": "cd destination rule"
+        },
+        {
+          "id": "1.5",
+          "title": "PATH effective-binding observer"
+        },
+        {
+          "id": "1.6",
+          "title": "Executable round-trip"
+        },
+        {
+          "id": "1.7",
+          "title": "Alias loop variable"
+        },
+        {
+          "id": "1.8",
+          "title": "Lexer word-start authority"
+        },
+        {
+          "id": "1.9",
+          "title": "Combinator trailing redirects"
+        },
+        {
+          "id": "1.10",
+          "title": "noexec per statement + bare-cmdsub status"
+        },
+        {
+          "id": "1.11",
+          "title": "Pattern words"
+        },
+        {
+          "id": "1.12",
+          "title": "Async stdin"
+        },
+        {
+          "id": "1.13",
+          "title": "Process-substitution lifetime"
+        },
+        {
+          "id": "1.14",
+          "title": "legal_number"
+        },
+        {
+          "id": "1.15",
+          "title": "Lookup truth"
+        },
+        {
+          "id": "1.16",
+          "title": "allexport at the write site"
+        },
+        {
+          "id": "1.17",
+          "title": "mapfile preflight"
+        },
+        {
+          "id": "1.18",
+          "title": "Array write invariants"
+        },
+        {
+          "id": "1.19",
+          "title": "Expansion field integrity"
+        }
       ],
-      "releases": []
+      "releases": [
+        {
+          "version": "0.781.0",
+          "date": "2026-09-07",
+          "slots": [
+            "1.2"
+          ],
+          "closes": [
+            "C032"
+          ],
+          "registers": [
+            "W1-N6"
+          ],
+          "verification": "round 1 PASS (tmp/program-2026-09/verify/slot-1.2.md)"
+        }
+      ]
     },
     {
       "id": "2",
@@ -81,10 +199,22 @@
       "status": "planned",
       "merge_train_order": "opens with Wave 1; 2.3 before 1.4; 2.4 before 1.5/1.16/1.18; 2.1 before 1.14; 2.2 before 1.16; closes before Wave 3",
       "slots": [
-        {"id": "2.1", "title": "Trap entry status"},
-        {"id": "2.2", "title": "POSIX special-builtin exits + eval/dot boundary"},
-        {"id": "2.3", "title": "Usage-error status family"},
-        {"id": "2.4", "title": "Readonly attribute refusal"}
+        {
+          "id": "2.1",
+          "title": "Trap entry status"
+        },
+        {
+          "id": "2.2",
+          "title": "POSIX special-builtin exits + eval/dot boundary"
+        },
+        {
+          "id": "2.3",
+          "title": "Usage-error status family"
+        },
+        {
+          "id": "2.4",
+          "title": "Readonly attribute refusal"
+        }
       ],
       "releases": []
     },
@@ -93,15 +223,42 @@
       "title": "Crashes, internal defects, stream corruption, security",
       "status": "planned",
       "slots": [
-        {"id": "3.1", "title": "Escape decoder"},
-        {"id": "3.2", "title": "Lexer no-progress"},
-        {"id": "3.3", "title": "fd > INT_MAX io guards"},
-        {"id": "3.4", "title": "Extent authority (three releases a/b/c)"},
-        {"id": "3.5", "title": "Combinator internal errors"},
-        {"id": "3.6", "title": "OSC-0 sanitization (SECURITY)"},
-        {"id": "3.7", "title": "Fault-path integrity"},
-        {"id": "3.8", "title": "read with fd 0 closed at startup (W0-N1)"},
-        {"id": "3.9", "title": "Terminal control in a nested pipeline subshell"}
+        {
+          "id": "3.1",
+          "title": "Escape decoder"
+        },
+        {
+          "id": "3.2",
+          "title": "Lexer no-progress"
+        },
+        {
+          "id": "3.3",
+          "title": "fd > INT_MAX io guards"
+        },
+        {
+          "id": "3.4",
+          "title": "Extent authority (three releases a/b/c)"
+        },
+        {
+          "id": "3.5",
+          "title": "Combinator internal errors"
+        },
+        {
+          "id": "3.6",
+          "title": "OSC-0 sanitization (SECURITY)"
+        },
+        {
+          "id": "3.7",
+          "title": "Fault-path integrity"
+        },
+        {
+          "id": "3.8",
+          "title": "read with fd 0 closed at startup (W0-N1)"
+        },
+        {
+          "id": "3.9",
+          "title": "Terminal control in a nested pipeline subshell"
+        }
       ],
       "releases": []
     },
@@ -110,7 +267,13 @@
       "title": "Whole-tree checkpoint (MANDATORY, at the close of Wave 3)",
       "status": "planned",
       "slots": [],
-      "coverage_scopes": ["C167", "C189", "C192", "C193", "C215"],
+      "coverage_scopes": [
+        "C167",
+        "C189",
+        "C192",
+        "C193",
+        "C215"
+      ],
       "releases": []
     },
     {
@@ -118,30 +281,102 @@
       "title": "Conformance (provisional)",
       "status": "planned",
       "slots": [
-        {"id": "4.1", "title": "Word-list loops"},
-        {"id": "4.2", "title": "Array-initializer recognition + CommandHead"},
-        {"id": "4.3", "title": "Error-prefix route"},
-        {"id": "4.4", "title": "Line map + nested coordinates"},
-        {"id": "4.5", "title": "Diagnostic vocabulary"},
-        {"id": "4.6", "title": "Regex diagnostic (W0-N3)"},
-        {"id": "4.7", "title": "Option walker + usage shape"},
-        {"id": "4.8", "title": "Builtin status/message rows"},
-        {"id": "4.9", "title": "Lookup truth residue"},
-        {"id": "4.10", "title": "Option-cluster grammar"},
-        {"id": "4.11", "title": "posix VAR=v exec + select"},
-        {"id": "4.12", "title": "Job text from source extents"},
-        {"id": "4.13", "title": "wait/signal bookkeeping"},
-        {"id": "4.14", "title": "Named-fd/move-form redirects"},
-        {"id": "4.15", "title": "Combinator parity"},
-        {"id": "4.16", "title": "Analysis visitors"},
-        {"id": "4.17", "title": "Debug renderers"},
-        {"id": "4.18", "title": "History"},
-        {"id": "4.19", "title": "Completion context"},
-        {"id": "4.20", "title": "Keybinding table + prompt"},
-        {"id": "4.21", "title": "Incremental decoder + columns"},
-        {"id": "4.22", "title": "cat << classification"},
-        {"id": "4.23", "title": "-i with piped stdin"},
-        {"id": "4.24", "title": "\\# command number (C153; R-C153 rule: one increment per top-level command read from the main input, -c strings never, nested reads never)"}
+        {
+          "id": "4.1",
+          "title": "Word-list loops"
+        },
+        {
+          "id": "4.2",
+          "title": "Array-initializer recognition + CommandHead"
+        },
+        {
+          "id": "4.3",
+          "title": "Error-prefix route"
+        },
+        {
+          "id": "4.4",
+          "title": "Line map + nested coordinates"
+        },
+        {
+          "id": "4.5",
+          "title": "Diagnostic vocabulary"
+        },
+        {
+          "id": "4.6",
+          "title": "Regex diagnostic (W0-N3)"
+        },
+        {
+          "id": "4.7",
+          "title": "Option walker + usage shape"
+        },
+        {
+          "id": "4.8",
+          "title": "Builtin status/message rows"
+        },
+        {
+          "id": "4.9",
+          "title": "Lookup truth residue"
+        },
+        {
+          "id": "4.10",
+          "title": "Option-cluster grammar"
+        },
+        {
+          "id": "4.11",
+          "title": "posix VAR=v exec + select"
+        },
+        {
+          "id": "4.12",
+          "title": "Job text from source extents"
+        },
+        {
+          "id": "4.13",
+          "title": "wait/signal bookkeeping"
+        },
+        {
+          "id": "4.14",
+          "title": "Named-fd/move-form redirects"
+        },
+        {
+          "id": "4.15",
+          "title": "Combinator parity"
+        },
+        {
+          "id": "4.16",
+          "title": "Analysis visitors"
+        },
+        {
+          "id": "4.17",
+          "title": "Debug renderers"
+        },
+        {
+          "id": "4.18",
+          "title": "History"
+        },
+        {
+          "id": "4.19",
+          "title": "Completion context"
+        },
+        {
+          "id": "4.20",
+          "title": "Keybinding table + prompt"
+        },
+        {
+          "id": "4.21",
+          "title": "Incremental decoder + columns"
+        },
+        {
+          "id": "4.22",
+          "title": "cat << classification"
+        },
+        {
+          "id": "4.23",
+          "title": "-i with piped stdin"
+        },
+        {
+          "id": "4.24",
+          "title": "\\# command number (C153; R-C153 rule: one increment per top-level command read from the main input, -c strings never, nested reads never)"
+        }
       ],
       "releases": []
     },
@@ -150,12 +385,30 @@
       "title": "Measured performance (provisional)",
       "status": "planned",
       "slots": [
-        {"id": "5.1", "title": "Lexer hot path"},
-        {"id": "5.2", "title": "Heredoc re-lex"},
-        {"id": "5.3", "title": "Combinator retry deletion"},
-        {"id": "5.4", "title": "Operand builder"},
-        {"id": "5.5", "title": "Core/startup/input"},
-        {"id": "5.6", "title": "Incremental mapfile"}
+        {
+          "id": "5.1",
+          "title": "Lexer hot path"
+        },
+        {
+          "id": "5.2",
+          "title": "Heredoc re-lex"
+        },
+        {
+          "id": "5.3",
+          "title": "Combinator retry deletion"
+        },
+        {
+          "id": "5.4",
+          "title": "Operand builder"
+        },
+        {
+          "id": "5.5",
+          "title": "Core/startup/input"
+        },
+        {
+          "id": "5.6",
+          "title": "Incremental mapfile"
+        }
       ],
       "releases": []
     },
@@ -164,11 +417,26 @@
       "title": "Design and textbook (provisional)",
       "status": "planned",
       "slots": [
-        {"id": "6.1", "title": "Theme guards"},
-        {"id": "6.2", "title": "Dead-code deletions"},
-        {"id": "6.3", "title": "Comment/doc hygiene + drift-locks"},
-        {"id": "6.4", "title": "Structural, bounded"},
-        {"id": "6.5", "title": "Test-shape audit"}
+        {
+          "id": "6.1",
+          "title": "Theme guards"
+        },
+        {
+          "id": "6.2",
+          "title": "Dead-code deletions"
+        },
+        {
+          "id": "6.3",
+          "title": "Comment/doc hygiene + drift-locks"
+        },
+        {
+          "id": "6.4",
+          "title": "Structural, bounded"
+        },
+        {
+          "id": "6.5",
+          "title": "Test-shape audit"
+        }
       ],
       "releases": []
     },

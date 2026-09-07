@@ -4,6 +4,29 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.781.0 (2026-09-07) - Close-then-reopen in compounds (Improvement Program 2026-09, Wave 1 slot 1.2)
+- P1 SILENT DATA LOSS (C032): a per-command redirect list that closed and then
+  REOPENED fd 1 or 2 wrote nothing in every in-process compound —
+  `{ echo hi; } 1>&- 1>f` left `f` empty with `write error: Bad file
+  descriptor` (bash: rc 0, `f` = `hi`); the function, `if`, `while`, `until`,
+  `for` and `case` forms, both fds (`{ cd /nonexistent; } 2>&- 2>f` lost cd's
+  diagnostic) and the dup spellings (`1>&- 1>&2`) were all affected. The fd
+  universe applied the list in order, but the stream half was installed by an
+  UNORDERED scan that put an opaque always-EBADF stream over `sys.stdout` for
+  ANY close in the list. `IOManager._swap_closed_output_streams` now installs
+  the fd-number-following `_RawFdStream` and lets the settled fd universe
+  decide: EBADF only when the fd is still closed at the END of the list
+  (`{ echo hi; } 1>f 1>&-` still fails, as in bash). `_ClosedStream` stays for
+  the two SOURCE-ORDERED sites where it is correct; the four docstrings stating
+  the falsified premise were rewritten. 110 pins red on base: 75 three-mode
+  integration rows asserting file bytes, a 16-shape stream guard with a
+  committed synthetic offender, 35 conformance rows, 19 golden rows.
+- User guide §17: the "buffered diagnostics across a stderr close+reopen"
+  divergence also has a per-command spelling (`{ cd /nonexistent; } 2>&-`
+  loses the undeliverable diagnostic that bash's stdio buffer flushes after the
+  restore); command OUTPUT is not affected. Ledger W1-N6 (declared, no flip).
+- Verification: adversarial round 1 PASS (63 novel rows × 3 modes + 20 builtin-body rows + 11 combinator rows bash-identical; 800-region leak audit clean; owner-line mutation reproduces the base counts); report `tmp/program-2026-09/verify/slot-1.2.md` summarised here.
+
 ## 0.780.0 (2026-09-06) - bash 5.3.15 oracle adoption + green gate (Improvement Program 2026-09, Wave 0)
 - Oracle contract (program D1): the differential tests are pinned to bash
   major.minor 5.3 (`tests/harness/oracle_policy.py`, `EXPECTED_BASH_MM`);

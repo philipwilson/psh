@@ -708,6 +708,21 @@ psh writes diagnostics straight to the descriptor, so a message that cannot be
 delivered (the fd is closed) is simply lost rather than re-emitted onto whatever
 later reuses that descriptor. Normal command output never leaks in either shell.
 
+The same divergence applies to a *per-command* close, where the reopen is the
+shell's own restore at the end of the redirected region:
+
+```bash
+{ cd /nonexistent_zz; } 2>&-; echo end >&2
+# bash stderr:  end<newline>bash: line 1: cd: /nonexistent_zz: No such file or directory
+# psh  stderr:  end
+```
+
+Both shells fail the `cd` with status 1 and both restore stderr afterwards; only
+the undeliverable message differs. Command *output* is not affected — a
+per-command list that closes and then reopens the descriptor delivers the body's
+output to the reopened target in both shells (`{ echo hi; } 1>&- 1>f` writes
+`hi` into `f`).
+
 ### Script on Standard Input
 
 When psh reads its script from standard input — `cmds | psh`, `psh < file`, or
