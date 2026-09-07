@@ -98,11 +98,11 @@ _LINES = [
 ]
 
 
-@pytest.mark.parametrize("shell", ["bash", "psh"])
+@pytest.mark.parametrize("shell", ["oracle", "psh"])
 def test_interactive_shell_ignores_noexec(shell, tmp_path):
     cwd = tmp_path / shell
     cwd.mkdir()
-    if shell == "bash":
+    if shell == "oracle":
         child = _spawn([_ORACLE.path, "--norc", "-i"], cwd)
     else:
         child = _spawn([sys.executable, "-u", "-m", "psh", "--norc",
@@ -130,13 +130,13 @@ def test_interactive_shell_ignores_noexec(shell, tmp_path):
     assert "Traceback (most recent call last)" not in transcript
 
 
-@pytest.mark.parametrize("shell", ["bash", "psh"])
+@pytest.mark.parametrize("shell", ["oracle", "psh"])
 def test_the_command_line_flag_is_still_honoured(shell, tmp_path):
     """The control: `-i -n` executes nothing in BOTH shells. bash parses
     invocation flags before it decides the shell is interactive."""
     cwd = tmp_path / f"flag-{shell}"
     cwd.mkdir()
-    if shell == "bash":
+    if shell == "oracle":
         argv = [_ORACLE.path, "--norc", "-i", "-n"]
     else:
         argv = [sys.executable, "-u", "-m", "psh", "--norc",
