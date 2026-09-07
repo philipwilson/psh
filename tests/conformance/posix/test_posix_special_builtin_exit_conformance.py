@@ -49,7 +49,8 @@ from divergence_pins import MODES, run_in_mode
 from shell_oracle import is_comparable, run_bash, run_psh
 
 
-def _assert_parity(command, *, tmp_path, stdout, status, diagnoses=True):
+def _assert_parity(command, *, tmp_path, stdout, status, diagnoses=True,
+                   diag_lines=None):
     """Equality pin for one command in -c, script-file and stdin modes (D6).
 
     Flipped from a slot-2.2 declared divergence, so it keeps the three-mode
@@ -58,6 +59,14 @@ def _assert_parity(command, *, tmp_path, stdout, status, diagnoses=True):
     two shells) keeps an oracle that stopped exiting here visible as oracle
     drift instead of silently agreeing with a psh regression.  stderr is
     compared by PRESENCE (shell-name prefixes and wording differ).
+
+    ``diag_lines`` additionally pins HOW MANY diagnostic lines each shell
+    prints.  Exit rows need it: the operand-loop rule ("export stops at the
+    first bad identifier" vs "unset diagnoses every operand") is invisible in
+    (stdout, status), because the diagnostics go to stderr and the exit
+    status is 1 either way.  Only rows whose wording already matches
+    line-for-line can use it — an invalid-OPTION row cannot, since bash adds
+    a usage line psh does not print (the separate C200 family).
     """
     for mode in MODES:
         b = run_in_mode(run_bash, mode, command, tmp_path, "oracle")
@@ -74,6 +83,12 @@ def _assert_parity(command, *, tmp_path, stdout, status, diagnoses=True):
         assert bool(b.stderr) is diagnoses and bool(p.stderr) is diagnoses, (
             f"[{mode}] stderr presence for {command!r}: "
             f"bash={b.stderr!r} psh={p.stderr!r}")
+        if diag_lines is not None:
+            counts = (len(b.stderr.splitlines()), len(p.stderr.splitlines()))
+            assert counts == (diag_lines, diag_lines), (
+                f"[{mode}] diagnostic-line count for {command!r}: "
+                f"bash={counts[0]} psh={counts[1]}, expected {diag_lines}\n"
+                f"  bash stderr: {b.stderr!r}\n  psh stderr: {p.stderr!r}")
 
 
 class _StatusConformance(ConformanceTest):
@@ -162,11 +177,11 @@ class TestPosixSpecialBuiltinExitParity:
 
     def test_export_bad_identifier_exits_in_posix(self, tmp_path):
         _assert_parity("set -o posix; export 1bad=x; echo rc=$?",
-                       stdout="", status=1, tmp_path=tmp_path)
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
 
     def test_readonly_bad_identifier_exits_in_posix(self, tmp_path):
         _assert_parity("set -o posix; readonly 1bad=x; echo rc=$?",
-                       stdout="", status=1, tmp_path=tmp_path)
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
 
     def test_readonly_bare_bad_identifier_exits_in_posix(self, tmp_path):
         _assert_parity("set -o posix; readonly 1bad; echo rc=$?",
@@ -174,14 +189,14 @@ class TestPosixSpecialBuiltinExitParity:
 
     def test_unset_readonly_exits_in_posix(self, tmp_path):
         _assert_parity("set -o posix; readonly r=1; unset r; echo rc=$?",
-                       stdout="", status=1, tmp_path=tmp_path)
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
 
     def test_unset_readonly_function_exits_in_posix(self, tmp_path):
         # W0-N25.  The wording halves also agree now: both shells say
         # "unset: f: cannot unset: readonly function".
         _assert_parity(
             "set -o posix; f() { :; }; readonly -f f; unset -f f; echo rc=$?",
-            stdout="", status=1, tmp_path=tmp_path)
+            stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
 
     def test_unset_readonly_array_element_exits_in_posix(self, tmp_path):
         _assert_parity(
@@ -199,14 +214,20 @@ class TestPosixSpecialBuiltinExitParity:
     def test_export_stops_at_first_bad_identifier(self, tmp_path):
         # ONE diagnostic, then the exit: the second operand is never reached.
         _assert_parity("set -o posix; export 1bad=x 2bad=y; echo survived",
-                       stdout="", status=1, tmp_path=tmp_path)
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    def test_unset_f_reports_every_readonly_function_then_exits(self, tmp_path):
+        _assert_parity(
+            "set -o posix; f() { :; }; g() { :; }; readonly -f f g; "
+            "unset -f f g; echo survived",
+            stdout="", status=1, diag_lines=2, tmp_path=tmp_path)
 
     def test_unset_reports_every_readonly_operand_then_exits(self, tmp_path):
         # unset is NOT in the stop-at-first class: both operands are
         # diagnosed and the exit happens after the loop.
         _assert_parity(
             "set -o posix; readonly r=1 s=2; unset r s; echo survived",
-            stdout="", status=1, tmp_path=tmp_path)
+            stdout="", status=1, diag_lines=2, tmp_path=tmp_path)
 
     # -- the exit is suppressible by a guard OUTSIDE an eval/dot boundary --
 
