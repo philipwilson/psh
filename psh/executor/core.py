@@ -187,8 +187,10 @@ class ExecutorVisitor(ASTVisitor[int]):
                 # the next input unit. Repro (C040):
                 #   psh -c 'echo before; set -n; touch marker; echo after'
                 # prints only `before` and leaves no marker (bash 5.3.15).
-                # An INTERACTIVE shell never gets here: bash refuses to turn
-                # noexec on at all at a prompt (see apply_set_o_option).
+                # A shell at a PROMPT reaches this only via the command
+                # line (`psh -i -n`, which bash also honours): a runtime
+                # `set -n` there is refused outright, so the option never
+                # turns on (see apply_set_o_option).
                 exit_status = 0
                 break
             try:
