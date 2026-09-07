@@ -237,6 +237,9 @@ module = [
     "psh.scripting.program_source",
     # --- joined in Improvement Program 2026-09 slot 1.9 (C020).
     "psh.parser.combinators.trailing_redirects",
+    # --- joined in Improvement Program 2026-09 slot 1.12 (C022): the fd-0
+    # binding, born fully typed.
+    "psh.core.stdin_binding",
 ]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true

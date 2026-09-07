@@ -244,7 +244,7 @@ def test_background_child_writes_what_it_read(shape, script, payload_id,
     for mode in MODES:
         b, p = _both(script, mode, tmp_path, env={"DATA": payload})
         assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (b, p)
-        for label, cwd in (("bash", tmp_path / f"bash-{mode}"),
+        for label, cwd in (("oracle", tmp_path / f"bash-{mode}"),
                            ("psh", tmp_path / f"psh-{mode}")):
             got = (cwd / "got").read_text()
             assert got == payload, (
@@ -295,10 +295,11 @@ def test_devnull_default_still_applies(shape, script, expected, tmp_path):
 def test_shell_own_piped_stdin_is_not_a_frame_input(tmp_path):
     """C022: the SHELL's own stdin being a pipe does not count as inherited.
 
-    ``printf ... | bash -c 'cat & wait'`` — fd 0 is a pipe, but no frame INSIDE
-    the shell supplied it, so bash 5.3.15 still applies the POSIX ``/dev/null``
-    and the background reader prints nothing. This is the case the rule's name
-    could mislead on: it is "no frame supplied fd 0", not "fd 0 is a pipe".
+    With the shell's OWN stdin a pipe (``printf ... | <shell> -c 'cat & wait'``)
+    fd 0 is a pipe, but no frame INSIDE the shell supplied it, so bash 5.3.15
+    still applies the POSIX ``/dev/null`` and the background reader prints
+    nothing. This is the case the rule's name could mislead on: it is "no frame
+    supplied fd 0", not "fd 0 is a pipe".
     """
     for mode in ("-c", "file"):
         b, p = _both('cat & wait', mode, tmp_path, stdin_data=OUTER,

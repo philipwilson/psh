@@ -186,6 +186,10 @@ POST_ENDPOINT_SCANNED: list = [
     # slot 1.9 (C020): the one trailing-redirection helper. Parser-only — it
     # touches a CommandParsers, never a Shell — so it is scanned, not exempted.
     "psh/parser/combinators/trailing_redirects.py",
+    # slot 1.12 (C022): the fd-0 binding. A core value object that takes no
+    # shell at all — scanned, not exempted, so a future full-Shell consumer
+    # in it is visible.
+    "psh/core/stdin_binding.py",
 ]
 
 # Modules born after SCOPE_ENDPOINT that are deliberately NOT scanned —
