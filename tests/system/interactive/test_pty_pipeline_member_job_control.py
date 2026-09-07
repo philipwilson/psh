@@ -319,3 +319,103 @@ def test_ctrl_c_does_not_kill_a_background_pipeline(psh, token):
     assert _survivors(token), (
         "Ctrl-C killed a BACKGROUND pipeline; only the foreground group may "
         "receive the interrupt")
+
+
+# ---------------------------------------------------------------------------
+# ...and the immunity half of the same rule: with job control off, POSIX gives
+# an ASYNCHRONOUS command SIGINT/SIGQUIT ignored and stdin from /dev/null.
+#
+# Once a forked child's leaves inherit its process group (above), a background
+# command it started sits INSIDE the terminal's foreground group — so without
+# the immunity an interactive Ctrl-C kills it, and a background reader reads
+# the terminal. bash leaves both alone:
+#
+#     ( /bin/sleep 6 & /bin/sleep 5 )   # ^C: bash keeps the background sleep
+#
+# The group membership is asserted as well as the survival: at base the
+# background command escaped the interrupt for the WRONG reason (a process
+# group of its own, outside the foreground group), and that accident must not
+# be what makes these rows pass.
+# ---------------------------------------------------------------------------
+
+
+def _pgid(pid):
+    r = subprocess.run(['ps', '-o', 'pgid=', '-p', pid], capture_output=True, text=True)
+    return r.stdout.strip()
+
+
+ASYNC_SHAPES = [
+    ("subshell_background", '( /bin/sleep {bg} & /bin/sleep {fg} )', True),
+    ("function_member_background",
+     'f(){{ /bin/sleep {bg} & /bin/sleep {fg}; }}; f | cat', True),
+    # Control: a TOP-LEVEL `&` is a real job in a group of its own. It must go
+    # on surviving exactly as it always has — the gating must not reach it.
+    ("toplevel_background_control", '/bin/sleep {bg} & /bin/sleep {fg}', False),
+]
+
+
+@pytest.mark.parametrize("shape,in_forked_child",
+                         [(sh, f) for _, sh, f in ASYNC_SHAPES],
+                         ids=[i for i, _, _ in ASYNC_SHAPES])
+def test_ctrl_c_spares_a_background_command(psh, token, shape, in_forked_child):
+    """Ctrl-C kills the foreground command and spares the background one."""
+    bg, fg = token, token + 500
+    cmd = shape.format(bg=bg, fg=fg)
+    psh.send(cmd + '\r')
+    psh.expect_exact(cmd)
+    bg_pids = _wait_for(lambda: _survivors(bg))
+    assert bg_pids, f"{cmd!r} never started its background command"
+    assert _wait_for(lambda: _survivors(fg)), f"{cmd!r} never started its foreground command"
+
+    # The MECHANISM, checked while everything is still running: inside a forked
+    # child the background command shares the foreground process group, and is
+    # spared by disposition rather than by being out of the group.
+    terminal_pgid = str(os.tcgetpgrp(psh.child_fd))
+    if in_forked_child:
+        assert _pgid(bg_pids[0]) == terminal_pgid, (
+            f"{cmd!r}: background pgid {_pgid(bg_pids[0])} is not the "
+            f"terminal's foreground group {terminal_pgid} — surviving Ctrl-C "
+            f"would prove nothing")
+
+    psh.sendintr()
+    psh.expect(PROMPT)
+    _wait_for(lambda: not _survivors(fg))
+    assert _survivors(fg) == [], f"{cmd!r}: foreground command survived Ctrl-C"
+    assert _survivors(bg), (
+        f"{cmd!r}: Ctrl-C killed the BACKGROUND command; with job control off "
+        f"an asynchronous command ignores SIGINT")
+    _sweep(bg)
+
+
+def test_background_command_in_a_forked_child_reads_dev_null(psh, token, workdir):
+    """A background reader gets /dev/null, not the terminal (POSIX, bash).
+
+    `cat` with /dev/null on fd 0 sees EOF and exits at once. Reading the
+    terminal instead, it would sit there alive holding the tty.
+    """
+    def cats():
+        r = subprocess.run(['pgrep', '-x', 'cat'], capture_output=True, text=True)
+        return {pid for pid in r.stdout.split() if pid}
+
+    before = cats()
+    # Short, and relative: the shell's cwd IS workdir, and a command that wraps
+    # the 80-column PTY cannot be matched by expect_exact.
+    cmd = f'( /bin/cat > o{token}.txt & /bin/sleep {token} )'
+    psh.send(cmd + '\r')
+    psh.expect_exact(cmd)
+    assert _wait_for(lambda: _survivors(token)), "the subshell never started"
+
+    # The redirect proves the reader was actually launched; with /dev/null on
+    # fd 0 it then sees EOF and is gone before we can even catch it running,
+    # so the discriminator is LIVENESS after a grace period, not presence.
+    outfile = workdir / f"o{token}.txt"
+    assert _wait_for(outfile.exists), "the background reader never launched"
+
+    time.sleep(1.0)
+    still = {pid: subprocess.run(['ps', '-o', 'stat=,command=', '-p', pid],
+                                 capture_output=True, text=True).stdout.strip()
+             for pid in (cats() - before)}
+    assert not still, (
+        f"the background reader is still alive a second on, so fd 0 is the "
+        f"terminal rather than /dev/null: {still}")
+    assert outfile.read_text() == "", "the background reader consumed something"

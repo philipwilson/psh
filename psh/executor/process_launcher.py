@@ -355,10 +355,19 @@ class ProcessLauncher:
             # dies 130 on a delayed `kill -INT`), while the /dev/null-stdin
             # redirect stays on the standalone command only. Runs BEFORE
             # io_setup so an explicit body redirect (`cmd < file &`) still wins.
+            # `job_control` is the OTHER way job control can be off here, and
+            # it is the half this launcher must not miss: _job_control_off()
+            # only reads the SHELL's monitor/input mode, so inside a forked
+            # child of an interactive shell it stays False. That child's leaves
+            # now INHERIT its process group (see _parent_setup), so without the
+            # immunity half an interactive Ctrl-C would kill a background
+            # command a subshell started — `( /bin/sleep 6 & /bin/sleep 5 )`,
+            # which bash leaves running — and a background reader would read
+            # the terminal instead of /dev/null.
             if not config.foreground:
                 AsyncJobPolicy.for_launch(
                     background=True,
-                    job_control_off=self._job_control_off(),
+                    job_control_off=self._job_control_off() or not job_control,
                 ).apply(config)
 
             # 3. Set up I/O redirections if provided
