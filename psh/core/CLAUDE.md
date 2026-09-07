@@ -739,22 +739,34 @@ and the held signal survives as its `__context__`); otherwise the trap's
 `SystemExit` wins (bash: `exit N` in the trap overrides the original status);
 otherwise a phase failure.
 
-**Exit STATUS inside the EXIT trap** is a separate rule from that exception
-precedence. The trap's body cannot change the shell's exit status except
-through an explicit `exit N`: a BARE `exit` means "leave the status alone" and
-resolves to the status in effect when the trap was ENTERED, not the body's
-current `$?` — `trap 'false; exit' EXIT; exit 3` exits 3, not 1. `$?` READ
-inside the trap is still the current value; only what a bare `exit` RESOLVES
-to is pinned to entry. The mechanism is
-`trap_manager.py#TrapManager.exit_trap_entry_status`, consumed solely by
-`builtins/core.py#ExitBuiltin.execute`, and it is EXIT-ONLY by design: a bare
-`exit` in a SIGNAL trap does use the current `$?` in bash, so generalizing the
-saved status to every trap would open a new divergence while closing this one.
-Both directions are pinned in
-`tests/conformance/bash/test_exit_trap_status_precedence_conformance.py`,
-whose cells are labelled `disc-` / `control-` because the vacuous shapes
-(nothing changes `$?` before the bare `exit`) cannot tell the two rules apart
-— and once certified agreement while psh diverged.
+**Exit STATUS inside a trap action** is a separate rule from that exception
+precedence. A trap action's body cannot change the shell's exit status except
+through an explicit `exit N`: a BARE `exit` at the action's TOP LEVEL means
+"leave the status alone" and resolves to the status in effect when the trap was
+ENTERED, not the body's current `$?` — `trap 'false; exit' EXIT; exit 3` exits
+3, not 1. `$?` READ inside the trap is still the current value; only what a
+bare `exit` RESOLVES to is pinned to entry. The mechanism is
+`trap_manager.py#TrapManager.bare_exit_entry_status` — one stacked frame per
+running action, so a signal trap firing DURING an EXIT action takes the signal
+rule — consumed solely by `builtins/core.py#ExitBuiltin.execute`.
+
+Which traps, and how wide "top level" is, follow bash 5.3 (CHANGES 5.3-beta
+item q; NEWS item uu; POSIX interp 1602): EXIT, signal, ERR and RETURN actions
+all record an entry status, DEBUG does not, and "top level" is the action's own
+text including its `if` / `{ }` / loop / `case` bodies, `&&`/`||` lists and
+`eval`. A bare `exit` inside a function body or a sourced file called from the
+action keeps the current `$?`, which is why the frame records the
+function-stack and source depths and compares them against the CURRENT ones —
+so a trap entered while already inside a function still has a top level of its
+own. A subshell never sees a frame at all, because `Shell.for_subshell` builds
+a new TrapManager. The EXIT trap is the one exception to the top-level
+restriction. Every direction is pinned in
+`tests/conformance/bash/test_exit_trap_status_precedence_conformance.py`, whose
+cells are labelled `disc-` / `control-` / `boundary-` because the vacuous
+shapes (nothing changes `$?` before the bare `exit`) cannot tell the two rules
+apart — and once certified agreement while psh diverged. The owner's two halves
+are unit-pinned with synthetic depths in
+`tests/unit/core/test_trap_bare_exit_entry_status.py`.
 
 Batteries: `tests/unit/core/test_shutdown_phases_4a2.py` (phase order,
 isolation, precedence, the must-hold guard rails),

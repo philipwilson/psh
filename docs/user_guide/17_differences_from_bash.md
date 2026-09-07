@@ -975,9 +975,9 @@ fi
 | set -o verbose | Yes | Yes | Full support |
 | set -o posix / POSIXLY_CORRECT | Yes | Yes | Full support (posix mode via `set -o posix`, the `--posix` startup flag, or the `POSIXLY_CORRECT` variable/environment; two-way coupled to `POSIXLY_CORRECT` like bash — enabling binds it to `y`, disabling unsets it) |
 | **Signal Handling** |
-| trap command | Yes | Yes | Standard signals + EXIT/DEBUG/ERR/RETURN |
+| trap command | Yes | Yes | Standard signals + EXIT/DEBUG/ERR/RETURN; a bare `exit` at a trap action's top level uses the status at trap ENTRY, following bash 5.3 (POSIX interp 1602) |
 | Signal handling | Yes | Yes | All standard signals |
-| DEBUG/ERR/RETURN traps | Yes | Full support | DEBUG/ERR (v0.263) + RETURN (v0.617); RETURN honors bash's hiding model (`set -T`/`declare -ft`). Deliberate divergence: a `return N` *inside* a RETURN action adopts N once (bash 5.2 recurses forever). |
+| DEBUG/ERR/RETURN traps | Yes | Full support | DEBUG/ERR (v0.263) + RETURN (v0.617); RETURN honors bash's hiding model (`set -T`/`declare -ft`). Deliberate divergence: a `return N` *inside* a RETURN action adopts N once; bash 5.3.15 still recurses forever there (probed under `set -T`, which is what makes the trap fire inside the function at all). |
 | **Advanced Features** |
 | Here documents | Yes | Yes | Full support |
 | Here strings | Yes | Yes | Full support |

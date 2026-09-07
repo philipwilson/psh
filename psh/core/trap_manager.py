@@ -1,8 +1,7 @@
 """Trap management for PSH shell."""
 import signal
 from collections import deque
-from typing import (TYPE_CHECKING, Any, Dict, List, Mapping, NamedTuple,
-                    Optional, Set, Tuple)
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, NamedTuple, Optional, Set, Tuple
 
 from ..utils.escapes import single_quote
 from ..utils.signal_utils import (
