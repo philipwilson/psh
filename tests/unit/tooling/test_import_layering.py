@@ -280,7 +280,7 @@ FUNC_IMPORT_CAPS = {
     'psh.interactive.prompt': 2,
     'psh.interactive.rc_loader': 1,
     'psh.io_redirect.file_redirect': 2,
-    'psh.io_redirect.process_sub': 4,
+    'psh.io_redirect.process_sub': 2,
     'psh.lexer': 2,
     'psh.lexer.expansion_parser': 1,
     'psh.lexer.modular_lexer': 6,
