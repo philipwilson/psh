@@ -26,10 +26,10 @@ class StdinBinding:
     * a COMPOUND command's redirect list — ``{ } < f``, ``( ) < f``,
       ``while ...; done < f``, ``if``/``case``/``for``, and any input form on
       them (``<<<``, a heredoc, ``< <(cmd)``, ``<&3``). Those lists are applied
-      through ``io_redirect/manager.py#IOManager.apply_redirections`` and undone
-      through ``restore_redirections``, which is where the two ``note_compound_*``
-      calls live: an fd-0 entry in the scope's saved-fd list IS the fact that
-      this scope rebound fd 0.
+      through ``io_redirect/manager.py#IOManager.apply_compound_redirections``
+      and undone through ``restore_compound_redirections``, which is where the
+      two ``note_compound_*`` calls live: an fd-0 entry in the scope's saved-fd
+      list IS the fact that this scope rebound fd 0.
     * a pipeline member's incoming pipe, wired onto fd 0 by
       ``executor/pipeline.py#PipelineExecutor._setup_pipeline_redirections`` in
       the member's own forked child.

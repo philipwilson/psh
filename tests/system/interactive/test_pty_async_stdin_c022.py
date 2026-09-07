@@ -108,8 +108,10 @@ INHERITING = [
     ("brace_redirect", '{ cat & wait; } < f', [PAYLOAD]),
     ("pipe_into_subshell", 'echo hello | ( cat & wait )', ['hello']),
     ("pipe_into_brace", 'echo hello | { cat & wait; }', ['hello']),
-    ("pipe_into_read_loop",
-     'echo hi | { read v & wait; }; echo done', ['done']),
+    # The reader is a `read` in a backgrounded compound, which then prints what
+    # it captured — an observable row, not just "the shell survived".
+    ("pipe_into_read_group",
+     'echo hi | { { read v; echo "[$v]"; } & wait; }', ['[hi]']),
 ]
 
 
