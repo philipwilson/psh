@@ -26,9 +26,12 @@ function-body external, a direct member, a brace-group member and a plain
 foreground external — the same values these tests require of psh.
 """
 
+import itertools
 import os
 import re
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pexpect
@@ -204,3 +207,115 @@ def test_set_m_pipeline_member_completes(psh):
     assert run(psh, 'f(){ /bin/echo A; echo B; }; f | cat') == ['A', 'B']
     run(psh, 'set +m')
     assert run(psh, 'f | cat') == ['A', 'B']
+
+
+# ---------------------------------------------------------------------------
+# Interactive Ctrl-C must reach a pipeline NESTED inside a forked child.
+#
+# The same rule, other half: a forked child forms no process group for what it
+# runs, so a nested pipeline stays inside the terminal's foreground group and
+# the interrupt reaches it. When only the standalone role was gated, a nested
+# pipeline still called setpgid(0,0) while the terminal handoff was (correctly)
+# suppressed — so Ctrl-C reached nothing and the processes leaked as live
+# orphans that `jobs` did not even list:
+#
+#     ( /bin/sleep 5 | /bin/cat )     # ^C -> bash kills; psh leaked both
+# ---------------------------------------------------------------------------
+
+# Each row gets a unique sleep duration so `pgrep -f` can identify ITS OWN
+# processes and nothing else on the machine. Both stages carry the token, so
+# one pattern finds either survivor.
+_TOKENS = itertools.count(98701)
+
+
+def _survivors(token):
+    """PIDs of this row's still-live pipeline processes."""
+    r = subprocess.run(['pgrep', '-f', str(token)],
+                       capture_output=True, text=True)
+    return [pid for pid in r.stdout.split() if pid]
+
+
+def _sweep(token):
+    for pid in _survivors(token):
+        subprocess.run(['kill', '-9', pid], capture_output=True)
+
+
+def _describe(token):
+    """`ps` detail for whatever still matches, for the failure message.
+
+    A process that has already exited but is not yet reaped still matches
+    `pgrep`; the state column (Z) is what tells a leak from a zombie.
+    """
+    rows = []
+    for pid in _survivors(token):
+        r = subprocess.run(['ps', '-o', 'pid=,pgid=,ppid=,state=,command=', '-p', pid],
+                           capture_output=True, text=True)
+        rows.append(r.stdout.strip() or f"{pid} <gone>")
+    return rows
+
+
+def _wait_for(predicate, timeout=5.0):
+    """Poll *predicate* until true or the deadline passes; return its value."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        value = predicate()
+        if value:
+            return value
+        time.sleep(0.05)
+    return predicate()
+
+
+@pytest.fixture
+def token():
+    """A unique marker for one row's processes, always swept afterwards."""
+    tok = next(_TOKENS)
+    yield tok
+    _sweep(tok)
+
+
+LEAK_SHAPES = [
+    # The REGRESSION guard: a top-level shape, correct in bash and at base,
+    # that leaked once the terminal handoff was suppressed without gating the
+    # pipeline roles.
+    ("subshell_pipeline", '( /bin/sleep {t} | /usr/bin/grep {t} )'),
+    ("function_member_nested_pipeline",
+     'f(){{ /bin/sleep {t} | /usr/bin/grep {t}; }}; f | cat'),
+    ("brace_member_nested_pipeline",
+     '{{ /bin/sleep {t} | /usr/bin/grep {t}; }} | cat'),
+]
+
+
+@pytest.mark.parametrize("shape", [s for _, s in LEAK_SHAPES],
+                         ids=[i for i, _ in LEAK_SHAPES])
+def test_ctrl_c_reaches_a_pipeline_nested_in_a_forked_child(psh, token, shape):
+    """Ctrl-C kills every process; nothing is orphaned and `jobs` agrees."""
+    cmd = shape.format(t=token)
+    psh.send(cmd + '\r')
+    psh.expect_exact(cmd)
+    assert _wait_for(lambda: _survivors(token)), (
+        f"{cmd!r} never started its pipeline")
+
+    psh.sendintr()
+    psh.expect(PROMPT)
+
+    _wait_for(lambda: not _survivors(token))
+    assert _survivors(token) == [], (
+        f"{cmd!r} leaked live processes past Ctrl-C: {_describe(token)} — "
+        f"a pipeline nested in a forked child must stay in the terminal's "
+        f"foreground process group")
+    assert run(psh, 'jobs') == [], "the shell still lists a job for it"
+
+
+def test_ctrl_c_does_not_kill_a_background_pipeline(psh, token):
+    """Control: `&` puts the pipeline OUT of the foreground group, so the
+    interrupt must not touch it — the gating must not over-reach."""
+    cmd = '/bin/sleep {t} | /usr/bin/grep {t} &'.format(t=token)
+    psh.send(cmd + '\r')
+    psh.expect(PROMPT)
+    assert _wait_for(lambda: _survivors(token)), "background pipeline not started"
+
+    psh.sendintr()
+    time.sleep(0.5)
+    assert _survivors(token), (
+        "Ctrl-C killed a BACKGROUND pipeline; only the foreground group may "
+        "receive the interrupt")

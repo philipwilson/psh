@@ -276,8 +276,12 @@ class ProcessLauncher:
         try:
             # 1. Set process group based on role
             if config.role == ProcessRole.PIPELINE_LEADER:
-                # First in pipeline: become process group leader
-                os.setpgid(0, 0)
+                # First in pipeline: become process group leader — unless the
+                # forking process is a forked child, where job control is off
+                # and this pipeline stays in that child's group (see
+                # _parent_setup). The sync-pipe protocol below is unaffected.
+                if job_control:
+                    os.setpgid(0, 0)
 
                 # Close both sync pipe ends (leader doesn't wait)
                 if config.sync_pipe_r is not None:
@@ -326,14 +330,9 @@ class ProcessLauncher:
                           f"pgid={current_pgid}", file=sys.stderr)
 
             elif config.role == ProcessRole.SINGLE:
-                # Standalone command: create own process group — but ONLY
-                # when the forking process is the job-controlling shell. In a
-                # forked child (a pipeline member running an external command
-                # from a function body, `eval` text or a sourced file; a
-                # subshell; a brace group) job control is off, so the command
-                # INHERITS the group, exactly as bash does. A group of its own
-                # there is not the terminal's foreground group, so Ctrl-C at
-                # the prompt would never reach it.
+                # Standalone command: create own process group — but ONLY when
+                # the forking process is the job-controlling shell, for the
+                # reason _parent_setup states for every role.
                 if job_control:
                     os.setpgid(0, 0)
 
@@ -446,11 +445,16 @@ class ProcessLauncher:
             Process group ID
         """
         # Determine process group
-        if config.role == ProcessRole.SINGLE and not job_control:
-            # Job control is off in a forked child: the command INHERITS this
-            # process's group rather than leading one of its own, so it stays
-            # in the terminal's foreground group and Ctrl-C at the prompt
-            # reaches it (bash disables job control in every subshell).
+        if not job_control:
+            # Job control is off in a forked child, so EVERY process it
+            # launches — a standalone command and every member of a pipeline
+            # nested inside it — INHERITS this process's group rather than
+            # forming one of its own. That keeps them inside the terminal's
+            # foreground group, so an interactive Ctrl-C reaches them; a group
+            # of their own would be reachable only by a terminal handoff that
+            # a forked child must not perform, and the processes would leak
+            # (`( /bin/sleep 5 | /bin/cat )` + Ctrl-C). bash likewise disables
+            # job control in every subshell.
             return os.getpgrp()
 
         if config.role == ProcessRole.PIPELINE_LEADER or config.role == ProcessRole.SINGLE:
