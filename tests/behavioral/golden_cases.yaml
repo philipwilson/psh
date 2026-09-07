@@ -11469,3 +11469,11 @@
   stdout: "M\no\no\no\n"
   stderr: ""
   exit_code: 0
+
+- name: c042_r4_multipart_regex_single_quoted_subject
+  description: "C042 round-4: the SINGLE-quoted companion to c042_r3_colon_extent_multipart_regex. The subject is the literal text /h/me:$u so it matches the verbatim tilde extent (rc 0); the double-quoted subject is /h/me:Z and does not (rc 1). Two different cells, pinned separately because they read almost alike"
+  env: {HOME: /h/me}
+  command: 'u=Z; [[ ''/h/me:$u'' =~ ~:$u ]]; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
