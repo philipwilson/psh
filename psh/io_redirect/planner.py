@@ -41,6 +41,23 @@ class RedirectPlan:
             return self.redirect.fd
         return 0 if self.redirect.type.startswith('<') else 1
 
+    @property
+    def open_target(self) -> str:
+        """The resolved filename this plan OPENS.
+
+        Only the file-opening forms reach it (``<`` ``<>`` ``>`` ``>>`` ``>|``
+        ``&>`` ``&>>``), and for those the planner either produced exactly one
+        expanded field or already raised bash's "ambiguous redirect" — so the
+        target is a string, never None. Stating that here keeps the open sites
+        free of bare casts and makes the impossible state fail loudly instead of
+        reaching ``open()`` as None.
+        """
+        if self.target is None:
+            raise ValueError(
+                f"redirect {self.redirect.type!r} reached an open with no "
+                f"resolved target")
+        return self.target
+
     def close_procsub(self, *, applied: bool) -> None:
         """Close this redirect's process-substitution parent fd after applying
         it (unless the dup2 made that fd the redirect's own target). Used by
