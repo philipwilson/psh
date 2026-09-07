@@ -110,7 +110,8 @@
         },
         {
           "id": "1.3",
-          "title": "Plan once"
+          "title": "Plan once",
+          "release": "0.784.0"
         },
         {
           "id": "1.4",
@@ -214,6 +215,22 @@
             "W1-N30"
           ],
           "verification": "r1 BOUNCE, r2 BOUNCE, r3 (tmp/program-2026-09/verify/slot-1.0*.md)"
+        },
+        {
+          "version": "0.784.0",
+          "date": "2026-09-07",
+          "slots": [
+            "1.3"
+          ],
+          "closes": [
+            "C031"
+          ],
+          "registers": [
+            "W1-N31",
+            "W1-N32",
+            "W1-N33"
+          ],
+          "verification": "r1 (tmp/program-2026-09/verify/slot-1.3.md)"
         }
       ]
     },

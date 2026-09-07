@@ -491,6 +491,7 @@ def meta_for(owner):
 # Closures recorded by the integrator at each release (D10: the pin must exist in tests/).
 # cid -> (release, closure note).  A closed row keeps its derived owner.
 CLOSURES = {
+    'C031': ('v0.784.0', 'slot 1.3: `_builtin_redirect_fd_level` applies the resolved `RedirectPlan`; `FileRedirector.apply_plan_saving`; plan-once counter guard (24 nodes); pins in three modes + conformance + golden `c031_*`'),
     'C226': ('v0.783.0', 'slot 1.0: write-authority matrix `tests/unit/core/test_write_authority_matrix.py` (134 cells; strict xfails per owning slot); enforcement lands per write-site slot (1.4/1.5/1.15/1.16/1.17/1.18/2.4/4.5/4.9)'),
     'C032': ('v0.781.0', 'slot 1.2: `_swap_closed_output_streams` installs `_RawFdStream`; pins `tests/integration/redirection/test_close_then_reopen_c032.py`, `tests/unit/io_redirect/test_close_reopen_stream_shapes_c032.py`, `tests/conformance/bash/test_close_then_reopen_conformance.py`, golden `c032_*`; verify round 1 PASS'),
 }
