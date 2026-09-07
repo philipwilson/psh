@@ -50,6 +50,7 @@ from ..core.exceptions import (
 from ..core.internal_errors import (
     fatal_expansion_child_status,
     substitution_child_abort_status,
+    usage_discard_child_status,
 )
 
 if TYPE_CHECKING:
@@ -100,6 +101,11 @@ def map_child_exception(exc: BaseException, state: 'ShellState') -> int:
       the shell-exit expansion family leaving ``fatal_expansion_status`` by its
       script-mode route (which ``-c`` takes), and maps like the stamped
       TopLevelAbort above.
+    - TopLevelAbort stamped ``usage_discard_channel`` (the special-builtin
+      too-many-arguments discard) → ``usage_discard_child_status(state)``,
+      which is FORK-SHAPE dependent: 1 for a bare-simple fork or anything
+      under a substitution, 2 for a forked compound/function. The stamp is
+      what keeps every other TopLevelAbort on ``.status`` here.
     - SubstitutionSyntaxAbort (a substitution-body syntax error, fatal to the
       shell process) → ``substitution_child_abort_status(state,
       exc.errexit_suppressed)``. This is what makes a fork CONTAIN the
@@ -123,6 +129,8 @@ def map_child_exception(exc: BaseException, state: 'ShellState') -> int:
     if isinstance(exc, TopLevelAbort):
         if getattr(exc, 'fatal_expansion_channel', False):
             return fatal_expansion_child_status(state)
+        if exc.usage_discard_channel:
+            return usage_discard_child_status(state)
         return exc.status
     if isinstance(exc, FunctionReturn):
         return exc.exit_code
@@ -342,6 +350,12 @@ def run_background_shell_child(shell: 'Shell',
     if sever_errexit_context is not None:
         sever_errexit_context.errexit_suppress = 0
         sever_errexit_context.errexit_suppress_deferred = 0
+        # Same shape, same consequence for the ONE status that depends on it:
+        # `exit 1 2 & wait $!` leaves 1 where `( exit 1 2 ) &` leaves 2
+        # (core/internal_errors.py#usage_discard_child_status). Only the
+        # bare-simple caller reaches this branch, which is exactly the
+        # condition; the member's own dispatch resolves the None.
+        shell.state.forked_simple_command = None
 
     exit_code = 0
     try:

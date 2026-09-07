@@ -839,6 +839,19 @@ class CommandExecutor:
         # survive into anything the member starts.
         if resolved.dispatch_kind is not DispatchKind.FUNCTION:
             context.errexit_suppress_deferred = 0
+        # Same one-shot, for the fork-shape status: a fork site stamped None
+        # ("a SimpleCommand node was forked"), and THIS dispatch — the
+        # member's own command, the first to reach here in that child —
+        # settles it. A FUNCTION dispatch means the fork does have a compound
+        # body after all (`f | cat` is 2); anything else does not, including
+        # an `eval`/`.` whose TEXT later calls a function (`eval 'f' | cat`
+        # is 1). Later dispatches inside the child see a resolved bool and
+        # leave it alone. See
+        # core/internal_errors.py#usage_discard_child_status.
+        state = self.shell.state
+        if state.forked_simple_command is None:
+            state.forked_simple_command = (
+                resolved.dispatch_kind is not DispatchKind.FUNCTION)
         return self._invoke_resolution(
             resolved, cmd_name, args, node, context, invocation)
 

@@ -22,6 +22,7 @@ from ..lexer.unicode_support import is_valid_name
 from ..visitor import format_function_definition
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
 from .declare_format import format_declaration, matches_filter
+from .numeric import legal_number
 from .registry import builtin, registry
 
 if TYPE_CHECKING:
@@ -1004,10 +1005,10 @@ class ReturnBuiltin(Builtin):
         exit_code = (shell.state.last_exit_code if entry_status is None
                      else entry_status)
         if len(args) > 1:
-            try:
-                # Wrap return value to 0-255 range like bash does
-                exit_code = int(args[1]) % 256
-            except ValueError:
+            # legal_number, not int(): `return 5_0` and anything past int64
+            # are REJECTED operands in bash, not values.
+            operand = legal_number(args[1])
+            if operand is None:
                 # Operand cell of the usage-error family: report and return
                 # from the function with the family status. `return` does NOT
                 # take special_builtin_usage_status's typed-outcome route,
@@ -1016,11 +1017,13 @@ class ReturnBuiltin(Builtin):
                 # leaves $?=2) rather than merely failing in place; only the
                 # status is shared. The POSIX-mode half of that cell — bash
                 # EXITS 2 for an unguarded `return abc` under `set -o posix` —
-                # is a registered gap, not psh's behavior yet.
+                # is a registered gap (ledger W1-N34), not psh's behavior yet.
                 self.error(f"{args[1]}: numeric argument required", shell)
                 numeric_error = True
                 exit_code = USAGE_ERROR_STATUS
             else:
+                # Wrap return value to 0-255 range like bash does
+                exit_code = operand % 256
                 if len(args) > 2:
                     # Valid first operand + extras: the same
                     # too-many-arguments cell as `exit 7 8` / `shift 1 2`.

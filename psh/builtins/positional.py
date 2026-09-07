@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, List
 
 from ..core import special_builtin_usage_discard, special_builtin_usage_status
 from .base import Builtin
+from .numeric import legal_number
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -30,11 +31,14 @@ class ShiftBuiltin(Builtin):
             # the rest of the current input unit. Two cells of the one
             # usage-error family in core/internal_errors.py; neither status is
             # spelled here.
-            try:
-                n = int(args[1])
-            except ValueError:
+            # legal_number, not int(): `shift 1_0` / `shift 99999999999999999999`
+            # are REJECTED operands in bash, not counts (the second used to
+            # reach the range check and report "shift count out of range").
+            count = legal_number(args[1])
+            if count is None:
                 self.error(f"{args[1]}: numeric argument required", shell)
                 special_builtin_usage_status()
+            n = count
             if len(args) > 2:
                 self.error("too many arguments", shell)
                 special_builtin_usage_discard(shell.state)

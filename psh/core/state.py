@@ -958,6 +958,15 @@ class ShellState:
         self.execution.in_substitution = value
 
     @property
+    def forked_simple_command(self) -> Optional[bool]:
+        """Shape of the fork this process runs; see ExecutionState."""
+        return self.execution.forked_simple_command
+
+    @forked_simple_command.setter
+    def forked_simple_command(self, value: Optional[bool]) -> None:
+        self.execution.forked_simple_command = value
+
+    @property
     def debug_ast(self):
         """Whether AST debug output is enabled."""
         return self.options.get('debug-ast', False)

@@ -364,34 +364,68 @@ def special_builtin_usage_discard(state: 'ShellState') -> NoReturn:
     The caller must already have printed the error message.
     """
     if state.options.get('command_mode'):
+        # Record before raising: this status is what the EXIT trap must see
+        # (`trap 'echo rc=$?' EXIT; exit 1 2` under -c prints rc=1 in bash).
+        # The TopLevelAbort route needs no equivalent — its buffered boundary
+        # publishes the status on the way out.
+        state.last_exit_code = 1
         raise SystemExit(1)
     raise TopLevelAbort(USAGE_ERROR_STATUS, errexit_immune=True,
                         contain_nested=False, usage_discard_channel=True)
 
 
-def usage_discard_child_status() -> int:
-    """The status a SUBSTITUTION child exits with on the usage discard.
+def usage_discard_child_status(state: 'ShellState') -> int:
+    """The status a FORKED child exits with on the usage discard.
 
     Third status of :func:`special_builtin_usage_discard`, and the reason its
-    abort carries a channel stamp. bash 5.3.15 (empirical, probed 2026-09-06 in
-    script-file and stdin modes)::
+    abort carries a channel stamp. The discard's own status (2) is a
+    MAIN-SHELL and COMPOUND-FORK rule; two fork SHAPES report **1** instead,
+    and the split is by shape, not by depth (bash 5.3.15, empirical, probed
+    2026-09-07 in script-file and stdin modes; the `-c` leg is 1 everywhere
+    and agrees either way)::
 
-        ( exit 1 2 ); echo $?          # 2 -- a subshell keeps the family status
-        x=$(exit 1 2); echo $?         # 1 -- a substitution child does not
-        x=`exit 1 2`;  echo $?         # 1 -- same for the backtick spelling
+        ( exit 1 2 ); echo $?                    # 2  -- a subshell
+        { exit 1 2; } | cat; echo ${PIPESTATUS[0]}   # 2  -- compound member
+        f(){ exit 1 2; }; f | cat                # 2  -- function member
+        exit 1 2 | cat;  echo ${PIPESTATUS[0]}   # 1  -- SIMPLE member
+        exit 1 2 & wait $!; echo $?              # 1  -- SIMPLE background job
+        x=$(exit 1 2); echo $?                   # 1  -- substitution
+        x=$( ( exit 1 2 ) ); echo $?             # 1  -- substitution, any depth
 
-    Flat 1: unlike :func:`substitution_child_abort_status` there is no errexit
-    branch, because the discard is errexit-immune in the child too. Read at
-    ONE place —
-    ``scripting/source_processor.py#SourceProcessor._dispatch_execution`` —
-    keyed on the stamp and on ``state.in_substitution``. That boundary rather
-    than the fork boundary, because a substitution child re-parses its string
-    through ``run_command``, so the abort is consumed at the child's own
-    buffered boundary and never reaches ``map_child_exception``. A ``( )``
-    subshell executes an already-parsed AST, is NOT in a substitution, and
-    keeps ``.status``.
+    So the two "1" shapes are: a fork whose BODY IS A BARE SIMPLE COMMAND, and
+    anything under a command/process substitution at any nesting depth. This
+    is the SAME severing rule bash applies to an ignored ``set -e`` — quoted
+    at ``executor/context.py#errexit_suppress_deferred`` — and slot 2.1 found
+    it again for trap frames, so psh already had both discriminators:
+    ``state.in_substitution`` (inherited by nested subshells) and
+    ``state.forked_simple_command``, which the fork sites set and the member's
+    OWN dispatch resolves. That resolution matters and is not cosmetic: a
+    FUNCTION member is a compound body (``f | cat`` is 2), while a function
+    reached through an ``eval``/``.`` TEXT is not (``eval 'f' | cat`` is 1,
+    because the member's own command is the ``eval``).
+
+    Flat 1 for those shapes: unlike :func:`substitution_child_abort_status`
+    there is no errexit branch, because the discard is errexit-immune in the
+    child too.
+
+    Read at exactly two places, both keyed on the stamp: the fork boundary
+    (``executor/child_policy.py#map_child_exception``) and the buffered
+    boundary (``scripting/source_processor.py#SourceProcessor._dispatch_execution``).
+    Both are needed and neither is redundant — a substitution child re-parses
+    its string through ``run_command`` and consumes the abort at its own
+    buffered boundary, while a pipeline member executes an already-parsed AST
+    and reaches the fork boundary instead.
     """
-    return 1
+    # ``None`` is the PENDING state and reads as True. It means a
+    # SimpleCommand node was forked and no dispatch reclassified it, which is
+    # exactly the backgrounded-builtin route: `exit 1 2 &` runs its builtin
+    # through the background child runner and never reaches ``command.py``'s
+    # dispatch chokepoint. Only a FUNCTION dispatch ever writes False, so
+    # "not False" is the honest test, and the MAIN shell (plain False) still
+    # gets the family status.
+    if state.forked_simple_command is not False or state.in_substitution:
+        return 1
+    return USAGE_ERROR_STATUS
 
 
 def special_builtin_usage_status(
@@ -426,26 +460,31 @@ def special_builtin_usage_status(
     raise SpecialBuiltinUsageError(status, suppressible=True)
 
 
-def special_builtin_usage_exit_shell(shell: 'Shell',
-                                     status: int = USAGE_ERROR_STATUS) -> None:
+def special_builtin_usage_exit_shell(shell: 'Shell') -> NoReturn:
     """BAD-COUNT ``break``/``continue`` cell of the usage-error family.
 
-    The family's HARDEST outcome, and the only one that is not a discard:
-    ``break abc`` / ``continue abc`` inside a loop.
+    The family's HARDEST outcome, and the only one that is not a discard when
+    the shell is non-interactive: ``break abc`` / ``continue abc`` inside a
+    loop.
 
-    bash 5.3.15 (empirical, no CHANGES/NEWS item; probed 2026-09-06): the error
-    is reported and the shell EXITS with ``USAGE_ERROR_STATUS`` in EVERY input
-    mode -- ``-c`` included, unlike the discard cell above, and unlike it also
-    UNSUPPRESSIBLE: ``break abc || echo caught`` and ``if break abc; then``
+    bash 5.3.15 (empirical, no CHANGES/NEWS item; probed 2026-09-07): the
+    error is reported and the shell EXITS with ``USAGE_ERROR_STATUS`` in EVERY
+    input mode -- ``-c`` included, unlike the discard cell above, and unlike it
+    also UNSUPPRESSIBLE: ``break abc || echo caught`` and ``if break abc; then``
     still exit. Only a fork boundary contains it (the subshell of
     ``( for i in 1; do break abc; done )`` exits 2 and the parent lives on).
     psh used to exit 128 here.
 
-    An INTERACTIVE shell does not exit -- it records the status and carries on
-    (verified against ``bash -i``: ``$?`` is 2 on the next prompt) -- which is
-    why the exit is gated on ``is_script_mode`` rather than raised
-    unconditionally. This function therefore RETURNS in the interactive case;
-    the caller must not assume it is ``NoReturn``.
+    An INTERACTIVE shell does not exit -- and it does not simply carry on
+    either. Verified over a PTY against ``bash -i``::
+
+        for i in 1; do break abc; echo body; done; echo same=$?
+        echo after=$?
+
+    prints the diagnostic, then ``after=2``: no ``body``, no ``same=``. So the
+    interactive leg is the DISCARD cell -- the rest of the input line dies and
+    the next prompt sees the family status -- not "record the status and
+    return", which is what psh did and what let the loop body run.
 
     Reproduce::
 
@@ -453,9 +492,13 @@ def special_builtin_usage_exit_shell(shell: 'Shell',
 
     The caller must already have printed the error message.
     """
-    shell.state.last_exit_code = status
-    if shell.state.is_script_mode:
-        raise SystemExit(status)
+    state = shell.state
+    # Record before raising: this status is what the EXIT trap must see
+    # (`trap 'echo rc=$?' EXIT; for i in 1; do break abc; done` prints rc=2).
+    state.last_exit_code = USAGE_ERROR_STATUS
+    if state.is_script_mode:
+        raise SystemExit(USAGE_ERROR_STATUS)
+    special_builtin_usage_discard(state)
 
 
 def special_builtin_usage_exit(shell: 'Shell', status: int,
@@ -502,6 +545,11 @@ def special_builtin_usage_exit(shell: 'Shell', status: int,
             if (executor is not None
                     and executor.context.special_exit_suppressed):
                 return status
+        # Record before raising: this status is what the EXIT trap must see.
+        # `trap 'echo rc=$?' EXIT; set -o posix; exit abc` prints rc=2 in bash,
+        # and did in psh until the usage family's operand cell started
+        # reaching this exit instead of exiting inside the builtin.
+        state.last_exit_code = status
         raise SystemExit(status)
     return status
 

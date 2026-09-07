@@ -748,16 +748,16 @@ class SourceProcessor(ScriptComponent):
                 # readonly/failglob discard keeps its errexit effect.
                 self.state.errexit_eligible = False
             status = e.status
-            if e.usage_discard_channel and self.state.in_substitution:
+            if e.usage_discard_channel:
                 # The special-builtin too-many-arguments discard is the one
-                # abort whose status is channel-dependent HERE rather than at a
-                # fork: this boundary IS the top of a substitution child (the
-                # child body re-parses the string through run_command), so the
-                # abort never reaches map_child_exception. bash's substitution
-                # child exits 1 where the `( )` subshell beside it exits with
-                # the family's 2 -- the rule and its probes live on
-                # core/internal_errors.py#usage_discard_child_status.
-                status = usage_discard_child_status()
+                # abort whose status depends on the FORK SHAPE, and this
+                # boundary is the top of a substitution child (that child
+                # re-parses its string through run_command, so its abort never
+                # reaches map_child_exception). The rule and its probes live on
+                # core/internal_errors.py#usage_discard_child_status; in the
+                # MAIN shell every discriminator it reads is False, so this
+                # returns e.status unchanged.
+                status = usage_discard_child_status(self.state)
             self.state.last_exit_code = status
             return status
         except FunctionReturn as e:

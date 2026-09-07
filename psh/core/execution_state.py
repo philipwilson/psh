@@ -31,6 +31,7 @@ class ExecutionState:
         "last_cmdsub_status",
         "in_forked_child",
         "in_substitution",
+        "forked_simple_command",
         "bash_command",
     )
 
@@ -60,6 +61,16 @@ class ExecutionState:
         # diagnostic there but NOT in a ( ) subshell, so this flag —
         # unlike in_forked_child — must distinguish the two.
         self.in_substitution: bool = False
+        # The SHAPE of the fork this process is running, for the one status
+        # that depends on it: the special-builtin usage DISCARD reports 1 from
+        # a fork whose body is a bare SIMPLE command and 2 from a forked
+        # compound/function (core/internal_errors.py#usage_discard_child_status).
+        # None means "a SimpleCommand node was forked, but its dispatch has not
+        # resolved yet" -- the member's OWN dispatch settles it in
+        # executor/command.py, because `f | cat` names a function (a compound
+        # body -> False) while `eval 'f' | cat` does not (the member is the
+        # eval -> True). False in the main shell and for a compound fork.
+        self.forked_simple_command: Optional[bool] = False
         # The command being/about to be executed ($BASH_COMMAND): either the
         # pre-rendered text (str) or the AST node itself, rendered LAZILY on
         # the first $BASH_COMMAND read (ShellState.bash_command) so commands

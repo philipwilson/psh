@@ -13,6 +13,7 @@ from ..core import (
 from ..core.option_registry import OPTION_REGISTRY, OptionCategory
 from ..lexer.unicode_support import is_valid_name
 from .base import EMPTY_BUILTIN_CONTEXT, Builtin, BuiltinContext
+from .numeric import legal_number
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -62,9 +63,10 @@ class HistoryBuiltin(Builtin):
         return self._display_operand(first, shell)
 
     def _display_operand(self, spec: str, shell: 'Shell') -> int:
-        try:
-            count = int(spec)
-        except ValueError:
+        # legal_number, not int(): `history 1_0` and anything past int64 are
+        # REJECTED operands in bash, not counts.
+        count = legal_number(spec)
+        if count is None:
             # `history` is a regular builtin, so this is the usage-error
             # family's PLAIN cell: report and fail with the shared status, no
             # discard and no exit. bash 5.3.15 gives 2 here where the 5.2

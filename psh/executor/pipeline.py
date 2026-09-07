@@ -249,6 +249,16 @@ class PipelineExecutor:
                             child_context.errexit_suppress_deferred = \
                                 child_context.errexit_suppress
                             child_context.errexit_suppress = 0
+                            # The SAME severing distinction decides the ONE
+                            # status that depends on the fork's shape: the
+                            # special-builtin usage discard reports 1 from a
+                            # bare-simple fork and 2 from a compound one
+                            # (core/internal_errors.py#usage_discard_child_status).
+                            # None = "simple node, dispatch not yet resolved";
+                            # the member's own dispatch settles it, because
+                            # `f | cat` names a compound body and `eval 'f' |
+                            # cat` does not.
+                            self.shell.state.forked_simple_command = None
                         else:
                             # A COMPOUND member is "in a subshell" for POSIX
                             # interp 1602, so a bare `exit`/`return` in it

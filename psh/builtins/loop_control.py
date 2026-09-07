@@ -7,7 +7,7 @@ them as plain simple commands and implementing the control transfer here,
 via the LoopBreak/LoopContinue exceptions the loop executors catch.
 """
 from abc import abstractmethod
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List
 
 from ..core import (
     LoopBreak,
@@ -16,6 +16,7 @@ from ..core import (
     special_builtin_usage_exit_shell,
 )
 from .base import Builtin
+from .numeric import legal_number
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -51,8 +52,6 @@ class LoopControlBuiltin(Builtin):
                     shell)
             return 0
         level = self._resolve_level(args, shell)
-        if level is None:
-            return shell.state.last_exit_code
         if level == 0:
             # Out-of-range (break 0/negative): bash exits ALL enclosing
             # loops with status 1 (error already reported by the resolver).
@@ -65,21 +64,16 @@ class LoopControlBuiltin(Builtin):
     def _transfer(self, level: int) -> None:
         """Raise the control-flow exception for a validated positive level."""
 
-    def _resolve_level(self, args: List[str], shell: 'Shell') -> Optional[int]:
+    def _resolve_level(self, args: List[str], shell: 'Shell') -> int:
         """Resolve the level argument at runtime (bash semantics).
 
-        Returns the positive level to act on; 0 for the non-positive
+        Returns the positive level to act on, or 0 for the non-positive
         "loop count out of range" case (error already reported, caller exits
-        the loop); or None when the command must NOT transfer control because
-        a non-numeric argument was reported (only reachable in an interactive
-        shell — a non-interactive one has already exited by then). The
-        too-many-arguments case never returns: it discards the current input
-        unit.
-
-        Both bad-argument cells belong to the ONE usage-error family in
-        core/internal_errors.py, and they take DIFFERENT outcomes of it: a
-        valid count with extras discards the input line, while a non-numeric
-        count exits the shell. Neither status is spelled here.
+        the loop). The two BAD-ARGUMENT cells never return: both belong to
+        the ONE usage-error family in core/internal_errors.py and take
+        DIFFERENT outcomes of it — a valid count with extras discards the
+        input line, while a non-numeric count ends the shell (and, in an
+        interactive shell, discards the line). Neither status is spelled here.
         """
         if len(args) == 1:
             return 1
@@ -93,14 +87,15 @@ class LoopControlBuiltin(Builtin):
             special_builtin_usage_discard(shell.state)
 
         arg = args[1]
-        try:
-            level = int(arg)
-        except ValueError:
+        # legal_number, not int(): `break 1_0` / `break \u0661` / a count past
+        # int64 are REJECTED operands in bash, so they take the bad-count cell
+        # rather than breaking out of every loop.
+        level = legal_number(arg)
+        if level is None:
             # Bad-count cell: bash 5.3.15 EXITS the shell here, in every input
             # mode and even under a `|| echo caught` guard.
             self.error(f"{arg}: numeric argument required", shell)
             special_builtin_usage_exit_shell(shell)
-            return None
 
         if level <= 0:
             # bash: report "loop count out of range" and (the caller then)

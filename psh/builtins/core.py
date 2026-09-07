@@ -8,6 +8,7 @@ from ..core import (
     special_builtin_usage_status,
 )
 from .base import Builtin
+from .numeric import legal_number
 from .registry import builtin
 
 if TYPE_CHECKING:
@@ -51,17 +52,19 @@ class ExitBuiltin(Builtin):
             # operand followed by extras is "too many arguments". The two cells
             # then take DIFFERENT outcomes of the one usage-error family in
             # core/internal_errors.py — neither status is spelled here.
-            try:
-                # bash wraps the code modulo 256 (so `exit 257` -> 1,
-                # `exit -1` -> 255); & 0xFF matches for negatives too.
-                exit_code = int(args[1]) & 0xFF
-            except ValueError:
+            # legal_number, not int(): `exit 5_0` / `exit \u0665` / anything
+            # past int64 is a REJECTED operand in bash, not a value.
+            operand = legal_number(args[1])
+            if operand is None:
                 # Operand cell: report, fail with the family status, and let
                 # the shell CONTINUE on the same line — `exit abc; echo rc=$?`
                 # prints rc=2 (bash 5.3.15; the 5.2 series exited here).
                 self.error(f"{args[1]}: numeric argument required", shell)
                 special_builtin_usage_status()
             else:
+                # bash wraps the code modulo 256 (so `exit 257` -> 1,
+                # `exit -1` -> 255); & 0xFF matches for negatives too.
+                exit_code = operand & 0xFF
                 if len(args) > 2:
                     # Valid first operand + extras: the too-many-arguments cell
                     # discards the rest of the current input unit and does NOT
