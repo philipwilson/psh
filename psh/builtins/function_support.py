@@ -1005,7 +1005,13 @@ class ReturnBuiltin(Builtin):
         # context check, so `return abc` OUTSIDE a function prints BOTH lines
         # (both location-prefixed). Inside a function it prints only this line.
         numeric_error = False
-        exit_code = shell.state.last_exit_code
+        # A BARE `return` at the TOP LEVEL of a trap action resolves to the
+        # status at trap ENTRY, exactly like a bare `exit` (bash 5.3, POSIX
+        # interp 1602; CHANGES 5.3-alpha item y). The trap manager owns which
+        # traps and how wide "top level" is; None means "use $?".
+        entry_status = shell.trap_manager.bare_status_entry_value
+        exit_code = (shell.state.last_exit_code if entry_status is None
+                     else entry_status)
         if len(args) > 1:
             try:
                 # Wrap return value to 0-255 range like bash does

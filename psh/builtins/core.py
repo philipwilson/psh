@@ -35,9 +35,9 @@ class ExitBuiltin(Builtin):
         # shell's exit status except through an explicit `exit N`). The trap
         # manager owns which traps and what "top level" means; None here means
         # "use $?". An explicit operand below overrides either way. See
-        # core/trap_manager.py#TrapManager.bare_exit_entry_status.
+        # core/trap_manager.py#TrapManager.bare_status_entry_value.
         exit_code = shell.state.last_exit_code
-        entry_status = shell.trap_manager.bare_exit_entry_status
+        entry_status = shell.trap_manager.bare_status_entry_value
         if entry_status is not None:
             exit_code = entry_status
         if len(args) >= 2:

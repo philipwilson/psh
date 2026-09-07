@@ -324,6 +324,17 @@ class SubshellExecutor:
             # it does not fire here, a body-set managed-signal trap fires, and
             # the EXIT trap runs on completion / fatal signal. The body applies
             # the group's redirects and runs its statements in this environment.
+            #
+            # A backgrounded brace group is a COMPOUND forked with the PARENT
+            # Shell object, so it is "in a subshell" for POSIX interp 1602: a
+            # bare `exit`/`return` inside it keeps the CURRENT $?, not the
+            # enclosing trap action's entry status (bash 5.3.15: `trap
+            # '{ true; exit; } & wait $!; echo c=$?' USR1` prints c=0 with
+            # entry 5). enter_subshell_trap_environment cannot do this -- it
+            # also runs for a backgrounded SIMPLE command, which KEEPS the
+            # entry status.
+            self.shell.trap_manager.drop_trap_action_frames_in_forked_compound()
+
             def body() -> int:
                 saved_fds = []
                 try:

@@ -43,7 +43,7 @@ class _TrapActionFrame(NamedTuple):
     ``entry_status`` is ``$?`` as of trap ENTRY, or None when this trap kind
     lets a bare ``exit`` keep the current ``$?`` (DEBUG). ``function_depth``
     and ``source_depth`` are the shell's depths at entry, so
-    :meth:`TrapManager.bare_exit_entry_status` can tell the action's OWN top
+    :meth:`TrapManager.bare_status_entry_value` can tell the action's OWN top
     level from a function body or sourced file it called. ``top_level_only``
     is False for the EXIT trap, whose rule ignores those depths.
     """
@@ -94,19 +94,24 @@ class TrapManager:
         #: One :class:`_TrapActionFrame` per trap action currently running,
         #: innermost last. A stack, so a signal trap that fires DURING an EXIT
         #: action takes the signal rule and the EXIT rule is restored when it
-        #: unwinds. See :meth:`bare_exit_entry_status`.
+        #: unwinds. See :meth:`bare_status_entry_value`.
         self._trap_action_frames: List[_TrapActionFrame] = []
 
     @property
-    def bare_exit_entry_status(self) -> Optional[int]:
-        """Status a bare ``exit`` resolves to right now, or None for ``$?``.
+    def bare_status_entry_value(self) -> Optional[int]:
+        """Status a bare ``exit``/``return`` resolves to now, or None for ``$?``.
 
-        A BARE ``exit`` (no operand) at the TOP LEVEL of a trap action means
-        "leave the status alone": it resolves to the status in effect when the
-        trap was ENTERED, not to the action's current ``$?``. The action's body
-        therefore cannot change the shell's exit status except through an
-        explicit ``exit N``. ``builtins/core.py#ExitBuiltin.execute`` is the
-        sole consumer; None means "use ``state.last_exit_code``".
+        A BARE ``exit`` or ``return`` (no operand) at the TOP LEVEL of a trap
+        action means "leave the status alone": it resolves to the status in
+        effect when the trap was ENTERED, not to the action's current ``$?``.
+        The action's body therefore cannot change the status it hands back
+        except through an explicit operand. The two consumers are
+        ``builtins/core.py#ExitBuiltin.execute`` and
+        ``builtins/function_support.py#ReturnBuiltin.execute``; None means
+        "use ``state.last_exit_code``". ``return`` was changed for the same
+        interpretation in bash 5.3 (CHANGES 5.3-alpha item y, line 370:
+        "Change for POSIX interpretation 1602 about the default return status
+        for `return\' in a trap command").
 
         Which traps, and what "top level" means, are bash 5.3's (CHANGES
         5.3-beta section 3 item q, line 277; NEWS item uu, line 141; POSIX
@@ -131,9 +136,17 @@ class TrapManager:
           bare ``exit`` inside a function called from an EXIT action still
           resolves to the entry status (probed 5.3.15: ``f() { false; exit; };
           trap f EXIT; exit 3`` exits 3 in both shells).
-        * A subshell never sees a frame at all: ``Shell.for_subshell`` builds a
-          new shell with a new TrapManager, which is the "not in a subshell"
-          half of the rule.
+        * "Not in a subshell" is the other half, and it is about the forked
+          unit's SHAPE, not the fork itself. A forked COMPOUND -- a pipeline
+          member, a backgrounded ``{ }`` / ``( )`` / ``if`` / loop / ``case``,
+          a called function -- keeps the current ``$?``; a forked SIMPLE
+          command keeps the ENTRY status (probed 5.3.15: ``true; exit & wait
+          $!`` and ``true; false | exit`` both answer with the entry status,
+          while ``{ true; exit; } &`` and ``false | { true; exit; }`` answer
+          with the child's current ``$?``). Most psh forks build a fresh Shell
+          and so a fresh TrapManager with no frames; the two that reuse the
+          PARENT Shell object call
+          :meth:`drop_trap_action_frames_in_forked_compound`.
         """
         if not self._trap_action_frames:
             return None
@@ -153,7 +166,7 @@ class TrapManager:
         Called by :meth:`execute_trap` for EVERY trap kind, DEBUG included, so
         that the innermost frame always answers: a DEBUG action nested inside
         a signal action must keep the current ``$?`` rather than inherit the
-        signal trap's entry status. See :meth:`bare_exit_entry_status` for the
+        signal trap's entry status. See :meth:`bare_status_entry_value` for the
         rule and its bash 5.3 provenance.
         """
         self._trap_action_frames.append(_TrapActionFrame(
@@ -162,6 +175,28 @@ class TrapManager:
             source_depth=self.state.source_depth,
             top_level_only=signal_name != 'EXIT',
         ))
+
+    def drop_trap_action_frames_in_forked_compound(self) -> None:
+        """Forget the running trap actions after forking a COMPOUND child.
+
+        interp 1602's "would cause the trap to end (that is, not in a
+        subshell)": a bare ``exit``/``return`` inside a forked compound cannot
+        end the parent's trap action, so it keeps the CURRENT ``$?``. Most psh
+        forks build a fresh Shell (``Shell.for_subshell``) and therefore a
+        fresh TrapManager with no frames at all; the two that reuse the PARENT
+        Shell object -- a backgrounded brace group
+        (``executor/subshell.py#_execute_background_brace_group``) and a
+        pipeline member (``executor/pipeline.py``) -- would otherwise answer
+        with the parent's entry status inside the child.
+
+        Deliberately NOT part of :meth:`enter_subshell_trap_environment`, which
+        also runs for a backgrounded SIMPLE command: bash KEEPS the entry
+        status for a forked simple command (probed 5.3.15, entry 5:
+        ``trap 'true; exit & wait $!; echo c=$?' USR1`` prints c=5 and
+        ``trap 'true; false | exit; echo after=$?' USR1`` prints after=5),
+        so clearing there would trade one divergence for another.
+        """
+        self._trap_action_frames.clear()
 
     def set_trap(self, action: str, signals: List[str]) -> int:
         """Set trap handler for signals.
@@ -507,7 +542,7 @@ class TrapManager:
             self._trap_action_depth += 1
             # A bare `exit` at the TOP LEVEL of this action resolves to
             # the status at trap ENTRY, not the body's current $?
-            # (bare_exit_entry_status). Every trap kind pushes a frame so
+            # (bare_status_entry_value). Every trap kind pushes a frame so
             # the innermost one always answers -- a signal trap that fires
             # DURING an EXIT action takes the signal rule, and the EXIT
             # rule is restored when it unwinds.

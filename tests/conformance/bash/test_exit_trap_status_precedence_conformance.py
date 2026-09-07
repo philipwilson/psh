@@ -15,12 +15,24 @@ WHAT "TOP LEVEL" MEANS, probed on 5.3.15 in all three input modes: the
 action's OWN command text, including its ``if`` / ``{ }`` / loop / ``case``
 bodies, ``&&``/``||`` lists and ``eval``.  A bare ``exit`` inside a FUNCTION
 BODY or a SOURCED FILE called from the action is NOT at top level and keeps
-the CURRENT ``$?``; nor is one inside a subshell.  The comparison is against
-the depths at trap ENTRY, so a trap entered while already inside a function
-has a top level of its own.  Trap kinds: EXIT, signal, ERR and RETURN all
-record an entry status; DEBUG does not.  The EXIT trap is the one exception to
-the top-level restriction -- its bare ``exit`` resolves to the entry status
-even inside a called function or a sourced file.
+the CURRENT ``$?``.  The comparison is against the depths at trap ENTRY, so a
+trap entered while already inside a function has a top level of its own.  Trap
+kinds: EXIT, signal, ERR and RETURN all record an entry status; DEBUG does not.
+The EXIT trap is the one exception to the top-level restriction -- its bare
+``exit`` resolves to the entry status even inside a called function or a
+sourced file.
+
+"NOT IN A SUBSHELL" is the item's other half, and it turns on the forked unit's
+SHAPE, not on the fork.  Probed on 5.3.15: a forked COMPOUND -- a pipeline
+member ``{ }``/``if``/loop/``case``, a backgrounded ``{ } &`` -- keeps the
+CURRENT ``$?``, while a forked SIMPLE command keeps the ENTRY status
+(``exit &``, ``false | exit``, ``eval "true; exit" &``).  Both halves are
+pinned below, so a fix for one cannot silently over-correct the other.
+
+BARE ``return`` FOLLOWS THE SAME RULE (bash 5.3 CHANGES 5.3-alpha section item
+y, line 370: "Change for POSIX interpretation 1602 about the default return
+status for `return' in a trap command").  ``ReturnBuiltin`` asks the same owner
+query as ``ExitBuiltin``; the ``ret-`` cells below pin it.
 
 WHY EVERY CELL IS COMPOSED.  The slot's first battery pinned bare ``exit``
 with two cells (``trap 'exit' EXIT; exit 3`` and ``trap 'exit' EXIT; false``)
@@ -38,7 +50,7 @@ HISTORY.  Under the 5.2 series the saved-status rule was EXIT-trap-SPECIFIC,
 and psh implemented exactly that.  bash 5.3 widened it, and Wave 0.3 pinned the
 widened cells BOTH SIDES as declared divergences.  Slot 2.1 made psh follow --
 one stacked owner,
-``psh/core/trap_manager.py#TrapManager.bare_exit_entry_status`` -- and flipped
+``psh/core/trap_manager.py#TrapManager.bare_status_entry_value`` -- and flipped
 every one of those rows into an equality cell of ``ENTRY_STATUS_CELLS`` below.
 Gate-triage rows G32-G35 (FLIP-PINS slot 2.1).
 
@@ -50,6 +62,10 @@ Reproduce one cell by hand (oracle = the resolved bash 5.3.15)::
 """
 import pytest
 from shell_oracle import is_comparable, run_bash, run_psh
+
+#: Tail that makes the trap ENTRY status 5 while the action's own
+#: ``$?`` is 0 -- the two rules then predict different answers.
+K5 = "(kill -USR1 $$; exit 5)\nsleep 0.2\nexit 3"
 
 #: (id, script, discriminating) -- rows that hold on any supported bash: the
 #: EXIT-trap rule, the boundaries where a bare exit keeps the current ``$?``
@@ -135,6 +151,20 @@ CELLS = [
     # current $? (0 from true), so the cell discriminates the two rules.
     ("boundary-debug-trap-entry-status-is-visible-but-loses",
      "trap 'echo d=$?; true; exit' DEBUG\n(exit 4)\ntrue", True),
+    # -- BOUNDARY, "not in a subshell": a forked COMPOUND child of the action
+    #    keeps the CURRENT $?.  The EXIT-trap spellings held before the slot
+    #    2.1 flip and after it, so they need no 5.3 oracle. -----------------
+    ("boundary-exit-trap-bg-brace-group-uses-current-status",
+     "trap '{ true; exit; } & wait $!; echo c=$?; exit' EXIT\nexit 3", True),
+    ("boundary-exit-trap-pipeline-brace-member-uses-current-status",
+     "trap 'false | { true; exit; }; echo after=$?; exit' EXIT\nexit 3", True),
+    # -- CONTROL against over-correcting that boundary: a forked SIMPLE
+    #    command KEEPS the entry status in bash, so a fix that drops the
+    #    frames on every fork fails here. ----------------------------------
+    ("control-exit-trap-bg-simple-command-keeps-entry-status",
+     "trap 'true; exit & wait $!; echo c=$?; exit' EXIT\nexit 3", True),
+    ("control-exit-trap-pipeline-simple-member-keeps-entry-status",
+     "trap 'true; false | exit; echo after=$?; exit' EXIT\nexit 3", True),
 ]
 
 #: (id, script, discriminating) -- rows that need bash 5.3's WIDENED rule
@@ -218,6 +248,61 @@ ENTRY_STATUS_CELLS = [
     ("disc-return-trap-false-then-bare-exit",
      "set -T\nf() { return 4; }\ntrap 'false; exit' RETURN\nf\necho nr",
      True),
+    # -- "not in a subshell", signal/ERR/RETURN half.  Entry status is 5 and
+    #    the forked child's own $? is 0, so the two rules disagree. --------
+    ("boundary-signal-trap-bg-brace-group-uses-current-status",
+     "trap '{ true; exit; } & wait $!; echo c=$?; exit' USR1\n" + K5, True),
+    ("boundary-signal-trap-pipeline-brace-member-uses-current-status",
+     "trap 'false | { true; exit; }; echo after=$?; exit' USR1\n" + K5, True),
+    ("boundary-signal-trap-pipeline-if-member-uses-current-status",
+     "trap 'false | if true; then exit; fi; echo after=$?; exit' USR1\n" + K5,
+     True),
+    ("boundary-signal-trap-pipeline-loop-member-uses-current-status",
+     "trap 'false | for i in 1; do true; exit; done; echo after=$?; exit'"
+     " USR1\n" + K5, True),
+    ("boundary-signal-trap-pipeline-brace-in-eval-uses-current-status",
+     "trap 'eval \"false | { true; exit; }\"; echo after=$?; exit' USR1\n"
+     + K5, True),
+    ("boundary-signal-trap-pipefail-brace-first-member-uses-current-status",
+     "set -o pipefail\ntrap '{ true; exit; } | cat; echo after=$?; exit'"
+     " USR1\n" + K5, True),
+    ("boundary-err-trap-pipeline-brace-member-uses-current-status",
+     "trap 'true | { true; exit; }; echo after=$?; exit' ERR\n(exit 9)\n"
+     "echo nr", True),
+    ("boundary-return-trap-pipeline-brace-member-uses-current-status",
+     "set -T\nf() { (exit 6); }\ntrap 'true | { true; exit; }; "
+     "echo after=$?; exit' RETURN\nf\necho nr", True),
+    # -- CONTROLS against over-correcting: a forked SIMPLE command keeps the
+    #    ENTRY status (5), and so does a backgrounded `eval`. --------------
+    ("control-signal-trap-bg-simple-command-keeps-entry-status",
+     "trap 'true; exit & wait $!; echo c=$?; exit' USR1\n" + K5, True),
+    ("control-signal-trap-pipeline-simple-member-keeps-entry-status",
+     "trap 'true; false | exit; echo after=$?; exit' USR1\n" + K5, True),
+    ("control-signal-trap-bg-eval-builtin-keeps-entry-status",
+     "trap 'eval \"true; exit\" & wait $!; echo c=$?; exit' USR1\n" + K5,
+     True),
+    # -- BARE `return` takes the entry status too (CHANGES 5.3-alpha item y).
+    ("disc-return-builtin-uses-entry-status",
+     "f() { kill -USR1 $$; sleep 0.2; echo in-f; }\n"
+     "trap 'false; return' USR1\nf\necho after=$?\nexit 3", True),
+    ("disc-return-builtin-entry-status-from-subshell",
+     "f() { (kill -USR1 $$; exit 5); sleep 0.2; echo in-f; }\n"
+     "trap 'true; return' USR1\nf\necho after=$?\nexit 3", True),
+    ("disc-return-builtin-in-err-action-inside-function",
+     "set -E\nf() { (exit 9); echo f-after; }\ntrap 'true; return' ERR\nf\n"
+     "echo after=$?\nexit 3", True),
+    ("boundary-return-builtin-in-called-function-uses-current-status",
+     "f() { kill -USR1 $$; sleep 0.2; echo in-f; }\ng() { false; return; }\n"
+     "trap 'g; echo g=$?; false; return' USR1\nf\necho after=$?\nexit 3",
+     True),
+    ("boundary-return-builtin-in-sourced-file-uses-current-status",
+     "printf 'false; return\\n' > r_dot.sh\n"
+     "f() { kill -USR1 $$; sleep 0.2; echo in-f; }\n"
+     "trap '. ./r_dot.sh; echo s=$?; false; return' USR1\nf\n"
+     "echo after=$?\nexit 3", True),
+    ("guard-return-builtin-explicit-operand-wins",
+     "f() { kill -USR1 $$; sleep 0.2; echo in-f; }\n"
+     "trap 'true; return 7' USR1\nf\necho after=$?\nexit 3", True),
 ]
 
 MODES = ["command", "script", "stdin"]
