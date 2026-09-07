@@ -249,6 +249,18 @@ class PipelineExecutor:
                             child_context.errexit_suppress_deferred = \
                                 child_context.errexit_suppress
                             child_context.errexit_suppress = 0
+                        else:
+                            # A COMPOUND member is "in a subshell" for POSIX
+                            # interp 1602, so a bare `exit`/`return` in it
+                            # keeps the CURRENT $? rather than the enclosing
+                            # trap action's entry status. This child reuses the
+                            # PARENT Shell object (no Shell.for_subshell), so
+                            # the frames must be dropped explicitly. A SIMPLE
+                            # member deliberately keeps them: bash 5.3.15
+                            # answers `trap 'true; false | exit;
+                            # echo after=$?' USR1` with the ENTRY status.
+                            self.shell.trap_manager \
+                                .drop_trap_action_frames_in_forked_compound()
 
                         # Wire stdin/stdout onto this member's pipe endpoints
                         # (collision-safe; closes the endpoints it doesn't use).

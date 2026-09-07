@@ -1,7 +1,7 @@
 """Trap management for PSH shell."""
 import signal
 from collections import deque
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, NamedTuple, Optional, Set, Tuple
 
 from ..utils.escapes import single_quote
 from ..utils.signal_utils import (
@@ -35,6 +35,23 @@ def _restore_disposition_map(leased: Dict[int, Any]) -> None:
             signal.signal(signum, prior)
         except (OSError, ValueError, TypeError):
             pass  # signal became uncatchable / prior not restorable
+
+
+class _TrapActionFrame(NamedTuple):
+    """One running trap action's claim on what a bare ``exit`` resolves to.
+
+    ``entry_status`` is ``$?`` as of trap ENTRY, or None when this trap kind
+    lets a bare ``exit`` keep the current ``$?`` (DEBUG). ``function_depth``
+    and ``source_depth`` are the shell's depths at entry, so
+    :meth:`TrapManager.bare_status_entry_value` can tell the action's OWN top
+    level from a function body or sourced file it called. ``top_level_only``
+    is False for the EXIT trap, whose rule ignores those depths.
+    """
+
+    entry_status: Optional[int]
+    function_depth: int
+    source_depth: int
+    top_level_only: bool
 
 
 class TrapManager:
@@ -74,30 +91,112 @@ class TrapManager:
         # $BASH_COMMAND is frozen at the interrupted command (bash: "the
         # command executing at the time of the trap").
         self._trap_action_depth = 0
-        #: ``$?`` as of EXIT-trap entry; None when the innermost running trap
-        #: is not the EXIT trap. See :meth:`exit_trap_entry_status`.
-        self._exit_trap_entry_status: Optional[int] = None
+        #: One :class:`_TrapActionFrame` per trap action currently running,
+        #: innermost last. A stack, so a signal trap that fires DURING an EXIT
+        #: action takes the signal rule and the EXIT rule is restored when it
+        #: unwinds. See :meth:`bare_status_entry_value`.
+        self._trap_action_frames: List[_TrapActionFrame] = []
 
     @property
-    def exit_trap_entry_status(self) -> Optional[int]:
-        """``$?`` as of EXIT-trap entry, or None outside an EXIT trap action.
+    def bare_status_entry_value(self) -> Optional[int]:
+        """Status a bare ``exit``/``return`` resolves to now, or None for ``$?``.
 
-        A BARE ``exit`` (no operand) inside an EXIT trap means "leave the
-        status alone", so bash resolves it to the status in effect when the
-        trap was ENTERED rather than to the current ``$?``: the trap body
-        cannot change the shell's exit status except through an explicit
-        ``exit N``. ``builtins/core.py#ExitBuiltin.execute`` is the sole
-        consumer. psh already honored this when an EXIT trap ends normally
-        (``trap 'false' EXIT; exit 3`` exits 3); the bare ``exit`` route used
-        to leak the body's status instead.
+        A BARE ``exit`` or ``return`` (no operand) at the TOP LEVEL of a trap
+        action means "leave the status alone": it resolves to the status in
+        effect when the trap was ENTERED, not to the action's current ``$?``.
+        The action's body therefore cannot change the status it hands back
+        except through an explicit operand. The two consumers are
+        ``builtins/core.py#ExitBuiltin.execute`` and
+        ``builtins/function_support.py#ReturnBuiltin.execute``; None means
+        "use ``state.last_exit_code``". ``return`` was changed for the same
+        interpretation in bash 5.3 (CHANGES 5.3-alpha item y, line 370:
+        "Change for POSIX interpretation 1602 about the default return status
+        for `return\' in a trap command").
 
-        Deliberately EXIT-ONLY. A bare ``exit`` inside a SIGNAL trap resolves
-        to the current ``$?`` in bash, so this reads None there —
-        probe-verified against bash 5.2.26 (``trap 'echo entry=$?; false;
-        exit' USR1`` prints entry=0 and exits 1 in BOTH shells) and pinned, so
-        the mechanism cannot be generalized by a later edit.
+        Which traps, and what "top level" means, are bash 5.3's (CHANGES
+        5.3-beta section 3 item q, line 277; NEWS item uu, line 141; POSIX
+        interp 1602): "If `exit' is run in a trap and not supplied an exit
+        status argument, it uses the value of $? from before the trap only if
+        it's run at the trap's `top level' and would cause the trap to end
+        (that is, not in a subshell)."  Probed against bash 5.3.15 in all
+        three input modes:
+
+        * EXIT, signal, ERR and RETURN actions all record an entry status;
+          DEBUG does not, so a bare ``exit`` there keeps the current ``$?``
+          (``trap 'echo d=$?; true; exit' DEBUG; (exit 4)`` prints d=4 and
+          exits 0 in both shells).
+        * "Top level" is the action's OWN command text, including its ``if`` /
+          ``{ }`` / loop / ``case`` bodies, ``&&``/``||`` lists and ``eval``.
+          A bare ``exit`` inside a FUNCTION BODY or a SOURCED FILE called from
+          the action is NOT at top level and keeps the current ``$?`` -- hence
+          the recorded depths, compared against the CURRENT ones so that a
+          trap entered while already inside a function (``kill -USR1 $$`` from
+          a function body) still has a top level of its own.
+        * The EXIT trap is the exception: its rule ignores those depths, so a
+          bare ``exit`` inside a function called from an EXIT action still
+          resolves to the entry status (probed 5.3.15: ``f() { false; exit; };
+          trap f EXIT; exit 3`` exits 3 in both shells).
+        * "Not in a subshell" is the other half, and it is about the forked
+          unit's SHAPE, not the fork itself. A forked COMPOUND -- a pipeline
+          member, a backgrounded ``{ }`` / ``( )`` / ``if`` / loop / ``case``,
+          a called function -- keeps the current ``$?``; a forked SIMPLE
+          command keeps the ENTRY status (probed 5.3.15: ``true; exit & wait
+          $!`` and ``true; false | exit`` both answer with the entry status,
+          while ``{ true; exit; } &`` and ``false | { true; exit; }`` answer
+          with the child's current ``$?``). Most psh forks build a fresh Shell
+          and so a fresh TrapManager with no frames; the two that reuse the
+          PARENT Shell object call
+          :meth:`drop_trap_action_frames_in_forked_compound`.
         """
-        return self._exit_trap_entry_status
+        if not self._trap_action_frames:
+            return None
+        frame = self._trap_action_frames[-1]
+        if frame.entry_status is None:
+            return None
+        if frame.top_level_only and (
+                len(self.state.function_stack) != frame.function_depth
+                or self.state.source_depth != frame.source_depth):
+            return None
+        return frame.entry_status
+
+    def _push_trap_action_frame(self, signal_name: str,
+                                entry_status: int) -> None:
+        """Record what a bare ``exit`` in this trap action resolves to.
+
+        Called by :meth:`execute_trap` for EVERY trap kind, DEBUG included, so
+        that the innermost frame always answers: a DEBUG action nested inside
+        a signal action must keep the current ``$?`` rather than inherit the
+        signal trap's entry status. See :meth:`bare_status_entry_value` for the
+        rule and its bash 5.3 provenance.
+        """
+        self._trap_action_frames.append(_TrapActionFrame(
+            entry_status=None if signal_name == 'DEBUG' else entry_status,
+            function_depth=len(self.state.function_stack),
+            source_depth=self.state.source_depth,
+            top_level_only=signal_name != 'EXIT',
+        ))
+
+    def drop_trap_action_frames_in_forked_compound(self) -> None:
+        """Forget the running trap actions after forking a COMPOUND child.
+
+        interp 1602's "would cause the trap to end (that is, not in a
+        subshell)": a bare ``exit``/``return`` inside a forked compound cannot
+        end the parent's trap action, so it keeps the CURRENT ``$?``. Most psh
+        forks build a fresh Shell (``Shell.for_subshell``) and therefore a
+        fresh TrapManager with no frames at all; the two that reuse the PARENT
+        Shell object -- a backgrounded brace group
+        (``executor/subshell.py#_execute_background_brace_group``) and a
+        pipeline member (``executor/pipeline.py``) -- would otherwise answer
+        with the parent's entry status inside the child.
+
+        Deliberately NOT part of :meth:`enter_subshell_trap_environment`, which
+        also runs for a backgrounded SIMPLE command: bash KEEPS the entry
+        status for a forked simple command (probed 5.3.15, entry 5:
+        ``trap 'true; exit & wait $!; echo c=$?' USR1`` prints c=5 and
+        ``trap 'true; false | exit; echo after=$?' USR1`` prints after=5),
+        so clearing there would trade one divergence for another.
+        """
+        self._trap_action_frames.clear()
 
     def set_trap(self, action: str, signals: List[str]) -> int:
         """Set trap handler for signals.
@@ -441,26 +540,29 @@ class TrapManager:
             # While the action runs, $BASH_COMMAND stays the interrupted
             # command (bash) — see set_bash_command.
             self._trap_action_depth += 1
-            # A bare `exit` in an EXIT action resolves to the status at trap
-            # ENTRY, not the body's current $? (exit_trap_entry_status). Set
-            # for EXIT and CLEARED for every other trap — a signal trap
-            # nested inside an EXIT action must take the signal rule — and
-            # saved/restored so nesting works in both directions.
-            previous_entry_status = self._exit_trap_entry_status
-            self._exit_trap_entry_status = (
-                saved_exit_code if signal_name == 'EXIT' else None)
+            # A bare `exit` at the TOP LEVEL of this action resolves to
+            # the status at trap ENTRY, not the body's current $?
+            # (bare_status_entry_value). Every trap kind pushes a frame so
+            # the innermost one always answers -- a signal trap that fires
+            # DURING an EXIT action takes the signal rule, and the EXIT
+            # rule is restored when it unwinds.
+            self._push_trap_action_frame(signal_name, saved_exit_code)
             try:
                 # posix_syntax_exit=False: a parse failure of the ACTION
-                # string itself never triggers the POSIX-mode syntax exit
-                # (bash 5.2, probe tmp/posixexit: `trap 'if' USR1` survives
-                # in posix mode, while `trap "eval 'if'" USR1` — a nested
-                # source with its own input — exits).
+                # string itself never triggers the POSIX-mode syntax exit,
+                # while a nested source with its OWN input still does.
+                # Reproduce (bash 5.3.15 and psh agree on both):
+                #   set -o posix; trap 'if' USR1; echo survived=$?
+                #     -> survived=0, the shell lives
+                #   set -o posix; trap "eval 'if'" USR1
+                #   kill -USR1 $$; sleep 0.2; echo reached
+                #     -> rc 2, `reached` never printed
                 self.shell.run_command(action, add_to_history=False,
                                        base_line=base_line,
                                        posix_syntax_exit=False)
             finally:
                 self._trap_action_depth -= 1
-                self._exit_trap_entry_status = previous_entry_status
+                self._trap_action_frames.pop()
 
             # For most signals, restore the exit code
             # EXIT trap should preserve the exit code it sets
@@ -686,8 +788,12 @@ class TrapManager:
     # the BODY sets fires at that same function's return and persists
     # afterwards, and the hidden outer trap is restored only if the body
     # didn't install its own. Sourced files never hide it (a RETURN trap
-    # fires at the end of every `source`, -T or not). Pinned by the truth
-    # table in tmp/probes-r17t2-trap/cases_c_return.sh (bash 5.2).
+    # fires at the end of every `source`, -T or not). Reproduce the two ends
+    # of the model: `f(){ trap 'echo RET' RETURN; }; trap -p RETURN; f;
+    # trap -p RETURN` (the body's trap survives the call) and `set -T;
+    # f(){ echo in; }; trap 'echo R' RETURN; f; echo done` (inherited under
+    # -T). Pinned against the live oracle by the RETURN cells of
+    # tests/conformance/bash/test_trap_signal_spec_conformance.py.
     # ------------------------------------------------------------------
 
     def hide_return_trap_on_function_entry(self) -> Optional[str]:
