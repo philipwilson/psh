@@ -36,6 +36,7 @@ Executor  Executor   Executor   Executor  Executor
 | `command_resolver.py` | `CommandResolver` - the ONE command-name resolution service (PATH walk, ordered typed candidates, executor exec resolution). Consumed by the external strategy and by `command`/`type`/`hash`; see `psh/builtins/CLAUDE.md` "Command resolution" |
 | `enhanced_test_evaluator.py` | `[[ ]]` test expression evaluation |
 | `context.py` | `ExecutionContext` - execution state |
+| `null_command.py` | The ONE status rule for a simple command that runs no program (bash's `execute_null_command`): a redirect setup failure is 1, a redirection on fd 0 (or a `{var}` fd) makes it 0, else it is the last command substitution run while expanding the command. Read by both zero-words exits in `command.py#_run_null_command` AND by the assignment-only paths (`command_assignments.py#apply_pure`, `command.py#_run_bare_array_assignment`), so `$(exit 5)`, `x=$(exit 5)` and `a=($(exit 7))` cannot answer differently |
 
 ## Core Patterns
 
@@ -384,6 +385,25 @@ POSIX-compliant expansion order:
 6. Word splitting (on unquoted results)
 7. Pathname expansion (globbing)
 8. Quote removal
+
+### noexec is decided per STATEMENT
+
+`set -n` is asked BEFORE each statement, in `core.py#ExecutorVisitor._execute_sequence` —
+the one sequence runner behind the program root and every nested statement list — so a flag
+flipped by an earlier statement of the same list stops the rest of that list, and each
+skipped statement contributes status 0. `scripting/source_processor.py` keeps a per-input-unit
+fast path, but it is no longer the only check; it was, and that is why
+`psh -c 'echo before; set -n; touch marker; echo after'` used to run everything.
+The complement lives in `builtins/environment.py#apply_set_o_option`: an INTERACTIVE shell
+refuses to turn noexec on at all (so `$-` never grows an `n`), while the command line is
+exempt, because bash parses invocation flags before it decides the shell is interactive.
+
+### A command that runs no program still reports a status
+
+When a simple command's words expand to zero fields, its redirections are still performed and
+its status comes from `null_command.py`, never from a hard-coded 0 — `psh -c '$(exit 5); echo
+rc=$?'` prints `rc=5`. Which fd a redirection targets is `io_redirect/planner.py#redirect_target_fd`,
+read by both the redirect plan and that rule, so the two can never disagree.
 
 ### Exit Codes
 

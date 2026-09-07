@@ -183,6 +183,9 @@ TOUCHED_PREEXISTING = [
 # otherwise flag as undispositioned.
 POST_ENDPOINT_SCANNED: list = [
     "psh/utils/posix_classes.py",   # 5B.1: the shared POSIX class table (data leaf)
+    # slot 1.10 (C041): the null-command status rule. Takes ShellState and a
+    # redirect list, never a full Shell — scanned so it stays that way.
+    "psh/executor/null_command.py",
 ]
 
 # Modules born after SCOPE_ENDPOINT that are deliberately NOT scanned —

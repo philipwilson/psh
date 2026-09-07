@@ -11206,3 +11206,91 @@
   stdout: "hi\n       1\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# NOEXEC PER STATEMENT (C040) and NULL-COMMAND STATUS (C041) — slot 1.10
+# =============================================================================
+
+- name: c040_noexec_stops_the_rest_of_the_same_list
+  description: "C040: `set -n` mid-list stops every following statement (bash re-checks the flag per command)"
+  command: 'echo before; set -n; echo SHOULD_NOT_RUN; echo after'
+  stdout: "before\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c040_noexec_set_o_spelling_agrees
+  description: "C040: `set -o noexec` stops the rest of the list exactly like `set -n`"
+  command: 'echo before; set -o noexec; echo SHOULD_NOT_RUN'
+  stdout: "before\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c040_noexec_set_plus_n_is_never_reached
+  description: "C040: the `set +n` that would undo the flag is skipped like every other command"
+  command: 'echo before; set -n; set +n; echo SHOULD_NOT_RUN'
+  stdout: "before\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c040_noexec_skipped_command_contributes_success
+  description: "C040: a skipped command reports success, so `false` after `set -n` leaves exit 0"
+  command: 'echo before; set -n; false'
+  stdout: "before\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c040_noexec_is_local_to_a_subshell
+  description: "C040: `set -n` inside a subshell stops that subshell only; the parent runs on"
+  command: 'echo before; (set -n; echo SHOULD_NOT_RUN); echo after'
+  stdout: "before\nafter\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c041_bare_command_substitution_sets_status
+  description: "C041: a simple command that expands to zero words reports the last command substitution's status"
+  command: '$(exit 5); echo rc=$?'
+  stdout: "rc=5\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c041_backticks_set_status_too
+  description: "C041: the backtick spelling of a bare substitution reports the same status"
+  command: '`exit 7`; echo rc=$?'
+  stdout: "rc=7\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c041_null_command_status_is_a_real_status
+  description: "C041: the null command's status drives conditions — `if $(exit 5)` takes the else branch"
+  command: 'if $(exit 5); then echo T; else echo F; fi'
+  stdout: "F\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c041_redirect_target_substitution_wins
+  description: "C041: redirection targets expand last, so their substitution decides the null command's status"
+  command: '$(exit 3) > $(echo f; exit 8); echo rc=$?'
+  stdout: "rc=8\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c041_stdin_redirect_erases_the_status
+  description: "C041: bash forks for a null command's fd-0 redirection, so the substitution status is erased"
+  command: 'echo z > z.txt; $(exit 5) < z.txt; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c041_null_command_performs_its_redirections
+  description: "C041: a null command really performs its redirections — the file is created and truncated"
+  command: '$(exit 5) > made.txt; echo rc=$?; ls made.txt'
+  stdout: "rc=5\nmade.txt\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c041_backgrounded_null_command_carries_its_status
+  description: "C041: backgrounded, the null command runs in the child — foreground 0, job status 5"
+  command: '$(exit 5) & echo immediate=$?; wait $!; echo job=$?'
+  stdout: "immediate=0\njob=5\n"
+  stderr: ""
+  exit_code: 0
