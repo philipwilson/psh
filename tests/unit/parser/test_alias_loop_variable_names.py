@@ -132,3 +132,26 @@ class TestSliceRendersToken:
         tok = Token(TokenType.WORD, "i", position=4, end_position=4)
         assert not slice_renders_token(tok, ALIAS_LINE)
         assert token_lexeme(tok, ALIAS_LINE) == "i"
+
+
+class TestHeredocDelimiterSpanIsGatedToo:
+    """The parser's OTHER slice-derived name, pinned on the same offender.
+
+    The heredoc bare-parse path recovers the delimiter's raw spelling from the
+    span across its tokens, and derives ``heredoc_quoted`` from it. Handed a
+    foreign ``source_text`` it used to read the delimiter out of that other
+    string and lose the quoting with it. Production reaches this path only
+    through the alias-introduced ``<<`` shape, which psh already refuses
+    loudly, so there is no silent binding today — this pin exists so the gate
+    cannot be dropped again without a red test.
+    """
+
+    def test_a_foreign_source_text_cannot_rename_the_delimiter(self):
+        # The span [6,11) lands on "EOFzz" in this string; ungated, that became
+        # the delimiter and the single quotes (hence quotedness) vanished.
+        program = create_parser(tokenize("cat <<'EOF'"),
+                                source_text="xxxxxxEOFzz").parse()
+        redirect = program.statements[0].pipelines[0].commands[0].redirects[0]
+        assert redirect.type == "<<"
+        assert redirect.target == "'EOF'"
+        assert redirect.heredoc_quoted is True

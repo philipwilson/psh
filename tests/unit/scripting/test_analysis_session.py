@@ -651,6 +651,13 @@ class TestPerUnitParseMatchesWholeFileWhenNothingChanges:
         rc 127). So the two programs must DIFFER here, and the session's
         answer — the UNexpanded ``g`` — must be the correct one.
 
+        The mode has to be one that EXPANDS, or the discriminator is inert:
+        ``format`` never expands aliases at all, so under it the session
+        renders a bare ``g`` whether or not the ``shopt -u`` line is there and
+        the test passes for the wrong reason. ``validate`` expands by default,
+        which is what makes the unset the only thing standing between the two
+        renderings — delete that line and both sides render ``echo G``.
+
         This used to discriminate on the F7 shape (a heredoc body followed by
         later commands), which the whole-file parse got WRONG. That corruption
         was the C010 mechanism — a name read out of a source slice at a
@@ -661,10 +668,11 @@ class TestPerUnitParseMatchesWholeFileWhenNothingChanges:
         from psh.visitor import FormatterVisitor
 
         source = "alias g='echo G'\nshopt -u expand_aliases\ng\n"
-        shell = _shell("format")
+        shell = _shell("validate")
         session = parse_for_analysis(shell, source)
-        # expand_aliases=True is what every non-format mode passes: the
-        # whole-file parse commits to it before it can read the `shopt -u`.
+        # expand_aliases=True is what every non-format mode passes, `validate`
+        # included: the whole-file parse commits to it before it can read the
+        # `shopt -u`, while the session follows the unset.
         whole = _whole_file_parse(shell, source, expand_aliases=True)
 
         session_text = FormatterVisitor().visit(session)
