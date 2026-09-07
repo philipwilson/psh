@@ -28,15 +28,16 @@ class ExitBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Exit the shell with optional exit code (bash semantics)."""
-        # Bare `exit` uses the status of the last command ($?), not 0 —
-        # EXCEPT inside an EXIT trap, where a bare `exit` means "leave the
-        # status alone" and resolves to the status at trap ENTRY (bash: the
-        # trap body cannot change the shell's exit status except through an
-        # explicit `exit N`). EXIT-only: a bare `exit` in a SIGNAL trap does
-        # use the current $?. An explicit operand below overrides either way.
-        # See core/trap_manager.py#TrapManager.exit_trap_entry_status.
+        # Bare `exit` uses the status of the last command ($?), not 0 --
+        # EXCEPT at the TOP LEVEL of a trap action, where a bare `exit` means
+        # "leave the status alone" and resolves to the status at trap ENTRY
+        # (bash 5.3, POSIX interp 1602: the action's body cannot change the
+        # shell's exit status except through an explicit `exit N`). The trap
+        # manager owns which traps and what "top level" means; None here means
+        # "use $?". An explicit operand below overrides either way. See
+        # core/trap_manager.py#TrapManager.bare_exit_entry_status.
         exit_code = shell.state.last_exit_code
-        entry_status = shell.trap_manager.exit_trap_entry_status
+        entry_status = shell.trap_manager.bare_exit_entry_status
         if entry_status is not None:
             exit_code = entry_status
         if len(args) >= 2:
