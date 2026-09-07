@@ -45,8 +45,6 @@ from ..ast_nodes import (
     UnaryTestExpression,
     UntilLoop,
     VariableExpansion,
-    variable_expansion_text,
-    # Control structures
     WhileLoop,
     Word,
 )
@@ -124,9 +122,10 @@ class FormatterVisitor(ASTVisitor[str]):
         Groups consecutive parts that share the same quote context so
         that ``"$HOME/bin"`` is emitted as one quoted region rather than
         ``"$HOME""/bin"``, and re-escapes double-quoted literals so the output
-        re-parses identically. A ``$name`` part is spelled by the single brace
-        authority ``ast_nodes.words.variable_expansion_text`` (the source's own
-        braces survive: ``${x}there``, ``${v}{1,2}``).
+        re-parses identically. Each part's source text comes from
+        ``Word.part_source_text`` — the single spelling authority, which keeps
+        the braces the source wrote (``${x}there``, ``${v}{1,2}``) and leaves a
+        bare ``$v{1,2}`` bare.
         """
         parts = word.parts
         # Group consecutive parts by their quote context, keeping each part so
@@ -134,12 +133,7 @@ class FormatterVisitor(ASTVisitor[str]):
         groups: list = []  # [(quote_char_or_None, [(part, text), ...])]
         for i, part in enumerate(parts):
             qc = getattr(part, 'quote_char', None) if getattr(part, 'quoted', False) else None
-            next_part = parts[i + 1] if i + 1 < len(parts) else None
-            if (isinstance(part, ExpansionPart)
-                    and isinstance(part.expansion, VariableExpansion)):
-                text = variable_expansion_text(part.expansion, next_part)
-            else:
-                text = str(part)
+            text = word.part_source_text(i)
             if groups and groups[-1][0] == qc:
                 groups[-1][1].append((part, text))
             else:

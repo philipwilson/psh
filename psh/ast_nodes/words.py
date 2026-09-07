@@ -358,11 +358,20 @@ class Word(ASTNode):
         FOLLOWING part as context, so a source ``${v}{1,2}`` does not flatten
         to ``$v{1,2}`` (which names ``v1``/``v2`` instead of ``v``).
         """
-        return ''.join(self._part_text(i, part)
-                       for i, part in enumerate(self.parts))
+        return ''.join(self.part_source_text(i)
+                       for i in range(len(self.parts)))
 
-    def _part_text(self, index: int, part: WordPart) -> str:
-        """One part's source text, with the following part as brace context."""
+    def part_source_text(self, index: int) -> str:
+        """Part ``index``'s source text, spelled in its neighbours' context.
+
+        The ONE place a part is turned back into source: a ``$name`` goes
+        through :func:`variable_expansion_text` with the FOLLOWING part as
+        brace context, everything else through its own ``__str__``. Every
+        consumer that rebuilds a word (``display_text``, ``to_literal_string``,
+        FormatterVisitor) calls this rather than ``str(part)``, so none of them
+        can drift into its own spelling rule.
+        """
+        part = self.parts[index]
         if isinstance(part, ExpansionPart) and isinstance(part.expansion,
                                                           VariableExpansion):
             nxt = self.parts[index + 1] if index + 1 < len(self.parts) else None
@@ -383,7 +392,7 @@ class Word(ASTNode):
             if isinstance(part, (LiteralPart, ExpansionPart)):
                 # In single quotes an expansion is literal text: the same
                 # source spelling every other reconstruction uses.
-                chunks.append(self._part_text(i, part))
+                chunks.append(self.part_source_text(i))
         return ''.join(chunks)
 
     @property
