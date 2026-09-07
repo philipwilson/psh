@@ -11376,6 +11376,53 @@
   stderr: ""
   exit_code: 0
 
+- name: c033_declare_f_reeval_quoted_adjacency
+  description: "C033/C231: \"$v\"\"x\" round-trips as ${v}x — the renderer merges same-quote regions, so the quote that delimited the name in the source is gone by the time the text is written"
+  command: |
+    v=1; vx=BADVX
+    f() { echo "$v""x"; }
+    f
+    eval "$(declare -f f)"
+    f
+  stdout: "1x\n1x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c033_declare_f_reeval_quoted_adjacency_writes_the_same_file
+  description: "C033: the quoted-adjacency round trip picks the same REDIRECT TARGET, not just the same stdout"
+  command: |
+    v=1; vx=BADVX
+    g() { echo hi > "$v""x"; cat 1x; }
+    g
+    rm -f 1x
+    eval "$(declare -f g)"
+    g
+  stdout: "hi\nhi\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c033_declare_f_reeval_quoted_adjacency_braced_control
+  description: "C033 control: a source-braced \"${v}\"\"x\" was already correct and must stay so"
+  command: |
+    v=1; vx=BADVX
+    h() { echo "${v}""x"; }
+    h
+    eval "$(declare -f h)"
+    h
+  stdout: "1x\n1x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c033_array_subscript_keeps_the_source_spelling
+  description: "C033: an array element subscript is flattened through the same spelling authority, so [${i}1] indexes 21 and does not read the variable i1"
+  command: |
+    i=2; i1=7
+    a=([${i}1]=Z)
+    echo ${!a[@]}
+  stdout: "21\n"
+  stderr: ""
+  exit_code: 0
+
 - name: c033_declare_f_reeval_case_subject
   description: "C033: a case subject Word round-trips, so the same branch is taken after the re-eval"
   command: |

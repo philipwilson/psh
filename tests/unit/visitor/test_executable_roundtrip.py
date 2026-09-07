@@ -115,7 +115,7 @@ def test_every_corpus_row_ran(mode, passes):
     """The marker split saw every row in every pass (no silent truncation)."""
     direct, rt, fmt, _ = passes[mode]
     assert set(direct) == set(rt) == set(fmt) == set(ROW_IDS)
-    assert len(ROW_IDS) == len(CORPUS) >= 40
+    assert len(ROW_IDS) == len(CORPUS) >= 60
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +133,16 @@ def test_every_corpus_row_ran(mode, passes):
     ("echo $xb", "echo $xb"),                # bare stays bare
     ("echo ${x}.txt", "echo ${x}.txt"),
     ("echo $x.txt", "echo $x.txt"),
+    # Quoted adjacency: the renderer merges same-quote regions, so the quote
+    # the source used as a delimiter is gone by the time the text is written
+    # and the name must carry its own braces (base emitted `echo "$vx"`).
+    ('echo "$v""x"', 'echo "${v}x"'),
+    ('echo "a$v""x"', 'echo "a${v}x"'),
+    ('echo $v"dq"', 'echo ${v}"dq"'),
+    # …and only where a fusion is actually possible:
+    ('echo "$v"" x"', 'echo "$v x"'),
+    ('echo "$v"".txt"', 'echo "$v.txt"'),
+    ('echo "$v"{1,2}', 'echo "$v"{1,2}'),
 ])
 def test_declare_f_text_keeps_the_source_spelling(body, expected):
     """``declare -f`` renders the braces the source wrote — and only those."""

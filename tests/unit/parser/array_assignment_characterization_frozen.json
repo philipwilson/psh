@@ -87,7 +87,7 @@
   [
     "a[0]=pre$x\"y\"",
     "OK",
-    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[ArrayElementAssignment(name='a', index='0', value='pre$xy', value_word=Word(parts=[LiteralPart(text='pre', quoted=False, quote_char=None), ExpansionPart(expansion=VariableExpansion(name='x'), quoted=False, quote_char=None), LiteralPart(text='y', quoted=True, quote_char='\"')], quote_type=None), is_append=False)], words=[])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
+    "Program(statements=[AndOrList(pipelines=[Pipeline(commands=[SimpleCommand(redirects=[], background=False, array_assignments=[ArrayElementAssignment(name='a', index='0', value='pre${x}y', value_word=Word(parts=[LiteralPart(text='pre', quoted=False, quote_char=None), ExpansionPart(expansion=VariableExpansion(name='x'), quoted=False, quote_char=None), LiteralPart(text='y', quoted=True, quote_char='\"')], quote_type=None), is_append=False)], words=[])], negated=False, pipe_stderr=[], timed=False, time_posix=False)], operators=[], background=False)])"
   ],
   [
     "a[0]+=v",

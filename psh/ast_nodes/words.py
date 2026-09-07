@@ -223,20 +223,31 @@ def variable_expansion_text(expansion: 'VariableExpansion',
       is read, because brace expansion runs BEFORE parameter expansion and
       fuses a following name-char run into a bare name: ``${v}{1,2}`` yields
       ``${v}1``/``${v}2`` while ``$v{1,2}`` yields the names ``v1``/``v2``;
-    * the following part would fuse anyway — an UNQUOTED literal starting with
-      a name char (reached only for programmatically built Words, where no
-      source spelling was recorded; the lexer never leaves a bare ``$x`` in
-      front of an unquoted name char).
+    * the following LITERAL would fuse with the name once the word is written
+      back out — its text starts with a name char. Quoting does NOT save it:
+      the renderers close the gap the source's quotes left, either by merging
+      adjacent same-quote regions (``"$v""x"`` is emitted as one ``"…"``) or by
+      dropping quotes altogether (``display_text``), so ``$v`` + ``"x"`` would
+      re-parse as the name ``vx``.
 
-    A bare ``$v{1,2}`` is NOT re-braced: its fusion into ``v1``/``v2`` is what
-    the source asked for, and ``braced`` is the only thing that separates it
-    from ``${v}{1,2}``.
+    A bare ``$v{1,2}`` is NOT re-braced: ``{`` is not a name char, and the
+    fusion into ``v1``/``v2`` is what the source asked for — ``braced`` is the
+    only thing that separates it from ``${v}{1,2}``. Everywhere else braces are
+    free: ``${v}`` and ``$v`` name the same parameter, so this errs toward
+    writing them.
 
-    Reproduce the brace-dropping harm with::
+    The RUNTIME half of the same rule is
+    ``psh/expansion/brace_expansion_words.py#_fuse_bare_variables``, which
+    performs the fusion this function must anticipate; the render side has to
+    stay at least as conservative as it, never less.
+
+    Reproduce the two harms with::
 
         v=1 v1=A v2=B; f() { echo ${v}{1,2}; }; eval "$(declare -f f)"; f
+        v=1 vx=BAD;    g() { echo "$v""x"; };   eval "$(declare -f g)"; g
 
-    which must print ``11 12`` (the direct call's output), not ``A B``.
+    which must print ``11 12`` and ``1x`` — the direct calls' output — not
+    ``A B`` and ``BAD``.
     """
     name = expansion.name
     bare_ok = bool(_BARE_VAR_NAME.match(name)) or (
@@ -266,15 +277,25 @@ def part_source_text(parts: List[WordPart], index: int) -> str:
 
 
 def _fuses_with(next_part: Optional[WordPart]) -> bool:
-    """Would an unquoted bare ``$name`` swallow ``next_part``'s leading text?
+    """Would a bare ``$name`` swallow ``next_part``'s leading text once written?
 
-    Only an UNQUOTED literal can fuse: its leading ``[A-Za-z0-9_]`` run joins
-    the name (``$x`` + ``there`` -> ``$xthere``). A quote or another expansion
-    already delimits the name. A leading ``{`` is deliberately NOT fusing here:
-    ``$v{1,2}`` re-parses to this same shape and re-fuses identically, so
-    bracing it would CHANGE which variables are read.
+    Only a LITERAL can fuse — another expansion starts with ``$``, which
+    delimits the name — and only through its leading ``[A-Za-z0-9_]`` run
+    (``$x`` + ``there`` -> ``$xthere``).
+
+    The literal's own ``quoted`` flag is deliberately NOT consulted. A quote
+    delimits the name in the SOURCE, but not in the text the renderers emit:
+    ``_format_word`` merges consecutive parts that share a quote char into one
+    region (``"$v"`` + ``"x"`` -> ``"$vx"``) and ``display_text`` drops quotes
+    entirely (``$v`` + ``"x"`` -> ``$vx``), and either re-parses as the name
+    ``vx``. Braces cost nothing where they are not needed — ``${v}`` and ``$v``
+    name the same parameter — so this errs toward emitting them.
+
+    A leading ``{`` is the one exclusion: ``$v{1,2}`` re-parses to this same
+    shape and re-fuses identically, so bracing it would CHANGE which variables
+    are read.
     """
-    if not isinstance(next_part, LiteralPart) or next_part.quoted:
+    if not isinstance(next_part, LiteralPart):
         return False
     return bool(next_part.text) and (next_part.text[0].isalnum()
                                      or next_part.text[0] == '_')

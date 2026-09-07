@@ -25,7 +25,8 @@ while each row is still an individually named test.
 # Setup shared by every row.
 SETUP = (
     "v=1; v1=A; v2=B; v3=C; va=P; vb=Q; x=X; x1=Q1; xb=BAD; xy=BADXY; "
-    "y=Y; n=3; arr=(e0 e1 e2)"
+    "vx=BADVX; v9=BAD9; v_z=BADUZ; vxy=BADVXY; vdq=BADDQ; "
+    "y=Y; n=3; i=2; i1=BADI1; arr=(e0 e1 e2)"
 )
 
 # (row id, function body). Each body is placed in `fN() { ... }`.
@@ -55,6 +56,34 @@ CORPUS = [
     ("at_braced", "echo ${@}"),
     ("at_bare", "echo $@"),
     ("star_quoted", 'echo "${*}"'),
+    # --- QUOTED adjacency: the renderers close the gap the quotes left,
+    #     either by merging same-quote regions or by dropping quotes, so the
+    #     spelling has to anticipate a fusion the SOURCE was protected from ---
+    ("dq_adjacent", 'echo "$v""x"'),
+    ("dq_adjacent_digit", 'echo "$v""9"'),
+    ("dq_adjacent_underscore", 'echo "$v""_z"'),
+    ("dq_adjacent_chain", 'echo "$v""x""y"'),
+    ("dq_adjacent_prefix", 'echo "a$v""x"'),
+    ("dq_adjacent_mixed_quote", 'echo "$v""x"\'y\''),
+    ("dq_adjacent_assign", 'z="$v""x"; echo "$z"'),
+    ("dq_then_sq_literal", 'echo $v"dq"'),
+    ("dq_adjacent_for", 'for k in "$v""x"; do echo "[$k]"; done'),
+    ("dq_adjacent_case", 'case "$v""x" in 1x) echo m;; *) echo n;; esac'),
+    ("dq_adjacent_dbl_bracket", '[[ "$v""x" == 1x ]] && echo yes || echo no'),
+    ("dq_adjacent_array", 'a3=("$v""x"); echo "${a3[@]}"'),
+    ("dq_adjacent_local", 'local w2="$v""x"; echo "$w2"'),
+    ("dq_adjacent_redirect", 'echo hi > "$v""x"; cat 1x; rm -f 1x'),
+    ("dq_adjacent_herestring", 'cat <<< "$v""x"'),
+    # controls: adjacency that must NOT gain braces / must stay correct
+    ("dq_adjacent_braced", 'echo "${v}""x"'),
+    ("dq_adjacent_space", 'echo "$v"" x"'),
+    ("dq_adjacent_dot", 'echo "$v"".txt"'),
+    ("dq_then_bare", 'echo "$v"x'),
+    ("dq_adjacent_param_op", 'echo "${x:-d}""b"'),
+    ("dq_adjacent_cmdsub", 'echo "$(echo q)""b"'),
+    ("dq_adjacent_arith", 'echo "$((1+1))""2"'),
+    ("dq_adjacent_length", 'echo "${#x}""b"'),
+    ("dq_adjacent_brace_suffix", 'echo "$v"{1,2}'),
     # --- quoting contexts ---
     ("dq_braced", 'echo "${x}"'),
     ("dq_braced_cat", 'echo "${x}"b'),

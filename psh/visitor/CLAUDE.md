@@ -225,12 +225,21 @@ The rule that carries the contract for variable references is
 renderer. A second copy of that decision is what broke the contract: brace
 expansion runs BEFORE parameter expansion, so a bare `$v{1,2}` re-forms the
 names `v1`/`v2` while a delimited `${v}{1,2}` stays `${v}1`/`${v}2`, and a
-renderer that dropped the source's braces retargeted the read. Reproduce the
-closed defect with:
+renderer that dropped the source's braces retargeted the read.
+
+The authority answers for the text that will be EMITTED, not for the parts as
+the source wrote them. That distinction is load-bearing: a renderer closes gaps
+the source's quotes left — `_format_word` merges consecutive parts sharing a
+quote char into one region, and `display_text` drops quotes entirely — so
+`"$v"` followed by `"x"` must be spelled `${v}` even though a quote separates
+the two parts. Conversely braces are never added before `{`, where the fusion
+into `v1`/`v2` is the source's own meaning. Reproduce both closed defects with:
 
 ```bash
 psh -c 'v=1 v1=A v2=B; f() { echo ${v}{1,2}; }; f; eval "$(declare -f f)"; f'
 # both lines: 11 12
+psh -c 'v=1 vx=BAD; g() { echo "$v""x"; }; g; eval "$(declare -f g)"; g'
+# both lines: 1x
 ```
 
 Guards: `tests/unit/visitor/test_executable_roundtrip.py` (the corpus, run
