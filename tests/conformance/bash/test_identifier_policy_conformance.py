@@ -208,6 +208,31 @@ class TestPosixRestrictsUnicodeLikeBash:
             assert "not a valid identifier" in psh.stderr, command
             assert "not a valid identifier" in bash.stderr, command
 
+    @pytest.mark.oracle_min("5.3")
+    def test_unset_v_unicode_exit_in_posix(self):
+        """The `unset -v` twin of test_export_readonly_unicode_exit_in_posix.
+
+        `unset` is a POSIX special builtin, and with an explicit `-v` bash
+        5.3.15 identifier-checks every operand (CHANGES, bash-5.3-alpha,
+        "1. Changes to Bash" items jj / nnnnn; slot 2.2 closed ledger row
+        W0-N32).  Under `set -o posix` `é` is not a valid identifier in
+        EITHER shell, so both print nothing to stdout and exit 1.  This is
+        the row that pins the `-v` check against POSIX MODE rather than
+        against the default policy: without the posix argument psh would
+        accept `é` here and survive, which is its documented default-mode
+        behaviour (test_unset_v_accepted_by_psh below) but wrong under posix.
+        """
+        command = "set -o posix; unset -v é; echo done"
+        bash = _run(BASH, command)
+        psh = _run(PSH, command)
+        assert (bash.stdout, bash.returncode) == ("", 1), (
+            f"ORACLE side moved: {command!r} -> {bash.stdout!r} "
+            f"rc={bash.returncode}")
+        assert (psh.stdout, psh.returncode) == ("", 1), (
+            f"{command!r} -> {psh.stdout!r} rc={psh.returncode}")
+        assert "not a valid identifier" in psh.stderr, command
+        assert "not a valid identifier" in bash.stderr, command
+
     def test_for_and_select_rejected_by_both(self):
         # Both shells REJECT; bash parse-aborts (exit 2), psh rejects at exec
         # (status 1, then continues) — see module docstring. Function names

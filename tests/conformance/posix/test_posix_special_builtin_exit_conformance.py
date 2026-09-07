@@ -397,7 +397,7 @@ class TestPosixSpecialBuiltinExitParity:
 
 @pytest.mark.oracle_min("5.3")
 class TestErrTrapDefeatsTheExitInBashOnly:
-    """DECLARED DIVERGENCE (ledger row W1-N55): with an ERR trap installed,
+    """DECLARED DIVERGENCE (ledger row W1-N64): with an ERR trap installed,
     bash 5.3.15 runs the action and does NOT take the posix special-builtin
     exit; psh exits.  Both sides pinned, in three input modes.
 

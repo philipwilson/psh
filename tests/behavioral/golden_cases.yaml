@@ -8683,7 +8683,7 @@
   stderr: "not a valid identifier"
   exit_code: 1
   psh_only: true
-  description: "psh-only pin (DECLARED divergence, ledger W1-N55): bash 5.3.15 runs the ERR action and loses the pending posix special-builtin exit, printing err/survived rc 0. An implementation accident, not a rule — an action running no simple command in the parent (trap '' / ' ' / '# c' / '(true)') still exits in both shells. Both-sides pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestErrTrapDefeatsTheExitInBashOnly"
+  description: "psh-only pin (DECLARED divergence, ledger W1-N64): bash 5.3.15 runs the ERR action and loses the pending posix special-builtin exit, printing err/survived rc 0. An implementation accident, not a rule — an action running no simple command in the parent (trap '' / ' ' / '# c' / '(true)') still exits in both shells. Both-sides pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestErrTrapDefeatsTheExitInBashOnly"
 
 - name: posixexit_err_trap_empty_action_still_exits
   command: "set -o posix; trap '' ERR; export 1bad=x; echo survived"
@@ -8691,7 +8691,7 @@
   stderr: "not a valid identifier"
   exit_code: 1
   min_bash: "5.3"
-  description: "Discriminator for the row above: an ERR action that runs no simple command in the parent does not clear bash's pending exit, so both shells exit 1 (slot 2.2, W1-N55)"
+  description: "Discriminator for the row above: an ERR action that runs no simple command in the parent does not clear bash's pending exit, so both shells exit 1 (slot 2.2, W1-N64)"
 
 - name: posixexit_trap_badsig_survives
   command: "set -o posix; trap 'x' NOSUCHSIG; echo rc=$?"
