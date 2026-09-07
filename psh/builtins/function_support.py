@@ -58,10 +58,12 @@ class DeclareBuiltin(Builtin):
 
         - ``invoked_as`` — the builtin name used to label the variable-path
           diagnostics (``declare``/``typeset``/``readonly``).
-        - ``special`` — True for ``readonly``: a readonly-assignment error emits
-          BARE and (after processing every operand) raises
-          :class:`SpecialBuiltinUsageError` so a posix non-interactive shell
-          exits.
+        - ``special`` — True for ``readonly``, the POSIX special builtin: a
+          readonly-ASSIGNMENT error emits BARE and (after processing every
+          operand) raises :class:`SpecialBuiltinUsageError`, and an invalid
+          IDENTIFIER raises it at once in posix mode, ending the operand loop
+          (bash 5.3; see _identifier_error_status). Either way a posix
+          non-interactive shell exits.
         - ``catch_readonly`` — False lets a readonly error propagate to the
           caller (``export``'s array-init delegation renders its own message).
         """
@@ -268,11 +270,13 @@ class DeclareBuiltin(Builtin):
         bash's declaration arg loop is CONTINUE-ON-ERROR: every operand is
         processed even after one fails (a readonly-value redeclare OR an invalid
         identifier is reported and skipped, good operands are still created, and
-        the builtin returns 1). ``invoked_as`` labels the per-arg diagnostics
-        (``declare``/``typeset``/``readonly``); ``special`` (``readonly``) emits
-        the readonly-assignment error BARE (no builtin name) and, after the whole
-        loop, raises :class:`SpecialBuiltinUsageError` so a POSIX-mode
-        non-interactive shell exits (the special-builtin contract). When
+        the builtin returns 1). The ONE exception is bash 5.3's posix-mode
+        identifier error under ``readonly`` — see _identifier_error_status, the
+        only place that ends this loop early. ``invoked_as`` labels the per-arg
+        diagnostics (``declare``/``typeset``/``readonly``); ``special``
+        (``readonly``) emits the readonly-assignment error BARE (no builtin name)
+        and, after the whole loop, raises :class:`SpecialBuiltinUsageError` so a
+        POSIX-mode non-interactive shell exits (the special-builtin contract). When
         ``catch_readonly`` is False (``export``'s array-init delegation) a
         readonly error PROPAGATES so the delegating builtin can render its own
         (bare) message.

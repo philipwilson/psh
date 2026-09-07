@@ -527,6 +527,8 @@ set -o posix
 é=1                          # not an assignment -> "é=1: command not found"
 declare é=1                  # declare: `é=1': not a valid identifier (status 1)
 read é                       # read: `é': not a valid identifier (status 1)
+export é=1                   # export: `é=1': ... AND the shell EXITS 1
+readonly é=1                 # readonly: `é=1': ... AND the shell EXITS 1
 foo=1; echo $foo             # plain ASCII names still work (1)
 é() { echo hi; }; é          # hi in BOTH shells: function names are unrestricted
 9x() { echo n; }; 9x         # n (bash 5.3 and PSH; 5.2 parse-aborted)
@@ -535,6 +537,19 @@ foo=1; echo $foo             # plain ASCII names still work (1)
 So the *only* behavioral change `set -o posix` makes to names is switching
 OFF the Unicode extension for variables; ASCII names behave identically in both
 modes, and function names are never identifier-checked.
+
+`export` and `readonly` are POSIX *special builtins*, and since bash 5.3 an
+invalid identifier given to one of them makes a non-interactive POSIX-mode
+shell **exit** with status 1 — PSH matches. Two details follow from that, and
+both are bash's ("POSIX special builtins now exit the shell in posix mode on
+more failure cases", CHANGES 5.3-alpha). First, only the *first* bad operand
+is diagnosed: `export 1bad=x 2bad=y` prints one message and exits, and that
+truncation happens in POSIX mode even when `command export …` strips the exit.
+Second, the exit is catchable — `export é=1 || echo caught` continues, and so
+does a guard placed outside an `eval` or `.` that contains the failure. In
+default mode nothing exits: every operand is diagnosed and the builtin simply
+returns 1. `declare`, `typeset`, `local` and `read` are not special builtins
+and always report-and-continue.
 
 Note on `for`/`select` error flow: in DEFAULT mode both shells simply report
 "not a valid identifier" (status 1) and CONTINUE — PSH matches bash here. The
@@ -549,7 +564,15 @@ One residual difference on the `declare` side: under `set -o posix` bash 5.3
 still identifier-checks the *operand* of `declare -f`/`declare -F`/`typeset -f`
 (`declare -f é` → "not a valid identifier", status 1, even when `é` is
 defined), whereas PSH prints the definition (status 0). `readonly -f`,
-`export -f` and `unset -f` accept any defined function name in both shells.
+`export -f` and `unset -f` accept any defined function name in both shells,
+and a `-f` operand never takes the POSIX identifier exit described above.
+
+`unset` is a special builtin too, and bash 5.3 made its readonly refusals
+fatal in POSIX mode: `readonly r=1; unset r` (and the same for a readonly
+array, array element or function) reports `unset: r: cannot unset: readonly
+variable` and exits 1, in both shells. Unlike `export`, `unset` diagnoses
+*every* operand before exiting. Refusals that are not about readonly —
+`unset a[1]` on a scalar, an out-of-range subscript — stay a plain status 1.
 
 ### Case Modification and Unicode
 
