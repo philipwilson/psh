@@ -174,6 +174,35 @@ def test_close_then_reopen(case_id, script, files, rc, err_sub, expected_out,
 
 
 @pytest.mark.parametrize("mode", MODES)
+def test_undeliverable_diagnostic_is_lost_declared_divergence(mode, tmp_path):
+    """DECLARED DIVERGENCE, pinned here because slot 1.2 owns the stream half.
+
+    When the fd a diagnostic must go to is the one the list CLOSED and never
+    reopened, bash's C-stdio buffer resurrects the message onto the descriptor
+    the shell's own restore later puts back; psh writes diagnostics straight to
+    the descriptor, so an undeliverable one is lost.  Documented in
+    ``docs/user_guide/17_differences_from_bash.md`` ("buffered diagnostics
+    across a stderr close+reopen"), whose ``exec`` spelling this per-command
+    spelling joins.
+
+        { cd /nonexistent_zz; } 2>&-; echo end >&2
+        # bash stderr: "end\n<prefix>: cd: /nonexistent_zz: No such file..."
+        # psh  stderr: "end\n"
+
+    Both shells fail the cd with status 1 and both RESTORE stderr afterwards --
+    only the undeliverable message differs.  This is not C032: command OUTPUT
+    across a close-then-reopen is bash-identical (every row above).
+    """
+    script = '{ cd /nonexistent_zz; } 2>&-; echo "rc=$?"; echo end >&2'
+    result = _run(script, mode, str(tmp_path))
+    assert is_comparable(result), result
+    assert result.returncode == 0
+    assert result.stdout == "rc=1\n", result.stdout
+    # stderr is RESTORED and usable; the undeliverable diagnostic is not there.
+    assert result.stderr == "end\n", result.stderr
+
+
+@pytest.mark.parametrize("mode", MODES)
 def test_stdout_stream_object_is_restored(mode, tmp_path):
     """Two compounds in a row: the second still writes to the real stdout.
 
