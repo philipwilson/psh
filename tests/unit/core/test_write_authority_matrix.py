@@ -43,8 +43,11 @@ Improvement Program 2026-09 slot 1.0 (finding C226; C244 instances).
 """
 from __future__ import annotations
 
+import json
 import os
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Tuple, Union
 
 import pytest
@@ -307,10 +310,11 @@ def _refused(entry: str, label: str, route: str) -> Cell:
                 err="a: readonly variable")
 
 
-def _survives(entry: str, label: str, route: str) -> Cell:
+def _survives(entry: str, label: str, route: str,
+              err: str = "readonly variable") -> Cell:
     """A route that reports rc 1 and leaves the array untouched."""
     return Cell(entry, "value", label, _RO + route + _SURVIVES, 'rc=1\n1 2\n',
-                err="readonly variable")
+                err=err)
 
 
 _READONLY_ARRAY_CELLS: Tuple[Cell, ...] = (
@@ -326,11 +330,17 @@ _READONLY_ARRAY_CELLS: Tuple[Cell, ...] = (
     _survives("mapfile", "readonly-mapfile-refused-C194", 'mapfile -t a <<< x'),
     _survives("printf-v", "readonly-printf-v-refused-C194",
               "printf -v 'a[0]' x"),
-    _survives("unset", "readonly-unset-element-refused-C194", 'unset a[0]'),
+    _survives("unset", "readonly-unset-element-refused-C194", 'unset a[0]',
+              err="cannot unset: readonly variable"),
+    # `a[0]` is not a name, and both shells say so before they say readonly.
     _survives("for", "readonly-loop-variable-refused-C194",
-              'for a[0] in x; do :; done'),
+              'for a[0] in x; do :; done', err="not a valid identifier"),
+    # Same square, but the two shells order the two complaints differently
+    # (bash: not a valid identifier; psh: readonly variable).  rc and the array
+    # agree, which is the invariant; the wording is an unowned divergence, so
+    # asserting it here would pin psh's side of an open question.
     _survives("getopts", "readonly-getopts-target-refused-C194",
-              'getopts x a[0]'),
+              'getopts x a[0]', err=""),
 )
 
 VALUE_CELLS: Tuple[Cell, ...] = (
@@ -427,3 +437,350 @@ _FLIP_CHILD_CELLS: Tuple[Cell, ...] = (
 )
 
 CHILD_CELLS: Tuple[Cell, ...] = _GREEN_CHILD_CELLS + _FLIP_CHILD_CELLS
+
+
+# ---------------------------------------------------------------------------
+# CWD cells — `cd` writes two things that must agree: the logical path it
+# REPORTS in `$PWD`, and the directory the process is actually IN.  The cell
+# creates a marker file afterwards, so the observation names the directory the
+# write really reached rather than a status or a string (D3).
+# ---------------------------------------------------------------------------
+
+#: Physical directories a marker may land in.  `logical/link` is deliberately
+#: absent: it is `real/child` under another name, and naming both would report
+#: one file twice.
+_LANDINGS = ("real/child", "real", "logical", "one/two", "one")
+
+_CWD_LAYOUT = (
+    'ROOT=$(pwd -P)\n'
+    'mkdir -p real/child logical one/two\n'
+    'ln -s ../real/child logical/link\n'
+)
+
+#: The cell's last act: drop a file in whatever directory the shell is really
+#: in.  A status or a `$PWD` readback cannot tell a right cwd from a wrong one.
+_CWD_MARKER = '\n: > marker\n'
+
+
+def _cwd_cell(label: str, body: str, out: str, owner=None) -> Cell:
+    return Cell("cd", "cwd", label, _CWD_LAYOUT + body + _CWD_MARKER, out,
+                owner=owner, landing=_LANDINGS)
+
+
+CWD_CELLS: Tuple[Cell, ...] = (
+    # Green: `cd -P` commits to the physical path, and every observer follows.
+    _cwd_cell("physical-parent-of-symlink",
+              'cd -P logical/link\ncd ..',
+              'PWD=real\ngetcwd=real\nmarker=real\n'),
+    # Green: no symlink involved, so logical and physical cannot disagree.
+    _cwd_cell("plain-nested-parent", 'cd one/two\ncd ..',
+              'PWD=one\ngetcwd=one\nmarker=one\n'),
+    # Green: standing ON the symlink, `$PWD` keeps the path the user typed
+    # while the process is in the target — the two are SUPPOSED to differ here.
+    _cwd_cell("symlink-target-reports-the-link",
+              'cd logical/link',
+              'PWD=link\ngetcwd=child\nmarker=real/child\n'),
+    _cwd_cell("absolute-path", 'cd "$ROOT/one/two"',
+              'PWD=two\ngetcwd=two\nmarker=one/two\n'),
+
+    # C043 — `cd -L ..` resolves the parent PHYSICALLY while reporting the
+    # LOGICAL path, so the shell ends up in a directory it is not naming, and
+    # the next file lands there.  Repro:
+    #   mkdir -p real/child logical; ln -s ../real/child logical/link
+    #   cd logical/link; cd ..; pwd -P
+    _cwd_cell("logical-parent-of-symlink-C043-slot1.4",
+              'cd logical/link\ncd ..',
+              'PWD=logical\ngetcwd=logical\nmarker=logical\n',
+              owner="C043 → slot 1.4"),
+)
+
+
+# ---------------------------------------------------------------------------
+# SPAWN cells — run through `run_psh` in all three input modes (`-c`, script
+# file, stdin).  Two reasons a cell belongs here rather than in-process:
+# a permanent fd redirection (`exec 3<`) must never run in the test process,
+# and the mode axis is itself the subject for the cwd/lookup/environment
+# families, whose seeding differs between `-c`, a script and stdin (D6).
+# ---------------------------------------------------------------------------
+
+_FD_DATA = "printf 'one\\ntwo\\nthree\\n' > data\nexec 3<data\n"
+
+SPAWN_CELLS: Tuple[Cell, ...] = (
+    # Green: the fd position is a shared fact — each reader resumes where the
+    # last one stopped.
+    Cell("read", "input", "sequential-reads-advance-the-fd",
+         _FD_DATA + 'read -u 3 x\nread -u 3 y\nprintf "%s %s\\n" "$x" "$y"\n',
+         'one two\n'),
+    Cell("mapfile", "input", "accepted-target-consumes-the-input",
+         _FD_DATA + 'mapfile -u 3 a\nread -u 3 line\n'
+         'printf "<%s>[%s]\\n" "$line" "${a[0]}"\n',
+         '<>[one\n]\n'),
+    Cell("mapfile", "input", "count-limit-leaves-the-rest",
+         _FD_DATA + 'mapfile -n 1 -u 3 a\nread -u 3 line\n'
+         'printf "<%s>[%s]\\n" "$line" "${a[0]}"\n',
+         '<two>[one\n]\n'),
+
+    # C090 — the read happens before the destination is validated, so a
+    # REJECTED mapfile still swallows the input the next reader needed.
+    Cell("mapfile", "input", "rejected-target-consumes-nothing-C090-slot1.17",
+         _FD_DATA + 'readonly a\nmapfile -u 3 a\nread -u 3 line\n'
+         'printf "<%s>\\n" "$line"\n',
+         '<one>\n', err="a: readonly variable", owner="C090 → slot 1.17"),
+
+    # C043 in every input mode: `$PWD` and the real cwd must name one place.
+    Cell("cd", "cwd", "logical-parent-agrees-with-pwd-P-C043-slot1.4",
+         'mkdir -p real/child logical\nln -s ../real/child logical/link\n'
+         'cd logical/link\ncd ..\np=$(pwd -P)\n'
+         'printf "%s %s\\n" "${PWD##*/}" "${p##*/}"\n',
+         'logical logical\n', owner="C043 → slot 1.4"),
+
+    # C044 in every input mode: the executable dispatched after the scope pops.
+    Cell("scope-exit", "dispatch", "restored-PATH-dispatches-C044-slot1.5",
+         _TWO_PROBES + 'f(){ local PATH=$PWD/b; probe; }\nf\nprobe\n',
+         'B\nA\n', owner="C044 → slot 1.5"),
+
+    # C027 in every input mode.  bash's own status for an unbound variable
+    # differs between `-c` (127) and a script (1) — a bash property, not a psh
+    # invariant — so the cell pins the refusal, not the number.
+    Cell("declare", "lookup", "shadowed-export-is-unbound-C027-slot1.15",
+         'export FOO=outer; f(){ local FOO; echo "[${FOO}]"; }; set -u; f',
+         '', NONZERO, err="FOO: unbound variable", owner="C027 → slot 1.15"),
+
+    # C028 in every input mode: what the child actually receives.
+    Cell("declare", "child-env", "allexport-local-reaches-child-C028-slot1.16",
+         'set -a; f(){ local L=1; printenv L; }; f; echo "rc=$?"',
+         '1\nrc=0\n', owner="C028 → slot 1.16"),
+)
+
+#: The input modes every SPAWN cell runs in (D6).
+MODES = ("-c", "script", "stdin")
+
+
+# ---------------------------------------------------------------------------
+# Running a cell
+# ---------------------------------------------------------------------------
+
+def _check(cell: Cell, rc: int, out: str, err: str) -> None:
+    """Compare all of a cell's observations at once, so a failure report shows
+    which observer disagreed rather than only the first."""
+    observed = {"stdout": out}
+    expected = {"stdout": cell.out}
+    if cell.rc == NONZERO:
+        observed["refused"] = rc != 0
+        expected["refused"] = True
+    else:
+        observed["status"] = rc
+        expected["status"] = cell.rc
+    if cell.err:
+        observed["stderr names"] = cell.err in err
+        expected["stderr names"] = True
+    assert observed == expected, (
+        f"cell {cell.id}\nscript:\n{cell.script}\nstderr was: {err!r}"
+    )
+
+
+def _run_case(script: str, cwd: str, mode: str = "-c"):
+    """Run ``script`` through the hermetic runner, in one of the three modes.
+
+    Out of process on purpose wherever a CHILD is part of the observation: the
+    child writes at fd level, which the in-process capture fixtures cannot see,
+    and pytest's own capture would decide whether they could — an observation
+    must not depend on how the test session was launched.
+    """
+    env = hermetic_shell_env()
+    if mode == "-c":
+        return run_psh(["-c", script], cwd=cwd, env=env)
+    if mode == "script":
+        path = os.path.join(cwd, "case.sh")
+        with open(path, "w") as fh:
+            fh.write(script + "\n")
+        return run_psh([path], cwd=cwd, env=env)
+    return run_psh([], stdin_data=script + "\n", cwd=cwd, env=env)
+
+
+@pytest.mark.parametrize("cell", [_param(c) for c in VALUE_CELLS])
+def test_value_cell(captured_shell, cell: Cell) -> None:
+    """Stored value, attribute flags and effective lookup after one write.
+
+    Closes C226 instances for the in-process observers; the flip cells record
+    C027, C028, C071, C090, C093, C094, C095, C096, C130 and C136.
+    """
+    rc = captured_shell.run_command(cell.script)
+    _check(cell, rc, captured_shell.get_stdout(), captured_shell.get_stderr())
+
+
+@pytest.mark.parametrize("cell", [_param(c) for c in CHILD_CELLS])
+def test_child_cell(tmp_path, cell: Cell) -> None:
+    """What a real child process receives, and which executable is dispatched.
+
+    Closes C226 instances for the cross-process observers; the flip cells
+    record C028 and C044.
+    """
+    result = _run_case(cell.script, str(tmp_path))
+    assert is_comparable(result), f"cell {cell.id}: {result!r}"
+    _check(cell, result.returncode, result.stdout, result.stderr)
+
+
+@pytest.mark.parametrize("cell", [_param(c) for c in CWD_CELLS])
+def test_cwd_cell(isolated_shell_with_temp_dir, cell: Cell) -> None:
+    """Where `cd` says it went, where the process actually IS, and where the
+    next file lands.
+
+    Deliberately in-process: ``os.getcwd()`` is then a direct reading of the
+    shell's own working directory rather than a report the shell wrote about
+    itself, which is the whole point of a wrong-cwd pin (D3).  Every observation
+    is read from Python or the filesystem, so nothing here depends on capture.
+    Closes C226 instances; the flip cell records C043.
+    """
+    root = os.getcwd()
+    rc = isolated_shell_with_temp_dir.run_command(cell.script)
+    observed = "PWD={}\ngetcwd={}\n".format(
+        os.path.basename(isolated_shell_with_temp_dir.state.get_variable("PWD") or ""),
+        os.path.basename(os.getcwd()),
+    )
+    for candidate in cell.landing:
+        if os.path.exists(os.path.join(root, candidate, "marker")):
+            observed += f"marker={candidate}\n"
+    _check(cell, rc, observed, "")
+
+
+@pytest.mark.parametrize(
+    "cell,mode",
+    [pytest.param(c, m, id=f"{c.id}-{m}",
+                  marks=((pytest.mark.xfail(strict=True, reason=c.owner),)
+                         if c.owner else ()))
+     for c in SPAWN_CELLS for m in MODES],
+)
+def test_spawn_cell(tmp_path, cell: Cell, mode: str) -> None:
+    """The same square in `-c`, script-file and stdin mode (D6).
+
+    Lives out of process because a permanent fd redirection must not run in the
+    test runner, and because input mode is itself the variable for the cwd,
+    lookup and environment families.  Closes C226 instances; the flip cells
+    record C027, C028, C043, C044 and C090.
+    """
+    result = _run_case(cell.script, str(tmp_path), mode)
+    assert is_comparable(result), f"cell {cell.id} in {mode}: {result!r}"
+    _check(cell, result.returncode, result.stdout, result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# The matrix IS the guard, so what guards the matrix is this: a flip cell must
+# name a finding that exists and a slot that exists.  Without it a cell could
+# carry a plausible-looking reason for a slot nobody will ever run, and quietly
+# never be flipped.
+# ---------------------------------------------------------------------------
+
+ALL_CELLS: Tuple[Cell, ...] = (
+    VALUE_CELLS + CHILD_CELLS + CWD_CELLS + SPAWN_CELLS
+)
+
+#: The one shape an xfail reason may take: the finding(s), then the owning slot.
+OWNER_RE = re.compile(r"^C\d{3}( ?, ?C\d{3})* → slot \d\.\d+$")
+
+_EVIDENCE = (Path(__file__).resolve().parents[3] / "docs" / "reviews" /
+             "evidence" / "improvement_program_2026_09")
+_CID_RE = re.compile(r"C\d{3}")
+
+
+def _load(name: str):
+    path = _EVIDENCE / name
+    assert path.is_file(), (
+        f"{path} is missing: the matrix validates its flip cells against the "
+        f"campaign's own registries, so it cannot run without them."
+    )
+    return json.loads(path.read_text())
+
+
+def known_slots() -> frozenset:
+    """Every slot id the program declares, from the campaign's wave manifest."""
+    return frozenset(
+        slot["id"]
+        for wave in _load("wave-manifest.json")["waves"]
+        for slot in wave.get("slots", ())
+    )
+
+
+def known_findings() -> frozenset:
+    """Every finding id the campaign inventory carries."""
+    return frozenset(row["cid"] for row in _load("INVENTORY.json"))
+
+
+def owner_problem(reason: str, slots: frozenset, findings: frozenset):
+    """Why ``reason`` is unusable as a flip-cell owner, or ``None`` if it is.
+
+    Split out so the rule has exactly one implementation and can be aimed at a
+    synthetic offender.
+    """
+    if not OWNER_RE.match(reason):
+        return f"reason {reason!r} does not match {OWNER_RE.pattern!r}"
+    slot = reason.rsplit(" ", 1)[-1]
+    if slot not in slots:
+        return f"reason {reason!r} names slot {slot}, which the program has no brief for"
+    unknown = sorted(set(_CID_RE.findall(reason)) - findings)
+    if unknown:
+        return f"reason {reason!r} names {unknown}, absent from the inventory"
+    return None
+
+
+def test_every_flip_cell_names_a_real_finding_and_a_real_slot() -> None:
+    """A cell that no slot will ever flip is a cell that hides forever."""
+    slots, findings = known_slots(), known_findings()
+    problems = [owner_problem(c.owner, slots, findings)
+                for c in ALL_CELLS if c.owner is not None]
+    assert [p for p in problems if p] == []
+
+
+def test_every_flip_cell_id_repeats_its_finding_and_slot() -> None:
+    """The failure report must identify the square without the reason string:
+    pytest prints the id, not the xfail reason, when a strict xfail passes."""
+    mismatched = []
+    for cell in ALL_CELLS:
+        if cell.owner is None:
+            continue
+        slot = cell.owner.rsplit(" ", 1)[-1]
+        wanted = _CID_RE.findall(cell.owner) + [f"slot{slot}"]
+        missing = [token for token in wanted if token not in cell.label]
+        if missing:
+            mismatched.append((cell.id, missing))
+    assert mismatched == []
+
+
+def test_every_finding_named_in_a_label_exists() -> None:
+    """Green cells name findings too (C194's readonly battery); a typo there
+    would point a later reader at nothing."""
+    findings = known_findings()
+    unknown = sorted({
+        cid for cell in ALL_CELLS for cid in _CID_RE.findall(cell.label)
+    } - findings)
+    assert unknown == []
+
+
+def test_cell_ids_are_unique() -> None:
+    """Two cells sharing an id would let one shadow the other in the report."""
+    ids = [c.id for c in ALL_CELLS]
+    assert sorted(ids) == sorted(set(ids))
+
+
+@pytest.mark.parametrize("reason,why", [
+    ("C043 -> slot 1.4", "ASCII arrow instead of the separator the rule states"),
+    ("C043 → slot 1.99", "a slot the program has no brief for"),
+    ("C999 → slot 1.4", "a finding absent from the inventory"),
+    ("slot 1.4", "no finding at all"),
+    ("C043 → 1.4", "no slot keyword"),
+    ("C43 → slot 1.4", "a malformed finding id"),
+    ("C043 → slot 1.4 (pending)", "trailing prose that hides the real target"),
+])
+def test_owner_validator_rejects_synthetic_offenders(reason: str, why: str) -> None:
+    """Mutation check for the guard above: each of these MUST be refused."""
+    assert owner_problem(reason, known_slots(), known_findings()) is not None, why
+
+
+@pytest.mark.parametrize("reason", [
+    "C043 → slot 1.4",
+    "C093, C094 → slot 1.18",
+    "C093,C094 → slot 1.18",
+])
+def test_owner_validator_accepts_the_declared_shapes(reason: str) -> None:
+    """The offender test is only meaningful if the rule accepts real reasons."""
+    assert owner_problem(reason, known_slots(), known_findings()) is None
