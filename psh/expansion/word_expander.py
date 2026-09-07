@@ -213,18 +213,8 @@ class WordExpander:
     def _walk_word(self, word: Word,
                    policy: WordExpansionPolicy) -> ExpandedWord:
         builder = _FieldBuilder()
-        ctx = _AssignCtx()
-        # Assignment-shaped word (NAME=... / NAME+=...): bash expands tilde
-        # prefixes in the value after the first '=' and after each ':'.
-        if policy.assignment_tilde:
-            ctx.assign_prefix = self.manager.assignment_word_prefix(word)
-
-        # A colon-bounded leading tilde extent spilling into following parts
-        # (``~:$X`` -> ``$HOME:$X``, $X verbatim): pre-expand into one literal.
-        extent_parts = self._collapse_leading_tilde_extent(word)
-        if extent_parts is not None:
-            word = Word(parts=extent_parts)
-            ctx.assign_prefix = None  # synthetic word is not assignment-shaped
+        word, ctx = self.tilde_walk_begin(
+            word, assignment_tilde=policy.assignment_tilde)
 
         for part_index, part in enumerate(word.parts):
             if isinstance(part, LiteralPart):
@@ -256,11 +246,8 @@ class WordExpander:
         value-tilde tracking, leading-tilde expansion, per-character glob
         protection."""
         text = part.text
-        if ctx.assign_prefix is not None and part.quoted:
-            # Quoted text never extends the assignment prefix and never
-            # triggers value-tilde expansion.
-            ctx.prev_char = ''
-            ctx.value_len += 1
+        if part.quoted:
+            self.tilde_note_quoted_literal(ctx)
         if part.quoted and part.quote_char == "'":
             builder.add(FieldRun(text, _PROTECTED, _NEVER, 'single'))
         elif part.quoted and part.quote_char == "$'":
@@ -272,20 +259,95 @@ class WordExpander:
                 text = self.process_dquote_escapes(text)
             builder.add(FieldRun(text, _PROTECTED, _NEVER, 'double'))
         else:
-            # Unquoted literal.
-            if ctx.assign_prefix is not None:
-                text = self._assignment_value_chunk(word, part_index, part,
-                                                    ctx, text)
-            # Unquoted literal: tilde on first part if leading ~ and the tilde
-            # word is wholly unquoted literal (bash) — see
-            # _leading_tilde_expandable for the boundary rule.
-            if (not ctx.has_expansion and not builder.has_content
-                    and text.startswith('~')
-                    and self._leading_tilde_expandable(
-                        part.text,
-                        parts_follow=part_index < len(word.parts) - 1)):
-                text = self.manager.expand_tilde(text)
+            # Unquoted literal: THE tilde rule (leading prefix + assignment
+            # value-tilde) lives in tilde_apply_unquoted_literal, shared with
+            # the pattern-word owner (expansion/pattern_words.py).
+            text = self.tilde_apply_unquoted_literal(
+                word, part_index, part, ctx,
+                has_content=builder.has_content)
             builder.add_runs(self._unquoted_literal_runs(text))
+
+    # ------------------------------------------------------------------
+    # The tilde-placement rule (shared with the pattern-word owner)
+    # ------------------------------------------------------------------
+
+    def tilde_walk_begin(self, word: Word, *, assignment_tilde: bool
+                         ) -> Tuple[Word, '_AssignCtx']:
+        """Open a tilde walk over *word*; returns the word to walk and its ctx.
+
+        THE entry point for bash's tilde PLACEMENT rule over a Word's parts.
+        Two things happen before any part is visited:
+
+        - an assignment-shaped word (``NAME=…``/``NAME+=…``) records its
+          prefix, so value-tildes expand after the first ``=`` and after each
+          unquoted ``:`` (``case "x=$HOME" in x=~)`` matches in bash);
+        - a colon-bounded leading tilde extent that spills into later parts
+          (``~:$X``) is collapsed into one pre-expanded literal.
+
+        The caller then feeds each unquoted LiteralPart through
+        :meth:`tilde_apply_unquoted_literal` and each ExpansionPart through
+        :meth:`tilde_note_expansion`, in order. The field engine
+        (:meth:`_walk_word`) and the pattern-word owner
+        (``expansion/pattern_words.expand_pattern_word``) are the two drivers,
+        so ``case``/``[[ ]]`` pattern words cannot drift from command words.
+        """
+        ctx = _AssignCtx()
+        if assignment_tilde:
+            ctx.assign_prefix = self.manager.assignment_word_prefix(word)
+
+        extent_parts = self._collapse_leading_tilde_extent(word)
+        if extent_parts is not None:
+            word = Word(parts=extent_parts)
+            ctx.assign_prefix = None  # synthetic word is not assignment-shaped
+        return word, ctx
+
+    def tilde_apply_unquoted_literal(self, word: Word, part_index: int,
+                                     part: LiteralPart, ctx: '_AssignCtx',
+                                     *, has_content: bool) -> str:
+        """Tilde-expand one UNQUOTED literal part under an open walk.
+
+        Applies the assignment value-tilde chunk rule first (mutating *ctx*),
+        then the word-leading prefix rule: a leading ``~`` expands only when
+        no expansion and no emitted text precede it in the word and the tilde
+        WORD is wholly unquoted literal (:meth:`_leading_tilde_expandable`).
+        *has_content* is the driver's "anything emitted yet" flag.
+        """
+        text = part.text
+        if ctx.assign_prefix is not None:
+            text = self._assignment_value_chunk(word, part_index, part,
+                                                ctx, text)
+        if (not ctx.has_expansion and not has_content
+                and text.startswith('~')
+                and self._leading_tilde_expandable(
+                    part.text,
+                    parts_follow=part_index < len(word.parts) - 1)):
+            text = self.manager.expand_tilde(text)
+        return text
+
+    @staticmethod
+    def tilde_note_quoted_literal(ctx: '_AssignCtx') -> None:
+        """Record that a QUOTED literal part was consumed by an open walk.
+
+        Quoted text never extends the ``NAME=`` prefix and never triggers a
+        value-tilde (``P="x"~`` stays literal in bash), so it only advances
+        the value length and clears the previous-character trigger.
+        """
+        if ctx.assign_prefix is not None:
+            ctx.prev_char = ''
+            ctx.value_len += 1
+
+    @staticmethod
+    def tilde_note_expansion(ctx: '_AssignCtx') -> None:
+        """Record that an ExpansionPart was consumed by an open tilde walk.
+
+        An expansion result never triggers value-tilde expansion (bash's check
+        is syntactic, on the pre-expansion word) and it ends the word-leading
+        position, so the walk only has to remember that it happened.
+        """
+        ctx.has_expansion = True
+        if ctx.assign_prefix is not None:
+            ctx.prev_char = ''
+            ctx.value_len += 1
 
     def _assignment_value_chunk(self, word: Word, part_index: int,
                                 part: LiteralPart, ctx: _AssignCtx,
@@ -446,12 +508,7 @@ class WordExpander:
                              builder: _FieldBuilder,
                              policy: WordExpansionPolicy) -> None:
         """Walk one ExpansionPart: append its run(s), or splice its fields."""
-        ctx.has_expansion = True
-        if ctx.assign_prefix is not None:
-            # Expansion results never trigger value-tilde expansion (the
-            # check is syntactic, on the pre-expansion word).
-            ctx.prev_char = ''
-            ctx.value_len += 1
+        self.tilde_note_expansion(ctx)
 
         # Process substitution (<(cmd) / >(cmd)) — whole-word or embedded.
         # The /dev/fd/N path is spliced in unquoted-but-unsplittable: it is not

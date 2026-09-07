@@ -11,7 +11,7 @@ public entry points (`expand_arguments`, `expand_word_to_fields`,
 """
 from typing import TYPE_CHECKING, List, Optional
 
-from ..ast_nodes import ExpansionPart, LiteralPart, ProcessSubstitution, SimpleCommand, Word
+from ..ast_nodes import LiteralPart, SimpleCommand, Word
 from ..core.assignment_utils import ASSIGNMENT_PREFIX_RE
 from ..core.exceptions import PshError
 from .brace_expansion_words import WordBraceExpander
@@ -266,44 +266,26 @@ class ExpansionManager:
         return ' '.join(self.word_expander.materialize(expanded, CASE_SUBJECT))
 
     def expand_word_as_pattern(self, word) -> str:
-        """Expand a Word into a glob-pattern string (case patterns).
+        """Expand a ``case`` pattern Word into one glob-pattern string.
 
-        Quoted text and quoted-expansion results are escaped so they match
-        literally; unquoted text and unquoted-expansion results keep their
-        glob power — the same quoting rule as ${x#pat} operands.
+        Delegates to the ONE pattern-word owner
+        (``expansion/pattern_words.expand_pattern_word``), shared with the
+        ``[[ ]]`` pattern and regex operands, so a ``case`` pattern gets the
+        same tilde/parameter/command/arithmetic expansion and the same
+        quoted-matches-literally rule as every other pattern word (C042)::
 
-        Process substitution parts stay as their literal ``<(cmd)`` text:
-        psh does not perform process substitution in case patterns.
+            env HOME=/h/me psh -c \
+              'case $HOME in ~) echo tilde;; *) echo other;; esac'   # tilde
+
+        ``case`` does not perform process substitution in a pattern, so a
+        ``<(cmd)`` part stays its own literal source text.
         """
-        ve = self.variable_expander
-        out = []
-        for part in word.parts:
-            if isinstance(part, LiteralPart):
-                if part.quoted:
-                    out.append(ve.glob_escape(part.text))
-                else:
-                    out.append(part.text)
-            elif isinstance(part, ExpansionPart):
-                if isinstance(part.expansion, ProcessSubstitution):
-                    out.append(str(part.expansion))
-                    continue
-                from .operands import DQ_WORD, OperandValue
-                expanded = self.expand_expansion(
-                    part.expansion,
-                    quote_ctx=DQ_WORD if part.quoted else None)
-                # RULED TERMINAL CONSUMER (psh side): a case PATTERN is one
-                # glob-pattern string, so a value operand's vector is joined
-                # here. DOCUMENTED PRE-EXISTING DIVERGENCE (integrator R2.1,
-                # successor-owned): on a MULTI-FIELD pattern operand bash
-                # matches the FIRST FIELD only, e.g.
-                #     set -- a b; case a in ${x:-"$@"}) ...
-                # matches in bash and not in psh. This projection RESTORES the
-                # base (join) behaviour exactly — it neither creates nor fixes
-                # that divergence, which is pinned both-sides.
-                if isinstance(expanded, OperandValue):
-                    expanded = expanded.as_scalar()
-                out.append(ve.glob_escape(expanded) if part.quoted else expanded)
-        return ''.join(out)
+        from .pattern_words import expand_pattern_word
+        return expand_pattern_word(
+            word,
+            manager=self,
+            escape=self.variable_expander.glob_escape,
+            procsub_literal=True)
 
     def expand_string_variables(self, text: str, quote_ctx=None,
                                 lexed: bool = False) -> str:

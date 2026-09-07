@@ -15,8 +15,9 @@ from ..builtins.test_command import TestBuiltin, variable_is_set
 from ..core import IndexedArray, TestExpressionError, VarAttributes
 from ..expansion.arithmetic import evaluate_arithmetic
 from ..expansion.glob import translate_posix_classes
-from ..expansion.operands import DQ_STRING, DQ_WORD, OperandValue
+from ..expansion.operands import DQ_STRING, OperandValue
 from ..expansion.pattern import match_shell_pattern
+from ..expansion.pattern_words import expand_pattern_word
 from ..expansion.word_expander import WordExpander
 from ..utils.file_tests import file_newer_than, file_older_than, files_same
 
@@ -240,65 +241,50 @@ class TestExpressionEvaluator:
         return evaluate_arithmetic(value, self.shell, expand=False,
                                    arith_source_quotes=False)
 
-    def _rhs_walk(self, word, *, escape, tilde: bool) -> str:
-        """Build a ``==``/``!=`` glob pattern or a ``=~`` regex source from a
-        Word's parts, honoring per-part quoting (bash) — the ONE per-part
-        walker the two RHS builders share.
-
-        A quoted part contributes LITERAL text run through *escape* so its
-        metacharacters match themselves (``glob_escape`` for a pattern,
-        ``re.escape`` for a regex); an unquoted part keeps its live
-        glob/regex power. A variable is expanded per part — an unquoted
-        variable's value is live (``p='a*'; [[ x == $p ]]``), a quoted one
-        is literal (``[[ x == "$p" ]]``). *tilde* expands a leading unquoted
-        ``~`` (the pattern operand does; the regex operand does not). The
-        result feeds the canonical engine so ``[[ ]]`` cannot drift from
-        case patterns / ``${var#pat}``.
-        """
-
-        out = []
-        for i, part in enumerate(word.parts):
-            if isinstance(part, LiteralPart):
-                if part.quote_char == "'":
-                    out.append(escape(part.text))
-                elif part.quoted:
-                    # double-quoted literal: expand vars, strip dquote
-                    # escapes, then escape the result (literal).
-                    out.append(escape(self._expand_dquote_literal(part.text)))
-                else:
-                    # unquoted literal: no embedded $ (expansions are separate
-                    # parts); keep raw so the engine sees its glob/regex
-                    # metacharacters and any user escapes (\*, \.). Tilde on a
-                    # leading literal (patterns only).
-                    text = part.text
-                    if tilde and i == 0 and text.startswith('~'):
-                        text = self.expansion_manager.expand_tilde(text)
-                    out.append(text)
-            elif isinstance(part, ExpansionPart):
-                expanded = self.expansion_manager.expand_expansion(
-                    part.expansion,
-                    quote_ctx=DQ_WORD if part.quoted else None)
-                # RULED TERMINAL CONSUMER (see _operand_string): a [[ ]] RHS
-                # pattern is one pattern string.
-                if isinstance(expanded, OperandValue):
-                    expanded = expanded.as_scalar()
-                out.append(escape(expanded) if part.quoted else expanded)
-        return ''.join(out)
-
     def _rhs_pattern(self, word) -> str:
-        """Glob pattern for a ``==``/``!=`` RHS (see ``_rhs_walk``): quoted
-        parts glob-escaped, unquoted parts live globs, leading ``~`` expanded.
-        Feeds the canonical pattern engine (``_pattern_match``)."""
-        return self._rhs_walk(
-            word,
-            escape=self.expansion_manager.variable_expander.glob_escape,
-            tilde=True)
+        """Glob pattern for a ``==``/``!=`` RHS.
+
+        Delegates to the ONE pattern-word owner
+        (``expansion/pattern_words.expand_pattern_word``), shared with
+        ``case`` patterns: quoted parts are glob-escaped so they match
+        literally, unquoted parts keep their live glob power, and the tilde
+        rule is the command-word one — including the assignment-shaped value
+        tilde bash applies here (C042)::
+
+            env HOME=/h/me psh -c '[[ x=$HOME == x=~ ]] && echo eq'   # eq
+
+        Feeds the canonical pattern engine (``_pattern_match``).
+        """
+        return self._rhs_word(
+            word, escape=self.expansion_manager.variable_expander.glob_escape)
 
     def _rhs_regex(self, word) -> str:
-        """Regex source for a ``=~`` RHS (see ``_rhs_walk``): quoted parts
-        ``re.escape``'d, unquoted parts live regex; no tilde expansion (a
-        leading ``~`` is a literal to the regex engine, like bash)."""
-        return self._rhs_walk(word, escape=re.escape, tilde=False)
+        """Regex source for a ``=~`` RHS.
+
+        The same owner as ``_rhs_pattern`` with ``re.escape`` in place of
+        ``glob_escape``: quoted parts become literal regex text, unquoted
+        parts stay live regex. bash expands a word-leading tilde in the regex
+        operand too — probed against bash 5.3.15, which contradicts the
+        docstring this method carried before v0.787.0 (C042)::
+
+            env HOME=abc psh -c '[[ abc =~ ~ ]] && echo eq'    # eq
+            env HOME=/h/me psh -c "[[ '~' =~ ~ ]] || echo ne"  # ne
+        """
+        return self._rhs_word(word, escape=re.escape)
+
+    def _rhs_word(self, word, *, escape) -> str:
+        """Run a ``[[ ]]`` RHS through the pattern-word owner.
+
+        ``[[ ]]``'s lexer keeps ``$x`` as literal text inside a double-quoted
+        LiteralPart (unlike ``case``, whose parser emits an ExpansionPart), so
+        the owner is handed this evaluator's double-quote recipe
+        (``_expand_dquote_literal``) for those parts.
+        """
+        return expand_pattern_word(
+            word,
+            manager=self.expansion_manager,
+            escape=escape,
+            dquote_literal=self._expand_dquote_literal)
 
     def _process_escape_sequences(self, text: str) -> str:
         """Process escape sequences in test expression operands."""
