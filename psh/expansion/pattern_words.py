@@ -32,15 +32,18 @@ tilde boundary and expansion rules through ``TildeExpander.prefix_end`` /
 ``TildeExpander.expand``, and ``tests/unit/expansion/test_pattern_words.py``
 pins the two shapes to the same answers.
 """
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 from ..ast_nodes import ExpansionPart, LiteralPart, ProcessSubstitution, Word
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle: manager imports this
+    from .manager import ExpansionManager
 
 
 def expand_pattern_word(
         word: Word,
         *,
-        manager,
+        manager: 'ExpansionManager',
         escape: Callable[[str], str],
         dquote_literal: Optional[Callable[[str], str]] = None,
         procsub_literal: bool = False,
@@ -72,7 +75,7 @@ def expand_pattern_word(
     we = manager.word_expander
     word, ctx = we.tilde_walk_begin(word, assignment_tilde=True)
 
-    out: list = []
+    out: List[str] = []
     # Mirrors the field engine's ``_FieldBuilder.has_content``: the
     # word-leading tilde rule only fires while nothing has been emitted yet.
     has_content = False
@@ -101,7 +104,7 @@ def expand_pattern_word(
     return ''.join(out)
 
 
-def _expansion_text(manager, part: ExpansionPart,
+def _expansion_text(manager: 'ExpansionManager', part: ExpansionPart,
                     escape: Callable[[str], str]) -> str:
     """One ExpansionPart's contribution to a pattern string.
 

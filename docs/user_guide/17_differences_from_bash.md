@@ -958,14 +958,14 @@ fi
 | Arithmetic expansion | Yes | Yes | Full support |
 | Brace expansion | Yes | Yes | Full support |
 | Process substitution | Yes | Yes | Full support |
-| Tilde expansion | Yes | Yes | Full support |
+| Tilde expansion | Yes | Yes | Full support, in command words and in PATTERN words alike (`case $HOME in ~)`, `[[ $HOME == ~ ]]`, `${v#~/}`), including `~user`, `~+`/`~-` and the assignment-value tilde after `=` and `:` |
 | Case modification | Yes | Yes | ${var^^}, ${var,,}, ${var~~} toggle, patterns, arrays; length-safe Unicode |
 | **Control Structures** |
 | if/then/else/fi | Yes | Yes | Full support |
 | while/until/do/done | Yes | Yes | Full support |
 | for/do/done | Yes | Yes | Full support |
 | C-style for loops | Yes | Yes | Full support |
-| case/esac | Yes | Yes | Full support |
+| case/esac | Yes | Yes | Full support; each pattern of an item (every arm of a `|` alternation) gets the same word expansion bash gives it — tilde, parameter, command and arithmetic expansion — with quoted text matching literally |
 | select | Yes | Yes | Full support |
 | Arithmetic commands (( )) | Yes | Yes | Full support |
 | Control structures in pipelines | Yes | Yes | Full support |

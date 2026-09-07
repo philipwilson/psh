@@ -237,6 +237,8 @@ module = [
     "psh.scripting.program_source",
     # --- joined in Improvement Program 2026-09 slot 1.9 (C020).
     "psh.parser.combinators.trailing_redirects",
+    # --- joined in Improvement Program 2026-09 slot 1.11 (C042).
+    "psh.expansion.pattern_words",
 ]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true

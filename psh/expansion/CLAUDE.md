@@ -36,6 +36,7 @@ Input Arguments → ExpansionManager → Expanded Arguments
 | `parameter_expansion.py` | `ParameterExpansionOps` - string ops behind the operators (incl. `PATSUB_MATCH`); the engine, not the `ParameterExpansion` AST node. Substitution implements bash's measured pat_subst/match_upattern consumer layer (empty-subject single-shot, `*`-wrapped pre-test, end-position gate, end-never-scanned `//` loop — `parameter_expansion.py#_sub_machinery`/`#_any_match`, slot 3.1); removal is pure slice booleans |
 | `command_sub.py` | `CommandSubstitutionExecutor` - runs `$(cmd)` and `` `cmd` ``; the engine, not the `CommandSubstitution` AST node |
 | `tilde.py` | `TildeExpander` - handles `~` and `~user` |
+| `pattern_words.py` | `expand_pattern_word()` - THE pattern-word rule for `case` patterns and `[[ == ]]`/`!=`/`=~` right operands |
 | `glob.py` | `GlobExpander` - pathname expansion (wildcards). (`normalize_bracket_expressions`/`_POSIX_CLASSES_PATHNAME` build no production output after W3 but are the PERMANENT `fnmatch` reference ORACLE — campaign Q3 ruling, NOT a deferred deletion — cross-checking `_component_matcher` in `test_unified_glob_converter.py`.) The ASCII class table itself is NOT owned here — it is `utils/posix_classes.py#POSIX_CLASSES`, a leaf below both this package and `core/locale_service.py`, which also reads it; this module owns only the slash-free `_POSIX_CLASSES_PATHNAME` variant derived from it |
 | `word_splitter.py` | `WordSplitter` - splits on IFS (`split()`, `split_with_edges()`) |
 | `arithmetic/` | Arithmetic package: tokenizer/parser/evaluator (`evaluate_arithmetic()`); decomposed from `arithmetic.py` into `tokens.py`/`tokenizer.py`/`nodes.py`/`parser.py`/`evaluator.py`/`errors.py` |
@@ -116,6 +117,17 @@ Key behaviors controlled by Word AST structure:
   arguments and for/select items, NOT array initializers) expand unquoted
   tilde prefixes after the first `=` and after each `:`
   (`_expand_assignment_value_tildes()`)
+- **Pattern words get the command-word tilde rule**: a `case` item pattern
+  and a `[[ == ]]`/`[[ != ]]`/`[[ =~ ]]` right operand are expanded by the ONE
+  owner `pattern_words.py#expand_pattern_word`, which drives the SAME tilde
+  state machine as the field engine (`word_expander.py#tilde_walk_begin`,
+  `#tilde_apply_unquoted_literal`) — so a pattern word cannot drift from a
+  command word on any tilde form. Reproduce the C042 defect it closed with
+  `env HOME=/h bash -c 'case $HOME in ~) echo tilde;; *) echo other;; esac'`
+  against a shell without the owner. The `${var#pat}` family is the
+  string-shaped sibling (`operands.py#_expand_pattern_operand`): the parser
+  builds no Word for those operands, so it cannot consume the owner, and
+  `tests/unit/expansion/test_pattern_words.py` pins the two to the same answers.
 
 ### 3. ExpansionEvaluator
 

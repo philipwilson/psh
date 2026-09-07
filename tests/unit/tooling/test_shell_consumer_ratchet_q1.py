@@ -186,6 +186,9 @@ POST_ENDPOINT_SCANNED: list = [
     # slot 1.9 (C020): the one trailing-redirection helper. Parser-only — it
     # touches a CommandParsers, never a Shell — so it is scanned, not exempted.
     "psh/parser/combinators/trailing_redirects.py",
+    # slot 1.11 (C042): the one pattern-word walker. It takes an
+    # ExpansionManager, never a Shell — so it is scanned, not exempted.
+    "psh/expansion/pattern_words.py",
 ]
 
 # Modules born after SCOPE_ENDPOINT that are deliberately NOT scanned —

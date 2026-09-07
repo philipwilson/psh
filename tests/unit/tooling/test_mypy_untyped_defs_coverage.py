@@ -343,6 +343,8 @@ POST_ENDPOINT_MIGRATED: list = [
     # slot 1.9 (C020): the one trailing-redirection helper, born fully
     # typed — it joins the discipline rather than claiming an exemption.
     "psh.parser.combinators.trailing_redirects",
+    # slot 1.11 (C042): the one pattern-word walker, born fully typed.
+    "psh.expansion.pattern_words",
 ]
 
 #: Modules born after SCOPE_ENDPOINT deliberately NOT under the discipline
