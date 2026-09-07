@@ -1,7 +1,7 @@
 """Positional parameter builtins (shift, getopts)."""
 from typing import TYPE_CHECKING, List
 
-from ..core import special_builtin_usage_discard
+from ..core import special_builtin_usage_discard, special_builtin_usage_status
 from .base import Builtin
 from .registry import builtin
 
@@ -24,19 +24,20 @@ class ShiftBuiltin(Builtin):
 
         if len(args) > 1:
             # bash validates the FIRST operand before the operand count:
-            # `shift x y` reports "x: numeric argument required" (rc 1, the
-            # shell continues), while `shift 1 2` — a VALID count with an extra
-            # operand — is "too many arguments", a usage error that discards
-            # the rest of the current input unit (both modes; probe-verified
-            # against bash 5.2).
+            # `shift x y` reports "x: numeric argument required" and the shell
+            # continues on the same line, while `shift 1 2` — a VALID count
+            # with an extra operand — is "too many arguments", which discards
+            # the rest of the current input unit. Two cells of the one
+            # usage-error family in core/internal_errors.py; neither status is
+            # spelled here.
             try:
                 n = int(args[1])
             except ValueError:
                 self.error(f"{args[1]}: numeric argument required", shell)
-                return 1
+                special_builtin_usage_status()
             if len(args) > 2:
                 self.error("too many arguments", shell)
-                special_builtin_usage_discard(shell.state, 1)
+                special_builtin_usage_discard(shell.state)
 
         # Validate shift count (bash: "N: shift count out of range")
         if n < 0:

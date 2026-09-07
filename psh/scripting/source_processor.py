@@ -20,6 +20,7 @@ from ..core import (
     SubstitutionSyntaxAbort,
     TopLevelAbort,
     report_internal_defect,
+    usage_discard_child_status,
 )
 from ..core.internal_errors import substitution_abort_status
 from ..lexer import UnclosedQuoteError
@@ -746,8 +747,19 @@ class SourceProcessor(ScriptComponent):
                 # Expansion-error discards bypass set -e (bash); a
                 # readonly/failglob discard keeps its errexit effect.
                 self.state.errexit_eligible = False
-            self.state.last_exit_code = e.status
-            return e.status
+            status = e.status
+            if e.usage_discard_channel and self.state.in_substitution:
+                # The special-builtin too-many-arguments discard is the one
+                # abort whose status is channel-dependent HERE rather than at a
+                # fork: this boundary IS the top of a substitution child (the
+                # child body re-parses the string through run_command), so the
+                # abort never reaches map_child_exception. bash's substitution
+                # child exits 1 where the `( )` subshell beside it exits with
+                # the family's 2 -- the rule and its probes live on
+                # core/internal_errors.py#usage_discard_child_status.
+                status = usage_discard_child_status()
+            self.state.last_exit_code = status
+            return status
         except FunctionReturn as e:
             # A sourced-program input (source/., the rc file —
             # ``stop_on_return`` from InputSource.stops_on_function_return)

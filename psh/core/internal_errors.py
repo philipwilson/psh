@@ -56,6 +56,7 @@ from typing import TYPE_CHECKING, NoReturn, TextIO
 from .exceptions import (
     FatalExpansionError,
     PshError,
+    SpecialBuiltinUsageError,
     TopLevelAbort,
     UnboundVariableError,
 )
@@ -312,34 +313,159 @@ def arith_assignment_discard(state: 'ShellState') -> NoReturn:
     raise TopLevelAbort(1, errexit_immune=True, contain_nested=False)
 
 
-def special_builtin_usage_discard(state: 'ShellState', status: int = 1) -> NoReturn:
-    """Discard the current input unit after a special-builtin USAGE error.
+#: The status bash 5.3.15 gives EVERY usage-error cell of the special-builtin
+#: usage family below -- the too-many-arguments discard, the numeric-argument
+#: operand cell, the bad-count ``break``/``continue`` exit, and ``cd``'s plain
+#: operand-count failure. The 5.2 series returned 1 for the same cells; the
+#: change has no CHANGES/NEWS item, it is empirical on 5.3.15 (probed
+#: 2026-09-06 in -c, script-file and stdin modes). No consumer spells the
+#: number itself.
+USAGE_ERROR_STATUS = 2
 
-    bash 5.2 (probe-verified, tmp bcontract battery): ``exit 7 8`` (too many
-    arguments, valid first operand) and ``shift 1 2`` report the usage error
-    but DO NOT exit the shell and DO NOT run the rest of the current input
-    unit. The discard is identical in shape to
-    :func:`arith_assignment_discard`: the rest of the current line dies
-    (killing ``&&``/``||`` tails, an enclosing group/function/loop on the same
-    input), execution resumes at the NEXT top-level input line, the discard
+
+def special_builtin_usage_discard(state: 'ShellState') -> NoReturn:
+    """TOO-MANY-ARGUMENTS cell of the special-builtin usage-error family.
+
+    ONE of the family's three outcomes; the other two are
+    :func:`special_builtin_usage_status` (numeric-argument operand) and
+    :func:`special_builtin_usage_exit_shell` (bad-count ``break``/``continue``).
+    Consumers: ``exit 7 8``, ``shift 1 2``, ``return 3 4``, ``break 1 2`` and
+    ``continue 1 2`` -- a VALID first operand followed by extras. (A BAD first
+    operand is diagnosed first and takes the operand cell instead, in every one
+    of them: ``exit abc 7`` / ``shift x y`` / ``return abc 7`` report the
+    numeric error, not this one.)
+
+    bash 5.3.15 (empirical, no CHANGES/NEWS item; probed 2026-09-06 in all
+    three input modes): the usage error is reported, the shell does NOT exit,
+    and the REST OF THE CURRENT INPUT LINE is discarded. The discard is
+    identical in shape to :func:`arith_assignment_discard` -- it kills
+    ``&&``/``||`` tails and an enclosing group/function/loop on the same input,
     passes THROUGH ``eval``/``source`` (contained only at fork boundaries), and
-    it is errexit-immune (the next line runs even under ``set -e``). Both
-    behaviours hold in default AND POSIX mode. Under ``-c`` the whole string is
-    the input unit, so it is abandoned with ``status``.
+    is errexit-immune (the next line runs even under ``set -e``). Two coupled
+    facts fix the two statuses, and they are NOT the same number:
+
+    - script file / piped stdin: execution resumes at the next input line with
+      ``$?`` = ``USAGE_ERROR_STATUS``; when the discarded line was the LAST
+      input, that status is the shell's exit status (``exit 1 2`` as a whole
+      script exits 2). The 5.2 series left 1 here.
+    - ``-c``: the whole string is the input unit, so it is abandoned and the
+      process exits **1**. The ``-c`` leg did NOT move in 5.3, which is why it
+      is a literal here and not ``USAGE_ERROR_STATUS``.
+
+    Both behaviours hold in default AND POSIX mode (``set -o posix; exit 1 2``
+    still resumes at the next line; the POSIX special-builtin exit policy of
+    :func:`special_builtin_usage_exit` does not reach this cell).
+
+    Reproduce::
+
+        printf 'exit 1 2\necho after=$?\n' > s.sh; bash s.sh   # after=2, rc 0
+        bash -c 'exit 1 2; echo survived'                       # rc 1, no output
 
     The caller must already have printed the error message.
     """
     if state.options.get('command_mode'):
+        raise SystemExit(1)
+    raise TopLevelAbort(USAGE_ERROR_STATUS, errexit_immune=True,
+                        contain_nested=False, usage_discard_channel=True)
+
+
+def usage_discard_child_status() -> int:
+    """The status a SUBSTITUTION child exits with on the usage discard.
+
+    Third status of :func:`special_builtin_usage_discard`, and the reason its
+    abort carries a channel stamp. bash 5.3.15 (empirical, probed 2026-09-06 in
+    script-file and stdin modes)::
+
+        ( exit 1 2 ); echo $?          # 2 -- a subshell keeps the family status
+        x=$(exit 1 2); echo $?         # 1 -- a substitution child does not
+        x=`exit 1 2`;  echo $?         # 1 -- same for the backtick spelling
+
+    Flat 1: unlike :func:`substitution_child_abort_status` there is no errexit
+    branch, because the discard is errexit-immune in the child too. Read at
+    ONE place —
+    ``scripting/source_processor.py#SourceProcessor._dispatch_execution`` —
+    keyed on the stamp and on ``state.in_substitution``. That boundary rather
+    than the fork boundary, because a substitution child re-parses its string
+    through ``run_command``, so the abort is consumed at the child's own
+    buffered boundary and never reaches ``map_child_exception``. A ``( )``
+    subshell executes an already-parsed AST, is NOT in a substitution, and
+    keeps ``.status``.
+    """
+    return 1
+
+
+def special_builtin_usage_status(
+        status: int = USAGE_ERROR_STATUS) -> NoReturn:
+    """NUMERIC-ARGUMENT (operand) cell of the special-builtin usage family.
+
+    Consumers: ``exit abc`` and ``shift abc`` -- a first operand that is not a
+    number. (``return abc`` shares the STATUS but not this route: it must still
+    return from the function, so it takes ``USAGE_ERROR_STATUS`` directly; see
+    ``builtins/function_support.py``.)
+
+    bash 5.3.15 (empirical, no CHANGES/NEWS item; probed 2026-09-06 in all
+    three input modes): the error is reported and the command merely FAILS with
+    ``USAGE_ERROR_STATUS`` -- no discard, no exit. Execution continues on the
+    SAME line, so ``exit abc; echo rc=$?`` prints ``rc=2`` and the shell lives.
+    The 5.2 series exited the shell here, which is what psh used to do.
+
+    Raising the typed outcome rather than returning the status is what couples
+    this cell to POSIX mode: in POSIX mode a non-interactive shell EXITS with
+    the status instead (``set -o posix; exit abc`` exits 2), suppressibly and
+    with ``command``/``builtin`` stripping the special property -- the whole
+    rule already lives in :func:`special_builtin_usage_exit`, reached from the
+    ONE builtin guard. Spelling it as a raise here keeps that single owner.
+
+    Reproduce::
+
+        bash -c 'exit abc; echo rc=$?'                # rc=2, process rc 0
+        bash -c 'set -o posix; exit abc; echo rc=$?'  # exits 2, no output
+
+    The caller must already have printed the error message.
+    """
+    raise SpecialBuiltinUsageError(status, suppressible=True)
+
+
+def special_builtin_usage_exit_shell(shell: 'Shell',
+                                     status: int = USAGE_ERROR_STATUS) -> None:
+    """BAD-COUNT ``break``/``continue`` cell of the usage-error family.
+
+    The family's HARDEST outcome, and the only one that is not a discard:
+    ``break abc`` / ``continue abc`` inside a loop.
+
+    bash 5.3.15 (empirical, no CHANGES/NEWS item; probed 2026-09-06): the error
+    is reported and the shell EXITS with ``USAGE_ERROR_STATUS`` in EVERY input
+    mode -- ``-c`` included, unlike the discard cell above, and unlike it also
+    UNSUPPRESSIBLE: ``break abc || echo caught`` and ``if break abc; then``
+    still exit. Only a fork boundary contains it (the subshell of
+    ``( for i in 1; do break abc; done )`` exits 2 and the parent lives on).
+    psh used to exit 128 here.
+
+    An INTERACTIVE shell does not exit -- it records the status and carries on
+    (verified against ``bash -i``: ``$?`` is 2 on the next prompt) -- which is
+    why the exit is gated on ``is_script_mode`` rather than raised
+    unconditionally. This function therefore RETURNS in the interactive case;
+    the caller must not assume it is ``NoReturn``.
+
+    Reproduce::
+
+        bash -c 'for i in 1; do break abc; done; echo after'   # rc 2, no output
+
+    The caller must already have printed the error message.
+    """
+    shell.state.last_exit_code = status
+    if shell.state.is_script_mode:
         raise SystemExit(status)
-    raise TopLevelAbort(status, errexit_immune=True, contain_nested=False)
 
 
 def special_builtin_usage_exit(shell: 'Shell', status: int,
                                suppressible: bool = False) -> int:
     """The ONE POSIX-mode special-builtin EXIT-on-error policy.
 
-    Applied where a ``SpecialBuiltinUsageError`` surfaces from a DIRECT
-    special-builtin invocation (the strategy paths of the builtin guard;
+    Reached from :func:`special_builtin_usage_status` (the usage-error
+    family's operand cell) and from every other classified special-builtin
+    error branch. Applied where a ``SpecialBuiltinUsageError`` surfaces from a
+    DIRECT special-builtin invocation (the strategy paths of the builtin guard;
     ``command``/``builtin`` invocations bypass it, stripping the special
     property — bash/POSIX). bash 5.2, probe-verified
     (docs/reviews/posix_special_builtin_exit_matrix_2026-07-07.md +

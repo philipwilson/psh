@@ -2,6 +2,7 @@
 from typing import TYPE_CHECKING, Any, List, Optional, cast
 
 from ..core import (
+    USAGE_ERROR_STATUS,
     AssociativeArray,
     IndexedArray,
     NamerefCycleError,
@@ -987,21 +988,11 @@ class ReturnBuiltin(Builtin):
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the return builtin."""
-        if len(args) > 2:
-            # bash checks this before the in-function check. `return 3 4`
-            # is the same too-many-arguments family as `exit 7 8`/`shift
-            # 1 2` (probe-verified, bash 5.2, tmp/posixexit): the error is
-            # reported and the CURRENT INPUT UNIT is discarded — it does
-            # NOT return from the function (the rest of the body on this
-            # line dies too) and does NOT exit the shell, in default AND
-            # POSIX mode; the next input line runs with $? = 1. (The old
-            # sys.exit(1) here made a non-interactive psh exit — bash
-            # survives.)
-            self.error("too many arguments", shell)
-            special_builtin_usage_discard(shell.state, 1)
-
-        # Validate the numeric argument FIRST — bash reports a bad numeric
-        # argument ("numeric argument required") BEFORE the can-only-return
+        # Validate the FIRST OPERAND before the operand count, exactly like
+        # `exit abc 7` / `shift x y`: bash 5.3.15 reports "abc: numeric
+        # argument required" for `return abc 7`, NOT "too many arguments"
+        # (empirical, probed 2026-09-06 in -c, script-file and stdin modes).
+        # bash also reports a bad numeric argument BEFORE the can-only-return
         # context check, so `return abc` OUTSIDE a function prints BOTH lines
         # (both location-prefixed). Inside a function it prints only this line.
         numeric_error = False
@@ -1017,9 +1008,28 @@ class ReturnBuiltin(Builtin):
                 # Wrap return value to 0-255 range like bash does
                 exit_code = int(args[1]) % 256
             except ValueError:
+                # Operand cell of the usage-error family: report and return
+                # from the function with the family status. `return` does NOT
+                # take special_builtin_usage_status's typed-outcome route,
+                # because in default mode bash still RETURNS from the function
+                # here (`f(){ return abc; echo in; }; f` prints nothing and
+                # leaves $?=2) rather than merely failing in place; only the
+                # status is shared. The POSIX-mode half of that cell — bash
+                # EXITS 2 for an unguarded `return abc` under `set -o posix` —
+                # is a registered gap, not psh's behavior yet.
                 self.error(f"{args[1]}: numeric argument required", shell)
                 numeric_error = True
-                exit_code = 2
+                exit_code = USAGE_ERROR_STATUS
+            else:
+                if len(args) > 2:
+                    # Valid first operand + extras: the same
+                    # too-many-arguments cell as `exit 7 8` / `shift 1 2`.
+                    # It is diagnosed before the in-function check, so
+                    # `return 1 2` at the top level reports THIS, not
+                    # "can only `return' from a function". The rest of the
+                    # current input line dies; the shell does not exit.
+                    self.error("too many arguments", shell)
+                    special_builtin_usage_discard(shell.state)
 
         if not shell.state.function_stack and shell.state.source_depth == 0:
             # Usage error rc 2 (bash); a POSIX-mode non-interactive shell
@@ -1030,5 +1040,6 @@ class ReturnBuiltin(Builtin):
 
         # We can't actually "return" from the middle of execution in Python,
         # so we'll use an exception for control flow. A bad numeric argument
-        # still returns from the function/sourced file, with status 2 (bash).
-        raise FunctionReturn(2 if numeric_error else exit_code)
+        # still returns from the function/sourced file, with the family's
+        # usage status (bash).
+        raise FunctionReturn(USAGE_ERROR_STATUS if numeric_error else exit_code)

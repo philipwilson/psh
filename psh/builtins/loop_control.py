@@ -6,11 +6,15 @@ and they compose in pipelines and && / || lists. psh matches that by parsing
 them as plain simple commands and implementing the control transfer here,
 via the LoopBreak/LoopContinue exceptions the loop executors catch.
 """
-import sys
 from abc import abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
-from ..core import LoopBreak, LoopContinue, special_builtin_usage_discard
+from ..core import (
+    LoopBreak,
+    LoopContinue,
+    special_builtin_usage_discard,
+    special_builtin_usage_exit_shell,
+)
 from .base import Builtin
 from .registry import builtin
 
@@ -65,28 +69,36 @@ class LoopControlBuiltin(Builtin):
 
         Returns the positive level to act on; 0 for the non-positive
         "loop count out of range" case (error already reported, caller exits
-        the loop); or None when the command must NOT transfer control
-        because a non-numeric argument was reported (a non-interactive
-        shell aborts via sys.exit 128, like bash). The too-many-arguments
-        case never returns: it discards the current input unit.
+        the loop); or None when the command must NOT transfer control because
+        a non-numeric argument was reported (only reachable in an interactive
+        shell — a non-interactive one has already exited by then). The
+        too-many-arguments case never returns: it discards the current input
+        unit.
+
+        Both bad-argument cells belong to the ONE usage-error family in
+        core/internal_errors.py, and they take DIFFERENT outcomes of it: a
+        valid count with extras discards the input line, while a non-numeric
+        count exits the shell. Neither status is spelled here.
         """
         if len(args) == 1:
             return 1
         if len(args) > 2:
-            # Same too-many-arguments family as `exit 7 8` / `shift 1 2` /
-            # `return 3 4` (probe-verified, bash 5.2, tmp/posixexit):
-            # report and DISCARD the current input unit — the loop dies,
-            # the shell does NOT exit, and the next input line runs with
-            # $? = 1, in default AND POSIX mode. (The old sys.exit(1) path
-            # made a non-interactive psh exit — bash survives.)
+            # Same too-many-arguments cell as `exit 7 8` / `shift 1 2` /
+            # `return 3 4`: report and DISCARD the current input unit — the
+            # loop dies, the shell does NOT exit, and the next input line runs
+            # with $? = 2, in default AND POSIX mode.
+            # Reproduce: printf 'for i in 1; do break 1 2; done\necho rc=$?\n'
             self.error("too many arguments", shell)
-            special_builtin_usage_discard(shell.state, 1)
+            special_builtin_usage_discard(shell.state)
 
         arg = args[1]
         try:
             level = int(arg)
         except ValueError:
-            self._report_arg_error(f"{arg}: numeric argument required", 128, shell)
+            # Bad-count cell: bash 5.3.15 EXITS the shell here, in every input
+            # mode and even under a `|| echo caught` guard.
+            self.error(f"{arg}: numeric argument required", shell)
+            special_builtin_usage_exit_shell(shell)
             return None
 
         if level <= 0:
@@ -95,16 +107,6 @@ class LoopControlBuiltin(Builtin):
             self.error(f"{arg}: loop count out of range", shell)
             return 0
         return level
-
-    def _report_arg_error(self, message: str, status: int, shell: 'Shell') -> None:
-        """Report a non-numeric-argument error. A non-interactive shell
-        aborts with the given status — bash 5.2 exits 128 on `break x`
-        inside a loop, in default AND POSIX mode (probe tmp/posixexit) —
-        while an interactive shell records the status and continues."""
-        self.error(message, shell)
-        shell.state.last_exit_code = status
-        if shell.state.is_script_mode:
-            sys.exit(status)
 
 
 @builtin
