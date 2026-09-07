@@ -41,9 +41,10 @@ class LoopControlBuiltin(Builtin):
         depth = self._loop_depth(shell)
         if depth == 0:
             # bash: warn and continue with status 0 (the argument is not
-            # even validated when there is no enclosing loop). In POSIX
-            # mode the no-op is SILENT — bash prints nothing (matrix doc
-            # row, probe-verified vs bash 5.2).
+            # even validated when there is no enclosing loop, so `break abc`
+            # here is NOT the bad-count cell). In POSIX mode the no-op is
+            # SILENT — bash prints nothing. Both re-probed against bash
+            # 5.3.15 in -c, script-file and stdin modes; unchanged from 5.2.
             if not shell.state.options.get('posix'):
                 self.error(
                     "only meaningful in a `for', `while', or `until' loop",

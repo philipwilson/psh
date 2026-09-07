@@ -50,8 +50,10 @@ class ShiftBuiltin(Builtin):
             # POSIX: return failure if n > $#. bash is silent in default
             # mode but reports the range error in POSIX mode — with the
             # count when one was given (`shift: 5: shift count out of
-            # range`), without it for a bare `shift` (probe-verified,
-            # bash 5.2, tmp/posixexit). No exit either way (rc 1).
+            # range`), without it for a bare `shift`. Status 1 and no exit
+            # either way: this is NOT a usage error, so it does not take the
+            # family status above. Re-probed against bash 5.3.15 in -c,
+            # script-file and stdin modes; unchanged from 5.2.
             if shell.state.options.get('posix'):
                 prefix = f"{args[1]}: " if len(args) > 1 else ""
                 self.error(f"{prefix}shift count out of range", shell)

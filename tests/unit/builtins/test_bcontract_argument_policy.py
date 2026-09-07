@@ -156,7 +156,7 @@ class TestExitPolicy:
 
 class TestDiscardContainment:
     """The exit/shift usage discard passes THROUGH eval and is errexit-immune
-    (bash 5.2), matching arith_assignment_discard."""
+    (bash 5.3.15), matching arith_assignment_discard."""
 
     def test_discard_passes_through_eval(self):
         rc, out, err = run_c("set -- a b; eval 'shift 1 2'; echo same-after")
@@ -165,5 +165,6 @@ class TestDiscardContainment:
 
     def test_discard_is_errexit_immune(self, tmp_path):
         rc, out, err = run_script(
-            "set -e\nset -- a b\nshift 1 2\necho survived\n", tmp_path)
-        assert out == "survived\n"
+            "set -e\nset -- a b\nshift 1 2\necho after=$?\n", tmp_path)
+        assert out == "after=2\n"
+        assert rc == 0

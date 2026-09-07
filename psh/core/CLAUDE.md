@@ -38,7 +38,7 @@ Manager            (arrays)    State    Manager
 | `process_lease.py` | `ProcessLeaseCoordinator` (campaign F2) - the ONE gate for process-global ownership: one active shell owner per process, LIFO `ActivationLease` nesting (implicit on first execution via `ShellState.activate`), `ComponentKind` leases (LOCALE / SIGNALS / STD_FDS / MANAGED_SIGNALS) restored LIFO at `Shell.close()`/`shutdown()`, with a checkpointed unwind on failed grants, per-lease owner discrimination, and aggregate-plus-quarantine surfacing when a restore cannot be proven clean (slot 4A.1 — see "Process activation" below), competing live owners rejected before mutation, fork-reset safety, and the recursion-headroom raise at ownership grant. Static ratchet: `tests/unit/tooling/test_process_global_ratchet_f2.py`; invariants: `tests/unit/core/test_process_lease.py`, purity pin `tests/unit/core/test_construction_purity_f2.py` |
 | `functions.py` | `FunctionManager` - shell function definitions |
 | `exceptions.py` | `PshError` root + error classes, and control-flow signals (`LoopBreak`, etc.) |
-| `internal_errors.py` | Expected-error taxonomy + `report_internal_defect` (strict-errors guard) |
+| `internal_errors.py` | Expected-error taxonomy + `report_internal_defect` (strict-errors guard); the discard/abort status policies, incl. the ONE special-builtin usage-error status family |
 | `trap_manager.py` | Signal trap handling. Unmanaged-signal installs lease the prior disposition; the first lease registers ONE `SIGNALS` component with the `ProcessLeaseCoordinator` (`_register_signal_lease`), so overlapping cross-shell leases on one signal are unrepresentable (continuation finding B) and restore order is coordinator-owned |
 | `assignment_utils.py` | Shared assignment validation utilities |
 
@@ -480,11 +480,34 @@ interactive-family path — which yields status 1 for its own reason, not the
 channel's — leaves it False and its children keep `.status`.
 `map_child_exception` re-derives the child's status through
 `internal_errors.py#fatal_expansion_child_status`. Only that ONE raise site
-stamps; every other `TopLevelAbort` in the tree (readonly-assignment refusal,
-`FUNCNEST`, `failglob`, the errexit-immune discard family) is
-channel-independent and keeps `.status` verbatim at a fork. The stamp — rather
-than a blanket re-map — is what keeps those other families' exit statuses
-untouched.
+stamps this flag; every other `TopLevelAbort` in the tree
+(readonly-assignment refusal, `FUNCNEST`, `failglob`, the errexit-immune
+expansion discards) is channel-independent and keeps `.status` verbatim at a
+fork. The stamp — rather than a blanket re-map — is what keeps those other
+families' exit statuses untouched.
+
+There is a SECOND stamp with the same shape and a different reader:
+`usage_discard_channel`, set only by
+`internal_errors.py#special_builtin_usage_discard` (the special-builtin
+too-many-arguments cell of the usage-error status family). Its status is a
+main-shell and SUBSHELL rule — `( exit 1 2 ); echo $?` is 2 in a script — but a
+SUBSTITUTION child that dies on the same discard exits 1. It is read at
+`scripting/source_processor.py#SourceProcessor._dispatch_execution` rather than
+at the fork, because a substitution child re-parses its string through
+`run_command` and so consumes the abort at its own buffered boundary; a `( )`
+subshell executes an already-parsed AST and never reaches that code. The rule
+and its probes live on `internal_errors.py#usage_discard_child_status`.
+
+**The special-builtin USAGE-ERROR STATUS family has ONE owner**, in
+`internal_errors.py`, and no builtin spells a status of its own: the
+too-many-arguments discard (`special_builtin_usage_discard`), the
+numeric-argument operand cell (`special_builtin_usage_status`, which raises the
+typed outcome so the POSIX exit policy stays in `special_builtin_usage_exit`),
+and the bad-count `break`/`continue` shell exit
+(`special_builtin_usage_exit_shell`). `USAGE_ERROR_STATUS` is the one place the
+number 2 appears; `cd`, which is not a special builtin, borrows only that
+constant. bash 5.3.15 moved every cell of this family from 1 to 2 with no
+CHANGES/NEWS item, so the pins are empirical and carry `oracle_min("5.3")`.
 
 The two child-status helpers are deliberately NOT the same shape, and the
 difference is probe-derived, not stylistic: `substitution_child_abort_status`

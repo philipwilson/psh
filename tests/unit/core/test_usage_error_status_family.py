@@ -39,7 +39,7 @@ class TestTooManyArgumentsDiscard:
         shell.state.options['posix'] = posix
         with pytest.raises(TopLevelAbort) as exc:
             special_builtin_usage_discard(shell.state)
-        assert exc.value.status == USAGE_ERROR_STATUS
+        assert exc.value.status == USAGE_ERROR_STATUS == 2
         # errexit-immune: the next line runs even under set -e; and the
         # discard is NOT contained by eval/source, it reaches the top-level
         # input loop.
@@ -75,7 +75,7 @@ class TestNumericArgumentOperandCell:
         guard) decides exit-vs-fail, and `command`/`builtin` strip it."""
         with pytest.raises(SpecialBuiltinUsageError) as exc:
             special_builtin_usage_status()
-        assert exc.value.status == USAGE_ERROR_STATUS
+        assert exc.value.status == USAGE_ERROR_STATUS == 2
         assert exc.value.suppressible is True
 
     def test_status_is_overridable_but_defaults_to_the_family(self):
@@ -98,8 +98,8 @@ class TestBadCountBreakContinueExit:
         shell.state.options['command_mode'] = command_mode
         with pytest.raises(SystemExit) as exc:
             special_builtin_usage_exit_shell(shell)
-        assert exc.value.code == USAGE_ERROR_STATUS
-        assert shell.state.last_exit_code == USAGE_ERROR_STATUS
+        assert exc.value.code == USAGE_ERROR_STATUS == 2
+        assert shell.state.last_exit_code == 2
 
     def test_interactive_records_the_status_and_returns(self, shell):
         """bash -i does not exit on `break abc`: the next prompt shows $? = 2.
@@ -107,4 +107,4 @@ class TestBadCountBreakContinueExit:
         shell.state.is_script_mode = False
         shell.state.last_exit_code = 0
         assert special_builtin_usage_exit_shell(shell) is None
-        assert shell.state.last_exit_code == USAGE_ERROR_STATUS
+        assert shell.state.last_exit_code == USAGE_ERROR_STATUS == 2
