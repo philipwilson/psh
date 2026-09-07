@@ -20,8 +20,9 @@ import pytest
 from psh.core.stdin_binding import StdinBinding
 from psh.executor.process_launcher import AsyncJobPolicy, ProcessRole
 
-# A compound redirect rebinds fd 0 in this process (saved and restored around
-# the body), so these rows do not share a worker with anything else.
+# The wiring rows rebind fd 0 — and one of them fd 3 — in THIS process (saved
+# and restored around each compound's body). Under xdist an fd >= 3 is the
+# worker's execnet channel, so this module never shares a worker.
 pytestmark = pytest.mark.serial
 
 
@@ -169,6 +170,16 @@ def body_sees(isolated_shell_with_temp_dir, monkeypatch):
     # A compound that redirects no INPUT fd supplies nothing.
     ("{ true; } > out", [True]),
     ("{ true; } 2> err", [True]),
+    # ...and neither does an input redirect on a fd that is NOT 0. The binding
+    # follows the fd the scope actually rebound, so `3< in` supplies fd 3 and a
+    # named fd is allocated at >= 10. (bash's own classifier is fd-BLIND for
+    # the file-opening input forms — `stdin_redirection` in redir.c returns 1
+    # for `<` whatever the redirector — so it suppresses here and lets the
+    # background reader keep the shell's stdin; a declared divergence.)
+    ("{ true; } 3< in", [True]),
+    ("{ true; } {v}< in", [True]),
+    # A read-write open of fd 0 IS a binding.
+    ("{ true; } <> in", [False]),
     # A SIMPLE command's own redirect list has no reach — including a function
     # CALL's (bash: `f() { cat & wait; }; f < file` prints nothing).
     ("f() { true; }; f < in", [True]),
