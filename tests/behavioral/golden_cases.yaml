@@ -643,11 +643,11 @@
   exit_code: 0
 
 - name: command_sub_exit_code
+  description: "C041: a bare command substitution's status becomes $? (this row was psh_only, pinning the defect)"
   command: '$(exit 42); echo $?'
-  stdout: "0\n"
+  stdout: "42\n"
   stderr: ""
   exit_code: 0
-  psh_only: true  # psh doesn't propagate exit from $(exit N) as $?
 
 - name: command_sub_word_split
   command: 'echo $(echo "a   b   c")'
