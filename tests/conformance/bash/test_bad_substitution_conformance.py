@@ -3,21 +3,33 @@ r"""Conformance tests for ``${...}`` bad-substitution rejection (bash).
 Pins the L1 fix (2026-06-14, reappraisal #6): bash rejects a ``${...}`` whose
 parameter name is empty or syntactically invalid with "bad substitution"
 (exit 1, reported at EXPANSION time, not parse time). Examples that are
-rejected: ``${}``, ``${ }``, ``${1abc}``, ``${.foo}``, ``${a.b}``,
-``${:-x}``, ``${1abc:-x}``. Examples that remain VALID: ``${12}`` (positional),
+rejected: ``${}``, ``${1abc}``, ``${.foo}``, ``${a.b}``, ``${:-x}``,
+``${1abc:-x}``. Examples that remain VALID: ``${12}`` (positional),
 ``${1}``, ``${a-x}`` (default op), ``${#}`` (count), ``${-}`` ($-),
 ``${?}``, ``${arr[0]}``, ``${#arr[@]}``, ``${!arr[@]}``.
+
+``${ `` followed by a space is NOT a bad substitution on bash 5.3: NEWS item
+s introduced FUNCTION SUBSTITUTION, ``${ command; }`` / ``${|command;}``,
+which captures COMMAND's output without forking. So ``${ }`` is an EMPTY
+function substitution (rc 0, expands to nothing) and ``${ :-x}`` opens one
+that ``:-x}`` never closes (a parse error, rc 2, "unexpected EOF while
+looking for matching `}'"). psh has no function substitution and still
+rejects both as bad substitutions (rc 1) — a DECLARED divergence, pinned
+both-sides in ``TestFunctionSubstitutionDeclaredDivergence`` and parked
+(Park P-3) until psh implements the feature.
 
 The valid forms are pinned with ``assert_identical_behavior`` (exact stdout /
 stderr / exit match). The rejected forms differ only in the error-message
 prefix (``bash: line 1:`` vs ``psh:``), so they are pinned separately by a
-direct subprocess comparison of exit code + the message tail. All expectations
-verified against bash 5.2.
+direct comparison of exit code + the message tail. All expectations verified
+against bash 5.3.15 (Wave 0.1; first pinned on 5.2).
 """
 
 import re
 
+import pytest
 from conformance_framework import ConformanceTest
+from oracle_policy import oracle_feature
 from shell_oracle import is_comparable, run_bash, run_psh
 
 
@@ -90,15 +102,16 @@ class TestBadSubstitutionValidForms(ConformanceTest):
 class TestBadSubstitutionRejected:
     """Forms bash REJECTS with "bad substitution" (exit 1, message tail)."""
 
+    # `${ }` and `${ :-x}` left this list with bash 5.3's function
+    # substitution (module docstring); they live in the declared-divergence
+    # class below.
     BAD_CASES = [
         "echo ${}",
-        "echo ${ }",
         "echo ${1abc}",
         "echo ${.foo}",
         "echo ${a.b}",
         "echo ${:-x}",
         "echo ${1abc:-x}",
-        "echo ${ :-x}",
         "echo ${!.foo}",
         "echo ${!1abc}",
         "echo ${! }",
@@ -135,3 +148,48 @@ class TestBadSubstitutionRejected:
         psh = _run_psh(command)
         assert psh.stdout == bash.stdout == "reached\n"
         assert psh.returncode == bash.returncode == 0
+
+
+class TestFunctionSubstitutionDeclaredDivergence:
+    """DECLARED DIVERGENCE (Park P-3): bash 5.3 function substitution.
+
+    bash 5.3 NEWS item s: ``${ command; }`` / ``${|command;}`` capture
+    COMMAND's output (``${|`` hands back ``$REPLY``) without forking. psh has
+    no function substitution and rejects every ``${ `` spelling as a bad
+    substitution. Both sides are pinned so the row goes red the moment
+    EITHER shell moves — when psh implements the feature these rows become
+    parity pins and ``${ }`` returns to the valid-forms class. Guarded by
+    the PROBED ``funsub`` oracle feature, never a version literal (D5): an
+    oracle without function substitution skips the row with a reason.
+    """
+
+    def test_funsub_bash_expands_psh_rejects(self):
+        if not oracle_feature('funsub'):
+            pytest.skip("oracle bash has no ${ cmd; } function substitution "
+                        "(pre-5.3); this declared-divergence row needs one")
+        for command, bash_out in [
+            ("echo ${ }", "\n"),                 # empty funsub -> nothing
+            ("echo ${ echo fs; }", "fs\n"),      # captured output, no fork
+            ("echo ${| REPLY=rv; }", "rv\n"),    # ${| form hands back $REPLY
+        ]:
+            bash = _run_bash(command)
+            psh = _run_psh(command)
+            assert (bash.returncode, bash.stdout, bash.stderr) == (0, bash_out, ""), (
+                f"bash unexpected for {command!r}: {bash}")
+            assert psh.returncode == 1 and psh.stdout == "", (
+                f"psh unexpected for {command!r}: {psh}")
+            assert "bad substitution" in _error_tail(psh.stderr), psh.stderr
+
+    def test_unclosed_funsub_is_a_bash_parse_error(self):
+        """``${ :-x}`` opens a function substitution that ``:-x}`` never
+        closes: bash 5.3 reports an unexpected EOF (parse error, rc 2)
+        where psh still says bad substitution (rc 1)."""
+        if not oracle_feature('funsub'):
+            pytest.skip("oracle bash has no ${ cmd; } function substitution "
+                        "(pre-5.3); this declared-divergence row needs one")
+        bash = _run_bash("echo ${ :-x}")
+        psh = _run_psh("echo ${ :-x}")
+        assert bash.returncode == 2 and bash.stdout == "", bash
+        assert "unexpected EOF" in bash.stderr, bash.stderr
+        assert psh.returncode == 1 and psh.stdout == "", psh
+        assert "bad substitution" in _error_tail(psh.stderr), psh.stderr

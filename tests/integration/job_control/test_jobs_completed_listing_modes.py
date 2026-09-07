@@ -1,23 +1,33 @@
 """`jobs` completed-job listing across the read-path modes (task #22 [#36]).
 
-bash's `jobs` lists a COMPLETED background job on stdout exactly once — but the
-behavior is READ-PATH dependent, which an all-`-c` pin suite missed (the
-verifier bounce). Verified vs bash 5.2 with stdout/stderr separated across all
-four read paths:
+bash's `jobs` lists a COMPLETED background job on stdout exactly once, then
+reaps it — in EVERY non-interactive read path. Verified vs bash 5.3.15 with
+stdout/stderr separated across all four read paths (Wave 0.2, 2026-09-06):
 
-    -c          : completed job NOT listed (reaped eagerly; announced on stderr
-                  under monitor — the deferred -c+monitor boundary notice)
-    script-file : completed job LISTED once (`[1]+ Exit 1 false` / `Done`)
+    -c          : completed job LISTED once, no stderr notice (bash 5.2 reaped
+                  it eagerly so `jobs` printed nothing — bash 5.3 CHANGES,
+                  5.3-alpha "New Features in Bash" item d, "Implement the
+                  POSIX requirement that running the `jobs' builtin removes
+                  jobs from the jobs list", and "Changes to Bash" item bbbb)
+    script-file : LISTED once (`[1]+ Exit 1 false` / `Done`)
     stdin       : LISTED once
     interactive : NOT listed (the prompt notice reaps it first; psh's REPL does
                   the same — covered by the PTY tier)
+
+The v0.692 "-c + monitor boundary notice" deferral (CHANGELOG) is discharged:
+on 5.3.15 `bash -c 'set -m; false & sleep 0.3; jobs'` prints the listing on
+stdout and NOTHING on stderr, so there is no notice left to pin (C181).
 
 These pins compare psh's stdout to LIVE bash in each mode (the oracle), so they
 pin the exact mode-dependent text, including that an argument-less builtin lists
 as `false` with no trailing space. Subprocess + timeout; serial-by-path.
 """
 
+import pytest
 from shell_oracle import is_comparable, run_bash, run_psh
+
+# D5: every row in this module pins bash 5.3's -c completed-job listing (Wave 0.2).
+pytestmark = pytest.mark.oracle_min("5.3")
 
 TIMEOUT = 15
 
@@ -101,16 +111,37 @@ def test_completed_external_listed_once_stdin():
     assert _psh_stdin(EXTERNAL) == _bash_stdin(EXTERNAL)
 
 
-# ---- -c mode: completed job SUPPRESSED (stdout empty), exact bash parity ------
+# ---- -c mode: completed job LISTED once (bash 5.3), exact bash parity --------
 
-def test_completed_builtin_suppressed_c_mode():
+def test_completed_builtin_listed_once_c_mode():
+    # bash 5.3 CHANGES 5.3-alpha New Features d / Changes bbbb (see docstring)
     out = _psh_c(FALSE)
     assert out == _bash_c(FALSE)
-    assert 'Exit' not in out and 'Done' not in out
+    assert 'Exit 1' in out
 
 
-def test_completed_external_suppressed_c_mode():
-    assert _psh_c(EXTERNAL) == _bash_c(EXTERNAL)
+def test_completed_external_listed_once_c_mode():
+    out = _psh_c(EXTERNAL)
+    assert out == _bash_c(EXTERNAL)
+    assert 'Done' in out
+
+
+def test_c_mode_lists_once_then_reaps_and_keeps_wait_status():
+    # A second `jobs` is empty (the listing reaped the job) and `wait $p`
+    # still returns the remembered status — the removal loop is unchanged.
+    cmd = ('(exit 7)& p=$!; sleep 0.3; jobs >/dev/null; echo A:; jobs; '
+           'echo B:; wait $p; echo rc=$?')
+    assert _psh_c(cmd) == _bash_c(cmd) == 'A:\nB:\nrc=7\n'
+
+
+def test_c_mode_with_monitor_lists_and_prints_no_notice():
+    # C181 ruling: bash 5.3 prints no `-c`+`set -m` boundary notice.
+    cmd = 'set -m; ' + FALSE
+    p = run_psh(['-c', cmd], timeout=TIMEOUT)
+    b = run_bash(['-c', cmd], timeout=TIMEOUT)
+    assert is_comparable(p) and is_comparable(b), (p, b)
+    assert (p.stdout, p.stderr) == (b.stdout, b.stderr)
+    assert 'Exit 1' in p.stdout and b.stderr == ''
 
 
 # ---- trailing-space regression: argument-less builtin bg job -----------------

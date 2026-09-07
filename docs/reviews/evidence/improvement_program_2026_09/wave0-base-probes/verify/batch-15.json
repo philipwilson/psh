@@ -1,0 +1,50 @@
+{
+  "batch": 15,
+  "head": "6459f1a6",
+  "psh_version": "v0.779.0",
+  "oracle": "GNU bash 5.3.15(1)-release (aarch64-apple-darwin25.4.0)",
+  "results": [
+    {
+      "cid": "C075",
+      "status": "live",
+      "bash53_output": "`. ; echo rc=$?` -> stderr: `.: filename argument required` + `.: usage: . [-p path] filename [arguments]`, stdout `rc=2`, exit 0. `set -o posix; . ; echo rc=$?` -> same two stderr lines, EMPTY stdout, shell exit=2 (shell exited). Same in script-file mode (`s.sh: line 2: ...`, exit=2) and stdin mode (exit=2). `source` name behaves identically (`source: usage: source [-p path] filename [arguments]`).",
+      "psh_output": "`. ; echo rc=$?` -> stderr: `psh: line 1: .: filename argument required` (NO usage line), stdout `rc=1`. `set -o posix; . ; echo rc=$?` -> same single stderr line, stdout `rc=1`, exit 0 (shell CONTINUES). Identical in script-file mode (`s.sh: line 2: .: filename argument required` / `rc=1` / exit=0) and stdin mode. `source` name identical.",
+      "note": "Live in all three input modes (-c, script file, stdin) and for both `.` and `source` names. Code confirmed at HEAD: psh/builtins/source_command.py:41-43 `if len(args) < 2: self.error(...); return 1` -- no usage line, no SpecialBuiltinUsageError(2), so no POSIX-mode exit (the missing-FILE branch at :60-61 does raise SpecialBuiltinUsageError(1)). Cosmetic oracle drift only: bash 5.3.15's usage text now includes `[-p path]` (5.3 added `source -p`); the rc=2 / usage-line / POSIX-exit substance of bash_expected is unchanged."
+    },
+    {
+      "cid": "C076",
+      "status": "live",
+      "bash53_output": "printf -ZZ -> rc=2 `printf: -Z: invalid option` + `printf: usage: printf [-v var] format [arguments]` | times -ZZ -> rc=2 `times: -Z: invalid option` | eval -ZZ -> rc=2 `eval: -Z: invalid option` | builtin -ZZ -> rc=2 `builtin: -Z: invalid option` | source -ZZ -> rc=2 `source: -Z: invalid option` + `source: usage: source [-p path] filename [arguments]` | pushd -ZZ -> rc=2 `pushd: -ZZ: invalid number` | popd -ZZ -> rc=2 `popd: -ZZ: invalid number` | dirs -ZZ -> rc=2 `dirs: -ZZ: invalid number` (each with a usage line).",
+      "psh_output": "printf -ZZ -> rc=0, stdout `-ZZ` (treated as format) | times -ZZ -> rc=0, prints times (`0m0.070s 0m0.010s` / `0m0.000s 0m0.000s`) | eval -ZZ -> rc=127 `psh: line 1: -ZZ: command not found` | builtin -ZZ -> rc=1 `psh: line 1: builtin: -ZZ: not a shell builtin` | source -ZZ -> rc=1 `psh: line 1: source: -ZZ: No such file or directory` | pushd -ZZ -> rc=1 `psh: line 1: pushd: invalid rotation argument: -ZZ` | popd -ZZ -> rc=1 `psh: line 1: popd: directory stack empty` | dirs -ZZ -> rc=1 `psh: line 1: dirs: invalid option: -Z`",
+      "note": "All 8 rows live; psh output matches the reappraisal's psh_observed column verbatim, and bash 5.3.15 matches bash_expected (bash 5.3 additionally prints a usage line after each `invalid option`/`invalid number`, e.g. `times: usage: times`, `eval: usage: eval [arg ...]`; `source -ZZ` usage now shows `[-p path]`). Mode: -c only (finding scope)."
+    },
+    {
+      "cid": "C077",
+      "status": "live",
+      "bash53_output": "`kill -n 0 $$; echo rc=$?` -> rc=0, no stderr. `sleep 30 & p=$!; kill -n 15 $p; echo rc=$?; wait $p; echo wrc=$?` -> `rc=0` / `wrc=143` (child actually got SIGTERM). `kill -n bogus $$` -> rc=1 `kill: bogus: invalid signal specification`.",
+      "psh_output": "`kill -n 0 $$; echo rc=$?` -> rc=1, stderr `psh: line 1: kill: invalid signal name: n`. `sleep 30 & p=$!; kill -n 15 $p; echo rc=$?; wait $p; echo wrc=$?` -> `rc=1` / `wrc=0` with the same stderr (signal never delivered; `wait` blocked until `sleep 30` exited normally). `kill -n bogus $$` -> rc=1 `psh: line 1: kill: invalid signal name: n` (the `-n` itself is parsed as signal NAME `n`; `bogus` never inspected).",
+      "note": "Live. Code confirmed at HEAD: psh/builtins/kill_command.py:30 synopsis `kill [-s signal | -signal] pid... | kill -l [exit_status]` omits `-n`; the option loop at :117-134 handles only `-s`/`-s<name>`, `-l`, `--`, and generic `-<sigspec>` (so `-n` falls into `_parse_signal('n')`); grep for `'-n'`/`signum` in kill_command.py returns nothing. Mode: -c."
+    },
+    {
+      "cid": "C078",
+      "status": "live",
+      "bash53_output": "`wait abc; echo rc=$?` -> rc=1, stderr `wait: `abc': not a pid or valid job spec`. `wait 1x` -> rc=1, same shape. Controls: `wait 99999999` -> rc=127 `wait: pid 99999999 is not a child of this shell`; `wait %99` -> rc=127 `wait: %99: no such job`.",
+      "psh_output": "`wait abc; echo rc=$?` -> rc=127, stderr `psh: line 1: wait: abc: not a valid process id`. `wait 1x` -> rc=127 `wait: 1x: not a valid process id`. Controls MATCH bash: `wait 99999999` -> rc=127 `wait: pid 99999999 is not a child of this shell`; `wait %99` -> rc=127 `wait: %99: no such job`.",
+      "note": "Live exactly as described: only the syntactically-invalid class diverges (rc 127 vs 1, and message text `not a valid process id` vs bash's `not a pid or valid job spec`); the not-a-child and no-such-job controls agree at 127 in both shells. Code confirmed at HEAD: psh/builtins/job_control.py:643-646 `except ValueError: self.error(f\"{spec}: not a valid process id\", shell); exit_status = 127`."
+    },
+    {
+      "cid": "C079",
+      "status": "live",
+      "bash53_output": "`ulimit -n 64; echo x 200>f; echo rc=$?` -> rc=1, stderr `200: Bad file descriptor`. `ulimit -n 64; /bin/echo x 200>f; echo rc=$?` -> rc=1, stderr `200: Bad file descriptor`. (Both name the fd.)",
+      "psh_output": "builtin path: rc=1, stderr `psh: line 1: 9: Bad file descriptor` (9 = EBADF errno). external path: rc=1, stderr `psh: line 1: f: Bad file descriptor` (names the file). Bonus at INT_MAX boundary: `echo x 2147483647>f` -> psh `9: Bad file descriptor` vs bash `2147483647: Bad file descriptor` (same errno-leak shape, no ulimit needed).",
+      "note": "Live, both wrong shapes reproduced under `ulimit -n 64` set in the same -c invocation. Code confirmed at HEAD: psh/io_redirect/manager.py:200-204 `_redirect_error_name` falls back `return str(error.errno)` when target and error.filename are None (builtin path -> `9`); builtin path prints via format_redirect_error at psh/executor/command.py:973. The cited `command.py:1157` 'child twin' pointer is STALE at HEAD (file is 1143 lines; :973 is its only format_redirect_error call) -- the forked-child counterpart now lives at psh/io_redirect/manager.py:1105-1116 (`os.write(2, (format_redirect_error(...`), which yields the filename shape (`f`) because error.filename is set on that path. Behavior unchanged from the report."
+    },
+    {
+      "cid": "C080",
+      "status": "live",
+      "bash53_output": "`echo x 2147483648>f; echo rc=$?; cat f` -> rc=0, f contains `x 2147483648` (fd prefix > INT_MAX lexed as ordinary WORD). `echo x >&9999999999` -> rc=1, stderr `9999999999: Bad file descriptor`. `echo x 9999999999>f` -> rc=0, f=`x 9999999999`. Boundary `echo x 2147483647>f` -> rc=1 `2147483647: Bad file descriptor`.",
+      "psh_output": "Under PSH_STRICT_ERRORS=1 (house rules): all three huge-fd forms ESCAPE as a raw Python traceback, process exit 1, no shell-formatted line; last frames: `echo x 2147483648>f` and `9999999999>f` -> `file_redirect.py\", line 823, in _save_fd_high / return fcntl.fcntl(fd, fcntl.F_DUPFD, 10) / OverflowError: Python int too large to convert to C int`; `>&9999999999` -> `file_redirect.py\", line 328, in dup_fd_valid / fcntl.fcntl(dup_fd, fcntl.F_GETFD) / OverflowError: Python int too large to convert to C int`. Without strict-errors: `psh: line 1: Python int too large to convert to C int`, rc=1 (matches reappraisal psh_observed). Boundary 2147483647>f -> `psh: line 1: 9: Bad file descriptor` rc=1 (C079 shape).",
+      "note": "Live. Under PSH_STRICT_ERRORS=1 the OverflowError is classified as an INTERNAL DEFECT and re-raised by report_internal_defect (psh/core/internal_errors.py:412) -- full traceback, exit 1 -- confirming the guards catch only OSError. The traceback pins exactly the two cited lines: file_redirect.py:823 (F_DUPFD in _save_fd_high) for the `N>f` form and file_redirect.py:328 (F_GETFD in dup_fd_valid) for the `>&N` form. Lexer half (bash caps prefix at INT_MAX and re-lexes as WORD) remains split out as io:P2-4-lexer and is also still divergent (psh builds redirect.fd=2147483648 and reaches fcntl)."
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import sys
 # standalone entry point, and the conformance conftest's sys.path setup only runs
 # under pytest — direct `python <file>` execution needs this insert at module load.
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import pytest
 from conformance_framework import ConformanceTest
 
 
@@ -349,6 +350,7 @@ class TestBashJobControl(ConformanceTest):
         assert result.psh_result.exit_code == 0
         assert result.bash_result.exit_code == 0
 
+    @pytest.mark.oracle_min("5.3")
     def test_job_control_commands(self):
         """`jobs` output matches bash in non-interactive mode.
 

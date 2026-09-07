@@ -8,8 +8,10 @@ mode-aware ``resolve_command`` chokepoint in
 - ``CommandEnvOverlay`` — immutable effective-environment view; PATH projection.
 - ``ResolvedCommand`` — the single dispatch answer, mode-aware.
 
-plus the empty/unset-PATH command-not-found MESSAGE alignment (a subprocess
-row against live bash, prefix-normalized).
+plus the PATH-state (set-empty / unset / non-empty) 127 MESSAGE alignment
+(subprocess rows against live bash, prefix-normalized, in all three input
+modes). Wording rows follow bash 5.3 CHANGES 5.3-alpha item p ("Treat a NULL
+value for $PATH as equivalent to '.'"); the rest is empirical, 5.3.15.
 """
 
 import os
@@ -246,10 +248,12 @@ def _norm_prefix(text: str) -> str:
 
 
 class TestEmptyPathNotFoundMessage:
-    """bash reports a bare-name miss under an EMPTY or UNSET PATH as
-    'No such file or directory' (rc 127), not 'command not found'; a
-    non-empty PATH miss stays 'command not found'. Prefix-normalized so only
-    the message BODY + rc are compared (the psh:/argv0 prefix differs)."""
+    """bash 5.3 (CHANGES 5.3-alpha item p: a NULL PATH is ".") reports an
+    EMPTY-PATH miss as 'command not found' — a cwd search that missed, like
+    PATH=: — and only an UNSET PATH (missing, or a declared-unset `local
+    PATH`) as 'No such file or directory'; rc 127 both. Prefix-normalized so
+    only the message BODY + rc are compared (the psh:/argv0 prefix differs).
+    Every row pins the status of the NEXT command via `echo rc=$?` (D3)."""
 
     def _both(self, script):
         p = run_psh(['-c', script])
@@ -258,14 +262,50 @@ class TestEmptyPathNotFoundMessage:
         assert is_comparable(b), b
         return p, b
 
-    def test_empty_path_says_no_such_file(self):
+    def test_empty_path_says_command_not_found(self):
+        # RED ON BASE (788ffe41): psh keyed the wording on emptiness.
         p, b = self._both('PATH= zzznope 2>&1; echo rc=$?')
+        assert 'command not found' in p.stdout
+        assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
+
+    def test_local_empty_path_says_command_not_found(self):
+        # `local PATH=` is SET-empty (a "." search), not declared-unset.
+        # RED ON BASE (788ffe41).
+        p, b = self._both(
+            'f(){ local PATH=; zzznope 2>&1; echo rc=$?; }; f')
+        assert 'command not found' in p.stdout
+        assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
+
+    def test_local_declared_unset_path_says_no_such_file(self):
+        # bare `local PATH` is declared-UNSET: no search (empirical, 5.3.15).
+        p, b = self._both(
+            'export PATH=/nope-xyz; f(){ local PATH; zzznope 2>&1; echo rc=$?; }; f')
         assert 'No such file or directory' in p.stdout
         assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
 
     def test_unset_path_says_no_such_file(self):
         p, b = self._both('unset PATH; zzznope 2>&1; echo rc=$?')
         assert 'No such file or directory' in p.stdout
+        assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
+
+    def test_unset_path_command_p_says_command_not_found(self):
+        # `command -p` searches its default path list whatever PATH's state,
+        # so the miss is a SEARCH miss (empirical, 5.3.15). RED ON BASE
+        # (6c31871f): psh keyed the wording on PATH alone.
+        p, b = self._both('unset PATH; command -p zzznope 2>&1; echo rc=$?')
+        assert 'command not found' in p.stdout
+        assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
+
+    def test_unset_path_command_p_cwd_hit_is_command_not_found(self, tmp_path):
+        # A cwd executable is NOT on the default path list: `command -p`
+        # misses it even though a bare `unset PATH; cmd` would run it.
+        (tmp_path / 'zzhit').write_text('#!/bin/sh\necho RAN\n')
+        (tmp_path / 'zzhit').chmod(0o755)
+        script = 'unset PATH; command -p zzhit 2>&1; echo rc=$?'
+        p = run_psh(['-c', script], cwd=str(tmp_path))
+        b = run_bash(['--norc', '--noprofile', '-c', script], cwd=str(tmp_path))
+        assert is_comparable(p) and is_comparable(b), (p, b)
+        assert 'zzhit: command not found' in p.stdout, p.stdout
         assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
 
     def test_nonempty_path_miss_still_command_not_found(self):
@@ -278,6 +318,58 @@ class TestEmptyPathNotFoundMessage:
         p, b = self._both('PATH=: zzznope 2>&1; echo rc=$?')
         assert 'command not found' in p.stdout
         assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
+
+
+class TestPathMissWordingInputModes:
+    """The PATH-state 127 wording across INPUT MODES (D6: -c, stdin, script
+    file — the location prefix differs per mode, the BODY and the next
+    command's status must not). bash 5.3 CHANGES 5.3-alpha item p for the
+    set-empty rows; empirical, 5.3.15 for the unset row."""
+
+    ROWS = [
+        # (script, expected body fragment in psh's output)
+        ('PATH= zzznope 2>&1; echo rc=$?', 'zzznope: command not found'),
+        ('f(){ local PATH=; zzznope 2>&1; echo rc=$?; }; f',
+         'zzznope: command not found'),
+        ('unset PATH; zzznope 2>&1; echo rc=$?',
+         'zzznope: No such file or directory'),
+        # `command -p` searches the default path list regardless of PATH.
+        ('unset PATH; command -p zzznope 2>&1; echo rc=$?',
+         'zzznope: command not found'),
+        ('f(){ local PATH; command -p zzznope 2>&1; echo rc=$?; }; f',
+         'zzznope: command not found'),
+    ]
+    IDS = ['empty', 'local_empty', 'unset', 'unset_command_p',
+           'local_unset_command_p']
+
+    def _check(self, p, b, body):
+        assert is_comparable(p), p
+        assert is_comparable(b), b
+        assert body in p.stdout, p.stdout
+        assert 'rc=127' in p.stdout, p.stdout
+        assert _norm_prefix(p.stdout) == _norm_prefix(b.stdout)
+        assert p.returncode == b.returncode == 0
+
+    @pytest.mark.parametrize('script,body', ROWS, ids=IDS)
+    def test_dash_c(self, script, body):
+        self._check(run_psh(['-c', script]),
+                    run_bash(['--norc', '--noprofile', '-c', script]), body)
+
+    @pytest.mark.parametrize('script,body', ROWS, ids=IDS)
+    def test_stdin(self, script, body):
+        data = script + '\n'
+        self._check(run_psh([], stdin_data=data, stdin_mode='pipe'),
+                    run_bash(['--norc', '--noprofile'], stdin_data=data,
+                             stdin_mode='pipe'), body)
+
+    @pytest.mark.parametrize('script,body', ROWS, ids=IDS)
+    def test_script_file(self, script, body, tmp_path):
+        # Both shells name the script in the prefix (`s.sh: line 1: `), so the
+        # normalized outputs must be byte-identical.
+        (tmp_path / 's.sh').write_text(script + '\n')
+        self._check(run_psh(['s.sh'], cwd=str(tmp_path)),
+                    run_bash(['--norc', '--noprofile', 's.sh'],
+                             cwd=str(tmp_path)), body)
 
 
 class TestPosixlyPrefixInputModes:

@@ -12,9 +12,12 @@ v0.487 psh keyed trap handlers by the raw spec, so two everyday idioms broke
     name-keyed signal dispatch never matched the number key.
 
 All three spellings now normalize to one canonical key, so they set, fire,
-and query interchangeably. Verified against bash 5.2.
+and query interchangeably. Verified against bash 5.3.15 (Wave 0.2 retune:
+the usage line is bash 5.3's `trap [-Plp] [[action] signal_spec ...]`, and
+`trap -P` is pinned in TestTrapPrintActionsConformance).
 """
 
+import pytest
 from conformance_framework import ConformanceTest
 from shell_oracle import is_comparable, run_bash, run_psh
 
@@ -164,6 +167,73 @@ class TestTrapDisplayConformance(ConformanceTest):
         assert psh.stdout == bash.stdout == "rc=1\n"
         assert 'NOSUCHSIG: invalid signal specification' in psh.stderr
         assert 'NOSUCHSIG: invalid signal specification' in bash.stderr
+
+
+@pytest.mark.oracle_min("5.3")
+class TestTrapPrintActionsConformance(ConformanceTest):
+    """`trap -P` prints the bare action per operand.
+
+    bash 5.3 CHANGES, 5.3-alpha "New Features in Bash" item j: "`trap' has a
+    new -P option that prints the trap action associated with each signal
+    argument". Wave 0.2 retune, verified against bash 5.3.15; the usage-line
+    cells in test_error_prefix_conformance.py and
+    test_single_invalid_operand_usage_error above are the gate nodes.
+    Diagnostics carry the `<shell>: line N:` prefix, so those rows send
+    stderr to /dev/null and compare stdout + `$?`.
+    """
+
+    def test_P_prints_bare_action_per_operand(self):
+        self.assert_identical_behavior(
+            "trap 'echo hi' INT; trap 'echo bye' EXIT; trap -P INT EXIT; echo rc=$?")
+
+    def test_P_unset_reset_and_ignored(self):
+        # unset/reset print nothing; the ignored ('') action is an empty line
+        self.assert_identical_behavior(
+            "trap -P INT; echo rc=$?; trap 'echo hi' INT; trap - INT; trap -P INT; "
+            "echo rc=$?; trap '' INT; trap -P INT | od -c")
+
+    def test_P_keeps_the_raw_action_text(self):
+        self.assert_identical_behavior(
+            "trap \"echo 'x'\" INT; trap -P INT; trap -p INT")
+
+    def test_P_repeats_operands_in_query_order(self):
+        self.assert_identical_behavior(
+            "trap 'echo hi' INT; trap 'echo z' 0; trap -P 2 SIGINT int EXIT 0")
+
+    def test_P_invalid_spec_rc1_valid_still_printed(self):
+        self.assert_identical_behavior(
+            "trap 'echo hi' INT; trap -P INT NOSUCH 2>/dev/null; echo rc=$?")
+
+    def test_P_without_operand_rc2(self):
+        self.assert_identical_behavior("trap -P 2>/dev/null; echo rc=$?")
+
+    def test_p_and_P_together_rc2(self):
+        self.assert_identical_behavior("trap -pP INT 2>/dev/null; echo rc=$?")
+
+    def test_P_usage_errors_exit_posix_shell_suppressibly(self):
+        self.assert_identical_behavior(
+            "set -o posix; trap -P 2>/dev/null || echo caught; "
+            "trap -pP INT 2>/dev/null || echo caught; echo survived")
+        self.assert_identical_behavior(
+            "set -o posix; trap -P 2>/dev/null; echo not-reached")
+
+    def test_l_dominates_P(self):
+        self.assert_identical_behavior(
+            "trap 'echo hi' INT; trap -lP INT | grep -c SIGINT")
+
+    def test_l_does_not_rescue_P_usage_errors(self):
+        # bash 5.3.15 checks the -P usage errors before honouring -l: no
+        # listing, rc 2 (empirical; verifier round 1 of Wave 0.2 pkg E).
+        self.assert_identical_behavior(
+            "trap -lP 2>/dev/null; echo rc=$?; trap -lpP INT 2>/dev/null; "
+            "echo rc=$?; trap -l -p -P INT 2>/dev/null; echo rc=$?; "
+            "trap -Pl 2>/dev/null | grep -c SIGINT")
+
+    def test_l_with_P_usage_error_exits_posix_shell(self):
+        self.assert_identical_behavior(
+            "set -o posix; trap -lpP INT 2>/dev/null; echo not-reached")
+        self.assert_identical_behavior(
+            "set -o posix; trap -lP 2>/dev/null || echo caught; echo survived")
 
 
 class TestTrapSubstitutionExitConformance(ConformanceTest):

@@ -20,8 +20,9 @@ class TrapBuiltin(Builtin):
 
     @property
     def synopsis(self) -> str:
-        # bash's exact usage string (also printed on usage errors).
-        return "trap [-lp] [[arg] signal_spec ...]"
+        # bash 5.3's exact usage string (also printed on usage errors);
+        # 5.2 printed `trap [-lp] [[arg] signal_spec ...]`.
+        return "trap [-Plp] [[action] signal_spec ...]"
 
     @property
     def description(self) -> str:
@@ -36,6 +37,7 @@ SYNOPSIS
     trap [condition...]
     trap -l
     trap -p [condition...]
+    trap -P condition...
 
 DESCRIPTION
     Sets trap handlers for signals and shell exit. When a signal is received,
@@ -43,7 +45,9 @@ DESCRIPTION
 
 OPTIONS
     -l      List signal names and numbers
-    -p      Print current trap settings
+    -p      Print current trap settings in reusable `trap -- ...` form
+    -P      Print the bare action of each condition (at least one condition
+            is required; -P and -p cannot be combined)
 
 ACTIONS
     action  Command string to execute when signal is received
@@ -71,6 +75,7 @@ EXAMPLES
     trap -l                               # List all signals
     trap -p                               # Show all current traps
     trap -p INT EXIT                      # Show specific traps
+    trap -P INT                           # Print just INT's action text
 
 EXIT STATUS
     Returns 0 unless an invalid signal is specified.
@@ -78,8 +83,8 @@ EXIT STATUS
 
     def execute(self, args: List[str], shell: 'Shell') -> int:
         """Execute the trap builtin."""
-        # Options come first (bash grammar `trap [-lp] ...`), parsed by the
-        # shared getopt-style walker over the flag set "lp": they CLUSTER
+        # Options come first (bash grammar `trap [-Plp] ...`), parsed by the
+        # shared getopt-style walker over the flag set "lpP": they CLUSTER
         # (`-lp`, `-pl`), split across words (`-p -l`), stop at `--`, at a bare
         # `-` (the reset ACTION, not an option — parse_flags_ordered's len==1
         # guard), or at the first non-option operand. On a bad flag char bash
@@ -87,18 +92,31 @@ EXIT STATUS
         # non-interactive shell exits (special-builtin usage error, like
         # `unset`); parse_flags prints error+usage, we raise. An action
         # beginning with '-' needs `--` first (`trap -- '-x' INT`).
-        opts, operands = self.parse_flags(args, shell, flags='lp')
+        opts, operands = self.parse_flags(args, shell, flags='lpP')
         if opts is None:
             raise SpecialBuiltinUsageError(2, suppressible=True)
         list_flag = opts['l']
         print_flag = opts['p']
+        action_flag = opts['P']
 
-        # -l dominates when present: bash's `trap -lp` / `-pl` / `-l INT`
-        # prints the signal listing and ignores both -p and any operands.
+        # bash 5.3 diagnoses the two -P usage errors BEFORE honouring -l
+        # (probe-verified against 5.3.15: `trap -lpP INT` and `trap -lP` are
+        # rc-2 usage errors with no listing, and a POSIX-mode non-interactive
+        # shell exits, suppressibly). Only after those checks does -l dominate
+        # -p and any operands (`trap -lp`, `-pl`, `-l INT`, `-lP INT` list).
+        if action_flag and print_flag:
+            self.error("cannot specify both -p and -P", shell)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
+        if action_flag and not operands:
+            self.error("-P requires at least one signal name", shell)
+            raise SpecialBuiltinUsageError(2, suppressible=True)
         if list_flag:
             # (the listing string already ends with a newline)
             self.write(shell.trap_manager.list_signals(), shell)
             return 0
+
+        if action_flag:
+            return self._print_actions(operands, print_flag, shell)
 
         if print_flag:
             # Show the queried traps, or all of them with no operands. Any
@@ -137,3 +155,25 @@ EXIT STATUS
             raise SpecialBuiltinUsageError(2, suppressible=True)
 
         return shell.trap_manager.set_trap(operands[0], operands[1:])
+
+    def _print_actions(self, operands: List[str], print_flag: bool,
+                       shell: 'Shell') -> int:
+        """`trap -P SIG...`: print each operand's bare action (bash 5.3).
+
+        bash 5.3 CHANGES (5.3-alpha, "New Features in Bash" item j). The two
+        usage errors — no operand, or -p combined with -P — are diagnosed in
+        execute() BEFORE -l is honoured, WITHOUT a usage line, rc 2, and exit a
+        POSIX-mode non-interactive shell suppressibly (probe-verified against
+        bash 5.3.15: `set -o posix; trap -P || echo caught` prints `caught`;
+        `trap -lpP INT` is the same error, not a listing). A spec with no trap
+        set prints nothing; an invalid spec is reported and makes rc 1 while
+        the valid operands are still printed.
+        """
+        actions, invalid = shell.trap_manager.trap_actions(operands)
+        for action in actions:
+            # One line per operand — an ignored ('') action is an empty line,
+            # so write per line rather than through a joined-and-tested string.
+            self.write_line(action, shell)
+        for spec in invalid:
+            self.error(f"{spec}: invalid signal specification", shell)
+        return 1 if invalid else 0

@@ -26,6 +26,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 
@@ -70,8 +72,29 @@ def _run_psh(script):
         capture_output=True, text=True, timeout=60, env=env)
 
 
+def _ps_reports_process_state():
+    """The row's precondition (``before_bg=T``) is read through ``ps -o stat=``.
+
+    Under a process-info-denying sandbox (macOS seatbelt ``deny process-info*``)
+    ``ps`` prints NOTHING for every pid, so the precondition can never be
+    observed and the row would fail while saying nothing about ``bg`` (even
+    there psh's ``bg`` resumed the job). Probe on our own pid: a gate run in
+    that sandbox reports SKIP, never FAIL (D4).
+    """
+    try:
+        r = subprocess.run(['ps', '-o', 'stat=', '-p', str(os.getpid())],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return bool(r.stdout.strip())
+
+
 def test_bg_actually_resumes_a_job_stopped_behind_the_shells_back():
     """RED on base: bg returns 0, prints no resume line, job stays stopped."""
+    if not _ps_reports_process_state():
+        pytest.skip("ps cannot read process state here (sandboxed gate: "
+                    "process-info denied), so the stopped-child precondition "
+                    "cannot be observed")
     r = _run_psh(SCRIPT)
     out = r.stdout
 

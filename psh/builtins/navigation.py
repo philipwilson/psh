@@ -106,6 +106,14 @@ class CdBuiltin(Builtin):
         if operands:
             path = operands[0]
 
+            # bash 5.3 rejects an EMPTY operand outright — `cd ""` is
+            # "cd: null directory", rc 1, before any CDPATH search and
+            # regardless of -L/-P (empirical, 5.3.15; 5.2 treated it as a
+            # no-op success). Reproduce: cd /usr; cd ""; echo "$?:$PWD"
+            if path == '':
+                self.error("null directory", shell)
+                return 1
+
             # Handle cd - (change to previous directory)
             if path == '-':
                 # The shell variable, not os.environ: OLDPWD=/x cd - and
@@ -152,14 +160,6 @@ class CdBuiltin(Builtin):
                             actual_path = candidate_path
                             found_in_cdpath = True
                             break
-
-        # bash: `cd ""` (empty operand) is a no-op success — the shell stays
-        # in the current directory rather than erroring on chdir(""). CDPATH
-        # is still searched first (above), so `CDPATH=/usr cd ""` still
-        # changes to /usr; only an operand that CDPATH did not resolve
-        # short-circuits here (probe-verified against bash 5.2).
-        if actual_path == '' and not found_in_cdpath:
-            return 0
 
         try:
             # Compute the logical new directory path

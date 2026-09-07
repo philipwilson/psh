@@ -3,7 +3,11 @@ Tests for the `local` builtin's assignment semantics.
 
 Regression guard for a double-expansion injection: `local` used to re-expand
 its (already executor-expanded) scalar value, so single-quoted text like
-'$(cmd)' executed the command. All expectations verified against bash 5.2.
+'$(cmd)' executed the command. All expectations were verified against bash
+5.2 when written and re-checked against bash 5.3.15 on 2026-09-06 (Wave
+0.3): 34 of the 35 rows still agree with the oracle; the one that moved,
+``test_attrs_only_add_integer_allowed``, is kept as a psh-only pin of the
+current behavior until slot 2.4 flips it (see its docstring).
 """
 
 
@@ -110,7 +114,8 @@ class TestLocalCaseTransformCancellation:
     neither transform and records neither attribute (matches the `declare`
     builtin and the single ScopeManager._apply_attributes chokepoint). The
     duplicate `_apply_attributes` that `local` used to run first uppercased
-    `-ul` instead. All expectations verified against bash 5.2.
+    `-ul` instead. All expectations verified against bash 5.2 and re-checked
+    against bash 5.3.15 (2026-09-06).
     """
 
     def test_ul_leaves_value_unfolded(self, captured_shell):
@@ -149,9 +154,14 @@ class TestLocalReadonlyRedeclare:
     readonly local is rejected (appraisal H7 — `create_local` used to
     overwrite the readonly cell unguarded). bash prints
     `local: NAME: readonly variable`, keeps the old value, `local` returns 1,
-    and the function CONTINUES. An ATTRIBUTE-ONLY redeclare (no value) is
-    NOT rejected — bash lets you merge attributes onto a readonly local.
-    All expectations verified against bash 5.2.
+    and the function CONTINUES. A bare attribute-only redeclare (`local x`,
+    no value) is a no-op in both shells. Merging an attribute that changes
+    assignment semantics (`-i`, `-l`, `-u`, `-a`, `-A`, `-n`) onto a readonly
+    local was accepted by the 5.2 series and is REFUSED by bash 5.3 (CHANGES
+    5.3-alpha section 1 item llllll); psh still accepts it -- see
+    ``test_attrs_only_add_integer_allowed``. All expectations verified against
+    bash 5.2 and re-checked against bash 5.3.15 (2026-09-06); only that one
+    row moved.
     """
 
     def test_value_redeclare_rejected_keeps_old(self, captured_shell):
@@ -198,8 +208,19 @@ class TestLocalReadonlyRedeclare:
         assert captured_shell.get_stderr() == ""
 
     def test_attrs_only_add_integer_allowed(self, captured_shell):
-        """Merging an attribute (`-i`) onto a readonly local succeeds — bash
-        keeps readonly and adds integer (``declare -ir x="1"``)."""
+        """psh-only pin of the CURRENT behavior: merging `-i` onto a readonly
+        local succeeds in psh (readonly kept, integer added, rc 0, no
+        diagnostic) -- the bash 5.2 behavior this row was written against.
+
+        bash 5.3 REFUSES it (CHANGES 5.3-alpha section 1 item llllll: "Fixed
+        a bug that allowed attribute changes to readonly variables that
+        changed the effects of attempted assignments"): probed on 5.3.15,
+        ``local: x: readonly variable``, rc 1, ``declare -r x="1"``.  Slot
+        2.4 flips this pin to that shape (rename
+        ``test_attrs_only_add_integer_refused``); the both-sides pin until
+        then is tests/conformance/bash/test_export_env_sync_conformance.py::
+        TestExportAttributeLifecycle::test_local_i_on_readonly_local_refused_by_bash_53.
+        """
         result = captured_shell.run_command(
             'f(){ local -r x=1; local -i x; declare -p x; }; f')
         assert result == 0
@@ -240,7 +261,8 @@ class TestLocalMultiArgContinueOnError:
     (readonly-value redeclare OR invalid identifier) is reported and skipped,
     but the good args are still created and `local` returns 1 (appraisal-H7
     rider R2). Also fixes the pre-existing outer-scope multi-arg abort.
-    All expectations verified against bash 5.2.
+    All expectations verified against bash 5.2 and re-checked against bash
+    5.3.15 (2026-09-06).
     """
 
     def test_later_arg_still_set_after_readonly(self, captured_shell):

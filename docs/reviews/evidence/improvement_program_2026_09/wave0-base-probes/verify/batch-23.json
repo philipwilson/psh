@@ -1,0 +1,49 @@
+{
+  "head": "6459f1a6",
+  "psh_version": "0.779.0",
+  "oracle": "GNU bash 5.3.15(1)-release aarch64-apple-darwin25.4.0",
+  "results": [
+    {
+      "cid": "C164",
+      "status": "live",
+      "bash53_output": "`]]` -c/script/stdin: rc=2, stderr \"bash: -c: line 1: syntax error near unexpected token `]]'\\nbash: -c: line 1: `]]'\". `]]; echo after`: rc=2, no stdout (whole line rejected).",
+      "psh_output": "`]]` -c/script/stdin: rc=127, stderr \"psh: line 1: ]]: command not found\". `]]; echo after`: rc=0, stdout \"after\" (psh keeps executing the rest of the line).",
+      "note": "Reproduced in all three input modes at HEAD 6459f1a6. Divergence exactly as described: bash treats bare ]] as a reserved-word syntax error (rc 2) and rejects the whole line; psh lexes it as a word, resolves it as a command (rc 127) and continues. Not oracle drift \u2014 bash 5.3.15 matches bash_expected."
+    },
+    {
+      "cid": "C165",
+      "status": "live",
+      "bash53_output": "`coproc cat; echo \"fds=${COPROC[0]} ${COPROC[1]} pid=${COPROC_PID:+set}\"; echo hi >&${COPROC[1]}; read -u ${COPROC[0]} l; echo got=$l` -> stdout \"fds=63 60 pid=set\\ngot=hi\" (coproc works).",
+      "psh_output": "Same command -> stderr \"psh: line 1: coproc: command not found\", \"psh: line 1: : ambiguous redirect\", \"psh: line 1: read: l: invalid file descriptor specification\"; stdout \"fds=  pid=\\ngot=\".",
+      "note": "Documented difference, still true at HEAD: coproc is absent from the parser grammar (only appears in psh/lexer/command_position.py:137 and psh/executor/command_resolver.py:49 as a reserved name, no parse rule). Docs still declare it unsupported: docs/user_guide/17_differences_from_bash.md:309-314 ('Command not found'), :984 ('Coprocesses | Yes | No | Not implemented'), README.md:354. Inventory item, not a defect claim; classification 'live' means the gap persists as documented."
+    },
+    {
+      "cid": "C166",
+      "status": "live",
+      "bash53_output": "`a=(1 2)x; echo \"[$a]\" \"[${a[0]}]\" \"[${a[1]}]\"` -> rc=0, stdout \"[(1 2)x] [(1 2)x] []\"; `a=(1 2)x; declare -p a` -> \"declare -- a=\\\"(1 2)x\\\"\". Same in -c, script, stdin.",
+      "psh_output": "-> rc=0, stdout \"[] [] []\", stderr \"psh: `a': not a valid identifier\\npsh: line 1: x: command not found\"; with declare -p: rc=1, additional \"psh: line 1: declare: a: not found\". Same in all three modes.",
+      "note": "Reproduced in all three modes at HEAD. psh emits a not-a-valid-identifier error, never assigns a, and then runs the trailing `x` as a command; bash 5.3.15 assigns the literal scalar string \"(1 2)x\" exactly as bash_expected states. Not oracle drift."
+    },
+    {
+      "cid": "C170",
+      "status": "live",
+      "bash53_output": "`echo x 2147483648>f; echo rc=$?` -> rc=0, stdout \"rc=0\", f contains \"x 2147483648\\n\" (digit run is an ordinary word; no redirect). Same for 99999999999999999999. Control `echo x 2147483647>f` -> \"bash: line 1: 2147483647: Bad file descriptor\", rc=1, f created empty.",
+      "psh_output": "With PSH_STRICT_ERRORS=1: full Python traceback ending \"File psh/io_redirect/file_redirect.py, line 823, in _save_fd_high: return fcntl.fcntl(fd, fcntl.F_DUPFD, 10) / OverflowError: Python int too large to convert to C int\", process rc=1, f NOT created, `echo rc=$?` never runs. Without strict-errors: \"psh: line 1: Python int too large to convert to C int\", command rc=1, f not created. Same in -c/script/stdin.",
+      "note": "Live at HEAD; the lexer still takes the >INT_MAX digit run as an fd (AST redirect.fd=2147483648) and the OverflowError escapes from file_redirect.py:823 (_save_fd_high). Under the suite-wide strict-errors setting this is now an INTERNAL DEFECT traceback rather than the swallowed exit-1 the report quoted. Side observation (not in the finding): for the in-range control 2147483647, psh reports \"9: Bad file descriptor\" while bash reports \"2147483647: Bad file descriptor\" -- psh names the wrong fd in the diagnostic."
+    },
+    {
+      "cid": "C171",
+      "status": "live",
+      "bash53_output": "stdin mode, one open `if true; then` block with k `: lineN` body lines then `fi; echo done`: k=250 0.01s, 500 0.01s, 1000 0.01s, 2000 0.01s (rc=0, stdout 'done') -- flat/linear.",
+      "psh_output": "ParseSession direct (SessionInputs(lex=tokenize_with_heredocs)), same if..fi shape: k=100 377.6ms parse_calls=102 tokens_parsed=15962; k=200 1476.1ms/202/61912; k=400 5809.8ms/402/243812; k=800 23197.8ms/802/967612 -> 3.91x/3.94x/3.99x per doubling. Control (k separate complete commands): 9.6/19.3/39.3/78.1ms -> 2.00x/2.04x/1.99x (linear). End-to-end `python -m psh` stdin: k=250 1.41s, 500 5.28s, 1000 20.59s, 2000 82.67s -> 3.74x/3.90x/4.01x (rc=0, 'done').",
+      "note": "Previously-registered RESUMABLE-PARSER carry; re-measured at HEAD and the O(k^2) shape is unchanged: one parse per fed line with tokens_parsed growing quadratically (each line re-lexes and re-parses the whole accumulated buffer, psh/parser/session.py ParseSession.feed steps 2 and 5). Multi-command streams stay linear as the module docstring claims. No super-linearity beyond k^2 (ratios converge on 4.0x, not 8x). Applies to stdin/script/interactive line-gathering modes; -c parses the whole string once and is unaffected."
+    },
+    {
+      "cid": "C172",
+      "status": "live",
+      "bash53_output": "`echo $(echo $(... echo hi ...))` -c at depth 40, 80 and 101: rc=0, stdout \"hi\" (bash has no nesting cap at these depths).",
+      "psh_output": "psh.parser.parse on lexed tokens (best of 3, recursionlimit raised to 20000): depth=10 1.30ms; 20 3.03ms (2.34x); 40 8.07ms (2.67x); 80 25.73ms (3.19x). Cap: depth 100 parses OK; depth 101/110 -> SubstitutionSyntaxError \"command substitution nested too deeply\". End-to-end -c: depth 40 and 80 rc=0 \"hi\" (matches bash); depth 101 rc=127 \"psh: -c:1: Parse error (line 1, column 1): command substitution nested too deeply\". Under the bare default recursionlimit=1000 (parser used WITHOUT Shell) depth 70+ trips the converted-RecursionError \"input too deeply nested to parse\" instead; under Shell's raised limit (psh/core/process_lease.py:93) depth 80 works.",
+      "note": "Previously-registered, documented cap (MAX_SUBSTITUTION_NESTING=100 at psh/parser/recursive_descent/support/nested_parse.py:40, which re-tokenizes/re-parses each body). Re-measured mild super-linearity consistent with the registered shape (report 1.82x/2.59x at 10/20/40; now 2.34x/2.67x/3.19x at 10/20/40/80). Not presented as a defect; bash 5.3.15 does diverge only at depth >100 where psh errors cleanly and bash succeeds."
+    }
+  ]
+}

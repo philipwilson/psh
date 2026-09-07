@@ -25,6 +25,7 @@ import yaml
 # masquerading as case output, each case runs hermetically (all inherited
 # LC_*/LANG stripped, fresh temp cwd, own session, bounded file-backed capture).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "harness"))
+from oracle_policy import dev_fd_skip_reason, oracle_min_skip_reason  # noqa: E402
 from shell_oracle import (  # noqa: E402
     hermetic_shell_env,
     is_comparable,
@@ -63,6 +64,28 @@ def _case_ids(cases):
     return [c["name"] for c in cases]
 
 
+def _apply_case_classifiers(case):
+    """D4/D5 golden classifiers, applied to BOTH legs (psh-only and comparison).
+
+    * ``min_bash: "5.3"`` — the row's expectations were derived against bash
+      >= 5.3; on an older oracle neither leg can be judged (the psh side pins
+      the retuned behaviour, the bash side would be the old behaviour), so the
+      row SKIPS with the countable reason ``oracle <version> < 5.3``.
+    * ``requires_dev_fd: true`` — the command opens ``/dev/stdout`` by path,
+      which a sandboxed run cannot (D4): SKIP with the probe's reason instead
+      of a FAIL that says nothing about psh.
+    """
+    min_bash = case.get("min_bash")
+    if min_bash is not None:
+        reason = oracle_min_skip_reason(str(min_bash))
+        if reason:
+            pytest.skip(reason)
+    if case.get("requires_dev_fd", False):
+        reason = dev_fd_skip_reason()
+        if reason:
+            pytest.skip(reason)
+
+
 _ALL_CASES = _load_cases()
 
 
@@ -98,12 +121,13 @@ def _run_bash(command: str, *, env=None, timeout=10):
 @pytest.mark.parametrize("case", _ALL_CASES, ids=_case_ids(_ALL_CASES))
 def test_golden(case):
     """Run a single golden behavioral test case."""
+    _apply_case_classifiers(case)
     command = case["command"]
     expected_stdout = case.get("stdout", "")
     expected_stderr = case.get("stderr", "")
     expected_exit = case.get("exit_code", 0)
 
-    stdout, stderr, exit_code = _run_psh(command)
+    stdout, stderr, exit_code = _run_psh(command, env=case.get("env"))
 
     if expected_stdout is not None:
         assert stdout == expected_stdout, (
@@ -157,10 +181,15 @@ def test_golden_bash_comparison(case, request):
     if case.get("psh_only", False):
         pytest.skip("case marked psh_only")
 
+    _apply_case_classifiers(case)
     command = case["command"]
 
-    psh_stdout, psh_stderr, psh_exit = _run_psh(command)
-    bash_stdout, bash_stderr, bash_exit = _run_bash(command)
+    # ``env:`` (D14): variables the row needs in the STARTUP environment of
+    # both shells (e.g. HOME for tilde rows — the Homebrew bash bottle links the
+    # installed readline, which resolves ``~`` from the process environment and
+    # ignores an in-script ``HOME=`` assignment).
+    psh_stdout, psh_stderr, psh_exit = _run_psh(command, env=case.get("env"))
+    bash_stdout, bash_stderr, bash_exit = _run_bash(command, env=case.get("env"))
 
     if bool(psh_stderr) != bool(bash_stderr):
         warnings.warn(

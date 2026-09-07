@@ -1,0 +1,39 @@
+##### psh -c 'echo hi' <&- (must run normally)
+--- bash:
+hi
+rc=0
+--- psh:
+hi
+rc=0
+##### psh <&- / psh -s <&- (126 path)
+--- bash:
+/opt/homebrew/bin/bash: error creating buffered stream: Bad file descriptor
+rc=126
+--- psh:
+rc=0
+##### [HOME=; cd; echo rc=$? pwd=$(pwd)]
+--- bash:
+rc=0 pwd=/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/tmp.9i2CDebOXq
+--- psh:
+psh: line 1: cd: HOME not set
+rc=1 pwd=/private/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/tmp.9i2CDebOXq
+##### [OLDPWD=; cd -; echo rc=$?]
+--- bash:
+
+rc=0
+--- psh:
+psh: line 1: cd: OLDPWD not set
+rc=1
+##### [CDPATH=:/tmp/cdp_probe_54351; cd x; echo rc=$?]
+--- bash:
+rc=0
+--- psh:
+/private/var/folders/8d/s9142zmj0zq5qhnv11rjf26w0000gn/T/tmp.9i2CDebOXq/x
+rc=0
+##### [CDPATH=/tmp/cdp_probe_54351:; cd x; echo rc=$?]
+--- bash:
+/tmp/cdp_probe_54351/x
+rc=0
+--- psh:
+/tmp/cdp_probe_54351/x
+rc=0

@@ -1,4 +1,4 @@
-"""EXIT-trap exit-status precedence, pinned cell by cell against bash 5.2.
+"""Trap exit-status precedence, pinned cell by cell against bash 5.3.15.
 
 Slot 4A.2's charter clause is "specify exit-status precedence".  The spec is
 this table: it lives in the tree so it survives the merge and ratchets, rather
@@ -23,11 +23,39 @@ next reader.
 Cells marked DISC were RED before the fix (psh resolved a bare ``exit`` from
 the current ``$?``); the controls and the explicit-operand guard were green
 throughout and are must-holds.
+
+BASH 5.3 WIDENED THE RULE (bash 5.3 NEWS item uu; CHANGES 5.3-beta section 3
+item q; POSIX interp 1602): "If `exit' is run in a trap and not supplied an
+exit status argument, it uses the value of $? from before the trap only if
+it's run at the trap's `top level' and would cause the trap to end (that is,
+not in a subshell)."  That now covers SIGNAL traps and ERR, not only EXIT.
+Probed on 5.3.15 in all three input modes, "top level" is relative to the
+action: the action's own command text, including ``if`` / ``{ }`` / loop
+bodies, ``||`` / ``&&`` lists and ``eval``, resolves from the ENTRY status; a
+bare ``exit`` inside a FUNCTION BODY or a SOURCED FILE called from the action
+still resolves from the CURRENT ``$?``; DEBUG keeps the current ``$?``; the
+EXIT trap is unchanged (unconditional, even inside a called function).
+
+psh still implements the EXIT-only rule (``psh/core/trap_manager.py``
+records the entry status for EXIT alone).  The cells that moved are pinned
+BOTH SIDES in ``DIVERGENCE_CELLS`` as declared divergences: bash 5.3
+semantics; psh to follow in slot 2.1, which flips each row into a parity cell
+of ``CELLS``.  Every divergence cell asserts bash 5.3.15's output AND psh's
+current output, so it goes red the moment EITHER shell moves.  The boundary
+shapes where the two shells already agree (function body, sourced file,
+DEBUG) are parity cells so the boundary is pinned at the same width as the
+rule.  Gate triage node family C242 (Wave 0.3).
+
+Reproduce one cell by hand (oracle = the resolved bash 5.3.15)::
+
+    /opt/homebrew/bin/bash -c "trap 'echo entry=\\$?; false; exit' USR1
+    kill -USR1 \\$\\$; sleep 0.2; exit 3"; echo rc=$?      # entry=0 / rc=0
+    python -m psh -c "<same>"; echo rc=$?                  # entry=0 / rc=1
 """
 import pytest
 from shell_oracle import is_comparable, run_bash, run_psh
 
-#: (id, script, discriminating)
+#: (id, script, discriminating) -- rows where psh and bash AGREE.
 CELLS = [
     # -- controls: cannot discriminate; kept labelled so they are not re-read
     #    as evidence for the bare-exit rule ---------------------------------
@@ -49,20 +77,68 @@ CELLS = [
     # that the fix changed the resolution ONLY, and did not disturb `$?`.
     ("disc-localizing-read-vs-resolve",
      "trap 'false; echo q=$?; exit' EXIT; exit 3", True),
-    # A bare exit inside a FUNCTION called from the trap is still inside the
-    # trap action, so the same rule applies.
+    # A bare exit inside a FUNCTION called from the EXIT trap is still inside
+    # the trap action, so the same rule applies (bash 5.3 keeps EXIT
+    # unconditional: the interp-1602 top-level boundary below does NOT apply
+    # to the EXIT trap -- probed 5.3.15, rc 3 in both shells).
     ("disc-bare-exit-in-called-function",
      "f() { false; exit; }; trap f EXIT; exit 3", True),
     # errexit: `false` in the body aborts before the bare exit is reached, so
     # both shells report 1. Kept because it looks discriminating and is not.
     ("disc-errexit-aborts-before-bare-exit",
      "set -e; trap 'false; exit' EXIT; exit 3", True),
-    # The SIGNAL-trap counterpart, carried across all three modes so the
-    # EXIT-only boundary is pinned at the same width as the rule itself. Its
-    # dedicated must-hold (below) additionally asserts the exact values.
-    ("disc-signal-trap-uses-current-status",
-     "trap 'echo entry=$?; false; exit' USR1\nkill -USR1 $$\nsleep 0.2\nexit 3",
+    # -- bash 5.3 top-level BOUNDARY, parity half: a bare exit that is NOT at
+    #    the action's top level resolves from the CURRENT $? in both shells
+    #    (bash 5.3 NEWS uu; probed 5.3.15).  These hold today and after the
+    #    slot 2.1 flip, so they are parity cells, not divergence cells. ----
+    # Function body called from a SIGNAL trap: rc 1 (current $?, from false).
+    ("boundary-signal-trap-function-body-uses-current-status",
+     "f() { false; exit; }\ntrap f USR1\nkill -USR1 $$\nsleep 0.2\nexit 3",
      True),
+    # Sourced file run from a SIGNAL trap: rc 1 (current $?).
+    ("boundary-signal-trap-sourced-file-uses-current-status",
+     "printf 'false; exit\\n' > s_dot.sh\ntrap '. ./s_dot.sh' USR1\n"
+     "kill -USR1 $$\nsleep 0.2\nexit 3",
+     True),
+    # DEBUG keeps the current $? (rc 1) -- interp 1602 does not cover DEBUG.
+    ("boundary-debug-trap-uses-current-status",
+     "trap 'false; exit' DEBUG\ntrue", True),
+]
+
+#: (id, script, (bash stdout, bash rc), (psh stdout, psh rc)) -- DECLARED
+#: DIVERGENCES: bash 5.3 semantics (NEWS uu / CHANGES 5.3-beta 3.q, POSIX
+#: interp 1602), psh to follow in slot 2.1.  Both sides are asserted exactly;
+#: the flip moves each row into CELLS.  Values are the 5.3.15 probes of
+#: 2026-09-06, identical in -c, script-file and stdin modes.
+DIVERGENCE_CELLS = [
+    # The SIGNAL-trap counterpart of disc-false-then-bare-exit: bash resolves
+    # the bare exit from the ENTRY status (0, the kill succeeded); psh from
+    # the CURRENT $? (1, from false).  The trap prints its entry status so
+    # the cell is self-evidently discriminating.
+    ("disc-signal-trap-uses-entry-status",
+     "trap 'echo entry=$?; false; exit' USR1\nkill -USR1 $$\nsleep 0.2\nexit 3",
+     ("entry=0\n", 0), ("entry=0\n", 1)),
+    # The signal arrives while the parent waits for a foreground SUBSHELL, so
+    # the action runs after `(...; exit 5)` completes and its ENTRY status is
+    # 5; bash's bare exit yields 5, psh's yields the action's current $? (0
+    # from true).
+    ("disc-signal-trap-entered-after-subshell-uses-entry-status",
+     "trap 'true; exit' USR1\n(kill -USR1 $$; exit 5)\nsleep 0.2\nexit 3",
+     ("", 5), ("", 0)),
+    # An `if` body inside the action IS the action's top level: entry 0.
+    ("disc-signal-trap-if-body-is-top-level",
+     "trap 'if true; then false; exit; fi' USR1\nkill -USR1 $$\nsleep 0.2\n"
+     "exit 3",
+     ("", 0), ("", 1)),
+    # `eval` inside the action is still the action's top level: entry 0.
+    ("disc-signal-trap-eval-is-top-level",
+     "trap 'eval \"false; exit\"' USR1\nkill -USR1 $$\nsleep 0.2\nexit 3",
+     ("", 0), ("", 1)),
+    # ERR is covered too: entry status 1 (from the failing `false`) wins over
+    # the brace group's current $? 0 (from true) in bash; psh uses 0.
+    ("disc-err-trap-brace-group-is-top-level",
+     "trap '{ true; exit; }' ERR\nfalse\necho nr",
+     ("", 1), ("", 0)),
 ]
 
 MODES = ["command", "script", "stdin"]
@@ -102,24 +178,59 @@ def test_exit_trap_status_matches_bash(cell_id, script, discriminating, mode,
         f"  psh:  {psh.stdout!r} rc={psh.returncode}")
 
 
-def test_bare_exit_in_a_signal_trap_still_uses_current_status():
-    """MUST-HOLD against generalizing the mechanism (slot 4A.2 ruling R4).
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("cell_id,script,bash_expect,psh_expect",
+                         [pytest.param(*c, id=c[0]) for c in DIVERGENCE_CELLS])
+@pytest.mark.oracle_min("5.3")
+def test_trap_entry_status_declared_divergence(cell_id, script, bash_expect,
+                                               psh_expect, mode, tmp_path):
+    """DECLARED DIVERGENCE, both sides pinned: bash 5.3 semantics (NEWS uu,
+    POSIX interp 1602); psh to follow in slot 2.1.
 
-    The saved-status rule is EXIT-trap-SPECIFIC.  In a SIGNAL trap bash
-    resolves a bare ``exit`` from the CURRENT ``$?``, so a fix that saved the
-    entry status for every trap would introduce a NEW divergence in the act of
-    closing this one.  The trap prints its entry status to make the cell
-    self-evidently discriminating: entry is 0 (the ``kill`` succeeded) while
-    the status is 1 (from ``false``), so the two rules predict different
-    answers and both shells choose the current one.
+    Red the moment EITHER shell moves: if the oracle stops matching
+    ``bash_expect`` the oracle drifted (re-baseline, do not edit in place);
+    if psh stops matching ``psh_expect`` the 2.1 fix landed and this row must
+    move into ``CELLS`` as a parity cell.
+    """
+    psh = _run(run_psh, "psh", mode, script, tmp_path)
+    bash = _run(run_bash, "oracle", mode, script, tmp_path)
+    assert is_comparable(psh), psh
+    assert is_comparable(bash), bash
+    assert (bash.stdout, bash.returncode) == bash_expect, (
+        f"{cell_id} [{mode}] ORACLE side moved\n"
+        f"  script: {script!r}\n"
+        f"  bash: {bash.stdout!r} rc={bash.returncode}, expected {bash_expect}")
+    assert (psh.stdout, psh.returncode) == psh_expect, (
+        f"{cell_id} [{mode}] PSH side moved (slot 2.1 landed? flip this row)\n"
+        f"  script: {script!r}\n"
+        f"  psh:  {psh.stdout!r} rc={psh.returncode}, expected {psh_expect}")
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.oracle_min("5.3")
+def test_bare_exit_in_a_signal_trap_uses_entry_status_declared_divergence(
+        mode, tmp_path):
+    """MUST-HOLD, rewritten for bash 5.3 (slot 4A.2 ruling R4 is superseded).
+
+    Under bash 5.2 the saved-status rule was EXIT-trap-SPECIFIC and this
+    must-hold guarded against generalizing psh's mechanism.  bash 5.3 (NEWS
+    item uu, POSIX interp 1602) generalized the rule itself: a bare ``exit``
+    at a SIGNAL trap's top level now resolves from the status at trap ENTRY.
+    The trap prints its entry status to make the cell self-evidently
+    discriminating: entry is 0 (the ``kill`` succeeded) while the current
+    status is 1 (from ``false``), so the two rules predict different answers
+    -- bash 5.3.15 chooses the entry status (rc 0), psh still chooses the
+    current one (rc 1).  Both sides are pinned; slot 2.1 flips the psh side
+    to rc 0 and this test to a plain parity must-hold.
     """
     script = ("trap 'echo entry=$?; false; exit' USR1\n"
               "kill -USR1 $$\n"
               "sleep 0.2\n"
               "exit 3\n")
-    psh = run_psh(["-c", script])
-    bash = run_bash(["-c", script])
+    psh = _run(run_psh, "psh", mode, script, tmp_path)
+    bash = _run(run_bash, "oracle", mode, script, tmp_path)
     assert is_comparable(psh) and is_comparable(bash)
-    assert (psh.stdout, psh.returncode) == (bash.stdout, bash.returncode)
+    assert bash.stdout == "entry=0\n"
+    assert bash.returncode == 0       # bash 5.3: ENTRY status, not current $?
     assert psh.stdout == "entry=0\n"
-    assert psh.returncode == 1        # current $?, NOT the entry status 0
+    assert psh.returncode == 1        # psh today: current $?; slot 2.1 -> 0

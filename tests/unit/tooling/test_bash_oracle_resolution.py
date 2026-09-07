@@ -62,8 +62,23 @@ justification being recorded here.
 """
 import ast
 import os
+import re
+import types
 
+# The oracle POLICY (tests/harness/oracle_policy.py) is exercised at the
+# bottom of this module; the harness dir is on sys.path via tests/conftest.py.
+import oracle_policy
 import pytest
+from oracle_policy import (
+    EXPECTED_BASH_MM,
+    oracle_at_least,
+    oracle_feature,
+    oracle_major_minor,
+    oracle_matches_policy,
+    oracle_summary,
+    parse_version,
+)
+from shell_oracle import BashOracle, DecodeFailure
 
 TESTS_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
@@ -353,3 +368,151 @@ def test_allowlisted_files_still_needed(rel):
         src = f.read()
     assert find_oracle_offenses(src), (
         f"{rel} no longer needs its ALLOWLIST entry — remove it")
+
+
+# ---------------------------------------------------------------------------
+# Oracle POLICY (Improvement Program 2026-09, standing rules D1/D5).
+#
+# The differential contract is bash major.minor EXPECTED_BASH_MM, policed by
+# tests/harness/oracle_policy.py. run_tests.py PREFLIGHTS it before any test
+# phase; `test_resolved_oracle_matches_policy` is the in-suite twin for bare
+# `pytest` runs. Everything below the twin exercises the policy module with a
+# FAKE oracle (a BashOracle value, or a monkeypatched probe seam), so the
+# assertions hold on any host regardless of which bash is installed and
+# regardless of the host's long-double format.
+# ---------------------------------------------------------------------------
+
+def _fake(version, path="/fake/oracle/sh"):
+    return BashOracle(path, version)
+
+
+def test_resolved_oracle_matches_policy():
+    """D1: the resolved oracle's major.minor equals the policy. On drift this
+    fails with the loud retune message (demonstrated red with the ladder's
+    environment override pointed at the stock macOS bash 3.2) rather than
+    letting hundreds of pins go red one at a time."""
+    ok, message = oracle_matches_policy()
+    assert ok, message
+
+
+def test_policy_constant_is_a_major_minor():
+    assert re.fullmatch(r"\d+\.\d+", EXPECTED_BASH_MM), EXPECTED_BASH_MM
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("5.3.15(1)-release", (5, 3, 15)),
+    ("5.3", (5, 3, 0)),
+    ("5.3.15", (5, 3, 15)),
+    ("10.0.1-beta", (10, 0, 1)),
+    ("unknown", (0, 0, 0)),
+    ("", (0, 0, 0)),
+    (None, (0, 0, 0)),
+])
+def test_parse_version(raw, expected):
+    """Unparseable input is (0, 0, 0): a classifier fails CLOSED (skips) on an
+    oracle whose version it cannot read, never runs the row blind."""
+    assert parse_version(raw) == expected
+
+
+def test_oracle_major_minor_of_given_oracle():
+    assert oracle_major_minor(_fake("5.1.16(1)-release")) == "5.1"
+    assert oracle_major_minor(_fake("unknown")) == "0.0"
+
+
+def test_oracle_summary_names_path_and_version():
+    assert oracle_summary(_fake("5.1.16(1)-release", "/fake/oracle/sh")) == (
+        "oracle: /fake/oracle/sh 5.1.16(1)-release")
+
+
+@pytest.mark.parametrize("minimum, expected", [
+    ("5.1", True),
+    ("5.1.16", True),
+    ("5.1.17", False),
+    ("5.2", False),
+    ("4.4", True),
+])
+def test_oracle_at_least_against_given_oracle(minimum, expected):
+    assert oracle_at_least(minimum, _fake("5.1.16(1)-release")) is expected
+
+
+def test_oracle_at_least_fails_closed_on_unparseable_version():
+    assert oracle_at_least("1.0", _fake("unknown")) is False
+
+
+def test_oracle_matches_policy_drift_message_tells_the_reader_what_to_do():
+    ok, message = oracle_matches_policy(_fake("5.1.16(1)-release", "/fake/oracle/sh"))
+    assert ok is False
+    assert message.startswith("oracle drift: resolved bash 5.1.16(1)-release at /fake/oracle/sh")
+    assert f"policy is {EXPECTED_BASH_MM}" in message
+    assert "Wave-0-shaped retune" in message
+    assert "do not edit pins in place" in message
+    assert "--oracle-override" in message
+
+
+def test_oracle_matches_policy_allows_a_patch_bump():
+    """D1: the contract is major.minor; the patch level is recorded, not
+    policed. Returns the summary line, which the runner prints."""
+    ok, message = oracle_matches_policy(_fake(EXPECTED_BASH_MM + ".99(1)-release", "/fake/oracle/sh"))
+    assert ok is True
+    assert message == f"oracle: /fake/oracle/sh {EXPECTED_BASH_MM}.99(1)-release"
+
+
+def test_oracle_feature_unknown_name_raises_keyerror():
+    """A misspelled classifier must not silently skip or run a row."""
+    with pytest.raises(KeyError, match="unknown oracle feature 'x87'"):
+        oracle_feature("x87", _fake("5.3.15(1)-release"))
+
+
+def _probe_seam(monkeypatch, stdout="", returncode=0):
+    """Replace the probe seam with a canned oracle run; reset the cache."""
+    calls = []
+
+    def fake_run(path, script):
+        calls.append((path, script))
+        return types.SimpleNamespace(stdout=stdout, stderr="", returncode=returncode)
+    monkeypatch.setattr(oracle_policy, "_run_oracle", fake_run)
+    monkeypatch.setattr(oracle_policy, "_FEATURE_CACHE", {})
+    return calls
+
+
+@pytest.mark.parametrize("printed, expected", [
+    ("0x8p-3\n", True),      # x86-64 glibc long double: explicit integer bit
+    ("0xcp-3\n", True),
+    ("-0x8p-3\n", True),
+    ("0x1p+0\n", False),     # IEEE double (arm64, macOS)
+    ("0x1.8p+0\n", False),
+    ("", False),
+])
+def test_x87_long_double_probe_reads_printf_a_form(monkeypatch, printed, expected):
+    """The platform classifier is PROBED (D5): the leading hex digit of
+    `printf '%a' 1` decides, never an OS or arch literal."""
+    calls = _probe_seam(monkeypatch, stdout=printed)
+    assert oracle_feature("x87_long_double", _fake("5.3.15(1)-release")) is expected
+    assert calls == [("/fake/oracle/sh", "printf '%a\\n' 1")]
+
+
+@pytest.mark.parametrize("rc, expected", [(0, True), (2, False), (1, False)])
+def test_funsub_probe_reads_exit_status(monkeypatch, rc, expected):
+    calls = _probe_seam(monkeypatch, returncode=rc)
+    assert oracle_feature("funsub", _fake("5.3.15(1)-release")) is expected
+    assert calls == [("/fake/oracle/sh", "x=${ :; }")]
+
+
+def test_oracle_feature_probes_once_per_oracle_and_name(monkeypatch):
+    calls = _probe_seam(monkeypatch, returncode=0)
+    fake = _fake("5.3.15(1)-release")
+    assert oracle_feature("funsub", fake) is True
+    assert oracle_feature("funsub", fake) is True
+    assert len(calls) == 1
+    # A different oracle path is a different cache key.
+    assert oracle_feature("funsub", _fake("5.3.15(1)-release", "/fake/other/sh")) is True
+    assert len(calls) == 2
+
+
+def test_probe_harness_failure_raises_instead_of_answering(monkeypatch):
+    """A non-comparable runner outcome is a harness failure: the seam raises,
+    so a broken oracle can never masquerade as 'feature absent'."""
+    monkeypatch.setattr(oracle_policy, "run_shell_case",
+                        lambda argv, **kw: DecodeFailure("undecodable"))
+    with pytest.raises(RuntimeError, match="did not complete"):
+        oracle_policy._run_oracle("/fake/oracle/sh", "printf x")

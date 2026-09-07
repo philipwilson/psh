@@ -1,0 +1,76 @@
+##### W0-N2 triage shape (script): sleep 5 & sleep 0.1; sleep 5 & jobs
+--- bash:
+[1]-  Running                    sleep 5 &
+[2]+  Running                    sleep 5 &
+--- psh:
+[1]-  Running                 sleep 5 &
+[3]+  Running                 sleep 5 &
+##### bare shopt -o listing width
+--- bash:
+allexport      \toff$
+--- psh:
+allexport      \toff$
+##### shopt -o query width
+--- bash:
+errexit             \toff$
+##### read wording, bash 5.3.15 script + -c + read -u
+r.sh: line 1: read: 0: read error: Bad file descriptor
+rc=1
+/opt/homebrew/bin/bash: line 1: read: 7: invalid file descriptor: Bad file descriptor
+rc=1
+/opt/homebrew/bin/bash: line 1: read: 5: invalid file descriptor: Bad file descriptor
+rc=1
+--- psh:
+psh: line 1: read: 7: invalid file descriptor: Bad file descriptor
+rc=1
+##### 2.1 signal/ERR trap boundary shapes
+--- bash [g(){ false; exit; }; trap g ERR; (exit 5)]:
+rc=1
+--- psh:
+rc=1
+--- bash [trap "false; . ./t.sh" ERR; (exit 5)]:
+rc=1
+--- psh:
+rc=1
+--- bash [trap "false; { exit; }" ERR; (exit 5)]:
+rc=5
+--- psh:
+rc=1
+--- bash [trap "false; eval exit" ERR; (exit 5)]:
+rc=5
+--- psh:
+rc=1
+--- bash [trap "false; if true; then exit; fi" ERR; (exit 5)]:
+rc=5
+--- psh:
+rc=0
+--- bash [trap "false; (exit); echo sub-rc=\$?" ERR; (exit 5); echo after]:
+sub-rc=1
+after
+rc=0
+--- psh:
+sub-rc=1
+after
+rc=0
+--- bash [g(){ false; exit; }; trap g USR1; kill -USR1 $$; echo x]:
+rc=1
+--- psh:
+rc=1
+--- bash [trap "false; . ./t.sh" USR1; kill -USR1 $$; echo x]:
+rc=1
+--- psh:
+rc=1
+--- bash [trap "false; { exit; }" USR1; kill -USR1 $$; echo x]:
+rc=0
+--- psh:
+rc=1
+--- bash [trap "false; exit" DEBUG; true]:
+rc=1
+--- psh:
+rc=1
+--- bash [trap "false; exit" RETURN; f(){ :; }; f; echo x]:
+x
+rc=0
+--- psh:
+x
+rc=0

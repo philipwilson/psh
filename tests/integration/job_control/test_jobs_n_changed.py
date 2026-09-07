@@ -4,7 +4,10 @@ bash's `-n` filters the listing to jobs the user has not yet been notified of
 at their CURRENT status (the J_NOTIFIED flag). Any `jobs` listing — with or
 without `-n` — marks the shown jobs notified; a status change (stop, continue,
 completion) re-arms the flag so the job reappears once. Verified against bash
-5.2.26 (tmp/probes/probe_a*.sh). Subprocess pins (job control); serial-by-path.
+5.2.26 (tmp/probes/probe_a*.sh); the completion row re-pinned against 5.3.15
+(Wave 0.2: a finished job IS listed once in -c mode — bash 5.3 CHANGES,
+5.3-alpha "New Features in Bash" item d). Subprocess pins (job control);
+serial-by-path.
 """
 
 import subprocess
@@ -35,12 +38,13 @@ def test_jobs_n_first_shows_all_then_empty():
     assert second.strip() == ''
 
 
-def test_jobs_n_completion_not_relisted():
+def test_jobs_n_completion_relisted_once():
     """After the first `jobs -n` marks both jobs notified, a later `jobs -n`
-    lists neither the still-running (already notified) job nor the finished one
-    (a completed job is never listed by `jobs`; it is reaped silently and — in
-    bash — reported via the async notice, which psh defers). Matches bash 5.2
-    stdout exactly (tmp/probes: streams separated)."""
+    omits the still-running (already notified) job but lists the FINISHED one
+    once — its completion is a status change — and a third `jobs -n` is empty
+    (the listing reaped it). Matches bash 5.3.15 stdout exactly (`-c` mode
+    lists a completed job once: bash 5.3 CHANGES, 5.3-alpha "New Features in
+    Bash" item d; bash 5.2 reaped it eagerly and printed nothing)."""
     r = _psh('set -m; sleep 5 & sleep 0.2 & '
              'echo "A:"; jobs -n; sleep 0.5; '
              'echo "B:"; jobs -n; echo "C:"; jobs -n; echo "end"; '
@@ -49,9 +53,8 @@ def test_jobs_n_completion_not_relisted():
     b = _block(r.stdout, 'B:', 'C:')
     c = _block(r.stdout, 'C:', 'end')
     assert first.count('Running') == 2      # both un-notified initially
-    assert b.strip() == ''                  # nothing new to report
-    assert c.strip() == ''
-    assert 'Done' not in r.stdout           # a completion is never in the listing
+    assert b.strip('\n') == '[2]+  Done                       sleep 0.2', r.stdout
+    assert c.strip() == ''                  # reaped by the listing above
 
 
 def test_plain_jobs_marks_notified_too():

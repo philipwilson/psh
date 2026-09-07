@@ -24,7 +24,9 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "harness"))
+from oracle_policy import oracle_summary  # noqa: E402
 from shell_oracle import (  # noqa: E402
+    BashOracleUnavailable,
     Completed,
     ShellRunResult,
     hermetic_shell_env,
@@ -85,6 +87,15 @@ class ComparisonResult:
     conformance: ConformanceResult
     difference_id: Optional[str] = None
     notes: Optional[str] = None
+
+
+def _oracle_line() -> str:
+    """``oracle: <path> <version>`` for failure messages (D1): a differential
+    failure must say WHICH bash produced the reference side."""
+    try:
+        return oracle_summary()
+    except BashOracleUnavailable as e:
+        return f"oracle: UNAVAILABLE ({e})"
 
 
 def _fmt_side(result: Optional[CommandResult]) -> str:
@@ -390,6 +401,7 @@ class ConformanceTest:
             f"PSH: {_fmt_side(result.psh_result)}\n"
             f"Bash: {_fmt_side(result.bash_result)}"
             + (f"\nNotes: {result.notes}" if result.notes else "")
+            + f"\n{_oracle_line()}"
         )
 
     def assert_documented_difference(self, command: str, difference_id: str,
@@ -400,7 +412,7 @@ class ConformanceTest:
 
         assert result.conformance == ConformanceResult.DOCUMENTED_DIFFERENCE, (
             f"Expected documented difference {difference_id} for: {command}\n"
-            f"Actual conformance: {result.conformance}"
+            f"Actual conformance: {result.conformance}\n{_oracle_line()}"
         )
 
         assert result.difference_id == difference_id, (
@@ -414,7 +426,7 @@ class ConformanceTest:
 
         assert result.conformance == ConformanceResult.PSH_EXTENSION, (
             f"Expected PSH extension for: {command}\n"
-            f"Actual conformance: {result.conformance}"
+            f"Actual conformance: {result.conformance}\n{_oracle_line()}"
         )
 
     def check_behavior(self, command: str, env: Dict[str, str] = None) -> ComparisonResult:

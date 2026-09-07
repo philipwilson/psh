@@ -1,0 +1,9 @@
+-- -c (multi-line string)
+bash: 1>  1>  1>  
+psh:  3>  4>  6>  
+-- script
+bash: 3>  4>  6>  
+psh:  3>  4>  6>  
+-- stdin
+bash: 3>  4>  6>  
+psh:  3>  4>  6>  

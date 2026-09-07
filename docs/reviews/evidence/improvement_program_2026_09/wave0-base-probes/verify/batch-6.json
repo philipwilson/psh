@@ -1,0 +1,35 @@
+{
+  "head": "6459f1a6",
+  "oracle": "GNU bash, version 5.3.15(1)-release (aarch64-apple-darwin25.4.0)",
+  "verified": "2026-09-06",
+  "results": [
+    {
+      "cid": "C023",
+      "status": "live",
+      "bash53_output": "set -- a b c; IFS=; printf \"<%s>\" $* -> <a><b><c>\nset -- \"a b\" c; IFS=; printf \"<%s>\" $* -> <a b><c>\na=(p q r); IFS=; printf \"<%s>\" ${a[*]} -> <p><q><r>\nset -- a b c; IFS=; for i in $*; do echo i=$i; done -> i=a / i=b / i=c",
+      "psh_output": "<abc>\n<a bc>\n<pqr>\ni=abc",
+      "note": "Live in all three modes (-c, script file, stdin) with identical psh output. Controls: IFS=: gives <a><b><c> in both; IFS=x with \"a b\" c gives <a b><c> in both -- confirms the report's claim that they agree only when IFS[0] is a split char. Decision point unchanged: word_expander.py _field_expansion_fields (line ~888) returns None for $*/${a[*]} ('scalar semantics (everything else, including $*/${a[*]})'), so the unquoted form is joined then re-split. bash 5.3.15 behaves exactly as bash_expected."
+    },
+    {
+      "cid": "C024",
+      "status": "live",
+      "bash53_output": "x=@; set -- s t; printf \"<%s>\" \"${!x}\" -> <s><t>\nx=@; set -- \"a b\" c; printf \"<%s>\" \"${!x}\" -> <a b><c>\nx=@; set -- s t; printf \"<%s>\" \"${!x^^}\" -> <S><T>",
+      "psh_output": "<s t>\n<a b c>\n<S T>",
+      "note": "Mode -c. All three repros diverge exactly as described. Controls match bash in both shells: unquoted ${!x} -> <s><t>; x='a[@]' with a=(\"s u\" t) quoted -> <s u><t>; x='*' quoted -> <s t> (correct single field). Code at fields.py:57-63 still only special-cases a target ending in '[@]' inside the operator=='!' branch and returns None (scalar path) for target '@'. bash 5.3.15 behaves as bash_expected."
+    },
+    {
+      "cid": "C025",
+      "status": "live",
+      "bash53_output": "x=; echo \"[${x:-\\}}]\" -> [}]\nx=; echo \"[${x:=\\}}]\"; echo \"x=[$x]\" -> [}] / x=[}]\nheredoc (read -r line <<EOT / [${y:=\\}}] / EOT) -> line=[}] / y=[}]",
+      "psh_output": "[\\}]\n[\\}] / x=[\\}]  (escaped text stored by :=)\nheredoc: line=[\\}] / y=[\\}]",
+      "note": "Mode -c and heredoc both live. Heredoc arm verified with a builtin reader (read -r line <<EOT) so the := store is visible in the parent; with `cat <<EOT` both shells print y=[] (external-command heredoc expansion) but the text still diverges [\\}] vs [}]. Controls match bash: unquoted ${x:-\\}} -> [}] in both; DQ-arm \\$ \\\" \\\\ -> [$] [\"] [\\] in both. Cause still visible at operands.py:466: `if inner or nxt in '\\\\\"$`'` omits '}'. bash 5.3.15 behaves as bash_expected."
+    },
+    {
+      "cid": "C026",
+      "status": "live",
+      "bash53_output": "Per-char IFS sweep (v=\"a<C><C>b\"; printf \"<%s>\" $v): SP/TAB/NL/VT/FF/CR -> <a><b>; ESC -> <a><><b>. Leading-trim (v2=\"<C>a<C>\"): VT/FF/CR -> <a>; ESC -> <><a>. read x y z on a<VT><VT>b -> x=[a] y=[b] z=[]; on <VT>a<VT>b -> x=[a] y=[b] z=[]; same for FF and CR; ESC -> x=[a] y=[] z=[b] / x=[] y=[a] z=[b].",
+      "psh_output": "Split: SP/TAB/NL -> <a><b>; VT/FF/CR/ESC -> <a><><b>. Trim: VT/FF/CR/ESC -> <><a>. read on a<VT><VT>b -> x=[a] y=[] z=[b]; on <VT>a<VT>b -> x=[] y=[a] z=[b]; same for FF and CR.",
+      "note": "Live in word splitting (word_splitter) AND the read builtin. Note: the report's read fragment with a single a<VT>b gives x=[a] y=[b] z=[] in BOTH shells (a single hard delimiter and a single whitespace delimiter produce the same fields); the divergence only shows with a doubled or leading delimiter, which is what the sweep above uses. ESC is not isspace in either shell (boundary confirmed). Literal ' \\t\\n' still hardcoded at word_splitter.py:40,47,48,119; read_builtin.py:198,359,360; word_expander.py:547,580. Host default locale only (macOS). bash 5.3.15 behaves as bash_expected."
+    }
+  ]
+}

@@ -87,6 +87,41 @@ class TestJobsBuiltin:
         captured = capsys.readouterr()
         assert captured.out.strip().isdigit()
 
+    def test_jobs_status_column_is_27_wide(self, shell, capsys):
+        """bash 5.3.15 left-justifies the status label in 27 columns
+        (`[1]+  Running` + 20 spaces + `sleep 10 &`; `jobs -l` likewise after
+        the PID); 5.2 used 24. Empirical, 5.3.15 (no CHANGES item) —
+        Wave 0.2 gate nodes test_bash_compatibility::TestBashJobControl::
+        test_job_control_commands and test_jobs_completed_listing_modes x6.
+        """
+        import re
+        shell.run_command('sleep 10 &')
+        shell.run_command('jobs')
+        out = capsys.readouterr().out
+        assert re.search(r'^\[1\]\+  Running {20}sleep 10 &$', out, re.M), out
+        shell.run_command('jobs -l')
+        out = capsys.readouterr().out
+        assert re.search(r'^\[1\]\+ \d+ Running {20}sleep 10 &$', out, re.M), out
+        shell.run_command('kill %1 2>/dev/null || true')
+
+    def test_jobs_lists_completed_job_once_in_command_mode(self, shell, capsys):
+        """`-c` mode lists a finished job exactly once, like every other
+        non-interactive read path (bash 5.3 CHANGES, 5.3-alpha "New Features
+        in Bash" item d: running `jobs` removes jobs from the list; 5.2
+        reaped it eagerly in -c mode so psh filtered DONE jobs under
+        command_mode). Wave 0.2, closes C181 and the two `_c_mode` nodes in
+        test_jobs_completed_listing_modes.py.
+        """
+        import re
+        shell.state.options['command_mode'] = True
+        shell.run_command('false &')
+        shell.run_command('sleep 0.3')
+        shell.run_command('jobs')
+        out = capsys.readouterr().out
+        assert re.search(r'^\[1\]\+  Exit 1 {21}false$', out, re.M), out
+        shell.run_command('jobs')
+        assert capsys.readouterr().out == ''  # reaped by the listing
+
     def test_jobs_invalid_option_is_usage_error(self, shell, capsys):
         """jobs with invalid option: rc 2 + usage, like bash."""
         rc = shell.run_command('jobs -z')

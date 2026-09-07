@@ -1,0 +1,49 @@
+{
+  "batch": "batch-18",
+  "head": "6459f1a6",
+  "oracle": "GNU bash 5.3.15(1)-release",
+  "results": [
+    {
+      "cid": "C103",
+      "status": "live",
+      "bash53_output": "n/a (psh-only lexer profile)",
+      "psh_output": "script bytes: 141780 / tokens: 18001 / wall: 215 ms / cProfile sorted by tottime: `21000 0.048 0.000 0.096 0.000 dataclasses.py:1782(_replace)` is the top entry; `360026 0.031 0.045 enum.py:1300(__hash__)`; `16500 0.020 0.376 modular_lexer.py:482(_try_recognizers)`. print_callers on dataclasses.replace: 16500 calls from modular_lexer.py:482(_try_recognizers), 4500 from keyword_normalizer.py:112(normalize).",
+      "note": "Reproduced at HEAD 6459f1a6 with a regenerated 1500-line synthetic script (`if [ -f /var/tmp/file_N.txt ]; then echo \"found file N at $(date +%s) with status $?\"; fi`). 21000 replace() calls for 18001 tokens = 1.17/token; 16500 of them (one per recognizer-produced token) come from modular_lexer.py:509 `token = replace(token, **updates)` (source at :498-509 unchanged). dataclasses._replace remains the #1 tottime entry. Scratch: tmp/program-2026-09/batch-18/c103_profile.py, c103_callers.py."
+    },
+    {
+      "cid": "C111",
+      "status": "live",
+      "bash53_output": "`echo a; ; echo b` -> `/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `;'` + `-c: line 1: `echo a; ; echo b'` rc=2. `echo a && & echo b` -> `syntax error near unexpected token `&'` rc=2. `echo a | ! cat` -> `syntax error near unexpected token `!'` rc=2. `; echo a` -> `syntax error near unexpected token `;'` rc=2. `[[ ]]` -> `syntax error near `]]'` rc=2. Script-file and stdin modes: same text with `s.sh: line 1:` / `line 1:` prefixes.",
+      "psh_output": "`echo a; ; echo b` -> `psh: -c:1: Parse error (line 1, column 9): Expected command` + source line + caret under col 9 + `Context: echo a ; -> HERE <- echo b <EOF>` rc=2. `echo a && & echo b` -> `... (line 1, column 11): Expected command` rc=2. `echo a | ! cat` -> `... (line 1, column 10): Expected command` + `Context: echo a | -> HERE <- cat <EOF>` rc=2. `; echo a` -> `(line 1, column 1): Expected command` + `Context:  -> HERE <- echo a <EOF>` (doubled space). `[[ ]]` -> `Expected test operand`. `for in x; do :; done` -> `Expected 'do', got 'x'` (consume() vocabulary). Script/stdin modes identical apart from `s.sh:1:` / `<stdin>:1:` prefix.",
+      "note": "Presentation-only divergence persists in all three input modes (-c, script file, stdin). Exit codes (2) and caret columns (9/11/10) match bash's `;`/`&`/`!` positions exactly. Both vocabularies still exist: helpers.py:61-73 unexpected_token_message (bash-style) vs context.py:245-247 consume() `Expected X, got Y`, plus 22 literal \"Expected ...\" raise sites under psh/parser/recursive_descent/ (commands.py:141 `Expected command`, tests.py:205 `Expected test operand`, ...). The Context-line doubled-space artifact reproduced: helpers.py:201 `f\"\\n\\nContext: {before} -> HERE <- {after}\"` yields `Context:  -> HERE <-` when context_before is empty. bash 5.3.15 wording matches the 5.2 expectation. Scratch: tmp/program-2026-09/batch-18/c111.sh, c111.out."
+    },
+    {
+      "cid": "C114",
+      "status": "not_reproducible",
+      "bash53_output": "n/a (psh-only efficiency nit)",
+      "psh_output": "Source tests.py:340-353 unchanged (`return value in { '-a', '-b', ... }` / `return value in { '=', '==', ... }`). dis.dis(TestParser._is_unary_test_operator): `LOAD_FAST_BORROW 1 (value)` / `LOAD_CONST 1 (frozenset({'-p', '-c', '-r', ...}))` / `CONTAINS_OP 0 (in)` / `RETURN_VALUE`. Same shape for _is_binary_test_operator: `LOAD_CONST 1 (frozenset({'!=', '>', '<', '=', '==', '-ne', ...}))`.",
+      "note": "The described defect ('allocate fresh set literals on every call' / 'sets rebuilt per call') does not occur: CPython (3.14.7 here, and every 3.x) folds `x in {literal,...}` into a single frozenset constant at compile time, so no per-call allocation happens. What remains is purely a source-level style inconsistency (inline literals next to hoisted `_REGEX_ILLEGAL_TYPES`-style frozensets in the same file) \u2014 the code is unchanged since #23, so the orchestrator may keep it as a consistency nit, but the efficiency claim is refuted by the bytecode."
+    },
+    {
+      "cid": "C116",
+      "status": "live",
+      "bash53_output": "n/a (psh-only --debug-ast=dot tooling)",
+      "psh_output": "`for ((i=0;i<3;i++)); do :; done` --debug-ast=dot: `node4 [label=\"CStyleForLoop\", shape=box, ...]` with only a `body` edge; grep for `i=0|i<3|i++` inside the digraph = 0 hits. `case $x in a) echo one;; esac`: `node4 [label=\"CaseConditional\" ...]`, `node6 [label=\"CasePattern\" ...]`, `node20 [label=\"VariableExpansion\" ...]` \u2014 no expr, no pattern text, no variable name; grep for `x`/`one` = 0. `echo hello`: `node4 [label=\"SimpleCommand\\ncmd: echo\\nargs: (1 args)\" ...]`, `node7 [label=\"LiteralPart\" ...]`, `node9 [label=\"LiteralPart\" ...]`; grep for `hello` inside the digraph = 0 hits.",
+      "note": "Reproduced at HEAD. psh/parser/visualization/dot_generator.py:116-156 `_process_field` still handles only None / ASTNode / list and falls off the end for str/int/bool, so every scalar field (init/condition/update_expr, case expr, pattern text, LiteralPart value, VariableExpansion name) is dropped. The `_emit` docstring (lines ~157-165) still promises 'a C-style loop's *_expr fields can never silently drop out again'. Minor delta from #23 wording: the SimpleCommand label carries `cmd: echo` and an arg COUNT via visit_SimpleCommand, but the argument text itself is absent. Note the file is psh/parser/visualization/dot_generator.py (the finding's path omits `parser/`)."
+    },
+    {
+      "cid": "C117",
+      "status": "live",
+      "bash53_output": "n/a (psh-only --debug-ast=dot tooling)",
+      "psh_output": "AST (direct API) for `for x in 'a\\nb'; do :; done`: `ForLoop items= ['a\\\\nb']` (4-char string, backslash + n). Emitted DOT: `node5 [label=\"a\\nb\", shape=ellipse, style=filled, fillcolor=\"#EEEEEE\"];`. `dot -Tplain`: `node node5 0.375 5.9245 0.75 0.59908 \"a\\nb\" filled ellipse black #EEEEEE` (height 0.59908) vs control label `ab`: `node node5 0.375 0.25 0.75 0.5 ab ...` (height 0.5). `dot -Tsvg` node5 group <text> elements: ['a', 'b', 'items'] \u2014 rendered as TWO lines.",
+      "note": "Reproduced with graphviz /opt/homebrew/bin/dot. dot_generator.py:59-61 `_escape_label` is still `html.escape(str(text), quote=True)`; backslash passes through unescaped, so a literal `\\n` in the source becomes a DOT newline escape and the label renders as two lines. Scratch: tmp/program-2026-09/batch-18/c117.dot, c117_graph.dot, c117.svg."
+    },
+    {
+      "cid": "C118",
+      "status": "live",
+      "bash53_output": "`while true; echo x; done` -> `/opt/homebrew/bin/bash: -c: line 1: syntax error near unexpected token `done'` rc=2 (reference only; finding is psh-internal). `[[ a -ef b ]]` (a,b distinct files) -> rc=1.",
+      "psh_output": "Direct API ParserCombinatorShellParser().parse(tokenize('while true; echo x; done')): `Parse error (line 1, column 21): Failed to parse while condition: Expected command at position 6: 'done'`; ctx.suggestions=[]; ctx.context_before=[] context_after=[]; ctx.line/col=1 21. `--parser combinator -c 'while true; echo x; done'`: prints the RD trial's message instead (`psh: -c:1: Parse error (line 1, column 21): Expected command` + caret + `Context: echo x ; -> HERE <- <EOF>`), rc=2. `[[ a -ef b ]]` and `[[ a -nt ]]` via combinator API (and via `--parser combinator -c`, since RD accepts `[[ a -ef b ]]` with rc=1 = bash): `[[ ]] expression not supported by the combinator parser (boolean compounds '&&'/'||', grouping, or =~ regex with parens are educational-scope gaps; use the recursive descent parser)`; suggestions=[], context empty.",
+      "note": "Reproduced at HEAD. combinators/parser.py:229-241 unchanged: message is `result.error` + ` at position {result.position}: {describe_token(...)}` where position is the token-stream INDEX (6) printed next to the real column (21); grep for `.expected` in combinators/parser.py = 0 hits, so the merged `expected` channel from core.py:_farther_failure (lines 102-118) is never rendered; ErrorContext.suggestions/context_before/context_after are empty. The [[ ]] message still enumerates three causes, none applicable to -ef/-nt/-ot. Scratch: tmp/program-2026-09/batch-18/c118_api.py."
+    }
+  ]
+}

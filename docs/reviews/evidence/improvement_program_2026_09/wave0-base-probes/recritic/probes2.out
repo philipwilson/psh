@@ -1,0 +1,303 @@
+##### P11a shopt nullglob
+--- bash:
+nullglob            \toff$
+rc=1
+--- psh :
+nullglob       \toff$
+rc=1
+##### P11b shopt -o errexit
+--- bash:
+errexit             \toff$
+rc=1
+--- psh :
+errexit        \toff$
+rc=1
+##### P11c shopt -s (first line)
+--- bash:
+checkwinsize        \ton$
+rc=0
+--- psh :
+expand_aliases \ton$
+rc=0
+##### P11d set -o (first line)
+--- bash:
+allexport      \toff$
+rc=0
+--- psh :
+allexport      \toff$
+rc=0
+##### P11e shopt -p nullglob
+--- bash:
+shopt -u nullglob$
+rc=1
+--- psh :
+shopt -u nullglob$
+rc=1
+##### P2b W0-N2 -c mode, set -m
+--- bash [/bin/ls >/dev/null; sleep 0.3 & jobs; wait]:
+[1]+  Running                    sleep 0.3 &
+--- psh:
+[1]+  Running                 sleep 0.3 &
+--- bash [set -m; /bin/ls >/dev/null; sleep 0.3 & jobs; wait]:
+[1]+  Running                    sleep 0.3 &
+--- psh:
+[1]+  Running                 sleep 0.3 &
+--- bash [/bin/true; sleep 0.3 & echo "[$!]"; jobs; wait]:
+/opt/homebrew/bin/bash: line 1: /bin/true: No such file or directory
+[54009]
+[1]+  Running                    sleep 0.3 &
+--- psh:
+psh: line 1: /bin/true: No such file or directory
+[54014]
+[1]+  Running                 sleep 0.3 &
+##### P2c script with set -m
+--- bash:
+[1]+  Running                    sleep 0.3 &
+--- psh:
+[1]+  Running                 sleep 0.3 &
+##### P7 usage-error family, -c vs script
+##### -c [shift 1 2; echo after rc=$?]
+--- bash:
+/opt/homebrew/bin/bash: line 1: shift: too many arguments$
+rc=1
+--- psh :
+psh: line 1: shift: too many arguments$
+rc=1
+##### [script] shift 1 2; echo after rc=$?
+--- bash:
+sc.sh: line 1: shift: too many arguments
+rc=2
+--- psh :
+sc.sh: line 1: shift: too many arguments
+rc=1
+##### -c [shift abc; echo after rc=$?]
+--- bash:
+/opt/homebrew/bin/bash: line 1: shift: abc: numeric argumen\
+t required$
+after rc=2$
+rc=0
+--- psh :
+psh: line 1: shift: abc: numeric argument required$
+after rc=1$
+rc=0
+##### [script] shift abc; echo after rc=$?
+--- bash:
+sc.sh: line 1: shift: abc: numeric argument required
+after rc=2
+rc=0
+--- psh :
+sc.sh: line 1: shift: abc: numeric argument required
+after rc=1
+rc=0
+##### -c [f(){ return abc; echo in-f rc=$?; }; f; echo after rc=$?]
+--- bash:
+/opt/homebrew/bin/bash: line 1: return: abc: numeric argume\
+nt required$
+after rc=2$
+rc=0
+--- psh :
+psh: line 1: return: abc: numeric argument required$
+after rc=2$
+rc=0
+##### [script] f(){ return abc; echo in-f rc=$?; }; f; echo after rc=$?
+--- bash:
+sc.sh: line 1: return: abc: numeric argument required
+after rc=2
+rc=0
+--- psh :
+sc.sh: line 1: return: abc: numeric argument required
+after rc=2
+rc=0
+##### -c [for i in 1; do break abc; echo in-loop rc=$?; done; echo after rc=$?]
+--- bash:
+/opt/homebrew/bin/bash: line 1: break: abc: numeric argumen\
+t required$
+rc=2
+--- psh :
+psh: line 1: break: abc: numeric argument required$
+rc=128
+##### [script] for i in 1; do break abc; echo in-loop rc=$?; done; echo after rc=$?
+--- bash:
+sc.sh: line 1: break: abc: numeric argument required
+rc=2
+--- psh :
+sc.sh: line 1: break: abc: numeric argument required
+rc=128
+##### -c [for i in 1; do continue abc; echo in-loop rc=$?; done; echo after rc=$?]
+--- bash:
+/opt/homebrew/bin/bash: line 1: continue: abc: numeric argu\
+ment required$
+rc=2
+--- psh :
+psh: line 1: continue: abc: numeric argument required$
+rc=128
+##### [script] for i in 1; do continue abc; echo in-loop rc=$?; done; echo after rc=$?
+--- bash:
+sc.sh: line 1: continue: abc: numeric argument required
+rc=2
+--- psh :
+sc.sh: line 1: continue: abc: numeric argument required
+rc=128
+##### -c [exit 7 8; echo after rc=$?]
+--- bash:
+/opt/homebrew/bin/bash: line 1: exit: too many arguments$
+rc=1
+--- psh :
+psh: line 1: exit: too many arguments$
+rc=1
+##### [script] exit 7 8; echo after rc=$?
+--- bash:
+sc.sh: line 1: exit: too many arguments
+rc=2
+--- psh :
+sc.sh: line 1: exit: too many arguments
+rc=1
+##### -c [exit abc; echo after rc=$?]
+--- bash:
+/opt/homebrew/bin/bash: line 1: exit: abc: numeric argument\
+ required$
+after rc=2$
+rc=0
+--- psh :
+psh: line 1: exit: abc: numeric argument required$
+rc=2
+##### [script] exit abc; echo after rc=$?
+--- bash:
+sc.sh: line 1: exit: abc: numeric argument required
+after rc=2
+rc=0
+--- psh :
+sc.sh: line 1: exit: abc: numeric argument required
+rc=2
+##### -c [f(){ return 1 2; echo in-f rc=$?; }; f; echo after rc=$?]
+--- bash:
+/opt/homebrew/bin/bash: line 1: return: too many arguments$
+rc=1
+--- psh :
+psh: line 1: return: too many arguments$
+rc=1
+##### [script] f(){ return 1 2; echo in-f rc=$?; }; f; echo after rc=$?
+--- bash:
+sc.sh: line 1: return: too many arguments
+rc=2
+--- psh :
+sc.sh: line 1: return: too many arguments
+rc=1
+##### P20b usage error in trap action / eval (set -q)
+--- bash  [eval "set -q" || echo caught; echo after rc=$?]:
+/opt/homebrew/bin/bash: line 1: set: -q: invalid option
+set: usage: set [-abefhkmnptuvxBCEHPT] [-o option-name] [--] [-] [arg ...]
+caught
+after rc=0
+rc=0
+--- psh :
+psh: line 1: set: invalid option: -q
+caught
+after rc=0
+rc=0
+--- bash  [trap "set -q; echo in-trap-after" EXIT; echo main]:
+main
+/opt/homebrew/bin/bash: line 1: set: -q: invalid option
+set: usage: set [-abefhkmnptuvxBCEHPT] [-o option-name] [--] [-] [arg ...]
+in-trap-after
+rc=0
+--- psh :
+main
+psh: line 1: set: invalid option: -q
+in-trap-after
+rc=0
+--- bash  [trap "shift abc; echo in-trap-after" EXIT; echo main]:
+main
+/opt/homebrew/bin/bash: line 1: shift: abc: numeric argument required
+in-trap-after
+rc=0
+--- psh :
+main
+psh: line 1: shift: abc: numeric argument required
+in-trap-after
+rc=0
+--- bash  [trap "export 1bad=x; echo in-trap-after" EXIT; echo main]:
+main
+/opt/homebrew/bin/bash: line 1: export: `1bad=x': not a valid identifier
+in-trap-after
+rc=0
+--- psh :
+main
+psh: line 1: export: `1bad=x': not a valid identifier
+in-trap-after
+rc=0
+--- bash --posix [eval "set -q" || echo caught; echo after rc=$?]:
+/opt/homebrew/bin/bash: line 1: set: -q: invalid option
+set: usage: set [-abefhkmnptuvxBCEHPT] [-o option-name] [--] [-] [arg ...]
+caught
+after rc=0
+rc=0
+--- psh --posix:
+psh: line 1: set: invalid option: -q
+rc=2
+--- bash --posix [trap "set -q; echo in-trap-after" EXIT; echo main]:
+main
+/opt/homebrew/bin/bash: line 1: set: -q: invalid option
+set: usage: set [-abefhkmnptuvxBCEHPT] [-o option-name] [--] [-] [arg ...]
+rc=2
+--- psh --posix:
+main
+psh: line 1: set: invalid option: -q
+rc=2
+--- bash --posix [trap "shift abc; echo in-trap-after" EXIT; echo main]:
+main
+/opt/homebrew/bin/bash: line 1: shift: abc: numeric argument required
+rc=2
+--- psh --posix:
+main
+psh: line 1: shift: abc: numeric argument required
+in-trap-after
+rc=0
+--- bash --posix [trap "export 1bad=x; echo in-trap-after" EXIT; echo main]:
+main
+/opt/homebrew/bin/bash: line 1: export: `1bad=x': not a valid identifier
+rc=1
+--- psh --posix:
+main
+psh: line 1: export: `1bad=x': not a valid identifier
+in-trap-after
+rc=0
+##### P21b trap entry-status discriminating shapes
+--- bash [g(){ false; exit; }; trap g EXIT; (exit 5)]:
+rc=5
+--- psh:
+rc=5
+--- bash [trap "false; { exit; }" EXIT; (exit 5)]:
+rc=5
+--- psh:
+rc=5
+--- bash [trap "false; eval exit" EXIT; (exit 5)]:
+rc=5
+--- psh:
+rc=5
+--- bash [trap "false; for i in 1; do exit; done" EXIT; (exit 5)]:
+rc=5
+--- psh:
+rc=5
+--- bash [trap "false; . ./t.sh" EXIT; (exit 5)]:
+rc=5
+--- psh:
+rc=5
+--- bash [trap "false; exit" USR1; kill -USR1 $$; echo x]:
+rc=0
+--- psh:
+rc=1
+--- bash [trap "false; exit" ERR; (exit 5)]:
+rc=5
+--- psh:
+rc=1
+--- bash [trap "false; (exit 7); exit" EXIT; (exit 5)]:
+rc=5
+--- psh:
+rc=5
+--- bash [trap "echo entry=\$?; false; exit" EXIT; (exit 5)]:
+entry=5
+rc=5
+--- psh:
+entry=5
+rc=5

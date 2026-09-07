@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "cid": "C010",
+      "status": "live",
+      "bash53_output": "file mode loopvar.sh: 'i=[1]\\ni=[2]' rc=0 | 'beg :; done' variant: no output, rc=0 | select variant (stdin '1'): '1) a\\n2) b\\n#? v=[a]' rc=0 | stdin mode: 'i=[1]\\ni=[2]' rc=0 | -c mode: 'i=[1]\\ni=[2]' rc=0",
+      "psh_output": "file mode loopvar.sh: 'i=[]\\ni=[]' rc=0 | 'beg :; done' variant: 'psh: `:': not a valid identifier' rc=1 | select variant (stdin '1'): '1) a\\n2) b\\n#? v=[]' rc=0 | stdin mode: 'i=[]\\ni=[]' rc=0 | -c mode: 'i=[]\\ni=[]' rc=0 | --debug-ast file mode: 'ForLoop / variable: \"e\"'",
+      "note": "Reproduced verbatim at HEAD 6459f1a6 (v0.779.0) vs GNU bash 5.3.15(1)-release. Bash 5.3.15 behaves exactly as bash_expected (no oracle drift). psh diverges in ALL three input modes (script file, stdin, AND -c), broader than the file/stdin modes the original notes cite. --debug-ast still shows ForLoop.variable=\"e\" (raw slice of the pre-expansion source_text at alias-body token positions). Code unchanged: psh/parser/recursive_descent/parsers/control_structures.py:220 still 'return token_lexeme(token, self.parser.ctx.source_text)' inside _parse_loop_variable (called at lines 170 for and 477 select); psh/parser/session.py:412 still passes source_text=preview. Control probes without aliases still match bash exactly: `for \"in\" in a; do :; done` -> bash '`\"in\"'': not a valid identifier' rc=1, psh 'psh: `\"in\"'': not a valid identifier' rc=1; `for 1x in a; do :; done` -> bash '`1x'': not a valid identifier' rc=1, psh 'psh: `1x'': not a valid identifier' rc=1."
+    }
+  ]
+}

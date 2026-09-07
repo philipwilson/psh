@@ -378,37 +378,40 @@ class TestNavigationEdgeCases:
 
 
 class TestCdEmptyOperand:
-    """`cd ""` — R18 T2-E (M-b3). Pinned against bash 5.2.
+    """`cd ""` — R18 T2-E (M-b3), retuned to bash 5.3.15 in Wave 0.3.
 
-    An empty operand not resolved via CDPATH is a no-op success (bash stays in
-    the current directory); psh used to error on chdir(""). CDPATH is still
-    searched first, so `CDPATH=<dir> cd ""` still changes directory.
+    bash 5.3 rejects an empty operand outright: "cd: null directory", rc 1,
+    the shell stays in the current directory, and CDPATH is NOT consulted
+    (empirical, 5.3.15: `CDPATH=/tmp cd ""` is the same error; 5.2 treated
+    the empty operand as a no-op success that still searched CDPATH).
+    Reproduce: cd /usr; cd ""; echo "$?:$PWD"
     """
 
-    def test_cd_empty_is_noop_success(self, shell):
+    def test_cd_empty_is_null_directory_error(self, shell):
         original = os.getcwd()
         result = shell.run_command('cd ""')
-        assert result == 0
+        assert result == 1
         assert os.getcwd() == original
         assert shell.state.get_variable('PWD') == original
 
-    def test_cd_empty_no_error_output(self, shell, capsys):
+    def test_cd_empty_reports_null_directory(self, shell, capsys):
         shell.run_command('cd ""')
         captured = capsys.readouterr()
         assert captured.out == ''
-        assert captured.err == ''
+        assert 'cd: null directory' in captured.err
 
-    def test_cd_empty_still_searches_cdpath(self, shell, capsys):
-        # The verifier-flagged regression guard: `cd ""` must still honor
-        # CDPATH (bash changes to the CDPATH entry) rather than short-circuit.
+    def test_cd_empty_does_not_search_cdpath(self, shell, capsys):
+        # bash 5.3: the empty operand is refused BEFORE the CDPATH search, so
+        # a CDPATH entry never rescues it (5.2 changed directory here).
         original = os.getcwd()
         os.makedirs('cdp_target', exist_ok=True)
         target = os.path.join(original, 'cdp_target')
         try:
             shell.run_command(f'CDPATH={target}')
             result = shell.run_command('cd ""')
-            assert result == 0
-            assert os.path.realpath(os.getcwd()) == os.path.realpath(target)
+            assert result == 1
+            assert os.getcwd() == original
+            assert 'cd: null directory' in capsys.readouterr().err
         finally:
             capsys.readouterr()
             os.chdir(original)

@@ -1,0 +1,51 @@
+{
+  "batch": 13,
+  "head": "6459f1a6",
+  "psh_version": "0.779.0",
+  "oracle": "GNU bash 5.3.15(1)-release (aarch64-apple-darwin25.4.0) at /opt/homebrew/bin/bash",
+  "date": "2026-09-06",
+  "results": [
+    {
+      "cid": "C063",
+      "status": "live",
+      "bash53_output": "bash --posix -c 'V=1 exec; declare -p V' -> stdout: declare -x V=\"1\"  rc=0. Same in script-file and stdin modes.",
+      "psh_output": "psh --posix -c 'V=1 exec; declare -p V' -> stderr: psh: line 1: declare: V: not found  rc=1. Script-file: 's.sh: line 2: declare: V: not found' rc=1; stdin: 'psh: line 2: declare: V: not found' rc=1.",
+      "note": "Reproduced in all three modes (-c, script, stdin) under --posix. Control 'V=1 :; declare -p V' -> declare -x V=\"1\" in both. Non-posix control: both shells say 'declare: V: not found' rc=1 (matching). Code sites intact at HEAD: psh/executor/command.py:578 (is_exec_special early return) and command.py:1102-1109 (set_variable loop that is never reached)."
+    },
+    {
+      "cid": "C064",
+      "status": "live",
+      "bash53_output": "printf '\\n2\\n' | bash -c 'select v in a b c; do echo \"v=[$v] REPLY=[$REPLY]\"; break; done' -> stdout: v=[b] REPLY=[2]; stderr: menu printed twice ('1) a|2) b|3) c|#? 1) a|2) b|3) c|#? '); rc=0",
+      "psh_output": "same pipe-fed command -> stdout: v=[] REPLY=[]; stderr: menu printed once ('1) a|2) b|3) c|#? '); rc=0",
+      "note": "Reconstructed body per notes (2nd item 'b', prints v/REPLY then breaks). Empty line: bash redisplays menu and reads the next line; psh runs the body with empty v and REPLY. Controls match in both: whitespace-only reply ' ' -> v=[] REPLY=[ ] (body runs, matching); out-of-range 9 -> v=[] REPLY=[9]. Code site psh/executor/control_flow.py ~650-676 still has the reply.strip().isdigit() branch with no empty-line redisplay."
+    },
+    {
+      "cid": "C065",
+      "status": "live",
+      "bash53_output": "'( sleep 0.3 ) & jobs; jobs %?sleep; echo rc=$?' -> '[1]+  Running                    ( sleep 0.3 ) &' twice, rc=0. Brace: '{ sleep 0.3; } &'. Pipeline: '( sleep 0.3 ) | cat &'. With redirect/quoting: '( echo \"a  b\" > /dev/null; sleep 0.3 ) &'.",
+      "psh_output": "'[1]+  Running                 <subshell> &' then stderr 'psh: line 1: jobs: %?sleep: no such job' rc=1. Brace: '<brace-group> &' (rc=1). Pipeline: '<SubshellGroup> | cat &' (rc=1). Redirect/quoting case: '<subshell> &' (text lost).",
+      "note": "All three placeholders (<subshell>, <brace-group>, <SubshellGroup>) reproduced and %?sleep lookup fails for each. Control 'sleep 0.3 & jobs; jobs %?sleep' matches bash (text 'sleep 0.3 &', rc=0). Placeholder strings still at psh/executor/subshell.py:209/307/346. Minor cosmetic: psh's column spacing after 'Running' is 17 chars vs bash's 20 (not part of this finding)."
+    },
+    {
+      "cid": "C066",
+      "status": "live",
+      "bash53_output": "Script-file mode, faulting statement on line 2: 'p1_arith.sh: line 2: ((: 08: value too great for base (error token is \"08\")' | 'p2_cond.sh: line 2: [[: 08: value too great for base ...' | \"p3_for.sh: line 2: `1x': not a valid identifier\" | 'p4_funcnest.sh: line 2: f: maximum function nesting level exceeded (3)' | 'p5_negidx.sh: line 2: b[-1]: bad array subscript'. Control: 'p6_control_readonly.sh: line 2: R: readonly variable'.",
+      "psh_output": "'psh: ((: 08: value too great for base (error token is \"08\")' | 'psh: [[: 08: value too great for base ...' | \"psh: `1x': not a valid identifier\" | 'psh: f: maximum function nesting level exceeded (3)' | 'psh: b[-1]: bad array subscript'. Control: 'p6_control_readonly.sh: line 2: R: readonly variable' (prefixed correctly, matches bash).",
+      "note": "All 5 probed diagnostics ((( 08 )), [[ 08 -eq 8 ]], for 1x, FUNCNEST=3 recursion, b[-1]=x) lack the '<file>: line N:' prefix in psh script mode; each uses bare 'psh:' instead. Exit codes (rc=1 for each) match bash. Readonly control is correctly prefixed in both, confirming the error_location_prefix machinery works and these sites bypass it. Only 5 of the 15 listed sites were probed (the report's repro set); the remaining 10 are not exercised here."
+    },
+    {
+      "cid": "C067",
+      "status": "live",
+      "bash53_output": "'trap \":\" USR1; sleep 0.3 & p=$!; (sleep 0.05; kill -USR1 $$) & wait $p; echo rc=$?; wait' -> rc=158 (3/3 runs). Bare 'wait' -> rc=158. Printing handler 'trap \"echo GOT\" USR1' -> 'GOT' then rc=158. kill -l USR1 -> 30.",
+      "psh_output": "same -> rc=0 (3/3 runs). Bare wait -> rc=0. Printing handler -> 'GOT' then rc=0 (handler fires, but wait continues and returns the sleep's status). kill -l USR1 -> 30.",
+      "note": "Timing-dependent but reproduced deterministically 3/3 plus bare-wait and printing-handler variants. psh runs the trap handler and then resumes waiting (psh/executor/job_control.py:1061 'if e.errno == errno.EINTR: ... continue' still present), instead of returning 128+30=158. Linux would expect 138 (SIGUSR1=10)."
+    },
+    {
+      "cid": "C068",
+      "status": "live",
+      "bash53_output": "'a=(x y z); IFS=:; echo \"${!a[*]}\"' -> 0:1:2. 'declare -A h; h[k1]=1; h[k2]=2; IFS=:; echo \"${!h[*]}\"' -> k1:k2. IFS= (empty) -> 012.",
+      "psh_output": "'0 1 2' ; 'k1 k2' ; IFS= -> '0 1 2'.",
+      "note": "Reproduced for indexed and assoc arrays; also diverges with empty IFS (bash joins with nothing -> '012', psh still uses a space). Controls all match bash: \"${!a[@]}\" -> [0] [1] [2] separately; \"${!ab*}\" -> ab1:ab2; \"${a[*]}\" -> x:y:z. Code: psh/expansion/arrays.py:102 and :105 still use ' '.join with the docstring at :91 'Joined with spaces for both @ and * (historical behavior)'; operators.py:417 correctly uses _ifs_star_separator() for ${!prefix*}."
+    }
+  ]
+}

@@ -2,8 +2,8 @@
 
 Slot 3.5 replaced the broad/VT conversion nets on the expansion/arithmetic
 error path with typed failures, and fixed the two EXIT-STATUS defects that
-class of error carries. This battery pins the status model against live bash
-5.2.26.
+class of error carries. This battery pins the status model against the live
+bash oracle (5.3.15 since Wave 0.1).
 
 Two defect families, both status-only (the diagnostic TEXT matched bash at
 base in every diverging cell — only the status was wrong):
@@ -35,9 +35,11 @@ plausible misimplementation gets each one backwards:
 * it is the CURRENT flag: ``set -e; set +e`` is back to 127. —
   ``TestErrexitFlagOffKeepsChannelStatus``
 
-Every row was probed against live bash 5.2.26 at base 963c6eab (216-cell
-matrix in tmp/a10/matrix.json; 24 cells diverged, all 24 are pinned here or
-covered by the classes below) and re-run at the fix. Rows marked RED-ON-BASE
+Every row was first probed against the 5.2 oracle at base 963c6eab (a
+216-cell matrix; 24 cells diverged, all 24 are pinned here or covered by the
+classes below), re-run at the fix, and holds against bash 5.3.15 (Wave 0.1
+re-verification, 2026-09-06 — the one row that moved with the oracle, the
+`[[ =~` invalid-regex diagnostic, says so in place). Rows marked RED-ON-BASE
 diverged at base; PARITY rows matched at base and are no-regression pins — the
 battery is both a red-on-base battery and its own regression baseline.
 
@@ -329,11 +331,18 @@ class TestDeclaredDivergences:
         assert p.returncode == 1 and p.stdout == ""        # psh discards
         assert "1//" in b.stderr or "syntax error" in b.stderr
 
-    def test_invalid_regex_diagnostic_is_psh_only(self):
-        """psh prints ``psh: [[: invalid regex: ...``; bash prints nothing.
-        Status agrees (2). Pre-existing wording divergence, unchanged by the
-        typing work."""
+    @pytest.mark.oracle_min("5.3")
+    def test_invalid_regex_diagnostic_wording_differs(self):
+        """BOTH shells diagnose an uncompilable `[[ =~` regex and both give
+        it status 2; only the WORDING differs (both sides pinned). bash 5.3
+        NEWS item g: "Print an error message if a regular expression used
+        with [[ fails to compile" — bash prints regerror()'s text in the
+        frame ``[[: invalid regular expression `<re>': <reason>``; psh prints
+        Python's re message as ``[[: invalid regex: <reason>``. The 5.2 oracle
+        was silent here, which made this a psh-only diagnostic; the status
+        parity is unchanged by the typing work."""
         b, p = _both('[[ x =~ [ ]]; echo rc=$?')
-        assert b.returncode == p.returncode
-        assert b.stderr == ""
-        assert "invalid regex" in p.stderr
+        assert b.returncode == p.returncode == 0
+        assert b.stdout == p.stdout == "rc=2\n"
+        assert "invalid regular expression" in b.stderr, b.stderr
+        assert "invalid regex" in p.stderr, p.stderr

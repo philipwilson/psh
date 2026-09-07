@@ -291,13 +291,35 @@ def _dispatch(shell: Shell, config: InvocationConfig) -> None:
             # stdin lines as data, sharing the one fd exactly as bash does.
             # (The previous slurp of all of fd 0 into a StringInput drained
             # it, so every in-script stdin consumer saw immediate EOF — the
-            # scripting appraisal 2026-07-07 finding #1.) A closed/empty fd 0
-            # simply yields no commands (exit 0). execute_as_main fires the
-            # EXIT trap exactly once, including on empty input (no trap set,
-            # so a no-op there).
+            # scripting appraisal 2026-07-07 finding #1.) An OPEN but empty
+            # fd 0 (`psh < /dev/null`) simply yields no commands (exit 0).
+            # execute_as_main fires the EXIT trap exactly once, including on
+            # empty input (no trap set, so a no-op there).
             # An interactive-family shell records its commands in history
             # (bash: `history` under `-i -s` lists them); plain piped input
             # does not.
+            #
+            # A CLOSED fd 0 at startup (`psh <&-`, `psh -s <&-`; CPython then
+            # leaves sys.stdin None) has no stream to read commands from:
+            # bash 5.3 fails to build its input buffer and exits 126 with
+            # "error creating buffered stream: Bad file descriptor"
+            # (empirical, 5.3.15; earlier bash releases exited 0). Only this
+            # no-`-c`, no-script, non-`-i` path is affected — `-c` and a
+            # script file never read fd 0 for commands and still run, and
+            # `-i` stays an interactive-family shell that sees immediate EOF
+            # (exit 0, like `bash -i <&-`). Reproduce: `psh <&-; echo $?` -> 126.
+            # fd 2 may be closed as well (`psh <&- 2>&-`; sys.stderr is then
+            # None): bash still exits 126, silently. The status is
+            # unconditional; the diagnostic goes ONLY to a live stderr — never
+            # to stdout (bash writes nothing there), never as a traceback.
+            if not config.interactive and (stdin is None or stdin.closed):
+                if sys.stderr is not None:
+                    try:
+                        print("psh: error creating buffered stream: "
+                              "Bad file descriptor", file=sys.stderr, flush=True)
+                    except (OSError, ValueError):
+                        pass
+                sys.exit(126)
             from .scripting.program_source import ProgramSource
             stdin_source = ProgramSource.stdin_script().make_input_source()
             exit_code = shell.script_manager.execute_as_main(

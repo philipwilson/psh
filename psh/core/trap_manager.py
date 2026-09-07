@@ -509,20 +509,12 @@ class TrapManager:
             specs that are not valid signals (bash reports each on stderr
             and exits 1 — the builtin does that reporting).
         """
-        invalid: List[str] = []
         if signals is None:
             signals_to_show = sorted(self.state.trap_handlers,
                                      key=self._trap_sort_key)
+            invalid: List[str] = []
         else:
-            # Canonicalize each query spec to the same key traps are stored
-            # under (so `trap -p SIGINT` / `trap -p 2` find a trap set on INT).
-            signals_to_show = []
-            for sig in signals:
-                canonical = self._canonical_signal_key(sig)
-                if canonical is None:
-                    invalid.append(sig)
-                elif canonical in self.state.trap_handlers:
-                    signals_to_show.append(canonical)
+            signals_to_show, invalid = self._resolve_query(signals)
 
         output_lines = []
         for signal_name in signals_to_show:
@@ -536,6 +528,38 @@ class TrapManager:
             output_lines.append(f"trap -- {action_display} {display_name}")
 
         return '\n'.join(output_lines), invalid
+
+    def trap_actions(self, signals: List[str]) -> Tuple[List[str], List[str]]:
+        """Render the BARE action per query spec for `trap -P`.
+
+        bash 5.3 CHANGES (5.3-alpha, "New Features in Bash" item j): `-P`
+        prints "the trap action associated with each signal argument" — the
+        stored text as-is (no `trap -- ... SIG` re-quoting), one line per
+        operand in operand order, repeated for a repeated spec. A spec with
+        no trap set contributes NO line; the ignored ('') action is an empty
+        line. Invalid specs are returned separately (the builtin diagnoses
+        each and returns 1, still printing the valid ones — bash 5.3.15).
+        """
+        keys, invalid = self._resolve_query(signals)
+        return [self.state.trap_handlers[key] for key in keys], invalid
+
+    def _resolve_query(self, signals: List[str]) -> Tuple[List[str], List[str]]:
+        """Canonicalize `trap -p` / `trap -P` query specs to stored trap keys.
+
+        Each spec is mapped to the same key traps are stored under (so
+        `SIGINT` / `2` / `int` all find a trap set on INT); specs that are
+        not valid signals go to ``invalid``, specs with no trap set are
+        dropped. Order and repeats follow the query (bash).
+        """
+        keys: List[str] = []
+        invalid: List[str] = []
+        for sig in signals:
+            canonical = self._canonical_signal_key(sig)
+            if canonical is None:
+                invalid.append(sig)
+            elif canonical in self.state.trap_handlers:
+                keys.append(canonical)
+        return keys, invalid
 
     def _trap_sort_key(self, signal_name: str) -> int:
         """bash's trap-listing order: EXIT (signal 0) first, real signals

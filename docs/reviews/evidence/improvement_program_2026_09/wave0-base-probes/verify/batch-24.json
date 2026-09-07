@@ -1,0 +1,49 @@
+{
+ "batch": 24,
+ "head": "6459f1a6",
+ "oracle": "GNU bash 5.3.15(1)-release (/opt/homebrew/bin/bash)",
+ "results": [
+  {
+   "cid": "C174",
+   "status": "live",
+   "bash53_output": "PTY (bash --norc -i, 5.3.15): 'P1> cat <<' -> \"bash: syntax error near unexpected token `newline'\" then 'P1> echo after' -> 'after' (error is immediate, next line runs). Non-interactive -c/script/stdin: rc=2, \"syntax error near unexpected token `newline'\", 'echo after' not run (shell exits on syntax error).",
+   "psh_output": "PTY: 'P1> cat <<' -> 'P2> echo after' (dropped to PS2, swallowed the next line) -> \"Parse error (line 1, column 7): Expected delimiter after here document operator ... Context: cat << -> HERE <- echo after <EOF>\"; 'after' never printed; following 'echo MARK' -> MARK. Non-interactive -c/script/stdin: rc=2 with the same Parse error, matching bash's classification.",
+   "note": "Interactive-only divergence: plain `cat <<` (and digit `0<<`) is classified INCOMPLETE (PS2) by psh, complete-with-syntax-error by bash. Dedupe confirmed: psh/parser/recursive_descent/parsers/redirections.py `_operand_less_redirect_error` docstring fences plain/digit spellings as a pre-existing successor row (ruling R10-A(4)); LEDGER.md:40 MEDIUM-10 row: 'plain/digit fenced as pre-existing divergence pin'. All three non-interactive channels match bash (rc 2 both). Verified via tmp/program-2026-09/verify/batch24/ptyprobe.py."
+  },
+  {
+   "cid": "C177",
+   "status": "live",
+   "bash53_output": "N/A - psh-internal AST debug tooling, no bash oracle.",
+   "psh_output": "`python -m psh --debug-ast=sexp -c 'echo \"say \\\"hi\\\" back\\\\slash\" plain'` -> `(Program :statements (AndOrList @line1 :pipelines (Pipeline @line1 :commands (SimpleCommand :arguments (echo \"say \"hi\" back\\slash\" plain)))))` - identical shape with --parser combinator.",
+   "note": "Reproduced from the inferred route: the argument string containing a double quote and a backslash is emitted as \"say \"hi\" back\\slash\" - inner quotes/backslash unescaped, so the s-expression is malformed (string literal closes after 'say '). Code: psh/parser/visualization/sexp_renderer.py:277 `return f'\"{value}\"'` quotes without escaping. Reachable through both parsers via --debug-ast=sexp (PSH_AST_FORMAT shell variable is read only for later commands)."
+  },
+  {
+   "cid": "C180",
+   "status": "live",
+   "bash53_output": "PTY, interactive 5.3.15. Census `( /bin/sh -c 'echo G_PGID=$(ps -o pgid= -p $$) G_TPG=$(ps -o tpgid= -p $$)' ; ... ) | cat` -> 'G_PGID=50368 G_TPG=50368 / S_TPG=50368 / SHELL_PGID=50367 TPG_AFTER=50367' (grandchild stays in the pipeline pgid, which owns the tty). `( /bin/cat ) | cat` + 'hello' + ^D -> 'hello' echoed, prompt returns, `jobs` empty. `( /bin/sleep 5 ) | cat` + ^C -> '^C' then prompt, `jobs` empty.",
+   "psh_output": "Census -> 'G_PGID=50394 G_TPG=50391 / S_TPG=50391 / SHELL_PGID=50390' (grandchild in a NEW pgid 50394, outside the foreground group 50391). `( /bin/cat ) | cat` + hello + ^D -> 'hello' then '[1]+  Stopped                 <SubshellGroup> | cat'; ps census: pid 50494 (python, pipeline leader) and 50495 (cat) both STAT T, PGID 50494, TPGID 50498. `( /bin/sleep 5 ) | cat` + ^C -> '[1]+  Stopped                 <SubshellGroup> | cat' (not killed). debug-exec trace: 'Pipeline: Original terminal PGID: 50453' -> 'ForegroundJobSession: Transferred terminal control to pgid 50456' -> 'Subshell: terminal owner pgid=50456' -> 'Transferred terminal control to pgid 50458' -> 'Child 50458 is single command' -> 'Transferred terminal control to pgid 50459' -> 'Child 50459 is single command' -> 'execvpe /bin/cat' -> after ^D 'restore: ... to pgid 50458', 'restore: ... to pgid 50453', then Stopped.",
+   "note": "Suspicion CONFIRMED by PTY probe (tmp/program-2026-09/verify/batch24/ptyprobe3.py + c180a.sh/c180c.sh): a `( )` nested in a foreground pipeline member re-forks a subshell child with its own pgid and hands the tty to it (and again to its external grandchild) because JobManager._current_terminal_owner() sees tcgetpgrp()==getpgrp() inside the pipeline leader and ForegroundJobSession registers/transfers unconditionally; the sibling pipeline processes (pgid 50494) end up stopped and ^C never reaches the grandchild. Pipeline-specific: the top-level control `( /bin/sh -c ... )` / `( /bin/sleep 3 )` + ^C behaves like bash in psh (G_PGID=50541 G_TPG=50541; ^C returns to prompt, jobs empty). No-subshell control `/bin/cat | cat` + ^D also fine in psh. Interactive/PTY only; -c/script modes have no tty transfer."
+  },
+  {
+   "cid": "C181",
+   "status": "oracle_changed",
+   "bash53_output": "-c mode, 5.3.15: `set -m; sleep 0.1 & sleep 0.3; jobs; echo end` -> stdout '[1]+  Done                       sleep 0.1\\nend', stderr EMPTY; same without set -m. Multi-line -c 'set -m / sleep 0.1 & / sleep 0.4 / echo next / echo done' -> stdout 'next\\ndone', stderr EMPTY (no deferred notice); signaled job (kill -TERM %1) -> stderr EMPTY. script/stdin: '[1]+  Done                       sleep 0.1' (status column 3 wider than 5.2 pin).",
+   "psh_output": "-c mode: `set -m; sleep 0.1 & sleep 0.3; jobs; echo end` -> stdout 'end' only (finished job suppressed); stderr EMPTY in every -c shape (matches 5.3.15 on the notice). script/stdin: '[1]+  Done                    sleep 0.1' (matches 5.2 column width, 3 narrower than 5.3.15). Pin module tests/integration/job_control/test_jobs_completed_listing_modes.py vs live 5.3.15: 8 failed, 1 passed - e.g. test_completed_external_suppressed_c_mode: psh 'A:\\nB:\\n' != bash 'A:\\n[1]+  Done                       sleep 0.1\\nB:\\n'; script cells fail only on width ('Exit 1                     false' vs 'Exit 1                  false').",
+   "note": "Registered as an honest deferral in the v0.692.0 jobsnx wave ('-c+set-m boundary notice (bash read-loop artifact, timing-flaky)'); psh/builtins/job_control.py:86-99 pins bash 5.2: '`-c` reaps it eagerly so `jobs` stdout is empty (bash announces it on stderr instead \u2014 the deferred -c+monitor boundary notice)'. Under 5.3.15 the stderr notice is gone (psh now MATCHES on that face) but 5.3.15's `jobs` in -c mode LISTS the finished job on stdout (with or without set -m) while psh suppresses it under command_mode -> psh now diverges from 5.3.15 there; plus a +3-column status-width drift in all modes. No bash 5.2 binary remains on this host (/opt/homebrew/Cellar/bash has only 5.3.15), so the 5.2 side rests on the in-tree comment/pin. Probes: tmp/program-2026-09/verify/batch24/probe.sh."
+  },
+  {
+   "cid": "C182",
+   "status": "live",
+   "bash53_output": "-c: `exec 9>f; echo data > >(sleep 1; cat >&9); wait; echo \"f=[$(cat f)]\"` -> 'f=[data]', rc=0, wall 1.06s (bare wait blocked on the procsub child). script mode: 'f=[data]', 1.07s. Read-side control `cat <(sleep 1; echo x > f2; echo y); wait; ...` -> 'y / f2=[x]' 1.07s.",
+   "psh_output": "-c: -> 'f=[]', rc=0, wall 0.14s (bare wait returned without reaching the procsub child). script mode: 'f=[]', 0.14s. Read-side control matches bash: 'y / f2=[x]' 1.19s (synchronised by cat reading to EOF, not by wait).",
+   "note": "Matches LEDGER.md:330 successor row ('psh bare `wait` does not reach procsub children', probe 2026-07-30, bash 5.2.26 1.02s vs psh 0.12s). Unchanged at HEAD 6459f1a6 against bash 5.3.15; both -c and script modes. Probe: tmp/program-2026-09/verify/batch24/probe_timed.sh."
+  },
+  {
+   "cid": "C183",
+   "status": "live",
+   "bash53_output": "-c: `{ false | true; }; echo \"[${PIPESTATUS[*]}]\"` -> '[1 0]'; `{ true | false | true; }` -> '[0 1 0]'; `if true; then false | true; fi` -> '[1 0]'; ledger repro `{ eval 'echo $(if)' | cat; } || echo GOT; echo ...` -> '[1 0]' (5.3.15 gives eval status 1 where the 5.2 ledger recorded '2 0'); controls: function body `f(){ false | true; }; f` -> '[0]', subshell `( false | true )` -> '[0]'. script mode `{ false | true; }` -> '[1 0]'.",
+   "psh_output": "-c: '[0]' for the brace group, '[0]' for the three-member brace group, '[0]' for the if-body pipeline, '[0]' for the ledger repro; controls match bash ('[0]' function, '[0]' subshell). script mode '[0]'.",
+   "note": "Matches LEDGER.md:332 successor row ('2.4 successor: PIPESTATUS collapses inside brace groups' - executor/pipeline.py single-command path re-stamps state.pipestatus for the enclosing group). Still live at HEAD; also collapses for pipelines inside `if` bodies. Side observation (not this finding): bash 5.3.15 reports `eval 'echo $(if)'` status 1 inside the pipeline where the 2026-07 ledger recorded 2 under 5.2.26. Probe: tmp/program-2026-09/verify/batch24/probe.sh."
+  }
+ ]
+}

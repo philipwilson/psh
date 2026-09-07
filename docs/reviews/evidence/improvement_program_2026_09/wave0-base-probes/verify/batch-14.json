@@ -1,0 +1,51 @@
+{
+  "batch": 14,
+  "head": "6459f1a6",
+  "psh_version": "0.779.0",
+  "oracle": "GNU bash 5.3.15(1)-release (aarch64-apple-darwin25.4.0)",
+  "python": "3.14.7",
+  "results": [
+    {
+      "cid": "C069",
+      "status": "live",
+      "bash53_output": "script mode (3-line scripts, line 2/3 is the offending line):\n$((1/0)): stderr `script.sh: line 2: 1/0: division by 0 (error token is \"0\")` rc=0\n\"${v:x!!y:1}\" (v=abcdef): stderr `script.sh: line 3: v: x!!y: arithmetic syntax error in expression (error token is \"!!y\")` rc=0\n\"${a[-9]}\" (a=(1 2 3)): stderr `script.sh: line 3: a: bad array subscript` rc=0\ncontrol \"${u:?boom}\": stderr `script.sh: line 2: u: boom` rc=1\nstdin mode: `/opt/homebrew/bin/bash: line 2: 1/0: division by 0 ...`, `.../bash: line 3: a: bad array subscript`. -c mode: `/opt/homebrew/bin/bash: line 1: ...` for all three.",
+      "psh_output": "script mode: $((1/0)): stderr `psh: arithmetic error: Division by zero` rc=0\n\"${v:x!!y:1}\" (v=abcdef): stderr `psh: v: x!!y:1: invalid offset or length` rc=0\n\"${a[-9]}\" (a=(1 2 3)): stderr `psh: a: bad array subscript` rc=0\ncontrol \"${u:?boom}\": stderr `script.sh: line 2: u: boom` rc=1 (byte-identical to bash)\nstdin and -c modes: same three diagnostics, all bare `psh: ...` (control in -c: `psh: line 1: u: boom`).",
+      "note": "LIVE in script, stdin, and -c modes at HEAD 6459f1a6: all three expansion diagnostics start with a literal `psh: ` and lack the `<file>: line N:` prefix (in -c: lack `line N:`), while the ${u:?boom} control carries the prefix byte-identically. stdout and rc match bash in every case. Side-observations not part of the finding: (1) with `a` UNSET, bash 5.3.15 still prints `a: bad array subscript` but psh prints NO diagnostic at all (both rc=0, stdout empty line); (2) with `v` UNSET, `${v:x!!y:1}` is silent in BOTH shells (bash short-circuits the offset evaluation). Wording differences (`arithmetic error: Division by zero` vs `1/0: division by 0 ...`; `invalid offset or length` vs `arithmetic syntax error`) are the separate A10.3 wording overlap."
+    },
+    {
+      "cid": "C070",
+      "status": "live",
+      "bash53_output": "FOO=bar eval \"set | grep -c \\\"^FOO=\\\"\" -> stdout `1` rc=0\nFOO=bar eval \"export -p | grep -c \\\" FOO=\\\"\" -> `1` rc=0\nFOO=bar source ./s.sh; FOO=bar . ./s.sh (s.sh: set | grep -c '^FOO=') -> `1` `1` then `after: unset`\nFOO=bar eval \"compgen -v | grep -c \\\"^FOO\\$\\\"\" -> `1`\ncontrol FOO=bar eval \"declare -p FOO\" -> `declare -x FOO=\"bar\"`, `after: unset`",
+      "psh_output": "eval/set -> `0` rc=1\neval/export -p -> `0` rc=1\nsource and . -> `0` `0` then `after: unset`\neval/compgen -> `0` rc=1, stderr `psh: line 1: compgen: command not found`\ncontrol declare -p FOO -> `declare -x FOO=\"bar\"`, `after: unset` (matches bash)",
+      "note": "LIVE (-c mode). The temp-env prefix over eval, source, and `.` is invisible to enumeration (set, export -p) in psh, while bash 5.3.15 lists it (count 1). Name lookup (declare -p FOO) and non-persistence after the command match bash exactly, as the report said. compgen is absent from psh entirely (command not found), so that surface could not be compared, but set/export -p/source/. reproduce the divergence."
+    },
+    {
+      "cid": "C071",
+      "status": "live",
+      "bash53_output": "x=1; export x; declare -n r=x; export -n r; declare -p x -> `declare -- x=\"1\"` rc=0 (same in script-file mode)\ncontrols: `declare +x r` variant -> `declare -- x=\"1\"`; direct `export -n x` -> `declare -- x=\"1\"`",
+      "psh_output": "nameref variant -> `declare -x x=\"1\"` rc=0 (-c AND script-file mode)\ncontrols: `declare +x r` variant -> `declare -- x=\"1\"`; direct `export -n x` -> `declare -- x=\"1\"` (both match bash)",
+      "note": "LIVE. `export -n` through a nameref is still a silent no-op in psh (x keeps -x, rc 0, no diagnostic); bash 5.3.15 removes the export attribute from the target. Both controls (`declare +x r` via nameref, and direct `export -n x`) match bash, confirming this is the single nameref hole described."
+    },
+    {
+      "cid": "C072",
+      "status": "live",
+      "bash53_output": "env 'bad-name=x' bash -c 'echo \"[${!bad*}]\"; echo \"[${!bad@}]\"' -> `[]` `[]` rc=0\nwith additionally badname=y: `[badname]`, set|grep -c ^bad -> 1, export -p|grep -c ' bad' -> 1",
+      "psh_output": "-> `[bad-name]` `[bad-name]` rc=0\nwith additionally badname=y: `[bad-name badname]`, set -> 1, export -p -> 1 (those two surfaces match bash)",
+      "note": "LIVE (-c mode, opaque entry injected via `env 'bad-name=x'`). ${!prefix*} and ${!prefix@} both list the non-identifier environment entry `bad-name`; bash 5.3.15 lists nothing. The set and export -p surfaces hold the partition (count 1 = only the valid `badname`), matching the report's claim that only the ${!prefix*} surface leaks."
+    },
+    {
+      "cid": "C073",
+      "status": "live",
+      "bash53_output": "(performance item, no bash comparison)",
+      "psh_output": "cProfile of 20,000 scope_manager.set_variable('PLAIN','y') calls (reviewer's perf2.py, Python 3.14.7): `3500001 function calls in 0.527 seconds`; top row `240000 0.111 0.000 0.261 0.000 enum.py:1595(__and__)` = 49.5% cum; `860000 ... enum.py:1577(_get_value)`; `20000 0.049 0.000 0.527 scope.py:557(set_variable)`.\nperf.py: set_variable non-exported 5828 ns/op, exported 6775 ns/op, @depth21 6906 ns/op; get_variable_object 534 ns/op.\nStandalone timeit (best of 5x200k): bool(x & F.EXPORT) 288.2 ns; bool(x._value_ & MASK) 14.7 ns; bool(x.value & MASK) 62.0 ns; IntFlag bool(y & IF.A) 304.4 ns; Variable.is_exported property 308.9 ns; is_array (2-flag OR) 569.5 ns.",
+      "note": "LIVE. Re-measured at HEAD with the reviewer's own profilers (copied from tmp/r23-core/) plus a fresh timeit microbench; every figure lands within noise of the report (240,000 enum.__and__ calls, 0.261s cum of 0.527s = 49.5% vs reported 0.277/0.564 = 49%; set_variable ~5.8us vs 6.0us; Flag & 288 ns vs 304 ns; raw mask 14.7 ns vs 23 ns; IntFlag still slightly WORSE). psh/core/variables.py still defines VarAttributes(Flag) with eleven `bool(self.attributes & VarAttributes.X)` properties (lines 12-102), i.e. the mechanism is unchanged."
+    },
+    {
+      "cid": "C074",
+      "status": "live",
+      "bash53_output": "cd /tmp; HOME=; cd; echo rc=$?; pwd -> stdout `rc=0` `/tmp`, no stderr\ncd /tmp; OLDPWD=; cd -; echo rc=$? -> stdout `` (blank line) then `rc=0`, no stderr\ncontrols (unset HOME / unset OLDPWD): stderr `.../bash: line 1: cd: HOME not set` rc=1 ; `.../bash: line 1: cd: OLDPWD not set` rc=1",
+      "psh_output": "HOME= empty -> stderr `psh: line 1: cd: HOME not set`, stdout `rc=1` `/tmp`\nOLDPWD= empty -> stderr `psh: line 1: cd: OLDPWD not set`, stdout `rc=1` (no blank line)\ncontrols (unset): `psh: line 1: cd: HOME not set` rc=1 ; `psh: line 1: cd: OLDPWD not set` rc=1 (match bash)",
+      "note": "LIVE (-c mode). psh still treats an EMPTY HOME/OLDPWD as unset: errors `cd: HOME not set` / `cd: OLDPWD not set` with rc 1, where bash 5.3.15 no-ops with rc 0 (and `cd -` prints a blank line). The genuinely-unset controls match bash in both shells, so bash 5.3 has not changed the oracle here."
+    }
+  ]
+}

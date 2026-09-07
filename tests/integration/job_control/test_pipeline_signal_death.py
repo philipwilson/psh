@@ -5,16 +5,22 @@ member (reappraisal #17 MED-2).
 ``Terminated: 15`` — the single-command path reported signal deaths
 (strategies.py) but the foreground-pipeline wait path never did.
 
-bash's rule (pinned in tmp/probes-r17t2-grabbag/probe_c_pipeline_signal.sh
-against bash 5.2): the announced member is the one whose status becomes the
-pipeline's EXIT STATUS — the last member normally, the rightmost failing
-member under pipefail. Any other member's signal death is silent, as are
-SIGINT/SIGPIPE, and anything inside command/process substitutions.
+bash's rule (probed on the 5.2 oracle, re-verified on bash 5.3.15 in Wave
+0.1): the announced member is the one whose status becomes the pipeline's
+EXIT STATUS — the last member normally, the rightmost failing member under
+pipefail. Any other member's signal death is silent, as are SIGINT/SIGPIPE,
+and anything inside command/process substitutions.
 
 Wording is host-libc specific, so expectations use ``signal.strsignal`` (the
-same source bash uses). For non-SIGTERM signals bash wraps the message in a
-PID/command job table; psh emits just the bare signal description (documented
-format difference, same as the single-command path).
+same source bash uses). DECLARED FORMAT DIVERGENCE: bash 5.3 announces through
+its job-table printer — the status text left-justified in a 27-column field
+followed by the job's command text (see ``bash_job_notice``), and for signals
+other than SIGTERM a ``bash: line N: PID`` prefix as well; the 5.2 oracle
+printed the bare ``Terminated: 15`` for SIGTERM, which was exact parity. psh
+emits just the bare signal description on every path (same as the
+single-command path in test_signal_killed_diagnostic.py). Both sides are
+pinned; the parity flip (bash-faithful job text) is owned by slot 4.12 (C065)
+through the program's FLIP-PINS.md.
 
 Determinism over realism: the child signals itself. This path is auto-marked
 ``serial`` (job_control) — spawn/kill/wait is xdist-unsafe.
@@ -22,6 +28,7 @@ Determinism over realism: the child signals itself. This path is auto-marked
 
 import signal
 
+import pytest
 from core_dump_env import signal_death_text
 from shell_oracle import is_comparable
 from shell_oracle import run_bash as _oracle_run_bash
@@ -40,23 +47,57 @@ def run_bash(cmd, timeout=15):
     return r
 
 
-class TestPipelineLastMemberSignalDeath:
-    def test_sigterm_last_member_announced(self):
-        """Exact bash parity for SIGTERM (bare form in both shells)."""
-        cmd = 'true | sh -c "kill -TERM \\$\\$"; echo rc=$?'
-        psh = run_psh(cmd)
-        bash = run_bash(cmd)
-        assert psh.stdout == 'rc=143\n' == bash.stdout
-        assert psh.stderr.strip() == signal.strsignal(signal.SIGTERM)
-        assert psh.stderr == bash.stderr
+def bash_job_notice(status_text, job_text):
+    """bash 5.3's foreground signal-death line: ``status_text`` left-justified
+    in a 27-column field, then the job's command text (its pre-expansion
+    re-print: whitespace normalised, quotes verbatim), then a newline.
+    Empirical, 5.3.15 — the field is a pure ``ljust(27)``: a 27-character
+    description (SIGFPE's on macOS) is followed by the text with NO
+    separator. Identical in -c, script-file and stdin modes."""
+    return status_text.ljust(27) + job_text + '\n'
 
+
+def _run_modes(cmd, tmp_path):
+    """(mode, psh, bash) for `cmd` in -c, script-file and stdin modes (D6)."""
+    script = tmp_path / 'job.sh'
+    script.write_text(cmd + '\n')
+    for mode, args, stdin in (('-c', ['-c', cmd], None),
+                              ('file', [str(script)], None),
+                              ('stdin', [], cmd + '\n')):
+        p = _oracle_run_psh(args, stdin_data=stdin, timeout=15)
+        b = _oracle_run_bash(args, stdin_data=stdin, timeout=15)
+        assert is_comparable(p) and is_comparable(b), (mode, p, b)
+        yield mode, p, b
+
+
+class TestPipelineLastMemberSignalDeath:
+    @pytest.mark.oracle_min("5.3")
+    def test_sigterm_last_member_announced(self, tmp_path):
+        """psh: the bare SIGTERM description; bash 5.3: the padded job-table
+        line (declared format divergence — module docstring). Pinned in all
+        three input modes because the shape of the announcement is the
+        subject (D6)."""
+        cmd = 'true | sh -c "kill -TERM \\$\\$"; echo rc=$?'
+        for mode, psh, bash in _run_modes(cmd, tmp_path):
+            assert psh.stdout == 'rc=143\n' == bash.stdout, mode
+            assert psh.stderr == signal.strsignal(signal.SIGTERM) + '\n', mode
+            assert bash.stderr == bash_job_notice(
+                signal.strsignal(signal.SIGTERM),
+                'true | sh -c "kill -TERM \\$\\$"'), (mode, bash.stderr)
+
+    @pytest.mark.oracle_min("5.3")
     def test_sigterm_no_trailing_command(self):
+        """The announcement is unchanged when the signal death is the
+        shell's last command in a pipeline (no exec-optimisation for
+        pipeline members); rc 143 in both shells."""
         cmd = 'echo hi | sh -c "kill -TERM \\$\\$"'
         psh = run_psh(cmd)
         bash = run_bash(cmd)
         assert psh.returncode == 143 == bash.returncode
-        assert psh.stderr == bash.stderr
-        assert psh.stderr.strip() == signal.strsignal(signal.SIGTERM)
+        assert psh.stderr == signal.strsignal(signal.SIGTERM) + '\n'
+        assert bash.stderr == bash_job_notice(
+            signal.strsignal(signal.SIGTERM),
+            'echo hi | sh -c "kill -TERM \\$\\$"'), bash.stderr
 
     def test_three_stage_pipeline_last_member(self):
         cmd = 'true | true | sh -c "kill -TERM \\$\\$"; echo rc=$?'
@@ -98,16 +139,27 @@ class TestPipelineNonLastMemberSignalDeath:
         assert psh.stdout == 'rc=0\n' == bash.stdout
         assert psh.stderr == '' == bash.stderr
 
+    @pytest.mark.oracle_min("5.3")
     def test_pipefail_announces_status_determining_member(self):
         """Under pipefail the signal-killed member's 143 becomes the exit
-        status, and bash announces it (bare form — exact parity)."""
+        status and BOTH shells announce the job — the announce DECISION is
+        pipefail-driven in both. bash 5.3 announces through its job-table
+        printer, whose status column is the LAST member's label (`Done`,
+        cat exited 0) followed by the command text, even though the
+        announced condition is the pipefail member's signal death (a job
+        whose `$?` is 143 is printed as `Done`; empirical, 5.3.15 — the 5.2
+        oracle printed the member's bare `Terminated: 15`). psh keeps
+        naming the status-determining member's signal — declared
+        divergence, both sides pinned; do NOT "fix" psh to print `Done`
+        without the command text."""
         cmd = ('set -o pipefail; sh -c "kill -TERM \\$\\$" | cat; '
                'echo rc=$?')
         psh = run_psh(cmd)
         bash = run_bash(cmd)
         assert psh.stdout == 'rc=143\n' == bash.stdout
-        assert psh.stderr.strip() == signal.strsignal(signal.SIGTERM)
-        assert psh.stderr == bash.stderr
+        assert psh.stderr == signal.strsignal(signal.SIGTERM) + '\n'
+        assert bash.stderr == bash_job_notice(
+            'Done', 'sh -c "kill -TERM \\$\\$" | cat'), bash.stderr
 
     def test_pipefail_silent_when_later_failure_wins(self):
         """The rightmost NON-ZERO status is grep's plain 1, so the earlier

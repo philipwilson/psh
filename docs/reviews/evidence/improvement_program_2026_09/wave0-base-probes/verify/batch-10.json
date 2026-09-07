@@ -1,0 +1,32 @@
+{
+  "results": [
+    {
+      "cid": "C039",
+      "status": "live",
+      "bash53_output": "small.sh (stdin/file/pipe/-c all identical): 'LINENO=3' + 'line 3: nosuch_q: command not found' rc=127. big.sh (24-line file; line1='true \\', lines2-22=21x '  \\', line23 echo/nosuch_q, line24 echo/nosuch_r) stdin AND file: 'LINENO=23' / 'line 23: nosuch_q: command not found' / 'LINENO=24' / 'line 24: nosuch_r: command not found' rc=127",
+      "psh_output": "small.sh (stdin/file/pipe/-c all identical): 'LINENO=1' + 'psh: line 1: nosuch_q: command not found' (file mode: './small.sh: line 1: ...') rc=127. big.sh stdin AND file: 'LINENO=1' / 'line 1: nosuch_q: command not found' / 'LINENO=24' / 'line 24: nosuch_r: command not found' rc=127",
+      "note": "Still diverges exactly as described in stdin-pipe, script-file, and -c modes at HEAD 6459f1a6: psh reports the unit's START line for everything inside a backslash-continued command (22 off in my 24-line big.sh vs the report's 21 -- only because my unit starts on line 1), and recovers on the next unit (line 24 correct). The cited mechanism is intact: source_processor.py:583-584 still calls process_line_continuations before lexing and :684 passes base_line=start_line. Scratch: tmp/program-2026-09/verify-batch10/{small,big}.sh."
+    },
+    {
+      "cid": "C040",
+      "status": "live",
+      "bash53_output": "bash -c 'echo before; set -n; echo SHOULD_NOT_RUN' -> 'before' rc=0. Same for 'set -o noexec' variant, for newline-separated -c string, for script file, and for stdin: 'before' only.",
+      "psh_output": "psh -c 'echo before; set -n; echo SHOULD_NOT_RUN' -> 'before\\nSHOULD_NOT_RUN' rc=0. psh -c 'echo before; set -o noexec; echo SHOULD_NOT_RUN' -> 'before\\nSHOULD_NOT_RUN'. Newline-separated -c string ('echo before; set -n\\necho SHOULD_NOT_RUN') -> 'before' (matches). Script file -> 'before' (matches). Stdin -> 'before' (matches).",
+      "note": "Core divergence is LIVE: mid-string `set -n` / `set -o noexec` on the SAME line as later commands is inert in -c mode (and, per this repro shape, would be in any mode where the commands share one parsed unit -- the noexec check at source_processor.py:523 is per-unit, before execution, so a flag set mid-unit is never consulted). Narrowed since #23: the report's 'also fails across newlines inside the -c string' sub-claim no longer reproduces -- newline-separated -c now matches bash ('before' only). Script file and stdin match bash as the report already stated."
+    },
+    {
+      "cid": "C041",
+      "status": "live",
+      "bash53_output": "-c '$(exit 5); echo rc=$?' -> 'rc=5'. '`exit 7`; echo rc=$?' -> 'rc=7'. '> f $(exit 6); echo rc=$?' -> 'rc=6'. '$(echo; exit 3); echo rc=$?' -> 'rc=3'. 'x=\"  \"; $x $(exit 4); echo rc=$?' -> 'rc=4'. Script file and stdin '$(exit 5); echo rc=$?' -> 'rc=5'. Controls: 'x=$(exit 5); echo rc=$?' -> 'rc=5'; '\"$(exit 5)\"; echo rc=$?' -> ': command not found' + 'rc=127'; '$(exit 5); $(exit 0); echo rc=$?' -> 'rc=0'.",
+      "psh_output": "-c '$(exit 5); echo rc=$?' -> 'rc=0'. backtick -> 'rc=0'. '> f $(exit 6)' -> 'rc=0'. '$(echo; exit 3)' -> 'rc=0'. '$x $(exit 4)' -> 'rc=0'. Script file -> 'rc=0'. Stdin -> 'rc=0'. Controls match bash: assignment 'rc=5'; quoted-empty ': command not found' + 'rc=127'; two subs 'rc=0'.",
+      "note": "Still diverges exactly as described: when a simple command's words expand to nothing (bare $(...), backticks, redirect-only + empty sub, whitespace var + empty sub), psh leaves $? at 0 instead of adopting the last command substitution's exit status. Reproduces in -c, script file, and stdin modes. All three 'psh already correct' controls from the report still match bash 5.3.15 (note the report's `\"$(exit 5)\"` -> 0 claim is imprecise: both shells give 127 there, since an empty quoted word is a command-not-found)."
+    },
+    {
+      "cid": "C042",
+      "status": "live",
+      "bash53_output": "-c 'case $HOME in ~) echo tilde;; *) echo other;; esac' -> 'tilde'. 'case $HOME/x in ~/x) ...' -> 'tilde'. 'case $PWD in ~+) echo tildeplus;;' -> 'tildeplus'. Alternation 'foo|~)' -> 'tilde'. Script file -> 'tilde'. Controls: quoted pattern \"~\" not expanded ('lit' for literal ~, 'other' for $HOME); '[[ $HOME == ~ ]]' -> 'eq'; 'case $HOME in ~$u)' -> 'other' (no expansion of ~$var, both shells).",
+      "psh_output": "-c 'case $HOME in ~) ...' -> 'other'. '~/x)' -> 'other'. '~+)' -> 'other'. 'foo|~)' -> 'other'. Script file -> 'other'. Controls match bash: quoted \"~\" -> 'lit'/'other'; '[[ $HOME == ~ ]]' -> 'eq'; '~$u)' -> 'other'.",
+      "note": "Still diverges exactly as described: psh performs no tilde expansion on case patterns (bare ~, ~/path, ~+, and inside a | alternation), so the wrong branch is taken silently. Reproduces in -c and script-file modes. Quoted-tilde and [[ ]] controls still match bash 5.3.15."
+    }
+  ]
+}

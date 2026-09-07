@@ -1,4 +1,5 @@
-"""Conformance tests for the ``hash`` builtin (bash 5.2, probed 2026-06-13).
+"""Conformance tests for the ``hash`` builtin (bash 5.2, probed 2026-06-13;
+the ``-d`` empty-table row re-probed against bash 5.3.15, Wave 0.2).
 
 This file holds the flipped absent-feature ledger entry (`hash ls; hash`
 — see test_absent_features.py) plus the full probe battery: listing
@@ -17,6 +18,7 @@ Comparison caveats baked into the commands below:
 """
 
 
+import pytest
 from conformance_framework import ConformanceTest
 
 
@@ -66,14 +68,20 @@ class TestHashBuiltin(ConformanceTest):
         self.assert_identical_behavior(
             'hash -p /nonexistent/echo myecho; echo rc=$?; hash -t myecho')
 
+    @pytest.mark.oracle_min("5.3")
     def test_dash_d_deletes(self):
         self.assert_identical_behavior('hash ls cat; hash -d ls; hash')
         # populated table: a miss is reported, rc 1
         self.assert_identical_behavior(
             'hash ls; hash -d nosuchcmd_xyz 2>/dev/null; echo rc=$?')
-        # EMPTY table: -d silently succeeds (bash quirk)
+        # EMPTY table: bash 5.3 reports the miss too (`hash: NAME: not
+        # found`, rc 1) — CHANGES 5.3-alpha "Changes to Bash" item ggggg calls
+        # 5.2's silent rc 0 a bug. Message prefixes differ, so compare `$?`.
         self.assert_identical_behavior(
-            'hash -d nosuchcmd_xyz; echo rc=$?')
+            'hash -d nosuchcmd_xyz 2>/dev/null; echo rc=$?')
+        self.assert_identical_behavior(
+            'hash -d a_zz9 b_zz9 2>/dev/null; echo rc=$?; hash -r; '
+            'hash -d ls 2>/dev/null; echo rc=$?')
 
     def test_dash_r_clears(self):
         self.assert_identical_behavior('hash ls; hash -r; hash; echo rc=$?')
