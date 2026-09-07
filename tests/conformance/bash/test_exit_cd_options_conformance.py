@@ -272,6 +272,28 @@ class TestUsageStatusMatchesBash:
             expected=('rc=2\n', 0), tmp_path=tmp_path,
             stderr_has='numeric argument required')
 
+    def test_errexit_is_fatal_for_the_failing_cells_but_not_the_discard(
+            self, tmp_path):
+        # The two CONTINUING cells leave a FAILED command behind, so `set -e`
+        # turns them into shell exits with the family status; the discard cell
+        # stays errexit-immune and the next line still runs (bash 5.3.15).
+        _assert_parity(
+            'set -e\nexit abc; echo same=$?\necho after=$?',
+            expected=('', 2), tmp_path=tmp_path,
+            stderr_has='numeric argument required')
+        _assert_parity(
+            'set -e\ncd a b\necho after=$?',
+            expected=('', 2), tmp_path=tmp_path,
+            stderr_has='too many arguments')
+        _assert_parity(
+            'set -e\nfor i in 1; do break abc; done\necho after=$?',
+            expected=('', 2), tmp_path=tmp_path,
+            stderr_has='numeric argument required')
+        _assert_parity(
+            'set -e\nset -- a b\nshift 1 2\necho after=$?',
+            expected=('after=2\n', 0), tmp_path=tmp_path,
+            modes=("script", "stdin"), stderr_has='too many arguments')
+
     def test_break_out_of_range_and_out_of_loop_cells_are_unchanged(
             self, tmp_path):
         # Neighbours of the bad-count cell that did NOT move in 5.3: a
