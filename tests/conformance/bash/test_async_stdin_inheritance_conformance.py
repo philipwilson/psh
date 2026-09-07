@@ -67,6 +67,19 @@ def _run(runner, script, mode, *, cwd=None, stdin_data=None, stdin_mode="file",
     return result
 
 
+#: The host's transient exec failure (several agents running suites at once).
+#: It empties a shell's stdout, which in a differential row is indistinguishable
+#: from "psh lost the input" unless the row LOOKS at stderr — so every row does.
+HOST_FLAKE = "Operation not permitted"
+
+
+def _check_no_host_flake(result, mode, script, which):
+    assert HOST_FLAKE not in result.stderr, (
+        f"[{mode}] HOST FLAKE, not a behavior difference: {which} failed to "
+        f"exec ({result.stderr.strip()!r}) running {script!r}. Rerun this node "
+        f"serially before reporting it.")
+
+
 def _both(script, mode, tmp_path, *, stdin_data=None, stdin_mode="file",
           env=None):
     """Run one row in both shells; returns (bash, psh) results."""
@@ -78,6 +91,8 @@ def _both(script, mode, tmp_path, *, stdin_data=None, stdin_mode="file",
              stdin_mode=stdin_mode, env=env)
     p = _run(run_psh, script, mode, cwd=psh_dir, stdin_data=stdin_data,
              stdin_mode=stdin_mode, env=env)
+    _check_no_host_flake(b, mode, script, "bash")
+    _check_no_host_flake(p, mode, script, "psh")
     return b, p
 
 
