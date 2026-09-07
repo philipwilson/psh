@@ -28,6 +28,18 @@ import pytest
 
 from psh.io_redirect.planner import RedirectPlanner
 
+# SERIAL, module-wide: these rows apply fd >= 3 redirects IN-PROCESS, which is
+# the only way to count ``RedirectPlanner.plan`` calls (the differential rows
+# run psh in a subprocess and cannot see them).  Under xdist, fd 3 in a worker
+# is the execnet channel; psh's per-command save/restore dup2s over it, which
+# ends the worker's receiver thread on macOS and the session dies SILENTLY --
+# nodes are never reported rather than failing (this module alone ran 6-9 of 38
+# under ``-n 4``, and ``tests/unit/io_redirect`` dropped 202 -> 133).  A
+# psh-free ``os.dup2`` on fd 3 in a worker reproduces it; fd 4 does not.  Root
+# CLAUDE.md, "Parallel runs and the serial marker": a test that rewires the
+# runner's own fds must not run alongside siblings.
+pytestmark = pytest.mark.serial
+
 
 @contextmanager
 def recorded_plans():
