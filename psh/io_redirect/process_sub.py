@@ -122,8 +122,7 @@ def create_process_substitution(
         # Fork the child with termination signals blocked across the fork
         # window (the lost-signal race fix; the child unblocks them in
         # apply_child_signal_policy after resetting handlers to SIG_DFL).
-        from psh.executor import (expansion_child_suppression,
-                                  fork_with_signal_window, run_child_shell)
+        from psh.executor import expansion_child_suppression, fork_with_signal_window, run_child_shell
         pid = fork_with_signal_window()
         if pid == 0:  # Child — run_child_shell never returns.
             def _io_setup() -> None:
