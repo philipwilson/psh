@@ -11204,3 +11204,78 @@
   stdout: "hi\n       1\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# ALIAS-SUPPLIED for/select HEADERS (Improvement Program 2026-09, slot 1.7)
+# The loop variable is the token's own name, never a slice of the pre-alias
+# line. Base bound the character at that offset in the USING line instead:
+# `alias beg='for i in 1 2; do'; beg echo "i=[$i]"; done` bound `e` and printed
+# i=[] twice. bash 5.3.15 needs `shopt -s expand_aliases` and the definition on
+# its own line in a non-interactive shell; psh always expands.
+# =============================================================================
+
+- name: c010_alias_for_header_binds_the_named_variable
+  description: "C010: a for header from an alias binds the name in the alias body, not a slice of the using line"
+  command: |
+    shopt -s expand_aliases
+    alias beg='for i in 1 2; do'
+    beg echo "i=[$i]"; done
+    declare -p i
+  stdout: "i=[1]\ni=[2]\ndeclare -- i=\"2\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c010_alias_for_colon_body_no_spurious_diagnostic
+  description: "C010: an alias-headed for with a ':' body runs clean; base sliced ':' and called it an invalid identifier"
+  command: |
+    shopt -s expand_aliases
+    alias beg='for i in 1 2; do'
+    beg :; done
+    echo "rc=$?"
+    declare -p i
+  stdout: "rc=0\ndeclare -- i=\"2\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c010_alias_select_header_binds_the_choice
+  description: "C010: a select header from an alias binds the chosen item, not a slice of the using line"
+  command: |
+    shopt -s expand_aliases
+    alias sel='select v in a b; do'
+    sel echo "v=[$v]"; break; done <<< 1
+    declare -p v
+  stdout: "v=[a]\ndeclare -- v=\"a\"\n"
+  stderr: "#? "
+  exit_code: 0
+
+- name: c010_alias_nested_header_binds_the_named_variable
+  description: "C010: a for keyword itself supplied by a nested alias still binds the alias body's name"
+  command: |
+    shopt -s expand_aliases
+    alias a1='for'
+    alias a2='a1 x in 1 2; do'
+    a2 echo "[$x]"; done
+    declare -p x
+  stdout: "[1]\n[2]\ndeclare -- x=\"2\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c010_alias_for_expansion_longer_than_alias_name
+  description: "C010: an alias body longer than the alias name put the span past the end of the using line"
+  command: |
+    shopt -s expand_aliases
+    alias b='for longvariablename in 1 2; do'
+    b echo "[$longvariablename]"; done
+    declare -p longvariablename
+  stdout: "[1]\n[2]\ndeclare -- longvariablename=\"2\"\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c010_control_plain_for_binds_the_named_variable
+  description: "C010 control: a for header written directly, with no alias, was never affected"
+  command: |
+    for i in 1 2; do echo "i=[$i]"; done
+    declare -p i
+  stdout: "i=[1]\ni=[2]\ndeclare -- i=\"2\"\n"
+  stderr: ""
+  exit_code: 0
