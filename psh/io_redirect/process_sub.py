@@ -1,9 +1,31 @@
-"""Process substitution implementation."""
+"""Process substitution implementation.
+
+A process substitution is ONE pipe plus one forked shell running the body.
+The shell keeps one end of the pipe and hands the consuming command the path
+``/dev/fd/N`` naming it; the substitution child wires the other end onto the
+descriptor its body uses — stdout for ``<(cmd)``, stdin for ``>(cmd)``. Both
+directions therefore share a single acquisition, a single child runner and a
+single release path; there is no named-FIFO variant and no rendezvous timeout
+on any platform, matching bash wherever ``/dev/fd`` exists.
+
+That matters for a consumer that opens the path LATE. The descriptor already
+exists when the path is handed out, so an open seconds later still finds it
+and every byte reaches the body::
+
+    psh -c 'bash -c "sleep 6; printf \\"1\\\\n2\\\\n3\\\\n\\" > \\$1" _ \\
+            >(wc -l >n); sleep 1; wait; cat n'      # -> 3
+
+Acquisition is all-or-nothing. Every descriptor and the forked child are
+registered with ONE ``ExitStack`` the moment they exist, and ownership passes
+to the caller only on the success path, so a failure at any step — the pipe,
+the promotion above the standard descriptors, the close-on-exec change, the
+fork — releases everything the shell had taken and leaks no descriptor or
+process.
+"""
 import fcntl
 import os
 import signal
-import tempfile
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -12,96 +34,140 @@ if TYPE_CHECKING:
     from ..shell import Shell
 
 
+def _close_quietly(fd: int) -> None:
+    """Close ``fd``, ignoring an already-closed / invalid descriptor."""
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def _reap_abandoned_child(pid: int) -> None:
+    """Kill and reap a substitution child whose acquisition then failed.
+
+    Registered with the acquisition stack right after the fork, so a failure
+    between the fork and the ownership transfer cannot orphan the child.
+    """
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+    try:
+        os.waitpid(pid, 0)
+    except OSError:
+        pass
+
+
+def _pipe_endpoints(direction: str) -> Tuple[int, int]:
+    """Create the substitution pipe; return ``(parent_fd, child_fd)``.
+
+    The shell's end is kept above the standard descriptors. When fd 0/1/2
+    began closed (``exec 1>&-``), ``os.pipe()`` can hand that end back AS a
+    low descriptor, and ``/dev/fd/1`` would then alias the closed shell stdout
+    so the consumer's open fails (EACCES on macOS). bash likewise keeps its
+    process-substitution descriptors high.
+
+    Nothing is owned by the caller until this returns: a failure inside closes
+    whatever it had already taken.
+    """
+    read_fd, write_fd = os.pipe()
+    # <(cmd): the shell reads what the child writes. >(cmd): the reverse.
+    parent_fd, child_fd = ((read_fd, write_fd) if direction == 'in'
+                           else (write_fd, read_fd))
+    if parent_fd > 2:
+        return parent_fd, child_fd
+    try:
+        promoted = fcntl.fcntl(parent_fd, fcntl.F_DUPFD, 3)
+    except OSError:
+        _close_quietly(parent_fd)
+        _close_quietly(child_fd)
+        raise
+    _close_quietly(parent_fd)
+    return promoted, child_fd
+
+
 def create_process_substitution(
         cmd_str: str, direction: str,
         shell: 'Shell', *,
         for_expansion: bool = False
-        ) -> Tuple[Optional[int], str, int, Optional[str]]:
-    """Create a process substitution, returning
-    ``(parent_fd, path, child_pid, cleanup_path)``.
+        ) -> Tuple[int, str, int]:
+    """Create a process substitution, returning ``(parent_fd, path, pid)``.
 
     Args:
-        cmd_str: The command string to execute (without the <()/>()} wrapper).
-        direction: 'in' for <(cmd) (parent reads), 'out' for >(cmd) (parent writes).
+        cmd_str: The command string to execute (without the <()/>() wrapper).
+        direction: 'in' for <(cmd) (parent reads), 'out' for >(cmd) (parent
+            writes).
         shell: The parent shell instance.
+        for_expansion: True when the substitution is created while expanding a
+            WORD rather than while resolving a redirect target.
 
     Returns:
-        Tuple of (parent_fd, path, child_pid, cleanup_path). parent_fd is
-        None for FIFO-backed write-side substitutions.
+        ``(parent_fd, path, child_pid)``. ``path`` is ``/dev/fd/<parent_fd>``,
+        the name the consuming command opens.
+
+    Raises:
+        OSError: an acquisition step failed; nothing is left acquired.
     """
-    if direction == 'out':
-        return _create_write_process_substitution(
-            cmd_str, shell, for_expansion=for_expansion)
+    with ExitStack() as acquisition:
+        parent_fd, child_fd = _pipe_endpoints(direction)
+        acquisition.callback(_close_quietly, parent_fd)
+        acquisition.callback(_close_quietly, child_fd)
 
-    # Create pipe
-    # For <(cmd), parent reads from pipe, child writes to it
-    read_fd, write_fd = os.pipe()
-    # Keep the parent's read end — exposed to the consumer as /dev/fd/N — above
-    # the standard descriptors. When fd 0/1/2 began closed (e.g. `exec 1>&-`),
-    # os.pipe() can hand the read end back AS a low fd, and /dev/fd/1 then
-    # aliases the (closed) shell stdout so the consumer's open fails
-    # (EACCES on macOS). bash likewise keeps its process-substitution
-    # descriptors high.
-    if read_fd <= 2:
-        promoted = fcntl.fcntl(read_fd, fcntl.F_DUPFD, 3)
-        os.close(read_fd)
-        read_fd = promoted
-    parent_fd = read_fd
-    child_fd = write_fd
-    child_stdout = child_fd
+        # The shell's end must survive exec: an EXTERNAL consumer
+        # (`tee >(cmd)`, `cat <(cmd)`) opens /dev/fd/N and can only do so if
+        # it inherited descriptor N.
+        flags = fcntl.fcntl(parent_fd, fcntl.F_GETFD)
+        fcntl.fcntl(parent_fd, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
 
-    # Clear close-on-exec flag for parent_fd so it survives exec
-    flags = fcntl.fcntl(parent_fd, fcntl.F_GETFD)
-    fcntl.fcntl(parent_fd, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
+        # Fork the child with termination signals blocked across the fork
+        # window (the lost-signal race fix; the child unblocks them in
+        # apply_child_signal_policy after resetting handlers to SIG_DFL).
+        from psh.executor import (expansion_child_suppression,
+                                  fork_with_signal_window, run_child_shell)
+        pid = fork_with_signal_window()
+        if pid == 0:  # Child — run_child_shell never returns.
+            def _io_setup() -> None:
+                # Wire our pipe end onto the descriptor the body uses (stdout
+                # for <(cmd), stdin for >(cmd)) and drop the shell's end, so a
+                # `>(cmd)` body sees EOF once the consumer and the shell have
+                # both released their copies. remap_fds handles the case where
+                # fd 0/1 began closed and os.pipe() returned an endpoint AS
+                # that descriptor, which the naive dup2-then-close recipe
+                # destroyed.
+                from .fd_remap import remap_fds
+                body_fd = 1 if direction == 'in' else 0
+                remap_fds({child_fd: body_fd}, owned=[parent_fd, child_fd])
 
-    # Fork child for process substitution, with termination signals
-    # blocked across the fork window (the v0.300 lost-signal race fix;
-    # the child unblocks them in apply_child_signal_policy after
-    # resetting handlers to SIG_DFL).
-    from psh.executor import expansion_child_suppression, fork_with_signal_window, run_child_shell
-    pid = fork_with_signal_window()
-    if pid == 0:  # Child
-        # run_child_shell owns the generic child-process work (signal
-        # policy, child Shell, exception -> exit-code mapping, stream
-        # flush, os._exit). We supply the fd plumbing and the body.
-        def _io_setup() -> None:
-            # Wire the pipe write end onto stdout collision-safely and drop the
-            # parent's read end. When fd 1 began closed, os.pipe() can return
-            # the write end AS fd 1; the old close(parent);dup2(write,1);
-            # close(write) then destroyed the substitution's own stdout
-            # (`printf: write error`). remap_fds handles the collision.
-            from .fd_remap import remap_fds
-            remap_fds({child_stdout: 1}, owned=[parent_fd, child_fd])
+            def _body(child_shell: 'Shell') -> int:
+                return _execute_process_substitution_body(cmd_str, child_shell)
 
-        def _body(child_shell: 'Shell') -> int:
-            return _execute_process_substitution_body(cmd_str, child_shell)
+            run_child_shell(
+                shell, _body,
+                # Substitution children never source rc files (bash sources rc
+                # once, at startup — not per subshell). Without this, an
+                # interactive `<(cmd)` builds an interactive child (stdin is
+                # still the parent tty) that sourced ~/.pshrc, leaking its
+                # output into the substitution. Matches command_sub's default.
+                norc=True,
+                io_setup=_io_setup,
+                # bash does not keep parent traps listable in a
+                # process-substitution child (unlike $(trap)).
+                inherit_traps=False,
+                errexit_suppress_override=(
+                    expansion_child_suppression(shell._current_executor)
+                    if for_expansion else None),
+                error_label='process substitution',
+            )
 
-        run_child_shell(
-            shell, _body,
-            # Substitution children never source rc files (bash sources rc
-            # once, at startup — not per subshell). Without this, an
-            # interactive `<(cmd)` builds an interactive child (stdin is
-            # still the parent tty) that sourced ~/.pshrc, leaking its
-            # output into the substitution. Matches command_sub's default.
-            norc=True,
-            io_setup=_io_setup,
-            # bash does not keep parent traps listable in a
-            # process-substitution child (unlike $(trap)).
-            inherit_traps=False,
-            errexit_suppress_override=(
-                expansion_child_suppression(shell._current_executor)
-                if for_expansion else None),
-            error_label='process substitution',
-        )
+        acquisition.callback(_reap_abandoned_child, pid)
 
-    else:  # Parent
-        # Close child's end of pipe
-        os.close(child_fd)
+        # Success: the caller owns parent_fd and the child from here.
+        acquisition.pop_all()
 
-        # Create path for this fd
-        fd_path = f"/dev/fd/{parent_fd}"
-
-        return parent_fd, fd_path, pid, None
+    # The shell never uses the child's end, and holding it would keep a
+    # `<(cmd)` consumer from ever seeing EOF.
+    _close_quietly(child_fd)
+    return parent_fd, f"/dev/fd/{parent_fd}", pid
 
 
 def _execute_process_substitution_body(cmd_str: str, child_shell: 'Shell') -> int:
@@ -113,119 +179,15 @@ def _execute_process_substitution_body(cmd_str: str, child_shell: 'Shell') -> in
     return child_shell.run_command(cmd_str, add_to_history=False)
 
 
-def _unlink_fifo_dir(fifo_path: str) -> None:
-    """Remove a write-side FIFO and its temp dir, ignoring missing entries."""
-    try:
-        os.unlink(fifo_path)
-    except OSError:
-        pass
-    try:
-        os.rmdir(os.path.dirname(fifo_path))
-    except OSError:
-        pass
-
-
-def _create_write_process_substitution(
-        cmd_str: str, shell: 'Shell', *,
-        for_expansion: bool = False
-        ) -> Tuple[None, str, int, str]:
-    """Create a FIFO-backed ``>(cmd)`` substitution.
-
-    On macOS, reopening a write-only pipe through ``/dev/fd/N`` can fail
-    with EPERM for external consumers such as ``tee``. A named FIFO gives
-    those consumers a normal path to open while the substitution command
-    reads from the FIFO on stdin.
-    """
-    fifo_dir = tempfile.mkdtemp(prefix='psh-psub-')
-    fifo_path = os.path.join(fifo_dir, 'pipe')
-    os.mkfifo(fifo_path, 0o600)
-
-    from psh.executor import expansion_child_suppression, fork_with_signal_window, run_child_shell
-    pid = fork_with_signal_window()
-    if pid == 0:
-        def _io_setup() -> None:
-            class OpenTimeout(Exception):
-                pass
-
-            def timeout_handler(_signum, _frame):
-                raise OpenTimeout()
-
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            fd = None
-            try:
-                # If nobody ever opens the generated path, do not leave the
-                # substitution child blocked forever in open(2). Consuming
-                # commands open the FIFO immediately, so this does not affect
-                # normal `tee >(cmd)` style use.
-                signal.alarm(5)
-                try:
-                    fd = os.open(fifo_path, os.O_RDONLY)
-                except OpenTimeout:
-                    fd = os.open(os.devnull, os.O_RDONLY)
-                finally:
-                    signal.alarm(0)
-                    signal.signal(signal.SIGALRM, old_handler)
-                # Wire the FIFO read end onto stdin collision-safely, then
-                # relinquish it (fd = None) so the outer finally does not
-                # re-close what is now this child's stdin. When fd 0 began
-                # closed, os.open() can return the FIFO AS fd 0; the old
-                # dup2(0,0)+close(0) destroyed the substitution body's stdin
-                # (`cat: stdin: Bad file descriptor`). remap_fds handles it.
-                from .fd_remap import remap_fds
-                remap_fds({fd: 0}, owned=[fd])
-                fd = None
-                # Unlink the FIFO and its temp dir now that the read end is
-                # open. The O_RDONLY open above returns only once a writer is
-                # connected (FIFO rendezvous), so the consuming command already
-                # holds its own fd; an opened FIFO survives unlink of its name
-                # (POSIX). This makes cleanup robust to the consumer exiting via
-                # os._exit()/exec — e.g. an external `tee` in a pipeline child
-                # never runs the parent's process_sub_scope() finally. Mirrors
-                # the anonymous-temp-file pattern used for heredocs.
-                _unlink_fifo_dir(fifo_path)
-            finally:
-                if fd is not None:
-                    try:
-                        os.close(fd)
-                    except OSError:
-                        pass
-
-        def _body(child_shell: 'Shell') -> int:
-            return _execute_process_substitution_body(cmd_str, child_shell)
-
-        run_child_shell(
-            shell, _body,
-            # Substitution children never source rc files (bash sources rc
-            # once, at startup — not per subshell). Without this, an
-            # interactive `<(cmd)` builds an interactive child (stdin is
-            # still the parent tty) that sourced ~/.pshrc, leaking its
-            # output into the substitution. Matches command_sub's default.
-            norc=True,
-            io_setup=_io_setup,
-            # bash does not keep parent traps listable in a
-            # process-substitution child (unlike $(trap)).
-            inherit_traps=False,
-            errexit_suppress_override=(
-                expansion_child_suppression(shell._current_executor)
-                if for_expansion else None),
-            error_label='process substitution',
-        )
-
-    return None, fifo_path, pid, fifo_path
-
-
 @dataclass
 class ProcessSubstitutionResource:
     """One process substitution created for a redirect target."""
     path: str
     parent_fd: Optional[int]
     pid: int
-    cleanup_path: Optional[str] = None
 
     def register_with(self, handler: 'ProcessSubstitutionHandler') -> None:
         handler.active_pids.append(self.pid)
-        if self.cleanup_path is not None:
-            handler.active_paths.append(self.cleanup_path)
 
     def close_parent_fd_for_redirect(
             self, redirect: 'Redirect', *, applied: bool) -> None:
@@ -234,10 +196,7 @@ class ProcessSubstitutionResource:
             return
         if applied and self.parent_fd in self._target_fds(redirect):
             return
-        try:
-            os.close(self.parent_fd)
-        except OSError:
-            pass
+        _close_quietly(self.parent_fd)
         self.parent_fd = None
 
     def hand_off_to_scope(self, handler: 'ProcessSubstitutionHandler') -> None:
@@ -248,7 +207,9 @@ class ProcessSubstitutionResource:
         closed right after the dup2 (the alternative,
         ``close_parent_fd_for_redirect``): word-expansion substitutions, and
         the in-process builtin redirect path (the builtin reads ``/dev/fd/N``,
-        so the read end must stay open until the consuming command finishes).
+        so the descriptor must stay open until the consuming command finishes
+        — for ``>(cmd)`` it is the last write end, and closing it early would
+        end the body's read before the consumer wrote anything).
         The scope closes it on exit.
         """
         if self.parent_fd is not None:
@@ -275,7 +236,6 @@ class ProcessSubstitutionHandler:
         # being executed (see scope()).
         self.active_fds: List[int] = []
         self.active_pids: List[int] = []
-        self.active_paths: List[str] = []
         # Children whose consuming command has finished but which had not
         # exited yet (e.g. `echo >(sleep 3)`). They are re-polled
         # non-blockingly at every scope exit so they are reaped soon after
@@ -299,10 +259,10 @@ class ProcessSubstitutionHandler:
         Returns:
             The /dev/fd/N path to splice into the word.
         """
-        fd, path, pid, cleanup_path = create_process_substitution(
+        fd, path, pid = create_process_substitution(
             command, direction, self.shell, for_expansion=True)
-        resource = ProcessSubstitutionResource(path, fd, pid, cleanup_path)
-        # The consuming command reads /dev/fd/N, so the parent fd must outlive
+        resource = ProcessSubstitutionResource(path, fd, pid)
+        # The consuming command opens /dev/fd/N, so the parent fd must outlive
         # this expansion — hand it to the scope for deferred close.
         resource.hand_off_to_scope(self)
         resource.register_with(self)
@@ -320,10 +280,9 @@ class ProcessSubstitutionHandler:
         `<(echo $x)` body is expanded exactly once, by the substitution's own
         child, matching bash. Returns ``(/dev/fd/N path, resource)``.
         """
-        parent_fd, fd_path, pid, cleanup_path = create_process_substitution(
+        parent_fd, fd_path, pid = create_process_substitution(
             node.source, node.direction, self.shell)
-        resource = ProcessSubstitutionResource(
-            fd_path, parent_fd, pid, cleanup_path)
+        resource = ProcessSubstitutionResource(fd_path, parent_fd, pid)
         resource.register_with(self)
         return fd_path, resource
 
@@ -339,34 +298,20 @@ class ProcessSubstitutionHandler:
         """
         fd_mark = len(self.active_fds)
         pid_mark = len(self.active_pids)
-        path_mark = len(self.active_paths)
         try:
             yield
         finally:
-            self._cleanup_from(fd_mark, pid_mark, path_mark)
+            self._cleanup_from(fd_mark, pid_mark)
 
-    def _cleanup_from(self, fd_mark: int, pid_mark: int, path_mark: int):
+    def _cleanup_from(self, fd_mark: int, pid_mark: int):
         """Release substitutions registered at or after the given marks."""
         # Close the parent-side fds. Consumers hold their own references
         # (a forked child inherited the fd; a redirect dup2'd it), so this
-        # only releases the shell's copy.
+        # only releases the shell's copy — which for a `>(cmd)` is the last
+        # write end, and is what ends the body's read.
         for fd in self.active_fds[fd_mark:]:
-            try:
-                os.close(fd)
-            except OSError:
-                pass
+            _close_quietly(fd)
         del self.active_fds[fd_mark:]
-
-        for path in self.active_paths[path_mark:]:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-            try:
-                os.rmdir(os.path.dirname(path))
-            except OSError:
-                pass
-        del self.active_paths[path_mark:]
 
         # Never block on substitution children: a >(cmd) child may outlive
         # the command that spawned it (bash returns immediately too).

@@ -181,7 +181,12 @@ retired to `docs/archive/` in v0.311.0.)
    only in the nightly. Linux-specific code paths therefore are NOT covered by the
    local gate. Known platform-divergent spots: real-time signals (`SIGRTMIN+n`,
    absent on macOS — the v0.472 `kill -l` bug surfaced only on the Linux nightly),
-   the macOS-only `/dev/fd` FIFO fallback in `process_sub.py`, glob/case-range
+   `/dev/fd/N` reopen semantics (macOS re-opens the *same* open file description,
+   like `dup`, and refuses a mode the descriptor does not already hold; Linux's
+   `/proc`-backed `/dev/fd/N` creates a *new* description). Process substitution
+   is pipe-backed and named `/dev/fd/N` on **both** platforms — there is no FIFO
+   fallback anywhere (`psh/io_redirect/process_sub.py#create_process_substitution`;
+   `psh -c 'echo >(true)'` prints `/dev/fd/N`). Also glob/case-range
    locale collation, and signal-name aliases (`SIGCHLD`/`SIGCLD`). When touching
    signals, process substitution, or fd/locale behavior, reason about Linux too —
    the nightly is the backstop, not the gate.
