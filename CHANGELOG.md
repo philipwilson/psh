@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.784.0 (2026-09-07) - Redirect targets planned once (Improvement Program 2026-09, Wave 1 slot 1.3)
+- Redirect targets on fd >= 3 are no longer expanded twice for builtins (C031;
+  slot 1.3). `IOManager.setup_builtin_redirections` resolved each redirect
+  through `RedirectPlanner.plan` and then, for an in-process builtin with a
+  redirect on fd >= 3, discarded the plan and let the fd-level fallback rebuild
+  a program and resolve it again. Planning expands the target word and creates
+  its process substitution, so the target's command substitutions ran twice
+  (`echo hi 3> "$(echo x >> ctr; echo o3)"` appended two lines where bash
+  appends one) and its process substitutions forked twice; worse, only the
+  SECOND resolution was what the descriptor pointed at while the noclobber
+  check had run against the FIRST, so under `set -C` psh could refuse a name
+  the redirect was never going to open and create nothing where bash creates a
+  file. A `RedirectOp` is now planned exactly once: every builtin redirect
+  helper takes the resolved `RedirectPlan`, `_split_move_dup` splits the plan,
+  the re-planning call and the duplicate fd-3 noclobber check are deleted, and
+  both temporary backends share one applicator,
+  `FileRedirector.apply_plan_saving`. Guard: a plan-once counter over every
+  redirect path, mutation-checked (re-adding the second plan reddens exactly
+  the 24 guard nodes). 86 pins red on base (24 guard, 39 three-mode
+  integration rows asserting the file actually created and its bytes, 13
+  conformance rows, 10 golden rows).
+- Ledger: W1-N31 (fd-prefixed `n>|` is a psh parse error — bare `>|` parses;
+  → 1.8) and W1-N32 (an `eval` whose own stderr is redirected drops its
+  body's failing exit status) and W1-N33 (a builtin's fd 1/2 stream open lands
+  on the lowest free fd, so `echo hi > o1 3> o3` writes hi into o3 — the same
+  mechanism; P1, pre-existing) registered, owned by an io_redirect rider.
+- Verification: adversarial round 1 — production PASS-quality; bounced once on a test-suite hazard (the guard module dup2'd fd 3 in-process, which is the xdist worker's channel — now `serial`); report `tmp/program-2026-09/verify/slot-1.3.md`.
+
 ## 0.783.0 (2026-09-07) - Write-authority matrix (Improvement Program 2026-09, Wave 1 slot 1.0)
 - Write-authority matrix (C226; C244 instances; slot 1.0):
   `tests/unit/core/test_write_authority_matrix.py` cross-examines every

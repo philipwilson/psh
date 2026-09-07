@@ -871,6 +871,31 @@ class FileRedirector:
             return [(redirect.fd, self._save_fd_high(redirect.fd))]
         return []
 
+    def apply_plan_saving(self, plan: RedirectPlan,
+                          saved_fds: List[Tuple[int, int | None]]) -> None:
+        """Apply one ALREADY-RESOLVED plan in the temporary (save/restore) window.
+
+        The three steps a temporary redirect owes its plan, in the one order
+        that is correct: displace any parked STD_FDS backup off the fds this
+        plan will take, take the fd backups, then apply. The backups are
+        appended to *saved_fds* BEFORE ``apply_fd_plan`` runs, so an apply that
+        fails still leaves the caller a complete restore list.
+
+        The single entry point for applying a resolved plan temporarily, shared
+        by the fd backend (``_apply_redirections``) and the in-process builtin
+        backend (``IOManager._builtin_redirect_fd_level``). Taking the PLAN and
+        not the ``Redirect`` is what makes the plan-once invariant structural:
+        a caller holding a resolved plan has no way to ask for a second
+        resolution, so a redirect target's command substitutions run once and
+        its process substitutions fork once (C031). Process-substitution
+        cleanup is NOT done here — it belongs to the caller, which alone knows
+        whether the read end dies with the redirect (``plan.close_procsub``) or
+        must outlive it (``plan.hand_procsub_to_scope``).
+        """
+        self._clear_user_fds_from_parking(plan)
+        saved_fds.extend(self.saved_fds_for_plan(plan))
+        self.apply_fd_plan(plan)
+
     def apply_fd_plan(self, plan: RedirectPlan) -> None:
         """Apply one resolved redirect plan in the fd universe."""
         redirect = plan.redirect
@@ -943,15 +968,15 @@ class FileRedirector:
                 return
             plan = self.planner.plan(redirect)
             op.plan = plan
-            # A parked STD_FDS backup on this plan's target fd moves out of
-            # the way BEFORE the save (the vacated fd then saves as
-            # was-not-open, so the window's restore simply re-closes it).
-            self._clear_user_fds_from_parking(plan)
             applied = False
 
             try:
-                saved_fds.extend(self.saved_fds_for_plan(plan))
-                self.apply_fd_plan(plan)
+                # Parking-clear, save, apply — the shared temporary-window
+                # sequence (``apply_plan_saving``): a parked STD_FDS backup on
+                # this plan's target fd moves out of the way BEFORE the save
+                # (the vacated fd then saves as was-not-open, so the window's
+                # restore simply re-closes it).
+                self.apply_plan_saving(plan, saved_fds)
                 applied = True
             finally:
                 plan.close_procsub(applied=applied)
