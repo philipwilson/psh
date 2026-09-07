@@ -27,6 +27,16 @@ that starts PASSING fails the suite: the owning slot cannot land its fix without
 coming back here and deleting the mark.  That is also the red-on-base proof —
 every xfail cell is red at this module's base by construction.
 
+**Flipping a cell**, when the owning slot lands, is two edits and only two:
+delete ``owner=``, and strip the ``-C0xx-slotN.M`` token from the label (the
+helper-built cells drop the token on their own; a hand-written label must be
+edited, or ``test_a_green_cell_never_claims_a_slot`` goes red).  Never touch what
+the cell DEMANDS — the expectation states bash 5.3.15's behavior and is the
+reason the cell exists.  ``test_flipping_a_cell_never_rewrites_its_expectation``
+holds the helpers to that, and grepping the label token finds a slot's cells (see
+the flip table in the slot handoff, since some cells are helper-generated and a
+source grep undercounts them).
+
 Expectations are empirical against bash 5.3.15 (the resolved oracle), probed in
 ``-c``, script-file and stdin modes before being written down; none of them
 follows a bash 5.3 behavior change, so no CHANGES item is cited.  The matrix
@@ -129,6 +139,11 @@ _GREEN_VALUE_CELLS: Tuple[Cell, ...] = (
     # --- declaration builtins ------------------------------------------------
     Cell("declare", "value", "integer-attribute",
          'declare -i n=2+3; declare -p n', 'declare -i n="5"\n'),
+    # The SCALAR route applies the integer attribute, which is what makes W1-N27
+    # a per-element gap rather than a missing attribute.
+    Cell("printf-v", "value", "integer-attribute-on-scalar-target",
+         "declare -i n; printf -v n '%s' '2+3'; declare -p n",
+         'declare -i n="5"\n'),
     Cell("declare", "value", "indexed-array",
          'declare -a v=(1 2); declare -p v',
          'declare -a v=([0]="1" [1]="2")\n'),
@@ -154,6 +169,13 @@ _GREEN_VALUE_CELLS: Tuple[Cell, ...] = (
          'declare -a a=([0]="9" [1]="2")\n'),
     Cell("nameref", "lookup", "read-through-to-target",
          'x=1; declare -n r=x; echo "[$r]"', '[1]\n'),
+    # The READ half through an element reference is correct, which is what makes
+    # W1-N25 a read-modify-write bug rather than a binding bug.
+    Cell("nameref", "lookup", "read-through-to-element-reference",
+         "arr=(a b c); declare -n r='arr[1]'; echo \"[$r]\"", '[b]\n'),
+    Cell("nameref", "value", "plain-write-through-element-reference",
+         "arr=(a b c); declare -n r='arr[1]'; r=Z; declare -p arr",
+         'declare -a arr=([0]="a" [1]="Z" [2]="c")\n'),
     Cell("nameref", "value", "readonly-scalar-target-refused",
          'declare -r S=1; declare -n r=S; r=9', '', NONZERO,
          err="S: readonly variable"),
@@ -303,6 +325,47 @@ _FLIP_VALUE_CELLS: Tuple[Cell, ...] = (
          'x=0; declare -n r=x; for r in 1 2; do echo body; done; echo "rc=$? [$x]"',
          'rc=1 [0]\n', err="not a valid identifier", owner="W1-N7 → slot 1.18"),
 
+    # W1-N25 — a nameref may be bound to an array or assoc ELEMENT.  A compound
+    # assignment through it is a read-modify-write, and the read half must see
+    # that element; psh reads it as empty, so the old value is destroyed rather
+    # than extended.  Plain `$r` reads it correctly, so only the write path's
+    # own read is wrong.
+    #   arr=(a b c); declare -n r='arr[1]'; r+=X; declare -p arr
+    Cell("nameref", "value", "compound-append-through-element-reference-W1-N25-slot1.18",
+         "arr=(a b c); declare -n r='arr[1]'; r+=X; declare -p arr",
+         'declare -a arr=([0]="a" [1]="bX" [2]="c")\n',
+         owner="W1-N25 → slot 1.18"),
+    Cell("arith", "value", "compound-add-through-element-reference-W1-N25-slot1.18",
+         "arr=(1 2 3); declare -n r='arr[1]'; (( r += 10 )); declare -p arr",
+         'declare -a arr=([0]="1" [1]="12" [2]="3")\n',
+         owner="W1-N25 → slot 1.18"),
+    Cell("nameref", "value", "compound-append-through-assoc-element-reference-W1-N25-slot1.18",
+         "declare -A m=([k]=b); declare -n r='m[k]'; r+=X; declare -p m",
+         'declare -A m=([k]="bX" )\n', owner="W1-N25 → slot 1.18"),
+
+    # W1-N27 — the integer and case attributes are applied on the SCALAR write
+    # path only, so a builtin writing an ELEMENT stores the raw word: an `-ai`
+    # array keeps `2+3` instead of 5, an `-Au` assoc keeps `abc` instead of ABC.
+    #   declare -ai a; printf -v 'a[0]' '%s' '2+3'; declare -p a
+    Cell("printf-v", "flags", "integer-attribute-on-element-write-W1-N27-slot1.18",
+         "declare -ai a; printf -v 'a[0]' '%s' '2+3'; declare -p a",
+         'declare -ai a=([0]="5")\n', owner="W1-N27 → slot 1.18"),
+    Cell("printf-v", "flags", "uppercase-attribute-on-assoc-element-write-W1-N27-slot1.18",
+         "declare -Au m; printf -v 'm[k]' abc; declare -p m",
+         'declare -Au m=([k]="ABC" )\n', owner="W1-N27 → slot 1.18"),
+    Cell("read", "flags", "integer-attribute-on-read-a-elements-W1-N27-slot1.18",
+         "declare -ai a; read -a a <<< '2+3 4*2'; declare -p a",
+         'declare -ai a=([0]="5" [1]="8")\n', owner="W1-N27 → slot 1.18"),
+    Cell("mapfile", "flags", "integer-attribute-on-mapfile-elements-W1-N27-slot1.18",
+         "declare -ai a; mapfile -t a <<< '2+3'; declare -p a",
+         'declare -ai a=([0]="5")\n', owner="W1-N27 → slot 1.18"),
+
+    # C093 — promotion drops the scalar on EVERY route, not only the arithmetic
+    # one the finding was first written from.
+    Cell("assign", "value", "promotion-keeps-scalar-on-plain-route-C093-slot1.18",
+         'a=sc; a[2]=p; declare -p a', 'declare -a a=([0]="sc" [2]="p")\n',
+         owner="C093 → slot 1.18"),
+
     # W1-N8 — three write sites accept a target that is not a name at all, so a
     # variable bash refuses to create is created, or an array element bash
     # refuses to touch is written.  The store's naming rule is the same rule at
@@ -326,6 +389,11 @@ _FLIP_VALUE_CELLS: Tuple[Cell, ...] = (
     Cell("nameref", "value", "invalid-target-refused-at-assignment-W1-N8-slot1.18",
          'declare -n r; r=bad-name; echo "rc=$?"; declare -p r', '', NONZERO,
          err="not a valid identifier", owner="W1-N8 → slot 1.18"),
+    # An empty subscript is not a name either; psh silently treats it as [0].
+    Cell("printf-v", "value", "empty-subscript-is-not-a-name-W1-N8-slot1.18",
+         "a=(z); printf -v 'a[]' v; echo \"rc=$?\"; declare -p a",
+         'rc=2\ndeclare -a a=([0]="z")\n', err="not a valid identifier",
+         owner="W1-N8 → slot 1.18"),
 )
 
 
@@ -699,6 +767,14 @@ SPAWN_CELLS: Tuple[Cell, ...] = (
          'declare -n r="y"\ndeclare -- x="5"\ndeclare -- y="5"\n',
          owner="W1-N7 → slot 1.18"),
 
+    # W1-N25 in every input mode: whether the read half of a read-modify-write
+    # through an element reference sees the element.
+    Cell("nameref", "value",
+         "compound-append-through-element-across-input-modes-W1-N25-slot1.18",
+         "arr=(a b c); declare -n r='arr[1]'; r+=X; declare -p arr",
+         'declare -a arr=([0]="a" [1]="bX" [2]="c")\n',
+         owner="W1-N25 → slot 1.18"),
+
     # W1-N8 in every input mode: whether a name bash refuses gets created.
     Cell("getopts", "value",
          "invalid-name-not-created-across-input-modes-W1-N8-slot1.18",
@@ -798,13 +874,17 @@ def test_cwd_cell(isolated_shell_with_temp_dir, cell: Cell) -> None:
     _check(cell, rc, observed, "")
 
 
-@pytest.mark.parametrize(
-    "cell,mode",
-    [pytest.param(c, m, id=f"{c.id}-{m}",
-                  marks=((pytest.mark.xfail(strict=True, reason=c.owner),)
-                         if c.owner else ()))
-     for c in SPAWN_CELLS for m in MODES],
-)
+#: Built once, at module level, so the strictness guard can inspect the very
+#: parameter sets the runner uses rather than a rebuilt copy of them.
+SPAWN_PARAMS = [
+    pytest.param(c, m, id=f"{c.id}-{m}",
+                 marks=((pytest.mark.xfail(strict=True, reason=c.owner),)
+                        if c.owner else ()))
+    for c in SPAWN_CELLS for m in MODES
+]
+
+
+@pytest.mark.parametrize("cell,mode", SPAWN_PARAMS)
 def test_spawn_cell(tmp_path, cell: Cell, mode: str) -> None:
     """The same square in `-c`, script-file and stdin mode (D6).
 
@@ -917,6 +997,36 @@ def test_every_finding_named_in_a_label_exists() -> None:
         cid for cell in ALL_CELLS for cid in _CID_RE.findall(cell.label)
     } - findings)
     assert unknown == []
+
+
+def test_every_owned_cell_is_a_strict_xfail() -> None:
+    """``strict=True`` is what makes a flip cell a flip cell.
+
+    A non-strict xfail whose expectation drifts to psh's behavior passes
+    SILENTLY as an xpass: the cell still looks owned, still reads as red in the
+    summary, and pins the defect. Nothing else in this module can see that, so
+    it is checked against the parameter sets the runners actually receive: every
+    owned cell carries exactly one xfail, it is strict, and its reason is the
+    owner verbatim; a green cell carries none.
+    """
+    params = ([_param(c) for c in VALUE_CELLS + CHILD_CELLS + CWD_CELLS]
+              + SPAWN_PARAMS)
+    problems = []
+    for param in params:
+        cell = param.values[0]
+        marks = [m for m in param.marks if m.name == "xfail"]
+        if cell.owner is None:
+            if marks:
+                problems.append((cell.id, "green cell carries an xfail mark"))
+            continue
+        if len(marks) != 1:
+            problems.append((cell.id, f"{len(marks)} xfail marks, expected 1"))
+            continue
+        if marks[0].kwargs.get("strict") is not True:
+            problems.append((cell.id, "xfail is not strict"))
+        if marks[0].kwargs.get("reason") != cell.owner:
+            problems.append((cell.id, "xfail reason is not the owner"))
+    assert problems == []
 
 
 def test_flipping_a_cell_never_rewrites_its_expectation() -> None:
