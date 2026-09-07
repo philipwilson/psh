@@ -101,7 +101,8 @@
         },
         {
           "id": "1.1",
-          "title": "Pipeline-member one-shot"
+          "title": "Pipeline-member one-shot",
+          "release": "0.788.0"
         },
         {
           "id": "1.2",
@@ -265,6 +266,27 @@
             "W1-N50"
           ],
           "verification": "r1 (tmp/program-2026-09/verify/slot-1.7.md)"
+        },
+        {
+          "version": "0.788.0",
+          "date": "2026-09-07",
+          "slots": [
+            "1.1"
+          ],
+          "closes": [
+            "C001",
+            "C179",
+            "W0-N19 (declared)"
+          ],
+          "registers": [
+            "W1-N5",
+            "W1-N13",
+            "W1-N14",
+            "W1-N22",
+            "W1-N41",
+            "W1-N51"
+          ],
+          "verification": "r1 BOUNCE, r2 (tmp/program-2026-09/verify/slot-1.1*.md)"
         }
       ]
     },

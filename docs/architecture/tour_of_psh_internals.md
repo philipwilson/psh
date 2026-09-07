@@ -404,7 +404,7 @@ DEBUG ProcessLauncher: Parent set child 93267 to pgid 93266
 DEBUG Pipeline: Process group synchronization complete, pgid=93266
 DEBUG ProcessLauncher: Child 93267 synchronized, pgid=93266
 DEBUG BuiltinStrategy: executing builtin 'echo' with args ['Hello, pwilson']
-DEBUG BuiltinStrategy: in_pipeline=True, in_forked_child=True
+DEBUG BuiltinStrategy: exec_in_place=True, pipeline_member=True, in_forked_child=True
 DEBUG EchoBuiltin: in_forked_child=True
 DEBUG EchoBuiltin: Writing text: 'Hello, pwilson\n'
 DEBUG ExternalStrategy: Before exec - PID=93267, PGID=93266

@@ -7,7 +7,7 @@ state, replacing scattered instance variables with a structured approach.
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Optional
+from typing import Iterator, Optional
 
 
 @dataclass
@@ -20,8 +20,41 @@ class ExecutionContext:
     a cleaner and more maintainable approach to state management.
     """
 
-    # Execution environment flags
-    in_pipeline: bool = False
+    # ONE-SHOT exec-in-place token. Its meaning is narrow and positional:
+    # "this process was forked to BE one pipeline member, that member is a
+    # SIMPLE COMMAND, and its dispatch has not happened yet — so when that
+    # command resolves to an external program there is nothing left for this
+    # process to do afterwards and it may execve() in place instead of
+    # forking again."
+    #
+    # ONE WRITER — executor/pipeline.py, through for_pipeline_member(), in
+    # the forked member child only.
+    # ONE READER — take_exec_in_place(), called exactly once per simple
+    # command by executor/command.py#CommandExecutor.execute, which binds the
+    # answer into `exec_in_place` for that one dispatch.
+    #
+    # Because the token is CONSUMED by the member's own top-level command,
+    # nothing a nested frame runs can observe it: a function body, `eval`
+    # text, a sourced file, a compound body and a subshell all dispatch their
+    # commands after the token is gone, so each of their external commands
+    # forks and the commands after it still run. That is the whole reason
+    # `f(){ /bin/echo A; echo B; }; f | cat` prints A and B (C001); before the
+    # one-shot the flag was inherited and /bin/echo replaced the member
+    # process, silently discarding `echo B` and the member's real status.
+    exec_in_place_token: bool = False
+
+    # The answer take_exec_in_place() gave for the simple command CURRENTLY
+    # being dispatched — the only thing the exec branch in
+    # executor/strategies.py may read. False for every command run by a
+    # nested frame.
+    exec_in_place: bool = False
+
+    # DURABLE, and a DIFFERENT question from the token: "is this process a
+    # forked pipeline member?" It stays true for everything the member runs,
+    # including nested frames, and answers questions about the PROCESS rather
+    # than about one dispatch (e.g. the pipeline parent already set the
+    # terminal title for the whole pipeline, so a member must not repaint it).
+    is_pipeline_member: bool = False
 
     # Control flow state
     loop_depth: int = 0
@@ -87,27 +120,51 @@ class ExecutionContext:
         (the POSIX suppressible-exit exemption; see special_exit_floor)."""
         return self.errexit_suppress > self.special_exit_floor
 
-    def fork_context(self) -> 'ExecutionContext':
-        """
-        Create a context for a forked child process.
+    def take_exec_in_place(self) -> bool:
+        """Consume the one-shot exec-in-place token (see the field).
 
-        Inherits pipeline/loop/function state. (The forked-child flag itself
-        lives on ShellState — ``state.in_forked_child``, the single authority
-        read by builtins to choose fd-level vs Python-level I/O — and is set
-        by child_policy/subshell at fork time, not carried here.)
+        Returns the token's value and clears it, so the SECOND caller — and
+        therefore every command a nested frame runs — gets False.
+        """
+        decided = self.exec_in_place_token
+        self.exec_in_place_token = False
+        return decided
+
+    @contextmanager
+    def exec_in_place_decision(self) -> Iterator[None]:
+        """Bind ``exec_in_place`` for ONE simple-command dispatch.
+
+        Entered once per simple command by
+        executor/command.py#CommandExecutor.execute, which is the single
+        gateway to simple-command execution, so every dispatch after the
+        first sees the consumed (False) token.
+        """
+        previous = self.exec_in_place
+        self.exec_in_place = self.take_exec_in_place()
+        try:
+            yield
+        finally:
+            self.exec_in_place = previous
+
+    def for_pipeline_member(self, *, exec_in_place: bool) -> 'ExecutionContext':
+        """Create the context for one forked pipeline-member process.
+
+        The SOLE writer of the exec-in-place token and of
+        ``is_pipeline_member``: executor/pipeline.py calls this in the child
+        it forked for a member, passing ``exec_in_place=True`` only when that
+        member is a simple command (the one shape whose dispatch can be the
+        last thing the process does).
+
+        Loop depth, the current function name and the errexit bookkeeping are
+        inherited so a bare ``break | cat`` inside a loop stays silent and the
+        errexit rules keep working. The forked-child flag itself is NOT
+        carried here: it lives on ShellState (``state.in_forked_child``, the
+        single authority read by builtins to choose fd-level vs Python-level
+        I/O) and is set by child_policy at fork time.
         """
         return ExecutionContext(
-            in_pipeline=self.in_pipeline,
-            loop_depth=self.loop_depth,
-            current_function=self.current_function,
-            errexit_suppress=self.errexit_suppress,
-            special_exit_floor=self.special_exit_floor,
-        )
-
-    def pipeline_context_enter(self) -> 'ExecutionContext':
-        """Create a context for entering a pipeline (``in_pipeline=True``)."""
-        return ExecutionContext(
-            in_pipeline=True,
+            exec_in_place_token=exec_in_place,
+            is_pipeline_member=True,
             loop_depth=self.loop_depth,
             current_function=self.current_function,
             errexit_suppress=self.errexit_suppress,

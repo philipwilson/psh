@@ -4,6 +4,44 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.788.0 (2026-09-07) - Pipeline members run their whole body (Improvement Program 2026-09, Wave 1 slot 1.1)
+- P0 SILENT DATA LOSS (C001): a function body, `eval` text or sourced file
+  running as a pipeline member ran only up to its first external command —
+  that command replaced the member process and everything after it was
+  discarded silently, taking the member's exit status with it
+  (`f(){ /bin/echo A; echo B; }; f | cat` printed only `A`;
+  `set -o pipefail; f(){ /bin/echo A; false; }; f | cat` left 0 instead of 1).
+  The "may exec in place" decision is now a ONE-SHOT token owned by
+  `ExecutionContext.for_pipeline_member`, granted only to a simple-command
+  member and spent by the member's own dispatch at `CommandExecutor.execute`,
+  so no nested frame can inherit it; a plain external member still execs in
+  place (pinned in both directions with `--debug-exec`). The overloaded
+  `in_pipeline` flag is gone from `psh/` (ratchet
+  `tests/unit/tooling/test_in_pipeline_ratchet.py`, two mutation checks); the
+  per-construct save/restore copies in `control_flow.py` and `subshell.py` are
+  deleted; the two other readers now name the fact they need
+  (`state.in_forked_child` for builtin I/O mode, `is_pipeline_member` for
+  terminal-title suppression). 57 pins red on base: three-mode integration
+  rows, conformance rows, golden rows (C179 executor comment drift fixed where
+  it fell out of the change).
+- Ledger: W0-N19 (`shopt -s lastpipe` unsupported) closed as DECLARED — the
+  premise is pinned by `test_psh_has_no_lastpipe_option`; implementing the
+  option is a Wave 4 item. W1-N5 — the exec-without-command
+  "make assignments permanent" loop is comment drift (behavior is bash-correct).
+- Job control in forked children (C180's common shapes, pulled forward from Wave 3 slot 3.9): a
+  forked child never opens a foreground-job session, never re-forks its body's externals into a
+  new process group and never calls `tcsetpgrp` — one owner, `JobManager.does_job_control`
+  ("this process is the job-controlling shell"), decided in the parent. Without it the fix above
+  turned `ll(){ /bin/ls /dev/null; }; ll | cat` in an interactive shell into a `Stopped` job via
+  SIGTTOU. Real-terminal PTY pins (9 red on base) cover the function/eval/brace/`for` member
+  shapes, `set -m`/`set +m`, and the DEBUG-trap row; the nested `( )` member shape and the
+  `tcgetpgrp`-from-grandchild pin stay with 3.9.
+- Ledger: W1-N13 (ERR-trap scoping inside pipeline members → 4.13), W1-N14 (`set +m` ignored
+  when interactive → 3.9) registered; W1-N22 (a backgrounded pipeline loses a BUILTIN member's
+  status) is the 1.1-r rider.
+- Verification: round 1 BOUNCE (the interactive SIGTTOU stop), round 2 re-verified with an
+  independent PTY leg; reports `tmp/program-2026-09/verify/slot-1.1.md`, `-r2.md`.
+
 ## 0.787.0 (2026-09-07) - Alias-supplied loop headers bind the right variable (Improvement Program 2026-09, Wave 1 slot 1.7)
 - P0 WRONG TARGET (C010; slot 1.7): a `for`/`select` header expanded from an
   alias took its loop variable from a source slice of the PRE-EXPANSION line,

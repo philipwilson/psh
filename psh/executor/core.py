@@ -489,7 +489,7 @@ class ExecutorVisitor(ASTVisitor[int]):
     def visit_BraceGroup(self, node: BraceGroup) -> int:
         """Execute brace group {...} in current shell environment."""
         # Delegate to SubshellExecutor
-        return self.subshell_executor.execute_brace_group(node, self.context, self)
+        return self.subshell_executor.execute_brace_group(node, self)
 
     def visit_FunctionDef(self, node: FunctionDef) -> int:
         """Define a function."""

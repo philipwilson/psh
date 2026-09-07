@@ -620,7 +620,18 @@ def pytest_runtest_setup(item):
                 # bounded at 8x the 1s deadline, no REPL driving, so it stays
                 # deterministic and quick; the non-tty arm is pinned separately
                 # in tests/unit/builtins/test_read_exact_timeout_4b2.py.
-                or "test_pty_read_exact_timeout_4b2" in str(item.fspath)):
+                or "test_pty_read_exact_timeout_4b2" in str(item.fspath)
+                # Slot 1.1: a pipeline member must not do job control of its
+                # own. Admitted on the same terms and for the same reason: the
+                # SIGTTOU stop it pins needs a REAL TERMINAL — without one
+                # `supports_job_control` is false, nothing is transferred and
+                # the bug is invisible, so an opt-in pin for it is a pin that
+                # never runs. Prompt-synced rather than timeout-driven, and it
+                # shares ONE session across the read-only rows, so the whole
+                # module is ~3s. The non-interactive half is pinned without a
+                # terminal in
+                # tests/integration/pipeline/test_pipeline_member_one_shot.py.
+                or "test_pty_pipeline_member_job_control" in str(item.fspath)):
             return
         if not item.config.getoption("--run-interactive", default=False):
             pytest.skip("Interactive tests skipped (use --run-interactive to run)")
