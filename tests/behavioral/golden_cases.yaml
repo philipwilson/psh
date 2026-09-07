@@ -11206,3 +11206,99 @@
   stdout: "hi\n       1\n"
   stderr: ""
   exit_code: 0
+
+- name: c042_case_pattern_bare_tilde
+  description: "C042: a case pattern tilde-expands, so bash's branch is the branch psh takes (HOME via env=, D14)"
+  env: {HOME: /h}
+  command: 'case $HOME in ~) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_tilde_path
+  description: "C042: ~/x in a case pattern expands before matching"
+  env: {HOME: /h}
+  command: 'case $HOME/x in ~/x) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_tilde_in_alternation
+  description: "C042: every pattern of a case alternation is tilde-expanded, not just the first"
+  env: {HOME: /h}
+  command: 'case $HOME in foo|~) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_tilde_plus_is_pwd
+  description: "C042: ~+ in a case pattern is $PWD"
+  env: {HOME: /h}
+  command: 'case $PWD in ~+) echo tildeplus;; *) echo other;; esac'
+  stdout: "tildeplus\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_value_tilde_after_equals
+  description: "C042: an assignment-shaped case pattern expands the tilde after its = (bash's value-tilde rule)"
+  env: {HOME: /h}
+  command: 'case "x=$HOME" in x=~) echo tilde;; *) echo other;; esac'
+  stdout: "tilde\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_quoted_tilde_stays_literal
+  description: "C042 control: a quoted tilde in a case pattern is a literal ~, so $HOME does not match it"
+  env: {HOME: /h}
+  command: "case $HOME in '~') echo lit;; *) echo other;; esac"
+  stdout: "other\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_case_pattern_mid_word_tilde_stays_literal
+  description: "C042 control: only a word-leading (or assignment-value) tilde expands in a case pattern"
+  env: {HOME: /h}
+  command: "case 'a~' in a~) echo lit;; *) echo other;; esac"
+  stdout: "lit\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_test_pattern_value_tilde_after_equals
+  description: "C042: the [[ == ]] pattern operand gets the same assignment-value tilde rule as a case pattern"
+  env: {HOME: /h}
+  command: 'if [[ x=$HOME == x=~ ]]; then echo eq; else echo ne; fi'
+  stdout: "eq\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_test_regex_operand_expands_leading_tilde
+  description: "C042: bash 5.3.15 tilde-expands a word-leading ~ in the [[ =~ ]] regex operand too"
+  env: {HOME: /h}
+  command: 'if [[ $HOME/x =~ ~/x ]]; then echo eq; else echo ne; fi'
+  stdout: "eq\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_test_regex_operand_literal_tilde_no_longer_matches
+  description: "C042 control: with ~ expanded, the [[ =~ ]] regex no longer matches a literal ~ subject"
+  env: {HOME: /h}
+  command: "if [[ '~' =~ ~ ]]; then echo eq; else echo ne; fi"
+  stdout: "ne\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_param_remove_prefix_tilde_slash
+  description: "C042: the ${var#pat} pattern half tilde-expands — the substring actually removed is $HOME/"
+  env: {HOME: /h}
+  command: 'v=$HOME/x; echo "[${v#~/}]"'
+  stdout: "[x]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_param_substitute_tilde
+  description: "C042: ${var/pat/rep} tilde-expands the pattern half; the replacement half is a word and expands its own leading tilde"
+  env: {HOME: /h}
+  command: 'v=$HOME/x; echo "[${v/~/X}][${v/x/~}]"'
+  stdout: "[X/x][/h//h]\n"
+  stderr: ""
+  exit_code: 0
