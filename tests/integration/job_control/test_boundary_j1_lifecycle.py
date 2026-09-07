@@ -1,7 +1,9 @@
 """Boundary campaign J1: job/signal/shutdown lifecycle (bash-pinned).
 
 Behavioral pins for the three findings the J1 slot closes. Each was RED on
-base 9b725f14 (v0.745.0) and matches live bash 5.2.26:
+base 9b725f14 (v0.745.0) and matched live bash 5.2.26 when it was written; the
+two async-STDIN rows were re-derived against the pinned 5.3.15 oracle (one of
+them had pinned the silent loss C022 closes):
 
 - H11 (AsyncJobPolicy): a background PIPELINE member ignores SIGINT/SIGQUIT
   like a standalone async command — the policy applies to EVERY member of a
@@ -20,7 +22,7 @@ import subprocess
 import sys
 
 
-def _psh(script: str, timeout: float = 60):
+def _psh(script: str, timeout: float = 60, stdin_data: str = ""):
     # 60s, not 12: the SIGQUIT row kills a forked psh subshell -- a whole
     # CPython image -- and where the host dumps core that is ~20 MB. A hosted
     # runner pipes core_pattern through apport and the kernel IGNORES
@@ -28,9 +30,14 @@ def _psh(script: str, timeout: float = 60):
     # outran a 12s budget (nightly run 30154694015). The budget is a
     # hang-catcher; every case returns in well under a second when nothing
     # dumps.
+    #
+    # ``stdin_data`` is what the SHELL's own stdin holds. Rows about the async
+    # /dev/null default need it: with the runner's stdin inherited instead, a
+    # regression that let the background reader keep fd 0 would read the
+    # runner's descriptor rather than a marker the row can see.
     result = subprocess.run(
         [sys.executable, "-m", "psh", "-c", script],
-        capture_output=True, text=True, timeout=timeout,
+        input=stdin_data, capture_output=True, text=True, timeout=timeout,
     )
     return result.stdout, result.stderr, result.returncode
 
@@ -63,12 +70,26 @@ def test_bg_pipeline_member_still_dies_on_sigterm():
 
 
 def test_bg_single_async_stdin_is_devnull_but_pipeline_leader_is_not():
-    # /dev/null-stdin stays a SINGLE-only policy (bash): a standalone `cat &`
-    # reads nothing; a bg pipeline leader keeps the real stdin.
-    out, _, _ = _psh("printf 'hi\\n' | { cat & wait; }; echo end")
+    # /dev/null-stdin stays a SINGLE-only policy (bash 5.3.15): a standalone
+    # `cat &` reads nothing, while a backgrounded PIPELINE's leader keeps the
+    # real stdin. The shell's own stdin carries the marker, because that is the
+    # fd 0 the POSIX async default actually replaces.
+    out, _, _ = _psh("cat & wait; echo end", stdin_data="hi\n")
     assert out == "end\n", out  # bg single cat got /dev/null, printed nothing
-    out2, _, _ = _psh("printf 'hi\\n' | { cat | tr a-z A-Z & wait; }")
+    out2, _, _ = _psh("cat | tr a-z A-Z & wait", stdin_data="hi\n")
     assert out2 == "HI\n", out2  # pipeline leader read the real stdin
+
+
+def test_bg_single_inside_a_pipeline_member_reads_the_pipe():
+    # The same policy asks a SECOND question: is fd 0 still the shell's own
+    # stdin? Inside a pipeline member it is not, so the reader inherits the
+    # pipe -- `printf 'hi\n' | { cat & wait; }; echo end` prints `hi` then
+    # `end` in bash 5.3.15. This row used to assert `end` alone, which pinned
+    # the silent loss C022 closes (core/stdin_binding.py#StdinBinding).
+    out, _, _ = _psh("printf 'hi\\n' | { cat & wait; }; echo end")
+    assert out == "hi\nend\n", out
+    out2, _, _ = _psh("printf 'hi\\n' | { cat | tr a-z A-Z & wait; }")
+    assert out2 == "HI\n", out2  # unchanged: the leader half is orthogonal
 
 
 # ---- B1: `set -m` (monitor) enables job control -> NO async signal policy ----
