@@ -28,12 +28,17 @@ changing the value, not the metadata"); psh followed 5.3 in slot 2.4, so
 ``TestReadonlyAttributeRefusal`` below pins both halves as PARITY, in ``-c``,
 script-file and stdin modes (D6).  The owner is
 ``psh/core/scope.py#ScopeManager.check_readonly_attribute_change``.
+
+The one cell that stays divergent is ``local -a`` / ``local -A`` on a readonly
+local, where 5.3.15 diagnoses AND still destroys the value; it is ruled a bash
+bug and pinned as a declared divergence in
+``TestReadonlyLocalArrayDeclaredDivergence`` (ledger W1-N15).
 """
 
 
 import pytest
 from conformance_framework import ConformanceTest
-from divergence_pins import MODES, run_in_mode
+from divergence_pins import MODES, assert_declared_divergence, run_in_mode
 from shell_oracle import is_comparable, run_bash, run_psh
 
 
@@ -398,6 +403,41 @@ class TestReadonlyAttributeRefusal:
         _parity_in_modes(
             'f(){ local -r x=1; local -x x; echo "rc=$?"; declare -p x; }; f',
             tmp_path=tmp_path)
+
+
+class TestReadonlyLocalArrayDeclaredDivergence:
+    """`local -a` / `local -A` on a readonly local: bash refuses AND still
+    destroys the variable.  RULED A BASH BUG -- psh deliberately does not follow
+    (ledger row W1-N15; integrator ruling on the slot 2.4 handoff).
+
+    5.3.15 prints `local: x: readonly variable`, returns 1 from `local`, and
+    then leaves `declare -ar x=()`: the local cell was already replaced by the
+    time the refusal was raised, so the refusal protects nothing.  psh raises
+    before touching the cell, so the value and the attributes stand.  Both
+    sides are asserted here so the row goes red if EITHER moves -- if bash ever
+    fixes it, this becomes a parity pin and the row is flipped.  The diagnostic
+    and the exit status already match; only the surviving state differs.
+
+    Repro: ``f(){ local -r x=1; local -a x; declare -p x; }; f``.
+    """
+
+    @pytest.mark.oracle_min("5.3")
+    def test_local_a_on_readonly_local_destroys_the_value_in_bash(self, tmp_path):
+        assert_declared_divergence(
+            'f(){ local -r x=1; local -a x; declare -p x; }; f',
+            bash=('declare -ar x=()\n', 0),
+            psh=('declare -r x="1"\n', 0),
+            tmp_path=tmp_path, slot="W1-N15 (bash-side; psh is correct)",
+            stderr="both", stderr_has="local: x: readonly variable")
+
+    @pytest.mark.oracle_min("5.3")
+    def test_local_A_on_readonly_local_destroys_the_value_in_bash(self, tmp_path):
+        assert_declared_divergence(
+            'f(){ local -r x=1; local -A x; declare -p x; }; f',
+            bash=('declare -Ar x=()\n', 0),
+            psh=('declare -r x="1"\n', 0),
+            tmp_path=tmp_path, slot="W1-N15 (bash-side; psh is correct)",
+            stderr="both", stderr_has="local: x: readonly variable")
 
 
 class TestLocalsShadowingExports(ConformanceTest):
