@@ -419,6 +419,27 @@ command-position WORD into its keyword token type (`TokenType.IF`, ...). The
 parser then dispatches on those explicit token types (`match(TokenType.IF)`),
 not on a keyword-set membership test.
 
+### Names come from tokens; `source_text` only positions diagnostics
+
+A semantic NAME is always the token's own lexeme; a span may only refine the
+SPELLING shown in a diagnostic, and only when it verifiably renders that same
+token. A span indexes the text the LEXER saw, so a caller that hands the parser
+a different string still gets a slice — of the wrong string. Alias expansion is
+exactly that caller: the tokens carry alias-body positions while
+`ctx.source_text` is the pre-expansion line, and the raw slice silently bound
+the wrong loop variable (C010):
+
+```bash
+shopt -s expand_aliases; alias beg='for i in 1 2; do'
+beg echo "i=[$i]"; done          # bash and psh: i=[1] i=[2]
+```
+
+Owner: `psh/lexer/token_types.py#slice_renders_token`, the predicate
+`token_lexeme` consults before trusting a span; it falls back to the token's
+own fields, so no reader of that helper can pick up a stale slice.
+`control_structures.py#_parse_loop_variable` and the heredoc bare-parse
+delimiter span in `redirections.py` are its two production consumers.
+
 ### Compound Command Handling
 
 Compound commands can appear in pipelines, at statement level, and as
