@@ -50,7 +50,7 @@ CLAIM = re.compile(r"bash 5\.2")
 VARIANT = re.compile(r"(?i)bash[ -]5\.2\b|5\.2\.26\b")
 
 #: Sum of BASELINE — 599 at BASE_SHA; this package adds none.
-BASELINE_TOTAL = 599
+BASELINE_TOTAL = 595
 #: file -> matching LINES (== `git grep -c`). MAY ONLY DECREASE (see docstring).
 BASELINE = {
     "psh/builtins/core.py": 1,
@@ -76,7 +76,7 @@ BASELINE = {
     "psh/core/internal_errors.py": 7,
     "psh/core/scope.py": 3,
     "psh/core/state.py": 4,
-    "psh/core/trap_manager.py": 6,
+    "psh/core/trap_manager.py": 3,
     "psh/core/variables.py": 1,
     "psh/executor/array.py": 1,
     "psh/executor/command.py": 2,
@@ -144,7 +144,6 @@ BASELINE = {
     "tests/conformance/bash/test_echo_double_dash_conformance.py": 1,
     "tests/conformance/bash/test_errexit_brace_group_conformance.py": 1,
     "tests/conformance/bash/test_exec_error_message_conformance.py": 1,
-    "tests/conformance/bash/test_exit_trap_status_precedence_conformance.py": 1,
     "tests/conformance/bash/test_export_env_sync_conformance.py": 1,
     "tests/conformance/bash/test_field_splicing_conformance.py": 1,
     "tests/conformance/bash/test_grammar_boundaries_conformance.py": 1,

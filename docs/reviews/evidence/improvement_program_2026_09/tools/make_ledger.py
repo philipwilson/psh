@@ -495,7 +495,10 @@ CLOSURES = {
 }
 # G-id -> (release, closure note) for the Part B gate nodes.
 GATE_CLOSURES = {
-    'C032': ('v0.781.0', 'slot 1.2: `_swap_closed_output_streams` installs `_RawFdStream`; pins `tests/integration/redirection/test_close_then_reopen_c032.py`, `tests/unit/io_redirect/test_close_reopen_stream_shapes_c032.py`, `tests/conformance/bash/test_close_then_reopen_conformance.py`, golden `c032_*`; verify round 1 PASS'),
+    'G32': ('v0.782.0', 'slot 2.1 (v0.782.0): `TrapManager` frames + `bare_status_entry_value`; flipped to `test_trap_entry_status_matches_bash[...]` / `test_bare_exit_in_a_signal_trap_uses_entry_status[...]`; verify r1 BOUNCE → r2 PASS'),
+    'G33': ('v0.782.0', 'slot 2.1 (v0.782.0): `TrapManager` frames + `bare_status_entry_value`; flipped to `test_trap_entry_status_matches_bash[...]` / `test_bare_exit_in_a_signal_trap_uses_entry_status[...]`; verify r1 BOUNCE → r2 PASS'),
+    'G34': ('v0.782.0', 'slot 2.1 (v0.782.0): `TrapManager` frames + `bare_status_entry_value`; flipped to `test_trap_entry_status_matches_bash[...]` / `test_bare_exit_in_a_signal_trap_uses_entry_status[...]`; verify r1 BOUNCE → r2 PASS'),
+    'G35': ('v0.782.0', 'slot 2.1 (v0.782.0): `TrapManager` frames + `bare_status_entry_value`; flipped to `test_trap_entry_status_matches_bash[...]` / `test_bare_exit_in_a_signal_trap_uses_entry_status[...]`; verify r1 BOUNCE → r2 PASS'),
 }
 
 

@@ -4,6 +4,39 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.782.0 (2026-09-07) - Trap entry status follows bash 5.3 (Improvement Program 2026-09, Wave 2 slot 2.1)
+- Trap exit status follows bash 5.3 (POSIX interp 1602; bash CHANGES 5.3-beta
+  item q / NEWS item uu): a bare `exit` at the TOP LEVEL of an EXIT, signal,
+  ERR or RETURN trap action resolves to the status the shell had when the trap
+  was ENTERED, not the action's current `$?`. `exit N` is unaffected, DEBUG
+  keeps the current `$?`, and a bare `exit` inside a function body, a sourced
+  file or a subshell called from the action still uses the current `$?`.
+  Previously only the EXIT trap had the rule. Owner
+  `TrapManager.bare_exit_entry_status` (one stacked frame per running action:
+  entry status, function depth, source depth); the EXIT-only property and its
+  "bash 5.2.26" prose are gone. Gate rows G32–G35 closed; the five FLIP-PINS
+  rows owned by 2.1 flipped to equality pins (`test_trap_entry_status_matches_bash`,
+  `test_bare_exit_in_a_signal_trap_uses_entry_status`) plus boundary rows in
+  three modes; 17-test owner battery mutation-checked (5 mutations caught).
+- User guide §17: the RETURN-trap row now states the `set -T` precondition of
+  its recursion divergence (still reproduces on 5.3.15) and the new entry-status
+  rule.
+- Ledger: W1-N1 registered — a bare `exit` inside a COMMAND SUBSTITUTION in a
+  trap action takes the entry status in bash 5.3.15 but the current `$?` in psh
+  (pre-existing; outside the interp-1602 wording).
+- Fork-shape boundary: the entry status is DROPPED for a forked COMPOUND that
+  reuses the parent shell (a `{ … }` pipeline member, a backgrounded brace
+  group — `TrapManager.drop_trap_action_frames_in_forked_compound`) and KEPT
+  for a forked SIMPLE command (`exit &`, `true; false | exit` take the entry
+  status, as in bash); `( … )` already had a fresh trap manager.
+- Bare `return` in a trap action takes the entry status under the same rule
+  (CHANGES 5.3-alpha item y); `ReturnBuiltin` asks the same owner, now named
+  `bare_status_entry_value`. Verification: round 1 BOUNCE (2 blockers: the
+  forked-compound leak was a regression at the round-1 tip; bare `return`),
+  round 2 re-verified to zero.
+- Ledger: W1-N1 widened (process substitution `<( )` inherits the action frame in bash too); W1-N22 (a backgrounded pipeline loses a BUILTIN member's status: `true; false | exit 6 & wait $!` → bash 6, psh 0; pre-existing), W1-N23 (a pipeline COMPOUND member keeps the parent's signal/ERR traps where bash resets them; pre-existing) and W1-N24 (`trap` may override a signal ignored at shell entry; bash refuses; pre-existing) registered.
+- Verification: round 1 BOUNCE (2 real blockers), round 2 PASS at e6251ea7 (97 novel ids × 3 modes, zero divergences inside interp 1602; 14 mutations caught; conflict-free merge onto the sibling slot branches); reports `tmp/program-2026-09/verify/slot-2.1.md`, `slot-2.1-r2.md`.
+
 ## 0.781.0 (2026-09-07) - Close-then-reopen in compounds (Improvement Program 2026-09, Wave 1 slot 1.2)
 - P1 SILENT DATA LOSS (C032): a per-command redirect list that closed and then
   REOPENED fd 1 or 2 wrote nothing in every in-process compound —

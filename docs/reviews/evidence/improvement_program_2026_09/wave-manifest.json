@@ -196,12 +196,13 @@
     {
       "id": "2",
       "title": "bash 5.3 semantic adoption (flip the Wave 0 pins)",
-      "status": "planned",
+      "status": "in progress",
       "merge_train_order": "opens with Wave 1; 2.3 before 1.4; 2.4 before 1.5/1.16/1.18; 2.1 before 1.14; 2.2 before 1.16; closes before Wave 3",
       "slots": [
         {
           "id": "2.1",
-          "title": "Trap entry status"
+          "title": "Trap entry status",
+          "release": "0.782.0"
         },
         {
           "id": "2.2",
@@ -216,7 +217,29 @@
           "title": "Readonly attribute refusal"
         }
       ],
-      "releases": []
+      "releases": [
+        {
+          "version": "0.782.0",
+          "date": "2026-09-07",
+          "slots": [
+            "2.1"
+          ],
+          "closes": [
+            "G32",
+            "G33",
+            "G34",
+            "G35"
+          ],
+          "flips": "FLIP-PINS 2.1 rows",
+          "registers": [
+            "W1-N1 (widened)",
+            "W1-N22",
+            "W1-N23",
+            "W1-N24"
+          ],
+          "verification": "r1 BOUNCE, r2 PASS (tmp/program-2026-09/verify/slot-2.1-r2.md)"
+        }
+      ]
     },
     {
       "id": "3",
