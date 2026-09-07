@@ -223,6 +223,20 @@ PTY_REGISTRY = {
         "coverage falls out of the non-interactive matrix was measured FALSE. "
         "Removal: as above — a PTY mode in run_shell_case, or a shared PTY "
         "differential harness owning oracle resolution and typed outcomes.",
+    "system/interactive/test_usage_status_interactive_pty.py":
+        "owner=slot2.3 (round-2 blockers B1/B2). PTY bash-DIFFERENTIAL: drives "
+        "psh AND the resolved bash oracle through pexpect.spawn over a "
+        "pseudo-terminal (TERM=xterm) and compares, per row, whether the REST "
+        "OF THE LINE ran and what the NEXT line's $? is. The TERMINAL is the "
+        "subject twice over: the bad-count break/continue cell EXITS a "
+        "non-interactive shell but DISCARDS THE LINE at a prompt, a split with "
+        "no non-interactive shadow at all; and the guard rail — the REPL "
+        "SURVIVES a rejected numeric operand — is a fact only a live REPL can "
+        "witness (`exit 99999999999999999999` used to kill psh's session). "
+        "Round 1 shipped a non-PTY unit that checked only $? and so pinned the "
+        "WRONG interactive behaviour, which is exactly the hole this closes. "
+        "Removal: as above — a PTY mode in run_shell_case, or a shared PTY "
+        "differential harness owning oracle resolution and typed outcomes.",
     "system/interactive/test_heredoc_detection_interactive_pty.py":
         "owner=slot2.5 (#22 MEDIUM-3). PTY bash-DIFFERENTIAL: drives psh (both "
         "parsers) AND the resolved bash oracle through pexpect.spawn over a "
@@ -268,6 +282,7 @@ _EXPECTED_PTY_SITES = {
     "system/interactive/test_multiline_immediate_error_i3.py": 2,  # psh + bash spawn
     "system/interactive/test_substitution_abort_interactive_pty.py": 2,  # psh + bash
     "system/interactive/test_heredoc_detection_interactive_pty.py": 2,   # psh + bash
+    "system/interactive/test_usage_status_interactive_pty.py": 2,        # psh + bash
 }
 
 

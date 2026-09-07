@@ -183,6 +183,10 @@ TOUCHED_PREEXISTING = [
 # otherwise flag as undispositioned.
 POST_ENDPOINT_SCANNED: list = [
     "psh/utils/posix_classes.py",   # 5B.1: the shared POSIX class table (data leaf)
+    # Slot 2.3: bash's legal_number for builtin numeric operands. A pure
+    # str -> Optional[int] leaf that takes no Shell at all, so it is SCANNED
+    # (and finds nothing) rather than declared out of scope.
+    "psh/builtins/numeric.py",
 ]
 
 # Modules born after SCOPE_ENDPOINT that are deliberately NOT scanned —

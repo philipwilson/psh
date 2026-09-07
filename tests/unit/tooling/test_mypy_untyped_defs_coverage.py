@@ -339,7 +339,12 @@ MIGRATED_MODULES = [
 #: Modules born AFTER SCOPE_ENDPOINT that carry the full-signature discipline
 #: anyway. They cannot live in MIGRATED_MODULES: that list is asserted EQUAL to
 #: the pinned git enumeration, which by construction cannot contain them.
-POST_ENDPOINT_MIGRATED: list = []
+POST_ENDPOINT_MIGRATED: list = [
+    # Slot 2.3: bash's legal_number for builtin numeric operands. Fully
+    # annotated at birth and given both disallow flags in pyproject, so it is
+    # MIGRATED rather than out of scope.
+    "psh.builtins.numeric",
+]
 
 #: Modules born after SCOPE_ENDPOINT deliberately NOT under the discipline
 #: (path -> why). Kept honest by the coverage assertion: a new module lands in

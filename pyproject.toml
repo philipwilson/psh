@@ -235,6 +235,10 @@ module = [
     # pointless: it is here for the FIRST def anyone adds.
     "psh.utils.posix_classes",
     "psh.scripting.program_source",
+    # Slot 2.3: bash's legal_number for builtin numeric operands. Born after
+    # the pinned scope endpoint, written fully annotated, so it joins the
+    # discipline from its first def rather than being noticed later.
+    "psh.builtins.numeric",
 ]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true
