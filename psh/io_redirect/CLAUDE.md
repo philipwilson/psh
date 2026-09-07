@@ -100,6 +100,21 @@ finally:
     plan.close_procsub(applied=applied)   # release procsub parent fd
 ```
 
+**Plan once.** A `RedirectOp` is planned exactly once; the fd-level builtin
+path applies the resolved plan instead of resolving again. Planning runs the
+target's command substitutions and forks its process substitutions, so a second
+resolution is a second set of side effects — and worse, the fd lands on a name
+the noclobber check never saw: `echo hi 3> "$(echo x >> ctr; echo o3)"; wc -l <
+ctr` printed 2 where bash prints 1, and under `set -C` psh refused the SECOND
+expansion's name while bash opens the first. Every builtin redirect helper
+therefore takes the `RedirectPlan`, never the `Redirect`
+(`manager.py#IOManager._builtin_redirect_fd_level`), the move split derives both
+halves from that one plan (`manager.py#IOManager._split_move_dup`), and both
+temporary backends share one applicator
+(`file_redirect.py#FileRedirector.apply_plan_saving`). Guard:
+`tests/unit/io_redirect/test_plan_once_c031.py` counts `RedirectPlanner.plan`
+calls per operation (C031).
+
 `RedirectPlan` carries `(redirect, target, procsub, procsub_node)` plus:
 - `target_fd` — the single source of truth for "which fd does this
   redirect act on" (replaces the per-branch `redirect.fd if … else 0/1`
@@ -436,6 +451,7 @@ Helpers used only within `file_redirect.py` stay private.
 | `check_noclobber(target)` | Raises OSError if `noclobber_blocks(target)`; the ONE noclobber-refusal message (all three raise sites route here) |
 | `dup_fd_valid(dup_fd)` | Predicate: `dup_fd` is an open fd (for `>&`/`<&` validation) |
 | `dup_sharing_stream(fd, mode, *, buffering=-1)` | The ONE dup+fdopen recipe: a text stream sharing `fd`'s open file description (one offset). OUTPUT (`'w'`, `buffering=1`) for the `exec` rebind and a builtin `n>&m` dup; INPUT (`'r'`/`'r+'`) for a builtin `<`/`<>` stdin |
+| `apply_plan_saving(plan, saved_fds)` | Apply one ALREADY-RESOLVED plan in the temporary (save/restore) window: parking-clear, save, apply — appending the backups before the apply, so a failing apply still leaves a complete restore list. Shared by the fd backend and the builtin fd-level path; procsub cleanup stays with the caller, which alone knows close-vs-hand-off |
 | `procsub_handler` (property) | The shell's `ProcessSubstitutionHandler`; the planner resolves procsub targets through it |
 
 **Private (internal to `file_redirect.py`):**

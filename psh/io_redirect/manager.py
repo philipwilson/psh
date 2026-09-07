@@ -67,6 +67,7 @@ import fcntl
 import os
 import sys
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import (
     TYPE_CHECKING,
     Dict,
@@ -85,6 +86,7 @@ from .file_redirect import (
     NonExecutableRedirectError,
 )
 from .input_cursor import OpenDescription, dup_alias_fds
+from .planner import RedirectPlan
 from .process_sub import ProcessSubstitutionHandler
 from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
 
@@ -642,10 +644,15 @@ class IOManager:
                 # runs in-process), stored in the variable.
                 self.file_redirector.apply_var_fd_redirect(redirect)
                 return
+            # The ONE resolution of this operation. Every helper below takes the
+            # resolved PLAN, never the `Redirect`, so no path can re-enter the
+            # planner and expand the target a second time — running its command
+            # substitutions twice, forking its process substitutions twice, and
+            # opening a file the noclobber check never saw (C031). Repro:
+            # `echo hi 3> "$(echo x >> ctr; echo o3)"; wc -l < ctr` -> 1.
             plan = self.file_redirector.planner.plan(redirect)
             op.plan = plan
             redirect = plan.redirect
-            target = plan.target
             # A builtin runs in-process and reads /dev/fd/N, so its
             # process-substitution read end must outlive this single redirect:
             # hand it to the enclosing process_sub_scope() for deferred close
@@ -654,33 +661,33 @@ class IOManager:
             plan.hand_procsub_to_scope(self.process_sub_handler)
 
             if op.kind is RedirectOpKind.COMBINED:
-                self._builtin_redirect_combined(target, redirect, frame)
+                self._builtin_redirect_combined(plan, frame)
             elif op.kind is RedirectOpKind.DUP_FD:
                 # A move (`n>&m-`) is a dup of m onto n followed by closing the
                 # source m (unless m == n). Apply the dup, then the source
                 # close IN PLACE — same source-order discipline as `>&-`.
-                dup_step, close_step = self._split_move_dup(redirect)
+                dup_plan, close_plan = self._split_move_dup(plan)
                 if redirect.type == '>&':
-                    self._builtin_redirect_dup(dup_step, frame)
+                    self._builtin_redirect_dup(dup_plan, frame)
                 else:
-                    self._builtin_redirect_fd_level(dup_step, frame)
+                    self._builtin_redirect_fd_level(dup_plan, frame)
                 # The dup'd fd names the SAME description as its source, so it
                 # shares that description's cursor for as long as this frame
                 # lasts. The frame already set the target fd's binding aside,
                 # so this alias is frame-scoped and pop_frame undoes it.
-                alias = dup_alias_fds(dup_step)
+                alias = dup_alias_fds(dup_plan.redirect)
                 if alias is not None:
                     self.state.input_cursors.bind_dup(*alias)
-                if close_step is not None:
-                    self._apply_builtin_close(close_step, frame)
+                if close_plan is not None:
+                    self._apply_builtin_close(close_plan, frame)
             elif op.kind is RedirectOpKind.CLOSE_FD:
-                self._apply_builtin_close(redirect, frame)
+                self._apply_builtin_close(plan, frame)
             elif redirect.type.startswith('<'):
                 # OPEN_FILE input (`<`, `<>`) and HERE_INPUT (`<<`/`<<-`/`<<<`).
-                self._builtin_redirect_stdin(target, redirect, frame)
+                self._builtin_redirect_stdin(plan, frame)
             else:
                 # OPEN_FILE output (`>`, `>>`, `>|`).
-                self._builtin_redirect_output_file(target, redirect, frame)
+                self._builtin_redirect_output_file(plan, frame)
 
         try:
             program.apply_in_order(apply_one)
@@ -690,7 +697,7 @@ class IOManager:
 
         return frame
 
-    def _apply_builtin_close(self, redirect: Redirect,
+    def _apply_builtin_close(self, plan: RedirectPlan,
                              frame: 'BuiltinRedirectFrame') -> None:
         """A builtin `>&-`/`<&-` close, applied in source order.
 
@@ -698,10 +705,10 @@ class IOManager:
         raises EBADF) happens first, then the fd-level close IMMEDIATELY — never
         postponed (#20 H4).
         """
-        self._builtin_redirect_close(redirect, frame)
-        self._builtin_redirect_fd_level(redirect, frame)
+        self._builtin_redirect_close(plan.redirect, frame)
+        self._builtin_redirect_fd_level(plan, frame)
 
-    def _builtin_redirect_stdin(self, target, redirect,
+    def _builtin_redirect_stdin(self, plan: RedirectPlan,
                                 frame: BuiltinRedirectFrame):
         """``<``, ``<>``, heredoc, here-string for a builtin.
 
@@ -717,11 +724,13 @@ class IOManager:
         the stream swap is skipped and the fd-level redirect is saved/restored
         through the frame's fd-save list (``_builtin_redirect_fd_level``).
         """
+        redirect = plan.redirect
+        target = plan.target
         target_fd = redirect.fd if redirect.fd is not None else 0
         if target_fd != 0:
             # Body/file goes to a non-stdin fd: pure fd-level redirect, no
             # stream swap (the builtin keeps its own sys.stdin).
-            self._builtin_redirect_fd_level(redirect, frame)
+            self._builtin_redirect_fd_level(plan, frame)
             return
         frame.snapshot.note_stdin()
         if redirect.type == '<':
@@ -815,9 +824,11 @@ class IOManager:
         frame.saved_fds.append((target_fd, saved))
         os.dup2(source_fd, target_fd)
 
-    def _builtin_redirect_combined(self, target, redirect,
+    def _builtin_redirect_combined(self, plan: RedirectPlan,
                                    frame: BuiltinRedirectFrame):
         """``&>`` / ``&>>`` for a builtin: one file object serves both streams."""
+        redirect = plan.redirect
+        target = plan.open_target
         frame.snapshot.note_stdout()
         frame.snapshot.note_stderr()
         is_append = redirect.type.endswith('>>')
@@ -831,18 +842,30 @@ class IOManager:
         self._dup_output_fd_for_children(f.fileno(), 1, frame)
         self._dup_output_fd_for_children(f.fileno(), 2, frame)
 
-    def _builtin_redirect_output_file(self, target, redirect,
+    def _builtin_redirect_output_file(self, plan: RedirectPlan,
                                       frame: BuiltinRedirectFrame):
         """``>``, ``>>``, ``>|`` for a builtin.
 
         For fd 1/2 the Python stream object is swapped (builtins write to
         sys.stdout/sys.stderr, not raw fds); for fd >= 3 there is no stream
         counterpart, so the redirect happens at the descriptor level.
+
+        The noclobber check belongs to whichever universe performs the OPEN, so
+        it is asked exactly once about exactly the name that is opened: here for
+        the fd 1/2 stream open, and inside ``_redirect_output_to_file`` (two
+        lines above its ``os.open``) for the fd-level path. Splitting them was
+        how ``set -C`` came to refuse a file the redirect was never going to
+        open (C031).
         """
-        if redirect.type == '>':
-            self.file_redirector.check_noclobber(target)
+        redirect = plan.redirect
+        target = plan.open_target
         mode = 'a' if redirect.type == '>>' else 'w'
         target_fd = redirect.fd if redirect.fd is not None else 1
+        if target_fd not in (1, 2):
+            self._builtin_redirect_fd_level(plan, frame)
+            return
+        if redirect.type == '>':
+            self.file_redirector.check_noclobber(target)
         if target_fd == 1:
             frame.snapshot.note_stdout()
             f = self._open_output_off_low_fds(target, mode)
@@ -861,10 +884,8 @@ class IOManager:
             sys.stderr = f
             # fd 2 too, so children the builtin spawns write to the file.
             self._dup_output_fd_for_children(f.fileno(), 2, frame)
-        else:
-            self._builtin_redirect_fd_level(redirect, frame)
 
-    def _builtin_redirect_dup(self, redirect,
+    def _builtin_redirect_dup(self, plan: RedirectPlan,
                               frame: BuiltinRedirectFrame):
         """``>&`` fd duplication for a builtin (``2>&1``, ``1>&2``, ``1>&m``…).
 
@@ -901,6 +922,7 @@ class IOManager:
         file descriptor`` — so the closed-stream sentinel is installed, the
         exact treatment a bare ``1>&-`` close gives the stream half.
         """
+        redirect = plan.redirect
         if is_self_dup(redirect):
             if (redirect.fd in (1, 2)
                     and not self.file_redirector.dup_fd_valid(redirect.fd)):
@@ -913,7 +935,7 @@ class IOManager:
         if redirect.fd in (1, 2) and redirect.dup_fd is not None:
             # Validates dup_fd and dup2's m onto fd n (independent of a later
             # reassignment of m); fd n's target is now a snapshot of m's.
-            self._builtin_redirect_fd_level(redirect, frame)
+            self._builtin_redirect_fd_level(plan, frame)
             f = self.file_redirector.dup_sharing_stream(
                 redirect.dup_fd, 'w', buffering=1)
             frame.opened_streams.append(f)
@@ -924,26 +946,36 @@ class IOManager:
                 frame.snapshot.note_stderr()
                 sys.stderr = f
         else:
-            self._builtin_redirect_fd_level(redirect, frame)
+            self._builtin_redirect_fd_level(plan, frame)
 
     @staticmethod
-    def _split_move_dup(redirect):
+    def _split_move_dup(
+            plan: RedirectPlan) -> Tuple[RedirectPlan, Optional[RedirectPlan]]:
         """Split a move (`[n]>&m-`) into its dup step and source-close step.
 
-        A plain dup returns ``(redirect, None)``. A move returns a
-        move-cleared dup plus a ``>&-``/``<&-`` close of the source fd — or
-        ``None`` for the close when source == destination, which bash leaves
-        open (`echo x 1>&1-` keeps stdout).
+        A plain dup returns ``(plan, None)``. A move returns a move-cleared dup
+        plus a ``>&-``/``<&-`` close of the source fd — or ``None`` for the
+        close when source == destination, which bash leaves open
+        (`echo x 1>&1-` keeps stdout).
+
+        Both halves are derived from the ALREADY-RESOLVED plan, never re-planned:
+        the split is purely structural (a flag cleared, a close synthesized), so
+        the dup half keeps the original plan's resolution and the close half —
+        an fd number, no filename — needs none. Re-entering the planner here
+        would resolve the redirect a second time (C031).
         """
+        redirect = plan.redirect
         if not redirect.move:
-            return redirect, None
+            return plan, None
         dup_only = copy.copy(redirect)
         dup_only.move = False
-        close_step = None
+        close_plan = None
         if redirect.dup_fd is not None and redirect.dup_fd != redirect.fd:
-            close_step = Redirect(type=redirect.type + '-', target=None,
-                                  fd=redirect.dup_fd)
-        return dup_only, close_step
+            close_plan = RedirectPlan(
+                Redirect(type=redirect.type + '-', target=None,
+                         fd=redirect.dup_fd),
+                None)
+        return replace(plan, redirect=dup_only), close_plan
 
     def _builtin_redirect_close(self, redirect,
                                 frame: BuiltinRedirectFrame):
@@ -979,19 +1011,32 @@ class IOManager:
             frame.snapshot.note_stderr()
         self.swap_output_stream_closed(target_fd)
 
-    def _builtin_redirect_fd_level(self, redirect,
+    def _builtin_redirect_fd_level(self, plan: RedirectPlan,
                                    frame: BuiltinRedirectFrame):
         """Descriptor-level fallback for redirects with no stream counterpart.
 
-        FileRedirector applies the redirect to the real fd; the (fd,
-        saved_fd) pairs accumulate in ``frame.saved_fds``, which
+        Takes the plan ``setup_builtin_redirections`` already resolved and
+        applies it — it does NOT resolve one. Handing it the ``Redirect`` and
+        letting it rebuild a program was C031: the target word was expanded a
+        second time, so `echo hi 3> "$(echo x >> ctr; echo o3)"` ran its command
+        substitution twice, `read v 3< <(cmd)` forked twice, and under ``set -C``
+        the noclobber check refused the SECOND expansion's name while bash opens
+        the first (`echo 0 > c; echo OLD > f2; set -C;`
+        `echo hi 3> "$(n=$(cat c); n=$((n+1)); echo $n >| c; echo f$n)"` must
+        create f1).
+
+        FileRedirector applies the plan to the real fd; the (fd, saved_fd)
+        pairs accumulate in ``frame.saved_fds``, which
         ``restore_builtin_redirections`` drains first. They must live on
         the frame, not the manager: a nested invocation (eval'd builtin
         inside a redirected eval) restoring manager-level saves would
         prematurely undo the OUTER command's fd redirects.
+
+        The plan's process substitution is NOT closed here — the caller already
+        handed it to the enclosing ``process_sub_scope()``, because the builtin
+        reads ``/dev/fd/N`` in this very process.
         """
-        saved_fds = self.file_redirector.apply_redirections([redirect])
-        frame.saved_fds.extend(saved_fds)
+        self.file_redirector.apply_plan_saving(plan, frame.saved_fds)
 
     def restore_active_builtin_redirections(self) -> int:
         """Restore every per-command redirect frame still in effect (LIFO).
