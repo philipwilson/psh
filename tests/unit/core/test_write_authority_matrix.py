@@ -414,7 +414,7 @@ _RO_TARGETS = (
 _RO_ATTRS = (("i", "integer"), ("l", "lowercase"), ("u", "uppercase"))
 
 
-def _attr_cell(flag, name, target, setup, var, printed, refused: bool,
+def _attr_cell(flag, name, target, setup, var, printed, *, refused: bool,
                owner=None) -> Cell:
     """One (attribute × target) square.
 
@@ -426,6 +426,10 @@ def _attr_cell(flag, name, target, setup, var, printed, refused: bool,
     defect they exist to catch, and a correct fix would turn them red.  Only the
     label's owner token may depend on ``owner``, because a flipped cell must
     stop claiming a slot (``test_a_green_cell_never_claims_a_slot``).
+
+    ``refused`` is keyword-only so the parameter whose entire purpose is to be
+    independent of ``owner`` cannot be supplied by position and drift back into
+    looking like part of the ownership argument list.
     """
     token = "-G17-slot2.4" if owner else ""
     verdict = "refused" if refused else "allowed"
