@@ -11434,3 +11434,54 @@
   stdout: "m\nm\n"
   stderr: ""
   exit_code: 0
+
+- name: c033_declare_f_reeval_empty_part_in_the_quoted_run
+  description: "C033/C231: an EMPTY quoted part separates nothing in the emitted text, so the spelling must look past it — the round trip reads v, never vx"
+  command: |
+    v=1; vx=BADVX
+    f() { echo "$v""""x"; }
+    f
+    eval "$(declare -f f)"
+    f
+  stdout: "1x\n1x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c033_declare_f_reeval_empty_part_writes_the_same_file
+  description: "C033: the empty-part round trip picks the same REDIRECT TARGET; base created a file named after the wrong variable"
+  command: |
+    v=1; vx=BADVX
+    g() { echo hi > "$v""""x"; }
+    g
+    ls
+    rm -f 1x
+    eval "$(declare -f g)"
+    g
+    ls
+  stdout: "1x\n1x\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c033_declare_f_reeval_empty_part_takes_the_same_case_branch
+  description: "C033: the empty-part round trip takes the same case branch, not just the same stdout shape"
+  command: |
+    v=1; vx=BADVX
+    h() { case "$v""""x" in 1x) echo M;; *) echo N;; esac; }
+    h
+    eval "$(declare -f h)"
+    h
+  stdout: "M\nM\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c033_declare_f_reeval_empty_part_braced_control
+  description: "C033 control: a source-braced reference with an empty part was already correct and must stay so"
+  command: |
+    v=1; vx=BADVX
+    k() { echo "${v}""""x"; }
+    k
+    eval "$(declare -f k)"
+    k
+  stdout: "1x\n1x\n"
+  stderr: ""
+  exit_code: 0

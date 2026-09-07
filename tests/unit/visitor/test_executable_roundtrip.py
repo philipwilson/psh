@@ -115,7 +115,7 @@ def test_every_corpus_row_ran(mode, passes):
     """The marker split saw every row in every pass (no silent truncation)."""
     direct, rt, fmt, _ = passes[mode]
     assert set(direct) == set(rt) == set(fmt) == set(ROW_IDS)
-    assert len(ROW_IDS) == len(CORPUS) >= 60
+    assert len(ROW_IDS) == len(CORPUS) >= 90
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +143,15 @@ def test_every_corpus_row_ran(mode, passes):
     ('echo "$v"" x"', 'echo "$v x"'),
     ('echo "$v"".txt"', 'echo "$v.txt"'),
     ('echo "$v"{1,2}', 'echo "$v"{1,2}'),
+    # An EMPTY part prints nothing, so it separates nothing in the emitted
+    # text — the spelling has to look PAST it, not at the syntactically next
+    # part (base and round 2 emitted `echo "$vx"` for the first row).
+    (r'echo "$v""""x"', r'echo "${v}x"'),
+    (r'echo "$v""""""x"', r'echo "${v}x"'),
+    (r'echo "a$v""""x"', r'echo "a${v}x"'),
+    (r'echo "$v"$"""x"', r'echo "${v}x"'),
+    (r'echo "$v"""" x"', r'echo "$v x"'),        # nothing to fuse with
+    (r'echo "$v"""', r'echo "$v"'),              # nothing follows at all
 ])
 def test_declare_f_text_keeps_the_source_spelling(body, expected):
     """``declare -f`` renders the braces the source wrote — and only those."""
@@ -150,3 +159,41 @@ def test_declare_f_text_keeps_the_source_spelling(body, expected):
         r = run_psh(["-c", f"f() {{ {body}; }}\ndeclare -f f"], timeout=30, cwd=d)
     assert is_comparable(r), r
     assert expected in r.stdout, r.stdout
+
+
+# The OTHER renderer. ``display_text`` drops quotes unconditionally, so an
+# empty part never separated anything there either; these five shapes printed
+# ``$vx`` — a different variable — in ``.args`` and ``--debug-ast`` while the
+# formatter happened to survive them (their quote-char groups differ, so no
+# run is merged). One authority, one answer: both renderers brace.
+@pytest.mark.parametrize("source,expected", [
+    ('echo "$v"' + "''" + '"x"', "${v}x"),
+    ('echo "$v"$' + "''" + '"x"', "${v}x"),
+    (r'echo "$v"""x', "${v}x"),
+    (r'echo $v""x', "${v}x"),
+    (r"echo $v''x", "${v}x"),
+    (r'echo "$v""""x"', "${v}x"),
+    # controls: no fusion possible, so no braces
+    (r'echo "$v"""" x"', "$v x"),
+    (r'echo "$v"".txt"', "$v.txt"),
+])
+def test_display_text_looks_past_empty_parts(source, expected):
+    """The ``.args`` / ``--debug-ast`` flattening uses the same authority."""
+    from psh.lexer import tokenize
+    from psh.parser import parse
+    command = parse(tokenize(source)).statements[0].pipelines[0].commands[0]
+    assert command.args[1] == expected, command.args
+
+
+@pytest.mark.parametrize("source,expected", [
+    (r'echo $v""x', "${v}x"),
+    (r'echo "$v""""x"', "${v}x"),
+])
+def test_debug_ast_shows_the_same_spelling(source, expected):
+    """``--debug-ast`` is a real consumer of that flattening, not just .args."""
+    with tempfile.TemporaryDirectory() as d:
+        r = run_psh(["--debug-ast", "-c", source], timeout=30, cwd=d)
+    assert is_comparable(r), r
+    printed = r.stdout + r.stderr
+    assert expected in printed, printed
+    assert "$vx" not in printed.replace(expected, ""), printed

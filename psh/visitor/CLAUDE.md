@@ -228,17 +228,21 @@ names `v1`/`v2` while a delimited `${v}{1,2}` stays `${v}1`/`${v}2`, and a
 renderer that dropped the source's braces retargeted the read.
 
 The authority answers for the text that will be EMITTED, not for the parts as
-the source wrote them. That distinction is load-bearing: a renderer closes gaps
-the source's quotes left — `_format_word` merges consecutive parts sharing a
-quote char into one region, and `display_text` drops quotes entirely — so
-`"$v"` followed by `"x"` must be spelled `${v}` even though a quote separates
-the two parts. Conversely braces are never added before `{`, where the fusion
-into `v1`/`v2` is the source's own meaning. Reproduce both closed defects with:
+the source wrote them, and it answers about the next part that actually PRINTS.
+Both halves are load-bearing. A renderer closes gaps the source's quotes left —
+`_format_word` merges a RUN of consecutive parts sharing a quote char into one
+region, and `display_text` drops quotes entirely — so `"$v"` followed by `"x"`
+must be spelled `${v}`; and a zero-length part (`""`, `''`, `$''`, `$""`) prints
+nothing, so it does not separate the run either and the lookahead walks past it
+(`words.py#next_rendered_part`). Conversely braces are never added before `{`,
+where the fusion into `v1`/`v2` is the source's own meaning. Reproduce the three
+closed defects with:
 
 ```bash
 psh -c 'v=1 v1=A v2=B; f() { echo ${v}{1,2}; }; f; eval "$(declare -f f)"; f'
 # both lines: 11 12
 psh -c 'v=1 vx=BAD; g() { echo "$v""x"; }; g; eval "$(declare -f g)"; g'
+psh -c 'v=1 vx=BAD; h() { echo "$v""""x"; }; h; eval "$(declare -f h)"; h'
 # both lines: 1x
 ```
 

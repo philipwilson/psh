@@ -223,12 +223,16 @@ def variable_expansion_text(expansion: 'VariableExpansion',
       is read, because brace expansion runs BEFORE parameter expansion and
       fuses a following name-char run into a bare name: ``${v}{1,2}`` yields
       ``${v}1``/``${v}2`` while ``$v{1,2}`` yields the names ``v1``/``v2``;
-    * the following LITERAL would fuse with the name once the word is written
-      back out — its text starts with a name char. Quoting does NOT save it:
-      the renderers close the gap the source's quotes left, either by merging
-      adjacent same-quote regions (``"$v""x"`` is emitted as one ``"…"``) or by
-      dropping quotes altogether (``display_text``), so ``$v`` + ``"x"`` would
-      re-parse as the name ``vx``.
+    * the next part that actually PRINTS would fuse with the name once the word
+      is written back out — its text starts with a name char. Neither quoting
+      nor an empty part in between saves it: the renderers close the gap the
+      source's quotes left, either by merging a RUN of adjacent same-quote
+      parts (a ``$v`` region, an EMPTY one and an ``x`` region are emitted as
+      one ``"…"``) or by dropping quotes
+      altogether (``display_text``), so ``$v`` + ``""`` + ``"x"`` would
+      re-parse as the name ``vx``. The neighbour is therefore chosen by
+      :func:`next_rendered_part`, which walks past zero-length parts — the
+      syntactically next part is not necessarily the next one on the page.
 
     A bare ``$v{1,2}`` is NOT re-braced: ``{`` is not a name char, and the
     fusion into ``v1``/``v2`` is what the source asked for — ``braced`` is the
@@ -259,7 +263,10 @@ def variable_expansion_text(expansion: 'VariableExpansion',
         v=1 vx=BAD;    g() { echo "$v""x"; };   eval "$(declare -f g)"; g
 
     which must print ``11 12`` and ``1x`` — the direct calls' output — not
-    ``A B`` and ``BAD``.
+    ``A B`` and ``BAD``. The third harm is the same ``g`` with an EMPTY
+    double-quoted region between the two (a shape this file cannot spell
+    inside a docstring); it is written out in ``psh/visitor/CLAUDE.md`` and
+    carried as the ``dq_empty_*`` rows of the round-trip corpus.
     """
     name = expansion.name
     bare_ok = bool(_BARE_VAR_NAME.match(name)) or (
@@ -273,35 +280,62 @@ def part_source_text(parts: List[WordPart], index: int) -> str:
     """Part ``index`` of ``parts`` as source text, in its neighbours' context.
 
     The ONE place a word part is turned back into source: a ``$name`` goes
-    through :func:`variable_expansion_text` with the FOLLOWING part as brace
-    context, everything else through its own ``__str__``. Every consumer that
-    rebuilds a word — :meth:`Word.display_text`, :meth:`Word.to_literal_string`,
-    the formatter, the tilde-prefix collapse, the array-subscript and
-    array-element flat texts — calls this rather than ``str(part)``, so none of
-    them can drift into its own spelling rule.
+    through :func:`variable_expansion_text` with the next PRINTING part as
+    brace context (:func:`next_rendered_part`), everything else through its own
+    ``__str__``. Every consumer that rebuilds a word —
+    :meth:`Word.display_text`, :meth:`Word.to_literal_string`, the formatter,
+    the tilde-prefix collapse, the array-subscript and array-element flat texts
+    — calls this rather than ``str(part)``, so none of them can drift into its
+    own spelling rule.
     """
     part = parts[index]
     if isinstance(part, ExpansionPart) and isinstance(part.expansion,
                                                       VariableExpansion):
-        nxt = parts[index + 1] if index + 1 < len(parts) else None
-        return variable_expansion_text(part.expansion, nxt)
+        return variable_expansion_text(part.expansion,
+                                       next_rendered_part(parts, index))
     return str(part)
+
+
+def next_rendered_part(parts: List[WordPart],
+                       index: int) -> Optional[WordPart]:
+    """The first part after ``index`` that will actually PRINT something.
+
+    Zero-length parts are skipped. ``""``, ``''``, ``$''`` and ``$""`` each
+    parse to a ``LiteralPart('')`` that contributes no characters, so they do
+    not separate anything in the emitted text — the formatter merges the whole
+    run of same-quote parts into one region and ``display_text`` drops the
+    quotes entirely. Answering about ``parts[index + 1]`` therefore describes
+    the SOURCE, not the page: with a ``$v`` region, an EMPTY region and an
+    ``x`` region, the syntactically next part is
+    the empty one, while the next part on the page is ``x``, and a ``$v``
+    spelled bare in front of it re-parses as the name ``vx``.
+
+    Returns ``None`` when nothing after ``index`` prints.
+    """
+    for j in range(index + 1, len(parts)):
+        nxt = parts[j]
+        if isinstance(nxt, LiteralPart) and not nxt.text:
+            continue
+        return nxt
+    return None
 
 
 def _fuses_with(next_part: Optional[WordPart]) -> bool:
     """Would a bare ``$name`` swallow ``next_part``'s leading text once written?
 
-    Only a LITERAL can fuse — another expansion starts with ``$``, which
-    delimits the name — and only through its leading ``[A-Za-z0-9_]`` run
-    (``$x`` + ``there`` -> ``$xthere``).
+    ``next_part`` is the next part that PRINTS (:func:`next_rendered_part`),
+    never blindly the syntactically next one. Only a LITERAL can fuse — another
+    expansion starts with ``$``, which delimits the name — and only through its
+    leading ``[A-Za-z0-9_]`` run (``$x`` + ``there`` -> ``$xthere``).
 
     The literal's own ``quoted`` flag is deliberately NOT consulted. A quote
     delimits the name in the SOURCE, but not in the text the renderers emit:
     ``_format_word`` merges consecutive parts that share a quote char into one
-    region (``"$v"`` + ``"x"`` -> ``"$vx"``) and ``display_text`` drops quotes
-    entirely (``$v`` + ``"x"`` -> ``$vx``), and either re-parses as the name
-    ``vx``. Braces cost nothing where they are not needed — ``${v}`` and ``$v``
-    name the same parameter — so this errs toward emitting them.
+    region (``"$v"`` + ``""`` + ``"x"`` -> ``"$vx"``) and ``display_text`` drops
+    quotes entirely (``$v`` + ``""`` + ``"x"`` -> ``$vx``), and either re-parses
+    as the name ``vx``. Braces cost nothing where they are not needed —
+    ``${v}`` and ``$v`` name the same parameter — so this errs toward emitting
+    them.
 
     A leading ``{`` is the one exclusion: ``$v{1,2}`` re-parses to this same
     shape and re-fuses identically, so bracing it would CHANGE which variables
