@@ -142,6 +142,36 @@ class TestCloseWithoutReopenStillFails(ConformanceTest):
             'g() { echo hi; }; g 1>&- 2>/dev/null; echo "rc=$?"')
 
 
+class TestNestedRegionsRestoreLifo(ConformanceTest):
+    """Nested close-then-reopen regions: the inner install is undone first.
+
+    Each region installs its own fd-following stream and the restore is LIFO,
+    so an inner region's state can never outlive it -- nor mask the outer's.
+    """
+
+    def test_inner_reopen_inside_outer_close(self):
+        # Outer closes fd 1 for good; the INNER list reopens it onto `f`.
+        self.assert_identical_behavior(
+            '{ { echo hi; } 1>&- 1>f; } 1>&-; echo "rc=$?"; cat f')
+
+    def test_inner_close_inside_outer_reopen(self):
+        # Outer reopens fd 1 onto `f`; the INNER list closes it again, so the
+        # write must still fail EBADF and `f` stay empty.
+        self.assert_identical_behavior(
+            '{ { echo hi; } 1>&-; } 1>&- 1>f 2>/dev/null; '
+            'if [ -s f ]; then echo nonempty; else echo empty; fi')
+
+    def test_function_nests_its_own_reopen(self):
+        self.assert_identical_behavior(
+            'g() { { echo hi; } 1>&- 1>inner; }; g 1>&- 1>outer; '
+            'echo "inner=[$(cat inner)] outer=[$(cat outer)]"')
+
+    def test_reopen_region_then_close_only_region(self):
+        self.assert_identical_behavior(
+            '{ echo a; } 1>&- 1>f; { echo b; } 1>&- 2>/dev/null; '
+            'echo "rc=$?"; cat f')
+
+
 class TestStreamIsRestoredAfterTheCompound(ConformanceTest):
     """The displaced stream comes back: later commands reach the real stdout."""
 
