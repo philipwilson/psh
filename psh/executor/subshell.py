@@ -59,8 +59,8 @@ class SubshellExecutor:
         return self._execute_in_subshell(node.statements, node.redirects, node.background,
                                          errexit_suppress=context.errexit_suppress)
 
-    def execute_brace_group(self, node: 'BraceGroup', context: 'ExecutionContext',
-                           visitor: 'ASTVisitor[int]') -> int:
+    def execute_brace_group(self, node: 'BraceGroup',
+                            visitor: 'ASTVisitor[int]') -> int:
         """
         Execute brace group {...} in current shell environment.
 
@@ -72,31 +72,23 @@ class SubshellExecutor:
 
         Args:
             node: The BraceGroup AST node
-            context: Current execution context
             visitor: Visitor for executing child nodes
 
         Returns:
             Exit status code
         """
-        # Save pipeline context
-        old_pipeline = context.in_pipeline
-        context.in_pipeline = False
+        if node.background:
+            # Background brace groups need to fork; do NOT execute
+            # in the parent first (that would cause double execution).
+            return self._execute_background_brace_group(node, visitor)
 
-        try:
-            if node.background:
-                # Background brace groups need to fork; do NOT execute
-                # in the parent first (that would cause double execution).
-                return self._execute_background_brace_group(node, visitor)
-
-            # Foreground: apply redirections and execute in current environment.
-            # A bad redirect target prints bash's diagnostic and yields False,
-            # so the body does not run — status 1, `|| fallback` runs.
-            with self.io_manager.guarded_redirections(node.redirects) as applied:
-                if not applied:
-                    return 1
-                return visitor.visit(node.statements)
-        finally:
-            context.in_pipeline = old_pipeline
+        # Foreground: apply redirections and execute in current environment.
+        # A bad redirect target prints bash's diagnostic and yields False,
+        # so the body does not run — status 1, `|| fallback` runs.
+        with self.io_manager.guarded_redirections(node.redirects) as applied:
+            if not applied:
+                return 1
+            return visitor.visit(node.statements)
 
     def _execute_in_subshell(self, statements, redirects: List['Redirect'], background: bool,
                              errexit_suppress: int = 0) -> int:

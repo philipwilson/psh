@@ -173,9 +173,6 @@ class PipelineExecutor:
         pgid: Optional[int] = None
         pids: List[int] = []
 
-        # Create new context for pipeline execution
-        pipeline_context = context.pipeline_context_enter()
-
         # Open the foreground-job transaction BEFORE the launch loop: it
         # captures the terminal owner while this shell still owns the terminal
         # (a real capability check — no test-runner sniffing). A backgrounded
@@ -227,13 +224,25 @@ class PipelineExecutor:
                     for execution.
                     """
                     def execute_fn():
-                        # Create forked context. Each pipeline component runs
-                        # in its OWN subshell process, so a break/continue here
-                        # can never escape into the parent's loop — the except
-                        # below just ends this subshell. loop_depth is still
-                        # inherited so a bare `break | cat` inside a loop is
-                        # silent (bash), not "only meaningful in a loop".
-                        child_context = pipeline_context.fork_context()
+                        # Create this member's context. Each pipeline component
+                        # runs in its OWN subshell process, so a break/continue
+                        # here can never escape into the parent's loop — the
+                        # except below just ends this subshell. loop_depth is
+                        # still inherited so a bare `break | cat` inside a loop
+                        # is silent (bash), not "only meaningful in a loop".
+                        #
+                        # The exec-in-place token is granted ONLY to a SIMPLE
+                        # COMMAND member: that is the one member shape whose
+                        # own dispatch can be the last thing this process does,
+                        # so an external program may execve() in place. A
+                        # compound member ({ }, ( ), a loop, if/case) has a body
+                        # to keep running afterwards and gets no token at all;
+                        # a simple-command member that turns out to name a
+                        # function, `eval` or `.` consumes the token on its own
+                        # dispatch, so the body it then runs cannot exec in
+                        # place either (C001).
+                        child_context = context.for_pipeline_member(
+                            exec_in_place=isinstance(cmd_node, SimpleCommand))
 
                         # bash carries the enclosing list's errexit SUPPRESSION
                         # into a member only through a compound command or a
