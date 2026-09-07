@@ -43,6 +43,7 @@ from psh.ast_nodes import (
     ExpansionPart,
     SimpleCommand,
     VariableExpansion,
+    next_rendered_part,
     variable_expansion_text,
 )
 from psh.lexer import tokenize
@@ -56,6 +57,7 @@ BATTERY = [
     "echo 'lit $x'",
     'echo $x ${x} ${x:-def} ${#x} ${x}b a${x}b',
     'echo $1x ${1}x $v{1,2} ${v}{1,2}',
+    'echo $v""{1,2} "$v"{1,2} $v""x',
     'echo "a$x b" "a${y}b"',
     'echo $(date) `pwd` $((1 + 2)) pre$(cmd)post',
     'cat <(echo a) >(cat)',
@@ -93,6 +95,10 @@ GOLDEN_FIRST_COMMAND_ARGS = {
     # braces in `a${x}b` would name `xb`), bare stays bare
     'echo ${x} ${x:-def} a${x}b': ['echo', '${x}', '${x:-def}', 'a${x}b'],
     'echo $xb $v{1,2} ${v}{1,2}': ['echo', '$xb', '$v{1,2}', '${v}{1,2}'],
+    # a separator the flattening drops (an empty part, or a quote boundary)
+    # already stopped the fusion, so the braces have to carry it
+    'echo $v""{1,2} "$v"{1,2} $v""x':
+        ['echo', '${v}{1,2}', '${v}{1,2}', '${v}x'],
     # a bare positional before a name char must be braced to stay `$1`
     'echo $1x': ['echo', '${1}x'],
     'echo "a$x b"': ['echo', 'a$x b'],
@@ -121,20 +127,22 @@ def _walk(node, acc):
 def _derived(words):
     """The flattening rule, restated: each part's source text, joined.
 
-    A ``$name`` part is spelled by the single brace authority with the
-    FOLLOWING part as context (``$1`` before ``x`` must brace, ``${v}``
-    before ``{1,2}`` must keep its braces) — the same call ``display_text``
-    makes, so this restates the JOIN independently without forking the
-    spelling rule.
+    A ``$name`` part is spelled by the single brace authority, given the next
+    part that actually PRINTS (``next_rendered_part``) and whether the source
+    kept them apart with something a rendering may drop — a zero-length part or
+    a quote boundary. Both come from the authority module, so this restates the
+    JOIN independently without forking the spelling rule.
     """
     out = []
     for word in words:
         chunks = []
         for i, part in enumerate(word.parts):
-            nxt = word.parts[i + 1] if i + 1 < len(word.parts) else None
             if (isinstance(part, ExpansionPart)
                     and isinstance(part.expansion, VariableExpansion)):
-                chunks.append(variable_expansion_text(part.expansion, nxt))
+                nxt, skipped = next_rendered_part(word.parts, i)
+                separated = skipped or part.quoted or getattr(nxt, 'quoted', False)
+                chunks.append(
+                    variable_expansion_text(part.expansion, nxt, separated))
             else:
                 chunks.append(str(part))
         out.append(''.join(chunks))

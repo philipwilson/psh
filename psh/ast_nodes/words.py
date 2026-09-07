@@ -9,7 +9,7 @@ context. The expansion nodes (``$var``, ``${...}``, ``$(...)``, ``$((...))``,
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from .base import ASTNode
 
@@ -207,7 +207,8 @@ class ExpansionPart(WordPart):
 
 
 def variable_expansion_text(expansion: 'VariableExpansion',
-                            next_part: Optional[WordPart] = None) -> str:
+                            next_part: Optional[WordPart] = None,
+                            separated: bool = False) -> str:
     """The source spelling of a ``$name`` reference — THE brace authority.
 
     Every reconstruction of shell source from a Word (``--format``,
@@ -236,7 +237,13 @@ def variable_expansion_text(expansion: 'VariableExpansion',
 
     A bare ``$v{1,2}`` is NOT re-braced: ``{`` is not a name char, and the
     fusion into ``v1``/``v2`` is what the source asked for — ``braced`` is the
-    only thing that separates it from ``${v}{1,2}``.
+    only thing that separates it from ``${v}{1,2}``. ``separated`` flips that:
+    it means the SOURCE put something between the name and ``next_part`` that a
+    rendering may not preserve — a zero-length part, or a quote boundary — and
+    that something already stopped the fusion. ``$v""{1,2}`` and ``"$v"{1,2}``
+    both mean ``${v}1``/``${v}2``, not ``v1``/``v2`` (bash 5.3.15), so a
+    renderer that drops the empty region or the quotes has to say so with
+    braces.
 
     DELIBERATE CONSERVATISM — do not "simplify" this back. The rule serves two
     renderers that close the source's quote gap DIFFERENTLY: the formatter
@@ -271,7 +278,8 @@ def variable_expansion_text(expansion: 'VariableExpansion',
     name = expansion.name
     bare_ok = bool(_BARE_VAR_NAME.match(name)) or (
         len(name) == 1 and name in _SPECIAL_PARAM_CHARS)
-    if bare_ok and not expansion.braced and not _fuses_with(next_part):
+    if (bare_ok and not expansion.braced
+            and not _fuses_with(next_part, separated)):
         return f"${name}"
     return f"${{{name}}}"
 
@@ -291,14 +299,18 @@ def part_source_text(parts: List[WordPart], index: int) -> str:
     part = parts[index]
     if isinstance(part, ExpansionPart) and isinstance(part.expansion,
                                                       VariableExpansion):
-        return variable_expansion_text(part.expansion,
-                                       next_rendered_part(parts, index))
+        nxt, skipped_empty = next_rendered_part(parts, index)
+        # "Separated" = the source kept the name and `nxt` apart with something
+        # a rendering may drop: a zero-length part, or a quote boundary.
+        separated = (skipped_empty or part.quoted
+                     or getattr(nxt, 'quoted', False))
+        return variable_expansion_text(part.expansion, nxt, separated)
     return str(part)
 
 
 def next_rendered_part(parts: List[WordPart],
-                       index: int) -> Optional[WordPart]:
-    """The first part after ``index`` that will actually PRINT something.
+                       index: int) -> Tuple[Optional[WordPart], bool]:
+    """The first part after ``index`` that PRINTS, and whether any was skipped.
 
     Zero-length parts are skipped. ``""``, ``''``, ``$''`` and ``$""`` each
     parse to a ``LiteralPart('')`` that contributes no characters, so they do
@@ -310,17 +322,24 @@ def next_rendered_part(parts: List[WordPart],
     the empty one, while the next part on the page is ``x``, and a ``$v``
     spelled bare in front of it re-parses as the name ``vx``.
 
-    Returns ``None`` when nothing after ``index`` prints.
+    Returns ``(None, skipped)`` when nothing after ``index`` prints. The
+    second element matters on its own: a zero-length part is invisible in the
+    emitted text but NOT in the source's meaning, because it stops the name
+    from reaching a following ``{`` (``$v""{1,2}`` is ``${v}1``/``${v}2``,
+    while ``$v{1,2}`` is ``v1``/``v2``) — so a renderer that drops it has to
+    put the braces back.
     """
+    skipped = False
     for j in range(index + 1, len(parts)):
         nxt = parts[j]
         if isinstance(nxt, LiteralPart) and not nxt.text:
+            skipped = True
             continue
-        return nxt
-    return None
+        return nxt, skipped
+    return None, skipped
 
 
-def _fuses_with(next_part: Optional[WordPart]) -> bool:
+def _fuses_with(next_part: Optional[WordPart], separated: bool) -> bool:
     """Would a bare ``$name`` swallow ``next_part``'s leading text once written?
 
     ``next_part`` is the next part that PRINTS (:func:`next_rendered_part`),
@@ -337,14 +356,16 @@ def _fuses_with(next_part: Optional[WordPart]) -> bool:
     ``${v}`` and ``$v`` name the same parameter — so this errs toward emitting
     them.
 
-    A leading ``{`` is the one exclusion: ``$v{1,2}`` re-parses to this same
-    shape and re-fuses identically, so bracing it would CHANGE which variables
-    are read.
+    A leading ``{`` fuses only when ``separated``: a DIRECTLY adjacent, equally
+    unquoted ``$v{1,2}`` re-parses to this same shape and re-fuses identically,
+    so bracing it would CHANGE which variables are read. With a zero-length
+    part or a quote boundary in between, the source already stopped the fusion
+    and a renderer that drops that separator would restore it.
     """
-    if not isinstance(next_part, LiteralPart):
+    if not isinstance(next_part, LiteralPart) or not next_part.text:
         return False
-    return bool(next_part.text) and (next_part.text[0].isalnum()
-                                     or next_part.text[0] == '_')
+    lead = next_part.text[0]
+    return lead.isalnum() or lead == '_' or (separated and lead == '{')
 
 
 @dataclass

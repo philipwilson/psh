@@ -35,6 +35,7 @@ import tempfile
 import pytest
 from roundtrip_corpus import (
     CORPUS,
+    FAMILY_FLOORS,
     ROW_IDS,
     direct_script,
     roundtrip_script,
@@ -116,6 +117,11 @@ def test_every_corpus_row_ran(mode, passes):
     direct, rt, fmt, _ = passes[mode]
     assert set(direct) == set(rt) == set(fmt) == set(ROW_IDS)
     assert len(ROW_IDS) == len(CORPUS) >= 90
+    # Row-safe, not just block-safe: losing rows OUT of a family fails too.
+    for prefix, floor in FAMILY_FLOORS.items():
+        present = [r for r in ROW_IDS if r.startswith(prefix)]
+        assert len(present) >= floor, (
+            f"family {prefix!r} shrank to {len(present)} rows (floor {floor})")
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +148,9 @@ def test_every_corpus_row_ran(mode, passes):
     # …and only where a fusion is actually possible:
     ('echo "$v"" x"', 'echo "$v x"'),
     ('echo "$v"".txt"', 'echo "$v.txt"'),
-    ('echo "$v"{1,2}', 'echo "$v"{1,2}'),
+    (r'echo "$v"{1,2}', r'echo "${v}"{1,2}'),   # the quote already stopped it
+    (r'echo $v""{1,2}', r'echo ${v}""{1,2}'),   # so did the empty part
+    (r'echo $v{1,2}', r'echo $v{1,2}'),         # bare-adjacent: still fuses
     # An EMPTY part prints nothing, so it separates nothing in the emitted
     # text — the spelling has to look PAST it, not at the syntactically next
     # part (base and round 2 emitted `echo "$vx"` for the first row).

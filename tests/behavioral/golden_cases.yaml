@@ -11485,3 +11485,28 @@
   stdout: "1x\n1x\n"
   stderr: ""
   exit_code: 0
+
+- name: c033_declare_f_reeval_separator_before_a_brace_expansion
+  description: "C033/C231: a separator the rendering may drop (an empty part, a quote) already stopped the {1,2} fusion, so the round trip must keep reading v — bash prints 11 12, never A B"
+  command: |
+    v=1; v1=A; v2=B
+    f() { echo $v""{1,2}; }
+    g() { echo "$v"{1,2}; }
+    f; g
+    eval "$(declare -f f)"; eval "$(declare -f g)"
+    f; g
+  stdout: "11 12\n11 12\n11 12\n11 12\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c033_declare_f_reeval_bare_brace_still_fuses_control
+  description: "C033 control: with NOTHING in between, $v{1,2} names v1/v2 and the round trip must keep it that way"
+  command: |
+    v=1; v1=A; v2=B
+    h() { echo $v{1,2}; }
+    h
+    eval "$(declare -f h)"
+    h
+  stdout: "A B\nA B\n"
+  stderr: ""
+  exit_code: 0

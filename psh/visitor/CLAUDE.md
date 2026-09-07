@@ -234,13 +234,17 @@ Both halves are load-bearing. A renderer closes gaps the source's quotes left �
 region, and `display_text` drops quotes entirely — so `"$v"` followed by `"x"`
 must be spelled `${v}`; and a zero-length part (`""`, `''`, `$''`, `$""`) prints
 nothing, so it does not separate the run either and the lookahead walks past it
-(`words.py#next_rendered_part`). Conversely braces are never added before `{`,
-where the fusion into `v1`/`v2` is the source's own meaning. Reproduce the three
-closed defects with:
+(`words.py#next_rendered_part`). Braces are withheld in exactly one place: a
+`{` that the name reaches DIRECTLY and unquoted, where the fusion into
+`v1`/`v2` is the source's own meaning. Put anything between them — an empty
+part or a quote — and the source has already stopped that fusion, so the
+rendering has to keep it stopped with braces.
 
 ```bash
 psh -c 'v=1 v1=A v2=B; f() { echo ${v}{1,2}; }; f; eval "$(declare -f f)"; f'
 # both lines: 11 12
+psh -c 'v=1 v1=A v2=B; f() { echo $v{1,2}; }; f; eval "$(declare -f f)"; f'
+# both lines: A B    <- the one shape that must stay bare
 psh -c 'v=1 vx=BAD; g() { echo "$v""x"; }; g; eval "$(declare -f g)"; g'
 psh -c 'v=1 vx=BAD; h() { echo "$v""""x"; }; h; eval "$(declare -f h)"; h'
 # both lines: 1x

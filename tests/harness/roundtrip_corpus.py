@@ -123,6 +123,19 @@ CORPUS = [
     ("dq_empty_last_control", 'echo "$v""x"""'),
     ("dq_empty_only_control", 'echo "$v"""'),
     ("dq_empty_before_space_control", 'echo "$v"""' + '" x"'),
+    # --- a SEPARATOR before a brace expansion. `$v{1,2}` fuses to v1/v2, but
+    #     anything the source put in between — a zero-length part or a quote
+    #     boundary — already stopped that, and a rendering that drops the
+    #     separator has to put the braces back (bash 5.3.15: all four of these
+    #     print `11 12`, only the bare-adjacent form prints `A B`) ---
+    ("brace_after_empty", 'echo $v""{1,2}'),
+    ("brace_after_empty_sq", "echo $v''{1,2}"),
+    ("brace_after_quoted_ref", 'echo "$v"{1,2}'),
+    ("brace_before_quoted_list", 'echo $v"{1,2}"'),
+    ("brace_after_quoted_empty", 'echo "$v"""' + '{1,2}'),
+    ("brace_after_empty_for", 'for k3 in $v""{1,2}; do echo "[$k3]"; done'),
+    ("brace_after_empty_array", 'a5=($v""{1,2}); echo "${a5[@]}"'),
+    ("brace_after_empty_assign", 'z3=$v""{1,2}; echo "$z3"'),
     # --- quoting contexts ---
     ("dq_braced", 'echo "${x}"'),
     ("dq_braced_cat", 'echo "${x}"b'),
@@ -160,6 +173,18 @@ CORPUS = [
 ]
 
 ROW_IDS = [row_id for row_id, _ in CORPUS]
+
+#: Families the corpus must keep INTACT, prefix -> minimum row count, each set
+#: to the family's CURRENT size so losing a single row fails. A whole-corpus
+#: floor only catches deleting an entire block; these catch a row going missing
+#: out of one, which is how an empty-part or brace-suffix shape would slip away
+#: again. Raise a number when you add rows; never lower one.
+FAMILY_FLOORS = {
+    "brace_": 13,         # the {1,2} / {a,b} / {1..3} suffixes + separators
+    "dq_adjacent": 22,    # quoted adjacency
+    "dq_empty": 26,       # zero-length parts inside the run
+    "bare_empty": 2,      # the unquoted-reference twins of those
+}
 
 # Markers the driver prints around each row. `@@ROW` cannot occur inside the
 # status marker, so the split on it is unambiguous.
