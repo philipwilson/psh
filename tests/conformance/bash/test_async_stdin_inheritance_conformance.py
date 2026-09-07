@@ -292,6 +292,58 @@ def test_devnull_default_still_applies(shape, script, expected, tmp_path):
                 stdin_data=OUTER)
 
 
+# --------------------------------------------------------------------------
+# DIRECTION: an OUTPUT redirect that lands on fd 0 supplies no input, so the
+# POSIX default still applies. Counting it handed the background reader a
+# write-only fd 0 — `{ cat & wait; } 0>&1` then blocked forever at a terminal
+# (round-1 blocker B1). A CLOSE of fd 0 does count, in both shells.
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("shape,script,expected_stdout,expect_stderr", [
+    ("output_to_file_on_fd0",
+     '{ cat & wait; } 0> out; echo DONE', "DONE\n", False),
+    ("dup_stdout_onto_fd0",
+     '{ cat & wait; } 0>&1; echo DONE', "DONE\n", False),
+    ("append_to_file_on_fd0",
+     '{ cat & wait; } 0>> out; echo DONE', "DONE\n", False),
+    ("output_redirect_elsewhere",
+     '{ cat & wait; } > out 2>&1; echo DONE', "DONE\n", False),
+    # A close of fd 0 IS a stdin redirection in both shells: the child inherits
+    # the closed descriptor and says so.
+    ("close_fd0_output_spelling",
+     '{ cat & wait; } 0>&-; echo DONE', "DONE\n", True),
+    ("close_fd0_input_spelling",
+     '{ cat & wait; } <&-; echo DONE', "DONE\n", True),
+    # Mixed lists: an input on fd 0 anywhere in the list supplies it, and the
+    # LAST redirect still decides what fd 0 ends up being.
+    ("input_then_output_on_fd0",
+     'printf %s "$DATA" > in; { cat & wait; } < in 0>&1; echo DONE',
+     "DONE\n", True),
+    ("output_then_input_on_fd0",
+     'printf %s "$DATA" > in; { cat & wait; } 0> out < in', "IN", False),
+])
+def test_output_redirect_on_fd0_does_not_supply_input(shape, script,
+                                                      expected_stdout,
+                                                      expect_stderr, tmp_path):
+    """C022/B1: direction matters as much as the fd number.
+
+    Bounded by the runner's own timeout, so the regression this closes (the
+    reader blocking forever on a write-only fd 0) fails as a harness mismatch
+    instead of hanging the suite. The terminal spelling of the same hang is
+    pinned in ``tests/system/interactive/test_pty_async_stdin_c022.py``.
+    """
+    for mode in MODES:
+        b, p = _both(script, mode, tmp_path, env={"DATA": "IN"})
+        assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+            f"[{mode}] {script!r}: bash={b.stdout!r}/{b.returncode} "
+            f"psh={p.stdout!r}/{p.returncode}")
+        assert p.stdout == expected_stdout, (mode, p.stdout)
+        # bash and psh both report the unreadable descriptor, or both stay
+        # silent — the diagnostic comes from `cat`, so the text is identical.
+        assert bool(p.stderr) is expect_stderr, (mode, p.stderr)
+        assert p.stderr == b.stderr, (mode, p.stderr, b.stderr)
+
+
 def test_shell_own_piped_stdin_is_not_a_frame_input(tmp_path):
     """C022: the SHELL's own stdin being a pipe does not count as inherited.
 
@@ -334,3 +386,95 @@ def test_binding_ends_with_the_compound_in_separate_commands(tmp_path):
     _assert_row(script, "sep\n", tmp_path, env={"DATA": "sep\n"},
                 modes=("file", "stdin"), stdin_data=OUTER,
                 expected_stdout_stdin_mode="sep\n")
+
+
+# --------------------------------------------------------------------------
+# DECLARED DIVERGENCES (W1-N80, ruled 2026-09-07): bash tracks "did a frame
+# supply fd 0" in ONE GLOBAL flag (execute_cmd.c 199/828/1733/1739/4570),
+# cleared once per top-level command (eval.c:181) and never under `-c`, so it
+# forgets an inherited binding a nested frame reassigns, never sets one for a
+# construct that forked before the assignment, and keeps a stale one after the
+# compound ends. psh scopes the binding to the frame that established it.
+#
+# BOTH sides are asserted here, per face, so the declaration is testable: if
+# bash ever changes, these rows fail loudly (that is the flip signal), and the
+# claim that psh is the SAFE side in every face is checked rather than
+# summarised. A face where psh lost data bash delivers would be a DEFECT.
+# --------------------------------------------------------------------------
+
+class TestDeclaredDivergences:
+    """The eight probed faces of W1-N80, each with both shells' side."""
+
+    def _rows(self, script, tmp_path, *, modes=MODES, stdin_data=None,
+              env=None):
+        out = []
+        for mode in modes:
+            b, p = _both(script, mode, tmp_path, stdin_data=stdin_data, env=env)
+            out.append((mode, b.stdout, p.stdout))
+        return out
+
+    # --- psh DELIVERS bytes bash drops (nobody reads them in bash) ---------
+
+    @pytest.mark.parametrize("face,script,psh_out", [
+        ("b_redirected_compound_is_pipeline_leader",
+         WRITE_IN + '{ cat & wait; } < in | cat', "IN"),
+        ("c_inner_subshell_reassigns_the_global",
+         WRITE_IN + '( ( cat & wait ) ) < in', "IN"),
+        ("d_inner_subshell_kills_a_pipe_binding",
+         'printf %s "$DATA" | ( ( cat & wait ) )', "IN"),
+        # the reader's output lands in `out`, so the row reads it back
+        ("e_inner_compound_redirects_only_output",
+         WRITE_IN + '{ { cat & wait; } > out; } < in; cat out', "IN"),
+        ("g_the_redirected_compound_is_itself_backgrounded",
+         WRITE_IN + '{ cat & wait; } < in & wait', "IN"),
+        ("g_loop_spelling",
+         WRITE_IN + 'for i in 1; do cat & wait; done < in & wait', "IN"),
+        ("h_move_form_supplies_fd0",
+         WRITE_IN + 'exec 3< in; { cat & wait; } 0<&3-', "IN"),
+    ])
+    def test_psh_delivers_bytes_bash_drops(self, face, script, psh_out,
+                                           tmp_path):
+        """bash reads the input with NOBODY: its flag was never set or was
+        reassigned to 0 by an inner frame. psh delivers it to the reader."""
+        for mode, bash_out, got in self._rows(script, tmp_path,
+                                              env={"DATA": "IN"}):
+            assert bash_out == "", (
+                f"[{mode}] {face}: bash 5.3.15 no longer drops the input "
+                f"({bash_out!r}) — the declared divergence may be flippable")
+            assert got == psh_out, f"[{mode}] {face}: psh gave {got!r}"
+
+    def test_g_subshell_spelling_is_NOT_a_divergence(self, tmp_path):
+        """CONTROL for face g: `( ) < f &` matches, because a user subshell
+        DOES set bash's flag from its own redirects (execute_cmd.c:1733)."""
+        for mode, bash_out, got in self._rows(
+                WRITE_IN + '( cat & wait ) < in & wait', tmp_path,
+                env={"DATA": "IN"}):
+            assert (bash_out, got) == ("IN", "IN"), (mode, bash_out, got)
+
+    # --- psh WITHHOLDS the shell's own stdin from the async reader ---------
+    # Nothing is destroyed: the bytes stay on the shell's stdin, which the
+    # row proves by reading them back AFTER the background command.
+
+    @pytest.mark.parametrize("face,script", [
+        ("a_binding_outlives_its_compound",
+         '{ true; } < in; cat & wait; read x; echo "[$x]"'),
+        ("f_bash_classifier_is_fd_blind",
+         '{ cat & wait; } 3< in; read x; echo "[$x]"'),
+    ])
+    def test_psh_withholds_the_shells_own_stdin(self, face, script, tmp_path):
+        """bash hands the shell's own input to the async reader, so the shell's
+        own ``read`` gets EOF; psh keeps it for the shell.
+
+        Stdin mode is excluded: there the script itself occupies fd 0, so the
+        marker cannot be supplied (the shape is not expressible, not skipped
+        for convenience).
+        """
+        script = 'printf %s "$DATA" > in; ' + script
+        for mode, bash_out, got in self._rows(
+                script, tmp_path, modes=("-c", "file"),
+                stdin_data="A\nB\n", env={"DATA": "IN"}):
+            assert bash_out == "A\nB\n[]\n", (
+                f"[{mode}] {face}: bash 5.3.15 side changed: {bash_out!r}")
+            assert got == "[A]\n", (
+                f"[{mode}] {face}: psh should have left the shell's stdin "
+                f"alone, got {got!r}")

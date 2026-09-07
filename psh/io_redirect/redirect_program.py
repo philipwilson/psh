@@ -64,6 +64,62 @@ def classify_redirect(redirect: 'Redirect') -> RedirectOpKind:
     return RedirectOpKind.OPEN_FILE
 
 
+def target_fd_of(redirect: 'Redirect') -> int:
+    """The fd this redirect RE-POINTS (its left-hand side).
+
+    The one place the default-fd rule lives: ``&>``/``&>>`` name fd 1, an
+    explicit ``[n]`` names n, and a bare operator takes 0 for the input
+    spellings and 1 for the output ones — the operator DIRECTION only picks the
+    default (bash closes fd n for ``n<&-`` and ``n>&-`` alike).
+    ``RedirectPlan.target_fd`` delegates here.
+    """
+    if redirect.combined:
+        return 1
+    if redirect.type in ('<<', '<<-', '<<<'):
+        return redirect.fd if redirect.fd is not None else 0
+    if redirect.fd is not None:
+        return redirect.fd
+    return 0 if redirect.type.startswith('<') else 1
+
+
+def supplies_frame_stdin(redirect: 'Redirect') -> bool:
+    """True when this redirect gives fd 0 an INPUT for the frame that carries it.
+
+    BOTH halves are load-bearing, and each was a live defect on its own:
+
+    * DIRECTION — an OUTPUT redirect that happens to land on fd 0
+      (``0> out``, ``0>&1``, ``0>> out``) supplies no input, so the POSIX async
+      ``/dev/null`` must still apply. Counting it made
+      ``{ cat & wait; } 0>&1`` hand the background reader a write-only fd 0:
+      ``cat`` then blocks forever on a terminal (and reports
+      ``Bad file descriptor`` elsewhere) where bash returns at once.
+    * FD — an input redirect on another descriptor (``3< file``, ``{v}< file``)
+      supplies fd 3 / a fd >= 10, not fd 0.
+
+    A CLOSE (``<&-``/``0>&-``) counts when it closes fd 0: bash treats it as a
+    stdin redirection too, and the async child inherits the closed descriptor.
+
+    Read by ``manager.py#IOManager.apply_compound_redirections`` — the one
+    producer of the fd-0 fact ``core/stdin_binding.py#StdinBinding`` holds.
+    """
+    kind = classify_redirect(redirect)
+    if kind in (RedirectOpKind.VAR_FD, RedirectOpKind.COMBINED):
+        return False           # a named fd (>= 10); `&>` is output
+    if kind is RedirectOpKind.CLOSE_FD:
+        return target_fd_of(redirect) == 0
+    if kind is RedirectOpKind.HERE_INPUT:
+        return target_fd_of(redirect) == 0
+    if kind is RedirectOpKind.DUP_FD:
+        return redirect.type == '<&' and target_fd_of(redirect) == 0
+    # OPEN_FILE: '<' and '<>' read; '>', '>>', '>|' do not.
+    return redirect.type in ('<', '<>') and target_fd_of(redirect) == 0
+
+
+def list_supplies_frame_stdin(redirects: List['Redirect']) -> bool:
+    """True when a redirect LIST gives its frame's fd 0 an input."""
+    return any(supplies_frame_stdin(r) for r in redirects)
+
+
 @dataclass
 class RedirectOp:
     """One typed redirect operation with its source location.

@@ -12,12 +12,6 @@ only while the shell still owns fd 0, so ``echo hi | { cat & wait; }`` prints
 ``cat & wait`` reads nothing.
 """
 
-from typing import Optional, Sequence, Tuple
-
-# The (fd, saved_fd) pairs a redirect scope records for its own restore.
-SavedFds = Sequence[Tuple[int, Optional[int]]]
-
-
 class StdinBinding:
     """Whether fd 0 is the shell's own stdin, or a frame's inherited input.
 
@@ -28,8 +22,12 @@ class StdinBinding:
       them (``<<<``, a heredoc, ``< <(cmd)``, ``<&3``). Those lists are applied
       through ``io_redirect/manager.py#IOManager.apply_compound_redirections``
       and undone through ``restore_compound_redirections``, which is where the
-      two ``note_compound_*`` calls live: an fd-0 entry in the scope's saved-fd
-      list IS the fact that this scope rebound fd 0.
+      two ``note_compound_*`` calls live. What counts as "supplied" is decided
+      once, by ``io_redirect/redirect_program.py#supplies_frame_stdin``: an
+      INPUT-direction redirect landing on fd 0. Direction and fd BOTH matter —
+      ``{ cat & wait; } 0>&1`` hands fd 0 an output, so the async default must
+      still apply (counting it left the reader blocked on a write-only fd 0),
+      and ``3< file`` supplies fd 3.
     * a pipeline member's incoming pipe, wired onto fd 0 by
       ``executor/pipeline.py#PipelineExecutor._setup_pipeline_redirections`` in
       the member's own forked child.
@@ -59,11 +57,13 @@ class StdinBinding:
 
     The binding is SCOPED to the frame that made it — it ends when that
     compound's redirects are undone, and an inner construct never releases an
-    outer one's. bash approximates the same fact with a single global flag that
-    the innermost redirect-bearing construct overwrites, so a few deeply nested
-    shapes differ; psh keeps the binding in every one of them, which is the
-    direction that does not lose the input (the divergences are pinned as
-    declared, psh-only behavioral rows).
+    outer one's. bash approximates the same fact with a single global flag,
+    assigned at three points and cleared once per top-level command, so it
+    forgets a binding a nested frame reassigns and keeps a stale one after the
+    compound ends. Every shape where the two models disagree is a DECLARED
+    divergence (ruled W1-N80) with its own two-sided pin: psh either delivers
+    input bash drops, or withholds the shell's own stdin from an async reader
+    and leaves it readable by the shell.
 
     Reproduce (bash 5.3.15 vs psh, C022)::
 
@@ -82,25 +82,18 @@ class StdinBinding:
         """True when no pipeline or compound redirect supplied fd 0."""
         return self._frames == 0
 
-    @staticmethod
-    def _rebinds_stdin(saved_fds: SavedFds) -> bool:
-        """True when a redirect scope's saved-fd list shows it took over fd 0.
+    def note_compound_applied(self, supplied_stdin: bool) -> None:
+        """A compound command's redirect list has been applied.
 
-        The saved list is the scope's own restore plan, so it names the fds it
-        actually rebound — a named-fd redirect (``{v}<file``, allocated at
-        fd >= 10 and never restored) contributes no entry, and neither does a
-        list that only touches output fds.
+        *supplied_stdin* is ``list_supplies_frame_stdin`` for that list — the
+        one classifier; this object never re-inspects redirect syntax.
         """
-        return any(fd == 0 for fd, _ in saved_fds)
-
-    def note_compound_applied(self, saved_fds: SavedFds) -> None:
-        """A compound command's redirect list has been applied."""
-        if self._rebinds_stdin(saved_fds):
+        if supplied_stdin:
             self._frames += 1
 
-    def note_compound_restored(self, saved_fds: SavedFds) -> None:
+    def note_compound_restored(self, supplied_stdin: bool) -> None:
         """That compound command's redirect list has been undone."""
-        if self._rebinds_stdin(saved_fds) and self._frames > 0:
+        if supplied_stdin and self._frames > 0:
             self._frames -= 1
 
     def note_pipe_stdin(self) -> None:

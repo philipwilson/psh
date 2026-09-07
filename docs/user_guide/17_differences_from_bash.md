@@ -743,14 +743,21 @@ echo hello | { cat & wait; }     # both: hello
 { cat & wait; } < file           # both: the file's contents
 ```
 
+Both shells also agree that an OUTPUT redirect landing on fd 0 supplies no
+input, so the default still applies — `{ cat & wait; } 0>&1` returns at once in
+both, and neither leaves a reader holding a write-only descriptor. A *close* of
+fd 0 (`<&-`, `0>&-`) counts as a redirection of standard input in both, and the
+background command inherits the closed descriptor.
+
 **Deliberate divergence — how long that inherited binding is remembered.** bash
 tracks "did a frame supply fd 0" in a single global flag that it clears once per
 top-level command and reassigns whenever a construct with redirections runs, so
-it **forgets** an inherited binding as soon as a nested frame reassigns the flag
-— and keeps a stale one for the rest of a top-level command. psh scopes the fact
-to the frame that established it: it lasts exactly as long as that pipeline
-member or that compound's redirections, and an inner construct never releases an
-outer one's. The difference is visible in both directions.
+it **forgets** an inherited binding as soon as a nested frame reassigns the flag,
+never records one for a construct that forked before the assignment, and keeps a
+stale one for the rest of a top-level command. psh scopes the fact to the frame
+that established it: it lasts exactly as long as that pipeline member or that
+compound's redirections, and an inner construct never releases an outer one's.
+The difference is visible in both directions.
 
 psh delivers bytes bash drops (nothing in the pipeline or the file is read at
 all in bash):
@@ -758,9 +765,14 @@ all in bash):
 ```bash
 echo hello | ( ( cat & wait ) )              # psh: hello        bash: (nothing)
 ( ( cat & wait ) ) < file                    # psh: the file     bash: (nothing)
-{ { cat & wait; } > out; } < file            # psh: the file     bash: (nothing)
+{ { cat & wait; } > out; } < file; cat out   # psh: the file     bash: (nothing)
 { cat & wait; } < file | cat                 # psh: the file     bash: (nothing)
+{ cat & wait; } < file & wait                # psh: the file     bash: (nothing)
+exec 3< file; { cat & wait; } 0<&3-          # psh: the file     bash: (nothing)
 ```
+
+(The subshell spelling of the fifth line, `( cat & wait ) < file & wait`, is the
+same in both shells — bash records a subshell's own redirections.)
 
 and psh withholds the shell's *own* input from a background reader in two shapes
 where bash hands it over — the bytes are not lost, they stay on the shell's

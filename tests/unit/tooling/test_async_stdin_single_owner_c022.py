@@ -26,11 +26,21 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 PSH = ROOT / "psh"
 
 OWNER_MODULE = "psh/core/stdin_binding.py"
+CLASSIFIER_MODULE = "psh/io_redirect/redirect_program.py"
 CONSUMER_MODULE = "psh/executor/process_launcher.py"
 
-#: The one method that ANSWERS the question, plus the methods that feed it.
-OWNER_MEMBERS = ("is_shell_stdin", "note_compound_applied",
-                 "note_compound_restored", "note_pipe_stdin")
+#: member -> the ONE module allowed to define it. The answer's producer and its
+#: feeders, plus the classifier that decides what "supplied fd 0" means (a
+#: second copy of THAT is how the direction half went missing in round 1).
+OWNER_MEMBERS = {
+    "is_shell_stdin": OWNER_MODULE,
+    "note_compound_applied": OWNER_MODULE,
+    "note_compound_restored": OWNER_MODULE,
+    "note_pipe_stdin": OWNER_MODULE,
+    "supplies_frame_stdin": CLASSIFIER_MODULE,
+    "list_supplies_frame_stdin": CLASSIFIER_MODULE,
+    "target_fd_of": CLASSIFIER_MODULE,
+}
 
 #: fd-0 ORIGIN sniffs are how a second answer would be spelled. The layers
 #: below must contain none except this frozen allowlist, whose entry answers a
@@ -49,7 +59,13 @@ def _psh_sources():
 # --- detectors (shared by the real scan and the synthetic offenders) --------
 
 def _members_defined(sources, names):
-    """Every (module, member) definition of *names* — def or assignment."""
+    """Every (module, member) definition of *names*.
+
+    A definition is a ``def``/``async def``, an annotated assignment, OR a
+    plain assignment (``is_shell_stdin = property(...)``, ``supplies_frame_stdin
+    = _my_copy``) — round-1 verification planted the plain-``Assign`` spelling
+    and the guard did not see it.
+    """
     found = []
     for path, src in sources:
         tree = ast.parse(src)
@@ -60,27 +76,53 @@ def _members_defined(sources, names):
             elif isinstance(node, ast.AnnAssign) and \
                     isinstance(node.target, ast.Name) and node.target.id in names:
                 found.append((path, node.target.id))
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    for leaf in ast.walk(target):
+                        if isinstance(leaf, ast.Name) and leaf.id in names:
+                            found.append((path, leaf.id))
+                        elif isinstance(leaf, ast.Attribute) and leaf.attr in names:
+                            found.append((path, leaf.attr))
     return found
 
 
-def _policy_call_sites(sources):
-    """Every ``AsyncJobPolicy.for_launch(...)`` call, with its stdin argument."""
-    sites = []
+def _policy_references(sources):
+    """Every mention of ``AsyncJobPolicy.for_launch`` in the tree.
+
+    Returns ``(path, arg_or_None, is_direct_call)``. A reference that is NOT
+    the callee of a call — ``launch = AsyncJobPolicy.for_launch`` and then
+    ``launch(...)`` — is an ALIASED call site: round-1 verification planted one
+    and the call-site count stayed at 1, so the alias is now itself an
+    offense.
+    """
+    refs = []
     for path, src in sources:
         tree = ast.parse(src)
+        called = set()
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                called.add(id(node.func))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Attribute) and node.attr == "for_launch"):
                 continue
-            func = node.func
-            if not (isinstance(func, ast.Attribute) and func.attr == "for_launch"):
+            if not (isinstance(node.value, ast.Name)
+                    and node.value.id == "AsyncJobPolicy"):
                 continue
-            if not (isinstance(func.value, ast.Name)
-                    and func.value.id == "AsyncJobPolicy"):
-                continue
-            arg = next((kw.value for kw in node.keywords
-                        if kw.arg == "stdin_is_shell_own"), None)
-            sites.append((path, arg))
-    return sites
+            direct = id(node) in called
+            arg = None
+            if direct:
+                call = next(c for c in ast.walk(tree)
+                            if isinstance(c, ast.Call) and c.func is node)
+                arg = next((kw.value for kw in call.keywords
+                            if kw.arg == "stdin_is_shell_own"), None)
+            refs.append((path, arg, direct))
+    return refs
+
+
+def _policy_call_sites(sources):
+    """The DIRECT call sites only (an aliased reference is flagged separately)."""
+    return [(path, arg) for path, arg, direct in _policy_references(sources)
+            if direct]
 
 
 def _answers_from_the_owner(arg):
@@ -118,10 +160,11 @@ def _fd0_origin_sniffs(sources):
 # --- the real scan ---------------------------------------------------------
 
 def test_the_answer_has_exactly_one_producer():
-    """``is_shell_stdin`` and its feeders live only in the owner module."""
+    """Each owned member is defined in exactly one module — its own."""
     defined = _members_defined(_psh_sources(), OWNER_MEMBERS)
-    assert sorted(defined) == sorted((OWNER_MODULE, name)
-                                     for name in OWNER_MEMBERS), defined
+    assert sorted(defined) == sorted((module, name)
+                                     for name, module in OWNER_MEMBERS.items()), \
+        defined
 
 
 def test_the_policy_has_one_call_site_reading_the_owner():
@@ -130,6 +173,9 @@ def test_the_policy_has_one_call_site_reading_the_owner():
     A second site (or a hard-coded ``stdin_is_shell_own=True``) would be a
     second decision about the same fact — the shape C022 was.
     """
+    refs = _policy_references(_psh_sources())
+    aliased = [(path, direct) for path, _, direct in refs if not direct]
+    assert not aliased, f"AsyncJobPolicy.for_launch referenced without calling it: {aliased}"
     sites = _policy_call_sites(_psh_sources())
     assert [path for path, _ in sites] == [CONSUMER_MODULE], sites
     assert _answers_from_the_owner(sites[0][1]), ast.dump(sites[0][1])
@@ -172,10 +218,39 @@ def looks_inherited():
 '''
 
 
-def test_offender_second_producer_is_flagged():
-    found = _members_defined([("psh/executor/sneaky.py", SECOND_PRODUCER)],
-                             OWNER_MEMBERS)
-    assert found == [("psh/executor/sneaky.py", "is_shell_stdin")]
+ASSIGNED_PRODUCER = """
+class OtherThing:
+    is_shell_stdin = property(lambda self: True)
+"""
+
+ASSIGNED_CLASSIFIER = """
+supplies_frame_stdin = _local_copy
+"""
+
+ALIASED_CALL = """
+def launch(self):
+    go = AsyncJobPolicy.for_launch
+    go(background=True, job_control_off=True, stdin_is_shell_own=True)
+"""
+
+
+@pytest.mark.parametrize("source,member", [
+    (SECOND_PRODUCER, "is_shell_stdin"),
+    (ASSIGNED_PRODUCER, "is_shell_stdin"),
+    (ASSIGNED_CLASSIFIER, "supplies_frame_stdin"),
+])
+def test_offender_second_producer_is_flagged(source, member):
+    """A second producer counts whether it is a def, an annotated assignment
+    or a PLAIN assignment (the round-1 evasion)."""
+    found = _members_defined([("psh/executor/sneaky.py", source)], OWNER_MEMBERS)
+    assert found == [("psh/executor/sneaky.py", member)]
+
+
+def test_offender_aliased_call_site_is_flagged():
+    """Binding the classmethod to a name and calling THAT is still a call site."""
+    refs = _policy_references([("psh/executor/sneaky.py", ALIASED_CALL)])
+    assert refs == [("psh/executor/sneaky.py", None, False)]
+    assert _policy_call_sites([("psh/executor/sneaky.py", ALIASED_CALL)]) == []
 
 
 @pytest.mark.parametrize("source", [SECOND_CALL_SITE, INLINE_ANSWER])

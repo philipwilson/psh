@@ -32,26 +32,21 @@ def test_fresh_shell_owns_its_stdin():
     assert StdinBinding().is_shell_stdin is True
 
 
-def test_compound_scope_that_rebinds_fd0_takes_the_answer_away():
-    """An fd-0 entry in the scope's saved-fd list IS the binding."""
+def test_compound_scope_that_supplied_fd0_takes_the_answer_away():
     binding = StdinBinding()
-    saved = [(0, 11)]
-    binding.note_compound_applied(saved)
+    binding.note_compound_applied(True)
     assert binding.is_shell_stdin is False
-    binding.note_compound_restored(saved)
+    binding.note_compound_restored(True)
     assert binding.is_shell_stdin is True
 
 
-@pytest.mark.parametrize("saved", [
-    [],                      # a compound with no redirects at all
-    [(1, 12)],               # `{ ...; } > out`
-    [(2, 12), (1, 13)],      # `{ ...; } > out 2> err`
-])
-def test_compound_scope_without_fd0_leaves_the_answer_alone(saved):
+def test_compound_scope_that_supplied_nothing_leaves_the_answer_alone():
+    """A list with no redirects, only output redirects, or an output redirect
+    ON fd 0 — the classifier answers False and the binding does not move."""
     binding = StdinBinding()
-    binding.note_compound_applied(saved)
+    binding.note_compound_applied(False)
     assert binding.is_shell_stdin is True
-    binding.note_compound_restored(saved)
+    binding.note_compound_restored(False)
     assert binding.is_shell_stdin is True
 
 
@@ -59,12 +54,11 @@ def test_nested_compound_scopes_unwind_in_order():
     """`{ { cat & wait; } < inner; } < outer`: the answer stays False until the
     OUTERMOST fd-0 scope ends."""
     binding = StdinBinding()
-    outer, inner = [(0, 11)], [(0, 12)]
-    binding.note_compound_applied(outer)
-    binding.note_compound_applied(inner)
-    binding.note_compound_restored(inner)
+    binding.note_compound_applied(True)
+    binding.note_compound_applied(True)
+    binding.note_compound_restored(True)
     assert binding.is_shell_stdin is False
-    binding.note_compound_restored(outer)
+    binding.note_compound_restored(True)
     assert binding.is_shell_stdin is True
 
 
@@ -74,9 +68,8 @@ def test_pipe_binding_is_never_undone():
     binding.note_pipe_stdin()
     assert binding.is_shell_stdin is False
     # An unrelated compound window inside the member does not release it.
-    saved = [(1, 11)]
-    binding.note_compound_applied(saved)
-    binding.note_compound_restored(saved)
+    binding.note_compound_applied(False)
+    binding.note_compound_restored(False)
     assert binding.is_shell_stdin is False
 
 
@@ -86,9 +79,9 @@ def test_child_inherits_the_binding_with_the_descriptor():
     child = binding.copy_for_child()
     assert child.is_shell_stdin is False
     # ...and is independent: the child's own scopes do not reach the parent.
-    child.note_compound_applied([(0, 11)])
-    child.note_compound_restored([(0, 11)])
-    child.note_compound_restored([(0, 11)])
+    child.note_compound_applied(True)
+    child.note_compound_restored(True)
+    child.note_compound_restored(True)
     assert binding.is_shell_stdin is False
     assert StdinBinding().copy_for_child().is_shell_stdin is True
 
@@ -170,6 +163,13 @@ def body_sees(isolated_shell_with_temp_dir, monkeypatch):
     # A compound that redirects no INPUT fd supplies nothing.
     ("{ true; } > out", [True]),
     ("{ true; } 2> err", [True]),
+    # ...and neither does an OUTPUT redirect that lands on fd 0. Direction is
+    # half the rule: `0>&1` gives fd 0 a write-only descriptor, so the POSIX
+    # async /dev/null must still apply — counting it left the background reader
+    # blocked forever on a terminal (round-1 blocker B1).
+    ("{ true; } 0> out", [True]),
+    ("{ true; } 0>&1", [True]),
+    ("{ true; } 0>> out", [True]),
     # ...and neither does an input redirect on a fd that is NOT 0. The binding
     # follows the fd the scope actually rebound, so `3< in` supplies fd 3 and a
     # named fd is allocated at >= 10. (bash's own classifier is fd-BLIND for
@@ -178,8 +178,11 @@ def body_sees(isolated_shell_with_temp_dir, monkeypatch):
     # background reader keep the shell's stdin; a declared divergence.)
     ("{ true; } 3< in", [True]),
     ("{ true; } {v}< in", [True]),
-    # A read-write open of fd 0 IS a binding.
+    # A read-write open of fd 0 IS a binding, and so is a MOVE onto fd 0
+    # (`0<&3-` = dup fd 3 onto 0, then close 3). bash's classifier answers 0
+    # for the move forms — another declared face of the same divergence.
     ("{ true; } <> in", [False]),
+    ("exec 3< in; { true; } 0<&3-", [False]),
     # A SIMPLE command's own redirect list has no reach — including a function
     # CALL's (bash: `f() { cat & wait; }; f < file` prints nothing).
     ("f() { true; }; f < in", [True]),

@@ -11480,9 +11480,25 @@
   psh_only: true
 
 - name: c022_divergence_binding_ends_with_its_compound
-  description: "C022 declared divergence: after the compound's redirect is undone the POSIX /dev/null applies again in psh; bash 5.3.15 keeps suppressing for the rest of the top-level command, so its background reader steals the shell's stdin"
+  description: "C022 declared divergence, psh SIDE ONLY: after the compound's redirect is undone the reader gets /dev/null again. The golden harness gives the shell an EMPTY stdin, so this row proves the reader read nothing -- it CANNOT show what bash does instead (steal the shell's stdin). The two-sided pin, with real stdin and a read-back, is tests/conformance/bash/test_async_stdin_inheritance_conformance.py::TestDeclaredDivergences::test_psh_withholds_the_shells_own_stdin"
   command: 'printf "X\n" > in; { true; } < in; cat & wait; echo end'
   stdout: "end\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: c022_divergence_backgrounded_compound_keeps_its_redirect
+  description: "C022 declared divergence: a redirected compound that is itself BACKGROUNDED keeps supplying its body's fd 0 in psh; bash 5.3.15 forks it before the assignment that would record the fact and prints nothing"
+  command: 'printf "bg-face\n" > in; { cat & wait; } < in & wait'
+  stdout: "bg-face\n"
+  stderr: ""
+  exit_code: 0
+  psh_only: true
+
+- name: c022_divergence_move_form_supplies_fd0
+  description: "C022 declared divergence: `0<&3-` moves fd 3 onto fd 0, which supplies the frame's input in psh; bash 5.3.15 answers 0 for the move forms (redir.c#stdin_redirection) and prints nothing"
+  command: 'printf "move-face\n" > in; exec 3< in; { cat & wait; } 0<&3-'
+  stdout: "move-face\n"
   stderr: ""
   exit_code: 0
   psh_only: true

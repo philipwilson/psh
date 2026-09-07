@@ -88,7 +88,12 @@ from .file_redirect import (
 from .input_cursor import OpenDescription, dup_alias_fds
 from .planner import RedirectPlan
 from .process_sub import ProcessSubstitutionHandler
-from .redirect_program import RedirectOp, RedirectOpKind, is_self_dup
+from .redirect_program import (
+    RedirectOp,
+    RedirectOpKind,
+    is_self_dup,
+    list_supplies_frame_stdin,
+)
 
 if TYPE_CHECKING:
     from ..shell import Shell
@@ -470,7 +475,7 @@ class IOManager:
             finally:
                 stream_restore()
                 if compound:
-                    self.restore_compound_redirections(saved_fds)
+                    self.restore_compound_redirections(saved_fds, redirects)
                 else:
                     self.restore_redirections(saved_fds)
 
@@ -618,18 +623,31 @@ class IOManager:
         such reach — ``f() { cat & wait; }; f < file`` prints nothing in both
         shells — so it uses :meth:`apply_redirections` instead.
 
+        What counts as supplying fd 0 is decided once, by
+        ``redirect_program.py#supplies_frame_stdin``: an INPUT-direction
+        redirect landing on fd 0. An OUTPUT redirect that happens to name fd 0
+        (``{ cat & wait; } 0>&1``) supplies no input and must NOT bind, or the
+        async reader inherits a write-only fd 0 and blocks.
+
         Paired with :meth:`restore_compound_redirections`; a forked child that
         runs its whole body under the redirect (a subshell) simply never
         restores.
         """
         saved_fds = self.apply_redirections(redirects)
-        self.state.stdin_binding.note_compound_applied(saved_fds)
+        self.state.stdin_binding.note_compound_applied(
+            list_supplies_frame_stdin(redirects))
         return saved_fds
 
     def restore_compound_redirections(
-            self, saved_fds: List[Tuple[int, int | None]]) -> None:
-        """Undo :meth:`apply_compound_redirections`, ending its fd-0 binding."""
-        self.state.stdin_binding.note_compound_restored(saved_fds)
+            self, saved_fds: List[Tuple[int, int | None]],
+            redirects: List[Redirect]) -> None:
+        """Undo :meth:`apply_compound_redirections`, ending its fd-0 binding.
+
+        Takes the same redirect list the apply took, so both ends read the one
+        classifier rather than a remembered flag.
+        """
+        self.state.stdin_binding.note_compound_restored(
+            list_supplies_frame_stdin(redirects))
         self.restore_redirections(saved_fds)
 
     def apply_permanent_redirections(self, redirects: List[Redirect]):

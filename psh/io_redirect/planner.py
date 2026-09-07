@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING, List, Optional
 
 from ..ast_nodes import Redirect
 from .process_sub import ProcessSubstitutionResource
-from .redirect_program import RedirectOp, RedirectProgram, classify_redirect
+from .redirect_program import (
+    RedirectOp,
+    RedirectProgram,
+    classify_redirect,
+    target_fd_of,
+)
 
 if TYPE_CHECKING:
     from ..ast_nodes import ProcessSubstitution
@@ -33,13 +38,9 @@ class RedirectPlan:
 
     @property
     def target_fd(self) -> int:
-        if self.redirect.combined:
-            return 1
-        if self.redirect.type in ('<<', '<<-', '<<<'):
-            return self.redirect.fd if self.redirect.fd is not None else 0
-        if self.redirect.fd is not None:
-            return self.redirect.fd
-        return 0 if self.redirect.type.startswith('<') else 1
+        """The fd this plan re-points — the shared rule in
+        ``redirect_program.py#target_fd_of``."""
+        return target_fd_of(self.redirect)
 
     @property
     def open_target(self) -> str:

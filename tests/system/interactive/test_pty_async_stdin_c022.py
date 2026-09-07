@@ -129,6 +129,29 @@ def test_async_reader_inherits_frame_stdin_at_the_prompt(psh, cmd, expected):
     assert run(psh, 'echo alive') == ['alive']
 
 
+@pytest.mark.parametrize("shape,cmd,expected", [
+    # `0>&1` at a terminal is the shape that HUNG: fd 0 became the tty's
+    # write side, and a background reader that inherited it never returned.
+    # The row's guard is the pexpect timeout — a regression fails as a
+    # TIMEOUT here instead of wedging the suite.
+    ("dup_stdout_onto_fd0", '{ cat & wait; } 0>&1; echo DONE', ['DONE']),
+    # The same defect away from a terminal is merely quiet: fd 0 is a
+    # write-only file and `cat` says so. bash is silent in the first and
+    # diagnoses in the second, and psh now matches both.
+    ("output_to_file_on_fd0", '{ cat & wait; } 0> o; echo DONE',
+     ['cat: stdin: Bad file descriptor', 'DONE']),
+])
+def test_output_redirect_on_fd0_supplies_no_input(psh, shape, cmd, expected):
+    """C022/B1: an OUTPUT redirect landing on fd 0 must not bind the frame.
+
+    Interactively the async policy is inactive anyway (job control is on), so
+    what this row really pins is that the shell RETURNS — the round-1
+    regression made the prompt unreachable.
+    """
+    assert run(psh, cmd) == expected, cmd
+    assert run(psh, 'echo alive') == ['alive']
+
+
 def test_background_reader_with_no_frame_input_does_not_steal_the_terminal(psh):
     """C022 control: nothing supplied fd 0, so the POSIX ``/dev/null`` stands.
 

@@ -285,7 +285,7 @@ class SubshellExecutor:
                 finally:
                     if saved_fds:
                         subshell.io_manager.restore_compound_redirections(
-                            saved_fds)
+                            saved_fds, redirects)
 
             exit_code = run_background_shell_child(subshell, body)
 
@@ -345,7 +345,8 @@ class SubshellExecutor:
                     return visitor.visit(node.statements)
                 finally:
                     if saved_fds:
-                        self.io_manager.restore_compound_redirections(saved_fds)
+                        self.io_manager.restore_compound_redirections(
+                            saved_fds, node.redirects)
 
             return run_background_shell_child(self.shell, body)
 
