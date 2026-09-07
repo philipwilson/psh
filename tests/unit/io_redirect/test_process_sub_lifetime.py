@@ -288,10 +288,10 @@ def test_a_substitution_arms_no_alarm(shell):
         os.waitpid(pid, 0)
 
 
-def test_low_fd_promotion_failure_closes_both_pipe_ends():
-    """With fd 0/1/2 closed, os.pipe() hands back a LOW descriptor and the
-    shell's end is promoted above 2. When that promotion fails, both pipe ends
-    are released — the census in the child is what proves it.
+def test_the_shells_end_is_moved_clear_of_the_low_descriptors():
+    """With fd 0/1/2 closed, os.pipe() hands back a LOW descriptor; the shell's
+    end must still land in the high range it hands out as /dev/fd/N, and a
+    failure to move it must release both pipe ends.
 
     Runs in its own interpreter: it closes the standard descriptors, which an
     in-process test must never do (an xdist worker's low fds are its channel).
@@ -305,21 +305,23 @@ def test_low_fd_promotion_failure_closes_both_pipe_ends():
         for fd in (0, 1, 2):
             os.close(fd)
 
-        # Success arm: the shell's end is promoted clear of 0/1/2.
+        # The move happens even though 0/1/2 are the free numbers.
         parent_fd, child_fd = process_sub._pipe_endpoints('out')
-        promoted_ok = parent_fd > 2
+        moved = 2 < parent_fd < process_sub.HIGH_FD_LIMIT
         os.close(parent_fd); os.close(child_fd)
 
-        # Failure arm: the promotion raises; nothing may stay open.
+        # Failure arm: neither the high move nor the fallback can be taken.
         import fcntl as fcntl_mod
-        class Shim:
+        def boom(*a, **k):
+            raise OSError('injected')
+        class FcntlShim:
             def __getattr__(self, attr):
-                if attr == 'fcntl':
-                    def boom(*a, **k):
-                        raise OSError('injected')
-                    return boom
-                return getattr(fcntl_mod, attr)
-        process_sub.fcntl = Shim()
+                return boom if attr == 'fcntl' else getattr(fcntl_mod, attr)
+        class OsShim:
+            def __getattr__(self, attr):
+                return boom if attr == 'dup2' else getattr(os, attr)
+        process_sub.fcntl = FcntlShim()
+        process_sub.os = OsShim()
         before = census()
         try:
             process_sub._pipe_endpoints('out')
@@ -327,14 +329,29 @@ def test_low_fd_promotion_failure_closes_both_pipe_ends():
         except OSError:
             raised = True
         after = census()
-        os.write(report, f"{promoted_ok} {raised} {before} {after}".encode())
+        os.write(report, f"{moved} {raised} {before} {after}".encode())
     """)
     env = dict(os.environ, PYTHONPATH=str(PROJECT_ROOT))
     result = subprocess.run([sys.executable, "-c", script],
                             capture_output=True, text=True, env=env,
                             cwd=str(PROJECT_ROOT), timeout=60)
     assert result.returncode == 0, result.stderr
-    promoted_ok, raised, before, after = result.stdout.split()
-    assert promoted_ok == "True", "the shell's end was left on a low descriptor"
-    assert raised == "True", "the injected promotion failure was swallowed"
-    assert before == after, "a failed promotion leaked a pipe end"
+    moved, raised, before, after = result.stdout.split()
+    assert moved == "True", "the shell's end was left on a low descriptor"
+    assert raised == "True", "the injected move failure was swallowed"
+    assert before == after, "a failed move leaked a pipe end"
+
+
+def test_the_shells_end_avoids_the_numbers_scripts_redirect(shell):
+    """The handed-out descriptor sits in the high range, so a consuming
+    command's own `3>f` cannot replace it before it opens /dev/fd/N."""
+    from psh.io_redirect import process_sub
+
+    parent_fd, path, pid = process_sub.create_process_substitution(
+        "cat", "out", shell)
+    try:
+        assert 2 < parent_fd < process_sub.HIGH_FD_LIMIT, parent_fd
+        assert path == f"/dev/fd/{parent_fd}"
+    finally:
+        os.close(parent_fd)
+        os.waitpid(pid, 0)

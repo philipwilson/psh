@@ -58,14 +58,55 @@ def _reap_abandoned_child(pid: int) -> None:
         pass
 
 
+#: The shell's end of a substitution pipe is moved to the highest free
+#: descriptor below this limit — bash's own choice for process substitution
+#: (``subst.c``: ``move_to_high_fd (fd, 1, 64)``), which is why bash hands out
+#: ``/dev/fd/63``.
+HIGH_FD_LIMIT = 64
+
+
+def _fd_is_free(fd: int) -> bool:
+    """True when *fd* is not open in this process."""
+    try:
+        fcntl.fcntl(fd, fcntl.F_GETFD)
+    except OSError:
+        return True
+    return False
+
+
+def _move_to_high_fd(fd: int) -> int:
+    """Move *fd* to the highest free descriptor below :data:`HIGH_FD_LIMIT`.
+
+    The number IS the handed-out name (``/dev/fd/N``), and the consuming
+    command redirects descriptors of its own, so a low number is a collision:
+    with the shell's end on fd 3, ``cat <(echo a) 3>f`` gives the consumer a
+    ``/dev/fd/3`` that its own ``3>f`` has already replaced. Keeping the end
+    just below 64, as bash does, puts it clear of the numbers scripts use.
+
+    Falls back to the lowest free descriptor above 2 when nothing below the
+    limit can be taken — fd 0/1/2 must never hold it either, because when they
+    began closed (``exec 1>&-``) ``/dev/fd/1`` would alias the closed shell
+    stdout and the consumer's open would fail. Raises ``OSError`` only when
+    even that fallback fails, leaving *fd* for the caller to release.
+    """
+    for candidate in range(HIGH_FD_LIMIT - 1, 2, -1):
+        if not _fd_is_free(candidate):
+            continue
+        try:
+            os.dup2(fd, candidate)
+        except OSError:
+            break
+        _close_quietly(fd)
+        return candidate
+    if fd > 2:
+        return fd
+    promoted = fcntl.fcntl(fd, fcntl.F_DUPFD, 3)
+    _close_quietly(fd)
+    return promoted
+
+
 def _pipe_endpoints(direction: str) -> Tuple[int, int]:
     """Create the substitution pipe; return ``(parent_fd, child_fd)``.
-
-    The shell's end is kept above the standard descriptors. When fd 0/1/2
-    began closed (``exec 1>&-``), ``os.pipe()`` can hand that end back AS a
-    low descriptor, and ``/dev/fd/1`` would then alias the closed shell stdout
-    so the consumer's open fails (EACCES on macOS). bash likewise keeps its
-    process-substitution descriptors high.
 
     Nothing is owned by the caller until this returns: a failure inside closes
     whatever it had already taken.
@@ -74,16 +115,13 @@ def _pipe_endpoints(direction: str) -> Tuple[int, int]:
     # <(cmd): the shell reads what the child writes. >(cmd): the reverse.
     parent_fd, child_fd = ((read_fd, write_fd) if direction == 'in'
                            else (write_fd, read_fd))
-    if parent_fd > 2:
-        return parent_fd, child_fd
     try:
-        promoted = fcntl.fcntl(parent_fd, fcntl.F_DUPFD, 3)
+        parent_fd = _move_to_high_fd(parent_fd)
     except OSError:
         _close_quietly(parent_fd)
         _close_quietly(child_fd)
         raise
-    _close_quietly(parent_fd)
-    return promoted, child_fd
+    return parent_fd, child_fd
 
 
 def create_process_substitution(

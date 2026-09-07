@@ -60,7 +60,8 @@ CASES = [
     # ---- C081: both directions name a /dev/fd descriptor -----------------
     ("write_side_path_shape", 'echo >(true)', "devfd", {}, ""),
     ("read_side_path_shape", 'echo <(true)', "devfd", {}, ""),
-    ("embedded_path_shape", 'echo pre<(true)post', "devfd", {}, ""),
+    ("embedded_read_path_shape", 'echo pre<(true)post', "devfd", {}, ""),
+    ("embedded_write_path_shape", 'echo pre>(true)post', "devfd", {}, ""),
     # ---- the bytes that actually reach each side -------------------------
     ("write_side_bytes",
      'echo hi > >(cat > got; : > flag); ' + BARRIER,
@@ -70,6 +71,30 @@ CASES = [
      'echo hi > >(sleep 1; cat > got; : > flag); ' + BARRIER,
      "exact", {"got": "exact"}, ""),
     ("read_side_late_body", 'cat <(sleep 1; echo x)', "exact", {}, ""),
+    ("append_to_write_side",
+     'echo hi >> >(cat > got; : > flag); ' + BARRIER,
+     "exact", {"got": "exact"}, ""),
+    ("tee_to_write_side",
+     "printf 'a\\nb\\n' | tee >(cat > got; : > flag) > /dev/null; " + BARRIER,
+     "exact", {"got": "exact"}, ""),
+    # The handed-out path is opened by an EXTERNAL process, which can only
+    # reach the descriptor because the shell cleared close-on-exec on it.
+    ("external_consumer_opens_the_path",
+     f'{BASH} -c \'printf "x\\ny\\n" > "$1"\' _ >(cat > got; : > flag); '
+     + BARRIER,
+     "exact", {"got": "exact"}, ""),
+    # The handed-out descriptor must sit clear of the numbers a consuming
+    # command redirects itself, or its own `3>f` replaces the substitution
+    # before it opens the path (bash keeps substitution descriptors just
+    # below 64 for this reason).
+    ("consumer_redirects_fd_3",
+     'cat <(echo a) 3>f; echo done', "exact", {}, ""),
+    ("consumer_redirects_fd_4",
+     'cat <(echo a) 4>f 3>g; echo done', "exact", {}, ""),
+    ("external_consumer_redirects_low_fds",
+     f'{BASH} -c \'exec 3>/dev/null 4>/dev/null 5>/dev/null; '
+     'printf "x\\n" > "$1"\' _ >(cat > got; : > flag); ' + BARRIER,
+     "exact", {"got": "exact"}, ""),
     ("many_in_one_command",
      'cat <(echo a) <(echo b) <(echo c)', "exact", {}, ""),
     ("nested_substitution", 'cat <(cat <(echo deep))', "exact", {}, ""),

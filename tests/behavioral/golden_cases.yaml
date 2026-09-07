@@ -11336,3 +11336,12 @@
   stdout: "delta=0\n"
   stderr: ""
   exit_code: 0
+
+- name: c091_substitution_descriptor_survives_the_consumers_own_redirect
+  description: "C091 adjacency: the /dev/fd/N handed to a consumer is clear of the descriptors the consumer redirects (cat <(echo a) 3>f)"
+  command: |
+    cat <(echo a) 3>f
+    cat <(echo b) 4>g 3>h
+  stdout: "a\nb\n"
+  stderr: ""
+  exit_code: 0
