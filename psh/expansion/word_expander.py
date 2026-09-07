@@ -147,13 +147,31 @@ class _FieldBuilder:
         return self.committed
 
 
-class _AssignCtx:
-    """Assignment-shaped word (``NAME=...``) value-tilde walk bookkeeping."""
+def _no_escape(text: str) -> str:
+    """The identity escape: a command-word tilde replacement is emitted raw.
+
+    Only PATTERN words make a tilde replacement literal (see
+    ``TildeExpander.expand_escaped``); the field engine keeps its historical
+    raw join, so this is what it passes.
+    """
+    return text
+
+
+class _TildeWalk:
+    """State of ONE tilde walk over a Word's parts.
+
+    Carries the assignment-shaped (``NAME=...``) value-tilde bookkeeping and
+    the *escape* the walk applies to each tilde REPLACEMENT (identity for
+    command words, the consumer's pattern escape for pattern words).
+    """
 
     __slots__ = ('has_expansion', 'assign_prefix', 'assign_seen',
-                 'value_len', 'prev_char')
+                 'value_len', 'prev_char', 'escape')
 
-    def __init__(self) -> None:
+    def __init__(self, escape=_no_escape) -> None:
+        #: Applied to the text a tilde-prefix expands TO, never to the rest
+        #: of the word.
+        self.escape = escape
         self.has_expansion = False
         #: The unquoted ``NAME=``/``NAME+=`` prefix, or None when the word is
         #: not assignment-shaped (or the policy disables assignment_tilde).
@@ -240,7 +258,7 @@ class WordExpander:
         return expanded
 
     def _walk_literal_part(self, word: Word, part_index: int,
-                           part: LiteralPart, ctx: _AssignCtx,
+                           part: LiteralPart, ctx: _TildeWalk,
                            builder: _FieldBuilder) -> None:
         """Walk one LiteralPart: quote-aware escape processing, assignment
         value-tilde tracking, leading-tilde expansion, per-character glob
@@ -271,8 +289,8 @@ class WordExpander:
     # The tilde-placement rule (shared with the pattern-word owner)
     # ------------------------------------------------------------------
 
-    def tilde_walk_begin(self, word: Word, *, assignment_tilde: bool
-                         ) -> Tuple[Word, '_AssignCtx']:
+    def tilde_walk_begin(self, word: Word, *, assignment_tilde: bool,
+                         escape=_no_escape) -> Tuple[Word, '_TildeWalk']:
         """Open a tilde walk over *word*; returns the word to walk and its ctx.
 
         THE entry point for bash's tilde PLACEMENT rule over a Word's parts.
@@ -291,18 +309,18 @@ class WordExpander:
         (``expansion/pattern_words.expand_pattern_word``) are the two drivers,
         so ``case``/``[[ ]]`` pattern words cannot drift from command words.
         """
-        ctx = _AssignCtx()
+        ctx = _TildeWalk(escape)
         if assignment_tilde:
             ctx.assign_prefix = self.manager.assignment_word_prefix(word)
 
-        extent_parts = self._collapse_leading_tilde_extent(word)
+        extent_parts = self._collapse_leading_tilde_extent(word, escape)
         if extent_parts is not None:
             word = Word(parts=extent_parts)
             ctx.assign_prefix = None  # synthetic word is not assignment-shaped
         return word, ctx
 
     def tilde_apply_unquoted_literal(self, word: Word, part_index: int,
-                                     part: LiteralPart, ctx: '_AssignCtx',
+                                     part: LiteralPart, ctx: '_TildeWalk',
                                      *, has_content: bool) -> str:
         """Tilde-expand one UNQUOTED literal part under an open walk.
 
@@ -321,11 +339,11 @@ class WordExpander:
                 and self._leading_tilde_expandable(
                     part.text,
                     parts_follow=part_index < len(word.parts) - 1)):
-            text = self.manager.expand_tilde(text)
+            text = self.manager.tilde_expander.expand_escaped(text, ctx.escape)
         return text
 
     @staticmethod
-    def tilde_note_quoted_literal(ctx: '_AssignCtx') -> None:
+    def tilde_note_quoted_literal(ctx: '_TildeWalk') -> None:
         """Record that a QUOTED literal part was consumed by an open walk.
 
         Quoted text never extends the ``NAME=`` prefix and never triggers a
@@ -337,7 +355,7 @@ class WordExpander:
             ctx.value_len += 1
 
     @staticmethod
-    def tilde_note_expansion(ctx: '_AssignCtx') -> None:
+    def tilde_note_expansion(ctx: '_TildeWalk') -> None:
         """Record that an ExpansionPart was consumed by an open tilde walk.
 
         An expansion result never triggers value-tilde expansion (bash's check
@@ -350,7 +368,7 @@ class WordExpander:
             ctx.value_len += 1
 
     def _assignment_value_chunk(self, word: Word, part_index: int,
-                                part: LiteralPart, ctx: _AssignCtx,
+                                part: LiteralPart, ctx: _TildeWalk,
                                 text: str) -> str:
         """Apply assignment value-tilde expansion to an unquoted literal chunk.
 
@@ -375,7 +393,7 @@ class WordExpander:
                        or (ctx.prev_char == '=' and ctx.value_len == 0))
         if chunk:
             expanded_chunk = self._expand_assignment_value_tildes(
-                chunk, trigger, parts_follow)
+                chunk, trigger, parts_follow, ctx.escape)
             ctx.value_len += len(chunk)
             text = head + expanded_chunk
         ctx.prev_char = text[-1] if text else ctx.prev_char
@@ -416,7 +434,8 @@ class WordExpander:
         return not parts_follow
 
     def _collapse_leading_tilde_extent(
-            self, word: Word) -> Optional[List[WordPart]]:
+            self, word: Word,
+            escape=_no_escape) -> Optional[List[WordPart]]:
         """Collapse a colon-bounded leading tilde extent spanning parts.
 
         bash's tilde WORD runs from a word-leading ``~`` to the first
@@ -464,7 +483,8 @@ class WordExpander:
         # The prefix must actually expand; an unknown user or out-of-range
         # dirstack index leaves the word literal in bash (and the rest then
         # expands normally, which the ordinary walk already does).
-        expanded_lead = self.manager.expand_tilde(lead)
+        expanded_lead = self.manager.tilde_expander.expand_escaped(
+            lead, escape)
         if expanded_lead == lead:
             return None
 
@@ -504,7 +524,7 @@ class WordExpander:
                                 quoted=False)
         return [collapsed] + resume
 
-    def _walk_expansion_part(self, part: ExpansionPart, ctx: _AssignCtx,
+    def _walk_expansion_part(self, part: ExpansionPart, ctx: _TildeWalk,
                              builder: _FieldBuilder,
                              policy: WordExpansionPolicy) -> None:
         """Walk one ExpansionPart: append its run(s), or splice its fields."""
@@ -900,7 +920,8 @@ class WordExpander:
             text, first_trigger=True, parts_follow=False)
 
     def _expand_assignment_value_tildes(self, text: str, first_trigger: bool,
-                                        parts_follow: bool) -> str:
+                                        parts_follow: bool,
+                                        escape=_no_escape) -> str:
         """Expand tilde prefixes inside a chunk of an assignment value.
 
         bash checks assignment-shaped words for unquoted tilde prefixes
@@ -928,7 +949,8 @@ class WordExpander:
                 prefix_open = (idx == last and parts_follow
                                and prefix_end(seg) == len(seg))
                 if not prefix_open:
-                    seg = self.manager.tilde_expander.expand(seg)
+                    seg = self.manager.tilde_expander.expand_escaped(
+                        seg, escape)
             out.append(seg)
         return ':'.join(out)
 

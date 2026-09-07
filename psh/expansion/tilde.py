@@ -38,8 +38,41 @@ class TildeExpander:
         rest of *path* is appended verbatim. An inexpansible prefix (unknown
         user, out-of-range dirstack index) leaves the WHOLE path literal.
         """
+        split = self.expand_split(path)
+        return path if split is None else split[0] + split[1]
+
+    def expand_escaped(self, path: str, escape) -> str:
+        """:meth:`expand`, with *escape* applied to the REPLACEMENT only.
+
+        bash makes the text a tilde expansion produced match LITERALLY when
+        the word is a pattern, while the rest of the word keeps its
+        metacharacter power::
+
+            HOME='/a*b'; case '/aXb' in ~)     esac   # no match  (~ is literal)
+            HOME='/a*b'; case '/aXb' in $HOME) esac   # MATCHES   ($HOME is live)
+
+        So a pattern-word caller passes its own escape (``glob_escape`` for a
+        glob pattern, ``re.escape`` for a ``[[ =~ ]]`` regex source) and gets
+        ``escape(home) + rest`` — the ``rest`` untouched, because it came from
+        the source word and must stay live (``case $HOME/ab in ~/a*)`` still
+        globs on the ``a*``). Command-word callers pass nothing and keep the
+        raw join.
+        """
+        split = self.expand_split(path)
+        return path if split is None else escape(split[0]) + split[1]
+
+    def expand_split(self, path: str):
+        """``(replacement, rest)`` for a leading tilde-prefix, or None.
+
+        THE single decision behind :meth:`expand` and :meth:`expand_escaped`:
+        *replacement* is the text the tilde-prefix expanded TO and *rest* is
+        the remainder of *path*, verbatim. ``None`` means nothing expands and
+        the WHOLE path stays literal (no leading ``~``, an unknown user, an
+        out-of-range dirstack index) — the two callers both re-emit *path*
+        unchanged in that case, so the "leave it whole" rule is stated once.
+        """
         if not path.startswith('~'):
-            return path
+            return None
 
         end = self.prefix_end(path)
         prefix, rest = path[:end], path[end:]
@@ -51,12 +84,12 @@ class TildeExpander:
         if len(prefix) > 1 and (prefix[1] in '+-' or prefix[1].isdigit()):
             expanded = self._expand_dirstack_prefix(prefix)
             if expanded is None:
-                return path  # leave whole thing literal (out of range, etc.)
-            return expanded + rest
+                return None  # leave whole thing literal (out of range, etc.)
+            return expanded, rest
 
         # Just ~ (possibly with /path or :rest following)
         if prefix == '~':
-            # The shell's HOME variable wins (HOME=/xyz; echo ~ → /xyz),
+            # The shell's HOME variable wins (HOME=/xyz; echo ~ -> /xyz),
             # falling back to the password database like bash.
             home = self.state.get_variable('HOME')
             if not home:
@@ -64,15 +97,14 @@ class TildeExpander:
                     home = pwd.getpwuid(os.getuid()).pw_dir
                 except (KeyError, OSError):
                     home = '/'
-            return home + rest
+            return home, rest
 
         # ~username (possibly with /path or :rest following)
         try:
             user_info = pwd.getpwnam(prefix[1:])
-            return user_info.pw_dir + rest
         except KeyError:
-            # User not found, return unchanged
-            return path
+            return None  # User not found, leave the path unchanged
+        return user_info.pw_dir, rest
 
     def _dir_stack(self):
         """Effective directory stack as ``dirs`` would show it.

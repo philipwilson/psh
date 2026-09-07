@@ -7,7 +7,12 @@ Bash gives all of them the same word expansion — tilde, parameter, command and
 arithmetic expansion plus quote removal, with NO field splitting and NO
 pathname expansion — and then reads the result as a pattern in which the text
 that was QUOTED matches literally and the text that was not keeps its
-metacharacter power.
+metacharacter power. The text a TILDE prefix expands to is literal too — bash
+quotes the result of tilde expansion in a pattern word, though not the result
+of parameter or command expansion::
+
+    HOME='/a*b'; case '/aXb' in ~)     echo m;; esac   # no match, ~ is literal
+    HOME='/a*b'; case '/aXb' in $HOME) echo m;; esac   # m, $HOME is live
 
 Before v0.787.0 each of those sites walked the Word itself, and the ``case``
 walker was the one that forgot tilde expansion, so a pattern bash matched
@@ -20,17 +25,22 @@ silently took the ``*)`` branch instead (C042)::
 rule is not reimplemented here: it is driven through the same
 ``WordExpander.tilde_walk_begin`` / ``tilde_apply_unquoted_literal`` state
 machine the ordinary command-word engine uses, so a pattern word and a command
-word agree on every tilde form — the leading prefix (``~``, ``~/x``, ``~+``,
-``~-``, ``~user``, bounded at the first unquoted ``/`` or ``:``) and the
-assignment-shaped value tilde after the first ``=`` and each later ``:``
-(``case "x=$HOME" in x=~)`` matches in bash).
+word agree on WHERE a tilde expands — the leading prefix (``~``, ``~/x``,
+``~+``, ``~-``, ``~user``, bounded at the first unquoted ``/`` or ``:``) and
+the assignment-shaped value tilde after the first ``=`` and each later ``:``
+(``case "x=$HOME" in x=~)`` matches in bash). The one axis on which the two
+contexts differ is what the replacement MEANS afterwards, and that is the
+``escape`` this module passes into the walk.
 
 The sibling for the ``${var#pat}`` family lives in ``expansion/operands.py``
 (``_expand_pattern_operand``): the parser hands those operators a raw operand
-STRING, not a Word, so they cannot consume this function. Both paths share the
-tilde boundary and expansion rules through ``TildeExpander.prefix_end`` /
-``TildeExpander.expand``, and ``tests/unit/expansion/test_pattern_words.py``
-pins the two shapes to the same answers.
+STRING, not a Word, so they cannot consume this function. Both paths reach the
+same tilde boundary and expansion rules through ``TildeExpander.prefix_end`` /
+``TildeExpander.expand_split``, and both glob-escape the replacement
+(``operands.py`` at its ``_tilde_prefix`` call site, this module through the
+walk). ``tests/unit/expansion/test_pattern_words.py`` pins the two shapes to
+the same answers, INCLUDING on metacharacter-bearing homes — the cells that
+discriminate the escape.
 """
 from typing import TYPE_CHECKING, Callable, List, Optional
 
@@ -56,9 +66,10 @@ def expand_pattern_word(
         manager: the :class:`~psh.expansion.manager.ExpansionManager`.
         escape: makes text match literally — ``glob_escape`` for a glob
             pattern (``case``, ``==``/``!=``), ``re.escape`` for the ``=~``
-            regex source. Applied to every quoted part and to the result of
-            every quoted expansion; unquoted text is passed through raw so
-            its metacharacters stay live.
+            regex source. Applied to every quoted part, to the result of
+            every quoted expansion, and to the text a TILDE prefix expands
+            to; unquoted literal text and unquoted expansion results are
+            passed through raw so their metacharacters stay live.
         dquote_literal: converts the text of a DOUBLE-QUOTED LiteralPart.
             ``[[ ]]`` needs this because its lexer keeps ``"$x"`` as the
             literal text ``$x`` inside a quoted LiteralPart, so the caller
@@ -74,7 +85,14 @@ def expand_pattern_word(
         (or ``re.compile`` for the ``=~`` regex operand).
     """
     we = manager.word_expander
-    word, ctx = we.tilde_walk_begin(word, assignment_tilde=True)
+    # `escape` reaches the tilde walk, so the text a tilde-prefix expands TO
+    # is made LITERAL while the rest of the word keeps its metacharacter
+    # power — bash quotes the result of tilde expansion in a pattern word and
+    # does NOT quote the result of parameter expansion:
+    #     HOME='/a*b'; case '/aXb' in ~)     esac   # no match
+    #     HOME='/a*b'; case '/aXb' in $HOME) esac   # MATCHES
+    word, ctx = we.tilde_walk_begin(
+        word, assignment_tilde=True, escape=escape)
 
     out: List[str] = []
     # Mirrors the field engine's ``_FieldBuilder.has_content``: the
