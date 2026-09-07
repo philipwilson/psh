@@ -1,4 +1,4 @@
-"""The readonly attribute lock, tested on its owner (C242).
+"""The readonly attribute lock, tested on its owner (G17 / FLIP-PINS slot 2.4).
 
 ``ScopeManager.check_readonly_attribute_change`` is the single home of the
 bash 5.3 rule that a READONLY variable refuses any attribute change that would

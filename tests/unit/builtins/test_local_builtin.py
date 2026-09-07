@@ -157,7 +157,8 @@ class TestLocalReadonlyRedeclare:
     and the function CONTINUES. A bare attribute-only redeclare (`local x`,
     no value) is a no-op in both shells. Merging an attribute that CHANGES
     assignment semantics (`-i`, `-l`, `-u`, `-a`, `-A`, `-n`) onto a readonly
-    local is refused by bash 5.3 and by psh (C242; CHANGES line 705, 5.3-alpha
+    local is refused by bash 5.3 and by psh (G17 / FLIP-PINS slot 2.4; CHANGES line 705,
+    5.3-alpha
     item llllll) -- see ``test_attrs_only_add_integer_refused``; `-x`/`-t` are
     still merged. All expectations verified against bash 5.2 and re-checked
     against bash 5.3.15 (2026-09-06); only that one row moved.
@@ -207,7 +208,8 @@ class TestLocalReadonlyRedeclare:
         assert captured_shell.get_stderr() == ""
 
     def test_attrs_only_add_integer_refused(self, captured_shell):
-        """Merging `-i` onto a readonly local is REFUSED (C242): `local: x:
+        """Merging `-i` onto a readonly local is REFUSED (G17 / FLIP-PINS slot 2.4):
+        `local: x:
         readonly variable`, the integer attribute is NOT added, the value
         stands.
 
@@ -224,7 +226,8 @@ class TestLocalReadonlyRedeclare:
         assert "local: x: readonly variable" in captured_shell.get_stderr()
 
     def test_attrs_only_add_export_still_allowed(self, captured_shell):
-        """The allowed half of the same rule (C242): `-x` does not change what
+        """The allowed half of the same rule (G17 / FLIP-PINS slot 2.4): `-x` does not
+        change what
         an assignment does, so it still merges onto a readonly local."""
         result = captured_shell.run_command(
             'f(){ local -r x=1; local -x x; declare -p x; }; f')

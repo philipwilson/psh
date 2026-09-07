@@ -4138,7 +4138,7 @@
   stderr: "local: x: readonly variable"
   exit_code: 0
   min_bash: "5.3"
-  description: "C242: merging -i onto a readonly local is refused (CHANGES 5.3-alpha 1.llllll); both-sides pin: tests/conformance/bash/test_export_env_sync_conformance.py::TestReadonlyAttributeRefusal::test_local_i_on_readonly_local_refused"
+  description: "G17 / FLIP-PINS slot 2.4: merging -i onto a readonly local is refused (CHANGES 5.3-alpha 1.llllll); both-sides pin: tests/conformance/bash/test_export_env_sync_conformance.py::TestReadonlyAttributeRefusal::test_local_i_on_readonly_local_refused"
 
 # The attrs-only merge can never CLEAR readonly (create_local ORs attributes),
 # so `local +r x` leaves x readonly (R1-extra safety). stdout + exit match bash

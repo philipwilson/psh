@@ -11,7 +11,8 @@ add/remove, allexport interplay, and prefix-assignment restore.
 ``printenv NAME`` is the child's-eye view of the environment in every
 case (exit 1 when the entry is absent).
 
-READONLY ATTRIBUTE REFUSAL (C242).  bash 5.3.15 CHANGES line 705, 5.3-alpha
+READONLY ATTRIBUTE REFUSAL (gate-triage row G17 / FLIP-PINS slot 2.4).  bash 5.3.15 CHANGES line
+705, 5.3-alpha
 item llllll: "Fixed a bug that allowed attribute changes to readonly variables
 that changed the effects of attempted assignments".  ``declare`` / ``typeset``
 / ``local`` REFUSE adding or removing an attribute that changes how assignment
@@ -136,7 +137,7 @@ class TestExportAttributeLifecycle(ConformanceTest):
 
 class TestReadonlyAttributeRefusal:
     """A READONLY variable refuses every attribute change that would alter what
-    a later assignment DOES; the rest still apply (C242).
+    a later assignment DOES; the rest still apply (G17 / FLIP-PINS slot 2.4).
 
     bash 5.3.15 CHANGES line 705, 5.3-alpha item llllll ("Fixed a bug that
     allowed attribute changes to readonly variables that changed the effects of
