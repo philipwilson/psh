@@ -181,6 +181,13 @@ def test_declare_f_text_keeps_the_source_spelling(body, expected):
     (r'echo $v""x', "${v}x"),
     (r"echo $v''x", "${v}x"),
     (r'echo "$v""""x"', "${v}x"),
+    # A separator before a brace expansion: the flattening drops it, so the
+    # braces have to carry what it was stopping (bash: all three are 11 12).
+    (r'echo $v""{1,2}', "${v}{1,2}"),
+    (r'echo "$v"{1,2}', "${v}{1,2}"),
+    (r'echo $v"{1,2}"', "${v}{1,2}"),
+    # control: nothing in between, so the fusion to v1/v2 is the meaning
+    (r'echo $v{1,2}', "$v{1,2}"),
     # controls: no fusion possible, so no braces
     (r'echo "$v"""" x"', "$v x"),
     (r'echo "$v"".txt"', "$v.txt"),
@@ -196,6 +203,9 @@ def test_display_text_looks_past_empty_parts(source, expected):
 @pytest.mark.parametrize("source,expected", [
     (r'echo $v""x', "${v}x"),
     (r'echo "$v""""x"', "${v}x"),
+    (r'echo $v""{1,2}', "${v}{1,2}"),
+    (r'echo "$v"{1,2}', "${v}{1,2}"),
+    (r'echo $v{1,2}', "$v{1,2}"),        # control: must stay bare
 ])
 def test_debug_ast_shows_the_same_spelling(source, expected):
     """``--debug-ast`` is a real consumer of that flattening, not just .args."""
