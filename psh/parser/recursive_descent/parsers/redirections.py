@@ -12,7 +12,7 @@ from ....lexer.heredoc_lexer import (
     delimiter_token_acceptable,
     raw_delimiter_from_tokens,
 )
-from ....lexer.token_types import Token, TokenType
+from ....lexer.token_types import Token, TokenType, slice_renders_token
 from ....utils.heredoc_detection import unquote_heredoc_delimiter
 from ..helpers import TokenGroups
 from .base import ParserSubcomponent
@@ -151,11 +151,21 @@ class RedirectionParser(ParserSubcomponent):
         #
         # Recover the raw spelling from the source span when available — token
         # values drop a VARIABLE's `$` and a STRING's quotes — and derive
-        # quotedness through the one rule.
+        # quotedness through the one rule. The span is only trusted when EVERY
+        # delimiter token verifiably renders inside it: a span indexes the text
+        # the LEXER saw, and a caller that passes a different string still gets
+        # a slice, of the wrong string (the C010 shape). Unverified, fall back
+        # to the token-value reconstruction.
         source_text = self.parser.ctx.source_text
         start = delim_tokens[0].position
         end = delim_tokens[-1].end_position
-        if source_text is not None and 0 <= start <= end <= len(source_text):
+        span_renders = (
+            source_text is not None
+            and 0 <= start <= end <= len(source_text)
+            and all(slice_renders_token(t, source_text) for t in delim_tokens)
+        )
+        if span_renders:
+            assert source_text is not None  # implied by span_renders
             raw = source_text[start:end]
         else:
             raw = raw_delimiter_from_tokens(delim_tokens)

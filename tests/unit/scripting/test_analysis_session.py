@@ -579,16 +579,20 @@ class TestPerUnitParseMatchesWholeFileWhenNothingChanges:
         assert FormatterVisitor().visit(session) == FormatterVisitor().visit(whole)
 
     #: R13-E9/R15-B-D: a wider no-option-change corpus for the FIVE-mode
-    #: byte-identical claim. F7 shapes are excluded AS DECLARED — a heredoc
-    #: body followed by later commands is the one place the whole-file parse
-    #: is WRONG (it corrupts the following words), so demanding byte-identity
-    #: there would pin the corruption this slot removed.
+    #: byte-identical claim. The F7 shape — a heredoc body followed by later
+    #: commands — used to be EXCLUDED here, because the whole-file parse got
+    #: the words after the body wrong. That was the C010 mechanism (a name
+    #: taken from a source slice at a position the heredoc collection had
+    #: already moved), closed in slot 1.7 of Improvement Program 2026-09, so
+    #: the shape now belongs in the corpus as a positive row.
     PARITY_CORPUS = CORPUS + [
         "while read -r line; do\n  echo \"$line\"\ndone < f\n",
         "a=1\nb=$((a + 1))\necho \"$a $b\"\n",
         "( cd /tmp && echo sub )\n{ echo brace; }\n",
         "echo \"${x:-default}\"\necho 'literal $x'\n",
         "trap 'echo bye' EXIT\necho body\n",
+        "usage() {\n    cat <<EOF\nabc\nEOF\n}\n"
+        "for file in a b; do echo $file; done\n",
     ]
 
     @staticmethod
@@ -639,26 +643,44 @@ class TestPerUnitParseMatchesWholeFileWhenNothingChanges:
     def test_the_parity_comparison_can_actually_fail(self):
         """MUTATION PROOF: a comparison that never differs proves nothing.
 
-        The F7 shape — a heredoc body followed by later commands — is the one
-        the whole-file parse gets WRONG, corrupting the words after the body.
-        So the two programs must DIFFER here, and the session's answer must be
-        the correct one. This is why F7 cells are excluded from the corpus
-        above by declaration rather than by hope.
+        The discriminator is an ORDERED option change, the one thing the
+        whole-file parse structurally cannot follow: it decides
+        ``expand_aliases`` once for the whole input, while the shell really
+        does stop expanding after ``shopt -u expand_aliases`` (bash 5.3.15,
+        script mode: ``g`` after the unset reports ``g: command not found``,
+        rc 127). So the two programs must DIFFER here, and the session's
+        answer — the UNexpanded ``g`` — must be the correct one.
+
+        The mode has to be one that EXPANDS, or the discriminator is inert:
+        ``format`` never expands aliases at all, so under it the session
+        renders a bare ``g`` whether or not the ``shopt -u`` line is there and
+        the test passes for the wrong reason. ``validate`` expands by default,
+        which is what makes the unset the only thing standing between the two
+        renderings — delete that line and both sides render ``echo G``.
+
+        This used to discriminate on the F7 shape (a heredoc body followed by
+        later commands), which the whole-file parse got WRONG. That corruption
+        was the C010 mechanism — a name read out of a source slice at a
+        position heredoc collection had already moved — and it is gone as of
+        slot 1.7 of Improvement Program 2026-09, so F7 no longer distinguishes
+        anything and is a positive row in PARITY_CORPUS instead.
         """
         from psh.visitor import FormatterVisitor
 
-        source = ("usage() {\n    cat <<EOF\nabc\nEOF\n}\n"
-                  "for file in a b; do echo $file; done\n")
-        shell = _shell("format")
+        source = "alias g='echo G'\nshopt -u expand_aliases\ng\n"
+        shell = _shell("validate")
         session = parse_for_analysis(shell, source)
-        whole = _whole_file_parse(shell, source, expand_aliases=False)
+        # expand_aliases=True is what every non-format mode passes, `validate`
+        # included: the whole-file parse commits to it before it can read the
+        # `shopt -u`, while the session follows the unset.
+        whole = _whole_file_parse(shell, source, expand_aliases=True)
 
         session_text = FormatterVisitor().visit(session)
         whole_text = FormatterVisitor().visit(whole)
         assert session_text != whole_text, (
             "the parity comparison cannot distinguish two programs")
-        assert "for file in a b" in session_text, session_text
-        assert "for file in a b" not in whole_text, whole_text
+        assert session_text.rstrip().endswith("\ng"), session_text
+        assert whole_text.rstrip().endswith("\necho G"), whole_text
 
 
 class TestMonotoneEnablesCannotInventAnError:

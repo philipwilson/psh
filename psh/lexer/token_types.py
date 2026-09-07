@@ -164,26 +164,77 @@ class Token:
         return SourceSpan(self.position, self.end_position)
 
 
+def _closing_quote(quote_type: str) -> str:
+    """The character that closes ``quote_type`` (``$'...'`` closes with ``'``)."""
+    return "'" if quote_type == "$'" else quote_type
+
+
+def slice_renders_token(token: Token, source_text: str) -> bool:
+    """True when ``source_text[token.position:token.end_position]`` is a
+    faithful source rendering of *token*.
+
+    A token's span indexes THE TEXT THE LEXER SAW. A caller that hands the
+    parser a different string still gets a slice — of the wrong string. That
+    is exactly how a ``for``/``select`` header taken from an alias bound the
+    wrong loop variable (Improvement Program 2026-09, C010): the tokens carry
+    alias-body positions while ``source_text`` is the pre-expansion line, so
+    ``for i`` sliced ``e`` out of ``beg echo …`` and the loop bound ``e``.
+    Reproduce with::
+
+        shopt -s expand_aliases; alias beg='for i in 1 2; do'
+        beg echo "i=[$i]"; done
+
+    A rendering is faithful when the slice still shows the token's OWN
+    fields: an unquoted token spells its value verbatim, a ``$``-token keeps
+    its ``$``, and a quoted token keeps its opening and closing quotes around
+    inner text that either equals the value or contains a backslash — escape
+    processing (``"a\\\\b"``, ``$'\\x41'``) is the only way the lexer's stored
+    value legitimately differs from the spelling, and it needs a backslash to
+    happen. Anything else is a slice of some other string.
+    """
+    if not (token.position <= token.end_position <= len(source_text)):
+        return False
+    if token.end_position <= token.position:
+        return False
+    sliced = source_text[token.position:token.end_position]
+    if token.type == TokenType.STRING:
+        opening = token.quote_type or '"'
+        closing = _closing_quote(opening)
+        if len(sliced) < len(opening) + len(closing):
+            return False
+        if not (sliced.startswith(opening) and sliced.endswith(closing)):
+            return False
+        inner = sliced[len(opening):-len(closing)]
+        return inner == token.value or '\\' in inner
+    if token.type == TokenType.VARIABLE:
+        return sliced == f"${token.value}"
+    return sliced == token.value
+
+
 def token_lexeme(token: Token, source_text: Optional[str] = None) -> str:
     """The token's EXACT SOURCE SPELLING (quotes, ``$``, escapes included).
 
-    With ``source_text`` available the span slice is authoritative (a fused
-    WORD's ``value`` already round-trips it). Without source (e.g. the
-    combinator parser is handed a bare token list) the lexeme is
-    reconstructed from the token's stripped fields: a STRING re-wraps its
+    The token's OWN fields are the authority: a STRING re-wraps its
     ``quote_type`` (``$'...'`` closes with ``'``), a VARIABLE restores ``$``
     (``value`` is ``x`` or ``{v}``); every other type already stores its full
-    source form in ``value``.
+    source form in ``value``. ``source_text`` only REFINES that spelling, and
+    only for a span that :func:`slice_renders_token` verifies renders this
+    token — which recovers escapes the value no longer carries (bash prints
+    ``` `"a\\\\b"' ``` for ``for "a\\\\b"``) without ever letting a slice of a
+    DIFFERENT string supply the answer (C010; see the predicate's docstring).
+    An unverified span falls back to the reconstruction, so no reader of this
+    helper can pick up a stale slice.
 
     Used where a diagnostic must show the user's raw spelling — e.g. bash's
-    ``` `"in"': not a valid identifier ``` for a quoted for/select subject.
+    ``` `"in"': not a valid identifier ``` for a quoted for/select subject —
+    and, for an unquoted word, it is the token's ``value`` either way, which
+    is what makes it safe to store as a loop variable NAME.
     """
-    if source_text is not None and token.end_position > token.position:
+    if source_text is not None and slice_renders_token(token, source_text):
         return source_text[token.position:token.end_position]
     if token.type == TokenType.STRING:
         qt = token.quote_type or '"'
-        closing = "'" if qt == "$'" else qt
-        return f"{qt}{token.value}{closing}"
+        return f"{qt}{token.value}{_closing_quote(qt)}"
     if token.type == TokenType.VARIABLE:
         return f"${token.value}"
     return token.value
