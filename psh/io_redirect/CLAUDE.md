@@ -149,10 +149,11 @@ source's diagnostic names the SOURCE fd for the static spelling but the
 TARGET fd for the dynamic spelling (`_bad_dup_source_error`, bash-pinned).
 
 `ProcessSubstitutionResource` (in `process_sub.py`) owns one substitution's
-`(path, parent_fd, pid, cleanup_path)`; `resolve_procsub_resource(node)` builds
+`(path, parent_fd, pid)` — a substitution has no on-disk name to clean up, so
+the resource carries no path to unlink; `resolve_procsub_resource(node)` builds
 it from the `ProcessSubstitution` AST node (its raw `source`/`direction`, so the
-body is expanded once — by the child), and `register_with(handler)` hands
-pid/cleanup-path to the enclosing
+body is expanded once — by the child), and `register_with(handler)` hands the
+pid to the enclosing
 `process_sub_scope()`. `close_parent_fd_for_redirect()` and
 `hand_off_to_scope()` are the close-vs-transfer primitives the plan delegates
 to (the latter is the single place that appends to `active_fds`, shared by

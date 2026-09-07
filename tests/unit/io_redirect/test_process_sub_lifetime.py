@@ -214,10 +214,17 @@ def _shim(module, name, raiser):
     return Shim()
 
 
+@pytest.mark.parametrize("direction", ["in", "out"])
 @pytest.mark.parametrize("step", ["pipe", "cloexec", "fork", "transfer"])
-def test_acquisition_failure_leaks_nothing(shell, monkeypatch, step):
+def test_acquisition_failure_leaks_nothing(shell, monkeypatch, step, direction):
     """A failure at any acquisition step leaves no descriptor, no temp
-    directory and no child behind, and raises the OS error (C091)."""
+    directory and no child behind, and raises the OS error (C091).
+
+    BOTH directions: C091's recorded evidence is two failures, not one — the
+    read side leaked its two pipe descriptors when the fork failed, and the
+    write side left its temp directory behind. They share one acquisition now,
+    but a pin that exercises one direction cannot say so.
+    """
     import psh.executor as executor_pkg
     from psh.io_redirect import process_sub
 
@@ -258,7 +265,7 @@ def test_acquisition_failure_leaks_nothing(shell, monkeypatch, step):
 
     before_fds, before_dirs = _fd_census(), _psub_temp_dirs()
     with pytest.raises(OSError):
-        process_sub.create_process_substitution("cat", "out", shell)
+        process_sub.create_process_substitution("cat", direction, shell)
 
     assert _fd_census() == before_fds, "acquisition leaked a descriptor"
     assert _psub_temp_dirs() == before_dirs, "acquisition left a temp directory"
@@ -288,13 +295,30 @@ def test_a_substitution_arms_no_alarm(shell):
         os.waitpid(pid, 0)
 
 
+def _highest_free_fd_below(limit):
+    """The number the policy must hand out: the highest descriptor below
+    *limit* that this process does not currently hold.
+
+    Written as its own downward scan rather than by calling the owner, so a
+    change to the owner's search cannot silently redefine what the pin expects.
+    """
+    for candidate in range(limit - 1, 2, -1):
+        try:
+            os.fstat(candidate)
+        except OSError:
+            return candidate
+    return None
+
+
 def test_the_shells_end_is_moved_clear_of_the_low_descriptors():
-    """With fd 0/1/2 closed, os.pipe() hands back a LOW descriptor; the shell's
-    end must still land in the high range it hands out as /dev/fd/N, and a
-    failure to move it must release both pipe ends.
+    """With fd 0/1/2 closed, os.pipe() hands back a LOW descriptor; the
+    shell's end must still be moved to the highest free number below the
+    limit — fd 63 in a fresh interpreter, which is the /dev/fd/63 bash hands
+    out — and a failure to move it must release both pipe ends.
 
     Runs in its own interpreter: it closes the standard descriptors, which an
-    in-process test must never do (an xdist worker's low fds are its channel).
+    in-process test must never do (an xdist worker's low fds are its channel),
+    and that also makes the expected number exactly reproducible.
     """
     script = textwrap.dedent("""
         import os, sys
@@ -305,9 +329,9 @@ def test_the_shells_end_is_moved_clear_of_the_low_descriptors():
         for fd in (0, 1, 2):
             os.close(fd)
 
-        # The move happens even though 0/1/2 are the free numbers.
+        # The move happens even though 0/1/2 are the free numbers, and it
+        # lands on the HIGHEST free one below the limit, not the lowest.
         parent_fd, child_fd = process_sub._pipe_endpoints('out')
-        moved = 2 < parent_fd < process_sub.HIGH_FD_LIMIT
         os.close(parent_fd); os.close(child_fd)
 
         # Failure arm: neither the high move nor the fallback can be taken.
@@ -329,29 +353,64 @@ def test_the_shells_end_is_moved_clear_of_the_low_descriptors():
         except OSError:
             raised = True
         after = census()
-        os.write(report, f"{moved} {raised} {before} {after}".encode())
+        os.write(report,
+                 f"{parent_fd} {process_sub.HIGH_FD_LIMIT} "
+                 f"{raised} {before} {after}".encode())
     """)
     env = dict(os.environ, PYTHONPATH=str(PROJECT_ROOT))
     result = subprocess.run([sys.executable, "-c", script],
                             capture_output=True, text=True, env=env,
                             cwd=str(PROJECT_ROOT), timeout=60)
     assert result.returncode == 0, result.stderr
-    moved, raised, before, after = result.stdout.split()
-    assert moved == "True", "the shell's end was left on a low descriptor"
+    parent_fd, limit, raised, before, after = result.stdout.split()
+    # A fresh interpreter with 0/1/2 closed holds nothing near the limit, so
+    # the highest free number below it is limit-1 = 63 — byte-identical to the
+    # /dev/fd/63 bash hands out. `lowest free above 2` would say 0 (or 3).
+    assert parent_fd == str(int(limit) - 1), (
+        f"the shell's end landed on fd {parent_fd}, not the highest free "
+        f"descriptor below {limit}")
     assert raised == "True", "the injected move failure was swallowed"
     assert before == after, "a failed move leaked a pipe end"
 
 
 def test_the_shells_end_avoids_the_numbers_scripts_redirect(shell):
-    """The handed-out descriptor sits in the high range, so a consuming
-    command's own `3>f` cannot replace it before it opens /dev/fd/N."""
+    """The handed-out descriptor IS the highest free one below the limit, so a
+    consuming command's own `3>f` (or `4>f`, or `10>f`) cannot replace it
+    before it opens /dev/fd/N. The old policy — lowest free above 2 — put it
+    on fd 3, right where a script's own redirects land."""
     from psh.io_redirect import process_sub
 
+    expected = _highest_free_fd_below(process_sub.HIGH_FD_LIMIT)
+    assert expected is not None, "no free descriptor below the limit to test"
     parent_fd, path, pid = process_sub.create_process_substitution(
         "cat", "out", shell)
     try:
-        assert 2 < parent_fd < process_sub.HIGH_FD_LIMIT, parent_fd
+        assert parent_fd == expected, (
+            f"the shell's end landed on fd {parent_fd}, not the highest free "
+            f"descriptor below {process_sub.HIGH_FD_LIMIT} ({expected})")
         assert path == f"/dev/fd/{parent_fd}"
     finally:
         os.close(parent_fd)
         os.waitpid(pid, 0)
+
+
+def test_a_second_substitution_takes_the_next_free_number_downwards(shell):
+    """Two live substitutions do not share a descriptor, and the second takes
+    the next number DOWN from the first — the sequence bash emits.
+
+    Read-side bodies (`true`) so neither child blocks on input: a `>(cmd)`
+    child forked while another substitution is live inherits that one's write
+    end, so the two would have to be released in the right order first.
+    """
+    from psh.io_redirect import process_sub
+
+    first = process_sub.create_process_substitution("true", "in", shell)
+    second = process_sub.create_process_substitution("true", "in", shell)
+    try:
+        assert second[0] == first[0] - 1, (
+            f"second substitution took fd {second[0]}, expected "
+            f"{first[0] - 1} (the next free number below the first)")
+    finally:
+        for parent_fd, _path, pid in (first, second):
+            os.close(parent_fd)
+            os.waitpid(pid, 0)

@@ -44,8 +44,10 @@ _DEV_FD = re.compile(r"/dev/fd/\d+")
 def _normalize(text, how):
     """Erase the parts of the output the two shells legitimately disagree on."""
     if how == "devfd":
-        # bash numbers its substitution descriptors from 63 downwards, psh
-        # from the lowest free one; the SHAPE is the contract.
+        # Both shells move the descriptor to the highest free number below 64
+        # and so emit the same names, but the number is an allocation detail:
+        # rows that are only about the SHAPE normalise it away, and
+        # `path_numbers_match_bash` below pins the numbers themselves.
         return _DEV_FD.sub("/dev/fd/N", text)
     return text
 
@@ -61,6 +63,15 @@ CASES = [
     ("write_side_path_shape", 'echo >(true)', "devfd", {}, ""),
     ("read_side_path_shape", 'echo <(true)', "devfd", {}, ""),
     ("embedded_read_path_shape", 'echo pre<(true)post', "devfd", {}, ""),
+    # NOT normalised: the descriptor NUMBER is compared to bash's, so a policy
+    # that hands out the lowest free descriptor instead of the highest free
+    # one below 64 fails here even though every byte still arrives.
+    ("path_numbers_match_bash",
+     'echo <(true); echo >(true); echo <(true) <(true) <(true)',
+     "exact", {}, ""),
+    ("path_numbers_match_bash_with_high_fds_taken",
+     'exec 63>/dev/null 62>/dev/null; echo <(true); echo >(true)',
+     "exact", {}, ""),
     ("embedded_write_path_shape", 'echo pre>(true)post', "devfd", {}, ""),
     # ---- the bytes that actually reach each side -------------------------
     ("write_side_bytes",
