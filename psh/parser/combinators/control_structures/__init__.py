@@ -3,26 +3,27 @@
 This package provides parsers for all control flow structures including
 if/elif/else, loops, case statements, and function definitions.
 
-The ControlStructureParsers class inherits from three mixin classes:
+The ControlStructureParsers class inherits from four mixin classes:
 - LoopParserMixin: while, until, for, c-style for, select, break, continue
 - ConditionalParserMixin: if/elif/else, case/esac
 - StructureParserMixin: function definitions, subshell groups, brace groups
+- TrailingRedirectMixin: the one ``_parse_trailing_redirects`` helper
 """
 
-from typing import List, Optional, Tuple, cast
+from typing import Optional, cast
 
-from ....ast_nodes import Redirect
-from ....lexer.token_types import Token
 from ...config import ParserConfig
 from ..commands import CommandParsers
-from ..core import Parser, fail_with, many
+from ..core import Parser, fail_with
 from ..tokens import TokenParsers
+from ..trailing_redirects import TrailingRedirectMixin
 from .conditionals import ConditionalParserMixin
 from .loops import LoopParserMixin
 from .structures import StructureParserMixin
 
 
-class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, StructureParserMixin):
+class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin,
+                              StructureParserMixin, TrailingRedirectMixin):
     """Parsers for shell control structures.
 
     This class provides parsers for all control flow structures:
@@ -117,28 +118,6 @@ class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin, Structure
             .or_else(self.subshell_group)
             .or_else(self.brace_group)
         )
-
-    # === Shared helper methods ===
-
-    def _parse_trailing_redirects(self, tokens: List[Token], pos: int
-                                  ) -> Tuple[List[Redirect], int]:
-        """Parse trailing redirections after a compound command.
-
-        Called after the closing keyword (done, fi, esac, }, )) to collect any
-        redirections like ``done > file``. A trailing ``&`` is NOT consumed
-        here: backgrounding applies to the whole and-or list and is handled
-        at that level (POSIX).
-
-        Returns:
-            Tuple of (redirects, new_pos)
-        """
-        # A trailing redirection list is exactly *zero or more* redirections,
-        # which is precisely ``many``: it applies ``redirection`` until it stops
-        # matching, gathering the results (and never fails — an empty list is a
-        # valid, successful parse).
-        result = many(self.commands.redirection).parse(tokens, pos)
-        redirects: List[Redirect] = list(result.value or [])
-        return redirects, result.position
 
 
 # Convenience function

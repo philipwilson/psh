@@ -15,8 +15,6 @@ from ...ast_nodes import (
     EnhancedTestStatement,
     NegatedTestExpression,
     ProcessSubstitution,
-    Redirect,
-    # Test expressions
     TestExpression,
     UnaryTestExpression,
     Word,
@@ -31,9 +29,10 @@ from .core import Parser, ParseResult
 from .diagnostics import raise_committed_error
 from .expansions import ExpansionParsers
 from .tokens import TokenParsers
+from .trailing_redirects import TrailingRedirectMixin
 
 
-class SpecialCommandParsers:
+class SpecialCommandParsers(TrailingRedirectMixin):
     """Parsers for special shell syntax.
 
     This class provides parsers for specialized command forms:
@@ -48,8 +47,10 @@ class SpecialCommandParsers:
     — the arithmetic expression is captured as a token string for the runtime
     evaluator rather than parsed into an AST, and the ``[[ ]]`` parser handles
     negation and simple unary/binary/single-operand tests but not boolean
-    compounds (``&&``/``||``), parenthesised grouping, per-operand quote context,
-    or trailing redirections. The recursive descent parser
+    compounds (``&&``/``||``), parenthesised grouping, or per-operand quote
+    context. Trailing redirections after ``))``/``]]`` ARE parsed, through the
+    package-wide ``_parse_trailing_redirects`` owner
+    (``combinators/trailing_redirects.py``). The recursive descent parser
     (``recursive_descent/parsers/arithmetic.py`` and ``tests.py``) is the full
     implementation; this parser deliberately stops at the level the differential
     parity corpus exercises. See the individual ``_build_*`` methods for the
@@ -68,7 +69,14 @@ class SpecialCommandParsers:
         """
         self.config = config or ParserConfig()
         self.tokens = token_parsers or TokenParsers()
-        self.commands = command_parsers  # May be None initially
+        # ``_parse_trailing_redirects`` (TrailingRedirectMixin) dereferences
+        # ``self.commands`` at PARSE time, so unlike the control-structure
+        # module this one may never hold None: fall back to a private
+        # CommandParsers for standalone/unit construction, exactly as
+        # ``expansions`` does below. The production path always passes
+        # command_parsers (parser.py), so no second instance is created there.
+        self.commands = command_parsers or CommandParsers(
+            config=self.config, token_parsers=self.tokens)
 
         # Word AST builder for test operands / array-initializer elements. Reuse
         # the command parser's shared ExpansionParsers when wired (the
@@ -117,10 +125,10 @@ class SpecialCommandParsers:
 
         Educational-scope boundary: the expression between ``((`` and ``))`` is
         captured as a normalized token string and handed to the arithmetic
-        evaluator at run time (the combinator does not build an arithmetic AST),
-        and trailing redirections (``((i++)) >log``, valid but rare) are NOT
-        parsed — see :meth:`parse_arithmetic_command`. The recursive descent
-        parser (``recursive_descent/parsers/arithmetic.py``) is the full
+        evaluator at run time (the combinator does not build an arithmetic AST).
+        Trailing redirections (``(( i++ )) >log``) ARE parsed, by the shared
+        ``_parse_trailing_redirects`` owner. The recursive descent parser
+        (``recursive_descent/parsers/arithmetic.py``) is the full
         implementation; this parser deliberately stops at the level the parity
         corpus exercises.
         """
@@ -158,11 +166,12 @@ class SpecialCommandParsers:
                                  error="Unterminated arithmetic command: expected '))'",
                                  position=pos)
 
-            # Educational-scope boundary: trailing redirections on an arithmetic
-            # command (``((i++)) >log`` — valid but rare) are intentionally not
-            # parsed here. The recursive descent parser handles them; this stays
-            # at the level the parity corpus covers.
-            redirects: List[Redirect] = []
+            # Parse trailing redirections ('&' is handled at and-or level).
+            # Leaving them here makes the statement-list loop absorb the
+            # redirect as a SECOND statement, dropping both the redirection and
+            # this command's exit status (C020):
+            #   psh --parser combinator -c '(( 0 )) >/dev/null; echo $?'  -> 1
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
 
             return ParseResult(
                 success=True,
@@ -191,8 +200,8 @@ class SpecialCommandParsers:
         rather than flattened into a silently-wrong test. The recursive descent
         parser (``recursive_descent/parsers/tests.py``) is the full
         implementation; this parser deliberately stops at the level the parity
-        corpus exercises. Trailing redirections after ``]]`` are likewise not
-        parsed.
+        corpus exercises. Trailing redirections after ``]]`` ARE parsed, by the
+        shared ``_parse_trailing_redirects`` owner.
         """
         def parse_enhanced_test(tokens: List[Token], pos: int) -> ParseResult[EnhancedTestStatement]:
             """Parse enhanced test expression."""
@@ -242,9 +251,15 @@ class SpecialCommandParsers:
                     "descent parser)",
                 )
 
+            # Parse trailing redirections ('&' is handled at and-or level).
+            # Same invariant as the arithmetic command above (C020):
+            #   psh --parser combinator -c '[[ a == b ]] >/dev/null; echo $?' -> 1
+            redirects, pos = self._parse_trailing_redirects(tokens, pos)
+
             return ParseResult(
                 success=True,
-                value=EnhancedTestStatement(expression=test_expr, redirects=[]),
+                value=EnhancedTestStatement(expression=test_expr,
+                                            redirects=redirects),
                 position=pos
             )
 
