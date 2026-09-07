@@ -189,6 +189,13 @@ class TestPosixSpecialBuiltinExitParity:
             "echo rc=$?",
             stdout="", status=1, tmp_path=tmp_path)
 
+    def test_unset_readonly_scalar_subscript_exits_in_posix(self, tmp_path):
+        # READONLY outranks the "not an array variable" shape complaint: bash
+        # reports the refusal for a subscripted readonly scalar and exits.
+        _assert_parity(
+            "set -o posix; readonly r=1; unset 'r[1]'; echo rc=$?",
+            stdout="", status=1, tmp_path=tmp_path)
+
     def test_export_stops_at_first_bad_identifier(self, tmp_path):
         # ONE diagnostic, then the exit: the second operand is never reached.
         _assert_parity("set -o posix; export 1bad=x 2bad=y; echo survived",

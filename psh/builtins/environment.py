@@ -782,13 +782,13 @@ class UnsetBuiltin(Builtin):
             # bash: unsetting an element of a nonexistent variable succeeds
             return True
 
-        # A readonly array/assoc forbids element removal too — check BEFORE
-        # mutating so a failed unset never changes the value (bash: `readonly
-        # a; unset 'a[0]'` -> "a: cannot unset: readonly variable", rc=1, array
-        # intact). The whole-array (@/*) and scalar paths route through
-        # scope_manager.unset_variable, which already enforces this.
-        if var_obj.is_readonly and isinstance(
-                var_obj.value, (IndexedArray, AssociativeArray)):
+        # READONLY wins over every other subscript diagnosis, and is checked
+        # BEFORE mutating so a failed unset never changes the value (bash:
+        # `readonly a; unset 'a[0]'` -> "a: cannot unset: readonly variable",
+        # rc 1, array intact). It also outranks the scalar "not an array
+        # variable" arm below: bash reports the readonly refusal for
+        # `readonly r=1; unset 'r[1]'`, not the shape complaint.
+        if var_obj.is_readonly:
             raise ReadonlyVariableError(array_name)
 
         if isinstance(var_obj.value, (IndexedArray, AssociativeArray)):

@@ -91,6 +91,8 @@ EXITING_ROWS = [
     ("declare -a arr=(1 2)\nreadonly arr\nunset arr[0]", 1),
     ("f() { :; }\nreadonly -f f\nunset -f f", 1),
     ("f() { :; }\nreadonly -f f\nunset f", 1),
+    ("readonly r=1\nunset r[1]", 1),     # readonly outranks the shape check
+    ("declare -A h=([k]=v)\nreadonly h\nunset h[nokey]", 1),
 ]
 
 # Matrix rows that must NOT exit in POSIX mode: (case-lines, $? after).
