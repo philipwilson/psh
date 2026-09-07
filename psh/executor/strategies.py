@@ -641,12 +641,12 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                     print(f"DEBUG ExternalStrategy: Before exec - PID={current_pid}, PGID={current_pgid}",
                           file=sys.stderr)
 
-                # Re-assert this process's own process group before handing
-                # the process image over. execve() preserves the pgid, so this
-                # is a no-op whenever ProcessLauncher's setpgid already took
-                # effect; it is kept because the launcher's child-side setpgid
-                # races the parent's, and the loser of that race must still
-                # end up in the pipeline's group.
+                # A no-op: it sets the pgid to the value getpgrp() just
+                # returned. This process's group was established by
+                # ProcessLauncher's child setup before execute_fn ran, and
+                # execve() preserves it — it replaces this process rather
+                # than creating one, so nothing here can leave the group.
+                # Retained pending the dead-code sweep that owns its removal.
                 os.setpgid(0, current_pgid)
 
                 if force_not_found:
