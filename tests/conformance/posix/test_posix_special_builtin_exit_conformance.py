@@ -229,6 +229,110 @@ class TestPosixSpecialBuiltinExitParity:
             "set -o posix; readonly r=1 s=2; unset r s; echo survived",
             stdout="", status=1, diag_lines=2, tmp_path=tmp_path)
 
+    def test_unset_v_bad_identifier_exits_in_posix(self, tmp_path):
+        # W0-N32.  An explicit `-v` identifier-checks every operand; without
+        # it bash falls back to a function lookup and stays silent (the
+        # `unset 1bad` row in TestPosixSpecialBuiltinNoExit).
+        _assert_parity("set -o posix; unset -v 1bad; echo survived",
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    def test_unset_v_reports_every_bad_identifier_then_exits(self, tmp_path):
+        # Like the readonly refusals and unlike export/readonly's identifier
+        # error, the unset operand loop is NOT truncated.
+        _assert_parity("set -o posix; unset -v 1bad 2bad; echo survived",
+                       stdout="", status=1, diag_lines=2, tmp_path=tmp_path)
+
+    def test_unset_v_mixes_identifier_and_readonly_refusals(self, tmp_path):
+        _assert_parity(
+            "set -o posix; readonly r=1; unset -v a-b r; echo survived",
+            stdout="", status=1, diag_lines=2, tmp_path=tmp_path)
+
+    def test_unset_v_subscripted_operand_judged_on_its_base_name(self, tmp_path):
+        _assert_parity("set -o posix; unset -v '1a[0]'; echo survived",
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    def test_unset_v_trailing_junk_after_the_subscript_is_a_bad_name(
+            self, tmp_path):
+        _assert_parity("set -o posix; unset -v 'a[0]x'; echo survived",
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    def test_unset_v_empty_operand_is_a_bad_name(self, tmp_path):
+        _assert_parity("set -o posix; unset -v ''; echo survived",
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    # -- ACTUAL TARGETS (D3): the operands the rules leave alone or apply ----
+
+    def test_export_applies_operands_before_the_first_bad_identifier(
+            self, tmp_path):
+        # The stop rule read off the variables themselves, not off a status:
+        # A really carries the export attribute, B was never created.
+        _assert_parity(
+            "set -o posix; export A=1 1bad=x B=2 || echo caught; "
+            "echo \"B=${B-unset}\"; declare -p A",
+            stdout='caught\nB=unset\ndeclare -x A="1"\n', status=0,
+            diag_lines=1, tmp_path=tmp_path)
+
+    def test_readonly_applies_operands_before_the_first_bad_identifier(
+            self, tmp_path):
+        _assert_parity(
+            "set -o posix; readonly A=1 1bad B=2 || echo caught; "
+            "echo \"B=${B-unset}\"; declare -p A",
+            stdout='caught\nB=unset\ndeclare -r A="1"\n', status=0,
+            diag_lines=1, tmp_path=tmp_path)
+
+    def test_unset_v_unsets_the_operands_after_a_bad_one(self, tmp_path):
+        # The mirror image: unset does NOT truncate, so `d` after the bad
+        # operand is really gone.
+        _assert_parity(
+            "set -o posix; a=1 d=1; unset -v a b-c d || echo caught; "
+            "echo \"a=[${a-unset}] d=[${d-unset}]\"; echo survived",
+            stdout="caught\na=[unset] d=[unset]\nsurvived\n", status=0,
+            diag_lines=1, tmp_path=tmp_path)
+
+    def test_readonly_stops_at_first_bad_identifier(self, tmp_path):
+        _assert_parity("set -o posix; readonly 1bad 2bad; echo survived",
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    def test_readonly_stops_before_a_later_good_operand(self, tmp_path):
+        _assert_parity("set -o posix; readonly 1bad A=1; echo survived",
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    # -- $? seen by the EXIT trap is the builtin's status, not 0 ------------
+
+    def test_exit_trap_sees_the_operand_status(self, tmp_path):
+        _assert_parity(
+            "set -o posix; trap 'echo trap rc=$?' EXIT; export 1bad=x; "
+            "echo survived",
+            stdout="trap rc=1\n", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    def test_exit_trap_sees_the_unset_readonly_status(self, tmp_path):
+        _assert_parity(
+            "set -o posix; trap 'echo trap rc=$?' EXIT; readonly r=1; "
+            "unset r; echo survived",
+            stdout="trap rc=1\n", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    def test_exit_trap_sees_the_unset_v_identifier_status(self, tmp_path):
+        _assert_parity(
+            "set -o posix; trap 'echo trap rc=$?' EXIT; unset -v 1bad; "
+            "echo survived",
+            stdout="trap rc=1\n", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    def test_exit_trap_sees_the_invalid_option_status_2(self, tmp_path):
+        # The usage class carries 2, so the trap must not see 1 either.
+        # (bash prints a usage line psh does not, so no diag_lines here.)
+        _assert_parity(
+            "set -o posix; trap 'echo trap rc=$?' EXIT; set -q; echo survived",
+            stdout="trap rc=2\n", status=2, tmp_path=tmp_path)
+
+    def test_suppressed_exit_leaves_the_trap_status_alone(self, tmp_path):
+        # Discriminator: publishing the status must NOT happen when a guard
+        # suppresses the exit — the shell runs on and ends successfully.
+        _assert_parity(
+            "set -o posix; trap 'echo trap rc=$?' EXIT; set -q || echo caught; "
+            "echo survived",
+            stdout="caught\nsurvived\ntrap rc=0\n", status=0,
+            tmp_path=tmp_path)
+
     # -- the exit is suppressible by a guard OUTSIDE an eval/dot boundary --
 
     def test_outer_guard_suppresses_across_eval(self, tmp_path):
@@ -307,6 +411,70 @@ class TestPosixSpecialBuiltinNoExit(_StatusConformance):
     def test_unset_guard_suppresses_readonly_exit(self):
         self._assert_same_stdout_and_status(
             "set -o posix; readonly r=1; unset r || echo caught; echo survived")
+
+    def test_readonly_guard_suppresses_bad_identifier_exit(self):
+        # The readonly twin of the export row above: its identifier exit is
+        # the SUPPRESSIBLE class too, in every guard shape.
+        self._assert_same_stdout_and_status(
+            "set -o posix; readonly 1bad || echo caught; echo survived")
+
+    def test_readonly_if_guard_suppresses_bad_identifier_exit(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; if readonly 1bad; then echo T; else echo F; fi; "
+            "echo survived")
+
+    def test_readonly_guard_suppresses_through_a_function(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; f() { readonly 1bad=x; }; f || echo caught; "
+            "echo survived")
+
+    def test_export_if_guard_suppresses_bad_identifier_exit(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; if export 1bad=x; then echo T; else echo F; fi; "
+            "echo survived")
+
+    def test_export_guard_suppresses_through_a_function(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; f() { export 1bad=x; }; f || echo caught; "
+            "echo survived")
+
+    def test_unset_v_guard_suppresses_identifier_exit(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; unset -v 1bad || echo caught; echo survived")
+
+    def test_unset_v_if_guard_suppresses_identifier_exit(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; if unset -v 1bad; then echo T; else echo F; fi; "
+            "echo survived")
+
+    def test_unset_v_guard_suppresses_through_a_function(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; f() { unset -v 1bad; }; f || echo caught; "
+            "echo survived")
+
+    def test_command_strips_unset_v_identifier_exit(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; command unset -v 1bad; echo rc=$?")
+
+    def test_bare_unset_bad_identifier_still_silent(self):
+        # Without -v bash falls back to a FUNCTION lookup, so the word is
+        # never judged as a variable name: silent, rc 0, no exit.
+        self._assert_same_stdout_and_status(
+            "set -o posix; unset 1bad a-b; echo rc=$?")
+
+    def test_unset_f_bad_identifier_still_silent(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; unset -f 1bad; echo rc=$?")
+
+    def test_unset_n_bad_identifier_still_silent(self):
+        self._assert_same_stdout_and_status(
+            "set -o posix; unset -n 1bad; echo rc=$?")
+
+    def test_unset_v_subscripted_good_name_survives(self):
+        # `a[0]` is judged on its base name, so it is a normal element unset.
+        self._assert_same_stdout_and_status(
+            "set -o posix; declare -a a=(1 2); unset -v 'a[0]'; "
+            "echo \"left=${a[*]} rc=$?\"")
 
     def test_readonly_f_operand_is_exempt(self):
         # `readonly -f`/`unset -f` NAME operands never take the identifier

@@ -37,6 +37,11 @@ class _FakeState:
     def __init__(self, posix, script_mode=True):
         self.options = {'posix': posix}
         self.is_script_mode = script_mode
+        # The EXIT trap reads this AFTER the unwind, so the policy must
+        # publish the builtin's status here before raising.  Seeded with a
+        # value the policy can never produce, so a test that sees 0 is
+        # reading a real write and not the default.
+        self.last_exit_code = 99
 
 
 class _FakeExecutor:
@@ -80,6 +85,41 @@ class TestStopsAtFirstBadIdentifier:
         # is_script_mode gates the EXIT, never the operand loop.
         assert special_builtin_stops_at_first_bad_identifier(
             _FakeState(posix=True, script_mode=False))
+
+
+class TestPublishedStatus:
+    """The exit publishes ``status`` as ``$?`` before it raises.
+
+    The EXIT trap runs after the shell has unwound and reads the LIVE
+    ``last_exit_code``; ``execute_as_main`` recovers the process status from
+    the ``SystemExit`` itself, so without this the trap sees the status of
+    whatever ran before.  bash 5.3.15: ``set -o posix; trap 'echo rc=$?'
+    EXIT; export 1bad=x`` prints ``rc=1``, and ``set -q`` prints ``rc=2``.
+    """
+
+    @pytest.mark.parametrize("status", [1, 2])
+    def test_exit_publishes_the_status(self, status):
+        shell = _FakeShell(posix=True)
+        with pytest.raises(SystemExit):
+            special_builtin_usage_exit(shell, status)
+        assert shell.state.last_exit_code == status
+
+    def test_suppressed_outcome_leaves_the_status_alone(self):
+        # The shell runs on, so $? belongs to whatever the guard does next.
+        shell = _FakeShell(posix=True,
+                           context=_guarded(ExecutionContext()))
+        assert special_builtin_usage_exit(shell, 2, suppressible=True) == 2
+        assert shell.state.last_exit_code == 99
+
+    def test_non_exiting_mode_leaves_the_status_alone(self):
+        shell = _FakeShell(posix=False)
+        assert special_builtin_usage_exit(shell, 1) == 1
+        assert shell.state.last_exit_code == 99
+
+    def test_interactive_shell_leaves_the_status_alone(self):
+        shell = _FakeShell(posix=True, script_mode=False)
+        assert special_builtin_usage_exit(shell, 2) == 2
+        assert shell.state.last_exit_code == 99
 
 
 class TestUsageExitOutcome:

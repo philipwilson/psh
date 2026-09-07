@@ -93,6 +93,14 @@ EXITING_ROWS = [
     ("f() { :; }\nreadonly -f f\nunset f", 1),
     ("readonly r=1\nunset r[1]", 1),     # readonly outranks the shape check
     ("declare -A h=([k]=v)\nreadonly h\nunset h[nokey]", 1),
+    # W0-N32: an explicit -v identifier-checks every operand.
+    ("unset -v 1bad", 1),
+    ("unset -v a-b", 1),
+    ("unset -v ''", 1),
+    ("unset -v '1a[0]'", 1),
+    ("unset -v 1bad 2bad", 1),
+    ("readonly 1bad 2bad", 1),
+    ("readonly 1bad A=1", 1),
 ]
 
 # Matrix rows that must NOT exit in POSIX mode: (case-lines, $? after).
@@ -100,6 +108,10 @@ SURVIVING_ROWS = [
     ("trap 'x' NOSUCHSIG", 1),
     ("unset 1bad", 0),
     ("readonly -f nosuchfunc", 1),       # -f operands are exempt
+    ("unset 1bad a-b", 0),               # no -v: function fallback, silent
+    ("unset -n 1bad", 0),
+    ("a=1\nunset -v 'a[0]'", 0),         # judged on the BASE name
+    ("command unset -v 1bad", 1),        # command strips the W0-N32 exit
     ("a=1\nunset a[1]", 1),              # not an array variable, not fatal
     ("declare -a a=(1 2)\nunset a[-9]", 1),   # bad array subscript
     ("command export 1bad=x", 1),        # command strips the 5.3 exit
@@ -153,6 +165,80 @@ class TestPosixSurvivingRows:
         assert "survived" in out, (case, out, err)
         assert f"rc={status}" in out, (case, out, err)
         assert rc == 0, (case, rc, err)
+
+
+class TestOperandsActuallyApplied:
+    """D3 actual-target rows: read the RULE off the variables themselves.
+
+    `export`/`readonly` stop at the first bad identifier, so a later good
+    operand must NOT exist; `unset -v` does not stop, so a later operand must
+    really be gone. A status alone cannot tell those two apart."""
+
+    def test_export_applies_earlier_operands_and_skips_later_ones(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\nexport A=1 1bad=x B=2 || echo caught\n"
+            'echo "B=${B-unset}"\ndeclare -p A\n', tmp_path)
+        assert out == 'caught\nB=unset\ndeclare -x A="1"\n', (out, err)
+        assert err.count("not a valid identifier") == 1, err
+        assert rc == 0
+
+    def test_readonly_applies_earlier_operands_and_skips_later_ones(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\nreadonly A=1 1bad B=2 || echo caught\n"
+            'echo "B=${B-unset}"\ndeclare -p A\n', tmp_path)
+        assert out == 'caught\nB=unset\ndeclare -r A="1"\n', (out, err)
+        assert err.count("not a valid identifier") == 1, err
+        assert rc == 0
+
+    def test_readonly_attribute_is_really_enforced(self, tmp_path):
+        """The `declare -p` row above says the attribute is RECORDED; this one
+        says it BITES — assigning to A afterwards is refused."""
+        rc, out, err = run_script(
+            "set -o posix\nreadonly A=1 1bad B=2 || echo caught\n"
+            'A=9\necho "A=$A"\n', tmp_path)
+        assert out == "caught\n", (out, err)
+        assert "A: readonly variable" in err, err
+        assert rc == 1
+
+    def test_unset_v_unsets_operands_after_a_bad_one(self, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\na=1 d=1\nunset -v a b-c d || echo caught\n"
+            'echo "a=[${a-unset}] d=[${d-unset}]"\necho survived\n', tmp_path)
+        assert out == "caught\na=[unset] d=[unset]\nsurvived\n", (out, err)
+        assert err.count("not a valid identifier") == 1, err
+        assert rc == 0
+
+
+class TestExitTrapSeesTheBuiltinStatus:
+    """`$?` inside the EXIT trap after a posix special-builtin exit is the
+    builtin's own status (bash 5.3.15), not 0 — the trap runs after the
+    unwind and reads the live status the policy publishes."""
+
+    @pytest.mark.parametrize("case,status", [
+        ("export 1bad=x", 1),
+        ("readonly r=1\nunset r", 1),
+        ("unset -v 1bad", 1),
+        ("readonly r=1\nreadonly r=2", 1),
+        (". /nonexistent/psh-posixexit-trapstatus", 1),
+        ("set -q", 2),
+        ("eval 'if'", 2),
+    ], ids=["export-badid", "unset-readonly", "unset-v-badid",
+            "readonly-assign", "dot-missing", "set-q", "eval-syntax"])
+    def test_trap_sees_the_status(self, case, status, tmp_path):
+        rc, out, err = run_script(
+            "set -o posix\ntrap 'echo trap rc=$?' EXIT\n" + case
+            + "\necho survived\n", tmp_path)
+        assert out == f"trap rc={status}\n", (case, out, err)
+        assert rc == status, (case, rc, err)
+
+    def test_suppressed_exit_leaves_the_trap_status_alone(self, tmp_path):
+        """Discriminator: the publish must not happen when a guard suppresses
+        the exit — the shell runs on and finishes successfully."""
+        rc, out, err = run_script(
+            "set -o posix\ntrap 'echo trap rc=$?' EXIT\n"
+            "set -q || echo caught\necho survived\n", tmp_path)
+        assert out == "caught\nsurvived\ntrap rc=0\n", (out, err)
+        assert rc == 0
 
 
 class TestInputModes:

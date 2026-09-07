@@ -8616,6 +8616,67 @@
   min_bash: "5.3"
   description: "In posix mode the operand loop stops at the FIRST bad identifier, so `2bad=y' is never diagnosed (bash 5.3.15; slot 2.2, FLIP-PINS row G18)"
 
+- name: posixexit_unset_v_badid_exits
+  command: 'set -o posix; unset -v 1bad; echo rc=$?'
+  stdout: ""
+  stderr: "unset: `1bad': not a valid identifier"
+  exit_code: 1
+  min_bash: "5.3"
+  description: "An explicit -v identifier-checks every unset operand and the refusal exits a non-interactive posix shell (bash 5.3.15; slot 2.2 closed ledger row W0-N32). Bare `unset 1bad` stays a silent rc-0 no-op — see posixexit_bare_unset_badid_silent"
+
+- name: posixexit_bare_unset_badid_silent
+  command: 'set -o posix; unset 1bad a-b; echo rc=$?'
+  stdout: "rc=0\n"
+  stderr: ""
+  exit_code: 0
+  description: "Discriminator for the row above: without -v bash falls back to a function lookup, so the word is never judged as a variable name (slot 2.2, W0-N32)"
+
+- name: posixexit_unset_v_unsets_later_operands
+  command: 'set -o posix; a=1 d=1; unset -v a b-c d || echo caught; echo "a=[${a-unset}] d=[${d-unset}]"'
+  stdout: "caught\na=[unset] d=[unset]\n"
+  stderr: "unset: `b-c': not a valid identifier"
+  exit_code: 0
+  min_bash: "5.3"
+  description: "Actual target (D3): the unset operand loop is NOT truncated by a refusal, so d after the bad operand is really gone; the exit is suppressible (slot 2.2, W0-N32)"
+
+- name: posixexit_export_applies_operands_before_the_bad_one
+  command: 'set -o posix; export A=1 1bad=x B=2 || echo caught; echo "B=${B-unset}"; declare -p A'
+  stdout: "caught\nB=unset\ndeclare -x A=\"1\"\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+  min_bash: "5.3"
+  description: "Actual target (D3) for the stop-at-first rule: A really carries the export attribute, B was never created (slot 2.2, G18)"
+
+- name: posixexit_readonly_stops_at_first_badid
+  command: 'set -o posix; readonly A=1 1bad B=2 || echo caught; echo "B=${B-unset}"; declare -p A'
+  stdout: "caught\nB=unset\ndeclare -r A=\"1\"\n"
+  stderr: "not a valid identifier"
+  exit_code: 0
+  min_bash: "5.3"
+  description: "The readonly twin of the row above: the stop rule and the suppressible exit both hold for readonly (slot 2.2, G19)"
+
+- name: posixexit_exit_trap_sees_operand_status
+  command: "set -o posix; trap 'echo trap rc=$?' EXIT; export 1bad=x; echo survived"
+  stdout: "trap rc=1\n"
+  stderr: "not a valid identifier"
+  exit_code: 1
+  min_bash: "5.3"
+  description: "$? inside the EXIT trap after a posix special-builtin exit is the builtin's own status, not 0 — the trap runs after the unwind and reads the status the policy publishes (slot 2.2)"
+
+- name: posixexit_exit_trap_sees_usage_status_2
+  command: "set -o posix; trap 'echo trap rc=$?' EXIT; set -q; echo survived"
+  stdout: "trap rc=2\n"
+  stderr: "invalid option"
+  exit_code: 2
+  description: "The usage class carries 2, so the EXIT trap must not see 1 either (slot 2.2)"
+
+- name: posixexit_suppressed_exit_leaves_trap_status_alone
+  command: "set -o posix; trap 'echo trap rc=$?' EXIT; set -q || echo caught; echo survived"
+  stdout: "caught\nsurvived\ntrap rc=0\n"
+  stderr: "invalid option"
+  exit_code: 0
+  description: "Discriminator: the status publish must not fire when a guard suppresses the exit (slot 2.2)"
+
 - name: posixexit_trap_badsig_survives
   command: "set -o posix; trap 'x' NOSUCHSIG; echo rc=$?"
   stdout: "rc=1\n"
