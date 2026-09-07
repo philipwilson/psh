@@ -23,8 +23,13 @@ nothing for the control rows, and leaves no job behind in any of them).
 """
 
 import os
+import pty
 import re
+import select
+import signal
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pexpect
@@ -129,27 +134,82 @@ def test_async_reader_inherits_frame_stdin_at_the_prompt(psh, cmd, expected):
     assert run(psh, 'echo alive') == ['alive']
 
 
-@pytest.mark.parametrize("shape,cmd,expected", [
-    # `0>&1` at a terminal is the shape that HUNG: fd 0 became the tty's
-    # write side, and a background reader that inherited it never returned.
-    # The row's guard is the pexpect timeout — a regression fails as a
-    # TIMEOUT here instead of wedging the suite.
-    ("dup_stdout_onto_fd0", '{ cat & wait; } 0>&1; echo DONE', ['DONE']),
-    # The same defect away from a terminal is merely quiet: fd 0 is a
-    # write-only file and `cat` says so. bash is silent in the first and
-    # diagnoses in the second, and psh now matches both.
-    ("output_to_file_on_fd0", '{ cat & wait; } 0> o; echo DONE',
-     ['cat: stdin: Bad file descriptor', 'DONE']),
-])
-def test_output_redirect_on_fd0_supplies_no_input(psh, shape, cmd, expected):
-    """C022/B1: an OUTPUT redirect landing on fd 0 must not bind the frame.
+# --------------------------------------------------------------------------
+# B1: the shape that HUNG. It needs THREE things at once — job control OFF (a
+# `-c` shell), stdout on a TERMINAL, and stdin somewhere else. `0>&1` then made
+# fd 0 a dup of the terminal, which is readable, so a background reader that
+# inherited it waited for input that never came and the shell never reached
+# `echo DONE`. At an interactive prompt the bug is unreachable (job control is
+# on, so the async policy never runs), and with stdout on a pipe or a file the
+# reader fails EBADF instead of blocking — which is why this row builds its own
+# terminal rather than reusing the prompt fixture above.
+# --------------------------------------------------------------------------
 
-    Interactively the async policy is inactive anyway (job control is on), so
-    what this row really pins is that the shell RETURNS — the round-1
-    regression made the prompt unreachable.
+def _run_c_mode_with_stdout_on_a_terminal(workdir, script, timeout=8):
+    """Run ``psh -c script`` with stdout on a pty and stdin on /dev/null.
+
+    Returns ``(output, exited)``. Never blocks longer than *timeout*: the whole
+    process group is killed and ``exited`` comes back False, which is the
+    assertion this row makes rather than hanging the suite.
     """
-    assert run(psh, cmd) == expected, cmd
-    assert run(psh, 'echo alive') == ['alive']
+    master, slave = pty.openpty()
+    env = dict(os.environ, PYTHONPATH=PSH_ROOT, TERM="xterm",
+               PYTHONUNBUFFERED="1", HOME=str(workdir))
+    child = subprocess.Popen(
+        [sys.executable, "-u", "-m", "psh", "--norc", "-c", script],
+        stdin=subprocess.DEVNULL, stdout=slave, stderr=slave,
+        env=env, cwd=str(workdir), start_new_session=True)
+    os.close(slave)
+    out = b""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        readable, _, _ = select.select([master], [], [], 0.2)
+        if readable:
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:      # EIO: the last slave fd closed (child gone)
+                break
+            if not chunk:
+                break
+            out += chunk
+        elif child.poll() is not None:
+            break
+    try:
+        child.wait(timeout=1)
+        exited = True
+    except subprocess.TimeoutExpired:
+        exited = False
+        try:
+            os.killpg(os.getpgid(child.pid), signal.SIGKILL)
+        except ProcessLookupError:      # it exited in the meantime
+            exited = True
+        child.wait(timeout=5)
+    os.close(master)
+    return OSC.sub("", out.decode(errors="replace").replace("\r", "")), exited
+
+
+@pytest.mark.parametrize("shape,script,expected", [
+    # The regression: fd 0 became the terminal and the reader never returned.
+    ("dup_stdout_onto_fd0", '{ cat & wait; } 0>&1; echo DONE', ["DONE"]),
+    ("dup_stdout_onto_fd0_twice",
+     '{ cat & wait; } 0>&1 0>&1; echo DONE', ["DONE"]),
+    # Controls, on the same terminal: an INPUT on fd 0 still binds and is still
+    # delivered, and a reader with no frame input still gets /dev/null.
+    ("input_on_fd0_still_binds", '{ cat & wait; } < f; echo DONE',
+     [PAYLOAD, "DONE"]),
+    ("no_frame_input_still_devnull", 'cat & wait; echo DONE', ["DONE"]),
+])
+def test_c_mode_with_stdout_on_a_terminal_always_finishes(workdir, shape,
+                                                          script, expected):
+    """C022/B1: a `-c` shell whose stdout is a terminal must reach its end."""
+    out, exited = _run_c_mode_with_stdout_on_a_terminal(workdir, script)
+    assert exited, (
+        f"{script!r} never finished with stdout on a terminal: the background "
+        f"reader is holding fd 0 (round-1 regression B1). Output so far: "
+        f"{out!r}")
+    lines = [ln for ln in out.split("\n")
+             if ln.strip() and not NOTICE.match(ln.strip())]
+    assert lines == expected, lines
 
 
 def test_background_reader_with_no_frame_input_does_not_steal_the_terminal(psh):
