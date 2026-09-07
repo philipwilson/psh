@@ -10997,3 +10997,17 @@
   stdout: "A\nB\nC\nD\nE\nF\n"
   stderr: ""
   exit_code: 0
+
+- name: pipeline_member_debug_trap_action_external
+  description: "C001: a DEBUG trap action that runs an external command no longer steals the member's exec"
+  command: "trap '/bin/echo dbg' DEBUG; /bin/echo A | cat"
+  stdout: "dbg\ndbg\nA\n"
+  stderr: ""
+  exit_code: 0
+
+- name: pipeline_member_set_m_runs_whole_body
+  description: "C001: `set -m` does not change the one-shot answer for a function member"
+  command: 'set -m; f(){ /bin/echo A; echo B; }; f | cat; echo rc=$?'
+  stdout: "A\nB\nrc=0\n"
+  stderr: ""
+  exit_code: 0

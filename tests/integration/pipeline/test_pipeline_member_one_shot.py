@@ -52,6 +52,20 @@ DIFFERENTIAL_ROWS = [
      'f(){ echo A; /bin/echo B; }; f | cat'),
     ("function_in_middle_of_three_stage_pipeline",
      'f(){ /bin/echo A; echo B; }; echo seed | f | cat'),
+    # `set -m` turns job control on in any input mode. It must not change the
+    # answer: the member still runs its whole body and still reports rc 0.
+    ("set_m_function_member",
+     'set -m; f(){ /bin/echo A; echo B; }; f | cat; echo rc=$?'),
+    ("set_plus_m_function_member",
+     'set +m; f(){ /bin/echo A; echo B; }; f | cat; echo rc=$?'),
+    # A DEBUG trap whose ACTION runs an external command is the same loss in
+    # another shape: at base that external took the member's exec token and
+    # the member's own command never ran, so `A` was never printed.
+    ("debug_trap_action_runs_external",
+     "trap '/bin/echo dbg' DEBUG; /bin/echo A | cat"),
+    ("debug_trap_functrace_function_member",
+     "set -T; trap '/bin/echo dbg' DEBUG; "
+     "f(){ /bin/echo A; echo B; }; f | cat"),
     # Controls: the shapes that already worked must keep working.
     ("control_brace_group_member",
      '{ /bin/echo A; echo B; } | cat'),
