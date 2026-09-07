@@ -135,6 +135,23 @@ ROWS = [
      "if [[ '~' =~ '~' ]]; then echo eq; else echo ne; fi"),
     ("test_regex_mid_word_tilde_is_literal",
      "if [[ 'a~b' =~ a~b ]]; then echo eq; else echo ne; fi"),
+    # --- ANSI-C quoted operands stay literal ----------------------------
+    # Consolidating the two [[ ]] RHS walkers onto the owner also closed a
+    # defect neither slot was hunting: the old walker ran its DOUBLE-QUOTE
+    # recipe on a $'...' part, so a `$` the lexer had already resolved was
+    # expanded a second time. The first row below was `ne` at base b6ec6f95.
+    ("test_ansi_c_dollar_is_not_re_expanded",
+     "b=Z; p='a$b'; if [[ $p == $'a$b' ]]; then echo eq; else echo ne; fi"),
+    ("test_ansi_c_glob_is_literal",
+     "p='a*b'; if [[ $p == $'a*b' ]]; then echo eq; else echo ne; fi"),
+    ("test_ansi_c_glob_does_not_match_as_pattern",
+     "p='aXb'; if [[ $p == $'a*b' ]]; then echo eq; else echo ne; fi"),
+    ("test_ansi_c_backslash_survives",
+     "p=$'a\\\\b'; if [[ $p == $'a\\\\b' ]]; then echo eq; else echo ne; fi"),
+    ("test_ansi_c_regex_operand_is_literal",
+     "p='aXb'; if [[ $p =~ $'a.b' ]]; then echo eq; else echo ne; fi"),
+    ("test_ansi_c_case_pattern_is_literal",
+     "case 'aXb' in $'a*b') echo T;; *) echo o;; esac"),
     # --- ${var#pat} family: the substring actually removed ---------------
     ("param_remove_prefix_tilde_slash",
      'v=$HOME/x; echo "[${v#~/}]"'),

@@ -11302,3 +11302,10 @@
   stdout: "[X/x][/h//h]\n"
   stderr: ""
   exit_code: 0
+
+- name: c042_test_ansi_c_operand_dollar_not_re_expanded
+  description: "C042 side-effect: consolidating the [[ ]] RHS walkers onto the pattern-word owner stopped a $'...' operand being run through the double-quote recipe, which expanded a $ the lexer had already resolved"
+  command: "b=Z; p='a$b'; if [[ $p == $'a$b' ]]; then echo eq; else echo ne; fi"
+  stdout: "eq\n"
+  stderr: ""
+  exit_code: 0
