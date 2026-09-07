@@ -11381,3 +11381,51 @@
   stdout: "T\n"
   stderr: ""
   exit_code: 0
+
+- name: c042_r3_colon_extent_remainder_is_literal
+  description: "C042 round-3 V2-B1: bash's tilde WORD runs to the first / so a : is INSIDE it; the whole word is literal, remainder included. Round 2 left the remainder live and this row printed M"
+  env: {HOME: /h/me}
+  command: 'case "/h/me:XX" in ~:*) echo M;; *) echo o;; esac'
+  stdout: "o\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_matches_itself
+  description: "C042 round-3 V2-B1: with the remainder literal, the tilde extent matches the text it actually is"
+  env: {HOME: /h/me}
+  command: 'case "/h/me:*" in ~:*) echo M;; *) echo o;; esac'
+  stdout: "M\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_slash_bounds_literal_zone
+  description: "C042 round-3 V2-B1 control: the / bounds the tilde word, so a glob the source word supplied after it stays live"
+  env: {HOME: /h/me}
+  command: 'case "/h/me:*/YY" in ~:*/*) echo M;; *) echo o;; esac'
+  stdout: "M\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_colon_extent_multipart_regex
+  description: "C042 round-3 V2-B1: the multi-part extent ~:$u takes the expansion verbatim and makes the whole tilde word literal, so the =~ operand matches the literal text"
+  env: {HOME: /h/me}
+  command: 'u=Z; [[ "/h/me:$u" =~ ~:$u ]]; echo rc=$?'
+  stdout: "rc=1\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_derived_decoy_near_miss_and_live_half
+  description: "C042 round-3 V2-B2: a decoy derived against bash - the LIVE $HOME matches /aXb where the LITERAL ~ does not. Round 2's sed-built decoy could not tell the two apart"
+  env: {HOME: "/a*b"}
+  command: 'case /aXb in ~) echo tilde;; *) echo other;; esac; case /aXb in $HOME) echo live;; *) echo other;; esac'
+  stdout: "other\nlive\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c042_r3_assignment_segment_near_miss
+  description: "C042 round-3 V2-B1: the assignment colon-segment escape, on a derived near-miss subject rather than only an exact one"
+  env: {HOME: "/a*b"}
+  command: 'case "x=a:/aXb:b" in x=a:~:b) echo M;; *) echo o;; esac; case "x=a:/a*b:b" in x=a:~:b) echo M;; *) echo o;; esac'
+  stdout: "o\nM\n"
+  stderr: ""
+  exit_code: 0

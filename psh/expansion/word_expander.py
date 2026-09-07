@@ -483,10 +483,10 @@ class WordExpander:
         # The prefix must actually expand; an unknown user or out-of-range
         # dirstack index leaves the word literal in bash (and the rest then
         # expands normally, which the ordinary walk already does).
-        expanded_lead = self.manager.tilde_expander.expand_escaped(
-            lead, escape)
-        if expanded_lead == lead:
+        split = self.manager.tilde_expander.expand_split(lead)
+        if split is None or split[0] + split[1] == lead:
             return None
+        replacement, lead_rest = split
 
         # Consume following parts as verbatim source until the first
         # unquoted '/' in a literal part (the tilde-word boundary). Any
@@ -520,8 +520,16 @@ class WordExpander:
                 break
             return None  # unknown WordPart kind: stay conservative
 
-        collapsed = LiteralPart(expanded_lead + ''.join(verbatim),
-                                quoted=False)
+        # The tilde WORD is the replacement plus everything up to the '/' that
+        # ended the scan above — the lead's own remainder AND the verbatim
+        # parts. bash quotes the tilde word WHOLE, so a pattern consumer's
+        # escape covers all of it, not just the replacement (probed 5.3.15:
+        # `HOME=/h/me; case '/h/me:XX' in ~:*)` does not match, while
+        # `case '/h/me:*/YY' in ~:*/*)` does — the second `*` is past the
+        # boundary and stays live). `resume` holds the text past the '/' and
+        # is left untouched.
+        collapsed = LiteralPart(
+            escape(replacement + lead_rest + ''.join(verbatim)), quoted=False)
         return [collapsed] + resume
 
     def _walk_expansion_part(self, part: ExpansionPart, ctx: _TildeWalk,

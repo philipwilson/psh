@@ -268,3 +268,103 @@ class TestOperandSiblingAgrees:
         assert pat("x=~") == f"x={HOME}"
         operand = captured_shell.expansion_manager.variable_expander
         assert operand._expand_pattern_operand("x=~") == "x=~"
+
+
+class TestTildeWordBoundaryIsLiteral:
+    """The whole tilde WORD is escaped, not just the replacement (V2-B1).
+
+    bash's tilde PREFIX ends at the first ``/`` or ``:`` and decides what
+    EXPANDS; the tilde WORD is wider — it ends at the first ``/`` only, so a
+    ``:`` sits inside it — and bash makes the WORD literal in a pattern.
+    ``TildeExpander.word_end`` is that second boundary. Probed against bash
+    5.3.15 with ``HOME=/h/me``::
+
+        case '/h/me:XX'   in ~:*)   esac   # no match, the * is INSIDE
+        case '/h/me:*/YY' in ~:*/*) esac   # MATCHES, the 2nd * is OUTSIDE
+
+    Round 2 escaped only the replacement, so `~:*` kept a live `*` and psh
+    answered `M` where bash and psh at base `b6ec6f95` answer `o`.
+    """
+
+    def test_colon_remainder_is_escaped(self, pat):
+        assert pat("~:*") == r"/h/me:\*"
+
+    def test_colon_remainder_bracket_is_escaped(self, pat):
+        assert pat("~:[a]") == r"/h/me:\[a\]"
+
+    def test_slash_bounds_the_literal_zone(self, pat):
+        # Past the tilde word's '/' the source word's glob stays live.
+        assert pat("~:*/*") == r"/h/me:\*/*"
+
+    def test_plain_slash_tail_stays_live(self, pat):
+        assert pat("~/a*") == "/h/me/a*"
+
+    @pytest.mark.parametrize("home", METACHAR_HOMES)
+    def test_metachar_home_and_remainder_both_escaped(self, pat,
+                                                      captured_shell, home):
+        captured_shell.state.set_variable("HOME", home)
+        glob_escape = (captured_shell.expansion_manager
+                       .variable_expander.glob_escape)
+        assert pat("~:*", home=home) == glob_escape(home + ":*")
+
+    def test_regex_consumer_escapes_the_whole_word(self, pat):
+        assert pat("~:.", escape=re.escape) == re.escape("/h/me:.")
+
+    def test_multipart_extent_is_escaped_whole(self, pat, captured_shell):
+        # `~:$u` is the colon extent spilling into an expansion part: the
+        # collapse takes the expansion VERBATIM (bash's tilde_find_word
+        # quirk) and the whole tilde word is then literal.
+        captured_shell.state.set_variable("u", "Z")
+        # `$` is not a GLOB metacharacter, so glob_escape leaves it alone;
+        # the `*`s on both sides of it are escaped because both sit inside
+        # the tilde word.
+        assert pat("~:$u*", home="/a*b") == r"/a\*b:$u\*"
+
+    @pytest.mark.parametrize("home", ["/a*b", "/a[b]", "/a?b"])
+    def test_multipart_extent_metachar_home(self, pat, captured_shell, home):
+        captured_shell.state.set_variable("u", "Z")
+        glob_escape = (captured_shell.expansion_manager
+                       .variable_expander.glob_escape)
+        assert pat("~:$u", home=home) == glob_escape(home + ":$u")
+
+
+class TestAssignmentSegmentEscape:
+    """The assignment colon-segment site escapes its replacement too.
+
+    Round 2 left this site holding on a single golden row; these are its
+    unit pins. Only the REPLACEMENT and the rest of its tilde word are
+    escaped — the ``NAME=`` / ``NAME+=`` head stays raw, which is the
+    over-escaping failure a cruder fix produces.
+    """
+
+    @pytest.mark.parametrize("home", METACHAR_HOMES)
+    def test_value_tilde_after_equals(self, pat, captured_shell, home):
+        captured_shell.state.set_variable("HOME", home)
+        glob_escape = (captured_shell.expansion_manager
+                       .variable_expander.glob_escape)
+        assert pat("x=~", home=home) == "x=" + glob_escape(home)
+
+    @pytest.mark.parametrize("home", METACHAR_HOMES)
+    def test_value_tilde_between_colons(self, pat, captured_shell, home):
+        captured_shell.state.set_variable("HOME", home)
+        glob_escape = (captured_shell.expansion_manager
+                       .variable_expander.glob_escape)
+        assert pat("x=a:~:b", home=home) == "x=a:" + glob_escape(home) + ":b"
+
+    @pytest.mark.parametrize("home", METACHAR_HOMES)
+    def test_append_assignment_head_stays_raw(self, pat, captured_shell, home):
+        captured_shell.state.set_variable("HOME", home)
+        glob_escape = (captured_shell.expansion_manager
+                       .variable_expander.glob_escape)
+        # The `x+=` head is NOT escaped: a crude "escape the whole prefix"
+        # fix produces `x\+=…` and reddens here.
+        assert pat("x+=~", home=home) == "x+=" + glob_escape(home)
+
+    def test_slash_tail_after_a_value_tilde_stays_live(self, pat):
+        assert pat("x=~/a*") == "x=/h/me/a*"
+
+    @pytest.mark.parametrize("home", METACHAR_HOMES)
+    def test_regex_consumer_value_tilde(self, pat, captured_shell, home):
+        captured_shell.state.set_variable("HOME", home)
+        assert pat("x=a:~:b", home=home,
+                   escape=re.escape) == "x=a:" + re.escape(home) + ":b"

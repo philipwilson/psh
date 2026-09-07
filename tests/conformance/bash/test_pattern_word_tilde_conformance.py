@@ -274,61 +274,83 @@ def test_tilde_pattern_does_not_glob_the_filesystem(tmp_path):
 # The tilde REPLACEMENT is literal — rows that vary the VALUE of HOME/PWD.
 #
 # Round 1 of this slot shipped the replacement RAW, so a HOME carrying a glob
-# metacharacter became a live pattern. Every pin in round 1 used HOME=/h/me,
-# so none of them could see it: a corpus that never varies the value cannot
-# catch a value-shape bug. bash quotes the result of tilde expansion in a
-# pattern word and does NOT quote the result of parameter expansion —
-# the `_control_dollar_home_is_live` rows below are that other half, and they
-# are what stops this suite from over-escaping in the opposite direction.
+# metacharacter became a live pattern. Every round-1 pin used HOME=/h/me, so
+# none of them could see it: a corpus that never varies the value cannot catch
+# a value-shape bug.
+#
+# Round 2 varied the value but built its near-miss subject at the WRONG
+# character (`sed 's/./X/2'` rewrites the `a` of `/a*b`, giving `/X*b`, which a
+# LIVE `/a*b` does not match either), so six of its rows answered the same
+# whether the replacement was escaped or not. Every decoy below is instead
+# DERIVED against bash 5.3.15 and recorded as an explicit (home, subject) pair:
+# a subject the LIVE pattern matches and the LITERAL one does not. The
+# derivation is `tools`-free and reproducible — for each candidate subject,
+# compare `case SUBJ in $HOME)` (bash keeps a parameter expansion live) with
+# `case SUBJ in ~)` (bash quotes a tilde expansion) and keep the pairs where
+# the two answers differ.
+#
+# Homes with no metacharacter FOR A GIVEN CONSUMER have no decoy for it and are
+# deliberately absent from that list rather than carried as an inert row: with
+# nothing to escape, `escape(home) == home` and no row can discriminate.
 # ---------------------------------------------------------------------------
 
-#: HOME values whose text carries a pattern (or regex) metacharacter.
+#: HOME values whose text carries a pattern (or regex) metacharacter. Used for
+#: the rows that must hold at ANY value — they are red-on-base for C042 — while
+#: the escape-discriminating rows come from the derived tables below.
 METACHAR_HOMES = ["/a*b", "/a?b", "/a[b]", "/a.b", "/a(b", "/a)b", "/a]b",
                   "/a b", "/a{b", "/a+b", "/a^b", "/a$b"]
 
-#: (id, command) run once per metacharacter HOME. Each prints the branch
-#: taken; a live-pattern replacement takes the WRONG one.
+#: (home, subject) where a LIVE glob replacement matches and a LITERAL one does
+#: not — derived against bash 5.3.15 on 2026-09-08. The other homes carry no
+#: GLOB metacharacter (`.`, `(`, `)`, `]`, ` `, `{`, `+`, `^`, `$` are literal
+#: to a glob), so no glob row can discriminate the escape at them.
+GLOB_DECOYS = [
+    ("/a*b", "/aXb"),
+    ("/a?b", "/aXb"),
+    ("/a[b]", "/ab"),
+    ("/a\\b", "/ab"),
+]
+
+#: (home, subject) where a LIVE regex replacement matches and a LITERAL one
+#: does not — derived the same way against `[[ $s =~ $r ]]` vs `[[ $s =~ ~ ]]`.
+REGEX_DECOYS = [
+    ("/a*b", "/ab"),
+    ("/a?b", "/ab"),
+    ("/a[b]", "/ab"),
+    ("/a.b", "/aXb"),
+    ("/a\\b", "/ab"),
+    ("/a+b", "/ab"),
+]
+
+#: Homes where the LITERAL pattern matches the home itself but a LIVE one does
+#: NOT — the exact-subject direction of the same rule, also derived.
+GLOB_EXACT_DISCRIMINATORS = ["/a[b]", "/a\\b"]
+REGEX_EXACT_DISCRIMINATORS = ["/a*b", "/a?b", "/a[b]", "/a(b", "/a\\b",
+                              "/a+b", "/a^b", "/a$b"]
+
+#: (id, command) run once per metacharacter HOME. These hold at EVERY home and
+#: are red-on-base for C042; the ones that also discriminate the escape are the
+#: exact-subject rows, at the homes listed above.
 METACHAR_ROWS = [
-    # The subject differs from HOME by one character, so it matches only if
-    # the replacement is a live pattern. bash: no match.
-    ("case_literal_subject_x",
-     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
-     "case $s in ~) echo tilde;; *) echo other;; esac"),
-    ("case_path_literal_subject_x",
-     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2')/z; "
-     "case $s in ~/z) echo tilde;; *) echo other;; esac"),
-    ("case_assignment_value_literal_subject_x",
-     "s=x=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
-     "case $s in x=~) echo tilde;; *) echo other;; esac"),
-    ("test_eq_literal_subject_x",
-     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
-     "if [[ $s == ~ ]]; then echo eq; else echo ne; fi"),
-    ("test_ne_literal_subject_x",
-     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
-     "if [[ $s != ~ ]]; then echo T; else echo F; fi"),
-    ("test_regex_literal_subject_x",
-     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
-     "if [[ $s =~ ~ ]]; then echo eq; else echo ne; fi"),
-    # The subject IS the home, so it must match — a mis-escaped replacement
-    # (or a regex that fails to compile) takes the wrong branch or errors.
+    # The subject IS the home, so it must match — a live replacement (or a
+    # regex that fails to compile) takes the wrong branch or errors.
     ("case_exact_subject",
      'case $HOME in ~) echo tilde;; *) echo other;; esac'),
     ("case_exact_subject_path",
      'case $HOME/z in ~/z) echo tilde;; *) echo other;; esac'),
+    ("case_assignment_value_exact_subject",
+     'case "x=$HOME" in x=~) echo tilde;; *) echo other;; esac'),
     ("test_eq_exact_subject",
      'if [[ $HOME == ~ ]]; then echo eq; else echo ne; fi'),
+    ("test_ne_exact_subject",
+     'if [[ $HOME != ~ ]]; then echo T; else echo F; fi'),
     ("test_regex_exact_subject_rc",
      '[[ $HOME =~ ~ ]]; echo rc=$?'),
     ("param_remove_prefix_exact",
      'v=$HOME/z; echo "[${v#~/}]"'),
-    # The CONTROL for the other half of bash's rule: a parameter expansion in
-    # a pattern word stays LIVE, so this one DOES match where the tilde does
-    # not. If a future change over-escapes, this row goes red.
-    ("control_dollar_home_is_live",
-     "s=$(printf '%s' \"$HOME\" | sed 's/./X/2'); "
-     "case $s in $HOME) echo live;; *) echo other;; esac"),
     # The tail of the word keeps its glob power even though the replacement
-    # does not: `~/a*` still globs on the `a*` the SOURCE supplied.
+    # does not: `~/a*` still globs on the `a*` the SOURCE supplied. This one
+    # discriminates the opposite failure (over-escaping the tail).
     ("source_glob_tail_still_live",
      'case $HOME/abc in ~/a*) echo tilde;; *) echo other;; esac'),
 ]
@@ -434,3 +456,272 @@ def test_regex_operand_replacement_compiles(home, tmp_path):
     assert run.stdout == "rc=0\n", (home, run.stdout, run.stderr)
     assert "invalid regex" not in run.stderr, run.stderr
     assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode)
+
+
+# ---------------------------------------------------------------------------
+# Derived-decoy rows: each one is known to CHANGE ANSWER when the escape moves.
+# ---------------------------------------------------------------------------
+
+GLOB_DECOY_IDS = [f"{h}-{s}" for h, s in GLOB_DECOYS]
+REGEX_DECOY_IDS = [f"{h}-{s}" for h, s in REGEX_DECOYS]
+
+
+class TestDerivedDecoys(ConformanceTest):
+    """Near-miss subjects a LIVE replacement matches and a LITERAL one does not.
+
+    These are the rows that hold the escape. Each pair was derived against
+    bash 5.3.15 rather than assumed, and each is proved to redden when the
+    escape is dropped (see the slot's round-3 handoff for the counts).
+    """
+
+    @pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+    def test_case_near_miss_does_not_match(self, home, subject):
+        self.assert_identical_behavior(
+            f'case {subject!r} in ~) echo tilde;; *) echo other;; esac',
+            env={"HOME": home})
+
+    @pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+    def test_case_path_near_miss_does_not_match(self, home, subject):
+        self.assert_identical_behavior(
+            f'case {subject + "/z"!r} in ~/z) echo tilde;; *) echo other;; esac',
+            env={"HOME": home})
+
+    @pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+    def test_case_assignment_value_near_miss(self, home, subject):
+        self.assert_identical_behavior(
+            f'case {"x=" + subject!r} in x=~) echo tilde;; *) echo other;; esac',
+            env={"HOME": home})
+
+    @pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+    def test_eq_near_miss(self, home, subject):
+        self.assert_identical_behavior(
+            f'if [[ {subject!r} == ~ ]]; then echo eq; else echo ne; fi',
+            env={"HOME": home})
+
+    @pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+    def test_ne_near_miss(self, home, subject):
+        self.assert_identical_behavior(
+            f'if [[ {subject!r} != ~ ]]; then echo T; else echo F; fi',
+            env={"HOME": home})
+
+    @pytest.mark.parametrize("home,subject", REGEX_DECOYS, ids=REGEX_DECOY_IDS)
+    def test_regex_near_miss(self, home, subject):
+        self.assert_identical_behavior(
+            f'if [[ {subject!r} =~ ~ ]]; then echo eq; else echo ne; fi',
+            env={"HOME": home})
+
+    @pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+    def test_dollar_home_stays_live(self, home, subject):
+        """The OTHER half of bash's rule, on a subject that can see it.
+
+        bash quotes the result of tilde expansion and does NOT quote the
+        result of parameter expansion, so this row MATCHES on exactly the
+        subjects the `~` rows above miss. Round 2's version of this control
+        used the broken decoy and was inert against an over-escaping change;
+        this one reddens.
+        """
+        self.assert_identical_behavior(
+            f'case {subject!r} in $HOME) echo live;; *) echo other;; esac',
+            env={"HOME": home})
+
+
+@pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+def test_derived_decoy_all_three_input_modes(home, subject, tmp_path):
+    """D6: the derived glob decoy holds in -c, script-file and stdin mode."""
+    command = (f'case {subject!r} in ~) echo tilde;; *) echo other;; esac; '
+               f'case {subject!r} in $HOME) echo live;; *) echo other;; esac')
+    env = {"HOME": home}
+    bash_dir = tmp_path / "bash"
+    bash_dir.mkdir()
+    bash = run_bash(["-c", command], cwd=str(bash_dir), env=dict(env))
+    assert is_comparable(bash), f"bash harness failure: {bash!r}"
+
+    for mode in ("dash_c", "script", "stdin"):
+        mode_dir = tmp_path / mode
+        mode_dir.mkdir()
+        if mode == "dash_c":
+            run = run_psh(["-c", command], cwd=str(mode_dir), env=dict(env))
+        elif mode == "script":
+            script = mode_dir / "case.sh"
+            script.write_text(command + "\n")
+            run = run_psh([str(script)], cwd=str(mode_dir), env=dict(env))
+        else:
+            run = run_psh([], stdin_data=command + "\n", cwd=str(mode_dir),
+                          env=dict(env))
+        assert is_comparable(run), f"harness failure in {mode}: {run!r}"
+        assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode), (
+            f"{mode} mode, HOME={home!r}, subject={subject!r}: "
+            f"psh={(run.stdout, run.returncode)!r} "
+            f"bash={(bash.stdout, bash.returncode)!r}")
+
+
+@pytest.mark.parametrize("parser", ["rd", "combinator"])
+@pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+def test_derived_decoy_both_parsers(parser, home, subject, tmp_path):
+    """Both parsers build the same pattern Word, so both get the same rule."""
+    command = (f'case {subject!r} in ~) echo tilde;; *) echo other;; esac; '
+               f'case $HOME in ~) echo exact;; *) echo miss;; esac')
+    env = {"HOME": home}
+    bash_dir = tmp_path / "bash"
+    bash_dir.mkdir()
+    bash = run_bash(["-c", command], cwd=str(bash_dir), env=dict(env))
+    run = run_psh(["--parser", parser, "-c", command], cwd=str(tmp_path),
+                  env=dict(env))
+    assert is_comparable(bash) and is_comparable(run), (bash, run)
+    assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode), (
+        f"{parser} parser, HOME={home!r}: psh="
+        f"{(run.stdout, run.returncode)!r} bash={(bash.stdout, bash.returncode)!r}")
+
+
+# ---------------------------------------------------------------------------
+# The colon-extent collapse site — the third escape site, unpinned until now.
+#
+# bash's tilde WORD runs from a word-leading `~` to the first unquoted `/`, so a
+# `:` sits INSIDE it: `~:REST` is one tilde word and bash makes ALL of it
+# literal. `TildeExpander.word_end` is that boundary, distinct from
+# `prefix_end` (which stops at `/` OR `:` and decides what EXPANDS).
+#
+# Round 2 escaped only the replacement here, which left the remainder live and
+# diverged from bash the moment the remainder carried a metacharacter:
+#     env HOME=/h/me psh -c "case '/h/me:XX' in ~:*) echo M;; *) echo o;; esac"
+# printed `M` at round-2 tip where bash 5.3.15 and psh at base b6ec6f95 print
+# `o` — a regression round 2 shipped and no pin could see.
+# ---------------------------------------------------------------------------
+
+#: (id, command). Rows whose pattern word is a colon-bounded tilde EXTENT whose
+#: remainder carries a metacharacter, in one literal part.
+COLON_EXTENT_ROWS = [
+    ("extent_star_in_remainder_is_literal",
+     'case "$HOME:XX" in ~:*) echo M;; *) echo o;; esac'),
+    ("extent_star_matches_itself",
+     'case "$HOME:*" in ~:*) echo M;; *) echo o;; esac'),
+    ("extent_qmark_in_remainder_is_literal",
+     'case "$HOME:Q" in ~:?) echo M;; *) echo o;; esac'),
+    ("extent_bracket_in_remainder_is_literal",
+     'case "$HOME:a" in ~:[a]) echo M;; *) echo o;; esac'),
+    ("extent_bracket_matches_itself",
+     'case "$HOME:[a]" in ~:[a]) echo M;; *) echo o;; esac'),
+    ("extent_test_eq_star_is_literal",
+     'if [[ "$HOME:XX" == ~:* ]]; then echo M; else echo o; fi'),
+    ("extent_test_eq_star_matches_itself",
+     'if [[ "$HOME:*" == ~:* ]]; then echo M; else echo o; fi'),
+    ("extent_regex_dot_is_literal",
+     'if [[ "$HOME:X" =~ ~:. ]]; then echo M; else echo o; fi'),
+    ("extent_regex_dot_matches_itself",
+     'if [[ "$HOME:." =~ ~:. ]]; then echo M; else echo o; fi'),
+    ("extent_dirstack_star_is_literal",
+     'cd /; case "/:XX" in ~+:*) echo M;; *) echo o;; esac'),
+    # The '/' BOUNDS the tilde word: past it, the source word's glob is live.
+    ("extent_slash_bounds_the_literal_zone",
+     'case "$HOME:*/YY" in ~:*/*) echo M;; *) echo o;; esac'),
+]
+
+#: The multi-PART form: `~:$u` is a tilde extent spilling into an expansion
+#: part, which the collapse rewrites into one pre-expanded literal. The
+#: expansion is taken VERBATIM (bash's tilde_find_word quirk), so the subject
+#: carries the literal text `$u`, not its value.
+COLON_EXTENT_MULTIPART_ROWS = [
+    ("extent_multipart_case_near_miss",
+     "u=Z; case '{subject}:$u' in ~:$u) echo M;; *) echo o;; esac"),
+    ("extent_multipart_case_exact",
+     "u=Z; case \"$HOME:\\$u\" in ~:$u) echo M;; *) echo o;; esac"),
+    ("extent_multipart_test_eq_near_miss",
+     "u=Z; if [[ '{subject}:$u' == ~:$u ]]; then echo M; else echo o; fi"),
+    ("extent_multipart_test_eq_exact",
+     "u=Z; if [[ \"$HOME:\\$u\" == ~:$u ]]; then echo M; else echo o; fi"),
+    ("extent_multipart_regex_exact_rc",
+     "u=Z; [[ \"$HOME:\\$u\" =~ ~:$u ]]; echo rc=$?"),
+]
+
+
+class TestColonExtentCollapseSite(ConformanceTest):
+    """The whole tilde WORD is literal, remainder included (V2-B1)."""
+
+    @pytest.mark.parametrize("home", ["/h/me", "/a*b", "/a[b]"])
+    @pytest.mark.parametrize("command", [c for _, c in COLON_EXTENT_ROWS],
+                             ids=[n for n, _ in COLON_EXTENT_ROWS])
+    def test_single_part_extent(self, command, home):
+        self.assert_identical_behavior(command, env={"HOME": home})
+
+    @pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+    @pytest.mark.parametrize(
+        "command", [c for _, c in COLON_EXTENT_MULTIPART_ROWS],
+        ids=[n for n, _ in COLON_EXTENT_MULTIPART_ROWS])
+    def test_multipart_extent(self, command, home, subject):
+        self.assert_identical_behavior(
+            command.replace("{subject}", subject), env={"HOME": home})
+
+
+@pytest.mark.parametrize("home", ["/h/me", "/a*b"])
+@pytest.mark.parametrize("command", [c for _, c in COLON_EXTENT_ROWS],
+                         ids=[n for n, _ in COLON_EXTENT_ROWS])
+def test_colon_extent_all_three_input_modes(command, home, tmp_path):
+    """D6: the tilde-word boundary holds in all three input modes."""
+    env = {"HOME": home}
+    bash_dir = tmp_path / "bash"
+    bash_dir.mkdir()
+    bash = run_bash(["-c", command], cwd=str(bash_dir), env=dict(env))
+    assert is_comparable(bash), f"bash harness failure: {bash!r}"
+
+    for mode in ("dash_c", "script", "stdin"):
+        mode_dir = tmp_path / mode
+        mode_dir.mkdir()
+        if mode == "dash_c":
+            run = run_psh(["-c", command], cwd=str(mode_dir), env=dict(env))
+        elif mode == "script":
+            script = mode_dir / "case.sh"
+            script.write_text(command + "\n")
+            run = run_psh([str(script)], cwd=str(mode_dir), env=dict(env))
+        else:
+            run = run_psh([], stdin_data=command + "\n", cwd=str(mode_dir),
+                          env=dict(env))
+        assert is_comparable(run), f"harness failure in {mode}: {run!r}"
+        assert (run.stdout, run.returncode) == (bash.stdout, bash.returncode), (
+            f"{mode} mode, HOME={home!r}, {command!r}: "
+            f"psh={(run.stdout, run.returncode)!r} "
+            f"bash={(bash.stdout, bash.returncode)!r}")
+
+
+# ---------------------------------------------------------------------------
+# The assignment colon-segment site — round 2 left it on one golden row.
+# ---------------------------------------------------------------------------
+
+ASSIGNMENT_SEGMENT_ROWS = [
+    ("assign_value_tilde_exact_subject",
+     'case "x=a:$HOME:b" in x=a:~:b) echo M;; *) echo o;; esac'),
+    ("assign_value_tilde_head_stays_raw",
+     'case "x+=$HOME" in x+=~) echo M;; *) echo o;; esac'),
+    ("assign_value_tilde_first_segment",
+     'case "x=$HOME:b" in x=~:b) echo M;; *) echo o;; esac'),
+    ("assign_value_tilde_test_eq",
+     'if [[ "x=a:$HOME:b" == x=a:~:b ]]; then echo M; else echo o; fi'),
+    ("assign_value_tilde_regex_rc",
+     '[[ "x=a:$HOME:b" =~ x=a:~:b ]]; echo rc=$?'),
+    ("assign_value_tilde_slash_tail_live",
+     'case "x=$HOME/abc" in x=~/a*) echo M;; *) echo o;; esac'),
+]
+
+
+class TestAssignmentSegmentSite(ConformanceTest):
+    """The assignment colon-segment escape, pinned outside the golden file."""
+
+    @pytest.mark.parametrize("home", METACHAR_HOMES)
+    @pytest.mark.parametrize("command",
+                             [c for _, c in ASSIGNMENT_SEGMENT_ROWS],
+                             ids=[n for n, _ in ASSIGNMENT_SEGMENT_ROWS])
+    def test_exact_subject(self, command, home):
+        self.assert_identical_behavior(command, env={"HOME": home})
+
+    @pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+    def test_near_miss_does_not_match(self, home, subject):
+        self.assert_identical_behavior(
+            f'case {"x=a:" + subject + ":b"!r} in x=a:~:b) '
+            'echo M;; *) echo o;; esac',
+            env={"HOME": home})
+
+    @pytest.mark.parametrize("home,subject", GLOB_DECOYS, ids=GLOB_DECOY_IDS)
+    def test_near_miss_first_segment(self, home, subject):
+        self.assert_identical_behavior(
+            f'case {"x=" + subject + ":b"!r} in x=~:b) '
+            'echo M;; *) echo o;; esac',
+            env={"HOME": home})

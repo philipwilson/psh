@@ -41,25 +41,51 @@ class TildeExpander:
         split = self.expand_split(path)
         return path if split is None else split[0] + split[1]
 
-    def expand_escaped(self, path: str, escape) -> str:
-        """:meth:`expand`, with *escape* applied to the REPLACEMENT only.
+    @staticmethod
+    def word_end(path: str) -> int:
+        """End index of the tilde WORD in *path*: the first ``/``, or its end.
 
-        bash makes the text a tilde expansion produced match LITERALLY when
-        the word is a pattern, while the rest of the word keeps its
-        metacharacter power::
+        Distinct from :meth:`prefix_end`, and the distinction is load-bearing.
+        The tilde PREFIX — the part that expands — ends at the first ``/`` OR
+        ``:``. The tilde WORD is wider: it runs to the first ``/`` only, so a
+        ``:`` sits INSIDE it. bash makes the whole tilde word literal in a
+        pattern, which is why the two boundaries cannot be the same call
+        (probed against bash 5.3.15, ``HOME=/h/me``)::
+
+            case '/h/me:XX' in ~:*)  esac   # no match  -- the * is INSIDE
+            case '/h/me/XX' in ~/*)  esac   # MATCHES   -- the * is OUTSIDE
+        """
+        cut = path.find('/', 1)
+        return len(path) if cut == -1 else cut
+
+    def expand_escaped(self, path: str, escape) -> str:
+        """:meth:`expand`, with *escape* applied to the whole tilde WORD.
+
+        bash makes a tilde expansion match LITERALLY when the word is a
+        pattern, while text the source word supplied OUTSIDE the tilde word
+        keeps its metacharacter power. It does NOT quote the result of
+        parameter expansion — that is the other half of the rule::
 
             HOME='/a*b'; case '/aXb' in ~)     esac   # no match  (~ is literal)
             HOME='/a*b'; case '/aXb' in $HOME) esac   # MATCHES   ($HOME is live)
 
-        So a pattern-word caller passes its own escape (``glob_escape`` for a
-        glob pattern, ``re.escape`` for a ``[[ =~ ]]`` regex source) and gets
-        ``escape(home) + rest`` — the ``rest`` untouched, because it came from
-        the source word and must stay live (``case $HOME/ab in ~/a*)`` still
-        globs on the ``a*``). Command-word callers pass nothing and keep the
-        raw join.
+        A pattern-word caller passes its own escape (``glob_escape`` for a glob
+        pattern, ``re.escape`` for a ``[[ =~ ]]`` regex source). What gets
+        escaped is the replacement PLUS the remainder of the tilde word
+        (:meth:`word_end`), because bash quotes the tilde word whole; what
+        follows the word's ``/`` boundary is returned untouched, so
+        ``case $HOME/ab in ~/a*)`` still globs on the ``a*``. Command-word
+        callers pass nothing and keep the raw join.
         """
         split = self.expand_split(path)
-        return path if split is None else escape(split[0]) + split[1]
+        if split is None:
+            return path
+        replacement, rest = split
+        # The tilde WORD continues past the prefix's ':' boundary to the first
+        # '/' (word_end); everything up to there is literal, the tail is live.
+        cut = rest.find('/')
+        inside, outside = (rest, '') if cut == -1 else (rest[:cut], rest[cut:])
+        return escape(replacement + inside) + outside
 
     def expand_split(self, path: str):
         """``(replacement, rest)`` for a leading tilde-prefix, or None.
