@@ -11206,3 +11206,54 @@
   stdout: "hi\n       1\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# PATH EFFECTIVE-BINDING OBSERVER (C044, slot 1.5)
+#
+# Returning from a function that held a `local PATH` restores the variable, and
+# must restore what a command NAME resolves to with it: psh kept the executable
+# the discarded scope had selected, so the next command silently ran the wrong
+# binary. Each row builds two marker executables and reports which one ran.
+# =============================================================================
+
+- name: c044_local_path_restored_for_dispatch
+  description: "C044: after a function's `local PATH` scope pops, the next dispatch resolves through the restored PATH (bash: B then A)"
+  command: 'mkdir -p a b; printf "#!/bin/sh\necho A\n" > a/probe; printf "#!/bin/sh\necho B\n" > b/probe; chmod +x a/probe b/probe; PATH=$PWD/a; f(){ local PATH=$PWD/b; probe; }; f; probe'
+  stdout: "B\nA\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c044_temp_env_prefix_path_restored_for_dispatch
+  description: "C044: a `PATH=dir f` prefix over a function is a temp-env scope, and its pop restores dispatch too"
+  command: 'mkdir -p a b; printf "#!/bin/sh\necho A\n" > a/probe; printf "#!/bin/sh\necho B\n" > b/probe; chmod +x a/probe b/probe; PATH=$PWD/a; f(){ probe; }; PATH=$PWD/b f; probe'
+  stdout: "B\nA\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c044_nested_functions_each_frame_restores
+  description: "C044: the inner function holds the local, so both outer frames dispatch through the outer PATH again"
+  command: 'mkdir -p a b; printf "#!/bin/sh\necho A\n" > a/probe; printf "#!/bin/sh\necho B\n" > b/probe; chmod +x a/probe b/probe; PATH=$PWD/a; g(){ local PATH=$PWD/b; probe; }; f(){ g; probe; }; f; probe'
+  stdout: "B\nA\nA\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c044_early_return_restores_dispatch
+  description: "C044: an early `return` out of the function restores dispatch like a normal one"
+  command: 'mkdir -p a b; printf "#!/bin/sh\necho A\n" > a/probe; printf "#!/bin/sh\necho B\n" > b/probe; chmod +x a/probe b/probe; PATH=$PWD/a; f(){ local PATH=$PWD/b; probe; return 0; }; f; probe'
+  stdout: "B\nA\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c044_command_v_after_pop_names_the_restored_copy
+  description: "C044: `command -v` answers from the same table the dispatcher uses, so it names the restored PATH's copy"
+  command: 'mkdir -p a b; printf "#!/bin/sh\necho A\n" > a/probe; printf "#!/bin/sh\necho B\n" > b/probe; chmod +x a/probe b/probe; PATH=$PWD/a; f(){ local PATH=$PWD/b; probe; }; f; p=$(command -v probe); echo "${p#$PWD/}"'
+  stdout: "B\na/probe\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c044_control_ordinary_return_keeps_the_table
+  description: "C044 control: a function that binds no PATH leaves the remembered location alone (bash keeps it)"
+  command: 'mkdir -p a b; printf "#!/bin/sh\necho A\n" > a/probe; printf "#!/bin/sh\necho B\n" > b/probe; chmod +x a/probe b/probe; PATH=$PWD/a; probe; f(){ local X=1; }; f; hash -t probe > /dev/null; echo "still-hashed=$?"'
+  stdout: "A\nstill-hashed=0\n"
+  stderr: ""
+  exit_code: 0
