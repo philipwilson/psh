@@ -393,6 +393,38 @@ class TestReadonlyAttributeRefusal:
             'T=1; declare -rn r=T; declare -i r; echo "rc=$?"; declare -p T',
             tmp_path=tmp_path)
 
+    def test_array_through_nameref_to_writable_target_allowed(self, tmp_path):
+        """The `-a` spelling of the row above, and the one that actually locks
+        the OWNER's nameref resolution.
+
+        `-i` reaches the owner through `apply_attribute`, which has already
+        resolved the reference, so deleting the owner's own resolution leaves
+        that row green.  `-a` goes through declare's bare-name branch, which
+        does not resolve first -- so this row is the one that goes red if the
+        owner stops resolving, and it is the regression the slot introduced and
+        fixed (handoff deviation 4).  `declare -p r` is pinned rather than
+        `declare -p T`: the element text of T differs by ledger W1-N21, a
+        separate pre-existing defect this row must not depend on.
+        """
+        _parity_in_modes(
+            'T=1; declare -rn r=T; declare -a r; echo "rc=$?"; declare -p r',
+            tmp_path=tmp_path)
+
+    def test_global_attribute_past_a_readonly_local_shadow_allowed(self, tmp_path):
+        """`declare -g` targets the GLOBAL, so a readonly LOCAL shadow does not
+        veto it -- the row that locks the owner's `global_scope` parameter.
+
+        Every other `-g` row in this class puts the readonly on the global
+        itself, where looking in the wrong scope happens to give the same
+        answer.  Here the two scopes disagree: the local stays `declare -r
+        R="2"`, the global becomes `declare -i R="1"`, and `declare -g` returns
+        0.  Both are pinned, so consulting the local instead would go red.
+        """
+        _parity_in_modes(
+            'R=1; f(){ local -r R=2; declare -gi R; echo "in=$?"; '
+            'declare -p R; }; f; declare -p R',
+            tmp_path=tmp_path)
+
     def test_readonly_and_integer_in_one_command_allowed(self, tmp_path):
         """The variable is not yet readonly when the command is applied."""
         _parity_in_modes(

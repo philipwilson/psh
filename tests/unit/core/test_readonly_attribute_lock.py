@@ -167,6 +167,83 @@ class TestNamerefResolvedTarget:
         assert mgr.get_variable_object("T").is_integer
 
 
+class TestOwnerResolvesTheNameItself:
+    """The owner does its OWN nameref resolution, for the call sites that have
+    not resolved first.
+
+    `apply_attribute` / `remove_attribute` resolve before calling in, so a row
+    that reaches the owner through them cannot see this: the resolution inside
+    the owner is a no-op for those two.  `create_local` and declare's bare-name
+    `-a`/`-A` branch pass the operand UNRESOLVED, so for them the owner's
+    resolution is the only one there is.  These call it directly with an
+    unresolved name, which is the only way to test it in isolation.
+    """
+
+    def test_locked_change_on_a_readonly_nameref_to_a_writable_target(self):
+        """`declare -a` on a readonly reference to a WRITABLE target: the
+        readonly is on the reference cell, the change lands on the target, so
+        nothing is refused.  Deleting the owner's resolution makes this raise.
+        """
+        mgr = ScopeManager()
+        mgr.set_variable("T", "1")
+        mgr.set_variable("r", "T", attributes=(VarAttributes.NAMEREF
+                                               | VarAttributes.READONLY))
+        mgr.check_readonly_attribute_change("r", VarAttributes.ARRAY)
+
+    def test_locked_change_through_a_chain_names_the_resolved_target(self):
+        """Two hops to a readonly target: refused, and the error names the
+        TARGET.  Deleting the owner's resolution makes this pass silently."""
+        mgr = ScopeManager()
+        mgr.set_variable("R", "1", attributes=VarAttributes.READONLY)
+        mgr.set_variable("a", "R", attributes=VarAttributes.NAMEREF)
+        mgr.set_variable("b", "a", attributes=VarAttributes.NAMEREF)
+        with pytest.raises(ReadonlyVariableError) as exc:
+            mgr.check_readonly_attribute_change("b", VarAttributes.INTEGER)
+        assert exc.value.name == "R"
+
+    def test_nameref_attribute_itself_is_decided_on_the_reference_cell(self):
+        """The exception to the resolution: `-n` / `+n` must NOT follow the
+        reference, or a readonly reference cell would be judged by its target.
+        """
+        mgr = ScopeManager()
+        mgr.set_variable("T", "1")
+        mgr.set_variable("r", "T", attributes=(VarAttributes.NAMEREF
+                                               | VarAttributes.READONLY))
+        with pytest.raises(ReadonlyVariableError) as exc:
+            mgr.check_readonly_attribute_change("r", VarAttributes.NAMEREF)
+        assert exc.value.name == "r"
+
+
+class TestGlobalScopeParameter:
+    """`global_scope` picks the scope the readonly test reads.
+
+    `declare -g` writes the GLOBAL past any local shadow, so the veto must come
+    from the global too.  Every row where the readonly sits on the global
+    itself gives the same answer either way; only a readonly LOCAL shadowing a
+    writable global tells the two apart.
+    """
+
+    def test_global_change_ignores_a_readonly_local_shadow(self):
+        mgr = ScopeManager()
+        mgr.set_variable("R", "1")
+        mgr.push_scope("f")
+        mgr.create_local("R", "2", VarAttributes.READONLY)
+        mgr.apply_attribute("R", VarAttributes.INTEGER, global_scope=True)
+        assert mgr.global_scope.variables["R"].is_integer
+        local = mgr.current_scope.variables["R"]
+        assert local.is_readonly and not local.is_integer and local.value == "2"
+
+    def test_local_change_still_sees_the_readonly_local(self):
+        """The control: without `global_scope` the same edit is refused."""
+        mgr = ScopeManager()
+        mgr.set_variable("R", "1")
+        mgr.push_scope("f")
+        mgr.create_local("R", "2", VarAttributes.READONLY)
+        with pytest.raises(ReadonlyVariableError):
+            mgr.apply_attribute("R", VarAttributes.INTEGER)
+        assert not mgr.global_scope.variables["R"].is_integer
+
+
 class TestLocalScope:
     """``create_local`` routes through the same owner, so ``local -i`` on a
     readonly local refuses while ``local -x`` still merges."""
