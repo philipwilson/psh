@@ -117,17 +117,28 @@ Key behaviors controlled by Word AST structure:
   arguments and for/select items, NOT array initializers) expand unquoted
   tilde prefixes after the first `=` and after each `:`
   (`_expand_assignment_value_tildes()`)
-- **Pattern words get the command-word tilde rule**: a `case` item pattern
-  and a `[[ == ]]`/`[[ != ]]`/`[[ =~ ]]` right operand are expanded by the ONE
-  owner `pattern_words.py#expand_pattern_word`, which drives the SAME tilde
-  state machine as the field engine (`word_expander.py#tilde_walk_begin`,
-  `#tilde_apply_unquoted_literal`) — so a pattern word cannot drift from a
-  command word on any tilde form. Reproduce the C042 defect it closed with
+- **A pattern word expands a tilde WHERE a command word does, and the
+  replacement is LITERAL**: a `case` item pattern and a
+  `[[ == ]]`/`[[ != ]]`/`[[ =~ ]]` right operand are expanded by the ONE owner
+  `pattern_words.py#expand_pattern_word`, which drives the SAME placement state
+  machine as the field engine (`word_expander.py#tilde_walk_begin`,
+  `#tilde_apply_unquoted_literal`), so the two cannot drift on WHERE a tilde
+  expands. They differ on exactly one axis, and it is a parameter of that
+  machine, not a second copy of it: the owner passes its consumer's `escape`
+  (`glob_escape`, or `re.escape` for the regex operand), so the text a
+  tilde-prefix expands TO matches literally while the rest of the word keeps
+  its metacharacter power — `TildeExpander.expand_escaped`. bash quotes the
+  result of tilde expansion in a pattern word and does NOT quote the result of
+  parameter expansion:
+  `env HOME='/a*b' bash -c "case /aXb in ~) echo T;; *) echo o;; esac"` prints
+  `o`, while the same case with `$HOME)` as the pattern prints `T`. Reproduce
+  the C042 defect the owner closed with
   `env HOME=/h bash -c 'case $HOME in ~) echo tilde;; *) echo other;; esac'`
-  against a shell without the owner. The `${var#pat}` family is the
-  string-shaped sibling (`operands.py#_expand_pattern_operand`): the parser
-  builds no Word for those operands, so it cannot consume the owner, and
-  `tests/unit/expansion/test_pattern_words.py` pins the two to the same answers.
+  against a shell without it. The `${var#pat}` family is the string-shaped
+  sibling (`operands.py#_expand_pattern_operand`): the parser builds no Word
+  for those operands, so it cannot consume the owner; it glob-escapes its own
+  tilde prefix, and `tests/unit/expansion/test_pattern_words.py` compares the
+  two on metacharacter-bearing homes — the cells that discriminate.
 
 ### 3. ExpansionEvaluator
 
