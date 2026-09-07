@@ -152,13 +152,9 @@ class VariableExpansion(Expansion):
         default=None, compare=False, repr=False)
 
     def __str__(self):
-        # A subscripted reference (``arr[@]``, ``arr[0]``) or any name with
-        # non-identifier characters must render as ``${name}`` — a bare
-        # ``$arr[@]`` parses as ``${arr}[@]`` (element 0 + literal "[@]").
-        name = self.name
-        if _BARE_VAR_NAME.match(name) or (len(name) == 1 and name in _SPECIAL_PARAM_CHARS):
-            return f"${name}"
-        return f"${{{name}}}"
+        # No following-part context here: the spelling authority is
+        # variable_expansion_text (see its docstring for the rule).
+        return variable_expansion_text(self)
 
 
 @dataclass
@@ -210,22 +206,59 @@ class ExpansionPart(WordPart):
         return str(self.expansion)
 
 
-def _expansion_literal_text(expansion: Expansion) -> str:
-    """Render an Expansion as the literal ``$``-source text it came from.
+def variable_expansion_text(expansion: 'VariableExpansion',
+                            next_part: Optional[WordPart] = None) -> str:
+    """The source spelling of a ``$name`` reference — THE brace authority.
 
-    Helper for :meth:`Word.to_literal_string` (quote removal of words whose
-    expansions were never live, e.g. inside single quotes). Every expansion
-    renders through its own ``__str__`` source-repr, except a bare
-    ``VariableExpansion`` which is emitted unbraced (``$name``) to match the
-    literal source it stood in for. (The former hand-rolled
-    CommandSubstitution/ArithmeticExpansion arms duplicated ``__str__``
-    byte-for-byte, and the ParameterExpansion arm carried a historically-broken
-    operator-suffix rule — ``${var#}`` where ``__str__`` correctly emits
-    ``${#var}`` — that was unreachable for parser-built words; both removed.)
+    Every reconstruction of shell source from a Word (``--format``,
+    ``declare -f``/``type``/``export -f``, ``$BASH_COMMAND``, ``--debug-ast``,
+    the ``.args`` view, diagnostics) renders a :class:`VariableExpansion`
+    through this function, so the spelling is decided once. Braces are emitted
+    when ANY of:
+
+    * the name cannot be spelled bare — a subscripted reference (``arr[@]``,
+      ``arr[0]``) or any non-identifier name; a bare ``$arr[@]`` re-parses as
+      ``${arr}[@]`` (element 0 plus a literal ``[@]``);
+    * the SOURCE wrote them (``braced``) — dropping them changes which variable
+      is read, because brace expansion runs BEFORE parameter expansion and
+      fuses a following name-char run into a bare name: ``${v}{1,2}`` yields
+      ``${v}1``/``${v}2`` while ``$v{1,2}`` yields the names ``v1``/``v2``;
+    * the following part would fuse anyway — an UNQUOTED literal starting with
+      a name char (reached only for programmatically built Words, where no
+      source spelling was recorded; the lexer never leaves a bare ``$x`` in
+      front of an unquoted name char).
+
+    A bare ``$v{1,2}`` is NOT re-braced: its fusion into ``v1``/``v2`` is what
+    the source asked for, and ``braced`` is the only thing that separates it
+    from ``${v}{1,2}``.
+
+    Reproduce the brace-dropping harm with::
+
+        v=1 v1=A v2=B; f() { echo ${v}{1,2}; }; eval "$(declare -f f)"; f
+
+    which must print ``11 12`` (the direct call's output), not ``A B``.
     """
-    if isinstance(expansion, VariableExpansion):
-        return f"${expansion.name}"
-    return str(expansion)
+    name = expansion.name
+    bare_ok = bool(_BARE_VAR_NAME.match(name)) or (
+        len(name) == 1 and name in _SPECIAL_PARAM_CHARS)
+    if bare_ok and not expansion.braced and not _fuses_with(next_part):
+        return f"${name}"
+    return f"${{{name}}}"
+
+
+def _fuses_with(next_part: Optional[WordPart]) -> bool:
+    """Would an unquoted bare ``$name`` swallow ``next_part``'s leading text?
+
+    Only an UNQUOTED literal can fuse: its leading ``[A-Za-z0-9_]`` run joins
+    the name (``$x`` + ``there`` -> ``$xthere``). A quote or another expansion
+    already delimits the name. A leading ``{`` is deliberately NOT fusing here:
+    ``$v{1,2}`` re-parses to this same shape and re-fuses identically, so
+    bracing it would CHANGE which variables are read.
+    """
+    if not isinstance(next_part, LiteralPart) or next_part.quoted:
+        return False
+    return bool(next_part.text) and (next_part.text[0].isalnum()
+                                     or next_part.text[0] == '_')
 
 
 @dataclass
@@ -320,8 +353,21 @@ class Word(ASTNode):
         ``$``-source form (``${x:-d}`` -> ``${x:-d}``). This is the text
         semantic call sites want when they bypass ``__str__``'s quote
         re-wrapping; it is the basis of ``SimpleCommand.args``.
+
+        A ``$name`` part is spelled by :func:`variable_expansion_text` with the
+        FOLLOWING part as context, so a source ``${v}{1,2}`` does not flatten
+        to ``$v{1,2}`` (which names ``v1``/``v2`` instead of ``v``).
         """
-        return ''.join(str(part) for part in self.parts)
+        return ''.join(self._part_text(i, part)
+                       for i, part in enumerate(self.parts))
+
+    def _part_text(self, index: int, part: WordPart) -> str:
+        """One part's source text, with the following part as brace context."""
+        if isinstance(part, ExpansionPart) and isinstance(part.expansion,
+                                                          VariableExpansion):
+            nxt = self.parts[index + 1] if index + 1 < len(self.parts) else None
+            return variable_expansion_text(part.expansion, nxt)
+        return str(part)
 
     def to_literal_string(self) -> str:
         """The word's text after quote removal, with expansions unexpanded.
@@ -333,12 +379,11 @@ class Word(ASTNode):
         gone, any ExpansionPart rendered as its ``$``-source text).
         """
         chunks: List[str] = []
-        for part in self.parts:
-            if isinstance(part, LiteralPart):
-                chunks.append(part.text)
-            elif isinstance(part, ExpansionPart):
-                # In single quotes, expansions are literal
-                chunks.append(_expansion_literal_text(part.expansion))
+        for i, part in enumerate(self.parts):
+            if isinstance(part, (LiteralPart, ExpansionPart)):
+                # In single quotes an expansion is literal text: the same
+                # source spelling every other reconstruction uses.
+                chunks.append(self._part_text(i, part))
         return ''.join(chunks)
 
     @property

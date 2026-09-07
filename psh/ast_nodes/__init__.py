@@ -95,6 +95,7 @@ from .words import (
     VariableExpansion,
     Word,
     WordPart,
+    variable_expansion_text,
 )
 
 # ---------------------------------------------------------------------------
@@ -169,6 +170,7 @@ __all__ = [
     'LiteralPart',
     'ExpansionPart',
     'Word',
+    'variable_expansion_text',
     # syntax templates (S3)
     'SyntaxTemplate',
     'WordTemplate',
