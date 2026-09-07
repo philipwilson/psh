@@ -491,6 +491,7 @@ def meta_for(owner):
 # Closures recorded by the integrator at each release (D10: the pin must exist in tests/).
 # cid -> (release, closure note).  A closed row keeps its derived owner.
 CLOSURES = {
+    'C010': ('v0.787.0', 'slot 1.7: `psh/lexer/token_types.py#slice_renders_token` / `token_lexeme`; for/select variable + heredoc delimiter gated; 43 pins red on base; guard offender mutation'),
     'C020': ('v0.786.0', 'slot 1.9: `TrailingRedirectMixin._parse_trailing_redirects` (two copies deleted); RD↔combinator redirect matrix guard; 57 pins red on base'),
     'C031': ('v0.784.0', 'slot 1.3: `_builtin_redirect_fd_level` applies the resolved `RedirectPlan`; `FileRedirector.apply_plan_saving`; plan-once counter guard (24 nodes); pins in three modes + conformance + golden `c031_*`'),
     'C226': ('v0.783.0', 'slot 1.0: write-authority matrix `tests/unit/core/test_write_authority_matrix.py` (134 cells; strict xfails per owning slot); enforcement lands per write-site slot (1.4/1.5/1.15/1.16/1.17/1.18/2.4/4.5/4.9)'),
