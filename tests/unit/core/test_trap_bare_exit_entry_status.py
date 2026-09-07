@@ -10,7 +10,7 @@ these tests drive the owner DIRECTLY with synthetic depths, so the two halves
 of the rule -- which trap kinds record a status, and where "top level" ends --
 stay pinned even for shapes that are awkward to provoke through a real signal.
 
-Closes C242 (Wave 2, slot 2.1).
+Closes gate-triage rows G32-G35 (FLIP-PINS slot 2.1, Wave 2).
 """
 import pytest
 

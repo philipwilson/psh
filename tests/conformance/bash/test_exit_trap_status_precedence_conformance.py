@@ -40,7 +40,7 @@ widened cells BOTH SIDES as declared divergences.  Slot 2.1 made psh follow --
 one stacked owner,
 ``psh/core/trap_manager.py#TrapManager.bare_exit_entry_status`` -- and flipped
 every one of those rows into an equality cell of ``ENTRY_STATUS_CELLS`` below.
-Gate triage node family C242.
+Gate-triage rows G32-G35 (FLIP-PINS slot 2.1).
 
 Reproduce one cell by hand (oracle = the resolved bash 5.3.15)::
 
@@ -270,7 +270,7 @@ def test_exit_trap_status_matches_bash(cell_id, script, discriminating, mode,
 @pytest.mark.oracle_min("5.3")
 def test_trap_entry_status_matches_bash(cell_id, script, discriminating, mode,
                                         tmp_path):
-    """The bash 5.3 WIDENED rule, cell by cell (C242, slot 2.1).
+    """The bash 5.3 WIDENED rule, cell by cell (gate rows G32-G35, slot 2.1).
 
     A bare ``exit`` at the top level of a signal, ERR or RETURN action -- not
     only an EXIT action -- resolves to the status at trap ENTRY (CHANGES
@@ -294,7 +294,7 @@ def test_bare_exit_in_a_signal_trap_uses_entry_status(mode, tmp_path):
     self-evidently discriminating: entry is 0 (the ``kill`` succeeded) while
     the current status is 1 (from ``false``), so the two rules predict
     different answers -- both shells now choose the entry status, rc 0.
-    Closes C242.
+    Closes gate-triage rows G32-G35 (FLIP-PINS slot 2.1).
     """
     script = ("trap 'echo entry=$?; false; exit' USR1\n"
               "kill -USR1 $$\n"
