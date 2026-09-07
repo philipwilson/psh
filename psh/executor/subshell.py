@@ -265,7 +265,7 @@ class SubshellExecutor:
             subshell = Shell.for_subshell(self.shell)
             # An async COMPOUND leaves the interactive session, so a runtime
             # `set -n` inside it is honoured (bash). See the policy function.
-            leave_interactive_session(subshell)
+            leave_interactive_session(subshell.state)
             # Seed the FORKING context's suppression depth into the fresh
             # shell: for_subshell builds a NEW shell, so unlike the brace
             # spelling (which reuses the parent's executor) nothing else
@@ -330,7 +330,7 @@ class SubshellExecutor:
             # An async COMPOUND leaves the interactive session, so a runtime
             # `set -n` inside it is honoured (bash). This child reuses the
             # PARENT Shell object, so the drop happens on the forked copy.
-            leave_interactive_session(self.shell)
+            leave_interactive_session(self.shell.state)
 
             # A backgrounded brace group runs in a forked subshell environment
             # (the fork copies self.shell). The shared bg-child runner gives it

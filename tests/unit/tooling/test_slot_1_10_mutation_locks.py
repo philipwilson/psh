@@ -151,7 +151,7 @@ ARMS = [
         # keeps refusing and `( set -n; … ) &` runs its body.
         "async-compound-keeps-the-session",
         "psh/executor/child_policy.py",
-        "    shell.state.options['interactive_session'] = False\n",
+        "    state.options['interactive_session'] = False\n",
         "    pass  # MUTATION: the async compound keeps the session\n",
         breaks=[NOEXEC_SESSION_DROP],
         stays_green=[NOEXEC_SESSION_INHERIT],

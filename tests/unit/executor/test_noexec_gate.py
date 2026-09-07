@@ -178,7 +178,7 @@ class TestSessionFactOwnership:
     def test_leaving_the_session_drops_it(self):
         shell = Shell(norc=True)
         shell.state.options['interactive_session'] = True
-        leave_interactive_session(shell)
+        leave_interactive_session(shell.state)
         assert shell.state.options['interactive_session'] is False
         # …and the refusal then lets noexec through, which is what an async
         # compound child needs.
@@ -188,8 +188,8 @@ class TestSessionFactOwnership:
     def test_leaving_is_idempotent_and_safe_off_session(self):
         shell = Shell(norc=True)
         shell.state.options['interactive_session'] = False
-        leave_interactive_session(shell)
-        leave_interactive_session(shell)
+        leave_interactive_session(shell.state)
+        leave_interactive_session(shell.state)
         assert shell.state.options['interactive_session'] is False
 
     def test_it_has_no_dollar_dash_letter_and_no_set_o_spelling(self):

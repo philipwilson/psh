@@ -236,7 +236,7 @@ class PipelineExecutor:
                         # interactive prompt). A FOREGROUND member does not —
                         # `echo x | { set -n; touch a; }` creates the file.
                         if is_background:
-                            leave_interactive_session(self.shell)
+                            leave_interactive_session(self.state)
 
                         # Create forked context. Each pipeline component runs
                         # in its OWN subshell process, so a break/continue here

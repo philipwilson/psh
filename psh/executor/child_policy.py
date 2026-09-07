@@ -295,7 +295,7 @@ def die_by_signal(sig: int) -> None:
         pass
 
 
-def leave_interactive_session(shell: 'Shell') -> None:
+def leave_interactive_session(state: 'ShellState') -> None:
     """Detach an ASYNCHRONOUS COMPOUND child from the interactive session.
 
     bash runs an async compound command (``( … ) &``, ``{ …; } &``,
@@ -321,7 +321,7 @@ def leave_interactive_session(shell: 'Shell') -> None:
 
     Call this in the CHILD, after the fork.
     """
-    shell.state.options['interactive_session'] = False
+    state.options['interactive_session'] = False
 
 
 def run_background_shell_child(shell: 'Shell',
