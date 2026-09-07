@@ -28,10 +28,10 @@ import os
 import sys
 
 import pytest
+from shell_oracle import is_comparable, run_psh
 
 from psh.ast_nodes import Redirect
 from psh.io_redirect.manager import IOManager, _ClosedStream, _RawFdStream
-from shell_oracle import is_comparable, run_psh
 
 
 def close(fd=None, type='>&-'):

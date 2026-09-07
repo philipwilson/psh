@@ -27,7 +27,6 @@ import os
 import re
 
 import pytest
-
 from shell_oracle import is_comparable, run_psh
 
 # A shell diagnostic carries a shell-and-mode-specific location prefix
