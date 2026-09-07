@@ -103,6 +103,16 @@ class _ClosedStream:
     output and a ``write error: Bad file descriptor`` diagnostic. Builtins
     already translate this OSError into bash's message and exit 1 (see
     ``execute_builtin_guarded`` and echo/printf's own handlers).
+
+    Being OPAQUE — it raises whatever the fd underneath is doing — it is
+    correct ONLY for a caller that applies the redirect list IN SOURCE ORDER
+    and installs it at the exact point fd 1/2 is closed: the simple-command
+    builtin path (``_builtin_redirect_close``, ``_apply_builtin_close``) and
+    the closed-fd self-dup (``echo hi 1>&1`` after ``exec 1>&-``). A later
+    redirect in that same list reopening the fd replaces this object with a
+    real stream, so the reopen is not severed. A caller that scans the list
+    as a WHOLE cannot use it and must use ``_RawFdStream`` instead — see
+    ``_swap_closed_output_streams`` (C032).
     """
 
     def _bad_fd(self):
@@ -127,9 +137,12 @@ class _ClosedStream:
 class _RawFdStream:
     """A minimal text stream that writes straight to a fixed fd via ``os.write``.
 
-    Installed as ``sys.stdout``/``sys.stderr`` for a builtin after a PERMANENT
-    ``exec >&-``/``2>&-`` closes fd 1/2 (see
-    ``FileRedirector._rebind_closed_output_stream``). It threads a needle the
+    Installed as ``sys.stdout``/``sys.stderr`` for a builtin whenever fd 1/2 is
+    closed by a redirect whose FINAL state the installer cannot know: a
+    PERMANENT ``exec >&-``/``2>&-`` (see
+    ``FileRedirector._rebind_closed_output_stream``) and an in-process
+    compound's redirect list, which is scanned as a whole after the fact
+    (``IOManager._swap_closed_output_streams``). It threads a needle the
     natural ``TextIOWrapper`` and ``_ClosedStream`` each miss:
 
     * **No buffering** — a write goes straight to the fd; on a CLOSED fd it
@@ -139,11 +152,14 @@ class _RawFdStream:
       reopen leak, MED-1). ``_RawFdStream`` can't leak because it never holds
       bytes.
 
-    * **Transparent** — it names the fd NUMBER, so if a compound/function
-      per-command redirect re-points that fd at a live target at the fd level
-      (``f 1>&2``, ``{ ...; } >g``, ``{ ...; } &>f``) the write simply follows
-      the fd, exactly as the natural wrapper did. ``_ClosedStream`` is opaque:
-      it always raises, so it would sever those legitimate reopens.
+    * **Transparent** — it names the fd NUMBER, so if a redirect re-points that
+      fd at a live target at the fd level the write simply follows the fd,
+      exactly as the natural wrapper did. That covers a compound/function
+      per-command redirect over a permanent close (``f 1>&2``, ``{ ...; } >g``,
+      ``{ ...; } &>f``) AND a close-then-reopen inside ONE per-command list
+      (``{ echo hi; } 1>&- 1>f`` writes ``hi`` into ``f``). ``_ClosedStream``
+      is opaque: it always raises, so it would sever those legitimate reopens
+      (C032).
 
     * **Owns nothing** — ``close()`` is a no-op and it never calls ``os.close``,
       so displacing it (a later ``exec >&3`` reopen, or a rollback) can never
@@ -474,15 +490,18 @@ class IOManager:
         """Point fd 1's/2's Python stream at a ``_ClosedStream`` (write→EBADF)
         and RETURN the stream it displaced.
 
-        The single stream-universe primitive behind an output-fd close, shared
-        by all three sites. The temporary callers (``_swap_closed_output_streams``
-        for compound commands, ``_builtin_redirect_close`` for simple-command
-        builtins) SAVE the displaced stream and restore it when the redirect
-        region ends; the permanent ``exec`` caller instead CLOSES it to drop
-        the now-orphaned dup an earlier ``exec >file`` had installed. The
-        fd-level close is done separately (``_redirect_close_fd``); this only
-        makes the Python stream fail, so a builtin's write raises EBADF exactly
-        as bash does rather than leaking into the old destination.
+        The OPAQUE half of the pair, for the SOURCE-ORDERED callers only:
+        ``_builtin_redirect_close`` (simple-command builtins) and the closed-fd
+        self-dup branch of ``_builtin_redirect_dup``. Both install it at the
+        exact point the fd is closed, so a later reopen in the same list
+        replaces it with a real stream. They SAVE the displaced stream on the
+        builtin frame and restore it when the redirect region ends. A caller
+        that cannot pin the close to a point in the list — the permanent
+        ``exec`` close, the in-process compound scan — must use
+        ``swap_output_stream_reopenable`` instead. The fd-level close is done
+        separately (``_redirect_close_fd``); this only makes the Python stream
+        fail, so a builtin's write raises EBADF exactly as bash does rather
+        than leaking into the old destination.
         """
         if target_fd == 1:
             displaced = sys.stdout
@@ -497,15 +516,20 @@ class IOManager:
         """Point fd 1's/2's Python stream at a ``_RawFdStream`` and RETURN the
         stream it displaced.
 
-        The permanent-``exec``-close counterpart of ``swap_output_stream_closed``.
-        A per-command close is temporary and never reopens the fd within the
-        command, so ``_ClosedStream`` (write→EBADF) is right there. A permanent
-        ``exec >&-`` is different: the fd may be REOPENED later (``exec >&3``) or
-        transiently by a compound/function body's own redirect (``f 1>&2``), and
-        the natural buffering wrapper it replaced would leak buffered bytes into
-        such a reopen. ``_RawFdStream`` writes straight to the fd number, so it
-        fails cleanly while the fd is closed yet follows it when a reopen makes
-        it live again — no buffer to leak, no legitimate reopen severed.
+        The primitive for every site that installs the stream half of a close
+        WITHOUT knowing the fd's final state: the permanent ``exec >&-``
+        (``FileRedirector._rebind_closed_output_stream``) and the in-process
+        compound list scan (``_swap_closed_output_streams``). Both face the
+        same reopen: a permanent close may be undone later (``exec >&3``, or a
+        body's own ``f 1>&2``), and a per-command list can close then reopen
+        the same fd within the one list (``{ echo hi; } 1>&- 1>f`` — fd 1 ends
+        up open on ``f``). ``_RawFdStream`` writes straight to the fd number,
+        so it fails cleanly while the fd is closed yet follows it when a reopen
+        makes it live again — no buffer to leak, no legitimate reopen severed.
+
+        Its opaque sibling ``swap_output_stream_closed`` is correct only where
+        the caller applies redirects IN SOURCE ORDER and so installs the swap
+        at the exact point fd 1/2 is closed.
         """
         if target_fd == 1:
             displaced = sys.stdout
@@ -516,23 +540,37 @@ class IOManager:
         return displaced
 
     def _swap_closed_output_streams(self, redirects: List[Redirect]):
-        """For ``>&-`` closing fd 1/2, point the Python stream at a stream
-        that raises EBADF, and return a closure that restores it.
+        """For ``>&-`` closing fd 1/2, point the Python stream at an
+        fd-number-following stream, and return a closure that restores it.
 
         This is the stream-universe half of an output-fd close in the
         in-process compound path (brace groups, functions, control flow run
         via ``guarded_redirections``). The fd-level close alone does not reach a
         builtin running inside, which writes through ``sys.stdout`` /
         ``sys.stderr``; without this it would keep writing to the still-open
-        stream and leak (``{ echo a; } 1>&-`` printing ``a``). Mirrors
-        ``_builtin_redirect_close`` for the simple-command builtin path.
+        stream and leak (``{ echo a; } 1>&-`` printing ``a``).
+
+        This scan is UNORDERED — it runs once, after ``apply_redirections``
+        has already applied the whole list in source order — so it must not
+        decide by itself whether the fd ends up closed. A per-command list CAN
+        close then reopen the same fd (``{ echo hi; } 1>&- 1>f`` leaves fd 1
+        open on ``f``), so the stream half follows the fd NUMBER via
+        ``swap_output_stream_reopenable`` and lets the settled fd decide: EBADF
+        only when the fd is still closed at the END of the list
+        (``{ echo hi; } 1>f 1>&-``). Installing an opaque always-EBADF stream
+        here instead severed the reopen and lost the body's output (C032).
+
+        Contrast ``_builtin_redirect_close``, the simple-command builtin path,
+        which is applied IN SOURCE ORDER and so can install the opaque
+        ``_ClosedStream`` at exactly the point the fd is closed.
         """
         saved: List[Tuple[int, TextIO]] = []
         for redirect in redirects:
             target_fd = self.output_close_fd(redirect)
             if target_fd is None:
                 continue
-            saved.append((target_fd, self.swap_output_stream_closed(target_fd)))
+            saved.append(
+                (target_fd, self.swap_output_stream_reopenable(target_fd)))
 
         def restore():
             for fd, stream in reversed(saved):
