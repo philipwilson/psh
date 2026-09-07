@@ -4,10 +4,10 @@ This package provides parsers for all control flow structures including
 if/elif/else, loops, case statements, and function definitions.
 
 The ControlStructureParsers class inherits from four mixin classes:
+- TrailingRedirectMixin: the one ``_parse_trailing_redirects`` helper
 - LoopParserMixin: while, until, for, c-style for, select, break, continue
 - ConditionalParserMixin: if/elif/else, case/esac
 - StructureParserMixin: function definitions, subshell groups, brace groups
-- TrailingRedirectMixin: the one ``_parse_trailing_redirects`` helper
 """
 
 from typing import Optional, cast
@@ -22,8 +22,14 @@ from .loops import LoopParserMixin
 from .structures import StructureParserMixin
 
 
-class ControlStructureParsers(LoopParserMixin, ConditionalParserMixin,
-                              StructureParserMixin, TrailingRedirectMixin):
+# TrailingRedirectMixin comes FIRST deliberately. The other three mixins take
+# ControlStructureProtocol as a TYPE_CHECKING base, and that Protocol declares
+# `_parse_trailing_redirects` as a `...` stub — i.e. abstract. Listing the
+# concrete provider later would leave mypy resolving the stub and rejecting the
+# class as abstract. Runtime MRO is unaffected: the protocol base does not exist
+# outside TYPE_CHECKING, so no other mixin defines the method at all.
+class ControlStructureParsers(TrailingRedirectMixin, LoopParserMixin,
+                              ConditionalParserMixin, StructureParserMixin):
     """Parsers for shell control structures.
 
     This class provides parsers for all control flow structures:

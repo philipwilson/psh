@@ -339,7 +339,11 @@ MIGRATED_MODULES = [
 #: Modules born AFTER SCOPE_ENDPOINT that carry the full-signature discipline
 #: anyway. They cannot live in MIGRATED_MODULES: that list is asserted EQUAL to
 #: the pinned git enumeration, which by construction cannot contain them.
-POST_ENDPOINT_MIGRATED: list = []
+POST_ENDPOINT_MIGRATED: list = [
+    # slot 1.9 (C020): the one trailing-redirection helper, born fully
+    # typed — it joins the discipline rather than claiming an exemption.
+    "psh.parser.combinators.trailing_redirects",
+]
 
 #: Modules born after SCOPE_ENDPOINT deliberately NOT under the discipline
 #: (path -> why). Kept honest by the coverage assertion: a new module lands in
