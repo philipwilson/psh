@@ -35,7 +35,7 @@ MODES = ["c", "file", "stdin"]
 #: reads the substitution's output file must wait for the flag the body drops
 #: after writing. Bounded, so a genuine delivery regression fails as a
 #: comparison rather than hanging.
-BARRIER = ('i=0; until [ -e flag ] || [ "$i" -ge 600 ]; '
+BARRIER = ('i=0; until [ -e flag ] || [ "$i" -ge 200 ]; '
            'do sleep 0.05; i=$((i+1)); done; ')
 
 _DEV_FD = re.compile(r"/dev/fd/\d+")

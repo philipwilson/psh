@@ -246,7 +246,7 @@ class TestBashCommandSubstitution(ConformanceTest):
         shows as a content mismatch rather than a timeout. Each conformance
         case runs in its own temporary directory.
         """
-        barrier = ('i=0; until [ -e flag ] || [ "$i" -ge 200 ]; '
+        barrier = ('i=0; until [ -e flag ] || [ "$i" -ge 60 ]; '
                    'do sleep 0.05; i=$((i+1)); done; ')
         self.assert_identical_behavior(
             'echo hi > >(cat > got; : > flag); ' + barrier + 'cat got')
