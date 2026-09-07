@@ -517,6 +517,14 @@ class DeclareBuiltin(Builtin):
             return 1
 
         from .declaration_engine import ArrayKind, DeclarationEngine
+        # bash tests READONLY before the array-KIND conversion: 5.3.15 answers
+        # `declare -ar R=(a b); declare -A R` with `declare: R: readonly
+        # variable`, not `cannot convert indexed to associative array`. The rule
+        # itself lives once in ScopeManager (READONLY_LOCKED_ATTRIBUTES); the
+        # non-array branch below reaches it through apply/remove_attribute.
+        if options['array'] or options['assoc_array']:
+            shell.state.scope_manager.check_readonly_attribute_change(
+                arg, attributes, global_scope=options['global'])
         if options['array']:
             # Check for array type conflict first. Use the scope declare writes
             # to, so a local `declare -a` in a function doesn't convert an
