@@ -4,7 +4,7 @@
 
 Python Shell (psh) is designed with a clean, component-based architecture that separates concerns and makes the codebase easy to understand, test, and extend. The shell follows a traditional interpreter pipeline: lexing → parsing → expansion → execution, with each phase carefully designed for educational clarity and correctness.
 
-**Current Version**: 0.787.0
+**Current Version**: 0.788.0
 
 **New to the codebase?** [`docs/learning_path.md`](docs/learning_path.md) is
 the recommended reading route from "what is PSH" through every stage.
@@ -795,18 +795,17 @@ class ExecutorVisitor(ASTVisitor[int]):
 ```
 
 #### Execution Context
-```python
-@dataclass
-class ExecutionContext:
-    """Encapsulates execution state for cleaner parameter passing"""
-    in_pipeline: bool = False
-    in_subshell: bool = False
-    in_forked_child: bool = False
-    loop_depth: int = 0
-    current_function: Optional[str] = None
-    pipeline_context: Optional[PipelineContext] = None
-    background_job: Optional[Job] = None
-```
+`ExecutionContext` (`psh/executor/context.py`) carries the per-dispatch facts
+the executors read: the one-shot **exec-in-place token** (granted by
+`for_pipeline_member` only to a simple-command pipeline member and spent by
+that member's own dispatch at `CommandExecutor.execute`, so no nested frame —
+function body, `eval`, sourced file, compound — can inherit it), the bound
+per-dispatch `exec_in_place` answer, `is_pipeline_member` (this process is a
+pipeline member — used only for terminal-title suppression), `loop_depth`,
+`current_function`, the errexit-suppression counters and the special-builtin
+exit floor. Whether a process is a forked child lives on `ShellState`
+(`in_forked_child`), not here. The invariant and its reproducing command are
+in `psh/executor/CLAUDE.md`.
 
 ### 4.2 Specialized Executors
 
