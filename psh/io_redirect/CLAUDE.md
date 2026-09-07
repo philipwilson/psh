@@ -154,6 +154,21 @@ of any process substitutions used as redirect targets; leaving it restores the
 saved fds and closed output streams and reaps those children — so every
 acquisition made on entry is released on exit, including when the body raises.
 
+The stream half of a `>&-` close is applied there by an UNORDERED scan of the
+whole list, after the fd universe has already applied it in source order, so it
+must follow the fd NUMBER and let the settled fd decide — a per-command list CAN
+close and then reopen the same fd (`{ echo hi; } 1>&- 1>f` leaves fd 1 open on
+`f`, and `f` gets `hi`), and EBADF is correct only when the fd is still closed at
+the END of the list (`{ echo hi; } 1>f 1>&-`). Owner:
+`manager.py#_swap_closed_output_streams`, which installs the fd-following
+`_RawFdStream` through `manager.py#IOManager.swap_output_stream_reopenable`; the
+opaque always-EBADF `_ClosedStream` belongs only to the SOURCE-ORDERED sites
+(`manager.py#_builtin_redirect_close`, the self-dup branch of
+`manager.py#_builtin_redirect_dup`), which install it at the exact point the fd
+is closed. Guard: `tests/unit/io_redirect/test_close_reopen_stream_shapes_c032.py`
+(every list shape, with a synthetic offender); pins:
+`tests/integration/redirection/test_close_then_reopen_c032.py` (C032).
+
 It turns a redirect SETUP failure into bash's
 `<$0>: line N: TARGET: STRERROR` diagnostic and yields `False`
 (so the caller skips the body and returns 1 — `|| fallback` runs, `set -e`
