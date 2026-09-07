@@ -5,9 +5,9 @@ Regression guard for a double-expansion injection: `local` used to re-expand
 its (already executor-expanded) scalar value, so single-quoted text like
 '$(cmd)' executed the command. All expectations were verified against bash
 5.2 when written and re-checked against bash 5.3.15 on 2026-09-06 (Wave
-0.3): 34 of the 35 rows still agree with the oracle; the one that moved,
-``test_attrs_only_add_integer_allowed``, is kept as a psh-only pin of the
-current behavior until slot 2.4 flips it (see its docstring).
+0.3): 34 of the 35 rows still agree with the oracle, and the one that moved
+(``test_attrs_only_add_integer_refused``) now pins the 5.3 rule -- see
+``TestLocalReadonlyRedeclare``.
 """
 
 
@@ -155,13 +155,13 @@ class TestLocalReadonlyRedeclare:
     overwrite the readonly cell unguarded). bash prints
     `local: NAME: readonly variable`, keeps the old value, `local` returns 1,
     and the function CONTINUES. A bare attribute-only redeclare (`local x`,
-    no value) is a no-op in both shells. Merging an attribute that changes
+    no value) is a no-op in both shells. Merging an attribute that CHANGES
     assignment semantics (`-i`, `-l`, `-u`, `-a`, `-A`, `-n`) onto a readonly
-    local was accepted by the 5.2 series and is REFUSED by bash 5.3 (CHANGES
-    5.3-alpha section 1 item llllll); psh still accepts it -- see
-    ``test_attrs_only_add_integer_allowed``. All expectations verified against
-    bash 5.2 and re-checked against bash 5.3.15 (2026-09-06); only that one
-    row moved.
+    local is refused by bash 5.3 and by psh (G17 / FLIP-PINS slot 2.4; CHANGES line 705,
+    5.3-alpha
+    item llllll) -- see ``test_attrs_only_add_integer_refused``; `-x`/`-t` are
+    still merged. All expectations verified against bash 5.2 and re-checked
+    against bash 5.3.15 (2026-09-06); only that one row moved.
     """
 
     def test_value_redeclare_rejected_keeps_old(self, captured_shell):
@@ -207,24 +207,32 @@ class TestLocalReadonlyRedeclare:
         assert captured_shell.get_stdout() == 'declare -r x="1"\n'
         assert captured_shell.get_stderr() == ""
 
-    def test_attrs_only_add_integer_allowed(self, captured_shell):
-        """psh-only pin of the CURRENT behavior: merging `-i` onto a readonly
-        local succeeds in psh (readonly kept, integer added, rc 0, no
-        diagnostic) -- the bash 5.2 behavior this row was written against.
+    def test_attrs_only_add_integer_refused(self, captured_shell):
+        """Merging `-i` onto a readonly local is REFUSED (G17 / FLIP-PINS slot 2.4):
+        `local: x:
+        readonly variable`, the integer attribute is NOT added, the value
+        stands.
 
-        bash 5.3 REFUSES it (CHANGES 5.3-alpha section 1 item llllll: "Fixed
-        a bug that allowed attribute changes to readonly variables that
-        changed the effects of attempted assignments"): probed on 5.3.15,
-        ``local: x: readonly variable``, rc 1, ``declare -r x="1"``.  Slot
-        2.4 flips this pin to that shape (rename
-        ``test_attrs_only_add_integer_refused``); the both-sides pin until
-        then is tests/conformance/bash/test_export_env_sync_conformance.py::
-        TestExportAttributeLifecycle::test_local_i_on_readonly_local_refused_by_bash_53.
+        bash 5.3.15 CHANGES line 705, 5.3-alpha item llllll: "Fixed a bug that
+        allowed attribute changes to readonly variables that changed the
+        effects of attempted assignments".  The 5.2 series accepted the merge,
+        which is what this row used to pin.  Repro:
+        ``f(){ local -r x=1; local -i x; declare -p x; }; f``.
         """
         result = captured_shell.run_command(
             'f(){ local -r x=1; local -i x; declare -p x; }; f')
         assert result == 0
-        assert captured_shell.get_stdout() == 'declare -ir x="1"\n'
+        assert captured_shell.get_stdout() == 'declare -r x="1"\n'
+        assert "local: x: readonly variable" in captured_shell.get_stderr()
+
+    def test_attrs_only_add_export_still_allowed(self, captured_shell):
+        """The allowed half of the same rule (G17 / FLIP-PINS slot 2.4): `-x` does not
+        change what
+        an assignment does, so it still merges onto a readonly local."""
+        result = captured_shell.run_command(
+            'f(){ local -r x=1; local -x x; declare -p x; }; f')
+        assert result == 0
+        assert captured_shell.get_stdout() == 'declare -rx x="1"\n'
         assert captured_shell.get_stderr() == ""
 
     def test_nonreadonly_redeclare_still_works(self, captured_shell):

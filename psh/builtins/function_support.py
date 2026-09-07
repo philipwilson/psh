@@ -517,6 +517,14 @@ class DeclareBuiltin(Builtin):
             return 1
 
         from .declaration_engine import ArrayKind, DeclarationEngine
+        # bash tests READONLY before the array-KIND conversion: 5.3.15 answers
+        # `declare -ar R=(a b); declare -A R` with `declare: R: readonly
+        # variable`, not `cannot convert indexed to associative array`. The rule
+        # itself lives once in ScopeManager (READONLY_LOCKED_ATTRIBUTES); the
+        # non-array branch below reaches it through apply/remove_attribute.
+        if options['array'] or options['assoc_array']:
+            shell.state.scope_manager.check_readonly_attribute_change(
+                arg, attributes, global_scope=options['global'])
         if options['array']:
             # Check for array type conflict first. Use the scope declare writes
             # to, so a local `declare -a` in a function doesn't convert an
@@ -888,7 +896,11 @@ class ReadonlyBuiltin(Builtin):
             # bash) and, after processing every operand (bash's
             # continue-on-error arg loop), raise SpecialBuiltinUsageError(1):
             # default mode fails non-fatally rc1, a POSIX-mode non-interactive
-            # shell exits rc1 (readonly is a special builtin; probe tmp/posixexit).
+            # shell exits rc1 (readonly is a POSIX special builtin). Empirical,
+            # bash 5.3.15, same in -c and script mode:
+            #   readonly x=1; readonly x=2; echo after=$?; echo next
+            #     -> `x: readonly variable`, after=1, next, shell rc 0
+            #   set -o posix; <the same>  -> diagnostic only, shell exits 1
             declare_builtin = registry.get('declare')
             assert declare_builtin is not None
             return cast(DeclareBuiltin, declare_builtin).run_as(
@@ -990,13 +1002,17 @@ class ReturnBuiltin(Builtin):
         if len(args) > 2:
             # bash checks this before the in-function check. `return 3 4`
             # is the same too-many-arguments family as `exit 7 8`/`shift
-            # 1 2` (probe-verified, bash 5.2, tmp/posixexit): the error is
-            # reported and the CURRENT INPUT UNIT is discarded — it does
-            # NOT return from the function (the rest of the body on this
-            # line dies too) and does NOT exit the shell, in default AND
-            # POSIX mode; the next input line runs with $? = 1. (The old
-            # sys.exit(1) here made a non-interactive psh exit — bash
-            # survives.)
+            # 1 2`: the error is reported and the CURRENT INPUT UNIT is
+            # discarded — it does NOT return from the function (the rest of
+            # the body on this line dies too) and does NOT exit the shell, in
+            # default AND POSIX mode. (The old sys.exit(1) here made a
+            # non-interactive psh exit — bash survives.) Empirical, bash
+            # 5.3.15:
+            #   printf 'f(){ return 3 4; }\nf\necho after=$?\necho next\n' > s.sh
+            #   bash s.sh  -> `return: too many arguments`, after=2, next
+            # The STATUS the next line sees is ledger row W0-N9 (script and
+            # stdin leave 2, `-c` leaves 1), owned by slot 2.3 — deliberately
+            # not asserted here, so this comment cannot go stale when it lands.
             self.error("too many arguments", shell)
             special_builtin_usage_discard(shell.state, 1)
 

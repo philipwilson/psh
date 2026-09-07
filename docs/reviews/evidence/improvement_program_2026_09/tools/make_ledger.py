@@ -497,6 +497,7 @@ CLOSURES = {
 }
 # G-id -> (release, closure note) for the Part B gate nodes.
 GATE_CLOSURES = {
+    'G17': ('v0.785.0', 'slot 2.4 (v0.785.0): `ScopeManager.check_readonly_attribute_change` + `READONLY_LOCKED_ATTRIBUTES`; flipped to `TestReadonlyAttributeRefusal` parity pins (3 modes), unit twin `test_attrs_only_add_integer_refused`, golden `local_readonly_attrs_only_add_integer_refused`'),
     'G32': ('v0.782.0', 'slot 2.1 (v0.782.0): `TrapManager` frames + `bare_status_entry_value`; flipped to `test_trap_entry_status_matches_bash[...]` / `test_bare_exit_in_a_signal_trap_uses_entry_status[...]`; verify r1 BOUNCE → r2 PASS'),
     'G33': ('v0.782.0', 'slot 2.1 (v0.782.0): `TrapManager` frames + `bare_status_entry_value`; flipped to `test_trap_entry_status_matches_bash[...]` / `test_bare_exit_in_a_signal_trap_uses_entry_status[...]`; verify r1 BOUNCE → r2 PASS'),
     'G34': ('v0.782.0', 'slot 2.1 (v0.782.0): `TrapManager` frames + `bare_status_entry_value`; flipped to `test_trap_entry_status_matches_bash[...]` / `test_bare_exit_in_a_signal_trap_uses_entry_status[...]`; verify r1 BOUNCE → r2 PASS'),

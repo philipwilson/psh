@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.785.0 (2026-09-07) - Readonly attribute refusal follows bash 5.3 (Improvement Program 2026-09, Wave 2 slot 2.4)
+- Attribute changes on a readonly variable follow bash 5.3 (CHANGES 5.3-alpha
+  item llllll): `declare`/`typeset`/`local`/`readonly` refuse any REQUESTED
+  option that touches the integer, lowercase, uppercase, indexed-array,
+  associative-array or nameref attribute of a readonly variable —
+  `readonly R=1; declare -i R` → `declare: R: readonly variable`, rc 1,
+  nothing from that command applied (not even a co-specified `-x`); both
+  no-op directions refuse (`declare -ir R=1; declare -i R`, `readonly R=1;
+  declare +i R`); `-x/+x`, `-t/+t`, `-r`, `-g` stay allowed; `+n` against a
+  non-nameref is exempt. One owner,
+  `ScopeManager.check_readonly_attribute_change` (module constant
+  `READONLY_LOCKED_ATTRIBUTES`), resolves the nameref itself and is consulted
+  by `apply_attribute`, `remove_attribute`, `create_local` and `declare`'s
+  bare-name `-a`/`-A` branch (readonly is tested before the array-kind
+  conversion, as in bash). Gate row G17 closed; the FLIP-PINS 2.4 rows
+  flipped to three-mode parity pins (`TestReadonlyAttributeRefusal`), the
+  unit twin and the golden row flipped; 32-assertion owner battery.
+- Declared divergence (W1-N15): bash 5.3.15 refuses `local -a`/`local -A` on a
+  readonly local but still destroys its value (`declare -ar x=()`); psh refuses
+  and keeps the value — ruled a bash bug and pinned both sides.
+- Ledger: W1-N16..N21 registered from this slot's probing (`readonly -a`
+  selector semantics → 4.7; nameref-shape checks → 1.18; `create_local`
+  value-less redeclare drops tombstone attributes incl. READONLY → 1.16;
+  `local` lacks `-t/+t/-g` → 4.7; `declare -c` unimplemented → 4.7;
+  `_declare_bare_name` `-a/-A` on a nameref array-ifies the reference text
+  → 1.18).
+- Verification: adversarial round 1 (report `tmp/program-2026-09/verify/slot-2.4.md`); round 1 BOUNCE on two pin gaps (the owner's nameref resolution and its `global_scope` parameter were unpinned — both closed with parity rows and direct-owner unit rows); rebased onto main after v0.784.0 (the write-authority matrix's G17 cells flipped; two `tmp/` comment pointers in `function_support.py` rewritten as invariants, D13) and re-verified at the rebased tip (round 2).
+
 ## 0.784.0 (2026-09-07) - Redirect targets planned once (Improvement Program 2026-09, Wave 1 slot 1.3)
 - Redirect targets on fd >= 3 are no longer expanded twice for builtins (C031;
   slot 1.3). `IOManager.setup_builtin_redirections` resolved each redirect

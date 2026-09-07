@@ -4127,16 +4127,18 @@
   stderr: "readonly variable"
   exit_code: 0
 
-# An ATTRIBUTE-ONLY redeclare (no value) is NOT rejected — bash lets you merge
-# attributes onto a readonly local (readonly stays; -i is added). Both branches
-# of the symmetric H7 fix are pinned: value path rejects, attrs-only path allows.
-- name: local_readonly_attrs_only_add_integer_ok
+# An ATTRIBUTE-ONLY redeclare that would change what a later assignment DOES is
+# REFUSED on a readonly local (bash 5.3.15 CHANGES line 705, 5.3-alpha item
+# llllll); the integer attribute is not added and the value stands. The value
+# path rejects too (local_readonly_value_redeclare_rejected), and -x still
+# merges — the two halves of the same rule.
+- name: local_readonly_attrs_only_add_integer_refused
   command: "f(){ local -r x=1; local -i x; declare -p x; }; f"
-  stdout: "declare -ir x=\"1\"\n"
-  stderr: ""
+  stdout: "declare -r x=\"1\"\n"
+  stderr: "local: x: readonly variable"
   exit_code: 0
-  psh_only: true
-  description: "psh-only pin (bash 5.3.15 REFUSES: 'local: x: readonly variable' rc 1, declare -r x=\"1\" -- CHANGES 5.3-alpha 1.llllll); FLIP-PINS owner slot 2.4; both-sides pin: tests/conformance/bash/test_export_env_sync_conformance.py::TestExportAttributeLifecycle::test_local_i_on_readonly_local_refused_by_bash_53"
+  min_bash: "5.3"
+  description: "G17 / FLIP-PINS slot 2.4: merging -i onto a readonly local is refused (CHANGES 5.3-alpha 1.llllll); both-sides pin: tests/conformance/bash/test_export_env_sync_conformance.py::TestReadonlyAttributeRefusal::test_local_i_on_readonly_local_refused"
 
 # The attrs-only merge can never CLEAR readonly (create_local ORs attributes),
 # so `local +r x` leaves x readonly (R1-extra safety). stdout + exit match bash

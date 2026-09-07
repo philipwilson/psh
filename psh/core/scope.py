@@ -22,6 +22,23 @@ from .variable_lookup import VariableLookup
 from .variable_store import VariableStore
 from .variables import AssociativeArray, IndexedArray, VarAttributes, Variable
 
+#: Attributes a READONLY variable refuses to gain or lose (bash 5.3.15 CHANGES
+#: line 705, 5.3-alpha item llllll: "Fixed a bug that allowed attribute changes
+#: to readonly variables that changed the effects of attempted assignments") --
+#: exactly the attributes that change what a future assignment DOES. EXPORT,
+#: TRACE, READONLY itself and ``declare -g`` stay allowed on a readonly
+#: variable. Enforced once, by
+#: :meth:`ScopeManager.check_readonly_attribute_change`.
+#: Repro: ``readonly R=1; declare -i R`` -> ``declare: R: readonly variable``.
+READONLY_LOCKED_ATTRIBUTES = (
+    VarAttributes.INTEGER
+    | VarAttributes.LOWERCASE
+    | VarAttributes.UPPERCASE
+    | VarAttributes.ARRAY
+    | VarAttributes.ASSOC_ARRAY
+    | VarAttributes.NAMEREF
+)
+
 if TYPE_CHECKING:
     # TYPE_CHECKING-only, and that is the whole point: ``psh.core`` is a
     # NEAR-LEAF whose module-level psh imports are confined to
@@ -791,6 +808,12 @@ class ScopeManager:
                 and not self._local_shadows_special(name)
                 and (self._special.attributes_for(name) & VarAttributes.READONLY)):
             raise ReadonlyVariableError(name)
+        # bash 5.3 refuses an assignment-affecting attribute change on a
+        # READONLY local, value or not — ``f(){ local -r x=1; local -i x; }``
+        # is ``local: x: readonly variable`` rc 1, the same rule declare obeys.
+        # One owner (see check_readonly_attribute_change); the value-redeclare
+        # guard further down is a different rule (readonly forbids the WRITE).
+        self.check_readonly_attribute_change(name, attributes)
         # Temp-env provenance (bash att_tempvar): a local that (re)declares the
         # SAME invocation's function-prefix binding — ``x=5 f`` then any
         # ``local x[=V]`` in f — carries the TEMPVAR flag, so a deeper
@@ -824,14 +847,16 @@ class ScopeManager:
             # local is rejected — matching bash, which prints "local: NAME:
             # readonly variable", keeps the old value, and returns 1 while the
             # function CONTINUES (probe: f(){ local -r x=1; local x=2; }; f
-            # prints the error, keeps x=1, local rc 1). An ATTRIBUTE-ONLY
-            # redeclare (value is None: ``local x``, ``local -i x``, ``local -x
-            # x``) is NOT rejected — bash lets you MERGE attributes onto a
-            # readonly local (``local -r x=1; local -i x`` -> ``declare -ir
-            # x="1"``, rc 0), so the guard is gated on ``value is not None``,
-            # NOT on the redeclare alone. The outer-scope readonly check above
-            # (a name readonly in an ENCLOSING scope) already rejects
-            # unconditionally, exactly like any prefix assignment.
+            # prints the error, keeps x=1, local rc 1). A value-less redeclare
+            # that only MERGES a still-allowed attribute (``local x``, ``local
+            # -x x``) is NOT rejected here — bash 5.3.15: ``local -r x=1; local
+            # -x x`` -> ``declare -rx x="1"``, rc 0 — so this guard is gated on
+            # ``value is not None``, NOT on the redeclare alone. The REFUSED
+            # attributes (``local -i x`` and the rest of
+            # READONLY_LOCKED_ATTRIBUTES) were already rejected above by the
+            # one owner. The outer-scope readonly check at the top (a name
+            # readonly in an ENCLOSING scope) rejects unconditionally, exactly
+            # like any prefix assignment.
             if value is not None and existing_local.is_readonly:
                 raise ReadonlyVariableError(name)
             attributes = existing_local.attributes | attributes
@@ -1287,15 +1312,68 @@ class ScopeManager:
                 return scope.variables[name]
         return None
 
+    def check_readonly_attribute_change(self, name: str,
+                                        attributes: VarAttributes,
+                                        removing: bool = False,
+                                        global_scope: bool = False) -> None:
+        """Raise :class:`ReadonlyVariableError` for an attribute transition a
+        READONLY variable refuses — the SINGLE owner of that rule.
+
+        bash 5.3 refuses adding OR removing any of
+        :data:`READONLY_LOCKED_ATTRIBUTES` on a readonly variable (CHANGES line
+        705, 5.3-alpha item llllll); ``-x``/``+x``/``-t``/``+t``/``-r``/``-g``
+        stay allowed. The refusal is keyed on the REQUESTED option, not on a
+        computed delta: 5.3.15 refuses the no-op ``declare -ir R=1; declare -i
+        R`` and the no-op ``readonly R=1; declare +i R`` alike.
+
+        The one carve-out, probed on 5.3.15: ``+n`` against a variable that is
+        NOT a nameref is dropped before the check (``readonly R=1; declare +n
+        R`` and ``declare +nx R`` are rc 0), while ``+n`` on a readonly NAMEREF
+        (``declare -rn r=T; declare +n r``) and ``+ni`` on a readonly scalar
+        are refused.
+
+        The name is resolved through a nameref here, by the same rule the
+        mutators use, so every call site gets it: a change to the nameref
+        attribute ITSELF is decided on the nameref cell, any other change on
+        the TARGET. So ``declare -n a=R; declare -n b=a; declare -i b`` reports
+        the resolved ``R`` (bash does too), while ``declare -rn r=T; declare -a
+        r`` is allowed because the readonly is on ``r``, not on ``T``. A cyclic
+        chain is not this method's business — the caller warns and skips.
+        """
+        locked = attributes & READONLY_LOCKED_ATTRIBUTES
+        if not locked:
+            return
+        if not (attributes & VarAttributes.NAMEREF):
+            try:
+                name = self.resolve_nameref_name(name)
+            except NamerefCycleError:
+                return
+        # A dynamic special (UID, SECONDS, ...) keeps its attributes on the
+        # registry overlay, not in a stored cell; a local-shadowed one takes
+        # the ordinary path so the LOCAL cell decides (mirrors the mutators).
+        if self._special.has_lifecycle(name) and not self._local_shadows_special(name):
+            if not (self._special.attributes_for(name) & VarAttributes.READONLY):
+                return
+            is_nameref = False
+        else:
+            var = self._find_variable_for_mutation(name, global_only=global_scope)
+            if var is None or not var.is_readonly:
+                return
+            is_nameref = var.is_nameref
+        if removing and not is_nameref:
+            locked &= ~VarAttributes.NAMEREF
+        if locked:
+            raise ReadonlyVariableError(name)
+
     def apply_attribute(self, name: str, attributes: VarAttributes,
                         global_scope: bool = False):
         """Apply additional attributes to an existing variable.
 
-        Readonly variables ACCEPT new attributes — readonly forbids
-        changing the value, not the metadata (bash 5.2, probe-verified:
-        ``readonly R=1; export R`` and ``readonly R=1; declare -i R``
-        both succeed; only a value assignment fails). ``global_scope``
-        (``declare -g``) targets the global instance past any local shadow.
+        A readonly variable accepts EXPORT / TRACE / READONLY (``readonly R=1;
+        export R`` succeeds) but REFUSES the assignment-affecting attributes —
+        see :meth:`check_readonly_attribute_change` and
+        :data:`READONLY_LOCKED_ATTRIBUTES`. ``global_scope`` (``declare -g``)
+        targets the global instance past any local shadow.
         """
         # Attribute changes resolve a nameref to its TARGET — ``declare -n r=x;
         # declare -i r`` makes x integer (so ``r=3+4`` stores 7), and ``export
@@ -1313,6 +1391,8 @@ class ScopeManager:
                 self.warn_nameref_cycle(name)
                 self.warn_nameref_cycle(name)
                 return
+        self.check_readonly_attribute_change(name, attributes,
+                                             global_scope=global_scope)
         # An active dynamic special has no stored cell — record the attribute on
         # its persistent overlay so ``readonly RANDOM`` / ``export SECONDS``
         # persist (and EXPORT materialises via the observer + find_exported_instance).
@@ -1364,6 +1444,9 @@ class ScopeManager:
                          global_scope: bool = False):
         """Remove attributes from an existing variable.
 
+        Removing an assignment-affecting attribute from a readonly variable is
+        refused (:meth:`check_readonly_attribute_change`); ``+x``/``+t`` are
+        allowed, and ``+r`` keeps its own long-standing refusal below.
         ``global_scope`` (``declare -g``) targets the global instance past
         any local shadow.
         """
@@ -1378,6 +1461,8 @@ class ScopeManager:
                 self.warn_nameref_cycle(name)
                 self.warn_nameref_cycle(name)
                 return
+        self.check_readonly_attribute_change(name, attributes, removing=True,
+                                             global_scope=global_scope)
         # Active dynamic special: drop the attribute from its overlay. Removing
         # EXPORT (``export -n RANDOM``) lets the observer delete its env entry;
         # readonly cannot be removed (like any variable). A local-shadowed special
