@@ -11372,3 +11372,86 @@
   stdout: "A\nB\nrc=0\n"
   stderr: ""
   exit_code: 0
+
+# =============================================================================
+# AN ASYNC COMMAND INHERITS THE fd 0 ITS FRAME WAS GIVEN (C022, slot 1.12)
+#
+# POSIX gives an asynchronous command /dev/null on fd 0 when job control is
+# off.  bash applies that default only while the SHELL still owns fd 0: when a
+# pipeline or an enclosing COMPOUND command's redirect supplied the frame's
+# fd 0, the background child inherits it.  psh applied the default
+# unconditionally, so `echo hello | { cat & wait; }` printed nothing and the
+# pipe's bytes were LOST.  The controls pin the shapes where bash KEEPS the
+# default: a top-level background reader, `exec < file`, and a function CALL's
+# own redirect.  Verified against bash 5.3.15.
+# =============================================================================
+
+- name: c022_pipe_into_brace_group_reader
+  description: "C022: a reader backgrounded inside a pipeline member reads the pipe, not /dev/null"
+  command: 'echo hello | { cat & wait; }'
+  stdout: "hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c022_pipe_into_subshell_reader
+  description: "C022: the subshell spelling of the same pipeline member"
+  command: 'echo hello | ( cat & wait )'
+  stdout: "hello\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c022_pipe_into_backgrounded_read_loop
+  description: "C022: a backgrounded `while read` loop consumes the member's pipe"
+  command: 'seq 1 3 | { while read l; do echo "L$l"; done & wait; }'
+  stdout: "L1\nL2\nL3\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c022_compound_redirect_supplies_reader
+  description: "C022: a brace group's `< file` is the background reader's stdin too"
+  command: 'printf "a b\tc\n" > in; { cat & wait; } < in'
+  stdout: "a b\tc\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c022_loop_redirect_supplies_reader
+  description: "C022: the same for a loop's redirect, and the bytes are read whole"
+  command: 'printf "one\ntwo\n" > in; while true; do cat & wait; break; done < in'
+  stdout: "one\ntwo\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c022_here_string_supplies_reader
+  description: "C022: a here-string on the compound supplies fd 0 (metacharacters intact)"
+  command: '{ cat & wait; } <<< "a*b?c[d-f]"'
+  stdout: "a*b?c[d-f]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c022_background_child_writes_what_it_read
+  description: "C022: the bytes the background child read, taken back off the disk"
+  command: 'printf "  padded  \n" > in; { cat > got & wait; } < in; printf "GOT["; cat got; printf "]\n"'
+  stdout: "GOT[  padded  \n]\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c022_control_toplevel_background_reader_gets_devnull
+  description: "C022 control: a top-level background reader still gets /dev/null, so the here-doc feeding the shell is untouched"
+  command: 'printf "kept\n" > in; { cat & wait; } ; cat in'
+  stdout: "kept\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c022_control_function_call_redirect_has_no_reach
+  description: "C022 control: a function CALL's own redirect is a simple command's list (bash prints nothing)"
+  command: 'printf "unused\n" > in; f() { cat & wait; }; f < in; echo done'
+  stdout: "done\n"
+  stderr: ""
+  exit_code: 0
+
+- name: c022_control_exec_rebinds_the_shells_own_stdin
+  description: "C022 control: `exec < file` is not a frame's input, so the async default still applies (the reader prints nothing; the marker proves the list kept running)"
+  command: 'printf "SHOULD-NOT-BE-READ\n" > in; exec < in; cat & wait; echo ok'
+  stdout: "ok\n"
+  stderr: ""
+  exit_code: 0

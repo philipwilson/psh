@@ -373,6 +373,17 @@ Two typed invariants own the job/signal boundary:
   (bash leaves an async pipeline leader on the real stdin). Compound
   shell-process children are skipped — they re-arm trap handlers via
   `child_policy.run_background_shell_child`.
+- **The `/dev/null` half applies only while the SHELL still owns fd 0.** When a
+  pipeline or an enclosing COMPOUND command's redirect supplied the frame's
+  fd 0, the async child inherits it — `echo hello | { cat & wait; }` prints
+  `hello` and `{ cat & wait; } < file` prints the file, as in bash. The single
+  answer to "is fd 0 the shell's own stdin right now" is
+  `core/stdin_binding.py#StdinBinding.is_shell_stdin`; the compound redirect
+  window (`io_redirect/manager.py#IOManager.apply_compound_redirections`) and a
+  pipeline member's own fd-0 wiring report to it, a forked child inherits it
+  with the descriptor, and `AsyncJobPolicy.for_launch` reads it as its third
+  input. A SIMPLE command's redirect list does NOT report — a function CALL's
+  `f < file` gives its body nothing, matching bash (C022).
 
 Exit-time / hangup job disposition lives on the one `Shell.shutdown` →
 `_dispose_jobs_at_exit(force_hup)` path (#20 H19). Two hangup triggers, one
