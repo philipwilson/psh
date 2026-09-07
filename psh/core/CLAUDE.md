@@ -480,33 +480,49 @@ interactive-family path — which yields status 1 for its own reason, not the
 channel's — leaves it False and its children keep `.status`.
 `map_child_exception` re-derives the child's status through
 `internal_errors.py#fatal_expansion_child_status`. Only that ONE raise site
-stamps this flag; every other `TopLevelAbort` in the tree
+stamps this flag; every `TopLevelAbort` that carries NEITHER stamp
 (readonly-assignment refusal, `FUNCNEST`, `failglob`, the errexit-immune
 expansion discards) is channel-independent and keeps `.status` verbatim at a
-fork. The stamp — rather than a blanket re-map — is what keeps those other
+fork. The stamps — rather than a blanket re-map — are what keep those other
 families' exit statuses untouched.
 
-There is a SECOND stamp with the same shape and a different reader:
+There is a SECOND stamp with the same shape and a different rule:
 `usage_discard_channel`, set only by
 `internal_errors.py#special_builtin_usage_discard` (the special-builtin
-too-many-arguments cell of the usage-error status family). Its status is a
-main-shell and SUBSHELL rule — `( exit 1 2 ); echo $?` is 2 in a script — but a
-SUBSTITUTION child that dies on the same discard exits 1. It is read at
-`scripting/source_processor.py#SourceProcessor._dispatch_execution` rather than
-at the fork, because a substitution child re-parses its string through
-`run_command` and so consumes the abort at its own buffered boundary; a `( )`
-subshell executes an already-parsed AST and never reaches that code. The rule
-and its probes live on `internal_errors.py#usage_discard_child_status`.
+too-many-arguments cell of the usage-error status family). Its status depends
+on the FORK'S SHAPE, not on the channel: **1** from a fork whose body is a bare
+SIMPLE command and from anything under a substitution at any depth, **2** from
+a forked compound/function and in the main shell. So `exit 1 2 | cat` and
+`exit 1 2 &` leave 1 while `{ exit 1 2; } | cat`, `f | cat` and `( exit 1 2 )`
+leave 2 — the SAME severing rule bash applies to an ignored `set -e`, quoted at
+`executor/context.py#errexit_suppress_deferred`.
+
+It is read at BOTH boundaries, and neither is redundant:
+`executor/child_policy.py#map_child_exception` for a child that executes an
+already-parsed AST (a pipeline member, a subshell, a background job), and
+`scripting/source_processor.py#SourceProcessor._dispatch_execution` for a
+SUBSTITUTION child, which re-parses its string through `run_command` and so
+consumes the abort at its own buffered boundary before any fork boundary sees
+it. The discriminators are `state.in_substitution` and
+`state.forked_simple_command`; the rule, the fork sites and the probes live on
+`internal_errors.py#usage_discard_child_status`.
 
 **The special-builtin USAGE-ERROR STATUS family has ONE owner**, in
-`internal_errors.py`, and no builtin spells a status of its own: the
+`internal_errors.py`, and no builtin spells a status of ITS OWN FAMILY: the
 too-many-arguments discard (`special_builtin_usage_discard`), the
 numeric-argument operand cell (`special_builtin_usage_status`, which raises the
 typed outcome so the POSIX exit policy stays in `special_builtin_usage_exit`),
 and the bad-count `break`/`continue` shell exit
-(`special_builtin_usage_exit_shell`). `USAGE_ERROR_STATUS` is the one place the
-number 2 appears; `cd`, which is not a special builtin, borrows only that
-constant. bash 5.3.15 moved every cell of this family from 1 to 2 with no
+(`special_builtin_usage_exit_shell`). `USAGE_ERROR_STATUS` is the one place
+THIS FAMILY's 2 appears — not the only 2 in the tree, since the other
+classified special-builtin usage branches (`environment.py`,
+`signal_handling.py`, `function_support.py`) raise `SpecialBuiltinUsageError(2)`
+directly, by design. `cd`, which is not a special builtin, borrows only the
+constant, as does `history`. Numeric OPERANDS are validated by
+`builtins/numeric.py#legal_number` (bash's `legal_number`: ASCII digits, one
+optional sign, surrounding whitespace, int64) rather than by Python's builtin
+int conversion, whose extra acceptances — `5_0`, `٥`, unbounded width — are all
+operands bash rejects. bash 5.3.15 moved every cell of this family from 1 to 2 with no
 CHANGES/NEWS item, so the pins are empirical and are marked 5.3-only.
 
 The two child-status helpers are deliberately NOT the same shape, and the

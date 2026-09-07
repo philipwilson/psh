@@ -167,11 +167,25 @@ class TestExitStatus(ConformanceTest):
     @pytest.mark.oracle_min("5.3")
     def test_discard_fork_shape_holds_for_background_jobs(self, tmp_path):
         """Same split at the OTHER fork site: a backgrounded bare simple
-        command reports 1, a backgrounded compound or function reports 2."""
+        command reports 1, a backgrounded compound or function reports 2.
+
+        The `eval f` / `. ./d.sh` rows are the ones that matter most, and they
+        are why the background site records the shape as RESOLVED rather than
+        pending.  A backgrounded builtin runs through ``execute_builtin_guarded``
+        and never reaches ``executor/command.py``'s dispatch chokepoint, so a
+        pending stamp would be settled by the first dispatch inside the
+        builtin's own TEXT -- making the answer depend on what that text runs
+        first (`eval 'true; f' &` vs `eval f &`), where bash answers 1 for both.
+        """
         for command, status in (
                 ('exit 1 2 & wait $!\necho after=$?', 1),
                 ('set -- a b c; shift 1 2 & wait $!\necho after=$?', 1),
                 ('eval "( exit 1 2 )" & wait $!\necho after=$?', 1),
+                # The member is the `eval`/`.`, whatever its text dispatches.
+                ('f(){ exit 1 2; }\neval f & wait $!\necho after=$?', 1),
+                ('f(){ exit 1 2; }\neval "true; f" & wait $!\necho after=$?', 1),
+                ('f(){ exit 1 2; }\nprintf "f\\n" > d.sh\n'
+                 '. ./d.sh & wait $!\necho after=$?', 1),
                 ('( exit 1 2 ) & wait $!\necho after=$?', 2),
                 ('{ exit 1 2; } & wait $!\necho after=$?', 2),
                 ('f(){ exit 1 2; }\nf & wait $!\necho after=$?', 2)):

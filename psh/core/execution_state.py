@@ -65,11 +65,14 @@ class ExecutionState:
         # that depends on it: the special-builtin usage DISCARD reports 1 from
         # a fork whose body is a bare SIMPLE command and 2 from a forked
         # compound/function (core/internal_errors.py#usage_discard_child_status).
-        # None means "a SimpleCommand node was forked, but its dispatch has not
-        # resolved yet" -- the member's OWN dispatch settles it in
-        # executor/command.py, because `f | cat` names a function (a compound
-        # body -> False) while `eval 'f' | cat` does not (the member is the
-        # eval -> True). False in the main shell and for a compound fork.
+        # None is the PIPELINE site's pending state: only there is a
+        # SimpleCommand node forked before anyone knows what it dispatches
+        # (`$Q | cat` names a function only after expansion), so the member's
+        # OWN dispatch settles it in executor/command.py -- `f | cat` names a
+        # function (a compound body -> False) while `eval 'f' | cat` does not
+        # (the member is the eval -> True). Every other fork site knows its
+        # shape at the fork and writes True or False directly. False in the
+        # main shell and for a compound fork.
         self.forked_simple_command: Optional[bool] = False
         # The command being/about to be executed ($BASH_COMMAND): either the
         # pre-rendered text (str) or the AST node itself, rendered LAZILY on

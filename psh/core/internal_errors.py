@@ -389,6 +389,8 @@ def usage_discard_child_status(state: 'ShellState') -> int:
         f(){ exit 1 2; }; f | cat                # 2  -- function member
         exit 1 2 | cat;  echo ${PIPESTATUS[0]}   # 1  -- SIMPLE member
         exit 1 2 & wait $!; echo $?              # 1  -- SIMPLE background job
+        f(){ exit 1 2; }; eval f & wait $!       # 1  -- the member is the eval
+        f(){ exit 1 2; }; f & wait $!            # 2  -- ... but not here
         x=$(exit 1 2); echo $?                   # 1  -- substitution
         x=$( ( exit 1 2 ) ); echo $?             # 1  -- substitution, any depth
 
@@ -398,11 +400,21 @@ def usage_discard_child_status(state: 'ShellState') -> int:
     at ``executor/context.py#errexit_suppress_deferred`` — and slot 2.1 found
     it again for trap frames, so psh already had both discriminators:
     ``state.in_substitution`` (inherited by nested subshells) and
-    ``state.forked_simple_command``, which the fork sites set and the member's
-    OWN dispatch resolves. That resolution matters and is not cosmetic: a
-    FUNCTION member is a compound body (``f | cat`` is 2), while a function
-    reached through an ``eval``/``.`` TEXT is not (``eval 'f' | cat`` is 1,
-    because the member's own command is the ``eval``).
+    ``state.forked_simple_command``, which every fork site sets.
+
+    The PIPELINE site is the only one that cannot answer at the fork — ``$Q |
+    cat`` names a function only after expansion — so it stamps ``None`` and
+    the member's OWN dispatch settles it in ``executor/command.py``. That
+    resolution matters and is not cosmetic: a FUNCTION member is a compound
+    body (``f | cat`` is 2), while a function reached through an ``eval``/``.``
+    TEXT is not (``eval 'f' | cat`` is 1, because the member's own command is
+    the ``eval``). The BACKGROUND site knows its shape at the fork — only its
+    bare-simple caller passes a severing context — so it records ``True``
+    outright. Stamping ``None`` there was a defect: a backgrounded builtin runs
+    through ``execute_builtin_guarded`` and never reaches that chokepoint, so
+    the pending stamp was settled by the first dispatch inside the builtin's
+    own TEXT, and ``eval f &`` (function first) disagreed with
+    ``eval 'true; f' &`` (builtin first) where bash answers 1 for both.
 
     Flat 1 for those shapes: unlike :func:`substitution_child_abort_status`
     there is no errexit branch, because the discard is errexit-immune in the
@@ -416,13 +428,13 @@ def usage_discard_child_status(state: 'ShellState') -> int:
     buffered boundary, while a pipeline member executes an already-parsed AST
     and reaches the fork boundary instead.
     """
-    # ``None`` is the PENDING state and reads as True. It means a
-    # SimpleCommand node was forked and no dispatch reclassified it, which is
-    # exactly the backgrounded-builtin route: `exit 1 2 &` runs its builtin
-    # through the background child runner and never reaches ``command.py``'s
-    # dispatch chokepoint. Only a FUNCTION dispatch ever writes False, so
-    # "not False" is the honest test, and the MAIN shell (plain False) still
-    # gets the family status.
+    # ``None`` is the PIPELINE SITE's pending state and reads as True: there,
+    # and only there, a SimpleCommand node is forked before anyone knows what
+    # it dispatches (`$Q | cat` names a function only after expansion), so the
+    # member's own dispatch settles it and a FUNCTION writes False. Every other
+    # fork site knows its shape AT the fork and records True or False directly.
+    # "not False" is therefore the honest test, and the MAIN shell (plain
+    # False) still gets the family status.
     if state.forked_simple_command is not False or state.in_substitution:
         return 1
     return USAGE_ERROR_STATUS

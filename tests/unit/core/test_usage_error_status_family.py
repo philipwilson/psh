@@ -90,9 +90,12 @@ class TestForkShapeStatus:
         assert usage_discard_child_status(shell.state) == 1
 
     def test_pending_shape_reads_as_simple(self, shell):
-        """None is the PENDING stamp: a SimpleCommand node was forked and no
-        dispatch reclassified it, which is the backgrounded-builtin route
-        (`exit 1 2 &` never reaches command.py's dispatch chokepoint)."""
+        """None is the PIPELINE site's pending stamp: a SimpleCommand node was
+        forked before anyone knew what it dispatches, and no FUNCTION dispatch
+        reclassified it. Every other fork site records True or False at the
+        fork -- the background site in particular, because a backgrounded
+        builtin never reaches command.py's dispatch chokepoint and a pending
+        stamp there would be settled by the builtin's own TEXT instead."""
         shell.state.forked_simple_command = None
         shell.state.in_substitution = False
         assert usage_discard_child_status(shell.state) == 1

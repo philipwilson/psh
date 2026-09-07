@@ -352,10 +352,17 @@ def run_background_shell_child(shell: 'Shell',
         sever_errexit_context.errexit_suppress_deferred = 0
         # Same shape, same consequence for the ONE status that depends on it:
         # `exit 1 2 & wait $!` leaves 1 where `( exit 1 2 ) &` leaves 2
-        # (core/internal_errors.py#usage_discard_child_status). Only the
-        # bare-simple caller reaches this branch, which is exactly the
-        # condition; the member's own dispatch resolves the None.
-        shell.state.forked_simple_command = None
+        # (core/internal_errors.py#usage_discard_child_status). RESOLVED here,
+        # not PENDING: reaching this branch already IS the answer, because only
+        # the bare-simple caller passes a context. The pipeline site cannot say
+        # that — `$Q | cat` names a function only after expansion — but this
+        # one can, and leaving it pending was wrong: the backgrounded builtin
+        # runs through execute_builtin_guarded and never reaches command.py's
+        # dispatch chokepoint, so a pending stamp would be resolved by the
+        # first dispatch inside the builtin's own TEXT instead. That made
+        # `eval f &` (function first -> 2) disagree with `eval 'true; f' &`
+        # (builtin first -> 1) where bash answers 1 for both.
+        shell.state.forked_simple_command = True
 
     exit_code = 0
     try:
