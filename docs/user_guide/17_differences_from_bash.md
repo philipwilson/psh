@@ -585,6 +585,14 @@ When one of these exits fires, `$?` inside an `EXIT` trap is the builtin's own
 status (1 for the operand and readonly cases, 2 for a usage error), matching
 bash, so a cleanup trap that branches on `$?` sees the failure.
 
+One deliberate difference remains: PSH takes the exit even when an `ERR` trap
+is installed, while bash 5.3.15 usually keeps running. That is an accident of
+bash's implementation rather than a rule — the first simple command the trap
+action runs clears the flag that would have caused the exit, so `trap ':' ERR`
+survives while `trap '' ERR`, `trap '(true)' ERR` and a comment-only action
+still exit. PSH does not reproduce it, so do not rely on an `ERR` trap to keep
+a POSIX-mode script alive past one of these failures.
+
 ### Case Modification and Unicode
 
 The case-mods `${var^}` `${var^^}` `${var,}` `${var,,}` `${var~}` `${var~~}`

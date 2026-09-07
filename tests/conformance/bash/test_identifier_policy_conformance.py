@@ -310,6 +310,16 @@ class TestUnicodeAcceptedWithoutPosixDivergence:
         bash = _run(BASH, "declare é=1; echo rc=$?")
         assert bash.stdout == "rc=1\n"
 
+    def test_unset_v_accepted_by_psh(self):
+        # The default-mode half of the `unset -v` name check (slot 2.2,
+        # W0-N32): bash refuses `é` in BOTH modes, psh only under posix.
+        psh = _run(PSH, "unset -v é; echo rc=$?")
+        assert psh.stdout == "rc=0\n", psh.stdout
+        assert psh.stderr == "", psh.stderr
+        bash = _run(BASH, "unset -v é; echo rc=$?")
+        assert bash.stdout == "rc=1\n", bash.stdout
+        assert "not a valid identifier" in bash.stderr
+
     def test_for_loop_accepted_by_psh(self):
         psh = _run(PSH, "for é in a b; do echo -n $é; done; echo")
         assert psh.stdout == "ab\n"

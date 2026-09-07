@@ -45,7 +45,7 @@ Reproduce one 5.3 row by hand (oracle = the resolved bash 5.3.15)::
 
 import pytest
 from conformance_framework import ConformanceTest
-from divergence_pins import MODES, run_in_mode
+from divergence_pins import MODES, assert_declared_divergence, run_in_mode
 from shell_oracle import is_comparable, run_bash, run_psh
 
 
@@ -260,6 +260,17 @@ class TestPosixSpecialBuiltinExitParity:
         _assert_parity("set -o posix; unset -v ''; echo survived",
                        stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
 
+    def test_unset_v_unicode_operand_is_a_bad_name_in_posix(self, tmp_path):
+        # The `-v` name check consults POSIX MODE, like every other identifier
+        # site: `é` is refused here and accepted outside posix (psh's
+        # documented Unicode extension — the default-mode half is
+        # test_identifier_policy_conformance.py::
+        # TestUnicodeAcceptedWithoutPosixDivergence::test_unset_v_accepted_by_psh).
+        # Diagnostics render differently by locale, so only stdout, status and
+        # the line count are compared.
+        _assert_parity("set -o posix; unset -v é; echo survived",
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
+
     # -- ACTUAL TARGETS (D3): the operands the rules leave alone or apply ----
 
     def test_export_applies_operands_before_the_first_bad_identifier(
@@ -382,6 +393,108 @@ class TestPosixSpecialBuiltinExitParity:
         _assert_parity(
             "set -o posix; trap 'export 1bad=x; echo after' EXIT; echo body",
             stdout="body\n", status=1, tmp_path=tmp_path)
+
+
+@pytest.mark.oracle_min("5.3")
+class TestErrTrapDefeatsTheExitInBashOnly:
+    """DECLARED DIVERGENCE (ledger row W1-N55): with an ERR trap installed,
+    bash 5.3.15 runs the action and does NOT take the posix special-builtin
+    exit; psh exits.  Both sides pinned, in three input modes.
+
+    Not a rule psh emulates, because bash's behaviour here is an
+    IMPLEMENTATION ACCIDENT rather than a documented semantic.  No CHANGES or
+    NEWS item covers it — the 5.3 items this file cites elsewhere (bash-5.3-alpha
+    "1. Changes to Bash" jj and nnnnn) say nothing about ERR — so the
+    provenance is "empirical, 5.3.15", and the shape of the accident is visible
+    in the discriminators: an action that runs no simple command IN THE PARENT
+    still exits, while any action that does runs and clears the pending exit.
+    Probed on 5.3.15, `export 1bad=x` under `set -o posix` in all three modes::
+
+        trap '' ERR       -> exits 1      trap ':' ERR      -> survives
+        trap ' ' ERR      -> exits 1      trap 'true' ERR   -> survives
+        trap '# c' ERR    -> exits 1      trap 'x=1' ERR    -> survives
+        trap '(true)' ERR -> exits 1      trap '{ :; }' ERR -> survives
+
+    i.e. bash's "a special builtin failed" flag is cleared by the first simple
+    command the action runs in the parent, so the pending exit is lost; a
+    subshell action cannot clear it.  Emulating that faithfully would mean
+    encoding "did the trap action run a simple command in the parent" into the
+    exit policy, which is not a rule any script should rely on.
+
+    The HARD class is unaffected in both shells (rows below), and `set -e` plus
+    an ERR trap still exits in bash — the accident only reaches the
+    SUPPRESSIBLE class.  psh's behaviour is stated in
+    docs/user_guide/17_differences_from_bash.md §17.
+    """
+
+    def _pin(self, command, *, bash, psh, tmp_path):
+        assert_declared_divergence(command, bash=bash, psh=psh,
+                                   tmp_path=tmp_path, slot="2.2")
+
+    def test_err_trap_defeats_the_export_identifier_exit(self, tmp_path):
+        self._pin("set -o posix; trap 'echo err rc=$?' ERR; export 1bad=x; "
+                  "echo survived",
+                  bash=("err rc=1\nsurvived\n", 0), psh=("", 1),
+                  tmp_path=tmp_path)
+
+    def test_err_trap_defeats_the_readonly_identifier_exit(self, tmp_path):
+        self._pin("set -o posix; trap 'echo err rc=$?' ERR; readonly 1bad; "
+                  "echo survived",
+                  bash=("err rc=1\nsurvived\n", 0), psh=("", 1),
+                  tmp_path=tmp_path)
+
+    def test_err_trap_defeats_the_unset_readonly_exit(self, tmp_path):
+        self._pin("set -o posix; trap 'echo err rc=$?' ERR; readonly r=1; "
+                  "unset r; echo survived",
+                  bash=("err rc=1\nsurvived\n", 0), psh=("", 1),
+                  tmp_path=tmp_path)
+
+    def test_err_trap_defeats_the_unset_v_identifier_exit(self, tmp_path):
+        self._pin("set -o posix; trap 'echo err rc=$?' ERR; unset -v 1bad; "
+                  "echo survived",
+                  bash=("err rc=1\nsurvived\n", 0), psh=("", 1),
+                  tmp_path=tmp_path)
+
+    def test_err_trap_defeats_the_invalid_option_exit(self, tmp_path):
+        self._pin("set -o posix; trap 'echo err rc=$?' ERR; set -q; "
+                  "echo survived",
+                  bash=("err rc=2\nsurvived\n", 0), psh=("", 2),
+                  tmp_path=tmp_path)
+
+    def test_err_trap_does_not_defeat_the_stop_at_first_rule(self, tmp_path):
+        # Only the EXIT is lost: `2bad=y` is still never diagnosed, so bash
+        # prints ONE `err` for the one failing command.
+        self._pin("set -o posix; trap 'echo err' ERR; export 1bad=x 2bad=y; "
+                  "echo survived",
+                  bash=("err\nsurvived\n", 0), psh=("", 1),
+                  tmp_path=tmp_path)
+
+    # -- discriminators: the accident's shape, and where it does NOT reach --
+
+    @pytest.mark.parametrize("action", ["", " ", "# c", "(true)"],
+                             ids=["empty", "blank", "comment", "subshell"])
+    def test_action_with_no_parent_simple_command_still_exits(self, action,
+                                                              tmp_path):
+        # Equality rows: these actions never clear bash's flag, so BOTH shells
+        # exit 1.  They are what makes the divergence an accident rather than
+        # a rule about ERR traps.
+        _assert_parity(f"set -o posix; trap '{action}' ERR; export 1bad=x; "
+                       "echo survived",
+                       stdout="", status=1, diag_lines=1, tmp_path=tmp_path)
+
+    @pytest.mark.parametrize("case,status", [
+        (". /nonexistent/psh-conf-errtrap", 1),
+        ("readonly r=1; readonly r=2", 1),
+        ("eval 'if'", 2),
+    ], ids=["dot-missing", "readonly-assign", "eval-syntax"])
+    def test_hard_class_exits_with_an_err_trap_in_both_shells(self, case,
+                                                              status,
+                                                              tmp_path):
+        # The accident reaches only the SUPPRESSIBLE class: the hard class
+        # exits without running the action, in both shells.
+        _assert_parity(f"set -o posix; trap 'echo err' ERR; {case}; "
+                       "echo survived",
+                       stdout="", status=status, tmp_path=tmp_path)
 
 
 class TestPosixSpecialBuiltinNoExit(_StatusConformance):
