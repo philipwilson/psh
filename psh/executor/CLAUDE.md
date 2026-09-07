@@ -161,6 +161,32 @@ PipelineExecutor.execute()
    status, or 0 if all succeeded)
 ```
 
+**Exec-in-place is a ONE-SHOT, not a state.** A member process may `execve()`
+in place only for its OWN top-level simple command: the token is granted by
+`context.py#ExecutionContext.for_pipeline_member` (simple-command members
+only) and spent by `take_exec_in_place` at the single simple-command gateway
+`command.py#CommandExecutor.execute`, so a function body, `eval` text,
+sourced file or compound body never sees it and its external commands fork.
+While the token was instead a durable inherited flag,
+`f(){ /bin/echo A; echo B; }; f | cat` printed only `A` and lost the member's
+real status (C001). "Is this process a pipeline member?" is a *different*
+question, answered by the durable `ExecutionContext.is_pipeline_member`;
+"must this builtin redirect at the fd level?" is answered by
+`state.in_forked_child`. Neither is the token.
+
+**Job control belongs to the shell process, never to a forked child.** Because
+a member now FORKS the externals in a function body, `eval` text or a sourced
+file, it would otherwise open a nested foreground session: its own process
+group for that child, the terminal handed over, then a `tcsetpgrp` reclaim
+from a group that no longer owns the terminal — SIGTTOU, and an interactive
+`ll(){ /bin/ls /dev/null; }; ll | cat` reports `[1]+ Stopped`.
+`job_control.py#JobManager.does_job_control` is the one rule, read by both
+terminal-control entry points and by both halves of `ProcessLauncher`'s
+standalone-pgid handshake, so a forked child's commands simply inherit its
+group. This also settles the everyday brace-group, `for` and `( )` member
+shapes; the remaining nested-subshell shape, the `tcgetpgrp`-from-grandchild
+pin and the Linux watch stay with the job-control slot that owns them.
+
 ## Common Tasks
 
 ### Adding a New Builtin

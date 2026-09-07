@@ -414,7 +414,8 @@ class BuiltinExecutionStrategy(ExecutionStrategy):
         if shell.state.options.get('debug-exec'):
             print(f"DEBUG BuiltinStrategy: executing builtin '{cmd_name}' with args {args}",
                   file=sys.stderr)
-            print(f"DEBUG BuiltinStrategy: in_pipeline={context.in_pipeline}, "
+            print(f"DEBUG BuiltinStrategy: exec_in_place={context.exec_in_place}, "
+                  f"pipeline_member={context.is_pipeline_member}, "
                   f"in_forked_child={shell.state.in_forked_child}", file=sys.stderr)
 
         # The builtin will check shell.state.in_forked_child to determine its
@@ -620,14 +621,19 @@ class ExternalExecutionStrategy(ExecutionStrategy):
             # env override: no shell hash; execvpe walks the (overridden) env.
             resolved_path = None
 
-        if context.in_pipeline:
-            # In pipeline, use exec to replace current process
+        if context.exec_in_place:
+            # This process was forked to BE this one pipeline-member simple
+            # command and has just consumed the one-shot token for it
+            # (ExecutionContext#exec_in_place_token), so there is nothing left
+            # to run afterwards: execve() in place instead of forking again.
+            # A nested frame never gets here — a function body, `eval` text,
+            # a sourced file and a compound body all dispatch after the token
+            # is spent, so their external commands fork and the commands
+            # AFTER them still run (C001).
             try:
                 # Set up redirections if any
                 setup_child_redirections_for(shell, redirects)
 
-                # Ensure we're in the correct process group before exec
-                # This is important for commands that might fork after exec
                 current_pgid = os.getpgrp()
                 current_pid = os.getpid()
 
@@ -635,8 +641,12 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                     print(f"DEBUG ExternalStrategy: Before exec - PID={current_pid}, PGID={current_pgid}",
                           file=sys.stderr)
 
-                # Always explicitly set the process group to ensure it's inherited
-                # This helps when execvpe creates a new process
+                # A no-op: it sets the pgid to the value getpgrp() just
+                # returned. This process's group was established by
+                # ProcessLauncher's child setup before execute_fn ran, and
+                # execve() preserves it — it replaces this process rather
+                # than creating one, so nothing here can leave the group.
+                # Retained pending the dead-code sweep that owns its removal.
                 os.setpgid(0, current_pgid)
 
                 if force_not_found:
@@ -648,8 +658,13 @@ class ExternalExecutionStrategy(ExecutionStrategy):
                     full_args[0], e, resolved_path, state=shell.state,
                     search_override=path_override))
 
-        # Set terminal title to show running command
-        if not background and not context.in_pipeline and shell.state.options.get('interactive'):
+        # Set terminal title to show running command. A pipeline MEMBER must
+        # not repaint it: executor/pipeline.py already set the title to the
+        # whole pipeline's text in the parent, before forking anyone. This is
+        # a question about the PROCESS, not about this dispatch, so it reads
+        # the durable ExecutionContext#is_pipeline_member, never the one-shot.
+        if (not background and not context.is_pipeline_member
+                and shell.state.options.get('interactive')):
             # cycle-break: interactive.title -> interactive.signal_manager -> executor.job_control
             from ..interactive.title import command_title, set_terminal_title
             set_terminal_title(command_title(cmd_name, shell))

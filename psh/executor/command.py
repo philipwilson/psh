@@ -88,10 +88,11 @@ class RedirectionMode(Enum):
     (``_invoke_resolution``).
 
     BUILTIN_INPROCESS
-        A builtin (or special builtin) running in THIS process, not in a
-        pipeline and not in a forked child. Redirections are applied at the
-        Python-stream level and saved/restored around the single command
-        (``_execute_builtin_with_redirections``), so they do not persist.
+        A builtin (or special builtin) running in the shell's OWN process,
+        i.e. not in a forked child (a pipeline member is one). Redirections
+        are applied at the Python-stream level and saved/restored around the
+        single command (``_execute_builtin_with_redirections``), so they do
+        not persist.
 
     CHILD_DEFERRED
         A command whose forked child owns redirection setup: an external
@@ -202,13 +203,21 @@ class CommandExecutor:
         Returns:
             Exit status code
         """
-        # Own any process substitutions this command creates (as arguments
-        # or redirect targets): when the command finishes, the parent-side
-        # fds are closed and the children reaped non-blockingly
-        # (still-running ones are polled at later scope exits), so
-        # `cat <(echo a)` neither leaks fds nor leaves zombies.
-        with self.io_manager.process_sub_scope():
-            return self._execute_command(node, context)
+        # This method is the single gateway to simple-command execution, so it
+        # is where the pipeline member's one-shot exec-in-place token is
+        # consumed (ExecutionContext#exec_in_place_token). The FIRST simple
+        # command dispatched in a member process is the member itself; every
+        # command a function body, `eval`, `.` or a compound body runs after
+        # it finds the token already spent and forks normally (C001).
+        # Outermost, so the token is gone before any expansion here can fork.
+        with context.exec_in_place_decision():
+            # Own any process substitutions this command creates (as arguments
+            # or redirect targets): when the command finishes, the parent-side
+            # fds are closed and the children reaped non-blockingly
+            # (still-running ones are polled at later scope exits), so
+            # `cat <(echo a)` neither leaks fds nor leaves zombies.
+            with self.io_manager.process_sub_scope():
+                return self._execute_command(node, context)
 
     def _execute_command(self, node: 'SimpleCommand', context: 'ExecutionContext') -> int:
         """Coordinate execution of a simple command.
@@ -857,7 +866,7 @@ class CommandExecutor:
         """
         strategy = resolved.strategy
         persist = resolved.assignments_persist
-        mode = self._decide_redirection_mode(strategy, context, node.background)
+        mode = self._decide_redirection_mode(strategy, node.background)
 
         if mode is RedirectionMode.BUILTIN_INPROCESS:
             status = self._execute_builtin_with_redirections(
@@ -899,8 +908,7 @@ class CommandExecutor:
                                    prefix_assignments_persist=persist)
 
     def _decide_redirection_mode(
-        self, strategy: 'ExecutionStrategy', context: 'ExecutionContext',
-        background: bool = False,
+        self, strategy: 'ExecutionStrategy', background: bool = False,
     ) -> RedirectionMode:
         """Select how a matched strategy's redirections are applied.
 
@@ -922,10 +930,14 @@ class CommandExecutor:
             # does not take the in-process save/restore path.)
             return RedirectionMode.CHILD_DEFERRED
 
-        if is_builtin and not context.in_pipeline and not self.state.in_forked_child:
-            # A foreground builtin running in this process (not a pipeline, not
-            # a forked child): redirect at the Python-stream level and
-            # save/restore around the one command.
+        if is_builtin and not self.state.in_forked_child:
+            # A foreground builtin running in the shell's OWN process:
+            # redirect at the Python-stream level and save/restore around the
+            # one command. ``state.in_forked_child`` is the single authority
+            # for fd-level vs Python-level builtin I/O, and a pipeline member
+            # is always a forked child, so this covers pipeline members too —
+            # the pipeline flag that used to be ANDed in here was a second
+            # copy of the same fact.
             return RedirectionMode.BUILTIN_INPROCESS
 
         if isinstance(strategy, ExternalExecutionStrategy):

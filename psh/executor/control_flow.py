@@ -57,9 +57,8 @@ class ControlFlowExecutor:
     #
     # Every compound construct (if/while/until/for/c-style-for/case/select)
     # shares the same boilerplate: apply the node's redirections around the
-    # whole body, neutralize the enclosing pipeline context while running the
-    # body, track loop nesting depth, and translate break/continue level
-    # counts as they unwind through nested loops. These helpers own that
+    # whole body, track loop nesting depth, and translate break/continue
+    # level counts as they unwind through nested loops. These helpers own that
     # boilerplate so each construct's method reads as its real control logic.
     # ------------------------------------------------------------------
 
@@ -77,23 +76,6 @@ class ControlFlowExecutor:
         """
         with self.io_manager.guarded_redirections(node.redirects) as applied:
             yield applied
-
-    @contextmanager
-    def _pipeline_context_disabled(self, context: 'ExecutionContext') -> Iterator[None]:
-        """Run the body as if it were NOT a pipeline member.
-
-        A compound command can itself be a pipeline member (``for ...; done |
-        cat``); the compound runs in a forked subshell. Inside its body,
-        external commands must fork normally rather than exec-replacing that
-        subshell, so ``in_pipeline`` is cleared for the duration of the body
-        and restored afterward.
-        """
-        old_pipeline = context.in_pipeline
-        context.in_pipeline = False
-        try:
-            yield
-        finally:
-            context.in_pipeline = old_pipeline
 
     @contextmanager
     def _loop_depth(self, context: 'ExecutionContext') -> Iterator[None]:
@@ -144,10 +126,8 @@ class ControlFlowExecutor:
         Returns:
             Exit status code
         """
-        # Redirects apply to the whole if; pipeline context is neutralized
-        # for commands inside the construct.
-        with self._compound_redirections(node) as applied, \
-                self._pipeline_context_disabled(context):
+        # Redirects apply to the whole if.
+        with self._compound_redirections(node) as applied:
             if not applied:
                 return 1
             # Evaluate main condition (set -e is suppressed in conditions)
@@ -185,8 +165,7 @@ class ControlFlowExecutor:
         """
         exit_status = 0
         with self._loop_depth(context), \
-                self._compound_redirections(node) as applied, \
-                self._pipeline_context_disabled(context):
+                self._compound_redirections(node) as applied:
             if not applied:
                 return 1
             while True:
@@ -236,8 +215,7 @@ class ControlFlowExecutor:
         """Execute until loop (runs until condition succeeds)."""
         exit_status = 0
         with self._loop_depth(context), \
-                self._compound_redirections(node) as applied, \
-                self._pipeline_context_disabled(context):
+                self._compound_redirections(node) as applied:
             if not applied:
                 return 1
             while True:
@@ -309,8 +287,7 @@ class ControlFlowExecutor:
 
         exit_status = 0
         with self._loop_depth(context), \
-                self._compound_redirections(node) as applied, \
-                self._pipeline_context_disabled(context):
+                self._compound_redirections(node) as applied:
             if not applied:
                 return 1
             # Expand the item list INSIDE the redirect scope (F4): a command
@@ -393,11 +370,8 @@ class ControlFlowExecutor:
             # Redirects apply to the whole loop, INCLUDING the init expression
             # (F4): `for ((i=$(cat); ...)); do ...; done < num` must read the
             # loop's redirected stdin. Install them first, then run the init
-            # DEBUG trap and init evaluation inside the scope. Pipeline context
-            # is neutralized for the body (uniform with while/for — see
-            # _pipeline_context_disabled).
-            with self._compound_redirections(node) as applied, \
-                    self._pipeline_context_disabled(context):
+            # DEBUG trap and init evaluation inside the scope.
+            with self._compound_redirections(node) as applied:
                 if not applied:
                     return 1
 
@@ -490,10 +464,8 @@ class ControlFlowExecutor:
         # Redirects apply to the whole case, INCLUDING the subject eval (F4):
         # `case "$(cat)" in ... esac < input` must read the redirected stdin.
         # Install them first, then run the DEBUG trap / subject expansion /
-        # xtrace header inside the scope. Pipeline context is neutralized for
-        # commands inside the construct.
-        with self._compound_redirections(node) as applied, \
-                self._pipeline_context_disabled(context):
+        # xtrace header inside the scope.
+        with self._compound_redirections(node) as applied:
             if not applied:
                 return 1
 
@@ -603,8 +575,7 @@ class ControlFlowExecutor:
 
         exit_status = 0
         with self._loop_depth(context):
-            with self._compound_redirections(node) as applied, \
-                    self._pipeline_context_disabled(context):
+            with self._compound_redirections(node) as applied:
                 if not applied:
                     return 1
                 # Expand the item list INSIDE the redirect scope (F4) so a
