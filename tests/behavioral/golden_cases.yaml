@@ -6247,13 +6247,13 @@
   stderr: "not a valid identifier"
   exit_code: 0
 
-- name: r18t3_identifier_posix_export_unicode_rejected
+- name: r18t3_identifier_posix_export_unicode_exits
   command: "set -o posix; export é=1; echo done"
-  stdout: "done\n"
+  stdout: ""
   stderr: "not a valid identifier"
-  exit_code: 0
-  psh_only: true
-  description: "psh-only pin (bash 5.3.15 EXITS rc 1 with no stdout, CHANGES 5.3-alpha 1.jj); FLIP-PINS owner slot 2.2; both-sides pin: tests/conformance/bash/test_identifier_policy_conformance.py::TestPosixRestrictsUnicodeLikeBash::test_export_readonly_unicode_exit_in_posix_declared_divergence"
+  exit_code: 1
+  min_bash: "5.3"
+  description: "export is a POSIX special builtin: an invalid identifier exits a non-interactive posix shell (bash 5.3 CHANGES bash-5.3-alpha 1.jj; slot 2.2 closed FLIP-PINS row G22). Parity pin: tests/conformance/bash/test_identifier_policy_conformance.py::TestPosixRestrictsUnicodeLikeBash::test_export_readonly_unicode_exit_in_posix"
 
 - name: r18t3_identifier_posix_read_unicode_rejected
   command: "set -o posix; read é <<< hi; echo done"
@@ -8600,13 +8600,21 @@
   stderr: "invalid option"
   exit_code: 2
 
-- name: posixexit_export_badid_survives
+- name: posixexit_export_badid_exits
   command: 'set -o posix; export 1bad=x; echo rc=$?'
-  stdout: "rc=1\n"
+  stdout: ""
   stderr: "not a valid identifier"
-  exit_code: 0
-  psh_only: true
-  description: "psh-only pin (bash 5.3.15 EXITS rc 1 here, CHANGES 5.3-alpha 1.jj); FLIP-PINS owner slot 2.2; both-sides pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestPosixSpecialBuiltinExitDeclaredDivergence::test_export_bad_identifier_exits_in_posix"
+  exit_code: 1
+  min_bash: "5.3"
+  description: "bash 5.3 widened the posix special-builtin exit set to operand errors (CHANGES bash-5.3-alpha 1.jj); slot 2.2 closed FLIP-PINS row G18. Parity pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestPosixSpecialBuiltinExitParity::test_export_bad_identifier_exits_in_posix"
+
+- name: posixexit_export_stops_at_first_badid
+  command: 'set -o posix; export 1bad=x 2bad=y; echo survived'
+  stdout: ""
+  stderr: "`1bad=x': not a valid identifier"
+  exit_code: 1
+  min_bash: "5.3"
+  description: "In posix mode the operand loop stops at the FIRST bad identifier, so `2bad=y' is never diagnosed (bash 5.3.15; slot 2.2, FLIP-PINS row G18)"
 
 - name: posixexit_trap_badsig_survives
   command: "set -o posix; trap 'x' NOSUCHSIG; echo rc=$?"
@@ -8614,13 +8622,21 @@
   stderr: "invalid signal specification"
   exit_code: 0
 
-- name: posixexit_unset_readonly_survives
+- name: posixexit_unset_readonly_exits
   command: 'set -o posix; readonly r=1; unset r; echo rc=$?'
-  stdout: "rc=1\n"
+  stdout: ""
   stderr: "cannot unset: readonly variable"
-  exit_code: 0
-  psh_only: true
-  description: "psh-only pin (bash 5.3.15 EXITS rc 1 here, CHANGES 5.3-alpha 1.jj); FLIP-PINS owner slot 2.2; both-sides pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestPosixSpecialBuiltinExitDeclaredDivergence::test_unset_readonly_exits_in_posix"
+  exit_code: 1
+  min_bash: "5.3"
+  description: "unset refusing a readonly variable exits a non-interactive posix shell (bash 5.3 CHANGES bash-5.3-alpha 1.jj); slot 2.2 closed FLIP-PINS row G20. Parity pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestPosixSpecialBuiltinExitParity::test_unset_readonly_exits_in_posix"
+
+- name: posixexit_unset_readonly_function_exits
+  command: 'set -o posix; f() { :; }; readonly -f f; unset -f f; echo rc=$?'
+  stdout: ""
+  stderr: "unset: f: cannot unset: readonly function"
+  exit_code: 1
+  min_bash: "5.3"
+  description: "unset -f refusing a readonly function exits a non-interactive posix shell, with bash's `cannot unset:' wording (bash 5.3.15; slot 2.2 closed ledger row W0-N25)"
 
 - name: posixexit_declare_readonly_survives
   command: 'set -o posix; readonly r=1; declare r=2; echo rc=$?'
@@ -8757,13 +8773,21 @@
   stderr: "can only `return'"
   exit_code: 0
 
-- name: posixexit_no_suppress_across_eval
+- name: posixexit_suppress_across_eval
   command: "set -o posix; eval 'set -q' || echo caught"
+  stdout: "caught\n"
+  stderr: "invalid option"
+  exit_code: 0
+  min_bash: "5.3"
+  description: "An OUTER guard suppresses the posix special-builtin exit across an eval boundary (bash 5.3 CHANGES bash-5.3-alpha 1.nnnnn); slot 2.2 closed FLIP-PINS row G21. Parity pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestPosixSpecialBuiltinExitParity::test_outer_guard_suppresses_across_eval"
+
+- name: posixexit_no_suppress_into_trap_action
+  command: "set -o posix; trap 'set -q' DEBUG; false || echo caught; echo survived"
   stdout: ""
   stderr: "invalid option"
   exit_code: 2
-  psh_only: true
-  description: "psh-only pin (bash 5.3.15 prints caught rc 0: the outer guard now suppresses across eval, CHANGES 5.3-alpha 1.nnnnn); FLIP-PINS owner slot 2.2; both-sides pin: tests/conformance/posix/test_posix_special_builtin_exit_conformance.py::TestPosixSpecialBuiltinExitDeclaredDivergence::test_outer_guard_suppresses_across_eval"
+  min_bash: "5.3"
+  description: "The one boundary the 5.3 suppression does NOT cross: a guard around the interrupted command does not reach the trap action bash runs between commands (slot 2.2)"
 
 - name: posixexit_suppress_inside_eval
   command: "set -o posix; eval 'set -q || echo in'; echo rc=$?"
