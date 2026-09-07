@@ -143,6 +143,13 @@ store.unset(name)
 - Whole-variable ops are a typed facade over the `ScopeManager` authority
   (`set_variable`/`create_local`/`apply_attribute`/`remove_attribute`) — that is
   where the actual `.value`/`.attributes` writes live.
+- A READONLY variable refuses any attribute change that would alter what a
+  later assignment DOES (`-i`, `-l`, `-u`, `-a`, `-A`, `-n` and their `+`
+  forms); `-x`, `-t`, `-r` and `-g` still apply. The rule lives once, in
+  `scope.py#ScopeManager.check_readonly_attribute_change`, keyed on the
+  REQUESTED attribute rather than a computed delta — the single carve-out is a
+  `+n` with no nameref to remove. `apply_attribute`, `remove_attribute`,
+  `create_local` and declare's bare-name `-a`/`-A` branch all route through it.
 - `append` reads the append base from the scope the write TARGETS (so
   `declare -g x+=A` reads the global base, not a local shadow) and honors the
   target's integer attribute (`export n+=3` on `-i n` appends arithmetically).
