@@ -517,10 +517,10 @@ _READONLY_ARRAY_CELLS: Tuple[Cell, ...] = (
 #
 # `readonly` freezes the value; bash 5.3.15 also refuses the attributes that
 # decide how a FUTURE value would be stored (`-i`, `-l`, `-u`), while still
-# allowing `-x`, which changes only who can see it.  psh applies all of them
-# silently.  The refusal half is the gate-triage row G17
-# (`test_declare_i_on_readonly_succeeds`), owned by slot 2.4; the `-x` half is
-# already correct and ships green as the boundary the refusal must not cross.
+# allowing `-x`, which changes only who can see it.  The refusal half was the
+# gate-triage row G17 (`test_declare_i_on_readonly_succeeds`); slot 2.4 landed
+# it, so both halves are green and neither claims a slot.  The `-x` half is the
+# boundary the refusal must not cross.
 #
 #   x=ab; readonly x; declare -i x; echo "rc=$?"; declare -p x
 #   bash -> rc=1, `declare -r x="ab"`    psh -> rc=0, `declare -ir x="ab"`
@@ -571,8 +571,10 @@ def _attr_cell(flag, name, target, setup, var, printed, *, refused: bool,
 
 
 _READONLY_ATTRIBUTE_CELLS: Tuple[Cell, ...] = tuple(
-    _attr_cell(flag, name, target, setup, var, p_refused,
-               refused=True, owner="G17 → slot 2.4")
+    # Slot 2.4 landed the refusal, so these nine are green and carry no owner;
+    # `refused=True` still states what bash 5.3.15 does and is what fixes the
+    # expectation (see _attr_cell: the verdict never depended on `owner`).
+    _attr_cell(flag, name, target, setup, var, p_refused, refused=True)
     for target, setup, var, p_refused, _p_allowed in _RO_TARGETS
     for flag, name in _RO_ATTRS
 ) + tuple(
@@ -821,12 +823,11 @@ SPAWN_CELLS: Tuple[Cell, ...] = (
          'set -a; f(){ local L=1; printenv L; }; f; echo "rc=$?"',
          '1\nrc=0\n', owner="C028 → slot 1.16"),
 
-    # G17 in every input mode: a readonly variable refuses an attribute that
-    # would change how a future value is stored.
-    Cell("declare", "flags", "integer-attribute-on-readonly-refused-G17-slot2.4",
+    # In every input mode: a readonly variable refuses an attribute that would
+    # change how a future value is stored (was G17, closed by slot 2.4).
+    Cell("declare", "flags", "integer-attribute-on-readonly-refused",
          'x=ab; readonly x; declare -i x; echo "rc=$?"; declare -p x',
-         'rc=1\ndeclare -r x="ab"\n', err="readonly variable",
-         owner="G17 → slot 2.4"),
+         'rc=1\ndeclare -r x="ab"\n', err="readonly variable"),
 
     # W1-N7 in every input mode: which variable the loop body writes.
     Cell("for", "value",
