@@ -285,6 +285,47 @@ _FLIP_VALUE_CELLS: Tuple[Cell, ...] = (
     Cell("nameref", "flags", "export-n-clears-target-C071-slot4.9",
          'x=1; export x; declare -n r=x; export -n r; declare -p x',
          'declare -- x="1"\n', owner="C071 → slot 4.9"),
+
+    # W1-N7 — a `for` whose control variable is a NAMEREF rebinds the reference
+    # to each word in turn (bash 5.3.15 man page, `declare -n`: "a name
+    # reference is established for each word in the list, in turn"), so the body
+    # writes a DIFFERENT variable each iteration.  psh never rebinds and writes
+    # every word into the original target, so the second variable is never
+    # touched — the loop variable is a where-does-data-go fact, decided wrong.
+    #   x=0; y=0; declare -n r=x; for r in x y; do r=5; done; declare -p r x y
+    Cell("for", "value", "nameref-loop-variable-rebinds-per-word-W1-N7-slot1.18",
+         'x=0; y=0; declare -n r=x; for r in x y; do r=5; done; declare -p r x y',
+         'declare -n r="y"\ndeclare -- x="5"\ndeclare -- y="5"\n',
+         owner="W1-N7 → slot 1.18"),
+    # Same rule's refusal half: a word that is not a name cannot be bound, so
+    # the body never runs and nothing is written.
+    Cell("for", "value", "nameref-loop-invalid-word-writes-nothing-W1-N7-slot1.18",
+         'x=0; declare -n r=x; for r in 1 2; do echo body; done; echo "rc=$? [$x]"',
+         'rc=1 [0]\n', err="not a valid identifier", owner="W1-N7 → slot 1.18"),
+
+    # W1-N8 — three write sites accept a target that is not a name at all, so a
+    # variable bash refuses to create is created, or an array element bash
+    # refuses to touch is written.  The store's naming rule is the same rule at
+    # every entry point; these three reach past it.
+    #   getopts a bad-name -a; declare -p bad-name
+    Cell("getopts", "value", "invalid-name-is-not-created-W1-N8-slot1.18",
+         'getopts a bad-name -a; echo "rc=$?"; declare -p bad-name',
+         'rc=1\n', 1, err="not a valid identifier", owner="W1-N8 → slot 1.18"),
+    # A subscripted word is not a name either, and the array must be untouched.
+    # This is the row the C194 getopts cell CANNOT reach: there the readonly
+    # guard answers first, so name validation is never exercised.
+    Cell("getopts", "value", "subscript-is-not-a-name-W1-N8-slot1.18",
+         "a=(1); getopts a 'a[0]' -a; echo \"rc=$?\"; declare -p a",
+         'rc=1\ndeclare -a a=([0]="1")\n', err="not a valid identifier",
+         owner="W1-N8 → slot 1.18"),
+    Cell("printf-v", "value", "invalid-name-is-not-created-W1-N8-slot1.18",
+         "printf -v 'bad-name' x; echo \"rc=$?\"; declare -p bad-name",
+         'rc=2\n', 1, err="not a valid identifier", owner="W1-N8 → slot 1.18"),
+    # An unbound nameref takes its target from the next assignment, and that
+    # target has to be a name; bash refuses and aborts the input.
+    Cell("nameref", "value", "invalid-target-refused-at-assignment-W1-N8-slot1.18",
+         'declare -n r; r=bad-name; echo "rc=$?"; declare -p r', '', NONZERO,
+         err="not a valid identifier", owner="W1-N8 → slot 1.18"),
 )
 
 
@@ -334,10 +375,12 @@ _READONLY_ARRAY_CELLS: Tuple[Cell, ...] = (
     # `a[0]` is not a name, and both shells say so before they say readonly.
     _survives("for", "readonly-loop-variable-refused-C194",
               'for a[0] in x; do :; done', err="not a valid identifier"),
-    # Same square, but the two shells order the two complaints differently
-    # (bash: not a valid identifier; psh: readonly variable).  rc and the array
-    # agree, which is the invariant; the wording is an unowned divergence, so
-    # asserting it here would pin psh's side of an open question.
+    # This cell proves ONLY that a readonly array is not written through
+    # `getopts`; it does not prove that `a[0]` was rejected as a name, because
+    # psh does not check the name here at all — on a NON-readonly array it
+    # writes the element, which is W1-N8's subject.  The two shells therefore
+    # refuse for different reasons (bash: not a valid identifier; psh: readonly
+    # variable), so the wording is deliberately not asserted.
     _survives("getopts", "readonly-getopts-target-refused-C194",
               'getopts x a[0]', err=""),
 )
@@ -357,6 +400,7 @@ _READONLY_ARRAY_CELLS: Tuple[Cell, ...] = (
 # ---------------------------------------------------------------------------
 
 #: name, setup, variable, `declare -p` after a REFUSED attribute, after `-x`
+#: (the two printed forms are bash 5.3.15's, and neither depends on `owner`)
 _RO_TARGETS = (
     ("scalar", 'x=ab; readonly x; ', 'x',
      'declare -r x="ab"', 'declare -rx x="ab"'),
@@ -370,24 +414,39 @@ _RO_TARGETS = (
 _RO_ATTRS = (("i", "integer"), ("l", "lowercase"), ("u", "uppercase"))
 
 
-def _attr_cell(flag, name, target, setup, var, printed, owner=None) -> Cell:
-    verdict = "refused-G17-slot2.4" if owner else "allowed"
+def _attr_cell(flag, name, target, setup, var, printed, refused: bool,
+               owner=None) -> Cell:
+    """One (attribute × target) square.
+
+    ``refused`` says what bash 5.3.15 does and fixes the WHOLE expectation;
+    ``owner`` says only who flips the cell.  They are separate parameters on
+    purpose.  Deriving the expectation from ``owner`` — as this helper first did
+    — means that deleting the mark also rewrites the cell to demand psh's
+    current behavior, so slot 2.4 would flip nine cells into pinning the very
+    defect they exist to catch, and a correct fix would turn them red.  Only the
+    label's owner token may depend on ``owner``, because a flipped cell must
+    stop claiming a slot (``test_a_green_cell_never_claims_a_slot``).
+    """
+    token = "-G17-slot2.4" if owner else ""
+    verdict = "refused" if refused else "allowed"
     return Cell(
-        "declare", "flags", f"{name}-attribute-on-readonly-{target}-{verdict}",
+        "declare", "flags",
+        f"{name}-attribute-on-readonly-{target}-{verdict}{token}",
         setup + f'declare -{flag} {var}; echo "rc=$?"; declare -p {var}',
-        "rc={}\n{}\n".format(1 if owner else 0, printed),
-        err="readonly variable" if owner else "",
+        "rc={}\n{}\n".format(1 if refused else 0, printed),
+        err="readonly variable" if refused else "",
         owner=owner,
     )
 
 
 _READONLY_ATTRIBUTE_CELLS: Tuple[Cell, ...] = tuple(
-    _attr_cell(flag, name, target, setup, var, refused, owner="G17 → slot 2.4")
-    for target, setup, var, refused, _x in _RO_TARGETS
+    _attr_cell(flag, name, target, setup, var, p_refused,
+               refused=True, owner="G17 → slot 2.4")
+    for target, setup, var, p_refused, _p_allowed in _RO_TARGETS
     for flag, name in _RO_ATTRS
 ) + tuple(
-    _attr_cell("x", "export", target, setup, var, exported)
-    for target, setup, var, _refused, exported in _RO_TARGETS
+    _attr_cell("x", "export", target, setup, var, p_allowed, refused=False)
+    for target, setup, var, _p_refused, p_allowed in _RO_TARGETS
 ) + (
     # W1-N2 — a subscripted `declare` assignment is an ordinary element write in
     # bash; psh rejects the whole word as a name and the element keeps its value.
@@ -493,6 +552,18 @@ _FLIP_CHILD_CELLS: Tuple[Cell, ...] = (
          _TWO_PROBES + 'g(){ local PATH=$PWD/b; probe; }\n'
          'f(){ g; probe; }\nf\nprobe\n', 'B\nA\nA\n',
          owner="C044 → slot 1.5"),
+    # Declaring the local and assigning it are two statements, so the effective
+    # binding changes at the assignment rather than at the declaration.
+    Cell("scope-exit", "dispatch", "local-PATH-without-value-then-assigned-C044-slot1.5",
+         _TWO_PROBES + 'f(){ local PATH; PATH=$PWD/b; probe; }\nf\nprobe\n',
+         'B\nA\n', owner="C044 → slot 1.5"),
+    # `declare -g` writes the GLOBAL while the local still shadows it, so the
+    # effective binding does not change here — the value the next dispatch must
+    # resolve through is the one `declare -g` left behind.  The case slot 1.5's
+    # observer counter must NOT count as an effective-binding change.
+    Cell("scope-exit", "dispatch", "declare-g-PATH-under-local-C044-slot1.5",
+         _TWO_PROBES + 'f(){ local PATH=$PWD/b; declare -g PATH=$PWD/a; probe; }\n'
+         'f\nprobe\n', 'B\nA\n', owner="C044 → slot 1.5"),
 )
 
 CHILD_CELLS: Tuple[Cell, ...] = _GREEN_CHILD_CELLS + _FLIP_CHILD_CELLS
@@ -616,6 +687,19 @@ SPAWN_CELLS: Tuple[Cell, ...] = (
          'x=ab; readonly x; declare -i x; echo "rc=$?"; declare -p x',
          'rc=1\ndeclare -r x="ab"\n', err="readonly variable",
          owner="G17 → slot 2.4"),
+
+    # W1-N7 in every input mode: which variable the loop body writes.
+    Cell("for", "value",
+         "nameref-loop-rebinds-per-word-across-input-modes-W1-N7-slot1.18",
+         'x=0; y=0; declare -n r=x; for r in x y; do r=5; done; declare -p r x y',
+         'declare -n r="y"\ndeclare -- x="5"\ndeclare -- y="5"\n',
+         owner="W1-N7 → slot 1.18"),
+
+    # W1-N8 in every input mode: whether a name bash refuses gets created.
+    Cell("getopts", "value",
+         "invalid-name-not-created-across-input-modes-W1-N8-slot1.18",
+         'getopts a bad-name -a; echo "rc=$?"; declare -p bad-name',
+         'rc=1\n', 1, err="not a valid identifier", owner="W1-N8 → slot 1.18"),
 )
 
 #: The input modes every SPAWN cell runs in (D6).
@@ -829,6 +913,46 @@ def test_every_finding_named_in_a_label_exists() -> None:
         cid for cell in ALL_CELLS for cid in _CID_RE.findall(cell.label)
     } - findings)
     assert unknown == []
+
+
+def test_flipping_a_cell_never_rewrites_its_expectation() -> None:
+    """Deleting ``owner=`` is HOW a slot flips its cells, so it must change only
+    the mark and the label's token — never what the cell demands.
+
+    This helper once derived the verdict, the expected status and the expected
+    diagnostic from ``owner``.  Flipping the nine G17 cells would then have
+    rewritten them to demand psh's current WRONG behavior (rc 0, no diagnostic):
+    they would have gone red at the flip like a normal cell, and the natural
+    repair would have pinned the defect green while a correct slot 2.4 turned
+    them red.  Every expectation-bearing helper that takes ``owner`` is checked
+    here, because the failure is invisible in the cell table itself.
+    """
+    target, setup, var, p_refused, _p_allowed = _RO_TARGETS[0]
+
+    def attr(owner):
+        return _attr_cell("i", "integer", target, setup, var, p_refused,
+                          refused=True, owner=owner)
+
+    def cwd(owner):
+        return _cwd_cell("probe", 'cd .', 'PWD=x\ngetcwd=x\n', owner=owner)
+
+    for build, name in ((attr, "_attr_cell"), (cwd, "_cwd_cell")):
+        owned, flipped = build("C043 → slot 1.4"), build(None)
+        assert ((owned.script, owned.out, owned.rc, owned.err)
+                == (flipped.script, flipped.out, flipped.rc, flipped.err)), (
+            f"{name} derives part of its expectation from `owner`: flipping a "
+            f"cell would change what it demands, not just who owns it"
+        )
+
+
+def test_a_green_cell_never_claims_a_slot() -> None:
+    """A label carrying a `-slotN.M` token but no ``owner=`` reads like a flip
+    cell in the report while running as an ordinary pass — the one way a cell
+    could look owned and be flipped by nobody.  (The converse, an owner whose
+    label omits its slot, is covered above.)"""
+    claimed = [c.id for c in ALL_CELLS
+               if c.owner is None and re.search(r"-slot\d\.\d+", c.label)]
+    assert claimed == []
 
 
 def test_cell_ids_are_unique() -> None:
