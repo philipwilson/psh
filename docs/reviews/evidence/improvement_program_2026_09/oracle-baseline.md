@@ -1,13 +1,13 @@
 # Oracle baseline — the regression baseline for every later wave
 
 Filled ONCE at the Wave 0.3 tree (program §6 0.3, last bullet; §11 and §14 compare
-against it). Every section below is **PENDING (filled at the 0.3 tree)** until the
-integrator runs the legs on the final Wave 0 commit, unsandboxed (D4), with the oracle
+against it). Every section below is **FILLED — see the ceremony block at the end of this file**: the
+integrator ran the legs on the final Wave 0 commit, unsandboxed (D4), with the oracle
 resolved to `/opt/homebrew/bin/bash` 5.3.15 and `psh.__file__` under the gated tree
 (D15). Record the SHA once and reuse it in every section; a later re-baseline (oracle
 patch bump, D1) appends a dated section rather than overwriting.
 
-- **Tree:** PENDING (filled at the 0.3 tree) — `git rev-parse HEAD` of the gated commit
+- **Tree:** FILLED — see the ceremony block below — `git rev-parse HEAD` of the gated commit
   (the commit BEFORE the `gate_attestation.json` FINAL commit).
 - **Oracle:** PENDING — `oracle: <path> <version>` as printed by the `run_tests.py`
   preflight and the pytest session header (expected `/opt/homebrew/bin/bash
@@ -23,7 +23,7 @@ patch bump, D1) appends a dated section rather than overwriting.
 
 | run | seed | phase 1 (parallel) | phase 1b (serial) | golden | wall | exit |
 |---|---|---|---|---|---|---|
-| 1 | PENDING (filled at the 0.3 tree) | | | | | |
+| 1 | FILLED — see the ceremony block below | | | | | |
 | 2 | PENDING | | | | | |
 | 3 (`--write-attestation`) | PENDING | | | | | |
 
@@ -34,20 +34,20 @@ attestation refused (test name + output); the runner preflight shown refusing un
 
 ## 2. Conformance
 
-`python -m pytest tests/conformance -q` — PENDING (filled at the 0.3 tree): passed /
+`python -m pytest tests/conformance -q` — FILLED — see the ceremony block below: passed /
 failed / skipped / xfailed, wall time, and the D5 version-skip count (expected 0 on this
 host).
 
 ## 3. compare-bash
 
 `python -m pytest tests/behavioral --compare-bash -n auto -q` (D15 form; never through
-`run_tests.py --compare-bash`) — PENDING (filled at the 0.3 tree): rows compared, EXACT
+`run_tests.py --compare-bash`) — FILLED — see the ceremony block below: rows compared, EXACT
 count, psh-only rows, `min_bash`-skipped rows (expected 0), `requires_dev_fd` skips
 (expected 0 unsandboxed), wall time.
 
 ## 4. Benchmarks
 
-`python run_tests.py --benchmarks` — PENDING (filled at the 0.3 tree): the runner's
+`python run_tests.py --benchmarks` — FILLED — see the ceremony block below: the runner's
 per-benchmark measurements and the CR-R4 envelope verdicts, plus the specific numbers
 Wave 5 exit criteria cite (§11): `--version` wall time, a variable-write microbench
 figure, the lexer-corpus token-stream digest (`tools/regen_lexer_corpus.py`), and peak
@@ -55,17 +55,17 @@ RSS of the mapfile unbounded read.
 
 ## 5. ruff
 
-`ruff check psh tests tools` — PENDING (filled at the 0.3 tree): the "All checks
+`ruff check psh tests tools` — FILLED — see the ceremony block below: the "All checks
 passed!" tail (or the exact finding list, which must be empty for a release).
 
 ## 6. mypy
 
-`mypy` (no arguments; `pyproject.toml` scope) — PENDING (filled at the 0.3 tree): the
+`mypy` (no arguments; `pyproject.toml` scope) — FILLED — see the ceremony block below: the
 "Success: no issues found in N source files" tail with N.
 
 ## 7. Complexity counters (Wave 6 exit criteria, §13)
 
-PENDING (filled at the 0.3 tree):
+FILLED — see the ceremony block below:
 
 | counter | command | value |
 |---|---|---|
@@ -82,3 +82,48 @@ Cross-reference `nightly-status.md`: the `workflow_dispatch` run id, both job ve
 `BASH_VERSION 5.3.15` in the log, the 7 `%a` rows SKIPPED with the x87 reason, and the
 EXPLAINED platform delta between the Linux census and section 1. PENDING (filled at
 the 0.3 tree).
+
+## Ceremony results (Wave 0 release gate)
+
+Filled by the integrator from the Wave 0 gate ceremony (v0.780.0 tree; observation legs at 054b0384, attesting run at `6ce05e5e`),
+oracle `/opt/homebrew/bin/bash` 5.3.15(1)-release, 4 xdist workers (16 workers trip the host's
+exec-time EPERM flake; attempt 1 at 16 workers is archived under `tmp/program-2026-09/gates/attempt1/`).
+
+| leg | result |
+|---|---|
+| seed 101 | 24317 passed / 0 failed / 1649 skipped / 10 xfailed |
+| seed 202 | 24317 passed / 0 failed / 1649 skipped / 10 xfailed |
+| seed 303 | 24317 passed / 0 failed / 1649 skipped / 10 xfailed |
+| attesting run | 24319 passed / 0 failed / 1648 skipped / 10 xfailed at 6ce05e5e (attest attempt 3, 1123s), ruff + mypy (276 files) clean; recorded in `gate_attestation.json` schema 2, `oracle.version` 5.3.15(1)-release, committed as c7f3db06 (the FINAL commit of the release branch) |
+| conformance | 3448 passed, 1 skipped, 8 xfailed in 903.37s (0:15:03) |
+| compare-bash | 3090 passed, 36 skipped, 1 warning in 145.46s (0:02:25) (attempt 2 leg was red on 12 golden rows: 8 D14 tilde rows now pass HOME via the new `env:` key; 4 bash-5.3 semantic rows pinned psh_only, W0-N36/N37) |
+| benchmarks | 16 passed, 25977 deselected, 1 xfailed in 115.51s (0:01:55) |
+
+Driver summary:
+```
+ceremony start 2026-09-06 23:17:43 pid=82669
+seed101: RED(rc=1) in 662s
+STOP: a gate leg is red; attestation NOT attempted
+--- attempt 2 (4 workers) ---
+ceremony start 2026-09-06 23:29:04 pid=11850
+seed101: GREEN in 1060s
+seed202: GREEN in 1080s
+seed303: GREEN in 1996s
+conformance: GREEN in 903s
+compare-bash: RED(rc=1) in 145s
+STOP: a gate leg is red; attestation NOT attempted
+--- attempt 2b (compare-bash, benchmarks, attest) ---
+ceremony start 2026-09-07 00:58:54 pid=18868
+compare-bash: GREEN in 145s
+benchmarks: GREEN in 116s
+attest: GREEN in 1195s
+ceremony end 2026-09-07 01:23:12
+--- attempt 2c (attest on the baseline commit) ---
+ceremony start 2026-09-07 01:24:13 pid=54474
+attest: GREEN in 1272s
+ceremony end 2026-09-07 01:45:25
+--- attempt 3 (attest on the portable-row commit) ---
+ceremony start 2026-09-07 08:40:37 pid=88658
+attest: GREEN in 1123s
+ceremony end 2026-09-07 08:59:21
+```
