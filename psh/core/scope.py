@@ -1313,9 +1313,9 @@ class ScopeManager:
         return None
 
     def check_readonly_attribute_change(self, name: str,
-                                          attributes: VarAttributes,
-                                          removing: bool = False,
-                                          global_scope: bool = False) -> None:
+                                        attributes: VarAttributes,
+                                        removing: bool = False,
+                                        global_scope: bool = False) -> None:
         """Raise :class:`ReadonlyVariableError` for an attribute transition a
         READONLY variable refuses — the SINGLE owner of that rule.
 
@@ -1392,7 +1392,7 @@ class ScopeManager:
                 self.warn_nameref_cycle(name)
                 return
         self.check_readonly_attribute_change(name, attributes,
-                                               global_scope=global_scope)
+                                             global_scope=global_scope)
         # An active dynamic special has no stored cell — record the attribute on
         # its persistent overlay so ``readonly RANDOM`` / ``export SECONDS``
         # persist (and EXPORT materialises via the observer + find_exported_instance).
@@ -1462,7 +1462,7 @@ class ScopeManager:
                 self.warn_nameref_cycle(name)
                 return
         self.check_readonly_attribute_change(name, attributes, removing=True,
-                                               global_scope=global_scope)
+                                             global_scope=global_scope)
         # Active dynamic special: drop the attribute from its overlay. Removing
         # EXPORT (``export -n RANDOM``) lets the observer delete its env entry;
         # readonly cannot be removed (like any variable). A local-shadowed special
