@@ -198,8 +198,11 @@ class TestErrors:
         assert '-5: invalid option' in captured_shell.get_stderr()
 
     def test_non_numeric_operand(self, captured_shell):
+        # bash 5.3.15 gives the usage status 2 here, like the invalid-option
+        # row above; the 5.2 series gave 1 (empirical, no CHANGES item;
+        # reproduce: bash -c 'history abc; echo rc=$?').
         rc = _run(captured_shell, 'history abc')
-        assert rc == 1
+        assert rc == 2
         assert 'abc: numeric argument required' in captured_shell.get_stderr()
 
     def test_delete_requires_argument(self, captured_shell):

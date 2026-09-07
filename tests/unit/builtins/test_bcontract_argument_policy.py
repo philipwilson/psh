@@ -1,14 +1,18 @@
 """set / shift / exit argument + abort policy (builtins contracts cluster).
 
-Pinned to bash 5.2.26 (probe battery, campaign fix/builtin-contracts).
+Pinned to bash 5.3.15; the usage-error rows were re-probed on 2026-09-07 in
+-c and script-file modes when slot 2.3 adopted the 5.3 status family (one
+owner, `psh/core/internal_errors.py#special_builtin_usage_discard` and its two
+sibling entry points).  psh-only unit twins of the parity pins in
+tests/conformance/bash/test_exit_cd_options_conformance.py.
 
-Red→green anchors (all FAILED at base dff3e875):
-- `set ""` raised IndexError ("string index out of range") under strict-errors.
-- lone `set -` / `set +` installed "-"/"+" as $1; `set - a b` kept "-" as $1.
-- `shift 1 2` silently ignored the extra operand (rc 0); bash: "too many
-  arguments", rc 1, and the current input unit is discarded.
-- `exit 7 8` ran the rest of the -c string; `exit abc 7` reported "too many
-  arguments" (rc 1, continued) instead of the numeric error (exit 2).
+The two cells and their different outcomes:
+- a VALID first operand with extras (`shift 1 2`, `exit 7 8`) is "too many
+  arguments" -- the rest of the input line is discarded, so under -c the whole
+  string is abandoned with rc 1 and in a script the NEXT line runs with $? = 2;
+- a BAD first operand (`shift x y`, `exit abc 7`) is diagnosed FIRST and is a
+  different cell: "numeric argument required", status 2, and the shell
+  continues on the same line.
 """
 import subprocess
 import sys
@@ -73,22 +77,29 @@ class TestSetOperandPolicy:
 
 class TestShiftPolicy:
     def test_too_many_operands_discards_unit(self):
-        """`shift 1 2` -> too many arguments, rc 1, rest of -c string dropped."""
+        """`shift 1 2` -> too many arguments, rc 1, rest of -c string dropped.
+
+        The -c leg did NOT move in bash 5.3: abandoning the string is still 1.
+        """
         rc, out, err = run_c('set -- a b c; shift 1 2; echo survived')
         assert rc == 1
         assert out == ""
         assert "too many arguments" in err
 
     def test_too_many_discard_resumes_next_script_line(self, tmp_path):
-        """In a script FILE only the current line is discarded (bash)."""
-        rc, out, err = run_script("set -- a b c\nshift 1 2\necho survived\n", tmp_path)
-        assert out == "survived\n"
+        """In a script FILE only the current line is discarded, and the next
+        line sees the family status 2 (bash 5.3.15; the 5.2 series gave 1)."""
+        rc, out, err = run_script(
+            "set -- a b c\nshift 1 2\necho after=$?\n", tmp_path)
+        assert out == "after=2\n"
+        assert rc == 0
 
     def test_bad_first_operand_wins_over_extra(self):
-        """`shift x y` reports the numeric error for x, NOT 'too many', rc 1,
-        and the shell continues (bash)."""
-        rc, out, err = run_c('set -- a b c; shift x y; echo "n=$#"')
-        assert out == "n=3\n"
+        """`shift x y` reports the numeric error for x, NOT 'too many', and
+        the shell continues on the same line with status 2 (bash 5.3.15)."""
+        rc, out, err = run_c('set -- a b c; shift x y; echo "rc=$? n=$#"')
+        assert out == "rc=2 n=3\n"
+        assert rc == 0
         assert "numeric argument required" in err
 
     def test_valid_shift_still_works(self, captured_shell):
@@ -108,21 +119,34 @@ class TestExitPolicy:
 
     def test_too_many_resumes_next_script_line(self, tmp_path):
         """A valid-first + extra exit discards only the current line; the shell
-        keeps running the script (bash)."""
-        rc, out, err = run_script("exit 7 8\necho survived\n", tmp_path)
-        assert out == "survived\n"
+        keeps running the script and the next line sees status 2 (bash
+        5.3.15; the 5.2 series gave 1)."""
+        rc, out, err = run_script("exit 7 8\necho after=$?\n", tmp_path)
+        assert out == "after=2\n"
+        assert rc == 0
 
-    def test_bad_first_operand_exits_two(self):
-        """`exit abc 7`: the bad numeric first operand wins — exit rc 2."""
-        rc, out, err = run_c('exit abc 7; echo survived')
+    def test_too_many_with_no_next_line_exits_two(self, tmp_path):
+        """W0-N31: nothing follows the abandoned line, so the discard status
+        IS the shell's exit status (bash 5.3.15)."""
+        rc, out, err = run_script("exit 7 8; echo dropped\n", tmp_path)
         assert rc == 2
         assert out == ""
+        assert "too many arguments" in err
+
+    def test_bad_first_operand_continues_with_two(self):
+        """`exit abc 7`: the bad numeric first operand wins over the extra one,
+        status 2, and the shell CONTINUES on the same line (bash 5.3.15; the
+        5.2 series exited 2, which psh used to do)."""
+        rc, out, err = run_c('exit abc 7; echo survived')
+        assert rc == 0
+        assert out == "survived\n"
         assert "numeric argument required" in err
 
-    def test_bad_operand_exits_two_in_script(self, tmp_path):
-        rc, out, err = run_script("exit abc\necho survived\n", tmp_path)
-        assert rc == 2
-        assert out == ""
+    def test_bad_operand_continues_in_script(self, tmp_path):
+        rc, out, err = run_script("exit abc; echo rc=$?\necho after=$?\n",
+                                  tmp_path)
+        assert rc == 0
+        assert out == "rc=2\nafter=0\n"
 
     def test_valid_exit_code(self):
         rc, out, err = run_c('exit 7; echo survived')

@@ -86,29 +86,37 @@ class TestBreakContinueLevels:
 class TestBreakContinueArgumentValidation:
     """R13.A: break/continue validate their level argument at RUNTIME.
 
-    bash reference (bash 5.2). Previously psh silently dropped a non-numeric
-    or variable argument (parsing ``break foo`` as ``break`` + a stray
-    ``foo`` command), so ``break $n`` and ``break foo`` misbehaved.
+    bash reference (bash 5.3.15; the bad-count status was re-probed on
+    2026-09-07 when slot 2.3 adopted the usage-error status family).
+    Previously psh silently dropped a non-numeric or variable argument
+    (parsing ``break foo`` as ``break`` + a stray ``foo`` command), so
+    ``break $n`` and ``break foo`` misbehaved.
     """
 
-    def test_nonnumeric_argument_aborts_with_128(self):
-        """break foo: 'numeric argument required', exit 128, shell aborts."""
+    def test_nonnumeric_argument_exits_with_two(self):
+        """break foo: 'numeric argument required', the shell EXITS with 2.
+
+        The family's hardest cell (bash 5.3.15; the 5.2 series exited 128,
+        which psh used to do). Parity pin:
+        tests/conformance/bash/test_exit_cd_options_conformance.py
+        ::TestUsageStatusMatchesBash::test_break_continue_non_numeric_exit_2.
+        """
         out, err, rc = run_psh(
             'for i in 1 2; do break foo; echo $i; done; echo AFTER')
-        assert rc == 128
+        assert rc == 2
         assert 'numeric argument required' in err
         assert out == ''
 
-    def test_continue_nonnumeric_argument_aborts_with_128(self):
+    def test_continue_nonnumeric_argument_exits_with_two(self):
         out, err, rc = run_psh(
             'for i in 1 2; do continue foo; echo $i; done; echo AFTER')
-        assert rc == 128
+        assert rc == 2
         assert 'numeric argument required' in err
 
     def test_empty_string_argument_is_nonnumeric(self):
         """break "" is one (empty) field, not a missing argument."""
         out, err, rc = run_psh('for i in 1 2; do break ""; done; echo AFTER')
-        assert rc == 128
+        assert rc == 2
         assert 'numeric argument required' in err
 
     def test_variable_level_argument_is_expanded(self):
@@ -144,7 +152,12 @@ class TestBreakContinueArgumentValidation:
         assert 'loop count out of range' in err
 
     def test_too_many_arguments(self):
-        """break 1 2: 'too many arguments', exit 1, shell aborts."""
+        """break 1 2: 'too many arguments' -- the OTHER cell, a line discard.
+
+        Under -c the whole string is the input unit, so it is abandoned with
+        rc 1 (that leg did not move in bash 5.3); in a script the next line
+        would see $? = 2.
+        """
         out, err, rc = run_psh('for i in 1 2; do break 1 2; done; echo AFTER')
         assert rc == 1
         assert 'too many arguments' in err

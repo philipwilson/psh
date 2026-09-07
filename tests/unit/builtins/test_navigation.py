@@ -418,9 +418,15 @@ class TestCdEmptyOperand:
             os.rmdir(target)
 
     def test_cd_empty_with_extra_operand_still_errors(self, shell, capsys):
+        """The operand-COUNT check runs before the empty-operand check, so
+        this is the usage-error family's plain cell: status 2 (bash 5.3.15;
+        the 5.2 series gave 1) and no chdir.  Parity pin:
+        tests/conformance/bash/test_exit_cd_options_conformance.py
+        ::TestCdOptions::test_cd_too_many_arguments.
+        """
         original = os.getcwd()
         result = shell.run_command('cd "" x')
-        assert result == 1
+        assert result == 2
         assert os.getcwd() == original
         captured = capsys.readouterr()
         assert 'too many arguments' in captured.err

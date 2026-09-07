@@ -1,4 +1,4 @@
-"""Both-sides DECLARED-DIVERGENCE pins for the bash 5.3 retune (Wave 0.3).
+"""Both-sides pins for the bash 5.3 retune (Wave 0.3), and their flips.
 
 A declared-divergence pin asserts the oracle's (bash 5.3.15) CURRENT output
 AND psh's CURRENT output for one command, in every input mode the runner
@@ -17,6 +17,11 @@ differ); ``stderr`` selects the shape -- ``"both"`` (both diagnose),
 ``"bash"`` (only bash diagnoses; psh silently succeeds), ``"same"`` (mere
 presence agreement) or ``None`` -- and ``stderr_has`` names a wording
 fragment that every diagnosing side must contain.
+
+``assert_mode_parity`` is the FLIPPED shape of the same pin: once the owning
+slot lands, the row keeps its command and its three modes but asserts that the
+two shells AGREE, and pins the agreed ``(stdout, status)`` value so the row
+still goes red if both sides move together.
 
 Shared by the family files of Wave 0.3 package G (trap entry status has its
 own cell table in test_exit_trap_status_precedence_conformance.py).  Uses
@@ -86,3 +91,40 @@ def assert_declared_divergence(command, *, bash, psh, tmp_path, slot,
         if stderr_has is not None:
             for r in diagnosing:
                 assert stderr_has in r.stderr, (mode, command, r.stderr)
+
+
+def assert_mode_parity(command, *, expected, tmp_path, modes=MODES,
+                       stderr_has=None, stderr=True):
+    """Pin ``command`` to the SAME ``(stdout, status)`` in both shells.
+
+    The flipped form of :func:`assert_declared_divergence`: same command, same
+    input modes, but the two shells must agree AND the agreed value must be
+    ``expected``, so the row fails both when psh regresses and when the oracle
+    drifts underneath a psh that followed it.  ``stderr`` True requires both
+    shells to diagnose (prefixes and wording differ, so only presence and the
+    optional ``stderr_has`` fragment are compared); False requires both silent.
+    """
+    for mode in modes:
+        b = run_in_mode(run_bash, mode, command, tmp_path, "oracle")
+        p = run_in_mode(run_psh, mode, command, tmp_path, "psh")
+        assert is_comparable(b), b
+        assert is_comparable(p), p
+        assert (p.stdout, p.returncode) == (b.stdout, b.returncode), (
+            f"[{mode}] psh and bash disagree for {command!r}: "
+            f"psh {p.stdout!r} rc={p.returncode}, "
+            f"bash {b.stdout!r} rc={b.returncode}")
+        assert (b.stdout, b.returncode) == expected, (
+            f"[{mode}] both shells moved together for {command!r}: "
+            f"{b.stdout!r} rc={b.returncode}, expected {expected} "
+            f"(oracle drift -> re-baseline, do not edit in place)")
+        if stderr:
+            assert b.stderr and p.stderr, (
+                f"[{mode}] a side stayed silent for {command!r}: "
+                f"psh={p.stderr!r} bash={b.stderr!r}")
+            if stderr_has is not None:
+                for r in (b, p):
+                    assert stderr_has in r.stderr, (mode, command, r.stderr)
+        else:
+            assert not b.stderr and not p.stderr, (
+                f"[{mode}] unexpected diagnostic for {command!r}: "
+                f"psh={p.stderr!r} bash={b.stderr!r}")
