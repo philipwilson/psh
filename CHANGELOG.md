@@ -4,6 +4,42 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.783.0 (2026-09-07) - Write-authority matrix (Improvement Program 2026-09, Wave 1 slot 1.0)
+- Write-authority matrix (C226; C244 instances; slot 1.0):
+  `tests/unit/core/test_write_authority_matrix.py` cross-examines every
+  variable/cwd write site (assignment, arithmetic, `declare`/`local`, nameref
+  writes, `read`/`mapfile`, scope exit, `cd`, `printf -v`, `unset`, `for`,
+  `getopts`) with every observer that can disagree: the stored value, the
+  attribute flags, the effective lookup, the child process's environment, the
+  executable dispatched next, the fd read position and the real working
+  directory (`os.getcwd()` plus a placed file). 134 cells / 191 items: 70 green
+  as the regression net, 64 strict xfails naming the finding token and the
+  owning slot (`C043 → slot 1.4`, `G17 → slot 2.4`, `W1-N25 → slot 1.18`), so
+  a fix cannot land without flipping its cell and a forgotten cell is a red
+  gate. Meta-tests validate every token and slot, require strict xfails on
+  owned cells, forbid a green cell claiming a slot, and guarantee that flipping
+  a generated cell never rewrites its expectation (`_attr_cell(refused=…)`);
+  mutation-checked against synthetic offenders. No production change.
+- Findings surfaced by the matrix and its three verification rounds, all
+  registered with owners: W1-N7 (`for` over a nameref control variable writes
+  the words into the target instead of rebinding → 1.18), W1-N8 (identifier
+  validation bypassed at `getopts`, `printf -v` and nameref-target assignment
+  → 1.18), W1-N25 (the READ of a nameref bound to an array ELEMENT is empty/0 in
+  arithmetic and read-modify-write contexts: `declare -n r='arr[1]'; r+=X`
+  → `X`, bash `bX`; `$(( r ))` → 0 → 1.18), W1-N28 (an attribute-only
+  declaration through such a nameref overwrites the element with "" → 1.18),
+  W1-N29 (`mapfile` through it consumes input it refuses to store → 1.17), W1-N27 (`-i`/`-u` attributes not applied on builtin element writes
+  → 1.18), W1-N2 (`declare a[1]=q` rejected → 1.18), W1-N3 (`getopts` orders
+  the readonly check before name validation, wording → 4.5), W1-N26
+  (`export -f`/`declare -fx` never reaches the child environment → 1.16);
+  C093's scalar drop confirmed on every promotion route; slot 2.4's
+  readonly-attribute subject carried as G17 cells.
+- Verification: round 1 BOUNCE (two matrix gaps hiding unowned defects),
+  round 2 BOUNCE (one more, W1-N25) with every earlier item closed and a
+  363/363 three-mode re-probe, round 3 BOUNCE (one more member of the same family, W1-N28), round 4
+  bounded check; reports
+  `tmp/program-2026-09/verify/slot-1.0.md`, `-r2.md`, `-r3.md`.
+
 ## 0.782.0 (2026-09-07) - Trap entry status follows bash 5.3 (Improvement Program 2026-09, Wave 2 slot 2.1)
 - Trap exit status follows bash 5.3 (POSIX interp 1602; bash CHANGES 5.3-beta
   item q / NEWS item uu): a bare `exit` at the TOP LEVEL of an EXIT, signal,

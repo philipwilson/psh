@@ -96,7 +96,8 @@
       "slots": [
         {
           "id": "1.0",
-          "title": "Write-authority matrix"
+          "title": "Write-authority matrix",
+          "release": "0.783.0"
         },
         {
           "id": "1.1",
@@ -190,6 +191,29 @@
             "W1-N6"
           ],
           "verification": "round 1 PASS (tmp/program-2026-09/verify/slot-1.2.md)"
+        },
+        {
+          "version": "0.783.0",
+          "date": "2026-09-07",
+          "slots": [
+            "1.0"
+          ],
+          "closes": [
+            "C226"
+          ],
+          "registers": [
+            "W1-N2",
+            "W1-N3",
+            "W1-N7",
+            "W1-N8",
+            "W1-N25",
+            "W1-N26",
+            "W1-N27",
+            "W1-N28",
+            "W1-N29",
+            "W1-N30"
+          ],
+          "verification": "r1 BOUNCE, r2 BOUNCE, r3 (tmp/program-2026-09/verify/slot-1.0*.md)"
         }
       ]
     },
