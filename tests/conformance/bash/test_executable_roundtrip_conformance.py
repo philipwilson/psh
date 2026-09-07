@@ -52,16 +52,21 @@ def _run(runner, script, mode, cwd):
 
 @pytest.fixture(scope="module")
 def passes():
-    """{mode: {shell: (direct_rows, roundtrip_rows, stderr pair)}}."""
+    """{mode: {"oracle"|"psh": (direct_rows, roundtrip_rows, stderr pair)}}.
+
+    The oracle runner is ``shell_oracle.run_bash`` (BASH_PATH -> Homebrew ->
+    PATH); the key is "oracle" rather than the binary's name so no bare shell
+    name is spelled here (``test_bash_oracle_resolution.py``).
+    """
     out = {}
     for mode in MODES:
         per_shell = {}
-        for shell, runner in (("bash", run_bash), ("psh", run_psh)):
+        for label, runner in (("oracle", run_bash), ("psh", run_psh)):
             with tempfile.TemporaryDirectory() as d:
                 direct = _run(runner, direct_script(), mode, d)
             with tempfile.TemporaryDirectory() as d:
                 rt = _run(runner, roundtrip_script(), mode, d)
-            per_shell[shell] = (split_rows(direct.stdout), split_rows(rt.stdout),
+            per_shell[label] = (split_rows(direct.stdout), split_rows(rt.stdout),
                                 (direct.stderr, rt.stderr))
         out[mode] = per_shell
     return out
@@ -71,7 +76,7 @@ def passes():
 @pytest.mark.parametrize("row_id", ROW_IDS)
 def test_bash_holds_the_round_trip_contract(row_id, mode, passes):
     """The reference itself: bash's ``declare -f`` re-eval changes nothing."""
-    direct, rt, _ = passes[mode]["bash"]
+    direct, rt, _ = passes[mode]["oracle"]
     assert rt[row_id] == direct[row_id], (
         f"[{row_id}/{mode}] bash: {direct[row_id]!r} -> {rt[row_id]!r}")
 
@@ -80,7 +85,7 @@ def test_bash_holds_the_round_trip_contract(row_id, mode, passes):
 @pytest.mark.parametrize("row_id", ROW_IDS)
 def test_psh_matches_bash_before_and_after_the_round_trip(row_id, mode, passes):
     """psh's answers equal bash's, both directly and after the re-eval."""
-    b_direct, b_rt, _ = passes[mode]["bash"]
+    b_direct, b_rt, _ = passes[mode]["oracle"]
     p_direct, p_rt, _ = passes[mode]["psh"]
     assert p_direct[row_id] == b_direct[row_id], (
         f"[{row_id}/{mode}] direct call: bash {b_direct[row_id]!r} "
@@ -97,7 +102,7 @@ def test_neither_shell_diagnoses_anything(mode, passes):
     A dropped ``psh: error: [Errno 1] Operation not permitted`` host flake
     identifies itself here instead of looking like a conformance regression.
     """
-    assert passes[mode]["bash"][2] == ("", "")
+    assert passes[mode]["oracle"][2] == ("", "")
     assert passes[mode]["psh"][2] == ("", "")
 
 
