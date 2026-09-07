@@ -622,11 +622,11 @@ class UnsetBuiltin(Builtin):
             # A READONLY function is refused per operand and the loop runs on
             # (`readonly -f f g; unset -f f g` prints BOTH diagnostics); the
             # collected failure is the typed outcome below.
-            readonly_refusal = False
+            refused = False
             for arg in names:
                 if not self._undefine_function(arg, shell):
-                    readonly_refusal = True
-            return self._readonly_unset_status(readonly_refusal)
+                    refused = True
+            return self._operand_refusal_status(refused)
         else:
             # Remove variables. `-n` unsets the nameref itself; otherwise a
             # nameref name is resolved to its target before unsetting (bash).
@@ -634,11 +634,20 @@ class UnsetBuiltin(Builtin):
 
             exit_code = 0
             # bash 5.3 exits a POSIX-mode non-interactive shell when unset
-            # REFUSES a readonly variable/element/array/function, after
-            # diagnosing every operand (`readonly r=1 s=2; unset r s` prints
-            # both, then exits 1). Recorded here, raised once after the loop.
-            readonly_refusal = False
+            # REFUSES an operand — a readonly variable/array/element/function,
+            # or (with an explicit -v) a name that is not a valid identifier —
+            # after diagnosing EVERY operand (`readonly r=1 s=2; unset r s`
+            # prints both, then exits 1). Recorded here, raised once after the
+            # loop by _operand_refusal_status.
+            refused = False
             for var in names:
+                if opts['v'] and self._refuse_unset_operand_name(var, shell):
+                    # Diagnosed; the operand is skipped and the LATER operands
+                    # are still unset (`a=1 d=1; unset -v a b-c d` leaves both
+                    # a and d unset, rc 1 — bash 5.3.15).
+                    exit_code = 1
+                    refused = True
+                    continue
                 if nameref_mode:
                     # bash: `unset -n NAME` unsets the nameref VARIABLE itself
                     # (not its target), but ONLY when NAME actually holds a
@@ -664,7 +673,7 @@ class UnsetBuiltin(Builtin):
                         self.error(
                             f"{e.name}: cannot unset: readonly variable", shell)
                         exit_code = 1
-                        readonly_refusal = True
+                        refused = True
                 elif (not opts['v']
                       and shell.state.scope_manager.get_variable_object(var) is None
                       and var not in shell.env
@@ -676,7 +685,7 @@ class UnsetBuiltin(Builtin):
                     # an explicit `-v` restricts to variables and never falls back.
                     if not self._undefine_function(var, shell):
                         exit_code = 1
-                        readonly_refusal = True
+                        refused = True
                 else:
                     # Regular variable unset. The scope manager's
                     # variable_changed observer re-derives the environment
@@ -692,9 +701,9 @@ class UnsetBuiltin(Builtin):
                     except ReadonlyVariableError:
                         self.error(f"{var}: cannot unset: readonly variable", shell)
                         exit_code = 1
-                        readonly_refusal = True
-            if readonly_refusal:
-                return self._readonly_unset_status(True)
+                        refused = True
+            if refused:
+                return self._operand_refusal_status(True)
             return exit_code
 
     def _undefine_function(self, name: str, shell: 'Shell') -> bool:
@@ -711,19 +720,62 @@ class UnsetBuiltin(Builtin):
             return False
         return True
 
-    def _readonly_unset_status(self, refused: bool) -> int:
-        """Status for an unset run that refused a readonly operand.
+    def _operand_refusal_status(self, refused: bool) -> int:
+        """Status for an unset run that REFUSED at least one operand.
 
-        The refusal is a special-builtin OPERAND error bash 5.3 made fatal in
-        posix mode (CHANGES, bash-5.3-alpha, "1. Changes to Bash" item jj):
-        the typed outcome exits a non-interactive posix shell and is a plain
-        rc 1 everywhere else, including through ``command``/``builtin``. It
-        is SUPPRESSIBLE — `set -o posix; readonly r=1; unset r || echo caught`
-        prints caught, rc 0.
+        Two refusals share this outcome, and bash 5.3.15 treats them
+        identically: a readonly variable/array/element/function, and (with an
+        explicit ``-v``) an operand whose name is not a valid identifier. Both
+        are special-builtin OPERAND errors bash 5.3 made fatal in posix mode
+        (CHANGES, bash-5.3-alpha, "1. Changes to Bash" item jj): the typed
+        outcome exits a non-interactive posix shell and is a plain rc 1
+        everywhere else, including through ``command``/``builtin``. It is
+        SUPPRESSIBLE — `set -o posix; readonly r=1; unset r || echo caught`
+        and `set -o posix; unset -v 1bad || echo caught` both print caught,
+        rc 0.
+
+        The refusal never truncates the operand loop: every operand is
+        processed and diagnosed first (`unset -v a-b r` prints both
+        messages), which is why this is called once, after the loop.
         """
         if refused:
             raise SpecialBuiltinUsageError(1, suppressible=True)
         return 0
+
+    def _refuse_unset_operand_name(self, var: str, shell: 'Shell') -> bool:
+        """With an explicit ``-v``, is ``var`` an unusable operand name?
+
+        bash 5.3.15 identifier-checks every ``unset -v`` operand and reports
+        ``unset: `OPERAND': not a valid identifier`` (quoting the WHOLE
+        operand) for a bad one, in both modes; the loop continues and the
+        status is 1, plus the posix-mode exit through
+        :meth:`_operand_refusal_status`. A SUBSCRIPTED operand is judged on
+        its base name, so ``unset -v 'a[0]'`` is fine while ``unset -v
+        '1a[0]'`` is not, and trailing junk after the subscript
+        (``'a[0]x'``, ``'a['``, ``'a]'``) makes the whole word the name and
+        so invalid. The empty operand is invalid too.
+
+        Only ``-v`` triggers this. Bare ``unset 1bad``, ``unset -f 1bad`` and
+        ``unset -n 1bad`` stay silent rc-0 no-ops in bash 5.3.15 and here —
+        without ``-v`` bash falls back to a function lookup rather than
+        judging the word as a variable name.
+
+        The name policy is the shell's one predicate
+        (``unicode_support.is_valid_name``), so ``unset -v é`` is refused
+        under ``set -o posix`` like bash and accepted outside it, exactly as
+        ``é=1`` and ``declare é=1`` are (psh's documented Unicode extension,
+        docs/user_guide/17_differences_from_bash.md §17).
+        """
+        posix_mode = shell.state.options.get('posix', False)
+        if '[' in var and var.endswith(']'):
+            split = shell.expansion_manager.variable_expander.split_subscript(var)
+            name = var if split is None else split[0]
+        else:
+            name = var
+        if is_valid_name(name, posix_mode):
+            return False
+        self.error(f"`{var}': not a valid identifier", shell)
+        return True
 
     def _unset_array_element(self, var: str, shell: 'Shell') -> bool:
         """Unset one array element (``unset 'arr[index]'``).

@@ -408,6 +408,14 @@ def special_builtin_usage_exit(shell: 'Shell', status: int,
       ``is_script_mode`` is False) the builtin simply FAILS with
       ``status`` — byte-identical to the pre-policy behavior.
 
+    The exit PUBLISHES ``status`` as ``$?`` before raising, because the EXIT
+    trap runs after the shell has unwound and reads the live
+    ``last_exit_code``: ``set -o posix; trap 'echo rc=$?' EXIT; export
+    1bad=x`` prints ``rc=1`` on bash 5.3.15 (``set -q`` prints 2), and a
+    cleanup trap that branches on ``$?`` would otherwise see success where
+    bash sees the failure. ``execute_as_main`` recovers the process status
+    from the ``SystemExit`` itself, so this only fixes what the trap observes.
+
     The message was already printed at the raise site.
     """
     state = shell.state
@@ -417,6 +425,7 @@ def special_builtin_usage_exit(shell: 'Shell', status: int,
             if (executor is not None
                     and executor.context.special_exit_suppressed):
                 return status
+        state.last_exit_code = status
         raise SystemExit(status)
     return status
 
