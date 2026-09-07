@@ -55,11 +55,18 @@ def test_shift_negative(shell):
 
 
 def test_shift_non_numeric(shell):
-    """Test shift with non-numeric argument."""
+    """Test shift with non-numeric argument.
+
+    The usage-error family's operand cell: status 2 and the shell continues
+    (bash 5.3.15; the 5.2 series gave 1).  Parity pin:
+    tests/conformance/bash/test_exit_cd_options_conformance.py
+    ::TestUsageStatusMatchesBash::test_shift_non_numeric_status_2.
+    """
     shell.run_command('set arg1 arg2')
     result = shell.run_command('shift abc')
-    # Should fail with non-numeric argument
-    assert result != 0
+    assert result == 2
+    # the operands are untouched by the failed shift
+    assert shell.state.positional_params == ['arg1', 'arg2']
 
 
 def test_shift_no_params(shell):
