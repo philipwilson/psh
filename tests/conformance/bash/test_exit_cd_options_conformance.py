@@ -101,7 +101,7 @@ class TestExitStatus(ConformanceTest):
         input is one line, so the discard leaves $? = 2 with no line left to
         observe it and the shell exits with that status.  Reproduce::
 
-            printf 'f(){ exit 1 2; echo in=$?; }; f; echo out=$?\n' > s.sh
+            printf 'f(){ exit 1 2; echo in=$?; }; f; echo out=$?\\n' > s.sh
             bash s.sh; echo $?          # 2
         """
         _assert_parity(

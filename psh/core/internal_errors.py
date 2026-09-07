@@ -358,7 +358,7 @@ def special_builtin_usage_discard(state: 'ShellState') -> NoReturn:
 
     Reproduce::
 
-        printf 'exit 1 2\necho after=$?\n' > s.sh; bash s.sh   # after=2, rc 0
+        printf 'exit 1 2\\necho after=$?\\n' > s.sh; bash s.sh  # after=2, rc 0
         bash -c 'exit 1 2; echo survived'                       # rc 1, no output
 
     The caller must already have printed the error message.
