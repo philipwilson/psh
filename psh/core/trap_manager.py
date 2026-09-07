@@ -549,10 +549,14 @@ class TrapManager:
             self._push_trap_action_frame(signal_name, saved_exit_code)
             try:
                 # posix_syntax_exit=False: a parse failure of the ACTION
-                # string itself never triggers the POSIX-mode syntax exit
-                # (bash 5.2, probe tmp/posixexit: `trap 'if' USR1` survives
-                # in posix mode, while `trap "eval 'if'" USR1` — a nested
-                # source with its own input — exits).
+                # string itself never triggers the POSIX-mode syntax exit,
+                # while a nested source with its OWN input still does.
+                # Reproduce (bash 5.3.15 and psh agree on both):
+                #   set -o posix; trap 'if' USR1; echo survived=$?
+                #     -> survived=0, the shell lives
+                #   set -o posix; trap "eval 'if'" USR1
+                #   kill -USR1 $$; sleep 0.2; echo reached
+                #     -> rc 2, `reached` never printed
                 self.shell.run_command(action, add_to_history=False,
                                        base_line=base_line,
                                        posix_syntax_exit=False)
@@ -784,8 +788,12 @@ class TrapManager:
     # the BODY sets fires at that same function's return and persists
     # afterwards, and the hidden outer trap is restored only if the body
     # didn't install its own. Sourced files never hide it (a RETURN trap
-    # fires at the end of every `source`, -T or not). Pinned by the truth
-    # table in tmp/probes-r17t2-trap/cases_c_return.sh (bash 5.2).
+    # fires at the end of every `source`, -T or not). Reproduce the two ends
+    # of the model: `f(){ trap 'echo RET' RETURN; }; trap -p RETURN; f;
+    # trap -p RETURN` (the body's trap survives the call) and `set -T;
+    # f(){ echo in; }; trap 'echo R' RETURN; f; echo done` (inherited under
+    # -T). Pinned against the live oracle by the RETURN cells of
+    # tests/conformance/bash/test_trap_signal_spec_conformance.py.
     # ------------------------------------------------------------------
 
     def hide_return_trap_on_function_entry(self) -> Optional[str]:
