@@ -169,8 +169,10 @@ _GREEN_VALUE_CELLS: Tuple[Cell, ...] = (
          'declare -a a=([0]="9" [1]="2")\n'),
     Cell("nameref", "lookup", "read-through-to-target",
          'x=1; declare -n r=x; echo "[$r]"', '[1]\n'),
-    # The READ half through an element reference is correct, which is what makes
-    # W1-N25 a read-modify-write bug rather than a binding bug.
+    # The binding and the EXPANSION read through an element reference are both
+    # correct.  That is what makes W1-N25 a resolution bug in the store's
+    # nameref walk rather than a binding bug: everything that goes through
+    # expansion works, everything else sees an unresolved `arr[1]`.
     Cell("nameref", "lookup", "read-through-to-element-reference",
          "arr=(a b c); declare -n r='arr[1]'; echo \"[$r]\"", '[b]\n'),
     Cell("nameref", "value", "plain-write-through-element-reference",
@@ -325,11 +327,12 @@ _FLIP_VALUE_CELLS: Tuple[Cell, ...] = (
          'x=0; declare -n r=x; for r in 1 2; do echo body; done; echo "rc=$? [$x]"',
          'rc=1 [0]\n', err="not a valid identifier", owner="W1-N7 → slot 1.18"),
 
-    # W1-N25 — a nameref may be bound to an array or assoc ELEMENT.  A compound
-    # assignment through it is a read-modify-write, and the read half must see
-    # that element; psh reads it as empty, so the old value is destroyed rather
-    # than extended.  Plain `$r` reads it correctly, so only the write path's
-    # own read is wrong.
+    # W1-N25 — a nameref may be bound to an array or assoc ELEMENT.  The store's
+    # nameref walk hands back the target NAME (`arr[1]`) without resolving the
+    # subscript, and only the EXPANSION path parses it.  So `$r` is right while
+    # every other reader sees an empty (arithmetic: zero) value: a compound
+    # assignment destroys the element instead of extending it, and a plain
+    # arithmetic read of it is 0 with no write involved at all.
     #   arr=(a b c); declare -n r='arr[1]'; r+=X; declare -p arr
     Cell("nameref", "value", "compound-append-through-element-reference-W1-N25-slot1.18",
          "arr=(a b c); declare -n r='arr[1]'; r+=X; declare -p arr",
@@ -342,6 +345,62 @@ _FLIP_VALUE_CELLS: Tuple[Cell, ...] = (
     Cell("nameref", "value", "compound-append-through-assoc-element-reference-W1-N25-slot1.18",
          "declare -A m=([k]=b); declare -n r='m[k]'; r+=X; declare -p m",
          'declare -A m=([k]="bX" )\n', owner="W1-N25 → slot 1.18"),
+    # No write at all: an arithmetic READ of the same reference is 0.
+    Cell("arith", "lookup", "read-through-element-reference-W1-N25-slot1.18",
+         "arr=(1 2 3); declare -n r='arr[1]'; echo $(( r ));"
+         " if (( r > 1 )); then echo big; else echo small; fi",
+         '2\nbig\n', owner="W1-N25 → slot 1.18"),
+    # And the same read under `set -u`, where psh calls the element unbound.
+    Cell("arith", "lookup", "read-through-element-reference-under-nounset-W1-N25-slot1.18",
+         "set -u; arr=(1 2 3); declare -n r='arr[1]'; echo $(( r ))",
+         '2\n', owner="W1-N25 → slot 1.18"),
+    # Three more routes into the same unresolved name: a different evaluator
+    # node, a different binding statement, and a subscript that must be
+    # normalised before it can be read.
+    Cell("arith", "value", "post-increment-through-element-reference-W1-N25-slot1.18",
+         "arr=(1 2 3); declare -n r='arr[1]'; (( r++ )); declare -p arr",
+         'declare -a arr=([0]="1" [1]="3" [2]="3")\n',
+         owner="W1-N25 → slot 1.18"),
+    Cell("nameref", "value", "compound-append-through-local-element-reference-W1-N25-slot1.18",
+         "arr=(a b c); f(){ local -n r='arr[1]'; r+=X; }; f; declare -p arr",
+         'declare -a arr=([0]="a" [1]="bX" [2]="c")\n',
+         owner="W1-N25 → slot 1.18"),
+    Cell("nameref", "value", "compound-append-through-negative-index-reference-W1-N25-slot1.18",
+         "arr=(a b c); declare -n r='arr[-1]'; r+=X; declare -p arr",
+         'declare -a arr=([0]="a" [1]="b" [2]="cX")\n',
+         owner="W1-N25 → slot 1.18"),
+
+    # W1-N28 — an ATTRIBUTE-ONLY declaration through an element-bound reference
+    # is the same unresolved name arriving at the declaration builtins.  bash
+    # applies the attribute to the containing array and leaves the element
+    # alone; psh overwrites the element with "" and applies no attribute, and on
+    # an unset element it CREATES one.  `readonly`/`export` clear it where bash
+    # refuses the subscripted name outright.
+    #   arr=(1 2 3); declare -n r='arr[1]'; declare -i r; declare -p arr
+    #
+    # Two neighbouring rows are deliberately NOT pinned, both bash-side quirks:
+    # bare `declare r` through an element reference empties the WHOLE array in
+    # bash 5.3.15, and `[[ -v r ]]` reports unset for an element that is set.
+    # Pinning either would make psh copy a bash bug.
+    Cell("declare", "flags", "integer-attribute-through-element-reference-keeps-the-element-W1-N28-slot1.18",
+         "arr=(1 2 3); declare -n r='arr[1]'; declare -i r; declare -p arr",
+         'declare -ai arr=([0]="1" [1]="2" [2]="3")\n',
+         owner="W1-N28 → slot 1.18"),
+    Cell("declare", "flags", "export-attribute-through-element-reference-keeps-the-element-W1-N28-slot1.18",
+         "arr=(1 2 3); declare -n r='arr[1]'; declare -x r; declare -p arr",
+         'declare -ax arr=([0]="1" [1]="2" [2]="3")\n',
+         owner="W1-N28 → slot 1.18"),
+    Cell("declare", "flags", "integer-attribute-through-assoc-element-reference-keeps-the-element-W1-N28-slot1.18",
+         "declare -A m=([k]=2); declare -n r='m[k]'; declare -i r; declare -p m",
+         'declare -Ai m=([k]="2" )\n', owner="W1-N28 → slot 1.18"),
+    Cell("declare", "value", "attribute-through-reference-to-unset-element-creates-nothing-W1-N28-slot1.18",
+         "arr=(1 2 3); declare -n r='arr[7]'; declare -i r; declare -p arr",
+         'declare -ai arr=([0]="1" [1]="2" [2]="3")\n',
+         owner="W1-N28 → slot 1.18"),
+    Cell("declare", "value", "readonly-through-element-reference-refused-and-element-kept-W1-N28-slot1.18",
+         "arr=(1 2 3); declare -n r='arr[1]'; readonly r; declare -p arr",
+         'declare -a arr=([0]="1" [1]="2" [2]="3")\n',
+         err="not a valid identifier", owner="W1-N28 → slot 1.18"),
 
     # W1-N27 — the integer and case attributes are applied on the SCALAR write
     # path only, so a builtin writing an ELEMENT stores the raw word: an `-ai`
@@ -728,6 +787,15 @@ SPAWN_CELLS: Tuple[Cell, ...] = (
          _FD_DATA + 'readonly a\nmapfile -u 3 a\nread -u 3 line\n'
          'printf "<%s>\\n" "$line"\n',
          '<one>\n', err="a: readonly variable", owner="C090 → slot 1.17"),
+
+    # W1-N29 — the same preflight hole as C090, reached through an element-bound
+    # nameref: the destination is refused (bash: not a valid identifier) but the
+    # input is swallowed first, so the next reader gets nothing.
+    Cell("mapfile", "input", "element-reference-target-consumes-nothing-W1-N29-slot1.17",
+         _FD_DATA + "arr=(a)\ndeclare -n r='arr[0]'\nmapfile -u 3 r\n"
+         'read -u 3 line\nprintf "<%s>\\n" "$line"\ndeclare -p arr\n',
+         '<one>\ndeclare -a arr=([0]="a")\n', err="not a valid identifier",
+         owner="W1-N29 → slot 1.17"),
 
     # C043 in every input mode: `$PWD` and the real cwd must name one place.
     Cell("cd", "cwd", "logical-parent-agrees-with-pwd-P-C043-slot1.4",
