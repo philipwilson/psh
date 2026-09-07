@@ -295,6 +295,35 @@ def die_by_signal(sig: int) -> None:
         pass
 
 
+def leave_interactive_session(shell: 'Shell') -> None:
+    """Detach an ASYNCHRONOUS COMPOUND child from the interactive session.
+
+    bash runs an async compound command (``( … ) &``, ``{ …; } &``,
+    ``a && b &``, ``for … done &``, a backgrounded pipeline) through
+    ``execute_in_subshell(asynchronous=1)``, which leaves the interactive
+    session behind — so a runtime ``set -n`` is HONOURED there, while at the
+    prompt itself and in every synchronous child (a subshell, a brace group,
+    a pipeline member, a command substitution, a process substitution) it is
+    REFUSED.
+
+    Deliberately NOT applied to a backgrounded SIMPLE command: bash forks
+    those inside ``execute_simple_command``, which never runs that code, and
+    it shows — at an interactive bash 5.3.15 prompt ``f() { set -n; touch a;
+    echo RAN; }; f & wait`` prints ``RAN`` and creates the file, as do
+    ``eval 'set -n; …' &`` and ``. file &``, while ``( set -n; touch a ) &``
+    creates nothing. Clearing the flag for those would trade one divergence
+    for another. This is the same compound-vs-simple split
+    ``TrapManager.drop_trap_action_frames_in_forked_compound`` already draws,
+    for the same reason.
+
+    Empirical against bash 5.3.15 (no CHANGES entry); every shape above was
+    probed at a real pty.
+
+    Call this in the CHILD, after the fork.
+    """
+    shell.state.options['interactive_session'] = False
+
+
 def run_background_shell_child(shell: 'Shell',
                                body: Callable[[], int],
                                *,

@@ -46,15 +46,22 @@ def apply_set_o_option(shell: 'Shell', option: str, enable: bool, *,
     decides the shell is interactive, so ``bash -i -n`` really does execute
     nothing, while the same option asked for at a prompt is refused.
     """
-    # bash REFUSES to turn noexec on in an interactive shell: `set -n`,
-    # `set -o noexec` and `shopt -so noexec` all succeed silently and leave
-    # the option OFF, so `$-` never grows an `n` and `set -o` still reports
-    # `noexec off` (probed at a pty, bash 5.3.15). Refusing here rather than
-    # ignoring the flag downstream is what keeps those two readouts honest —
-    # and it is why the executor's noexec gate never has to ask whether the
-    # shell is interactive (C040).
+    # bash REFUSES to turn noexec on when the shell belongs to a session the
+    # user is typing at: `set -n`, `set -o noexec` and `shopt -so noexec` all
+    # succeed silently and leave the option OFF, so `$-` never grows an `n`
+    # and `set -o` still reports `noexec off` (probed at a pty, bash 5.3.15).
+    # Refusing here rather than ignoring the flag downstream is what keeps
+    # those two readouts honest — and it is why the executor's noexec gate
+    # never has to ask about interactivity (C040).
+    #
+    # The predicate is `interactive_session`, NOT `interactive`: the latter is
+    # recomputed by every child shell from its own stdin, so a command
+    # substitution of an interactive shell reports False and `x=$(set -n; echo
+    # hi)` silently yielded the empty string where bash yields `hi`. The
+    # session fact is inherited across forks and dropped only where bash
+    # detaches a child (executor/child_policy.py#leave_interactive_session).
     if (option == 'noexec' and enable and not from_invocation
-            and shell.state.options.get('interactive')):
+            and shell.state.options.get('interactive_session')):
         return
 
     # Editor modes (silent, like bash): vi/emacs couple to edit_mode.
