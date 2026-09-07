@@ -125,11 +125,17 @@ Key behaviors controlled by Word AST structure:
   `#tilde_apply_unquoted_literal`), so the two cannot drift on WHERE a tilde
   expands. They differ on exactly one axis, and it is a parameter of that
   machine, not a second copy of it: the owner passes its consumer's `escape`
-  (`glob_escape`, or `re.escape` for the regex operand), so the text a
-  tilde-prefix expands TO matches literally while the rest of the word keeps
-  its metacharacter power — `TildeExpander.expand_escaped`. bash quotes the
-  result of tilde expansion in a pattern word and does NOT quote the result of
-  parameter expansion:
+  (`glob_escape`, or `re.escape` for the regex operand), so the tilde WORD
+  matches literally while the rest of the word keeps its metacharacter power —
+  `TildeExpander.expand_escaped`. **Two boundaries, and the difference is
+  load-bearing**: the tilde PREFIX (`#prefix_end`) ends at the first `/` OR `:`
+  and decides what EXPANDS; the tilde WORD (`#word_end`) ends at the first `/`
+  only, so a `:` sits inside it and bash makes all of it literal —
+  `env HOME=/h/me bash -c "case '/h/me:XX' in ~:*) echo M;; *) echo o;; esac"`
+  prints `o` (the `*` is inside the word) while the same case with `~:*/*`
+  against `/h/me:*/YY` prints `M` (the second `*` is past the `/`). bash quotes
+  the result of tilde expansion in a pattern word and does NOT quote the result
+  of parameter expansion:
   `env HOME='/a*b' bash -c "case /aXb in ~) echo T;; *) echo o;; esac"` prints
   `o`, while the same case with `$HOME)` as the pattern prints `T`. Reproduce
   the C042 defect the owner closed with
