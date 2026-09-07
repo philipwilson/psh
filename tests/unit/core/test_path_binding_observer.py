@@ -97,7 +97,7 @@ COUNTER_ROWS: Tuple[Tuple[str, str, int], ...] = (
     # `declare -g` writes the shadowed global: a rebinding of the name PATH,
     # which bash flushes for (probe: `hash -t probe` fails right after it),
     # even though the local still shadows it and the effective VALUE is
-    # unchanged until the pop.  See the slot 1.5 handoff, deviation D-1.
+    # unchanged until the pop.
     ("declare-g-under-local", 'f(){ local PATH=/b; declare -g PATH=/c; }; f', 3),
     # --- temporary environments --------------------------------------------
     # A prefix over a FUNCTION is one temp-env scope: bound on push, discarded

@@ -4,6 +4,34 @@ All notable changes to PSH (Python Shell) are documented in this file.
 
 Format: `VERSION (DATE) - Title` followed by bullet points describing changes.
 
+## 0.789.0 (2026-09-07) - PATH restored on scope exit restores dispatch (Improvement Program 2026-09, Wave 1 slot 1.5)
+- P1 WRONG TARGET (C044; slot 1.5): returning from a function that set
+  `local PATH` (or a `PATH=dir f` prefix) restored the variable but not the
+  remembered command locations, so the next command could silently run the
+  executable the discarded scope had selected — `PATH=$PWD/a; f(){ local
+  PATH=$PWD/b; probe; }; f; probe` ran B twice where bash 5.3.15 runs B then
+  A. `ScopeManager._effective_binding_changed` is now the one authority on
+  when a remembered location is stale and fires on every rebinding of PATH,
+  scope and temp-env pops included, while an ordinary function return still
+  costs the table nothing; `CommandHashTable` stays the single subscriber.
+  Probe-corrected from the brief: `declare -g PATH=…` under a `local PATH`
+  DOES flush the table (bash parity), as does `PATH=$PATH`. Counter guard over
+  every write path with two mutation checks; pins in three modes assert the
+  executable actually dispatched; the write-authority matrix's six
+  `C044 → slot 1.5` cells flipped green.
+- Ledger: W1-N52 (attribute-only `declare -x PATH`/`declare -t PATH` do not
+  flush the hash where bash does — but `export PATH` must not; → core
+  declaration owner) and W1-N53 (a command temp-env prefix shadows a function's
+  own `local` — `PATH=$PWD/a eval "g"` with `g(){ local PATH=$PWD/b; probe; }`
+  runs A inside g where bash runs B: a name-LOOKUP precedence defect in
+  `get_variable_object`, same harm class; → 4.9), W1-N56 (bash bypasses the
+  hash table while PATH is a temporary-environment variable; → 4.9) and
+  W1-N57 (PATH converted to an array — bash's search finds nothing, psh
+  resolves through element 0; informational) registered, all pre-existing.
+- Verification: adversarial round 1 PASS (61 novel rows × 3 modes, every C044 shape closed; the brief's
+  `declare -g` expectation falsified by probe and ruled bash-parity; report
+  `tmp/program-2026-09/verify/slot-1.5.md`).
+
 ## 0.788.0 (2026-09-07) - Pipeline members run their whole body (Improvement Program 2026-09, Wave 1 slot 1.1)
 - P0 SILENT DATA LOSS (C001): a function body, `eval` text or sourced file
   running as a pipeline member ran only up to its first external command —

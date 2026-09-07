@@ -693,8 +693,8 @@ _FLIP_CHILD_CELLS: Tuple[Cell, ...] = (
     # value the next dispatch must resolve through is the one `declare -g` left
     # behind, and the change becomes visible only at the pop.  bash empties the
     # table at the `declare -g` as well (it rebinds the name PATH), which is
-    # what slot 1.5's observer counter records — see its `declare-g-under-local`
-    # row and the slot handoff's deviation D-1.
+    # what the observer counter records: a rebinding of the name flushes the
+    # table even while the local still shadows it.
     Cell("scope-exit", "dispatch", "declare-g-PATH-under-local",
          _TWO_PROBES + 'f(){ local PATH=$PWD/b; declare -g PATH=$PWD/a; probe; }\n'
          'f\nprobe\n', 'B\nA\n'),

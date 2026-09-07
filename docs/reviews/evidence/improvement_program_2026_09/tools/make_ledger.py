@@ -491,6 +491,7 @@ def meta_for(owner):
 # Closures recorded by the integrator at each release (D10: the pin must exist in tests/).
 # cid -> (release, closure note).  A closed row keeps its derived owner.
 CLOSURES = {
+    'C044': ('v0.789.0', 'slot 1.5: `ScopeManager._effective_binding_changed` (pops included); `CommandHashTable` sole subscriber; counter guard; matrix C044 cells flipped'),
     'C001': ('v0.788.0', 'slot 1.1: one-shot `ExecutionContext.for_pipeline_member` token consumed at `CommandExecutor.execute`; `in_pipeline` gone (ratchet `test_in_pipeline_ratchet.py`); pins `test_pipeline_member_one_shot.py`, `test_pipeline_member_conformance.py`, golden `pipeline_member_*`; PTY pins for the job-control guard'),
     'C179': ('v0.788.0', 'slot 1.1: the "nothing left to do" and setpgid comments corrected; the exec-assignment-loop drift is W1-N5 (6.2)'),
     'C010': ('v0.787.0', 'slot 1.7: `psh/lexer/token_types.py#slice_renders_token` / `token_lexeme`; for/select variable + heredoc delimiter gated; 43 pins red on base; guard offender mutation'),
